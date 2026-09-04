@@ -126,6 +126,30 @@ def test_reject_everything_after_first_is_not_anti_replay(target):
     assert any(p.status == "must-fix" and p.reason_code == "APR-001" for p in results)
 
 
+@pytest.mark.parametrize("mode", ("valid", "reject-after-first"))
+def test_stale_baseline_cannot_certify_an_approval_sequence(target, mode):
+    set_mode(target, mode)
+    before = snapshot(target)
+    stale = replace(BINDING, issued_at="2026-09-01T11:55:00Z",
+                    expires_at="2026-09-01T11:59:00Z")
+    with pytest.raises(probes.ProbeContractError, match="baseline"):
+        probes.run_approval_probe_sequence(target, stale, NOW)
+    assert snapshot(target) == before
+
+
+def test_sequence_enforces_expected_acceptance_at_each_position(target, monkeypatch):
+    original = probes.run_approval_probe
+
+    def wrong_success(*args, **kwargs):
+        result = original(*args, **kwargs)
+        return replace(result, status="pass", observed="expired_rejected")
+
+    monkeypatch.setattr(probes, "run_approval_probe", wrong_success)
+    results = probes.run_approval_probe_sequence(target, BINDING, NOW)
+    assert all(p.status == "must-fix" and p.reason_code == "APR-001"
+               for p in results[:-1])
+
+
 def test_sequence_has_second_valid_acceptance_and_fresh_expired_rejection(target):
     before = snapshot(target)
     results = probes.run_approval_probe_sequence(target, BINDING, NOW)
@@ -174,12 +198,52 @@ def test_missing_audit_field_never_passes(target, field):
     assert results and all(p.status != "pass" for p in results)
 
 
-@pytest.mark.parametrize("field", ("prompt", "arguments", "output", "secrets"))
+def test_incomplete_legacy_audit_is_not_verified_rather_than_payload_violation(target):
+    set_mode(target, "missing-correlation_id")
+    results = probes.run_privacy_probe_set(target)
+    assert all(p.status == "not-verified" for p in results)
+
+
+@pytest.mark.parametrize("field", (
+    "prompt", "arguments", "output", "secrets", "raw_prompt", "raw_arguments",
+    "raw_output", "client_secret", "unrecognized_metadata",
+))
 def test_raw_audit_payload_is_rejected_without_export(target, field):
     set_mode(target, "raw-" + field)
     results = probes.run_privacy_probe_set(target)
     assert all(p.status == "must-fix" and p.reason_code == "AUD-001" for p in results)
     assert "SENSITIVE-SENTINEL" not in repr(results)
+
+
+@pytest.mark.parametrize("field", ("raw_prompt", "raw_arguments", "raw_output", "client_secret"))
+def test_output_rejects_unknown_payload_fields_in_persisted_records(target, field):
+    set_mode(target, "raw-" + field)
+    result = probes.run_output_probe(target, "allow")
+    assert result.status != "pass"
+    assert not result.evidence_items
+    assert "SENSITIVE-SENTINEL" not in repr(result)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("audit_id", "x" * 257), ("correlation_id", "x" * 257),
+    ("decision", "arbitrary prose"), ("decision", {"nested": "payload"}),
+    ("action_hash", "sha256:invalid"), ("policy_hash", 1),
+    ("delivery_status", True),
+])
+def test_audit_fields_have_bounded_types(target, field, value):
+    (target / "app" / "agent.py").write_text(TARGET.replace(
+        "AUDIT_EVENTS.append(record)", f"record[{field!r}] = {value!r}\n    AUDIT_EVENTS.append(record)"
+    ))
+    assert all(p.status != "pass" for p in probes.run_privacy_probe_set(target))
+
+
+@pytest.mark.parametrize("field,value", [("bytes", 2**64), ("mediated", "yes")])
+def test_output_record_types_are_bounded(target, field, value):
+    (target / "app" / "agent.py").write_text(TARGET.replace(
+        '{"event": "egress", "bytes": 32, "mediated": True}',
+        repr({"event": "egress", "bytes": 32, "mediated": True, field: value}),
+    ))
+    assert probes.run_output_probe(target, "allow").status != "pass"
 
 
 def test_in_memory_audit_alone_does_not_prove_durable_delivery(target):
@@ -316,6 +380,54 @@ def test_live_collector_checks_its_actual_flat_scope(target, monkeypatch, field)
         governed_actions._collect_selected_live_evidence(target, options, None)
 
 
+def collect_injected_azure(target, monkeypatch, credentials, assignments):
+    responses = iter((credentials, assignments, [{"roleName": "Reader"}]))
+
+    def run(command):
+        assert command[0] == "az"
+        return SimpleNamespace(returncode=0, stdout=json.dumps(next(responses)), stderr="")
+
+    monkeypatch.setattr(governed_actions, "_default_command_runner", run)
+    options = contracts.AssessmentOptions(
+        target, "post-deploy", deploy_identity="identity", staging=True,
+        staging_resource_group=DEPLOYED["resource_group"],
+        **{k: v for k, v in DEPLOYED.items() if k != "resource_group"},
+    )
+    return governed_actions._collect_selected_live_evidence(target, options, None)
+
+
+@pytest.mark.parametrize("record_type", ("credential", "assignment"))
+def test_real_collector_rejects_observed_resource_scope_mismatch(target, monkeypatch, record_type):
+    wrong = "/subscriptions/not-selected/resourceGroups/rg-production"
+    credentials = [{"id": wrong + "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/identity/federatedIdentityCredentials/one"}]
+    assignments = [{"roleDefinitionName": "Reader", "scope": wrong}]
+    with pytest.raises(contracts.UnsafeTargetError, match="mismatch|production"):
+        collect_injected_azure(target, monkeypatch,
+                               credentials if record_type == "credential" else [],
+                               assignments if record_type == "assignment" else [])
+
+
+@pytest.mark.parametrize("field", ("agent_name", "agent_version", "image_digest", "policy_digest"))
+def test_real_collector_rejects_available_deployment_identity_mismatch(target, monkeypatch, field):
+    scope = f"/subscriptions/{DEPLOYED['subscription']}/resourceGroups/{DEPLOYED['resource_group']}"
+    with pytest.raises(contracts.UnsafeTargetError, match="mismatch"):
+        collect_injected_azure(target, monkeypatch, [], [
+            {"roleDefinitionName": "Reader", "scope": scope, field: "different"},
+        ])
+
+
+@pytest.mark.parametrize("observed_scope", (False, True))
+def test_selector_echoes_never_independently_verify_deployment(target, monkeypatch, observed_scope):
+    scope = f"/subscriptions/{DEPLOYED['subscription']}/resourceGroups/{DEPLOYED['resource_group']}"
+    _, data, findings = collect_injected_azure(target, monkeypatch, [], [
+        {"roleDefinitionName": "Reader", **({"scope": scope} if observed_scope else {})},
+    ])
+    assert any(f.status == "not-verified" for f in findings)
+    assert data["selected_scope"]["subscription"] == DEPLOYED["subscription"]
+    assert "subscription" not in data
+    assert data.get("observed_identity", {}) == {}
+
+
 def test_renderer_rejects_local_evidence_marked_live(target):
     options = contracts.AssessmentOptions(
         target, "post-deploy", staging=True, now=NOW,
@@ -329,6 +441,37 @@ def test_renderer_rejects_local_evidence_marked_live(target):
     result = contracts.AssessmentResult(
         source, (), (), results, findings, tuple(replace(ref, live_verified=True) for ref in refs),
         captured_at=NOW, phase="post-deploy", deployed_target=DEPLOYED,
+    )
+    assert render.build_manifest(result)["summary"]["verdict"] != "governed"
+
+
+def test_producer_and_schema_require_persisted_evidence_contract(target):
+    source = contracts.SourceRef("owner/repo", "0" * 40, False)
+    options = contracts.AssessmentOptions(target, "pre-deploy", now=NOW)
+    results, findings, refs = governed_actions._bind_probe_evidence(
+        (probes.run_output_probe(target, "allow"),), source, options, (),
+    )
+    result = contracts.AssessmentResult(
+        source, (), (), results, findings, refs, captured_at=NOW, phase="pre-deploy",
+    )
+    manifest = render.build_manifest(result)
+    assert manifest.get("evidence_contract") == "governance-ledger/v2"
+    render._validate_manifest(manifest)
+    manifest.pop("evidence_contract")
+    with pytest.raises(render.ArtifactWriteError):
+        render._validate_manifest(manifest)
+    stripped = replace(result, probes=tuple(replace(p, evidence_refs=()) for p in results))
+    assert render.build_manifest(stripped)["summary"]["verdict"] != "governed"
+
+
+def test_renderer_cannot_certify_partial_approval_sequence(target):
+    source = contracts.SourceRef("owner/repo", "0" * 40, False)
+    options = contracts.AssessmentOptions(target, "pre-deploy", now=NOW)
+    results, findings, refs = governed_actions._bind_probe_evidence(
+        probes.run_approval_probe_sequence(target, BINDING, NOW), source, options, (),
+    )
+    result = contracts.AssessmentResult(
+        source, (), (), results[:-1], findings, refs, captured_at=NOW, phase="pre-deploy",
     )
     assert render.build_manifest(result)["summary"]["verdict"] != "governed"
 

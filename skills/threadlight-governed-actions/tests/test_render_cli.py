@@ -4748,7 +4748,8 @@ def _successful_azure_command_runner(command: Sequence[str]) -> subprocess.Compl
 
 
 def _identity_separation_finding(result: contracts.AssessmentResult) -> contracts.Finding:
-    return next(f for f in result.findings if f.finding_id == "GHCP-006")
+    return next(f for f in result.findings if f.finding_id == "GHCP-006"
+                and f.reason_code != "azure-observed-target-not-verified")
 
 
 def test_selected_live_azure_unresolved_identity_separation_fails_gate(tmp_path, monkeypatch):

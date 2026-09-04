@@ -7,6 +7,7 @@
   "additionalProperties": false,
   "required": [
     "schema",
+    "evidence_contract",
     "assessor",
     "phase",
     "captured_at",
@@ -24,6 +25,10 @@
     "summary"
   ],
   "properties": {
+    "evidence_contract": {
+      "const": "governance-ledger/v2",
+      "description": "Closed payload-free persisted-ledger contracts and ordered approval sequence semantics. Earlier evidence contracts cannot certify passing approval/output/audit controls."
+    },
     "deployed_target": {"$ref": "#/$defs/deployedTarget"},
     "schema": {
       "const": "threadlight-governed-actions-manifest/v1"
@@ -546,6 +551,20 @@
     "probe": {
       "type": "object",
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "pass"}, "probe_id": {"const": "approval-anti-replay"}}},
+          "then": {"properties": {"evidence_refs": {"minItems": 2, "contains": {"pattern": "^approval-ledger-records-[0-9a-f]{64}$"}}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "pass"}, "probe_id": {"const": "output-mediation"}}},
+          "then": {"properties": {"evidence_refs": {"contains": {"pattern": "^output-ledger-records-[0-9a-f]{64}$"}}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "pass"}, "probe_id": {"const": "payload-free-audit"}}},
+          "then": {"properties": {"evidence_refs": {"minItems": 2, "contains": {"pattern": "^audit-ledger-records-[0-9a-f]{64}$"}}}}
+        }
+      ],
       "required": [
         "probe_id",
         "action_id",

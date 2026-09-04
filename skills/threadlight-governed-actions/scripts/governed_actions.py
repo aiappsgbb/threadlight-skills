@@ -1782,12 +1782,37 @@ def _collect_selected_live_evidence(
             findings.append(result.finding)
         live_azure = result.data
         if live_azure is not None:
-            observed_scope = live_azure.get("scope", live_azure)
-            probes.validate_staging_scope(
-                {key: value for key, value in selected_scope.items()
-                 if key != "environment" or "environment" in observed_scope},
-                observed_scope,
-            )
+            selected = _deployment_target(options) or selected_scope
+            # Only API-derived observations participate in comparison. Query
+            # selectors bind collection provenance but are not observations.
+            observations = live_azure.get("observed_scopes")
+            if observations is None:
+                observations = [live_azure.get("scope", live_azure)]
+            identities = live_azure.get("observed_identities", [])
+            available = set()
+            incomplete_scope = not observations
+            for observed in list(observations) + list(identities):
+                if not isinstance(observed, Mapping):
+                    incomplete_scope = True
+                    continue
+                for field, value in selected.items():
+                    if value is not None and field in observed:
+                        if observed[field] != value:
+                            raise contracts.UnsafeTargetError(f"staging evidence {field} mismatch")
+                        available.add(field)
+            for observed in observations:
+                if not isinstance(observed, Mapping) or not {
+                    "subscription", "resource_group",
+                } <= observed.keys():
+                    incomplete_scope = True
+            required = {field for field, value in selected.items() if value is not None}
+            if incomplete_scope or required - available:
+                findings.append(contracts.Finding(
+                    finding_id="GHCP-006", status="not-verified", phase=options.phase,
+                    plane="change", reason_code="azure-observed-target-not-verified",
+                    summary="Selected staging target is not independently verified.",
+                    details="Read-only evidence lacks observed scope or selected deployment identity; selectors are not proof.",
+                ))
 
     return live_github, live_azure, findings
 

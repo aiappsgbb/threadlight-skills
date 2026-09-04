@@ -416,6 +416,54 @@ def summarize_governed_actions_manifest(
         return _governed_actions_untrusted(
             f"the manifest schema is not {_GOVERNED_ACTIONS_SCHEMA}"
         )
+    if manifest.get("evidence_contract") != "governance-ledger/v2":
+        return _governed_actions_untrusted("unsupported governance evidence contract")
+    evidence = manifest.get("evidence")
+    conformance = manifest.get("conformance")
+    if not isinstance(evidence, list) or not isinstance(conformance, dict):
+        return _governed_actions_untrusted("missing governance evidence")
+    probes = conformance.get("application_probes")
+    if not isinstance(probes, list):
+        return _governed_actions_untrusted("missing governance probes")
+    by_id = {}
+    for entry in evidence:
+        if (not isinstance(entry, dict) or not isinstance(entry.get("evidence_id"), str)
+                or not isinstance(entry.get("kind"), str)):
+            return _governed_actions_untrusted("malformed governance evidence")
+        if entry["evidence_id"] in by_id:
+            return _governed_actions_untrusted("duplicate governance evidence")
+        by_id[entry["evidence_id"]] = entry
+    required_kinds = {
+        "approval-anti-replay": {"approval-ledger-records", "approval-binding-digest"},
+        "output-mediation": {"output-ledger-records"},
+        "payload-free-audit": {"audit-ledger-records", "probe-audit-record"},
+    }
+    for probe in probes:
+        if not isinstance(probe, dict) or not isinstance(probe.get("probe_id"), str):
+            return _governed_actions_untrusted("malformed governance probe")
+        if (probe.get("status") not in ("pass", "must-fix", "should-fix", "not-verified", "not-applicable")
+                or not isinstance(probe.get("action_id"), (str, type(None)))):
+            return _governed_actions_untrusted("malformed governance probe status or identity")
+        kinds = required_kinds.get(probe["probe_id"])
+        if not kinds or probe.get("status") != "pass":
+            continue
+        refs = probe.get("evidence_refs")
+        if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
+            return _governed_actions_untrusted("malformed governance probe references")
+        cited = [by_id[ref] for ref in refs if ref in by_id]
+        if not kinds <= {entry.get("kind") for entry in cited}:
+            return _governed_actions_untrusted("passing probe lacks persisted ledger evidence")
+        for entry in cited:
+            if entry.get("kind") in kinds and entry["kind"].endswith("-ledger-records"):
+                digest = entry.get("sha256")
+                if (
+                    not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+                    or entry["evidence_id"] != f"{entry['kind']}-{digest[7:]}"
+                    or not isinstance(entry.get("source"), str)
+                    or not entry["source"].endswith("#assessment-isolated")
+                    or entry.get("live_verified") is not False
+                ):
+                    return _governed_actions_untrusted("invalid persisted ledger evidence")
 
     phase = manifest.get("phase")
     if not isinstance(phase, str) or phase not in _GOVERNED_ACTIONS_PHASE_KEYS:
@@ -479,6 +527,42 @@ def summarize_governed_actions_manifest(
                 "a finding carries an unknown id or status", phase
             )
         observed[status].append(finding_id)
+
+    precedence = ("must-fix", "not-verified", "should-fix", "pass", "not-applicable")
+    for probe_id, finding_id in (
+        ("approval-anti-replay", "APR-001"), ("output-mediation", "OUT-001"),
+        ("payload-free-audit", "AUD-001"),
+    ):
+        family = [p for p in probes if p["probe_id"] == probe_id]
+        statuses = [f["status"] for f in findings if f["finding_id"] == finding_id]
+        if not family and not any(status != "pass" for status in statuses):
+            return _governed_actions_untrusted("governance control evidence is missing", phase)
+        if any(p["status"] != "pass" for p in family) and (
+            not statuses or min(precedence.index(status) for status in statuses)
+            > min(precedence.index(p["status"]) for p in family)
+        ):
+            return _governed_actions_untrusted("governance probe outcome is missing from findings", phase)
+        if probe_id == "approval-anti-replay":
+            digest = lambda value: "sha256:" + hashlib.sha256(value.encode()).hexdigest()
+            for action_id in {p["action_id"] for p in family}:
+                sequence = [p for p in family if p["action_id"] == action_id]
+                if not all(p["status"] == "pass" for p in sequence):
+                    continue
+                sequence_observations = [p.get("observed_sha256") for p in sequence]
+                ledger_ids = {
+                    ref for p in sequence for ref in p["evidence_refs"]
+                    if ref in by_id and by_id[ref]["kind"] == "approval-ledger-records"
+                }
+                rejections = {digest("replay_rejected"), digest("binding_mismatch_rejected"),
+                              digest("reused_nonce_rejected")}
+                if (
+                    len(sequence) != 14 or len(ledger_ids) != 14
+                    or sequence_observations.count(digest("approval_accepted")) != 2
+                    or sequence_observations.count(digest("expired_rejected")) != 1
+                    or sum(isinstance(value, str) and value in rejections
+                           for value in sequence_observations) != 11
+                ):
+                    return _governed_actions_untrusted("approval sequence evidence is incomplete", phase)
 
     summary = manifest.get("summary")
     expected_summary_keys = {"verdict"} | {key for key, _status in _GOVERNED_ACTIONS_SUMMARY_BUCKETS}

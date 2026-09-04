@@ -8039,8 +8039,8 @@ def test_live_azure_digest_is_bound_to_scope():
     result_a = collect_live_azure("sub-a", "rg", "identity", run=_FakeRunner([_ok("[]"), _ok("[]")]))
     result_b = collect_live_azure("sub-b", "rg", "identity", run=_FakeRunner([_ok("[]"), _ok("[]")]))
     assert result_a.data["collected_sha256"] != result_b.data["collected_sha256"]
-    assert result_a.data["subscription"] == "sub-a"
-    assert result_b.data["subscription"] == "sub-b"
+    assert result_a.data["selected_scope"]["subscription"] == "sub-a"
+    assert result_b.data["selected_scope"]["subscription"] == "sub-b"
 
 
 def test_live_azure_federated_credentials_entry_must_be_a_mapping():

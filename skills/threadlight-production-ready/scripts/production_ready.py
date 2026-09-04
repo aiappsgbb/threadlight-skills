@@ -2287,6 +2287,12 @@ def _gap_findings_for_pillar(ctx: RepoContext, pillar: str) -> list[Finding]:
 
 _GOVERNED_ACTIONS_MANIFEST_RELPATH = ("tests", "governed-actions-manifest.json")
 _GOVERNED_ACTIONS_SCHEMA = "threadlight-governed-actions-manifest/v1"
+_GOVERNED_ACTIONS_EVIDENCE_CONTRACT = "governance-ledger/v2"
+_GOVERNED_ACTIONS_PERSISTED_PROBES = {
+    "approval-anti-replay": ("APR-001", {"approval-ledger-records", "approval-binding-digest"}),
+    "output-mediation": ("OUT-001", {"output-ledger-records"}),
+    "payload-free-audit": ("AUD-001", {"audit-ledger-records", "probe-audit-record"}),
+}
 _GOVERNED_ACTIONS_ASSESSOR_NAME = "threadlight-governed-actions"
 
 # Pinned, NOT a floor. A newer assessor may change what a child status means, so
@@ -2334,7 +2340,7 @@ _GOVERNED_ACTIONS_TOP_LEVEL_KEYS = frozenset({
     "schema", "assessor", "phase", "captured_at", "source", "pins",
     "policy_hashes", "action_inventory", "mediation_paths", "conformance",
     "change_plane", "findings", "evidence", "freshness", "residual_risks",
-    "summary",
+    "summary", "evidence_contract",
 })
 _GOVERNED_ACTIONS_FINDING_KEYS = frozenset({
     "finding_id", "status", "phase", "plane", "reason_code", "summary",
@@ -2516,6 +2522,8 @@ def _validate_governed_actions_manifest(
 
     if manifest["schema"] != _GOVERNED_ACTIONS_SCHEMA:
         return f"schema is not {_GOVERNED_ACTIONS_SCHEMA!r}"
+    if manifest["evidence_contract"] != _GOVERNED_ACTIONS_EVIDENCE_CONTRACT:
+        return "unsupported governance evidence contract; re-run threadlight-governed-actions"
 
     assessor = manifest["assessor"]
     if not isinstance(assessor, dict):
@@ -2709,6 +2717,52 @@ def _validate_governed_actions_manifest(
         if not isinstance(refs, list) or any(not isinstance(r, str) for r in refs):
             return "conformance.application_probes has malformed evidence_refs"
         referenced.update(refs)
+        contract = _GOVERNED_ACTIONS_PERSISTED_PROBES.get(probe["probe_id"])
+        if contract and probe["status"] == "pass":
+            cited = [by_id[ref] for ref in refs if ref in by_id]
+            if not contract[1] <= {entry["kind"] for entry in cited}:
+                return "passing governance probe lacks required persisted-ledger evidence"
+            for entry in cited:
+                if entry["kind"].endswith("-ledger-records") and (
+                    not isinstance(entry["sha256"], str)
+                    or not re.fullmatch(r"sha256:[0-9a-f]{64}", entry["sha256"])
+                    or entry["evidence_id"] != f"{entry['kind']}-{entry['sha256'][7:]}"
+                    or not isinstance(entry["source"], str)
+                    or not entry["source"].endswith("#assessment-isolated")
+                    or not isinstance(entry["live_verified"], bool)
+                ):
+                    return "persisted governance ledger evidence contract mismatch"
+
+    for probe_id, (finding_id, _kinds) in _GOVERNED_ACTIONS_PERSISTED_PROBES.items():
+        family = [probe for probe in probes if probe["probe_id"] == probe_id]
+        child_statuses = [f["status"] for f in findings if f["finding_id"] == finding_id]
+        if not family and not any(status != "pass" for status in child_statuses):
+            return "governance control has no probe evidence or explicit non-passing finding"
+        if any(p["status"] != "pass" for p in family) and (
+            not child_statuses
+            or _GOVERNED_ACTIONS_PRECEDENCE.index(_governed_actions_worst(child_statuses))
+            > _GOVERNED_ACTIONS_PRECEDENCE.index(_governed_actions_worst(p["status"] for p in family))
+        ):
+            return "governance findings omit a non-passing probe outcome"
+        if probe_id == "approval-anti-replay":
+            digest = lambda value: "sha256:" + hashlib.sha256(value.encode()).hexdigest()
+            for action_id in {p["action_id"] for p in family}:
+                sequence = [p for p in family if p["action_id"] == action_id]
+                if not all(p["status"] == "pass" for p in sequence):
+                    continue
+                sequence_observations = [p["observed_sha256"] for p in sequence]
+                ledger_ids = {
+                    ref for p in sequence for ref in p["evidence_refs"]
+                    if ref in by_id and by_id[ref]["kind"] == "approval-ledger-records"
+                }
+                if (
+                    len(sequence) != 14 or len(ledger_ids) != 14
+                    or sequence_observations.count(digest("approval_accepted")) != 2
+                    or sequence_observations.count(digest("expired_rejected")) != 1
+                    or sum(value in {digest("replay_rejected"), digest("binding_mismatch_rejected"),
+                                     digest("reused_nonce_rejected")} for value in sequence_observations) != 11
+                ):
+                    return "approval evidence does not cover the complete ordered sequence contract"
 
     # ---- binding: only evidence actually relied upon -----------------------
     # Unreferenced evidence is inert context and is deliberately not policed —

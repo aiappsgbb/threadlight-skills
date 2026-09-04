@@ -1257,7 +1257,8 @@ def _persisted_records_evidence(
         return ()
     document = {"records": list(records)}
     try:
-        canonical.validate_payload_free_audit(document)
+        for record in records:
+            canonical.validate_governance_record(record)
         item = _record_evidence("", kind, source, document)
     except (canonical.PayloadExposureError, canonical.CanonicalizationError):
         return ()
@@ -3301,6 +3302,17 @@ def run_approval_probe_sequence(
     # unsafe approval contract is refused before anything is created,
     # exactly as each individual attempt below would refuse it.
     load_approval_contract(root_path)
+    try:
+        issued, current, expiry = (
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+            for value in (binding.issued_at, now, binding.expires_at)
+        )
+        if any(value.tzinfo is None for value in (issued, current, expiry)):
+            raise ValueError("timestamps require a timezone")
+        if not issued <= current < expiry:
+            raise ValueError("baseline must be currently valid")
+    except (ValueError, TypeError) as error:
+        raise ProbeContractError("approval sequence requires a valid baseline") from error
     attempts = (binding, binding) + tuple(
         _mutated_binding(binding, field) for field in _APPROVAL_MUTATION_FIELDS
     ) + (
@@ -3314,7 +3326,7 @@ def run_approval_probe_sequence(
     )
     results: List[ProbeResult] = []
     try:
-        for attempt in attempts:
+        for position, attempt in enumerate(attempts):
             try:
                 result = run_approval_probe(root_path, attempt, now, ledger_path=ledger_path)
             except ProbeToolingError as error:
@@ -3323,6 +3335,14 @@ def run_approval_probe_sequence(
                 ) from error
             if attempt.action_id != binding.action_id:
                 result = replace(result, action_id=binding.action_id)
+            expected_observations = (
+                {"approval_accepted"} if position in (0, len(attempts) - 2) else
+                {"expired_rejected"} if position == len(attempts) - 1 else
+                {"replay_rejected", "reused_nonce_rejected"} if position == 1 else
+                {"binding_mismatch_rejected", "reused_nonce_rejected"}
+            )
+            if result.status == "pass" and result.observed not in expected_observations:
+                result = replace(result, status="must-fix", reason_code="APR-001")
             results.append(result)
     finally:
         ledger_path.unlink(missing_ok=True)
@@ -3702,22 +3722,15 @@ def _privacy_results(
                 )
             )
             continue
-        audit_id = record.get("audit_id")
-        audit_id_text = str(audit_id) if audit_id else None
-        audit_evidence: Tuple[ProbeEvidence, ...] = (
-            (
-                _record_evidence(
-                    audit_id_text,
-                    "probe-audit-record",
-                    str(contract["audit_sink"]),
-                    record,
-                ),
-            )
-            if audit_id_text
-            else ()
-        )
         try:
-            canonical.validate_payload_free_audit(record)
+            canonical.validate_governance_record(record, audit=True)
+        except canonical.IncompleteEvidenceError:
+            results.append(ProbeResult(
+                probe_id=_AUDIT_PROBE_ID, action_id=action_id, path_id=None,
+                status="not-verified", reason_code=_AUDIT_NOT_VERIFIED_REASON,
+                expected=_AUDIT_EXPECTED, observed="audit_evidence_incomplete_or_not_persisted",
+                evidence_refs=(),
+            ))
         except canonical.PayloadExposureError:
             results.append(
                 ProbeResult(
@@ -3728,26 +3741,17 @@ def _privacy_results(
                     reason_code="AUD-001",
                     expected=_AUDIT_EXPECTED,
                     observed="payload_bearing_audit_record",
-                    evidence_refs=(audit_id_text,) if audit_id_text else (),
-                    evidence_items=audit_evidence,
+                    evidence_refs=(),
                 )
             )
         else:
-            complete = all(
-                isinstance(record.get(field), str) and record[field].strip()
-                for field in (
-                    "audit_id", "correlation_id", "decision", "action_hash",
-                    "policy_hash", "delivery_status",
-                )
-            ) and all(
-                re.fullmatch(r"sha256:[0-9a-f]{64}", str(record.get(field, "")))
-                for field in ("action_hash", "policy_hash")
-            ) and record.get("delivery_status") in ("persisted", "delivered")
             durable = record in persisted_records and bool(persisted_evidence)
-            if complete and durable:
-                audit_evidence = tuple(
-                    replace(item, source=persisted_evidence[0].source)
-                    for item in audit_evidence
+            if durable:
+                audit_evidence = (
+                    _record_evidence(
+                        record["audit_id"], "probe-audit-record",
+                        persisted_evidence[0].source, record,
+                    ),
                 ) + persisted_evidence
             else:
                 audit_evidence = ()
@@ -3756,10 +3760,10 @@ def _privacy_results(
                     probe_id=_AUDIT_PROBE_ID,
                     action_id=action_id,
                     path_id=None,
-                    status="pass" if complete and durable else "not-verified",
-                    reason_code=_AUDIT_PASS_REASON if complete and durable else _AUDIT_NOT_VERIFIED_REASON,
+                    status="pass" if durable else "not-verified",
+                    reason_code=_AUDIT_PASS_REASON if durable else _AUDIT_NOT_VERIFIED_REASON,
                     expected=_AUDIT_EXPECTED,
-                    observed="payload_free_audit_record" if complete and durable else "audit_evidence_incomplete_or_not_persisted",
+                    observed="payload_free_audit_record" if durable else "audit_evidence_incomplete_or_not_persisted",
                     evidence_refs=tuple(item.evidence_id for item in audit_evidence),
                     evidence_items=audit_evidence,
                 )

@@ -76,6 +76,12 @@ MANIFEST_SCHEMA = "threadlight-governed-actions-manifest/v1"
 APPLY_PLAN_SCHEMA = "threadlight-governed-actions-apply-plan/v1"
 ADAPTER_NAME = "maf/v1"
 ASSESSOR_NAME = "threadlight-governed-actions"
+EVIDENCE_CONTRACT = "governance-ledger/v2"
+_PERSISTED_PROBE_KINDS = {
+    "approval-anti-replay": {"approval-ledger-records", "approval-binding-digest"},
+    "output-mediation": {"output-ledger-records"},
+    "payload-free-audit": {"audit-ledger-records", "probe-audit-record"},
+}
 
 #: Same fallback the rest of this project uses (``AssessmentOptions.now``'s
 #: own default) when no evidence carries a trustworthy collection
@@ -856,9 +862,40 @@ def _required_evidence_is_untrustworthy(
     Local probe provenance cannot be relabeled as live enforcement evidence.
     """
     required_ids = _required_evidence_ids(result)
+    evidence_by_id = {ref.evidence_id: ref for ref in result.evidence}
+    approvals = [p for p in result.probes if p.probe_id == "approval-anti-replay"]
+    for action_id in {p.action_id for p in approvals}:
+        sequence = [p for p in approvals if p.action_id == action_id]
+        if all(p.status == "pass" for p in sequence):
+            observed = [p.observed for p in sequence]
+            ledger_ids = {
+                key for p in sequence for key in p.evidence_refs
+                if key in evidence_by_id and evidence_by_id[key].kind == "approval-ledger-records"
+            }
+            if (
+                len(sequence) != 14 or len(ledger_ids) != 14
+                or observed.count("approval_accepted") != 2
+                or observed.count("expired_rejected") != 1
+                or sum(value in {"replay_rejected", "binding_mismatch_rejected", "reused_nonce_rejected"}
+                       for value in observed) != 11
+            ):
+                return True
+    for probe in result.probes:
+        required_kinds = _PERSISTED_PROBE_KINDS.get(probe.probe_id, set())
+        if probe.status == "pass" and required_kinds:
+            refs = [evidence_by_id[key] for key in probe.evidence_refs if key in evidence_by_id]
+            if not required_kinds <= {ref.kind for ref in refs}:
+                return True
+            for ref in refs:
+                if ref.kind.endswith("-ledger-records") and (
+                    not re.fullmatch(r"sha256:[0-9a-f]{64}", ref.sha256 or "")
+                    or ref.evidence_id != f"{ref.kind}-{ref.sha256[7:]}"
+                    or not ref.source.endswith("#assessment-isolated")
+                    or ref.live_verified
+                ):
+                    return True
     if not required_ids:
         return False
-    evidence_by_id = {ref.evidence_id: ref for ref in result.evidence}
     finding_phases_by_evidence = _evidence_finding_phases(result)
     expected_policy_set_sha256 = _canonical_policy_set_sha256(result)
     for evidence_id in required_ids:
@@ -1085,6 +1122,7 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
 
     return {
         "schema": MANIFEST_SCHEMA,
+        "evidence_contract": EVIDENCE_CONTRACT,
         "assessor": {
             "name": ASSESSOR_NAME,
             "version": contracts.ASSESSOR_VERSION,

@@ -915,6 +915,42 @@ def test_auto_recommends_rerun_for_a_stale_governed_actions_manifest(tmp_path):
     assert summary["recommendation"] == [EXPECTED_HANDOFF["pre_deploy"]]
 
 
+def test_auto_rejects_unsupported_or_missing_governance_evidence(tmp_path):
+    legacy = _golden_governed_actions_manifest()
+    legacy.pop("evidence_contract")
+    stripped = _golden_governed_actions_manifest()
+    removed = {e["evidence_id"] for e in stripped["evidence"]
+               if e["kind"].endswith("-ledger-records")}
+    stripped["evidence"] = [e for e in stripped["evidence"] if e["evidence_id"] not in removed]
+    for probe in stripped["conformance"]["application_probes"]:
+        probe["evidence_refs"] = [ref for ref in probe["evidence_refs"] if ref not in removed]
+    for index, manifest in enumerate((legacy, stripped)):
+        workspace = make_context(tmp_path / str(index), manifest=manifest)
+        summary = orch.summarize_governed_actions_manifest(
+            workspace / GOVERNED_ACTIONS_MANIFEST_REL, GOLDEN_COMMIT, now=GOLDEN_FRESH_NOW,
+        )
+        assert summary["trusted"] is False
+        assert summary["status"] == "rerun-recommended"
+
+
+def test_auto_rejects_partial_or_hidden_governance_probe_outcomes(tmp_path):
+    partial = _golden_governed_actions_manifest()
+    probes = partial["conformance"]["application_probes"]
+    probes.remove(next(p for p in probes if p["probe_id"] == "approval-anti-replay"))
+    missing = _golden_governed_actions_manifest()
+    missing["conformance"]["application_probes"] = []
+    hidden = _golden_governed_actions_manifest()
+    next(p for p in hidden["conformance"]["application_probes"]
+         if p["probe_id"] == "output-mediation")["status"] = "not-verified"
+    summaries = []
+    for index, manifest in enumerate((partial, missing, hidden)):
+        workspace = make_context(tmp_path / str(index), manifest=manifest)
+        summaries.append(orch.summarize_governed_actions_manifest(
+            workspace / GOVERNED_ACTIONS_MANIFEST_REL, GOLDEN_COMMIT, now=GOLDEN_FRESH_NOW,
+        ))
+    assert [s["trusted"] for s in summaries] == [False, False, False]
+
+
 def test_auto_recommends_rerun_for_an_invalid_governed_actions_manifest(tmp_path):
     cases: dict[str, dict] = {}
 

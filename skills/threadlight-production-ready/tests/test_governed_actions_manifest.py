@@ -275,6 +275,51 @@ def validation_reason(tmp_path: Path, manifest: dict) -> str | None:
     )
 
 
+def test_legacy_evidence_contract_is_not_supported(tmp_path):
+    manifest = _golden()
+    manifest.pop("evidence_contract", None)
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("family", ("approval", "output", "audit", "all"))
+def test_removing_persisted_ledger_evidence_and_refs_never_passes(tmp_path, family):
+    manifest = _golden()
+    removed = {
+        e["evidence_id"] for e in manifest["evidence"]
+        if e["kind"].endswith("-ledger-records")
+        and (family == "all" or e["kind"].startswith(family + "-"))
+    }
+    assert removed
+    manifest["evidence"] = [e for e in manifest["evidence"] if e["evidence_id"] not in removed]
+    for entry in manifest["findings"] + manifest["conformance"]["application_probes"]:
+        entry["evidence_refs"] = [ref for ref in entry["evidence_refs"] if ref not in removed]
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("probe_id", ("approval-anti-replay", "output-mediation", "payload-free-audit"))
+def test_removing_probe_family_cannot_be_implicit_pass(tmp_path, probe_id):
+    manifest = _golden()
+    manifest["conformance"]["application_probes"] = [
+        p for p in manifest["conformance"]["application_probes"] if p["probe_id"] != probe_id
+    ]
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_partial_approval_sequence_cannot_pass_consumer(tmp_path):
+    manifest = _golden()
+    probes = manifest["conformance"]["application_probes"]
+    probes.remove(next(p for p in probes if p["probe_id"] == "approval-anti-replay"))
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_nonpassing_probe_cannot_be_hidden_by_absent_findings(tmp_path):
+    manifest = _golden()
+    probe = next(p for p in manifest["conformance"]["application_probes"]
+                 if p["probe_id"] == "output-mediation")
+    probe["status"] = "not-verified"
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
 DEPLOYED_TARGET = {
     "agent_name": "refund-agent", "agent_version": "3",
     "image_digest": "sha256:" + "b" * 64,

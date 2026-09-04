@@ -869,6 +869,7 @@ def test_atomic_write_bytes_replace_failure_removes_only_its_own_temp(
 def _minimal_manifest():
     return {
         "schema": "threadlight-governed-actions-manifest/v1",
+        "evidence_contract": "governance-ledger/v2",
         "assessor": {
             "name": "threadlight-governed-actions",
             "version": "0.1.0",
@@ -1212,6 +1213,7 @@ def test_manifest_schema_requires_all_listed_root_fields():
     )
     assert set(schema["required"]) == {
         "schema",
+        "evidence_contract",
         "assessor",
         "phase",
         "captured_at",

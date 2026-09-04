@@ -3939,10 +3939,35 @@ def collect_live_azure(
             )
         role_definitions[role_name] = matching_definition
 
+    observed_scopes = []
+    observed_identities = []
+    identity_fields = {
+        "agent_name", "agent_version", "image_digest", "policy_digest", "environment",
+    }
+    for record in federated_credentials + role_assignments:
+        scopes = [record[field] for field in ("id", "scope") if field in record]
+        for scope in scopes or [None]:
+            match = re.match(
+                r"^/subscriptions/([^/]+)(?:/resourceGroups/([^/]+))?(?:/|$)",
+                scope, re.I,
+            ) if isinstance(scope, str) else None
+            observed_scopes.append(
+                {"subscription": match[1], **({"resource_group": match[2]} if match[2] else {})}
+                if match else {}
+            )
+        for values in (record, record.get("properties", {})):
+            if isinstance(values, Mapping):
+                identity = {key: values[key] for key in identity_fields if key in values}
+                if identity:
+                    observed_identities.append(identity)
     data: Dict[str, object] = {
-        "subscription": subscription,
-        "resource_group": resource_group,
-        "deploy_identity": deploy_identity,
+        "selected_scope": {
+            "subscription": subscription,
+            "resource_group": resource_group,
+            "deploy_identity": deploy_identity,
+        },
+        "observed_scopes": sorted(observed_scopes, key=canonical.canonical_bytes),
+        "observed_identities": sorted(observed_identities, key=canonical.canonical_bytes),
         "federated_credentials": _sorted_by_field(federated_credentials, "name"),
         "role_assignments": _sorted_by_field(role_assignments, "roleDefinitionName"),
         "role_definitions": role_definitions,
