@@ -1,0 +1,28 @@
+{
+  "schema": "threadlight-governance-upstream-pin/v1",
+  "agt": {
+    "distribution": "agent-governance-toolkit",
+    "version": "5.0.0"
+  },
+  "acs": {
+    "distribution": "agent-control-specification",
+    "version": "0.3.1b0"
+  },
+  "agent_hooks": {
+    "distribution": "agent-hooks-sdk",
+    "version": "0.1.0a5"
+  },
+  "maf": {
+    "agent-framework-core": "1.14.0",
+    "agent-framework-foundry": "1.11.0",
+    "agent-framework-foundry-hosting": "1.0.0b260813"
+  },
+  "opa": {
+    "version": "1.18.2",
+    "linux_amd64_static_sha256": "9903e5125ac281104f2c4b7371d10cc3b74a98933743fcbfc174f9bf0ab20de8"
+  },
+  "safe_reference": {
+    "repository": "placerda/safe-agent-on-foundry",
+    "commit": "f9d2a55954d447554907686d59135489c393e826"
+  }
+}
