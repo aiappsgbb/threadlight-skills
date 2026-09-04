@@ -30,6 +30,7 @@ from contracts import ActionRecord, Finding, PathRecord
 from mediation import (
     CANONICAL_NODE_ORDER,
     MediationGraph,
+    apply_execution_receipts,
     assess_provider_paths,
     build_mediation_graph,
 )
@@ -76,6 +77,27 @@ def _action_record(
         provider_hosted=provider_hosted,
         approval_required=None,
         known_runtime_paths=known_runtime_paths,
+    )
+
+
+def _probe_result(
+    probe_id: str,
+    action_id: str,
+    path_id: str,
+    *,
+    status: str,
+    observed: str,
+    evidence_refs: tuple[str, ...] = ("EVID-receipt",),
+) -> contracts.ProbeResult:
+    return contracts.ProbeResult(
+        probe_id=probe_id,
+        action_id=action_id,
+        path_id=path_id,
+        status=status,
+        reason_code="ENF-002" if status == "must-fix" else "probe-ok",
+        expected="tool_received_transformed_arguments",
+        observed=observed,
+        evidence_refs=evidence_refs,
     )
 
 
@@ -154,14 +176,6 @@ def test_every_consequential_mode_becomes_a_graph_path(fixture_root: Path):
         ("payments.refund", "direct-tool"),
     }
     assert {(finding.finding_id, finding.summary) for finding in graph.findings} == {
-        (
-            "MED-001",
-            "batch path for payments.refund lacks pre-action mediation",
-        ),
-        (
-            "MED-001",
-            "background path for payments.refund lacks pre-action mediation",
-        ),
         ("MED-002", "declared mediation coverage is incomplete"),
     }
     med002 = next(f for f in graph.findings if f.finding_id == "MED-002")
@@ -178,8 +192,10 @@ def test_covered_paths_route_through_pre_action_seam_before_tool_service(
     by_mode = {path.mode: path for path in graph.paths}
     for mode in ("interactive", "subagent", "direct-tool"):
         path = by_mode[mode]
+        assert path.discovered is True
+        assert path.executed is False
         assert path.covered is True
-        assert path.status == "pass"
+        assert path.status == "not-verified"
         assert path.pre_action_seam is not None
         assert "pre-action-seam" in path.nodes
         assert path.nodes.index("pre-action-seam") < path.nodes.index("tool-service")
@@ -195,8 +211,10 @@ def test_bypass_paths_reach_tool_service_without_a_pre_action_seam(
     by_mode = {path.mode: path for path in graph.paths}
     for mode in ("batch", "background"):
         path = by_mode[mode]
+        assert path.discovered is True
+        assert path.executed is False
         assert path.covered is False
-        assert path.status == "must-fix"
+        assert path.status == "not-verified"
         assert path.pre_action_seam is None
         assert "pre-action-seam" not in path.nodes
         assert "tool-service" in path.nodes
@@ -283,6 +301,8 @@ def test_mode_with_no_discoverable_dispatch_evidence_is_not_verified(
     }
     for path in graph.paths:
         assert path.action_id == "orders.cancel"
+        assert path.discovered is False
+        assert path.executed is False
         assert path.covered is False
         assert path.status == "not-verified"
 
@@ -294,17 +314,240 @@ def test_mode_with_no_discoverable_dispatch_evidence_is_not_verified(
     assert "agent.yaml" in finding.evidence_refs
 
 
+def test_static_decoy_path_never_passes_without_executed_proof(tmp_path: Path):
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [batch]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _ToolService:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            tool_service = _ToolService()
+            provider = _Provider()
+
+
+            def batch_orders_cancel(**kwargs):
+                # Convention-shaped decoy: static AST markers look perfect,
+                # but nothing proves this is the path that actually runs.
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.cancel_order(**kwargs)
+
+
+            def real_worker_entrypoint(**kwargs):
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    batch_path = next(path for path in graph.paths if path.mode == "batch")
+    assert batch_path.discovered is True
+    assert batch_path.executed is False
+    assert batch_path.covered is True
+    assert batch_path.status == "not-verified"
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
+
+
+def test_correlated_executed_receipt_turns_a_discovered_path_into_pass():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _probe_result(
+                "transform",
+                "payments.refund",
+                "path-1",
+                status="pass",
+                observed="tool_received_transformed_arguments",
+                evidence_refs=("EVID-receipt", "audit-1"),
+            ),
+        ),
+    )
+
+    updated = updated_paths[0]
+    assert updated.discovered is True
+    assert updated.executed is True
+    assert updated.covered is True
+    assert updated.status == "pass"
+    assert updated.evidence_refs == ("EVID-receipt", "app/agent.py", "audit-1")
+    assert findings == ()
+
+
+def test_executed_bypass_receipt_remains_must_fix():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "tool-service"),
+        pre_action_seam=None,
+        equivalent_control_ref=None,
+        covered=False,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _probe_result(
+                "deny",
+                "payments.refund",
+                "path-1",
+                status="must-fix",
+                observed="tool_invoked_despite_fault",
+            ),
+        ),
+    )
+
+    updated = updated_paths[0]
+    assert updated.executed is True
+    assert updated.covered is False
+    assert updated.status == "must-fix"
+    assert len(findings) == 2
+    assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
+
+
+def test_wrong_action_or_path_receipt_is_ignored():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _probe_result(
+                "transform",
+                "payments.refund",
+                "other-path",
+                status="pass",
+                observed="tool_received_transformed_arguments",
+            ),
+            _probe_result(
+                "transform",
+                "other.action",
+                "path-1",
+                status="pass",
+                observed="tool_received_transformed_arguments",
+            ),
+        ),
+    )
+
+    updated = updated_paths[0]
+    assert updated.executed is False
+    assert updated.status == "not-verified"
+    assert len(findings) == 1
+    assert findings[0].finding_id == "MED-002"
+
+
+def test_conflicting_receipts_fail_closed():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _probe_result(
+                "transform",
+                "payments.refund",
+                "path-1",
+                status="pass",
+                observed="tool_received_transformed_arguments",
+                evidence_refs=("EVID-pass",),
+            ),
+            _probe_result(
+                "deny",
+                "payments.refund",
+                "path-1",
+                status="must-fix",
+                observed="tool_invoked_despite_fault",
+                evidence_refs=("EVID-fail",),
+            ),
+        ),
+    )
+
+    updated = updated_paths[0]
+    assert updated.executed is True
+    assert updated.status == "must-fix"
+    assert ("EVID-fail" in updated.evidence_refs) and ("EVID-pass" in updated.evidence_refs)
+    assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
+
+
 def test_undeclared_execution_mode_is_still_assessed_from_static_evidence(
     tmp_path: Path,
 ):
     """A mode absent from the registry's ``execution_modes`` list is still
     assessed if the target's own code implements it. ``orders.cancel``
-    here only declares ``interactive`` (mediated), but its module also
-    defines a ``batch_orders_cancel`` dispatch function that bypasses
-    mediation entirely — the assessor must find and flag it exactly like
-    a declared bypass, since MED-002 requires every one of the five
-    families to be explicitly covered or evidenced absent, regardless of
-    what the registry happens to declare.
+    here only declares ``interactive`` (structurally mediated), but its
+    module also defines a ``batch_orders_cancel`` dispatch function that
+    structurally bypasses mediation entirely. Both remain discovery only
+    until correlated execution evidence exists, so the assessor must
+    still enumerate both modes but leave them ``not-verified``.
     """
     (tmp_path / "agent.yaml").write_text(
         textwrap.dedent(
@@ -356,14 +599,15 @@ def test_undeclared_execution_mode_is_still_assessed_from_static_evidence(
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     by_mode = {path.mode: path for path in graph.paths}
-    assert by_mode["interactive"].status == "pass"
-    assert by_mode["batch"].status == "must-fix"
+    assert by_mode["interactive"].covered is True
+    assert by_mode["interactive"].status == "not-verified"
+    assert by_mode["batch"].covered is False
+    assert by_mode["batch"].status == "not-verified"
     assert by_mode["batch"].covered is False
 
-    assert (
-        "MED-001",
-        "batch path for orders.cancel lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert {(finding.finding_id, finding.summary) for finding in graph.findings} == {
+        ("MED-002", "declared mediation coverage is incomplete"),
+    }
 
 
 def test_build_mediation_graph_skips_exclusively_provider_hosted_actions(
@@ -384,7 +628,12 @@ def test_build_mediation_graph_skips_exclusively_provider_hosted_actions(
 
     provider_hosted = {"mail.send", "search.lookup"}
     assert {path.action_id for path in graph.paths} & provider_hosted == set()
-    assert {finding.action_id for finding in graph.findings} & provider_hosted == set()
+    affected_actions = {
+        action_id
+        for finding in graph.findings
+        for action_id in finding.affected_actions
+    }
+    assert affected_actions & provider_hosted == set()
 
 
 def test_adapter_declared_status_is_never_trusted_and_is_recomputed(
@@ -448,16 +697,15 @@ def test_adapter_declared_status_is_never_trusted_and_is_recomputed(
 
     recomputed_bogus = by_mode["direct-tool"]
     assert recomputed_bogus.covered is False
-    assert recomputed_bogus.status == "must-fix"
+    assert recomputed_bogus.executed is False
+    assert recomputed_bogus.status == "not-verified"
     assert recomputed_bogus.equivalent_control_ref is None
-    assert (
-        "MED-001",
-        "direct-tool path for reports.export lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
     recomputed_genuine = by_mode["subagent"]
     assert recomputed_genuine.covered is True
-    assert recomputed_genuine.status == "pass"
+    assert recomputed_genuine.executed is False
+    assert recomputed_genuine.status == "not-verified"
 
 
 def test_adapter_declared_paths_never_supply_provider_hosted_mode(
@@ -553,15 +801,12 @@ def test_unverified_equivalent_control_never_masks_a_non_provider_bypass(
     direct_tool_path = next(
         path for path in graph.paths if path.mode == "direct-tool"
     )
-    assert direct_tool_path.status == "must-fix"
+    assert direct_tool_path.discovered is True
+    assert direct_tool_path.executed is False
+    assert direct_tool_path.status == "not-verified"
     assert direct_tool_path.covered is False
     assert direct_tool_path.equivalent_control_ref is None
-
-    assert any(
-        finding.finding_id == "MED-001"
-        and "payments.settle" in finding.affected_actions
-        for finding in graph.findings
-    )
+    assert any(finding.finding_id == "MED-002" for finding in graph.findings)
 
 
 def test_incomplete_equivalent_control_does_not_cover_a_bypassed_path(
@@ -614,14 +859,12 @@ def test_incomplete_equivalent_control_does_not_cover_a_bypassed_path(
     direct_tool_path = next(
         path for path in graph.paths if path.mode == "direct-tool"
     )
-    assert direct_tool_path.status == "must-fix"
+    assert direct_tool_path.discovered is True
+    assert direct_tool_path.executed is False
+    assert direct_tool_path.status == "not-verified"
     assert direct_tool_path.covered is False
     assert direct_tool_path.equivalent_control_ref is None
-
-    assert (
-        "MED-001",
-        "direct-tool path for payments.settle lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(finding.finding_id == "MED-002" for finding in graph.findings)
 
 
 # ---------------------------------------------------------------------------
@@ -660,16 +903,14 @@ def test_post_hoc_pre_action_seam_call_does_not_cover_a_bypass_path(
         for path in graph.paths
         if path.action_id == "payments.refund" and path.mode == "background"
     )
-    assert background_path.status == "must-fix"
+    assert background_path.discovered is True
+    assert background_path.executed is False
+    assert background_path.status == "not-verified"
     assert background_path.covered is False
     assert background_path.pre_action_seam is None
     assert "pre-action-seam" not in background_path.nodes
     assert "tool-service" in background_path.nodes
-
-    assert (
-        "MED-001",
-        "background path for payments.refund lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
 
 def test_pre_action_seam_call_inside_a_nested_closure_is_not_credited(
@@ -732,16 +973,14 @@ def test_pre_action_seam_call_inside_a_nested_closure_is_not_credited(
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     path = next(p for p in graph.paths if p.mode == "direct-tool")
-    assert path.status == "must-fix"
+    assert path.discovered is True
+    assert path.executed is False
+    assert path.status == "not-verified"
     assert path.covered is False
     assert path.pre_action_seam is None
     assert "pre-action-seam" not in path.nodes
     assert "tool-service" in path.nodes
-
-    assert (
-        "MED-001",
-        "direct-tool path for orders.cancel lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
 
 def test_conditionally_executed_pre_action_seam_call_never_produces_a_false_pass(
@@ -800,16 +1039,14 @@ def test_conditionally_executed_pre_action_seam_call_never_produces_a_false_pass
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     path = next(p for p in graph.paths if p.mode == "direct-tool")
-    assert path.status == "must-fix"
+    assert path.discovered is True
+    assert path.executed is False
+    assert path.status == "not-verified"
     assert path.covered is False
     assert path.pre_action_seam is None
     assert "pre-action-seam" not in path.nodes
     assert "tool-service" in path.nodes
-
-    assert (
-        "MED-001",
-        "direct-tool path for orders.cancel lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
 
 def test_within_file_duplicate_dispatch_bypass_wins_over_later_mediated_definition(
@@ -879,14 +1116,12 @@ def test_within_file_duplicate_dispatch_bypass_wins_over_later_mediated_definiti
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     path = next(p for p in graph.paths if p.mode == "batch")
-    assert path.status == "must-fix"
+    assert path.discovered is True
+    assert path.executed is False
+    assert path.status == "not-verified"
     assert path.covered is False
     assert path.pre_action_seam is None
-
-    assert (
-        "MED-001",
-        "batch path for orders.cancel lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
 
 def test_within_file_duplicate_dispatch_uses_actual_last_binding_when_no_bypass(
@@ -949,7 +1184,9 @@ def test_within_file_duplicate_dispatch_uses_actual_last_binding_when_no_bypass(
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     path = next(p for p in graph.paths if p.mode == "batch")
-    assert path.status == "pass"
+    assert path.discovered is True
+    assert path.executed is False
+    assert path.status == "not-verified"
     assert path.covered is True
     assert path.pre_action_seam is not None
     assert "pre-action-seam" in path.nodes
@@ -1121,14 +1358,13 @@ def test_duplicate_dispatch_definitions_bypass_evidence_wins_over_mediated_one(
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     batch_path = next(path for path in graph.paths if path.mode == "batch")
-    assert batch_path.status == "must-fix"
+    assert batch_path.discovered is True
+    assert batch_path.executed is False
+    assert batch_path.status == "not-verified"
     assert batch_path.covered is False
     assert batch_path.pre_action_seam is None
 
-    assert (
-        "MED-001",
-        "batch path for orders.cancel lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
 
 def test_ast_files_are_parsed_once_per_assessment_not_per_action_mode(
@@ -1289,7 +1525,9 @@ def test_known_runtime_paths_ignores_declarations_that_escape_the_project_root(
     graph = build_mediation_graph(root, (action,), maf_adapter.MAFAdapter())
 
     batch_path = next(path for path in graph.paths if path.mode == "batch")
-    assert batch_path.status == "must-fix"
+    assert batch_path.discovered is True
+    assert batch_path.executed is False
+    assert batch_path.status == "not-verified"
     assert batch_path.covered is False
     assert not any(
         "escape.py" in ref for ref in batch_path.evidence_refs
@@ -1385,19 +1623,22 @@ def test_malformed_equivalent_control_yaml_degrades_to_no_control_not_a_crash(
     direct_tool_path = next(
         path for path in graph.paths if path.mode == "direct-tool"
     )
-    assert direct_tool_path.status == "must-fix"
+    assert direct_tool_path.discovered is True
+    assert direct_tool_path.executed is False
+    assert direct_tool_path.status == "not-verified"
     assert direct_tool_path.covered is False
     assert direct_tool_path.equivalent_control_ref is None
 
 
-def test_med002_status_is_must_fix_when_any_uncovered_path_is_a_proven_bypass(
+def test_med002_stays_not_verified_without_executed_path_proof_even_for_static_bypass(
     tmp_path: Path,
 ):
-    """``MED-002``'s own ``status`` must reflect ``must-fix`` — not
-    ``not-verified`` — whenever at least one of the uncovered families it
-    aggregates is a proven bypass rather than merely indeterminate, even
-    when other uncovered families for the same action have no evidence at
-    all.
+    """Static source alone never upgrades ``MED-002`` to ``must-fix``.
+
+    Even when one family is structurally a bypass and the other uncovered
+    families are merely absent, the aggregate mediation finding remains
+    ``not-verified`` until a correlated executed receipt proves which path
+    actually ran.
     """
     (tmp_path / "agent.yaml").write_text(
         textwrap.dedent(
@@ -1437,12 +1678,12 @@ def test_med002_status_is_must_fix_when_any_uncovered_path_is_a_proven_bypass(
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     by_mode = {path.mode: path for path in graph.paths}
-    assert by_mode["batch"].status == "must-fix"
+    assert by_mode["batch"].status == "not-verified"
     for mode in ("interactive", "background", "subagent", "direct-tool"):
         assert by_mode[mode].status == "not-verified"
 
     med002 = next(f for f in graph.findings if f.finding_id == "MED-002")
-    assert med002.status == "must-fix"
+    assert med002.status == "not-verified"
 
 
 # ---------------------------------------------------------------------------

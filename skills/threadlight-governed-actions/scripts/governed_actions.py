@@ -1712,7 +1712,6 @@ def _assess_repository_controls(
     graph = mediation.build_mediation_graph(root, inv.actions, maf_adapter.MAFAdapter())
     provider_graph = mediation.assess_provider_paths(root, inv.actions)
     paths = graph.paths + provider_graph.paths
-    findings.extend(graph.findings)
     findings.extend(provider_graph.findings)
 
     probe_results, probe_findings = _run_probe_sets(root, phase)
@@ -1736,6 +1735,11 @@ def _assess_repository_controls(
         options,
         policy_hashes,
     )
+    mediated_paths, mediation_findings = mediation.apply_execution_receipts(
+        graph.paths, probe_results, phase=phase
+    )
+    paths = mediated_paths + provider_graph.paths
+    findings.extend(mediation_findings)
     findings.extend(derived_findings)
     findings.extend(
         _reconcile_bound_action_probe_coverage(

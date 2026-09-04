@@ -140,6 +140,8 @@ class PathRecord:
     covered: bool
     status: Status
     evidence_refs: Tuple[str, ...]
+    discovered: bool = False
+    executed: bool = False
 
 
 @dataclass(frozen=True)

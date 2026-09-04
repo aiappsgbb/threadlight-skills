@@ -83,9 +83,9 @@ not actually declared in the target repository.
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import canonical
 from contracts import ActionRecord, Finding, PathRecord
@@ -717,6 +717,138 @@ def _recompute_coverage(nodes: Tuple[str, ...]) -> Tuple[bool, str]:
     return False, "must-fix"
 
 
+def _matching_receipts(
+    path: PathRecord, probe_results: Sequence["ProbeResult"]
+) -> Tuple["ProbeResult", ...]:
+    return tuple(
+        probe
+        for probe in probe_results
+        if probe.action_id == path.action_id and probe.path_id == path.path_id
+    )
+
+
+def _receipt_proves_tool_execution(probe: "ProbeResult") -> bool:
+    observed = probe.observed
+    return (
+        observed.startswith("tool_received_")
+        or observed.startswith("tool_invoked_")
+        or observed in ("argument_hash_mismatch", "multiple_tool_invocations")
+        or "invocation" in observed
+    )
+
+
+def _receipt_status(path: PathRecord, probe: "ProbeResult") -> str:
+    if not _receipt_proves_tool_execution(probe):
+        return "not-verified"
+    if probe.status == "pass":
+        return "pass" if path.covered else "must-fix"
+    if probe.status == "should-fix":
+        return "should-fix"
+    if probe.status == "must-fix":
+        return "must-fix"
+    return "not-verified"
+
+
+def _mediation_findings(
+    paths: Sequence[PathRecord], phase: str = "design"
+) -> Tuple[Finding, ...]:
+    uncovered = [
+        path
+        for path in paths
+        if path.mode != "provider-hosted-tool" and path.status != "pass"
+    ]
+    findings: List[Finding] = []
+    for path in paths:
+        if path.mode == "provider-hosted-tool" or path.status not in ("must-fix", "should-fix"):
+            continue
+        findings.append(
+            Finding(
+                finding_id="MED-001",
+                status=path.status,
+                phase=phase,
+                plane="runtime",
+                reason_code="bypass",
+                summary=f"{path.mode} path for {path.action_id} lacks pre-action mediation",
+                details=(
+                    f"The {path.mode} dispatch path for '{path.action_id}' "
+                    "was executed with evidence that did not prove a "
+                    "pre-action mediation decision before tool execution. "
+                    "Only a correlated, path-bound execution receipt can "
+                    "elevate a mediation path above not-verified; an "
+                    "executed bypass remains must-fix."
+                ),
+                affected_actions=(path.action_id,),
+                affected_paths=(path.path_id,),
+                evidence_refs=path.evidence_refs,
+            )
+        )
+    if uncovered:
+        findings.append(
+            Finding(
+                finding_id="MED-002",
+                status=(
+                    "must-fix"
+                    if any(path.status in ("must-fix", "should-fix") for path in uncovered)
+                    else "not-verified"
+                ),
+                phase=phase,
+                plane="runtime",
+                reason_code="coverage-incomplete",
+                summary="declared mediation coverage is incomplete",
+                details=(
+                    "One or more interactive/batch/background/subagent/"
+                    "direct-tool paths for a consequential action are "
+                    "either still only statically discovered or were "
+                    "executed without verified pre-action mediation; every "
+                    "required family must be backed by correlated "
+                    "execution evidence before it can pass."
+                ),
+                affected_actions=tuple(sorted({path.action_id for path in uncovered})),
+                affected_paths=tuple(sorted(path.path_id for path in uncovered)),
+                evidence_refs=tuple(
+                    sorted(set().union(*(path.evidence_refs for path in uncovered)))
+                ),
+            )
+        )
+    findings.sort(key=lambda finding: (finding.finding_id, finding.summary))
+    return tuple(findings)
+
+
+def apply_execution_receipts(
+    paths: Tuple[PathRecord, ...],
+    probe_results: Sequence["ProbeResult"],
+    *,
+    phase: str = "design",
+) -> Tuple[Tuple[PathRecord, ...], Tuple[Finding, ...]]:
+    updated: List[PathRecord] = []
+    for path in paths:
+        matches = _matching_receipts(path, probe_results)
+        if not matches:
+            updated.append(path)
+            continue
+        receipt_statuses = {_receipt_status(path, probe) for probe in matches}
+        executed = any(_receipt_proves_tool_execution(probe) for probe in matches)
+        if "must-fix" in receipt_statuses:
+            status = "must-fix"
+        elif "should-fix" in receipt_statuses:
+            status = "should-fix"
+        elif receipt_statuses == {"pass"} and executed:
+            status = "pass"
+        else:
+            status = "not-verified"
+        updated.append(
+            replace(
+                path,
+                executed=executed,
+                status=status,
+                evidence_refs=tuple(
+                    sorted(set(path.evidence_refs).union(*(probe.evidence_refs for probe in matches)))
+                ),
+            )
+        )
+    return tuple(updated), _mediation_findings(updated, phase=phase)
+
+
 # ---------------------------------------------------------------------------
 # Declared equivalent server-side control (shared by both graph builders)
 # ---------------------------------------------------------------------------
@@ -833,9 +965,11 @@ def _build_path(
             covered=False,
             status="not-verified",
             evidence_refs=entry_refs,
+            discovered=False,
+            executed=False,
         )
 
-    covered, status = _recompute_coverage(nodes)
+    covered, _status = _recompute_coverage(nodes)
 
     pre_action_seam: Optional[str] = None
     if "pre-action-seam" in nodes:
@@ -851,8 +985,10 @@ def _build_path(
         pre_action_seam=pre_action_seam,
         equivalent_control_ref=None,
         covered=covered,
-        status=status,
+        status="not-verified",
         evidence_refs=evidence_refs,
+        discovered=True,
+        executed=False,
     )
 
 
@@ -935,9 +1071,6 @@ def build_mediation_graph(
     ast_index = _build_ast_index(non_provider_actions, candidates_by_action)
 
     paths: List[PathRecord] = []
-    uncovered: List[PathRecord] = []
-    findings: List[Finding] = []
-
     for action in non_provider_actions:
         candidate_files = candidates_by_action[action.action_id]
         for mode in REQUIRED_NON_PROVIDER_MODES:
@@ -951,75 +1084,11 @@ def build_mediation_graph(
                 candidate_files,
             )
             paths.append(record)
-            if not record.covered:
-                uncovered.append(record)
-            if record.status == "must-fix":
-                findings.append(
-                    Finding(
-                        finding_id="MED-001",
-                        status="must-fix",
-                        phase="design",
-                        plane="runtime",
-                        reason_code="bypass",
-                        summary=(
-                            f"{mode} path for {action.action_id} lacks "
-                            "pre-action mediation"
-                        ),
-                        details=(
-                            f"The {mode} dispatch path for '{action.action_id}' "
-                            "reaches tool-service (or an equivalent direct "
-                            "provider call) without ever calling the Agent "
-                            "Hooks pre-action seam first, and no fully-named "
-                            "equivalent server-side control is declared for "
-                            "it either. A control observed only after the "
-                            "action already executed is never treated as "
-                            "pre-action mediation."
-                        ),
-                        affected_actions=(action.action_id,),
-                        affected_paths=(record.path_id,),
-                        evidence_refs=record.evidence_refs,
-                    )
-                )
-
-    if uncovered:
-        med002_status = (
-            "must-fix"
-            if any(path.status == "must-fix" for path in uncovered)
-            else "not-verified"
-        )
-        med002_evidence = tuple(
-            sorted(set().union(*(path.evidence_refs for path in uncovered)))
-        ) or entry_refs
-        findings.append(
-            Finding(
-                finding_id="MED-002",
-                status=med002_status,
-                phase="design",
-                plane="runtime",
-                reason_code="coverage-incomplete",
-                summary="declared mediation coverage is incomplete",
-                details=(
-                    "One or more interactive/batch/background/subagent/"
-                    "direct-tool paths for a consequential action are "
-                    "either a proven bypass or could not be verified as "
-                    "covered; every required family must be either "
-                    "explicitly mediated or evidenced absent, never "
-                    "assumed covered."
-                ),
-                affected_actions=tuple(
-                    sorted({path.action_id for path in uncovered})
-                ),
-                affected_paths=tuple(sorted(path.path_id for path in uncovered)),
-                evidence_refs=med002_evidence,
-            )
-        )
-
-    findings.sort(key=lambda finding: (finding.finding_id, finding.summary))
     return MediationGraph(
         nodes=_GRAPH_NODES,
         edges=_GRAPH_EDGES,
         paths=tuple(paths),
-        findings=tuple(findings),
+        findings=_mediation_findings(paths),
     )
 
 
@@ -1138,6 +1207,8 @@ def assess_provider_paths(
                     covered=covered,
                     status=status,
                     evidence_refs=action.declaration_refs,
+                    discovered=True,
+                    executed=False,
                 )
             )
 

@@ -508,6 +508,12 @@
         "covered": {
           "type": "boolean"
         },
+        "discovered": {
+          "type": "boolean"
+        },
+        "executed": {
+          "type": "boolean"
+        },
         "status": {
           "$ref": "#/$defs/status"
         },

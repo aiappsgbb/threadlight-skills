@@ -20,6 +20,7 @@
   "exposure_bound_bytes": 4096,
   "nonce_ledger": "governance/nonce-ledger.jsonl",
   "observation_ledger": "governance/probe-ledger.jsonl",
+  "path_id": "68852d2b9d611a52",
   "side_effect_mode": "synthetic",
   "timeout_ms": 500
 }

@@ -524,14 +524,15 @@ class ProbeCase:
     action_id: str
     fault: str
     arguments: Mapping[str, object]
+    path_id: Optional[str] = None
 
 
 def load_probe_contract(root: Path) -> Mapping[str, object]:
     """Load and validate ``<root>/governance/probe-contract.json``.
 
     Returns a read-only mapping with exactly ``dispatch``, ``audit_sink``,
-    ``timeout_ms``, ``side_effect_mode``, ``observation_ledger``, and
-    ``actions`` (normalized to a tuple). Raises :class:`ProbeContractError`
+    ``timeout_ms``, ``side_effect_mode``, ``observation_ledger``, an
+    optional mediation ``path_id``, and ``actions`` (normalized to a tuple). Raises :class:`ProbeContractError`
     for anything missing, malformed, or unsafe — including a
     ``timeout_ms`` outside the assessor-owned safe range, a
     ``side_effect_mode`` other than ``synthetic``/``dry-run``, and an
@@ -620,6 +621,13 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
             f"non-empty strings; got {actions!r}"
         )
 
+    path_id = raw.get("path_id")
+    if path_id is not None and (not isinstance(path_id, str) or not path_id.strip()):
+        raise ProbeContractError(
+            "probe contract 'path_id' must be a non-empty string when "
+            f"declared; got {path_id!r}"
+        )
+
     return MappingProxyType(
         {
             "dispatch": raw["dispatch"],
@@ -627,6 +635,7 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
             "timeout_ms": timeout_ms,
             "side_effect_mode": side_effect_mode,
             "observation_ledger": observation_ledger,
+            "path_id": path_id,
             "actions": tuple(actions),
         }
     )
@@ -716,8 +725,17 @@ def run_application_probe(root: Path, case: ProbeCase) -> ProbeResult:
         ledger_path.unlink(missing_ok=True)
         _remove_created_dirs(created_dirs)
 
+    effective_case = case
+    if case.path_id is None and contract.get("path_id") is not None:
+        effective_case = ProbeCase(
+            case.probe_id,
+            case.action_id,
+            case.fault,
+            case.arguments,
+            str(contract["path_id"]),
+        )
     return _build_probe_result(
-        case,
+        effective_case,
         outcome,
         str(contract["observation_ledger"]),
         str(contract["dispatch"]),
@@ -736,7 +754,13 @@ def run_enforcement_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
     results = []
     for action_id in contract["actions"]:
         for probe_id, fault in _ENFORCEMENT_PROBE_SUITE:
-            case = ProbeCase(probe_id, action_id, fault, _ENFORCEMENT_PROBE_ARGUMENTS)
+            case = ProbeCase(
+                probe_id,
+                action_id,
+                fault,
+                _ENFORCEMENT_PROBE_ARGUMENTS,
+                contract.get("path_id"),  # type: ignore[arg-type]
+            )
             try:
                 results.append(run_application_probe(root, case))
             except ProbeToolingError as error:
@@ -1079,7 +1103,7 @@ def _build_probe_result(
         return ProbeResult(
             probe_id=case.probe_id,
             action_id=case.action_id,
-            path_id=None,
+            path_id=case.path_id,
             status=status,
             reason_code=reason_code,
             expected=expected,
@@ -1180,7 +1204,7 @@ def _build_probe_result(
     return ProbeResult(
         probe_id=case.probe_id,
         action_id=case.action_id,
-        path_id=None,
+        path_id=case.path_id,
         status=status,
         reason_code=reason_code,
         expected=expected,

@@ -455,6 +455,8 @@ def _path_to_dict(path: PathRecord) -> Dict[str, object]:
         "pre_action_seam": path.pre_action_seam,
         "equivalent_control_ref": path.equivalent_control_ref,
         "covered": path.covered,
+        "discovered": path.discovered,
+        "executed": path.executed,
         "status": path.status,
         "evidence_refs": sorted(path.evidence_refs),
     }
@@ -1500,10 +1502,15 @@ def _action_row(action: Dict[str, object]) -> str:
 
 
 def _path_row(path: Dict[str, object]) -> str:
-    return "- {path_id} action={action_id} mode={mode} covered={covered} status={status}".format(
+    return (
+        "- {path_id} action={action_id} mode={mode} discovered={discovered} "
+        "executed={executed} covered={covered} status={status}"
+    ).format(
         path_id=_md_code_span(path["path_id"]),
         action_id=_md_code_span(path["action_id"]),
         mode=_md_escape_inline(path["mode"]),
+        discovered=path["discovered"],
+        executed=path["executed"],
         covered=path["covered"],
         status=_md_escape_inline(path["status"]),
     )

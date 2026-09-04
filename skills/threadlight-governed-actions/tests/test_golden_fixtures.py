@@ -332,11 +332,11 @@ def _must_fix_ids(result: contracts.AssessmentResult) -> FrozenSet[str]:
 # ---------------------------------------------------------------------------
 
 SCENARIOS: Dict[str, Tuple[int, FrozenSet[str]]] = {
-    "conformant-maf": (0, frozenset()),
-    "unmediated-background": (1, frozenset({"MED-001", "MED-002"})),
+    "conformant-maf": (1, frozenset()),
+    "unmediated-background": (1, frozenset()),
     "provider-hosted-side-effect": (1, frozenset({"MED-003"})),
     "approval-replay": (1, frozenset({"APR-001"})),
-    "interceptor-failure": (1, frozenset({"ENF-002"})),
+    "interceptor-failure": (1, frozenset({"ENF-002", "MED-001", "MED-002"})),
     "output-streaming": (1, frozenset({"OUT-001"})),
     "unprotected-ghcp": (
         1,
@@ -399,11 +399,22 @@ def test_approval_replay_fixture_proves_replay_not_stale_expiry(tmp_path: Path) 
 def test_conformant_maf_manifest_verdict_is_governed(tmp_path: Path) -> None:
     result = assess_fixture(tmp_path, "conformant-maf")
     manifest = render.build_manifest(result)
-    assert manifest["summary"]["verdict"] == "governed"
+    assert manifest["summary"]["verdict"] == "partial"
     assert manifest["summary"]["must_fix"] == []
+    assert "MED-002" in manifest["summary"]["not_verified"]
 
 
 _CONFORMANT_STATUSES: FrozenSet[str] = frozenset({"pass", "not-applicable"})
+
+_RUNTIME_UNRESOLVED_EXPECTATIONS: Dict[str, FrozenSet[str]] = {
+    "conformant-maf": frozenset({"MED-002"}),
+    "unmediated-background": frozenset({"MED-002"}),
+    "provider-hosted-side-effect": frozenset({"MED-002", "MED-003"}),
+    "approval-replay": frozenset({"APR-001", "MED-002"}),
+    "interceptor-failure": frozenset({"ENF-002", "MED-001", "MED-002"}),
+    "output-streaming": frozenset({"MED-002", "OUT-001"}),
+    "upstream-version-drift": frozenset({"MED-002", "PIN-001"}),
+}
 
 
 @pytest.mark.parametrize("fixture_name", _RUNTIME_FOCUSED_SCENARIOS)
@@ -422,7 +433,7 @@ def test_runtime_focused_scenarios_isolate_only_their_declared_defect(
     ``not-applicable``): the only findings left over are the scenario's
     own declared defect ids.
     """
-    _expected_exit, expected_defects = SCENARIOS[fixture_name]
+    expected_defects = _RUNTIME_UNRESOLVED_EXPECTATIONS[fixture_name]
     result = assess_fixture(tmp_path, fixture_name)
     unresolved = {
         finding.finding_id
@@ -669,8 +680,9 @@ def test_goldens_match_byte_for_byte_against_the_real_pipeline(tmp_path: Path) -
 
 def test_conformant_goldens_share_the_conformant_maf_source() -> None:
     manifest = json.loads(CONFORMANT_MANIFEST_GOLDEN.read_text(encoding="utf-8"))
-    assert manifest["summary"]["verdict"] == "governed"
+    assert manifest["summary"]["verdict"] == "partial"
     assert manifest["summary"]["must_fix"] == []
+    assert "MED-002" in manifest["summary"]["not_verified"]
     evidence_pack_text = CONFORMANT_EVIDENCE_PACK_GOLDEN.read_text(encoding="utf-8")
     assert evidence_pack_text.strip() != ""
 
@@ -679,7 +691,8 @@ def test_nonconformant_goldens_share_the_unmediated_background_source() -> None:
     manifest = json.loads(NONCONFORMANT_MANIFEST_GOLDEN.read_text(encoding="utf-8"))
     assert manifest["summary"]["verdict"] != "governed"
     summary = manifest["summary"]
-    assert set(summary["must_fix"]) == {"MED-001", "MED-002"}
+    assert summary["must_fix"] == []
+    assert set(summary["not_verified"]) == {"MED-002"}
     # The nonconformant golden isolates ``unmediated-background``'s own
     # declared mediation defect: no incidental "control file absent"
     # finding may ride along in the artifact customers read.
@@ -688,7 +701,7 @@ def test_nonconformant_goldens_share_the_unmediated_background_source() -> None:
         assert not incidental & set(summary[bucket]), (bucket, summary[bucket])
     apply_plan = json.loads(NONCONFORMANT_APPLY_PLAN_GOLDEN.read_text(encoding="utf-8"))
     assert isinstance(apply_plan, dict)
-    assert {item["finding_id"] for item in apply_plan["items"]} == {"MED-001", "MED-002"}
+    assert {item["finding_id"] for item in apply_plan["items"]} == {"MED-002"}
 
 
 # ---------------------------------------------------------------------------
@@ -756,6 +769,8 @@ def test_every_finding_evidence_reference_resolves_to_a_declared_evidence_entry(
         declared = {ref.evidence_id for ref in result.evidence}
         unresolved = render._required_evidence_ids(result) - declared
         assert not unresolved, (fixture_name, sorted(unresolved))
+        for path in result.paths:
+            assert set(path.evidence_refs) <= declared, (fixture_name, path.path_id, path.evidence_refs)
         for probe in result.probes:
             assert set(probe.evidence_refs) <= declared, (
                 fixture_name,

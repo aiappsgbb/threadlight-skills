@@ -22,16 +22,16 @@
 
 ## Runtime mediation graph
 
-- `347a7d4ba1b2a0fa` action=`customer.lookup` mode=background covered=True status=pass
-- `aea9253c6ec0258e` action=`customer.lookup` mode=batch covered=True status=pass
-- `37d1f78e666dd467` action=`customer.lookup` mode=direct-tool covered=True status=pass
-- `7166e9d0b462e868` action=`customer.lookup` mode=interactive covered=True status=pass
-- `1e5fd34aca356abe` action=`customer.lookup` mode=subagent covered=True status=pass
-- `400019bbedc16b75` action=`payments.refund` mode=background covered=True status=pass
-- `099ebdd0357f3031` action=`payments.refund` mode=batch covered=True status=pass
-- `68852d2b9d611a52` action=`payments.refund` mode=direct-tool covered=True status=pass
-- `272a18e87fab21fc` action=`payments.refund` mode=interactive covered=True status=pass
-- `8fa2a4cde35188b9` action=`payments.refund` mode=subagent covered=True status=pass
+- `347a7d4ba1b2a0fa` action=`customer.lookup` mode=background discovered=True executed=False covered=True status=not-verified
+- `aea9253c6ec0258e` action=`customer.lookup` mode=batch discovered=True executed=False covered=True status=not-verified
+- `37d1f78e666dd467` action=`customer.lookup` mode=direct-tool discovered=True executed=False covered=True status=not-verified
+- `7166e9d0b462e868` action=`customer.lookup` mode=interactive discovered=True executed=False covered=True status=not-verified
+- `1e5fd34aca356abe` action=`customer.lookup` mode=subagent discovered=True executed=False covered=True status=not-verified
+- `400019bbedc16b75` action=`payments.refund` mode=background discovered=True executed=False covered=True status=not-verified
+- `099ebdd0357f3031` action=`payments.refund` mode=batch discovered=True executed=False covered=True status=not-verified
+- `68852d2b9d611a52` action=`payments.refund` mode=direct-tool discovered=True executed=True covered=True status=not-verified
+- `272a18e87fab21fc` action=`payments.refund` mode=interactive discovered=True executed=False covered=True status=not-verified
+- `8fa2a4cde35188b9` action=`payments.refund` mode=subagent discovered=True executed=False covered=True status=not-verified
 
 ## Application-path probe evidence
 
@@ -47,13 +47,13 @@
 - `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:add167ecaa19bd77a5db330b15fdb28626d27dec491495615b25a3384afd1ad8
 - `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:c593690c5ca63ca23b76938ec67628137ae8faf0c6017790e184eaeb33bed8c8
 - `approval-anti-replay` action=`payments.refund` path=`None` status=pass reason=approval-anti-replay-enforced evidence=sha256:e6bffa55d782792dc531cf4642e5cf5612dede6164931dc793dbaa7c16e154b9
-- `crash` action=`payments.refund` path=`None` status=pass reason=crash-blocked evidence=audit-0001~2bbdaccc2f5e1092
-- `deny` action=`payments.refund` path=`None` status=pass reason=deny-enforced evidence=audit-0001~381f4739271102cd
-- `malformed-verdict` action=`payments.refund` path=`None` status=pass reason=malformed-verdict-blocked evidence=audit-0001~6037364472d45cf2
+- `crash` action=`payments.refund` path=`68852d2b9d611a52` status=pass reason=crash-blocked evidence=audit-0001~2bbdaccc2f5e1092
+- `deny` action=`payments.refund` path=`68852d2b9d611a52` status=pass reason=deny-enforced evidence=audit-0001~381f4739271102cd
+- `malformed-verdict` action=`payments.refund` path=`68852d2b9d611a52` status=pass reason=malformed-verdict-blocked evidence=audit-0001~6037364472d45cf2
 - `output-mediation` action=`payments.refund` path=`None` status=pass reason=output-mediation-enforced evidence=none
 - `payload-free-audit` action=`payments.refund` path=`None` status=pass reason=payload-free-audit-enforced evidence=audit-approval-audit-probe-nonce
-- `timeout` action=`payments.refund` path=`None` status=pass reason=timeout-blocked evidence=audit-0001~32eb7a5316406d67
-- `transform` action=`payments.refund` path=`None` status=pass reason=transform-enforced evidence=audit-0001~f9cf5a5cf02e20f0, sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf, sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b
+- `timeout` action=`payments.refund` path=`68852d2b9d611a52` status=pass reason=timeout-blocked evidence=audit-0001~32eb7a5316406d67
+- `transform` action=`payments.refund` path=`68852d2b9d611a52` status=pass reason=transform-enforced evidence=audit-0001~f9cf5a5cf02e20f0, sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf, sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b
 
 ## GitHub Copilot change plane
 
@@ -65,7 +65,9 @@
 | Evidence ID | Kind | Source | SHA-256 | Collected At | Live Verified |
 | --- | --- | --- | --- | --- | --- |
 | EVID-spec-section-8 | static-file-hash | specs/SPEC.md#section-8 | sha256:f1879370f7552799dc50d0e04ed0e4d1f85553e4f739ef4f2c7e259c087ff67d | 2026-09-01T12:00:00Z | False |
+| agent.yaml | static-file-hash | agent.yaml | sha256:4c5f915a6ca38f3b7e0278d05f672e9fb8a396fff05012db3a4dc0ba9439dd11 | 2026-09-01T12:00:00Z | False |
 | alert-catalog | file-set | governance/alerts.json | sha256:c5ed00d05bcfa6950957100fa7eaf6fd15d78bfd4c82411807438df7a5bedfeb | unknown | False |
+| app/agent.py | static-file-hash | app/agent.py | sha256:b8bbf7c01187200387575fe1f6edd1244e6786082c8160a20ee0602471b79535 | 2026-09-01T12:00:00Z | False |
 | audit-0001~2bbdaccc2f5e1092 | probe-audit-ledger-record | governance/probe-ledger.jsonl | sha256:2bbdaccc2f5e1092140a64b0a9da17e059dbcecff004e448e47e3d0fb6ccb8f2 | 2026-09-01T12:00:00Z | False |
 | audit-0001~32eb7a5316406d67 | probe-audit-ledger-record | governance/probe-ledger.jsonl | sha256:32eb7a5316406d67d326aec85eec3616fcd2b068e22ff7ee271ff803253b408b | 2026-09-01T12:00:00Z | False |
 | audit-0001~381f4739271102cd | probe-audit-ledger-record | governance/probe-ledger.jsonl | sha256:381f4739271102cd6f2d740cd27fa73e10ea2478a8fee0cc07f35c0063f1a60a | 2026-09-01T12:00:00Z | False |
@@ -91,6 +93,7 @@
 
 | ID | Plane | Control | Status | Reason | Evidence | Remediation |
 | --- | --- | --- | --- | --- | --- | --- |
+| MED-002 | runtime | declared mediation coverage is incomplete | not-verified | coverage-incomplete | agent.yaml, app/agent.py, audit-0001~2bbdaccc2f5e1092, audit-0001~32eb7a5316406d67, audit-0001~381f4739271102cd, audit-0001~6037364472d45cf2, audit-0001~f9cf5a5cf02e20f0, sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf, sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b | repo-edit |
 | OPS-001 | both | Every required governance alert class is enabled and declares a stable reason/correlation identifier. | pass | alert-catalog-complete | none | none |
 
 ## Residual-risk register
@@ -105,4 +108,4 @@
 
 ## Remediation plan
 
-- No outstanding remediation is required.
+- `MED-002` [not-verified/runtime] kind=repo-edit owner=unassigned evidence_required=agent.yaml, app/agent.py, audit-0001~2bbdaccc2f5e1092, audit-0001~32eb7a5316406d67, audit-0001~381f4739271102cd, audit-0001~6037364472d45cf2, audit-0001~f9cf5a5cf02e20f0, sha256:7e84cbf0f7a7c92c037058665d66152f8eb8580ab2534e52c877bccceb9cc7bf, sha256:fb6632bd6651ff35747457d7d6aab3f5d91ff8521f5a79f7382c412da5ef081b
