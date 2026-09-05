@@ -256,6 +256,22 @@ def run_tool(p, *, name="act", args=None, result=None, middleware=(), on_effect=
     return asyncio.run(agent.run("perform action")), effects, client, agent
 
 
+def test_spool_persists_action_and_creation_timestamp_and_rejects_async_false_exporters(tmp_path):
+    spool = runtime().DurableSpool(tmp_path)
+    receipt_id = spool.append(correlation_id="correlation", decision="error", action_id="act",
+        action_hash="sha256:" + "a" * 64, policy_hash="sha256:" + "b" * 64)
+    path = tmp_path / (receipt_id + ".json")
+    original = json.loads(path.read_text())
+    assert original["action_id"] == "act"
+    timestamp = datetime.fromisoformat(original["recorded_at"])
+    assert timestamp.tzinfo is not None
+    async def async_exporter(receipt):
+        return True
+    assert spool.retry(async_exporter) == 0, "coroutine creation is not remote delivery"
+    assert spool.retry(lambda receipt: False) == 0
+    assert json.loads(path.read_text()) == original
+
+
 def test_bound_deny_zero_effects(tmp_path):
     p, _, _ = provider(tmp_path)
     _, effects, client, _ = run_tool(p)

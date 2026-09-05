@@ -82,6 +82,7 @@ class NativeRecordSink:
                 }),
                 policy_hash=p.policy_digest(), agent_version=p.agent_version,
                 image_digest=p.image_digest, reason_code=code, interception_point=point,
+                action_id=(entry["tool"] if entry else None) or point,
             )
         except Exception:
             binding_failure(selected, "threadlight:audit_unavailable")
@@ -137,7 +138,10 @@ def receipt(provider, selected, context, decision, target=None):
     if provider.audit is None:
         return not required
     try:
-        details = {}
+        details = {
+            "reason_code": "threadlight:policy_" + decision,
+            "interception_point": context["interception_point"],
+        }
         if context.get("tool_result", {}).get("is_error"):
             decision = "error"
             details = {"reason_code": "threadlight:tool_unavailable",
@@ -147,6 +151,7 @@ def receipt(provider, selected, context, decision, target=None):
             action_hash=action_hash(provider, context, target),
             policy_hash=provider.policy_digest(),
             agent_version=provider.agent_version, image_digest=provider.image_digest,
+            action_id=(context.get("tool_call") or {}).get("name") or context["interception_point"],
             **details,
         )
         entry = _emission(context)
@@ -468,6 +473,7 @@ def _deny_boundary(provider, selected, reason):
                     action_hash=entry["action_hash"], policy_hash=provider.policy_digest(),
                     agent_version=provider.agent_version, image_digest=provider.image_digest,
                     reason_code=reason, interception_point=entry["point"],
+                    action_id=entry["tool"] or entry["point"],
                 )
             except Exception:
                 binding_failure(selected, "threadlight:audit_unavailable")

@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -91,12 +92,16 @@ class DurableSpool:
             staging.unlink(missing_ok=True)
 
     def append(self, *, correlation_id, decision, action_hash, policy_hash,
-               agent_version=None, image_digest=None, reason_code=None, interception_point=None):
+               agent_version=None, image_digest=None, reason_code=None, interception_point=None,
+               action_id=None):
         receipt = {
             "audit_id": uuid.uuid4().hex, "correlation_id": correlation_id,
             "decision": decision, "action_hash": action_hash, "policy_hash": policy_hash,
             "delivery_status": "pending",
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
         }
+        if action_id is not None:
+            receipt["action_id"] = action_id
         if agent_version is not None:
             receipt["agent_version"] = agent_version
         if image_digest is not None:
@@ -117,7 +122,13 @@ class DurableSpool:
             if receipt["delivery_status"] != "pending":
                 continue
             try:
-                exporter(dict(receipt))
+                result = exporter(dict(receipt))
+                if inspect.isawaitable(result):
+                    if inspect.iscoroutine(result):
+                        result.close()
+                    raise TypeError("synchronous_exporter_required")
+                if result is False:
+                    raise OSError("audit_delivery_not_acknowledged")
             except Exception:
                 continue
             receipt["delivery_status"] = "delivered"

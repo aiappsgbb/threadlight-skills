@@ -87,7 +87,9 @@ templates.
    ```
 
    This JSON contains `agent_image` (complete digest-pinned reference) and
-   `spool_directory` (pre-provisioned host-owned mount). Register that exact
+   `spool_directory` (absolute, host-owned local retry directory; **not** a
+   persistence claim). MAF generation selects `audit_delivery: "remote-ack"`.
+   Register that exact
    definition, observe its version and instance identity, and then assign its
    service app roles. Until services/roles are ready, the real agent is unhealthy;
    no placeholder revision is used.
@@ -134,10 +136,8 @@ templates.
      Also supply `private_dns_links`: actual ARM virtual-network-link objects
      for all three private DNS zones, with successful provisioning and the
      configured VNet ID. Missing links prevent binding.
-   - `spool_directory`: an operator-provisioned host-owned **durable writable
-     mount**, not a model-writable working directory. Local `DurableSpool`
-     fsync is not a promise of persistence after the platform deletes a sandbox;
-     storage lifetime and receipt export/recovery must be validated operationally.
+   - `spool_directory` is fixed in the agent-image step. It is local retry safety
+     storage, not an operator assertion of a persistent hosted-agent mount.
    - GHCP also requires `gateway_bundle` and `gateway_source_digest` from step 4.
 
    The binder loads the real Task8 `AzureConfiguration` and Task9 `Configuration`
@@ -165,6 +165,44 @@ templates.
    agent image/definition. The deployment manifest still records the exact
    version, instance, image and policy digest.
 
+## Hosted MAF audit delivery
+
+The pinned `azure-ai-projects` `HostedAgentDefinition` / `ContainerConfiguration`
+models do not expose persistent-volume attachments. An ACA volume would not
+attach storage to that Foundry container. Neither `/home`, an absolute path,
+ownership, nor successful fsync proves platform persistence.
+
+The generated host therefore uses the existing Task8 control plane's centrally
+durable receipt store: **required audit must receive an authenticated `/receipts`
+ACK before the native application effect**. It first writes a payload-free local
+retry record. Local write failure blocks required effects; CP outage, timeout,
+wrong ACK or stopped exporter also blocks them and yields dependency readiness
+503. No local-only healthy fallback exists, even on a Docker overlay or bind
+mount. Bind-mount detection is deliberately not an alternative durability mode.
+
+`audit_delivery.py` owns a separate event-loop worker, workload-only short-lived
+credential and `ReceiptClient` using the packaged control-plane scope. The host's
+startup/shutdown context starts replay and periodic retries, then cancels retries
+and bounds resource closure. Synchronous native append waits at most the client
+deadline plus scheduling allowance; it never submits work to its own blocked
+agent loop. This bounded wait can pause other work on that agent loop.
+
+Native records persist `action_id` (the actual tool name or lifecycle point) and
+UTC `recorded_at` once. `audit_id` becomes `receipt_id`; `policy_hash` becomes
+`policy_digest`. The exact deployed version/image and bounded hashed correlation
+are preserved. The canonical Task8 body is persisted before its first send and
+reused unchanged on retry, including after process restart with the same files.
+Only an exact remote ACK marks it delivered; Task8 deduplicates identical IDs and
+bodies. `error` is a supported decision. No arguments, output or exception text
+are exported. Incomplete legacy pending records remain pending/unhealthy rather
+than receiving invented identities/timestamps.
+
+Optional audit can remain locally pending during a CP outage; it is not a
+durable-before-effect promise. Local pending files can be lost when the sandbox
+is deleted. Required effects remain safe because their receipts were already
+centrally acknowledged. Monitor pending-delivery/worker failure diagnostics;
+Docker/ASGI tests are not live Azure durability or effect-closure evidence.
+
 ## Infrastructure and Entra contract
 
 `infrastructure.json` requires `prefix`, `storage_name`, `cosmos_name`,
@@ -188,6 +226,15 @@ resources. Each service application must:
   roles/assignments. No self-approval or workload approver identities;
 - use the configured application ID as the v2 token audience. The model token
   (`https://ai.azure.com/.default`) is never reused as a gateway/service token.
+
+Binding cross-checks both packaged scopes against their distinct infrastructure
+application IDs and both packaged URLs against observed endpoints, including
+MAF's unused gateway contract. It also checks the frozen agent endpoint/image
+environment before writing any deployment artifact. Only canonical lowercase
+UUIDs and exact `api://<UUID>/.default` scopes are accepted: Task8's strict v2
+JWT audience comparison does not case-fold or accept an `api://` audience alias.
+The gateway's control-plane client scope is taken from that same validated
+package, not independently reconstructed.
 
 Observation application entries carry `appId`, `servicePrincipalId`,
 `identifierUris`, `api.requestedAccessTokenVersion`, and `appRoles`. App-role

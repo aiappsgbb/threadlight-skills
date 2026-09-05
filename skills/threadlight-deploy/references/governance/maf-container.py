@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-import uuid
 
 from agent_framework import SkillsProvider
 from agent_framework.foundry import FoundryChatClient
@@ -20,6 +19,7 @@ from govern_control_plane.client import ApprovalClient, PolicySnapshot, ServiceT
 from govern_control_plane.models import SignedBundle, envelope_digest, parse
 from govern_control_plane.storage import KeyVaultSigner
 from skills._shared.governance import validate_governance_contract
+from audit_delivery import AuditDelivery
 from runtime import (
     AcsGovernanceProvider, ApprovalGrant, ApprovalIntent, DurableSpool, VerifiedPolicy,
     create_governed_agent,
@@ -31,24 +31,6 @@ BASE = Path(__file__).resolve().parent
 class UnavailablePolicy:
     def verify(self, bundle):
         raise ValueError("policy_unavailable")
-
-
-def audit_directory_identity(directory):
-    from govern_bundle.policy_bundle import checked_path
-    directory = checked_path(directory)
-    metadata = directory.stat()
-    if (not directory.is_dir() or metadata.st_uid != os.geteuid()
-            or metadata.st_mode & 0o022):
-        raise PermissionError("host_owned_audit_mount_required")
-    return metadata.st_dev, metadata.st_ino
-
-
-class RequiredDurableSpool(DurableSpool):
-    def _write(self, receipt, *, replace=False):
-        before = audit_directory_identity(self.directory)
-        super()._write(receipt, replace=replace)
-        if audit_directory_identity(self.directory) != before:
-            raise OSError("audit_mount_changed")
 
 
 async def build_provider(config, *, signer, credential):
@@ -86,7 +68,11 @@ async def build_provider(config, *, signer, credential):
     required_audit = any(
         set(binding.get("requires", [])) & AUDIT for binding in (
             config["contract"]["tools"] + config["contract"]["governance"]["lifecycle_bindings"]))
-    spool = RequiredDurableSpool if required_audit else DurableSpool
+    if config.get("audit_delivery") != "remote-ack":
+        raise ValueError("hosted_audit_requires_remote_ack")
+    audit = AuditDelivery(
+        config["spool_dir"], base_url=config["control_plane_url"],
+        scope=config["control_plane_scope"], required=required_audit)
     provider = AcsGovernanceProvider(
         contract=config["contract"], bundle_path=BASE / "policy",
         expected_digest=config["policy_digest"], bundle_verifier=verify_bundle,
@@ -94,7 +80,7 @@ async def build_provider(config, *, signer, credential):
         safe_provider=safe_evidence, approval_resolver=approval,
         principal=config["principal"], tenant=config["tenant_id"],
         allowed_approval_roles=config["approver_roles"],
-        audit=spool(config["spool_dir"]), agent_version=config["agent_version"],
+        audit=audit, agent_version=config["agent_version"],
         image_digest=config["image_digest"], environment=config.get("environment", "production"),
     )
     provider.deployment_agent_id = config["agent_id"]
@@ -114,24 +100,12 @@ async def dependency_readiness(provider):
     body = json.loads(response.body)
     for key, binding in provider._bindings.items():
         if set(binding["requires"]) & AUDIT:
-            try:
-                directory = provider.audit.directory
-                audit_directory_identity(directory)
-                probe = directory / f".readiness-{uuid.uuid4().hex}"
-                try:
-                    with probe.open("xb") as stream:
-                        stream.write(b"")
-                        stream.flush()
-                        os.fsync(stream.fileno())
-                    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
-                    try:
-                        os.fsync(descriptor)
-                    finally:
-                        os.close(descriptor)
-                finally:
-                    probe.unlink(missing_ok=True)
-            except Exception:
+            if not await provider.audit.health():
                 body["bindings"][key].update(healthy=False, reason="threadlight:audit_unavailable")
+            elif binding["ready"] and binding["last_failure"] == "threadlight:audit_unavailable":
+                # An authenticated dependency check plus completed replay clears
+                # only the audit outage, never a policy/native enforcement failure.
+                body["bindings"][key].update(healthy=True, reason=None)
         if set(binding["requires"]) & APPROVAL:
             if not await provider.approval_resolver.health(approval_context={
                 "agent_id": provider.deployment_agent_id, "principal": provider.principal,
@@ -191,10 +165,12 @@ async def main():
     config = json.loads((BASE / "governance-config.json").read_text())
     for key, variable in {
         "agent_version": "FOUNDRY_AGENT_VERSION",
-        "image_digest": "TL_GOV_IMAGE_DIGEST", "control_plane_url": "GOV_CONTROL_PLANE_URL",
+        "image_digest": "TL_GOV_IMAGE_DIGEST",
         "spool_dir": "TL_GOV_SPOOL_DIR",
     }.items():
         config[key] = os.environ[variable]
+    if os.environ["GOV_CONTROL_PLANE_URL"] != config["control_plane_url"]:
+        raise ValueError("service_auth_binding_mismatch")
     from govern_control_plane.models import Digest, Identifier, ObjectId, canonical
     for name, schema in (("agent_version", Identifier), ("image_digest", Digest)):
         parse(schema, canonical(config[name]))
@@ -207,6 +183,7 @@ async def main():
         provider = await build_provider(
             config, signer=KeyVaultSigner(crypto, key_client=keys), credential=credential)
         stack.push_async_callback(provider.approval_resolver.aclose)
+        await stack.enter_async_context(provider.audit)
         client = FoundryChatClient(
             project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
             model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"], credential=credential)

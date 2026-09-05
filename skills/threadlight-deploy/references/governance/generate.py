@@ -125,6 +125,8 @@ def generate(project, document, *, configuration=None):
         target.mkdir()
         copy_sources(target)
         shutil.copyfile(REFERENCE / template, target / "container.py")
+        if document["framework"] == "microsoft-agent-framework":
+            shutil.copyfile(REFERENCE / "audit_delivery.py", target / "audit_delivery.py")
         pyproject = (REFERENCE / "pyproject-maf.toml").read_text()
         if document["framework"] == "github-copilot-sdk":
             pyproject = pyproject.replace('  "agent-framework-core==1.14.0",', '  "github-copilot-sdk==1.0.1",')
@@ -141,6 +143,8 @@ def generate(project, document, *, configuration=None):
         portable = {k: v for k, v in config.items() if k not in (
             "bundle_path", "signed_envelope", "network", "agent_service")}
         portable["contract"] = source_contract
+        if document["framework"] == "microsoft-agent-framework":
+            portable["audit_delivery"] = "remote-ack"
         if document["framework"] == "github-copilot-sdk":
             portable.pop("policy_digest", None)
         (target / "governance-config.json").write_text(json.dumps(portable, indent=2) + "\n")
@@ -379,7 +383,7 @@ def agent_image(project, document, *, configuration=None):
         raise ValueError("deployment_images_require_built_digests")
     directory = config["spool_directory"]
     if not isinstance(directory, str) or not directory.startswith("/") or directory == "/":
-        raise ValueError("host_owned_spool_mount_required")
+        raise ValueError("host_owned_spool_directory_required")
     project = Path(project)
     package = json.loads((project / ".threadlight/governance-package.json").read_text())
     if document != package["contract"]:
@@ -462,6 +466,13 @@ def bind(project, document, *, configuration=None):
     if len({bindings[key] for key in ("agent_principal", "gateway_principal", "downstream_principal")}) != 3:
         raise ValueError("distinct_workload_identities_required")
     packaged = package["configuration"]
+    # Entra v2 aud is the canonical application UUID, NOT the api:// scope URI.
+    # Reject noncanonical/cross-service inputs rather than normalizing token audiences
+    # differently from Task8's strict JWT verifier.
+    for service in ("control_plane", "gateway"):
+        if (packaged[f"{service}_scope"] != f"api://{infrastructure[f'{service}_app_id']}/.default"
+                or packaged[f"{service}_url"] != config["observations"][f"{service}_url"]):
+            raise ValueError("service_auth_binding_mismatch")
     if (infrastructure["runtime"] != package["framework"]
             or infrastructure["tenant_id"] != packaged["tenant_id"]
             or bindings["key_id"] != packaged["key_id"]
@@ -500,7 +511,7 @@ def bind(project, document, *, configuration=None):
     gateway = {
         **common, "audience": infrastructure["gateway_app_id"], "workloads": bindings["gateway_workloads"],
         "gateway_url": observed["gateway_url"], "control_plane_url": observed["control_plane_url"],
-        "control_plane_scope": f"api://{infrastructure['control_plane_app_id']}/.default",
+        "control_plane_scope": packaged["control_plane_scope"],
         "service_client_id": bindings["gateway_client"], "service_principal": bindings["gateway_principal"],
         "service_agent_id": infrastructure["agent_id"], "downstream_client_id": bindings["downstream_client"],
         "cosmos_url": foundation_values["cosmos_url"], "cosmos_database": "governance",
@@ -553,6 +564,18 @@ def bind(project, document, *, configuration=None):
     service = azure["services"][packaged["agent_service"]]
     if service["image"] != images["agent"]:
         raise ValueError("bootstrap_agent_image_before_binding")
+    expected_environment = {
+        "GOV_CONTROL_PLANE_URL": packaged["control_plane_url"],
+        "GOVERNED_TOOL_GATEWAY_URL": packaged["gateway_url"],
+        "TL_GOV_IMAGE_DIGEST": images["agent"].split("@")[1],
+    }
+    environment = dict(service.get("env", {}))
+    for entry in service.get("environmentVariables", []):
+        if entry["name"] in environment and environment[entry["name"]] != entry["value"]:
+            raise ValueError("service_auth_binding_mismatch")
+        environment[entry["name"]] = entry["value"]
+    if any(environment.get(key) != value for key, value in expected_environment.items()):
+        raise ValueError("service_auth_binding_mismatch")
     parameters.write_text(json.dumps(payload, indent=2) + "\n")
     (project / ".threadlight/governance-deployment.json").write_text(json.dumps(deployment, indent=2) + "\n")
     return {"status": "bound-unverified", "images": images}

@@ -356,6 +356,360 @@ def deployment_fixture(configuration):
     }
 
 
+def binding_project(tmp_path):
+    configuration = {
+        "agent_service": "agent", "agent_id": "test-agent", "policy_id": "safe", "policy_version": "1",
+        "policy_digest": "sha256:" + "a" * 64,
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "key_id": "https://testvault.vault.azure.net/keys/policy/" + "a" * 32,
+        "control_plane_scope": "api://aaaaaaaa-2222-2222-2222-222222222222/.default",
+        "gateway_scope": "api://bbbbbbbb-3333-3333-3333-333333333333/.default",
+        "control_plane_url": "https://fixture-control.fixture.azurecontainerapps.io",
+        "gateway_url": "https://fixture-gateway.fixture.azurecontainerapps.io/mcp",
+        "approver_roles": ["Approver"],
+        "network": {
+            "posture": "public-pilot", "allowed_ips": ["192.0.2.10/32"],
+            "environment_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/fixture/providers/Microsoft.App/managedEnvironments/test",
+        },
+    }
+    deployment = deployment_fixture(configuration)
+    document = contract("microsoft-agent-framework")
+    (tmp_path / ".threadlight").mkdir()
+    (tmp_path / "infra").mkdir()
+    (tmp_path / ".threadlight/governance-package.json").write_text(json.dumps({
+        "configuration": configuration, "framework": document["framework"], "contract": document}))
+    (tmp_path / "azure.yaml").write_text(
+        "services:\n  agent:\n    image: " + deployment["images"]["agent"] + "\n"
+        "    env:\n      GOV_CONTROL_PLANE_URL: " + configuration["control_plane_url"] + "\n"
+        "      GOVERNED_TOOL_GATEWAY_URL: " + configuration["gateway_url"] + "\n"
+        "      TL_GOV_IMAGE_DIGEST: " + deployment["images"]["agent"].split("@")[1] + "\n")
+    return configuration, deployment, document
+
+
+@pytest.mark.parametrize("field,value", [
+    ("control_plane_scope", "api://99999999-9999-9999-9999-999999999999/.default"),
+    ("gateway_scope", "api://99999999-9999-9999-9999-999999999999/.default"),
+    ("gateway_scope", "api://aaaaaaaa-2222-2222-2222-222222222222/.default"),
+    ("control_plane_scope", "api://aaaaaaaa-2222-2222-2222-222222222222/extra/.default"),
+    ("control_plane_scope", "API://AAAAAAAA-2222-2222-2222-222222222222/.default"),
+    ("control_plane_url", "https://other.example"),
+    ("gateway_url", "https://other.example/mcp"),
+])
+def test_bind_rejects_scope_or_endpoint_drift_without_writes(tmp_path, field, value):
+    configuration, deployment, document = binding_project(tmp_path)
+    configuration[field] = value
+    package = tmp_path / ".threadlight/governance-package.json"
+    body = json.loads(package.read_text())
+    body["configuration"] = configuration
+    package.write_text(json.dumps(body))
+    before = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    with pytest.raises(ValueError, match="service_auth_binding_mismatch"):
+        module("generate").bind(tmp_path, document, configuration=deployment)
+    assert before == {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+def test_bind_canonical_v2_scopes_match_actual_token_verifier(tmp_path):
+    import asyncio
+    configuration, deployment, document = binding_project(tmp_path)
+    assert module("generate").bind(tmp_path, document, configuration=deployment)["status"] == "bound-unverified"
+    body = json.loads((tmp_path / ".threadlight/governance-deployment.json").read_text())
+    sys.path.insert(0, str(ROOT / "skills/threadlight-govern/tests"))
+    from test_control_plane import Harness, WORKLOAD, APP
+    from govern_control_plane.auth import EntraAuth, Settings, Unauthorized
+    async def check():
+        h = Harness()
+        try:
+            for service in ("control_plane", "gateway"):
+                audience = body["bindings"]["control_config" if service == "control_plane" else "gateway_config"]["audience"]
+                settings = Settings(**{
+                    **h.settings.model_dump(), "audience": audience})
+                auth = EntraAuth(settings, h.http)
+                identity = await auth.authenticate("Bearer " + h.token(changes={"aud": audience}))
+                assert identity.subject == WORKLOAD and identity.client == APP
+                for wrong in ("api://" + audience, audience.upper()):
+                    with pytest.raises(Unauthorized):
+                        await auth.authenticate("Bearer " + h.token(changes={"aud": wrong}))
+                assert configuration[service + "_scope"] == "api://" + audience + "/.default"
+        finally:
+            await h.close()
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("name", ["GOV_CONTROL_PLANE_URL", "GOVERNED_TOOL_GATEWAY_URL", "TL_GOV_IMAGE_DIGEST"])
+def test_bind_rejects_bootstrapped_environment_drift_without_writes(tmp_path, name):
+    import yaml
+    _, deployment, document = binding_project(tmp_path)
+    path = tmp_path / "azure.yaml"
+    body = yaml.safe_load(path.read_text())
+    body["services"]["agent"]["env"][name] = "https://different.example"
+    path.write_text(yaml.safe_dump(body))
+    before = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    with pytest.raises(ValueError, match="service_auth_binding_mismatch"):
+        module("generate").bind(tmp_path, document, configuration=deployment)
+    assert before == {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+def test_audit_worker_shutdown_cancels_slow_credential_close(tmp_path):
+    import asyncio
+    import time
+    audit, h, state = audit_harness(tmp_path, timeout=0.15)
+    original = audit.credential_factory
+    class SlowCredential(original):
+        async def close(self):
+            try:
+                await asyncio.sleep(60)
+            finally:
+                state.closed = True
+    audit.credential_factory = SlowCredential
+    start = time.monotonic()
+    with audit:
+        assert audit.check()
+    assert time.monotonic() - start < 2
+    assert state.closed and not audit.worker.is_alive()
+    asyncio.run(h.close())
+
+
+def audit_harness(tmp_path, *, required=True, timeout=1, retry_interval=60):
+    import asyncio
+    import httpx
+    import threading
+    from types import SimpleNamespace
+    sys.path.insert(0, str(ROOT / "skills/threadlight-govern/tests"))
+    sys.path.insert(0, str(ROOT / "skills/threadlight-govern/references"))
+    from test_control_plane import Harness
+    h = Harness()
+    state = SimpleNamespace(outage=False, lose_ack=False, bad_ack=False, hang=False,
+                            calls=[], scopes=[], closed=False, recovered=threading.Event())
+    class Credential:
+        async def get_token(self, scope):
+            state.scopes.append(scope)
+            return SimpleNamespace(token=h.token())
+        async def close(self):
+            state.closed = True
+    class Transport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            if state.hang:
+                await asyncio.sleep(60)
+            if state.outage:
+                return httpx.Response(503, json={"error": "PRIVATE EXCEPTION"})
+            if request.method == "POST":
+                state.calls.append(bytes(request.content))
+                # Local persistence must precede even the remote request.
+                receipt_id = json.loads(request.content)["receipt_id"]
+                assert (tmp_path / "audit" / (receipt_id + ".json")).exists()
+            response = await httpx.ASGITransport(app=h.app).handle_async_request(request)
+            if request.method == "POST" and state.lose_ack:
+                state.lose_ack = False
+                raise httpx.ReadError("PRIVATE LOST ACK")
+            if request.method == "POST" and state.bad_ack:
+                return httpx.Response(200, json={"receipt_id": "0" * 32})
+            if request.method == "POST" and response.status_code == 200:
+                state.recovered.set()
+            return response
+    audit = module("audit_delivery").AuditDelivery(
+        tmp_path / "audit", base_url="https://control.example", scope="api://governance/.default",
+        required=required, credential_factory=Credential, transport_factory=Transport,
+        timeout=timeout, retry_interval=retry_interval)
+    return audit, h, state
+
+
+def append_audit(audit, **changes):
+    return audit.append(**{
+        "correlation_id": "sha256:" + "c" * 64, "action_id": "act",
+        "interception_point": "pre_tool_call", "decision": "allow",
+        "action_hash": "sha256:" + "a" * 64, "policy_hash": "sha256:" + "b" * 64,
+        "reason_code": "threadlight:policy_allow", "agent_version": "deployed-7",
+        "image_digest": "sha256:" + "d" * 64, **changes})
+
+
+def test_audit_remote_ack_lost_restart_replays_identical_schema_and_single_record(tmp_path):
+    import asyncio
+    audit, h, state = audit_harness(tmp_path)
+    from test_control_plane import TENANT
+    with audit:
+        state.lose_ack = True
+        with pytest.raises(OSError, match="audit_unavailable"):
+            append_audit(audit)
+        pending = json.loads(next(audit.directory.glob("*.json")).read_text())
+        assert pending["delivery_status"] == "pending"
+        assert len(h.store.docs) == 1, "Task8 persisted before its ACK was lost"
+    assert state.closed and not audit.worker.is_alive()
+    # A fresh delivery worker, same persisted file: no regenerated timestamps/body.
+    replay = module("audit_delivery").AuditDelivery(
+        audit.directory, base_url=audit.url, scope=audit.scope, required=True,
+        credential_factory=audit.credential_factory, transport_factory=audit.transport_factory,
+        timeout=1, retry_interval=60)
+    with replay:
+        assert state.recovered.wait(3)
+        assert replay.check()
+        assert state.calls[0] == state.calls[1]
+        assert len(state.calls) == 2 and len(h.store.docs) == 1
+        stored = json.loads(next(audit.directory.glob("*.json")).read_text())
+        assert stored["delivery_status"] == "delivered"
+        wire = json.loads(state.calls[0])
+        assert wire["action_id"] == "act" and wire["agent_version"] == "deployed-7"
+        assert wire["image_digest"] == "sha256:" + "d" * 64
+        assert len(wire["correlation_id"]) <= 128
+        async def get():
+            result = await h.client.get("/receipts/" + wire["receipt_id"],
+                headers={"Authorization": "Bearer " + h.token()})
+            assert result.status_code == 200 and result.json() == wire
+        asyncio.run(get())
+        assert h.store.docs[(TENANT, "receipt:" + wire["receipt_id"])][0]["receipt"] == wire
+    assert state.scopes and set(state.scopes) == {"api://governance/.default"}
+    asyncio.run(h.close())
+
+
+def test_audit_initial_outage_pending_then_background_recovery(tmp_path):
+    import asyncio
+    audit, h, state = audit_harness(tmp_path, retry_interval=0.05)
+    state.outage = True
+    try:
+        with audit:
+            with pytest.raises(OSError, match="audit_unavailable"):
+                append_audit(audit)
+            assert not audit.check()
+            assert json.loads(next(audit.directory.glob("*.json")).read_text())["delivery_status"] == "pending"
+            state.outage = False
+            assert state.recovered.wait(3), "running retry loop must recover without a new invocation"
+            assert audit.check()
+            assert len(h.store.docs) == 1
+    finally:
+        asyncio.run(h.close())
+
+
+def test_audit_bad_ack_and_timeout_never_mark_delivered_and_shutdown_bounded(tmp_path):
+    import asyncio
+    import time
+    audit, h, state = audit_harness(tmp_path, timeout=0.15)
+    start = time.monotonic()
+    with audit:
+        state.bad_ack = True
+        with pytest.raises(OSError, match="audit_unavailable"):
+            append_audit(audit)
+        assert not audit.check()
+        state.hang = True
+        with pytest.raises(OSError, match="audit_unavailable"):
+            append_audit(audit)
+    assert time.monotonic() - start < 3
+    assert state.closed and not audit.worker.is_alive()
+    assert all(json.loads(p.read_text())["delivery_status"] == "pending" for p in audit.directory.glob("*.json"))
+    asyncio.run(h.close())
+
+
+def test_audit_health_rejects_unwritable_local_safety_spool(tmp_path):
+    import asyncio
+    audit, h, _ = audit_harness(tmp_path)
+    try:
+        with audit:
+            assert audit.check()
+            audit.directory.chmod(0o777)
+            assert not audit.check(), "remote health cannot mask an unsafe local retry directory"
+            with pytest.raises(OSError):
+                append_audit(audit)
+            assert not h.store.docs
+    finally:
+        audit.directory.chmod(0o700)
+        asyncio.run(h.close())
+
+
+def test_audit_background_corrupt_record_is_unhealthy_not_silently_delivered(tmp_path):
+    import asyncio
+    audit, h, _ = audit_harness(tmp_path, retry_interval=0.05)
+    audit.directory.mkdir()
+    path = audit.directory / ("a" * 32 + ".json")
+    path.write_text('{"delivery_status":"pending","audit_id":"' + "a" * 32 + '"}')
+    with audit:
+        assert not audit.check()
+        assert json.loads(path.read_text())["delivery_status"] == "pending"
+        assert not h.store.docs
+    asyncio.run(h.close())
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_GOVERNANCE_RUNTIME") != "1",
+                    reason="requires exact published Linux runtime")
+def test_native_audit_error_and_lifecycle_use_exact_action_identity(tmp_path):
+    import asyncio
+    audit, h, state = audit_harness(tmp_path)
+    from test_runtime_provider import provider, contract as native_contract, native_model_client, tool_responses, runtime
+    from agent_framework import FunctionTool
+    p, _, _ = provider(tmp_path / "policy",
+        decisions={point: {"decision": "allow"} for point in ("input", "pre_tool_call", "post_tool_call")},
+        document=native_contract(points=("pre_tool_call", "post_tool_call"),
+                                 lifecycle=("input",), requires=["durable-audit"]),
+        audit=audit, agent_version="native-9", image_digest="sha256:" + "e" * 64)
+    def act():
+        raise RuntimeError("PRIVATE ARGUMENT OUTPUT EXCEPTION")
+    client = native_model_client(tool_responses())
+    try:
+        with audit:
+            agent = runtime().create_governed_agent(p, client=client, tools=[FunctionTool(
+                name="act", description="Test", func=act)])
+            asyncio.run(agent.run("PRIVATE PROMPT"))
+            bodies = [json.loads(raw) for raw in state.calls]
+            assert any(b["action_id"] == "input" for b in bodies)
+            assert any(b["action_id"] == "act" and b["decision"] == "error" for b in bodies)
+            assert "PRIVATE" not in b"".join(state.calls).decode()
+    finally:
+        asyncio.run(h.close())
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_GOVERNANCE_RUNTIME") != "1",
+                    reason="requires exact published Linux runtime")
+@pytest.mark.parametrize("outage", [False, True])
+def test_native_audit_ack_saved_before_effect_or_zero_effect(tmp_path, outage):
+    import asyncio
+    audit, h, state = audit_harness(tmp_path)
+    from test_runtime_provider import provider, contract as native_contract, run_tool
+    state.outage = outage
+    p, _, _ = provider(
+        tmp_path / "policy", decisions={"pre_tool_call": {"decision": "allow"}},
+        document=native_contract(requires=["durable-audit"]), audit=audit,
+        agent_version="native-9", image_digest="sha256:" + "e" * 64)
+    def effect():
+        receipts = [doc["receipt"] for doc, _ in h.store.docs.values()]
+        assert any(r["decision"] == "allow" and r["action_id"] == "act"
+                   and r["agent_version"] == "native-9" and r["image_digest"] == "sha256:" + "e" * 64
+                   for r in receipts), "actual Task8 saved the receipt BEFORE application effect"
+    try:
+        with audit:
+            _, effects, _, _ = run_tool(p, on_effect=effect)
+            assert effects == ([] if outage else [{}])
+            files = list(audit.directory.glob("*.json"))
+            assert files
+            assert "arguments" not in "".join(f.read_text() for f in files)
+            if not outage:
+                assert json.loads(state.calls[0])["action_id"] == "act"
+    finally:
+        asyncio.run(h.close())
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_GOVERNANCE_RUNTIME") != "1",
+                    reason="requires exact published Linux runtime")
+def test_native_audit_dependency_readiness_recovers_only_after_replay(tmp_path):
+    import asyncio
+    audit, h, state = audit_harness(tmp_path, retry_interval=0.05)
+    sys.path.insert(0, str(REFERENCES))
+    host = module("maf-container")
+    from test_runtime_provider import provider, contract as native_contract, run_tool
+    p, authority, _ = provider(tmp_path / "policy",
+        decisions={"pre_tool_call": {"decision": "allow"}},
+        document=native_contract(requires=["durable-audit"]), audit=audit,
+        agent_version="native-9", image_digest="sha256:" + "e" * 64)
+    state.outage = True
+    try:
+        with audit:
+            assert run_tool(p)[1] == []
+            assert asyncio.run(host.dependency_readiness(p)).status_code == 503
+            state.outage = False
+            assert state.recovered.wait(3)
+            assert asyncio.run(host.dependency_readiness(p)).status_code == 200
+            authority.valid = False
+            assert asyncio.run(host.dependency_readiness(p)).status_code == 503
+    finally:
+        asyncio.run(h.close())
+
+
 @pytest.mark.skipif(os.environ.get("THREADLIGHT_GOVERNANCE_RUNTIME") != "1",
                     reason="requires exact published Linux runtime")
 def test_generated_maf_native_constructor_host_and_failed_signature(tmp_path):
@@ -528,7 +882,7 @@ async def main():
         raise AssertionError("must not manufacture an ephemeral substitute for a required audit mount")
     assert not Path("required-host-mount").exists()
     Path("required-host-mount").mkdir(mode=0o700)
-    assert (await container.dependency_readiness(audit_provider)).status_code == 200
+    assert (await container.dependency_readiness(audit_provider)).status_code == 503
     assert list(Path("required-host-mount").iterdir()) == []
     original_envelope = Path("policy-envelope.json").read_bytes()
     tampered = json.loads(original_envelope)
@@ -596,6 +950,27 @@ asyncio.run(main())
                                capture_output=True, text=True,
                                env={k: v for k, v in os.environ.items() if k != "PYTHONPATH"})
     assert completed.returncode == 0, completed.stderr
+    # Standalone native/Task8 proof is also run in Docker's root overlay, with no catalog mount.
+    import shutil
+    allowed = build_policy(tmp_path / "allow-policy", {"pre_tool_call": {"decision": "allow"}})
+    audit_fixture = agent / "audit-fixture"
+    audit_fixture.mkdir()
+    shutil.copytree(allowed.root, audit_fixture / "policy")
+    (audit_fixture / "copilot-instructions.md").write_text("Only call the governed act tool.")
+    allow_envelope = envelope.model_copy(update={"content_digest": allowed.bundle_digest})
+    allow_signature = private.sign(cp_models.canonical(allow_envelope), padding.PKCS1v15(), hashes.SHA256())
+    (audit_fixture / "policy-envelope.json").write_bytes(cp_models.canonical(cp_models.SignedBundle(
+        envelope=allow_envelope, signature=base64.b64encode(allow_signature).decode())))
+    (audit_fixture / "authority-public.pem").write_bytes(public_path.read_bytes())
+    audit_configuration = {**json.loads((agent / "governance-config.json").read_text()),
+        "policy_digest": allowed.bundle_digest, "agent_version": "portable-9",
+        "image_digest": "sha256:" + "e" * 64, "principal": "44444444-4444-4444-4444-444444444444"}
+    audit_configuration["contract"]["tools"][0]["requires"] = ["durable-audit"]
+    (audit_fixture / "config.json").write_text(json.dumps(audit_configuration))
+    (audit_fixture / "probe.py").write_text(PORTABLE_AUDIT_PROBE)
+    completed = subprocess.run([sys.executable, "-c", PORTABLE_AUDIT_PROBE], cwd=agent,
+        capture_output=True, text=True, env={k: v for k, v in os.environ.items() if k != "PYTHONPATH"})
+    assert completed.returncode == 0, completed.stderr
     before = module("generate").tree_digest(agent)
     deployment = deployment_fixture(configuration)
     module("generate").agent_image(project, maf_contract(), configuration={
@@ -614,3 +989,112 @@ asyncio.run(main())
     assert parameters["governanceBindings"]["value"]["gateway_config"]["cosmos_container"] == "gateway-idempotency"
     assert (project / "agent.yaml").read_bytes() == (agent / "agent.yaml").read_bytes()
     assert {"name": "KEEP", "value": "keep"} in yaml.safe_load((agent / "agent.yaml").read_text())["environment_variables"]
+
+
+PORTABLE_AUDIT_PROBE = r'''
+import asyncio, json, os, base64, time
+from copy import deepcopy
+from pathlib import Path
+from types import SimpleNamespace
+import httpx, jwt
+from agent_framework import tool
+from agent_framework.foundry import FoundryChatClient
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding, utils, rsa
+from govern_control_plane.app import ControlPlane, create_app
+from govern_control_plane.auth import Settings, EntraAuth
+from govern_control_plane.storage import Conflict, Missing
+from openai import AsyncOpenAI
+import container
+import governance_application as application
+
+async def main():
+    if os.environ.get("THREADLIGHT_OVERLAY_PROBE"):
+        assert not Path("/work").exists()
+        root = next(line for line in Path("/proc/self/mountinfo").read_text().splitlines()
+                    if line.split()[4] == "/")
+        assert root.split(" - ")[1].split()[0] == "overlay"
+    container.BASE = Path.cwd() / "audit-fixture"
+    config = json.loads((container.BASE / "config.json").read_text())
+    config["spool_dir"] = str(Path.cwd() / "ephemeral-required-audit")
+    public = serialization.load_pem_public_key((container.BASE / "authority-public.pem").read_bytes())
+    class Signer:
+        async def health(self): pass
+        async def verify(self, digest, signature):
+            public.verify(signature, digest, padding.PKCS1v15(), utils.Prehashed(hashes.SHA256()))
+            return True
+    # Test-only Task8 storage protocol; the actual service owns receipt validation/dedup.
+    class Store:
+        def __init__(self): self.docs = {}
+        async def health(self): pass
+        async def create(self, tenant, key, body):
+            if (tenant, key) in self.docs: raise Conflict()
+            self.docs[tenant, key] = deepcopy(body)
+        async def read(self, tenant, key):
+            if (tenant, key) not in self.docs: raise Missing()
+            return deepcopy(self.docs[tenant, key]), "1"
+    store = Store()
+    settings = Settings(tenant_id=config["tenant_id"], audience=config["control_plane_scope"][6:-9],
+        key_id=config["key_id"], workloads={config["principal"]: {
+            "client_id": config["principal"], "agent_id": config["agent_id"], "policies": ["safe"]}},
+        human_clients=["55555555-5555-5555-5555-555555555555"],
+        approver_subjects=["66666666-6666-6666-6666-666666666666"], approver_roles=["Approver"])
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key()))
+    jwk.update(kid="test", use="sig", alg="RS256")
+    jwks = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"keys":[jwk]})))
+    auth = EntraAuth(settings, jwks)
+    app = create_app(service=ControlPlane(settings, store, Signer()), auth=auth)
+    effects, scopes = [], []
+    class Credential:
+        async def get_token(self, scope):
+            scopes.append(scope)
+            now = int(time.time())
+            return SimpleNamespace(token=jwt.encode(dict(iss=settings.issuer, aud=settings.audience,
+                tid=settings.tenant_id, oid=config["principal"], azp=config["principal"], ver="2.0",
+                roles=["Governance.Workload"], idtyp="app", exp=now+300, nbf=now-1, iat=now-1),
+                key, algorithm="RS256", headers={"kid":"test"}))
+        async def close(self): pass
+    @tool(approval_mode="never_require")
+    def act() -> str:
+        """Synthetic application effect."""
+        assert any(record["receipt"]["decision"] == "allow" and record["receipt"]["action_id"] == "act"
+            and record["receipt"]["agent_version"] == config["agent_version"]
+            and record["receipt"]["image_digest"] == config["image_digest"]
+            for record in store.docs.values()), "effect ran before Task8 persistence"
+        effects.append("act")
+        return "changed"
+    application.tools = [act]
+    for remote in (False, True):
+        provider = await container.build_provider(config, signer=Signer(), credential=Credential())
+        provider.audit.credential_factory = Credential
+        provider.audit.transport_factory = lambda: httpx.ASGITransport(app=app)
+        if remote:
+            await provider.audit.__aenter__()
+        else:
+            Path(config["spool_dir"]).mkdir(mode=0o700, exist_ok=True)
+        assert (await container.dependency_readiness(provider)).status_code == (200 if remote else 503)
+        calls = []
+        def model(request):
+            calls.append(json.loads(request.content))
+            output = ([{"type":"function_call","id":"fc_1","call_id":"call_1",
+                        "name":"act","arguments":"{}","status":"completed"}] if len(calls)==1 else [])
+            return httpx.Response(200, json={"id":"resp_1","object":"response",
+                "created_at":0,"status":"completed","model":"test","output":output})
+        wire = httpx.AsyncClient(transport=httpx.MockTransport(model))
+        client = FoundryChatClient(project_endpoint="https://test.services.ai.azure.com/api/projects/test",
+                                  model="test", credential=Credential())
+        client.client = AsyncOpenAI(base_url="https://model.invalid/v1/", api_key="synthetic", http_client=wire)
+        host = container.build_host(provider, client=client, configure_observability=None)
+        await host._agent.run("Call act.")
+        assert effects == (["act"] if remote else [])
+        await wire.aclose()
+        await provider.approval_resolver.aclose()
+        if remote:
+            await provider.audit.__aexit__(None, None, None)
+            assert not provider.audit.worker.is_alive()
+    assert scopes and set(scopes) == {config["control_plane_scope"]}
+    await jwks.aclose()
+    print("PORTABLE_NATIVE_REMOTE_ACK_PASS: Task8 saved before effect; local-only directory denied")
+asyncio.run(main())
+'''

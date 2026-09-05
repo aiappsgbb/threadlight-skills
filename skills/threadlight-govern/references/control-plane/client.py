@@ -10,7 +10,8 @@ import httpx
 from pydantic import BaseModel
 
 from .models import (
-    ApprovalContext, ApprovalGrant, ApprovalRequest, Identifier, SignedBundle, canonical, parse, strict_json,
+    ApprovalContext, ApprovalGrant, ApprovalRequest, DecisionReceipt, Identifier, SignedBundle,
+    canonical, parse, strict_json,
 )
 
 
@@ -99,6 +100,16 @@ class ServiceTransport:
             if response.status_code not in (200, 202):
                 raise ApprovalUnavailable()
             return response.status_code, strict_json(bytes(raw))
+
+
+class ReceiptClient(ServiceTransport):
+    async def append(self, receipt):
+        async with asyncio.timeout(self.timeout):
+            receipt = parse(DecisionReceipt, canonical(receipt))
+            status, response = await self.request("POST", "/receipts", receipt.model_dump(mode="json"))
+            if status != 200 or response != {"receipt_id": receipt.receipt_id}:
+                raise RuntimeError("audit_unavailable")
+            return receipt.receipt_id
 
 
 class ApprovalClient(ServiceTransport):

@@ -48,10 +48,13 @@ python <threadlight-skills>/skills/threadlight-deploy/references/governance/gene
 
 - Keep the operator's runtime choice. MAF local hooks use the **whole portable
   provider**, native Task6 validator, signed Task8 envelope, real Key Vault
-  verification, HTTP approval client and durable audit spool. The
+  verification, HTTP approval client and authenticated Task8 audit delivery. The
   `create_governed_agent` result is the agent actually passed to
   `ResponsesHostServer`; application middleware stays inside its native hooks.
   Required output mediation buffers before delivery and forces `store=False`.
+  Required audit uses remote receipt ACK **before effects**, with bounded worker
+  replay and shutdown; the local retry spool is not persistent hosted storage.
+  CP outage or local spool failure is unhealthy and blocks required effects.
 - GHCP uses `CopilotClient` + Invocations, **not** invented local hooks. Only
   bound MCP tools go through the authenticated gateway; mixed servers retain
   their explicit unbound tool filters, original URL and auth. The pinned pre-MCP
@@ -64,6 +67,8 @@ python <threadlight-skills>/skills/threadlight-deploy/references/governance/gene
   produce healthy readiness. A diagnostic fallback is **not** a healthy agent.
   Deadline pressure or an already-built legacy image does not waive wiring.
 - Separate control-plane, gateway, downstream and publisher identities.
+  Binding must cross-check packaged service scopes/URLs against the observed
+  deployment audiences/endpoints before writing artifacts; no auth drift.
   Never reuse the agent identity or a shared ancillary admin identity; the
   agent receives no approval-store write or direct downstream permissions.
   Private-required means supplied, verified Foundry VNet injection and reachable
