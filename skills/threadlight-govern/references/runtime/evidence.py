@@ -93,7 +93,7 @@ class DurableSpool:
 
     def append(self, *, correlation_id, decision, action_hash, policy_hash,
                agent_version=None, image_digest=None, reason_code=None, interception_point=None,
-               action_id=None):
+               action_id=None, probe=None):
         receipt = {
             "audit_id": uuid.uuid4().hex, "correlation_id": correlation_id,
             "decision": decision, "action_hash": action_hash, "policy_hash": policy_hash,
@@ -110,6 +110,9 @@ class DurableSpool:
             receipt["reason_code"] = reason_code
         if interception_point is not None:
             receipt["interception_point"] = interception_point
+        if probe is not None:
+            from govern_control_plane.models import ProbeContext, canonical, parse
+            receipt["probe"] = parse(ProbeContext, canonical(probe)).model_dump(mode="json")
         self._write(receipt)
         return receipt["audit_id"]
 

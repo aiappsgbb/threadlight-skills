@@ -33,6 +33,7 @@ from govern_control_plane.models import (
     ApprovalContext, ApprovalRequest, DecisionReceipt, Digest, Identifier, ObjectId, StrictModel,
     SignedBundle, canonical, envelope_digest, parse, strict_json,
 )
+from govern_control_plane.probes import ProbeContract, PROBE_INPUT, PROBE_OUTPUT
 from govern_control_plane.storage import Conflict, Missing
 
 from .receipts import ApprovalService, ReceiptService
@@ -130,9 +131,22 @@ class Action(StrictModel):
     credential_scope: Annotated[str, Field(pattern=r"^api://[A-Za-z0-9._/-]+/\.default$")]
     input_schema: dict
     output_schema: dict
+    probe_safe: bool = False
+    probe_contract: ProbeContract | None = None
 
     @model_validator(mode="after")
     def validate_action(self):
+        if not self.probe_safe and self.probe_contract is not None:
+            raise ValueError("probe_contract_requires_opt_in")
+        if self.probe_safe and (
+                self.probe_contract is None or self.name != "governance_probe_noop"
+                or self.scope != "governance-probe" or self.approval_roles
+                or self.post_policy_binding is not None
+                or self.input_schema != PROBE_INPUT or self.output_schema != PROBE_OUTPUT
+                or urlsplit(self.endpoint).path != "/governance/noop"
+                or urlsplit(self.outcome_endpoint).path != "/governance/outcomes"
+                or urlsplit(self.endpoint).netloc != urlsplit(self.outcome_endpoint).netloc):
+            raise ValueError("dedicated_noop_probe_required")
         if self.policy_binding == "none" or self.post_policy_binding == "none":
             raise ValueError("unbound_gateway_action")
         for schema in (self.input_schema, self.output_schema):
@@ -155,9 +169,14 @@ class Registry(StrictModel):
     gateway_url: str
     deployment: Deployment
     actions: Annotated[list[Action], Field(min_length=1, max_length=64)]
+    native_policy_digest: Digest | None = None
 
     @model_validator(mode="after")
     def unique_actions(self):
+        if self.native_policy_digest is not None and not all(a.probe_safe for a in self.actions):
+            raise ValueError("native_probe_registry_only")
+        if self.deployment.environment == "production" and any(a.probe_safe for a in self.actions):
+            raise ValueError("staging_probe_only")
         if len({a.name for a in self.actions}) != len(self.actions):
             raise ValueError("duplicate_action")
         if https_endpoint(self.gateway_url) != self.gateway_url:
@@ -305,6 +324,9 @@ class AuthorizedTransport(httpx.AsyncBaseTransport):
             if event in ("http11.send_request_headers.started", "http11.send_request_body.started"):
                 check()
         check()
+        if ticket.get("on_dispatch") is not None:
+            await ticket["on_dispatch"]()
+            check()
         ticket["sent"] = True
         # Replace, rather than trust, a request hook's trace callback.
         request.extensions["trace"] = trace
@@ -326,7 +348,8 @@ class DownstreamClient:
     async def aclose(self):
         await self.http.aclose()
 
-    async def request(self, *, action, arguments, key, action_hash, provenance, facts, guard, retrieve=False):
+    async def request(self, *, action, arguments, key, action_hash, provenance, facts, guard,
+                      retrieve=False, on_dispatch=None):
         async with asyncio.timeout(self.timeout):
             token = await self.credential.get_token(action.credential_scope)
             content = canonical(validated(arguments, action.input_schema)) if not retrieve else None
@@ -342,6 +365,9 @@ class DownstreamClient:
                 "X-Deployment-Hash": digest(facts["deployment"]),
                 "Accept-Encoding": "identity",
             }
+            if action.probe_safe:
+                headers["X-Probe-Run-ID"] = arguments["probe_run_id"]
+                headers["X-Requester-Client"] = facts["client"]
             def final_check():
                 guard()
                 if token.expires_on <= time.time():
@@ -349,7 +375,8 @@ class DownstreamClient:
             final_check()
             marker = _transport_ticket.set({
                 "method": method, "endpoint": endpoint, "body": content or b"",
-                "headers": dict(headers), "guard": final_check, "sent": False})
+                "headers": dict(headers), "guard": final_check, "sent": False,
+                "on_dispatch": on_dispatch})
             try:
                 async with self.http.stream(method, endpoint, content=content, headers=headers,
                         follow_redirects=False) as response:
@@ -373,13 +400,14 @@ class DownstreamClient:
 class GovernedDispatcher:
     def __init__(self, *, policy, auth, store, receipts: ReceiptService, downstream,
                  approvals: ApprovalService | None, safe_provider,
-                 approval_principal, approval_agent_id, timeout=15.0):
+                 approval_principal, approval_agent_id, timeout=15.0, probes=None):
         if not 0 < timeout <= 30:
             raise ValueError("invalid_timeout")
         self.policy, self.auth, self.store, self.receipts = policy, auth, store, receipts
         self.downstream, self.approvals, self.safe_provider = downstream, approvals, safe_provider
         self.approval_principal, self.approval_agent_id = approval_principal, approval_agent_id
         self.timeout = timeout
+        self.probes = probes
 
     def approval_context(self, action, *, tenant):
         return ApprovalContext(
@@ -388,6 +416,7 @@ class GovernedDispatcher:
 
     async def dispatch(self, *, authorization, action, arguments, idempotency_key):
         attempted = False
+        probe = None
         try:
             async with asyncio.timeout(self.timeout):
                 request = _request_identity.get() or await authenticate(self.auth, authorization)
@@ -410,6 +439,12 @@ class GovernedDispatcher:
                 self.policy.fresh()
                 if self.policy.policy_id not in identity.workload.policies:
                     raise GateError("binding_unavailable")
+                if selected.probe_safe:
+                    if self.probes is None:
+                        raise GateError("probe_unavailable")
+                    probe = await self.probes.begin(
+                        identity.subject, arguments["probe_run_id"], action, arguments["variant"],
+                        session_id=uuid.uuid4().hex, call_id=uuid.uuid4().hex)
                 scope = digest([identity.tenant, identity.subject, selected.name])
                 key = digest(idempotency_key)[7:]
                 # Read-only completed-cache exception: no new evaluation/approval consumption
@@ -451,9 +486,15 @@ class GovernedDispatcher:
                     raise GateError("safe_evidence_unavailable")
                 decision, enforced = await self.policy.evaluate(
                     "pre_tool_call", selected, arguments, safe)
+                if probe and (decision not in ("allow", "deny") or enforced != arguments):
+                    raise GateError("probe_policy_unsupported")
                 if decision == "deny":
-                    await self.audit(selected, action_hash, key, "deny", "policy_deny")
-                    return {"status": "blocked", "reason_code": "policy_deny"}
+                    receipt_id = await self.audit(selected, action_hash, key, "deny", "policy_deny", probe)
+                    if probe:
+                        await self.probes.intercept(probe, decision="deny", receipt_id=receipt_id)
+                        await self.probes.complete(probe, terminal="denied")
+                    return {"status": "blocked", "reason_code": "policy_deny",
+                            **({"receipt_id": receipt_id} if probe else {})}
                 enforced = validated(enforced, selected.input_schema)
                 action_hash = digest({"facts": facts, "arguments": enforced})
                 approval_expiry = None
@@ -489,7 +530,9 @@ class GovernedDispatcher:
                     raise GateError("outcome_unknown") from None
                 guard()
                 receipt_id = await self.audit(selected, action_hash, key,
-                    "transform" if decision == "transform" else "allow", "execution_authorized")
+                    "transform" if decision == "transform" else "allow", "execution_authorized", probe)
+                if probe:
+                    await self.probes.intercept(probe, decision="allow", receipt_id=receipt_id)
                 guard()
                 # Persist audit linkage before the HTTP boundary. Never reopen a pending key.
                 current, etag = await self.store.read(scope, key)
@@ -505,14 +548,19 @@ class GovernedDispatcher:
                 attempted = True
                 reply = await self.downstream.request(
                     action=selected, arguments=enforced, key=key, action_hash=action_hash,
-                    provenance=receipt_id, facts=facts, guard=effect_guard)
+                    provenance=receipt_id, facts=facts, guard=effect_guard,
+                    **({"on_dispatch": lambda: self.probes.dispatch(probe)} if probe else {}))
                 guard()
                 current, etag = await self.store.read(scope, key)
                 if current != record:
                     raise GateError("outcome_unknown")
                 await self.store.replace(scope, key, {
                     **record, "state": "completed", "outcome_reference": reply["receipt_id"]}, etag)
-                return await self.output(selected, enforced, facts, reply, guard)
+                output = await self.output(selected, enforced, facts, reply, guard)
+                if probe:
+                    await self.probes.complete(probe, terminal="completed")
+                    output["receipt_id"] = receipt_id
+                return output
         except Unauthorized:
             return {"status": "blocked", "reason_code": "authentication_denied"}
         except GateError as error:
@@ -522,13 +570,13 @@ class GovernedDispatcher:
             return {"status": "unavailable",
                     "reason_code": "outcome_unknown" if attempted else "gateway_unavailable"}
 
-    async def audit(self, action, action_hash, correlation, decision, reason):
+    async def audit(self, action, action_hash, correlation, decision, reason, probe=None):
         deployment = self.policy.registry.deployment
         return await self.receipts.append(DecisionReceipt(
             receipt_id=uuid.uuid4().hex, correlation_id=correlation, action_id=action.name,
             action_hash=action_hash, policy_digest=self.policy.digest, decision=decision,
             reason_code=reason, agent_version=deployment.agent_version,
-            image_digest=deployment.image_digest, recorded_at=datetime.now(timezone.utc)))
+            image_digest=deployment.image_digest, recorded_at=datetime.now(timezone.utc), probe=probe))
 
     async def output(self, action, arguments, facts, reply, guard):
         guard()

@@ -58,6 +58,84 @@ def test_generation_off_is_byte_for_byte_noop(tmp_path):
     assert before == {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()}
 
 
+@pytest.mark.governance_runtime
+def test_generated_native_probe_package_is_explicit_and_requires_external_signed_binding(tmp_path):
+    from test_governance_quality import inputs
+    from test_control_plane import HUMAN, APP, WORKLOAD, TENANT
+    project, doc, config, deployment, signer = inputs(tmp_path, environment="preproduction")
+    doc["tools"][0]["id"] = "governance_probe_noop"
+    doc["tools"][0]["requires"] = ["durable-audit"]
+    config.update(subscription=TENANT, resource_group="fixture", probe_observability={
+        "enabled": True, "configuration_file": "/mnt/governance-probe/config.json"})
+    deployment["infrastructure"]["probe_observability"] = config["probe_observability"]
+    deployment["bindings"]["probe_controllers"] = {
+        HUMAN: {"client_id": APP, "subjects": [deployment["bindings"]["agent_principal"]],
+                "actions": ["governance_probe_noop"]}}
+    gen = module("generate")
+    gen.generate(project, doc, configuration=config)
+    agent = project / "src/agent"
+    assert (agent / "vendor/gateway/probe_runtime.py").exists()
+    assert (agent / "runtime/probe_telemetry.py").exists()
+    assert "./vendor/gateway" in (agent / "Dockerfile").read_text()
+    assert not (project / "src/govern-probe-fixture").exists(), "operator must explicitly install the fixture"
+    gen.agent_image(project, doc, configuration={
+        "agent_image": deployment["images"]["agent"], "spool_directory": "/mnt/audit"})
+    with pytest.raises(ValueError, match="native_probe_binding_required"):
+        gen.bind(project, doc, configuration=deployment)
+    import asyncio
+    import base64
+    from datetime import datetime, timedelta, timezone
+    from test_probe_telemetry import probe_registry
+    from test_policy_bundle import bundle_module
+    from govern_control_plane.models import BundleEnvelope, SignedBundle, canonical, envelope_digest
+    reg = probe_registry()
+    reg["gateway_url"] = config["gateway_url"]
+    reg["native_policy_digest"] = config["policy_digest"]
+    reg["deployment"].update(agent_id=config["agent_id"], resource_group="fixture")
+    reg["actions"][0]["workloads"] = [deployment["bindings"]["agent_principal"]]
+    source = tmp_path / "probe-source"
+    source.mkdir()
+    for name in ("manifest.yaml", "safe.rego"):
+        (source / name).write_bytes((Path(config["bundle_path"]) / name).read_bytes())
+    (source / "gateway-registry.json").write_text(json.dumps(reg))
+    probe_bundle = bundle_module().build_bundle(
+        source=source, destination=tmp_path / "probe-bundle", policy_id="safe-probe", version="1")
+    envelope = BundleEnvelope(policy_id="safe-probe", version="1", content_digest=probe_bundle.bundle_digest,
+        tenant_id=TENANT, key_id=config["key_id"], expires_at=datetime.now(timezone.utc) + timedelta(minutes=10))
+    signed = SignedBundle(envelope=envelope, signature=base64.b64encode(
+        asyncio.run(signer.sign(envelope_digest(envelope)))).decode())
+    signed_path = tmp_path / "probe-signed.json"
+    signed_path.write_bytes(canonical(signed))
+    b = deployment["bindings"]
+    probe_config = {
+        "tenant_id": TENANT, "audience": APP, "key_id": config["key_id"],
+        "workloads": {b["agent_principal"]: b["gateway_workloads"][b["agent_principal"]]},
+        "human_clients": [APP], "approver_subjects": [HUMAN], "approver_roles": ["Approver"],
+        "probe_controllers": b["probe_controllers"], "enabled": True, "producer": "native",
+        "service_client_id": b["agent_client_id"], "downstream_client_id": b["downstream_client"],
+        "cosmos_url": deployment["observations"]["foundation"]["cosmos_url"],
+        "cosmos_database": "governance", "cosmos_container": "probe-native",
+        "bundle_path": "/mnt/governance-probe/policy",
+        "signed_envelope_path": "/mnt/governance-probe/envelope.json",
+        "policy_id": "safe-probe", "policy_version": "1", "policy_digest": probe_bundle.bundle_digest,
+        "gateway_url": config["gateway_url"], "expected_deployment": reg["deployment"],
+        "allowed_endpoints": [reg["actions"][0]["endpoint"], reg["actions"][0]["outcome_endpoint"]],
+    }
+    deployment.update(probe_runtime_configuration=probe_config, probe_bundle=str(probe_bundle.root),
+                      probe_signed_envelope=str(signed_path))
+    gen.bind(project, doc, configuration=deployment)
+    output = json.loads((project / ".threadlight/governance-deployment.json").read_text())
+    assert output["bindings"]["native_probe_config"] == probe_config
+    assert output["probe_observability"] == {
+        "status": "declared-unverified", "registry_digest": probe_bundle.bundle_digest,
+        "policy_digest": config["policy_digest"], "fixture_installed": False}
+    for field, value in (("service_client_id", APP), ("policy_digest", "sha256:" + "f"*64)):
+        bad = copy.deepcopy(deployment)
+        bad["probe_runtime_configuration"][field] = value
+        with pytest.raises(ValueError):
+            gen.bind(project, doc, configuration=bad)
+
+
 def test_selected_generation_requires_real_inputs_and_never_partial_writes(tmp_path):
     (tmp_path / "azure.yaml").write_text("name: existing\n")
     before = list(tmp_path.iterdir())

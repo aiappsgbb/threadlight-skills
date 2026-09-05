@@ -240,8 +240,14 @@ def deployment_runtime(pins):
     try:
         generator.vendor_control_plane(staging)
         generator.vendor_gateway(staging)
+        fixture = ROOT / "skills/threadlight-safe-check/references/probe-fixture"
+        fixture_staging = staging / "probe-fixture"
+        fixture_staging.mkdir()
+        for source in (*fixture.glob("*.py"), fixture / "pyproject.toml"):
+            shutil.copyfile(source, fixture_staging / source.name)
         run([python, "-m", "pip", "wheel", "--quiet", "--no-deps", "--no-build-isolation",
-             "--wheel-dir", staging / "wheels", staging / "vendor/control-plane", staging / "vendor/gateway"])
+             "--wheel-dir", staging / "wheels", staging / "vendor/control-plane", staging / "vendor/gateway",
+             fixture_staging])
         run([python, "-m", "pip", "install", "--quiet", "--no-deps", "--force-reinstall",
              *sorted((staging / "wheels").glob("*.whl"))])
         run([python, "-m", "pip", "check"])
@@ -267,7 +273,8 @@ for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
             "ACS_OPA_PATH": str(SCRATCH / "opa-linux-amd64"), "OTEL_SDK_DISABLED": "true",
         }
         env.pop("PYTEST_ADDOPTS", None)
-        run([python, "-m", "pytest", "skills/threadlight-deploy/tests/test_governance_wiring.py",
+        run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_probe_telemetry.py",
+             "skills/threadlight-deploy/tests/test_governance_wiring.py",
              "skills/threadlight-deploy/tests/test_governance_quality.py",
              "skills/threadlight-deploy/tests/test_azd_cli_contract.py",
              "-q", f"--junitxml={report}", "--basetemp", SCRATCH / "deployment-fixtures",
@@ -286,6 +293,13 @@ for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
             "test_quality_bind_development_package_cannot_claim_production",
             "test_quality_bound_control_plane_accepts_frozen_approval_scope",
             "test_quality_generation_mid_publish_failure_rolls_back_only_our_writes",
+            "test_probe_gateway_native_mcp_to_real_fixture_deny_and_positive",
+            "test_probe_real_native_maf_hooks_and_fixture[host-allow]",
+            "test_probe_real_native_maf_hooks_and_fixture[host-deny]",
+            "test_probe_real_native_maf_hooks_and_fixture[host-unreached]",
+            "test_probe_store_sdk_cas_adapter_strong_reads_and_failed_ack",
+            "test_probe_late_fixture_is_not_completed_until_actual_await_finishes",
+            "test_generated_native_probe_package_is_explicit_and_requires_external_signed_binding",
         }
         if not required_cases <= {case.attrib["name"] for case in cases}:
             raise RuntimeError("required native generation probes did not run")

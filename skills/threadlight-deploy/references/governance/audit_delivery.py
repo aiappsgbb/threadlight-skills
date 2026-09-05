@@ -35,6 +35,7 @@ def wire_receipt(receipt):
         "policy_digest": receipt["policy_hash"], "decision": receipt["decision"],
         "reason_code": receipt["reason_code"], "agent_version": receipt["agent_version"],
         "image_digest": receipt["image_digest"], "recorded_at": receipt["recorded_at"],
+        **({"probe": receipt["probe"]} if receipt.get("probe") is not None else {}),
     })).model_dump(mode="json")
 
 

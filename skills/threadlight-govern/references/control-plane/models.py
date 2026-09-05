@@ -90,6 +90,29 @@ ApprovalOperation = Annotated[
     RequestOperation | DecideOperation | ConsumeOperation, Field(discriminator="operation")]
 
 
+class ProbeDeployment(StrictModel):
+    agent_id: Identifier
+    agent_version: Identifier
+    image_digest: Digest
+    environment: Literal["staging", "preproduction", "production"]
+    subscription: ObjectId
+    resource_group: Identifier
+
+
+class ProbeContext(StrictModel):
+    probe_run_id: ObjectId
+    tenant: ObjectId
+    subject: ObjectId
+    action: Identifier
+    binding: Identifier
+    fixture_id: Identifier
+    policy_digest: Digest
+    deployment: ProbeDeployment
+    session_id: Identifier
+    call_id: Identifier
+    interception_point: Literal["pre_tool_call"] = "pre_tool_call"
+
+
 class DecisionReceipt(StrictModel):
     receipt_id: Nonce
     correlation_id: Identifier
@@ -102,6 +125,16 @@ class DecisionReceipt(StrictModel):
     agent_version: Identifier
     image_digest: Digest
     recorded_at: Timestamp
+    probe: ProbeContext | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def probe_binding(self):
+        if self.probe is not None and (
+                self.action_id != self.probe.action or self.policy_digest != self.probe.policy_digest
+                or self.agent_version != self.probe.deployment.agent_version
+                or self.image_digest != self.probe.deployment.image_digest):
+            raise ValueError("probe_receipt_mismatch")
+        return self
 
 
 class BundleEnvelope(StrictModel):

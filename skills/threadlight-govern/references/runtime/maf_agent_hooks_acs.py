@@ -50,6 +50,12 @@ class NativeRecordSink:
             return
         decision = record.verdict.decision.value
         reason = record.verdict.reason
+        if (entry and entry.get("probe") is not None and point == "pre_tool_call"
+                and decision in {"allow", "deny"} and entry["receipt_decision"] == decision
+                and entry.get("receipt_id")):
+            # Only the native emitter's typed, sequenced record authorizes a
+            # probe observation. ACS evaluation alone is not interception proof.
+            entry["probe_record"] = (decision, entry["receipt_id"])
         if decision in {"allow", "transform"}:
             if entry and point == "pre_model_call" and state is not None and "model_scope" in state:
                 state["model_scope"]["target"] = entry["target_hash"]
@@ -146,17 +152,21 @@ def receipt(provider, selected, context, decision, target=None):
             decision = "error"
             details = {"reason_code": "threadlight:tool_unavailable",
                        "interception_point": context["interception_point"]}
-        provider.audit.append(
+        entry = _emission(context)
+        probe = entry.get("probe") if entry else None
+        receipt_id = provider.audit.append(
             correlation_id=digest(context["session"]), decision=decision,
             action_hash=action_hash(provider, context, target),
             policy_hash=provider.policy_digest(),
             agent_version=provider.agent_version, image_digest=provider.image_digest,
             action_id=(context.get("tool_call") or {}).get("name") or context["interception_point"],
+            **({"probe": probe.model_dump(mode="json")} if probe is not None else {}),
             **details,
         )
         entry = _emission(context)
         if entry is not None:
             entry["receipt_decision"] = decision
+            entry["receipt_id"] = receipt_id
         return True
     except Exception:
         binding_failure(selected, "threadlight:audit_unavailable")
@@ -269,6 +279,9 @@ class AcsInterceptor:
         if not all(b["ready"] for b in selected):
             return Verdict.deny(reason="threadlight:policy_unavailable")
         try:
+            telemetry = getattr(p, "probes", None)
+            if telemetry is not None and context["interception_point"] == "pre_tool_call":
+                await telemetry.begin(context, entry, selected)
             identity = {
                 "agent_id": context["agent"]["id"],
                 "session_id": context["session"]["id"],
@@ -294,6 +307,8 @@ class AcsInterceptor:
             decision = result.verdict.decision.value
             if decision not in {"allow", "deny", "escalate", "transform"}:
                 raise ValueError("invalid ACS decision")
+            if entry and entry.get("probe") is not None and decision not in {"allow", "deny"}:
+                raise ValueError("probe_policy_unsupported")
             if (result.verdict.reason or "").startswith(("runtime_error", "host_error")):
                 raise ValueError("ACS engine unavailable")
             if decision == "transform":
@@ -549,6 +564,10 @@ class _FunctionBoundary(FunctionMiddleware):
         token = _effect_authorization.set((p, actual, ticket, {
             "dispatched": False, "called": False,
             "transformed": bool(expected and expected[1] != expected[2]),
+            "probe_entry": next((e for e in execution["emissions"].values()
+                                 if e["call_id"] == context.metadata.get("call_id")
+                                 and e.get("probe") is not None), None)
+            if execution and getattr(p, "probes", None) is not None else None,
         }))
         try:
             await call_next()
@@ -874,16 +893,25 @@ class _ExecutionScope(AgentMiddleware):
             finally:
                 _execution.reset(token)
         with scope():
-            await call_next()
+            try:
+                await call_next()
+            finally:
+                telemetry = getattr(self.provider, "probes", None)
+                if telemetry is not None:
+                    await telemetry.flush(state)
             if isinstance(context.result, ResponseStream):
                 inner = context.result
                 # Native buffered streams run registered transform hooks BEFORE
                 # their output gate. An outer stream checks AFTER that gate instead.
                 async def updates():
-                    async for update in inner:
-                        with scope():
-                            self._release(update)
-                        yield update
+                    try:
+                        async for update in inner:
+                            with scope():
+                                self._release(update)
+                            yield update
+                    finally:
+                        if telemetry is not None:
+                            await telemetry.flush(state)
                 async def finalizer(updates):
                     with scope():
                         return self._release(await inner.get_final_response())

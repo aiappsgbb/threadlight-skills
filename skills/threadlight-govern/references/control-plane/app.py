@@ -206,6 +206,12 @@ class ControlPlane:
 
     async def record_receipt(self, identity, receipt):
         self.workload(identity)
+        if receipt.probe is not None and (
+                receipt.probe.tenant != identity.tenant
+                or receipt.probe.deployment.agent_id != identity.workload.agent_id
+                or receipt.probe.subject not in self.settings.workloads
+                or self.settings.workloads[receipt.probe.subject].agent_id != identity.workload.agent_id):
+            raise Forbidden()
         if receipt.recorded_at > self.now() + timedelta(seconds=30):
             raise Conflict()
         body = {"owner": identity.subject, "receipt": receipt.model_dump(mode="json")}
@@ -220,9 +226,19 @@ class ControlPlane:
 
     async def receipt(self, identity, receipt_id):
         record, _ = await self.store.read(identity.tenant, f"receipt:{receipt_id}")
+        receipt = parse(DecisionReceipt, canonical(record["receipt"]))
+        if receipt.probe is not None and identity.subject in self.settings.probe_controllers:
+            from .probes import authorize_controller
+            from types import SimpleNamespace
+            try:
+                authorize_controller(SimpleNamespace(settings=self.settings), identity,
+                                     receipt.probe.subject, receipt.probe.action)
+            except PermissionError:
+                raise Forbidden() from None
+            return receipt
         if not ((identity.workload and record["owner"] == identity.subject) or self.auditor(identity)):
             raise Forbidden()
-        return parse(DecisionReceipt, canonical(record["receipt"]))
+        return receipt
 
 
 class AzureConfiguration(Settings):

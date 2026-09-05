@@ -55,6 +55,7 @@ class AcsGovernanceProvider:
         if environment not in modes or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("invalid governance environment or timeout")
         self.mode = modes[environment]
+        self.environment = environment
         self.timeout = timeout
         if type(max_output_bytes) is not int or max_output_bytes <= 0:
             raise ValueError("positive output byte limit required")

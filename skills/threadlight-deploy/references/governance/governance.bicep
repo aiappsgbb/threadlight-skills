@@ -12,6 +12,9 @@ param location string = resourceGroup().location
 
 var privateRequired = config.network.posture == 'private-required'
 var prefix = config.prefix
+var probesEnabled = contains(config, 'probe_observability')
+  ? (config.probe_observability.enabled == true && contains(['staging', 'preproduction'], config.environment))
+  : false
 var environmentParts = split(config.network.environment_id, '/')
 resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = {
   name: last(environmentParts)
@@ -38,6 +41,10 @@ resource downstreamIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@20
 }
 resource publisherIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${prefix}-publisher'
+  location: location
+}
+resource fixtureIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (probesEnabled) {
+  name: '${prefix}-probe-fixture'
   location: location
 }
 
@@ -123,6 +130,17 @@ resource idempotency 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/contain
     }
   }
 }
+// Separate writers: agent/gateway can never write authoritative fixture effects.
+resource probeContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2025-04-15' = [for producer in ['gateway', 'native', 'fixture']: if (probesEnabled) {
+  parent: database
+  name: 'probe-${producer}'
+  properties: {
+    resource: {
+      id: 'probe-${producer}'
+      partitionKey: { paths: ['/scope'], kind: 'Hash' }
+    }
+  }
+}]
 resource documentRole 'Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions@2025-04-15' = {
   parent: cosmos
   name: guid(cosmos.id, 'cas-items')
@@ -158,6 +176,33 @@ resource gatewayDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignme
     scope: '${cosmos.id}/dbs/governance/colls/gateway-idempotency'
   }
 }
+resource gatewayProbeDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled) {
+  parent: cosmos
+  name: guid(cosmos.id, gatewayIdentity.id, 'probe-gateway')
+  properties: {
+    principalId: gatewayIdentity.properties.principalId
+    roleDefinitionId: documentRole.id
+    scope: '${cosmos.id}/dbs/governance/colls/probe-gateway'
+  }
+}
+resource fixtureProbeDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled) {
+  parent: cosmos
+  name: guid(cosmos.id, 'probe-fixture')
+  properties: {
+    principalId: fixtureIdentity!.properties.principalId
+    roleDefinitionId: documentRole.id
+    scope: '${cosmos.id}/dbs/governance/colls/probe-fixture'
+  }
+}
+resource nativeProbeDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled && phase == 'services' && config.runtime == 'microsoft-agent-framework') {
+  parent: cosmos
+  name: guid(cosmos.id, 'probe-native')
+  properties: {
+    principalId: bindings.agent_principal
+    roleDefinitionId: documentRole.id
+    scope: '${cosmos.id}/dbs/governance/colls/probe-native'
+  }
+}
 // The SDK's account metadata probe must work without widening item write scopes.
 resource metadataRole 'Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions@2025-04-15' = {
   parent: cosmos
@@ -178,6 +223,24 @@ resource metadataReaders 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignmen
     scope: cosmos.id
   }
 }]
+resource fixtureProbeMetadata 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled) {
+  parent: cosmos
+  name: guid(cosmos.id, 'probe-fixture', 'metadata-only')
+  properties: {
+    principalId: fixtureIdentity!.properties.principalId
+    roleDefinitionId: metadataRole.id
+    scope: cosmos.id
+  }
+}
+resource nativeProbeMetadata 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled && phase == 'services' && config.runtime == 'microsoft-agent-framework') {
+  parent: cosmos
+  name: guid(cosmos.id, 'probe-native', 'metadata-only')
+  properties: {
+    principalId: bindings.agent_principal
+    roleDefinitionId: metadataRole.id
+    scope: cosmos.id
+  }
+}
 
 resource vault 'Microsoft.KeyVault/vaults@2024-11-01' = {
   name: config.vault_name
@@ -216,6 +279,15 @@ resource verifyRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
       actions: []
       dataActions: ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/verify/action']
     }]
+  }
+}
+resource fixtureProbeVerify 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (probesEnabled) {
+  name: guid(policyKey.id, 'probe-fixture', 'verify')
+  scope: policyKey
+  properties: {
+    principalId: fixtureIdentity!.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: verifyRole.id
   }
 }
 resource publishRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {

@@ -207,6 +207,17 @@ def validate_environment(config):
     return config["environment"]
 
 
+def validate_probe_observability(config):
+    if "probe_observability" not in config:
+        return None
+    from govern_control_plane.probes import ProbeOptIn
+    from govern_control_plane.models import canonical, parse
+    option = parse(ProbeOptIn, canonical(config["probe_observability"]))
+    if config.get("environment") not in ("staging", "preproduction"):
+        raise ValueError("staging_probe_only")
+    return option.model_dump(mode="json")
+
+
 def portable_configuration(config, contract, framework):
     portable = {k: v for k, v in config.items() if k not in (
         "bundle_path", "signed_envelope", "network", "agent_service")}
@@ -337,6 +348,16 @@ def generate(project, document, *, configuration=None):
     from govern_control_plane.client import ServiceTransport
     config = deepcopy(configuration)
     validate_environment(config)
+    probe_option = validate_probe_observability(config)
+    if probe_option:
+        from govern_control_plane.models import Identifier, ObjectId, canonical
+        parse(ObjectId, canonical(config["subscription"]))
+        parse(Identifier, canonical(config["resource_group"]))
+        selected_probe = next((t for t in document["tools"] if t["id"] == "governance_probe_noop"), None)
+        if (selected_probe is None or selected_probe["policy_binding"] is None
+                or selected_probe["intervention_points"] != ["pre_tool_call"]
+                or document["governance"]["environment_modes"][config["environment"]] != "enforce"):
+            raise ValueError("explicit_enforced_probe_binding_required")
     validate_network(config["network"])
     for key in ("tenant_id",):
         if not re.fullmatch(UUID, config.get(key, "")):
@@ -411,7 +432,10 @@ def generate(project, document, *, configuration=None):
         portable = portable_configuration(config, source_contract, document["framework"])
         (target / "governance-config.json").write_text(json.dumps(portable, indent=2) + "\n")
         vendor_control_plane(target)
-        write_dockerfile(target, agent=True)
+        if probe_option and document["framework"] == "microsoft-agent-framework":
+            vendor_gateway(target)
+        write_dockerfile(target, agent=True,
+                         gateway=bool(probe_option and document["framework"] == "microsoft-agent-framework"))
         for name in ("govern-control-plane", "govern-gateway"):
             service_target = staging / name
             service_target.mkdir()
@@ -736,6 +760,9 @@ def bind(project, document, *, configuration=None):
     if len({bindings[key] for key in ("agent_principal", "gateway_principal", "downstream_principal")}) != 3:
         raise ValueError("distinct_workload_identities_required")
     packaged = package["configuration"]
+    probe_option = validate_probe_observability(packaged)
+    if validate_probe_observability(infrastructure) != probe_option:
+        raise ValueError("probe_opt_in_changed")
     # Entra v2 aud is the canonical application UUID, NOT the api:// scope URI.
     # Reject noncanonical/cross-service inputs rather than normalizing token audiences
     # differently from Task8's strict JWT verifier.
@@ -796,11 +823,19 @@ def bind(project, document, *, configuration=None):
         "policy_id": frozen["policy_id"], "policy_version": frozen["policy_version"],
         "policy_digest": bindings["policy_digest"], "allowed_endpoints": bindings["allowed_endpoints"],
     }
+    if probe_option:
+        controllers = bindings["probe_controllers"]
+        control["probe_controllers"] = controllers
+        if package["framework"] == "github-copilot-sdk":
+            gateway.update(probe_enabled=True, probe_container="probe-gateway", probe_controllers=controllers)
     bindings["control_config"] = parse(AzureConfiguration, canonical(control)).model_dump(mode="json")
     bindings["gateway_config"] = parse(Configuration, canonical(gateway)).model_dump(mode="json")
     from govern_control_plane.models import SignedBundle
     bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
     if package["framework"] == "microsoft-agent-framework":
+        if probe_option and not all(config.get(key) for key in (
+                "probe_runtime_configuration", "probe_bundle", "probe_signed_envelope")):
+            raise ValueError("native_probe_binding_required")
         if bindings["policy_digest"] != packaged["policy_digest"]:
             raise ValueError("embedded_local_policy_digest_changed")
         bundle = bundle_api.verify_bundle(agent / "policy", expected_digest=bindings["policy_digest"])
@@ -810,11 +845,19 @@ def bind(project, document, *, configuration=None):
             raise ValueError("frozen_signed_policy_changed")
         bundle_api.validate_native_manifest(bundle.root)
         validate_bundle_contract(bundle, document, frozen)
+        if probe_option:
+            probe_declaration = native_probe_binding(config, bindings, packaged, images, document)
+            bindings["native_probe_config"] = deepcopy(config["probe_runtime_configuration"])
     else:
         from govern_gateway.dispatcher import Registry
         bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
         bundle = bundle_api.verify_bundle(Path(config["gateway_bundle"]), expected_digest=bindings["policy_digest"])
         registry = parse(Registry, (bundle.root / "gateway-registry.json").read_bytes())
+        if probe_option and (not any(a.probe_safe for a in registry.actions)
+                             or registry.native_policy_digest is not None
+                             or registry.deployment.subscription != packaged["subscription"]
+                             or registry.deployment.resource_group != packaged["resource_group"]):
+            raise ValueError("signed_probe_deployment_mismatch")
         if (registry.deployment.image_digest != images["agent"].split("@")[1]
                 or registry.deployment.agent_version != bindings["agent_version"]
                 or registry.deployment.agent_id != infrastructure["agent_id"]
@@ -838,6 +881,11 @@ def bind(project, document, *, configuration=None):
     deployment = {"schema": "threadlight-governance-deployment/v1", "images": images,
                   "infrastructure": infrastructure, "bindings": bindings,
                   "status": "bound-unverified", "scope": "not-live-effect-closure"}
+    if probe_option:
+        deployment["probe_observability"] = (
+            probe_declaration if package["framework"] == "microsoft-agent-framework" else {
+                "status": "declared-unverified", "registry_digest": bundle.bundle_digest,
+                "policy_digest": bindings["policy_digest"], "fixture_installed": False})
     parameters = project / "infra/main.parameters.json"
     payload = json.loads(parameters.read_text()) if parameters.exists() else {
         "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
@@ -879,8 +927,53 @@ def tree_digest(root):
     return "sha256:" + hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
 
 
+def native_probe_binding(config, bindings, packaged, images, document):
+    from govern_control_plane.models import SignedBundle, canonical, parse
+    from govern_gateway.dispatcher import Registry
+    from govern_gateway.probe_runtime import ProbeConfiguration
+    runtime = parse(ProbeConfiguration, canonical(config["probe_runtime_configuration"]))
+    api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
+    bundle = api.verify_bundle(Path(config["probe_bundle"]), expected_digest=runtime.policy_digest)
+    signed = parse(SignedBundle, Path(config["probe_signed_envelope"]).read_bytes())
+    validate_policy(bundle, signed, runtime.model_dump(mode="json"))
+    registry = parse(Registry, (bundle.root / "gateway-registry.json").read_bytes())
+    expected = {
+        "agent_id": packaged["agent_id"], "agent_version": bindings["agent_version"],
+        "image_digest": images["agent"].split("@")[1], "environment": packaged["environment"],
+        "subscription": packaged["subscription"], "resource_group": packaged["resource_group"]}
+    if (runtime.producer != "native" or runtime.tenant_id != packaged["tenant_id"]
+            or runtime.key_id != packaged["key_id"] or registry.tenant_id != packaged["tenant_id"]
+            or runtime.service_client_id != bindings["agent_client_id"]
+            or runtime.downstream_client_id != bindings["downstream_client"]
+            or runtime.cosmos_url != config["observations"]["foundation"]["cosmos_url"]
+            or runtime.cosmos_database != "governance"
+            or runtime.expected_deployment.model_dump(mode="json") != expected
+            or registry.deployment.model_dump(mode="json") != expected
+            or runtime.gateway_url != registry.gateway_url
+            or registry.native_policy_digest != bindings["policy_digest"]
+            or {k: v.model_dump() for k, v in runtime.probe_controllers.items()} != bindings["probe_controllers"]):
+        raise ValueError("native_probe_binding_mismatch")
+    action = registry.actions[0]
+    workload = runtime.workloads.get(bindings["agent_principal"])
+    if (len(registry.actions) != 1 or not action.probe_safe
+            or action.workloads != [bindings["agent_principal"]]
+            or workload is None or workload.client_id != bindings["agent_client_id"]
+            or workload.agent_id != packaged["agent_id"]
+            or set(runtime.allowed_endpoints) != {action.endpoint, action.outcome_endpoint}
+            or any(not set(grant.subjects) <= set(action.workloads)
+                   or grant.actions != [action.name] for grant in runtime.probe_controllers.values())):
+        raise ValueError("native_probe_scope_mismatch")
+    selected = deepcopy(document)
+    selected["tools"] = [t for t in selected["tools"] if t["id"] == action.name]
+    selected["governance"]["lifecycle_bindings"] = []
+    validate_bundle_contract(bundle, selected, packaged, registry)
+    return {"status": "declared-unverified", "registry_digest": bundle.bundle_digest,
+            "policy_digest": bindings["policy_digest"], "fixture_installed": False}
+
+
 def validate_infrastructure(config):
     validate_environment(config)
+    validate_probe_observability(config)
     validate_network(config["network"])
     for key in ("tenant_id", "control_plane_app_id", "gateway_app_id"):
         if not re.fullmatch(UUID, config.get(key, "")):

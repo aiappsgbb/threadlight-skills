@@ -381,3 +381,11 @@ The native probes verify the exact installed Python APIs rather than relying on
 the companion skill's historical signatures. In particular, Copilot 1.0.1 accepts
 `enable_config_discovery=False` on `create_session`; `mode` belongs to the client,
 not that method. The pre-MCP hook returns only `metaToUse`, not invented headers.
+# Optional Task 11a producer binding
+
+`probe_observability` is a strictly validated staging-only opt-in. Normal/off
+generation is unchanged. Native probe deployment uses a separately signed,
+mounted registry associated with the embedded native policy digest, avoiding an
+agent-image hash cycle. Binding remains **declared-unverified** and never asserts
+live enforcement. The fixture is operator-installed, not auto-added to Azure YAML.
+See [configuration, wire schema and least-privilege prerequisites](../../../threadlight-safe-check/references/probe-fixture/README.md).

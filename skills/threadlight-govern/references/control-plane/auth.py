@@ -20,6 +20,12 @@ class Workload(StrictModel):
     policies: Annotated[list[Identifier], Field(min_length=1, max_length=64)]
 
 
+class ProbeController(StrictModel):
+    client_id: ObjectId
+    subjects: Annotated[list[ObjectId], Field(min_length=1, max_length=128)]
+    actions: Annotated[list[Identifier], Field(min_length=1, max_length=64)]
+
+
 class Settings(StrictModel):
     tenant_id: ObjectId
     audience: Annotated[str, Field(min_length=1, max_length=256)]
@@ -32,11 +38,14 @@ class Settings(StrictModel):
     token_version: Literal["1.0", "2.0"] = "2.0"
     request_timeout: Annotated[float, Field(gt=0, le=30)] = 5.0
     approval_max_seconds: Annotated[int, Field(gt=0, le=3600)] = 300
+    probe_controllers: Annotated[dict[ObjectId, ProbeController], Field(max_length=32)] = {}
 
     @model_validator(mode="after")
     def separate_authorities(self):
         if set(self.workloads).intersection(self.approver_subjects):
             raise ValueError("self approval forbidden")
+        if set(self.workloads).intersection(self.probe_controllers):
+            raise ValueError("distinct_probe_controller_required")
         return self
 
     @property
@@ -142,6 +151,12 @@ class EntraAuth:
             roles = frozenset(claims["roles"])
             subject = claims["oid"]
             if claims.get("idtyp") == "app" and "scp" not in claims:
+                controller = self.settings.probe_controllers.get(subject)
+                if controller is not None:
+                    if (client != controller.client_id
+                            or not roles.intersection({"Governance.Probe.Read", "Governance.Probe.Control"})):
+                        raise Unauthorized()
+                    return Identity(claims["tid"], subject, client, roles, frozenset(), None)
                 workload = self.settings.workloads.get(subject)
                 if (workload is None or client != workload.client_id
                         or "Governance.Workload" not in roles):

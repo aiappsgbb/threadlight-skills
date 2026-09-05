@@ -42,7 +42,8 @@ HEALTH_TIMEOUT = 5.0
 def tool_result(body):
     return CallToolResult(
         content=[TextContent(type="text", text=canonical(body).decode())],
-        structuredContent=body, isError=body["status"] != "completed")
+        structuredContent=body, isError=body["status"] != "completed",
+        **({"_meta": {"threadlight.probe.receipt_id": body["receipt_id"]}} if "receipt_id" in body else {}))
 
 
 class RegisteredTool(Tool):
@@ -64,6 +65,11 @@ class AuthBoundary:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope["path"] == "/health":
             return await self.app(scope, receive, send)
+        if scope["path"].startswith("/governance/probes/"):
+            if self.dispatcher.probes is None:
+                return await JSONResponse({"error": "not_found"}, 404)(scope, receive, send)
+            from govern_control_plane.probes import control_app
+            return await control_app(self.dispatcher.probes, self.dispatcher.auth)(scope, receive, send)
         headers = scope.get("headers", [])
         auth = [v.decode("latin1") for k, v in headers if k.lower() == b"authorization"]
         keys = [v.decode("latin1") for k, v in headers if k.lower() == b"idempotency-key"]
@@ -229,6 +235,8 @@ class Configuration(Settings):
     policy_version: Identifier
     policy_digest: Digest
     allowed_endpoints: Annotated[list[str], Field(min_length=2, max_length=128)]
+    probe_enabled: bool = False
+    probe_container: Identifier | None = None
 
     @model_validator(mode="after")
     def separate_credentials(self):
@@ -236,6 +244,11 @@ class Configuration(Settings):
         if (self.service_client_id == self.downstream_client_id
                 or self.downstream_client_id in {w.client_id for w in self.workloads.values()}):
             raise ValueError("distinct_downstream_identity_required")
+        if self.probe_enabled:
+            if self.probe_container != "probe-gateway" or not self.probe_controllers:
+                raise ValueError("dedicated_probe_state_and_controller_required")
+        elif self.probe_container is not None or self.probe_controllers:
+            raise ValueError("explicit_probe_opt_in_required")
         return self
 
 
@@ -311,6 +324,18 @@ async def production():
                 tenant=config.tenant_id, key_id=config.key_id, policy_id=config.policy_id,
                 version=config.policy_version, expected_digest=config.policy_digest,
                 allowed_endpoints=config.allowed_endpoints, gateway_url=config.gateway_url)
+            if policy.registry.native_policy_digest is not None:
+                raise ValueError("native_registry_not_gateway_policy")
+            probes = None
+            if config.probe_enabled:
+                from govern_control_plane.probes import ProbeService, ProbeStore
+                probes = ProbeService(
+                    store=ProbeStore(None, cosmos.get_database_client(config.cosmos_database)
+                                    .get_container_client(config.probe_container),
+                                    account_reader=cosmos._get_database_account),
+                    registry=policy.registry, policy_digest=policy.digest,
+                    producer="gateway", fresh=policy.fresh)
+                await probes.store.health()
             receipts = await stack.enter_async_context(ReceiptClient(**service))
             approvals = await stack.enter_async_context(HTTPControlPlaneApprovalService(**service))
             downstream = DownstreamClient(credential=downstream_credential)
@@ -320,6 +345,7 @@ async def production():
         yield GovernedDispatcher(
             policy=policy, auth=auth, store=store, receipts=receipts, downstream=downstream,
             approvals=approvals, safe_provider=host_evidence,
+            probes=probes,
             approval_principal=config.service_principal, approval_agent_id=config.service_agent_id)
 
 

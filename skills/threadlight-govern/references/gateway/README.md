@@ -272,3 +272,9 @@ collection, verify nested receipt origin/integrity, and independently observe th
 exact agent version/image/policy/environment/subscription/resource group. CLI/static
 URL rewriting alone never instantiates this authority. No whole-agent-governed or
 SAFE-complete claim is made.
+# Optional staging probe telemetry
+
+Task 11a adds an opt-in signed noop action, authenticated registration/status
+routes outside MCP, server-observed durable phases and direct denial receipt
+metadata. It does not add a live collector or automatically deploy a fixture.
+See [the producer contract and operator instructions](../../../threadlight-safe-check/references/probe-fixture/README.md).

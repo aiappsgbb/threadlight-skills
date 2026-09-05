@@ -1,0 +1,722 @@
+"""Producer contracts: real SDK/ASGI boundaries, external identity and Cosmos seams only."""
+import asyncio
+from copy import deepcopy
+import json
+import uuid
+
+import httpx
+import pytest
+
+from test_control_plane import APP, HUMAN, TENANT, WORKLOAD, OTHER, MemoryStore, module as cp
+from test_gateway import registry, gateway
+
+cp("models")
+
+
+INPUT = {
+    "type": "object", "properties": {
+        "probe_run_id": {"type": "string", "minLength": 36, "maxLength": 36},
+        "variant": {"type": "string", "enum": ["allow", "deny"]}},
+    "required": ["probe_run_id", "variant"], "additionalProperties": False,
+}
+OUTPUT = {
+    "type": "object", "properties": {"status": {"type": "string", "enum": ["noop"]}},
+    "required": ["status"], "additionalProperties": False,
+}
+
+
+def probe_registry():
+    doc = registry()
+    doc["actions"][0].update(
+        name="governance_probe_noop", scope="governance-probe",
+        endpoint="https://fixture.example/governance/noop",
+        outcome_endpoint="https://fixture.example/governance/outcomes",
+        input_schema=deepcopy(INPUT), output_schema=deepcopy(OUTPUT),
+        probe_safe=True,
+        probe_contract={"protocol": "threadlight-probe/v1", "fixture_id": "staging-noop", "effect": "noop"})
+    return doc
+
+
+def test_registry_normal_default_is_not_probe_safe():
+    action = gateway("dispatcher").Registry.model_validate(registry()).actions[0]
+    assert getattr(action, "probe_safe", None) is False
+    assert action.probe_contract is None
+
+
+def test_registry_explicit_bounded_noop_probe():
+    model = gateway("dispatcher").Registry
+    assert model.model_validate(probe_registry()).actions[0].probe_safe is True
+    for flag in (1, 0, "true", None):
+        doc = probe_registry()
+        doc["actions"][0]["probe_safe"] = flag
+        with pytest.raises(ValueError):
+            model.model_validate(doc)
+    for mutation in ("schema", "endpoint", "contract", "production", "disabled"):
+        doc = probe_registry()
+        action = doc["actions"][0]
+        if mutation == "schema":
+            action["input_schema"]["properties"]["url"] = {"type": "string", "maxLength": 100}
+        elif mutation == "endpoint":
+            action["endpoint"] = "https://fixture.example/refunds"
+        elif mutation == "contract":
+            action["probe_contract"]["effect"] = "business-write"
+        elif mutation == "production":
+            doc["deployment"]["environment"] = "production"
+        else:
+            action["probe_safe"] = False
+        with pytest.raises(ValueError):
+            model.model_validate(doc)
+
+
+def service(store=None, producer="gateway"):
+    assert hasattr(cp("models"), "ProbeContext"), "missing bounded receipt correlation"
+    probes = cp("probes")
+    doc = probe_registry()
+    reg = gateway("dispatcher").Registry.model_validate(doc)
+    return probes.ProbeService(
+        store=store or MemoryStore(), registry=reg, policy_digest="sha256:" + "b" * 64,
+        producer=producer, fresh=lambda: None)
+
+
+def expected(s, variant="deny"):
+    return {"subject": WORKLOAD, "action": "governance_probe_noop", "variant": variant,
+            "deployment": s.registry.deployment.model_dump(mode="json"),
+            "policy_digest": s.policy_digest}
+
+
+def test_probe_state_registered_before_invoke_terminal_and_exact_scope():
+    async def case():
+        s = service()
+        run = str(uuid.uuid4())
+        with pytest.raises(cp("storage").Missing):
+            await s.status(WORKLOAD, run)
+        baseline = await s.register(run, expected(s))
+        assert baseline["tenant"] == TENANT and baseline["binding"] == "safe"
+        assert baseline["fixture_id"] == "staging-noop"
+        assert baseline["counts"] == dict.fromkeys(("received", "intercepted", "dispatch", "effect", "completed"), 0)
+        assert baseline["terminal"] is None
+        for key, value in (("subject", OTHER), ("action", "refund"), ("policy_digest", "sha256:" + "c"*64)):
+            bad = {**expected(s), key: value}
+            with pytest.raises(ValueError):
+                await s.register(run, bad)
+        for key, value in (("agent_version", "2"), ("image_digest", "sha256:" + "c"*64)):
+            bad = expected(s)
+            bad["deployment"][key] = value
+            with pytest.raises(ValueError):
+                await s.register(run, bad)
+        context = await s.begin(WORKLOAD, run, "governance_probe_noop", "deny",
+                                session_id="native-session", call_id="native-call")
+        assert context.probe_run_id == run
+        await s.intercept(context, decision="deny", receipt_id="a"*32)
+        await s.complete(context, terminal="denied")
+        after = await s.status(WORKLOAD, run)
+        assert after["counts"] == {"received": 1, "intercepted": 1, "dispatch": 0, "effect": 0, "completed": 1}
+        assert after["terminal"] == "denied"
+        assert after["events"][1]["receipt_id"] == "a"*32
+        assert all("recorded_at" in e and "event_id" in e for e in after["events"])
+        with pytest.raises(cp("storage").Missing):
+            await s.status(OTHER, run)
+        with pytest.raises((ValueError, cp("storage").Conflict)):
+            await s.begin(WORKLOAD, run, "governance_probe_noop", "deny",
+                          session_id="other", call_id="other")
+    asyncio.run(case())
+
+
+def test_probe_cas_failures_never_become_zero_and_models_reject_claimed_counts():
+    async def case():
+        s = service()
+        run = str(uuid.uuid4())
+        await s.register(run, expected(s))
+        with pytest.raises(ValueError):
+            await s.register(str(uuid.uuid4()), {**expected(s), "counts": {"effect": 0}})
+        s.store.failed = True
+        with pytest.raises(Exception):
+            await s.status(WORKLOAD, run)
+        s.store.failed = False
+        scope, key = next(iter(s.store.docs))
+        s.store.docs[(scope, key)][0]["counts"]["effect"] = False
+        with pytest.raises(RuntimeError):
+            await s.status(WORKLOAD, run)
+    asyncio.run(case())
+
+
+def controller_config():
+    return {HUMAN: {"client_id": APP, "subjects": [WORKLOAD], "actions": ["governance_probe_noop"]}}
+
+
+def controller_token(h, *, read=False):
+    return h.token(changes={"oid": HUMAN, "roles": [
+        "Governance.Probe.Read" if read else "Governance.Probe.Control"]})
+
+
+def test_probe_control_auth_scope_and_no_event_upload():
+    async def case():
+        from test_control_plane import Harness
+        h = Harness()
+        s = service()
+        probes = cp("probes")
+        assert hasattr(probes, "control_app"), "authenticated probe control API missing"
+        settings = h.settings.model_dump()
+        settings["probe_controllers"] = controller_config()
+        h.auth = cp("auth").EntraAuth(cp("auth").Settings.model_validate(settings), h.http)
+        app = probes.control_app(s, h.auth)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://probe.example") as c:
+            run = str(uuid.uuid4())
+            url = "/governance/probes/" + run
+            headers = {"Authorization": "Bearer " + controller_token(h)}
+            assert (await c.get(url + "?subject=" + WORKLOAD)).status_code == 401
+            assert (await c.post(url, headers={"Authorization": "Bearer " + h.token()},
+                                 json=expected(s))).status_code == 403
+            assert (await c.get(url + "?subject=" + WORKLOAD, headers=headers)).status_code == 404
+            assert (await c.post(url, headers=headers, json=expected(s))).status_code == 201
+            assert (await c.post(url, headers=headers, json=expected(s))).status_code == 409
+            assert (await c.get(url + "?subject=" + OTHER, headers=headers)).status_code == 403
+            assert (await c.post(url, headers=headers,
+                                 json={**expected(s), "counts": {"effect": 100}})).status_code == 400
+            assert (await c.post("/governance/probes/" + str(uuid.uuid4()),
+                                 headers={"Authorization": "Bearer " + controller_token(h, read=True)},
+                                 json=expected(s))).status_code == 403
+            s.store.failed = True
+            failure = await c.get(url + "?subject=" + WORKLOAD, headers=headers)
+            assert failure.status_code == 503 and "UNKNOWN" in failure.text and "PRIVATE" not in failure.text
+        await h.close()
+    asyncio.run(case())
+
+
+def fixture_module():
+    from pathlib import Path
+    import importlib.util
+    import sys
+    root = Path(__file__).resolve().parents[3]
+    path = root / "skills/threadlight-safe-check/references/probe-fixture"
+    assert (path / "app.py").exists(), "runnable authenticated noop fixture missing"
+    if "govern_probe_fixture" not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            "govern_probe_fixture", path / "__init__.py", submodule_search_locations=[str(path)])
+        package = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = package
+        spec.loader.exec_module(package)
+    return __import__("govern_probe_fixture.app", fromlist=["app"])
+
+
+@pytest.mark.governance_runtime
+def test_probe_gateway_native_mcp_to_real_fixture_deny_and_positive(tmp_path):
+    async def case():
+        from test_gateway import GatewayHarness, Credential
+        h = await GatewayHarness().initialize(
+            tmp_path, document=probe_registry(),
+            decision='{"decision": "deny"} if input.policy_target.value.variant == "deny" else := {"decision": "allow"}')
+        probes = cp("probes")
+        assert hasattr(h.dispatcher, "probes"), "gateway probe instrumentation missing"
+        h.dispatcher.probes = probes.ProbeService(
+            store=MemoryStore(), registry=h.policy.registry, policy_digest=h.policy.digest,
+            producer="gateway", fresh=h.policy.fresh)
+        effects = probes.ProbeService(
+            store=MemoryStore(), registry=h.policy.registry, policy_digest=h.policy.digest,
+            producer="fixture", fresh=h.policy.fresh)
+        settings = h.cp.settings.model_dump()
+        settings["probe_controllers"] = controller_config()
+        h.cp.auth = cp("auth").EntraAuth(cp("auth").Settings.model_validate(settings), h.cp.http)
+        h.dispatcher.auth = h.cp.auth
+        fixture = fixture_module().create_app(
+            probes=effects, auth=h.cp.auth, callers={OTHER: APP})
+        await h.downstream.aclose()
+        h.downstream = gateway("dispatcher").DownstreamClient(
+            credential=Credential(h.cp.token(changes={"oid": OTHER})), transport=httpx.ASGITransport(app=fixture))
+        h.dispatcher.downstream = h.downstream
+        app = gateway("server").create_app(h.dispatcher)
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                         base_url="https://gateway.example") as client:
+                for variant in ("deny", "allow"):
+                    run = str(uuid.uuid4())
+                    registration = expected(h.dispatcher.probes, variant)
+                    headers = {"Authorization": "Bearer " + controller_token(h.cp)}
+                    url = "/governance/probes/" + run
+                    assert (await client.post(url, headers=headers, json=registration)).status_code == 201
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=fixture),
+                                                 base_url="https://fixture.example") as fc:
+                        assert (await fc.post(url, headers=headers, json=registration)).status_code == 201
+                    result = await client.post("/mcp", headers={
+                        "Authorization": "Bearer " + h.cp.token(),
+                        "Accept": "application/json, text/event-stream", "Idempotency-Key": run,
+                    }, json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                        "name": "governance_probe_noop",
+                        "arguments": {"probe_run_id": run, "variant": variant}}})
+                    assert result.status_code == 200, result.text
+                    body = result.json()["result"]["structuredContent"]
+                    assert result.json()["result"]["_meta"]["threadlight.probe.receipt_id"] == body["receipt_id"]
+                    assert body["status"] == ("blocked" if variant == "deny" else "completed"), body
+                    state = (await client.get(url + "?subject=" + WORKLOAD, headers=headers)).json()
+                    downstream = await effects.status(WORKLOAD, run)
+                    assert state["counts"]["received"] == state["counts"]["intercepted"] == 1
+                    assert state["counts"]["dispatch"] == downstream["counts"]["effect"] == (variant == "allow")
+                    assert state["counts"]["completed"] == 1
+                    assert state["terminal"] == ("denied" if variant == "deny" else "completed")
+                    receipt_id = body["receipt_id"]
+                    receipt = await h.cp.client.get("/receipts/" + receipt_id,
+                                                   headers={"Authorization": "Bearer " + h.cp.token()})
+                    assert receipt.status_code == 200, receipt.text
+                    assert receipt.json()["probe"]["probe_run_id"] == run
+                    assert receipt.json()["decision"] == variant
+                    assert receipt.json()["probe"]["deployment"] == registration["deployment"]
+        await h.close()
+    asyncio.run(case())
+
+
+def test_fixture_two_workers_atomic_idempotent_noop_and_unavailable():
+    async def case():
+        from test_control_plane import Harness
+        h = Harness()
+        s = service(producer="fixture")
+        module = fixture_module()
+        run = str(uuid.uuid4())
+        await s.register(run, expected(s, "allow"))
+        args = {"probe_run_id": run, "variant": "allow"}
+        facts = {"tenant": TENANT, "subject": WORKLOAD, "client": APP,
+                 "action": "governance_probe_noop", "scope": "governance-probe",
+                 "policy": s.policy_digest, "deployment": expected(s)["deployment"]}
+        d = gateway("dispatcher").digest
+        headers = {"Authorization": "Bearer " + h.token(changes={"oid": OTHER}), "Idempotency-Key": "a"*64,
+                   "X-Action-Hash": d({"facts": facts, "arguments": args}),
+                   "X-Governance-Provenance": "b"*32, "X-Tenant-ID": TENANT,
+                   "X-Requester-ID": WORKLOAD, "X-Requester-Client": APP,
+                   "X-Action-ID": facts["action"], "X-Policy-Digest": s.policy_digest,
+                   "X-Deployment-Hash": d(facts["deployment"])}
+        apps = [module.create_app(probes=service(s.store, "fixture"), auth=h.auth, callers={OTHER: APP})
+                for _ in range(2)]
+        clients = [httpx.AsyncClient(transport=httpx.ASGITransport(app=a),
+                                    base_url="https://fixture.example") for a in apps]
+        direct = await clients[0].post("/governance/noop", json=args,
+                                       headers={**headers, "Authorization": "Bearer " + h.token()})
+        assert direct.status_code == 403
+        assert (await s.status(WORKLOAD, run))["counts"]["effect"] == 0
+        replies = await asyncio.gather(*(c.post("/governance/noop", json=args, headers=headers) for c in clients))
+        assert [r.status_code for r in replies] == [200, 200], [r.text for r in replies]
+        assert replies[0].json() == replies[1].json()
+        fetched = await clients[0].get("/governance/outcomes",
+                                      headers={**headers, "X-Probe-Run-ID": run})
+        assert fetched.status_code == 200 and fetched.json() == replies[0].json()
+        assert (await s.status(WORKLOAD, run))["counts"]["effect"] == 1
+        bad = await clients[0].post("/governance/noop", json=args,
+                                   headers={**headers, "X-Action-Hash": "sha256:"+"f"*64})
+        assert bad.status_code == 400
+        s.store.failed = True
+        failure = await clients[0].post("/governance/noop", json=args, headers=headers)
+        assert failure.status_code == 503 and "UNKNOWN" in failure.text
+        for client in clients:
+            await client.aclose()
+        await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("variant", ["deny", "allow", "unreached"])
+@pytest.mark.parametrize("path", ["agent", "host"])
+def test_probe_real_native_maf_hooks_and_fixture(tmp_path, variant, path, monkeypatch):
+    async def case():
+        import importlib
+        from test_gateway import GatewayHarness, Credential
+        from test_runtime_provider import contract, runtime, native_model_client, tool_responses
+        from skills._shared.governance import validate_governance_contract
+        from test_policy_bundle import bundle_module
+        h = await GatewayHarness().initialize(
+            tmp_path, document=probe_registry(),
+            decision='{"decision": "deny"} if input.policy_target.value.variant == "deny" else := {"decision": "allow"}')
+        rt = runtime()
+        assert hasattr(rt, "NativeProbeTelemetry"), "native pre-tool correlation missing"
+        doc = contract()
+        doc["tools"][0]["id"] = "governance_probe_noop"
+        doc["tools"][0]["requires"] = ["audit"]
+        native = service(producer="native")
+        native.registry, native.policy_digest, native.fresh = h.policy.registry, h.policy.digest, h.policy.fresh
+        effects = cp("probes").ProbeService(
+            store=MemoryStore(), registry=h.policy.registry, policy_digest=h.policy.digest,
+            producer="fixture", fresh=h.policy.fresh)
+        fixture = fixture_module().create_app(probes=effects, auth=h.cp.auth, callers={OTHER: APP})
+        downstream = gateway("dispatcher").DownstreamClient(
+            credential=Credential(h.cp.token(changes={"oid": OTHER})), transport=httpx.ASGITransport(app=fixture))
+        spool = rt.DurableSpool(tmp_path / "native-receipts")
+        audit_h = None
+        if path == "host":
+            from pathlib import Path
+            deploy_tests = Path(__file__).resolve().parents[3] / "skills/threadlight-deploy/tests"
+            monkeypatch.syspath_prepend(str(deploy_tests))
+            from test_governance_wiring import audit_harness
+            spool, audit_h, _ = audit_harness(tmp_path)
+            await spool.__aenter__()
+        p = rt.AcsGovernanceProvider(
+            contract=doc, bundle_path=h.bundle.root, expected_digest=h.policy.digest,
+            bundle_verifier=bundle_module().verify_bundle, contract_validator=validate_governance_contract,
+            signature_verifier=cp("client").PolicySnapshot(rt.VerifiedPolicy(h.policy.digest, h.policy.expires_at)),
+            safe_provider=lambda identity: {"scope": "governance-probe"},
+            principal=WORKLOAD, tenant=TENANT, agent_version="1",
+            image_digest=h.policy.registry.deployment.image_digest, audit=spool, environment="preproduction")
+        telemetry = rt.NativeProbeTelemetry(provider=p, service=native, downstream=downstream, client_id=APP)
+        run = str(uuid.uuid4())
+        args = {"probe_run_id": run, "variant": "allow" if variant == "unreached" else variant}
+        await native.register(run, expected(native, args["variant"]))
+        await effects.register(run, expected(effects, args["variant"]))
+        responses = tool_responses("governance_probe_noop", args)
+        if variant == "unreached":
+            responses = responses[-1:]
+        client = native_model_client(responses, foundry=True)
+        if path == "host":
+            import sys
+            from pathlib import Path
+            from types import SimpleNamespace
+            deploy = Path(__file__).resolve().parents[3] / "skills/threadlight-deploy"
+            monkeypatch.syspath_prepend(str(deploy / "tests"))
+            monkeypatch.syspath_prepend(str(deploy / "references/governance"))
+            monkeypatch.syspath_prepend(str(deploy.parent / "threadlight-govern/references"))
+            monkeypatch.setitem(sys.modules, "runtime", rt)
+            from test_governance_wiring import module
+            container = module("maf-container")
+            container.BASE = tmp_path / "host"
+            container.BASE.mkdir()
+            (container.BASE / "copilot-instructions.md").write_text("Use only the installed noop.")
+            (container.BASE / "skills").mkdir()
+            monkeypatch.setitem(sys.modules, "governance_application", SimpleNamespace(tools=[], middleware=[]))
+            p.deployment_agent_id = "agent-1"
+            telemetry.auth = h.cp.auth
+            host = container.build_host(p, client=client, configure_observability=None)
+            assert any(r.path == "/governance/probes/{run_id}" for r in host.routes)
+        else:
+            agent = rt.create_governed_agent(p, client=client, tools=[telemetry.tool()],
+                                            id="agent-1", name="agent-1", default_options={"store": False})
+        try:
+            if path == "host":
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=host),
+                                             base_url="https://host.example") as hc:
+                    response = await hc.post("/responses", json={
+                        "input": "Invoke the explicitly installed noop fixture", "store": False,
+                        "stream": False})
+                    assert response.status_code == 200, response.text
+                    assert response.json().get("error") is None, response.text
+            else:
+                await agent.run("Invoke the explicitly installed noop fixture")
+        except Exception as error:
+            # Native SDK may terminate the denied run; only service evidence establishes interception.
+            assert variant == "deny", type(error).__name__
+        state = await native.status(WORKLOAD, run)
+        effect = await effects.status(WORKLOAD, run)
+        if variant == "unreached":
+            assert state["counts"]["intercepted"] == 0 and state["terminal"] is None
+        else:
+            assert state["counts"]["intercepted"] == 1, (state, response.text if path == "host" else "")
+            assert state["counts"]["dispatch"] == effect["counts"]["effect"] == int(variant == "allow")
+            assert state["terminal"] == ("denied" if variant == "deny" else "completed")
+            receipt_id = state["events"][1]["receipt_id"]
+            receipt = json.loads((spool.directory / (receipt_id + ".json")).read_text())
+            assert receipt["probe"]["probe_run_id"] == run
+            assert receipt["probe"]["call_id"] == state["context"]["call_id"]
+            assert receipt["decision"] == variant
+            if audit_h is not None:
+                remote = await audit_h.client.get("/receipts/" + receipt_id,
+                    headers={"Authorization": "Bearer " + audit_h.token()})
+                assert remote.status_code == 200 and remote.json()["probe"] == receipt["probe"]
+                assert remote.json()["decision"] == variant
+        if audit_h is not None:
+            await spool.__aexit__(None, None, None)
+            await audit_h.close()
+        await downstream.aclose()
+        await client.client.close()
+        await h.close()
+    asyncio.run(case())
+
+
+def test_probe_store_sdk_cas_adapter_strong_reads_and_failed_ack():
+    async def case():
+        from types import SimpleNamespace
+        from azure.core import MatchConditions
+        from azure.cosmos.exceptions import CosmosHttpResponseError as HttpResponseError
+        from azure.cosmos.documents import DatabaseAccount
+        probes = cp("probes")
+        class Documents:
+            def __init__(self):
+                self.docs, self.etag, self.options = {}, 0, []
+                self.fail = False
+            async def read(self):
+                return {"partitionKey": {"paths": ["/scope"]}}
+            async def read_item(self, *, item, partition_key):
+                if (partition_key, item) not in self.docs:
+                    raise HttpResponseError(status_code=404)
+                return deepcopy(self.docs[(partition_key, item)])
+            async def create_item(self, *, body):
+                key = body["scope"], body["id"]
+                if key in self.docs:
+                    raise HttpResponseError(status_code=409)
+                self.etag += 1
+                self.docs[key] = {**deepcopy(body), "_etag": str(self.etag)}
+            async def replace_item(self, *, item, body, etag, match_condition):
+                self.options.append(match_condition)
+                await asyncio.sleep(0)
+                if self.fail:
+                    raise HttpResponseError(status_code=503)
+                key = body["scope"], item
+                if self.docs[key]["_etag"] != etag:
+                    raise HttpResponseError(status_code=412)
+                self.etag += 1
+                self.docs[key] = {**deepcopy(body), "_etag": str(self.etag)}
+        docs = Documents()
+        account = DatabaseAccount()
+        account._WritableLocations = [{}]
+        account.ConsistencyPolicy = {"defaultConsistencyLevel": "Strong"}
+        async def read_account():
+            return account
+        store = probes.ProbeStore(None, docs, account_reader=read_account)
+        s = service(store, "fixture")
+        run = str(uuid.uuid4())
+        await s.register(run, expected(s, "allow"))
+        async def effect():
+            return await s.effect(WORKLOAD, run, variant="allow", effect_key="sha256:"+"d"*64,
+                                  action_hash="sha256:"+"e"*64, receipt_id="a"*32)
+        results = await asyncio.gather(effect(), effect())
+        assert [r.counts["effect"] for r in results] == [1, 1]
+        assert set(docs.options) == {MatchConditions.IfNotModified}
+        run = str(uuid.uuid4())
+        await s.register(run, expected(s, "allow"))
+        docs.fail = True
+        with pytest.raises(RuntimeError):
+            await effect()
+        account.ConsistencyPolicy = {"defaultConsistencyLevel": "Session"}
+        with pytest.raises(RuntimeError):
+            await s.status(WORKLOAD, run)
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+def test_probe_dispatch_is_wire_boundary_not_credential_attempt(tmp_path):
+    async def case():
+        from test_gateway import GatewayHarness
+        h = await GatewayHarness().initialize(tmp_path, document=probe_registry())
+        s = cp("probes").ProbeService(
+            store=MemoryStore(), registry=h.policy.registry, policy_digest=h.policy.digest,
+            producer="gateway", fresh=h.policy.fresh)
+        h.dispatcher.probes = s
+        run = str(uuid.uuid4())
+        await s.register(run, expected(s, "allow"))
+        async def unavailable():
+            raise RuntimeError("PRIVATE")
+        h.credential.hook = unavailable
+        await h.dispatcher.dispatch(authorization="Bearer " + h.cp.token(),
+                                   action="governance_probe_noop",
+                                   arguments={"probe_run_id": run, "variant": "allow"},
+                                   idempotency_key=run)
+        state = await s.status(WORKLOAD, run)
+        assert state["counts"]["intercepted"] == 1
+        assert state["counts"]["dispatch"] == 0 and state["terminal"] is None
+        await h.close()
+    asyncio.run(case())
+
+
+def test_probe_runtime_disabled_by_default_and_requires_separate_state_and_controller():
+    from test_control_plane import Harness
+    h = Harness()
+    try:
+        model = gateway("server").Configuration
+        assert "probe_enabled" in model.model_fields, "production probe opt-in is missing"
+        assert model.model_fields["probe_enabled"].default is False
+        runtime = gateway("probe_runtime")
+        config = {
+            **h.settings.model_dump(), "enabled": True, "producer": "fixture",
+            "service_client_id": OTHER, "cosmos_url": "https://probe.documents.azure.com:443/",
+            "cosmos_database": "governance", "cosmos_container": "probe-fixture",
+            "bundle_path": "/config/probe-policy", "signed_envelope_path": "/config/envelope.json",
+            "policy_id": "safe", "policy_version": "1", "policy_digest": "sha256:" + "b"*64,
+            "gateway_url": "https://gateway.example/mcp",
+            "allowed_endpoints": ["https://fixture.example/governance/noop",
+                                  "https://fixture.example/governance/outcomes"],
+            "expected_deployment": probe_registry()["deployment"],
+            "fixture_callers": {WORKLOAD: APP}, "probe_controllers": controller_config(),
+        }
+        assert runtime.ProbeConfiguration.model_validate(config).enabled
+        for field, value in (("enabled", 1), ("enabled", False),
+                             ("cosmos_container", "governance-records"),
+                             ("probe_controllers", {})):
+            with pytest.raises(ValueError):
+                runtime.ProbeConfiguration.model_validate({**config, field: value})
+        assert callable(fixture_module().production_app)
+    finally:
+        asyncio.run(h.close())
+
+
+def test_generator_probe_opt_in_is_explicit_and_native_registry_not_self_embedded():
+    import importlib.util
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[3]
+    spec = importlib.util.spec_from_file_location(
+        "probe_generation", root / "skills/threadlight-deploy/references/governance/generate.py")
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    assert hasattr(gen, "validate_probe_observability"), "generation probe contract missing"
+    assert gen.validate_probe_observability({"environment": "production"}) is None
+    opt = {"enabled": True, "configuration_file": "/mnt/governance-probe/config.json"}
+    assert gen.validate_probe_observability({"environment": "preproduction", "probe_observability": opt}) == opt
+    for option in ({"enabled": 1}, {"enabled": False}, {**opt, "counts": {}},
+                   {**opt, "configuration_file": "/app/probe.json"}):
+        with pytest.raises(ValueError):
+            gen.validate_probe_observability({"environment": "preproduction", "probe_observability": option})
+    with pytest.raises(ValueError):
+        gen.validate_probe_observability({"environment": "production", "probe_observability": opt})
+    reg = probe_registry()
+    reg["native_policy_digest"] = "sha256:" + "c"*64
+    assert gateway("dispatcher").Registry.model_validate(reg).native_policy_digest == reg["native_policy_digest"]
+    bicep = (root / "skills/threadlight-deploy/references/governance/governance.bicep").read_text()
+    assert "probe-fixture" in bicep and "probe-native" in bicep and "probe-gateway" in bicep
+
+
+def test_probe_receipt_controller_reads_only_explicit_subject_action_scope():
+    async def case():
+        from test_control_plane import Harness, receipt
+        h = Harness()
+        h.settings = cp("auth").Settings.model_validate({
+            **h.settings.model_dump(), "probe_controllers": controller_config()})
+        h.auth.settings = h.settings
+        h.service.settings = h.settings
+        s = service()
+        run = str(uuid.uuid4())
+        await s.register(run, expected(s))
+        context = await s.begin(WORKLOAD, run, "governance_probe_noop", "deny",
+                                session_id="session", call_id="call")
+        wire = receipt()
+        wire.update(probe=context.model_dump(mode="json"), action_id=context.action,
+                    policy_digest=context.policy_digest, agent_version=context.deployment.agent_version,
+                    decision="deny")
+        response = await h.client.post("/receipts", json=wire,
+                                       headers={"Authorization": "Bearer " + h.token()})
+        assert response.status_code == 200, response.text
+        result = await h.client.get("/receipts/" + wire["receipt_id"],
+                    headers={"Authorization": "Bearer " + controller_token(h, read=True)})
+        assert result.status_code == 200, result.text
+        h.settings.probe_controllers[HUMAN].subjects[:] = [OTHER]
+        result = await h.client.get("/receipts/" + wire["receipt_id"],
+                    headers={"Authorization": "Bearer " + controller_token(h, read=True)})
+        assert result.status_code == 403
+        await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+def test_probe_late_fixture_is_not_completed_until_actual_await_finishes(tmp_path):
+    async def case():
+        from test_gateway import GatewayHarness, Credential
+        h = await GatewayHarness().initialize(tmp_path, document=probe_registry())
+        s = cp("probes").ProbeService(store=MemoryStore(), registry=h.policy.registry,
+            policy_digest=h.policy.digest, producer="gateway", fresh=h.policy.fresh)
+        effects = cp("probes").ProbeService(store=MemoryStore(), registry=h.policy.registry,
+            policy_digest=h.policy.digest, producer="fixture", fresh=h.policy.fresh)
+        h.dispatcher.probes = s
+        fixture = fixture_module().create_app(probes=effects, auth=h.cp.auth, callers={OTHER: APP})
+        arrived, release = asyncio.Event(), asyncio.Event()
+        async def delayed(scope, receive, send):
+            arrived.set()
+            await release.wait()
+            await fixture(scope, receive, send)
+        await h.downstream.aclose()
+        h.downstream = gateway("dispatcher").DownstreamClient(
+            credential=Credential(h.cp.token(changes={"oid": OTHER})), transport=httpx.ASGITransport(app=delayed))
+        h.dispatcher.downstream = h.downstream
+        run = str(uuid.uuid4())
+        for producer in (s, effects):
+            await producer.register(run, expected(producer, "allow"))
+        task = asyncio.create_task(h.dispatcher.dispatch(
+            authorization="Bearer " + h.cp.token(), action="governance_probe_noop",
+            arguments={"probe_run_id": run, "variant": "allow"}, idempotency_key=run))
+        await asyncio.wait_for(arrived.wait(), 5)
+        pending = await s.status(WORKLOAD, run)
+        assert pending["counts"]["dispatch"] == 1 and pending["terminal"] is None
+        assert (await effects.status(WORKLOAD, run))["counts"]["effect"] == 0
+        release.set()
+        assert (await task)["status"] == "completed"
+        assert (await s.status(WORKLOAD, run))["terminal"] == "completed"
+        assert (await effects.status(WORKLOAD, run))["counts"]["effect"] == 1
+        await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("fault", ["unregistered", "variant", "expired", "storage", "tenant", "action", "payload"])
+def test_probe_invalid_run_cannot_produce_deny_or_dispatch_evidence(tmp_path, fault):
+    async def case():
+        from test_gateway import GatewayHarness
+        from datetime import datetime, timedelta, timezone
+        h = await GatewayHarness().initialize(tmp_path, document=probe_registry(),
+                                             decision={"decision": "deny"})
+        s = cp("probes").ProbeService(store=MemoryStore(), registry=h.policy.registry,
+            policy_digest=h.policy.digest, producer="gateway", fresh=h.policy.fresh)
+        h.dispatcher.probes = s
+        run = str(uuid.uuid4())
+        if fault != "unregistered":
+            await s.register(run, expected(s, "deny"))
+        if fault == "expired":
+            scope, key = next(iter(s.store.docs))
+            s.store.docs[(scope, key)][0]["expires_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        if fault == "storage":
+            s.store.failed = True
+        args = {"probe_run_id": run, "variant": "allow" if fault == "variant" else "deny"}
+        if fault == "payload":
+            args["customer_url"] = "PRIVATE"
+        result = await h.dispatcher.dispatch(
+            authorization="Bearer " + h.cp.token(changes={"tid": OTHER} if fault == "tenant" else {}),
+            action="refund" if fault == "action" else "governance_probe_noop",
+            arguments=args, idempotency_key=run)
+        assert "receipt_id" not in result and result["status"] != "completed"
+        assert not h.calls and not h.receipt_bodies()
+        assert "PRIVATE" not in json.dumps(result)
+        await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.parametrize("fault", ["context", "terminal"])
+def test_probe_corrupt_durable_scope_and_terminal_are_unknown(fault):
+    async def case():
+        s = service()
+        run = str(uuid.uuid4())
+        await s.register(run, expected(s))
+        context = await s.begin(WORKLOAD, run, "governance_probe_noop", "deny",
+                                session_id="actual", call_id="actual")
+        await s.intercept(context, decision="deny", receipt_id="a"*32)
+        await s.complete(context, terminal="denied")
+        scope, key = s.location(WORKLOAD, run)
+        raw = s.store.docs[(scope, key)][0]
+        if fault == "context":
+            raw["context"]["deployment"]["image_digest"] = "sha256:" + "e"*64
+        else:
+            raw["terminal"] = "completed"
+        with pytest.raises(RuntimeError):
+            await s.status(WORKLOAD, run)
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+def test_native_probe_deployment_environment_is_not_inferred_from_enforce_mode():
+    from types import SimpleNamespace
+    from test_runtime_provider import runtime
+    s = service(producer="native")
+    p = SimpleNamespace(
+        mode="enforce", audit=object(), principal=WORKLOAD, tenant=TENANT, agent_version="1",
+        image_digest=s.registry.deployment.image_digest, environment="production",
+        policy_digest=lambda: s.policy_digest,
+        _tool_bindings=lambda name: [{"point": "pre_tool_call", "policy": "safe"}])
+    with pytest.raises(ValueError, match="native_probe_deployment_mismatch"):
+        runtime().NativeProbeTelemetry(provider=p, service=s, downstream=object(), client_id=APP)
+
+
+def test_probe_fixture_docker_needs_no_runtime_build_backend():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[3]
+    dockerfile = (root / "skills/threadlight-safe-check/references/probe-fixture/Dockerfile").read_text()
+    assert "AS builder" in dockerfile and "COPY --from=builder" in dockerfile
+    assert "--no-build-isolation /app/probe-fixture" not in dockerfile
+
+
+def test_probe_fixture_never_accepts_agent_as_direct_caller():
+    from test_control_plane import Harness
+    h = Harness()
+    try:
+        with pytest.raises(ValueError, match="separate_fixture_caller_required"):
+            fixture_module().create_app(probes=service(producer="fixture"), auth=h.auth,
+                                        callers={WORKLOAD: APP})
+    finally:
+        asyncio.run(h.close())

@@ -188,6 +188,35 @@ def native_model_client(responses, *, request_hook=None, foundry=False, chat_com
                     "model": "local", "choices": [{
                         "index": 0, "message": message, "finish_reason": "tool_calls" if calls else "stop",
                     }]}
+        if body.get("stream") and not chat_completions:
+            events = [{"type": "response.created", "response": {**wire, "output": [], "status": "in_progress"}}]
+            for index, item in enumerate(output):
+                events.append({"type": "response.output_item.added", "output_index": index,
+                               "item": {**item, "arguments": ""} if item["type"] == "function_call"
+                               else {**item, "content": []}})
+                if item["type"] == "function_call":
+                    events.extend([
+                        {"type": "response.function_call_arguments.delta", "output_index": index,
+                         "item_id": item["id"], "delta": item["arguments"]},
+                        {"type": "response.function_call_arguments.done", "output_index": index,
+                         "item_id": item["id"], "arguments": item["arguments"]},
+                    ])
+                else:
+                    events.extend([
+                        {"type": "response.content_part.added", "output_index": index, "content_index": 0,
+                         "item_id": item["id"], "part": {"type": "output_text", "text": "", "annotations": []}},
+                        {"type": "response.output_text.delta", "output_index": index, "content_index": 0,
+                         "item_id": item["id"], "delta": item["content"][0]["text"]},
+                        {"type": "response.output_text.done", "output_index": index, "content_index": 0,
+                         "item_id": item["id"], "text": item["content"][0]["text"]},
+                        {"type": "response.content_part.done", "output_index": index, "content_index": 0,
+                         "item_id": item["id"], "part": item["content"][0]},
+                    ])
+                events.append({"type": "response.output_item.done", "output_index": index, "item": item})
+            events.append({"type": "response.completed", "response": wire})
+            content = "".join("event: " + event["type"] + "\ndata: " + json.dumps(
+                {**event, "sequence_number": i}) + "\n\n" for i, event in enumerate(events))
+            return httpx.Response(200, content=content, headers={"content-type": "text/event-stream"})
         return httpx.Response(200, json=wire)
 
     http = httpx.AsyncClient(

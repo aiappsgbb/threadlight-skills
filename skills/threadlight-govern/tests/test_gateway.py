@@ -67,13 +67,14 @@ class Credential:
 
 class GatewayHarness:
     async def initialize(self, path, decision=None, post=None, approval=False, policy_id="safe",
-                         additional_nonapproval=False, additional_approval_roles=None):
+                         additional_nonapproval=False, additional_approval_roles=None, document=None,
+                         downstream_transport=None):
         import yaml
         from test_policy_bundle import bundle_module
         self.cp = Harness()
         self.cp.settings.workloads[WORKLOAD] = self.cp.settings.workloads[WORKLOAD].model_copy(
             update={"policies": [policy_id]})
-        self.document = registry()
+        self.document = document or registry()
         if approval:
             self.document["actions"][0]["approval_roles"] = ["Approver"]
         if post:
@@ -123,8 +124,8 @@ class GatewayHarness:
             bundle_path=self.bundle.root, signed=self.signed, signer=self.cp.signer,
             tenant=TENANT, key_id=KEY, policy_id=policy_id, version="1",
             expected_digest=self.bundle.bundle_digest,
-            allowed_endpoints={"https://downstream.example/refunds",
-                               "https://downstream.example/refund-outcomes"},
+            allowed_endpoints={endpoint for action in self.document["actions"]
+                               for endpoint in (action["endpoint"], action["outcome_endpoint"])},
             gateway_url="https://gateway.example/mcp")
 
         async def remote(request):
@@ -139,7 +140,7 @@ class GatewayHarness:
             return httpx.Response(self.downstream_status, json=self.reply)
 
         self.downstream = gateway("dispatcher").DownstreamClient(
-            credential=self.credential, transport=httpx.MockTransport(remote))
+            credential=self.credential, transport=downstream_transport or httpx.MockTransport(remote))
         self.approval = None
         self.dispatcher = self.new_dispatcher()
         return self
@@ -148,7 +149,7 @@ class GatewayHarness:
         return gateway("dispatcher").GovernedDispatcher(
             policy=self.policy, auth=self.cp.auth, store=self.store, receipts=self.receipts,
             downstream=self.downstream, approvals=self.approval,
-            safe_provider=lambda identity: {"scope": "refunds", "verified": True},
+            safe_provider=lambda identity: {"scope": identity["scope"], "verified": True},
             approval_principal=WORKLOAD, approval_agent_id="agent-1")
 
     async def call(self, key="one", arguments=None, dispatcher=None, **kwargs):

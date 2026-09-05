@@ -68,6 +68,7 @@ async def build_provider(config, *, signer, credential):
     required_audit = any(
         set(binding.get("requires", [])) & AUDIT for binding in (
             config["contract"]["tools"] + config["contract"]["governance"]["lifecycle_bindings"]))
+    required_audit = required_audit or "probe_observability" in config
     if config.get("audit_delivery") != "remote-ack":
         raise ValueError("hosted_audit_requires_remote_ack")
     audit = AuditDelivery(
@@ -142,9 +143,15 @@ def build_host(provider, *, client, **host_options):
     skills = BASE / "skills"
     # Shared validator Python modules are not agent skills; retain progressive disclosure.
     contexts = [SkillsProvider.from_paths(skills)] if any(skills.glob("*/SKILL.md")) else []
+    tools = application.tools
+    probes = getattr(provider, "probes", None)
+    if probes is not None:
+        if any(getattr(tool, "name", getattr(tool, "__name__", None)) == probes.action.name for tool in tools):
+            raise ValueError("probe_must_not_replace_application_tool")
+        tools = [*tools, probes.tool()]
     agent = create_governed_agent(
         provider, client=client, middleware=application.middleware,
-        tools=application.tools, context_providers=contexts,
+        tools=tools, context_providers=contexts,
         id=provider.deployment_agent_id, name=provider.deployment_agent_id,
         instructions=(BASE / "copilot-instructions.md").read_text(),
         default_options={"store": False})
@@ -155,7 +162,34 @@ def build_host(provider, *, client, **host_options):
             return await dependency_readiness(provider) if native.status_code == 200 else native
 
     os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "false"
-    return GovernedHost(agent, **host_options)
+    host = GovernedHost(agent, **host_options)
+    if probes is not None:
+        from govern_control_plane.probes import control_app
+        host.router.routes.extend(control_app(probes.service, probes.auth).routes)
+    return host
+
+
+async def install_probe_runtime(config, provider, stack):
+    from govern_control_plane.probes import ProbeOptIn
+    from govern_control_plane.models import canonical
+    from govern_gateway.probe_runtime import open_runtime, read_configuration
+    from runtime import NativeProbeTelemetry
+    option = parse(ProbeOptIn, canonical(config["probe_observability"]))
+    probe_config = read_configuration(option.configuration_file)
+    actual = {name: config[name] for name in (
+        "agent_id", "agent_version", "image_digest", "environment", "subscription", "resource_group")}
+    if (probe_config.producer != "native" or probe_config.tenant_id != provider.tenant
+            or probe_config.expected_deployment.model_dump(mode="json") != actual):
+        raise ValueError("native_probe_deployment_mismatch")
+    workload = probe_config.workloads.get(provider.principal)
+    if workload is None or workload.client_id != probe_config.service_client_id:
+        raise ValueError("native_probe_identity_mismatch")
+    service, auth, downstream = await stack.enter_async_context(open_runtime(probe_config))
+    if service.registry.native_policy_digest != provider.policy_digest():
+        raise ValueError("native_probe_policy_association_mismatch")
+    telemetry = NativeProbeTelemetry(
+        provider=provider, service=service, downstream=downstream, client_id=workload.client_id)
+    telemetry.auth = auth
 
 
 async def main():
@@ -184,6 +218,8 @@ async def main():
             config, signer=KeyVaultSigner(crypto, key_client=keys), credential=credential)
         stack.push_async_callback(provider.approval_resolver.aclose)
         await stack.enter_async_context(provider.audit)
+        if "probe_observability" in config:
+            await install_probe_runtime(config, provider, stack)
         client = FoundryChatClient(
             project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
             model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"], credential=credential)
