@@ -116,6 +116,8 @@ host is macOS; no Linux executable is launched directly on macOS.
 
 `GOVERNANCE_RUNTIME_CONTRACT=PASS` requires successful real loader/evaluator
 tests, including deny/allow/escalate/transform, and a JUnit report with no
-skipped/failed/errored cases. This proves **local bundle validity and decisions
-only**. Hook enforcement, service-side oracles, approval persistence, signed
-deployment identity and production assurance belong to later runtime work.
+skipped/failed/errored cases. This proves **local bundle validity, decisions and native MAF hook enforcement**
+with synthetic model/tools, not deployed enforcement. See
+[the runtime adapter and corrected CTK](runtime/README.md). Service-side oracles,
+approval-service persistence, signed deployment identity and production
+assurance remain separate work.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Isolated exact-pin ACS/OPA contract gate; skipped tests can never yield PASS.
+"""Isolated exact-pin ACS/OPA/MAF gate; skipped tests can never yield PASS.
 
 The published ACS b0 wheel targets Linux amd64. On other hosts use Docker's
 linux/amd64 platform, not a cached locally built wheel or an upgraded SDK.
@@ -12,7 +12,6 @@ import importlib.metadata
 import json
 import os
 from pathlib import Path
-import platform
 import subprocess
 import sys
 import urllib.request
@@ -81,6 +80,31 @@ def verify_junit(path):
                  "approved-refund", "post-tool-transform", "output-transform"):
         if not any(name.startswith(f"test_real_policy_decisions[{case}-") for name in names):
             raise RuntimeError(f"required real policy decision did not run: {case}")
+    for name in (
+        "test_bound_deny_zero_effects", "test_bound_allow_positive_control",
+        "test_unbound_tool_never_evaluates_acs", "test_native_argument_transform",
+        "test_durable_payload_free_receipt_precedes_effect_and_retries",
+        "test_audit_disk_failure_denies_selected_tool",
+        "test_post_tool_deny_discards_tainted_result",
+        "test_model_cannot_forge_safe_evidence_or_approval",
+        "test_nested_agents_require_independent_bundles",
+    ):
+        if name not in names:
+            raise RuntimeError(f"required provider control did not run: {name}")
+    for case in ("allow", "deny", "transform", "limit"):
+        if f"test_native_buffered_stream[{case}]" not in names:
+            raise RuntimeError("buffered output controls missing")
+    from governance_ctk import BASE, PIN
+    ctk = json.loads(PIN.read_text())
+    vectors = sorted((BASE / "upstream/sdk/python/python/agent_hooks/ctk/vectors").glob("AH*.json"))
+    declared = [json.loads(path.read_text()) for path in vectors
+                if not set(json.loads(path.read_text()).get("capabilities", []))
+                & set(ctk["undeclared_capabilities"])]
+    if len(declared) != ctk["declared_vector_count"]:
+        raise RuntimeError("CTK declared vector set changed")
+    for vector in declared:
+        if f"test_corrected_official_ctk[{vector['id']}]" not in names:
+            raise RuntimeError(f"CTK vector missing: {vector['id']}")
     return len(cases)
 
 
@@ -131,19 +155,47 @@ def runtime(pins):
     report = SCRATCH / f"runtime-{uuid.uuid4().hex}.xml"
     env = {**os.environ, "THREADLIGHT_GOVERNANCE_RUNTIME": "1", "ACS_OPA_PATH": str(opa)}
     env.pop("PYTEST_ADDOPTS", None)
+    from governance_ctk import BASE
+    results = BASE / "results"
+    if results.exists():
+        for path in results.glob("AH-CTK-*.json"):
+            path.unlink()
+    (BASE / "undeclared-capabilities.json").unlink(missing_ok=True)
     run([
         sys.executable, "-m", "pytest", "skills/threadlight-govern/tests/test_policy_bundle.py",
+        "skills/threadlight-govern/tests/test_runtime_provider.py",
+        "skills/threadlight-govern/tests/test_agent_hooks_ctk.py",
+        "-p", "no:agent_hooks_ctk",
         "-m", "governance_runtime", "-q", f"--junitxml={report}",
         "-o", f"cache_dir={SCRATCH / 'pytest-cache'}",
     ], env=env)
     count = verify_junit(report)
+    vector_results = [json.loads(path.read_text()) for path in sorted(results.glob("AH-CTK-*.json"))]
+    if len(vector_results) != 47 or any(r["status"] != "pass" for r in vector_results):
+        raise RuntimeError("declared CTK vectors missing or failed")
+    optional = json.loads((BASE / "undeclared-capabilities.json").read_text())
+    if len(optional) != 4 or any(r["status"] != "skip" or not r["detail"] for r in optional):
+        raise RuntimeError("undeclared incremental capability report missing")
+    # Recheck exact execution bytes after CTK activation, not just before pytest.
+    for record in records:
+        with zipfile.ZipFile(SCRATCH / "wheels" / record["filename"]) as archive:
+            distribution = importlib.metadata.distribution(record["distribution"])
+            for name in archive.namelist():
+                if name.endswith((".py", ".so")) and ".data/" not in name:
+                    if distribution.locate_file(name).read_bytes() != archive.read(name):
+                        raise RuntimeError(f"runtime changed during conformance tests: {name}")
     proof = {
         "packages": installed, "opa_version": pins["opa"]["version"], "opa_sha256": expected,
         "runtime_tests_passed": count, "junit": report.name,
-        "scope": "local native ACS bundle loading and OPA decisions; not deployment enforcement",
+        "scope": "local native ACS/OPA + MAF enforcement; synthetic model/tools, no Azure calls",
+        "ctk": {"declared_passed": len(vector_results), "declared_failed": 0,
+                "tool_seam_host_error": "terminate", "undeclared": optional,
+                "source_provenance": json.loads((BASE / "source-provenance.json").read_text()),
+                "build_provenance": json.loads((BASE / "build-provenance.json").read_text())},
     }
     (SCRATCH / "runtime-proof.json").write_text(json.dumps(proof, indent=2) + "\n")
-    print(json.dumps(proof, indent=2))
+    print(f"Runtime controls: {count}; CTK: 47 passed, 0 failed; "
+          "4 undeclared incremental-output vectors separately reported.")
     print("GOVERNANCE_RUNTIME_CONTRACT=PASS")
 
 
@@ -158,7 +210,12 @@ def main():
     )
     os.environ.pop("PYTHONPATH", None)
     pins = json.loads(PIN_FILE.read_text())
-    if platform.system() != "Linux" or platform.machine() not in {"x86_64", "AMD64"}:
+    if sys.argv[1:] == ["--runtime"]:
+        runtime(pins)
+        return
+    if sys.argv[1:] != ["--prepared"]:
+        from governance_ctk import build
+        build()
         # Fetch published target wheels on the host; container networking may
         # not have the host's working TLS/proxy configuration. No source builds.
         wheelhouse = SCRATCH / "wheels"
@@ -190,11 +247,8 @@ def main():
             "--mount", f"type=bind,source={ROOT},target=/workspace,readonly",
             "--mount", f"type=bind,source={SCRATCH},target=/workspace/.governance-validation",
             "-w", "/workspace", IMAGE,
-            "python", "scripts/ci/run-governance-pin-tests.py",
+            "python", "scripts/ci/run-governance-pin-tests.py", "--prepared",
         ])
-        return
-    if sys.argv[1:] == ["--runtime"]:
-        runtime(pins)
         return
     python = VENV / "bin/python"
     if not python.exists():

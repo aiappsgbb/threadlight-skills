@@ -78,6 +78,31 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  governance-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Exact published runtime pins and corrected official CTK
+        # Public artifact downloads only. No Azure credentials or deployments.
+        # Both oracle build and runtime run in Linux amd64 Docker containers;
+        # runtime source is read-only and scratch has its own writable mount.
+        run: python scripts/ci/run-governance-pin-tests.py
+      - name: Preserve governance conformance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-runtime-evidence
+          include-hidden-files: true
+          path: |
+            .governance-validation/runtime-proof.json
+            .governance-validation/runtime-*.xml
+            .governance-validation/wheel-provenance.json
+            .governance-validation/ctk/*provenance.json
+            .governance-validation/ctk/results/*.json
+            .governance-validation/ctk/undeclared-capabilities.json
   pytest:
     runs-on: ubuntu-latest
     steps:
