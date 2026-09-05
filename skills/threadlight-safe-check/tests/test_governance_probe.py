@@ -602,7 +602,8 @@ def test_postdeploy_runs_real_collector_and_retains_original_gaps(tmp_path, monk
                 manifest_path = selected
             loaded = probe.load_configuration(project, config)
             assert loaded["native_policy"]["policy_digest"] == h.config["native_policy"]["policy_digest"]
-            monkeypatch.setattr(safe_check, "_az", lambda *args, **kwargs: "[]")
+            from test_governance_gates import empty_parent_azure
+            monkeypatch.setattr(safe_check, "_az", empty_parent_azure)
             output = project / "post.json"
             result = await asyncio.to_thread(safe_check.phase_postdeploy, manifest_path,
                 output, "rg-staging", project, {"credential": h.credential, "signer": h.signer,

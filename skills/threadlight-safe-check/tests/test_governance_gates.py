@@ -26,6 +26,13 @@ def reference(name):
     return module
 
 
+def empty_parent_azure(*args, **kwargs):
+    if args[:2] == ("account", "show"):
+        return json.dumps({"id": "11111111-1111-1111-1111-111111111111",
+                           "tenantId": "11111111-1111-1111-1111-111111111111"})
+    return "[]"
+
+
 def generated(tmp_path):
     from test_governance_quality import inputs
     from test_governance_wiring import module
@@ -114,7 +121,7 @@ def test_postdeploy_no_contract_never_automatically_invokes_and_keeps_gaps(tmp_p
     project, document, path, *_ = generated(tmp_path)
     document["deployment_manifest"]["expected_resource_types"] = ["Microsoft.Storage/storageAccounts"]
     path.write_text(json.dumps(document))
-    monkeypatch.setattr(safe_check, "_az", lambda *args, **kwargs: "[]")
+    monkeypatch.setattr(safe_check, "_az", empty_parent_azure)
     output = project / "post.json"
     assert safe_check.phase_postdeploy(path, output, "staging", repo_root=project) == 1
     report = json.loads(output.read_text())

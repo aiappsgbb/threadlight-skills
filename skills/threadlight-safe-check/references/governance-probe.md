@@ -116,11 +116,27 @@ Azure and service changes invalidate the whole probe pair.
 
 ### Exact target and configuration contract
 
-The parent safe-check `--rg` is an independent constraint, passed as
-`required_target={"resource_group": ...}` to `collect_project`/`collect`.
-It must match the frozen/selected target and the independently observed target;
-a mismatch fails without invoking the agent, rewriting selectors, or losing
-existing gaps. Direct collectors require `expected_deployment` (agent ID/version,
+The parent safe-check resolves its tenant and subscription IDs through
+`az account show`, or `az account show --subscription <ID-or-name>` when the
+optional safe-check `--subscription` flag is supplied. It never changes the
+active account or logs in. Its `parent_target` records only canonical observed
+IDs and the resolved `--rg` / `AZURE_RESOURCE_GROUP`; collector configuration
+is **not** the source of parent scope. Missing or malformed account context is
+an unverified gap, with no resource reads, registrations or agent invocations.
+Every parent Azure resource read is pinned with `--subscription <observed-ID>`,
+so a concurrent default-account switch cannot redirect the gate.
+
+Existing `deployment_manifest.tenant_id` / `subscription_id` (also `tenant` /
+`subscription`) are constraints, not overrides of the selected account.
+Subscription display names are canonicalized through `az account show
+--subscription`; all declared selectors must match the observed parent account.
+The parent passes all three independent constraints as
+`required_target={"tenant": ..., "subscription": ..., "resource_group": ...}`
+to `collect_project`/`collect`. They must match the frozen/selected target and
+the independently observed ARM/Foundry target **before registration or invocation**.
+An identical RG name in another subscription or tenant is not a match.
+A mismatch fails without rewriting selectors or losing existing gaps.
+Direct collectors require `expected_deployment` (agent ID/version,
 image digest, environment, subscription and resource group), independently of
 the signed registry. The reusable `evaluate_pair` requires `expected_target`:
 those six fields plus `tenant`, `subject` and `client_id`. All must match the

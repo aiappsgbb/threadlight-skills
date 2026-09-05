@@ -7,7 +7,7 @@ import json
 import pytest
 import yaml
 
-from test_governance_gates import generated, reference, safe_check
+from test_governance_gates import empty_parent_azure, generated, reference, safe_check
 from test_governance_probe import native_collector_harness, packaged_collector_project
 
 
@@ -98,7 +98,7 @@ def test_parent_target_scope_refuses_without_invocation_and_preserves_inputs(tmp
             original = deepcopy(h.config)
             kwargs = dict(credential=h.credential, signer=h.signer, run=h.run, http=h.http, timeout=8)
             if entry in ("phase", "cli"):
-                monkeypatch.setattr(safe_check, "_az", lambda *args, **kwargs: "[]")
+                monkeypatch.setattr(safe_check, "_az", empty_parent_azure)
                 output = project / "post.json"
                 if entry == "cli":
                     import sys

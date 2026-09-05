@@ -265,7 +265,10 @@ def test_phase_postdeploy_embeds_checked_manifest_snapshot() -> None:
     original_repo_root = sc._repo_root_for_manifest
     original_load_mcp = sc._load_effective_mcp_config
     try:
-        sc._az = lambda *args: "[]"
+        sc._az = lambda *args, **kwargs: (
+            '{"id":"11111111-1111-1111-1111-111111111111",'
+            '"tenantId":"11111111-1111-1111-1111-111111111111"}'
+            if args[:2] == ("account", "show") else "[]")
         sc._repo_root_for_manifest = lambda manifest, explicit_root=None: tmp_path
         sc._load_effective_mcp_config = lambda root: {}
 

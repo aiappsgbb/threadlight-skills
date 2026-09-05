@@ -153,6 +153,7 @@ Optional flags:
 
 ```bash
 --rg <name>           # override AZURE_RESOURCE_GROUP env var (post-deploy)
+--subscription <id-or-name> # post-deploy account; defaults to current CLI account
 --manifest <path>     # override default specs/manifest.json
 --out <dir>           # override default tests/ output dir
 --quiet               # only print final OK / FAIL line + exit code
@@ -805,8 +806,12 @@ isn't set in the shell that launches `python3 tests/safe_check.py`,
 `azure-tenant-isolation`: set both `AZURE_CONFIG_DIR` and
 `AZD_CONFIG_DIR` in the shell before invoking this gate.
 
-The CLI itself logs the active tenant + subscription as its first line
-of output, so any cross-tenant slip is immediately visible.
+The CLI resolves and logs the selected account's canonical tenant + subscription,
+then pins all parent resource reads to that subscription without changing the
+global account. Missing/invalid account context is a gap (exit `1`), not a
+fallback to collector declarations. Governance registration/invocation requires
+the independently observed target to match the full parent tenant/subscription/RG.
+See [the exact scope contract](references/governance-probe.md#exact-target-and-configuration-contract).
 
 ---
 
