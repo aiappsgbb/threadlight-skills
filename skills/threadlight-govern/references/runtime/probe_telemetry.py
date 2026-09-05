@@ -65,12 +65,48 @@ class NativeProbeTelemetry:
         raise GovernedToolUnavailable("threadlight:probe_unavailable") from None
 
     async def flush(self, state):
+        if state is None or state.get("probe_provider") is not self.provider:
+            return
+        def check_bridge():
+            if state["probe_bridge_failed"].is_set():
+                from .maf_agent_hooks_acs import GovernedToolUnavailable, binding_failure
+                for entry in state["emissions"].values():
+                    if "probe_record" in entry:
+                        binding_failure(entry["selected"], "threadlight:probe_unavailable")
+                raise GovernedToolUnavailable("threadlight:probe_unavailable")
+        check_bridge()
         # No transcript inspection and no inferred zero. A missing native record
         # leaves registration/received nonterminal, including fake/unreached tools.
         while pending := [entry for entry in tuple(state["emissions"].values())
                           if "probe_record" in entry and not entry.get("probe_flushed")]:
             for entry in pending:
                 await self.flush_entry(entry)
+        check_bridge()
+        state["probe_pending"].clear()
+
+    def flush_sync(self, state):
+        if state is None or state.get("probe_provider") is not self.provider:
+            return
+        from .maf_agent_hooks_acs import GovernedToolUnavailable
+        if state["probe_bridge_failed"].is_set():
+            raise GovernedToolUnavailable("threadlight:probe_unavailable")
+        if not state["probe_pending"].is_set():
+            return
+        # Only workers block here. Locks, storage and ContextVars stay on the
+        # owning run's loop; never run a second loop around its async store.
+        coroutine = self.flush(state)
+        future = None
+        try:
+            future = asyncio.run_coroutine_threadsafe(coroutine, state["probe_loop"])
+            future.result(timeout=min(10, self.provider.timeout) + 0.1)
+            return
+        except Exception:
+            state["probe_bridge_failed"].set()
+            if future is not None:
+                future.cancel()
+            else:
+                coroutine.close()
+        raise GovernedToolUnavailable("threadlight:probe_unavailable") from None
 
     def tool(self):
         from agent_framework import FunctionTool

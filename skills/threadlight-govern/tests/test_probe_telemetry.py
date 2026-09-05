@@ -427,7 +427,7 @@ def test_probe_real_native_maf_hooks_and_fixture(tmp_path, variant, path, monkey
 
 
 @asynccontextmanager
-async def native_probe_host(tmp_path, monkeypatch, variants):
+async def native_probe_host(tmp_path, monkeypatch, variants, *, bound_read=False):
     """Real Responses host, ACS/OPA and remote-ack audit; only external IO is local."""
     import sys
     from pathlib import Path
@@ -459,6 +459,8 @@ async def native_probe_host(tmp_path, monkeypatch, variants):
     spool, audit, _ = audit_harness(tmp_path)
     doc = contract()
     doc["tools"][0].update(id="governance_probe_noop", requires=["audit"])
+    if bound_read:
+        doc["tools"][1] = {**doc["tools"][0], "id": "read"}
     p = rt.AcsGovernanceProvider(
         contract=doc, bundle_path=h.bundle.root, expected_digest=h.policy.digest,
         bundle_verifier=bundle_module().verify_bundle, contract_validator=validate_governance_contract,
@@ -612,6 +614,242 @@ def test_probe_native_batch_flush_before_next_effect(tmp_path, monkeypatch, foll
             if following == "probe":
                 assert second_state["context"]["call_id"] != seen[0]["context"]["call_id"]
                 assert second_state["events"][1]["receipt_id"] != seen[0]["events"][1]["receipt_id"]
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("failure", [None, "intercept", "complete", "timeout", "bridge-timeout"])
+@pytest.mark.parametrize("workers", [1, 3])
+@pytest.mark.parametrize("bound_read", [False, True], ids=["unbound", "bound"])
+def test_probe_native_queued_worker_terminal_boundary(
+        tmp_path, monkeypatch, caplog, failure, workers, bound_read):
+    from concurrent.futures import Future, ThreadPoolExecutor
+    from contextvars import ContextVar
+    from functools import partial
+    from threading import Event, get_ident
+    from agent_framework import FunctionInvocationContext, FunctionTool
+
+    async def case():
+        async with native_probe_host(tmp_path, monkeypatch, ["deny"], bound_read=bound_read) as h:
+            loop, owner = asyncio.get_running_loop(), get_ident()
+            in_worker = ContextVar("queued_probe_test_worker", default=False)
+            progress, persist = asyncio.Event(), asyncio.Event()
+            jobs, seen, counts, attempts, records = [], [], [], [], []
+
+            class QueuedExecutor(ThreadPoolExecutor):
+                def submit(self, fn, /, *args, **kwargs):
+                    if (isinstance(fn, partial) and fn.args
+                            and getattr(fn.args[0], "__module__", "") in {
+                                "agent_framework._tools",
+                                "skills.threadlight-govern.references.runtime.maf_agent_hooks_acs",
+                            }):
+                        future = Future()
+                        def run():
+                            if not future.set_running_or_notify_cancel():
+                                return
+                            def terminal():
+                                token = in_worker.set(True)
+                                try:
+                                    return fn.args[0](*fn.args[1:], **fn.keywords)
+                                finally:
+                                    in_worker.reset(token)
+                            try:
+                                future.set_result(fn.func(terminal))
+                            except BaseException as error:
+                                future.set_exception(error)
+                        jobs.append((future, run))
+                        return future
+                    return super().submit(fn, *args, **kwargs)
+
+                def release(self):
+                    assert len(jobs) == 2 and not any(f.running() for f, _ in jobs)
+                    for _, run in jobs:
+                        super().submit(run)
+
+            executor = QueuedExecutor(max_workers=workers)
+            loop.set_default_executor(executor)
+            sink = h.runtime.create_governed_agent.__globals__["NativeRecordSink"]
+            original_sink = sink.__call__
+            def record(self, value):
+                original_sink(self, value)
+                if (value.interception_point.value == "pre_tool_call"
+                        and value.verdict.reason == "threadlight:policy_deny"):
+                    records.append(value)
+                    executor.release()
+            monkeypatch.setattr(sink, "__call__", record)
+
+            # Hold storage until a queued job reaches either its body (the bug)
+            # or the worker-originated flush. Context copying across the bridge is
+            # observable without replacing native dispatch or policy evaluation.
+            original_flush = h.telemetry.flush
+            async def flush(state):
+                if in_worker.get():
+                    assert asyncio.get_running_loop() is loop and get_ident() == owner
+                    progress.set()
+                return await original_flush(state)
+            monkeypatch.setattr(h.telemetry, "flush", flush)
+            for name in ("intercept", "complete"):
+                original = getattr(h.native, name)
+                async def write(context, _name=name, _original=original, **kwargs):
+                    assert asyncio.get_running_loop() is loop and get_ident() == owner
+                    attempts.append(_name)
+                    await persist.wait()
+                    if failure == "bridge-timeout" and _name == "intercept":
+                        # An unresponsive owner loop must not admit the next
+                        # worker or release output after its bridge timed out.
+                        Event().wait(0.8)
+                    if failure == _name:
+                        raise OSError("PRIVATE QUEUED PROBE STORE")
+                    if failure == "timeout":
+                        await asyncio.Event().wait()
+                    return await _original(context, **kwargs)
+                monkeypatch.setattr(h.native, name, write)
+
+            def read(ctx: FunctionInvocationContext):
+                state = asyncio.run_coroutine_threadsafe(
+                    h.native.status(WORKLOAD, h.runs[0]), loop).result(timeout=2)
+                seen.append(state)
+                counts.append(ctx.function)
+                loop.call_soon_threadsafe(progress.set)
+                return "public read result"
+            h.application.tools = [FunctionTool(name="read", func=read)]
+            denial = h.client.responses[0].messages[0].contents[0]
+            reads = []
+            for index in range(2):
+                call = deepcopy(denial)
+                call.name, call.arguments, call.call_id = "read", "{}", f"read-{index}"
+                reads.append(call)
+            h.client.responses[0].messages[0].contents[:] = [*reads, denial]
+            h.provider.timeout = 0.5
+            untouched = str(uuid.uuid4())
+            await h.native.register(untouched, expected(h.native))
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=h.host()),
+                                         base_url="https://host.example") as client:
+                request = asyncio.create_task(client.post("/responses", json={
+                    "input": "Read then probe", "store": False, "stream": True}))
+                try:
+                    await asyncio.wait_for(progress.wait(), 3)
+                finally:
+                    persist.set()
+                response = await asyncio.wait_for(request, 5)
+            assert len(records) == 1 and len(jobs) == 2
+            assert "PRIVATE" not in response.text + caplog.text
+            if failure:
+                assert not seen, "queued body ran behind an unpersisted required denial"
+                assert "threadlight:probe_unavailable" in response.text
+                assert not any(line.startswith("data: ") and
+                               json.loads(line[6:]).get("item", {}).get("type") == "function_call_output"
+                               for line in response.text.splitlines())
+            else:
+                assert len(seen) == 2, response.text
+                assert all(state["terminal"] == "denied" and state["counts"] == {
+                    "received": 1, "intercepted": 1, "dispatch": 0, "effect": 0, "completed": 1,
+                } for state in seen), seen
+                assert counts[0] is counts[1]
+                assert (counts[0].invocation_count, counts[0].invocation_exception_count) == (2, 0)
+            assert attempts.count("intercept") == 1
+            unused = await h.native.status(WORKLOAD, untouched)
+            assert not any(unused["counts"].values()) and unused["terminal"] is None
+            assert (await h.effects.status(WORKLOAD, h.runs[0]))["counts"]["effect"] == 0
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+def test_probe_native_pending_denial_is_run_scoped(tmp_path, monkeypatch):
+    from agent_framework import FunctionTool
+    from test_runtime_provider import tool_responses
+
+    async def case():
+        async with native_probe_host(tmp_path, monkeypatch, ["deny"]) as h:
+            flushing, release = asyncio.Event(), asyncio.Event()
+            seen, attempts = [], []
+            async def fail(context, **kwargs):
+                attempts.append(context.probe_run_id)
+                flushing.set()
+                await release.wait()
+                raise OSError("PRIVATE OTHER RUN STORE")
+            monkeypatch.setattr(h.native, "intercept", fail)
+            def read():
+                seen.append("unbound")
+                return "public read result"
+            h.application.tools = [FunctionTool(name="read", func=read)]
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=h.host()),
+                                         base_url="https://host.example") as client:
+                payload = {"input": "Use the tools", "store": False, "stream": True}
+                first = asyncio.create_task(client.post("/responses", json=payload))
+                await asyncio.wait_for(flushing.wait(), 3)
+                h.client.responses[:] = tool_responses("read", {})
+                try:
+                    second = await asyncio.wait_for(client.post("/responses", json=payload), 3)
+                    assert seen == ["unbound"], second.text
+                    assert "public read result" in second.text
+                    assert not first.done()
+                finally:
+                    release.set()
+                failed = await asyncio.wait_for(first, 3)
+                assert "threadlight:probe_unavailable" in failed.text
+                assert "PRIVATE" not in failed.text + second.text
+                h.client.responses[:] = tool_responses("read", {})
+                later = await asyncio.wait_for(client.post("/responses", json=payload), 3)
+                assert seen == ["unbound", "unbound"] and "public read result" in later.text
+            assert attempts == h.runs, "a different host run must not retry/borrow this nonce"
+            state = await h.native.status(WORKLOAD, h.runs[0])
+            assert state["terminal"] is None and state["counts"]["intercepted"] == 0
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("kind", ["sync", "async", "on-loop", "awaitable"])
+def test_probe_native_unbound_validation_and_budget_unchanged(tmp_path, monkeypatch, enabled, kind):
+    from agent_framework import FunctionInvocationContext, FunctionTool
+    from pydantic import BaseModel, field_validator
+    from test_runtime_provider import tool_responses
+
+    async def case():
+        async with native_probe_host(tmp_path, monkeypatch, ["deny"]) as h:
+            if not enabled:
+                h.provider.probes = None
+            validations, effects, evaluations = [], [], []
+            class Input(BaseModel):
+                amount: int
+                @field_validator("amount")
+                @classmethod
+                def validate_amount(cls, value):
+                    validations.append(value)
+                    return value
+            def body(amount, ctx):
+                effects.append((amount, ctx.function.invocation_count,
+                                ctx.function.invocation_exception_count))
+                return "public read result"
+            async def async_read(amount: int, ctx: FunctionInvocationContext):
+                return body(amount, ctx)
+            def sync_read(amount: int, ctx: FunctionInvocationContext):
+                return async_read(amount, ctx) if kind == "awaitable" else body(amount, ctx)
+            tool = FunctionTool(name="read", func=async_read if kind == "async" else sync_read,
+                                input_model=Input, max_invocations=2)
+            tool._invoke_sync_on_event_loop = kind == "on-loop"
+            schema = deepcopy(tool.parameters())
+            h.application.tools = [tool]
+            original = h.provider._engine.evaluate_intervention_point
+            async def evaluate(*args, **kwargs):
+                evaluations.append(args)
+                return await original(*args, **kwargs)
+            monkeypatch.setattr(h.provider._engine, "evaluate_intervention_point", evaluate)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=h.host()),
+                                         base_url="https://host.example") as client:
+                for _ in range(3):
+                    h.client.responses[:] = tool_responses("read", {"amount": 4})
+                    await asyncio.wait_for(client.post("/responses", json={
+                        "input": "Read", "store": False, "stream": True}), 3)
+            assert effects == [(4, 1, 0), (4, 2, 0)]
+            assert validations == [4] * 6
+            assert not evaluations, "the optional unbound wrapper must never invoke ACS"
+            # The pinned native provider adds this flag even without probes.
+            assert tool.input_model is Input
+            assert tool.parameters() == {**schema, "additionalProperties": False}
+            state = await h.native.status(WORKLOAD, h.runs[0])
+            assert not any(state["counts"].values()) and state["terminal"] is None
     asyncio.run(case())
 
 

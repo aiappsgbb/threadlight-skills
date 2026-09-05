@@ -308,14 +308,33 @@ its exact session/sequence, probe nonce and acknowledged receipt. The synchronou
 sink only stages that record; it never waits on the running event loop. Awaited
 flushes persist `intercepted` and, for denial, `completed` / `terminal=denied`
 **before each stream update is released**, not merely when the stream closes.
-The final function middleware also drains pending records before another tool
-(including an unbound tool) can start its effect in the same native batch.
-Already-running parallel effects are not rolled back. Each entry's flush is
-serialized and bounded by the smaller of the provider timeout and ten seconds.
-Persistence failure latches for that emission and fails closed with
-`threadlight:probe_unavailable`, without private storage exceptions, denial
-output, subsequent effects or finalization retries. Native buffered output gates
-and runs without probe telemetry keep their existing semantics.
+The final function middleware drains records early, but **executor submission is
+not the execution boundary**. Synchronous tools recheck a thread-safe pending
+signal at the actual worker call, before native invocation/exception accounting
+or the application body. A worker with a pending correlated record bridges its
+flush back to the owning run's event loop with copied context; async storage and
+entry locks never move to a worker loop. Async/on-loop tools await that same
+boundary directly, never synchronously blocking their own loop.
+
+Only explicitly installed probe instrumentation adds the lightweight wrapper for
+otherwise unbound tools. It does not run ACS for them or replace native validation,
+argument/context handling, invocation limits or exception accounting. Without
+probe instrumentation the unbound path is unchanged. A pending typed record in
+**this host run** is required: registration alone or missing native emissions cannot
+supply proof. No nonce is substituted for another, and pending records cannot
+block an unbound read in another concurrent/prior run.
+After a denial is durably persisted, that ordinary read is still allowed; one
+denied probe is **not** a policy denial of every tool.
+
+Each entry's flush is serialized and bounded by the smaller of the provider timeout
+and ten seconds; workers wait at most that limit plus 0.1 seconds for bridge
+completion. Persistence/bridge failure latches within the run and fails closed
+with `threadlight:probe_unavailable`, without private storage exceptions, denial
+output, starting queued effects behind the pending record, or finalization retries.
+Effects that already crossed their execution boundary are **not** cancelled or
+rolled back. This remains binding-scoped probe evidence, never whole-agent
+zero-effect proof. Native buffered output gates and SSE release/cancellation
+semantics are unchanged.
 
 `spool.retry(exporter)` works after process restart; exporter failure leaves
 pending receipts on disk. Delivery is at-least-once: deduplicate by `audit_id`.

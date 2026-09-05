@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 import inspect
 import json
+from threading import Event
 import time
 import uuid
 from weakref import ref
@@ -56,6 +57,7 @@ class NativeRecordSink:
             # Only the native emitter's typed, sequenced record authorizes a
             # probe observation. ACS evaluation alone is not interception proof.
             entry["probe_record"] = (decision, entry["receipt_id"])
+            state["probe_pending"].set()
         if decision in {"allow", "transform"}:
             if entry and point == "pre_model_call" and state is not None and "model_scope" in state:
                 state["model_scope"]["target"] = entry["target_hash"]
@@ -542,8 +544,7 @@ class _FunctionBoundary(FunctionMiddleware):
         telemetry = getattr(p, "probes", None)
         execution = _execution.get()
         if telemetry is not None and execution is not None:
-            # A native batch may start another (even unbound) tool before the
-            # agent stream yields. Persist earlier typed records before effects.
+            # Early drain only: queued synchronous work rechecks at its worker.
             await telemetry.flush(execution)
         if not p._bindings:
             await call_next()
@@ -646,6 +647,46 @@ def _guard_input_model(model, tool):
     return GuardedInput
 
 
+def _guard_probe_tool(tool, provider):
+    """Opt-in persistence boundary only; keep unbound native validation/accounting."""
+    from agent_framework import FunctionTool
+    cache = provider.__dict__.setdefault("_probe_guarded_tools", {})
+    key = id(tool)
+    cached = cache.get(key)
+    if cached is not None and cached[0]() is tool:
+        return cached[1]
+    guarded = copy(tool)
+    function = tool.func.func if isinstance(tool.func, FunctionTool) else tool.func
+    on_loop = inspect.iscoroutinefunction(function) or getattr(tool, "_invoke_sync_on_event_loop", False)
+    telemetry = provider.probes
+    async def invoke(call_kwargs):
+        state = _execution.get()
+        def call():
+            telemetry.flush_sync(state)
+            return guarded(**call_kwargs)
+        if on_loop:
+            await telemetry.flush(state)
+            value = guarded(**call_kwargs)
+        else:
+            value = await asyncio.to_thread(call)
+        if inspect.isawaitable(value):
+            try:
+                await telemetry.flush(state)
+            except BaseException:
+                if inspect.iscoroutine(value):
+                    value.close()
+                raise
+            return await value
+        return value
+    guarded._invoke_function = invoke
+    guarded._threadlight_owner = provider
+    def discard(reference):
+        if cache.get(key, (None,))[0] is reference:
+            cache.pop(key)
+    cache[key] = (ref(tool, discard), guarded)
+    return guarded
+
+
 def _guard_tool(tool, provider):
     from agent_framework import FunctionTool
     from agent_framework.exceptions import UserInputRequiredException
@@ -655,9 +696,10 @@ def _guard_tool(tool, provider):
     if not isinstance(tool, FunctionTool):
         tool = FunctionTool(func=tool)
     selected = provider._tool_bindings(tool.name)
-    if ((not selected and not _effect_lifecycle(provider)) or tool.func is None
-            or getattr(tool, "_threadlight_owner", None) is provider):
+    if tool.func is None or getattr(tool, "_threadlight_owner", None) is provider:
         return tool
+    if not selected and not _effect_lifecycle(provider):
+        return _guard_probe_tool(tool, provider) if getattr(provider, "probes", None) is not None else tool
     cache = provider.__dict__.setdefault("_guarded_tools", {})
     key = id(tool)
     cached = cache.get(key)
@@ -678,6 +720,7 @@ def _guard_tool(tool, provider):
     tool_name = tool.name
     bound_self = getattr(tool, "_instance", None)
     invoke_sync_on_event_loop = getattr(tool, "_invoke_sync_on_event_loop", False)
+    telemetry = getattr(provider, "probes", None)
     @wraps(function)
     async def invoke(*args, **kwargs):
         def check():
@@ -696,6 +739,8 @@ def _guard_tool(tool, provider):
             _check_lifecycle(provider, ("agent_startup", "input", "post_model_call"))
             _check_effect(provider, selected, authorization[2] if authorization else None)
         def call():
+            if telemetry is not None and not on_loop:
+                telemetry.flush_sync(_execution.get())
             check()
             authorization = _effect_authorization.get()
             if provider.mode == "enforce" and authorization is not None:
@@ -708,14 +753,19 @@ def _guard_tool(tool, provider):
         from agent_framework import FunctionInvocationContext
         check()
         try:
-            if inspect.iscoroutinefunction(function) or invoke_sync_on_event_loop:
+            on_loop = inspect.iscoroutinefunction(function) or invoke_sync_on_event_loop
+            if on_loop:
+                if telemetry is not None:
+                    await telemetry.flush(_execution.get())
                 value = call()
             else:
                 value = await asyncio.to_thread(call)
             if inspect.isawaitable(value):
                 try:
+                    if telemetry is not None:
+                        await telemetry.flush(_execution.get())
                     check()
-                except GovernedToolUnavailable:
+                except BaseException:
                     if inspect.iscoroutine(value):
                         value.close()
                     raise
@@ -891,6 +941,9 @@ class _ExecutionScope(AgentMiddleware):
         _check_client_middleware(self.client)
         state = {"emissions": {}, "calls": {}, "audit_failed": set(), "boundary_error": None,
                  "lifecycle_tickets": {}, "boundary_receipts": set()}
+        if getattr(self.provider, "probes", None) is not None:
+            state.update(probe_provider=self.provider, probe_loop=asyncio.get_running_loop(),
+                         probe_pending=Event(), probe_bridge_failed=Event())
         @contextmanager
         def scope():
             token = _execution.set(state)
