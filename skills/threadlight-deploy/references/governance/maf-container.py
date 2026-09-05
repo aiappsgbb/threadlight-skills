@@ -1,0 +1,218 @@
+"""MAF 1.14 / Responses: native hooks own the actual hosted agent."""
+from __future__ import annotations
+
+import asyncio
+import base64
+from contextlib import AsyncExitStack
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import uuid
+
+from agent_framework import SkillsProvider
+from agent_framework.foundry import FoundryChatClient
+from agent_framework_foundry_hosting import ResponsesHostServer
+from starlette.responses import JSONResponse
+
+from govern_bundle.policy_bundle import verify_bundle
+from govern_control_plane.client import ApprovalClient, PolicySnapshot, ServiceTransport
+from govern_control_plane.models import SignedBundle, envelope_digest, parse
+from govern_control_plane.storage import KeyVaultSigner
+from skills._shared.governance import validate_governance_contract
+from runtime import (
+    AcsGovernanceProvider, ApprovalGrant, ApprovalIntent, DurableSpool, VerifiedPolicy,
+    create_governed_agent,
+)
+
+BASE = Path(__file__).resolve().parent
+
+
+class UnavailablePolicy:
+    def verify(self, bundle):
+        raise ValueError("policy_unavailable")
+
+
+def audit_directory_identity(directory):
+    from govern_bundle.policy_bundle import checked_path
+    directory = checked_path(directory)
+    metadata = directory.stat()
+    if (not directory.is_dir() or metadata.st_uid != os.geteuid()
+            or metadata.st_mode & 0o022):
+        raise PermissionError("host_owned_audit_mount_required")
+    return metadata.st_dev, metadata.st_ino
+
+
+class RequiredDurableSpool(DurableSpool):
+    def _write(self, receipt, *, replace=False):
+        before = audit_directory_identity(self.directory)
+        super()._write(receipt, replace=replace)
+        if audit_directory_identity(self.directory) != before:
+            raise OSError("audit_mount_changed")
+
+
+async def build_provider(config, *, signer, credential):
+    """Authenticate the immutable envelope with the trusted, versioned Key Vault key."""
+    signature = UnavailablePolicy()
+    try:
+        signed = parse(SignedBundle, (BASE / "policy-envelope.json").read_bytes())
+        envelope = signed.envelope
+        await signer.health()
+        if (envelope.tenant_id != config["tenant_id"] or envelope.key_id != config["key_id"]
+                or envelope.policy_id != config["policy_id"] or envelope.version != config["policy_version"]
+                or envelope.content_digest != config["policy_digest"]
+                or envelope.expires_at <= datetime.now(timezone.utc)
+                or not await signer.verify(envelope_digest(envelope),
+                    base64.b64decode(signed.signature, validate=True))):
+            raise ValueError("policy_unavailable")
+        signature = PolicySnapshot(VerifiedPolicy(envelope.content_digest, envelope.expires_at))
+    except Exception:
+        # Keep unbound tools usable, but selected tools deny and readiness is 503.
+        pass
+    approval = ApprovalClient(
+        base_url=config["control_plane_url"], scope=config["control_plane_scope"],
+        credential=credential, intent_type=ApprovalIntent, grant_type=ApprovalGrant)
+    import governance_application as application
+    if not callable(application.safe_evidence):
+        raise ValueError("host_owned_safe_evidence_required")
+
+    def safe_evidence(identity):
+        facts = application.safe_evidence(identity)
+        if not isinstance(facts, dict) or not facts:
+            raise ValueError("safe_evidence_unavailable")
+        return facts
+
+    from runtime.governance_provider import AUDIT
+    required_audit = any(
+        set(binding.get("requires", [])) & AUDIT for binding in (
+            config["contract"]["tools"] + config["contract"]["governance"]["lifecycle_bindings"]))
+    spool = RequiredDurableSpool if required_audit else DurableSpool
+    provider = AcsGovernanceProvider(
+        contract=config["contract"], bundle_path=BASE / "policy",
+        expected_digest=config["policy_digest"], bundle_verifier=verify_bundle,
+        contract_validator=validate_governance_contract, signature_verifier=signature,
+        safe_provider=safe_evidence, approval_resolver=approval,
+        principal=config["principal"], tenant=config["tenant_id"],
+        allowed_approval_roles=config["approver_roles"],
+        audit=spool(config["spool_dir"]), agent_version=config["agent_version"],
+        image_digest=config["image_digest"], environment=config.get("environment", "production"),
+    )
+    provider.deployment_agent_id = config["agent_id"]
+    return provider
+
+
+def readiness(provider):
+    provider._refresh()
+    health = provider.health()
+    ready = bool(health["bindings"]) and all(b["healthy"] for b in health["bindings"].values())
+    return JSONResponse(health, status_code=200 if ready else 503)
+
+
+async def dependency_readiness(provider):
+    from runtime.governance_provider import APPROVAL, AUDIT
+    response = readiness(provider)
+    body = json.loads(response.body)
+    for key, binding in provider._bindings.items():
+        if set(binding["requires"]) & AUDIT:
+            try:
+                directory = provider.audit.directory
+                audit_directory_identity(directory)
+                probe = directory / f".readiness-{uuid.uuid4().hex}"
+                try:
+                    with probe.open("xb") as stream:
+                        stream.write(b"")
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(descriptor)
+                    finally:
+                        os.close(descriptor)
+                finally:
+                    probe.unlink(missing_ok=True)
+            except Exception:
+                body["bindings"][key].update(healthy=False, reason="threadlight:audit_unavailable")
+        if set(binding["requires"]) & APPROVAL:
+            if not await provider.approval_resolver.health(approval_context={
+                "agent_id": provider.deployment_agent_id, "principal": provider.principal,
+                "tenant": provider.tenant, "allowed_roles": list(provider.allowed_approval_roles),
+            }):
+                body["bindings"][key].update(healthy=False, reason="threadlight:approval_unavailable")
+    return JSONResponse(body, status_code=200 if (
+        body["bindings"] and all(b["healthy"] for b in body["bindings"].values())) else 503)
+
+
+async def resolve_identity(config, credential, *, http=None):
+    """Confirm a credential-token subject with Task8 before using it as an approval principal."""
+    from govern_control_plane.models import ObjectId, canonical, strict_json
+    token = await credential.get_token(config["control_plane_scope"])
+    payload = token.token.split(".")[1]
+    candidate = strict_json(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    principal = parse(ObjectId, canonical(candidate["oid"]))
+    if candidate["tid"] != config["tenant_id"]:
+        raise ValueError("workload_tenant_mismatch")
+    # The decoded claims are NOT authentication. The configured TLS service
+    # verifies the JWT and exact context before this subject becomes trusted.
+    async with ServiceTransport(
+            base_url=config["control_plane_url"], scope=config["control_plane_scope"],
+            credential=credential, http=http) as service:
+        if not await service.health(approval_context={
+                "principal": principal, "agent_id": config["agent_id"], "tenant": config["tenant_id"],
+                "allowed_roles": config["approver_roles"]}):
+            raise ValueError("workload_identity_unavailable")
+    return principal
+
+
+def build_host(provider, *, client, **host_options):
+    import governance_application as application
+    skills = BASE / "skills"
+    # Shared validator Python modules are not agent skills; retain progressive disclosure.
+    contexts = [SkillsProvider.from_paths(skills)] if any(skills.glob("*/SKILL.md")) else []
+    agent = create_governed_agent(
+        provider, client=client, middleware=application.middleware,
+        tools=application.tools, context_providers=contexts,
+        id=provider.deployment_agent_id, name=provider.deployment_agent_id,
+        instructions=(BASE / "copilot-instructions.md").read_text(),
+        default_options={"store": False})
+
+    class GovernedHost(ResponsesHostServer):
+        async def _readiness_endpoint(self, request):
+            native = await super()._readiness_endpoint(request)
+            return await dependency_readiness(provider) if native.status_code == 200 else native
+
+    os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "false"
+    return GovernedHost(agent, **host_options)
+
+
+async def main():
+    from azure.identity.aio import DefaultAzureCredential
+    from azure.keyvault.keys.aio import KeyClient
+    from azure.keyvault.keys.crypto.aio import CryptographyClient
+    config = json.loads((BASE / "governance-config.json").read_text())
+    for key, variable in {
+        "agent_version": "FOUNDRY_AGENT_VERSION",
+        "image_digest": "TL_GOV_IMAGE_DIGEST", "control_plane_url": "GOV_CONTROL_PLANE_URL",
+        "spool_dir": "TL_GOV_SPOOL_DIR",
+    }.items():
+        config[key] = os.environ[variable]
+    from govern_control_plane.models import Digest, Identifier, ObjectId, canonical
+    for name, schema in (("agent_version", Identifier), ("image_digest", Digest)):
+        parse(schema, canonical(config[name]))
+    async with AsyncExitStack() as stack:
+        credential = await stack.enter_async_context(DefaultAzureCredential())
+        config["principal"] = await resolve_identity(config, credential)
+        crypto = await stack.enter_async_context(CryptographyClient(config["key_id"], credential=credential))
+        keys = await stack.enter_async_context(KeyClient(
+            config["key_id"].split("/keys/")[0], credential=credential))
+        provider = await build_provider(
+            config, signer=KeyVaultSigner(crypto, key_client=keys), credential=credential)
+        stack.push_async_callback(provider.approval_resolver.aclose)
+        client = FoundryChatClient(
+            project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
+            model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"], credential=credential)
+        host = build_host(provider, client=client)
+        await host.run_async()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

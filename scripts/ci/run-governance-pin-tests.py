@@ -215,6 +215,147 @@ for record in records:
         shutil.rmtree(staging)
 
 
+def deployment_runtime(pins):
+    """Separate environment; generated contexts never depend on catalog package installation."""
+    import importlib.util
+    reference = ROOT / "skills/threadlight-deploy/references/governance"
+    deps = tomllib.loads((reference / "pyproject-maf.toml").read_text())["project"]["dependencies"]
+    required = sorted(set(requirements(pins) + gateway_requirements() + [
+        item for item in deps if not item.startswith("threadlight-govern-")
+    ] + ["github-copilot-sdk==1.0.1"]))
+    wheelhouse = SCRATCH / "deployment-wheels"
+    python = SCRATCH / "task10-linux-venv/bin/python"
+    if not python.exists():
+        venv.EnvBuilder(with_pip=True).create(python.parent.parent)
+    probe = ("import importlib.metadata as m; "
+             f"assert all(m.version(p.split('==')[0].split('[')[0]) == p.split('==')[1] for p in {required!r})")
+    if subprocess.run([str(python), "-c", probe], cwd=ROOT).returncode:
+        run([python, "-m", "pip", "install", "--quiet", "--no-index",
+             "--find-links", wheelhouse, *required])
+    spec = importlib.util.spec_from_file_location("deployment_generator", reference / "generate.py")
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    staging = SCRATCH / f"deployment-packages-{uuid.uuid4().hex}"
+    staging.mkdir()
+    try:
+        generator.vendor_control_plane(staging)
+        generator.vendor_gateway(staging)
+        run([python, "-m", "pip", "wheel", "--quiet", "--no-deps", "--no-build-isolation",
+             "--wheel-dir", staging / "wheels", staging / "vendor/control-plane", staging / "vendor/gateway"])
+        run([python, "-m", "pip", "install", "--quiet", "--no-deps", "--force-reinstall",
+             *sorted((staging / "wheels").glob("*.whl"))])
+        run([python, "-m", "pip", "check"])
+        # Includes exact shared MAF/Hooks/ACS execution bytes, not just versions.
+        records = json.loads((SCRATCH / "wheel-provenance.json").read_text())
+        verification = """
+import importlib.metadata as m, json, pathlib, zipfile
+scratch = pathlib.Path('.governance-validation')
+for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
+    dist = m.distribution(record['distribution'])
+    assert dist.version == record['version']
+    artifact = scratch / 'deployment-wheels' / record['filename']
+    with zipfile.ZipFile(artifact) as archive:
+        for name in archive.namelist():
+            if name.endswith(('.py', '.so')) and '.data/' not in name:
+                assert dist.locate_file(name).read_bytes() == archive.read(name), name
+"""
+        run([python, "-c", verification])
+        report = SCRATCH / "deployment-tests.xml"
+        env = {
+            **os.environ, "THREADLIGHT_GOVERNANCE_RUNTIME": "1",
+            "THREADLIGHT_GOVERNANCE_BICEP": str(SCRATCH / "deployment-bicep.json"),
+            "ACS_OPA_PATH": str(SCRATCH / "opa-linux-amd64"), "OTEL_SDK_DISABLED": "true",
+        }
+        env.pop("PYTEST_ADDOPTS", None)
+        run([python, "-m", "pytest", "skills/threadlight-deploy/tests/test_governance_wiring.py",
+             "skills/threadlight-deploy/tests/test_azd_cli_contract.py",
+             "-q", f"--junitxml={report}", "--basetemp", SCRATCH / "deployment-fixtures",
+             "-o", "markers=governance_runtime: exact native runtime",
+             "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
+        cases = ET.parse(report).findall(".//testcase")
+        if not cases or any(case.find(tag) is not None for case in cases
+                            for tag in ("skipped", "failure", "error")):
+            raise RuntimeError("deployment tests missing, skipped, or failed")
+        required_cases = {
+            "test_generated_maf_native_constructor_host_and_failed_signature",
+            "test_ghcp_native_host_and_actual_hook_schema",
+            "test_ghcp_pre_mcp_bridge_refreshes_gateway_not_model_token",
+            "test_generation_off_is_byte_for_byte_noop",
+            "test_bicep_compiles_and_has_separate_scoped_service_identities",
+        }
+        if not required_cases <= {case.attrib["name"] for case in cases}:
+            raise RuntimeError("required native generation probes did not run")
+        run([python, "-c", verification])
+        (SCRATCH / "deployment-proof.json").write_text(json.dumps({
+            "tests_passed": len(cases), "junit": report.name,
+            "packages": {r["distribution"]: r["version"] for r in records},
+            "scope": "generated native hosts, installed portable wheels, HTTP relay, Bicep; no live Azure",
+        }, indent=2) + "\n")
+    finally:
+        shutil.rmtree(staging)
+
+
+def prepare_deployment(pins):
+    """Host downloads retain working TLS settings; Linux container executes published wheels."""
+    (SCRATCH / "deployment-proof.json").unlink(missing_ok=True)
+    reference = ROOT / "skills/threadlight-deploy/references/governance"
+    output = SCRATCH / "deployment-bicep.json"
+    bicep = [shutil.which("bicep")] if shutil.which("bicep") else ["az", "bicep"]
+    run([*bicep, "build", "--file", reference / "governance.bicep", "--outfile", output])
+    deps = tomllib.loads((reference / "pyproject-maf.toml").read_text())["project"]["dependencies"]
+    requested = sorted(set(requirements(pins) + gateway_requirements() + [
+        item for item in deps if not item.startswith("threadlight-govern-")
+    ] + ["github-copilot-sdk==1.0.1"]))
+    wheelhouse = SCRATCH / "deployment-wheels"
+    wheelhouse.mkdir(exist_ok=True)
+    marker = wheelhouse / "requirements.json"
+    if not marker.exists() or json.loads(marker.read_text()) != requested:
+        run([sys.executable, "-m", "pip", "download", "--quiet", "--only-binary=:all:",
+             "--platform", "manylinux_2_28_x86_64", "--platform", "manylinux2014_x86_64",
+             "--python-version", "3.12", "--implementation", "cp", "--abi", "cp312",
+             "--abi", "abi3", "--abi", "none", "--dest", wheelhouse, *requested])
+        marker.write_text(json.dumps(requested))
+    verify_wheels(wheelhouse, pins)
+    opa = SCRATCH / "opa-linux-amd64"
+    if not opa.exists():
+        url = f"https://github.com/open-policy-agent/opa/releases/download/v{pins['opa']['version']}/opa_linux_amd64_static"
+        with urllib.request.urlopen(url, timeout=120) as response:
+            opa.write_bytes(response.read())
+        opa.chmod(0o755)
+    if hashlib.sha256(opa.read_bytes()).hexdigest() != pins["opa"]["linux_amd64_static_sha256"]:
+        raise RuntimeError("OPA published checksum mismatch")
+    run(["docker", "run", "--rm", "--platform", "linux/amd64",
+         "-v", f"{ROOT}:/work:ro", "-v", f"{SCRATCH}:/work/.governance-validation",
+         "-w", "/work", "-e", "TMPDIR=/work/.governance-validation/tmp",
+         "-e", "PYTHONPYCACHEPREFIX=/work/.governance-validation/pycache",
+         "-e", "PIP_CACHE_DIR=/work/.governance-validation/pip-cache",
+         IMAGE, "python", "scripts/ci/run-governance-pin-tests.py", "--deployment-prepared"])
+    fixtures = list((SCRATCH / "deployment-fixtures").glob("test_generated_maf_native*/external-pilot"))
+    if len(fixtures) != 1:
+        raise RuntimeError("generated external fixture missing")
+    fixture = fixtures[0]
+    run([*bicep, "build", "--file", fixture / "infra/main.bicep",
+         "--outfile", SCRATCH / "deployment-main-bicep.json"])
+    proof_dir = SCRATCH / "deployment-isolated-proof"
+    proof_dir.mkdir(exist_ok=True)
+    run(["docker", "run", "--rm", "--network", "none", "--platform", "linux/amd64",
+         "-v", f"{fixture / 'src/agent'}:/app:ro",
+         "-v", f"{SCRATCH / 'task10-linux-venv'}:/validation:ro",
+         "-v", f"{proof_dir}:/proof", "-w", "/app",
+         "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "OTEL_SDK_DISABLED=true",
+         IMAGE, "/validation/bin/python", "-B", "-c",
+         "from pathlib import Path; import py_compile; "
+         "assert not Path('/work').exists(); "
+         "[py_compile.compile(str(p), cfile='/proof/compiled.pyc', doraise=True) for p in Path('.').rglob('*.py')]; "
+         "import container, runtime, govern_bundle.policy_bundle, govern_control_plane.client; "
+         "from skills._shared.governance import validate_governance_contract; "
+         "print('Generated agent imports and compiles without catalog filesystem or network')"])
+    proof_path = SCRATCH / "deployment-proof.json"
+    proof = json.loads(proof_path.read_text())
+    proof.update(composed_bicep=True, isolated_fixture_import_and_compile=True)
+    proof_path.write_text(json.dumps(proof, indent=2) + "\n")
+
+
 def runtime(pins):
     if Path(sys.prefix).resolve() != VENV.resolve() or sys.prefix == sys.base_prefix:
         raise RuntimeError("runtime proof requires the isolated validation virtualenv")
@@ -319,6 +460,12 @@ def main():
     )
     os.environ.pop("PYTHONPATH", None)
     pins = json.loads(PIN_FILE.read_text())
+    if sys.argv[1:] == ["--deployment"]:
+        prepare_deployment(pins)
+        return
+    if sys.argv[1:] == ["--deployment-prepared"]:
+        deployment_runtime(pins)
+        return
     if sys.argv[1:] == ["--gateway-prepared"]:
         gateway_runtime(pins)
         return

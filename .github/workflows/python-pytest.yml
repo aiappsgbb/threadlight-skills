@@ -78,6 +78,29 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  deploy-generation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ensure local Bicep compiler
+        run: az bicep version || az bicep install
+      - name: Exact-pin generated deployments and native host probes
+        # Public wheels + local Docker only. No Azure login, credentials or deployment.
+        run: python scripts/ci/run-governance-pin-tests.py --deployment
+      - name: Preserve generation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-generation-evidence
+          include-hidden-files: true
+          path: |
+            .governance-validation/deployment-proof.json
+            .governance-validation/deployment-tests.xml
+            .governance-validation/deployment-bicep.json
+            .governance-validation/deployment-main-bicep.json
   governance-runtime:
     runs-on: ubuntu-latest
     steps:
@@ -217,6 +240,7 @@ jobs:
         # failure otherwise surfaces at deploy time as `unknown command` (which
         # is exactly how a mandatory Step 6 gate shipped broken). Static: reads
         # markdown, runs no azd, no network.
-        run: python -m pytest skills/threadlight-deploy/tests/ -v
+        # Native generation/Bicep tests run, without skips, in deploy-generation above.
+        run: python -m pytest skills/threadlight-deploy/tests/ -v --ignore=skills/threadlight-deploy/tests/test_governance_wiring.py
       - name: Test threadlight-governed-actions
         run: python -m pytest skills/threadlight-governed-actions/tests -q

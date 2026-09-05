@@ -32,6 +32,48 @@ metadata:
 Take a project folder (containing AGENTS.md, `src/agent/skills/`, config/, etc.) and enrich
 it with all files needed to deploy as a **Microsoft Foundry Hosted Agent**.
 
+## Selected governance — before choosing a container template
+
+Read the explicit governance contract first. **Off means no changes and no
+governance infrastructure.** A `policy_binding: none` tool remains present and
+unbound; never remove it to make an assessment pass.
+
+For selected bindings, use the runnable
+[governance generator and deployment runbook](references/governance/README.md):
+
+```bash
+python <threadlight-skills>/skills/threadlight-deploy/references/governance/generate.py \
+  generate --project <pilot> --contract <contract.json> --configuration <package.json>
+```
+
+- Keep the operator's runtime choice. MAF local hooks use the **whole portable
+  provider**, native Task6 validator, signed Task8 envelope, real Key Vault
+  verification, HTTP approval client and durable audit spool. The
+  `create_governed_agent` result is the agent actually passed to
+  `ResponsesHostServer`; application middleware stays inside its native hooks.
+  Required output mediation buffers before delivery and forces `store=False`.
+- GHCP uses `CopilotClient` + Invocations, **not** invented local hooks. Only
+  bound MCP tools go through the authenticated gateway; mixed servers retain
+  their explicit unbound tool filters, original URL and auth. The pinned pre-MCP
+  hook supports metadata, not HTTP headers: the generated loopback adapter
+  supplies fresh gateway-audience auth and Task9 idempotency headers.
+- **Selected governance pins override all legacy/default pins below and stale
+  installed companions.** Use `../_shared/governance-upstream-pin.json` exactly
+  (AGT 5, ACS 0.3.1b0, Hooks 0.1.0a5, MAF 1.14/Foundry 1.11/hosting b260813).
+- Missing/unsigned/expired policy, approval or audit dependencies must not
+  produce healthy readiness. A diagnostic fallback is **not** a healthy agent.
+  Deadline pressure or an already-built legacy image does not waive wiring.
+- Separate control-plane, gateway, downstream and publisher identities.
+  Never reuse the agent identity or a shared ancillary admin identity; the
+  agent receives no approval-store write or direct downstream permissions.
+  Private-required means supplied, verified Foundry VNet injection and reachable
+  private dependencies, not external ingress plus a TODO.
+- Follow **foundation → package/build → bind** in the runbook. Images and
+  deployment identity must be resolved before service revisions; no
+  hello-world placeholder images. Packaging, assessments and health are not
+  live runtime/effect-closure proof. GHCP is only action-governed after the
+  Task9/11 effect-closure probes pass; never claim full output gating.
+
 **Canonical runtime policy:**
 `../threadlight-design/references/runtime-policy.json`. The locked default
 route remains `github-copilot-sdk` + `agent` + `invocations`
