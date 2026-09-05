@@ -138,6 +138,32 @@ templates.
    contain `gateway-registry.json`. Runtime image/version values are trusted
    deployment inputs outside the source image.
 
+   **Policy trust has three explicit phases.** Before `stage-gateway`, the
+   package's `configuration.policy_digest` and `signed_policy` describe the
+   **bootstrap** bundle only, not a live signed final gateway. Staging adds the
+   registry and changes the bundle digest; safe-check validates the staged
+   envelope's content digest, policy identity/expiry, native schema, selected
+   controls and registry-to-agent-image association using the same validator as
+   stage/bind. After binding, `bindings.policy_digest` must also equal the final
+   envelope digest and `bindings.gateway_config.policy_digest`, with exact
+   agent/version, workload identities, service scopes, endpoints and approval-role
+   associations. GHCP must not carry a native-runtime policy association.
+
+   The frozen GHCP package retains its bootstrap digest; its agent configuration
+   omits that digest rather than embedding the final gateway digest and creating
+   an image hash cycle. The gateway's final service configuration supplies the
+   final digest. MAF instead always verifies its embedded bundle against the
+   immutable package digest and envelope.
+
+   These static sources are declarations, **not signing authorities**. Static
+   results identify `bootstrap-package`, `staged-envelope`, `deployment-binding`
+   (or MAF's `immutable-package`) and never claim signature verification or live
+   enforcement. The collector verifies the final signature with the trusted
+   versioned key, observes the exact deployed configuration/identities, and
+   requires authenticated receipts and effect evidence for that final digest.
+   Rehashing a modified bundle and editing local JSON cannot confer that trust;
+   an unstaged or unbound bootstrap cannot produce live enforcement evidence.
+
 5. **Bind, then deploy only the resulting pinned revisions.**
 
    ```sh

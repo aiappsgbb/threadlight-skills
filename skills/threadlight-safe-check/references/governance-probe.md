@@ -35,6 +35,16 @@ The project must already contain:
   **post-image** association registry whose `native_policy_digest` matches the
   independently signed embedded runtime bundle. Gateway uses its normal policy.
 
+For GHCP, select the **final staged gateway bundle and envelope**, not the
+bootstrap package digest. The unchanged package records bootstrap input; the
+bound gateway service configuration records the final digest after the registry
+adds the agent image/version/identity. Static checks report this phase explicitly
+and validate the same stage/bind associations, but do not verify signatures.
+Collection additionally verifies the signature with the trusted key, the observed
+service configuration, and authenticated receipts against the final digest.
+Unsigned local JSON cannot replace these authorities. Native MAF's embedded
+package digest remains immutable.
+
 Create `.threadlight/governance-probe.json` with exactly these keys:
 
 | Key | Value |

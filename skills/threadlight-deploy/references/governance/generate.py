@@ -335,6 +335,71 @@ def frozen_configuration(project, package):
     return agent, frozen
 
 
+def validate_gateway_policy(bundle, signed, config, document, agent_image, bindings=None):
+    """Shared stage/bind/static association checks; signature verification stays live."""
+    from govern_control_plane.models import parse
+    from govern_gateway.dispatcher import Registry
+    registry = parse(Registry, (bundle.root / "gateway-registry.json").read_bytes())
+    validate_policy(bundle, signed, config)
+    validate_bundle_contract(bundle, document, config, registry)
+    if not re.fullmatch(r"[a-z0-9.-]+/[a-z0-9./_-]+@sha256:[0-9a-f]{64}", agent_image or ""):
+        raise ValueError("deployment_images_require_built_digests")
+    if (registry.native_policy_digest is not None
+            or registry.deployment.image_digest != agent_image.split("@")[1]
+            or registry.deployment.agent_id != config["agent_id"]
+            or registry.tenant_id != config["tenant_id"]
+            or registry.gateway_url != config["gateway_url"]):
+        raise ValueError("signed_registry_deployment_mismatch")
+    if validate_probe_observability(config) and (
+            not any(a.probe_safe for a in registry.actions)
+            or registry.deployment.subscription != config["subscription"]
+            or registry.deployment.resource_group != config["resource_group"]):
+        raise ValueError("signed_probe_deployment_mismatch")
+    if bindings is None:
+        return registry
+    if (registry.deployment.agent_version != bindings["agent_version"]
+            or bindings["policy_digest"] != bundle.bundle_digest
+            or any(bindings[key] != config[key] for key in ("policy_id", "policy_version", "key_id"))):
+        raise ValueError("signed_registry_deployment_mismatch")
+    if not all({a.endpoint, a.outcome_endpoint} <= set(bindings["allowed_endpoints"]) for a in registry.actions):
+        raise ValueError("downstream_allowlist_mismatch")
+    from govern_control_plane.app import AzureConfiguration
+    from govern_control_plane.models import canonical
+    from govern_gateway.server import Configuration
+    control = parse(AzureConfiguration, canonical(bindings["control_config"]))
+    gateway = parse(Configuration, canonical(bindings["gateway_config"]))
+    for service, settings in (("control_plane", control), ("gateway", gateway)):
+        if (settings.tenant_id != config["tenant_id"] or settings.key_id != config["key_id"]
+                or settings.approver_roles != config["approver_roles"]
+                or config[service + "_scope"] != f"api://{settings.audience}/.default"):
+            raise ValueError("service_auth_binding_mismatch")
+    if (gateway.policy_digest != bundle.bundle_digest
+            or gateway.policy_id != config["policy_id"] or gateway.policy_version != config["policy_version"]
+            or gateway.gateway_url != config["gateway_url"]
+            or gateway.control_plane_url != config["control_plane_url"]
+            or gateway.control_plane_scope != config["control_plane_scope"]
+            or gateway.service_client_id != bindings["gateway_client"]
+            or gateway.service_principal != bindings["gateway_principal"]
+            or gateway.service_agent_id != config["agent_id"]
+            or gateway.downstream_client_id != bindings["downstream_client"]
+            or gateway.allowed_endpoints != bindings["allowed_endpoints"]):
+        raise ValueError("service_auth_binding_mismatch")
+    if len({bindings[key] for key in ("agent_principal", "gateway_principal", "downstream_principal")}) != 3:
+        raise ValueError("distinct_workload_identities_required")
+    for settings, subject, client in (
+        (control, bindings["agent_principal"], bindings["agent_client_id"]),
+        (control, bindings["gateway_principal"], bindings["gateway_client"]),
+        (gateway, bindings["agent_principal"], bindings["agent_client_id"]),
+    ):
+        workload = settings.workloads.get(subject)
+        if (workload is None or workload.client_id != client or workload.agent_id != config["agent_id"]
+                or config["policy_id"] not in workload.policies):
+            raise ValueError("workload_allowlist_mismatch")
+    if any(bindings["agent_principal"] not in action.workloads for action in registry.actions):
+        raise ValueError("signed_registry_workload_mismatch")
+    return registry
+
+
 @project_transaction
 def generate(project, document, *, configuration=None):
     source_contract = deepcopy(document)
@@ -710,8 +775,6 @@ def stage_gateway(project, document, *, configuration=None):
     if validate_contract(document)["governance"]["mode"] == "off":
         return {"status": "off"}
     from govern_control_plane.models import SignedBundle, canonical, parse
-    from govern_gateway.dispatcher import Registry
-    from datetime import datetime, timezone
     config = configuration or {}
     project = Path(project)
     package = json.loads((project / ".threadlight/governance-package.json").read_text())
@@ -720,21 +783,10 @@ def stage_gateway(project, document, *, configuration=None):
     bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
     bundle = bundle_api.verify_bundle(Path(config["gateway_bundle"]), expected_digest=config["policy_digest"])
     bundle_api.validate_native_manifest(bundle.root)
-    registry = parse(Registry, (bundle.root / "gateway-registry.json").read_bytes())
     signed = parse(SignedBundle, Path(config["signed_envelope"]).read_bytes())
     expected = package["configuration"]
     frozen_configuration(project, package)
-    validate_policy(bundle, signed, expected)
-    validate_bundle_contract(bundle, document, expected, registry)
-    if not re.fullmatch(r"[a-z0-9.-]+/[a-z0-9./_-]+@sha256:[0-9a-f]{64}", config.get("agent_image", "")):
-        raise ValueError("deployment_images_require_built_digests")
-    if (signed.envelope.content_digest != bundle.bundle_digest
-            or signed.envelope.tenant_id != expected["tenant_id"]
-            or signed.envelope.key_id != expected["key_id"]
-            or signed.envelope.expires_at <= datetime.now(timezone.utc)
-            or registry.deployment.image_digest != config["agent_image"].split("@")[1]
-            or registry.gateway_url != expected["gateway_url"]):
-        raise ValueError("signed_registry_deployment_mismatch")
+    validate_gateway_policy(bundle, signed, expected, document, config.get("agent_image"))
     target = project / "src/govern-gateway/policy"
     if target.exists():
         shutil.rmtree(target)
@@ -859,28 +911,10 @@ def bind(project, document, *, configuration=None):
             probe_declaration = native_probe_binding(config, bindings, packaged, images, document)
             bindings["native_probe_config"] = deepcopy(config["probe_runtime_configuration"])
     else:
-        from govern_gateway.dispatcher import Registry
-        bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
         bundle = bundle_api.verify_bundle(Path(config["gateway_bundle"]), expected_digest=bindings["policy_digest"])
-        registry = parse(Registry, (bundle.root / "gateway-registry.json").read_bytes())
-        if probe_option and (not any(a.probe_safe for a in registry.actions)
-                             or registry.native_policy_digest is not None
-                             or registry.deployment.subscription != packaged["subscription"]
-                             or registry.deployment.resource_group != packaged["resource_group"]):
-            raise ValueError("signed_probe_deployment_mismatch")
-        if (registry.deployment.image_digest != images["agent"].split("@")[1]
-                or registry.deployment.agent_version != bindings["agent_version"]
-                or registry.deployment.agent_id != infrastructure["agent_id"]
-                or registry.tenant_id != infrastructure["tenant_id"]
-                or registry.gateway_url != observed["gateway_url"]):
-            raise ValueError("signed_registry_deployment_mismatch")
-        if not all({action.endpoint, action.outcome_endpoint} <= set(bindings["allowed_endpoints"])
-                   for action in registry.actions):
-            raise ValueError("downstream_allowlist_mismatch")
         bundle_api.validate_native_manifest(bundle.root)
         signed = parse(SignedBundle, (project / "src/govern-gateway/policy-envelope.json").read_bytes())
-        validate_policy(bundle, signed, frozen)
-        validate_bundle_contract(bundle, document, frozen, registry)
+        validate_gateway_policy(bundle, signed, packaged, document, images["agent"], bindings)
         current = project / "src/govern-gateway/policy"
         if tree_digest(current) != tree_digest(bundle.root):
             raise ValueError("stage_gateway_before_build_and_bind")

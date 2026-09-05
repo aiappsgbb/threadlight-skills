@@ -163,19 +163,40 @@ def check(project, document):
                 gateway=native and "probe_observability" in config, opa_pin=pins["opa"]):
             raise ValueError("agent-docker-adapter-not-installed")
         root = agent / "policy" if native else project / "src/govern-gateway/policy"
-        bundle = verify_bundle(root, expected_digest=config["policy_digest"])
-        validate_native_manifest(bundle.root)
-        envelope_path = agent / "policy-envelope.json" if native else project / "src/govern-gateway/policy-envelope.json"
-        # Before stage-gateway, Task10 retains the signed envelope in its package.
-        signed = parse(SignedBundle, (envelope_path.read_bytes() if envelope_path.exists()
+        deployment_path = contained(project, ".threadlight/governance-deployment.json")
+        deployment = read(deployment_path) if deployment_path.exists() else None
+        envelope_path = contained(project, ("src/govern-gateway/policy-envelope.json" if not native
+                                           else (agent / "policy-envelope.json").relative_to(project)))
+        final_gateway = not native and (envelope_path.exists() or deployment is not None)
+        # The GHCP package records bootstrap input, not the later image-bound registry.
+        # These are offline declarations: none is an authority to verify its own signature.
+        signed = parse(SignedBundle, (envelope_path.read_bytes() if native or final_gateway
                                      else json.dumps(package["signed_policy"]).encode()))
+        source = "immutable-package" if native else "bootstrap-package"
+        expected_digest = config["policy_digest"]
+        if final_gateway:
+            source = "deployment-binding" if deployment is not None else "staged-envelope"
+            expected_digest = (deployment["bindings"]["policy_digest"] if deployment is not None
+                               else signed.envelope.content_digest)
+        bundle = verify_bundle(root, expected_digest=expected_digest)
+        validate_native_manifest(bundle.root)
         gen.validate_policy(bundle, signed, config)
+        if native and signed.model_dump(mode="json") != package["signed_policy"]:
+            raise ValueError("frozen-signed-policy-changed")
         registry = None
-        if not native and (root / "gateway-registry.json").exists():
+        image = svc.get("image")
+        if final_gateway:
+            registry = gen.validate_gateway_policy(bundle, signed, config, document, image,
+                deployment["bindings"] if deployment is not None else None)
+        elif not native and (root / "gateway-registry.json").exists():
             from govern_gateway.dispatcher import Registry
             registry = parse(Registry, (root / "gateway-registry.json").read_bytes())
         gen.validate_bundle_contract(bundle, document, config, registry)
-        image = svc.get("image")
+        result["policy_trust"] = {"source": source, "digest": bundle.bundle_digest,
+                                  "signature_verified": False}
+        result["bindings"] = bindings(contract, bundle.bundle_digest, config["environment"])
+        if not native and not final_gateway:
+            result["unverified"].append("final-gateway-policy-not-staged")
         if image and image != "${TL_GOV_AGENT_IMAGE}":
             result["stage"] = "image-bound"
             digest = image.split("@")[1]
@@ -185,13 +206,14 @@ def check(project, document):
                 raise ValueError("signed-registry-image-mismatch")
         else:
             result["unverified"].append("image-not-built")
-        deployment_path = contained(project, ".threadlight/governance-deployment.json")
-        if deployment_path.exists():
-            deployment = read(deployment_path)
+        if deployment is not None:
             b, infra = deployment["bindings"], deployment["infrastructure"]
             if (infra["runtime"] != contract["framework"] or infra["tenant_id"] != config["tenant_id"]
                     or infra["environment"] != config["environment"] or b["policy_digest"] != bundle.bundle_digest
                     or deployment["images"]["agent"] != image):
+                raise ValueError("deployment-binding-disagrees-with-package")
+            if not native and (infra["agent_id"] != config["agent_id"]
+                               or infra["approver_roles"] != config["approver_roles"]):
                 raise ValueError("deployment-binding-disagrees-with-package")
             for service in ("control", "gateway"):
                 settings = b[service + "_config"]

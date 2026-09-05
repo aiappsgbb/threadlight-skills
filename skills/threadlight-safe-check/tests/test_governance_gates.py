@@ -68,6 +68,228 @@ def test_intentionally_unbound_read_tool_is_not_gap(tmp_path):
     assert safe_check.phase_predeploy(project, path, project / "predeploy.json") == 0
 
 
+def staged_gateway_project(tmp_path, *, phase="bound"):
+    """Build bootstrap first; add the signed registry only after freezing the agent image."""
+    import asyncio
+    import base64
+    from datetime import datetime, timedelta, timezone
+    from test_governance_quality import inputs
+    from test_governance_wiring import module
+    from test_gateway import registry
+    from test_policy_bundle import bundle_module
+    from govern_control_plane.models import BundleEnvelope, SignedBundle, canonical, envelope_digest
+
+    project, document, config, deployment, signer = inputs(tmp_path, environment="preproduction")
+    document["framework"] = "github-copilot-sdk"
+    document["tools"][0]["enforcement_path"] = "governed-tool-gateway"
+    config.update(
+        mcp_servers={"original": {"type": "http", "url": "https://original.example/mcp", "tools": ["act", "read"]}},
+        mcp_bindings={"act": {"server": "original", "tool": "act"}})
+    deployment["infrastructure"].update(runtime=document["framework"], enable_gateway=True)
+    gen = module("generate")
+    gen.foundation(project, document, configuration=deployment["infrastructure"])
+    gen.generate(project, document, configuration=config)
+    package_path = project / ".threadlight/governance-package.json"
+    frozen = package_path.read_bytes()
+    agent_source = gen.tree_digest(project / "src/agent")
+    (project / "specs").mkdir()
+    manifest = {**document, "deployment_manifest": {
+        "module_selectors": {}, "services": [
+            {"name": name, "host": "containerapp", "src": "src/" + name}
+            for name in ("govern-control-plane", "govern-gateway")], "expected_resource_types": []}}
+    (project / "specs/manifest.json").write_text(json.dumps(manifest))
+    if phase == "bootstrap":
+        return project, document, config, deployment, signer
+    gen.agent_image(project, document, configuration={
+        "agent_image": deployment["images"]["agent"], "spool_directory": "/mnt/audit"})
+    if phase == "image":
+        return project, document, config, deployment, signer
+    registered = registry()
+    registered.update(tenant_id=config["tenant_id"], gateway_url=config["gateway_url"])
+    registered["deployment"].update(agent_id=config["agent_id"],
+        image_digest=deployment["images"]["agent"].split("@")[1])
+    registered["actions"][0].update(name="act", workloads=[deployment["bindings"]["agent_principal"]],
+        endpoint=deployment["bindings"]["allowed_endpoints"][0],
+        outcome_endpoint=deployment["bindings"]["allowed_endpoints"][1])
+    (tmp_path / "bundle-input/source/gateway-registry.json").write_text(json.dumps(registered))
+    final = bundle_module().build_bundle(source=tmp_path / "bundle-input/source",
+        destination=tmp_path / "final-policy", policy_id="safe", version="1")
+    envelope = BundleEnvelope(policy_id="safe", version="1", tenant_id=config["tenant_id"],
+        key_id=config["key_id"], content_digest=final.bundle_digest,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1))
+    signed = SignedBundle(envelope=envelope, signature=base64.b64encode(
+        asyncio.run(signer.sign(envelope_digest(envelope)))).decode())
+    envelope_path = tmp_path / "final-envelope.json"
+    envelope_path.write_bytes(canonical(signed))
+    staged = gen.stage_gateway(project, document, configuration={
+        "gateway_bundle": str(final.root), "policy_digest": final.bundle_digest,
+        "signed_envelope": str(envelope_path), "agent_image": deployment["images"]["agent"]})
+    assert final.bundle_digest != config["policy_digest"]
+    deployment.update(gateway_bundle=str(final.root), gateway_source_digest=staged["gateway_source_digest"])
+    deployment["bindings"]["policy_digest"] = final.bundle_digest
+    if phase == "bound":
+        gen.bind(project, document, configuration=deployment)
+    assert package_path.read_bytes() == frozen
+    assert gen.tree_digest(project / "src/agent") == agent_source
+    return project, document, config, deployment, signer
+
+
+@pytest.mark.parametrize("phase", ["bootstrap", "image", "staged", "bound"])
+def test_real_gateway_staging_static_gate(tmp_path, phase):
+    project, document, config, deployment, _ = staged_gateway_project(tmp_path, phase=phase)
+    result = reference("governance_static").check(project, document)
+    assert result["gaps"] == [], result
+    assert all(b["status"] != "enforced" for b in result["bindings"])
+    expected = config["policy_digest"] if phase in ("bootstrap", "image") else deployment["bindings"]["policy_digest"]
+    assert result["bindings"][0]["policy_digest"] == expected
+    assert result["policy_trust"] == {
+        "source": {"bootstrap": "bootstrap-package", "image": "bootstrap-package",
+                   "staged": "staged-envelope", "bound": "deployment-binding"}[phase],
+        "digest": expected, "signature_verified": False}
+    if phase in ("bootstrap", "image"):
+        assert "final-gateway-policy-not-staged" in result["unverified"]
+    assert safe_check.phase_predeploy(project, project / "specs/manifest.json", project / "predeploy.json") == 0
+
+
+@pytest.mark.parametrize("phase", ["bootstrap", "image", "staged"])
+def test_gateway_without_final_binding_cannot_collect_live_evidence(tmp_path, phase):
+    import asyncio
+    project, _, *_ = staged_gateway_project(tmp_path, phase=phase)
+    options = project / ".threadlight/governance-probe.json"
+    options.write_text("{}")
+    def forbidden(*args, **kwargs):
+        pytest.fail("Unbound deployment must not invoke external observations or an agent")
+    result = asyncio.run(reference("governance_probe").collect_project(
+        project, options, run=forbidden, force=True))
+    assert result["governance_gaps"] and not result["governance_probes"]
+    assert all(b["status"] != "enforced" for b in result["governance_health"]["bindings"])
+
+
+def test_native_package_digest_cannot_be_replaced_by_deployment_digest(tmp_path):
+    from test_governance_wiring import module
+    project, document, _, config, deployment, _ = generated(tmp_path)
+    contract = {k: document[k] for k in ("framework", "governance", "tools")}
+    gen = module("generate")
+    gen.agent_image(project, contract, configuration={
+        "agent_image": deployment["images"]["agent"], "spool_directory": "/mnt/audit"})
+    gen.bind(project, contract, configuration=deployment)
+    for path in (project / ".threadlight/governance-package.json", project / "src/agent/governance-config.json"):
+        value = json.loads(path.read_text())
+        (value["configuration"] if "configuration" in value else value)["policy_digest"] = "sha256:" + "e" * 64
+        path.write_text(json.dumps(value))
+    assert reference("governance_static").check(project, document)["gaps"]
+
+
+@pytest.mark.parametrize("fault", [
+    "bundle", "envelope", "digest", "image", "version", "agent", "tenant", "native-association",
+    "roles", "workload", "gateway-client", "agent-client", "endpoint", "policy-id", "missing-envelope",
+])
+def test_real_gateway_staging_static_rejects_tamper(tmp_path, fault):
+    project, document, _, _, _ = staged_gateway_project(tmp_path)
+    if fault == "bundle":
+        (project / "src/govern-gateway/policy/safe.rego").write_text("package bypass")
+    elif fault in ("envelope", "missing-envelope"):
+        path = project / "src/govern-gateway/policy-envelope.json"
+        if fault == "missing-envelope":
+            path.unlink()
+        else:
+            value = json.loads(path.read_text())
+            value["envelope"]["content_digest"] = "sha256:" + "e" * 64
+            path.write_text(json.dumps(value))
+    else:
+        path = project / ".threadlight/governance-deployment.json"
+        value = json.loads(path.read_text())
+        b = value["bindings"]
+        if fault == "digest":
+            b["policy_digest"] = "sha256:" + "e" * 64
+        elif fault == "image":
+            value["images"]["agent"] = value["images"]["agent"].replace("a" * 64, "e" * 64)
+        elif fault == "version":
+            b["agent_version"] = "2"
+        elif fault == "agent":
+            value["infrastructure"]["agent_id"] = "another-agent"
+        elif fault == "tenant":
+            b["gateway_config"]["tenant_id"] = "99999999-9999-9999-9999-999999999999"
+        elif fault == "roles":
+            b["gateway_config"]["approver_roles"] = ["OtherApprover"]
+        elif fault == "workload":
+            b["gateway_config"]["workloads"].clear()
+        elif fault == "gateway-client":
+            b["gateway_config"]["service_client_id"] = b["agent_client_id"]
+        elif fault == "agent-client":
+            b["agent_client_id"] = b["gateway_client"]
+        elif fault == "endpoint":
+            b["gateway_config"]["allowed_endpoints"] = ["https://other.example/action"]
+        elif fault == "policy-id":
+            b["gateway_config"]["policy_id"] = "other-policy"
+        else:
+            # A fresh digest alone cannot turn a native association into a GHCP policy.
+            registry_path = project / "src/govern-gateway/policy/gateway-registry.json"
+            registry = json.loads(registry_path.read_text())
+            registry["native_policy_digest"] = "sha256:" + "e" * 64
+            registry_path.write_text(json.dumps(registry))
+        path.write_text(json.dumps(value))
+        parameters = project / "infra/main.parameters.json"
+        params = json.loads(parameters.read_text())
+        for key, source in (("governanceBindings", "bindings"), ("governanceImages", "images"),
+                            ("governanceConfig", "infrastructure")):
+            params["parameters"][key]["value"] = value[source]
+        parameters.write_text(json.dumps(params))
+    assert reference("governance_static").check(project, document)["gaps"]
+
+
+@pytest.mark.parametrize("fault", [
+    "image", "version", "agent", "tenant", "native-association", "roles", "binding", "workload",
+])
+def test_final_gateway_signed_digest_does_not_override_frozen_association(tmp_path, fault):
+    import asyncio
+    import base64
+    import shutil
+    from test_policy_bundle import bundle_module
+    from govern_control_plane.models import SignedBundle, canonical, envelope_digest, parse
+    project, document, _, _, signer = staged_gateway_project(tmp_path)
+    source = tmp_path / "bundle-input/source"
+    registry_path = source / "gateway-registry.json"
+    registry = json.loads(registry_path.read_text())
+    if fault in ("image", "version", "agent"):
+        field, value = {
+            "image": ("image_digest", "sha256:" + "e" * 64),
+            "version": ("agent_version", "2"), "agent": ("agent_id", "other-agent")}[fault]
+        registry["deployment"][field] = value
+    elif fault == "tenant":
+        registry["tenant_id"] = "99999999-9999-9999-9999-999999999999"
+    elif fault == "native-association":
+        registry["native_policy_digest"] = "sha256:" + "e" * 64
+    elif fault == "roles":
+        registry["actions"][0]["approval_roles"] = ["OtherApprover"]
+    elif fault == "binding":
+        registry["actions"][0]["policy_binding"] = "other-policy"
+    else:
+        registry["actions"][0]["workloads"] = ["99999999-9999-9999-9999-999999999999"]
+    registry_path.write_text(json.dumps(registry))
+    replacement = bundle_module().build_bundle(source=source, destination=tmp_path / "replacement",
+        policy_id="safe", version="1")
+    target = project / "src/govern-gateway/policy"
+    shutil.rmtree(target)
+    shutil.copytree(replacement.root, target)
+    envelope_path = project / "src/govern-gateway/policy-envelope.json"
+    envelope = parse(SignedBundle, envelope_path.read_bytes()).envelope.model_copy(
+        update={"content_digest": replacement.bundle_digest})
+    envelope_path.write_bytes(canonical(SignedBundle(envelope=envelope, signature=base64.b64encode(
+        asyncio.run(signer.sign(envelope_digest(envelope)))).decode())))
+    path = project / ".threadlight/governance-deployment.json"
+    deployment = json.loads(path.read_text())
+    deployment["bindings"]["policy_digest"] = replacement.bundle_digest
+    deployment["bindings"]["gateway_config"]["policy_digest"] = replacement.bundle_digest
+    path.write_text(json.dumps(deployment))
+    params_path = project / "infra/main.parameters.json"
+    params = json.loads(params_path.read_text())
+    params["parameters"]["governanceBindings"]["value"] = deployment["bindings"]
+    params_path.write_text(json.dumps(params))
+    # Content hashing and a genuine signature cannot bless a different runtime association.
+    assert reference("governance_static").check(project, document)["gaps"]
+
+
 @pytest.mark.parametrize("change", ["adapter", "bundle", "config", "service", "requires", "image", "docker", "bundle-loader"])
 def test_static_tamper_is_actionable_gap(tmp_path, change):
     project, document, _, config, deployment, _ = generated(tmp_path)

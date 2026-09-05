@@ -376,7 +376,131 @@ def test_refusal_precedes_every_agent_invocation_even_force(tmp_path, monkeypatc
     asyncio.run(case())
 
 
-def test_collector_actual_copilot_invocations_mcp_gateway_fixture(tmp_path, monkeypatch):
+async def packaged_gateway_project(path, h, config):
+    """Use all Task10 boundaries; the final registry is never the bootstrap digest."""
+    from test_governance_wiring import module, deployment_fixture
+    from test_policy_bundle import bundle_module
+    gen = module("generate")
+    project = path / "ghcp-pilot"
+    agent = project / "src/agent"
+    agent.mkdir(parents=True)
+    (agent / "copilot-instructions.md").write_text("Invoke only the explicit noop.")
+    (project / "azure.yaml").write_text(
+        "name: pilot\nservices:\n  agent:\n    host: azure.ai.agent\n    project: ./src/agent\n")
+    bootstrap = h.config["native_policy"]
+    bootstrap_envelope = path / "bootstrap-envelope.json"
+    bootstrap_envelope.write_text(json.dumps(bootstrap["signed"]))
+    packaged = {
+        "agent_service": "agent", "agent_id": "agent-1", "environment": "preproduction",
+        "tenant_id": TENANT, "key_id": KEY, "policy_id": "safe", "policy_version": "1",
+        "policy_digest": bootstrap["policy_digest"], "bundle_path": bootstrap["bundle_path"],
+        "signed_envelope": str(bootstrap_envelope), "control_plane_scope": config["control_plane_scope"],
+        "gateway_scope": config["producer_scope"], "approver_roles": ["Approver"],
+        "control_plane_url": "https://fixture-control.fixture.azurecontainerapps.io",
+        "gateway_url": "https://fixture-gateway.fixture.azurecontainerapps.io/mcp",
+        "subscription": TENANT, "resource_group": "rg-staging",
+        "probe_observability": {"enabled": True, "configuration_file": "/mnt/governance-probe/config.json"},
+        "network": {"posture": "public-pilot", "allowed_ips": ["192.0.2.10/32"],
+                    "environment_id": f"/subscriptions/{TENANT}/resourceGroups/rg-staging/providers/Microsoft.App/managedEnvironments/env"},
+        "mcp_servers": {"original": {"type": "http", "url": "https://original.example/mcp",
+                                      "tools": ["governance_probe_noop", "read"]}},
+        "mcp_bindings": {"governance_probe_noop": {"server": "original", "tool": "governance_probe_noop"}},
+    }
+    deployment = deployment_fixture(packaged)
+    infra, b, obs = deployment["infrastructure"], deployment["bindings"], deployment["observations"]
+    infra.update(runtime="github-copilot-sdk", enable_gateway=True, agent_id="agent-1",
+                 probe_observability=packaged["probe_observability"])
+    for key in ("human_clients", "approver_subjects", "auditor_subjects", "approver_roles"):
+        infra[key] = config["auth"]["control_plane"][key]
+    b.update(agent_principal=WORKLOAD, agent_client_id=APP, downstream_principal=OTHER,
+             downstream_client=DOWNSTREAM_CLIENT, probe_controllers=config["auth"]["producer"]["probe_controllers"],
+             allowed_endpoints=config["allowed_endpoints"])
+    for service, principal, client in (
+        ("producer", "gateway_principal", "gateway_client"),
+        ("control_plane", "control_principal", "control_client"),
+    ):
+        b[principal], b[client] = (config["services"][service][key] for key in ("principal_id", "client_id"))
+    b["gateway_workloads"] = {WORKLOAD: {"client_id": APP, "agent_id": "agent-1", "policies": ["safe"]}}
+    b["control_workloads"] = {**b["gateway_workloads"], b["gateway_principal"]: {
+        "client_id": b["gateway_client"], "agent_id": "agent-1", "policies": ["safe"]}}
+    obs["foundation"].update(b)
+    obs["app_role_assignments"] = [
+        {"principalId": subject, "resourceId": app["servicePrincipalId"], "appRoleId": app["appRoles"][0]["id"]}
+        for index, app in enumerate(obs["applications"])
+        for subject in ([WORKLOAD, b["gateway_principal"]] if index == 0 else [WORKLOAD])]
+    obs["downstream_authorizations"][0]["principal_id"] = OTHER
+    deployment["images"] = {
+        "agent": h.run.version["definition"]["container_configuration"]["image"],
+        "gateway": config["services"]["producer"]["image"], "control_plane": config["services"]["control_plane"]["image"]}
+    gen.foundation(project, config["contract"], configuration=infra)
+    gen.generate(project, config["contract"], configuration=packaged)
+    frozen = (project / ".threadlight/governance-package.json").read_bytes()
+    agent_digest = gen.tree_digest(agent)
+    gen.agent_image(project, config["contract"], configuration={
+        "agent_image": deployment["images"]["agent"], "spool_directory": "/mnt/audit"})
+    registered = deepcopy(h.gateway.policy.registry.model_dump(mode="json", by_alias=True))
+    registered["gateway_url"] = packaged["gateway_url"]
+    (path / "source/gateway-registry.json").write_text(json.dumps(registered))
+    final = bundle_module().build_bundle(source=path / "source", destination=path / "final-gateway",
+        policy_id="safe", version="1")
+    signed = await sign(h, final)
+    final_envelope = path / "final-envelope.json"
+    final_envelope.write_text(json.dumps(signed))
+    staged = gen.stage_gateway(project, config["contract"], configuration={
+        "gateway_bundle": str(final.root), "policy_digest": final.bundle_digest,
+        "signed_envelope": str(final_envelope), "agent_image": deployment["images"]["agent"]})
+    b["policy_digest"] = final.bundle_digest
+    deployment.update(gateway_bundle=str(final.root), gateway_source_digest=staged["gateway_source_digest"])
+    gen.bind(project, config["contract"], configuration=deployment)
+    assert frozen == (project / ".threadlight/governance-package.json").read_bytes()
+    assert gen.tree_digest(agent) == agent_digest
+    assert final.bundle_digest != packaged["policy_digest"]
+    fixture = {
+        **config["auth"]["fixture"], "enabled": True, "producer": "fixture", "service_client_id": FIXTURE_CLIENT,
+        "downstream_client_id": None, "cosmos_url": "https://fixture.documents.azure.com:443/",
+        "cosmos_database": "governance", "cosmos_container": "probe-fixture",
+        "bundle_path": "/mnt/probe/policy", "signed_envelope_path": "/mnt/probe/envelope.json",
+        "policy_id": "safe", "policy_version": "1", "policy_digest": final.bundle_digest,
+        "gateway_url": packaged["gateway_url"], "allowed_endpoints": config["allowed_endpoints"],
+        "expected_deployment": registered["deployment"], "fixture_callers": {OTHER: DOWNSTREAM_CLIENT}}
+    (project / ".threadlight/fixture.json").write_text(json.dumps(fixture))
+    services = deepcopy(config["services"])
+    for service, url in (("control_plane", packaged["control_plane_url"]),
+                         ("producer", packaged["gateway_url"].removesuffix("/mcp"))):
+        services[service]["url"] = url
+        observed = h.run.resources[services[service]["resource_id"]]
+        observed["properties"]["configuration"]["ingress"]["fqdn"] = url.removeprefix("https://")
+    options = {
+        "schema": "threadlight-governance-probe-input/v1", "selection": config["selection"],
+        "controller_principal": HUMAN, "controller_client_id": CONTROLLER_CLIENT,
+        "bundle_path": "src/govern-gateway/policy", "signed_envelope_path": "src/govern-gateway/policy-envelope.json",
+        "fixture_configuration_file": ".threadlight/fixture.json", "services": services}
+    options_path = project / ".threadlight/governance-probe.json"
+    options_path.write_text(json.dumps(options))
+    (project / "specs").mkdir()
+    (project / "specs/manifest.json").write_text(json.dumps({**config["contract"], "deployment_manifest": {
+        "module_selectors": {}, "services": [
+            {"name": name, "host": "containerapp", "src": "src/" + name}
+            for name in ("govern-control-plane", "govern-gateway")], "expected_resource_types": []}}))
+    loaded = reference("governance_probe").load_configuration(project, options_path)
+    for name in ("control_plane", "producer"):
+        container = h.run.resources[services[name]["resource_id"]]["properties"]["template"]["containers"][0]
+        container["env"] = [{"name": k, "value": v}
+                            for k, v in loaded["runtime_configuration"]["services"][name].items()]
+    h.run.version["definition"]["environment_variables"].update(loaded["runtime_configuration"]["agent"])
+    h.cp.settings = cp("auth").Settings.model_validate(loaded["auth"]["control_plane"])
+    h.cp.auth = cp("auth").EntraAuth(h.cp.settings, h.cp.http)
+    h.cp.service.settings, h.cp.app.state.auth = h.cp.settings, h.cp.auth
+    h.gateway.policy = await gateway("dispatcher").NativePolicy.load(
+        bundle_path=project / options["bundle_path"], signed=signed, signer=h.signer,
+        tenant=TENANT, key_id=KEY, policy_id="safe", version="1", expected_digest=final.bundle_digest,
+        allowed_endpoints=set(config["allowed_endpoints"]), gateway_url=packaged["gateway_url"])
+    h.gateway.dispatcher.policy = h.gateway.policy
+    return project, options_path, loaded
+
+
+@pytest.mark.parametrize("staged_project", [False, True, "signature", "self-blessed", "receipt", "live-digest"])
+def test_collector_actual_copilot_invocations_mcp_gateway_fixture(tmp_path, monkeypatch, staged_project):
     """Unmodified Copilot SDK/CLI; only its upstream model HTTP is synthetic."""
     probe = reference("governance_probe")
     async def case():
@@ -400,7 +524,6 @@ def test_collector_actual_copilot_invocations_mcp_gateway_fixture(tmp_path, monk
                 transport=httpx.ASGITransport(app=fixture))
             gateway_h.dispatcher.downstream = gateway_h.downstream
             gateway_h.dispatcher.probes, gateway_h.dispatcher.auth = producer, h.producer_auth
-            app = gateway("server").create_app(gateway_h.dispatcher)
             config = deepcopy(h.config)
             config.update(producer="gateway", native_policy=None)
             config["policy"].update(bundle_path=str(gateway_h.bundle.root), signed=gateway_h.signed,
@@ -432,6 +555,72 @@ def test_collector_actual_copilot_invocations_mcp_gateway_fixture(tmp_path, monk
             h.run.resources[rid]["properties"]["template"]["containers"][0]["env"] = [
                 {"name": k, "value": v} for k, v in config["runtime_configuration"]["services"]["producer"].items()]
             h.run.version["definition"]["protocol_versions"] = [{"protocol": "invocations", "version": "2.0.0"}]
+            if staged_project:
+                project, options, config = await packaged_gateway_project(tmp_path, h, config)
+                if staged_project in ("signature", "self-blessed"):
+                    envelope_path = project / "src/govern-gateway/policy-envelope.json"
+                    envelope = json.loads(envelope_path.read_text())
+                    if staged_project == "signature":
+                        envelope["signature"] = base64.b64encode(b"not-the-authority").decode()
+                    else:
+                        import shutil
+                        from test_policy_bundle import bundle_module
+                        source = tmp_path / "source"
+                        (source / "safe.rego").write_text(
+                            "package gateway\nimport rego.v1\npre_tool_call := {\"decision\": \"allow\"}\n")
+                        forged = bundle_module().build_bundle(source=source, destination=tmp_path / "forged",
+                            policy_id="safe", version="1")
+                        target = project / "src/govern-gateway/policy"
+                        shutil.rmtree(target)
+                        shutil.copytree(forged.root, target)
+                        # Rehashing every unsigned declaration must not bypass the old signature.
+                        envelope["envelope"]["content_digest"] = forged.bundle_digest
+                        binding_path = project / ".threadlight/governance-deployment.json"
+                        deployment = json.loads(binding_path.read_text())
+                        deployment["bindings"]["policy_digest"] = forged.bundle_digest
+                        deployment["bindings"]["gateway_config"]["policy_digest"] = forged.bundle_digest
+                        binding_path.write_text(json.dumps(deployment))
+                        params_path = project / "infra/main.parameters.json"
+                        params = json.loads(params_path.read_text())
+                        params["parameters"]["governanceBindings"]["value"] = deployment["bindings"]
+                        params_path.write_text(json.dumps(params))
+                        fixture_path = project / ".threadlight/fixture.json"
+                        fixture_config = json.loads(fixture_path.read_text())
+                        fixture_config["policy_digest"] = forged.bundle_digest
+                        fixture_path.write_text(json.dumps(fixture_config))
+                    envelope_path.write_text(json.dumps(envelope))
+                from test_governance_gates import safe_check
+                gate = reference("governance_static").check(project, config["contract"])
+                assert gate["gaps"] == [], gate
+                assert gate["policy_trust"]["signature_verified"] is False
+                assert safe_check.phase_predeploy(project, project / "specs/manifest.json",
+                                                 project / "predeploy.json") == 0
+                if staged_project in ("signature", "self-blessed"):
+                    def forbidden(*args, **kwargs):
+                        pytest.fail("Invalid signature must fail before live observations or invocation")
+                    report = await probe.collect_project(project, options, credential=h.credential,
+                        signer=h.signer, run=forbidden, http=h.http, timeout=5, force=True)
+                    assert report["governance_gaps"] == ["probe-collection-unavailable"], report
+                    assert not report["governance_probes"]
+                    return
+                if staged_project == "live-digest":
+                    service_id = config["services"]["producer"]["resource_id"]
+                    container = h.run.resources[service_id]["properties"]["template"]["containers"][0]
+                    entry = next(e for e in container["env"] if e["name"] == "GATEWAY_CONFIG_JSON")
+                    deployed = json.loads(entry["value"])
+                    deployed["policy_digest"] = h.config["native_policy"]["policy_digest"]
+                    entry["value"] = json.dumps(deployed)
+                    report = await probe.collect_project(project, options, credential=h.credential,
+                        signer=h.signer, run=h.run, http=h.http, timeout=5)
+                    assert report["governance_gaps"] == ["observed-service-configuration-mismatch"], report
+                    assert not report["governance_probes"]
+                    assert not any(".services.ai.azure.com" in host for _, host, _ in h.calls)
+                    return
+                for service in (producer, effects):
+                    service.registry, service.policy_digest = gateway_h.policy.registry, gateway_h.policy.digest
+                gateway_h.dispatcher.auth = cp("auth").EntraAuth(
+                    cp("auth").Settings.model_validate(config["auth"]["producer"]), h.cp.http)
+            app = gateway("server").create_app(gateway_h.dispatcher)
 
             responses, model_calls = [], []
             shim = native_model_client(responses)
@@ -460,7 +649,7 @@ def test_collector_actual_copilot_invocations_mcp_gateway_fixture(tmp_path, monk
                     await asyncio.sleep(0.01)
             monkeypatch.setenv("FOUNDRY_PROJECT_ENDPOINT", f"http://127.0.0.1:{sock.getsockname()[1]}")
             monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "local")
-            monkeypatch.setenv("GOVERNED_TOOL_GATEWAY_URL", "https://gateway.example/mcp")
+            monkeypatch.setenv("GOVERNED_TOOL_GATEWAY_URL", config["producer_url"] + "/mcp")
             home = tmp_path / "copilot-home"
             home.mkdir()
             monkeypatch.setenv("HOME", str(home))
@@ -474,12 +663,15 @@ def test_collector_actual_copilot_invocations_mcp_gateway_fixture(tmp_path, monk
                                 lambda: WorkloadCredential(h.cp.token(changes={"aud": PRODUCER_AUDIENCE})))
             ghcp = module("ghcp-container")
             monkeypatch.setattr(ghcp, "__file__", str(tmp_path / "container.py"))
-            host = ghcp.build_host({
+            host_config = {
                 "mcp_servers": {"original": {"type": "http", "url": "https://original.example/mcp",
                                               "tools": ["governance_probe_noop", "read"]}},
                 "mcp_bindings": {"governance_probe_noop": {"server": "original", "tool": "governance_probe_noop"}},
                 "contract": config["contract"], "gateway_scope": config["producer_scope"],
-            }, configure_observability=None)
+            }
+            if staged_project:
+                host_config = json.loads((project / "src/agent/governance-config.json").read_text())
+            host = ghcp.build_host(host_config, configure_observability=None)
             original_client = httpx.AsyncClient
             hosted_requests = []
             class Routes(httpx.AsyncBaseTransport):
@@ -489,20 +681,37 @@ def test_collector_actual_copilot_invocations_mcp_gateway_fixture(tmp_path, monk
                         request.url = httpx.URL("https://agent.example/invocations")
                         destination = host
                     else:
-                        destination = {"gateway.example": app, "fixture.example": fixture, "control.example": h.cp.app}[request.url.host]
-                    return await httpx.ASGITransport(app=destination).handle_async_request(request)
+                        destination = {httpx.URL(config["producer_url"]).host: app, "fixture.example": fixture,
+                                       httpx.URL(config["control_plane_url"]).host: h.cp.app}[request.url.host]
+                    response = await httpx.ASGITransport(app=destination).handle_async_request(request)
+                    if staged_project == "receipt" and request.url.path.startswith("/receipts/"):
+                        await response.aread()
+                        receipt = response.json()
+                        receipt["policy_digest"] = h.config["native_policy"]["policy_digest"]
+                        return httpx.Response(response.status_code, json=receipt)
+                    return response
             def clients(*args, **kwargs):
                 kwargs.setdefault("transport", Routes())
                 return original_client(*args, **kwargs)
             monkeypatch.setattr(httpx, "AsyncClient", clients)
             try:
                 async with app.router.lifespan_context(app), original_client(transport=Routes()) as http:
-                    report = await probe.collect(config, credential=h.credential, signer=h.signer,
-                                                 run=h.run, http=http, timeout=30, poll_interval=0.01)
+                    if staged_project:
+                        report = await probe.collect_project(project, options, credential=h.credential, signer=h.signer,
+                                                             run=h.run, http=http, timeout=30)
+                    else:
+                        report = await probe.collect(config, credential=h.credential, signer=h.signer,
+                                                     run=h.run, http=http, timeout=30, poll_interval=0.01)
+                if staged_project == "receipt":
+                    assert report["governance_gaps"] and not report["governance_probes"], report
+                    assert hosted_requests and model_calls
+                    return
                 assert report["governance_gaps"] == [], report
                 assert len(model_calls) == 4 and len(hosted_requests) == 2
                 assert [p["decision"] for p in report["governance_probes"]] == ["allow", "deny"]
                 assert len(effects.store.docs) == 2
+                assert all(p["receipt"]["policy_digest"] == config["policy"]["policy_digest"]
+                           for p in report["probe_evidence"])
             finally:
                 server.should_exit = True
                 await asyncio.wait_for(task, 10)
