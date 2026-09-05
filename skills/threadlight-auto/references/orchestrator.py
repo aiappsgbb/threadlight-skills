@@ -1346,18 +1346,19 @@ def _gate_source_path(workspace, relative, *, outside="governance-input-outside-
     return workspace.joinpath(*parts)
 
 
-def _gate_source_files(workspace, directory):
-    """Prune reserved caches before traversal, including host-definition discovery."""
+def _gate_source_files(workspace, directory, *, prune_caches=True):
+    """Traverse contained files, pruning caches only for application source."""
     base = _gate_source_path(workspace, directory)
     for current, children, names in os.walk(base):
         children[:] = sorted(name for name in children
-                             if name not in {".git", ".pytest_cache", "__pycache__", "build", "dist"}
-                             and not name.endswith(".egg-info")
-                             and not (Path(current) == workspace and name == ".azure"))
+                             if not prune_caches or (
+                                 name not in {".git", ".pytest_cache", "__pycache__", "build", "dist"}
+                                 and not name.endswith(".egg-info")
+                                 and not (Path(current) == workspace and name == ".azure")))
         if any((Path(current) / name).is_symlink() for name in children):
             raise ValueError("governance-source-symlink")
         for name in sorted(names):
-            if name == ".git":  # Worktrees use a pointer file rather than a directory.
+            if prune_caches and name == ".git":  # Worktrees use a pointer file rather than a directory.
                 continue
             path = Path(current) / name
             if path.is_symlink():
@@ -1378,7 +1379,7 @@ def _azd_fingerprint_projection(workspace, *, outputs=False):
             entry = _gate_source_path(workspace, entry)
             if entry.is_dir():
                 environments[entry.name] = {}
-    for path in _gate_source_files(workspace, ".azure"):
+    for path in _gate_source_files(workspace, ".azure", prune_caches=False):
         relative = path.relative_to(base)
         if len(relative.parts) == 2 and relative.name == ".env":
             values = {}

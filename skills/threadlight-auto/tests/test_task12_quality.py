@@ -494,15 +494,17 @@ def test_first_deploy_creates_only_azd_outputs_before_fresh_probe(tmp_path, monk
 
 
 @pytest.mark.parametrize("project", [".", "./src/agent"])
+@pytest.mark.parametrize("environment", ["demo", "build", "dist"])
 @pytest.mark.parametrize("output", AZD_OUTPUTS)
-def test_azd_observed_outputs_bind_successful_deployment(tmp_path, monkeypatch, project, output):
+def test_azd_observed_outputs_bind_successful_deployment(tmp_path, monkeypatch, project, environment, output):
     root, clock, _ = governed(tmp_path, monkeypatch)
+    (root / ".azure/demo").rename(root / ".azure" / environment)
     (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
     assert orch.record_governed_actions_gate(root)
     assert orch.record_deploy_started(root)
     clock[0] += timedelta(seconds=5)
     assert orch.record_deploy_completed(root)
-    (root / ".azure/demo/.env").write_text(f"{output}='{AZD_OUTPUTS[output]}'\n")
+    (root / ".azure" / environment / ".env").write_text(f"{output}='{AZD_OUTPUTS[output]}'\n")
     assert orch._deploy_retry_required(root)
     assert orch._check_governed_actions_gate(root, {}).decision == "run"
 
@@ -518,15 +520,17 @@ def test_azd_output_names_match_shipped_foundation_and_build_contracts():
 
 
 @pytest.mark.parametrize("project", [".", "./src/agent"])
+@pytest.mark.parametrize("environment", ["demo", "build", "dist"])
 @pytest.mark.parametrize("key", [
     "AZURE_ENV_NAME", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID", "AZURE_RESOURCE_GROUP",
     "AZURE_LOCATION", "AZURE_FOUNDRY_NETWORK_MODE", "GOV_SECRET", "GOV_GATEWAY_SCOPE",
     "TL_GOV_SPOOL_DIR", "EXPECTED_IMAGE_DIGEST", "POLICY_DIGEST",
 ])
-def test_azd_input_mutation_during_actual_deploy_blocks_probe(tmp_path, monkeypatch, project, key):
+def test_azd_input_mutation_during_actual_deploy_blocks_probe(tmp_path, monkeypatch, project, environment, key):
     root, clock, fresh = governed(tmp_path, monkeypatch)
+    (root / ".azure/demo").rename(root / ".azure" / environment)
     (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
-    env = root / ".azure/demo/.env"
+    env = root / ".azure" / environment / ".env"
     env.write_text(f"{key}='approved # private-value'\n")
     assert orch.record_governed_actions_gate(root)
     calls = []
