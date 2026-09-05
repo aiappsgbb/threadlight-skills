@@ -1,5 +1,6 @@
 """Producer contracts: real SDK/ASGI boundaries, external identity and Cosmos seams only."""
 import asyncio
+from contextlib import asynccontextmanager
 from copy import deepcopy
 import json
 import uuid
@@ -422,6 +423,246 @@ def test_probe_real_native_maf_hooks_and_fixture(tmp_path, variant, path, monkey
         await downstream.aclose()
         await client.client.close()
         await h.close()
+    asyncio.run(case())
+
+
+@asynccontextmanager
+async def native_probe_host(tmp_path, monkeypatch, variants):
+    """Real Responses host, ACS/OPA and remote-ack audit; only external IO is local."""
+    import sys
+    from pathlib import Path
+    from types import SimpleNamespace
+    from test_gateway import GatewayHarness, Credential
+    from test_runtime_provider import contract, runtime, native_model_client, tool_responses
+    from test_policy_bundle import bundle_module
+    from skills._shared.governance import validate_governance_contract
+
+    deploy = Path(__file__).resolve().parents[3] / "skills/threadlight-deploy"
+    monkeypatch.syspath_prepend(str(deploy / "tests"))
+    monkeypatch.syspath_prepend(str(deploy / "references/governance"))
+    monkeypatch.syspath_prepend(str(deploy.parent / "threadlight-govern/references"))
+    from test_governance_wiring import audit_harness, module
+
+    h = await GatewayHarness().initialize(
+        tmp_path, document=probe_registry(),
+        decision='{"decision": "deny"} if input.policy_target.value.variant == "deny" else := {"decision": "allow"}')
+    rt = runtime()
+    native = cp("probes").ProbeService(
+        store=MemoryStore(), registry=h.policy.registry, policy_digest=h.policy.digest,
+        producer="native", fresh=h.policy.fresh)
+    effects = cp("probes").ProbeService(
+        store=MemoryStore(), registry=h.policy.registry, policy_digest=h.policy.digest,
+        producer="fixture", fresh=h.policy.fresh)
+    fixture = fixture_module().create_app(probes=effects, auth=h.cp.auth, callers={OTHER: APP})
+    downstream = gateway("dispatcher").DownstreamClient(
+        credential=Credential(h.cp.token(changes={"oid": OTHER})), transport=httpx.ASGITransport(app=fixture))
+    spool, audit, _ = audit_harness(tmp_path)
+    doc = contract()
+    doc["tools"][0].update(id="governance_probe_noop", requires=["audit"])
+    p = rt.AcsGovernanceProvider(
+        contract=doc, bundle_path=h.bundle.root, expected_digest=h.policy.digest,
+        bundle_verifier=bundle_module().verify_bundle, contract_validator=validate_governance_contract,
+        signature_verifier=cp("client").PolicySnapshot(rt.VerifiedPolicy(h.policy.digest, h.policy.expires_at)),
+        safe_provider=lambda identity: {"scope": "governance-probe"},
+        principal=WORKLOAD, tenant=TENANT, agent_version="1",
+        image_digest=h.policy.registry.deployment.image_digest, audit=spool, environment="preproduction")
+    p.deployment_agent_id = "agent-1"
+    telemetry = rt.NativeProbeTelemetry(provider=p, service=native, downstream=downstream, client_id=APP)
+    telemetry.auth = h.cp.auth
+    runs, responses = [], []
+    for index, variant in enumerate(variants):
+        run = str(uuid.uuid4())
+        runs.append(run)
+        for producer in (native, effects):
+            await producer.register(run, expected(producer, variant))
+        tool, final = tool_responses("governance_probe_noop", {"probe_run_id": run, "variant": variant})
+        tool.messages[0].contents[0].call_id = f"call-{index}"
+        responses.append(tool)
+    responses.append(final)
+    client = native_model_client(responses, foundry=True)
+    monkeypatch.setitem(sys.modules, "runtime", rt)
+    container = module("maf-container")
+    container.BASE = tmp_path / "host"
+    container.BASE.mkdir()
+    (container.BASE / "copilot-instructions.md").write_text("Use only the installed noop.")
+    (container.BASE / "skills").mkdir()
+    application = SimpleNamespace(tools=[], middleware=[])
+    monkeypatch.setitem(sys.modules, "governance_application", application)
+    async with spool:
+        try:
+            yield SimpleNamespace(
+                host=lambda: container.build_host(p, client=client, configure_observability=None),
+                provider=p, telemetry=telemetry, native=native, effects=effects,
+                audit=audit, spool=spool, runs=runs, client=client, application=application, runtime=rt)
+        finally:
+            await downstream.aclose()
+            await client.client.close()
+            await audit.close()
+            await h.close()
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("variants", [("deny",), ("allow",), ("deny", "allow", "deny")],
+                         ids=["deny", "allow", "multiple"])
+def test_probe_native_host_send_boundary(tmp_path, monkeypatch, variants):
+    async def case():
+        async with native_probe_host(tmp_path, monkeypatch, variants) as h:
+            host, observed = h.host(), []
+            untouched = str(uuid.uuid4())
+            await h.native.register(untouched, expected(h.native))
+            async def app(scope, receive, send):
+                async def observed_send(message):
+                    if message["type"] == "http.response.body":
+                        for line in message.get("body", b"").splitlines():
+                            if not line.startswith(b"data: "):
+                                continue
+                            event = json.loads(line[6:])
+                            item = event.get("item", {})
+                            if (event["type"] == "response.output_item.done"
+                                    and item.get("type") == "function_call_output"):
+                                index = int(item["call_id"].removeprefix("call-"))
+                                variant, run = variants[index], h.runs[index]
+                                state = await h.native.status(WORKLOAD, run)
+                                observed.append(state)
+                                assert state["counts"] == {
+                                    "received": 1, "intercepted": 1, "dispatch": int(variant == "allow"),
+                                    "effect": 0, "completed": 1}, state
+                                assert state["terminal"] == ("denied" if variant == "deny" else "completed")
+                                receipt_id = state["events"][1]["receipt_id"]
+                                receipt = await h.audit.client.get("/receipts/" + receipt_id,
+                                    headers={"Authorization": "Bearer " + h.audit.token()})
+                                assert receipt.status_code == 200
+                                assert receipt.json()["decision"] == variant
+                                assert receipt.json()["probe"]["probe_run_id"] == run
+                                assert receipt.json()["probe"]["call_id"] == state["context"]["call_id"]
+                                assert ("threadlight:policy_deny" in json.dumps(item)) == (variant == "deny")
+                                unused = await h.native.status(WORKLOAD, untouched)
+                                assert not any(unused["counts"].values()) and unused["terminal"] is None
+                            if event["type"] == "response.output_text.delta":
+                                assert len(observed) == len(variants), "assistant output preceded the probe observation"
+                    await send(message)
+                await host(scope, receive, observed_send)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                         base_url="https://host.example") as client:
+                response = await asyncio.wait_for(client.post("/responses", json={
+                    "input": "Invoke the explicitly installed noop fixture", "store": False, "stream": True}), 10)
+            assert response.status_code == 200 and len(observed) == len(variants), response.text
+            assert len({state["events"][1]["receipt_id"] for state in observed}) == len(variants)
+            for run, variant in zip(h.runs, variants):
+                effect = await h.effects.status(WORKLOAD, run)
+                assert effect["counts"]["effect"] == int(variant == "allow")
+    asyncio.run(case())
+
+
+def order_after_native_deny(h, monkeypatch):
+    """Order a later effect, not already-running siblings in MAF's parallel batch."""
+    from agent_framework import FunctionMiddleware
+    denied = asyncio.Event()
+    sink = h.runtime.create_governed_agent.__globals__["NativeRecordSink"]
+    original = sink.__call__
+    def observe(self, record):
+        original(self, record)
+        if (record.interception_point.value == "pre_tool_call"
+                and record.verdict.reason == "threadlight:policy_deny"):
+            denied.set()
+    monkeypatch.setattr(sink, "__call__", observe)
+    class FollowingTool(FunctionMiddleware):
+        async def process(self, context, call_next):
+            await asyncio.wait_for(denied.wait(), 2)
+            await call_next()
+    h.application.middleware = [FollowingTool()]
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("following", ["probe", "unbound"])
+def test_probe_native_batch_flush_before_next_effect(tmp_path, monkeypatch, following):
+    async def case():
+        async with native_probe_host(tmp_path, monkeypatch, ["deny", "allow"]) as h:
+            from agent_framework import FunctionTool
+            order_after_native_deny(h, monkeypatch)
+            first, second = h.client.responses[:2]
+            if following == "unbound":
+                second.messages[0].contents[0].name = "read"
+                second.messages[0].contents[0].arguments = "{}"
+            first.messages[0].contents.extend(second.messages[0].contents)
+            h.client.responses.pop(1)
+            seen = []
+            async def before_effect():
+                state = await h.native.status(WORKLOAD, h.runs[0])
+                seen.append(state)
+            original = h.effects.effect
+            async def effect(*args, **kwargs):
+                await before_effect()
+                return await original(*args, **kwargs)
+            h.effects.effect = effect
+            async def read():
+                await before_effect()
+                return "public read result"
+            h.application.tools = [FunctionTool(name="read", func=read)]
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=h.host()),
+                                         base_url="https://host.example") as client:
+                response = await asyncio.wait_for(client.post("/responses", json={
+                    "input": "Invoke the tools", "store": False, "stream": True}), 10)
+            assert response.status_code == 200 and seen, response.text
+            assert all(state["terminal"] == "denied" and state["counts"]["intercepted"] == 1
+                       and state["counts"]["completed"] == 1 for state in seen), seen
+            second_state = await h.native.status(WORKLOAD, h.runs[1])
+            assert second_state["terminal"] == ("completed" if following == "probe" else None)
+            assert second_state["counts"]["intercepted"] == int(following == "probe")
+            if following == "probe":
+                assert second_state["context"]["call_id"] != seen[0]["context"]["call_id"]
+                assert second_state["events"][1]["receipt_id"] != seen[0]["events"][1]["receipt_id"]
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("failure", ["intercept", "complete", "timeout"])
+def test_probe_native_host_flush_failure_no_output_or_future_effect(tmp_path, monkeypatch, caplog, failure):
+    async def case():
+        async with native_probe_host(tmp_path, monkeypatch, ["deny", "allow"]) as h:
+            order_after_native_deny(h, monkeypatch)
+            # One native batch can dispatch its next tool before yielding an update.
+            h.client.responses[0].messages[0].contents.extend(
+                h.client.responses.pop(1).messages[0].contents)
+            method = "complete" if failure == "complete" else "intercept"
+            original = getattr(h.native, method)
+            attempts = []
+            async def fail(context, **kwargs):
+                if context.probe_run_id == h.runs[0]:
+                    attempts.append(context.probe_run_id)
+                    if failure == "timeout":
+                        await asyncio.Event().wait()
+                    raise OSError("PRIVATE PROBE STORAGE SECRET")
+                return await original(context, **kwargs)
+            setattr(h.native, method, fail)
+            h.provider.timeout = 0.5
+            public = []
+            host = h.host()
+            async def app(scope, receive, send):
+                async def observed_send(message):
+                    if message["type"] == "http.response.body":
+                        for line in message.get("body", b"").splitlines():
+                            if line.startswith(b"data: "):
+                                event = json.loads(line[6:])
+                                if (event["type"] == "response.output_text.delta"
+                                        or (event["type"] == "response.output_item.done"
+                                            and event.get("item", {}).get("type") == "function_call_output")):
+                                    public.append(event)
+                    await send(message)
+                await host(scope, receive, observed_send)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                         base_url="https://host.example") as client:
+                response = await asyncio.wait_for(client.post("/responses", json={
+                    "input": "Invoke the tools", "store": False, "stream": True}), 5)
+            assert attempts, "test did not reach the actual native record flush"
+            assert not public, public
+            assert "threadlight:probe_unavailable" in response.text, response.text
+            assert "PRIVATE" not in response.text + caplog.text
+            assert len(attempts) == 1, "a failed partial flush must not be retried during finalization"
+            for run in h.runs:
+                state = await h.native.status(WORKLOAD, run)
+                assert state["counts"]["dispatch"] == 0 and state["terminal"] is None
+                assert (await h.effects.status(WORKLOAD, run))["counts"]["effect"] == 0
     asyncio.run(case())
 
 

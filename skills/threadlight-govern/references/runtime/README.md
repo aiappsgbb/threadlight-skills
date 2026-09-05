@@ -303,6 +303,20 @@ the affected bindings unhealthy and latch required-audit failure within the run,
 because the native emitter itself intentionally swallows sink exceptions. This
 adapter does not mistake native sink delivery for durable authorization.
 
+Opt-in `NativeProbeTelemetry` correlates the native typed pre-tool record with
+its exact session/sequence, probe nonce and acknowledged receipt. The synchronous
+sink only stages that record; it never waits on the running event loop. Awaited
+flushes persist `intercepted` and, for denial, `completed` / `terminal=denied`
+**before each stream update is released**, not merely when the stream closes.
+The final function middleware also drains pending records before another tool
+(including an unbound tool) can start its effect in the same native batch.
+Already-running parallel effects are not rolled back. Each entry's flush is
+serialized and bounded by the smaller of the provider timeout and ten seconds.
+Persistence failure latches for that emission and fails closed with
+`threadlight:probe_unavailable`, without private storage exceptions, denial
+output, subsequent effects or finalization retries. Native buffered output gates
+and runs without probe telemetry keep their existing semantics.
+
 `spool.retry(exporter)` works after process restart; exporter failure leaves
 pending receipts on disk. Delivery is at-least-once: deduplicate by `audit_id`.
 Approval or pre-effect durable-audit requirements at `post_tool_call` need covering

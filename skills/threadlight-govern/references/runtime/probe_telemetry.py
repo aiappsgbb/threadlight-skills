@@ -40,18 +40,37 @@ class NativeProbeTelemetry:
     async def flush_entry(self, entry):
         if not entry or "probe_record" not in entry or entry.get("probe_flushed"):
             return
-        decision, receipt_id = entry["probe_record"]
-        async with asyncio.timeout(10):
-            await self.service.intercept(entry["probe"], decision=decision, receipt_id=receipt_id)
-            if decision == "deny":
-                await self.service.complete(entry["probe"], terminal="denied")
-        entry["probe_flushed"] = True
+        from .maf_agent_hooks_acs import GovernedToolUnavailable, binding_failure
+        if not entry.get("probe_flush_failed"):
+            try:
+                async with asyncio.timeout(min(10, self.provider.timeout)):
+                    async with entry.setdefault("probe_flush_lock", asyncio.Lock()):
+                        if entry.get("probe_flush_failed"):
+                            raise ValueError("probe_flush_failed")
+                        if entry.get("probe_flushed"):
+                            return
+                        decision, receipt_id = entry["probe_record"]
+                        await self.service.intercept(entry["probe"], decision=decision, receipt_id=receipt_id)
+                        if decision == "deny":
+                            await self.service.complete(entry["probe"], terminal="denied")
+                        entry["probe_flushed"] = True
+                        return
+            except asyncio.CancelledError:
+                entry["probe_flush_failed"] = True
+                raise
+            except Exception:
+                entry["probe_flush_failed"] = True
+        binding_failure(entry["selected"], "threadlight:probe_unavailable")
+        # Do not retain a private storage exception, including as __context__.
+        raise GovernedToolUnavailable("threadlight:probe_unavailable") from None
 
     async def flush(self, state):
         # No transcript inspection and no inferred zero. A missing native record
         # leaves registration/received nonterminal, including fake/unreached tools.
-        for entry in state["emissions"].values():
-            await self.flush_entry(entry)
+        while pending := [entry for entry in tuple(state["emissions"].values())
+                          if "probe_record" in entry and not entry.get("probe_flushed")]:
+            for entry in pending:
+                await self.flush_entry(entry)
 
     def tool(self):
         from agent_framework import FunctionTool

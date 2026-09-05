@@ -539,6 +539,12 @@ class _FunctionBoundary(FunctionMiddleware):
         from agent_framework import MiddlewareTermination
         from agent_framework.exceptions import UserInputRequiredException
         p = self.provider
+        telemetry = getattr(p, "probes", None)
+        execution = _execution.get()
+        if telemetry is not None and execution is not None:
+            # A native batch may start another (even unbound) tool before the
+            # agent stream yields. Persist earlier typed records before effects.
+            await telemetry.flush(execution)
         if not p._bindings:
             await call_next()
             return
@@ -907,6 +913,8 @@ class _ExecutionScope(AgentMiddleware):
                     try:
                         async for update in inner:
                             with scope():
+                                if telemetry is not None:
+                                    await telemetry.flush(state)
                                 self._release(update)
                             yield update
                     finally:
