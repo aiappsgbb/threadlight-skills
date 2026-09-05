@@ -149,8 +149,9 @@ this adapter does not claim every earlier lifecycle target remains identical.
   and schema, delegates validation once to the original model (also JSON/string
   variants), and returns a guarded serialization holder. This also covers root/wrap
   validators returning a different model or arbitrary object. Serialization lookup,
-  field/model serializers, and the pinned SDK's actual downstream lightweight
-  schema checker run inside the private boundary. Only a successfully checked plain
+  field/model serializers, the pinned SDK's actual downstream lightweight
+  schema checker, and native argument-codec projection run inside the private boundary.
+  Only a successfully checked plain
   argument dictionary reaches the native schema check outside hooks. Schema-only
   tools take this same path through a dictionary root model; unbound tools remain
   untouched. This reuses the actual native schema/enum/type rules, not a replacement
@@ -165,7 +166,10 @@ this adapter does not claim every earlier lifecycle target remains identical.
 - Native automatic tool dispatch normalizes original arguments **once**, before
   `pre_tool_call`. A separate schema-only execution copy avoids repeating validators,
   serializers or `model_post_init` on unchanged canonical arguments. Each native
-  emission retains both original and authorized argument hashes. An ACS transform
+  emission retains both original and authorized argument hashes, using the native
+  argument codec's wire projection at every comparison (including nested Decimal,
+  date/datetime, enum and UUID values), while execution keeps the native values.
+  An ACS transform
   that changes the canonical arguments must pass the **original Pydantic model**
   before dispatch, and its validated/dumped value must have the exact authorized
   hash. Invalid constraints, coercion, or non-idempotent normalization that changes
@@ -177,7 +181,11 @@ this adapter does not claim every earlier lifecycle target remains identical.
   `threadlight:arguments_changed`; no revalidation/approval loop is attempted.
   Dispatch tickets are single-use, including middleware that calls its continuation
   twice. Bound `self`, injected native invocation contexts, result parsing and
-  invocation budgets retain their native semantics.
+  invocation budgets retain their native semantics. The same original `FunctionTool`
+  reuses a provider-owned guarded/execution pair across runs, per-call options and
+  progressive exposure; only the execution copy consumes its native budget.
+  Distinct providers have independent counters and never consume the caller's original
+  budget. Weak identity entries are removed when original tools are discarded.
 - `health()` describes configuration and last evaluation, never deployment
   evidence or status `enforced`. Production/preproduction enforce; only the
   contract-permitted development/staging environments evaluate without enforcing.

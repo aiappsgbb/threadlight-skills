@@ -12,6 +12,7 @@ import inspect
 import json
 import time
 import uuid
+from weakref import ref
 
 from agent_framework import AgentMiddleware, ChatMiddleware, FunctionMiddleware, MiddlewareBundle, ResponseStream
 
@@ -437,6 +438,19 @@ class GovernedToolUnavailable(RuntimeError):
         super().__init__(reason)
 
 
+def _argument_hash(arguments):
+    from agent_framework import MiddlewareTermination
+    from agent_framework._agent_hooks import _ToolArgumentsCodec
+    from agent_framework.exceptions import UserInputRequiredException
+    try:
+        return digest(_ToolArgumentsCodec.to_wire(arguments))
+    except (MiddlewareTermination, UserInputRequiredException):
+        raise
+    except Exception:
+        pass
+    raise GovernedToolUnavailable("threadlight:invalid_arguments") from None
+
+
 def _deny_boundary(provider, selected, reason):
     binding_failure(selected, reason)
     state = _execution.get()
@@ -514,17 +528,15 @@ class _FunctionBoundary(FunctionMiddleware):
         _check_lifecycle(p, ("agent_startup", "input", "post_model_call"))
         state = _approvals.get()
         ticket = state.pop(context.metadata.get("call_id"), None) if state is not None else None
+        actual = (context.function.name, _argument_hash(context.arguments))
         if p.mode == "enforce" and (
             (any(APPROVAL.intersection(b["requires"]) for b in selected) and ticket is None)
-            or (ticket is not None and ticket[:2] != (
-                context.function.name, digest(dict(context.arguments)),
-            ))
+            or (ticket is not None and ticket[:2] != actual)
         ):
             _deny_boundary(p, selected, "threadlight:approval_unavailable")
         _check_effect(p, selected, ticket)
         execution = _execution.get()
         expected = execution["calls"].pop(context.metadata.get("call_id"), None) if execution else None
-        actual = (context.function.name, digest(dict(context.arguments)))
         if (p.mode == "enforce" and any(b["point"] == "pre_tool_call" for b in selected)
                 and (expected is None or expected[:2] != actual)):
             _deny_boundary(p, selected, "threadlight:arguments_changed")
@@ -563,10 +575,12 @@ def _guard_input_model(model, tool):
     from pydantic import RootModel
     base = model if model is not None else RootModel[dict]
     def checked_dump(dump, *args, **kwargs):
-        value = dump(*args, **kwargs)
-        return _validate_arguments_against_schema(
-            arguments=value, schema=tool.parameters(), tool_name=tool.name,
+        value = _validate_arguments_against_schema(
+            arguments=dump(*args, **kwargs), schema=tool.parameters(), tool_name=tool.name,
         )
+        # Check the native hook projection inside the private pre-hook boundary.
+        _argument_hash(value)
+        return value
     class ValidatedInput:
         def __init__(self, value):
             self.value = value
@@ -613,6 +627,11 @@ def _guard_tool(tool, provider):
     if ((not selected and not _effect_lifecycle(provider)) or tool.func is None
             or getattr(tool, "_threadlight_owner", None) is provider):
         return tool
+    cache = provider.__dict__.setdefault("_guarded_tools", {})
+    key = id(tool)
+    cached = cache.get(key)
+    if cached is not None and cached[0]() is tool:
+        return cached[1]
     guarded = copy(tool)
     # Native provider projection mutates its schema. It must not reach the shared
     # caller-owned tool, including nested property schemas.
@@ -625,6 +644,9 @@ def _guard_tool(tool, provider):
     function = tool.func
     if isinstance(function, FunctionTool):
         function = function.func
+    tool_name = tool.name
+    bound_self = getattr(tool, "_instance", None)
+    invoke_sync_on_event_loop = getattr(tool, "_invoke_sync_on_event_loop", False)
     @wraps(function)
     async def invoke(*args, **kwargs):
         def check():
@@ -637,9 +659,8 @@ def _guard_tool(tool, provider):
                     # MAF injects the native invocation context, not a tool argument.
                     if name in values and isinstance(values[name], FunctionInvocationContext):
                         values.pop(name)
-                bound_self = getattr(tool, "_instance", None)
                 native_self = len(args) == 1 and bound_self is not None and args[0] is bound_self
-                if (args and not native_self) or authorization[1] != (tool.name, digest(values)):
+                if (args and not native_self) or authorization[1] != (tool_name, _argument_hash(values)):
                     _deny_boundary(provider, selected, "threadlight:arguments_changed")
             _check_lifecycle(provider, ("agent_startup", "input", "post_model_call"))
             _check_effect(provider, selected, authorization[2] if authorization else None)
@@ -654,7 +675,7 @@ def _guard_tool(tool, provider):
         from agent_framework import FunctionInvocationContext
         check()
         try:
-            if inspect.iscoroutinefunction(function) or getattr(tool, "_invoke_sync_on_event_loop", False):
+            if inspect.iscoroutinefunction(function) or invoke_sync_on_event_loop:
                 value = call()
             else:
                 value = await asyncio.to_thread(call)
@@ -686,20 +707,21 @@ def _guard_tool(tool, provider):
         authorization = _effect_authorization.get()
         if provider.mode == "enforce" and (authorization is None or authorization[0] is not provider):
             raise GovernedToolUnavailable("threadlight:tool_unavailable")
-        if provider.mode == "enforce" and authorization[1] != (tool.name, digest(dict(arguments or {}))):
+        if provider.mode == "enforce" and authorization[1] != (tool_name, _argument_hash(arguments)):
             _deny_boundary(provider, selected, "threadlight:arguments_changed")
         if (provider.mode == "enforce" and authorization[3]["transformed"]
                 and original_model is not None):
             valid = False
             try:
                 normalized = original_model.model_validate(deepcopy(arguments)).model_dump(exclude_unset=True)
-                valid = digest(normalized) == authorization[1][1]
+                valid = _argument_hash(normalized) == authorization[1][1]
             except (MiddlewareTermination, UserInputRequiredException):
                 raise
             except Exception:
                 pass
             if not valid:
                 _deny_boundary(provider, selected, "threadlight:invalid_transform")
+            arguments = normalized
         _check_lifecycle(provider, ("agent_startup", "input", "post_model_call"))
         _check_effect(provider, selected, authorization[2] if authorization else None)
         if provider.mode == "enforce":
@@ -709,6 +731,12 @@ def _guard_tool(tool, provider):
         return await execution_tool.invoke(arguments=arguments, context=context, **kwargs)
     guarded.invoke = invoke_validated
     guarded._threadlight_owner = provider
+    # Keep native counters on the same execution copy for the original's lifetime,
+    # without retaining discarded per-call tools or reusing an unrelated object's id.
+    def discard(reference):
+        if cache.get(key, (None,))[0] is reference:
+            cache.pop(key)
+    cache[key] = (ref(tool, discard), guarded)
     return guarded
 
 

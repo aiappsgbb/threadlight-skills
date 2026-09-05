@@ -1671,6 +1671,286 @@ def test_guard_preserves_native_bound_self_context_and_invocation_budget(tmp_pat
     assert original.invocation_count == 0
 
 
+@pytest.mark.parametrize("shape", ["money", "nested"])
+@pytest.mark.parametrize("decision", ["allow", "approval", "transform"])
+def test_native_rich_arguments_keep_types_and_exact_wire_authorization(tmp_path, monkeypatch, shape, decision):
+    from datetime import date
+    from decimal import Decimal
+    from enum import Enum
+    from uuid import UUID
+    from agent_framework import Agent, FunctionTool
+    from agent_framework._agent_hooks import _ToolArgumentsCodec
+    from pydantic import BaseModel, field_validator, model_serializer
+    validations, serializations, effects, observed, hashes = [], [], [], [], []
+    class State(str, Enum):
+        READY = "ready"
+    class Money(BaseModel):
+        amount: Decimal
+        @field_validator("amount")
+        @classmethod
+        def validate_amount(cls, value):
+            validations.append(value)
+            return value
+        @model_serializer(mode="wrap")
+        def serialize(self, handler):
+            serializations.append(self.amount)
+            return handler(self)
+    class Entry(Money):
+        at: datetime
+        day: date
+        state: State
+        identifier: UUID
+    class Nested(BaseModel):
+        entries: list[Entry]
+    original = {"amount": "10.50"} if shape == "money" else {"entries": [{
+        "amount": "10.50", "at": "2026-09-05T09:00:00+00:00", "day": "2026-09-05",
+        "state": "ready", "identifier": "12345678-1234-5678-1234-567812345678",
+    }]}
+    model = Money if shape == "money" else Nested
+    expected_native = model.model_validate(original).model_dump(exclude_unset=True)
+    target = _ToolArgumentsCodec.to_wire(expected_native)
+    if decision == "transform":
+        (target if shape == "money" else target["entries"][0])["amount"] = "20.25"
+    async def act(**values):
+        effects.append(values)
+        return "done"
+    tool = FunctionTool(name="act", func=act, input_model=model)
+    unbound = native_model_client(tool_responses(args=original))
+    asyncio.run(Agent(client=unbound, tools=[tool]).run("input"))
+    assert len(effects) == 1, "positive control must be accepted by the actual pinned framework"
+    effects.clear()
+    validations.clear()
+    serializations.clear()
+    adapter = importlib.import_module("skills.threadlight-govern.references.runtime.maf_agent_hooks_acs")
+    intercept = adapter.AcsInterceptor.intercept
+    async def capture(self, context):
+        if context["interception_point"] == "pre_tool_call":
+            observed.append(deepcopy(context))
+        return await intercept(self, context)
+    monkeypatch.setattr(adapter.AcsInterceptor, "intercept", capture)
+    service = ApprovalService("approve")
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    policy = {"decision": "allow"}
+    if decision == "transform":
+        policy = {"decision": "transform", "transform": {"path": "$policy_target", "value": target}}
+    p, _, _ = provider(
+        tmp_path, decisions={"pre_tool_call": policy},
+        document=contract(requires=("durable-audit", "approval") if decision == "approval"
+                          else ("durable-audit",)), audit=spool,
+        approval_resolver=service, principal="host:user", tenant="host:tenant",
+        allowed_approval_roles=("test-reviewer",),
+    )
+    p._safe_provider = lambda identity: (hashes.append(identity["action_hash"]) or {})
+    client = native_model_client(tool_responses(args=original))
+    result = asyncio.run(runtime().create_governed_agent(p, client=client, tools=[tool]).run("input"))
+    assert len(effects) == 1, result.to_json()
+    final = effects[0] if shape == "money" else effects[0]["entries"][0]
+    assert type(final["amount"]) is Decimal
+    assert final["amount"] == Decimal("20.25" if decision == "transform" else "10.50")
+    if shape == "nested":
+        assert type(final["at"]) is datetime and type(final["day"]) is date
+        assert type(final["state"]) is State and type(final["identifier"]) is UUID
+    expected_validations = [Decimal("10.50")] + ([Decimal("20.25")] if decision == "transform" else [])
+    assert validations == serializations == expected_validations
+    wire = _ToolArgumentsCodec.to_wire(effects[0])
+    final_hash = adapter.action_hash(p, observed[0], wire)
+    assert hashes == [adapter.action_hash(p, observed[0])]
+    records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+    assert any(r["action_hash"] == final_hash and r["decision"] == policy["decision"] for r in records)
+    if decision != "transform":
+        assert final_hash == hashes[0]
+    if decision == "approval":
+        assert service.requests[0].action_hash == final_hash
+    asyncio.run(client.client.close())
+    asyncio.run(unbound.client.close())
+
+
+@pytest.mark.parametrize("detailed", [False, True])
+def test_native_argument_codec_failure_is_private_before_hooks(tmp_path, detailed):
+    from typing import Any
+    from agent_framework import FunctionTool
+    from pydantic import BaseModel, field_serializer
+    effects, serializations = [], []
+    class Unsupported:
+        __slots__ = ()
+        def __str__(self):
+            raise RuntimeError("PRIVATE-CODEC-DIAGNOSTIC")
+    class Arguments(BaseModel):
+        amount: Any
+        @field_serializer("amount")
+        def serialize(self, value):
+            serializations.append(value)
+            return Unsupported()
+    async def act(amount):
+        effects.append(amount)
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(tmp_path, audit=spool, decisions={"pre_tool_call": {"decision": "allow"}})
+    client = native_model_client(tool_responses(args={"amount": 10}))
+    client.function_invocation_configuration["include_detailed_errors"] = detailed
+    agent = runtime().create_governed_agent(
+        p, client=client, tools=[FunctionTool(name="act", func=act, input_model=Arguments)],
+    )
+    result = asyncio.run(agent.run("input"))
+    assert effects == [] and serializations == [10]
+    records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+    assert "PRIVATE" not in str(client.requests) + result.to_json() + json.dumps(records)
+    results = [c for m in result.messages for c in m.contents if c.type == "function_result"]
+    assert results[0].exception == "threadlight:invalid_arguments"
+    assert not any(r["decision"] in {"allow", "transform"} for r in records)
+    asyncio.run(client.client.close())
+
+
+@pytest.mark.parametrize("limit", [1, 2])
+@pytest.mark.parametrize("source", ["agent", "options", "progressive"])
+def test_native_invocation_budget_survives_runs(tmp_path, limit, source):
+    from agent_framework import Agent, ChatMiddleware, FunctionInvocationContext, FunctionTool
+    effects, executions = [], []
+    async def act(ctx: FunctionInvocationContext):
+        effects.append("effect")
+        executions.append(ctx.function)
+        return "done"
+    original = FunctionTool(name="act", func=act, max_invocations=limit)
+    native_tool = FunctionTool(name="act", func=act, max_invocations=limit)
+    unbound = native_model_client([])
+    native_agent = Agent(client=unbound, tools=[native_tool])
+    async def runs(agent, client, **kwargs):
+        outcomes = []
+        for _ in range(limit + 1):
+            client.responses.extend(tool_responses())
+            outcomes.append(await agent.run("input", **kwargs))
+        return outcomes
+    asyncio.run(runs(native_agent, unbound))
+    assert len(effects) == native_tool.invocation_count == limit
+    effects.clear()
+    executions.clear()
+    class Expose(ChatMiddleware):
+        async def process(self, context, call_next):
+            context.options.setdefault("tools", [])[:] = [original]
+            await call_next()
+    p, _, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    client = native_model_client([])
+    agent = runtime().create_governed_agent(
+        p, client=client, tools=[original] if source == "agent" else [],
+        middleware=[Expose()] if source == "progressive" else [],
+    )
+    options = {"tools": [original]} if source == "options" else {}
+    results = asyncio.run(runs(agent, client, options=options))
+    assert len(effects) == limit, "a new run must not replenish the native tool's lifetime budget"
+    assert all(tool is executions[0] for tool in executions)
+    assert executions[0].invocation_count == limit
+    assert original.invocation_count == 0
+    assert all("threadlight:tool_unavailable" not in r.to_json() for r in results[:-1])
+    assert "threadlight:tool_unavailable" in results[-1].to_json()
+    if source == "options":
+        assert options["tools"] == [original]
+    # The caller's shared original remains usable by a separate unbound agent.
+    unbound.responses.extend(tool_responses())
+    asyncio.run(Agent(client=unbound, tools=[original]).run("input"))
+    assert original.invocation_count == 1 and len(effects) == limit + 1
+    asyncio.run(client.client.close())
+    asyncio.run(unbound.client.close())
+
+
+def test_native_parallel_invocation_budget_is_not_replenished(tmp_path):
+    from agent_framework import Agent, FunctionTool
+    effects = []
+    async def act():
+        await asyncio.sleep(0)
+        effects.append("effect")
+        return "done"
+    async def exercise(agent, client):
+        responses = tool_responses()
+        for call_id in ("call-2", "call-3"):
+            extra = deepcopy(responses[0].messages[0].contents[0])
+            extra.call_id = call_id
+            responses[0].messages[0].contents.append(extra)
+        client.responses.extend(responses)
+        first = await agent.run("input")
+        assert len(effects) == 2
+        client.responses.extend(tool_responses())
+        second = await agent.run("input")
+        return first, second
+    native_tool = FunctionTool(name="act", func=act, max_invocations=2)
+    unbound = native_model_client([])
+    asyncio.run(exercise(Agent(client=unbound, tools=[native_tool]), unbound))
+    assert len(effects) == native_tool.invocation_count == 2
+    effects.clear()
+    original = FunctionTool(name="act", func=act, max_invocations=2)
+    p, _, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    client = native_model_client([])
+    agent = runtime().create_governed_agent(p, client=client, tools=[original])
+    first, second = asyncio.run(exercise(agent, client))
+    assert len(effects) == 2 and original.invocation_count == 0
+    for result in (first, second):
+        assert "threadlight:tool_unavailable" in result.to_json()
+    asyncio.run(client.client.close())
+    asyncio.run(unbound.client.close())
+
+
+def test_native_nested_providers_keep_independent_lifetime_budgets(tmp_path):
+    from contextvars import ContextVar
+    from agent_framework import FunctionInvocationContext, FunctionTool
+    inside = ContextVar("inside_child", default=False)
+    effects = []
+    async def act(ctx: FunctionInvocationContext):
+        effects.append(ctx.function)
+        if not inside.get():
+            token = inside.set(True)
+            try:
+                child_client.responses.extend(tool_responses())
+                await child.run("nested")
+            finally:
+                inside.reset(token)
+        return "done"
+    original = FunctionTool(name="act", func=act, max_invocations=1)
+    child_provider, _, _ = provider(tmp_path / "child", decisions={"pre_tool_call": {"decision": "allow"}})
+    parent_provider, _, _ = provider(tmp_path / "parent", decisions={"pre_tool_call": {"decision": "allow"}})
+    child_client, parent_client = native_model_client([]), native_model_client([])
+    child = runtime().create_governed_agent(child_provider, client=child_client, tools=[original])
+    parent = runtime().create_governed_agent(parent_provider, client=parent_client, tools=[original])
+    async def run():
+        parent_client.responses.extend(tool_responses())
+        await parent.run("first")
+        assert len(effects) == 2 and effects[0] is not effects[1]
+        parent_client.responses.extend(tool_responses())
+        parent_result = await parent.run("second")
+        token = inside.set(True)
+        try:
+            child_client.responses.extend(tool_responses())
+            child_result = await child.run("second")
+        finally:
+            inside.reset(token)
+        return parent_result, child_result
+    results = asyncio.run(run())
+    assert len(effects) == 2 and all(t.invocation_count == 1 for t in effects)
+    assert original.invocation_count == 0
+    assert all("threadlight:tool_unavailable" in r.to_json() for r in results)
+    asyncio.run(child_client.client.close())
+    asyncio.run(parent_client.client.close())
+
+
+def test_guard_cache_uses_original_identity_without_retaining_discarded_tools(tmp_path):
+    import gc
+    import weakref
+    from agent_framework import FunctionTool
+    adapter = importlib.import_module("skills.threadlight-govern.references.runtime.maf_agent_hooks_acs")
+    p, _, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    async def act():
+        return "done"
+    first = FunctionTool(name="act", func=act, max_invocations=1)
+    second = FunctionTool(name="act", func=act, max_invocations=2)
+    guarded = adapter._guard_tool(first, p)
+    assert adapter._guard_tool(first, p) is guarded
+    assert adapter._guard_tool(guarded, p) is guarded
+    assert adapter._guard_tool(second, p) is not guarded
+    reference = weakref.ref(first)
+    key = id(first)
+    del first
+    gc.collect()
+    assert reference() is None, "discarded per-call tools must not accumulate in a host's cache"
+    assert key not in p._guarded_tools
+
+
 @pytest.mark.parametrize("case,target,expected,validations_expected", [
     ("constraint", -1, [], [9]),
     ("valid", 5, [5], [9, 5]),
