@@ -229,6 +229,7 @@ def test_probe_gateway_native_mcp_to_real_fixture_deny_and_positive(tmp_path):
         async with app.router.lifespan_context(app):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                          base_url="https://gateway.example") as client:
+                assert (await client.get("/health")).json()["mode"] == "enforce"
                 for variant in ("deny", "allow"):
                     run = str(uuid.uuid4())
                     registration = expected(h.dispatcher.probes, variant)
@@ -537,6 +538,7 @@ def test_probe_native_host_send_boundary(tmp_path, monkeypatch, variants):
                                 assert receipt.json()["decision"] == variant
                                 assert receipt.json()["probe"]["probe_run_id"] == run
                                 assert receipt.json()["probe"]["call_id"] == state["context"]["call_id"]
+                                assert state["action_hash"] == receipt.json()["action_hash"]
                                 assert ("threadlight:policy_deny" in json.dumps(item)) == (variant == "deny")
                                 unused = await h.native.status(WORKLOAD, untouched)
                                 assert not any(unused["counts"].values()) and unused["terminal"] is None

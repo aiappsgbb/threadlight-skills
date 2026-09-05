@@ -228,7 +228,11 @@ def test_repo_root_falls_back_to_grandparent_without_markers() -> None:
     (root / "specs").mkdir(parents=True)
     manifest = root / "specs" / "manifest.json"
     manifest.write_text("{}", encoding="utf-8")
-    assert sc._repo_root_for_manifest(manifest) == manifest.parent.parent == root
+    # Scratch can live inside a checkout; isolate this test's no-marker premise
+    # from an unrelated ancestor .git directory without using OS temp paths.
+    from unittest.mock import patch
+    with patch.object(sc, "_looks_like_repo_root", return_value=False):
+        assert sc._repo_root_for_manifest(manifest) == manifest.parent.parent == root
 
 
 def test_nested_manifest_binding_gap_uses_correct_root() -> None:

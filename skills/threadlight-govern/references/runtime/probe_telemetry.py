@@ -50,7 +50,8 @@ class NativeProbeTelemetry:
                         if entry.get("probe_flushed"):
                             return
                         decision, receipt_id = entry["probe_record"]
-                        await self.service.intercept(entry["probe"], decision=decision, receipt_id=receipt_id)
+                        await self.service.intercept(entry["probe"], decision=decision, receipt_id=receipt_id,
+                                                     action_hash=entry["action_hash"])
                         if decision == "deny":
                             await self.service.complete(entry["probe"], terminal="denied")
                         entry["probe_flushed"] = True

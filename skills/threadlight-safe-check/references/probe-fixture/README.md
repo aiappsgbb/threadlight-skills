@@ -194,6 +194,11 @@ protocol; booleans and inconsistent event/count records are rejected.
 deployment facts from `observation_provenance: "service-boundary"` events.
 This does not independently attest Azure deployment metadata or a hostile host.
 
+Native interception also commits its actual hook-context `action_hash` into the
+producer state before releasing the denial or tool body. The collector compares
+that hash with the authenticated receipt; it is not the different canonical
+Task 9 facts/arguments hash that the fixture records for its HTTP effect.
+
 | Phase | Actual writer / boundary |
 |---|---|
 | `received` | Authenticated gateway call or actual native pre-tool interception |
@@ -210,7 +215,7 @@ create proof. The fixed tool awaits the actual downstream request.
 
 Registration with zeros and `terminal: null` is **not** success. An unreached tool
 has no interception. A failed/late invocation remains nonterminal, even if its
-dispatcher has begun. A future collector must wait for `terminal: "denied"`
+dispatcher has begun. The collector must wait for `terminal: "denied"`
 with a deny interception/receipt (zero dispatcher and fixture effects), or
 `terminal: "completed"` for a separate fresh allow nonce (one dispatch and one
 fixture effect). It must compare both independent producer states and the exact
@@ -233,4 +238,6 @@ before and after execution, builds portable packages, and compiles Bicep locally
 The tests use actual FastMCP, ResponsesHostServer, Foundry SDK SSE, native hooks,
 ACS/OPA, Task 8 ASGI and this fixture's ASGI app. Only external signing/JWKS/model
 HTTP and Cosmos SDK storage are local seams. This is **local producer validation,
-not live Azure proof**; Task 11 collection and Task 15 installation remain separate.
+not live Azure proof**. The [Task 11 collector](../governance-probe.md) runs these
+APIs against independently observed deployments; Task 15 installation remains
+separate.

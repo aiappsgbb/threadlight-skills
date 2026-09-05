@@ -74,9 +74,12 @@ from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 from urllib.parse import urlsplit
 
-from contracts import EvidenceRef, Finding, Status
-
-import canonical
+try:
+    from .contracts import EvidenceRef, Finding, Status
+    from . import canonical
+except ImportError:
+    from contracts import EvidenceRef, Finding, Status
+    import canonical
 
 
 class ChangePlaneError(RuntimeError):

@@ -529,7 +529,7 @@ def vendor_gateway(target):
     (destination / "pyproject.toml").write_text(pyproject)
 
 
-def write_dockerfile(target, *, agent=False, gateway=False):
+def dockerfile_text(*, agent=False, gateway=False, opa_pin=None):
     # Copy the complete source context, explicitly excluding user credentials and deployment state.
     text = """ARG PYTHON_IMAGE
 FROM ${PYTHON_IMAGE}
@@ -543,7 +543,7 @@ RUN python -m pip install --no-cache-dir ./vendor/control-plane
     if agent:
         text += "COPY . ./\nRUN python -m pip install --no-cache-dir .\n"
     if agent or gateway:
-        pin = json.loads((CATALOG / "skills/_shared/governance-upstream-pin.json").read_text())["opa"]
+        pin = opa_pin or json.loads((CATALOG / "skills/_shared/governance-upstream-pin.json").read_text())["opa"]
         text += (
             f"ADD https://openpolicyagent.org/downloads/v{pin['version']}/opa_linux_amd64_static /app/opa\n"
             f"RUN echo '{pin['linux_amd64_static_sha256']}  /app/opa' | sha256sum -c - && chmod 555 /app/opa\n"
@@ -552,6 +552,11 @@ RUN python -m pip install --no-cache-dir ./vendor/control-plane
         text += "COPY . ./\n"
     text += 'EXPOSE 8088\nCMD ["python", "container.py"]\n' if agent else (
         'EXPOSE 8000\nCMD ["python", "service_entry.py"]\n')
+    return text
+
+
+def write_dockerfile(target, *, agent=False, gateway=False):
+    text = dockerfile_text(agent=agent, gateway=gateway)
     (target / "Dockerfile").write_text(text)
     (target / ".dockerignore").write_text(
         ".git\n.azure\n.threadlight\n.env\n.env.*\n**/__pycache__\n**/.venv\n"

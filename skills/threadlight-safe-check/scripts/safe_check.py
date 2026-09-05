@@ -358,19 +358,22 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
     selectors = dm.get("module_selectors", {})
     services = {s["name"]: s for s in dm.get("services", [])}
     gaps: list[str] = []
+    governance = _governance_static(repo, data)
+    gaps.extend(governance.get("gaps", []))
+    extra = {"repo": str(repo), **({"governance_health": governance} if governance else {})}
 
     azure_yaml = repo / "azure.yaml"
     if not azure_yaml.exists():
         gaps.append("azure.yaml missing at repo root")
         return _write_and_emit(out_path, "pre-deploy", gaps,
-                               extra={"repo": str(repo)})
+                               extra=extra)
     azure_text = azure_yaml.read_text(encoding="utf-8")
 
     main_bicep = repo / "infra" / "main.bicep"
     if not main_bicep.exists():
         gaps.append("infra/main.bicep missing")
         return _write_and_emit(out_path, "pre-deploy", gaps,
-                               extra={"repo": str(repo)})
+                               extra=extra)
     main_text = main_bicep.read_text(encoding="utf-8")
 
     for selector, val in selectors.items():
@@ -429,6 +432,8 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
         parts = rel.parts
         if "core" in parts or "modules" in parts or rel.name == "main.bicep":
             continue
+        if rel.as_posix() in governance.get("auxiliary_modules", []):
+            continue
         base = bicep.stem
         if base not in main_text and rel.as_posix() not in main_text:
             gaps.append(
@@ -455,7 +460,29 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
                         "entry in azure.yaml services")
 
     return _write_and_emit(out_path, "pre-deploy", gaps,
-                           extra={"repo": str(repo)})
+                           extra=extra)
+
+
+def _governance_enabled(data):
+    value = data.get("governance")
+    return "governance" in data and (not isinstance(value, dict) or value.get("mode") != "off")
+
+
+def _governance_static(repo, data):
+    if not _governance_enabled(data):
+        return {}
+    try:
+        from governance_references.governance_static import check
+    except ImportError:
+        reference = Path(__file__).resolve().parent.parent / "references"
+        if reference.is_dir():
+            sys.path.insert(0, str(reference))
+        try:
+            from governance_static import check
+        except ImportError:
+            return {"gaps": ["governance: install the governance safe-check collector package"],
+                    "scope": "static-declarations-not-enforcement"}
+    return check(repo, data)
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +490,8 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
 # ---------------------------------------------------------------------------
 
 def phase_postdeploy(manifest_path: Path, out_path: Path,
-                     rg: str | None, repo_root: Path | None = None) -> int:
+                     rg: str | None, repo_root: Path | None = None,
+                     governance_dependencies: dict | None = None) -> int:
     data = _load_manifest(manifest_path)
     dm = data["deployment_manifest"]
     selectors = {k for k, v in dm.get("module_selectors", {}).items() if v == "yes"}
@@ -962,6 +990,27 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         "scheduled_jobs": job_results,
         "gaps": gaps,
     }
+    if _governance_enabled(data):
+        health = _governance_static(resolved_root, data)
+        governance_gaps = list(health.get("gaps", []))
+        payload.update(governance_health=health, governance_probes=[], governance_gaps=governance_gaps)
+        configuration = resolved_root / ".threadlight/governance-probe.json"
+        if not configuration.is_file():
+            governance_gaps.append("governance: no explicit signed safe probe configuration; not verified")
+        elif not governance_gaps:
+            try:
+                import asyncio
+                try:
+                    from governance_references.governance_probe import collect_project
+                except ImportError:
+                    from governance_probe import collect_project
+                collected = asyncio.run(collect_project(
+                    resolved_root, configuration, manifest_path=manifest_path, **(governance_dependencies or {})))
+                governance_gaps.extend(collected["governance_gaps"])
+                payload.update({k: v for k, v in collected.items() if k != "governance_gaps"})
+            except Exception:
+                governance_gaps.append("governance: collector unavailable; not verified")
+        gaps.extend(governance_gaps)
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return _emit(out_path, gaps)
 

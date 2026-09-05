@@ -3,9 +3,75 @@
   "$id": "threadlight-governance-manifest/v1",
   "anyOf": [
     {"$ref": "#/definitions/runtimeManifest"},
-    {"$ref": "#/definitions/offlineManifest"}
+    {"$ref": "#/definitions/offlineManifest"},
+    {"$ref": "#/definitions/collectedManifest"}
   ],
   "definitions": {
+  "collectedManifest": {
+    "description": "Payload-free authenticated collection, not binary provenance or remote attestation. Python validation rechecks the strict producer and receipt models.",
+    "type": "object",
+    "required": ["schema", "agent", "policy_bundle", "enforcement", "coverage", "bindings", "live_probes", "gaps", "collection_evidence"],
+    "additionalProperties": false,
+    "properties": {
+      "schema": {"const": "threadlight-governance-manifest/v1"},
+      "agent": {"$ref": "#/definitions/runtimeManifest/properties/agent"},
+      "policy_bundle": {"$ref": "#/definitions/runtimeManifest/properties/policy_bundle"},
+      "enforcement": {
+        "type": "object", "required": ["adapter", "mode"], "additionalProperties": false,
+        "properties": {"adapter": {"type": "string", "minLength": 1}, "mode": {"const": "enforce"}}
+      },
+      "coverage": {"$ref": "#/definitions/runtimeManifest/properties/coverage"},
+      "bindings": {
+        "type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["binding_id", "tool_id", "enforcement_path", "intervention_points", "mode", "safe_principles", "status", "policy_digest", "probe_ids", "evidence_refs"],
+          "properties": {
+            "binding_id": {"$ref": "#/definitions/binding/properties/binding_id"},
+            "tool_id": {"$ref": "#/definitions/binding/properties/tool_id"},
+            "enforcement_path": {"$ref": "#/definitions/binding/properties/enforcement_path"},
+            "intervention_points": {"$ref": "#/definitions/binding/properties/intervention_points"},
+            "mode": {"const": "enforce"},
+            "safe_principles": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+            "status": {"enum": ["enforced", "unverified", "unbound"]},
+            "policy_digest": {"$ref": "#/definitions/sha256Digest"},
+            "probe_ids": {"$ref": "#/definitions/binding/properties/probe_ids"},
+            "evidence_refs": {"$ref": "#/definitions/binding/properties/evidence_refs"}
+          },
+          "allOf": [{
+            "if": {"properties": {"status": {"const": "enforced"}}},
+            "then": {"properties": {
+              "binding_id": {"const": "governance_probe_noop"}, "tool_id": {"const": "governance_probe_noop"},
+              "intervention_points": {"const": ["pre_tool_call"]},
+              "probe_ids": {"minItems": 2}, "evidence_refs": {"minItems": 4}
+            }}
+          }]
+        }
+      },
+      "live_probes": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/definitions/liveProbe"}},
+      "gaps": {
+        "type": "array", "items": {
+          "type": "object", "required": ["binding_id", "status", "reason_code", "evidence_refs"], "additionalProperties": false,
+          "properties": {
+            "binding_id": {"$ref": "#/definitions/binding/properties/binding_id"},
+            "status": {"enum": ["unverified", "unbound"]},
+            "reason_code": {"type": "string", "minLength": 1},
+            "evidence_refs": {"type": "array", "maxItems": 0}
+          }
+        }
+      },
+      "collection_evidence": {
+        "type": "object", "additionalProperties": false,
+        "required": ["source", "declared_selection", "observed_target", "started_at", "finished_at", "registration_scope", "records"],
+        "properties": {
+          "source": {"const": "authenticated-service-reads-and-azure-observation-not-attestation"},
+          "declared_selection": {"type": "object"}, "observed_target": {"type": "object"},
+          "started_at": {"type": "string", "format": "date-time"}, "finished_at": {"type": "string", "format": "date-time"},
+          "registration_scope": {"type": "object"},
+          "records": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "object"}}
+        }
+      }
+    }
+  },
   "runtimeManifest": {
   "type": "object",
   "required": [

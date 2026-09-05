@@ -211,6 +211,7 @@ def create_app(dispatcher):
         ready = all(binding["healthy"] for binding in bindings.values())
         return JSONResponse({
             "status": "ready" if ready else "unavailable",
+            "mode": "enforce",
             "policy_digest": dispatcher.policy.digest, "registry_loaded": True,
             "scope": "declared-local-controls-not-live-proof",
             "dependencies": dependencies, "bindings": bindings}, 200 if ready else 503)

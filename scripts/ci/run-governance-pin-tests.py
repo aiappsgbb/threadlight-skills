@@ -222,7 +222,7 @@ def deployment_runtime(pins):
     deps = tomllib.loads((reference / "pyproject-maf.toml").read_text())["project"]["dependencies"]
     required = sorted(set(requirements(pins) + gateway_requirements() + [
         item for item in deps if not item.startswith("threadlight-govern-")
-    ] + ["github-copilot-sdk==1.0.1"]))
+    ] + collector_requirements() + ["github-copilot-sdk==1.0.1"]))
     wheelhouse = SCRATCH / "deployment-wheels"
     python = VENV / "bin/python"
     if not python.exists():
@@ -245,9 +245,14 @@ def deployment_runtime(pins):
         fixture_staging.mkdir()
         for source in (*fixture.glob("*.py"), fixture / "pyproject.toml"):
             shutil.copyfile(source, fixture_staging / source.name)
+        collector_skills = staging / "collector/skills"
+        for relative in ("threadlight-safe-check", "threadlight-deploy/references/governance",
+                        "threadlight-govern/references/runtime", "threadlight-governed-actions/scripts", "_shared"):
+            shutil.copytree(ROOT / "skills" / relative, collector_skills / relative,
+                           ignore=shutil.ignore_patterns("__pycache__", "*.egg-info", "build", "dist"))
         run([python, "-m", "pip", "wheel", "--quiet", "--no-deps", "--no-build-isolation",
              "--wheel-dir", staging / "wheels", staging / "vendor/control-plane", staging / "vendor/gateway",
-             fixture_staging])
+             fixture_staging, collector_skills / "threadlight-safe-check"])
         run([python, "-m", "pip", "install", "--quiet", "--no-deps", "--force-reinstall",
              *sorted((staging / "wheels").glob("*.whl"))])
         run([python, "-m", "pip", "check"])
@@ -265,7 +270,32 @@ for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
             if name.endswith(('.py', '.so')) and '.data/' not in name:
                 assert dist.locate_file(name).read_bytes() == archive.read(name), name
 """
+        sdk_wheels = {}
+        for name, version in (("azure-ai-projects", "2.3.0"), ("openai", "2.54.0"), ("github-copilot-sdk", "1.0.1")):
+            matches = list(wheelhouse.glob(f"{name.replace('-', '_')}-{version}-*.whl"))
+            if len(matches) != 1:
+                raise RuntimeError("required pinned collector SDK wheel missing")
+            sdk_wheels[name] = {"filename": matches[0].name, "version": version,
+                                "sha256": hashlib.sha256(matches[0].read_bytes()).hexdigest()}
+        verification += f"""
+import hashlib
+for name, record in {sdk_wheels!r}.items():
+    artifact = scratch / 'deployment-wheels' / record['filename']
+    assert hashlib.sha256(artifact.read_bytes()).hexdigest() == record['sha256']
+    dist = m.distribution(name)
+    assert dist.version == record['version']
+    with zipfile.ZipFile(artifact) as archive:
+        for member in archive.namelist():
+            if not member.endswith('/') and '.dist-info/' not in member and '.data/' not in member:
+                assert dist.locate_file(member).read_bytes() == archive.read(member), member
+"""
         run([python, "-c", verification])
+        # Installed collector must import outside the checkout, without PYTHONPATH.
+        subprocess.run([str(python), "-I", "-c",
+             "from governance_references.governance_probe import main; "
+             "from govern_canonical.ghcp import resolve_subscription_id; "
+             "from skills._shared.probe_evidence import evaluate_pair; "
+             "main(['--help'])"], cwd=staging, check=True)
         report = SCRATCH / "deployment-tests.xml"
         env = {
             **os.environ, "THREADLIGHT_GOVERNANCE_RUNTIME": "1",
@@ -274,6 +304,8 @@ for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
         }
         env.pop("PYTEST_ADDOPTS", None)
         run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_probe_telemetry.py",
+              "skills/threadlight-safe-check/tests",
+               "skills/_shared/tests/test_governance.py",
              "skills/threadlight-deploy/tests/test_governance_wiring.py",
              "skills/threadlight-deploy/tests/test_governance_quality.py",
              "skills/threadlight-deploy/tests/test_azd_cli_contract.py",
@@ -300,6 +332,11 @@ for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
             "test_probe_store_sdk_cas_adapter_strong_reads_and_failed_ack",
             "test_probe_late_fixture_is_not_completed_until_actual_await_finishes",
             "test_generated_native_probe_package_is_explicit_and_requires_external_signed_binding",
+            "test_collector_actual_native_responses_deny_positive_and_binding_specific",
+            "test_collector_actual_copilot_invocations_mcp_gateway_fixture",
+            "test_postdeploy_runs_real_collector_and_retains_original_gaps[False]",
+            "test_postdeploy_runs_real_collector_and_retains_original_gaps[True]",
+            "test_noop_proof_cannot_certify_business_or_lifecycle_bindings",
         }
         if not required_cases <= {case.attrib["name"] for case in cases}:
             raise RuntimeError("required native generation probes did not run")
@@ -307,10 +344,16 @@ for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
         (SCRATCH / "deployment-proof.json").write_text(json.dumps({
             "tests_passed": len(cases), "junit": report.name,
             "packages": {r["distribution"]: r["version"] for r in records},
+            "collector_sdk_wheels": sdk_wheels,
             "scope": "generated native hosts, installed portable wheels, HTTP relay, Bicep; no live Azure",
         }, indent=2) + "\n")
     finally:
         shutil.rmtree(staging)
+
+
+def collector_requirements():
+    project = tomllib.loads((ROOT / "skills/threadlight-safe-check/pyproject.toml").read_text())
+    return [item for item in project["project"]["dependencies"] if not item.startswith("threadlight-")]
 
 
 def prepare_deployment(pins):
@@ -323,7 +366,7 @@ def prepare_deployment(pins):
     deps = tomllib.loads((reference / "pyproject-maf.toml").read_text())["project"]["dependencies"]
     requested = sorted(set(requirements(pins) + gateway_requirements() + [
         item for item in deps if not item.startswith("threadlight-govern-")
-    ] + ["github-copilot-sdk==1.0.1"]))
+    ] + collector_requirements() + ["github-copilot-sdk==1.0.1"]))
     wheelhouse = SCRATCH / "deployment-wheels"
     wheelhouse.mkdir(exist_ok=True)
     marker = wheelhouse / "requirements.json"

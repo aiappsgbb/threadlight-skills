@@ -1,26 +1,13 @@
 ---
 name: threadlight-safe-check
 description: >
-  Three-lifecycle completeness gate for threadlight pilots
-  (design / pre-deploy / post-deploy). Reads SPEC § 11c selectors via
-  `specs/manifest.json` `deployment_manifest` and asserts: every
-  selector maps to a deployed `Microsoft.*` type, every channel
-  reaches, every scheduled job is wired. Post-deploy also runs
-  behavioural checks: deployed images differ from the azuredocs
-  helloworld placeholder, no ACA Job has its last 5 runs all Failed,
-  App Insights exists when SPEC declared it.
-  USE FOR: completeness gate, deploy gate, post-deploy gate,
-  pre-deploy check, manifest drift, orphan modules, partial PoC,
-  missing bot/workspace/aca-job, deployment_manifest, manifest.json,
-  placeholder image, helloworld image, image probe, job execution
-  failed, cron rot, app insights missing, telemetry not flowing,
-  blank appin, Kratos export gate, trimmed infra, derive expected
-  types from infra.
-  DO NOT USE FOR: invocation/runtime tests (foundry-evals), `azd up`
-  orchestration (threadlight-deploy), schema authoring
-  (threadlight-design).
+  Use when a Threadlight pilot needs design, pre-deploy or post-deploy
+  completeness checks: manifest drift, missing resources, orphan modules,
+  placeholder images, failed jobs, missing telemetry, or selected runtime
+  governance requiring deployed enforcement evidence. Not for deployment
+  orchestration (threadlight-deploy) or general agent evaluations (foundry-evals).
 metadata:
-  version: "1.1.1"
+  version: "1.2.0"
 ---
 
 # Threadlight Safe Check — three lifecycle gates, one CLI
@@ -81,6 +68,36 @@ and re-readable later (CI, demo prep, postmortem):
   the prior `threadlight-deploy` Phase 3.5 manifest)*
 
 All three manifests have a top-level `"gaps": []`. **Empty array = pass.**
+
+## Selected runtime governance
+
+When the SPEC selects governance, resource presence alone is insufficient.
+`off` and legacy manifests add no governance work or network calls.
+
+- **Pre-deploy:** verify the exact selected adapter, packaged code/configuration,
+  bundle integrity, required controls and service bindings. Before an image
+  exists, record `pre-image` and explicit unverified image/deployment facts;
+  never call a static declaration enforced. Intentionally unbound read tools
+  are not missing adapters and must not be auto-selected or removed.
+- **Post-deploy:** use the installed collector and the operator's protected
+  `.threadlight/governance-probe.json`. A Key Vault verified registry must
+  explicitly declare **`probe_safe: true`** for **`governance_probe_noop`**.
+  Without it, do not invoke the model or improvise a business operation,
+  even with `--force`. Missing setup is an unverified governance gap.
+- Register fresh, independent allow/deny UUIDs at both producer and fixture
+  before invoking the actual hosted agent. Require terminal producer states,
+  an authenticated Task 8 receipt, one allow effect and zero deny effects.
+  Ignored prompts, replay, unavailable dependencies, wrong scope or changed
+  deployment remain unverified. Model text is never an oracle.
+- Dedicated noop proof **cannot certify business bindings** or other lifecycle
+  points. Those remain unverified without their own explicit safe live evidence.
+  Do not promote local tests, CTK results or packaging into deployed proof.
+- Preserve every existing non-governance gap. `governance_health`,
+  `governance_probes` and `governance_gaps` supplement—not replace—`gaps`.
+  Saved collector JSON is payload-free evidence, **not remote attestation**.
+
+See [collector installation, inputs and limits](references/governance-probe.md)
+and the [actual producer contract](references/probe-fixture/README.md).
 
 ---
 
@@ -154,11 +171,9 @@ threadlight-safe-check/
     └── test_safe_check.py         (integration_binding_gaps + example parity)
 ```
 
-The CLI is **one file** (~250 LOC) intentionally — copy it into the pilot
-repo as `tests/safe_check.py` (or symlink / install as a package) and
-invoke. No external dependencies beyond stdlib + `azure-identity` (for
-`AzureCliCredential`-honored `az` calls already required by everything
-else in the toolchain).
+The legacy CLI remains a copyable file. Selected governance additionally
+requires the portable `threadlight-governance-safe-check` package; copying
+only the CLI never silently skips a selected governance gate.
 
 Run the shipped tests standalone (no pytest required):
 

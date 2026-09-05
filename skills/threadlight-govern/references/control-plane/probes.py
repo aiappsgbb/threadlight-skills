@@ -223,7 +223,7 @@ class ProbeService:
         await self.save(state, etag, body)
         return context
 
-    async def update(self, context, phase, *, decision=None, receipt_id=None, terminal=None):
+    async def update(self, context, phase, *, decision=None, receipt_id=None, terminal=None, action_hash=None):
         for _ in range(8):
             state, etag = await self.load(context.subject, context.probe_run_id)
             if state.context != context or state.terminal is not None:
@@ -243,6 +243,10 @@ class ProbeService:
             else:
                 raise ValueError("producer_phase_forbidden")
             body = self.event(state, phase, decision=decision, receipt_id=receipt_id)
+            if action_hash is not None:
+                if phase != "intercepted" or self.producer != "native":
+                    raise ValueError("native_interception_hash_only")
+                body["action_hash"] = action_hash
             body["terminal"] = terminal
             try:
                 return await self.save(state, etag, body)
@@ -250,8 +254,9 @@ class ProbeService:
                 continue
         raise RuntimeError("probe_state_unavailable")
 
-    async def intercept(self, context, *, decision, receipt_id):
-        return await self.update(context, "intercepted", decision=decision, receipt_id=receipt_id)
+    async def intercept(self, context, *, decision, receipt_id, action_hash=None):
+        return await self.update(context, "intercepted", decision=decision, receipt_id=receipt_id,
+                                 action_hash=action_hash)
 
     async def dispatch(self, context):
         return await self.update(context, "dispatch")

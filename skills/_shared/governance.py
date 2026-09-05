@@ -556,7 +556,7 @@ def validate_governance_contract(document, *, deployment_target, runtime=None, a
     }
 
 
-def _validate_binding(binding, *, policy_digest, offline=False):
+def _validate_binding(binding, *, policy_digest, offline=False, collection=False):
     field = "bindings[]"
     binding = _require_object(binding, field)
     _require_exact_keys(
@@ -592,7 +592,7 @@ def _validate_binding(binding, *, policy_digest, offline=False):
     safe_principles = _require_unique_string_list(
         binding["safe_principles"],
         "bindings[].safe_principles",
-        allow_empty=offline,
+        allow_empty=offline or (collection and enforcement_path == "none"),
     )
     status = _require_member(binding["status"], BINDING_STATUSES, "bindings[].status")
     binding_policy_digest = binding["policy_digest"]
@@ -705,7 +705,7 @@ def _validate_live_probe(probe, *, known_binding_ids, agent_version):
     }
 
 
-def _validate_gap(gap, *, binding_ids, evidence_refs, evidence_refs_by_binding):
+def _validate_gap(gap, *, binding_ids, evidence_refs, evidence_refs_by_binding, collection=False):
     field = "gaps[]"
     gap = _require_object(gap, field)
     has_binding = "binding_id" in gap
@@ -730,7 +730,7 @@ def _validate_gap(gap, *, binding_ids, evidence_refs, evidence_refs_by_binding):
         gap["evidence_refs"],
         "gaps[].evidence_refs",
         item_validator=_require_evidence_ref,
-        allow_empty=False,
+        allow_empty=collection and status in {"unverified", "unbound"},
     )
     for reference in refs:
         if reference not in evidence_refs:
@@ -760,6 +760,9 @@ def validate_governance_manifest(manifest):
         "live_probes",
         "gaps",
     }
+    collection = "collection_evidence" in manifest
+    if collection:
+        required_keys.add("collection_evidence")
     missing = required_keys.difference(manifest)
     if missing:
         _raise(f"manifest missing required keys: {', '.join(sorted(missing))}")
@@ -797,38 +800,31 @@ def validate_governance_manifest(manifest):
     _require_exact_keys(
         enforcement,
         "enforcement",
-        {
+        ({"adapter", "mode"} if collection else {
             "adapter",
             "mode",
             "agent_hooks_distribution",
             "agent_hooks_artifact_sha256",
             "acs_distribution",
             "acs_artifact_sha256",
-        },
+        }),
     )
     _require_non_empty_string(enforcement["adapter"], "enforcement.adapter")
     _require_member(enforcement["mode"], _ENFORCEMENT_MODES, "enforcement.mode")
-    _require_version(
-        enforcement["agent_hooks_distribution"],
-        "enforcement.agent_hooks_distribution",
-    )
-    _require_sha256(
-        enforcement["agent_hooks_artifact_sha256"],
-        "enforcement.agent_hooks_artifact_sha256",
-    )
-    _require_version(
-        enforcement["acs_distribution"], "enforcement.acs_distribution"
-    )
-    _require_sha256(
-        enforcement["acs_artifact_sha256"], "enforcement.acs_artifact_sha256"
-    )
+    if not collection:
+        _require_version(
+            enforcement["agent_hooks_distribution"], "enforcement.agent_hooks_distribution")
+        _require_sha256(
+            enforcement["agent_hooks_artifact_sha256"], "enforcement.agent_hooks_artifact_sha256")
+        _require_version(enforcement["acs_distribution"], "enforcement.acs_distribution")
+        _require_sha256(enforcement["acs_artifact_sha256"], "enforcement.acs_artifact_sha256")
 
     bindings = _require_list(manifest["bindings"], "bindings")
     normalized_bindings = []
     binding_ids = set()
     tool_ids = set()
     for binding in bindings:
-        normalized = _validate_binding(binding, policy_digest=policy_digest)
+        normalized = _validate_binding(binding, policy_digest=policy_digest, collection=collection)
         if (
             agent_runtime == "github-copilot-sdk"
             and normalized["enforcement_path"] == "local-agent-hooks"
@@ -928,6 +924,7 @@ def validate_governance_manifest(manifest):
             binding_ids=binding_ids,
             evidence_refs=evidence_refs,
             evidence_refs_by_binding=evidence_refs_by_binding,
+            collection=collection,
         )
         if "binding_id" in gap:
             if gap["binding_id"] in gap_binding_ids:
@@ -952,7 +949,45 @@ def validate_governance_manifest(manifest):
             _raise("gaps must cover every non-enforced binding")
 
     _validate_coverage(manifest["coverage"], normalized_bindings)
+    if collection:
+        _validate_collection_evidence(manifest)
     return manifest
+
+
+def _validate_collection_evidence(manifest):
+    from skills._shared.probe_evidence import evaluate_pair
+    evidence = _require_object(manifest["collection_evidence"], "collection_evidence")
+    _require_exact_keys(evidence, "collection_evidence", {
+        "source", "declared_selection", "observed_target", "started_at", "finished_at",
+        "registration_scope", "records",
+    })
+    if evidence["source"] != "authenticated-service-reads-and-azure-observation-not-attestation":
+        _raise("collection_evidence source must identify the collector, not local conformance")
+    try:
+        target = evidence["observed_target"]
+        if (target["source"] != "azure-arm-and-foundry"
+                or target["agent_version"] != manifest["agent"]["version"]
+                or target["image_digest"] != manifest["agent"]["image_digest"]
+                or evidence["registration_scope"]["registration"]["policy_digest"] != manifest["policy_bundle"]["digest"]):
+            _raise("collection_evidence target mismatch")
+        _, started = _parse_timestamp(evidence["started_at"], "collection_evidence.started_at")
+        _, finished = _parse_timestamp(evidence["finished_at"], "collection_evidence.finished_at")
+        if finished < started:
+            _raise("collection_evidence time reversed")
+        expected = evaluate_pair(evidence["records"], target=target,
+            registration_scope=evidence["registration_scope"], started_at=started, finished_at=finished)
+        if manifest["live_probes"] != expected:
+            _raise("collection_evidence does not match live probes")
+        for binding in manifest["bindings"]:
+            if binding["status"] == "enforced" and (
+                binding["tool_id"] != "governance_probe_noop"
+                or binding["binding_id"] != "governance_probe_noop"
+                or binding["intervention_points"] != ["pre_tool_call"]):
+                _raise("noop evidence cannot certify other bindings or intervention points")
+    except GovernanceContractError:
+        raise
+    except Exception:
+        _raise("collection_evidence failed strict probe evaluation")
 
 
 def _validate_coverage(coverage, normalized_bindings):
