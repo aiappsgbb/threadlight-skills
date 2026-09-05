@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -1304,9 +1305,31 @@ def _check_govern(workspace: Path, _: dict[str, Any]) -> StageDecision:
                              "Binding inventory missing, invalid or changed; legacy capabilities are not evidence.")
 
 
+def _gate_source_files(workspace, directory):
+    """Prune reserved caches before traversal, including host-definition discovery."""
+    base = workspace / directory
+    if base.is_symlink():
+        raise ValueError("governance-source-symlink")
+    for current, children, names in os.walk(base):
+        children[:] = sorted(name for name in children
+                             if name not in {".git", ".pytest_cache", "__pycache__", "build", "dist"}
+                             and not name.endswith(".egg-info"))
+        if any((Path(current) / name).is_symlink() for name in children):
+            raise ValueError("governance-source-symlink")
+        for name in sorted(names):
+            if name == ".git":  # Worktrees use a pointer file rather than a directory.
+                continue
+            path = Path(current) / name
+            if path.is_symlink():
+                raise ValueError("governance-source-symlink")
+            if path.is_file():
+                yield path
+
+
 def _gate_fingerprint(workspace):
     """Freeze declared inputs and effect-bearing source, not deployment outputs."""
     from skills._shared.governance_selection import load_contract, read_json
+    from skills._shared.governance_readiness import MANIFEST, COLLECTION
     from skills._shared.governance import validate_governance_contract
     document = load_contract(workspace, required=False)
     payload = {"contract": validate_governance_contract(document, deployment_target="demo-sandbox")
@@ -1329,8 +1352,9 @@ def _gate_fingerprint(workspace):
     import yaml
     directories = {"src", "policies", "infra", "config"}
     definitions = {"azure.yaml", "agent.yaml"}
-    for path in (workspace / "src").rglob("agent*.yaml"):
-        definitions.add(path.relative_to(workspace).as_posix())
+    for path in _gate_source_files(workspace, "src"):
+        if path.match("agent*.yaml"):
+            definitions.add(path.relative_to(workspace).as_posix())
     for name in sorted(definitions):
         path = workspace / name
         if path.exists():
@@ -1374,16 +1398,20 @@ def _gate_fingerprint(workspace):
                     directories.add(value[field])
                 else:
                     files[value[field]] = _sha256(path)
+    # Exact workspace outputs only: their validators/attempt bindings still apply.
+    # In particular, specs/manifest.json is already projected above; hashing its
+    # raw bytes again would turn deployment outputs back into gate inputs.
+    excluded = definitions | {
+        "specs/manifest.json", MANIFEST, COLLECTION,
+        GOVERNANCE_GATE_STATE, GOVERNANCE_EXECUTION_STATE,
+        DEFAULT_STATE_PATH, DEFAULT_NEXT_PATH, PREFLIGHT_MARKER,
+        ".threadlight/governance-deployment.json", "docs/agt-governance-report.md",
+    }
     for directory in sorted(directories):
-        for path in sorted((workspace / directory).rglob("*")):
-            if any(p in {"__pycache__", "build", "dist"} or p.endswith(".egg-info") for p in path.parts):
-                continue
-            if path.is_symlink():
-                raise ValueError("governance-source-symlink")
-            if path.is_file():
-                relative = path.relative_to(workspace).as_posix()
-                if relative not in definitions:
-                    files[relative] = _sha256(path)
+        for path in _gate_source_files(workspace, directory):
+            relative = path.relative_to(workspace).as_posix()
+            if relative not in excluded:
+                files[relative] = _sha256(path)
     payload["source_files"] = files
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -1392,8 +1420,9 @@ def _deployment_fingerprint(workspace):
     payload = {"inputs": _gate_fingerprint(workspace)}
     for name in ("specs/manifest.json", ".threadlight/governance-deployment.json", "azure.yaml", "agent.yaml"):
         payload[name] = _sha256(workspace / name)
-    for path in (workspace / "src").rglob("agent*.yaml"):
-        payload[path.relative_to(workspace).as_posix()] = _sha256(path)
+    for path in _gate_source_files(workspace, "src"):
+        if path.match("agent*.yaml"):
+            payload[path.relative_to(workspace).as_posix()] = _sha256(path)
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 

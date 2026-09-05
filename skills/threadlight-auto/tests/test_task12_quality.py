@@ -209,14 +209,15 @@ def test_fresh_gate_can_authorize_retry_after_successful_old_contract(tmp_path, 
     assert orch._check_deploy(root, {}).decision == "run"
 
 
-def test_prebuild_image_absent_outputs_are_bound_only_after_success(tmp_path, monkeypatch):
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+def test_prebuild_image_absent_outputs_are_bound_only_after_success(tmp_path, monkeypatch, project):
     root, clock, _ = governed(tmp_path, monkeypatch)
-    (root / "azure.yaml").write_text("services:\n  agent:\n    project: ./src/agent\n")
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
     initial = orch._gate_fingerprint(root)
     assert orch.record_governed_actions_gate(root)
     orch.record_deploy_started(root)
     (root / "azure.yaml").write_text(
-        "services:\n  agent:\n    project: ./src/agent\n    image: registry.example/agent@sha256:" + "a"*64
+        f"services:\n  agent:\n    project: {project}\n    image: registry.example/agent@sha256:" + "a"*64
         + "\n    env:\n      TL_GOV_IMAGE_DIGEST: sha256:" + "a"*64 + "\n")
     write(root, ".threadlight/governance-deployment.json", {"images": {"agent": "sha256:" + "a"*64}})
     clock[0] += timedelta(seconds=1)
@@ -264,3 +265,176 @@ def test_malformed_host_inputs_fail_closed_without_planner_crash(tmp_path, monke
     (root / "azure.yaml").write_text(text)
     report = orch.decide(root)
     assert next(d for d in report["decisions"] if d["stage"] == "governed_actions_gate")["decision"] == "run"
+
+
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+def test_actual_gate_checkpoint_and_attempt_writes_preserve_receipt(tmp_path, monkeypatch, project):
+    root, clock, _ = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    (root / orch.GOVERNANCE_GATE_STATE).unlink()
+    initial = orch._gate_fingerprint(root)
+    for _ in range(3):
+        assert orch.record_governed_actions_gate(root)
+        assert orch._gate_fingerprint(root) == initial
+        assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+    assert orch.record_deploy_started(root)
+    assert orch._gate_fingerprint(root) == initial
+    assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+    clock[0] += timedelta(seconds=1)
+    assert orch.record_deploy_completed(root)
+    assert orch._gate_fingerprint(root) == initial
+    assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+    assert not orch._deploy_retry_required(root)
+
+
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+def test_actual_root_and_nested_gate_deploy_fresh_probe_complete(tmp_path, monkeypatch, project):
+    root, clock, fresh = governed(tmp_path, monkeypatch)
+    artifacts(root)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    # An interrupted, unauthorized attempt must first obtain a gate, then retry.
+    (root / orch.GOVERNANCE_GATE_STATE).unlink()
+    assert not orch.record_deploy_started(root)
+    calls = []
+    authorized = None
+
+    def worker(stage):
+        nonlocal authorized
+        calls.append(stage)
+        clock[0] += timedelta(seconds=5)
+        if stage == "governed_actions_gate":
+            authorized = orch._gate_fingerprint(root)
+        elif stage == "deploy":
+            assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+            assert orch._gate_fingerprint(root) == authorized
+            parent = json.loads((root / "specs/manifest.json").read_text())
+            parent["deployment_manifest"].update(
+                agent_fqdn="local.example", runtime_fqdn="local.example",
+                agent_version="1", image_digest="sha256:" + "a" * 64)
+            write(root, "specs/manifest.json", parent)
+            (root / "azure.yaml").write_text(
+                f"services:\n  agent:\n    project: {project}\n"
+                "    image: registry.example/agent@sha256:" + "a" * 64 + "\n"
+                "    env:\n      TL_GOV_IMAGE_DIGEST: sha256:" + "a" * 64 + "\n")
+            write(root, ".threadlight/governance-deployment.json", {"images": {"agent": "sha256:" + "a" * 64}})
+        elif stage == "governance_probe":
+            fresh()
+        else:
+            pytest.fail("unexpected worker " + stage)
+        return 0
+
+    result = orch.execute(root, worker)
+    assert result["status"] == "complete", result
+    assert calls == ["governed_actions_gate", "deploy", "governance_probe"]
+    assert orch._gate_fingerprint(root) == authorized
+    assert orch._check_governance_probe(root, {}).decision == "skip"
+    assert readiness.assess(root)["live"]
+    assert orch.execute(root, lambda s: pytest.fail("unexpected resume " + s))["executed"] == []
+    application = root / project / "application.py"
+    application.parent.mkdir(parents=True, exist_ok=True)
+    application.write_text("# changed after collection\n")
+    assert orch._check_governed_actions_gate(root, {}).decision == "run"
+    assert orch._check_governance_probe(root, {}).decision == "run"
+
+
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+@pytest.mark.parametrize("source", [
+    "application.py", "policies/safe.rego", "bundle/policy.json", "config/service.json",
+    ".threadlight/runtime.json", "docs/governance/policy.json", "tests/application.py",
+    ".hidden/application.py", "specs/application.json",
+    "src/agent/.threadlight/governance-gate-state.json",
+])
+def test_service_receipt_still_binds_genuine_source_inputs(tmp_path, monkeypatch, project, source):
+    root, _, _ = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    path = root / project / source
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"approved": true}\n')
+    assert orch.record_governed_actions_gate(root)
+    assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+    path.write_text('{"approved": false}\n')
+    assert orch._check_governed_actions_gate(root, {}).decision == "run"
+
+
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+@pytest.mark.parametrize("change", ["parent-selector", "parent-scope", "host-config", "probe-config", "bundle"])
+def test_output_projection_never_borrows_stale_declared_inputs(tmp_path, monkeypatch, project, change):
+    root, _, _ = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    # Exercise the parent as the sole declaration, not an unchanged contract mirror.
+    (root / "specs/governance-contract.json").unlink()
+    write(root, "specs/governance-manifest.json", inventory(readiness.load_contract(root)))
+    write(root, ".threadlight/governance-probe.json", {"bundle_path": ".threadlight/bundle"})
+    write(root, ".threadlight/bundle/policy.json", {"approved": True})
+    assert orch.record_governed_actions_gate(root)
+    assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+    if change.startswith("parent"):
+        parent = json.loads((root / "specs/manifest.json").read_text())
+        if change == "parent-selector":
+            parent["tools"][0]["safe_principles"] = ["transparency"]
+        else:
+            parent["deployment_manifest"]["resource_group"] = "different"
+        write(root, "specs/manifest.json", parent)
+    elif change == "host-config":
+        with (root / "azure.yaml").open("a") as stream:
+            stream.write("    env:\n      TL_GOV_SPOOL_DIR: /different\n")
+    elif change == "probe-config":
+        write(root, ".threadlight/governance-probe.json", {"bundle_path": ".threadlight/other-bundle"})
+    else:
+        write(root, ".threadlight/bundle/policy.json", {"approved": False})
+    assert orch._check_governed_actions_gate(root, {}).decision == "run"
+
+
+@pytest.mark.parametrize("output", [
+    ".threadlight/auto-state.json", ".threadlight/auto-next.json",
+    ".threadlight/governance-live.json", ".threadlight/governance-deployment.json",
+    "specs/governance-manifest.json", "docs/agt-governance-report.md",
+])
+def test_root_source_scan_excludes_only_reserved_producer_outputs(tmp_path, monkeypatch, output):
+    root, _, _ = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text("services:\n  agent:\n    project: .\n")
+    assert orch.record_governed_actions_gate(root)
+    initial = orch._gate_fingerprint(root)
+    for generation in range(2):
+        write(root, output, {"generation": generation})
+        assert orch._gate_fingerprint(root) == initial
+        assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+    if output == "specs/governance-manifest.json":
+        # Output exclusion never bypasses its independent inventory validator.
+        assert orch._check_govern(root, {}).decision == "run"
+    elif output == ".threadlight/governance-live.json":
+        assert orch._check_governance_probe(root, {}).decision == "run"
+
+
+@pytest.mark.parametrize("reserved", [".git", ".pytest_cache", "__pycache__", "build", "dist", "app.egg-info"])
+def test_cached_host_definitions_are_not_source_or_deployment_inputs(tmp_path, monkeypatch, reserved):
+    root, _, _ = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text("services:\n  agent:\n    project: .\n")
+    assert orch.record_governed_actions_gate(root)
+    deployment = orch._deployment_fingerprint(root)
+    path = root / "src/agent" / reserved / "agent.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("env:\n  TL_GOV_SPOOL_DIR: /cached\n")
+    assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+    assert orch._deployment_fingerprint(root) == deployment
+
+
+def test_root_git_worktree_pointer_is_not_application_source(tmp_path):
+    (tmp_path / "azure.yaml").write_text("services:\n  agent:\n    project: .\n")
+    initial = orch._gate_fingerprint(tmp_path)
+    (tmp_path / ".git").write_text("gitdir: ../repository/.git/worktrees/agent\n")
+    assert orch._gate_fingerprint(tmp_path) == initial
+
+
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+def test_source_scan_prunes_git_and_build_caches_not_hidden_inputs(tmp_path, monkeypatch, project):
+    root, _, _ = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    assert orch.record_governed_actions_gate(root)
+    initial = orch._gate_fingerprint(root)
+    for directory in (".git", ".pytest_cache", "__pycache__", "build", "dist", "app.egg-info"):
+        path = root / project / directory / "generated"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.symlink_to(root / "not-a-source")
+    assert orch._gate_fingerprint(root) == initial
+    assert orch._check_governed_actions_gate(root, {}).decision == "skip"
