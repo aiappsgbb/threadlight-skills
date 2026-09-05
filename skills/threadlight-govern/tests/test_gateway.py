@@ -67,7 +67,7 @@ class Credential:
 
 class GatewayHarness:
     async def initialize(self, path, decision=None, post=None, approval=False, policy_id="safe",
-                         additional_nonapproval=False):
+                         additional_nonapproval=False, additional_approval_roles=None):
         import yaml
         from test_policy_bundle import bundle_module
         self.cp = Harness()
@@ -81,6 +81,10 @@ class GatewayHarness:
         if additional_nonapproval:
             self.document["actions"].append({
                 **deepcopy(self.document["actions"][0]), "name": "other_refund", "approval_roles": []})
+        if additional_approval_roles is not None:
+            self.document["actions"].append({
+                **deepcopy(self.document["actions"][0]), "name": "approval_refund",
+                "approval_roles": additional_approval_roles})
         source = path / "source"
         source.mkdir(parents=True)
         points = {"pre_tool_call": ("$.tool_call.args", decision or {"decision": "allow"})}
@@ -289,6 +293,142 @@ def test_gateway_native_health_checks_authoritative_approval_binding(tmp_path, f
             assert (await h.health()).status_code == 200
             assert (h.cp.store.docs, h.cp.store.blobs, h.cp.store.etag) == before
             assert not h.store.docs and not h.calls and not h.gets and not h.credential.scopes
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("roles", [["Approver", "Approver"], ["ZApprover", "Approver"], ["Approver"]])
+def test_gateway_native_health_preserves_dispatch_approval_context(tmp_path, roles):
+    async def case():
+        h = await GatewayHarness().initialize(tmp_path, approval=True, additional_nonapproval=True)
+        h.cp.settings.approver_roles[:] = ["Approver", "ZApprover"]
+        selected = h.policy.registry.actions[0]
+        # model_copy deliberately bypasses signed-registry validation.
+        h.policy.registry.actions[0] = selected.model_copy(update={"approval_roles": roles})
+        approvals = gateway("receipts").HTTPControlPlaneApprovalService(
+            base_url="https://control.example", scope="api://governance/.default",
+            credential=Credential(h.cp.token()), http=h.cp.client, poll_interval=0.001)
+        h.dispatcher.approvals = approvals
+        requests, contexts = [], []
+        async def observed(request):
+            if "approval_context" in request.url.params:
+                contexts.append(json.loads(request.url.params["approval_context"]))
+        h.cp.client.event_hooks["request"].append(observed)
+        post = approvals.post
+        async def decide(body):
+            response = await post(body)
+            if body["operation"] == "request":
+                requests.append((body["intent"], response[0]))
+                assert (await h.cp.post("decide", human=True, intent=body["intent"],
+                                       approved=True, approving_role="Approver")).status_code == 200
+            return response
+        approvals.post = decide
+        before = deepcopy((h.cp.store.docs, h.cp.store.blobs, h.cp.store.etag))
+        duplicate = len(set(roles)) != len(roles)
+        try:
+            if duplicate:
+                assert (await h.call())["status"] == "unavailable"
+                assert not requests and not h.calls
+            response = await h.health()
+            assert response.status_code == (503 if duplicate else 200)
+            assert response.json()["bindings"] == {
+                "refund": {"healthy": not duplicate,
+                           "reason_codes": ["approval_unavailable"] if duplicate else []},
+                "other_refund": {"healthy": True, "reason_codes": []}}
+            assert (h.cp.store.docs, h.cp.store.blobs, h.cp.store.etag) == before
+            assert not h.store.docs and not h.calls and not h.gets
+            if duplicate:
+                assert not contexts
+                h.policy.registry.actions[0] = selected
+                roles_expected = ["Approver"]
+                assert (await h.health()).status_code == 200
+            else:
+                roles_expected = roles
+            assert contexts[-1] == {
+                "principal": WORKLOAD, "agent_id": "agent-1", "tenant": TENANT,
+                "allowed_roles": roles_expected}
+            assert (await h.call())["status"] == "completed"
+            assert len(requests) == 1 and requests[0][1] == 202
+            wire = requests[0][0]
+            assert {field: wire[field] for field in contexts[-1]} == contexts[-1]
+            assert wire["policy_hash"] == h.policy.digest
+            assert wire["policy_expires_at"] == h.policy.expires_at.isoformat()
+            assert len(h.calls) == 1
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+def test_gateway_native_health_isolates_approval_binding_contexts(tmp_path):
+    async def case():
+        h = await GatewayHarness().initialize(
+            tmp_path, approval=True, additional_nonapproval=True,
+            additional_approval_roles=["NotConfigured"])
+        credential = Credential(h.cp.token())
+        approvals = gateway("receipts").HTTPControlPlaneApprovalService(
+            base_url="https://control.example", scope="api://governance/.default",
+            credential=credential, http=h.cp.client, poll_interval=0.001)
+        h.dispatcher.approvals = approvals
+        before = deepcopy((h.cp.store.docs, h.cp.store.blobs, h.cp.store.etag))
+        contexts, requested = [], []
+        async def observed(request):
+            if "approval_context" in request.url.params:
+                contexts.append(json.loads(request.url.params["approval_context"]))
+        h.cp.client.event_hooks["request"].append(observed)
+        post = approvals.post
+        async def decide(body):
+            response = await post(body)
+            if body["operation"] == "request":
+                requested.append((body["intent"], response[0]))
+                assert (await h.cp.post("decide", human=True, intent=body["intent"],
+                                       approved=True, approving_role="Approver")).status_code == 200
+            return response
+        approvals.post = decide
+        try:
+            response = await h.health()
+            assert response.status_code == 503
+            assert response.json()["bindings"] == {
+                "refund": {"healthy": True, "reason_codes": []},
+                "other_refund": {"healthy": True, "reason_codes": []},
+                "approval_refund": {"healthy": False, "reason_codes": ["approval_unavailable"]}}
+            assert response.json()["dependencies"]["approvals"] == {
+                "healthy": False, "reason_code": "approval_unavailable"}
+            assert sorted(c["allowed_roles"] for c in contexts) == [["Approver"], ["NotConfigured"]]
+            assert credential.scopes == ["api://governance/.default"] * 2
+            assert (h.cp.store.docs, h.cp.store.blobs, h.cp.store.etag) == before
+            assert not h.store.docs and not h.calls and not h.gets
+            assert (await h.call())["status"] == "completed"
+            assert len(requested) == 1 and requested[0][1] == 202
+            assert requested[0][0]["allowed_roles"] == ["Approver"]
+            failed = await h.dispatcher.dispatch(
+                authorization="Bearer " + h.cp.token(), action="approval_refund",
+                arguments={"amount": 5}, idempotency_key="bad")
+            assert failed["status"] == "unavailable"
+            assert len(h.calls) == 1 and len(requested) == 1
+            h.policy.registry.actions[2] = h.policy.registry.actions[2].model_copy(
+                update={"approval_roles": ["Approver"]})
+            response = await h.health()
+            assert response.status_code == 200
+            assert all(binding["healthy"] for binding in response.json()["bindings"].values())
+            recovered = await h.dispatcher.dispatch(
+                authorization="Bearer " + h.cp.token(), action="approval_refund",
+                arguments={"amount": 5}, idempotency_key="bad")
+            assert recovered["status"] == "completed"
+            assert len(requested) == 2 and requested[-1][1] == 202 and len(h.calls) == 2
+            h.cp.store.failed = True
+            response = await h.health()
+            assert response.status_code == 503
+            assert response.json()["bindings"] == {
+                "refund": {"healthy": False,
+                           "reason_codes": ["receipt_unavailable", "approval_unavailable"]},
+                "other_refund": {"healthy": False, "reason_codes": ["receipt_unavailable"]},
+                "approval_refund": {"healthy": False,
+                                    "reason_codes": ["receipt_unavailable", "approval_unavailable"]}}
+            h.cp.store.failed = False
+            assert (await h.health()).status_code == 200
         finally:
             await h.close()
     asyncio.run(case())
@@ -621,6 +761,35 @@ def test_gateway_native_actual_mcp_authenticated_protocol(tmp_path):
                     call["params"]["name"] = "shell"
                     assert (await client.post("/mcp", headers=headers, json=call)).json()["result"]["isError"]
                     assert len(h.calls) == 1
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+def test_gateway_native_signed_registry_rejects_duplicate_approval_roles(tmp_path):
+    async def case():
+        from pydantic import ValidationError
+        from test_policy_bundle import bundle_module
+        h = await GatewayHarness().initialize(tmp_path, approval=True)
+        try:
+            h.document["actions"][0]["approval_roles"] = ["Approver", "Approver"]
+            (tmp_path / "source/gateway-registry.json").write_text(json.dumps(h.document))
+            bundle = bundle_module().build_bundle(
+                source=tmp_path / "source", destination=tmp_path / "duplicate-bundle",
+                policy_id="safe", version="2")
+            envelope = h.signed.envelope.model_copy(
+                update={"version": "2", "content_digest": bundle.bundle_digest})
+            signed = await h.cp.service.publish(envelope)
+            with pytest.raises(ValidationError, match="duplicate_approval_role"):
+                await gateway("dispatcher").NativePolicy.load(
+                    bundle_path=bundle.root, signed=signed, signer=h.cp.signer,
+                    tenant=TENANT, key_id=KEY, policy_id="safe", version="2",
+                    expected_digest=bundle.bundle_digest,
+                    allowed_endpoints={h.document["actions"][0][key]
+                                       for key in ("endpoint", "outcome_endpoint")},
+                    gateway_url=h.document["gateway_url"])
+            assert not h.store.docs and not h.calls
         finally:
             await h.close()
     asyncio.run(case())

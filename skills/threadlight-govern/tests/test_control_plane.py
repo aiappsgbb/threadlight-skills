@@ -354,12 +354,12 @@ def test_health_approval_context_uses_request_authority_without_effects(changes,
                 if expected == 200 else {"error": {
                     401: "unauthorized", 403: "forbidden", 422: "invalid_request"}[expected]})
             assert (h.store.docs, h.store.blobs, h.store.etag) == before
-            # Authorization/validation agrees with the actual operation, before any write.
+            # Readiness is read-only; compare with the actual request, including its 202.
+            operation = await h.client.post("/approvals/resolve",
+                headers=h.headers(changes=claims),
+                json={"operation": "request", "intent": {**h.wire_intent, **context}})
+            assert operation.status_code == (202 if expected == 200 else expected)
             if expected != 200:
-                operation = await h.client.post("/approvals/resolve",
-                    headers=h.headers(changes=claims),
-                    json={"operation": "request", "intent": {**h.wire_intent, **context}})
-                assert operation.status_code == expected
                 assert (h.store.docs, h.store.blobs, h.store.etag) == before
         finally:
             await h.close()

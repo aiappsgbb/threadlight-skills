@@ -26,7 +26,7 @@ from govern_control_plane.app import configure_logging
 from govern_control_plane.auth import EntraAuth, Settings
 from govern_control_plane.client import ServiceTransport
 from govern_control_plane.models import (
-    ApprovalContext, Digest, Identifier, ObjectId, canonical, parse, strict_json,
+    Digest, Identifier, ObjectId, canonical, parse, strict_json,
 )
 from govern_control_plane.storage import AzureStore, KeyVaultSigner
 
@@ -161,23 +161,17 @@ def create_app(dispatcher):
                     or await dispatcher.receipts.health() is not True):
                 raise ValueError()
 
-        async def approval_health():
-            context = parse(ApprovalContext, canonical({
-                "principal": dispatcher.approval_principal,
-                "agent_id": dispatcher.approval_agent_id,
-                "tenant": dispatcher.policy.registry.tenant_id,
-                "allowed_roles": sorted({role for action in dispatcher.policy.registry.actions
-                                         for role in action.approval_roles}),
-            }))
+        async def approval_health(action):
+            context = dispatcher.approval_context(action, tenant=dispatcher.policy.registry.tenant_id)
             if (not callable(dispatcher.approvals.resolve)
                     or not callable(dispatcher.approvals.verify)
                     or await dispatcher.approvals.health(approval_context=context) is not True):
                 raise ValueError()
 
-        async def check(probe, reason):
+        async def check(probe, reason, *args):
             try:
                 async with asyncio.timeout(HEALTH_TIMEOUT):
-                    await probe()
+                    await probe(*args)
                 return {"healthy": True, "reason_code": None}
             except Exception:
                 return {"healthy": False, "reason_code": reason}
@@ -188,19 +182,25 @@ def create_app(dispatcher):
             "idempotency_store": (store_health, "idempotency_unavailable"),
             "receipts": (receipt_health, "receipt_unavailable"),
         }
-        if any(action.approval_roles for action in dispatcher.policy.registry.actions):
-            probes["approvals"] = (approval_health, "approval_unavailable")
-        dependencies = dict(zip(probes, await asyncio.gather(
-            *(check(probe, reason) for probe, reason in probes.values()))))
+        approval_actions = [action for action in dispatcher.policy.registry.actions if action.approval_roles]
+        results = await asyncio.gather(
+            *(check(probe, reason) for probe, reason in probes.values()),
+            *(check(approval_health, "approval_unavailable", action) for action in approval_actions))
+        dependencies = dict(zip(probes, results[:len(probes)]))
+        approvals = dict(zip((action.name for action in approval_actions), results[len(probes):]))
+        if approvals:
+            healthy = all(result["healthy"] for result in approvals.values())
+            dependencies["approvals"] = {
+                "healthy": healthy, "reason_code": None if healthy else "approval_unavailable"}
         # A policy may expire while the remote dependencies are being checked.
         dependencies["policy"] = await check(policy_health, "policy_unavailable")
         bindings = {}
         for action in dispatcher.policy.registry.actions:
             required = ["policy", "authentication", "idempotency_store", "receipts"]
-            if action.approval_roles:
-                required.append("approvals")
             reasons = [dependencies[name]["reason_code"] for name in required
                        if not dependencies[name]["healthy"]]
+            if action.name in approvals and not approvals[action.name]["healthy"]:
+                reasons.append(approvals[action.name]["reason_code"])
             bindings[action.name] = {"healthy": not reasons, "reason_codes": reasons}
         ready = all(binding["healthy"] for binding in bindings.values())
         return JSONResponse({

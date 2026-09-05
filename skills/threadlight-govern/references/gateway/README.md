@@ -25,7 +25,7 @@ It must contain:
   `resource_group`;
 * `actions`: one to 64 entries with unique `name`, non-`none` `policy_binding`,
   nullable `post_policy_binding`, allowed workload **object IDs** in `workloads`,
-  application `scope`, `approval_roles` (empty unless required), fixed HTTPS
+  application `scope`, `approval_roles` (zero to 16 unique roles; empty unless required), fixed HTTPS
   `endpoint` and `outcome_endpoint`, `credential_scope` (`api://.../.default`),
   `input_schema`, and `output_schema`.
 
@@ -150,7 +150,14 @@ authority. Clients require the authenticated readiness response, not the anonymo
 health response: deploy the matching updated control-plane package with the gateway.
 For required approvals, the gateway sends its configured service principal/agent ID,
 the signed registry tenant and required approval roles through the read-only
-`approval_context` health query contract. The control plane reuses its actual
+`approval_context` health query contract **separately for each bound tool**, using
+the same validated context constructor as dispatch. Role order is preserved;
+duplicates are rejected at signed-registry load and runtime validation, not silently
+deduplicated. The registry caps these concurrent, time-bounded checks at 64 tools.
+`dependencies.approvals` summarizes all approval checks, but each binding uses only
+its own result: one unauthorized role configuration cannot poison another tool's
+readiness. Shared backend failures still affect every dependent binding.
+The control plane reuses its actual
 approval requester authorization against authenticated claims and its configured
 workload agent mapping/approver roles. Syntactically valid but mismatched IDs or
 roles produce 503 here with `approval_unavailable` on approval-required bindings;

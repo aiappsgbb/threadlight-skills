@@ -30,7 +30,7 @@ from pydantic import Field, model_validator
 from govern_bundle.policy_bundle import PIN_FILE, verify_bundle, validate_native_manifest
 from govern_control_plane.auth import Unauthorized
 from govern_control_plane.models import (
-    ApprovalRequest, DecisionReceipt, Digest, Identifier, ObjectId, StrictModel,
+    ApprovalContext, ApprovalRequest, DecisionReceipt, Digest, Identifier, ObjectId, StrictModel,
     SignedBundle, canonical, envelope_digest, parse, strict_json,
 )
 from govern_control_plane.storage import Conflict, Missing
@@ -141,6 +141,8 @@ class Action(StrictModel):
             check_schema(schema)
         if len(set(self.workloads)) != len(self.workloads):
             raise ValueError("duplicate_workload")
+        if len(set(self.approval_roles)) != len(self.approval_roles):
+            raise ValueError("duplicate_approval_role")
         for endpoint in (self.endpoint, self.outcome_endpoint):
             if https_endpoint(endpoint) != endpoint:
                 raise ValueError("noncanonical_endpoint")
@@ -379,6 +381,11 @@ class GovernedDispatcher:
         self.approval_principal, self.approval_agent_id = approval_principal, approval_agent_id
         self.timeout = timeout
 
+    def approval_context(self, action, *, tenant):
+        return ApprovalContext(
+            principal=self.approval_principal, agent_id=self.approval_agent_id,
+            tenant=tenant, allowed_roles=tuple(action.approval_roles))
+
     async def dispatch(self, *, authorization, action, arguments, idempotency_key):
         attempted = False
         try:
@@ -456,12 +463,11 @@ class GovernedDispatcher:
                     expiry = min(self.policy.expires_at, datetime.now(timezone.utc)
                                  + timedelta(seconds=self.timeout))
                     intent = ApprovalRequest(
+                        **self.approval_context(selected, tenant=identity.tenant).model_dump(),
                         action_hash=action_hash, policy_hash=self.policy.digest,
-                        principal=self.approval_principal, tenant=identity.tenant,
-                        agent_id=self.approval_agent_id, session_id=key,
+                        session_id=key,
                         context_identity=digest(facts), nonce=uuid.uuid4().hex,
-                        expires_at=expiry, policy_expires_at=self.policy.expires_at,
-                        allowed_roles=tuple(selected.approval_roles))
+                        expires_at=expiry, policy_expires_at=self.policy.expires_at)
                     grant = await self.approvals.resolve(intent)
                     guard()
                     if (grant.intent != intent or grant.approver_tenant != identity.tenant
