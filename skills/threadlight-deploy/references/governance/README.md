@@ -213,6 +213,18 @@ without exception text or SDK cleanup tracebacks. The published SDK is unchanged
 Async deadlines depend on cooperative cancellation; uninterruptible third-party
 code or an OS-level failure cannot be made crash-safe by this adapter.
 
+Cleanup temporarily filters `copilot.client`, `copilot._jsonrpc`, and their
+already-registered descendant loggers **before direct or propagated handlers**.
+Cleanup-context diagnostics become stable codes; warnings and exception/stack-bearing
+diagnostics from these loggers are also redacted across tasks and SDK reader threads
+(which do not inherit the cleanup context). Message arguments, exception caches,
+stacks, and structured extras are cleared, not searched for token patterns.
+Transport diagnostics use `governance_cleanup_sdk_transport_diagnostic`; the client
+keeps `governance_cleanup_sdk_diagnostic`. Ordinary process logs and benign SDK logs
+outside the cleanup context remain intact. Filters are removed after joined cleanup.
+This is not a general log scrubber: other SDK namespaces or descendant loggers first
+registered during cleanup require explicit coverage when integrating/upgrading them.
+
 ## Hosted MAF audit delivery
 
 The pinned `azure-ai-projects` `HostedAgentDefinition` / `ContainerConfiguration`

@@ -16,13 +16,22 @@ from urllib.parse import urlsplit
 CLEANUP_TIMEOUT = 5.0
 LOGGER = logging.getLogger(__name__)
 _CLEANING = ContextVar("threadlight_sdk_cleanup", default=False)
+_LOG_RECORD_FIELDS = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
 
 
 class CleanupLogFilter(logging.Filter):
+    def __init__(self, reason):
+        super().__init__()
+        self.reason = reason
+
     def filter(self, record):
-        if _CLEANING.get():
-            record.msg, record.args = "governance_cleanup_sdk_diagnostic", ()
+        # SDK reader threads do not inherit the cleanup task's ContextVar.
+        if (_CLEANING.get() or record.levelno >= logging.WARNING
+                or record.exc_info or record.exc_text or record.stack_info):
+            record.msg, record.args = self.reason, ()
             record.exc_info = record.exc_text = record.stack_info = None
+            for key in record.__dict__.keys() - _LOG_RECORD_FIELDS:
+                record.__dict__[key] = None
         return True
 
 
@@ -89,15 +98,26 @@ async def close_invocation(*, unsubscribe, session, client, server, task, sock, 
             await close("credential_close", credential.close)
 
     async def sanitized_cleanup():
-        logger = logging.getLogger("copilot.client")
-        redaction = CleanupLogFilter()
-        logger.addFilter(redaction)
+        filters = []
+        for name, reason in (
+            ("copilot.client", "governance_cleanup_sdk_diagnostic"),
+            ("copilot._jsonrpc", "governance_cleanup_sdk_transport_diagnostic"),
+        ):
+            redaction = CleanupLogFilter(reason)
+            loggers = [logging.getLogger(name)]
+            while loggers:
+                logger = loggers.pop()
+                # Ancestor logger filters do not run for propagated child records.
+                loggers.extend(logger.getChildren())
+                logger.addFilter(redaction)
+                filters.append((logger, redaction))
         token = _CLEANING.set(True)
         try:
             await cleanup()
         finally:
             _CLEANING.reset(token)
-            logger.removeFilter(redaction)
+            for logger, redaction in filters:
+                logger.removeFilter(redaction)
 
     worker = asyncio.create_task(sanitized_cleanup())
     while not worker.done():

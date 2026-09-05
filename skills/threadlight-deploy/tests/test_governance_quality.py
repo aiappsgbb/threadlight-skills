@@ -561,6 +561,191 @@ def test_quality_native_copilot_stop_failure_kills_child_and_redacts_debug_logs(
             child.wait(timeout=2)
 
 
+@pytest.mark.parametrize("fault", ["error", "timeout", "cancel", "normal"])
+def test_quality_native_jsonrpc_disconnect_diagnostics(monkeypatch, caplog, fault):
+    """Unmodified SDK request, frame reader, disconnect and stop over real stdio."""
+    import logging
+    import socket
+    import subprocess
+    import httpx
+    from copilot import CopilotClient
+    from copilot._jsonrpc import JsonRpcClient, JsonRpcError
+    from copilot.session import CopilotSession
+
+    ghcp = module("ghcp-container")
+    monkeypatch.setattr(ghcp, "CLEANUP_TIMEOUT", 0.3)
+    caplog.set_level(logging.DEBUG)
+    marker = "PRIVATE DISCONNECT CREDENTIAL"
+    child = subprocess.Popen([sys.executable, "-u", "-c", r"""
+import json, sys, time
+def send(frame):
+    body = json.dumps(frame).encode()
+    sys.stdout.buffer.write(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
+    sys.stdout.buffer.flush()
+while header := sys.stdin.buffer.readline():
+    size = int(header.decode().split(":")[1])
+    assert sys.stdin.buffer.readline() == b"\r\n"
+    request = json.loads(sys.stdin.buffer.read(size))
+    if request["method"] == "ping":
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+        continue
+    assert request["method"] == "session.destroy"
+    send({"jsonrpc": "2.0", "method": "fixture.destroy_started", "params": {}})
+    if sys.argv[1] == "timeout":
+        time.sleep(60)
+    if sys.argv[1] == "cancel":
+        header = sys.stdin.buffer.readline()
+        size = int(header.decode().split(":")[1])
+        assert sys.stdin.buffer.readline() == b"\r\n"
+        release = json.loads(sys.stdin.buffer.read(size))
+        assert release["method"] == "fixture.release"
+        send({"jsonrpc": "2.0", "id": release["id"], "result": {}})
+    if sys.argv[1] == "normal":
+        response = {"result": {}}
+    else:
+        print("PRIVATE DISCONNECT CREDENTIAL", file=sys.stderr, flush=True)
+        response = {"error": {"code": -32000, "message": "PRIVATE DISCONNECT CREDENTIAL",
+                              "data": {"token": "PRIVATE DISCONNECT CREDENTIAL"}}}
+    send({"jsonrpc": "2.0", "id": request["id"], **response})
+    break
+""", fault], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    async def run():
+        transport = JsonRpcClient(child)
+        transport.start()
+        destroy_started = asyncio.Event()
+        transport.set_notification_handler(lambda method, params: destroy_started.set())
+        await asyncio.wait_for(transport.request("ping"), 2)
+        session = CopilotSession(marker, transport)
+        unsubscribe = session.on(lambda event: None)
+        client = CopilotClient()
+        client._process, client._client = child, transport
+        client._sessions[session.session_id] = session
+        http = httpx.AsyncClient()
+        sock = socket.socket()
+        server = SimpleNamespace(should_exit=False)
+        closed = []
+
+        class Credential:
+            async def close(self):
+                closed.append("credential")
+
+        async def relay():
+            try:
+                while not server.should_exit:
+                    await asyncio.sleep(0.001)
+            finally:
+                closed.append("relay")
+
+        relay_task = asyncio.create_task(relay())
+        closer = asyncio.create_task(ghcp.close_invocation(
+            unsubscribe=unsubscribe, session=session, client=client, server=server,
+            task=relay_task, sock=sock, http=http, credential=Credential()))
+        if fault == "cancel":
+            await asyncio.wait_for(destroy_started.wait(), 2)
+            assert closer.cancel()
+            await transport.request("fixture.release", timeout=2)
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(closer, 4)
+        else:
+            failures = await asyncio.wait_for(closer, 4)
+            assert failures == ([] if fault == "normal" else [
+                ("disconnect", TimeoutError if fault == "timeout" else JsonRpcError)])
+        assert session._destroyed and not session._event_handlers
+        assert not client._sessions and client._client is None
+        assert not transport.pending_requests and not transport._running
+        assert child.returncode is not None
+        assert sock.fileno() == -1 and http.is_closed and relay_task.done()
+        assert set(closed) == {"relay", "credential"}
+        for thread in (transport._read_thread, transport._stderr_thread):
+            await asyncio.to_thread(thread.join, 1)
+            assert not thread.is_alive()
+
+    try:
+        asyncio.run(run())
+        rpc_records = [r for r in caplog.records if r.name == "copilot._jsonrpc"]
+        assert rpc_records, "the native SDK must emit its own diagnostics"
+        assert marker not in caplog.text
+        assert marker not in repr([r.__dict__ for r in caplog.records])
+        successes = {r.method for r in rpc_records
+                     if r.getMessage() == "JsonRpcClient.request JSON-RPC request finished"
+                     and r.status == "succeeded"}
+        assert successes == ({"ping", "fixture.release"} if fault == "cancel" else {"ping"})
+        if fault in ("error", "cancel"):
+            assert any(r.levelno == logging.WARNING
+                       and r.funcName == "_log_request_timing"
+                       and r.getMessage() == "governance_cleanup_sdk_transport_diagnostic"
+                       for r in rpc_records)
+        for record in rpc_records:
+            if record.getMessage().startswith("governance_cleanup_"):
+                assert record.args == () and record.exc_info is None
+                assert record.exc_text is None and record.stack_info is None
+    finally:
+        if child.poll() is None:
+            child.kill()
+        child.wait(timeout=2)
+        for pipe in (child.stdin, child.stdout, child.stderr):
+            pipe.close()
+
+
+@pytest.mark.parametrize("logger_name", [
+    "copilot._jsonrpc", "copilot._jsonrpc.wire", "copilot.client", "copilot.client.wire"])
+@pytest.mark.parametrize("propagate", [False, True])
+def test_quality_sdk_cleanup_redacts_before_user_handlers(monkeypatch, caplog, logger_name, propagate):
+    """Logger filters protect direct handlers as well as propagated records."""
+    import logging
+    ghcp = module("ghcp-container")
+    caplog.set_level(logging.DEBUG)
+    logger = logging.getLogger(logger_name)
+    monkeypatch.setattr(logger, "propagate", propagate)
+    records, formatted = [], []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record.__dict__.copy())
+            formatted.append(self.format(record))
+
+    handler = Capture()
+    logger.addHandler(handler)
+    original_filters = list(logger.filters)
+    marker = "PRIVATE PAYLOAD"
+
+    def emit_private():
+        try:
+            raise ValueError(marker)
+        except ValueError:
+            logger.warning("SDK %s", marker, exc_info=True, stack_info=True,
+                           extra={"payload": {"token": marker}})
+
+    class Session:
+        async def disconnect(self):
+            emit_private()
+            logging.getLogger("application.normal").info("normal process message")
+            # A fresh worker thread does not inherit the cleanup ContextVar.
+            await asyncio.get_running_loop().run_in_executor(None, emit_private)
+
+    async def run():
+        assert await ghcp.close_invocation(
+            unsubscribe=None, session=Session(), client=None, server=None, task=None,
+            sock=None, http=None, credential=None) == []
+
+    try:
+        logger.info("SDK normal before")
+        asyncio.run(run())
+        logger.info("SDK normal after")
+        assert "normal process message" in caplog.text
+        assert marker not in repr(records) + "\n".join(formatted) + caplog.text
+        assert formatted[0] == "SDK normal before" and formatted[-1] == "SDK normal after"
+        private_records = records[1:-1]
+        assert len(private_records) == 2
+        for record in private_records:
+            assert record["args"] == ()
+            assert all(record[field] is None for field in ("exc_info", "exc_text", "stack_info", "payload"))
+        assert logger.filters == original_filters
+    finally:
+        logger.removeHandler(handler)
+
+
 @pytest.mark.parametrize("environment,effects", [("development", ["act"]), ("production", []),
                                                ("preproduction", [])])
 def test_quality_actual_foundry_native_environment_deny(tmp_path, monkeypatch, environment, effects):
@@ -614,6 +799,7 @@ def test_quality_actual_foundry_native_environment_deny(tmp_path, monkeypatch, e
                                    "unsubscribe", "create-session", "cancel", "normal",
                                    "relay", "relay-timeout", "credential", "self-cancel"])
 def test_quality_native_ghcp_independent_cleanup(tmp_path, monkeypatch, caplog, fault):
+    """Host fault isolation with transport doubles, not SDK diagnostic evidence."""
     import copilot
     from copilot.session import CopilotSession
     from copilot.session_events import SessionEventType
