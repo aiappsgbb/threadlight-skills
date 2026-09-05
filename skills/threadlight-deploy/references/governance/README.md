@@ -207,23 +207,37 @@ templates.
 Every acquired resource has independent bounded cleanup, including partial
 startup: unsubscribe, native session disconnect, SDK stop/force-stop, owned
 subprocess reaping, relay join/cancellation, socket, HTTP client and credential.
-Cleanup runs shielded but is always joined; caller cancellation is propagated
-after resources close. Failures produce stable `governance_cleanup_*` diagnostics
+The cleanup coroutine runs shielded but is always joined; caller cancellation is
+propagated after cleanup attempts. Failures produce stable `governance_cleanup_*` diagnostics
 without exception text or SDK cleanup tracebacks. The published SDK is unchanged.
 Async deadlines depend on cooperative cancellation; uninterruptible third-party
 code or an OS-level failure cannot be made crash-safe by this adapter.
 
-Cleanup temporarily filters `copilot.client`, `copilot._jsonrpc`, and their
-already-registered descendant loggers **before direct or propagated handlers**.
-Cleanup-context diagnostics become stable codes; warnings and exception/stack-bearing
-diagnostics from these loggers are also redacted across tasks and SDK reader threads
-(which do not inherit the cleanup context). Message arguments, exception caches,
-stacks, and structured extras are cleared, not searched for token patterns.
+The generated GHCP container installs an idempotent **process-lifetime** privacy
+policy when imported, before starting SDK work. All diagnostics from `copilot.client`,
+`copilot._jsonrpc`, and their descendant loggers are intentionally sanitized at every
+level, not just during cleanup. Logger filters run **before direct or propagated
+handlers**. A name-gated `logging.Manager.getLogger` wrapper also installs the same
+filter on future descendants, including `getChild()` results; ancestor filters alone
+do not protect propagated records. Installation uses logging's lock and concurrent
+invocations never remove the shared policy. There is no production teardown API.
+Message arguments, exception caches, stacks, and structured extras are cleared,
+not searched for token patterns.
 Transport diagnostics use `governance_cleanup_sdk_transport_diagnostic`; the client
-keeps `governance_cleanup_sdk_diagnostic`. Ordinary process logs and benign SDK logs
-outside the cleanup context remain intact. Filters are removed after joined cleanup.
-This is not a general log scrubber: other SDK namespaces or descendant loggers first
-registered during cleanup require explicit coverage when integrating/upgrading them.
+keeps `governance_cleanup_sdk_diagnostic`. Severity and source locations remain
+available, but raw SDK messages and timing extras do not. Unrelated application
+loggers, handlers, levels, and propagation remain untouched. Other SDK namespaces
+require explicit coverage when integrating/upgrading the SDK.
+
+SDK 1.0.1 joins its stdio reader threads with native time bounds **before** killing
+the child. A reader may still be alive after successful `close_invocation()` return;
+an empty failure list is not proof that every SDK thread terminated. The adapter
+still reaps its owned subprocess and closes the relay/socket and other resources,
+subject to the failure bounds above. Lifetime sanitization protects delayed native
+diagnostics after return without relying on thread-inherited `ContextVar` state or
+private SDK thread-lifecycle changes. Native regression tests pause the stderr
+reader before its real warning, release it after cleanup, and join readers before
+the test harness alone restores logging state.
 
 ## Hosted MAF audit delivery
 

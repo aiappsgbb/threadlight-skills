@@ -1,7 +1,6 @@
 """Copilot SDK / Invocations adapter. Only selected MCP effects use the gateway."""
 import asyncio
 from copy import deepcopy
-from contextvars import ContextVar
 import hashlib
 import json
 import logging
@@ -15,24 +14,55 @@ from urllib.parse import urlsplit
 
 CLEANUP_TIMEOUT = 5.0
 LOGGER = logging.getLogger(__name__)
-_CLEANING = ContextVar("threadlight_sdk_cleanup", default=False)
 _LOG_RECORD_FIELDS = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
 
 
-class CleanupLogFilter(logging.Filter):
+class SdkLogFilter(logging.Filter):
     def __init__(self, reason):
         super().__init__()
         self.reason = reason
 
     def filter(self, record):
-        # SDK reader threads do not inherit the cleanup task's ContextVar.
-        if (_CLEANING.get() or record.levelno >= logging.WARNING
-                or record.exc_info or record.exc_text or record.stack_info):
-            record.msg, record.args = self.reason, ()
-            record.exc_info = record.exc_text = record.stack_info = None
-            for key in record.__dict__.keys() - _LOG_RECORD_FIELDS:
-                record.__dict__[key] = None
+        record.msg, record.args = self.reason, ()
+        record.exc_info = record.exc_text = record.stack_info = None
+        for key in record.__dict__.keys() - _LOG_RECORD_FIELDS:
+            record.__dict__[key] = None
         return True
+
+
+def install_sdk_log_privacy():
+    """Install once for process lifetime, including readers outliving SDK stop."""
+    # Use logging's lock so concurrent imports/installers cannot stack policies.
+    with logging._lock:
+        original = logging.Manager.getLogger
+        if getattr(original, "_threadlight_sdk_privacy", False):
+            return
+        filters = (
+            ("copilot.client", SdkLogFilter("governance_cleanup_sdk_diagnostic")),
+            ("copilot._jsonrpc", SdkLogFilter("governance_cleanup_sdk_transport_diagnostic")),
+        )
+
+        def protect(logger):
+            for name, redaction in filters:
+                if logger.name == name or logger.name.startswith(name + "."):
+                    logger.addFilter(redaction)
+                    break
+            return logger
+
+        def get_logger(manager, name):
+            # Ancestor filters do not see propagated records. Protect future
+            # descendants (including getChild) before returning them to callers.
+            with logging._lock:
+                return protect(original(manager, name))
+
+        get_logger._threadlight_sdk_privacy = True
+        for logger in logging.Logger.manager.loggerDict.values():
+            if isinstance(logger, logging.Logger):
+                protect(logger)
+        logging.Manager.getLogger = get_logger
+
+
+install_sdk_log_privacy()
 
 
 async def close_invocation(*, unsubscribe, session, client, server, task, sock, http, credential):
@@ -97,29 +127,7 @@ async def close_invocation(*, unsubscribe, session, client, server, task, sock, 
         if credential:
             await close("credential_close", credential.close)
 
-    async def sanitized_cleanup():
-        filters = []
-        for name, reason in (
-            ("copilot.client", "governance_cleanup_sdk_diagnostic"),
-            ("copilot._jsonrpc", "governance_cleanup_sdk_transport_diagnostic"),
-        ):
-            redaction = CleanupLogFilter(reason)
-            loggers = [logging.getLogger(name)]
-            while loggers:
-                logger = loggers.pop()
-                # Ancestor logger filters do not run for propagated child records.
-                loggers.extend(logger.getChildren())
-                logger.addFilter(redaction)
-                filters.append((logger, redaction))
-        token = _CLEANING.set(True)
-        try:
-            await cleanup()
-        finally:
-            _CLEANING.reset(token)
-            for logger, redaction in filters:
-                logger.removeFilter(redaction)
-
-    worker = asyncio.create_task(sanitized_cleanup())
+    worker = asyncio.create_task(cleanup())
     while not worker.done():
         try:
             await asyncio.shield(worker)

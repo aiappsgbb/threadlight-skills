@@ -16,6 +16,27 @@ from test_governance_wiring import ROOT, REFERENCES, contract, deployment_fixtur
 sys.path.insert(0, str(ROOT / "skills/threadlight-govern/tests"))
 
 
+@pytest.fixture(autouse=True)
+def sdk_log_policy_isolation():
+    """Only the harness restores lifetime policy, after native readers are joined."""
+    import logging
+    import threading
+    original_get_logger = logging.Manager.getLogger
+    filters = {name: list(logger.filters)
+               for name, logger in logging.Logger.manager.loggerDict.copy().items()
+               if isinstance(logger, logging.Logger)}
+    yield
+    readers = [thread for thread in threading.enumerate()
+               if getattr(getattr(thread, "_target", None), "__module__", "").startswith("copilot.")]
+    assert not readers, "native SDK threads must finish before the harness removes privacy filters"
+    logging.Manager.getLogger = original_get_logger
+    for name, logger in logging.Logger.manager.loggerDict.copy().items():
+        if isinstance(logger, logging.Logger) and (
+                name == "copilot.client" or name.startswith("copilot.client.")
+                or name == "copilot._jsonrpc" or name.startswith("copilot._jsonrpc.")):
+            logger.filters[:] = filters.get(name, [])
+
+
 def snapshot(project):
     return {
         str(p.relative_to(project)): (
@@ -667,10 +688,8 @@ while header := sys.stdin.buffer.readline():
         assert rpc_records, "the native SDK must emit its own diagnostics"
         assert marker not in caplog.text
         assert marker not in repr([r.__dict__ for r in caplog.records])
-        successes = {r.method for r in rpc_records
-                     if r.getMessage() == "JsonRpcClient.request JSON-RPC request finished"
-                     and r.status == "succeeded"}
-        assert successes == ({"ping", "fixture.release"} if fault == "cancel" else {"ping"})
+        assert all(r.getMessage() == "governance_cleanup_sdk_transport_diagnostic"
+                   for r in rpc_records)
         if fault in ("error", "cancel"):
             assert any(r.levelno == logging.WARNING
                        and r.funcName == "_log_request_timing"
@@ -688,15 +707,185 @@ while header := sys.stdin.buffer.readline():
             pipe.close()
 
 
+@pytest.mark.parametrize("invocations", [1, 2])
+def test_quality_native_late_stderr_thread_stays_private_after_close(caplog, invocations):
+    """Pause before the unchanged SDK warning, past its pre-kill timed reader join."""
+    import inspect
+    import logging
+    import socket
+    import subprocess
+    import threading
+    import httpx
+    from copilot import CopilotClient
+    from copilot._jsonrpc import JsonRpcClient
+    from copilot.session import CopilotSession
+
+    ghcp = module("ghcp-container")
+    caplog.set_level(logging.DEBUG)
+    source, start = inspect.getsourcelines(JsonRpcClient._stderr_loop)
+    warning_line = start + next(i for i, line in enumerate(source) if "logger.warning(" in line)
+    gates, children, transports, records = {}, [], [], []
+    trace_failures = []
+    original_trace = threading.gettrace()
+    logger = logging.getLogger("copilot._jsonrpc")
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            records.append((record.__dict__.copy(), self.format(record)))
+
+    handler = Capture()
+    logger.addHandler(handler)
+
+    def schedule(frame, event, arg):
+        if (event == "line" and frame.f_code is JsonRpcClient._stderr_loop.__code__
+                and frame.f_lineno == warning_line):
+            entered, release = gates[frame.f_locals["self"].process.pid]
+            entered.set()
+            if not release.wait(20):
+                trace_failures.append("stderr barrier timed out")
+        return schedule
+
+    async def run():
+        owned, closers = [], []
+        second_closing, finish_second = asyncio.Event(), asyncio.Event()
+        try:
+            for index in range(invocations):
+                child = subprocess.Popen([sys.executable, "-u", "-c", r"""
+import json, sys
+while header := sys.stdin.buffer.readline():
+    size = int(header.decode().split(":")[1])
+    assert sys.stdin.buffer.readline() == b"\r\n"
+    request = json.loads(sys.stdin.buffer.read(size))
+    if request["method"] == "fixture.stderr":
+        print("PRIVATE CLEANUP STDERR", file=sys.stderr, flush=True)
+    else:
+        assert request["method"] in ("ping", "session.destroy")
+    body = json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {}}).encode()
+    sys.stdout.buffer.write(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
+    sys.stdout.buffer.flush()
+"""], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                children.append(child)
+                gates[child.pid] = (threading.Event(), threading.Event())
+                transport = JsonRpcClient(child)
+                transports.append(transport)
+                transport.start()
+                await asyncio.wait_for(transport.request("ping"), 2)
+                await asyncio.wait_for(transport.request("fixture.stderr"), 2)
+                assert await asyncio.to_thread(gates[child.pid][0].wait, 2)
+                session = CopilotSession(f"PRIVATE SESSION {index}", transport)
+                client = CopilotClient()
+                client._process, client._client = child, transport
+                client._sessions[session.session_id] = session
+                server = SimpleNamespace(should_exit=False, closed=False)
+                sock, http = socket.socket(), httpx.AsyncClient()
+
+                async def relay(server=server):
+                    try:
+                        while not server.should_exit:
+                            await asyncio.sleep(0.001)
+                    finally:
+                        server.closed = True
+
+                class Credential:
+                    def __init__(self, index):
+                        self.index, self.closed = index, False
+
+                    async def close(self):
+                        if self.index == 1:
+                            second_closing.set()
+                            await finish_second.wait()
+                        self.closed = True
+
+                credential = Credential(index)
+                relay_task = asyncio.create_task(relay())
+                owned.append((server, sock, http, credential, relay_task, session, client))
+
+            for server, sock, http, credential, relay_task, session, client in owned:
+                closers.append(asyncio.create_task(ghcp.close_invocation(
+                    unsubscribe=session.on(lambda event: None), session=session, client=client,
+                    server=server, task=relay_task, sock=sock, http=http, credential=credential)))
+
+            assert await asyncio.wait_for(asyncio.shield(closers[0]), 10) == []
+            assert transports[0]._stderr_thread.is_alive(), "must exercise the native timed-join gap"
+            assert children[0].returncode is not None, "owned subprocess must already be reaped"
+            server, sock, http, credential, relay_task, _, _ = owned[0]
+            assert sock.fileno() == -1 and http.is_closed and relay_task.done()
+            assert server.closed and credential.closed
+            if invocations == 2:
+                await asyncio.wait_for(second_closing.wait(), 2)
+                assert not closers[1].done(), "one invocation closes while another is still closing"
+            gates[children[0].pid][1].set()
+            await asyncio.to_thread(transports[0]._stderr_thread.join, 2)
+            assert not transports[0]._stderr_thread.is_alive()
+            assert "PRIVATE" not in repr(records) + caplog.text
+
+            if invocations == 2:
+                finish_second.set()
+                assert await asyncio.wait_for(closers[1], 3) == []
+                assert transports[1]._stderr_thread.is_alive()
+                gates[children[1].pid][1].set()
+
+            for child, transport, resources in zip(children, transports, owned):
+                server, sock, http, credential, relay_task, session, client = resources
+                for thread in (transport._read_thread, transport._stderr_thread):
+                    await asyncio.to_thread(thread.join, 2)
+                    assert not thread.is_alive()
+                assert child.returncode is not None
+                assert session._destroyed and not session._event_handlers
+                assert not client._sessions and client._client is None
+                assert not transport.pending_requests and not transport._running
+                assert sock.fileno() == -1 and http.is_closed and relay_task.done()
+                assert server.closed and credential.closed
+            warnings = [record for record, _ in records if record["funcName"] == "_stderr_loop"]
+            assert len(warnings) == invocations, "real native stderr warnings must reach handlers"
+            assert all(record["msg"] == "governance_cleanup_sdk_transport_diagnostic"
+                       for record in warnings)
+            assert not trace_failures
+            assert "PRIVATE" not in repr(records) + caplog.text
+            logging.getLogger("application.normal").warning("application PRIVATE stays unchanged")
+            assert "application PRIVATE stays unchanged" in caplog.text
+        finally:
+            finish_second.set()
+            for _, release in gates.values():
+                release.set()
+            for closer in closers:
+                if not closer.done():
+                    await closer
+            for server, sock, http, credential, relay_task, _, _ in owned:
+                server.should_exit = True
+                await relay_task
+                sock.close()
+                await http.aclose()
+            for child in children:
+                if child.poll() is None:
+                    child.kill()
+                child.wait(timeout=2)
+            for transport in transports:
+                transport._running = False
+                for thread in (transport._read_thread, transport._stderr_thread):
+                    await asyncio.to_thread(thread.join, 2)
+                    assert not thread.is_alive()
+
+    try:
+        threading.settrace(schedule)
+        asyncio.run(run())
+    finally:
+        threading.settrace(original_trace)
+        logger.removeHandler(handler)
+        for child in children:
+            for pipe in (child.stdin, child.stdout, child.stderr):
+                pipe.close()
+
+
 @pytest.mark.parametrize("logger_name", [
     "copilot._jsonrpc", "copilot._jsonrpc.wire", "copilot.client", "copilot.client.wire"])
 @pytest.mark.parametrize("propagate", [False, True])
 def test_quality_sdk_cleanup_redacts_before_user_handlers(monkeypatch, caplog, logger_name, propagate):
-    """Logger filters protect direct handlers as well as propagated records."""
+    """Lifetime privacy covers existing and newly-created child loggers at all levels."""
     import logging
+    logger = logging.getLogger(logger_name)
     ghcp = module("ghcp-container")
     caplog.set_level(logging.DEBUG)
-    logger = logging.getLogger(logger_name)
     monkeypatch.setattr(logger, "propagate", propagate)
     records, formatted = [], []
 
@@ -707,21 +896,20 @@ def test_quality_sdk_cleanup_redacts_before_user_handlers(monkeypatch, caplog, l
 
     handler = Capture()
     logger.addHandler(handler)
-    original_filters = list(logger.filters)
     marker = "PRIVATE PAYLOAD"
 
-    def emit_private():
+    def emit_private(target=logger, level=logging.WARNING):
         try:
             raise ValueError(marker)
         except ValueError:
-            logger.warning("SDK %s", marker, exc_info=True, stack_info=True,
-                           extra={"payload": {"token": marker}})
+            target.log(level, "SDK %s", marker, exc_info=True, stack_info=True,
+                       extra={"payload": {"token": marker}, "message_cache": marker})
 
     class Session:
         async def disconnect(self):
             emit_private()
             logging.getLogger("application.normal").info("normal process message")
-            # A fresh worker thread does not inherit the cleanup ContextVar.
+            # A fresh worker thread does not inherit task ContextVars.
             await asyncio.get_running_loop().run_in_executor(None, emit_private)
 
     async def run():
@@ -730,20 +918,70 @@ def test_quality_sdk_cleanup_redacts_before_user_handlers(monkeypatch, caplog, l
             sock=None, http=None, credential=None) == []
 
     try:
-        logger.info("SDK normal before")
+        logger.info("SDK PRIVATE before")
         asyncio.run(run())
-        logger.info("SDK normal after")
+        logger.debug("SDK PRIVATE after")
+        cached = logger.makeRecord(logger.name, logging.ERROR, __file__, 0, "SDK %s",
+                                   (marker,), None, extra={"payload": marker})
+        cached.exc_text = cached.stack_info = marker
+        logger.handle(cached)
+        from uuid import uuid4
+        late = logger.getChild("late_" + uuid4().hex)
+        late.propagate = propagate
+        late.addHandler(handler)
+        try:
+            for level in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR):
+                emit_private(late, level)
+        finally:
+            late.removeHandler(handler)
         assert "normal process message" in caplog.text
-        assert marker not in repr(records) + "\n".join(formatted) + caplog.text
-        assert formatted[0] == "SDK normal before" and formatted[-1] == "SDK normal after"
-        private_records = records[1:-1]
-        assert len(private_records) == 2
-        for record in private_records:
+        assert "PRIVATE" not in repr(records) + "\n".join(formatted) + caplog.text
+        reason = ("governance_cleanup_sdk_transport_diagnostic" if "_jsonrpc" in logger_name
+                  else "governance_cleanup_sdk_diagnostic")
+        assert set(formatted) == {reason}
+        for record in records:
             assert record["args"] == ()
-            assert all(record[field] is None for field in ("exc_info", "exc_text", "stack_info", "payload"))
-        assert logger.filters == original_filters
+            assert all(record.get(field) is None for field in (
+                "exc_info", "exc_text", "stack_info", "payload", "message_cache"))
     finally:
         logger.removeHandler(handler)
+
+
+def test_quality_sdk_lifetime_policy_installs_once_without_muting_application():
+    import logging
+    from concurrent.futures import ThreadPoolExecutor
+    ghcp = module("ghcp-container")
+    original = logging.Manager.getLogger
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(lambda _: ghcp.install_sdk_log_privacy(), range(20)))
+    module("ghcp-container")
+    assert logging.Manager.getLogger is original
+    for name in ("copilot.client", "copilot._jsonrpc", "copilot.client.new.child"):
+        logger = logging.getLogger(name)
+        for _ in range(10):
+            assert logging.getLogger(name) is logger
+        assert len([f for f in logger.filters if hasattr(f, "reason")]) == 1
+    captured = []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            captured.append(record.__dict__.copy())
+
+    handler = Capture()
+    for name in ("application.normal", "copilot.client_other", "copilot._jsonrpc_other"):
+        logger = logging.getLogger(name)
+        assert not any(hasattr(f, "reason") for f in logger.filters)
+        record = logger.makeRecord(name, logging.WARNING, __file__, 0, "application %s",
+            ("PRIVATE unchanged",), (ValueError, ValueError("PRIVATE exception"), None),
+            extra={"payload": "PRIVATE extra"})
+        record.stack_info = "PRIVATE stack"
+        expected = record.__dict__.copy()
+        logger.addHandler(handler)
+        try:
+            logger.handle(record)
+            assert captured[-1] == expected
+        finally:
+            logger.removeHandler(handler)
 
 
 @pytest.mark.parametrize("environment,effects", [("development", ["act"]), ("production", []),
