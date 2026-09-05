@@ -26,6 +26,9 @@ class ApprovalIntent:
     context_identity: str
     nonce: str
     expires_at: datetime
+    tenant: str
+    allowed_roles: tuple[str, ...]
+    policy_expires_at: datetime
 
 
 @dataclass(frozen=True)
@@ -33,10 +36,23 @@ class ApprovalGrant:
     """Returned ONLY by a trusted authenticated control-plane client."""
     intent: ApprovalIntent
     approved: bool
+    approver: str
+    approver_tenant: str
+    approver_role: str
+    provenance: str
 
 
 class ApprovalService(Protocol):
     async def resolve(self, intent: ApprovalIntent) -> ApprovalGrant: ...
+
+    async def verify(self, grant: ApprovalGrant, *, intent: ApprovalIntent) -> bool:
+        """Authenticate the entire grant, requester/tenant and approver/role.
+
+        Verify a trusted service receipt, never agent-supplied field echoes.
+        Atomically consume its nonce for this exact intent (including rejections).
+        Task8 supplies authenticated transport and cross-worker replay protection.
+        """
+        ...
 
 
 class DurableSpool:

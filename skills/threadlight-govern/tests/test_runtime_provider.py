@@ -21,7 +21,7 @@ def runtime():
 
 
 def contract(*, points=("pre_tool_call",), lifecycle=(), requires=(), mode="selective"):
-    return {
+    document = {
         "framework": "microsoft-agent-framework",
         "governance": {
             "mode": mode,
@@ -44,6 +44,11 @@ def contract(*, points=("pre_tool_call",), lifecycle=(), requires=(), mode="sele
              "safe_principles": [], "requires": []},
         ],
     }
+    if not points:
+        document["tools"][0].update(
+            policy_binding="none", enforcement_path="none", safe_principles=[], requires=[],
+        )
+    return document
 
 
 def build_policy(tmp_path, decisions=None):
@@ -120,7 +125,10 @@ def model_client(responses, *, chunks=None, on_chunk=None):
             self.responses = responses
 
         def _inner_get_response(self, *, messages, stream, options, **kwargs):
-            self.requests.append(([m.to_dict() for m in messages], dict(options)))
+            recorded = dict(options)
+            if "tools" in recorded:
+                recorded["tools"] = list(recorded["tools"])
+            self.requests.append(([m.to_dict() for m in messages], recorded))
             response = responses.pop(0)
             if not stream:
                 async def get():
@@ -128,6 +136,10 @@ def model_client(responses, *, chunks=None, on_chunk=None):
                 return get()
 
             async def updates():
+                if chunks is None:
+                    for message in response.messages:
+                        yield ChatResponseUpdate(role=message.role, contents=message.contents)
+                    return
                 for text in chunks or [response.text]:
                     if on_chunk:
                         on_chunk(text)
@@ -462,13 +474,19 @@ class ApprovalService:
     def __init__(self, case):
         self.case, self.requests = case, []
         self.first = None
+        self.issued = {}
 
     async def resolve(self, intent):
         from dataclasses import replace
         self.requests.append(intent)
         if self.case == "outage":
             raise RuntimeError("PRIVATE-APPROVAL-ERROR")
-        grant = runtime().ApprovalGrant(intent=intent, approved=True)
+        grant = runtime().ApprovalGrant(
+            intent=intent, approved=self.case != "reject", approver="host:approver",
+            approver_tenant=intent.tenant, approver_role="test-reviewer",
+            provenance=f"receipt:{intent.nonce}",
+        )
+        self.issued[grant.provenance] = grant
         if self.case == "reject":
             grant = replace(grant, approved=False)
         if self.case == "changed":
@@ -480,6 +498,9 @@ class ApprovalService:
             grant = self.first
         return grant
 
+    async def verify(self, grant, *, intent):
+        return self.issued.get(grant.provenance) == grant
+
 
 @pytest.mark.parametrize("case", ["outage", "reject", "changed", "expired", "approve", "replay"])
 def test_native_approval_resolver_binding(tmp_path, case):
@@ -487,7 +508,8 @@ def test_native_approval_resolver_binding(tmp_path, case):
     spool = runtime().DurableSpool(tmp_path / "spool")
     p, _, _ = provider(tmp_path, document=contract(requires=("approval", "durable-audit")),
                        decisions={"pre_tool_call": {"decision": "escalate"}},
-                       approval_resolver=service, principal="host:user", audit=spool)
+                       approval_resolver=service, principal="host:user", tenant="host:tenant",
+                       allowed_approval_roles=("test-reviewer",), audit=spool)
     _, effects, client, agent = run_tool(p, args={"amount": 10, "approved": True})
     assert len(effects) == (1 if case in ("approve", "replay") else 0)
     assert len(service.requests) == 1
@@ -587,3 +609,494 @@ def test_other_binding_success_does_not_hide_engine_failure(tmp_path, monkeypatc
     health = p.health()["bindings"]
     assert health["act:pre_tool_call"]["healthy"] is False
     assert health["lifecycle:output"]["healthy"] is True
+
+
+@pytest.mark.parametrize("source", [
+    "defaults", "run-options", "run-tools", "extra-body", "client-extra-body",
+    "nested-extra-body", "web-search-options",
+])
+def test_effective_hosted_tools_never_reach_native_transport(tmp_path, source):
+    from agent_framework import ChatResponse, Message
+    p, _, _ = provider(tmp_path)
+    client = model_client([ChatResponse(messages=[Message("assistant", ["ok"])])])
+    hosted = [{"type": "web_search_preview"}]
+    defaults, run = {}, {}
+    if source == "defaults":
+        defaults = {"tools": hosted}
+    elif source == "run-options":
+        run = {"options": {"tools": hosted}}
+    elif source == "run-tools":
+        run = {"tools": hosted}
+    elif source == "extra-body":
+        defaults = {"extra_body": {"tools": hosted}}
+    elif source == "nested-extra-body":
+        run = {"client_kwargs": {"extra_body": {"extra_body": {"tools": hosted}}}}
+    elif source == "web-search-options":
+        run = {"options": {"web_search_options": {}}}
+    else:
+        run = {"client_kwargs": {"extra_body": {"tools": hosted}}}
+    with pytest.raises(ValueError, match="provider-hosted"):
+        agent = runtime().create_governed_agent(p, client=client, default_options=defaults)
+        asyncio.run(agent.run("input", **run))
+    assert client.requests == []
+
+
+def controlled_clock(monkeypatch):
+    class Clock(datetime):
+        current = datetime.now(timezone.utc)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+
+    for module in ("governance_provider", "maf_agent_hooks_acs"):
+        monkeypatch.setattr(importlib.import_module(
+            f"skills.threadlight-govern.references.runtime.{module}"
+        ), "datetime", Clock)
+    return Clock
+
+
+@pytest.mark.parametrize("stage", ["engine", "audit", "middleware"])
+@pytest.mark.parametrize("decision", ["allow", "transform"])
+def test_policy_expiring_in_flight_cannot_authorize_effect(tmp_path, monkeypatch, stage, decision):
+    from agent_control_specification import AgentControl
+    from agent_framework import FunctionMiddleware
+    clock = controlled_clock(monkeypatch)
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    verdict = {"decision": decision}
+    if decision == "transform":
+        verdict["transform"] = {"path": "$policy_target", "value": {"amount": 5}}
+    p, authority, _ = provider(
+        tmp_path, document=contract(requires=("durable-audit",)),
+        decisions={"pre_tool_call": verdict}, audit=spool,
+    )
+    def expire():
+        clock.current = authority.expires_at
+    if stage == "engine":
+        evaluate = AgentControl.evaluate_intervention_point
+        async def delayed(self, *args, **kwargs):
+            result = await evaluate(self, *args, **kwargs)
+            expire()
+            return result
+        monkeypatch.setattr(AgentControl, "evaluate_intervention_point", delayed)
+    if stage == "audit":
+        append = spool.append
+        def delayed_append(**kwargs):
+            result = append(**kwargs)
+            expire()
+            return result
+        monkeypatch.setattr(spool, "append", delayed_append)
+    class Delay(FunctionMiddleware):
+        async def process(self, context, call_next):
+            expire()
+            await asyncio.sleep(0)
+            await call_next()
+    _, effects, _, _ = run_tool(p, middleware=[Delay()] if stage == "middleware" else [])
+    assert effects == []
+    assert p.health()["bindings"]["act:pre_tool_call"]["healthy"] is False
+
+
+@pytest.mark.parametrize("scope", ["lifecycle", "mixed", "tool"])
+def test_post_tool_audit_requires_covering_pre_effect_control(tmp_path, monkeypatch, scope):
+    import os
+    document = contract(points=(), lifecycle=("post_tool_call",), requires=("durable-audit",))
+    if scope == "mixed":
+        document["governance"]["lifecycle_bindings"].append({
+            **document["governance"]["lifecycle_bindings"][0],
+            "lifecycle_point": "pre_tool_call", "requires": [],
+        })
+    if scope == "tool":
+        document = contract(points=("pre_tool_call", "post_tool_call"))
+        document["tools"][0]["requires"] = ["durable-audit"]
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(tmp_path, document=document, audit=spool, decisions={
+        "pre_tool_call": {"decision": "allow"}, "post_tool_call": {"decision": "allow"},
+    })
+    def fail(fd):
+        raise OSError("PRIVATE-FSYNC")
+    monkeypatch.setattr(os, "fsync", fail)
+    assert run_tool(p)[1] == []
+
+
+@pytest.mark.parametrize("scope", ["tool", "lifecycle", "unbound"])
+@pytest.mark.parametrize("decision", ["allow", "deny"])
+def test_selected_tool_exception_is_sanitized_before_native_serialization(
+    tmp_path, scope, decision, caplog,
+):
+    from agent_framework import FunctionTool
+    document = contract(points=("post_tool_call",)) if scope != "lifecycle" else contract(
+        points=(), lifecycle=("post_tool_call",),
+    )
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(tmp_path, document=document,
+                       decisions={"post_tool_call": {"decision": decision}}, audit=spool)
+    effects = []
+    async def fail():
+        effects.append(True)
+        raise RuntimeError("PRIVATE-TOOL-FAILURE")
+    name = "read" if scope == "unbound" else "act"
+    client = model_client(tool_responses(name))
+    agent = runtime().create_governed_agent(
+        p, client=client, tools=[FunctionTool(name=name, func=fail)],
+    )
+    result = asyncio.run(agent.run("input"))
+    wire = str(client.requests) + result.to_json()
+    assert effects == [True]
+    if scope == "unbound":
+        assert "PRIVATE-TOOL-FAILURE" in wire
+    else:
+        assert "PRIVATE-TOOL-FAILURE" not in wire + caplog.text
+        assert "threadlight:tool_unavailable" in wire
+        assert p.health()["bindings"][f"{'lifecycle' if scope == 'lifecycle' else 'act'}:post_tool_call"]["healthy"]
+        assert "PRIVATE" not in "".join(f.read_text() for f in spool.directory.glob("*.json"))
+
+
+def test_identity_incomplete_approval_never_authorizes_effect(tmp_path):
+    p, _, _ = provider(
+        tmp_path, document=contract(requires=("approval",)),
+        decisions={"pre_tool_call": {"decision": "escalate"}},
+        principal="host:user", approval_resolver=ApprovalService("approve"),
+    )
+    assert run_tool(p)[1] == []
+
+
+@pytest.mark.parametrize("case", [
+    "approve", "reject", "missing-requester", "wrong-requester", "missing-tenant",
+    "wrong-tenant", "missing-approver", "wrong-approver", "missing-role", "wrong-role",
+    "wrong-approver-tenant", "missing-provenance", "forged-provenance", "unverified",
+    "untrusted-service", "changed-action", "changed-policy", "changed-expiry",
+    "changed-nonce", "changed-roles", "replay",
+])
+def test_approval_identity_and_trusted_attestation_are_exactly_bound(tmp_path, case):
+    from dataclasses import fields, replace
+    assert {"tenant", "allowed_roles", "policy_expires_at"} <= {
+        f.name for f in fields(runtime().ApprovalIntent)
+    }
+    assert {"approver", "approver_tenant", "approver_role", "provenance"} <= {
+        f.name for f in fields(runtime().ApprovalGrant)
+    }
+    class Service(ApprovalService):
+        async def resolve(self, intent):
+            grant = await super().resolve(intent)
+            changes = {
+                "missing-requester": {"principal": ""},
+                "wrong-requester": {"principal": "other:user"},
+                "missing-tenant": {"tenant": ""},
+                "wrong-tenant": {"tenant": "other:tenant"},
+                "changed-action": {"action_hash": "wrong"},
+                "changed-policy": {"policy_hash": "wrong"},
+                "changed-expiry": {"expires_at": intent.expires_at + timedelta(seconds=1)},
+                "changed-nonce": {"nonce": "wrong"},
+                "changed-roles": {"allowed_roles": ("other-role",)},
+            }
+            if case in changes:
+                return replace(grant, intent=replace(intent, **changes[case]))
+            changes = {
+                "missing-approver": {"approver": ""},
+                "wrong-approver": {"approver": "other:approver"},
+                "missing-role": {"approver_role": ""},
+                "wrong-role": {"approver_role": "unselected-role"},
+                "wrong-approver-tenant": {"approver_tenant": "other:tenant"},
+                "missing-provenance": {"provenance": ""},
+                "forged-provenance": {"provenance": "agent-says-approved"},
+            }
+            return replace(grant, **changes.get(case, {}))
+
+        async def verify(self, grant, *, intent):
+            if case == "unverified":
+                return False
+            return await super().verify(grant, intent=intent)
+    service = Service("reject" if case == "reject" else "replay" if case == "replay" else "approve")
+    if case == "untrusted-service":
+        service.verify = None
+    p, _, _ = provider(
+        tmp_path, document=contract(requires=("approval",)),
+        decisions={"pre_tool_call": {"decision": "escalate"}},
+        principal="host:user", tenant="host:tenant", allowed_approval_roles=("test-reviewer",),
+        approval_resolver=service,
+    )
+    _, effects, client, agent = run_tool(p)
+    assert len(effects) == (1 if case in ("approve", "replay") else 0)
+    if case == "replay":
+        client.responses.extend(tool_responses())
+        asyncio.run(agent.run("repeat same action"))
+        assert len(effects) == 1
+
+
+@pytest.mark.parametrize("stage", ["resolver", "verification", "audit", "middleware"])
+def test_approval_expiry_is_rechecked_at_effect(tmp_path, monkeypatch, stage):
+    from dataclasses import fields
+    from agent_framework import FunctionMiddleware
+    assert "tenant" in {f.name for f in fields(runtime().ApprovalIntent)}
+    clock = controlled_clock(monkeypatch)
+    class Service(ApprovalService):
+        async def resolve(self, intent):
+            grant = await super().resolve(intent)
+            if stage == "resolver":
+                clock.current = intent.expires_at
+            return grant
+
+        async def verify(self, grant, *, intent):
+            if stage == "verification":
+                clock.current = intent.expires_at
+            return await super().verify(grant, intent=intent)
+    service = Service("approve")
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(
+        tmp_path, document=contract(requires=("approval", "durable-audit")),
+        decisions={"pre_tool_call": {"decision": "escalate"}}, audit=spool,
+        principal="host:user", tenant="host:tenant", allowed_approval_roles=("test-reviewer",),
+        approval_resolver=service,
+    )
+    if stage == "audit":
+        append = spool.append
+        def delayed(**kwargs):
+            result = append(**kwargs)
+            clock.current = service.requests[0].expires_at
+            return result
+        monkeypatch.setattr(spool, "append", delayed)
+    class Delay(FunctionMiddleware):
+        async def process(self, context, call_next):
+            clock.current = service.requests[0].expires_at
+            await asyncio.sleep(0)
+            await call_next()
+    assert run_tool(p, middleware=[Delay()] if stage == "middleware" else [])[1] == []
+
+
+@pytest.mark.parametrize("shape", ["sync", "sync-awaitable", "async"])
+def test_exception_guard_preserves_original_tool_and_covers_callable_shapes(tmp_path, shape):
+    from agent_framework import FunctionTool
+    p, _, _ = provider(tmp_path, document=contract(points=("post_tool_call",)),
+                       decisions={"post_tool_call": {"decision": "deny"}})
+    async def fail_async():
+        raise RuntimeError("PRIVATE-AWAITABLE")
+    def fail_sync():
+        raise RuntimeError("PRIVATE-SYNC")
+    def returns_awaitable():
+        return fail_async()
+    original = {"sync": fail_sync, "sync-awaitable": returns_awaitable, "async": fail_async}[shape]
+    tool = FunctionTool(name="act", func=original)
+    client = model_client(tool_responses())
+    agent = runtime().create_governed_agent(p, client=client, tools=[tool])
+    response = asyncio.run(agent.run("input"))
+    assert "PRIVATE" not in str(client.requests) + response.to_json()
+    assert tool.func is original
+
+
+def test_signed_expiry_cannot_be_renewed_during_evaluation(tmp_path, monkeypatch):
+    from agent_control_specification import AgentControl
+    p, authority, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    evaluate = AgentControl.evaluate_intervention_point
+    async def renew(self, *args, **kwargs):
+        result = await evaluate(self, *args, **kwargs)
+        authority.expires_at += timedelta(hours=1)
+        return result
+    monkeypatch.setattr(AgentControl, "evaluate_intervention_point", renew)
+    assert run_tool(p)[1] == []
+
+
+@pytest.mark.parametrize("source", ["options", "client_kwargs"])
+def test_nested_store_override_cannot_enable_provider_persistence(tmp_path, source):
+    from agent_framework import ChatResponse, Message
+    p, _, _ = provider(tmp_path)
+    client = model_client([ChatResponse(messages=[Message("assistant", ["ok"])])])
+    # This transport represents the OpenAI extra_body override merge.
+    native = client._inner_get_response
+    def capture(**kwargs):
+        extra = kwargs.get("extra_body", kwargs["options"].get("extra_body", {}))
+        assert extra.get("store") is False
+        return native(**kwargs)
+    client._inner_get_response = capture
+    agent = runtime().create_governed_agent(p, client=client)
+    asyncio.run(agent.run("input", **{source: {"extra_body": {"store": True}}}))
+
+
+def test_missing_selected_roles_never_requests_approval(tmp_path):
+    service = ApprovalService("approve")
+    p, _, _ = provider(
+        tmp_path, document=contract(requires=("approval",)),
+        decisions={"pre_tool_call": {"decision": "escalate"}},
+        principal="host:user", tenant="host:tenant", approval_resolver=service,
+    )
+    assert run_tool(p)[1] == []
+    assert service.requests == []
+
+
+def test_approval_wire_schema_matches_portable_protocol(tmp_path):
+    from dataclasses import asdict
+    from jsonschema import Draft7Validator, FormatChecker
+    schema_path = RUNTIME / "approval.schema.json"
+    assert schema_path.exists(), "portable approval protocol schema missing"
+    schema = json.loads(schema_path.read_text())
+    Draft7Validator.check_schema(schema)
+    service = ApprovalService("approve")
+    p, _, _ = provider(
+        tmp_path, document=contract(requires=("approval",)),
+        decisions={"pre_tool_call": {"decision": "escalate"}},
+        principal="host:user", tenant="host:tenant", allowed_approval_roles=("test-reviewer",),
+        approval_resolver=service,
+    )
+    assert run_tool(p)[1] == [{}]
+    grant = next(iter(service.issued.values()))
+    wire = json.loads(json.dumps(asdict(grant), default=lambda value: value.isoformat()))
+    validator = Draft7Validator(schema, format_checker=FormatChecker())
+    validator.validate(wire)
+    for field in ("approver", "approver_tenant", "approver_role", "provenance"):
+        incomplete = deepcopy(wire)
+        del incomplete[field]
+        assert list(validator.iter_errors(incomplete)), field
+    for field in ("tenant", "principal", "allowed_roles", "nonce", "expires_at", "policy_expires_at"):
+        incomplete = deepcopy(wire)
+        del incomplete["intent"][field]
+        assert list(validator.iter_errors(incomplete)), field
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_approval_positive_control_survives_native_run_scopes(tmp_path, stream):
+    from agent_framework import FunctionTool
+    p, _, _ = provider(
+        tmp_path, document=contract(requires=("approval",)),
+        decisions={"pre_tool_call": {"decision": "escalate"}},
+        principal="host:user", tenant="host:tenant", allowed_approval_roles=("test-reviewer",),
+        approval_resolver=ApprovalService("approve"),
+    )
+    effects = []
+    async def act():
+        effects.append(True)
+        return "ok"
+    client = model_client(tool_responses() + tool_responses())
+    agent = runtime().create_governed_agent(p, client=client, tools=[FunctionTool(name="act", func=act)])
+    async def runs():
+        for _ in range(2):
+            response = agent.run("input", stream=stream)
+            if stream:
+                await response.get_final_response()
+            else:
+                await response
+    asyncio.run(runs())
+    assert effects == [True, True]
+
+
+def test_lifecycle_pre_tool_audit_covers_every_local_effect(tmp_path):
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_tool_call", "post_tool_call"),
+                                    requires=("durable-audit",)),
+        decisions={"pre_tool_call": {"decision": "allow"}, "post_tool_call": {"decision": "allow"}},
+        audit=spool,
+    )
+    def before():
+        assert list(spool.directory.glob("*.json"))
+    assert run_tool(p, name="read", on_effect=before)[1] == [{}]
+
+
+def test_monotonic_policy_deadline_survives_wall_clock_rollback(tmp_path, monkeypatch):
+    from agent_control_specification import AgentControl
+    clock = controlled_clock(monkeypatch)
+    module = importlib.import_module("skills.threadlight-govern.references.runtime.governance_provider")
+    # Override this module's time object, not asyncio's event-loop clock.
+    from types import SimpleNamespace
+    ticks = [100.]
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: ticks[0]))
+    p, authority, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    evaluate = AgentControl.evaluate_intervention_point
+    async def delayed(self, *args, **kwargs):
+        result = await evaluate(self, *args, **kwargs)
+        ticks[0] += (authority.expires_at - clock.current).total_seconds() + 1
+        clock.current -= timedelta(hours=1)
+        return result
+    monkeypatch.setattr(AgentControl, "evaluate_intervention_point", delayed)
+    assert run_tool(p)[1] == []
+
+
+def test_policy_expiry_between_worker_and_deferred_effect(tmp_path, monkeypatch):
+    from agent_framework import FunctionTool
+    clock = controlled_clock(monkeypatch)
+    p, authority, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    effects = []
+    async def deferred():
+        effects.append(True)
+        return "effect"
+    def prepare():
+        clock.current = authority.expires_at
+        return deferred()
+    agent = runtime().create_governed_agent(
+        p, client=model_client(tool_responses()), tools=[FunctionTool(name="act", func=prepare)],
+    )
+    asyncio.run(agent.run("input"))
+    assert effects == []
+
+
+def test_progressive_provider_hosted_tool_never_reaches_next_transport(tmp_path):
+    from agent_framework import FunctionInvocationContext, FunctionTool
+    p, _, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    async def expand(ctx: FunctionInvocationContext):
+        ctx.add_tools([{"type": "web_search_preview"}])
+        return "exposed"
+    client = model_client(tool_responses())
+    agent = runtime().create_governed_agent(p, client=client, tools=[FunctionTool(name="act", func=expand)])
+    with pytest.raises(ValueError, match="provider-hosted"):
+        asyncio.run(agent.run("input"))
+    assert len(client.requests) == 1
+    assert all(not isinstance(t, dict) for t in client.requests[0][1]["tools"])
+
+
+@pytest.mark.parametrize("source", ["defaults", "options", "tools"])
+def test_unbound_local_option_tools_remain_permitted(tmp_path, source, monkeypatch):
+    from agent_control_specification import AgentControl
+    from agent_framework import FunctionTool
+    p, _, _ = provider(tmp_path)
+    async def forbidden(*args, **kwargs):
+        pytest.fail("unbound option tool evaluated ACS")
+    monkeypatch.setattr(AgentControl, "evaluate_intervention_point", forbidden)
+    effects = []
+    async def read():
+        effects.append(True)
+        return "read"
+    tools = [FunctionTool(name="read", func=read)]
+    client = model_client(tool_responses("read"))
+    agent = runtime().create_governed_agent(
+        p, client=client, default_options={"tools": tools} if source == "defaults" else {},
+    )
+    run = {"options": {"tools": tools}} if source == "options" else {"tools": tools} if source == "tools" else {}
+    asyncio.run(agent.run("input", **run))
+    assert effects == [True]
+
+
+def test_policy_refresh_cannot_outlive_its_authorization(tmp_path, monkeypatch):
+    import yaml
+    clock = controlled_clock(monkeypatch)
+    p, authority, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    load = yaml.safe_load
+    verified = [False]
+    verify = authority.verify
+    def signed(bundle):
+        verified[0] = True
+        return verify(bundle)
+    def delayed(document):
+        value = load(document)
+        if verified[0]:
+            clock.current = authority.expires_at
+        return value
+    monkeypatch.setattr(authority, "verify", signed)
+    monkeypatch.setattr(yaml, "safe_load", delayed)
+    p._refresh()
+    assert not p.health()["bindings"]["act:pre_tool_call"]["healthy"]
+
+
+def test_selected_native_tool_override_failure_is_still_sanitized(tmp_path):
+    from agent_framework import FunctionTool
+    p, _, _ = provider(tmp_path, document=contract(points=("post_tool_call",)),
+                       decisions={"post_tool_call": {"decision": "deny"}})
+    effects = []
+    class NativeTool(FunctionTool):
+        async def invoke(self, **kwargs):
+            effects.append(True)
+            raise RuntimeError("PRIVATE-INVOKE")
+    client = model_client(tool_responses())
+    agent = runtime().create_governed_agent(
+        p, client=client, tools=[NativeTool(name="act", func=lambda: None)],
+    )
+    result = asyncio.run(agent.run("input"))
+    assert effects == [True]
+    assert "PRIVATE-INVOKE" not in str(client.requests) + result.to_json()

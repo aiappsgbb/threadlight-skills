@@ -19,7 +19,10 @@ Construct `AcsGovernanceProvider` with these **host-owned** dependencies:
 - `safe_provider(identity) -> dict`: bounded synchronous trusted evidence lookup,
   returning SAFE evidence/escalations. Identity includes action hash, policy hash,
   principal, agent and session. Never copy model arguments/results into this map.
-- `principal`: the authenticated caller, never a model-supplied identity.
+- `principal`, `tenant`: the authenticated requesting identity and its tenant,
+  supplied by trusted host authentication, never model arguments.
+- `allowed_approval_roles`: nonempty host-selected role identifiers when approval
+  is selected; no customer role is hardcoded or inferred from model output.
 - `approval_resolver`: an implementation of the async `ApprovalService` protocol.
 - `audit=DurableSpool(host_owned_directory)` when durable audit is required.
 
@@ -36,7 +39,13 @@ not prevent application code from calling a function directly, swapping the
 agent/client, using unregistered external effects, or mutating middleware later.
 Do not add per-run middleware ahead of the factory-installed boundary. Run-level
 options cannot override `store=False`; chat middleware also sets it immediately
-before the provider call. Clients must honor that supported provider option.
+before the provider call, including native `extra_body` overrides. Clients must
+honor that supported provider option. The last chat boundary checks the effective
+tool list after constructor defaults, call-time options, progressive tool exposure,
+and middleware merges; native option/`client_kwargs`/`extra_body` tool overrides
+and Chat Completions `web_search_options` cannot hide provider-hosted execution.
+Unbound local functions remain permitted. This assumes the pinned client pipeline;
+a custom transport adding hidden effects after middleware is outside this boundary.
 
 ## Selection and failure semantics
 
@@ -61,6 +70,13 @@ before the provider call. Clients must honor that supported provider option.
   `threadlight:engine_failure` denies, without raw exception details. Actual
   native host failures may terminate the run (`tool_seam_host_error: terminate`);
   they are not relabeled as successful continuation.
+- Selected local callables are copied and wrapped before SDK invocation: synchronous,
+  asynchronous, and awaitable-returning failures become typed
+  `GovernedToolUnavailable("threadlight:tool_unavailable")` errors without retaining
+  the private exception as context. Native post-tool error evaluation/audit still
+  runs, and the invocation remains an error, not a successful substitute. Unbound
+  callables and the original caller-owned tool objects are unchanged. Framework
+  termination and human-input control flow remain native.
 - `health()` describes configuration and last evaluation, never deployment
   evidence or status `enforced`. Production/preproduction enforce; only the
   contract-permitted development/staging environments evaluate without enforcing.
@@ -76,15 +92,43 @@ release. A blocked post-tool result never enters the next model request.
 ## Approval and audit contracts
 
 ACS escalation (or a required-approval allow) becomes a native liftable deny.
-`BoundApprovalResolver` uses the **actual** Agent Hooks approval API. The service
-must authenticate its response and return `ApprovalGrant` containing the exact
-`ApprovalIntent`: action hash, policy hash, principal, agent/session identity,
-native context identity, fresh nonce and expiry. Outage, rejection, mismatch,
-expiry or replay cannot permit an effect. There is no model-boolean override.
-The policy is reverified after waiting. Task8 owns persistent approval requests,
-authentication, cross-worker nonce consumption and human workflows; none is
-simulated here. A transform requiring separate approval is conservatively denied,
-not approved for different arguments.
+`BoundApprovalResolver` uses the **actual** Agent Hooks approval API. The service must return an `ApprovalGrant` containing the exact `ApprovalIntent`:
+action hash, policy digest **and signed expiry**, requesting principal/tenant,
+agent/session identity, native context identity, fresh nonce, allowed roles and
+grant expiry. The grant also carries authenticated approving identity, approving
+tenant, approving role and a provenance receipt reference.
+
+`ApprovalService.verify(grant, *, intent) -> bool` is a **required trusted host
+contract**, not a boolean from the grant/model. It must authenticate the entire
+service receipt, authenticate the requesting and approving identities/tenant,
+verify the approver's role authority for this exact action, and atomically consume
+the nonce. An approver name, role string, provenance identifier or echoed intent
+alone proves nothing. The local adapter additionally requires exact intent equality,
+same-tenant approval, a nonblank approver/provenance and membership in the selected
+allowed roles. A differently named approver with an unverified receipt is rejected.
+There is no default role, self-asserted `identity_verified` flag or approval fallback.
+
+Host usage: pass `principal=authenticated_subject`, `tenant=authenticated_tenant`,
+`allowed_approval_roles=selected_role_ids`, and an authenticated service client
+implementing **both** `resolve` and `verify`. Do not expose either service method as
+an agent tool. Copy `approval.schema.json` with this package: it specifies the wire
+grant/intent and `definitions.hostIdentity` configuration. Shape validation is
+separate from authentication and exact-scope validation.
+
+Outage, rejection, mismatch, expiry or replay cannot permit an effect. The adapter
+reverifies policy authorization after ACS evaluation, resolver/verification waits
+and synchronous audit, then immediately before the actual selected callable
+(including after application middleware awaits and thread scheduling). Each provider
+pins the first authenticated digest/expiry: renewal requires a new provider.
+UTC high-water time plus a monotonic deadline prevent clock rollback or a slow
+engine/approver from extending authorization. Approval deadlines are capped by the
+policy expiry and timeout; per-run, single-use tickets bind the approved call and
+arguments through final dispatch, including streams and nested agents.
+
+Task8 supplies the real Entra/service authentication, persistent approvals,
+cross-worker nonce consumption and human workflows; local tests use explicitly
+trusted service doubles, not live identity proof. A transform requiring separate
+approval is conservatively denied, not approved for different arguments.
 
 Required audit (including the shared aliases `audit` and `decision-receipt`) writes
 a payload-free authorization receipt **before** an allowed effect or approval.
@@ -97,8 +141,14 @@ that the side effect completed**. This is not a tamper-proof cloud audit store.
 
 `spool.retry(exporter)` works after process restart; exporter failure leaves
 pending receipts on disk. Delivery is at-least-once: deduplicate by `audit_id`.
-Approval or pre-effect durable-audit requirements need a pre-tool binding;
-a post-only requirement cannot retroactively authorize an already executed tool.
+Approval or pre-effect durable-audit requirements at `post_tool_call` need covering
+`pre_tool_call` bindings **with the same required controls**, not just an unrelated
+pre-tool binding. A tool-specific requirement may be covered by its own pre-tool
+binding or a global lifecycle pre-tool binding. A lifecycle post-tool requirement
+needs lifecycle pre-tool coverage because it applies to every local tool. Missing
+coverage is unhealthy and blocks affected tools at native preflight, before any
+effect (including otherwise tool-unbound functions under that lifecycle selection).
+A post-only requirement cannot retroactively authorize an already executed tool.
 Callbacks, signature authority, approval service and spool are trusted host
 dependencies, not model tools.
 
