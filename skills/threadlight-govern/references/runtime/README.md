@@ -26,6 +26,18 @@ Construct `AcsGovernanceProvider` with these **host-owned** dependencies:
 - `approval_resolver`: an implementation of the async `ApprovalService` protocol.
 - `audit=DurableSpool(host_owned_directory)` when durable audit is required.
 
+The [Task8 control-plane reference](../control-plane/README.md) supplies the
+authenticated HTTPS `ApprovalClient` and an asynchronously loaded `PolicyClient`
+snapshot implementing the synchronous signature-verifier seam. Pass this runtime's
+actual `ApprovalIntent`, `ApprovalGrant` and `VerifiedPolicy` classes to those
+clients; the independent service does not import native AGT/ACS. Its approval
+endpoint requires an explicit delegated human decision, then durable one-use
+consumption. Bind `principal` to the workload credential's Entra **object ID**
+and configure the exact agent ID/tenant in the service. End-user impersonation by
+changing the principal is unsupported. See that reference for scopes, roles,
+expiry, ownership and receipt-export mapping; local protocol tests are not live
+Azure authorization proof.
+
 Use `create_governed_agent(provider, client=client, tools=local_tools,
 middleware=application_middleware)`. This creates an actual pinned `Agent` with
 exactly one official hooks bundle outside all application middleware. A host-only
