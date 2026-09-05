@@ -309,6 +309,9 @@ def test_real_redeploy_replan_requires_new_attempt_proof(tmp_path, monkeypatch, 
         dest = root / path
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text("local deployment artifact\n")
+    # Select the environment before authorization, without pre-seeding any outputs.
+    (root / ".azure/demo").mkdir(parents=True)
+    assert not (root / ".azure/demo/.env").exists()
     assert orch.record_governed_actions_gate(root)
     def worker(stage):
         attempted.append(stage)
@@ -366,6 +369,9 @@ def test_real_redeploy_replan_requires_new_attempt_proof(tmp_path, monkeypatch, 
         assert orch.execute(root, lambda stage: pytest.fail("unexpected resume " + stage))["executed"] == []
         # Same image/version, another successful deployment: a distinct proof is mandatory.
         (root / ".azure/demo/.env").unlink()
+        # Resetting recorded azd observations invalidates proof, not declared inputs.
+        assert orch._check_governance_probe(root, {}).decision == "run"
+        assert orch.record_governed_actions_gate(root)
         prior_collection = (root / ".threadlight/governance-live.json").read_bytes()
         assert orch.execute(root, worker)["status"] == "complete"
         assert attempted == ["deploy", "governance_probe", "deploy", "governance_probe"]

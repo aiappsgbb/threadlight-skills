@@ -739,12 +739,15 @@ def _check_design(workspace: Path, state: dict[str, Any]) -> StageDecision:
 
 
 def _parse_env_assignment(value: str) -> str:
-    if value.strip().startswith("#"):
+    candidate = value.strip()
+    if candidate.startswith(("'", '"')):
+        quoted = re.fullmatch(r"""("(?:\\.|[^"\\])*"|'[^']*')\s*(?:#.*)?""", candidate)
+        if quoted is None:
+            raise ValueError("invalid-azd-environment")
+        return quoted.group(1)[1:-1]
+    if candidate.startswith("#"):
         return ""
-    candidate = re.split(r"\s+#", value, maxsplit=1)[0].strip()
-    if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in {"'", '"'}:
-        candidate = candidate[1:-1].strip()
-    return candidate
+    return re.split(r"\s+#", candidate, maxsplit=1)[0].strip()
 
 
 def _deployment_manifest_binding_matches(workspace: Path, manifest_data: dict[str, Any]) -> bool:
@@ -832,9 +835,13 @@ def _check_deploy(workspace: Path, _: dict[str, Any]) -> StageDecision:
                 if line.lstrip().startswith("#"):
                     continue
                 match = re.match(r"^\s*AGENT_FQDN\s*=\s*(.*)$", line)
-                if match and _parse_env_assignment(match.group(1)):
-                    has_fqdn = True
-                    break
+                if match:
+                    try:
+                        has_fqdn = bool(_parse_env_assignment(match.group(1)).strip())
+                    except ValueError:
+                        continue
+                    if has_fqdn:
+                        break
             if has_fqdn:
                 break
         if has_fqdn:
@@ -1305,15 +1312,48 @@ def _check_govern(workspace: Path, _: dict[str, Any]) -> StageDecision:
                              "Binding inventory missing, invalid or changed; legacy capabilities are not evidence.")
 
 
+# Only outputs consumed by deploy/cost_projection or emitted by Task10's
+# compose_infra / agent_environment / agent_image contracts. No prefix exclusions:
+# scopes, secrets, network posture and explicit expected-image/policy pins are inputs.
+AZD_DEPLOYMENT_OUTPUTS = frozenset({
+    "AGENT_FQDN", "AZURE_LAST_DEPLOY_AT", "GOV_CONTROL_PLANE_URL", "GOVERNED_TOOL_GATEWAY_URL",
+    "TL_GOV_FOUNDATION", "TL_GOV_AGENT_IMAGE", "TL_GOV_IMAGE_DIGEST",
+})
+
+
+def _gate_source_path(workspace, relative, *, outside="governance-input-outside-workspace"):
+    """Canonicalize only after checking every lexical parent, without following links."""
+    relative = Path(relative)
+    if relative.is_absolute():
+        try:
+            relative = relative.relative_to(workspace)
+        except ValueError:
+            raise ValueError(outside) from None
+    parts = []
+    if workspace.is_symlink():
+        raise ValueError("governance-source-symlink")
+    for part in relative.parts:
+        if part == "..":
+            if not parts:
+                raise ValueError(outside)
+            if not workspace.joinpath(*parts).is_dir():
+                raise ValueError("governance-source-parent-missing")
+            parts.pop()
+        else:
+            parts.append(part)
+            if workspace.joinpath(*parts).is_symlink():
+                raise ValueError("governance-source-symlink")
+    return workspace.joinpath(*parts)
+
+
 def _gate_source_files(workspace, directory):
     """Prune reserved caches before traversal, including host-definition discovery."""
-    base = workspace / directory
-    if base.is_symlink():
-        raise ValueError("governance-source-symlink")
+    base = _gate_source_path(workspace, directory)
     for current, children, names in os.walk(base):
         children[:] = sorted(name for name in children
                              if name not in {".git", ".pytest_cache", "__pycache__", "build", "dist"}
-                             and not name.endswith(".egg-info"))
+                             and not name.endswith(".egg-info")
+                             and not (Path(current) == workspace and name == ".azure"))
         if any((Path(current) / name).is_symlink() for name in children):
             raise ValueError("governance-source-symlink")
         for name in sorted(names):
@@ -1326,6 +1366,41 @@ def _gate_source_files(workspace, directory):
                 yield path
 
 
+def _azd_fingerprint_projection(workspace, *, outputs=False):
+    """Separate generated azd observations from canonical, unexpanded input values."""
+    from skills._shared.governance_selection import read_json
+    base = _gate_source_path(workspace, ".azure")
+    environments, configuration = {}, {}
+    if base.exists():
+        if not base.is_dir():
+            raise ValueError("invalid-azd-environment")
+        for entry in sorted(base.iterdir()):
+            entry = _gate_source_path(workspace, entry)
+            if entry.is_dir():
+                environments[entry.name] = {}
+    for path in _gate_source_files(workspace, ".azure"):
+        relative = path.relative_to(base)
+        if len(relative.parts) == 2 and relative.name == ".env":
+            values = {}
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not line.strip() or line.lstrip().startswith("#"):
+                    continue
+                match = re.fullmatch(r"\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)", line)
+                if match is None or match[1] in values:
+                    raise ValueError("invalid-azd-environment")
+                values[match[1]] = _parse_env_assignment(match[2])
+            selected = {
+                key: value for key, value in values.items()
+                if (key in AZD_DEPLOYMENT_OUTPUTS) == outputs
+            }
+            # The selected environment is an input even before its .env exists.
+            # Creating an output-only .env does not change that input projection.
+            environments[relative.parts[0]] = selected
+        elif not outputs:
+            configuration[relative.as_posix()] = read_json(path) if path.suffix == ".json" else _sha256(path)
+    return {"environments": environments, "configuration": configuration}
+
+
 def _gate_fingerprint(workspace):
     """Freeze declared inputs and effect-bearing source, not deployment outputs."""
     from skills._shared.governance_selection import load_contract, read_json
@@ -1334,11 +1409,12 @@ def _gate_fingerprint(workspace):
     document = load_contract(workspace, required=False)
     payload = {"contract": validate_governance_contract(document, deployment_target="demo-sandbox")
                if document is not None else None}
+    payload["azd_inputs"] = _azd_fingerprint_projection(workspace)
     paths = ["specs/SPEC.md", ".threadlight/governance-package.json", GOVERNED_ACTIONS_MANIFEST,
              "tool-registry.json", "pyproject.toml", "requirements.txt", "Dockerfile",
              ".threadlight/governance-probe.json", ".threadlight/fixture.json"]
-    payload.update({path: _sha256(workspace / path) for path in paths})
-    parent = workspace / "specs/manifest.json"
+    payload.update({path: _sha256(_gate_source_path(workspace, path)) for path in paths})
+    parent = _gate_source_path(workspace, "specs/manifest.json")
     if parent.exists():
         value = read_json(parent)
         deployment = value.get("deployment_manifest", {})
@@ -1356,7 +1432,7 @@ def _gate_fingerprint(workspace):
         if path.match("agent*.yaml"):
             definitions.add(path.relative_to(workspace).as_posix())
     for name in sorted(definitions):
-        path = workspace / name
+        path = _gate_source_path(workspace, name)
         if path.exists():
             try:
                 value = yaml.safe_load(path.read_text())
@@ -1370,9 +1446,9 @@ def _gate_fingerprint(workspace):
                     if isinstance(service, dict):
                         project = service.get("project")
                         if name == "azure.yaml" and isinstance(project, str):
-                            if not (workspace / project).resolve().is_relative_to(workspace.resolve()):
-                                raise ValueError("host-project-outside-workspace")
-                            directories.add(project)
+                            project_path = _gate_source_path(
+                                workspace, project, outside="host-project-outside-workspace")
+                            directories.add(project_path.relative_to(workspace).as_posix())
                         service.pop("image", None)
                         for field in ("env", "environmentVariables", "environment_variables"):
                             env = service.get(field)
@@ -1385,19 +1461,18 @@ def _gate_fingerprint(workspace):
                             if service.get(field) in ({}, []):
                                 service.pop(field)
             payload[name] = value
-    files = {}
+    files = set()
     options = workspace / ".threadlight/governance-probe.json"
     if options.exists():
         value = read_json(options)
         for field in ("bundle_path", "signed_envelope_path", "fixture_configuration_file"):
             if field in value:
-                path = workspace / value[field]
-                if not path.resolve().is_relative_to(workspace.resolve()) or path.is_symlink():
-                    raise ValueError("governance-input-outside-workspace")
+                path = _gate_source_path(workspace, value[field])
+                relative = path.relative_to(workspace).as_posix()
                 if path.is_dir():
-                    directories.add(value[field])
+                    directories.add(relative)
                 else:
-                    files[value[field]] = _sha256(path)
+                    files.add(relative)
     # Exact workspace outputs only: their validators/attempt bindings still apply.
     # In particular, specs/manifest.json is already projected above; hashing its
     # raw bytes again would turn deployment outputs back into gate inputs.
@@ -1410,14 +1485,17 @@ def _gate_fingerprint(workspace):
     for directory in sorted(directories):
         for path in _gate_source_files(workspace, directory):
             relative = path.relative_to(workspace).as_posix()
-            if relative not in excluded:
-                files[relative] = _sha256(path)
-    payload["source_files"] = files
+            files.add(relative)
+    payload["source_files"] = {
+        relative: _sha256(workspace / relative) for relative in sorted(files)
+        if relative not in excluded and not Path(relative).is_relative_to(".azure")
+    }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
 def _deployment_fingerprint(workspace):
-    payload = {"inputs": _gate_fingerprint(workspace)}
+    payload = {"inputs": _gate_fingerprint(workspace),
+               "azd_outputs": _azd_fingerprint_projection(workspace, outputs=True)}
     for name in ("specs/manifest.json", ".threadlight/governance-deployment.json", "azure.yaml", "agent.yaml"):
         payload[name] = _sha256(workspace / name)
     for path in _gate_source_files(workspace, "src"):
@@ -1539,6 +1617,7 @@ def record_governance_probe(workspace):
 def _check_governed_actions_gate(workspace: Path, _: dict[str, Any], *, recording=False) -> StageDecision:
     """Reuse Task5's entire strict ledger validator, not Auto's advisory summary."""
     try:
+        fingerprint = _gate_fingerprint(workspace)
         import production_ready as readiness
         manifest = readiness.load_governed_actions_manifest(workspace)
         if manifest is None or manifest.get("phase") != "pre-deploy":
@@ -1557,7 +1636,7 @@ def _check_governed_actions_gate(workspace: Path, _: dict[str, Any], *, recordin
             raise ValueError("selected-consequential-actions-missing-from-gate")
         if not recording:
             checkpoint = read_json(workspace / GOVERNANCE_GATE_STATE)
-            if checkpoint != {"schema": "threadlight-governance-gate/v1", "fingerprint": _gate_fingerprint(workspace)}:
+            if checkpoint != {"schema": "threadlight-governance-gate/v1", "fingerprint": fingerprint}:
                 raise ValueError("pre-deploy-inputs-changed")
             execution = workspace / GOVERNANCE_EXECUTION_STATE
             if execution.exists():
@@ -1567,9 +1646,15 @@ def _check_governed_actions_gate(workspace: Path, _: dict[str, Any], *, recordin
                         and attempt["fingerprint"] != _deployment_fingerprint(workspace)):
                     raise ValueError("completed-deployment-changed")
         return StageDecision("governed_actions_gate", "skip", "Strict current governance-ledger/v2 gate passed.")
-    except (OSError, ValueError, TypeError, KeyError, ImportError):
+    except (OSError, ValueError, TypeError, KeyError, ImportError) as error:
+        gap = str(error) if str(error) in {
+            "host-project-outside-workspace", "governance-input-outside-workspace",
+            "governance-source-symlink", "governance-source-parent-missing",
+            "invalid-azd-environment",
+        } else None
         return StageDecision("governed_actions_gate", "run",
-                             "Mandatory pre-deploy governed-actions gate unverified; deployment blocked until validated.")
+                             "Mandatory pre-deploy governed-actions gate unverified; deployment blocked until validated."
+                             + (f" Gap: {gap}." if gap else ""))
 
 
 def record_governed_actions_gate(workspace):

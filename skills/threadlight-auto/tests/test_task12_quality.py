@@ -267,9 +267,10 @@ def test_malformed_host_inputs_fail_closed_without_planner_crash(tmp_path, monke
     assert next(d for d in report["decisions"] if d["stage"] == "governed_actions_gate")["decision"] == "run"
 
 
-@pytest.mark.parametrize("project", [".", "./src/agent"])
+@pytest.mark.parametrize("project", [".", "./", "src/agent/../..", "./src/agent"])
 def test_actual_gate_checkpoint_and_attempt_writes_preserve_receipt(tmp_path, monkeypatch, project):
     root, clock, _ = governed(tmp_path, monkeypatch)
+    (root / "src/agent").mkdir(parents=True, exist_ok=True)
     (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
     (root / orch.GOVERNANCE_GATE_STATE).unlink()
     initial = orch._gate_fingerprint(root)
@@ -438,3 +439,253 @@ def test_source_scan_prunes_git_and_build_caches_not_hidden_inputs(tmp_path, mon
         path.symlink_to(root / "not-a-source")
     assert orch._gate_fingerprint(root) == initial
     assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+
+
+AZD_OUTPUTS = {
+    "AGENT_FQDN": "local.example",
+    "AZURE_LAST_DEPLOY_AT": "2026-09-05T20:00:00Z",
+    "GOV_CONTROL_PLANE_URL": "https://control.example",
+    "GOVERNED_TOOL_GATEWAY_URL": "https://gateway.example",
+    "TL_GOV_FOUNDATION": '{"key_id": "https://vault.example/keys/policy/version"}',
+    "TL_GOV_AGENT_IMAGE": "registry.example/agent@sha256:" + "a" * 64,
+    "TL_GOV_IMAGE_DIGEST": "sha256:" + "a" * 64,
+}
+
+
+@pytest.mark.parametrize("project", [".", "./", "src/agent/../..", "./src/agent"])
+@pytest.mark.parametrize("outputs", [{"AGENT_FQDN": "local.example"}, AZD_OUTPUTS],
+                         ids=["fqdn-only", "foundation-and-build"])
+def test_first_deploy_creates_only_azd_outputs_before_fresh_probe(tmp_path, monkeypatch, project, outputs):
+    root, clock, fresh = governed(tmp_path, monkeypatch)
+    (root / "src/agent").mkdir(parents=True, exist_ok=True)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    (root / orch.GOVERNANCE_GATE_STATE).unlink()
+    env = root / ".azure/demo/.env"
+    assert not env.exists()
+    calls = []
+    authorized = None
+
+    def worker(stage):
+        nonlocal authorized
+        calls.append(stage)
+        clock[0] += timedelta(seconds=5)
+        if stage == "governed_actions_gate":
+            assert not env.exists()
+            authorized = orch._gate_fingerprint(root)
+        elif stage == "deploy":
+            assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+            assert not env.exists()
+            env.write_text("".join(f"{key}='{value}'\n" for key, value in outputs.items()))
+        elif stage == "governance_probe":
+            attempt = json.loads((root / orch.GOVERNANCE_EXECUTION_STATE).read_text())["deploy"]
+            assert attempt["status"] == "succeeded"
+            fresh()
+        else:
+            pytest.fail("unexpected worker " + stage)
+        return 0
+
+    result = orch.execute(root, worker)
+    assert result["status"] == "complete", result
+    assert calls == ["governed_actions_gate", "deploy", "governance_probe"]
+    assert orch._gate_fingerprint(root) == authorized
+    assert orch._check_governance_probe(root, {}).decision == "skip"
+    assert readiness.assess(root)["live"]
+    assert orch.execute(root, lambda s: pytest.fail("unexpected resume " + s))["executed"] == []
+
+
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+@pytest.mark.parametrize("output", AZD_OUTPUTS)
+def test_azd_observed_outputs_bind_successful_deployment(tmp_path, monkeypatch, project, output):
+    root, clock, _ = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    assert orch.record_governed_actions_gate(root)
+    assert orch.record_deploy_started(root)
+    clock[0] += timedelta(seconds=5)
+    assert orch.record_deploy_completed(root)
+    (root / ".azure/demo/.env").write_text(f"{output}='{AZD_OUTPUTS[output]}'\n")
+    assert orch._deploy_retry_required(root)
+    assert orch._check_governed_actions_gate(root, {}).decision == "run"
+
+
+def test_azd_output_names_match_shipped_foundation_and_build_contracts():
+    import re
+    generator = (REPO / "skills/threadlight-deploy/references/governance/generate.py").read_text()
+    foundation = set(re.findall(r"^output (\w+) ", generator, re.M))
+    assert orch.AZD_DEPLOYMENT_OUTPUTS == foundation | {
+        "AGENT_FQDN", "AZURE_LAST_DEPLOY_AT", "TL_GOV_AGENT_IMAGE", "TL_GOV_IMAGE_DIGEST",
+    }
+    assert all("${" + key + "}" in generator for key in ("TL_GOV_AGENT_IMAGE", "TL_GOV_IMAGE_DIGEST"))
+
+
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+@pytest.mark.parametrize("key", [
+    "AZURE_ENV_NAME", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID", "AZURE_RESOURCE_GROUP",
+    "AZURE_LOCATION", "AZURE_FOUNDRY_NETWORK_MODE", "GOV_SECRET", "GOV_GATEWAY_SCOPE",
+    "TL_GOV_SPOOL_DIR", "EXPECTED_IMAGE_DIGEST", "POLICY_DIGEST",
+])
+def test_azd_input_mutation_during_actual_deploy_blocks_probe(tmp_path, monkeypatch, project, key):
+    root, clock, fresh = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    env = root / ".azure/demo/.env"
+    env.write_text(f"{key}='approved # private-value'\n")
+    assert orch.record_governed_actions_gate(root)
+    calls = []
+
+    def worker(stage):
+        calls.append(stage)
+        clock[0] += timedelta(seconds=5)
+        if stage == "deploy":
+            env.write_text(f"{key}='approved # changed-private-value'\nAGENT_FQDN=local.example\n")
+        elif stage == "governance_probe":
+            fresh()
+        return 0
+
+    result = orch.execute(root, worker)
+    assert result["status"] == "blocked", result
+    assert result["stage"] == "deploy"
+    assert calls == ["deploy"]
+    assert orch._check_governed_actions_gate(root, {}).decision == "run"
+    assert "private-value" not in (root / orch.GOVERNANCE_GATE_STATE).read_text()
+
+
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+def test_azd_projection_canonicalizes_dotenv_without_executing_it(tmp_path, monkeypatch, project):
+    root, _, _ = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    env = root / ".azure/demo/.env"
+    marker = root / "must-not-run"
+    literal = f"$(touch {marker})"
+    env.write_text(f"AZURE_LOCATION=eastus\nGOV_SECRET='{literal}'\n")
+    assert orch.record_governed_actions_gate(root)
+    initial = orch._gate_fingerprint(root)
+    env.write_text(f'# comment\nexport GOV_SECRET="{literal}"\nAZURE_LOCATION = "eastus" # same\n'
+                   'AGENT_FQDN="local.example"\n')
+    assert orch._gate_fingerprint(root) == initial
+    assert orch._check_governed_actions_gate(root, {}).decision == "skip"
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+@pytest.mark.parametrize("dotenv", [None, "AGENT_FQDN=local.example\n"])
+def test_azd_environment_name_is_an_input_even_without_dotenv_inputs(tmp_path, monkeypatch, project, dotenv):
+    root, _, _ = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    if dotenv is not None:
+        (root / ".azure/demo/.env").write_text(dotenv)
+    assert orch.record_governed_actions_gate(root)
+    (root / ".azure/demo").rename(root / ".azure/other")
+    assert orch._check_governed_actions_gate(root, {}).decision == "run"
+
+
+@pytest.mark.parametrize("project", [".", "./src/agent"])
+@pytest.mark.parametrize("change", ["env-directory", "default-env", "static-config", "runtime-pin", "policy-pin"])
+def test_azd_and_declared_runtime_inputs_require_new_gate(tmp_path, monkeypatch, project, change):
+    root, _, _ = governed(tmp_path, monkeypatch)
+    (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {project}\n")
+    write(root, ".azure/config.json", {"defaultEnvironment": "demo"})
+    write(root, ".azure/demo/config.json", {"services": {"agent": {"configuration": "approved"}}})
+    write(root, ".threadlight/governance-probe.json", {
+        "fixture_configuration_file": ".threadlight/fixture.json",
+        "services": {"fixture": {"image": "registry.example/fixture@sha256:" + "a" * 64}},
+    })
+    write(root, ".threadlight/fixture.json", {
+        "expected_deployment": {"image_digest": "sha256:" + "a" * 64},
+        "policy_digest": "sha256:" + "b" * 64,
+    })
+    assert orch.record_governed_actions_gate(root)
+    if change == "env-directory":
+        (root / ".azure/demo").rename(root / ".azure/other")
+    elif change == "default-env":
+        write(root, ".azure/config.json", {"defaultEnvironment": "other"})
+    elif change == "static-config":
+        write(root, ".azure/demo/config.json", {"services": {"agent": {"configuration": "changed"}}})
+    else:
+        path = root / ".threadlight/fixture.json"
+        value = json.loads(path.read_text())
+        if change == "runtime-pin":
+            value["expected_deployment"]["image_digest"] = "sha256:" + "c" * 64
+        else:
+            value["policy_digest"] = "sha256:" + "c" * 64
+        write(root, ".threadlight/fixture.json", value)
+    assert orch._check_governed_actions_gate(root, {}).decision == "run"
+
+
+def test_aliases_deduplicate_canonical_source_file_identities(tmp_path, monkeypatch):
+    (tmp_path / "src/agent").mkdir(parents=True)
+    (tmp_path / "azure.yaml").write_text(
+        "services:\n  one:\n    project: .\n  two:\n    project: ./\n"
+        "  three:\n    project: src/agent/../..\n")
+    (tmp_path / "application.py").write_text("# application\n")
+    seen = []
+    original = orch._sha256
+
+    def track(path):
+        if path.name == "application.py":
+            seen.append(path.relative_to(tmp_path).as_posix())
+        return original(path)
+
+    monkeypatch.setattr(orch, "_sha256", track)
+    orch._gate_fingerprint(tmp_path)
+    assert seen == ["application.py"]
+
+
+@pytest.mark.parametrize("source", ["service", "bundle_path", "signed_envelope_path", "fixture_configuration_file"])
+@pytest.mark.parametrize("escape", ["outside", "symlink-parent", "symlink-before-dotdot"])
+def test_gate_rejects_unsafe_input_paths_without_resolving_or_reading_outside(
+        tmp_path, monkeypatch, source, escape):
+    root, _, _ = governed(tmp_path, monkeypatch)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "child").mkdir()
+    (outside / "child/policy.json").write_text('{"private": true}')
+    (root / "alias").symlink_to(outside, target_is_directory=True)
+    relative = {
+        "outside": "../outside/child",
+        "symlink-parent": "alias/child",
+        "symlink-before-dotdot": "alias/../src",
+    }[escape]
+    if source == "service":
+        (root / "azure.yaml").write_text(f"services:\n  agent:\n    project: {relative}\n")
+    else:
+        write(root, ".threadlight/governance-probe.json", {source: relative})
+    original_open, original_resolve = Path.open, Path.resolve
+
+    def guarded_open(path, *args, **kwargs):
+        assert not path.is_relative_to(outside) and "alias" not in path.parts and ".." not in path.parts
+        return original_open(path, *args, **kwargs)
+
+    def guarded_resolve(path, *args, **kwargs):
+        assert "alias" not in path.parts and ".." not in path.parts
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", guarded_open)
+    monkeypatch.setattr(Path, "resolve", guarded_resolve)
+    decision = orch._check_governed_actions_gate(root, {})
+    assert decision.decision == "run"
+    assert ("outside-workspace" if escape == "outside" else "governance-source-symlink") in decision.reason
+    assert not orch.record_governed_actions_gate(root)
+    calls = []
+    result = orch.execute(root, lambda stage: calls.append(stage) or 0)
+    assert result["status"] == "blocked"
+    assert "deploy" not in calls
+
+
+@pytest.mark.parametrize("name", [".azure", ".azure/demo", ".azure/demo/.env"])
+def test_azd_projection_rejects_symlinks_without_reading_them(tmp_path, monkeypatch, name):
+    root, _, _ = governed(tmp_path, monkeypatch)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    path = root / name
+    if path.is_dir():
+        import shutil
+        shutil.rmtree(path)
+    path.symlink_to(outside, target_is_directory=True)
+    original = Path.open
+
+    def guarded(path, *args, **kwargs):
+        assert not path.is_relative_to(root / name)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", guarded)
+    assert orch._check_governed_actions_gate(root, {}).decision == "run"
+    assert not orch.record_governed_actions_gate(root)
