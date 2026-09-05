@@ -21,7 +21,9 @@ templates.
    This composes `infra/main.bicep`, preserving existing resource-group Bicep,
    and writes `infra/main.parameters.json` with `governancePhase=foundation`.
    Subscription-scoped entrypoints require explicit resource-group composition;
-   the generator refuses to guess the scope. Run tenant isolation and approved
+   the generator refuses to guess the scope. Infrastructure requires an explicit
+   `environment`: `development`, `staging`, `preproduction`, or `production`.
+   Run tenant isolation and approved
    provisioning separately. The foundation creates **zero container apps**.
    Capture its `TL_GOV_FOUNDATION` output (real object/client IDs, versioned key,
    Blob/Cosmos endpoints) and the two service URLs.
@@ -55,6 +57,7 @@ templates.
    | `control_plane_scope`, `gateway_scope` | Distinct `api://<application-id>/.default` scopes |
    | `control_plane_url`, `gateway_url` | Actual foundation service URLs, known before building the agent |
    | `approver_roles` | Explicit human approval role values |
+   | `environment` | Explicit deployment environment, identical to infrastructure; no default or development backfill |
    | `network` | Same topology used by foundation |
    | GHCP: `mcp_servers`, `mcp_bindings`, `gateway_url` | Original server dictionary; mapping `tool-id → {"server": original-name, "tool": tool-id}`; foundation URL |
 
@@ -73,6 +76,17 @@ templates.
    synchronized environment declarations; the authoritative current manifest is
    `azure.yaml`. Re-running into managed directories is intentionally refused:
    review a fresh generation rather than overwrite application changes.
+
+   All five commands prepare their complete changes in a same-filesystem shadow
+   before publishing. Unsupported composition, invalid inputs, and preparation
+   failures leave the project unchanged, so correcting the input permits a clean
+   retry. Publication replaces individual files atomically and rolls back its own
+   writes on failure; it never swaps or deletes the project root. Symlinked managed
+   paths are rejected. Unrelated files and concurrent unrelated additions survive.
+   This is **cooperative per-file atomicity**, not crash-atomic multi-file storage:
+   do not concurrently edit managed paths. A conflicting rollback preserves its
+   private recovery directory and reports `generation_rollback_conflict_recovery`
+   rather than overwriting the other writer's file.
 
 4. **Build and publish the generated contexts**, supplying `PYTHON_IMAGE` as a
    digest-pinned Python 3.12/Linux amd64 base. The Dockerfiles checksum OPA against
@@ -106,6 +120,19 @@ templates.
    The stage JSON contains `gateway_bundle`, `policy_digest`, `signed_envelope`,
    and digest-pinned `agent_image`. Rebuild the gateway from this final context.
    The returned `gateway_source_digest` must accompany the gateway image.
+   Registry action names alone are insufficient: every action must match the
+   selected pre/post intervention points and declared native policy IDs/targets.
+   Approval aliases (`approval`, `human-approval-record`) require nonempty
+   registered roles, which Task9 enforces **even for a Rego allow**. Each action's
+   roles remain its own subset of the configured roles, never a global union.
+   Output requirements require a post-policy binding. Audit, receipt, idempotency,
+   signed-bundle and authorization aliases retain Task9's mandatory controls.
+   `operator-review`, non-tool lifecycle semantics, and evaluate-only GHCP
+   environments are unsupported, not silently certified. GHCP currently binds
+   only `preproduction`/`production`; MAF retains the four-environment matrix.
+   MAF does not provide the gateway's durable transaction/idempotency guarantee
+   and rejects those requirements. Requirement spelling is normalized in the
+   portable contract without dropping requirements or changing caller input.
    **Do not bake the final agent image digest into that same image.** GHCP's
    registry/policy digest is deployment-supplied; MAF's local bundle must not
    contain `gateway-registry.json`. Runtime image/version values are trusted
@@ -164,6 +191,27 @@ templates.
    signed-bundle lookup, so it does not bake a future registry digest into its
    agent image/definition. The deployment manifest still records the exact
    version, instance, image and policy digest.
+
+   Binding rereads the **actual frozen agent configuration**, not just package
+   metadata. Environment, policy ID/version and approval roles must agree with
+   deployment inputs. MAF additionally verifies the embedded bundle digest,
+   metadata and frozen signed envelope (tenant, key, identity and expiry).
+   GHCP revalidates the final signed registry at staging and binding. Neither a
+   workload allowlist for another policy with the same hash nor a production
+   label on a development image is accepted. Offline checks cannot authenticate
+   a signature without the authority: runtime Key Vault verification remains
+   mandatory and fails closed.
+
+## GHCP invocation cleanup
+
+Every acquired resource has independent bounded cleanup, including partial
+startup: unsubscribe, native session disconnect, SDK stop/force-stop, owned
+subprocess reaping, relay join/cancellation, socket, HTTP client and credential.
+Cleanup runs shielded but is always joined; caller cancellation is propagated
+after resources close. Failures produce stable `governance_cleanup_*` diagnostics
+without exception text or SDK cleanup tracebacks. The published SDK is unchanged.
+Async deadlines depend on cooperative cancellation; uninterruptible third-party
+code or an OS-level failure cannot be made crash-safe by this adapter.
 
 ## Hosted MAF audit delivery
 

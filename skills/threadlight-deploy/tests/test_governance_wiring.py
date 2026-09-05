@@ -310,6 +310,7 @@ def deployment_fixture(configuration):
         "control_plane_app_id": configuration["control_plane_scope"][6:-9],
         "gateway_app_id": configuration["gateway_scope"][6:-9],
         "network": configuration["network"], "agent_id": "test-agent",
+        "environment": configuration["environment"],
         "runtime": "microsoft-agent-framework", "enable_gateway": False,
         "human_clients": [uid(6)], "approver_subjects": [uid(7)], "auditor_subjects": [],
         "approver_roles": ["Approver"],
@@ -359,6 +360,7 @@ def deployment_fixture(configuration):
 def binding_project(tmp_path):
     configuration = {
         "agent_service": "agent", "agent_id": "test-agent", "policy_id": "safe", "policy_version": "1",
+        "environment": "production",
         "policy_digest": "sha256:" + "a" * 64,
         "tenant_id": "11111111-1111-1111-1111-111111111111",
         "key_id": "https://testvault.vault.azure.net/keys/policy/" + "a" * 32,
@@ -372,14 +374,37 @@ def binding_project(tmp_path):
             "environment_id": "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/fixture/providers/Microsoft.App/managedEnvironments/test",
         },
     }
+    import asyncio
+    import base64
+    import shutil
+    from datetime import datetime, timedelta, timezone
+    sys.path.insert(0, str(ROOT / "skills/threadlight-govern/tests"))
+    from test_runtime_provider import build_policy
+    from test_control_plane import TestSigner
+    from govern_control_plane.models import BundleEnvelope, SignedBundle, canonical, envelope_digest
+    built = build_policy(tmp_path / "source-policy")
+    configuration["policy_digest"] = built.bundle_digest
+    envelope = BundleEnvelope(policy_id="safe", version="1", content_digest=built.bundle_digest,
+        tenant_id=configuration["tenant_id"], key_id=configuration["key_id"],
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1))
+    signed = SignedBundle(envelope=envelope, signature=base64.b64encode(
+        asyncio.run(TestSigner().sign(envelope_digest(envelope)))).decode())
     deployment = deployment_fixture(configuration)
     document = contract("microsoft-agent-framework")
     (tmp_path / ".threadlight").mkdir()
     (tmp_path / "infra").mkdir()
     (tmp_path / ".threadlight/governance-package.json").write_text(json.dumps({
-        "configuration": configuration, "framework": document["framework"], "contract": document}))
+        "configuration": configuration, "framework": document["framework"], "contract": document,
+        "signed_policy": signed.model_dump(mode="json")}))
+    agent = tmp_path / "src/agent"
+    agent.mkdir(parents=True)
+    (agent / "governance-config.json").write_text(json.dumps(module("generate").portable_configuration(
+        configuration, document, document["framework"])))
+    shutil.copytree(built.root, agent / "policy")
+    (agent / "policy-envelope.json").write_bytes(canonical(signed))
     (tmp_path / "azure.yaml").write_text(
         "services:\n  agent:\n    image: " + deployment["images"]["agent"] + "\n"
+        "    project: ./src/agent\n"
         "    env:\n      GOV_CONTROL_PLANE_URL: " + configuration["control_plane_url"] + "\n"
         "      GOVERNED_TOOL_GATEWAY_URL: " + configuration["gateway_url"] + "\n"
         "      TL_GOV_IMAGE_DIGEST: " + deployment["images"]["agent"].split("@")[1] + "\n")
@@ -741,6 +766,7 @@ def test_generated_maf_native_constructor_host_and_failed_signature(tmp_path):
     (project / "src/agent/agent.yaml").write_text(legacy)
     configuration = {
         "agent_service": "agent", "agent_id": "test-agent",
+        "environment": "production",
         "policy_id": "safe", "policy_version": "1", "bundle_path": str(built.root),
         "policy_digest": built.bundle_digest,
         "signed_envelope": str(tmp_path / "signed.json"),

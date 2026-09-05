@@ -241,6 +241,6 @@ jobs:
         # is exactly how a mandatory Step 6 gate shipped broken). Static: reads
         # markdown, runs no azd, no network.
         # Native generation/Bicep tests run, without skips, in deploy-generation above.
-        run: python -m pytest skills/threadlight-deploy/tests/ -v --ignore=skills/threadlight-deploy/tests/test_governance_wiring.py
+        run: python -m pytest skills/threadlight-deploy/tests/ -v --ignore=skills/threadlight-deploy/tests/test_governance_wiring.py --ignore=skills/threadlight-deploy/tests/test_governance_quality.py
       - name: Test threadlight-governed-actions
         run: python -m pytest skills/threadlight-governed-actions/tests -q

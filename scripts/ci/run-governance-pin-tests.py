@@ -224,7 +224,7 @@ def deployment_runtime(pins):
         item for item in deps if not item.startswith("threadlight-govern-")
     ] + ["github-copilot-sdk==1.0.1"]))
     wheelhouse = SCRATCH / "deployment-wheels"
-    python = SCRATCH / "task10-linux-venv/bin/python"
+    python = VENV / "bin/python"
     if not python.exists():
         venv.EnvBuilder(with_pip=True).create(python.parent.parent)
     probe = ("import importlib.metadata as m; "
@@ -268,6 +268,7 @@ for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
         }
         env.pop("PYTEST_ADDOPTS", None)
         run([python, "-m", "pytest", "skills/threadlight-deploy/tests/test_governance_wiring.py",
+             "skills/threadlight-deploy/tests/test_governance_quality.py",
              "skills/threadlight-deploy/tests/test_azd_cli_contract.py",
              "-q", f"--junitxml={report}", "--basetemp", SCRATCH / "deployment-fixtures",
              "-o", "markers=governance_runtime: exact native runtime",
@@ -282,6 +283,9 @@ for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
             "test_ghcp_pre_mcp_bridge_refreshes_gateway_not_model_token",
             "test_generation_off_is_byte_for_byte_noop",
             "test_bicep_compiles_and_has_separate_scoped_service_identities",
+            "test_quality_bind_development_package_cannot_claim_production",
+            "test_quality_bound_control_plane_accepts_frozen_approval_scope",
+            "test_quality_generation_mid_publish_failure_rolls_back_only_our_writes",
         }
         if not required_cases <= {case.attrib["name"] for case in cases}:
             raise RuntimeError("required native generation probes did not run")
@@ -340,7 +344,7 @@ def prepare_deployment(pins):
     proof_dir.mkdir(exist_ok=True)
     run(["docker", "run", "--rm", "--network", "none", "--platform", "linux/amd64",
          "-v", f"{fixture / 'src/agent'}:/app:ro",
-         "-v", f"{SCRATCH / 'task10-linux-venv'}:/validation:ro",
+         "-v", f"{VENV}:/validation:ro",
          "-v", f"{proof_dir}:/proof", "-w", "/app",
          "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "OTEL_SDK_DISABLED=true",
          IMAGE, "/validation/bin/python", "-B", "-c",

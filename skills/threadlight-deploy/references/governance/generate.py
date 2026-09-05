@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from copy import deepcopy
+from functools import wraps
 import importlib
 import importlib.util
 import ipaddress
@@ -11,6 +12,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import stat
 import sys
 import uuid
 import tomllib
@@ -20,6 +22,148 @@ REFERENCE = Path(__file__).resolve().parent
 GOVERN = CATALOG / "skills/threadlight-govern"
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 RESOURCE = rf"/subscriptions/{UUID}/resourceGroups/[^/]+/providers/"
+
+
+def project_transaction(operation):
+    """Prepare in a same-filesystem shadow; publish only changed, owned paths.
+
+    This is cooperative per-file atomicity, not a crash-atomic project swap.
+    A rollback never removes the project or an unrelated writer's files.
+    """
+    @wraps(operation)
+    def transactional(project, document, *, configuration=None):
+        if validate_contract(document)["governance"]["mode"] == "off":
+            return {"status": "off"}
+        if operation.__name__ == "generate" and configuration is None:
+            raise ValueError("configuration_required")
+        if operation.__name__ == "bind":
+            validate_images((configuration or {}).get("images", {}))
+        bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
+        checked = bundle_api.checked_path
+        project = checked(Path(project))
+        import yaml
+        seeds = {Path("infra")}
+        if operation.__name__ != "foundation":
+            seeds.update(Path(name) for name in (
+                "azure.yaml", "agent.yaml", ".threadlight/governance-package.json",
+                ".threadlight/governance-deployment.json", "src/govern-control-plane", "src/govern-gateway"))
+            azure = yaml.safe_load(checked(project / "azure.yaml").read_text())
+            config = configuration or {}
+            if operation.__name__ != "generate":
+                package = json.loads(checked(project / ".threadlight/governance-package.json").read_text())
+                config = package["configuration"]
+            relative = Path(azure["services"][config["agent_service"]]["project"])
+            if relative.is_absolute() or ".." in relative.parts or relative == Path("."):
+                raise ValueError("agent_source_must_be_inside_project")
+            seeds.add(relative)
+        seeds = sorted(p for p in seeds if not any(other in p.parents for other in seeds))
+
+        def inventory(root):
+            result = {}
+            for seed in seeds:
+                path = checked(root / seed)
+                paths = [path, *path.rglob("*")] if path.is_dir() else [path]
+                for item in paths:
+                    checked(item)
+                    if not item.exists():
+                        continue
+                    info = item.stat()
+                    if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+                        raise ValueError("regular_project_paths_required")
+                    result[item.relative_to(root)] = (
+                        stat.S_IMODE(info.st_mode), None if item.is_dir() else item.read_bytes())
+            return result
+
+        before = inventory(project)
+        staging = project / f".governance-transaction-{uuid.uuid4().hex}"
+        staging.mkdir(mode=0o700)
+        shadow, backups = staging / "project", staging / "backups"
+        shadow.mkdir()
+        backups.mkdir()
+        preserve_recovery = False
+        try:
+            for seed in seeds:
+                source, destination = project / seed, shadow / seed
+                if source.is_dir():
+                    shutil.copytree(source, destination)
+                elif source.is_file():
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, destination)
+            result = operation(shadow, document, configuration=configuration)
+            after = inventory(shadow)
+            if inventory(project) != before:
+                raise ValueError("project_changed_during_generation")
+            changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
+            created_dirs, removed_dirs, written = [], [], []
+
+            def mkdir(path):
+                if not path.exists():
+                    mkdir(path.parent)
+                    checked(path).mkdir()
+                    created_dirs.append(path)
+
+            try:
+                for relative in changed:
+                    destination = checked(project / relative)
+                    old, new = before.get(relative), after.get(relative)
+                    if old is not None and old[1] is not None:
+                        backup = backups / relative
+                        backup.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(destination, backup)
+                    if new is not None and new[1] is None:
+                        if old is not None and old[1] is not None:
+                            raise ValueError("generated_path_type_changed")
+                        mkdir(destination)
+                    elif new is not None:
+                        if old is not None and old[1] is None:
+                            raise ValueError("generated_path_type_changed")
+                        mkdir(destination.parent)
+                        (shadow / relative).replace(destination)
+                        written.append(relative)
+                    elif old[1] is not None:
+                        destination.unlink()
+                        written.append(relative)
+                # Stage replacement may remove old bundle subdirectories; never rmtree user paths.
+                for relative in sorted(set(before) - set(after), key=lambda p: len(p.parts), reverse=True):
+                    if before[relative][1] is None:
+                        checked(project / relative).rmdir()
+                        removed_dirs.append(relative)
+            except BaseException:
+                for relative in reversed(removed_dirs):
+                    try:
+                        checked(project / relative).mkdir(mode=before[relative][0])
+                    except (OSError, ValueError):
+                        preserve_recovery = True
+                for relative in reversed(written):
+                    try:
+                        destination = checked(project / relative)
+                        new = after.get(relative)
+                        expected = None if new is None else new[1]
+                        actual = destination.read_bytes() if destination.is_file() else None
+                        if actual != expected or destination.is_dir():
+                            preserve_recovery = True
+                            continue
+                        if relative in before:
+                            destination.parent.mkdir(parents=True, exist_ok=True)
+                            (backups / relative).replace(destination)
+                        else:
+                            destination.unlink()
+                    except (OSError, ValueError):
+                        preserve_recovery = True
+                for path in reversed(created_dirs):
+                    try:
+                        if path.exists() and not any(path.iterdir()):
+                            checked(path).rmdir()
+                    except (OSError, ValueError):
+                        preserve_recovery = True
+                if preserve_recovery:
+                    raise OSError(f"generation_rollback_conflict_recovery:{staging.name}") from None
+                raise
+            return result
+        finally:
+            if not preserve_recovery:
+                shutil.rmtree(staging)
+    return transactional
 
 
 def validate_network(network):
@@ -57,6 +201,130 @@ def validate_contract(document):
         document, deployment_target="customer-pilot", runtime=document["framework"])
 
 
+def validate_environment(config):
+    if config.get("environment") not in ("development", "staging", "preproduction", "production"):
+        raise ValueError("explicit_governance_environment_required")
+    return config["environment"]
+
+
+def portable_configuration(config, contract, framework):
+    portable = {k: v for k, v in config.items() if k not in (
+        "bundle_path", "signed_envelope", "network", "agent_service")}
+    portable["contract"] = deepcopy(contract)
+    normalized = validate_contract(contract)
+    for source, target in zip(normalized["tools"], portable["contract"]["tools"], strict=True):
+        target["requires"] = source["requires"]
+    for source, target in zip(normalized["governance"]["lifecycle_bindings"],
+                              portable["contract"]["governance"]["lifecycle_bindings"], strict=True):
+        target["requires"] = source["requires"]
+    if framework == "microsoft-agent-framework":
+        portable["audit_delivery"] = "remote-ack"
+    else:
+        portable.pop("policy_digest", None)
+    return portable
+
+
+def validate_policy(bundle, signed, config):
+    from datetime import datetime, timezone
+    metadata = json.loads((bundle.root / "bundle-metadata.json").read_text())
+    envelope = signed.envelope
+    if (envelope.tenant_id != config["tenant_id"] or envelope.key_id != config["key_id"]
+            or envelope.policy_id != config["policy_id"] or envelope.version != config["policy_version"]
+            or envelope.content_digest != bundle.bundle_digest
+            or envelope.expires_at <= datetime.now(timezone.utc)
+            or metadata["policy_id"] != envelope.policy_id or metadata["version"] != envelope.version):
+        raise ValueError("signed_policy_identity_or_expiry_invalid")
+
+
+def validate_bundle_contract(bundle, document, config, registry=None):
+    """Check control semantics, not just action-name coverage or a valid content hash."""
+    import yaml
+    from govern_control_plane.models import Identifier, canonical, parse
+    document = validate_contract(document)
+    environment = validate_environment(config)
+    roles = parse(list[Identifier], canonical(config["approver_roles"]))
+    if len(roles) != len(set(roles)) or len(roles) > 16:
+        raise ValueError("invalid_approval_roles")
+
+    def declarations(path):
+        raw = yaml.safe_load(path.read_text())
+        merged = {"policies": {}, "intervention_points": {}}
+        for parent in raw.get("extends", []):
+            inherited = declarations(path.parent / parent)
+            for key in merged:
+                merged[key].update(inherited[key])
+        for key in merged:
+            merged[key].update(raw.get(key, {}))
+        return merged
+
+    declared = declarations(bundle.manifest_path)
+    selected = [tool for tool in document["tools"] if tool["policy_binding"] is not None]
+    lifecycle = document["governance"]["lifecycle_bindings"]
+    ghcp = document["framework"] == "github-copilot-sdk"
+    if ghcp and (lifecycle or document["governance"]["environment_modes"][environment] != "enforce"):
+        raise ValueError("ghcp_contract_environment_or_lifecycle_unsupported")
+    targets = {
+        "pre_tool_call": "$.tool_call.args", "post_tool_call": "$.tool_result",
+        "input": "$.input", "output": "$.output", "pre_model_call": "$.messages",
+        "post_model_call": "$.response", "startup": "$.agent_init", "shutdown": "$.summary",
+    }
+    for binding in selected + lifecycle:
+        points = binding.get("intervention_points", [binding.get("lifecycle_point")])
+        requirements = set(binding["requires"])
+        if "operator-review" in requirements:
+            raise ValueError("operator_review_contract_unsupported")
+        if not ghcp and requirements & {"idempotency", "idempotency-or-transaction"}:
+            raise ValueError("maf_transaction_contract_unsupported")
+        if ghcp and (not set(points) <= {"pre_tool_call", "post_tool_call"}
+                     or "pre_tool_call" not in points):
+            raise ValueError("ghcp_intervention_contract_unsupported")
+        if requirements & {"approval", "human-approval-record"} and not roles:
+            raise ValueError("contract_approval_roles_required")
+        if requirements & {"output", "output-mediation"} and not set(points) & {
+                "post_tool_call", "output", "post_model_call"}:
+            raise ValueError("output_mediation_contract_unsupported")
+        for point in points:
+            native = {"startup": "agent_startup", "shutdown": "agent_shutdown"}.get(point, point)
+            actual = declared["intervention_points"].get(native, {})
+            policy_id = binding["policy_binding"]
+            if (policy_id not in declared["policies"] or actual.get("policy", {}).get("id") != policy_id
+                    or actual.get("policy_target") != targets[point]):
+                raise ValueError("selected_policy_binding_mismatch")
+    if registry is None:
+        return
+    if registry.deployment.environment != environment:
+        raise ValueError("signed_registry_environment_mismatch")
+    if {a.name for a in registry.actions} != {t["id"] for t in selected}:
+        raise ValueError("signed_registry_selection_mismatch")
+    actions = {action.name: action for action in registry.actions}
+    for tool in selected:
+        action = actions[tool["id"]]
+        post = tool["policy_binding"] if "post_tool_call" in tool["intervention_points"] else None
+        if action.policy_binding != tool["policy_binding"] or action.post_policy_binding != post:
+            raise ValueError("signed_registry_contract_binding_mismatch")
+        # Nonempty Task9 roles mandate approval even when Rego says allow.
+        # Each action retains its own narrower roles; a union is not an intent.
+        if ((set(tool["requires"]) & {"approval", "human-approval-record"} and not action.approval_roles)
+                or not set(action.approval_roles) <= set(roles)):
+            raise ValueError("signed_registry_contract_approval_mismatch")
+
+
+def frozen_configuration(project, package):
+    import yaml
+    packaged = package["configuration"]
+    validate_environment(packaged)
+    azure = yaml.safe_load((project / "azure.yaml").read_text())
+    relative = Path(azure["services"][packaged["agent_service"]]["project"])
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("agent_source_must_be_inside_project")
+    agent = project / relative
+    frozen = json.loads((agent / "governance-config.json").read_text())
+    if frozen != portable_configuration(packaged, package["contract"], package["framework"]):
+        raise ValueError("frozen_agent_configuration_changed")
+    return agent, frozen
+
+
+@project_transaction
 def generate(project, document, *, configuration=None):
     source_contract = deepcopy(document)
     document = validate_contract(document)
@@ -67,8 +335,8 @@ def generate(project, document, *, configuration=None):
     import yaml
     from govern_control_plane.models import SignedBundle, parse
     from govern_control_plane.client import ServiceTransport
-    from datetime import datetime, timezone
     config = deepcopy(configuration)
+    validate_environment(config)
     validate_network(config["network"])
     for key in ("tenant_id",):
         if not re.fullmatch(UUID, config.get(key, "")):
@@ -84,12 +352,12 @@ def generate(project, document, *, configuration=None):
     bundle_api.validate_native_manifest(bundle.root)
     signed_raw = Path(config["signed_envelope"]).read_bytes()
     signed = parse(SignedBundle, signed_raw)
-    envelope = signed.envelope
-    if (envelope.tenant_id != config["tenant_id"] or envelope.key_id != config["key_id"]
-            or envelope.policy_id != config["policy_id"] or envelope.version != config["policy_version"]
-            or envelope.content_digest != bundle.bundle_digest
-            or envelope.expires_at <= datetime.now(timezone.utc)):
-        raise ValueError("signed_policy_identity_or_expiry_invalid")
+    validate_policy(bundle, signed, config)
+    registry = None
+    if document["framework"] == "github-copilot-sdk" and (bundle.root / "gateway-registry.json").exists():
+        from govern_gateway.dispatcher import Registry
+        registry = parse(Registry, (bundle.root / "gateway-registry.json").read_bytes())
+    validate_bundle_contract(bundle, source_contract, config, registry)
     project = Path(project).resolve()
     azure = yaml.safe_load((project / "azure.yaml").read_text())
     service = azure["services"][config["agent_service"]]
@@ -140,13 +408,7 @@ def generate(project, document, *, configuration=None):
                 raise ValueError("local_agent_bundle_must_not_embed_its_own_image_digest")
             shutil.copytree(bundle.root, target / "policy")
             (target / "policy-envelope.json").write_bytes(signed_raw)
-        portable = {k: v for k, v in config.items() if k not in (
-            "bundle_path", "signed_envelope", "network", "agent_service")}
-        portable["contract"] = source_contract
-        if document["framework"] == "microsoft-agent-framework":
-            portable["audit_delivery"] = "remote-ack"
-        if document["framework"] == "github-copilot-sdk":
-            portable.pop("policy_digest", None)
+        portable = portable_configuration(config, source_contract, document["framework"])
         (target / "governance-config.json").write_text(json.dumps(portable, indent=2) + "\n")
         vendor_control_plane(target)
         write_dockerfile(target, agent=True)
@@ -176,6 +438,7 @@ def generate(project, document, *, configuration=None):
         (package / "governance-package.json").write_text(json.dumps({
             "schema": "threadlight-governance-package/v1", "configuration": config,
             "framework": document["framework"], "contract": source_contract,
+            "signed_policy": signed.model_dump(mode="json"),
             "status": "packaged-not-deployed",
         }, indent=2) + "\n")
     finally:
@@ -373,6 +636,7 @@ def update_environment(definition, field, values):
         definition.setdefault(field, {}).update(values)
 
 
+@project_transaction
 def agent_image(project, document, *, configuration=None):
     """Freeze the hosted definition BEFORE discovering the real version and instance identity."""
     if validate_contract(document)["governance"]["mode"] == "off":
@@ -388,6 +652,7 @@ def agent_image(project, document, *, configuration=None):
     package = json.loads((project / ".threadlight/governance-package.json").read_text())
     if document != package["contract"]:
         raise ValueError("packaged_contract_changed")
+    frozen_configuration(project, package)
     import yaml
     path = project / "azure.yaml"
     azure = yaml.safe_load(path.read_text())
@@ -405,6 +670,7 @@ def agent_image(project, document, *, configuration=None):
     return {"status": "ready-for-bootstrap-registration", "image": image}
 
 
+@project_transaction
 def stage_gateway(project, document, *, configuration=None):
     """Stage the final signed registry after the agent image exists, before gateway build."""
     if validate_contract(document)["governance"]["mode"] == "off":
@@ -423,6 +689,9 @@ def stage_gateway(project, document, *, configuration=None):
     registry = parse(Registry, (bundle.root / "gateway-registry.json").read_bytes())
     signed = parse(SignedBundle, Path(config["signed_envelope"]).read_bytes())
     expected = package["configuration"]
+    frozen_configuration(project, package)
+    validate_policy(bundle, signed, expected)
+    validate_bundle_contract(bundle, document, expected, registry)
     if not re.fullmatch(r"[a-z0-9.-]+/[a-z0-9./_-]+@sha256:[0-9a-f]{64}", config.get("agent_image", "")):
         raise ValueError("deployment_images_require_built_digests")
     if (signed.envelope.content_digest != bundle.bundle_digest
@@ -443,6 +712,7 @@ def stage_gateway(project, document, *, configuration=None):
             "policy_digest": bundle.bundle_digest}
 
 
+@project_transaction
 def bind(project, document, *, configuration=None):
     """Offline binding of BUILT images and trusted phase-one observations; no Azure writes."""
     if validate_contract(document)["governance"]["mode"] == "off":
@@ -479,6 +749,13 @@ def bind(project, document, *, configuration=None):
             or infrastructure["agent_id"] != packaged["agent_id"]
             or infrastructure["network"] != packaged["network"]):
         raise ValueError("deployment_trust_changed")
+    agent, frozen = frozen_configuration(project, package)
+    if infrastructure["environment"] != frozen["environment"]:
+        raise ValueError("frozen_deployment_environment_mismatch")
+    if (bindings["policy_id"] != frozen["policy_id"]
+            or bindings["policy_version"] != frozen["policy_version"]
+            or infrastructure["approver_roles"] != frozen["approver_roles"]):
+        raise ValueError("frozen_policy_or_approval_configuration_mismatch")
     common = {key: infrastructure[key] for key in (
         "tenant_id", "human_clients", "approver_subjects", "auditor_subjects", "approver_roles")}
     common["key_id"] = bindings["key_id"]
@@ -516,14 +793,23 @@ def bind(project, document, *, configuration=None):
         "service_agent_id": infrastructure["agent_id"], "downstream_client_id": bindings["downstream_client"],
         "cosmos_url": foundation_values["cosmos_url"], "cosmos_database": "governance",
         "cosmos_container": "gateway-idempotency", "bundle_path": "/app/policy",
-        "policy_id": bindings["policy_id"], "policy_version": bindings["policy_version"],
+        "policy_id": frozen["policy_id"], "policy_version": frozen["policy_version"],
         "policy_digest": bindings["policy_digest"], "allowed_endpoints": bindings["allowed_endpoints"],
     }
     bindings["control_config"] = parse(AzureConfiguration, canonical(control)).model_dump(mode="json")
     bindings["gateway_config"] = parse(Configuration, canonical(gateway)).model_dump(mode="json")
+    from govern_control_plane.models import SignedBundle
+    bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
     if package["framework"] == "microsoft-agent-framework":
         if bindings["policy_digest"] != packaged["policy_digest"]:
             raise ValueError("embedded_local_policy_digest_changed")
+        bundle = bundle_api.verify_bundle(agent / "policy", expected_digest=bindings["policy_digest"])
+        signed = parse(SignedBundle, (agent / "policy-envelope.json").read_bytes())
+        validate_policy(bundle, signed, frozen)
+        if signed.model_dump(mode="json") != package["signed_policy"]:
+            raise ValueError("frozen_signed_policy_changed")
+        bundle_api.validate_native_manifest(bundle.root)
+        validate_bundle_contract(bundle, document, frozen)
     else:
         from govern_gateway.dispatcher import Registry
         bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
@@ -538,9 +824,10 @@ def bind(project, document, *, configuration=None):
         if not all({action.endpoint, action.outcome_endpoint} <= set(bindings["allowed_endpoints"])
                    for action in registry.actions):
             raise ValueError("downstream_allowlist_mismatch")
-        if {a.name for a in registry.actions} != {
-                t["id"] for t in document["tools"] if t["policy_binding"] not in (None, "none")}:
-            raise ValueError("signed_registry_selection_mismatch")
+        bundle_api.validate_native_manifest(bundle.root)
+        signed = parse(SignedBundle, (project / "src/govern-gateway/policy-envelope.json").read_bytes())
+        validate_policy(bundle, signed, frozen)
+        validate_bundle_contract(bundle, document, frozen, registry)
         current = project / "src/govern-gateway/policy"
         if tree_digest(current) != tree_digest(bundle.root):
             raise ValueError("stage_gateway_before_build_and_bind")
@@ -593,6 +880,7 @@ def tree_digest(root):
 
 
 def validate_infrastructure(config):
+    validate_environment(config)
     validate_network(config["network"])
     for key in ("tenant_id", "control_plane_app_id", "gateway_app_id"):
         if not re.fullmatch(UUID, config.get(key, "")):
@@ -661,6 +949,7 @@ def verify_observations(config, bindings, observations):
         raise ValueError("downstream_identity_authorization_required")
 
 
+@project_transaction
 def foundation(project, document, *, configuration=None):
     if validate_contract(document)["governance"]["mode"] == "off":
         return {"status": "off"}

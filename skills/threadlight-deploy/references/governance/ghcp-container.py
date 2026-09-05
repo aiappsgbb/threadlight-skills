@@ -1,14 +1,114 @@
 """Copilot SDK / Invocations adapter. Only selected MCP effects use the gateway."""
 import asyncio
 from copy import deepcopy
+from contextvars import ContextVar
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
 import socket
+import subprocess
 import time
 from urllib.parse import urlsplit
+
+CLEANUP_TIMEOUT = 5.0
+LOGGER = logging.getLogger(__name__)
+_CLEANING = ContextVar("threadlight_sdk_cleanup", default=False)
+
+
+class CleanupLogFilter(logging.Filter):
+    def filter(self, record):
+        if _CLEANING.get():
+            record.msg, record.args = "governance_cleanup_sdk_diagnostic", ()
+            record.exc_info = record.exc_text = record.stack_info = None
+        return True
+
+
+async def close_invocation(*, unsubscribe, session, client, server, task, sock, http, credential):
+    """Isolate cleanup failures and join shielded work before propagating cancellation."""
+    failures: list[tuple[str, type[BaseException]]] = []
+    cancelled = False
+
+    async def close(code, callback):
+        nonlocal cancelled
+        try:
+            async with asyncio.timeout(CLEANUP_TIMEOUT):
+                await callback()
+            return True
+        except asyncio.CancelledError as error:
+            cancelled = True
+            failures.append((code, type(error)))
+        except Exception as error:
+            failures.append((code, type(error)))
+        LOGGER.warning("governance_cleanup_%s", code)
+        return False
+
+    async def cleanup():
+        nonlocal cancelled
+        if unsubscribe:
+            try:
+                unsubscribe()
+            except asyncio.CancelledError as error:
+                cancelled = True
+                failures.append(("unsubscribe", type(error)))
+                LOGGER.warning("governance_cleanup_unsubscribe")
+            except Exception as error:
+                failures.append(("unsubscribe", type(error)))
+                LOGGER.warning("governance_cleanup_unsubscribe")
+        if session:
+            await close("disconnect", session.disconnect)
+        if client:
+            process = getattr(client, "_process", None)
+            if not await close("client_stop", client.stop):
+                await close("client_force_stop", client.force_stop)
+            # Pinned force_stop kills but does not reap its owned subprocess.
+            if isinstance(process, subprocess.Popen) and not client._is_external_server:
+                async def reap():
+                    if process.poll() is None:
+                        process.kill()
+                    await asyncio.to_thread(process.wait, timeout=CLEANUP_TIMEOUT)
+                await close("client_reap", reap)
+        if server:
+            server.should_exit = True
+        if task:
+            async def join_relay():
+                # timeout cancels and joins the relay, not an orphaned shield.
+                await task
+            await close("relay_stop", join_relay)
+        if sock:
+            try:
+                sock.close()
+            except Exception as error:
+                failures.append(("socket_close", type(error)))
+                LOGGER.warning("governance_cleanup_socket_close")
+        if http:
+            await close("http_close", http.aclose)
+        if credential:
+            await close("credential_close", credential.close)
+
+    async def sanitized_cleanup():
+        logger = logging.getLogger("copilot.client")
+        redaction = CleanupLogFilter()
+        logger.addFilter(redaction)
+        token = _CLEANING.set(True)
+        try:
+            await cleanup()
+        finally:
+            _CLEANING.reset(token)
+            logger.removeFilter(redaction)
+
+    worker = asyncio.create_task(sanitized_cleanup())
+    while not worker.done():
+        try:
+            await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            cancelled = True
+    worker.result()
+    if cancelled:
+        raise asyncio.CancelledError()
+    return failures
 
 
 def route_mcp_servers(servers, contract, bindings, gateway_url):
@@ -146,8 +246,10 @@ def build_host(config, **host_options):
         host = GovernedHost(**host_options)
 
         async def stream(invocation_id, prompt):
-            async with DefaultAzureCredential() as credential, httpx.AsyncClient(
-                    timeout=30, trust_env=False, follow_redirects=False) as http:
+            credential = http = sock = server = task = client = session = unsubscribe = None
+            try:
+                credential = DefaultAzureCredential()
+                http = httpx.AsyncClient(timeout=30, trust_env=False, follow_redirects=False)
                 model_token = await credential.get_token("https://ai.azure.com/.default")
                 relay = McpRelay(
                     gateway_url=os.environ["GOVERNED_TOOL_GATEWAY_URL"], scope=config["gateway_scope"],
@@ -160,57 +262,48 @@ def build_host(config, **host_options):
                 server = uvicorn.Server(uvicorn.Config(relay.app(), access_log=False, log_level="critical"))
                 task = asyncio.create_task(server.serve(sockets=[sock]))
                 client = CopilotClient()
-                session = None
-                unsubscribe = None
-                try:
-                    async with asyncio.timeout(10):
-                        while not server.started:
-                            if task.done():
-                                task.result()
-                                raise RuntimeError("relay_start_failed")
-                            await asyncio.sleep(0.01)
-                    servers = deepcopy(routed)
-                    servers["threadlight-governed"].update(
-                        url=f"http://127.0.0.1:{port}/mcp", headers={"X-Threadlight-Relay": relay.secret})
-                    await client.start()
-                    session = await client.create_session(
-                        provider=ProviderConfig(type="azure", base_url=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
-                                                wire_api="responses", bearer_token=model_token.token),
-                        model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"],
-                        system_message={"mode": "replace", "content": (base / "copilot-instructions.md").read_text()},
-                        skill_directories=[str(base / "skills")],
-                        working_directory=str(Path.home()), streaming=True,
-                        mcp_servers=servers, hooks={"on_pre_mcp_tool_call": relay.pre_mcp},
-                        on_permission_request=PermissionHandler.approve_all,
-                        enable_config_discovery=False,
-                    )
-                    queue = asyncio.Queue()
-                    def event_received(event):
-                        queue.put_nowait(event)
-                    unsubscribe = session.on(event_received)
-                    # New session + fresh BYOK bearer per invocation; never run past its validity.
-                    async with asyncio.timeout(max(1, model_token.expires_on - time.time() - 60)):
-                        await session.send(prompt)
-                        while True:
-                            event = await queue.get()
-                            if event.type == SessionEventType.SESSION_IDLE:
-                                break
-                            if event.type == SessionEventType.SESSION_ERROR:
-                                raise RuntimeError("agent_unavailable")
-                            if event.type.value in ("assistant.message", "assistant.message_delta"):
-                                yield b"data: " + canonical(event.to_dict()) + b"\n\n"
-                    yield b"event: done\ndata: " + canonical({"invocation_id": invocation_id}) + b"\n\n"
-                except Exception:
-                    yield b'data: {"type":"error","message":"agent_unavailable"}\n\n'
-                finally:
-                    if unsubscribe:
-                        unsubscribe()
-                    if session:
-                        await session.disconnect()
-                    await client.stop()
-                    server.should_exit = True
-                    await task
-                    sock.close()
+                async with asyncio.timeout(10):
+                    while not server.started:
+                        if task.done():
+                            task.result()
+                            raise RuntimeError("relay_start_failed")
+                        await asyncio.sleep(0.01)
+                servers = deepcopy(routed)
+                servers["threadlight-governed"].update(
+                    url=f"http://127.0.0.1:{port}/mcp", headers={"X-Threadlight-Relay": relay.secret})
+                await client.start()
+                session = await client.create_session(
+                    provider=ProviderConfig(type="azure", base_url=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
+                                            wire_api="responses", bearer_token=model_token.token),
+                    model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"],
+                    system_message={"mode": "replace", "content": (base / "copilot-instructions.md").read_text()},
+                    skill_directories=[str(base / "skills")],
+                    working_directory=str(Path.home()), streaming=True,
+                    mcp_servers=servers, hooks={"on_pre_mcp_tool_call": relay.pre_mcp},
+                    on_permission_request=PermissionHandler.approve_all,
+                    enable_config_discovery=False,
+                )
+                queue = asyncio.Queue()
+                def event_received(event):
+                    queue.put_nowait(event)
+                unsubscribe = session.on(event_received)
+                # New session + fresh BYOK bearer per invocation; never run past its validity.
+                async with asyncio.timeout(max(1, model_token.expires_on - time.time() - 60)):
+                    await session.send(prompt)
+                    while True:
+                        event = await queue.get()
+                        if event.type == SessionEventType.SESSION_IDLE:
+                            break
+                        if event.type == SessionEventType.SESSION_ERROR:
+                            raise RuntimeError("agent_unavailable")
+                        if event.type.value in ("assistant.message", "assistant.message_delta"):
+                            yield b"data: " + canonical(event.to_dict()) + b"\n\n"
+                yield b"event: done\ndata: " + canonical({"invocation_id": invocation_id}) + b"\n\n"
+            except Exception:
+                yield b'data: {"type":"error","message":"agent_unavailable"}\n\n'
+            finally:
+                await close_invocation(unsubscribe=unsubscribe, session=session, client=client,
+                                       server=server, task=task, sock=sock, http=http, credential=credential)
 
         @host.invoke_handler
         async def invoke(request):
