@@ -36,24 +36,27 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
 
 
-class ApprovalRequest(StrictModel):
-    action_hash: Digest
-    policy_hash: Digest
+class ApprovalContext(StrictModel):
     principal: ObjectId
     agent_id: Identifier
-    session_id: Identifier
-    context_identity: Identifier
-    nonce: Nonce
-    expires_at: Timestamp
     tenant: ObjectId
     allowed_roles: Annotated[tuple[Identifier, ...], Field(min_length=1, max_length=16)]
-    policy_expires_at: Timestamp
 
     @model_validator(mode="after")
     def unique_roles(self):
         if len(set(self.allowed_roles)) != len(self.allowed_roles):
             raise ValueError("duplicate role")
         return self
+
+
+class ApprovalRequest(ApprovalContext):
+    action_hash: Digest
+    policy_hash: Digest
+    session_id: Identifier
+    context_identity: Identifier
+    nonce: Nonce
+    expires_at: Timestamp
+    policy_expires_at: Timestamp
 
 
 class ApprovalGrant(StrictModel):

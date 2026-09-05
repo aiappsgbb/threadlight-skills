@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from test_control_plane import Harness, MemoryStore, TENANT, WORKLOAD, APP, DIGEST, KEY, module as cp
+from test_control_plane import Harness, MemoryStore, TENANT, WORKLOAD, APP, OTHER, DIGEST, KEY, module as cp
 
 ROOT = Path(__file__).resolve().parents[3]
 GATEWAY = ROOT / "skills/threadlight-govern/references/gateway"
@@ -230,6 +230,65 @@ def test_gateway_native_health_real_dependencies_recover_without_effects(tmp_pat
             assert (h.cp.store.docs, h.cp.store.blobs, h.cp.store.etag) == before
             assert not h.store.docs and not h.calls and not h.gets
             assert not h.credential.scopes
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("fault", [
+    "healthy", "agent", "principal", "allowed-role", "mapped-agent", "workload",
+    "client", "scope", "tenant", "delegated", "workload-role",
+])
+def test_gateway_native_health_checks_authoritative_approval_binding(tmp_path, fault):
+    async def case():
+        h = await GatewayHarness().initialize(tmp_path, approval=True, additional_nonapproval=True)
+        credential = Credential(h.cp.token())
+        h.dispatcher.approvals = gateway("receipts").HTTPControlPlaneApprovalService(
+            base_url="https://control.example", scope="api://governance/.default",
+            credential=credential, http=h.cp.client)
+        if fault == "agent":
+            h.dispatcher.approval_agent_id = "wrong-agent"
+        elif fault == "principal":
+            h.dispatcher.approval_principal = OTHER
+        elif fault == "allowed-role":
+            h.cp.settings.approver_roles[:] = ["OtherRole"]
+        elif fault == "mapped-agent":
+            h.cp.settings.workloads[WORKLOAD] = h.cp.settings.workloads[WORKLOAD].model_copy(
+                update={"agent_id": "different-authoritative-agent"})
+        else:
+            changes = {"workload": {"oid": OTHER}, "client": {"azp": OTHER},
+                       "scope": {"aud": "api://wrong"}, "tenant": {"tid": OTHER},
+                       "delegated": {"scp": "Governance.Read"}, "workload-role": {"roles": []}}
+            credential.value = h.cp.token(changes=changes.get(fault, {}))
+        before = deepcopy((h.cp.store.docs, h.cp.store.blobs, h.cp.store.etag))
+        requests = []
+        async def observed(request):
+            requests.append(request)
+        h.cp.client.event_hooks["request"].append(observed)
+        try:
+            response = await h.health()
+            assert response.status_code == (200 if fault == "healthy" else 503)
+            assert response.json()["bindings"] == {
+                "refund": {"healthy": fault == "healthy",
+                           "reason_codes": [] if fault == "healthy" else ["approval_unavailable"]},
+                "other_refund": {"healthy": True, "reason_codes": []}}
+            assert all(r.method == "GET" and r.url.path == "/health" for r in requests)
+            contextual = [r for r in requests if "approval_context" in r.url.params]
+            assert len(contextual) == 1
+            assert json.loads(contextual[0].url.params["approval_context"]) == {
+                "principal": h.dispatcher.approval_principal, "tenant": TENANT,
+                "agent_id": h.dispatcher.approval_agent_id, "allowed_roles": ["Approver"]}
+            assert credential.scopes == ["api://governance/.default"]
+            assert "wrong-agent" not in response.text
+            h.dispatcher.approval_agent_id, h.dispatcher.approval_principal = "agent-1", WORKLOAD
+            h.cp.settings.approver_roles[:] = ["Approver"]
+            h.cp.settings.workloads[WORKLOAD] = h.cp.settings.workloads[WORKLOAD].model_copy(
+                update={"agent_id": "agent-1"})
+            credential.value = h.cp.token()
+            assert (await h.health()).status_code == 200
+            assert (h.cp.store.docs, h.cp.store.blobs, h.cp.store.etag) == before
+            assert not h.store.docs and not h.calls and not h.gets and not h.credential.scopes
         finally:
             await h.close()
     asyncio.run(case())

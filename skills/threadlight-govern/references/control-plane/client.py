@@ -4,13 +4,13 @@ from __future__ import annotations
 import asyncio
 from dataclasses import asdict
 from datetime import datetime, timezone
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from pydantic import BaseModel
 
 from .models import (
-    ApprovalGrant, ApprovalRequest, Identifier, SignedBundle, canonical, parse, strict_json,
+    ApprovalContext, ApprovalGrant, ApprovalRequest, Identifier, SignedBundle, canonical, parse, strict_json,
 )
 
 
@@ -55,16 +55,23 @@ class ServiceTransport:
                 or not 0 < timeout <= 30):
             raise ValueError("invalid_client_configuration")
 
-    async def health(self) -> bool:
+    async def health(self, *, approval_context: ApprovalContext | dict | None = None) -> bool:
         """Authenticated, read-only readiness; never create or consume governance records."""
         try:
             self.validate_configuration(self.url, self.scope, self.timeout)
             async with asyncio.timeout(self.timeout):
                 if not callable(self.credential.get_token):
                     return False
-                status, result = await self.request("GET", "/health")
-                return (status == 200 and set(result) == {"status", "authenticated"}
-                        and result["status"] == "healthy" and result["authenticated"] is True)
+                path = "/health"
+                expected = {"status", "authenticated"}
+                if approval_context is not None:
+                    context = parse(ApprovalContext, canonical(approval_context))
+                    path += "?" + urlencode({"approval_context": canonical(context).decode()})
+                    expected.add("approval_context_validated")
+                status, result = await self.request("GET", path)
+                return (status == 200 and set(result) == expected
+                        and result["status"] == "healthy" and result["authenticated"] is True
+                        and (approval_context is None or result["approval_context_validated"] is True))
         except Exception:
             return False
 

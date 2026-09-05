@@ -3,7 +3,9 @@ import asyncio
 from typing import Protocol
 
 from govern_control_plane.client import ApprovalClient, ServiceTransport
-from govern_control_plane.models import ApprovalGrant, ApprovalRequest, DecisionReceipt, canonical, parse
+from govern_control_plane.models import (
+    ApprovalContext, ApprovalGrant, ApprovalRequest, DecisionReceipt, canonical, parse,
+)
 
 
 class ReceiptService(Protocol):
@@ -12,7 +14,7 @@ class ReceiptService(Protocol):
 
 
 class ApprovalService(Protocol):
-    async def health(self) -> bool: ...
+    async def health(self, *, approval_context: ApprovalContext) -> bool: ...
     async def resolve(self, intent: ApprovalRequest) -> ApprovalGrant: ...
     async def verify(self, grant: ApprovalGrant, *, intent: ApprovalRequest) -> bool: ...
 

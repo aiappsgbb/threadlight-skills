@@ -80,18 +80,42 @@ Anonymous health returns `200 {"status":"healthy"}` or 503 unhealthy. If an
 invalid tokens return 401, delegated human identities return 403, and unavailable
 dependencies/timeouts return 503. Successful authenticated readiness returns
 `{"status":"healthy","authenticated":true}`. There is no anonymous fallback for a
-failed authenticated probe.
+failed authenticated probe. Missing required containers/backends also return 503
+with a stable, payload-free error, not 404; missing bundle/receipt resources still
+return 404 on their normal GET routes.
+
+For approval binding readiness, supply the optional `approval_context` query
+parameter as URL-encoded JSON containing exactly `principal`, `tenant`, `agent_id`,
+and `allowed_roles`. It uses the same strict `ApprovalContext` fields/role validator
+inherited by `ApprovalRequest`, without a nonce, expiry or action payload. Only one
+context parameter is accepted, bounded to 4096 decoded characters. This form
+**requires authentication**, even without an Authorization header (401).
+
+The server runs the **same requester authorization check as an actual approval
+request**: expected principal/tenant must match the authenticated workload, agent ID
+must match its server-configured mapping, and requested roles must be a subset of
+configured approver roles. The normal JWT checks still establish workload client,
+tenant, audience and app-role authority; query fields and custom token agent claims
+do not establish identity. A context mismatch returns 403 `{"error":"forbidden"}`;
+malformed context returns 422 `{"error":"invalid_request"}`. Success returns
+`{"status":"healthy","authenticated":true,"approval_context_validated":true}`,
+without echoing any requested identity. The extra acknowledgement is required so
+an older server silently ignoring the context cannot report binding readiness.
 
 Both forms check the actual durable store (including container/write-safety
 configuration), signing key, and authentication authority, within `request_timeout`.
 They do not create receipts, request/decide approvals, consume nonces or sign test
 records. `ServiceTransport.health()` and its approval/receipt subclasses use the
 authenticated route with the configured service credential and require its exact
-response; older anonymous-only endpoints cannot satisfy client readiness.
+response; pass `health(approval_context=...)` to check the intended approval binding.
+Omitting context checks workload/backend availability only, not agent binding.
+Older anonymous-only endpoints cannot satisfy client readiness.
 Client configuration, credential, HTTP/authorization, response or timeout failures
 return `False`, without private error text. Checks are fresh on each call, recover
 without a failure latch, and are availability checks rather than proof of future
-write authorization/durability. Operation-time ACK/CAS checks remain mandatory.
+write authorization/durability. Context readiness is not approval of an action or
+verification of its policy digest, expiry or human grant. Operation-time policy,
+authorization and ACK/CAS checks remain mandatory.
 
 The approval endpoint accepts these bounded JSON bodies:
 

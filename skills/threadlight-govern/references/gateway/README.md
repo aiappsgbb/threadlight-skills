@@ -148,6 +148,15 @@ to call **authenticated `GET /health`**. The control plane authenticates/authori
 that workload and checks its actual durable store, signing key and authentication
 authority. Clients require the authenticated readiness response, not the anonymous
 health response: deploy the matching updated control-plane package with the gateway.
+For required approvals, the gateway sends its configured service principal/agent ID,
+the signed registry tenant and required approval roles through the read-only
+`approval_context` health query contract. The control plane reuses its actual
+approval requester authorization against authenticated claims and its configured
+workload agent mapping/approver roles. Syntactically valid but mismatched IDs or
+roles produce 503 here with `approval_unavailable` on approval-required bindings;
+they cannot pass by supplying a client claim or an echoed identity. The client
+requires `approval_context_validated: true` in addition to authenticated health,
+so older servers ignoring the query fail closed.
 Authentication denial, bad endpoint/audience, invalid responses, backend failures
 and timeouts fail closed. No synthetic receipt, approval request, nonce consumption,
 policy evaluation or downstream call is used to test readiness.

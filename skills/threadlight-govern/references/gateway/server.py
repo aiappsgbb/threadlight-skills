@@ -25,7 +25,9 @@ from starlette.routing import Mount
 from govern_control_plane.app import configure_logging
 from govern_control_plane.auth import EntraAuth, Settings
 from govern_control_plane.client import ServiceTransport
-from govern_control_plane.models import Digest, Identifier, ObjectId, canonical, parse, strict_json
+from govern_control_plane.models import (
+    ApprovalContext, Digest, Identifier, ObjectId, canonical, parse, strict_json,
+)
 from govern_control_plane.storage import AzureStore, KeyVaultSigner
 
 from .dispatcher import (
@@ -160,11 +162,16 @@ def create_app(dispatcher):
                 raise ValueError()
 
         async def approval_health():
-            parse(ObjectId, canonical(dispatcher.approval_principal))
-            parse(Identifier, canonical(dispatcher.approval_agent_id))
+            context = parse(ApprovalContext, canonical({
+                "principal": dispatcher.approval_principal,
+                "agent_id": dispatcher.approval_agent_id,
+                "tenant": dispatcher.policy.registry.tenant_id,
+                "allowed_roles": sorted({role for action in dispatcher.policy.registry.actions
+                                         for role in action.approval_roles}),
+            }))
             if (not callable(dispatcher.approvals.resolve)
                     or not callable(dispatcher.approvals.verify)
-                    or await dispatcher.approvals.health() is not True):
+                    or await dispatcher.approvals.health(approval_context=context) is not True):
                 raise ValueError()
 
         async def check(probe, reason):

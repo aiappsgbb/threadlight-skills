@@ -323,6 +323,138 @@ def test_task8_client_health_rejects_anonymous_or_invalid_readiness_response(res
     run(scenario())
 
 
+@pytest.mark.parametrize("changes,claims,expected", [
+    ({}, {}, 200),
+    ({"agent_id": "wrong-agent"}, {}, 403),
+    ({"principal": OTHER}, {}, 403),
+    ({"tenant": OTHER}, {}, 403),
+    ({"allowed_roles": ["NotConfigured"]}, {}, 403),
+    ({}, {"oid": OTHER}, 403),
+    ({}, {"azp": OTHER}, 401),
+    ({}, {"aud": "api://wrong"}, 401),
+    ({}, {"tid": OTHER}, 401),
+    ({}, {"scp": "Governance.Read"}, 401),
+    ({}, {"roles": []}, 401),
+    ({"agent_id": "bad/id"}, {}, 422),
+    ({"allowed_roles": ["Approver", "Approver"]}, {}, 422),
+])
+def test_health_approval_context_uses_request_authority_without_effects(changes, claims, expected):
+    async def scenario():
+        h = await Harness().initialize()
+        context = {key: h.wire_intent[key] for key in (
+            "principal", "tenant", "agent_id", "allowed_roles")}
+        context.update(changes)
+        before = deepcopy((h.store.docs, h.store.blobs, h.store.etag))
+        try:
+            response = await h.client.get("/health", headers=h.headers(changes=claims),
+                                          params={"approval_context": json.dumps(context)})
+            assert response.status_code == expected
+            assert response.json() == (
+                {"status": "healthy", "authenticated": True, "approval_context_validated": True}
+                if expected == 200 else {"error": {
+                    401: "unauthorized", 403: "forbidden", 422: "invalid_request"}[expected]})
+            assert (h.store.docs, h.store.blobs, h.store.etag) == before
+            # Authorization/validation agrees with the actual operation, before any write.
+            if expected != 200:
+                operation = await h.client.post("/approvals/resolve",
+                    headers=h.headers(changes=claims),
+                    json={"operation": "request", "intent": {**h.wire_intent, **context}})
+                assert operation.status_code == expected
+                assert (h.store.docs, h.store.blobs, h.store.etag) == before
+        finally:
+            await h.close()
+    run(scenario())
+
+
+def test_health_approval_context_requires_authentication():
+    async def scenario():
+        h = await Harness().initialize()
+        try:
+            response = await h.client.get("/health", params={"approval_context": "{}"})
+            assert response.status_code == 401
+            assert response.json() == {"error": "unauthorized"}
+            assert not h.store.docs
+        finally:
+            await h.close()
+    run(scenario())
+
+
+@pytest.mark.parametrize("response", [
+    {"status": "healthy", "authenticated": True},
+    {"status": "healthy", "authenticated": True, "approval_context_validated": False},
+    {"status": "healthy", "authenticated": True, "approval_context_validated": "true"},
+])
+def test_task8_client_health_requires_context_validation_ack(response):
+    async def scenario():
+        import httpx
+        from test_gateway import Credential
+        context = {key: intent()[key] for key in (
+            "principal", "tenant", "agent_id", "allowed_roles")}
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, json=response))) as http:
+            async with module("client").ServiceTransport(
+                    base_url="https://control.example", scope="api://governance/.default",
+                    credential=Credential(), http=http) as client:
+                assert await client.health(approval_context=context) is False
+    run(scenario())
+
+
+@pytest.mark.parametrize("backend", ["blob-container", "cosmos-container", "account"])
+def test_authenticated_health_adapter_missing_is_503_but_bundle_missing_remains_404(backend):
+    async def scenario():
+        from azure.core.exceptions import HttpResponseError
+        from azure.cosmos.aio import ContainerProxy
+        from azure.storage.blob.aio import ContainerClient
+        h = Harness()
+        documents = create_autospec(ContainerProxy, instance=True)
+        documents.read.return_value = {"partitionKey": {"paths": ["/scope"]}}
+        blobs = create_autospec(ContainerClient, instance=True)
+        account = AsyncMock(return_value=SimpleNamespace(WritableLocations=[{"name": "one"}]))
+        store = module("storage").AzureStore(blobs, documents, account_reader=account)
+        h.service.store = store
+        missing = HttpResponseError(message="PRIVATE SDK DETAILS", response=SimpleNamespace(
+            status_code=404, reason="PRIVATE", headers={}))
+        failed = {"blob-container": blobs.get_container_properties,
+                  "cosmos-container": documents.read, "account": account}[backend]
+        try:
+            failed.side_effect = missing
+            with pytest.raises(module("storage").Missing):
+                await store.health()
+            response = await h.client.get("/health", headers=h.headers())
+            assert response.status_code == 503
+            assert response.json() == {"error": "unavailable"}
+            assert (await h.client.get("/health")).status_code == 503
+            failed.side_effect = None
+            assert (await h.client.get("/health", headers=h.headers())).json() == {
+                "status": "healthy", "authenticated": True}
+            blobs.download_blob.side_effect = missing
+            response = await h.client.get("/bundles/safe/missing", headers=h.headers())
+            assert response.status_code == 404
+            assert response.json() == {"error": "not_found"}
+            for method in (blobs.upload_blob, documents.create_item, documents.replace_item):
+                method.assert_not_called()
+        finally:
+            await h.close()
+    run(scenario())
+
+
+@pytest.mark.parametrize("backend", ["store", "signer", "auth"])
+@pytest.mark.parametrize("failure", ["Missing", "Conflict", "Unauthorized", "ValueError"])
+def test_authenticated_health_backend_errors_are_always_unavailable(backend, failure):
+    async def scenario():
+        h = Harness()
+        errors = {"Missing": module("storage").Missing, "Conflict": module("storage").Conflict,
+                  "Unauthorized": module("auth").Unauthorized, "ValueError": ValueError}
+        getattr(h, backend).health = AsyncMock(side_effect=errors[failure]("PRIVATE"))
+        try:
+            response = await h.client.get("/health", headers=h.headers())
+            assert response.status_code == 503
+            assert response.json() == {"error": "unavailable"}
+        finally:
+            await h.close()
+    run(scenario())
+
+
 @pytest.mark.parametrize("approved", [True, False])
 def test_human_decision_consumes_once_and_replay_conflicts(approved):
     async def scenario():

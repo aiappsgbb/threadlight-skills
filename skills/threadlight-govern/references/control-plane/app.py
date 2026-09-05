@@ -20,7 +20,7 @@ from pydantic import Field, ValidationError
 
 from .auth import EntraAuth, Identity, Settings, Unauthorized
 from .models import (
-    ApprovalGrant, ApprovalOperation, ApprovalRequest, BundleEnvelope, DecisionReceipt,
+    ApprovalContext, ApprovalGrant, ApprovalOperation, ApprovalRequest, BundleEnvelope, DecisionReceipt,
     Identifier, Nonce, SignedBundle, canonical, envelope_digest, parse,
 )
 from .storage import AzureStore, BundleSigner, Conflict, KeyVaultSigner, Missing, Store
@@ -395,17 +395,27 @@ def create_app(*, service=None, auth=None):
             return JSONResponse({"error": "unavailable"}, 503)
 
     async def check_health(current, authority):
-        await current.store.health()
-        await current.signer.health()
-        await authority.health()
+        try:
+            await current.store.health()
+            await current.signer.health()
+            await authority.health()
+        except Exception:
+            # Missing infrastructure is unavailability, not a missing API resource.
+            raise RuntimeError("readiness_unavailable") from None
 
     @app.get("/health")
     async def health(request: Request):
-        if "authorization" in request.headers:
+        contexts = request.query_params.getlist("approval_context")
+        if "authorization" in request.headers or contexts:
             async def action(current, identity):
                 current.workload(identity)
+                if contexts:
+                    if len(contexts) != 1 or len(contexts[0]) > 4096:
+                        raise ValueError("invalid_context")
+                    current.requester(identity, parse(ApprovalContext, contexts[0].encode()))
                 await check_health(current, app.state.auth)
-                return {"status": "healthy", "authenticated": True}
+                return {"status": "healthy", "authenticated": True,
+                        **({"approval_context_validated": True} if contexts else {})}
             return await dispatch(request, action)
         try:
             current, authority = app.state.service, app.state.auth
