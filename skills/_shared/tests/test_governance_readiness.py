@@ -155,6 +155,48 @@ def test_selected_noop_with_explicit_unbound_read_has_no_effective_gaps():
     assert result["gaps"] == []
 
 
+@pytest.mark.parametrize("reason", ["intentionally-unbound", "explicitly-unbound"])
+@pytest.mark.parametrize("tool_id", ["undeclared", "binding.read", "lifecycle.startup"])
+def test_unassociated_unbound_gap_cannot_borrow_valid_live_proof(reason, tool_id):
+    from skills._shared.governance import validate_governance_manifest
+    value, document, current, now = live_fixture()
+    assert api().evaluate(value, document, current=current, now=now)["live"]
+    value["gaps"].append({"tool_id": tool_id, "status": "unbound",
+                          "reason_code": reason, "evidence_refs": []})
+    # A schema-valid diagnostic about an unclassified tool is not accepted inventory.
+    validate_governance_manifest(value)
+    result = api().evaluate(value, document, current=current, now=now)
+    assert result["status"] == "must-fix"
+    assert result["live"] is False
+    assert result["gaps"] == value["gaps"]
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_mixed_live_and_unbound_consequential_gap_requires_exact_acceptance(accepted):
+    from skills._shared.tests.governance_consumer_fixtures import coverage, digest
+    value, document, current, now = live_fixture()
+    tool = contract(consequence="write", tool_id="write")["tools"][0]
+    tool["acceptance_record"] = {
+        "owner": "owner", "justification": "Reviewed operation",
+        "review_date": (now - timedelta(hours=1)).isoformat(),
+        "expiry": (now + timedelta(hours=1)).isoformat(),
+    }
+    document["tools"].append(tool)
+    binding = inventory(contract(consequence="write", tool_id="write"))["bindings"][0]
+    binding.update(policy_digest=value["policy_bundle"]["digest"], evidence_refs=[], mode="enforce")
+    value["bindings"].append(binding)
+    value["coverage"] = coverage(value["bindings"])
+    value["gaps"] = [{"binding_id": binding["binding_id"], "status": "unbound",
+                      "reason_code": "intentionally-unbound", "evidence_refs": []}]
+    current.update(source_commit="a" * 40, acceptances=[{
+        "tool_id": "write" if accepted else "other", "contract_sha256": digest(document),
+        "target": current["expected_target"], "source_commit": "a" * 40,
+    }])
+    result = api().evaluate(value, document, current=current, now=now)
+    assert (result["status"] == "pass") == accepted
+    assert result["live"] == accepted
+
+
 @pytest.mark.parametrize("key", ["agent_id", "agent_version", "image_digest", "environment",
                                 "tenant", "subscription", "resource_group", "subject", "client_id"])
 def test_each_current_target_field_is_load_bearing(key):
@@ -176,6 +218,22 @@ def test_spec_only_contract_reuses_producer_parser(tmp_path):
     (tmp_path / "specs").mkdir()
     (tmp_path / "specs/SPEC.md").write_text("```yaml\n" + json.dumps(document) + "\n```\n")
     assert api().load_contract(tmp_path) == document
+
+
+@pytest.mark.parametrize("other", ["invalid", "off", "equivalent"])
+def test_spec_mirror_cannot_be_hidden_by_parent_contract(tmp_path, other):
+    import json
+    document = contract(selected=True)
+    write(tmp_path, "specs/governance-contract.json", document)
+    spec = deepcopy(document) if other != "off" else contract()
+    if other == "invalid":
+        spec["governance"]["environment_modes"]["preproduction"] = "enforc"
+    (tmp_path / "specs/SPEC.md").write_text("```yaml\n" + json.dumps(spec) + "\n```\n")
+    if other == "equivalent":
+        assert api().load_contract(tmp_path) == document
+    else:
+        with pytest.raises(ValueError):
+            api().load_contract(tmp_path)
 
 
 def test_current_declared_selection_is_not_replaced_by_observed_target():

@@ -47,14 +47,31 @@ def _contract(root):
         from policy_bundle import checked_path, _read_file
     path = root / "specs/governance-contract.json"
     if path.exists() or path.is_symlink():
+        from skills._shared.governance_readiness import parse_json
         data = _read_file(checked_path(path))
-        return json.loads(data), path, data
+        return parse_json(data), path, data
+    return _spec_contract(root)
+
+
+def _spec_contract(root):
+    """Locate declarations without interpreting invalid/missing fields as governance off."""
+    if __package__:
+        from .policy_bundle import checked_path, _read_file
+    else:
+        from policy_bundle import checked_path, _read_file
     path = root / "specs/SPEC.md"
     if path.exists() or path.is_symlink():
         import yaml
 
         class SpecLoader(yaml.SafeLoader):
-            pass
+            def construct_mapping(self, node, deep=False):
+                mapping = {}
+                for key_node, value_node in node.value:
+                    key = self.construct_object(key_node, deep=deep)
+                    if not isinstance(key, str) or key in mapping:
+                        raise ValueError("SPEC governance mapping key invalid or duplicated")
+                    mapping[key] = self.construct_object(value_node, deep=deep)
+                return mapping
 
         # YAML 1.2 booleans leave the documented governance mode "off" a string.
         SpecLoader.yaml_implicit_resolvers = {
@@ -66,11 +83,24 @@ def _contract(root):
             "tag:yaml.org,2002:bool", re.compile(r"^(?:true|false)$", re.I), list("tTfF"),
         )
         data = _read_file(checked_path(path))
+        text = data.decode("utf-8")
         candidates = []
-        for block in re.findall(r"```(?:yaml|yml)\s*\n(.*?)```", data.decode("utf-8"), re.S):
-            document = yaml.load(block, Loader=SpecLoader)
-            if isinstance(document, dict) and {"framework", "governance", "tools"} <= document.keys():
+        declaration = re.compile(
+            r'(?im)^\s*(?:[-*]\s*)?(?:\*\*|`)?governance(?:[_ ]?mode)?(?:\*\*|`)?\s*:'
+            r'|["\']governance(?:_mode|Mode)?["\']\s*:'
+            r'|^#{1,6}\s+(?:\d+[a-z]?\.\s*)?Runtime Governance Contract\b')
+        for block in re.findall(r"```(?:yaml|yml)\s*\n(.*?)```", text, re.S):
+            try:
+                document = yaml.load(block, Loader=SpecLoader)
+            except (yaml.YAMLError, ValueError):
+                if declaration.search(block):
+                    raise ValueError("SPEC governance YAML invalid") from None
+                continue
+            if isinstance(document, dict) and any(
+                    key in document for key in ("governance", "governance_mode", "governanceMode")):
                 candidates.append(document)
+        if not candidates and not declaration.search(text):
+            return None, None, None
         if len(candidates) != 1:
             raise ValueError("SPEC must contain exactly one explicit governance contract")
         return candidates[0], path, data

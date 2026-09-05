@@ -92,6 +92,7 @@ omitting business actions or switching frameworks. Selected bindings require:
 |---|---|
 | `govern` | Run `threadlight-govern` with `--emit`; validate the current inventory at `specs/governance-manifest.json`. Offline inventory is not live proof. |
 | `governed_actions_gate` | Run `threadlight-governed-actions --phase pre-deploy`. Then run `orchestrator.py --workspace <pilot> --complete-stage governed_actions_gate`. This independently validates the complete `governance-ledger/v2` contract and checkpoints exact input hashes; failure blocks deploy. |
+| `deploy` | Immediately before each actual attempt, run `orchestrator.py --workspace <pilot> --start-stage deploy`. Only after that worker succeeds, run `orchestrator.py --workspace <pilot> --complete-stage deploy`. Failed/interrupted attempts must not be marked complete; retries start a new attempt. |
 | `governance_probe` | After deploy, use `threadlight-safe-check`'s explicit collector with `.threadlight/governance-probe.json`. It writes `.threadlight/governance-live.json`. Run `orchestrator.py --workspace <pilot> --complete-stage governance_probe` to validate and publish its unchanged nested manifest to `specs/governance-manifest.json`; shared validation must pass before any subsequent stage. |
 
 Run the planner before **each** stage and execute only the first runnable stage.
@@ -101,6 +102,18 @@ revalidates artifacts after worker completion. Nonzero exit, missing tooling,
 malformed evidence, legacy v2, or a local assessment labeled green cannot unlock
 the live gate. On resume, changed contract/manifest/image/policy/configuration or
 expired proof invalidates the corresponding checkpoint and downstream stages.
+Every actual deployment invalidates earlier proof, even for an unchanged image or
+version. `.threadlight/governance-execution-state.json` records the attempt ID,
+execution times, input fingerprint and accepted collection digest. Collection must
+start after that exact successful attempt; file modification times are not proof.
+The programmatic driver records these transitions automatically. Do not edit
+collector timestamps or cloud history to satisfy a checkpoint.
+
+Contract JSON, parent manifest declarations and SPEC YAML use the shared contract
+validator. Malformed declarations, unsupported mode aliases, duplicate keys or
+conflicting mirrors produce `invalid-governance-configuration` and block all
+workers; they never select the legacy/off path. A human-readable selection without
+a complete supported contract is unresolved, not permission to deploy.
 
 Only the **explicitly reserved staging noop**, at its exact binding and
 `pre_tool_call` path, is safe to probe. Never probe business actions or production

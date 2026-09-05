@@ -82,12 +82,13 @@ def seed_inventory(root, document=None):
     return value
 
 
-def live_fixture(*, environment="preproduction"):
+def live_fixture(*, environment="preproduction", now=None, target=None):
     """Construct the current strict gateway protocol, never a cloud claim."""
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     started, finished = now - timedelta(seconds=3), now - timedelta(seconds=1)
     document = contract(selected=True)
-    target = {"agent_id": "agent-1", "agent_version": "1", "image_digest": DIGEST,
+    target = deepcopy(target) if target is not None else {
+              "agent_id": "agent-1", "agent_version": "1", "image_digest": DIGEST,
               "environment": environment, "subscription": str(uuid4()), "resource_group": "rg-staging",
               "tenant": str(uuid4()), "subject": str(uuid4()), "client_id": str(uuid4())}
     deployment = {k: target[k] for k in ("agent_id", "agent_version", "image_digest",

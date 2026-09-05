@@ -23,6 +23,11 @@ COLLECTION = ".threadlight/governance-live.json"
 
 
 def read_json(path):
+    with Path(path).open("rb") as stream:
+        return parse_json(stream.read(2 * 1024 * 1024 + 1))
+
+
+def parse_json(raw):
     def unique(pairs):
         value = {}
         for key, item in pairs:
@@ -30,8 +35,6 @@ def read_json(path):
                 raise ValueError("duplicate-json-key")
             value[key] = item
         return value
-    with Path(path).open("rb") as stream:
-        raw = stream.read(2 * 1024 * 1024 + 1)
     require(len(raw) <= 2 * 1024 * 1024, "governance-artifact-too-large")
     value = json.loads(raw, object_pairs_hook=unique,
                        parse_constant=lambda _: (_ for _ in ()).throw(ValueError("non-finite-json")))
@@ -39,7 +42,7 @@ def read_json(path):
     return value
 
 
-def load_contract(root):
+def load_contract(root, *, required=True):
     root = Path(root)
     documents = []
     if (root / CONTRACT).exists():
@@ -47,15 +50,20 @@ def load_contract(root):
     manifest = root / "specs/manifest.json"
     if manifest.exists():
         value = read_json(manifest)
+        require(not {"governance_mode", "governanceMode"} & value.keys(),
+                "unsupported-governance-selector")
         if "governance" in value:
             documents.append({k: value[k] for k in ("framework", "governance", "tools")})
-    if not documents and (root / "specs/SPEC.md").exists():
+    if (root / "specs/SPEC.md").exists():
         producer = importlib.import_module("skills.threadlight-govern.scripts.govern_check")
-        document, _, _ = producer._contract(root)
+        document, _, _ = producer._spec_contract(root)
         if document is not None:
             documents.append(document)
+    if not documents and not required:
+        return None
     require(bool(documents), "explicit-governance-contract-missing")
-    require(all(d == documents[0] for d in documents), "governance-contract-mirrors-disagree")
+    normalized = [validate_governance_contract(d, deployment_target="demo-sandbox") for d in documents]
+    require(all(d == normalized[0] for d in normalized), "governance-contract-mirrors-disagree")
     return documents[0]
 
 
@@ -119,9 +127,9 @@ def _time(value):
     return parsed
 
 
-def _result(status, reason, *, live=False, manifest=None):
+def _result(status, reason, *, live=False, manifest=None, gaps=None):
     return {"status": status, "reason": reason, "live": live,
-            "gaps": [g for g in manifest["gaps"] if g["status"] != "unbound"] if manifest else [],
+            "gaps": gaps if gaps is not None else manifest["gaps"] if manifest else [],
             "coverage": manifest.get("coverage") if isinstance(manifest, dict) else None,
             "policy_bundle": manifest.get("policy_bundle") if isinstance(manifest, dict) else None,
             "live_receipts": [p["decision_receipt_ref"] for p in manifest["live_probes"]] if live else []}
@@ -163,22 +171,35 @@ def _acceptance(tool, document, current, now):
             "acceptance-tool-deployment-change-scope-mismatch")
 
 
+def _effective_gaps(manifest, accepted_unbound):
+    """Only exact inventory bindings whose read/acceptance checks passed are exempt."""
+    return [gap for gap in manifest["gaps"] if not (
+        gap.get("binding_id") in accepted_unbound
+        and gap["status"] == "unbound"
+        and gap["reason_code"] in {"intentionally-unbound", "explicitly-unbound"}
+    )]
+
+
 def evaluate(manifest, document, *, current=None, now=None):
     """A composite pass is possible only after canonical validation and current scope checks."""
     now = now or datetime.now(timezone.utc)
     is_selected = False
+    gaps = []
     try:
         is_selected = selected(document)
         contract = validate_governance_contract(document, deployment_target="production-bound", as_of=now)
         subjects, bindings = inventory_matches(manifest, document)
+        gaps = manifest["gaps"]
         # Production validation adds current per-tool acceptance requirements.
         subjects = {t["id"]: t for t in _subjects(contract)}
+        accepted_unbound = set()
         for tool_id, tool in subjects.items():
             binding = bindings[tool_id]
             if tool["enforcement_path"] == "none":
                 require(binding["status"] == "unbound", "unbound-tool-status-mismatch")
                 if tool["consequence"] != "read":
                     _acceptance(tool, document, current, now)
+                accepted_unbound.add(binding["binding_id"])
             else:
                 require(binding["status"] == "enforced" and binding["mode"] == "enforce",
                         "selected-binding-live-proof-required")
@@ -186,14 +207,12 @@ def evaluate(manifest, document, *, current=None, now=None):
                 require(all(r == "signed-policy-bundle" or probe_requirement_dimension(r) == "durable_audit"
                             for r in tool["requires"]),
                         "selected-requirement-evidence-unavailable")
+        gaps = _effective_gaps(manifest, accepted_unbound)
+        require(not gaps, "binding-gaps-remain")
         if not is_selected:
             # Offline "explicitly unbound" entries are inventory, not enforcement gaps.
-            require(all(g["status"] == "unbound" for g in manifest["gaps"]),
-                    "unbound-inventory-gaps")
-            return _result("pass", "Explicit unbound inventory; no enforcement asserted.", manifest=manifest)
-        require(all(g["status"] == "unbound" and g["reason_code"] in {
-                    "intentionally-unbound", "explicitly-unbound"} for g in manifest["gaps"]),
-                "binding-gaps-remain")
+            return _result("pass", "Explicit unbound inventory; no enforcement asserted.",
+                           manifest=manifest, gaps=gaps)
         require(manifest["enforcement"]["mode"] == "enforce"
                 and manifest["coverage"]["tools_unverified"] == 0
                 and manifest["coverage"]["tools_bypassable"] == 0,
@@ -234,11 +253,12 @@ def evaluate(manifest, document, *, current=None, now=None):
             for service in ("producer", "fixture"):
                 require(now < _time(record[service]["expires_at"]), "probe-registration-expired")
         return _result("pass", "Current exact binding evidence; not whole-agent certification.",
-                       live=True, manifest=manifest)
+                       live=True, manifest=manifest, gaps=gaps)
     except (GovernanceContractError, ProbeEvidenceError, ValueError, TypeError, KeyError, ImportError):
         # Never echo raw JSON / payload-bearing validation errors.
         return _result("must-fix" if is_selected or isinstance(document, dict) else "not-verified",
-                       "Binding evidence unverified: contract, scope, freshness, acceptance or required tooling failed.")
+                       "Binding evidence unverified: contract, scope, freshness, acceptance or required tooling failed.",
+                       gaps=gaps)
 
 
 def assess(root, *, now=None, required_target=None):

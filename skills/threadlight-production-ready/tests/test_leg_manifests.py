@@ -188,6 +188,22 @@ def test_live_binding_proof_cannot_be_used_for_other_assessment_target(tmp_path,
     assert _by_id(pr._check_agt_static(ctx, "none"))["AGT-001"].status == "must-fix"
 
 
+def test_unknown_unbound_gap_cannot_pass_production_readiness(tmp_path, monkeypatch):
+    from skills._shared.tests.governance_consumer_fixtures import live_fixture, write
+    from skills._shared import governance_readiness
+    value, document, current, _ = live_fixture()
+    write(tmp_path, "specs/governance-manifest.json", value)
+    write(tmp_path, "specs/governance-contract.json", document)
+    monkeypatch.setattr(governance_readiness, "current_context", lambda root: current)
+    ctx = _make_ctx()
+    ctx.root = tmp_path
+    assert _by_id(pr._check_agt_static(ctx, "auto"))["AGT-001"].status == "pass"
+    value["gaps"] = [{"tool_id": "undeclared", "status": "unbound",
+                      "reason_code": "intentionally-unbound", "evidence_refs": []}]
+    write(tmp_path, "specs/governance-manifest.json", value)
+    assert _by_id(pr._check_agt_static(ctx, "auto"))["AGT-001"].status == "must-fix"
+
+
 # ---------------------------------------------------------------------------
 # Evals (pillar 6): evals manifest flips EVAL-001..004 + online/AB note
 # ---------------------------------------------------------------------------

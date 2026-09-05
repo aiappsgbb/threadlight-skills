@@ -109,6 +109,17 @@ def test_spec_yaml_boolean_is_not_a_governance_mode(tmp_path, mode):
         gc.evaluate(str(tmp_path))
 
 
+def test_json_duplicate_governance_cannot_silently_select_off(tmp_path):
+    doc = contract()
+    doc["governance"]["mode"] = "off"
+    doc["tools"] = ["search_catalog"]
+    write_contract(tmp_path, doc)
+    path = tmp_path / "specs/governance-contract.json"
+    path.write_text('{"governance": {"mode": "selective"},' + path.read_text()[1:])
+    with pytest.raises(ValueError):
+        gc.evaluate(str(tmp_path))
+
+
 def test_legacy_boolean_contract_does_not_pass_gate(tmp_path):
     write_contract(tmp_path, {"governed": True})
     assert gc.main(["--target", str(tmp_path), "--gate"]) == 2

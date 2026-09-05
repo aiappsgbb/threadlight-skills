@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 # -----------------------------------------------------------------------------
 # Stage definitions — lockstep with SKILL.md § Resumption table
@@ -1310,6 +1311,82 @@ def _gate_fingerprint(workspace):
 
 
 GOVERNANCE_GATE_STATE = ".threadlight/governance-gate-state.json"
+GOVERNANCE_EXECUTION_STATE = ".threadlight/governance-execution-state.json"
+
+
+def _write_execution_state(workspace, state):
+    path = workspace / GOVERNANCE_EXECUTION_STATE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2) + "\n")
+
+
+def record_deploy_started(workspace):
+    """Invalidate prior proof before a worker runs, including interrupted attempts."""
+    _write_execution_state(workspace, {
+        "schema": "threadlight-governance-execution/v1",
+        "deploy": {"attempt_id": str(uuid4()), "status": "started",
+                   "started_at": datetime.now(timezone.utc).isoformat(), "finished_at": None,
+                   "fingerprint": _gate_fingerprint(workspace),
+                   "prior_collection_sha256": _sha256(workspace / ".threadlight/governance-live.json")},
+        "probe": None,
+    })
+
+
+def record_deploy_completed(workspace):
+    from skills._shared.governance_readiness import read_json
+    try:
+        state = read_json(workspace / GOVERNANCE_EXECUTION_STATE)
+        if state["schema"] != "threadlight-governance-execution/v1" or state["deploy"]["status"] != "started":
+            return False
+        state["deploy"].update(status="succeeded", finished_at=datetime.now(timezone.utc).isoformat(),
+                               fingerprint=_gate_fingerprint(workspace))
+        _write_execution_state(workspace, state)
+        return True
+    except (OSError, ValueError, TypeError, KeyError):
+        return False
+
+
+def _deployment_proof(workspace, *, recording=False):
+    """Match collection chronology and bytes to the exact successful worker attempt."""
+    from skills._shared.governance_readiness import read_json
+    path = workspace / GOVERNANCE_EXECUTION_STATE
+    if not path.exists():
+        return None
+    state = read_json(path)
+    attempt = state["deploy"]
+    started = _parse_rfc3339(attempt["started_at"])
+    finished = _parse_rfc3339(attempt["finished_at"])
+    collection = read_json(workspace / ".threadlight/governance-live.json")
+    evidence = collection["governance_manifest"]["collection_evidence"]
+    probe_started = _parse_rfc3339(evidence["started_at"])
+    probe_finished = _parse_rfc3339(evidence["finished_at"])
+    digest = _sha256(workspace / ".threadlight/governance-live.json")
+    fingerprint = _gate_fingerprint(workspace)
+    if (state["schema"] != "threadlight-governance-execution/v1"
+            or attempt["status"] != "succeeded"
+            or not all((started, finished, probe_started, probe_finished))
+            or not started <= finished < probe_started <= probe_finished <= datetime.now(timezone.utc)
+            or attempt["fingerprint"] != fingerprint
+            or attempt["prior_collection_sha256"] == digest):
+        raise ValueError("post-deployment-attempt-proof-required")
+    checkpoint = {"attempt_id": attempt["attempt_id"], "fingerprint": fingerprint,
+                  "collection_sha256": digest}
+    if not recording and state["probe"] != checkpoint:
+        raise ValueError("deployment-attempt-probe-not-recorded")
+    return {**state, "probe": checkpoint}
+
+
+def record_governance_probe(workspace):
+    from skills._shared.governance_readiness import publish_collection
+    try:
+        state = _deployment_proof(workspace, recording=True)
+        if not publish_collection(workspace):
+            return False
+        if state is not None:
+            _write_execution_state(workspace, state)
+        return True
+    except (OSError, ValueError, TypeError, KeyError):
+        return False
 
 
 def _check_governed_actions_gate(workspace: Path, _: dict[str, Any], *, recording=False) -> StageDecision:
@@ -1355,10 +1432,11 @@ def record_governed_actions_gate(workspace):
 def _check_governance_probe(workspace: Path, _: dict[str, Any]) -> StageDecision:
     try:
         from skills._shared.governance_readiness import assess
+        _deployment_proof(workspace)
         result = assess(workspace)
         if result["status"] == "pass" and result["live"]:
             return StageDecision("governance_probe", "skip", result["reason"])
-    except ImportError:
+    except (ImportError, OSError, ValueError, TypeError, KeyError):
         pass
     return StageDecision("governance_probe", "run",
                          "Mandatory current exact live binding proof required; only explicit staging noop may run.")
@@ -1371,22 +1449,13 @@ GOVERNANCE_PROBES = {
 
 
 def _stages_for(workspace):
-    try:
-        from skills._shared.governance_readiness import load_contract, selected
-        document = load_contract(workspace)
-        enabled = selected(document)
-    except ImportError:
-        return list(GOVERNANCE_STAGES)
-    except (OSError, ValueError, TypeError, KeyError):
-        # Malformed declarations never optimize the mandatory path away.
-        enabled = (workspace / "specs/governance-contract.json").exists()
-        parent = _parse_json_object(workspace / "specs/manifest.json")
-        enabled = enabled or isinstance(parent, dict) and "governance" in parent
-        enabled = enabled or parent is None and (workspace / "specs/manifest.json").exists()
-        enabled = enabled or (workspace / ".threadlight/governance-package.json").exists()
-        if not enabled:
-            return list(STAGES)
-    if not enabled:
+    from skills._shared.governance_readiness import load_contract, selected
+    document = load_contract(workspace, required=False)
+    if document is None:
+        if (workspace / ".threadlight/governance-package.json").exists():
+            raise ValueError("packaged-governance-contract-missing")
+        return list(STAGES)
+    if not selected(document):
         return [s for s in STAGES if s != "govern"]
     return list(GOVERNANCE_STAGES)
 
@@ -1448,10 +1517,20 @@ def _read_state(state_path: Path) -> dict[str, Any]:
 def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
     state = _read_state(state_path) if state_path else {}
     decisions: list[StageDecision] = []
-    stages = _stages_for(workspace)
+    invalid_configuration = False
+    try:
+        stages = _stages_for(workspace)
+    except (ImportError, OSError, ValueError, TypeError, KeyError):
+        stages = list(GOVERNANCE_STAGES)
+        invalid_configuration = True
     for stage in stages:
         probe = {**STAGE_PROBES, **GOVERNANCE_PROBES}[stage]
-        decisions.append(probe(workspace, state))
+        if stage == "govern" and invalid_configuration:
+            decisions.append(StageDecision(
+                "govern", "hard_stop", "Governance configuration invalid or unresolved; not verified. Deployment blocked.",
+                hard_stop_signature="invalid-governance-configuration"))
+        else:
+            decisions.append(probe(workspace, state))
     decisions = _cascade_invalidations(decisions)
 
     hard_stop = next((d for d in decisions if d.decision == "hard_stop"), None)
@@ -1508,6 +1587,10 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
             return {"status": "blocked", "stage": report["next_action"]["stage"], "executed": executed}
         pending = [s for s in report["next_action"]["stages_to_run"] if s not in executed]
         if not pending:
+            if "governance_probe" in report["stages"]:
+                for guard in ("govern", "governed_actions_gate", "governance_probe"):
+                    if {**STAGE_PROBES, **GOVERNANCE_PROBES}[guard](workspace, {}).decision != "skip":
+                        return {"status": "blocked", "stage": guard, "executed": executed}
             return {"status": "complete", "executed": executed}
         stage = pending[0]
         if "governance_probe" in report["stages"]:
@@ -1517,16 +1600,19 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
                 if {**STAGE_PROBES, **GOVERNANCE_PROBES}[guard](workspace, {}).decision != "skip":
                     return {"status": "blocked", "stage": guard, "executed": executed}
         prior_collection = _sha256(workspace / ".threadlight/governance-live.json") if stage == "governance_probe" else None
+        if stage == "deploy":
+            record_deploy_started(workspace)
         code = worker(stage)
         executed.append(stage)
         if code != 0:
             return {"status": "blocked", "stage": stage, "executed": executed}
+        if stage == "deploy" and not record_deploy_completed(workspace):
+            return {"status": "blocked", "stage": stage, "executed": executed}
         if stage == "governed_actions_gate" and not record_governed_actions_gate(workspace):
             return {"status": "blocked", "stage": stage, "executed": executed}
         if stage == "governance_probe":
-            from skills._shared.governance_readiness import publish_collection
             if (prior_collection == _sha256(workspace / ".threadlight/governance-live.json")
-                    or not publish_collection(workspace)):
+                    or not record_governance_probe(workspace)):
                 return {"status": "blocked", "stage": stage, "executed": executed}
         if stage in GOVERNANCE_PROBES or stage == "govern":
             probe = {**STAGE_PROBES, **GOVERNANCE_PROBES}[stage]
@@ -1578,8 +1664,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--dry-run", action="store_true", help="Print the decision tree only")
     p.add_argument("--commit", action="store_true", help="Write auto-next.json to drive the agent's next step")
-    p.add_argument("--complete-stage", choices=["governed_actions_gate", "governance_probe"],
-                   help="Validate a mandatory gate artifact; never trusts worker status")
+    stage_action = p.add_mutually_exclusive_group()
+    stage_action.add_argument("--start-stage", choices=["deploy"],
+                              help="Record an actual deployment attempt before starting its worker")
+    stage_action.add_argument("--complete-stage", choices=["deploy", "governed_actions_gate", "governance_probe"],
+                              help="Record deployment success or validate a mandatory gate artifact")
     p.add_argument("--output", choices=["human", "json"], default="human", help="Output format")
     args = p.parse_args(argv)
 
@@ -1589,10 +1678,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     state_path = workspace / args.state_file
+    if args.start_stage or args.complete_stage:
+        if args.dry_run:
+            p.error("stage execution records cannot be combined with --dry-run")
+    if args.start_stage:
+        record_deploy_started(workspace)
     if args.complete_stage:
         if args.complete_stage == "governance_probe":
-            from skills._shared.governance_readiness import publish_collection
-            complete = publish_collection(workspace)
+            complete = record_governance_probe(workspace)
+        elif args.complete_stage == "deploy":
+            complete = record_deploy_completed(workspace)
         else:
             complete = record_governed_actions_gate(workspace)
         if not complete:
