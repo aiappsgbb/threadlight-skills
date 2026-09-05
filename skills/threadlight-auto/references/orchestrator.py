@@ -46,6 +46,8 @@ from typing import Any
 # -----------------------------------------------------------------------------
 
 STAGES = ["preflight", "design", "deploy", "safe_check", "cost_projection", "invoke", "evals", "redteam", "govern"]
+GOVERNANCE_STAGES = ["preflight", "design", "govern", "governed_actions_gate", "deploy",
+                     "governance_probe", "safe_check", "cost_projection", "invoke", "evals", "redteam"]
 
 DEFAULT_STATE_PATH = ".threadlight/auto-state.json"
 DEFAULT_NEXT_PATH = ".threadlight/auto-next.json"
@@ -98,22 +100,9 @@ LEG_CONTRACTS = {
         "forbid_extra_fields": True,
     },
     "govern": {
-        "manifest": "specs/govern-manifest.json",
+        "manifest": "specs/governance-manifest.json",
         "skill": "threadlight-govern",
-        "schema": "threadlight-govern-manifest/v2",
-        "known_verdicts": frozenset({"governed", "partial", "ungoverned"}),
-        "required_capabilities": frozenset({
-            "policy_artefact_present",
-            "policy_schema_valid",
-            "policy_versioned",
-            "policy_default_deny",
-            "sensitive_action_rules_present",
-            "policy_tests_present",
-            "ci_gate_present",
-            "attestation_present",
-            "attestation_fresh",
-            "asi_reference_present",
-        }),
+        "schema": "threadlight-governance-manifest/v1",
     },
 }
 
@@ -158,17 +147,14 @@ try:  # pragma: no cover - import wiring
     from evidence_gate import (  # noqa: E402
         EvidenceGateError as _EvidenceGateError,
         _validate_evals_manifest as _validate_evals_manifest_contract,
-        _validate_govern_manifest as _validate_govern_manifest_contract,
         _validate_redteam_manifest as _validate_redteam_manifest_contract,
     )
 except Exception:  # pragma: no cover - standalone fallback
     _EvidenceGateError = ValueError
-    _validate_govern_manifest_contract = None
     _validate_evals_manifest_contract = None
     _validate_redteam_manifest_contract = None
 
 _ASSURANCE_MANIFEST_VALIDATORS = {
-    "govern": _validate_govern_manifest_contract,
     "evals": _validate_evals_manifest_contract,
     "redteam": _validate_redteam_manifest_contract,
 }
@@ -1164,6 +1150,8 @@ def _check_leg_manifest(workspace: Path, stage: str) -> StageDecision:
     non-passing verdicts still skip: threadlight-auto plans which executed legs
     to resume, it does not reinterpret advisory readiness outcomes.
     """
+    if stage == "govern":
+        return _check_govern(workspace, {})
     contract = LEG_CONTRACTS[stage]
     manifest_rel = contract["manifest"]
     skill = contract["skill"]
@@ -1288,10 +1276,119 @@ def _check_redteam(workspace: Path, _: dict[str, Any]) -> StageDecision:
 
 
 # Protect leg — agent-runtime governance (AGT). Runs threadlight-govern; emits
-# the verifier report + specs/govern-manifest.json consumed by production-ready
-# pillar 2 (AGT-001..005) and pillar 7 (RAI-002/003).
+# the binding inventory + specs/governance-manifest.json, not whole-agent proof.
 def _check_govern(workspace: Path, _: dict[str, Any]) -> StageDecision:
-    return _check_leg_manifest(workspace, "govern")
+    try:
+        from skills._shared.governance_readiness import load_contract, read_json, inventory_matches
+        document = load_contract(workspace)
+        manifest = read_json(workspace / LEG_CONTRACTS["govern"]["manifest"])
+        inventory_matches(manifest, document)
+        if "offline_evidence" in manifest:
+            for evidence in manifest["offline_evidence"]:
+                source = evidence["source"]
+                if source == "specs/governance-contract.json" or source == "specs/SPEC.md":
+                    if evidence["sha256"] != "sha256:" + (_sha256(workspace / source) or ""):
+                        raise ValueError("inventory-source-changed")
+                elif source:
+                    from govern_bundle.policy_bundle import verify_bundle
+                    verify_bundle(workspace / source, expected_digest=evidence["sha256"])
+                else:
+                    raise ValueError("inventory-source-missing")
+        return StageDecision("govern", "skip", "Current binding inventory; not live enforcement.")
+    except (OSError, ValueError, TypeError, KeyError, ImportError):
+        return StageDecision("govern", "run",
+                             "Binding inventory missing, invalid or changed; legacy capabilities are not evidence.")
+
+
+def _gate_fingerprint(workspace):
+    """Bind a gate to inputs, not to its worker's exit status or file mtime."""
+    paths = ["specs/governance-contract.json", "specs/SPEC.md", "specs/manifest.json",
+             ".threadlight/governance-package.json", ".threadlight/governance-deployment.json",
+             GOVERNED_ACTIONS_MANIFEST]
+    payload = {path: _sha256(workspace / path) for path in paths}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+GOVERNANCE_GATE_STATE = ".threadlight/governance-gate-state.json"
+
+
+def _check_governed_actions_gate(workspace: Path, _: dict[str, Any], *, recording=False) -> StageDecision:
+    """Reuse Task5's entire strict ledger validator, not Auto's advisory summary."""
+    try:
+        import production_ready as readiness
+        manifest = readiness.load_governed_actions_manifest(workspace)
+        if manifest is None or manifest.get("phase") != "pre-deploy":
+            raise ValueError("current-pre-deploy-assessment-required")
+        invalid = readiness._validate_governed_actions_manifest(
+            manifest, readiness._governed_actions_head_commit(workspace), datetime.now(timezone.utc))
+        if invalid is not None:
+            raise ValueError(invalid)
+        if any(f["status"] not in {"pass", "not-applicable"} for f in manifest["findings"]):
+            raise ValueError("pre-deploy-governed-actions-not-passing")
+        from skills._shared.governance_readiness import load_contract, read_json
+        from skills._shared.governance import validate_governance_contract
+        contract = validate_governance_contract(load_contract(workspace), deployment_target="production-bound")
+        consequential = {t["id"] for t in contract["tools"] if t["consequence"] != "read"}
+        if not consequential <= {a["action_id"] for a in manifest["action_inventory"]}:
+            raise ValueError("selected-consequential-actions-missing-from-gate")
+        if not recording:
+            checkpoint = read_json(workspace / GOVERNANCE_GATE_STATE)
+            if checkpoint != {"schema": "threadlight-governance-gate/v1", "fingerprint": _gate_fingerprint(workspace)}:
+                raise ValueError("pre-deploy-inputs-changed")
+        return StageDecision("governed_actions_gate", "skip", "Strict current governance-ledger/v2 gate passed.")
+    except (OSError, ValueError, TypeError, KeyError, ImportError):
+        return StageDecision("governed_actions_gate", "run",
+                             "Mandatory pre-deploy governed-actions gate unverified; deployment blocked until validated.")
+
+
+def record_governed_actions_gate(workspace):
+    decision = _check_governed_actions_gate(workspace, {}, recording=True)
+    if decision.decision != "skip":
+        return False
+    path = workspace / GOVERNANCE_GATE_STATE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema": "threadlight-governance-gate/v1",
+                                "fingerprint": _gate_fingerprint(workspace)}, indent=2) + "\n")
+    return True
+
+
+def _check_governance_probe(workspace: Path, _: dict[str, Any]) -> StageDecision:
+    try:
+        from skills._shared.governance_readiness import assess
+        result = assess(workspace)
+        if result["status"] == "pass" and result["live"]:
+            return StageDecision("governance_probe", "skip", result["reason"])
+    except ImportError:
+        pass
+    return StageDecision("governance_probe", "run",
+                         "Mandatory current exact live binding proof required; only explicit staging noop may run.")
+
+
+GOVERNANCE_PROBES = {
+    "governed_actions_gate": _check_governed_actions_gate,
+    "governance_probe": _check_governance_probe,
+}
+
+
+def _stages_for(workspace):
+    try:
+        from skills._shared.governance_readiness import load_contract, selected
+        document = load_contract(workspace)
+        enabled = selected(document)
+    except ImportError:
+        return list(GOVERNANCE_STAGES)
+    except (OSError, ValueError, TypeError, KeyError):
+        # Malformed declarations never optimize the mandatory path away.
+        enabled = (workspace / "specs/governance-contract.json").exists()
+        parent = _parse_json_object(workspace / "specs/manifest.json")
+        enabled = enabled or isinstance(parent, dict) and "governance" in parent
+        enabled = enabled or parent is None and (workspace / "specs/manifest.json").exists()
+        enabled = enabled or (workspace / ".threadlight/governance-package.json").exists()
+        if not enabled:
+            return list(STAGES)
+    if not enabled:
+        return [s for s in STAGES if s != "govern"]
+    return list(GOVERNANCE_STAGES)
 
 
 STAGE_PROBES = {
@@ -1351,21 +1448,25 @@ def _read_state(state_path: Path) -> dict[str, Any]:
 def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
     state = _read_state(state_path) if state_path else {}
     decisions: list[StageDecision] = []
-    for stage in STAGES:
-        probe = STAGE_PROBES[stage]
+    stages = _stages_for(workspace)
+    for stage in stages:
+        probe = {**STAGE_PROBES, **GOVERNANCE_PROBES}[stage]
         decisions.append(probe(workspace, state))
     decisions = _cascade_invalidations(decisions)
 
     hard_stop = next((d for d in decisions if d.decision == "hard_stop"), None)
     governed_handoff, governed_manifest = _governed_actions_projection(workspace)
+    if "governed_actions_gate" in stages:
+        governed_handoff = {**GOVERNED_ACTIONS_HANDOFF, "execution": "mandatory-selected-bindings"}
 
     return {
         "workspace": str(workspace),
         "state_file": str(state_path) if state_path else None,
-        "stages": list(STAGES),
+        "stages": stages,
+        "dependencies": {stage: [stages[index - 1]] if index else []
+                         for index, stage in enumerate(stages)},
         "manual_handoffs": _manual_handoffs(workspace),
-        # Recommendation only: `threadlight-governed-actions` is never a stage
-        # and is never dispatched from here.
+        # Advisory for legacy pilots; selected bindings require the gate stage.
         "governed_actions": governed_handoff,
         "governed_actions_manifest": governed_manifest,
         "decisions": [
@@ -1395,6 +1496,42 @@ def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
         ),
         "decided_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str, Any]:
+    """Drive the same DAG with a worker; a zero exit is not gate evidence."""
+    executed = []
+    while True:
+        # Design can introduce selections; subsequent workers can change scope.
+        report = decide(workspace, state_path)
+        if report["next_action"]["type"] == "hard_stop":
+            return {"status": "blocked", "stage": report["next_action"]["stage"], "executed": executed}
+        pending = [s for s in report["next_action"]["stages_to_run"] if s not in executed]
+        if not pending:
+            return {"status": "complete", "executed": executed}
+        stage = pending[0]
+        if "governance_probe" in report["stages"]:
+            guards = (["govern", "governed_actions_gate"] if stage == "deploy" else
+                      ["governance_probe"] if stage in ("safe_check", "cost_projection", "invoke", "evals", "redteam") else [])
+            for guard in guards:
+                if {**STAGE_PROBES, **GOVERNANCE_PROBES}[guard](workspace, {}).decision != "skip":
+                    return {"status": "blocked", "stage": guard, "executed": executed}
+        prior_collection = _sha256(workspace / ".threadlight/governance-live.json") if stage == "governance_probe" else None
+        code = worker(stage)
+        executed.append(stage)
+        if code != 0:
+            return {"status": "blocked", "stage": stage, "executed": executed}
+        if stage == "governed_actions_gate" and not record_governed_actions_gate(workspace):
+            return {"status": "blocked", "stage": stage, "executed": executed}
+        if stage == "governance_probe":
+            from skills._shared.governance_readiness import publish_collection
+            if (prior_collection == _sha256(workspace / ".threadlight/governance-live.json")
+                    or not publish_collection(workspace)):
+                return {"status": "blocked", "stage": stage, "executed": executed}
+        if stage in GOVERNANCE_PROBES or stage == "govern":
+            probe = {**STAGE_PROBES, **GOVERNANCE_PROBES}[stage]
+            if probe(workspace, {}).decision != "skip":
+                return {"status": "blocked", "stage": stage, "executed": executed}
 
 
 def _print_human(report: dict[str, Any]) -> None:
@@ -1441,6 +1578,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--dry-run", action="store_true", help="Print the decision tree only")
     p.add_argument("--commit", action="store_true", help="Write auto-next.json to drive the agent's next step")
+    p.add_argument("--complete-stage", choices=["governed_actions_gate", "governance_probe"],
+                   help="Validate a mandatory gate artifact; never trusts worker status")
     p.add_argument("--output", choices=["human", "json"], default="human", help="Output format")
     args = p.parse_args(argv)
 
@@ -1450,6 +1589,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     state_path = workspace / args.state_file
+    if args.complete_stage:
+        if args.complete_stage == "governance_probe":
+            from skills._shared.governance_readiness import publish_collection
+            complete = publish_collection(workspace)
+        else:
+            complete = record_governed_actions_gate(workspace)
+        if not complete:
+            print(json.dumps({"status": "blocked", "stage": args.complete_stage}))
+            return 1
     report = decide(workspace, state_path)
 
     if args.output == "json":

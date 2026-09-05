@@ -10,6 +10,17 @@ AGT (e.g., `target_posture: standard-ai-gateway`).
 
 ## Checks
 
+### Article 9 evidence boundary
+
+The AI Act evidence aggregator maps Article 9 to validated binding coverage,
+current policy provenance and current exact-target live receipts from
+`specs/governance-manifest.json`. A green scorecard or legacy v2 governance
+manifest alone is only `partial`, never `covered`. Offline/unbound inventory is
+not live risk-control proof. The reserved noop cannot certify output mediation,
+business tools or unrelated lifecycle points. Other article mappings and gates
+remain unchanged. This is engineering evidence, not certification, legal advice
+or a claim of regulatory compliance.
+
 ### Static
 
 | ID | Check | Default status |

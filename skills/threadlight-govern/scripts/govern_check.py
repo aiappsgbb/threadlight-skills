@@ -41,7 +41,10 @@ def _empty(reason="contract-missing"):
 
 
 def _contract(root):
-    from policy_bundle import checked_path, _read_file
+    if __package__:
+        from .policy_bundle import checked_path, _read_file
+    else:
+        from policy_bundle import checked_path, _read_file
     path = root / "specs/governance-contract.json"
     if path.exists() or path.is_symlink():
         data = _read_file(checked_path(path))
@@ -187,7 +190,7 @@ def main(argv=None) -> int:
         from policy_bundle import checked_path
         root = checked_path(Path(args.target))
         for relative, text in [
-            ("specs/govern-manifest.json", json.dumps(man, indent=2) + "\n"),
+            ("specs/governance-manifest.json", json.dumps(man, indent=2) + "\n"),
             ("docs/agt-governance-report.md", render(man)),
         ]:
             path = checked_path(root / relative)

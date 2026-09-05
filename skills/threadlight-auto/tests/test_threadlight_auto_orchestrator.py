@@ -39,6 +39,145 @@ def _load_orchestrator():
 orch = _load_orchestrator()
 
 
+def test_selected_bindings_require_actual_ordered_gates(tmp_path):
+    from skills._shared.tests.governance_consumer_fixtures import contract, seed_inventory
+    seed_inventory(tmp_path, contract(selected=True))
+    report = orch.decide(tmp_path)
+    stages = report["stages"]
+    assert stages.index("govern") < stages.index("governed_actions_gate") < stages.index("deploy")
+    assert stages.index("deploy") < stages.index("governance_probe") < stages.index("invoke")
+    assert report["dependencies"]["deploy"] == ["governed_actions_gate"]
+    assert report["dependencies"]["governance_probe"] == ["deploy"]
+
+
+def test_mandatory_gate_failure_stops_actual_execution_and_resume(tmp_path, monkeypatch):
+    from skills._shared.tests.governance_consumer_fixtures import contract, seed_inventory
+    seed_inventory(tmp_path, contract(selected=True))
+    executed = []
+    def worker(stage):
+        executed.append(stage)
+        return 1 if stage == "governed_actions_gate" else 0
+    # Independent upstream stages already complete; producer remains offline only.
+    for name in ("preflight", "design"):
+        monkeypatch.setitem(orch.STAGE_PROBES, name,
+                            lambda w, s, name=name: orch.StageDecision(name, "skip", "fixture"))
+    for _ in range(2):
+        result = orch.execute(tmp_path, worker)
+        assert result["status"] == "blocked"
+        assert "deploy" not in executed and "invoke" not in executed
+    assert executed.count("governed_actions_gate") == 2
+
+
+def test_auto_skill_documents_mandatory_selected_binding_gates():
+    text = (REPO / "skills/threadlight-auto/SKILL.md").read_text()
+    assert "governed_actions_gate" in text and "governance_probe" in text
+    assert "specs/governance-manifest.json" in text
+
+
+def test_actual_dag_validates_gates_before_deploy_and_invoke(tmp_path, monkeypatch):
+    sys.path.insert(0, str(REPO / "skills/threadlight-production-ready/tests"))
+    from test_governed_actions_manifest import make_committed_target, _golden
+    from skills._shared.tests.governance_consumer_fixtures import live_fixture, seed_inventory, write
+    from skills._shared import governance_readiness
+    root = make_committed_target(tmp_path, _golden())
+    value, document, current, _ = live_fixture()
+    seed_inventory(root, document)
+    (root / "specs/governance-manifest.json").unlink()
+    monkeypatch.setattr(governance_readiness, "current_context", lambda root: current)
+    for name in ("preflight", "design"):
+        monkeypatch.setitem(orch.STAGE_PROBES, name,
+                            lambda w, s, name=name: orch.StageDecision(name, "skip", "fixture"))
+    executed = []
+    def worker(stage):
+        executed.append(stage)
+        if stage == "govern":
+            seed_inventory(root, document)
+        if stage == "governance_probe":
+            write(root, ".threadlight/governance-live.json", {
+                "governance_manifest": value, "governance_gaps": []})
+        return 0
+    result = orch.execute(root, worker)
+    assert result["status"] == "complete", result
+    assert executed[:4] == ["govern", "governed_actions_gate", "deploy", "governance_probe"]
+    assert executed.index("governance_probe") < executed.index("invoke")
+    assert (root / ".threadlight/governance-gate-state.json").exists()
+    # The gate checkpoint is not reusable for a different image, contract or policy.
+    write(root, ".threadlight/governance-deployment.json", {"images": {"agent": "different"}})
+    assert orch._check_governed_actions_gate(root, {}).decision == "run"
+    _write_json(tmp_path / "actual-dag.json", {
+        "result": result, "executed": executed, "changed_image_invalidated_gate": True,
+        "scope": "local stage-worker and strict protocol fixtures; no live Azure execution",
+    })
+
+
+def test_probe_failure_blocks_invoke_even_after_successful_local_assessment(tmp_path, monkeypatch):
+    sys.path.insert(0, str(REPO / "skills/threadlight-production-ready/tests"))
+    from test_governed_actions_manifest import make_committed_target, _golden
+    from skills._shared.tests.governance_consumer_fixtures import contract, seed_inventory
+    root = make_committed_target(tmp_path, _golden())
+    seed_inventory(root, contract(selected=True))
+    for name in ("preflight", "design"):
+        monkeypatch.setitem(orch.STAGE_PROBES, name,
+                            lambda w, s, name=name: orch.StageDecision(name, "skip", "fixture"))
+    executed = []
+    result = orch.execute(root, lambda stage: executed.append(stage) or 0)
+    assert result["status"] == "blocked" and result["stage"] == "governance_probe"
+    assert "deploy" in executed and "invoke" not in executed
+    assert orch._check_governance_probe(root, {"governance_probe": "complete"}).decision == "run"
+
+
+def test_new_selection_after_design_cannot_skip_mandatory_gate(tmp_path, monkeypatch):
+    from skills._shared.tests.governance_consumer_fixtures import contract, seed_inventory
+    monkeypatch.setitem(orch.STAGE_PROBES, "preflight", lambda w, s: orch.StageDecision("preflight", "skip", "fixture"))
+    executed = []
+    def worker(stage):
+        executed.append(stage)
+        if stage == "design":
+            seed_inventory(tmp_path, contract(selected=True))
+        return 0
+    assert orch.execute(tmp_path, worker)["status"] == "blocked"
+    assert "governed_actions_gate" in executed and "deploy" not in executed
+
+
+def test_malformed_declaration_cannot_optimize_away_gates(tmp_path):
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs/manifest.json").write_text("{")
+    assert "governed_actions_gate" in orch.decide(tmp_path)["stages"]
+
+
+def test_live_probe_resume_invalidates_changed_image_policy_and_manifest(tmp_path, monkeypatch):
+    from copy import deepcopy
+    from skills._shared.tests.governance_consumer_fixtures import live_fixture, write
+    from skills._shared import governance_readiness
+    value, document, current, _ = live_fixture()
+    write(tmp_path, "specs/governance-manifest.json", value)
+    write(tmp_path, "specs/governance-contract.json", document)
+    original = deepcopy(current)
+    monkeypatch.setattr(governance_readiness, "current_context", lambda root: current)
+    assert orch._check_governance_probe(tmp_path, {}).decision == "skip"
+    for part, key in (("expected_target", "image_digest"), ("policy_bundle", "digest")):
+        current = deepcopy(original)
+        current[part][key] = "sha256:" + "b" * 64
+        assert orch._check_governance_probe(tmp_path, {"governance_probe": {"status": "complete"}}).decision == "run"
+    current = original
+    value["coverage"]["tools_total"] = 0
+    write(tmp_path, "specs/governance-manifest.json", value)
+    assert orch._check_governance_probe(tmp_path, {}).decision == "run"
+
+
+def test_failed_latest_collection_cannot_reuse_previous_green(tmp_path, monkeypatch):
+    from skills._shared.tests.governance_consumer_fixtures import live_fixture, write
+    from skills._shared import governance_readiness
+    value, document, current, _ = live_fixture()
+    write(tmp_path, "specs/governance-manifest.json", value)
+    write(tmp_path, "specs/governance-contract.json", document)
+    monkeypatch.setattr(governance_readiness, "current_context", lambda root: current)
+    assert orch._check_governance_probe(tmp_path, {}).decision == "skip"
+    write(tmp_path, ".threadlight/governance-live.json", {
+        "governance_gaps": ["producer-timeout"], "governance_probes": []})
+    assert orch._check_governance_probe(tmp_path, {}).decision == "run"
+
+
 def _leg_envelope(schema: str, status: str) -> str:
     return json.dumps({
         "schema": schema,
@@ -140,7 +279,7 @@ def test_govern_reruns_when_required_capabilities_are_missing(tmp_path):
     decision = orch._check_govern(tmp_path, {})
 
     assert decision.decision == "run"
-    assert "missing capabilities" in decision.reason
+    assert "legacy capabilities are not evidence" in decision.reason
 
 
 def test_invalid_envelope_never_reports_complete(tmp_path):
@@ -558,7 +697,7 @@ def test_leg_manifest_reruns_when_govern_capability_status_is_invalid(tmp_path):
             "verdict": "governed",
             "capabilities": {
                 capability: {"status": "pass"}
-                for capability in orch.LEG_CONTRACTS["govern"]["required_capabilities"]
+                for capability in ("policy_artefact_present", "policy_schema_valid")
             }
             | {"policy_schema_valid": {"status": "bogus"}},
         },
@@ -567,7 +706,7 @@ def test_leg_manifest_reruns_when_govern_capability_status_is_invalid(tmp_path):
     decision = orch._check_govern(tmp_path, {})
 
     assert decision.decision == "run"
-    assert "invalid status" in decision.reason
+    assert "legacy capabilities are not evidence" in decision.reason
 
 
 def test_leg_manifest_reruns_when_evals_check_id_is_missing(tmp_path):

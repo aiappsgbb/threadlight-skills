@@ -281,6 +281,17 @@ def test_legacy_evidence_contract_is_not_supported(tmp_path):
     assert all_not_verified(aggregate(tmp_path, manifest))
 
 
+def test_binding_manifest_cannot_replace_strict_governance_ledger(tmp_path):
+    from skills._shared.tests.governance_consumer_fixtures import live_fixture, write
+    manifest = _golden()
+    del manifest["evidence_contract"]
+    root = make_target(tmp_path, manifest)
+    write(root, "specs/governance-manifest.json", live_fixture()[0])
+    findings = pr.aggregate_governed_actions(
+        pr.load_governed_actions_manifest(root), GOLDEN_COMMIT, FRESH_NOW)
+    assert all(f.status == "not-verified" for f in findings)
+
+
 @pytest.mark.parametrize("family", ("approval", "output", "audit", "all"))
 def test_removing_persisted_ledger_evidence_and_refs_never_passes(tmp_path, family):
     manifest = _golden()

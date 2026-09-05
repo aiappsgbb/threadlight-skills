@@ -78,7 +78,7 @@ def test_governance_off_is_unbound_and_still_emits_report(tmp_path, capsys):
     assert gc.main(["--target", str(tmp_path), "--profile", "none", "--emit", "--json"]) == 0
     man = json.loads(capsys.readouterr().out)
     assert man["coverage"]["tools_unbound"] == 1
-    assert (tmp_path / "specs/govern-manifest.json").exists()
+    assert (tmp_path / "specs/governance-manifest.json").exists()
     assert man["coverage"]["tools_enforced"] == 0
 
 
@@ -124,7 +124,7 @@ def test_failure_emits_explicit_unverified_manifest(tmp_path, monkeypatch):
         raise RuntimeError("synthetic validator failure")
     monkeypatch.setattr(gc, "evaluate", boom)
     assert gc.main(["--target", str(tmp_path), "--emit", "--gate"]) == 2
-    man = json.loads((tmp_path / "specs/govern-manifest.json").read_text())
+    man = json.loads((tmp_path / "specs/governance-manifest.json").read_text())
     assert man["coverage"]["tools_enforced"] == 0
     assert any(e["reason_code"] == "validator-error" for e in man["offline_evidence"])
     validate_governance_manifest(man)

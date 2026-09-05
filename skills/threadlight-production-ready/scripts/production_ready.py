@@ -713,7 +713,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "POS-001": {"title": "Declared posture matches detected evidence", "pillar": "network-posture", "severity": "should-fix", "tier": 1},
 
     # ---- agent-governance (AGT)
-    "AGT-001": {"title": "AGT policy is schema-valid (lints clean)", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
+    "AGT-001": {"title": "Selected governance bindings have current exact live evidence", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-002": {"title": "policy.yaml present in repo", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-003": {"title": "OWASP ASI 2026 verifier referenced", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-004": {"title": "AGT policy ruleset version pinned", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
@@ -3404,44 +3404,37 @@ def _canonical_policy_text(ctx: RepoContext) -> tuple[str, bool, str]:
 def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     out: list[Finding] = []
     src = ctx.src_text
-    # Prefer the threadlight-govern leg manifest when it is present and fresh:
-    # the leg has already verified AGT wiring, so report its verdict as
-    # evidence rather than re-deriving from heuristics.
-    gm = _load_leg_manifest(ctx, "govern-manifest.json")
-    if gm and gm.get("schema") == "threadlight-governance-manifest/v1":
-        # Fail closed until this consumer understands binding-level live proof.
-        return [_not_verified(f"AGT-{number:03d}",
-                              "Binding-level governance manifest requires consumer migration; "
-                              "legacy source markers are not runtime proof")
-                for number in range(1, 7)]
-    if gm is not None and gm.get("_fresh"):
-        verdict = gm.get("verdict", "?")
-        prov = f"threadlight-govern manifest (verdict: {verdict}, {gm.get('_age_days')}d old)"
-        _agt_map = {
-            "AGT-001": "policy_schema_valid",
-            "AGT-002": "policy_artefact_present",
-            "AGT-003": "asi_reference_present",
-            "AGT-004": "policy_versioned",
-            "AGT-005": "ci_gate_present",
+    repo = Path(__file__).resolve().parents[3]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    try:
+        from skills._shared.governance_readiness import assess
+        target = {
+            key: ctx.azd_env[env_key] for key, env_key in {
+                "agent_id": "AGENT_NAME", "agent_version": "AGENT_VERSION",
+                "image_digest": "IMAGE_DIGEST", "environment": "AZURE_ENV_NAME",
+                "tenant": "AZURE_TENANT_ID", "subject": "AGENT_PRINCIPAL_ID",
+                "client_id": "AGENT_CLIENT_ID",
+            }.items() if ctx.azd_env.get(env_key)
         }
-        for fid, cap in _agt_map.items():
-            st = _leg_cap_status(gm, cap)
-            if st is None:
-                out.append(_not_verified(fid, f"{prov}: capability {cap!r} not reported"))
-            else:
-                out.append(_mk_finding(fid, status=st, detail=f"{prov}: {cap}={st}"))
-        # AGT-006 telemetry sink is not part of the govern manifest — keep the
-        # legacy heuristic so the finding still scores.
-        pol_text = ""
-        for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
-            pol_text += "\n" + (_read_text(p) or "")
-        has_telemetry = bool(re.search(r"telemetry|otel|opentelemetry|app[_ -]?insights", pol_text + src, re.I))
-        out.append(_mk_finding("AGT-006",
-            status="pass" if has_telemetry else "should-fix",
-            detail="Telemetry sink wired" if has_telemetry else "No telemetry sink wired for AGT denials"))
-        if agt_profile and agt_profile not in ("none", "auto", "v3_7", "v4_preview"):
-            out.append(_not_verified("AGT-001", f"Unknown --agt-profile {agt_profile!r}; v4 migration considerations apply"))
-        return out
+        scope = _assessment_target_scope_for_ctx(ctx)
+        if scope.subscription_id:
+            target["subscription"] = scope.subscription_id
+        if scope.resource_group:
+            target["resource_group"] = scope.resource_group
+        assurance = assess(ctx.root, required_target=target)
+    except ImportError:
+        assurance = {"status": "not-verified", "reason": "Shared governance evidence validator unavailable."}
+    if any((ctx.root / "specs" / name).exists() for name in (
+        "governance-manifest.json", "govern-manifest.json", "governance-contract.json",
+    )):
+        return [
+            _mk_finding("AGT-001", status=assurance["status"], detail=assurance["reason"]),
+            *[_mk_finding(f"AGT-{number:03d}",
+                          status="not-applicable" if assurance["status"] == "pass" else "not-verified",
+                          detail="Legacy policy-marker check is not binding enforcement evidence.")
+              for number in range(2, 7)],
+        ]
     # ---- legacy heuristic path (no govern manifest) ----
     # Schema/pin checks read the CANONICAL policy file only; OR-presence signals
     # (OWASP, telemetry) may read the merged text.
@@ -3454,9 +3447,7 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
         and re.search(r"^rules\s*:", canon_text, re.I | re.M)
     )
     out.append(_mk_finding("AGT-001",
-        status="pass" if schema_valid else "must-fix",
-        detail="AGT policy has version/name/rules — lints clean" if schema_valid
-               else "No schema-valid AGT policy (author policy.yaml with top-level version + name + rules, then `agt lint-policy`)"))
+        status=assurance["status"], detail=assurance["reason"]))
     # AGT-002 policy artefact present
     out.append(_mk_finding("AGT-002",
         status="pass" if has_policy else "must-fix",
@@ -4846,12 +4837,13 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
     # RAI-002/003 read the canonical policy for the completeness check; the
     # merged text still feeds the OR-presence shield/PII signals below.
     canon_text, has_policy, pol_text = _canonical_policy_text(ctx)
-    # Prefer the threadlight-govern manifest's RAI-policy verdict when fresh.
-    gm = _load_leg_manifest(ctx, "govern-manifest.json")
-    if gm and gm.get("schema") == "threadlight-governance-manifest/v1":
+    # Neither old whole-agent verdicts nor a noop prove RAI policy enforcement.
+    if any((ctx.root / "specs" / name).exists() for name in (
+        "governance-manifest.json", "govern-manifest.json",
+    )):
         gm_sar = "not-verified"
     else:
-        gm_sar = _leg_cap_status(gm, "sensitive_action_rules_present") if (gm and gm.get("_fresh")) else None
+        gm_sar = None
     has_sar = bool(re.search(r"\b(deny|escalate|block|rate_limit)\b|sensitive[_ ]?action|require[_ ]?approval", canon_text, re.I))
     if gm_sar is not None:
         out.append(_mk_finding("RAI-002", status=gm_sar,

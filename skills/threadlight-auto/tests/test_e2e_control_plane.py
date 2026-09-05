@@ -8,7 +8,7 @@ can run for free as a CI gate.
 The chain mirrors the spine order in ``threadlight-auto``:
 
     invoke (skipped — needs a live agent)
-      -> govern   (threadlight-govern  -> specs/govern-manifest.json)
+      -> govern   (threadlight-govern -> offline specs/governance-manifest.json, not live proof)
       -> evals    (threadlight-evals   -> specs/evals-manifest.json)
       -> redteam  (threadlight-redteam -> specs/redteam-manifest.json)
       -> assess   (threadlight-production-ready reads all three +
@@ -241,14 +241,16 @@ def test_legs_emit_passing_manifests(tmp_path):
     root = _build_combined_repo(tmp_path)
     _emit_legs(root)
 
-    govern = json.loads((root / "specs" / "govern-manifest.json").read_text())
+    govern = json.loads((root / "specs" / "governance-manifest.json").read_text())
     evals = json.loads((root / "specs" / "evals-manifest.json").read_text())
     redteam = json.loads((root / "specs" / "redteam-manifest.json").read_text())
 
     # govern's verdict vocabulary is ungoverned / partial / governed
     # (renamed from "wired" in #95 — AGT realignment).
-    assert govern["verdict"] in ("governed", "partial")
-    assert govern["must_fix"] == []
+    assert govern["schema"] == "threadlight-governance-manifest/v1"
+    assert govern["enforcement"]["mode"] == "evaluate_only"
+    assert govern["coverage"]["tools_enforced"] == 0
+    assert "verdict" not in govern
     assert evals["verdict"] in ("comprehensive", "partial")
     # the evals leg surfaces the latest run's pass-rate so the scorecard can
     # join eval quality (KPI-003)

@@ -28,7 +28,10 @@ framework/governance/tools YAML block in `specs/SPEC.md`) and emits the shared
 framework nor installs/intercepts provider tools. Even a valid native bundle
 does not prove a host obeys decisions.
 
-`--emit` retains the existing report paths. `--gate` exits 2 because offline
+`--emit` writes `specs/governance-manifest.json` and retains
+`docs/agt-governance-report.md`. Readiness consumes binding evidence, not the
+legacy whole-agent v2 verdict discussed in historical guidance below.
+`--gate` exits 2 because offline
 inventory cannot satisfy a runtime-enforcement gate. Legacy `--profile` and
 `--freshness-days` flags remain accepted but do not change declared governance
 or turn file age into proof. `--profile none` still emits the honest report.
