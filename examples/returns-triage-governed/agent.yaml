@@ -49,6 +49,25 @@ tools:
     safe_principles: []
     requires: []
   - id: returns_apply_decision
+    execution_modes: [interactive, batch, background, subagent, direct-tool]
+    approval_required: true
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [rma_id, decision, disposition, citations, rationale]
+      properties:
+        rma_id: {type: string, pattern: '^RMA-\d{4}-\d{6}$'}
+        decision: {enum: [approve_refund, deny_refund, escalate_to_supervisor, request_more_info]}
+        disposition: {enum: [restock_a, restock_b, liquidation, return_to_customer, destroy, null]}
+        citations: {type: array, minItems: 1, maxItems: 8, items: {type: string}}
+        rationale: {type: string, minLength: 1, maxLength: 2000}
+    output_schema:
+      type: object
+      additionalProperties: false
+      required: [ok, audit_id]
+      properties:
+        ok: {const: true}
+        audit_id: {type: string, pattern: '^decision-[0-9a-f]{64}$'}
     consequence: write
     policy_binding: returns-write-v1
     enforcement_path: local-agent-hooks

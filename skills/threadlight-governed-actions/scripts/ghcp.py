@@ -268,6 +268,16 @@ def _ci_probes_satisfied(text: str) -> bool:
     without ever actually running either.
     """
     lines = text.splitlines()
+    # The catalog's actual no-skip CTK runner and local native assessor are
+    # executable commands, not keyword matches or declarations in comments.
+    native_ctk = any(re.fullmatch(
+        r"python3?\s+(?:\.governance-tools/)?scripts/ci/run-governance-pin-tests\.py", line.strip()) for line in lines)
+    native_probe = any(re.fullmatch(
+        r"(?:PYTHONPATH=\.\s+)?python3?\s+(?:\.governance-tools/)?skills/threadlight-governed-actions/scripts/"
+        r"governed_actions\.py\s+--target\s+\S+\s+--phase\s+pre-deploy\s+--gate", line.strip())
+        for line in lines)
+    if native_ctk and native_probe:
+        return True
     ctk_ok = any(_RECOGNIZED_CTK_RUNNER_RE.match(line) for line in lines)
     probe_ok = any(
         _RECOGNIZED_APPLICATION_PROBE_RUNNER_RE.match(line)
@@ -3231,6 +3241,35 @@ def _assess_workflow_or_flag(root: Path, path: Path) -> Tuple[WorkflowAssessment
         return _unreadable_workflow_assessment(path, reason), False
 
 
+def resolve_change_plane_root(project: Path):
+    """Only an explicit project declaration may select its observed git worktree."""
+    project = Path(project).resolve()
+    declaration = project / "governance/change-plane.json"
+    if not declaration.is_file():
+        return project, ""
+    raw = json.loads(declaration.read_text())
+    if raw.get("scope") not in {"worktree", "standalone"}:
+        return project, ""
+    standalone = raw["scope"] == "standalone"
+    candidate = project if standalone else (project / raw["root"]).resolve()
+    if not project.is_relative_to(candidate):
+        raise ChangePlaneError("change-plane-root-must-be-project-ancestor")
+    try:
+        completed = subprocess.run(["git", "-C", str(project), "rev-parse", "--show-toplevel"],
+                                   capture_output=True, text=True, check=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ChangePlaneError("standalone-or-worktree-not-observed") from error
+    if candidate != Path(completed.stdout.strip()).resolve():
+        raise ChangePlaneError("standalone-root-is-not-current-worktree" if standalone
+                               else "change-plane-root-is-not-current-worktree")
+    if standalone:
+        return project, ""
+    prefix = project.relative_to(candidate).as_posix()
+    if prefix != raw["project"]:
+        raise ChangePlaneError("change-plane-project-relative-path-mismatch")
+    return candidate, prefix
+
+
 def assess_change_plane(
     root: Path,
     live_github: Optional[Mapping] = None,
@@ -3264,8 +3303,21 @@ def assess_change_plane(
     every other discovered workflow is still assessed and reported
     normally.
     """
-    root = Path(root).resolve()
+    project = Path(root).resolve()
+    root, project_prefix = resolve_change_plane_root(project)
     discovered_paths = _discover_workflow_files(root)
+    declaration = project / "governance/change-plane.json"
+    if declaration.is_file():
+        declared = json.loads(declaration.read_text())
+        if declared.get("scope") in {"worktree", "standalone"}:
+            selected = declared.get("workflows", [])
+            if not selected or any(not isinstance(p, str) or not p.startswith(".github/workflows/")
+                                   or not (root / p).resolve().is_relative_to(root) for p in selected):
+                raise ChangePlaneError("invalid-scoped-ci-declaration")
+            paths = tuple(root / p for p in selected)
+            if any(p not in discovered_paths for p in paths):
+                raise ChangePlaneError("declared-ci-workflow-missing")
+            discovered_paths = paths
     assessments_list: List[WorkflowAssessment] = []
     safe_workflow_paths: List[Path] = []
     for path in discovered_paths:
@@ -3280,8 +3332,9 @@ def assess_change_plane(
     controls: Dict[str, "Status | bool"] = {}
 
     _assess_pr_gate(root, assessments, findings, controls)
-    _assess_codeowners(root, assessments, live_github, findings, controls)
-    _assess_ci_probes(root, assessments, findings, controls)
+    _assess_codeowners(root, assessments, live_github, findings, controls,
+                      project_prefix=project_prefix)
+    _assess_ci_probes(project, assessments, findings, controls)
     _assess_actions_and_permissions(root, assessments, findings, controls)
     _assess_oidc(root, assessments, findings, controls)
     _assess_identity_separation(assessments, live_azure, findings, controls)
@@ -4611,6 +4664,7 @@ def _assess_codeowners(
     live_github: Optional[Mapping],
     findings: List[Finding],
     controls: Dict[str, "Status | bool"],
+    project_prefix: str = "",
 ) -> None:
     ownership_path = _find_ownership_file(root)
     if ownership_path is None:
@@ -4637,9 +4691,12 @@ def _assess_codeowners(
         return
 
     entries = _parse_codeowners_entries(ownership_path)
-    required_patterns = _REQUIRED_CODEOWNERS_PATTERNS + (
-        _discover_infrastructure_codeowners_requirements(root)
-    )
+    project_root = root / project_prefix if project_prefix else root
+    infrastructure = _discover_infrastructure_codeowners_requirements(project_root)
+    required_patterns = _REQUIRED_CODEOWNERS_PATTERNS + tuple(
+        project_prefix + "/" + p.lstrip("/") if project_prefix else p for p in infrastructure)
+    if project_prefix:
+        required_patterns += (project_prefix + "/**",)
     missing = tuple(
         requirement
         for requirement in required_patterns
@@ -4667,7 +4724,7 @@ def _assess_codeowners(
         )
         return
 
-    eval_suite_files = _discover_eval_suite_files(root)
+    eval_suite_files = _discover_eval_suite_files(project_root)
     eval_directories = (
         _eval_suite_directories(root, eval_suite_files) if eval_suite_files else set()
     )

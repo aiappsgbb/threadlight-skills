@@ -41,12 +41,15 @@ Knowledge: **Contoso Retail Return Policy** via **Foundry IQ** (citations mandat
 The agent orchestrates skills in order — there is no "orchestrator" skill:
 
 1. Always start with **intake-validation**. Read the selected case, then its order,
-   then its customer in the same invocation. Incomplete cases still use
-   **disposition-decision** to record `request_more_info` with a citation (BR-004/005).
+   then its customer in the same invocation. Do not stop on missing information:
+   check known authoritative risk before choosing a disposition. BR-003 requires
+   supervisor escalation even when the reason or photos are missing.
 2. Run **policy-eligibility** to get an `approve_candidate` / `deny_candidate`
    verdict with citations.
 3. Run **fraud-escalation**. If any gate fires, the decision becomes
-   `escalate_to_supervisor` regardless of eligibility (BR-003 overrides BR-001).
+   `escalate_to_supervisor` regardless of eligibility or completeness (BR-003
+   overrides BR-001 and BR-004). Ordinary incomplete cases with no known risk use
+   `request_more_info` with a citation; unknown risk never authorizes a refund.
 4. Run **disposition-decision** to emit + persist the terminal decision, recommend
    disposition, and write the audit record (BR-005 — always cite + audit).
 5. On escalation, present the case to the returns supervisor gate (SPEC § 8); do

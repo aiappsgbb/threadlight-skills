@@ -377,7 +377,8 @@ def _validate_contract_tool(raw, *, runtime, as_of=None):
         "safe_principles",
         "requires",
     }
-    allowed_keys = required_keys | {"acceptance_record"}
+    allowed_keys = required_keys | {"acceptance_record", "execution_modes", "approval_required",
+                                    "input_schema", "output_schema"}
     missing = required_keys.difference(tool)
     if missing:
         _raise(f"{field} missing required keys: {', '.join(sorted(missing))}")
@@ -386,6 +387,16 @@ def _validate_contract_tool(raw, *, runtime, as_of=None):
         _raise(f"{field} contains unsupported keys: {', '.join(sorted(extra))}")
     if tool["policy_binding"] is None:
         _raise(f"{field}.policy_binding must be an identifier or 'none'")
+    if "execution_modes" in tool:
+        modes = _require_unique_string_list(tool["execution_modes"], f"{field}.execution_modes")
+        if set(modes) - {"interactive", "batch", "background", "subagent", "direct-tool",
+                         "provider-hosted-tool"}:
+            _raise(f"{field}.execution_modes contains an unsupported mode")
+    if "approval_required" in tool and not isinstance(tool["approval_required"], bool):
+        _raise(f"{field}.approval_required must be a boolean")
+    for key in ("input_schema", "output_schema"):
+        if key in tool:
+            _require_object(tool[key], f"{field}.{key}")
 
     normalized = normalize_tool(
         {

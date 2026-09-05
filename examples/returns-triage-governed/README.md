@@ -165,9 +165,76 @@ PYTHONPATH=. python skills/threadlight-governed-actions/scripts/governed_actions
   --target examples/returns-triage-governed --phase pre-deploy --gate
 ```
 
-This wider gate intentionally does **not** return green: its older complete
-upstream tuple, all-mode/approval/output proof contract, and standalone-project
-change-plane evidence are not provided by these local tests. No assessor is
-weakened, no synthetic hook callback is passed off as native proof, and no
-blanket certification is inferred. Foundry IQ live retrieval, Teams UI, full
-production operational readiness and live deployment probes remain unverified.
+**Task13 Step6 returns exit 0 for selected local proof**, not production
+certification. Prepare the published Linux amd64 wheels with the existing runner:
+
+```bash
+python scripts/ci/run-governance-pin-tests.py --prepare-local
+```
+
+Docker is required outside the already-qualified Linux runner. Preparation
+downloads public pinned artifacts, installs a dedicated local environment, and
+observes real imported distributions and wheel bytes. It does not run Azure
+commands, build an application image, deploy, or assert an image's installed
+packages. Each assessor invocation rechecks the exact shared pins and reruns
+the native probes; a saved `installed-packages.json` cannot replace this run.
+
+`governance/probe-contract.json` selects **`returns_apply_decision`**, not the
+reserved noop. The assessor calls the same `container.build_host` / generated
+native factory with real Hooks, ACS/OPA and Task8 authenticated services.
+Only upstream model HTTP, local RSA/JWKS, signature-service and SDK storage seams
+are fixtures. The Cosmos adapter, its conditional batch, policy decisions,
+approval requests/consume checks and durable-ACK ordering remain real code.
+Interactive, batched, scheduled-background and independently governed child-agent
+calls are exercised. Raw direct-tool invocation must fail at the backend's
+trusted-context guard; this is explicitly **not** evidence of raw-tool Hooks
+interception. Positive unbound reads do not confer coverage on writes.
+
+Local approval evidence includes absent/rejected/wrong-role review, changed
+binding on an unused grant, expiry, one-use replay, and a second fresh valid
+handoff. Known risk plus missing reason/photos still escalates; ordinary missing
+information cannot finalize a refund. Output evidence is the declared business
+tool schema only—not model-stream/output-policy certification.
+The unselected output-hook probe is `not-applicable`; selecting that requirement
+without actual output-hook proof blocks the gate rather than borrowing schema evidence.
+
+The trusted recorder writes payload-free observations over a fresh private fd,
+including the assessor nonce and monotonic counter. The Docker bridge keeps
+ordinary stdout/model output on a separate channel. Source hashes, imported
+package bytes, native evaluations, durable receipts and actual effect counts are
+checked before evidence is accepted. This is **cooperative-host evidence**, not
+attestation against a malicious process that controls its own memory/descriptors.
+
+To retain ignored, schema-validated artifacts without overwriting the committed
+offline inventory, append:
+
+```bash
+--emit --manifest-path .governance-validation/local-manifest.json \
+  --evidence-path .governance-validation/local-evidence.md \
+  --apply-plan-path .governance-validation/local-plan.json
+```
+
+Repository-mode ownership/CI is read from the explicitly declared, Git-observed
+current worktree, never an arbitrary parent or the main checkout. It covers
+this local validation pipeline, not a deployed change plane. Live branch
+protection, tenant bindings, deployed images, Foundry IQ retrieval, Teams UI and
+production operational readiness remain unverified. Task15 needs independent
+live business-action proof and cannot borrow a noop or these local results.
+
+### Materialized standalone project
+
+Materialization exports the same tooling under `.governance-tools/`, the real
+catalog CODEOWNERS, and a pinned read-only CI template. Review the exported
+ownership with the operator; it is a declaration, never evidence that reviews
+are enforced. In the project's own Git checkout with its actual origin:
+
+```bash
+python .governance-tools/scripts/ci/run-governance-pin-tests.py --prepare-local
+python .governance-tools/skills/threadlight-governed-actions/scripts/governed_actions.py \
+  --target . --phase pre-deploy --gate
+```
+
+The dedicated environment and caches are created inside that project. Neither
+command needs the parent catalog's temporary environment. The exported CI also
+runs the existing corrected official CTK runner; its source pin and SDK tests are
+unchanged. No source package is a built image or an installed-package receipt.

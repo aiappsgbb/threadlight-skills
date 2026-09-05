@@ -29,10 +29,8 @@ scope if {
         null, "", "fit_too_small", "wrong_size", "changed_mind",
         "arrived_damaged", "not_as_described", "defective",
     }
-    is_number(f.customer.lifetime_return_rate)
-    f.customer.lifetime_return_rate >= 0
-    f.customer.lifetime_return_rate <= 1
-    f.customer.account_status in {"active", "review_flagged"}
+    valid_rate
+    object.get(f.customer, "account_status", null) in {null, "active", "review_flagged"}
     t.tool_call.args == a
     a.decision in {"approve_refund", "deny_refund", "escalate_to_supervisor", "request_more_info"}
 }
@@ -68,6 +66,17 @@ intake if {
     a.decision in {"request_more_info", "escalate_to_supervisor"}
 }
 
+valid_rate if { object.get(f.customer, "lifetime_return_rate", null) == null }
+valid_rate if {
+    is_number(f.customer.lifetime_return_rate)
+    f.customer.lifetime_return_rate >= 0
+    f.customer.lifetime_return_rate <= 1
+}
+known_risk_data if {
+    is_number(f.customer.lifetime_return_rate)
+    f.customer.account_status in {"active", "review_flagged"}
+}
+incomplete if { not known_risk_data }
 incomplete if { f.order.not_found == f.case.order_id }
 incomplete if { object.get(f.case, "reason_code", null) in {null, ""} }
 incomplete if {
@@ -99,10 +108,11 @@ risk if {
 }
 
 recommendation := "escalate_to_supervisor" if {
+    risk
+} else := "escalate_to_supervisor" if {
     incomplete
     object.get(f.case, "info_requests", 0) >= 1
 } else := "request_more_info" if { incomplete
-} else := "escalate_to_supervisor" if { risk
 } else := "approve_refund" if { eligible
 } else := "deny_refund" if { ineligible
 } else := "escalate_to_supervisor"

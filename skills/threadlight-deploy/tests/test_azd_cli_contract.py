@@ -16,6 +16,7 @@ Read-only: nothing here writes to the checkout or touches the network.
 from __future__ import annotations
 
 import re
+import os
 from pathlib import Path
 
 import pytest
@@ -40,18 +41,18 @@ DOCUMENTS_REMOVED_COMMANDS = {
 }
 
 SEARCH_SUFFIXES = {".md", ".yml", ".yaml", ".sh", ".py"}
-SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv"}
+SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".governance-validation"}
 
 COMMAND_RE = re.compile(r"azd ai agent ([a-z][a-z-]*)")
 
 
 def _iter_repo_files():
-    for path in REPO_ROOT.rglob("*"):
-        if path.suffix not in SEARCH_SUFFIXES or not path.is_file():
-            continue
-        if any(part in SKIP_DIRS for part in path.parts):
-            continue
-        yield path
+    for directory, dirs, files in os.walk(REPO_ROOT):
+        dirs[:] = [name for name in dirs if name not in SKIP_DIRS]
+        for name in files:
+            path = Path(directory) / name
+            if path.suffix in SEARCH_SUFFIXES and path.is_file():
+                yield path
 
 
 def _known_commands() -> set[str]:

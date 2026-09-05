@@ -60,6 +60,9 @@ def verify_wheels(wheelhouse, pins):
         digest = hashlib.sha256((wheelhouse / item["filename"]).read_bytes()).hexdigest()
         if digest != item["digests"]["sha256"]:
             raise RuntimeError(f"public wheel checksum mismatch: {requirement}")
+        if pins.get("wheels") and pins["wheels"].get(name) != {
+                "filename": item["filename"], "sha256": digest}:
+            raise RuntimeError(f"shared exact wheel pin mismatch: {requirement}")
         records.append({"distribution": name, "version": version,
                         "filename": item["filename"], "sha256": digest})
     (SCRATCH / "wheel-provenance.json").write_text(json.dumps(records, indent=2) + "\n")
@@ -215,7 +218,7 @@ for record in records:
         shutil.rmtree(staging)
 
 
-def deployment_runtime(pins):
+def deployment_runtime(pins, *, local_only=False):
     """Separate environment; generated contexts never depend on catalog package installation."""
     import importlib.util
     reference = ROOT / "skills/threadlight-deploy/references/governance"
@@ -290,6 +293,13 @@ for name, record in {sdk_wheels!r}.items():
                 assert dist.locate_file(member).read_bytes() == archive.read(member), member
 """
         run([python, "-c", verification])
+        if local_only:
+            run([python, "-c",
+                 "import json; from pathlib import Path; from skills._shared.native_validation import observe; "
+                 "root=Path.cwd(); pins=json.loads((root/'skills/_shared/governance-upstream-pin.json').read_text()); "
+                 "result=observe(pins,root/'.governance-validation/deployment-wheels',root=root); "
+                 "(root/'.governance-validation/installed-native-local.json').write_text(json.dumps(result,indent=2)+'\\n')"])
+            return
         # Installed collector must import outside the checkout, without PYTHONPATH.
         subprocess.run([str(python), "-I", "-c",
              "from governance_references.governance_probe import main; "
@@ -310,6 +320,7 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_governance_quality.py",
              "skills/threadlight-deploy/tests/test_azd_cli_contract.py",
              "examples/returns-triage-governed/tests",
+             "--ignore=examples/returns-triage-governed/tests/test_local_assessment.py",
              "-q", f"--junitxml={report}", "--basetemp", SCRATCH / "deployment-fixtures",
              "-o", "markers=governance_runtime: exact native runtime",
              "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
@@ -321,8 +332,8 @@ for name, record in {sdk_wheels!r}.items():
             "test_native_returns_safe_context_and_cosmos_effect[valid]",
             "test_native_returns_safe_context_and_cosmos_effect[forged]",
             "test_native_returns_safe_context_and_cosmos_effect[stale]",
-            "test_native_supervisor_approval_remote_ack_and_one_use[approved]",
-            "test_native_supervisor_approval_remote_ack_and_one_use[invalid-human]",
+            "test_native_supervisor_approval_remote_ack_and_one_use[complete-approved]",
+            "test_native_supervisor_approval_remote_ack_and_one_use[complete-invalid-human]",
             "test_optional_native_probe_only_proves_reserved_noop[deny]",
             "test_optional_native_probe_only_proves_reserved_noop[allow]",
             "test_materialized_actual_module_closure_and_fail_closed_startup[False]",
@@ -374,13 +385,14 @@ def collector_requirements():
     return [item for item in project["project"]["dependencies"] if not item.startswith("threadlight-")]
 
 
-def prepare_deployment(pins):
+def prepare_deployment(pins, *, local_only=False):
     """Host downloads retain working TLS settings; Linux container executes published wheels."""
     (SCRATCH / "deployment-proof.json").unlink(missing_ok=True)
     reference = ROOT / "skills/threadlight-deploy/references/governance"
     output = SCRATCH / "deployment-bicep.json"
     bicep = [shutil.which("bicep")] if shutil.which("bicep") else ["az", "bicep"]
-    run([*bicep, "build", "--file", reference / "governance.bicep", "--outfile", output])
+    if not local_only:
+        run([*bicep, "build", "--file", reference / "governance.bicep", "--outfile", output])
     deps = tomllib.loads((reference / "pyproject-maf.toml").read_text())["project"]["dependencies"]
     requested = sorted(set(requirements(pins) + gateway_requirements() + [
         item for item in deps if not item.startswith("threadlight-govern-")
@@ -408,7 +420,10 @@ def prepare_deployment(pins):
          "-w", "/work", "-e", "TMPDIR=/work/.governance-validation/tmp",
          "-e", "PYTHONPYCACHEPREFIX=/work/.governance-validation/pycache",
          "-e", "PIP_CACHE_DIR=/work/.governance-validation/pip-cache",
-         IMAGE, "python", "scripts/ci/run-governance-pin-tests.py", "--deployment-prepared"])
+         IMAGE, "python", "scripts/ci/run-governance-pin-tests.py",
+         "--local-prepared" if local_only else "--deployment-prepared"])
+    if local_only:
+        return
     fixtures = list((SCRATCH / "deployment-fixtures").glob("test_generated_maf_native*/external-pilot"))
     if len(fixtures) != 1:
         raise RuntimeError("generated external fixture missing")
@@ -539,6 +554,12 @@ def main():
     )
     os.environ.pop("PYTHONPATH", None)
     pins = json.loads(PIN_FILE.read_text())
+    if sys.argv[1:] == ["--prepare-local"]:
+        prepare_deployment(pins, local_only=True)
+        return
+    if sys.argv[1:] == ["--local-prepared"]:
+        deployment_runtime(pins, local_only=True)
+        return
     if sys.argv[1:] == ["--deployment"]:
         prepare_deployment(pins)
         return

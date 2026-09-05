@@ -1233,7 +1233,14 @@ def test_schema_root_description_documents_authoritative_hand_validator_gaps():
 def test_shared_upstream_pin_exact_values():
     assert PIN_PATH.exists(), "shared governance upstream pin missing"
 
-    assert json.loads(PIN_PATH.read_text(encoding="utf-8")) == {
+    pin = json.loads(PIN_PATH.read_text(encoding="utf-8"))
+    wheels = pin.pop("wheels")
+    assert set(wheels) == {
+        "agent-governance-toolkit-core", "agent-control-specification", "agent-hooks-sdk",
+        "agent-framework-core", "agent-framework-foundry", "agent-framework-foundry-hosting"}
+    assert all(set(w) == {"filename", "sha256"} and len(w["sha256"]) == 64
+               and w["filename"].endswith(".whl") for w in wheels.values())
+    assert pin == {
         "schema": "threadlight-governance-upstream-pin/v1",
         "agt": {"distribution": "agent-governance-toolkit-core", "version": "5.0.0"},
         "acs": {

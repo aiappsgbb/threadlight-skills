@@ -8,7 +8,7 @@
   "policy_bundle": {
     "id": "returns-write-v1",
     "version": "1",
-    "digest": "sha256:e01277014cc4d99cf2e6539ca507a772b7e55f640394d102760ec56272976bf6",
+    "digest": "sha256:f1d6386492c36b2ee44ee0996942e7c88fecfab41590ca71527cc4cc950a844c",
     "signature_verified": false,
     "expires_at": null
   },
@@ -39,7 +39,7 @@
       "mode": "evaluate_only",
       "safe_principles": [],
       "status": "unbound",
-      "policy_digest": "sha256:e01277014cc4d99cf2e6539ca507a772b7e55f640394d102760ec56272976bf6",
+      "policy_digest": "sha256:f1d6386492c36b2ee44ee0996942e7c88fecfab41590ca71527cc4cc950a844c",
       "probe_ids": [],
       "evidence_refs": [
         "EV-inventory",
@@ -54,7 +54,7 @@
       "mode": "evaluate_only",
       "safe_principles": [],
       "status": "unbound",
-      "policy_digest": "sha256:e01277014cc4d99cf2e6539ca507a772b7e55f640394d102760ec56272976bf6",
+      "policy_digest": "sha256:f1d6386492c36b2ee44ee0996942e7c88fecfab41590ca71527cc4cc950a844c",
       "probe_ids": [],
       "evidence_refs": [
         "EV-inventory",
@@ -69,7 +69,7 @@
       "mode": "evaluate_only",
       "safe_principles": [],
       "status": "unbound",
-      "policy_digest": "sha256:e01277014cc4d99cf2e6539ca507a772b7e55f640394d102760ec56272976bf6",
+      "policy_digest": "sha256:f1d6386492c36b2ee44ee0996942e7c88fecfab41590ca71527cc4cc950a844c",
       "probe_ids": [],
       "evidence_refs": [
         "EV-inventory",
@@ -84,7 +84,7 @@
       "mode": "evaluate_only",
       "safe_principles": [],
       "status": "unbound",
-      "policy_digest": "sha256:e01277014cc4d99cf2e6539ca507a772b7e55f640394d102760ec56272976bf6",
+      "policy_digest": "sha256:f1d6386492c36b2ee44ee0996942e7c88fecfab41590ca71527cc4cc950a844c",
       "probe_ids": [],
       "evidence_refs": [
         "EV-inventory",
@@ -106,7 +106,7 @@
         "Escalation"
       ],
       "status": "unverified",
-      "policy_digest": "sha256:e01277014cc4d99cf2e6539ca507a772b7e55f640394d102760ec56272976bf6",
+      "policy_digest": "sha256:f1d6386492c36b2ee44ee0996942e7c88fecfab41590ca71527cc4cc950a844c",
       "probe_ids": [],
       "evidence_refs": [
         "EV-inventory",
@@ -166,13 +166,13 @@
     {
       "evidence_ref": "EV-inventory",
       "source": "specs/governance-contract.json",
-      "sha256": "sha256:f4386fbcd02603782560f4a0b53360e4ef1a36163920e164b95451c070370a26",
+      "sha256": "sha256:e354470fa2c6935849c09a80ce4fc7a6205c649888476c9f3cb8a35edd916b92",
       "reason_code": "contract-declared-only"
     },
     {
       "evidence_ref": "EV-bundle",
       "source": "src/agent/governance/bundle",
-      "sha256": "sha256:e01277014cc4d99cf2e6539ca507a772b7e55f640394d102760ec56272976bf6",
+      "sha256": "sha256:f1d6386492c36b2ee44ee0996942e7c88fecfab41590ca71527cc4cc950a844c",
       "reason_code": "native-manifest-valid-not-runtime-proof"
     }
   ]

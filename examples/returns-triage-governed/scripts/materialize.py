@@ -36,6 +36,12 @@ def materialize(output, configuration=None, *, probe=False):
         shutil.copytree(EXAMPLE / "specs/sample-data", agent / "sample-data")
         for name in ("agent.yaml", "azure.yaml"):
             shutil.copyfile(EXAMPLE / name, output / name)
+        for name in ("AGENTS.md", "README.md"):
+            shutil.copyfile(EXAMPLE / name, output / name)
+        shutil.copytree(EXAMPLE / "specs", output / "specs")
+        shutil.copytree(EXAMPLE / "governance", output / "governance")
+        (output / "scripts").mkdir()
+        shutil.copyfile(EXAMPLE / "scripts/local_probe.py", output / "scripts/local_probe.py")
         definition = yaml.safe_load((EXAMPLE / "agent.yaml").read_text())
         contract = {key: definition[key] for key in ("framework", "governance", "tools")}
         source_config = {"agent_service": "returns-triage"}
@@ -59,6 +65,8 @@ def materialize(output, configuration=None, *, probe=False):
         bundle = bundle_api.build_bundle(
             source=agent / "governance/policy", destination=agent / "policy",
             policy_id="returns-write-v1", version="1")
+        generator = importlib.import_module("skills.threadlight-deploy.references.governance.generate")
+        generator.export_local_validation(output)
         if settings:
             from govern_control_plane.models import SignedBundle, parse
             generator = importlib.import_module("skills.threadlight-deploy.references.governance.generate")

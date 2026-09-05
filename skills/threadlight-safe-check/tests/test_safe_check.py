@@ -292,15 +292,12 @@ def test_phase_postdeploy_embeds_checked_manifest_snapshot() -> None:
 # Canonical <-> example parity: the two safe_check.py copies never drift.
 # ---------------------------------------------------------------------------
 
-def test_example_safe_check_is_byte_identical_to_canonical() -> None:
+def test_example_safe_check_delegates_to_current_canonical_gate() -> None:
     assert EXAMPLE_COPY.exists(), f"example copy missing at {EXAMPLE_COPY}"
-    canonical = SCRIPT.read_bytes()
-    example = EXAMPLE_COPY.read_bytes()
-    assert canonical == example, (
-        "examples/returns-triage-governed/tests/safe_check.py has drifted from "
-        "skills/threadlight-safe-check/scripts/safe_check.py — the example copy "
-        "must be re-synchronized byte-for-byte."
-    )
+    import runpy
+    module = runpy.run_path(str(EXAMPLE_COPY))
+    for name in ("main", "phase_postdeploy"):
+        assert Path(module[name].__code__.co_filename).resolve() == SCRIPT.resolve()
 
 
 if __name__ == "__main__":

@@ -24,6 +24,31 @@ UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 RESOURCE = rf"/subscriptions/{UUID}/resourceGroups/[^/]+/providers/"
 
 
+def export_local_validation(project):
+    """Export real catalog tooling/ownership; no installed or live evidence is copied."""
+    project = Path(project)
+    tools = project / ".governance-tools"
+    for skill in ("_shared", "threadlight-govern", "threadlight-deploy",
+                  "threadlight-governed-actions", "threadlight-safe-check"):
+        shutil.copytree(CATALOG / "skills" / skill, tools / "skills" / skill,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache",
+                                                     "*.egg-info", "build", "dist"))
+    # Explicit package wins over the generated application's smaller vendored
+    # skills namespace during local validation; deployment source is unchanged.
+    (tools / "skills/__init__.py").write_text("")
+    (tools / "scripts/ci").mkdir(parents=True)
+    for name in ("run-governance-pin-tests.py", "governance_ctk.py"):
+        shutil.copyfile(CATALOG / "scripts/ci" / name, tools / "scripts/ci" / name)
+    (project / ".github/workflows").mkdir(parents=True)
+    shutil.copyfile(CATALOG / ".github/CODEOWNERS", project / ".github/CODEOWNERS")
+    shutil.copyfile(REFERENCE / "native-local.yml", project / ".github/workflows/native-local.yml")
+    (project / ".gitignore").write_text(".governance-validation/\n__pycache__/\n*.pyc\n")
+    (project / "governance/change-plane.json").write_text(json.dumps({
+        "scope": "standalone", "workflows": [".github/workflows/native-local.yml"],
+        "ownership": "copied from catalog CODEOWNERS; operator review required; not live verification",
+    }, indent=2) + "\n")
+
+
 def project_transaction(operation):
     """Prepare in a same-filesystem shadow; publish only changed, owned paths.
 

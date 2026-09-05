@@ -41,6 +41,10 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple
 
+_TOOL_ROOT = Path(__file__).resolve().parents[3]
+if (_TOOL_ROOT / "skills/_shared/governance.py").is_file():
+    sys.path.insert(0, str(_TOOL_ROOT))
+
 import alerts
 import canonical
 import contracts
@@ -49,6 +53,7 @@ import inputs
 import inventory
 import maf_adapter
 import mediation
+import native_local
 import probes
 import render
 import scaffold
@@ -1849,26 +1854,32 @@ def _assess_repository_controls(
         policy_hashes = tuple(canonical.hash_files(root, inv.policy_paths)["files"])
 
     pin = maf_adapter.load_upstream_pin(_UPSTREAM_PIN_PATH)
-    observed_tuple = maf_adapter.MAFAdapter().resolved_tuple(root)
-    pin_comparison = maf_adapter.compare_upstream_tuple(observed_tuple, pin)
-    if pin_comparison.finding is not None:
-        findings.append(replace(pin_comparison.finding, phase=phase))
-
-    graph = mediation.build_mediation_graph(root, inv.actions, maf_adapter.MAFAdapter())
+    native_contract = native_local.contract(root) if phase == "pre-deploy" else None
+    native_pins = None
+    if native_contract:
+        events = native_local.execute(root, native_contract)
+        native_paths, probe_results, native_pins = native_local.evaluate(events, native_contract, inv.actions)
+        graph = mediation.MediationGraph(nodes=(), edges=(), paths=native_paths, findings=())
+        raw_probe_contract = probe_contract = native_contract
+    else:
+        observed_tuple = maf_adapter.MAFAdapter().resolved_tuple(root)
+        pin_comparison = maf_adapter.compare_upstream_tuple(observed_tuple, pin)
+        if pin_comparison.finding is not None:
+            findings.append(replace(pin_comparison.finding, phase=phase))
+        graph = mediation.build_mediation_graph(root, inv.actions, maf_adapter.MAFAdapter())
     provider_graph = mediation.assess_provider_paths(root, inv.actions)
     paths = graph.paths + provider_graph.paths
     findings.extend(provider_graph.findings)
 
-    probe_results, probe_findings = _run_probe_sets(root, phase, graph.paths)
-    findings.extend(probe_findings)
-    raw_probe_contract, probe_contract = _load_probe_contract_context(root)
-
-    approval_probe_results, approval_findings = _run_approval_coverage(
-        root, phase, options.now
-    )
-    findings.extend(approval_findings)
-    output_probe_results, output_findings = _run_output_coverage(root, phase)
-    findings.extend(output_findings)
+    approval_probe_results = output_probe_results = ()
+    if native_contract is None:
+        probe_results, probe_findings = _run_probe_sets(root, phase, graph.paths)
+        findings.extend(probe_findings)
+        raw_probe_contract, probe_contract = _load_probe_contract_context(root)
+        approval_probe_results, approval_findings = _run_approval_coverage(root, phase, options.now)
+        findings.extend(approval_findings)
+        output_probe_results, output_findings = _run_output_coverage(root, phase)
+        findings.extend(output_findings)
     probe_results = _canonicalize_probe_results(
         probe_results + approval_probe_results + output_probe_results,
         inv.actions,
@@ -1926,8 +1937,18 @@ def _assess_repository_controls(
         deployed_target=item["deployed_target"],
     ) for item in change_plane_result.action_evidence)
 
-    pins = _pins_summary(pin_comparison.expected)
-    change_plane = _change_plane_summary(root, source, options, evidence)
+    pins = _pins_summary(maf_adapter._expected_tuple_from_pin(pin))
+    if native_pins is not None:
+        pins["dependencies"] = tuple({"name": k, "version": v} for k, v in native_pins.items())
+        pins["specifications"] = (
+            {"name": "python", "version": events[0]["observation"]["python_version"]},
+            {"name": "acs-policy-schema", "version": pin["acs"]["policy_schema"]},
+        )
+    change_root, _ = ghcp.resolve_change_plane_root(root)
+    change_plane = _change_plane_summary(change_root, source, options, evidence)
+    evidence.extend(_bind_static_source_evidence(
+        change_root, [f for f in findings if f.plane == "change"], source, options,
+        policy_hashes, already_collected=frozenset(ref.evidence_id for ref in evidence), paths=()))
     conformance_claims = _conformance_claims_from_controls(change_plane_result.controls)
 
     findings.sort(key=lambda finding: (finding.finding_id, finding.reason_code))

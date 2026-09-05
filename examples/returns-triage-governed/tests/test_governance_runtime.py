@@ -25,38 +25,7 @@ def test_returns_apply_decision_is_selectively_bound():
     assert selected[0]["intervention_points"] == ["pre_tool_call"]
 
 
-class MemoryCosmos:
-    """Cosmos SDK protocol double; production uses Cosmos, never these dictionaries."""
-    def __init__(self):
-        cases = json.loads((EXAMPLE / "specs/sample-data/returns.json").read_text())["records"]
-        self.docs = {case["id"]: {**case, "case_id": case["id"], "_etag": "1", "kind": "case"}
-                     for case in cases}
-        self.decisions = []
-        self.before_batch = None
-
-    async def read_item(self, item, partition_key):
-        assert partition_key == self.docs[item]["case_id"]
-        return deepcopy(self.docs[item])
-
-    async def execute_item_batch(self, batch_operations, partition_key):
-        if self.before_batch:
-            self.before_batch()
-        assert len(batch_operations) == 2
-        kind, (key, body), options = batch_operations[0]
-        assert kind == "replace"
-        if self.docs[key]["_etag"] != options["if_match_etag"]:
-            raise RuntimeError("cosmos-precondition-failed")
-        kind, (audit,), options = batch_operations[1]
-        assert kind == "create" and options == {}
-        assert audit["case_id"] == body["case_id"] == partition_key
-        assert audit["kind"] == "decision-audit"
-        assert audit["action_hash"] and audit["policy_hash"] and audit["principal"]
-        if audit["id"] in self.docs:
-            raise RuntimeError("cosmos-conflict")
-        self.docs[key] = {**deepcopy(body), "_etag": str(int(self.docs[key]["_etag"]) + 1)}
-        self.docs[audit["id"]] = deepcopy(audit)
-        self.decisions.append(deepcopy(audit))
-        return [{"statusCode": 200}, {"statusCode": 201}]
+from local_probe import MemoryCosmos
 
 
 def application(store):
@@ -109,7 +78,8 @@ def sequence(rma=RMA, *, fault="valid", decision="approve_refund"):
                                   "cross-customer", "stale", "payment", "audit-down",
                                   "final-sale", "incomplete", "unmatched-order", "replay", "read-stale",
                                   "risk-autoapprove", "invalid-customer", "irrelevant-citation",
-                                  "missing-reason", "second-info", "missing-revision", "forged-rationale"])
+                                  "missing-reason", "second-info", "missing-revision", "forged-rationale",
+                                  "unknown-risk"])
 def test_native_returns_safe_context_and_cosmos_effect(tmp_path, monkeypatch, fault):
     from test_runtime_provider import native_model_client
     from test_policy_bundle import bundle_module
@@ -117,15 +87,17 @@ def test_native_returns_safe_context_and_cosmos_effect(tmp_path, monkeypatch, fa
     import runtime
     store = MemoryCosmos()
     app = application(store)
-    expected_write = fault in {"valid", "final-sale", "incomplete", "unmatched-order", "replay", "missing-reason"}
+    expected_write = fault in {"valid", "final-sale", "unmatched-order", "replay", "missing-reason",
+                              "unknown-risk"}
     rma = "RMA-2026-004418" if fault == "final-sale" else "RMA-2026-004440" if fault in {"incomplete", "second-info"} else (
         "RMA-2026-004425" if fault == "risk-autoapprove" else RMA)
     outcome = "deny_refund" if fault == "final-sale" else (
-        "request_more_info" if fault in {"incomplete", "unmatched-order", "missing-reason", "second-info"}
+        "request_more_info" if fault in {"incomplete", "unmatched-order", "missing-reason", "second-info",
+                                        "unknown-risk"}
         else "approve_refund")
     if fault == "unmatched-order":
         app.backend.orders.pop(store.docs[RMA]["order_id"])
-    if fault == "invalid-customer":
+    if fault in {"invalid-customer", "unknown-risk"}:
         app.backend.customers[store.docs[RMA]["customer_id"]].pop("lifetime_return_rate")
     if fault == "missing-reason":
         store.docs[rma]["reason_code"] = None
@@ -307,7 +279,9 @@ def test_optional_native_probe_only_proves_reserved_noop(tmp_path, monkeypatch, 
 
 @pytest.mark.governance_runtime
 @pytest.mark.parametrize("review", ["absent", "invalid-human", "approved", "rejected"])
-def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch, review):
+@pytest.mark.parametrize("overlap", ["complete", "flagged-missing-reason", "high-value-missing-photos",
+                                    "wrong-request-more-info"])
+def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch, review, overlap):
     import base64
     import httpx
     import runtime
@@ -319,6 +293,12 @@ def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch
     from azure.core.credentials import AccessToken
     store = MemoryCosmos()
     app = application(store)
+    if overlap in {"flagged-missing-reason", "wrong-request-more-info"}:
+        store.docs["RMA-2026-004425"]["reason_code"] = None
+        customer = app.backend.customers[store.docs["RMA-2026-004425"]["customer_id"]]
+        customer.update(account_status="review_flagged", lifetime_return_rate=0.8)
+    elif overlap == "high-value-missing-photos":
+        store.docs["RMA-2026-004425"].update(reason_code="arrived_damaged", photos_provided=False)
     monkeypatch.setitem(sys.modules, "governance_application", app)
     monkeypatch.syspath_prepend(str(ROOT / "skills/threadlight-deploy/references/governance"))
     host_module = module("maf-container")
@@ -390,12 +370,14 @@ def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch
             async with provider.audit:
                 host = host_module.build_host(
                     provider, client=native_model_client(sequence(
-                        "RMA-2026-004425", decision="escalate_to_supervisor")),
+                        "RMA-2026-004425", decision="request_more_info" if overlap ==
+                        "wrong-request-more-info" else "escalate_to_supervisor")),
                     configure_observability=None)
                 await host._agent.run("triage high value")
-            assert len(pending) == 1
-            assert len(store.decisions) == (1 if review == "approved" else 0)
-            if review == "approved":
+            assert len(pending) == (0 if overlap == "wrong-request-more-info" else 1)
+            assert len(store.decisions) == (1 if review == "approved" and overlap !=
+                                          "wrong-request-more-info" else 0)
+            if review == "approved" and overlap != "wrong-request-more-info":
                 assert store.docs["RMA-2026-004425"]["status"] == "escalated"
                 assert store.docs["RMA-2026-004425"]["decision"] == "escalate_to_supervisor"
                 replay = await h.post("consume", intent=pending[0], grant=grants[0])

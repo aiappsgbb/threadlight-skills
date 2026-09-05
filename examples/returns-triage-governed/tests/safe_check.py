@@ -4,8 +4,11 @@ import runpy
 import sys
 
 
+root = Path(__file__).resolve().parents[3]
+source = root / "skills/threadlight-safe-check/scripts/safe_check.py"
+sys.path.insert(0, str(root))
+implementation = runpy.run_path(str(source))
+globals().update({name: value for name, value in implementation.items() if not name.startswith("__")})
+
 if __name__ == "__main__":
-    root = Path(__file__).resolve().parents[3]
-    source = root / "skills/threadlight-safe-check/scripts/safe_check.py"
-    sys.path.insert(0, str(root))
-    runpy.run_path(str(source), run_name="__main__")
+    sys.exit(main())

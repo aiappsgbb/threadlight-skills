@@ -478,11 +478,32 @@ def _expected_tuple_from_pin(pin: Mapping[str, object]) -> Dict[str, str]:
             f"{agent_hooks['spec_version']}@{agent_hooks['repository_commit']}"
         ),
         "agent-hooks-sdk": f"{sdk['version']}@sha256:{sdk['artifact_sha256']}",
-        "agent-framework-core": f"{maf['version']}@{maf['source_commit']}",
+        "agent-framework-core": f"{maf['version']}@" + (
+            "sha256:" + maf["artifact_sha256"] if maf.get("artifact_sha256") else maf["source_commit"]),
         "ctk-vectors": str(ctk["vector_source_commit"]),
         "conformance-python": str(pin["conformance_python"]),
         "acs-policy-schema": acs_value,
     }
+
+
+def compare_native_observation(observation, pins, *, phase="pre-deploy"):
+    """Compare freshly executed Linux observations, never target-owned installed JSON."""
+    from datetime import datetime, timezone
+    expected = {pins[k]["distribution"]: pins[k]["version"] for k in ("agt", "acs", "agent_hooks")}
+    expected.update(pins["maf"])
+    records = observation.get("packages", [])
+    observed = {r["distribution"]: r["version"] for r in records}
+    stamp = datetime.fromisoformat(observation["collected_at"])
+    if (phase != "pre-deploy" or observation.get("execution_mode") != "local"
+            or observation.get("phase") != phase or observation.get("platform") != "linux-amd64"
+            or stamp.tzinfo is None or not -5 <= (datetime.now(timezone.utc) - stamp).total_seconds() <= 300
+            or len(records) != len(expected) or observed != expected
+            or any({k: r[k] for k in ("filename", "sha256")} != pins["wheels"][r["distribution"]]
+                   for r in records)
+            or observation.get("opa_sha256") != pins["opa"]["linux_amd64_static_sha256"]
+            or not observation.get("imports") or observation.get("deployed_image") != "not-verified"):
+        raise UpstreamPinError("native-local-installed-observation-mismatch")
+    return {r["distribution"]: r["version"] + "@sha256:" + r["sha256"] for r in records}
 
 
 def compare_upstream_tuple(

@@ -108,9 +108,15 @@ _POLICY_GLOBS: Tuple[str, ...] = (
     "governance/**/*.json",
     "governance/**/*.yaml",
     "governance/**/*.yml",
+    "governance/**/*.rego",
     "policies/**/*.json",
     "policies/**/*.yaml",
     "policies/**/*.yml",
+    "policies/**/*.rego",
+    "src/agent/governance/**/*.json",
+    "src/agent/governance/**/*.yaml",
+    "src/agent/governance/**/*.yml",
+    "src/agent/governance/**/*.rego",
 )
 
 # Action tokens: a lowercase dotted identifier, e.g. ``payments.refund``.

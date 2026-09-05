@@ -130,9 +130,12 @@ agent runs the assistant; a returns supervisor handles escalations.
 
 ### BR-004: Request more information on incomplete cases
 - **Condition**: order cannot be matched OR `reason_code` missing OR
-  (`reason_code == arrived_damaged` AND `photos_provided == false`).
+  (`reason_code == arrived_damaged` AND `photos_provided == false`) OR
+  authoritative customer risk data is unavailable. Unknown risk never authorizes
+  a finalized refund; any already-known BR-003 risk still overrides immediately.
 - **Action**: `request_more_info` with a templated list of exactly what's needed.
-- **Exception**: if info is still missing after one request cycle → escalate.
+- **Exception**: known authoritative BR-003 risk overrides missing information
+  immediately; if info is still missing after one request cycle → escalate.
 - **KPI**: `first_touch_resolution_pct`, `info_request_rate`.
 
 ### BR-005: Cite policy and write an audit record on every decision
@@ -312,6 +315,20 @@ agent runs the assistant; a returns supervisor handles escalations.
 ---
 
 ## 8. Human Interaction Points
+
+These checked declarations select required local controls, not runtime proof:
+- [x] Authorization: `returns_apply_decision` requires ordered backend receipts,
+  fresh case revision and a native pre-tool Hooks/ACS/OPA decision.
+- [x] Approval: known BR-003 risk always needs exact-action authenticated supervisor approval.
+- [x] Idempotency-or-transaction: one Cosmos conditional case/audit batch.
+- [x] Output-mediation: bounded tool input schema and `{ok, audit_id}` result schema;
+  no claim of lifecycle/model-stream mediation.
+- [x] Audit: payload-free governance receipt with durable Task8 ACK before effect.
+
+`returns_apply_decision` uses `returns-write-v1` / `local-agent-hooks` /
+`pre_tool_call`. `governance/probe-contract.json` selects the registered native
+factory and explicit action/path/mode evidence. Unbound reads are positive
+controls, never evidence for the write binding. Local proof is not Azure proof.
 
 ### Supervisor escalation review
 - **Trigger**: BR-003 fires (refund > $250, serial-returner ≥ 0.40, flagged

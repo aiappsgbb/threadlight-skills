@@ -37,6 +37,14 @@ def test_materialized_actual_module_closure_and_fail_closed_startup(tmp_path, pr
     assert any(t["id"] == "governance_probe_noop" for t in contract["tools"]) == probe_enabled
     assert not (output / "src/govern-probe-fixture").exists()
     assert not (output / "src/govern-gateway").exists()
+    assert (output / ".governance-tools/scripts/ci/run-governance-pin-tests.py").is_file()
+    assert (output / ".governance-tools/skills/_shared/native_validation.py").is_file()
+    assert (output / "governance/probe-contract.json").is_file()
+    assert (output / "scripts/local_probe.py").is_file()
+    assert (output / ".github/CODEOWNERS").read_bytes() == (ROOT / ".github/CODEOWNERS").read_bytes()
+    workflow = (output / ".github/workflows/native-local.yml").read_text()
+    assert "--prepare-local" in workflow and "--phase pre-deploy --gate" in workflow
+    assert "permissions:" in workflow and "contents: read" in workflow
     # -I drops catalog PYTHONPATH/cwd. Only the generated application is added.
     probe = subprocess.run([sys.executable, "-I", "-c",
         "import sys; from pathlib import Path; sys.path.insert(0, '.'); "

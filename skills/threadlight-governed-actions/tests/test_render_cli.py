@@ -4174,9 +4174,10 @@ def test_parse_args_post_deploy_without_staging_resource_group_raises_value_erro
         governed_actions.parse_args(["--phase", "post-deploy"])
 
 
-def test_resolve_source_non_git_target_is_invalid_input(tmp_path):
+def test_resolve_source_non_git_target_is_invalid_input(tmp_path, monkeypatch):
     non_git_root = tmp_path / "not-a-repo"
     non_git_root.mkdir()
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
     with pytest.raises(ValueError):
         governed_actions.resolve_source(non_git_root)
 

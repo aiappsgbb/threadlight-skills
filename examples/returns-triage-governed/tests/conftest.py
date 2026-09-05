@@ -13,6 +13,7 @@ for path in (
     ROOT / "skills/threadlight-deploy/tests",
     ROOT / "skills/threadlight-govern/references",
     ROOT / "examples/returns-triage-governed/src/agent",
+    ROOT / "examples/returns-triage-governed/scripts",
 ):
     sys.path.insert(0, str(path))
 

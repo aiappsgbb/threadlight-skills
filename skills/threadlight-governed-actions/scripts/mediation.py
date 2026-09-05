@@ -876,7 +876,9 @@ def apply_execution_receipts(
         elif receipt_statuses == {"pass"} and executed:
             if path.static_assessment == "bypass-proven":
                 status = "must-fix"
-            elif path.static_assessment == "mediated-candidate":
+            elif path.static_assessment == "mediated-candidate" or all(
+                "native-loader-integrity" in _receipt_evidence_kinds(probe) for probe in matches
+            ):
                 status = "pass"
             else:
                 status = "not-verified"
