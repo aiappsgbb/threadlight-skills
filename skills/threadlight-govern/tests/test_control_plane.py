@@ -227,6 +227,102 @@ def test_immutable_bundle_lookup_returns_authenticated_digest():
     run(scenario())
 
 
+@pytest.mark.parametrize("fault", ["healthy", "store", "auth", "human", "workload-role", "timeout"])
+def test_authenticated_health_checks_real_store_and_workload_without_writes(fault):
+    async def scenario():
+        h = await Harness().initialize()
+        before = deepcopy((h.store.docs, h.store.blobs, h.store.etag))
+        headers, expected = h.headers(), 200
+        if fault == "store":
+            h.store.failed, expected = True, 503
+        elif fault == "auth":
+            headers, expected = h.headers(changes={"aud": "api://wrong"}), 401
+        elif fault == "human":
+            headers, expected = h.headers(human=True), 403
+        elif fault == "workload-role":
+            headers, expected = h.headers(changes={"roles": []}), 401
+        elif fault == "timeout":
+            async def slow_store():
+                await asyncio.sleep(60)
+            h.store.health = slow_store
+            h.service.settings = h.settings.model_copy(update={"request_timeout": 0.05})
+            expected = 503
+        try:
+            response = await h.client.get("/health", headers=headers)
+            assert response.status_code == expected
+            assert "PRIVATE" not in response.text
+            assert (h.store.docs, h.store.blobs, h.store.etag) == before
+            h.store.failed = False
+            h.store.health = MemoryStore.health.__get__(h.store)
+            assert (await h.client.get("/health", headers=h.headers())).json() == {
+                "status": "healthy", "authenticated": True}
+            assert (await h.client.get("/health")).status_code == 200
+        finally:
+            await h.close()
+    run(scenario())
+
+
+@pytest.mark.parametrize("kind", ["approval", "receipt"])
+@pytest.mark.parametrize("fault", ["healthy", "store", "audience", "human", "credential", "timeout"])
+def test_task8_real_client_health_fails_closed_and_recovers_without_effects(kind, fault):
+    async def scenario():
+        from test_gateway import Credential, gateway
+        h = await Harness().initialize()
+        cls = (module("client").ApprovalClient if kind == "approval"
+               else gateway("receipts").ReceiptClient)
+        kwargs = ({"intent_type": module("models").ApprovalRequest,
+                   "grant_type": module("models").ApprovalGrant, "poll_interval": 0.001}
+                  if kind == "approval" else {})
+        client = cls(base_url="https://control.example", scope="api://governance/.default",
+                     credential=Credential(h.token()), http=h.client, timeout=0.05, **kwargs)
+        before = deepcopy((h.store.docs, h.store.blobs, h.store.etag))
+        requests = []
+        async def observed(request):
+            requests.append((request.method, request.url.path))
+        h.client.event_hooks["request"].append(observed)
+        if fault == "store":
+            h.store.failed = True
+        elif fault == "audience":
+            client.credential = Credential(h.token(changes={"aud": "api://wrong"}))
+        elif fault == "human":
+            client.credential = Credential(h.token(human=True))
+        elif fault == "credential":
+            async def unavailable():
+                raise OSError("PRIVATE CREDENTIAL FAILURE")
+            client.credential = Credential(hook=unavailable)
+        elif fault == "timeout":
+            async def timeout():
+                await asyncio.sleep(60)
+            client.credential = Credential(hook=timeout)
+        try:
+            async with asyncio.timeout(2):
+                assert await client.health() is (fault == "healthy")
+            client.credential, h.store.failed = Credential(h.token()), False
+            assert await client.health() is True
+            assert requests and set(requests) == {("GET", "/health")}
+            assert (h.store.docs, h.store.blobs, h.store.etag) == before
+        finally:
+            await h.close()
+    run(scenario())
+
+
+@pytest.mark.parametrize("response", [
+    {"status": "healthy"}, {"status": "healthy", "authenticated": False},
+    {"status": "healthy", "authenticated": "true"}, {"status": "unhealthy", "authenticated": True},
+])
+def test_task8_client_health_rejects_anonymous_or_invalid_readiness_response(response):
+    async def scenario():
+        import httpx
+        from test_gateway import Credential
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, json=response))) as http:
+            async with module("client").ServiceTransport(
+                    base_url="https://control.example", scope="api://governance/.default",
+                    credential=Credential(), http=http) as client:
+                assert await client.health() is False
+    run(scenario())
+
+
 @pytest.mark.parametrize("approved", [True, False])
 def test_human_decision_consumes_once_and_replay_conflicts(approved):
     async def scenario():

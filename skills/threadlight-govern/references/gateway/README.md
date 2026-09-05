@@ -114,8 +114,53 @@ methods; there is no initialized-session auth bypass. This service deliberately
 uses stateless, JSON-response transport: no resumable cross-request authorization
 or background effects. `Idempotency-Key` is a bounded identifier HTTP header on
 each call; the host integration must provide it, not add fields to tool arguments.
-Only `/health` is anonymous. Health reports bundle/registry/backend readiness,
-not live enforcement or whole-agent success.
+Only `/health` is anonymous.
+
+### Readiness
+
+`GET /health` returns 200 `status: ready` only when the selected bundle is fresh,
+the gateway authentication authority and idempotency store are available, and
+**every registered tool's required dependencies** pass. All registered tools require
+a receipt client; only tools with nonempty signed `approval_roles` require an
+approval resolver and configured approval principal/agent ID. An unused resolver
+is not checked. A missing client, missing health/operation method, or failed check
+returns 503 `status: unavailable`, with payload-free `dependencies` and `bindings`:
+
+```json
+{
+  "dependencies": {
+    "approvals": {"healthy": false, "reason_code": "approval_unavailable"}
+  },
+  "bindings": {
+    "refund": {"healthy": false, "reason_codes": ["approval_unavailable"]}
+  }
+}
+```
+
+The response also retains `policy_digest`, `registry_loaded`, and `scope`.
+Stable failure codes are `policy_unavailable`, `auth_unavailable`,
+`idempotency_unavailable`, `receipt_unavailable`, and `approval_unavailable`.
+Bindings unaffected by an approval failure remain healthy even though aggregate
+readiness is 503. Errors never include exception messages, tokens or business payloads.
+
+Both real Task8 clients validate their configuration and obtain a service token
+to call **authenticated `GET /health`**. The control plane authenticates/authorizes
+that workload and checks its actual durable store, signing key and authentication
+authority. Clients require the authenticated readiness response, not the anonymous
+health response: deploy the matching updated control-plane package with the gateway.
+Authentication denial, bad endpoint/audience, invalid responses, backend failures
+and timeouts fail closed. No synthetic receipt, approval request, nonce consumption,
+policy evaluation or downstream call is used to test readiness.
+
+Checks run concurrently, bounded to five seconds per dependency (and each HTTP
+client's configured `request_timeout`), and policy freshness is rechecked afterwards.
+Each request probes current dependencies; failures are not permanently latched,
+so recovery can return 200 without restarting. This does **not** reopen pending
+idempotency records or automatically retry unknown effects.
+
+Readiness is a read-only availability check, not proof of a future durable write,
+downstream authorization, live effect closure, or whole-agent success. Dispatch
+still requires the actual durable receipt ACK and exact approval consumption.
 
 ## Exact dispatch and durable unknown outcomes
 

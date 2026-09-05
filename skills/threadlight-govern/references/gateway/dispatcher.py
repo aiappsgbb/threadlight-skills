@@ -35,6 +35,8 @@ from govern_control_plane.models import (
 )
 from govern_control_plane.storage import Conflict, Missing
 
+from .receipts import ApprovalService, ReceiptService
+
 MAX_BYTES = 16384
 _request_identity = ContextVar("gateway_request_identity", default=None)
 _transport_ticket = ContextVar("gateway_transport_ticket", default=None)
@@ -367,7 +369,8 @@ class DownstreamClient:
 
 
 class GovernedDispatcher:
-    def __init__(self, *, policy, auth, store, receipts, downstream, approvals, safe_provider,
+    def __init__(self, *, policy, auth, store, receipts: ReceiptService, downstream,
+                 approvals: ApprovalService | None, safe_provider,
                  approval_principal, approval_agent_id, timeout=15.0):
         if not 0 < timeout <= 30:
             raise ValueError("invalid_timeout")

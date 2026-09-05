@@ -39,17 +39,34 @@ def wire_grant(grant):
 
 class ServiceTransport:
     def __init__(self, *, base_url, scope, credential, http=None, timeout=5.0):
+        self.validate_configuration(base_url, scope, timeout)
+        self.url = base_url.rstrip("/")
+        self.scope, self.credential = scope, credential
+        self.timeout = timeout
+        self.owned_http = http is None
+        self.http = http or httpx.AsyncClient(timeout=timeout, trust_env=False, follow_redirects=False)
+
+    @staticmethod
+    def validate_configuration(base_url, scope, timeout):
         url = urlsplit(base_url)
         if (url.scheme != "https" or not url.hostname or url.username or url.password
                 or url.query or url.fragment or url.path not in ("", "/")
                 or not scope.endswith("/.default")
                 or not 0 < timeout <= 30):
             raise ValueError("invalid_client_configuration")
-        self.url = base_url.rstrip("/")
-        self.scope, self.credential = scope, credential
-        self.timeout = timeout
-        self.owned_http = http is None
-        self.http = http or httpx.AsyncClient(timeout=timeout, trust_env=False, follow_redirects=False)
+
+    async def health(self) -> bool:
+        """Authenticated, read-only readiness; never create or consume governance records."""
+        try:
+            self.validate_configuration(self.url, self.scope, self.timeout)
+            async with asyncio.timeout(self.timeout):
+                if not callable(self.credential.get_token):
+                    return False
+                status, result = await self.request("GET", "/health")
+                return (status == 200 and set(result) == {"status", "authenticated"}
+                        and result["status"] == "healthy" and result["authenticated"] is True)
+        except Exception:
+            return False
 
     async def aclose(self):
         if self.owned_http:

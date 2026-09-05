@@ -66,7 +66,8 @@ class Credential:
 
 
 class GatewayHarness:
-    async def initialize(self, path, decision=None, post=None, approval=False, policy_id="safe"):
+    async def initialize(self, path, decision=None, post=None, approval=False, policy_id="safe",
+                         additional_nonapproval=False):
         import yaml
         from test_policy_bundle import bundle_module
         self.cp = Harness()
@@ -77,6 +78,9 @@ class GatewayHarness:
             self.document["actions"][0]["approval_roles"] = ["Approver"]
         if post:
             self.document["actions"][0]["post_policy_binding"] = "safe"
+        if additional_nonapproval:
+            self.document["actions"].append({
+                **deepcopy(self.document["actions"][0]), "name": "other_refund", "approval_roles": []})
         source = path / "source"
         source.mkdir(parents=True)
         points = {"pre_tool_call": ("$.tool_call.args", decision or {"decision": "allow"})}
@@ -156,6 +160,221 @@ class GatewayHarness:
     async def close(self):
         await self.downstream.aclose()
         await self.cp.close()
+
+    async def health(self):
+        app = gateway("server").create_app(self.dispatcher)
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                        base_url="https://gateway.example") as client:
+                return await client.get("/health")
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("dependency", ["receipts", "approvals"])
+@pytest.mark.parametrize("missing", [None, "no-health-method", "health-only"])
+def test_gateway_native_health_missing_required_dependency(tmp_path, dependency, missing):
+    async def case():
+        h = await GatewayHarness().initialize(tmp_path, approval=dependency == "approvals")
+        async def healthy():
+            return True
+        setattr(h.dispatcher, dependency,
+                SimpleNamespace(health=healthy) if missing == "health-only" else missing)
+        before = deepcopy(h.cp.store.docs)
+        try:
+            response = await h.health()
+            reason = "receipt_unavailable" if dependency == "receipts" else "approval_unavailable"
+            assert response.status_code == 503
+            assert response.json()["dependencies"][dependency] == {
+                "healthy": False, "reason_code": reason}
+            assert response.json()["bindings"]["refund"] == {
+                "healthy": False, "reason_codes": [reason]}
+            assert h.cp.store.docs == before
+            assert not h.store.docs and not h.calls and not h.gets
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("approval", [False, True])
+def test_gateway_native_health_real_dependencies_recover_without_effects(tmp_path, approval):
+    async def case():
+        h = await GatewayHarness().initialize(tmp_path, approval=approval)
+        if approval:
+            h.dispatcher.approvals = gateway("receipts").HTTPControlPlaneApprovalService(
+                base_url="https://control.example", scope="api://governance/.default",
+                credential=Credential(h.cp.token()), http=h.cp.client)
+        else:
+            h.dispatcher.approvals = object()  # Optional/unbound resolver must not be probed.
+        before = deepcopy((h.cp.store.docs, h.cp.store.blobs, h.cp.store.etag))
+        requests = []
+        async def observed(request):
+            requests.append((request.method, request.url.path))
+        h.cp.client.event_hooks["request"].append(observed)
+        try:
+            response = await h.health()
+            assert response.status_code == 200
+            assert response.json()["status"] == "ready"
+            assert response.json()["bindings"]["refund"] == {"healthy": True, "reason_codes": []}
+            assert ("approvals" in response.json()["dependencies"]) is approval
+            assert set(requests) == {("GET", "/health")}
+            h.cp.store.failed = True
+            response = await h.health()
+            assert response.status_code == 503
+            reasons = ["receipt_unavailable"] + (["approval_unavailable"] if approval else [])
+            assert response.json()["bindings"]["refund"] == {
+                "healthy": False, "reason_codes": reasons}
+            assert "PRIVATE" not in response.text
+            h.cp.store.failed = False
+            assert (await h.health()).status_code == 200
+            assert (h.cp.store.docs, h.cp.store.blobs, h.cp.store.etag) == before
+            assert not h.store.docs and not h.calls and not h.gets
+            assert not h.credential.scopes
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+def test_gateway_native_health_limits_approval_failure_to_bound_tool(tmp_path):
+    async def case():
+        h = await GatewayHarness().initialize(tmp_path, approval=True, additional_nonapproval=True)
+        try:
+            response = await h.health()
+            assert response.status_code == 503
+            assert response.json()["bindings"] == {
+                "refund": {"healthy": False, "reason_codes": ["approval_unavailable"]},
+                "other_refund": {"healthy": True, "reason_codes": []}}
+            assert not h.cp.store.docs and not h.store.docs and not h.calls
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("dependency", ["auth", "store"])
+def test_gateway_native_health_missing_base_dependency_is_sanitized(tmp_path, dependency):
+    async def case():
+        h = await GatewayHarness().initialize(tmp_path)
+        setattr(h.dispatcher, dependency, None)
+        try:
+            response = await h.health()
+            assert response.status_code == 503
+            name, reason = (("authentication", "auth_unavailable") if dependency == "auth"
+                            else ("idempotency_store", "idempotency_unavailable"))
+            assert response.json()["dependencies"][name] == {"healthy": False, "reason_code": reason}
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+def test_gateway_native_health_bounds_dependency_probe_and_recovers(tmp_path, monkeypatch):
+    async def case():
+        h = await GatewayHarness().initialize(tmp_path)
+        monkeypatch.setattr(gateway("server"), "HEALTH_TIMEOUT", 0.05)
+        cancelled = asyncio.Event()
+        original = h.cp.store.health
+        async def slow():
+            try:
+                await asyncio.sleep(60)
+            finally:
+                cancelled.set()
+        h.cp.store.health = slow
+        try:
+            async with asyncio.timeout(2):
+                response = await h.health()
+            assert response.status_code == 503
+            assert response.json()["bindings"]["refund"]["reason_codes"] == ["receipt_unavailable"]
+            assert cancelled.is_set()
+            h.cp.store.health = original
+            assert (await h.health()).status_code == 200
+            assert not h.store.docs and not h.cp.store.docs and not h.calls
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+def test_gateway_native_health_rechecks_policy_after_dependency_await(tmp_path):
+    async def case():
+        h = await GatewayHarness().initialize(tmp_path)
+        async def expire(request):
+            h.policy.deadline = 0
+        h.cp.client.event_hooks["request"].append(expire)
+        try:
+            response = await h.health()
+            assert response.status_code == 503
+            assert response.json()["bindings"]["refund"]["reason_codes"] == ["policy_unavailable"]
+            assert not h.store.docs and not h.cp.store.docs and not h.calls
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+def test_gateway_native_health_does_not_latch_failed_receipt_dispatch(tmp_path):
+    async def case():
+        h = await GatewayHarness().initialize(tmp_path)
+        h.cp.store.failed = True
+        try:
+            assert (await h.call())["status"] == "unavailable"
+            before = deepcopy(h.store.docs)
+            assert (await h.health()).status_code == 503
+            h.cp.store.failed = False
+            assert (await h.health()).status_code == 200
+            assert h.store.docs == before  # Readiness never reopens an unknown/pending operation.
+            assert not h.cp.store.docs and not h.calls
+        finally:
+            await h.close()
+    asyncio.run(case())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("dependency", ["receipts", "approvals"])
+@pytest.mark.parametrize("fault", ["auth", "timeout", "service-timeout", "configuration", "api"])
+def test_gateway_native_health_required_client_failure_is_sanitized(tmp_path, dependency, fault):
+    async def case():
+        h = await GatewayHarness().initialize(tmp_path, approval=dependency == "approvals")
+        client_type = (gateway("receipts").ReceiptClient if dependency == "receipts"
+                       else gateway("receipts").HTTPControlPlaneApprovalService)
+        kwargs = {"poll_interval": 0.001} if dependency == "approvals" else {}
+        client = client_type(base_url="https://control.example", scope="api://governance/.default",
+                             credential=Credential(h.cp.token()), http=h.cp.client, timeout=0.05,
+                             **kwargs)
+        setattr(h.dispatcher, dependency, client)
+        before = deepcopy(h.cp.store.docs)
+        if fault == "auth":
+            client.credential = Credential(h.cp.token(changes={"aud": "api://WRONG-PRIVATE"}))
+        elif fault == "configuration":
+            client.credential = None
+        elif fault == "api":
+            client.url = "https://control.example/WRONG-PRIVATE"
+        elif fault == "service-timeout":
+            async def slow_store():
+                await asyncio.sleep(60)
+            h.cp.store.health = slow_store
+            h.cp.service.settings = h.cp.settings.model_copy(update={"request_timeout": 0.05})
+        else:
+            async def slow():
+                await asyncio.sleep(60)
+            client.credential = Credential(hook=slow)
+        try:
+            async with asyncio.timeout(2):
+                response = await h.health()
+            assert response.status_code == 503
+            reason = "receipt_unavailable" if dependency == "receipts" else "approval_unavailable"
+            assert response.json()["dependencies"][dependency] == {
+                "healthy": False, "reason_code": reason}
+            reasons = (["receipt_unavailable", "approval_unavailable"]
+                       if fault == "service-timeout" and dependency == "approvals" else [reason])
+            assert response.json()["bindings"]["refund"]["reason_codes"] == reasons
+            assert "PRIVATE" not in response.text
+            assert h.cp.store.docs == before
+            assert not h.store.docs and not h.calls
+        finally:
+            await h.close()
+    asyncio.run(case())
 
 
 @pytest.mark.governance_runtime

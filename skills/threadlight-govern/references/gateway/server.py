@@ -34,6 +34,7 @@ from .dispatcher import (
 from .receipts import HTTPControlPlaneApprovalService, ReceiptClient
 
 _idempotency_key = ContextVar("gateway_idempotency_key", default=None)
+HEALTH_TIMEOUT = 5.0
 
 
 def tool_result(body):
@@ -144,16 +145,62 @@ def create_app(dispatcher):
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(request):
-        try:
-            async with asyncio.timeout(5):
-                dispatcher.policy.fresh()
-                await dispatcher.auth.health()
-                await dispatcher.store.health()
-            return JSONResponse({
-                "status": "ready", "policy_digest": dispatcher.policy.digest,
-                "registry_loaded": True, "scope": "declared-local-controls-not-live-proof"})
-        except Exception:
-            return JSONResponse({"status": "unavailable"}, 503)
+        async def policy_health():
+            dispatcher.policy.fresh()
+
+        async def auth_health():
+            await dispatcher.auth.health()
+
+        async def store_health():
+            await dispatcher.store.health()
+
+        async def receipt_health():
+            if (not callable(dispatcher.receipts.append)
+                    or await dispatcher.receipts.health() is not True):
+                raise ValueError()
+
+        async def approval_health():
+            parse(ObjectId, canonical(dispatcher.approval_principal))
+            parse(Identifier, canonical(dispatcher.approval_agent_id))
+            if (not callable(dispatcher.approvals.resolve)
+                    or not callable(dispatcher.approvals.verify)
+                    or await dispatcher.approvals.health() is not True):
+                raise ValueError()
+
+        async def check(probe, reason):
+            try:
+                async with asyncio.timeout(HEALTH_TIMEOUT):
+                    await probe()
+                return {"healthy": True, "reason_code": None}
+            except Exception:
+                return {"healthy": False, "reason_code": reason}
+
+        probes = {
+            "policy": (policy_health, "policy_unavailable"),
+            "authentication": (auth_health, "auth_unavailable"),
+            "idempotency_store": (store_health, "idempotency_unavailable"),
+            "receipts": (receipt_health, "receipt_unavailable"),
+        }
+        if any(action.approval_roles for action in dispatcher.policy.registry.actions):
+            probes["approvals"] = (approval_health, "approval_unavailable")
+        dependencies = dict(zip(probes, await asyncio.gather(
+            *(check(probe, reason) for probe, reason in probes.values()))))
+        # A policy may expire while the remote dependencies are being checked.
+        dependencies["policy"] = await check(policy_health, "policy_unavailable")
+        bindings = {}
+        for action in dispatcher.policy.registry.actions:
+            required = ["policy", "authentication", "idempotency_store", "receipts"]
+            if action.approval_roles:
+                required.append("approvals")
+            reasons = [dependencies[name]["reason_code"] for name in required
+                       if not dependencies[name]["healthy"]]
+            bindings[action.name] = {"healthy": not reasons, "reason_codes": reasons}
+        ready = all(binding["healthy"] for binding in bindings.values())
+        return JSONResponse({
+            "status": "ready" if ready else "unavailable",
+            "policy_digest": dispatcher.policy.digest, "registry_loaded": True,
+            "scope": "declared-local-controls-not-live-proof",
+            "dependencies": dependencies, "bindings": bindings}, 200 if ready else 503)
     app = mcp.streamable_http_app()
     app.add_middleware(AuthBoundary, dispatcher=dispatcher)
     return app

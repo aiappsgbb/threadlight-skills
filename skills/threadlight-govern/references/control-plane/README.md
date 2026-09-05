@@ -69,11 +69,29 @@ Only these five routes exist (no OpenAPI/docs/publishing route):
 
 | Method/path | Authorization and result |
 |---|---|
-| `GET /health` | Anonymous readiness only, 200 healthy or 503 unhealthy |
+| `GET /health` | Anonymous backend readiness; with Authorization, authenticated workload readiness |
 | `GET /bundles/{policy_id}/{version}` | Allowed workload or tenant auditor; signed envelope |
 | `POST /approvals/resolve` | Discriminated operation described below |
 | `POST /receipts` | Workload only; durable receipt acknowledgement |
 | `GET /receipts/{receipt_id}` | Owning workload or authorized tenant auditor |
+
+Anonymous health returns `200 {"status":"healthy"}` or 503 unhealthy. If an
+`Authorization` header is supplied, it must authenticate an allowed workload:
+invalid tokens return 401, delegated human identities return 403, and unavailable
+dependencies/timeouts return 503. Successful authenticated readiness returns
+`{"status":"healthy","authenticated":true}`. There is no anonymous fallback for a
+failed authenticated probe.
+
+Both forms check the actual durable store (including container/write-safety
+configuration), signing key, and authentication authority, within `request_timeout`.
+They do not create receipts, request/decide approvals, consume nonces or sign test
+records. `ServiceTransport.health()` and its approval/receipt subclasses use the
+authenticated route with the configured service credential and require its exact
+response; older anonymous-only endpoints cannot satisfy client readiness.
+Client configuration, credential, HTTP/authorization, response or timeout failures
+return `False`, without private error text. Checks are fresh on each call, recover
+without a failure latch, and are availability checks rather than proof of future
+write authorization/durability. Operation-time ACK/CAS checks remain mandatory.
 
 The approval endpoint accepts these bounded JSON bodies:
 

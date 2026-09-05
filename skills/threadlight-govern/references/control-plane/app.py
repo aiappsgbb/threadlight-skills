@@ -394,14 +394,23 @@ def create_app(*, service=None, auth=None):
         except Exception:
             return JSONResponse({"error": "unavailable"}, 503)
 
+    async def check_health(current, authority):
+        await current.store.health()
+        await current.signer.health()
+        await authority.health()
+
     @app.get("/health")
-    async def health():
+    async def health(request: Request):
+        if "authorization" in request.headers:
+            async def action(current, identity):
+                current.workload(identity)
+                await check_health(current, app.state.auth)
+                return {"status": "healthy", "authenticated": True}
+            return await dispatch(request, action)
         try:
             current, authority = app.state.service, app.state.auth
             async with asyncio.timeout(current.settings.request_timeout):
-                await current.store.health()
-                await current.signer.health()
-                await authority.health()
+                await check_health(current, authority)
             return {"status": "healthy"}
         except Exception:
             return JSONResponse({"status": "unhealthy"}, 503)
