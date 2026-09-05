@@ -148,7 +148,7 @@ def model_client(responses, *, chunks=None, on_chunk=None):
     return ScriptedClient()
 
 
-def native_model_client(responses, *, request_hook=None, foundry=False, chat_completions=False):
+def native_model_client(responses, *, request_hook=None, foundry=False, chat_completions=False, auth=None):
     """Real pinned model client; only the final HTTP transport is synthetic."""
     import httpx
     from openai import AsyncOpenAI
@@ -193,6 +193,7 @@ def native_model_client(responses, *, request_hook=None, foundry=False, chat_com
     http = httpx.AsyncClient(
         transport=httpx.MockTransport(transport),
         event_hooks={"request": [request_hook]} if request_hook else None,
+        auth=auth,
     )
     if foundry:
         from agent_framework.foundry import FoundryChatClient
@@ -1887,6 +1888,141 @@ def test_native_parallel_invocation_budget_is_not_replenished(tmp_path):
     asyncio.run(unbound.client.close())
 
 
+@pytest.mark.parametrize("limit", [1, 2])
+@pytest.mark.parametrize("kind", ["sync", "sync-loop", "async", "returns-awaitable"])
+@pytest.mark.parametrize("success_between", [False, True])
+def test_native_exception_budget_matches_actual_call_failures(tmp_path, limit, kind, success_between):
+    from agent_framework import Agent, FunctionInvocationContext, FunctionTool
+    attempts, executions = [], []
+    def attempt(ctx):
+        attempts.append(len(attempts))
+        executions.append(ctx.function)
+        if success_between and len(attempts) == 2:
+            return "success"
+        raise ValueError("PRIVATE-APPLICATION-FAILURE")
+    def sync(ctx: FunctionInvocationContext):
+        return attempt(ctx)
+    async def asynchronous(ctx: FunctionInvocationContext):
+        await asyncio.sleep(0)
+        return attempt(ctx)
+    def returns_awaitable(ctx: FunctionInvocationContext):
+        return asynchronous(ctx)
+    function = {"sync": sync, "sync-loop": sync, "async": asynchronous,
+                "returns-awaitable": returns_awaitable}[kind]
+    def tool():
+        value = FunctionTool(name="act", func=function, max_invocation_exceptions=limit)
+        value._invoke_sync_on_event_loop = kind == "sync-loop"
+        return value
+    async def runs(agent, client):
+        results = []
+        for _ in range(4):
+            client.responses.extend(tool_responses())
+            results.append(await agent.run("input"))
+        return results
+    native = tool()
+    unbound = native_model_client([])
+    asyncio.run(runs(Agent(client=unbound, tools=[native]), unbound))
+    expected = (len(attempts), native.invocation_count, native.invocation_exception_count)
+    assert expected == (
+        (limit + int(success_between and limit > 1),) * 2 + (limit,)
+        if kind.startswith("sync") else (4, 4, 0)
+    )
+    attempts.clear()
+    executions.clear()
+    original = tool()
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(
+        tmp_path, decisions={"pre_tool_call": {"decision": "allow"},
+                             "post_tool_call": {"decision": "allow"}},
+        document=contract(points=("pre_tool_call", "post_tool_call")), audit=spool,
+    )
+    client = native_model_client([])
+    client.function_invocation_configuration["include_detailed_errors"] = True
+    agent = runtime().create_governed_agent(p, client=client, tools=[original])
+    results = asyncio.run(runs(agent, client))
+    assert len(attempts) == expected[0], "governance must not replenish native exception budgets"
+    assert all(t is executions[0] for t in executions)
+    assert (executions[0].invocation_count, executions[0].invocation_exception_count) == expected[1:]
+    assert original.invocation_count == original.invocation_exception_count == 0
+    assert "PRIVATE-APPLICATION-FAILURE" not in "".join(r.to_json() for r in results)
+    assert "PRIVATE-APPLICATION-FAILURE" not in json.dumps(client.requests)
+    assert "PRIVATE-APPLICATION-FAILURE" not in "".join(f.read_text() for f in spool.directory.glob("*.json"))
+    asyncio.run(client.client.close())
+    asyncio.run(unbound.client.close())
+
+
+@pytest.mark.parametrize("denial", ["policy", "approval"])
+@pytest.mark.parametrize("limit", [1, 2])
+def test_native_sync_exception_budgets_are_provider_owned_and_exclude_denials(tmp_path, denial, limit):
+    from agent_framework import FunctionInvocationContext, FunctionTool
+    executions = []
+    def act(blocked: bool, ctx: FunctionInvocationContext):
+        executions.append(ctx.function)
+        raise RuntimeError("PRIVATE-SYNC-FAILURE")
+    original = FunctionTool(name="act", func=act, max_invocation_exceptions=limit)
+    service = ApprovalService("reject")
+    agents = []
+    for name in ("first", "second"):
+        spool = runtime().DurableSpool(tmp_path / name / "spool")
+        p, _, _ = provider(
+            tmp_path / name, document=contract(requires=("approval",) if denial == "approval" else ()),
+            decisions={"pre_tool_call": (
+                '{"decision": "deny"} if {input.policy_target.value.blocked == true} '
+                'else := {"decision": "allow"}'
+            )}, audit=spool, approval_resolver=service, principal="host:user", tenant="host:tenant",
+            allowed_approval_roles=("test-reviewer",),
+        )
+        client = native_model_client([])
+        agents.append((runtime().create_governed_agent(p, client=client, tools=[original]), client, spool))
+    async def run(agent, client, blocked):
+        client.responses.extend(tool_responses(args={"blocked": blocked}))
+        return await agent.run("input")
+    first, client, _ = agents[0]
+    denied = [asyncio.run(run(first, client, denial == "policy")) for _ in range(2)]
+    assert executions == [] and original.invocation_exception_count == 0
+    assert all("PRIVATE-SYNC-FAILURE" not in r.to_json() for r in denied)
+    service.case = "approve"
+    all_results = []
+    for agent, client, spool in agents:
+        start = len(executions)
+        all_results.extend(asyncio.run(run(agent, client, False)) for _ in range(limit + 1))
+        owned = executions[start:]
+        assert len(owned) == limit and all(t is owned[0] for t in owned)
+        assert owned[0].invocation_count == owned[0].invocation_exception_count == limit
+        assert "PRIVATE-SYNC-FAILURE" not in json.dumps(client.requests)
+        assert "PRIVATE-SYNC-FAILURE" not in "".join(f.read_text() for f in spool.directory.glob("*.json"))
+        asyncio.run(client.client.close())
+    assert executions[0] is not executions[limit]
+    assert original.invocation_count == original.invocation_exception_count == 0
+    assert all("PRIVATE-SYNC-FAILURE" not in r.to_json() for r in all_results)
+
+
+def test_sync_effect_expiry_is_not_an_application_exception(tmp_path, monkeypatch):
+    from agent_framework import FunctionInvocationContext, FunctionTool
+    clock = controlled_clock(monkeypatch)
+    p, authority, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    executions = []
+    def act(ctx: FunctionInvocationContext):
+        executions.append(ctx.function)
+        return "done"
+    original = FunctionTool(name="act", func=act, max_invocation_exceptions=1)
+    client = native_model_client(tool_responses())
+    agent = runtime().create_governed_agent(p, client=client, tools=[original])
+    asyncio.run(agent.run("first"))
+    to_thread = asyncio.to_thread
+    async def scheduled(call, *args, **kwargs):
+        await asyncio.sleep(0)
+        clock.current = authority.expires_at
+        return await to_thread(call, *args, **kwargs)
+    monkeypatch.setattr(asyncio, "to_thread", scheduled)
+    client.responses.extend(tool_responses())
+    asyncio.run(agent.run("expired"))
+    assert len(executions) == 1
+    assert executions[0].invocation_exception_count == 0
+    assert original.invocation_count == original.invocation_exception_count == 0
+    asyncio.run(client.client.close())
+
+
 def test_native_nested_providers_keep_independent_lifetime_budgets(tmp_path):
     from contextvars import ContextVar
     from agent_framework import FunctionInvocationContext, FunctionTool
@@ -2456,4 +2592,263 @@ def test_native_posthook_message_replacements_are_unsupported(tmp_path, source):
         )
         asyncio.run(agent.run("input"))
     assert effects == client.requests == []
+    asyncio.run(client.client.close())
+
+
+@pytest.mark.parametrize("chat_completions", [False, True])
+@pytest.mark.parametrize("mutation", [
+    "replacement", "stream", "json", "instructions", "tools", "headers", "equivalent", "expiry",
+])
+def test_native_http_auth_cannot_replace_authorized_body(tmp_path, monkeypatch, chat_completions, mutation):
+    import httpx
+    from agent_framework import ChatResponse, Message
+    from agent_framework._agent_hooks import _ModelRequestCodec
+    adapter = importlib.import_module("skills.threadlight-govern.references.runtime.maf_agent_hooks_acs")
+    clock = controlled_clock(monkeypatch)
+    service = ApprovalService("approve")
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, authority, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_model_call",), requires=("approval",)),
+        decisions={"pre_model_call": (
+            '{"decision": "allow"} if {count(input.snapshot.messages) == 3} '
+            'else := {"decision": "deny"}'
+        )}, audit=spool, approval_resolver=service, principal="host:user", tenant="host:tenant",
+        allowed_approval_roles=("test-reviewer",),
+    )
+    messages = [Message("user", ["first"]), Message("assistant", ["second"]), Message("user", ["third"])]
+    final = _ModelRequestCodec.to_wire(messages[-1:])
+    decision = asyncio.run(p._engine.evaluate_intervention_point(
+        "pre_model_call", {"messages": final}, mode="enforce",
+    ))
+    assert decision.verdict.decision.value == "deny"
+    original_bodies, hook_bodies = [], []
+    class Auth(httpx.Auth):
+        async def async_auth_flow(self, request):
+            body = json.loads(request.content)
+            original_bodies.append(deepcopy(body))
+            await asyncio.sleep(0)
+            request.headers["Authorization"] = "Bearer refreshed-local-token"
+            key = "messages" if chat_completions else "input"
+            if mutation in {"replacement", "stream", "json", "instructions", "tools"}:
+                if mutation == "instructions":
+                    body["instructions"] = "PRIVATE-CHANGED-INSTRUCTIONS"
+                elif mutation == "tools":
+                    body["tools"] = [{"type": "function", "name": "PRIVATE-CHANGED-TOOL"}]
+                else:
+                    body[key] = body[key][-1:]
+                changed = json.dumps(body).encode()
+                if mutation == "replacement":
+                    request = httpx.Request(request.method, request.url, json=body, headers=request.headers)
+                elif mutation == "stream":
+                    request.stream = httpx.ByteStream(changed)
+                else:
+                    request._content = changed
+                    request.stream = httpx.ByteStream(changed)
+            elif mutation == "equivalent":
+                request = httpx.Request(
+                    request.method, request.url, headers=request.headers,
+                    content=json.dumps(body, sort_keys=True, indent=2).encode(),
+                )
+            elif mutation == "expiry":
+                clock.current = authority.expires_at
+            yield request
+    async def hook(request):
+        hook_bodies.append(json.loads(request.content))
+        assert request.headers["Authorization"] == "Bearer refreshed-local-token"
+    client = native_model_client(
+        [ChatResponse(messages=[Message("assistant", ["finished"])])],
+        auth=Auth(), request_hook=hook, chat_completions=chat_completions,
+    )
+    original_sdk, original_http = client.client, client.client._client
+    agent = runtime().create_governed_agent(p, client=client)
+    if mutation in {"headers", "equivalent"}:
+        assert asyncio.run(agent.run(messages)).text == "finished"
+        assert len(client.requests) == 1 and len(client.requests[0][0]) == 3
+    else:
+        reason = "threadlight:policy_unavailable" if mutation == "expiry" else "threadlight:model_target_changed"
+        with pytest.raises(adapter.GovernedToolUnavailable, match=reason):
+            asyncio.run(agent.run(messages))
+        assert client.requests == []
+        records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+        assert any(r.get("reason_code") == reason and r["decision"] == "deny" for r in records)
+        assert any(r["decision"] == "allow" for r in records)
+    assert len(service.requests) == len(original_bodies) == len(hook_bodies) == 1
+    assert len(original_bodies[0]["messages" if chat_completions else "input"]) == 3
+    assert client.client is original_sdk and client.client._client is original_http
+    asyncio.run(client.client.close())
+
+
+@pytest.mark.parametrize("chat_completions", [False, True])
+@pytest.mark.parametrize("continuation", ["challenge", "retry", "redirect-mount"])
+@pytest.mark.parametrize("mutation", ["none", "body", "expiry"])
+def test_native_http_continuations_keep_original_authorization(
+    tmp_path, monkeypatch, chat_completions, continuation, mutation,
+):
+    import httpx
+    from agent_framework import ChatResponse, Message
+    clock = controlled_clock(monkeypatch)
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, authority, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_model_call",)),
+        decisions={"pre_model_call": {"decision": "allow"}}, audit=spool,
+    )
+    client = native_model_client(
+        [ChatResponse(messages=[Message("assistant", ["finished"])])], chat_completions=chat_completions,
+    )
+    inner = client.client._client._transport
+    wires, hooks = [], []
+    async def exchange(request):
+        wires.append(json.loads(request.content))
+        if len(wires) == 1:
+            code = {"challenge": 401, "retry": 503, "redirect-mount": 307}[continuation]
+            return httpx.Response(code, headers={
+                "location": "https://redirect.local/continued", "retry-after-ms": "1",
+            })
+        return await inner.handle_async_request(request)
+    def update(request):
+        if mutation == "expiry":
+            clock.current = authority.expires_at
+        body = json.loads(request.read())
+        if mutation == "body":
+            key = "messages" if chat_completions else "input"
+            body[key] = body[key][-1:]
+        return httpx.Request(
+            request.method, request.url, headers=request.headers,
+            content=json.dumps(body, sort_keys=True, indent=2).encode(),
+        )
+    class Auth(httpx.Auth):
+        async def async_auth_flow(self, request):
+            await asyncio.sleep(0)
+            response = yield request
+            if response.status_code == 401:
+                await asyncio.sleep(0)
+                yield update(request)
+    async def hook(request):
+        hooks.append(True)
+        if len(hooks) == 2 and continuation != "challenge" and mutation != "none":
+            await asyncio.sleep(0)
+            replacement = update(request)
+            request._content, request.stream = replacement.content, replacement.stream
+    wire = httpx.MockTransport(exchange)
+    http = httpx.AsyncClient(
+        transport=wire, mounts={"https://redirect.local": wire}, auth=Auth(),
+        event_hooks={"request": [hook]}, follow_redirects=True,
+    )
+    client.client = client.client.with_options(
+        http_client=http, max_retries=1 if continuation == "retry" else 0,
+    )
+    agent = runtime().create_governed_agent(p, client=client)
+    messages = [Message("user", ["first"]), Message("assistant", ["second"]), Message("user", ["third"])]
+    if mutation == "none":
+        assert asyncio.run(agent.run(messages)).text == "finished"
+        assert len(wires) == 2
+    else:
+        reason = "policy_unavailable" if mutation == "expiry" else "model_target_changed"
+        with pytest.raises(RuntimeError, match=f"threadlight:{reason}"):
+            asyncio.run(agent.run(messages))
+        assert len(wires) == 1, "only the first authorized HTTP attempt can reach transport"
+        records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+        assert any(r.get("reason_code") == f"threadlight:{reason}" for r in records)
+    assert all(len(body["messages" if chat_completions else "input"]) == 3 for body in wires)
+    assert len(hooks) == 2
+    asyncio.run(http.aclose())
+
+
+@pytest.mark.parametrize("chat_completions", [False, True])
+@pytest.mark.parametrize("expire", [False, True])
+def test_native_token_refresh_preserves_transformed_wire(tmp_path, monkeypatch, chat_completions, expire):
+    from agent_framework import ChatResponse, Message
+    from openai import AsyncAzureOpenAI
+    clock = controlled_clock(monkeypatch)
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, authority, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_model_call",)),
+        decisions={"pre_model_call": {
+            "decision": "transform",
+            "transform": {"path": "$policy_target", "value": [{"role": "user", "content": "authorized-transform"}]},
+        }}, audit=spool,
+    )
+    tokens = []
+    async def refresh():
+        await asyncio.sleep(0)
+        tokens.append(True)
+        if expire:
+            clock.current = authority.expires_at
+        return "local-refreshed-token"
+    async def hook(request):
+        assert request.headers["Authorization"] == "Bearer local-refreshed-token"
+        assert "authorized-transform" in request.content.decode()
+        assert "PRIVATE-ORIGINAL" not in request.content.decode()
+    client = native_model_client(
+        [ChatResponse(messages=[Message("assistant", ["finished"])])],
+        request_hook=hook, chat_completions=chat_completions,
+    )
+    # Native Azure credential preparation, entirely local MockTransport: no Azure service.
+    client.client = AsyncAzureOpenAI(
+        azure_endpoint="https://local.openai.azure.com", api_version="2025-04-01-preview",
+        azure_ad_token_provider=refresh, http_client=client.client._client, max_retries=0,
+    )
+    agent = runtime().create_governed_agent(p, client=client)
+    if expire:
+        with pytest.raises(RuntimeError, match="threadlight:policy_unavailable"):
+            asyncio.run(agent.run("PRIVATE-ORIGINAL"))
+        assert client.requests == []
+    else:
+        assert asyncio.run(agent.run("PRIVATE-ORIGINAL")).text == "finished"
+        assert len(client.requests) == 1
+        assert "authorized-transform" in json.dumps(client.requests)
+    assert tokens == [True]
+    asyncio.run(client.client.close())
+
+
+@pytest.mark.parametrize("chat_completions", [False, True])
+@pytest.mark.parametrize("phase", ["options", "request"])
+@pytest.mark.parametrize("mutation", [False, True])
+def test_native_sdk_preparation_cannot_rebaseline_body(tmp_path, chat_completions, phase, mutation):
+    import httpx
+    from agent_framework import ChatResponse, Message
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_model_call",)),
+        decisions={"pre_model_call": {"decision": "allow"}}, audit=spool,
+    )
+    client = native_model_client(
+        [ChatResponse(messages=[Message("assistant", ["finished"])])], chat_completions=chat_completions,
+    )
+    agent = runtime().create_governed_agent(p, client=client)
+    # Inject an awaited preparation callback on this host-owned instance; the real
+    # SDK request/retry/auth pipeline still executes, and no SDK class is patched.
+    sdk = agent.client.client
+    prepare = getattr(sdk, f"_prepare_{phase}")
+    async def preparation(value):
+        result = await prepare(value)
+        await asyncio.sleep(0)
+        if mutation:
+            key = "messages" if chat_completions else "input"
+            if phase == "options":
+                result.json_data[key] = [{"role": "user", "content": "PRIVATE-CHANGED"}]
+            else:
+                body = json.loads(value.content)
+                body[key] = [{"role": "user", "content": "PRIVATE-CHANGED"}]
+                value._content = json.dumps(body).encode()
+                value.stream = httpx.ByteStream(value.content)
+        elif phase == "options":
+            from openai import NotGiven
+            result.headers = {
+                **({} if isinstance(result.headers, NotGiven) else result.headers), "x-local-token": "refreshed",
+            }
+        else:
+            value.headers["x-local-token"] = "refreshed"
+        return result
+    setattr(sdk, f"_prepare_{phase}", preparation)
+    if mutation:
+        with pytest.raises(RuntimeError, match="threadlight:model_target_changed"):
+            asyncio.run(agent.run("input"))
+        assert client.requests == []
+        records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+        assert any(r.get("reason_code") == "threadlight:model_target_changed" for r in records)
+        assert "PRIVATE-CHANGED" not in json.dumps(records)
+    else:
+        assert asyncio.run(agent.run("input")).text == "finished"
+        assert len(client.requests) == 1
     asyncio.run(client.client.close())

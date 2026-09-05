@@ -87,13 +87,25 @@ configuration constraints: the pinned hook exposes messages (and model identity)
 Any later unauthorized message/configuration change fails closed with
 `threadlight:model_target_changed`; a configured spool receives a payload-free
 denial linked to the original authorization, and no model dispatch occurs.
-There is no automatic reevaluation/reapproval loop. The copied HTTP client snapshots
-the pinned provider's generated JSON before request hooks/authentication and checks
-both cached content and the actual replayable `httpx.ByteStream` at final transport,
-including retries. Other request body producers are unsupported in this scope.
-JSON whitespace/key ordering is
-irrelevant; native role/content/instruction serialization happens before that
-snapshot and is not mistaken for a hook-target mutation.
+There is no automatic reevaluation/reapproval loop. The copied SDK captures the
+native provider's generated JSON at its public `request` entry, **before entering
+the SDK coroutine**. It uses the pinned SDK's own JSON merge/serializer, including
+`extra_body`, to bind the body before awaited option/request preparation, bearer
+token refresh, HTTPX auth flows, hooks or retries. An HTTPX request hook is **not**
+an initial authorization boundary: authentication already ran and may have yielded
+an entirely new request. Neither preparation nor auth can establish a replacement
+baseline, even when the replacement is otherwise valid JSON.
+
+Final default/mounted transports check both cached content (when present) and the
+actual replayable `httpx.ByteStream`, including auth challenges, retries and
+redirects. HTTPX redirects can legitimately retain that stream without a content
+cache; its bytes must still match the original authorization. Other body producers,
+raw-content and multipart request options are unsupported in this selected scope.
+Header-only auth/credential refresh remains supported, including awaited native
+Azure bearer-token providers; policy/approval expiry during those waits still
+blocks dispatch. JSON whitespace/key ordering is irrelevant. Native role/content/
+instruction serialization and authorized ACS message write-back precede the
+snapshot and are not mistaken for hook-target mutations.
 
 **All post-policy native compaction is unsupported for selected pre-model enforce
 bindings**, even a no-op strategy: client, agent, per-run and middleware-supplied
@@ -186,6 +198,14 @@ this adapter does not claim every earlier lifecycle target remains identical.
   progressive exposure; only the execution copy consumes its native budget.
   Distinct providers have independent counters and never consume the caller's original
   budget. Weak identity entries are removed when original tools are discarded.
+  The pinned native `__call__` counts exceptions raised synchronously by the actual
+  application call, but not errors raised while awaiting its returned value. Because
+  the guard is async, it restores that synchronous exception accounting explicitly,
+  exactly once on the execution copy. Success does not reset that lifetime exception
+  budget. Authorization checks/denials do not count as application failures. Async
+  functions and sync functions returning awaitables retain the pin's different
+  behavior: errors from the later await do **not** consume the exception budget.
+  This adapter does not silently tighten that native async behavior.
 - `health()` describes configuration and last evaluation, never deployment
   evidence or status `enforced`. Production/preproduction enforce; only the
   contract-permitted development/staging environments evaluate without enforcing.

@@ -671,7 +671,15 @@ def _guard_tool(tool, provider):
                 if authorization[3]["called"]:
                     _deny_boundary(provider, selected, "threadlight:authorization_reused")
                 authorization[3]["called"] = True
-            return function(*args, **kwargs)
+            try:
+                return function(*args, **kwargs)
+            except Exception:
+                # Our async wrapper returns before native __call__ can observe a
+                # sync failure. Count only failures of the application call, on
+                # its execution copy; checks above and later awaits are excluded.
+                if not inspect.iscoroutinefunction(function):
+                    execution_tool.invocation_exception_count += 1
+                raise
         from agent_framework import FunctionInvocationContext
         check()
         try:
@@ -935,13 +943,15 @@ def _check_model_transport(client, provider):
 
 
 def _guard_http_client(client, provider):
-    """Guard OpenAI HTTP dispatch after auth, retries and asynchronous request hooks.
+    """Bind native JSON before SDK awaits; check it at final HTTP dispatch.
 
-    with_options and AsyncBaseTransport are public extension surfaces. The pinned
+    request, with_options and AsyncBaseTransport are public extension surfaces. The pinned
     SDK has no public getter for its HTTP client or mounted transports; read those
     references only, and replace them on host-owned shallow copies, never originals.
     """
     from openai import AsyncOpenAI
+    from openai._base_client import _merge_mappings
+    from openai._utils._json import openapi_dumps
     import httpx
     _check_model_transport(client, provider)
     _check_model_config(provider, client)
@@ -956,20 +966,19 @@ def _guard_http_client(client, provider):
         except Exception:
             pass
         _deny_boundary(provider, selected, "threadlight:model_target_changed")
-    async def capture_request(request):
-        if not selected or provider.mode != "enforce":
-            return
-        scope = _execution.get()["model_scope"]
-        identity = request_identity(request.content)
-        if scope["wire"] is None:
-            scope["wire"] = identity
-        elif scope["wire"] != identity:
-            _deny_boundary(provider, selected, "threadlight:model_target_changed")
-    # Snapshot the pinned provider's serialization before user HTTP hooks/auth,
-    # not raw bytes compared with the hook's different message representation.
-    http.event_hooks = {**http.event_hooks, "request": [
-        capture_request, *http.event_hooks.get("request", []),
-    ]}
+    def options_identity(options):
+        try:
+            if options.content is not None or options.files:
+                raise ValueError("unsupported request body")
+            body = options.json_data
+            if options.extra_json is not None:
+                body = options.extra_json if body is None else _merge_mappings(body, options.extra_json)
+            # Match the pinned SDK's body merge and serializer, not the different
+            # MAF hook projection. JSON byte formatting is not authorization.
+            return request_identity(body if isinstance(body, bytes) else openapi_dumps(body))
+        except Exception:
+            pass
+        _deny_boundary(provider, selected, "threadlight:model_target_changed")
     class Transport(httpx.AsyncBaseTransport):
         def __init__(self, inner):
             self.inner = inner
@@ -981,9 +990,17 @@ def _guard_http_client(client, provider):
                 # httpx.content is a cache; transports send stream instead.
                 # Pinned native JSON requests use a replayable ByteStream, not
                 # arbitrary body producers with effects during iteration.
-                if (type(request.stream) is not httpx.ByteStream
-                        or scope["wire"] != request_identity(request.content)
-                        or scope["wire"] != request_identity(b"".join(request.stream))):
+                if type(request.stream) is not httpx.ByteStream:
+                    _deny_boundary(provider, selected, "threadlight:model_target_changed")
+                body = b"".join(request.stream)
+                try:
+                    content = request.content
+                except httpx.RequestNotRead:
+                    # HTTPX redirects retain the replayable stream without a
+                    # content cache. There is no second cached value to verify.
+                    content = body
+                if (scope["wire"] != request_identity(content)
+                        or scope["wire"] != request_identity(body)):
                     _deny_boundary(provider, selected, "threadlight:model_target_changed")
             return await self.inner.handle_async_request(request)
 
@@ -994,6 +1011,24 @@ def _guard_http_client(client, provider):
     http._mounts = {pattern: Transport(transport) if transport is not None else None
                     for pattern, transport in http._mounts.items()}
     client.client = sdk.with_options(http_client=http)
+    request = client.client.request
+    @wraps(request)
+    def authorized_request(cast_to, options, **kwargs):
+        if selected and provider.mode == "enforce":
+            state = _execution.get()
+            scope = state.get("model_scope") if state else None
+            if scope is None or scope["target"] is None:
+                _deny_boundary(provider, selected, "threadlight:model_target_changed")
+            identity = options_identity(options)
+            if scope["wire"] is None:
+                scope["wire"] = identity
+            elif scope["wire"] != identity:
+                _deny_boundary(provider, selected, "threadlight:model_target_changed")
+        # Capture before even entering the SDK coroutine: its options/request
+        # preparation, credential refresh and retries can all await. HTTPX
+        # request hooks are too late because authentication runs before them.
+        return request(cast_to, options, **kwargs)
+    client.client.request = authorized_request
 
 
 def create_governed_agent(provider, *, client, middleware=(), default_options=None, **kwargs):
