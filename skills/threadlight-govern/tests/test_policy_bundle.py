@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
+import traceback
 
 import pytest
 
@@ -24,6 +25,29 @@ def test_native_template_replaces_retired_conditions_templates():
     assert (TEMPLATES / "manifest.yaml").is_file(), "native ACS manifest missing"
     assert (TEMPLATES / "safe.rego").is_file()
     assert not list(TEMPLATES.glob("*.policy.yaml"))
+
+
+def test_invalid_yaml_diagnostics_never_include_source_payload():
+    marker = "synthetic-sensitive-marker"
+    with pytest.raises(ValueError) as error:
+        bundle_module()._confine_references(Path("."), {
+            "manifest.yaml": f"metadata:\n  token: {marker}: invalid\n".encode(),
+        })
+    assert marker not in "".join(traceback.format_exception(error.value))
+
+
+@pytest.mark.governance_runtime
+def test_native_loader_diagnostics_do_not_expose_exception_payload(source, monkeypatch):
+    from agent_control_specification import AgentControl
+    marker = "synthetic-sensitive-marker"
+
+    def reject(*args):
+        raise ValueError(marker)
+
+    monkeypatch.setattr(AgentControl, "from_path", reject)
+    with pytest.raises(ValueError) as error:
+        bundle_module().validate_native_manifest(source)
+    assert marker not in "".join(traceback.format_exception(error.value))
 
 
 @pytest.mark.parametrize("report", [
@@ -163,6 +187,31 @@ def test_tampering_is_rejected(built, mutation):
         path.write_text(json.dumps(metadata))
     with pytest.raises((ValueError, OSError)):
         pb.verify_bundle(built.root, expected_digest=built.bundle_digest)
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("operation", ["build", "verify"])
+def test_unreadable_directory_cannot_hide_bundle_files(source, built, tmp_path, monkeypatch, operation):
+    pb = bundle_module()
+    root = source if operation == "build" else built.root
+    hidden = root / "unreadable"
+    hidden.mkdir()
+    (hidden / "extra.rego").write_text("package hidden\n")
+    scandir = os.scandir
+
+    def inaccessible(path):
+        if os.fspath(path) == os.fspath(hidden):
+            raise PermissionError("synthetic unreadable directory")
+        return scandir(path)
+
+    monkeypatch.setattr(os, "scandir", inaccessible)
+    with pytest.raises(PermissionError, match="unreadable directory"):
+        if operation == "build":
+            pb.build_bundle(source=source, destination=tmp_path / "blocked",
+                            policy_id="returns-safe", version="1.0.0")
+        else:
+            pb.verify_bundle(built.root, expected_digest=built.bundle_digest)
+    assert not (tmp_path / "blocked").exists()
 
 
 @pytest.mark.governance_runtime

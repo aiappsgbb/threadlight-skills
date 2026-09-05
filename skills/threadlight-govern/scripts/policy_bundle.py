@@ -84,7 +84,11 @@ def _snapshot(root: Path, *, include_metadata=False) -> dict[str, bytes]:
         raise ValueError("bundle root must be a directory")
     files = {}
     total = 0
-    for base, dirs, names in os.walk(root, followlinks=False):
+
+    def traversal_error(error):
+        raise error
+
+    for base, dirs, names in os.walk(root, followlinks=False, onerror=traversal_error):
         for name in sorted(dirs + names):
             path = checked_path(Path(base) / name)
             relative = _relative_path(path.relative_to(root).as_posix())
@@ -146,8 +150,8 @@ def _confine_references(root: Path, files: dict[str, bytes]) -> None:
 
     try:
         manifest("manifest.yaml")
-    except (KeyError, TypeError, AttributeError, yaml.YAMLError) as exc:
-        raise ValueError(f"invalid local manifest references: {exc}") from exc
+    except (KeyError, TypeError, AttributeError, yaml.YAMLError):
+        raise ValueError("invalid local manifest references") from None
 
 
 def validate_native_manifest(root: Path) -> None:
@@ -160,8 +164,8 @@ def validate_native_manifest(root: Path) -> None:
     _confine_references(root, files)
     try:
         AgentControl.from_path(str(root / "manifest.yaml"))
-    except Exception as exc:
-        raise ValueError(f"ACS native manifest rejected: {exc}") from exc
+    except (ValueError, RuntimeError, OSError):
+        raise ValueError("ACS native manifest rejected") from None
 
 
 def _content(policy_id: str, version: str, files: dict[str, bytes]) -> dict:

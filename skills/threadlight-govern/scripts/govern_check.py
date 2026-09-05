@@ -49,10 +49,23 @@ def _contract(root):
     path = root / "specs/SPEC.md"
     if path.exists() or path.is_symlink():
         import yaml
+
+        class SpecLoader(yaml.SafeLoader):
+            pass
+
+        # YAML 1.2 booleans leave the documented governance mode "off" a string.
+        SpecLoader.yaml_implicit_resolvers = {
+            key: [(tag, pattern) for tag, pattern in resolvers
+                  if tag != "tag:yaml.org,2002:bool"]
+            for key, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
+        }
+        SpecLoader.add_implicit_resolver(
+            "tag:yaml.org,2002:bool", re.compile(r"^(?:true|false)$", re.I), list("tTfF"),
+        )
         data = _read_file(checked_path(path))
         candidates = []
         for block in re.findall(r"```(?:yaml|yml)\s*\n(.*?)```", data.decode("utf-8"), re.S):
-            document = yaml.safe_load(block)
+            document = yaml.load(block, Loader=SpecLoader)
             if isinstance(document, dict) and {"framework", "governance", "tools"} <= document.keys():
                 candidates.append(document)
         if len(candidates) != 1:

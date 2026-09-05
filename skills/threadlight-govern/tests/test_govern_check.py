@@ -82,6 +82,33 @@ def test_governance_off_is_unbound_and_still_emits_report(tmp_path, capsys):
     assert man["coverage"]["tools_enforced"] == 0
 
 
+def test_spec_yaml_unquoted_off_preserves_explicit_governance_mode(tmp_path):
+    import yaml
+    doc = contract()
+    doc["governance"]["mode"] = "off"
+    doc["tools"] = ["search_catalog"]
+    (tmp_path / "specs").mkdir()
+    block = yaml.safe_dump(doc).replace("mode: 'off'", "mode: off")
+    assert "mode: off" in block
+    (tmp_path / "specs/SPEC.md").write_text(f"```yaml\n{block}```\n")
+    man = gc.evaluate(str(tmp_path))
+    assert man["agent"]["runtime"] == doc["framework"]
+    assert man["coverage"]["tools_unbound"] == 1
+    assert man["coverage"]["tools_enforced"] == 0
+    assert man["offline_evidence"][0]["reason_code"] == "contract-declared-only"
+
+
+@pytest.mark.parametrize("mode", ["true", "false"])
+def test_spec_yaml_boolean_is_not_a_governance_mode(tmp_path, mode):
+    import yaml
+    doc = contract()
+    (tmp_path / "specs").mkdir()
+    block = yaml.safe_dump(doc).replace("mode: selective", f"mode: {mode}")
+    (tmp_path / "specs/SPEC.md").write_text(f"```yaml\n{block}```\n")
+    with pytest.raises(ValueError):
+        gc.evaluate(str(tmp_path))
+
+
 def test_legacy_boolean_contract_does_not_pass_gate(tmp_path):
     write_contract(tmp_path, {"governed": True})
     assert gc.main(["--target", str(tmp_path), "--gate"]) == 2
