@@ -91,7 +91,7 @@ class DurableSpool:
             staging.unlink(missing_ok=True)
 
     def append(self, *, correlation_id, decision, action_hash, policy_hash,
-               agent_version=None, image_digest=None):
+               agent_version=None, image_digest=None, reason_code=None, interception_point=None):
         receipt = {
             "audit_id": uuid.uuid4().hex, "correlation_id": correlation_id,
             "decision": decision, "action_hash": action_hash, "policy_hash": policy_hash,
@@ -101,6 +101,10 @@ class DurableSpool:
             receipt["agent_version"] = agent_version
         if image_digest is not None:
             receipt["image_digest"] = image_digest
+        if reason_code is not None:
+            receipt["reason_code"] = reason_code
+        if interception_point is not None:
+            receipt["interception_point"] = interception_point
         self._write(receipt)
         return receipt["audit_id"]
 

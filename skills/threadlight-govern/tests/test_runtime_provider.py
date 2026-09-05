@@ -1100,3 +1100,492 @@ def test_selected_native_tool_override_failure_is_still_sanitized(tmp_path):
     result = asyncio.run(agent.run("input"))
     assert effects == [True]
     assert "PRIVATE-INVOKE" not in str(client.requests) + result.to_json()
+
+
+@pytest.mark.parametrize("approval", [False, True])
+@pytest.mark.parametrize("mutation", [False, True])
+def test_final_native_arguments_are_validated_once_and_exactly_authorized(tmp_path, monkeypatch, approval, mutation):
+    from agent_framework import FunctionMiddleware, FunctionTool
+    from pydantic import BaseModel, field_validator
+    adapter = importlib.import_module("skills.threadlight-govern.references.runtime.maf_agent_hooks_acs")
+    observed = []
+    intercept = adapter.AcsInterceptor.intercept
+    async def capture(self, context):
+        if context["interception_point"] == "pre_tool_call":
+            observed.append(deepcopy(context))
+        return await intercept(self, context)
+    monkeypatch.setattr(adapter.AcsInterceptor, "intercept", capture)
+    validations, effects = [], []
+    class Arguments(BaseModel):
+        amount: int
+        @field_validator("amount")
+        @classmethod
+        def increment(cls, value):
+            validations.append(value)
+            return value + 1
+    class Mutate(FunctionMiddleware):
+        async def process(self, context, call_next):
+            context.arguments["amount"] += 1
+            await asyncio.sleep(0)
+            await call_next()
+    service = ApprovalService("approve")
+    p, _, _ = provider(
+        tmp_path, decisions={"pre_tool_call": {"decision": "allow"}},
+        document=contract(requires=("approval",) if approval else ()),
+        approval_resolver=service, principal="host:user", tenant="host:tenant",
+        allowed_approval_roles=("test-reviewer",),
+    )
+    # Observe the context entering the real ACS adapter, not a synthetic policy oracle.
+    original_safe = p._safe_provider
+    hashes = []
+    p._safe_provider = lambda identity: (hashes.append(identity["action_hash"]) or original_safe(identity))
+    async def act(amount: int):
+        effects.append({"amount": amount})
+        return "done"
+    tool = FunctionTool(name="act", func=act, input_model=Arguments)
+    schema = deepcopy(tool.parameters())
+    client = model_client(tool_responses(args={"amount": 9}))
+    agent = runtime().create_governed_agent(
+        p, client=client, tools=[tool], middleware=[Mutate()] if mutation else [],
+    )
+    asyncio.run(agent.run("input"))
+    assert validations == [9], "native automatic dispatch must not run a validator twice"
+    assert effects == ([] if mutation else [{"amount": 10}])
+    assert tool.parameters() == schema
+    assert client.requests[0][1]["tools"][0].parameters() == schema
+    if approval and not mutation:
+        assert service.requests[0].action_hash == hashes[0]
+        actual = {**observed[0], "target": effects[0],
+                  "tool_call": {**observed[0]["tool_call"], "args": effects[0]}}
+        assert service.requests[0].action_hash == adapter.action_hash(p, actual)
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("stage", ["chat", "preparation"])
+def test_lifecycle_expiry_at_actual_native_transport(tmp_path, monkeypatch, stream, stage):
+    from agent_framework import ChatMiddleware
+    clock = controlled_clock(monkeypatch)
+    p, authority, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_model_call",)),
+        decisions={"pre_model_call": {"decision": "allow"}},
+    )
+    class Delay(ChatMiddleware):
+        async def process(self, context, call_next):
+            await asyncio.sleep(0)
+            clock.current = authority.expires_at
+            await call_next()
+    client = model_client(tool_responses())
+    if stage == "preparation":
+        client.compaction_strategy = object()
+        async def prepare(messages, **kwargs):
+            await asyncio.sleep(0)
+            clock.current = authority.expires_at
+            return messages
+        monkeypatch.setattr(client, "_prepare_messages_for_model_call", prepare)
+    agent = runtime().create_governed_agent(p, client=client, middleware=[Delay()] if stage == "chat" else [])
+    async def run():
+        if stream:
+            async for _ in agent.run("input", stream=True):
+                pass
+        else:
+            await agent.run("input")
+    try:
+        asyncio.run(run())
+    except Exception as exc:
+        assert "threadlight:policy_unavailable" in str(exc)
+    assert client.requests == [], "expired lifecycle authorization reached the transport"
+
+
+@pytest.mark.parametrize("point", ["startup", "input"])
+def test_run_lifecycle_expiry_after_application_await(tmp_path, monkeypatch, point):
+    from agent_framework import AgentMiddleware
+    clock = controlled_clock(monkeypatch)
+    p, authority, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=(point,)),
+        decisions={"agent_startup" if point == "startup" else point: {"decision": "allow"}},
+    )
+    class Delay(AgentMiddleware):
+        async def process(self, context, call_next):
+            await asyncio.sleep(0)
+            clock.current = authority.expires_at
+            await call_next()
+    client = model_client(tool_responses())
+    agent = runtime().create_governed_agent(p, client=client, middleware=[Delay()])
+    try:
+        asyncio.run(agent.run("input"))
+    except Exception as exc:
+        assert "threadlight:policy_unavailable" in str(exc)
+    assert client.requests == []
+
+
+@pytest.mark.parametrize("surface", ["function_middleware", "chat_middleware", "agent_middleware"])
+def test_preconfigured_native_client_middleware_rejected_before_effect(tmp_path, surface):
+    from agent_framework import AgentMiddleware, ChatMiddleware, FunctionMiddleware
+    effects = []
+    base = {"function_middleware": FunctionMiddleware, "chat_middleware": ChatMiddleware,
+            "agent_middleware": AgentMiddleware}[surface]
+    class Outer(base):
+        async def process(self, context, call_next):
+            effects.append("prehook")
+            await call_next()
+    client = model_client(tool_responses())
+    setattr(client, surface, [Outer()])
+    p, _, _ = provider(tmp_path)
+    rejected = False
+    try:
+        agent = runtime().create_governed_agent(p, client=client, tools=[lambda: None])
+        asyncio.run(agent.run("input"))
+    except ValueError:
+        rejected = True
+    assert rejected, "client middleware precedes the native bundle and must be rejected"
+    assert effects == []
+    assert client.requests == []
+
+
+@pytest.mark.parametrize("failure", ["engine", "native"])
+def test_production_native_failure_sink_is_durable_and_payload_free(tmp_path, monkeypatch, failure):
+    from agent_control_specification import AgentControl
+    adapter = importlib.import_module("skills.threadlight-govern.references.runtime.maf_agent_hooks_acs")
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(tmp_path, document=contract(requires=("durable-audit",)), audit=spool)
+    if failure == "engine":
+        async def fail(*args, **kwargs):
+            raise RuntimeError("PRIVATE-ENGINE-EXCEPTION")
+        monkeypatch.setattr(AgentControl, "evaluate_intervention_point", fail)
+    else:
+        original = adapter.AcsInterceptor.intercept
+        async def fail(self, context):
+            if context["interception_point"] == "pre_tool_call":
+                raise RuntimeError("PRIVATE-NATIVE-EXCEPTION")
+            return await original(self, context)
+        monkeypatch.setattr(adapter.AcsInterceptor, "intercept", fail)
+    try:
+        _, effects, _, _ = run_tool(p, args={"secret": "PRIVATE-ARGUMENT"})
+        assert effects == []
+    except Exception as exc:
+        assert "PRIVATE" not in str(exc)
+    records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+    assert len(records) == 1, "one durable failure receipt, not unselected native allow records"
+    assert records[0]["decision"] == "deny"
+    assert records[0]["reason_code"] == (
+        "threadlight:engine_failure" if failure == "engine" else "threadlight:native_failure"
+    )
+    assert records[0]["interception_point"] == "pre_tool_call"
+    assert "PRIVATE" not in json.dumps(records)
+    assert not p.health()["bindings"]["act:pre_tool_call"]["healthy"]
+
+
+def test_native_function_client_ordering_is_actually_outer(tmp_path):
+    from agent_framework import Agent, FunctionMiddleware, FunctionTool
+    effects = []
+    class Outer(FunctionMiddleware):
+        async def process(self, context, call_next):
+            effects.append("prehook")
+            await call_next()
+    p, _, _ = provider(tmp_path)
+    client = model_client(tool_responses())
+    client.function_middleware = [Outer()]
+    native = Agent(client=client, middleware=[p.middleware()],
+                   tools=[FunctionTool(name="act", func=lambda: effects.append("effect"))])
+    asyncio.run(native.run("input"))
+    assert effects == ["prehook"], "real native ordering, not a fake middleware harness"
+
+
+def test_native_failure_receipt_disk_error_is_unhealthy(tmp_path, monkeypatch):
+    from agent_control_specification import AgentControl
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(tmp_path, document=contract(requires=("durable-audit",)), audit=spool)
+    attempts = []
+    def broken(**kwargs):
+        attempts.append(kwargs)
+        raise OSError("PRIVATE-SINK-ERROR")
+    async def fail(*args, **kwargs):
+        raise RuntimeError("PRIVATE-ENGINE-ERROR")
+    monkeypatch.setattr(spool, "append", broken)
+    monkeypatch.setattr(AgentControl, "evaluate_intervention_point", fail)
+    _, effects, client, _ = run_tool(p)
+    assert effects == []
+    assert len(attempts) == 1
+    assert p.health()["bindings"]["act:pre_tool_call"]["reason"] == "threadlight:audit_unavailable"
+    assert "PRIVATE" not in str(client.requests)
+
+
+@pytest.mark.parametrize("decision", ["allow", "deny"])
+def test_failed_native_tool_never_receipts_a_successful_result(tmp_path, decision):
+    from agent_framework import FunctionTool
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(
+        tmp_path, document=contract(points=("post_tool_call",)),
+        decisions={"post_tool_call": {"decision": decision}}, audit=spool,
+    )
+    async def fail():
+        raise RuntimeError("PRIVATE-TOOL")
+    client = model_client(tool_responses())
+    agent = runtime().create_governed_agent(p, client=client, tools=[FunctionTool(name="act", func=fail)])
+    asyncio.run(agent.run("input"))
+    records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+    assert len(records) == 1
+    assert records[0]["decision"] == "error"
+    assert records[0]["reason_code"] == "threadlight:tool_unavailable"
+    assert "PRIVATE" not in json.dumps(records)
+
+
+@pytest.mark.parametrize("surface", ["run", "client_kwargs"])
+def test_extra_run_hooks_are_rejected_before_application_effects(tmp_path, surface):
+    from agent_framework import AgentMiddleware
+    p, _, _ = provider(tmp_path)
+    extra, _, _ = provider(tmp_path / "extra")
+    effects = []
+    class Effect(AgentMiddleware):
+        async def process(self, context, call_next):
+            effects.append(True)
+            await call_next()
+    client = model_client(tool_responses())
+    agent = runtime().create_governed_agent(p, client=client, middleware=[Effect()])
+    entries = {"middleware": [extra.middleware()]}
+    options = entries if surface == "run" else {"client_kwargs": entries}
+    with pytest.raises(ValueError):
+        asyncio.run(agent.run("input", **options))
+    assert effects == []
+    assert client.requests == []
+
+
+def test_native_additional_tools_remain_declaration_only(tmp_path):
+    from agent_framework import FunctionTool
+    from pydantic import BaseModel, field_validator
+    calls, effects = [], []
+    class Args(BaseModel):
+        amount: int
+        @field_validator("amount")
+        @classmethod
+        def increment(cls, value):
+            calls.append(value)
+            return value + 1
+    async def act(amount):
+        effects.append(amount)
+    p, _, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    client = model_client(tool_responses(args={"amount": 9}))
+    client.function_invocation_configuration["additional_tools"] = [
+        FunctionTool(name="act", func=act, input_model=Args),
+    ]
+    agent = runtime().create_governed_agent(p, client=client, tools=[FunctionTool(name="read", func=lambda: "read")])
+    asyncio.run(agent.run("input"))
+    # In this pin additional_tools are declaration-only requests, not local dispatch.
+    assert calls == []
+    assert effects == []
+
+
+@pytest.mark.parametrize("expire", [False, True])
+@pytest.mark.parametrize("selected", [False, True])
+@pytest.mark.parametrize("mounted", [False, True])
+def test_actual_native_http_transport_checks_after_async_request_hooks(tmp_path, monkeypatch, expire, selected, mounted):
+    import httpx
+    from openai import AsyncOpenAI
+    from agent_framework.openai import OpenAIChatClient
+    clock = controlled_clock(monkeypatch)
+    p, authority, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_model_call",)) if selected else contract(),
+        decisions={"pre_model_call": {"decision": "allow"}},
+    )
+    requests, hooks = [], []
+    async def request_hook(request):
+        await asyncio.sleep(0)
+        hooks.append(True)
+        if expire:
+            clock.current = authority.expires_at
+    def transport(request):
+        requests.append(request)
+        return httpx.Response(200, json={
+            "id": "resp_local", "object": "response", "created_at": 0,
+            "status": "completed", "model": "local", "output": [{
+                "id": "msg_local", "type": "message", "role": "assistant", "status": "completed",
+                "content": [{"type": "output_text", "text": "finished", "annotations": []}],
+            }],
+        })
+    async def run():
+        wire = httpx.MockTransport(transport)
+        async with httpx.AsyncClient(
+            transport=wire, event_hooks={"request": [request_hook]},
+            mounts={"https://api.openai.com": wire} if mounted else None,
+        ) as http:
+            sdk = AsyncOpenAI(api_key="local-test-only", http_client=http, max_retries=0)
+            client = OpenAIChatClient(model="local", async_client=sdk)
+            agent = runtime().create_governed_agent(p, client=client)
+            try:
+                result = await agent.run("input")
+                if not (expire and selected):
+                    assert result.text == "finished"
+            except Exception as exc:
+                assert expire and selected and "threadlight:policy_unavailable" in str(exc)
+    asyncio.run(run())
+    assert hooks == [True]
+    assert len(requests) == (0 if expire and selected else 1), "HTTP transport ran after request hook expired authorization"
+
+
+@pytest.mark.parametrize("point", ["input", "pre_model_call"])
+def test_lifecycle_approval_expiry_after_application_await(tmp_path, monkeypatch, point):
+    from agent_framework import AgentMiddleware, ChatMiddleware
+    clock = controlled_clock(monkeypatch)
+    service = ApprovalService("approve")
+    p, _, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=(point,), requires=("approval",)),
+        decisions={point: {"decision": "allow"}},
+        approval_resolver=service, principal="host:user", tenant="host:tenant",
+        allowed_approval_roles=("test-reviewer",),
+    )
+    class Delay(AgentMiddleware if point == "input" else ChatMiddleware):
+        async def process(self, context, call_next):
+            await asyncio.sleep(0)
+            clock.current = service.requests[-1].expires_at
+            await call_next()
+    client = model_client(tool_responses())
+    agent = runtime().create_governed_agent(p, client=client, middleware=[Delay()])
+    try:
+        asyncio.run(agent.run("input"))
+    except Exception as exc:
+        assert "threadlight:approval_unavailable" in str(exc)
+    assert len(service.requests) == 1
+    assert client.requests == []
+
+
+def test_transformed_authorization_receipt_hash_matches_final_effect(tmp_path, monkeypatch):
+    adapter = importlib.import_module("skills.threadlight-govern.references.runtime.maf_agent_hooks_acs")
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(
+        tmp_path, document=contract(requires=("durable-audit",)), audit=spool,
+        decisions={"pre_tool_call": {
+            "decision": "transform", "transform": {"path": "$policy_target", "value": {"amount": 5}},
+        }},
+    )
+    contexts = []
+    original = adapter.AcsInterceptor.intercept
+    async def capture(self, context):
+        if context["interception_point"] == "pre_tool_call":
+            contexts.append(deepcopy(context))
+        return await original(self, context)
+    monkeypatch.setattr(adapter.AcsInterceptor, "intercept", capture)
+    _, effects, _, _ = run_tool(p, args={"amount": 9})
+    records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+    assert effects == [{"amount": 5}]
+    assert len(records) == 1
+    actual = {**contexts[0], "target": effects[0],
+              "tool_call": {**contexts[0]["tool_call"], "args": effects[0]}}
+    assert records[0]["action_hash"] == adapter.action_hash(p, actual)
+
+
+def test_selected_input_remains_fresh_at_otherwise_unbound_effect(tmp_path, monkeypatch):
+    from agent_framework import FunctionMiddleware, FunctionTool
+    clock = controlled_clock(monkeypatch)
+    p, authority, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("input",)),
+        decisions={"input": {"decision": "allow"}},
+    )
+    class Delay(FunctionMiddleware):
+        async def process(self, context, call_next):
+            await asyncio.sleep(0)
+            clock.current = authority.expires_at
+            await call_next()
+    effects = []
+    async def read():
+        effects.append(True)
+    client = model_client(tool_responses("read"))
+    agent = runtime().create_governed_agent(
+        p, client=client, middleware=[Delay()], tools=[FunctionTool(name="read", func=read)],
+    )
+    with pytest.raises(Exception, match="threadlight:policy_unavailable"):
+        asyncio.run(agent.run("input"))
+    assert effects == []
+
+
+def test_final_expiry_denial_is_durably_recorded_not_only_earlier_allow(tmp_path, monkeypatch):
+    from agent_framework import ChatMiddleware
+    clock = controlled_clock(monkeypatch)
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, authority, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_model_call",), requires=("durable-audit",)),
+        decisions={"pre_model_call": {"decision": "allow"}}, audit=spool,
+    )
+    class Delay(ChatMiddleware):
+        async def process(self, context, call_next):
+            await asyncio.sleep(0)
+            clock.current = authority.expires_at
+            await call_next()
+    client = model_client(tool_responses())
+    agent = runtime().create_governed_agent(p, client=client, middleware=[Delay()])
+    with pytest.raises(Exception, match="threadlight:policy_unavailable"):
+        asyncio.run(agent.run("input"))
+    assert client.requests == []
+    records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+    assert sorted(r["decision"] for r in records) == ["allow", "deny"]
+    denied = next(r for r in records if r["decision"] == "deny")
+    assert denied["reason_code"] == "threadlight:policy_unavailable"
+    assert denied["interception_point"] == "pre_model_call"
+
+
+def test_late_native_run_middleware_cannot_reuse_one_tool_authorization(tmp_path):
+    from agent_framework import FunctionMiddleware, FunctionTool
+    effects = []
+    class Twice(FunctionMiddleware):
+        async def process(self, context, call_next):
+            await call_next()
+            await asyncio.sleep(0)
+            await call_next()
+    p, _, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    async def act():
+        effects.append(True)
+    client = model_client(tool_responses())
+    agent = runtime().create_governed_agent(p, client=client, tools=[FunctionTool(name="act", func=act)])
+    asyncio.run(agent.run("input", middleware=[Twice()]))
+    assert effects == [True]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("expire", [False, True])
+def test_output_approval_freshness_at_release_after_native_shutdown(tmp_path, monkeypatch, stream, expire):
+    from agent_framework import ChatResponse, Message
+    adapter = importlib.import_module("skills.threadlight-govern.references.runtime.maf_agent_hooks_acs")
+    clock = controlled_clock(monkeypatch)
+    service = ApprovalService("approve")
+    p, _, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("output",), requires=("approval",)),
+        decisions={"output": {"decision": "allow"}},
+        approval_resolver=service, principal="host:user", tenant="host:tenant",
+        allowed_approval_roles=("test-reviewer",),
+    )
+    original = adapter.AcsInterceptor.intercept
+    async def delayed(self, context):
+        if context["interception_point"] == "agent_shutdown" and expire:
+            await asyncio.sleep(0)
+            clock.current = service.requests[-1].expires_at
+        return await original(self, context)
+    monkeypatch.setattr(adapter.AcsInterceptor, "intercept", delayed)
+    client = model_client([ChatResponse(messages=[Message("assistant", ["finished"])])])
+    agent = runtime().create_governed_agent(p, client=client)
+    async def run():
+        result = agent.run("input", stream=stream)
+        return await result.get_final_response() if stream else await result
+    if expire:
+        with pytest.raises(Exception, match="threadlight:approval_unavailable"):
+            asyncio.run(run())
+    else:
+        assert asyncio.run(run()).text == "finished"
+    assert len(client.requests) == 1
+
+
+def test_guard_preserves_native_bound_self_context_and_invocation_budget(tmp_path):
+    from agent_framework import FunctionInvocationContext, tool
+    effects = []
+    class Service:
+        @tool(name="act", max_invocations=1)
+        async def act(self, amount: int, ctx: FunctionInvocationContext):
+            assert ctx.arguments == {"amount": amount}
+            effects.append((self, amount))
+            return "done"
+    service = Service()
+    original = service.act
+    p, _, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    client = model_client(tool_responses(args={"amount": 10})[:1] + tool_responses(args={"amount": 10}))
+    agent = runtime().create_governed_agent(p, client=client, tools=[original])
+    asyncio.run(agent.run("input"))
+    assert effects == [(service, 10)]
+    assert original.invocation_count == 0

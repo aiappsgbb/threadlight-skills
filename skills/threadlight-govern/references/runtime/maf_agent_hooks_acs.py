@@ -22,6 +22,66 @@ from .governance_provider import AUDIT, APPROVAL
 
 _approvals = ContextVar("threadlight_approvals", default=None)
 _effect_authorization = ContextVar("threadlight_effect_authorization", default=None)
+_execution = ContextVar("threadlight_execution", default=None)
+
+
+def _emission(context):
+    state = _execution.get()
+    if state is None:
+        return None
+    return state["emissions"].get((context["session"]["id"], context["sequence"]))
+
+
+class NativeRecordSink:
+    """Consume typed native outcomes, never SDK serialization or exception text."""
+    def __init__(self, provider):
+        self.provider = provider
+
+    def __call__(self, record):
+        p = self.provider
+        state = _execution.get()
+        point = record.interception_point.value
+        entry = state["emissions"].get((record.session_id, record.sequence)) if state else None
+        selected = entry["selected"] if entry else [
+            b for b in p._bindings.values() if b["point"] == point
+        ]
+        if not selected:
+            return
+        decision = record.verdict.decision.value
+        reason = record.verdict.reason
+        if decision in {"allow", "transform"}:
+            if entry and point == "pre_tool_call" and state is not None:
+                state["calls"][entry["call_id"]] = (entry["tool"], entry["args_hash"])
+            return
+        known = {
+            "threadlight:engine_failure", "threadlight:policy_unavailable",
+            "threadlight:binding_unavailable", "threadlight:approval_unavailable",
+            "threadlight:audit_unavailable", "threadlight:policy_deny",
+            "threadlight:policy_escalate", "threadlight:transform_requires_approval",
+            "threadlight:output_limit",
+        }
+        code = reason if reason in known else "threadlight:native_failure"
+        if code not in {"threadlight:policy_deny", "threadlight:policy_escalate"}:
+            binding_failure(selected, code)
+        if entry and entry["receipt_decision"] in {"deny", "error"}:
+            return
+        if p.audit is None:
+            return
+        try:
+            p.audit.append(
+                correlation_id=digest(record.session_id), decision="deny",
+                action_hash=entry["action_hash"] if entry else digest({
+                    "input_identity": record.input_identity,
+                    "enforced_identity": record.enforced_identity,
+                    "sequence": record.sequence,
+                }),
+                policy_hash=p.policy_digest(), agent_version=p.agent_version,
+                image_digest=p.image_digest, reason_code=code, interception_point=point,
+            )
+        except Exception:
+            binding_failure(selected, "threadlight:audit_unavailable")
+            if state is not None:
+                state["audit_failed"].update(id(b) for b in selected)
 
 
 @contextmanager
@@ -45,11 +105,14 @@ def hooks_bundle(interceptors, **kwargs):
 
 
 def action_hash(provider, context, target=None):
+    tool = context.get("tool_call")
+    if target is not None and context["interception_point"] == "pre_tool_call":
+        tool = {**tool, "args": target}
     return digest({
         "policy_hash": provider.policy_digest(), "principal": provider.principal,
         "tenant": provider.tenant,
         "agent": context["agent"], "session": context["session"],
-        "point": context["interception_point"], "tool": context.get("tool_call"),
+        "point": context["interception_point"], "tool": tool,
         "target": context["target"] if target is None else target,
     })
 
@@ -69,12 +132,21 @@ def receipt(provider, selected, context, decision, target=None):
     if provider.audit is None:
         return not required
     try:
+        details = {}
+        if context.get("tool_result", {}).get("is_error"):
+            decision = "error"
+            details = {"reason_code": "threadlight:tool_unavailable",
+                       "interception_point": context["interception_point"]}
         provider.audit.append(
             correlation_id=digest(context["session"]), decision=decision,
             action_hash=action_hash(provider, context, target),
             policy_hash=provider.policy_digest(),
             agent_version=provider.agent_version, image_digest=provider.image_digest,
+            **details,
         )
+        entry = _emission(context)
+        if entry is not None:
+            entry["receipt_decision"] = decision
         return True
     except Exception:
         binding_failure(selected, "threadlight:audit_unavailable")
@@ -135,7 +207,16 @@ class BoundApprovalResolver:
                     state[tool["id"]] = (
                         tool["name"], digest(tool["args"]), intent.expires_at, deadline,
                     )
+                else:
+                    state = _execution.get()
+                    if state is None:
+                        raise ValueError("approval scope unavailable")
+                    state["lifecycle_tickets"][request.context["interception_point"]] = (
+                        None, None, intent.expires_at, deadline,
+                    )
                 verdict = ALLOW
+            elif not grant.approved:
+                verdict = Verdict.deny(reason="threadlight:policy_deny")
         except Exception:
             binding_failure(selected, "threadlight:approval_unavailable")
         return ApprovalResolution(
@@ -151,6 +232,18 @@ class AcsInterceptor:
     async def intercept(self, context):
         p = self.provider
         selected = p._select(context)
+        state = _execution.get()
+        entry = None
+        if state is not None:
+            tool = context.get("tool_call", {})
+            entry = {
+                "selected": selected, "receipt_decision": None,
+                "point": context["interception_point"], "session_hash": digest(context["session"]["id"]),
+                "action_hash": action_hash(p, context),
+                "call_id": tool.get("id"), "tool": tool.get("name"),
+                "args_hash": digest(tool.get("args")),
+            }
+            state["emissions"][(context["session"]["id"], context["sequence"])] = entry
         if context["interception_point"] == "pre_tool_call":
             bindings = p._tool_bindings(context["tool_call"]["name"])
             if bindings:
@@ -208,6 +301,9 @@ class AcsInterceptor:
                     decision=Decision.TRANSFORM, reason="threadlight:policy_transform",
                     transform=Transform("$target", value),
                 )
+                if entry is not None and point == "pre_tool_call":
+                    entry["args_hash"] = digest(value)
+                    entry["action_hash"] = action_hash(p, context, value)
                 binding_success(selected)
                 if not receipt(p, selected, context, "transform", value):
                     return Verdict.deny(reason="threadlight:audit_unavailable")
@@ -246,6 +342,7 @@ class _RunBoundary(AgentMiddleware):
         # Options are host-owned: per-run callers must not override store=False.
         context.options = {**(context.options or {}), "store": False}
         _check_tools(context.tools or [])
+        _check_lifecycle(self.provider, ("agent_startup", "input"))
         state = {}
         with approval_scope(state):
             await call_next()
@@ -305,6 +402,8 @@ def _check_options(options):
     if not isinstance(options, Mapping):
         return options
     options = dict(options)
+    if "middleware" in options:
+        _check_extra_middleware(options["middleware"])
     if options.get("tools") is not None:
         _check_tools(options["tools"])
     if options.get("web_search_options") is not None:
@@ -322,16 +421,63 @@ class GovernedToolUnavailable(RuntimeError):
         super().__init__(reason)
 
 
+def _deny_boundary(provider, selected, reason):
+    binding_failure(selected, reason)
+    state = _execution.get()
+    if state is not None:
+        state["boundary_error"] = reason
+        ids = {id(b) for b in selected}
+        entry = next((e for e in reversed(list(state["emissions"].values()))
+                      if any(id(b) in ids for b in e["selected"])), None)
+        key = (id(entry), tuple(sorted(ids)), reason)
+        if provider.audit is not None and entry and key not in state["boundary_receipts"]:
+            state["boundary_receipts"].add(key)
+            try:
+                provider.audit.append(
+                    correlation_id=entry["session_hash"], decision="deny",
+                    action_hash=entry["action_hash"], policy_hash=provider.policy_digest(),
+                    agent_version=provider.agent_version, image_digest=provider.image_digest,
+                    reason_code=reason, interception_point=entry["point"],
+                )
+            except Exception:
+                binding_failure(selected, "threadlight:audit_unavailable")
+                state["audit_failed"].update(ids)
+    raise GovernedToolUnavailable(reason)
+
+
+def _effect_lifecycle(provider):
+    return [b for b in provider._bindings.values() if b["tool"] is None
+            and b["point"] in {"agent_startup", "input", "post_model_call"}]
+
+
+def _check_lifecycle(provider, points):
+    for point in points:
+        selected = [b for b in provider._bindings.values()
+                    if b["tool"] is None and b["point"] == point]
+        if not selected:
+            continue
+        state = _execution.get()
+        ticket = state["lifecycle_tickets"].get(point) if state else None
+        if (provider.mode == "enforce" and ticket is None
+                and any(APPROVAL.intersection(b["requires"]) for b in selected)):
+            _deny_boundary(provider, selected, "threadlight:approval_unavailable")
+        _check_effect(provider, selected, ticket)
+
+
 def _check_effect(provider, selected, ticket):
     if provider.mode != "enforce":
         return
+    state = _execution.get()
+    if state is not None and any(
+        id(b) in state["audit_failed"] and AUDIT.intersection(b["requires"]) for b in selected
+    ):
+        _deny_boundary(provider, selected, "threadlight:audit_unavailable")
     if not authorized(provider, selected):
-        raise GovernedToolUnavailable("threadlight:policy_unavailable")
+        _deny_boundary(provider, selected, "threadlight:policy_unavailable")
     if ticket is not None and (
         provider._now() >= ticket[2] or time.monotonic() >= ticket[3]
     ):
-        binding_failure(selected, "threadlight:approval_unavailable")
-        raise GovernedToolUnavailable("threadlight:approval_unavailable")
+        _deny_boundary(provider, selected, "threadlight:approval_unavailable")
 
 
 class _FunctionBoundary(FunctionMiddleware):
@@ -346,9 +492,10 @@ class _FunctionBoundary(FunctionMiddleware):
             await call_next()
             return
         selected = p._tool_bindings(context.function.name)
-        if not selected:
+        if not selected and not _effect_lifecycle(p):
             await call_next()
             return
+        _check_lifecycle(p, ("agent_startup", "input", "post_model_call"))
         state = _approvals.get()
         ticket = state.pop(context.metadata.get("call_id"), None) if state is not None else None
         if p.mode == "enforce" and (
@@ -357,10 +504,14 @@ class _FunctionBoundary(FunctionMiddleware):
                 context.function.name, digest(dict(context.arguments)),
             ))
         ):
-            binding_failure(selected, "threadlight:approval_unavailable")
-            raise GovernedToolUnavailable("threadlight:approval_unavailable")
+            _deny_boundary(p, selected, "threadlight:approval_unavailable")
         _check_effect(p, selected, ticket)
-        token = _effect_authorization.set(ticket)
+        execution = _execution.get()
+        expected = execution["calls"].pop(context.metadata.get("call_id"), None) if execution else None
+        actual = (context.function.name, digest(dict(context.arguments)))
+        if p.mode == "enforce" and any(b["point"] == "pre_tool_call" for b in selected) and expected != actual:
+            _deny_boundary(p, selected, "threadlight:arguments_changed")
+        token = _effect_authorization.set((p, actual, ticket, {"dispatched": False, "called": False}))
         try:
             await call_next()
             return
@@ -382,7 +533,8 @@ def _guard_tool(tool, provider):
     if not isinstance(tool, FunctionTool):
         tool = FunctionTool(func=tool)
     selected = provider._tool_bindings(tool.name)
-    if not selected or tool.func is None or getattr(tool, "_threadlight_owner", None) is provider:
+    if ((not selected and not _effect_lifecycle(provider)) or tool.func is None
+            or getattr(tool, "_threadlight_owner", None) is provider):
         return tool
     guarded = copy(tool)
     function = tool.func
@@ -390,10 +542,32 @@ def _guard_tool(tool, provider):
         function = function.func
     @wraps(function)
     async def invoke(*args, **kwargs):
+        def check():
+            authorization = _effect_authorization.get()
+            if provider.mode == "enforce":
+                if authorization is None or authorization[0] is not provider:
+                    raise GovernedToolUnavailable("threadlight:tool_unavailable")
+                values = dict(kwargs)
+                for name in inspect.signature(function).parameters:
+                    # MAF injects the native invocation context, not a tool argument.
+                    if name in values and isinstance(values[name], FunctionInvocationContext):
+                        values.pop(name)
+                bound_self = getattr(tool, "_instance", None)
+                native_self = len(args) == 1 and bound_self is not None and args[0] is bound_self
+                if (args and not native_self) or authorization[1] != (tool.name, digest(values)):
+                    _deny_boundary(provider, selected, "threadlight:arguments_changed")
+            _check_lifecycle(provider, ("agent_startup", "input", "post_model_call"))
+            _check_effect(provider, selected, authorization[2] if authorization else None)
         def call():
-            _check_effect(provider, selected, _effect_authorization.get())
+            check()
+            authorization = _effect_authorization.get()
+            if provider.mode == "enforce" and authorization is not None:
+                if authorization[3]["called"]:
+                    _deny_boundary(provider, selected, "threadlight:authorization_reused")
+                authorization[3]["called"] = True
             return function(*args, **kwargs)
-        _check_effect(provider, selected, _effect_authorization.get())
+        from agent_framework import FunctionInvocationContext
+        check()
         try:
             if inspect.iscoroutinefunction(function) or getattr(tool, "_invoke_sync_on_event_loop", False):
                 value = call()
@@ -401,7 +575,7 @@ def _guard_tool(tool, provider):
                 value = await asyncio.to_thread(call)
             if inspect.isawaitable(value):
                 try:
-                    _check_effect(provider, selected, _effect_authorization.get())
+                    check()
                 except GovernedToolUnavailable:
                     if inspect.iscoroutine(value):
                         value.close()
@@ -416,8 +590,152 @@ def _guard_tool(tool, provider):
         # as __context__, and MAF still emits its error post-tool bracket.
         raise GovernedToolUnavailable() from None
     guarded.func = invoke
+    # The pinned auto-invocation pipeline already validated before pre_tool_call.
+    # Retain that model/schema on the exposed tool, but use the public schema-only
+    # invocation path on a separate execution copy. No model_construct/model_dump
+    # round-trip: user validators, serializers and model_post_init must not run again.
+    guarded.parameters()
+    execution_tool = copy(guarded)
+    execution_tool.input_model = None
+    async def invoke_validated(*, arguments=None, context=None, **kwargs):
+        authorization = _effect_authorization.get()
+        if provider.mode == "enforce" and (authorization is None or authorization[0] is not provider):
+            raise GovernedToolUnavailable("threadlight:tool_unavailable")
+        if provider.mode == "enforce" and authorization[1] != (tool.name, digest(dict(arguments or {}))):
+            _deny_boundary(provider, selected, "threadlight:arguments_changed")
+        _check_lifecycle(provider, ("agent_startup", "input", "post_model_call"))
+        _check_effect(provider, selected, authorization[2] if authorization else None)
+        if provider.mode == "enforce":
+            if authorization[3]["dispatched"]:
+                _deny_boundary(provider, selected, "threadlight:authorization_reused")
+            authorization[3]["dispatched"] = True
+        return await execution_tool.invoke(arguments=arguments, context=context, **kwargs)
+    guarded.invoke = invoke_validated
     guarded._threadlight_owner = provider
     return guarded
+
+
+def _check_client_middleware(client):
+    if any(getattr(client, name, None) for name in (
+        "agent_middleware", "chat_middleware", "function_middleware", "middleware",
+    )):
+        raise ValueError("client middleware must be supplied inside the governed Agent Hooks bundle")
+
+
+def _middleware_entries(value):
+    return list(value) if isinstance(value, (list, tuple)) else [] if value is None else [value]
+
+
+def _check_extra_middleware(value):
+    for item in _middleware_entries(value):
+        if isinstance(item, MiddlewareBundle) or type(item).__module__ == "agent_framework._agent_hooks":
+            raise ValueError("extra Agent Hooks middleware must not share the governance boundary")
+
+
+def _check_run_options(value):
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if key == "middleware":
+                _check_extra_middleware(item)
+            elif isinstance(item, Mapping):
+                _check_run_options(item)
+
+
+class _ExecutionScope(AgentMiddleware):
+    """Host guard outside the one native bundle; applications remain inside it."""
+    def __init__(self, provider, client):
+        self.provider, self.client = provider, client
+
+    async def process(self, context, call_next):
+        _check_client_middleware(self.client)
+        state = {"emissions": {}, "calls": {}, "audit_failed": set(), "boundary_error": None,
+                 "lifecycle_tickets": {}, "boundary_receipts": set()}
+        @contextmanager
+        def scope():
+            token = _execution.set(state)
+            try:
+                yield
+            finally:
+                _execution.reset(token)
+        with scope():
+            await call_next()
+            if isinstance(context.result, ResponseStream):
+                inner = context.result
+                # Native buffered streams run registered transform hooks BEFORE
+                # their output gate. An outer stream checks AFTER that gate instead.
+                async def updates():
+                    async for update in inner:
+                        with scope():
+                            self._release(update)
+                        yield update
+                async def finalizer(updates):
+                    with scope():
+                        return self._release(await inner.get_final_response())
+                context.result = ResponseStream(updates(), finalizer=finalizer)
+                context.result.with_pull_context_manager(scope)
+            elif context.result is not None:
+                self._release(context.result)
+
+    def _release(self, value):
+        _check_lifecycle(self.provider, ("output",))
+        return value
+
+
+def _guard_client(client, provider):
+    _check_client_middleware(client)
+    guarded = copy(client)
+    _guard_http_client(guarded, provider)
+    dispatch = guarded._inner_get_response
+    def transport(*, messages, stream, options, **kwargs):
+        # BaseChatClient calls this extension point AFTER awaited compaction.
+        _check_lifecycle(provider, ("agent_startup", "input", "pre_model_call"))
+        options = {**_check_options(options or {}), "store": False}
+        kwargs = _check_options(kwargs)
+        result = dispatch(messages=messages, stream=stream, options=options, **kwargs)
+        if not inspect.isawaitable(result) or isinstance(result, ResponseStream):
+            return result
+        async def finish():
+            try:
+                return await result
+            except Exception:
+                state = _execution.get()
+                if not state or not state["boundary_error"]:
+                    raise
+                reason = state["boundary_error"]
+            raise GovernedToolUnavailable(reason) from None
+        return finish()
+    guarded._inner_get_response = transport
+    return guarded
+
+
+def _guard_http_client(client, provider):
+    """Guard OpenAI HTTP dispatch after auth, retries and asynchronous request hooks.
+
+    with_options and AsyncBaseTransport are public extension surfaces. The pinned
+    SDK has no public getter for its HTTP client or mounted transports; read those
+    references only, and replace them on host-owned shallow copies, never originals.
+    """
+    from openai import AsyncOpenAI
+    import httpx
+    sdk = getattr(client, "client", None)
+    if not isinstance(sdk, AsyncOpenAI):
+        return
+    http = copy(sdk._client)
+    class Transport(httpx.AsyncBaseTransport):
+        def __init__(self, inner):
+            self.inner = inner
+
+        async def handle_async_request(self, request):
+            _check_lifecycle(provider, ("agent_startup", "input", "pre_model_call"))
+            return await self.inner.handle_async_request(request)
+
+        async def aclose(self):
+            # The caller owns the shared connection pools and their lifetime.
+            pass
+    http._transport = Transport(http._transport)
+    http._mounts = {pattern: Transport(transport) if transport is not None else None
+                    for pattern, transport in http._mounts.items()}
+    client.client = sdk.with_options(http_client=http)
 
 
 def create_governed_agent(provider, *, client, middleware=(), default_options=None, **kwargs):
@@ -425,8 +743,9 @@ def create_governed_agent(provider, *, client, middleware=(), default_options=No
     if provider._claimed:
         raise ValueError("each agent requires its own governance provider and bundle")
     hooks = provider.middleware()
+    _check_client_middleware(client)
     _check_tools(kwargs.get("tools") or [])
-    installed = list(middleware)
+    installed = _middleware_entries(middleware)
     if any(isinstance(m, MiddlewareBundle) and m is not hooks for m in installed):
         raise ValueError("foreign bundles must not share the governance boundary")
     if hooks in installed:
@@ -434,10 +753,22 @@ def create_governed_agent(provider, *, client, middleware=(), default_options=No
             raise ValueError("exactly one Agent Hooks bundle must be first")
     else:
         installed.insert(0, hooks)
+    _check_extra_middleware([m for m in installed if m is not hooks])
+    _check_run_options(kwargs)
+    _check_run_options(default_options or {})
+    installed.insert(0, _ExecutionScope(provider, client))
     installed.extend([_RunBoundary(provider), _ChatBoundary(provider), _FunctionBoundary(provider)])
     agent = Agent(
-        client=client, middleware=installed,
+        client=_guard_client(client, provider), middleware=installed,
         default_options={**(default_options or {}), "store": False}, **kwargs,
     )
+    run = agent.run
+    @wraps(run)
+    def checked_run(*args, **run_kwargs):
+        _check_client_middleware(client)
+        _check_client_middleware(agent.client)
+        _check_run_options(run_kwargs)
+        return run(*args, **run_kwargs)
+    agent.run = checked_run
     provider._claimed = True
     return agent

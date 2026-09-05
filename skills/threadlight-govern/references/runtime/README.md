@@ -28,8 +28,14 @@ Construct `AcsGovernanceProvider` with these **host-owned** dependencies:
 
 Use `create_governed_agent(provider, client=client, tools=local_tools,
 middleware=application_middleware)`. This creates an actual pinned `Agent` with
-exactly one official hooks bundle first. Duplicate/foreign bundles and middleware
-placed before an explicitly supplied hooks bundle are rejected. A provider/bundle
+exactly one official hooks bundle outside all application middleware. A host-only
+execution scope surrounds that bundle for failure bookkeeping and final release.
+Duplicate/foreign bundles, detached native hook members, and middleware placed
+before an explicitly supplied hooks bundle are rejected. Preconfigured client
+agent/chat/function middleware is rejected **before any bundle or application
+effect**; supply application middleware through this constructor instead. Extra
+per-run/option bundles are rejected before native middleware execution, including
+otherwise-shadowed `client_kwargs` entries. A provider/bundle
 cannot be reused by nested agents: construct a separate provider for each child.
 Tools should be real MAF `FunctionTool`s; choose `result_parser=SKIP_PARSING` when
 policies need structured native results rather than the default parsed text.
@@ -37,15 +43,24 @@ policies need structured native results rather than the default parsed text.
 The host and application middleware are trusted. This cooperative boundary does
 not prevent application code from calling a function directly, swapping the
 agent/client, using unregistered external effects, or mutating middleware later.
-Do not add per-run middleware ahead of the factory-installed boundary. Run-level
+Do not replace the installed middleware or client. Run-level
 options cannot override `store=False`; chat middleware also sets it immediately
 before the provider call, including native `extra_body` overrides. Clients must
 honor that supported provider option. The last chat boundary checks the effective
 tool list after constructor defaults, call-time options, progressive tool exposure,
 and middleware merges; native option/`client_kwargs`/`extra_body` tool overrides
 and Chat Completions `web_search_options` cannot hide provider-hosted execution.
-Unbound local functions remain permitted. This assumes the pinned client pipeline;
-a custom transport adding hidden effects after middleware is outside this boundary.
+Unbound local functions remain permitted. This assumes the pinned client pipeline.
+The model-dispatch guard runs at `BaseChatClient._inner_get_response`, after awaited
+compaction/preparation. Native OpenAI clients additionally use a copied SDK/HTTP
+client with guarded default **and mounted** `AsyncBaseTransport`s: authorization is
+checked after awaited HTTP request hooks/authentication and on each retry/redirect,
+immediately before transport dispatch. Original clients, hooks and connection pools
+are not mutated; the caller owns pool shutdown. There is no public SDK getter for
+the HTTP client/mounts, so this pin-specific adapter reads those private references
+on host-owned copies; it does not modify installed SDK code or published pins.
+Other/custom transports that add hidden awaits/effects after `_inner_get_response`
+need a corresponding terminal transport guard before claiming that coverage.
 
 ## Selection and failure semantics
 
@@ -77,6 +92,16 @@ a custom transport adding hidden effects after middleware is outside this bounda
   runs, and the invocation remains an error, not a successful substitute. Unbound
   callables and the original caller-owned tool objects are unchanged. Framework
   termination and human-input control flow remain native.
+- Native automatic tool dispatch performs Pydantic validation **once**, before
+  `pre_tool_call`. The exposed tool retains its original input model and parameter
+  schema; a separate execution copy uses that same schema without repeating
+  validators, serializers or `model_post_init`. Policy/approval hashes bind to the
+  resulting canonical arguments (or the exact policy-transformed target).
+  Later application-middleware or invoke-time argument changes fail closed with
+  `threadlight:arguments_changed`; no revalidation/approval loop is attempted.
+  Dispatch tickets are single-use, including middleware that calls its continuation
+  twice. Bound `self`, injected native invocation contexts, result parsing and
+  invocation budgets retain their native semantics.
 - `health()` describes configuration and last evaluation, never deployment
   evidence or status `enforced`. Production/preproduction enforce; only the
   contract-permitted development/staging environments evaluate without enforcing.
@@ -124,6 +149,12 @@ UTC high-water time plus a monotonic deadline prevent clock rollback or a slow
 engine/approver from extending authorization. Approval deadlines are capped by the
 policy expiry and timeout; per-run, single-use tickets bind the approved call and
 arguments through final dispatch, including streams and nested agents.
+Selected startup/input authorizations also remain fresh through later awaits up
+to model/tool dispatch, including otherwise tool-unbound functions. Lifecycle
+approval deadlines are checked as well as signed policy expiry. Selected output
+is rechecked after the native output/shutdown awaits, at actual caller release;
+an outer stream wrapper performs this check **after** native buffered output
+gating, not through an inner transform hook that runs before the verdict.
 
 Task8 supplies the real Entra/service authentication, persistent approvals,
 cross-worker nonce consumption and human workflows; local tests use explicitly
@@ -138,6 +169,18 @@ directory. Failure blocks the selected action. The receipt contains `audit_id`,
 optional host-selected `agent_version`/`image_digest`; no prompt, arguments,
 result, secret or raw exception text. It is an authorization receipt, **not proof
 that the side effect completed**. This is not a tamper-proof cloud audit store.
+
+The production bundle also installs a native `record_sink`. It consumes typed
+`InterceptionRecord` fields, never `to_wire()`/SDK payloads or verdict messages,
+and appends missing deny/failure receipts with bounded `reason_code` and
+`interception_point` fields. Native faults use `threadlight:native_failure`;
+ACS faults use `threadlight:engine_failure`. A post-tool error is recorded as
+`decision: error`, not a successful result even if its policy permits continuation.
+Already-receipted emissions are not duplicated. A later final-boundary denial is
+a separate receipt from an earlier pre-action authorization. Sink failures mark
+the affected bindings unhealthy and latch required-audit failure within the run,
+because the native emitter itself intentionally swallows sink exceptions. This
+adapter does not mistake native sink delivery for durable authorization.
 
 `spool.retry(exporter)` works after process restart; exporter failure leaves
 pending receipts on disk. Delivery is at-least-once: deduplicate by `audit_id`.

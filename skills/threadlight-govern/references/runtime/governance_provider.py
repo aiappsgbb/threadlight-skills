@@ -45,7 +45,7 @@ class AcsGovernanceProvider:
         max_output_bytes=1024 * 1024, approval_resolver=None, principal=None, audit=None,
         agent_version=None, image_digest=None, tenant=None, allowed_approval_roles=(),
     ):
-        from .maf_agent_hooks_acs import AcsInterceptor, BoundApprovalResolver, hooks_bundle
+        from .maf_agent_hooks_acs import AcsInterceptor, BoundApprovalResolver, NativeRecordSink, hooks_bundle
 
         self._contract = deepcopy(contract_validator(
             deepcopy(contract), deployment_target=deployment_target,
@@ -91,6 +91,7 @@ class AcsGovernanceProvider:
         self._bundle = hooks_bundle(
             {"acs": AcsInterceptor(self)}, mode=self.mode, timeout=timeout + 1,
             resolver=BoundApprovalResolver(self),
+            record_sink=NativeRecordSink(self),
         )
 
     def _bind(self, tool, point, binding):
