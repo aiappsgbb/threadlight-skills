@@ -19,7 +19,8 @@ Run the skills in this fixed order — there is no separate "orchestrator" skill
 
 1. **intake-validation** — always first. Correlate RMA ↔ order ↔ customer and run
    the completeness gate. If the case is incomplete or a required record is
-   `not_found`, emit `request_more_info` and **stop** (BR-004).
+   `not_found`, record `request_more_info` with a citation through
+   disposition-decision before stopping (BR-004/005).
 2. **policy-eligibility** — produce an `approve_candidate` / `deny_candidate`
    verdict against the 30-day window, final-sale rules, and condition grade, with
    ≥ 1 policy citation (BR-001, BR-002).
@@ -37,7 +38,8 @@ Target: a correct, cited, audited recommendation in under 60 seconds.
 
 ## Available Tools
 
-Use the mock/real system tools (via MCP) to gather facts before deciding. Call each
+Use the native read tools to gather facts before deciding. Read the case first,
+then its order, then its customer within the same invocation. Call each
 tool at most once per case unless a retry is warranted; do not re-list or re-fetch
 schemas on every turn.
 
@@ -52,6 +54,15 @@ schemas on every turn.
 
 Knowledge: **Contoso Retail Return Policy** via Foundry IQ agentic retrieval —
 citations are **mandatory** (BR-005 requires ≥ 1 policy clause per decision).
+The packaged policy clauses (`policy#return-window`, `policy#final-sale`,
+`policy#condition`, `policy#evidence`, `policy#escalation`, `policy#statutory-rights`)
+are the local reference. Live Foundry IQ retrieval requires the operator's
+existing knowledge integration and is not implied by these local citations.
+
+Do not supply evidence flags, order copies, or supervisor roles to the decision
+tool. The host verifies backend facts, and the native policy gate requires
+authenticated human review for supervisor handoffs. A denied or expired action
+must not be retried with fabricated facts. No tool can settle a payment.
 
 ## Compliance
 

@@ -44,6 +44,7 @@ class AcsGovernanceProvider:
         environment="production", deployment_target="customer-pilot", timeout=5.0,
         max_output_bytes=1024 * 1024, approval_resolver=None, principal=None, audit=None,
         agent_version=None, image_digest=None, tenant=None, allowed_approval_roles=(),
+        trusted_context_provider=None,
     ):
         from .maf_agent_hooks_acs import AcsInterceptor, BoundApprovalResolver, NativeRecordSink, hooks_bundle
 
@@ -76,6 +77,9 @@ class AcsGovernanceProvider:
         self._verify_bundle = bundle_verifier
         self._signature = signature_verifier
         self._safe_provider = safe_provider
+        if trusted_context_provider is not None and not callable(trusted_context_provider):
+            raise ValueError("trusted_context_provider_must_be_callable")
+        self._trusted_context_provider = trusted_context_provider
         self._engine = None
         self._trust = None
         self._deadline = None

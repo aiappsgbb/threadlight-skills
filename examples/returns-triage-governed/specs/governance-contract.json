@@ -1,0 +1,69 @@
+{
+  "framework": "microsoft-agent-framework",
+  "governance": {
+    "mode": "selective",
+    "environment_modes": {
+      "development": "evaluate_only",
+      "staging": "evaluate_only",
+      "preproduction": "enforce",
+      "production": "enforce"
+    },
+    "lifecycle_bindings": []
+  },
+  "tools": [
+    {
+      "id": "oms_get_order",
+      "consequence": "read",
+      "policy_binding": "none",
+      "enforcement_path": "none",
+      "intervention_points": [],
+      "safe_principles": [],
+      "requires": []
+    },
+    {
+      "id": "returns_get_case",
+      "consequence": "read",
+      "policy_binding": "none",
+      "enforcement_path": "none",
+      "intervention_points": [],
+      "safe_principles": [],
+      "requires": []
+    },
+    {
+      "id": "returns_list_open",
+      "consequence": "read",
+      "policy_binding": "none",
+      "enforcement_path": "none",
+      "intervention_points": [],
+      "safe_principles": [],
+      "requires": []
+    },
+    {
+      "id": "customer_get_profile",
+      "consequence": "read",
+      "policy_binding": "none",
+      "enforcement_path": "none",
+      "intervention_points": [],
+      "safe_principles": [],
+      "requires": []
+    },
+    {
+      "id": "returns_apply_decision",
+      "consequence": "write",
+      "policy_binding": "returns-write-v1",
+      "enforcement_path": "local-agent-hooks",
+      "intervention_points": [
+        "pre_tool_call"
+      ],
+      "safe_principles": [
+        "Scope",
+        "Anchored Decisions",
+        "Flow Integrity",
+        "Escalation"
+      ],
+      "requires": [
+        "durable-audit"
+      ]
+    }
+  ]
+}

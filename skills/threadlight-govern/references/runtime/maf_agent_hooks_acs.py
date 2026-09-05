@@ -64,6 +64,8 @@ class NativeRecordSink:
             if entry and point == "pre_tool_call" and state is not None:
                 state["calls"][entry["call_id"]] = (
                     entry["tool"], entry["args_hash"], entry["original_args_hash"],
+                    entry.get("trusted"),
+                    entry.get("trusted_deadline"),
                 )
             return
         known = {
@@ -298,6 +300,26 @@ class AcsInterceptor:
             if "tool_result" in context:
                 snapshot["tool_result"] = deepcopy(context["tool_result"]["value"])
             snapshot["safe"] = deepcopy(p._safe_provider(identity))
+            if p._trusted_context_provider is not None and context["interception_point"] == "pre_tool_call":
+                from .trusted_context import TrustedContextSnapshot, bounded_copy
+                if state is None or state["trusted_reads_failed"]:
+                    raise ValueError("trusted_context_unavailable")
+                trusted_identity = {**identity, "tenant": p.tenant}
+                tool_call = bounded_copy(context["tool_call"])
+                reads = bounded_copy(state["trusted_reads"])
+                facts = await asyncio.wait_for(p._trusted_context_provider(
+                    deepcopy(trusted_identity), deepcopy(tool_call), deepcopy(reads)), timeout=p.timeout)
+                if (not isinstance(facts, TrustedContextSnapshot)
+                        or facts.expires_at.tzinfo is None
+                        or not 0 < (facts.expires_at - p._now()).total_seconds() <= 30):
+                    raise ValueError("trusted_context_expired")
+                snapshot["trusted"] = bounded_copy({
+                    "identity": trusted_identity, "tool_call": tool_call,
+                    "reads": reads, "facts": facts.facts,
+                    "expires_at": facts.expires_at.isoformat(),
+                })
+                entry["trusted"] = snapshot["trusted"]
+                entry["trusted_deadline"] = time.monotonic() + (facts.expires_at - p._now()).total_seconds()
             result = await asyncio.wait_for(p._engine.evaluate_intervention_point(
                 context["interception_point"], snapshot, mode="enforce",
             ), timeout=p.timeout)
@@ -314,6 +336,8 @@ class AcsInterceptor:
             if (result.verdict.reason or "").startswith(("runtime_error", "host_error")):
                 raise ValueError("ACS engine unavailable")
             if decision == "transform":
+                if entry and entry.get("trusted") is not None:
+                    raise ValueError("trusted_context_transform_requires_new_snapshot")
                 if not result.transformed_policy_target_applied:
                     raise ValueError("ACS did not apply transform")
                 value = result.transformed_policy_target
@@ -531,6 +555,13 @@ def _check_effect(provider, selected, ticket):
         provider._now() >= ticket[2] or time.monotonic() >= ticket[3]
     ):
         _deny_boundary(provider, selected, "threadlight:approval_unavailable")
+    authorization = _effect_authorization.get()
+    trusted = authorization[3].get("trusted") if authorization else None
+    if trusted is not None and (
+        provider._now() >= datetime.fromisoformat(trusted["expires_at"])
+        or time.monotonic() >= authorization[3]["trusted_deadline"]
+    ):
+        _deny_boundary(provider, selected, "threadlight:trusted_context_expired")
 
 
 class _FunctionBoundary(FunctionMiddleware):
@@ -571,6 +602,8 @@ class _FunctionBoundary(FunctionMiddleware):
         token = _effect_authorization.set((p, actual, ticket, {
             "dispatched": False, "called": False,
             "transformed": bool(expected and expected[1] != expected[2]),
+            "trusted": expected[3] if expected else None,
+            "trusted_deadline": expected[4] if expected else None,
             "probe_entry": next((e for e in execution["emissions"].values()
                                  if e["call_id"] == context.metadata.get("call_id")
                                  and e.get("probe") is not None), None)
@@ -941,6 +974,8 @@ class _ExecutionScope(AgentMiddleware):
         _check_client_middleware(self.client)
         state = {"emissions": {}, "calls": {}, "audit_failed": set(), "boundary_error": None,
                  "lifecycle_tickets": {}, "boundary_receipts": set()}
+        if getattr(self.provider, "_trusted_context_provider", None) is not None:
+            state.update(trusted_reads=[], trusted_reads_failed=False)
         if getattr(self.provider, "probes", None) is not None:
             state.update(probe_provider=self.provider, probe_loop=asyncio.get_running_loop(),
                          probe_pending=Event(), probe_bridge_failed=Event())

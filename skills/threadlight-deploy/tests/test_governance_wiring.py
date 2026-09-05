@@ -199,6 +199,40 @@ def test_reference_cli_is_executable_without_catalog_import_path():
     assert "generate" in result.stdout and "bind" in result.stdout
 
 
+def test_native_source_packaging_preserves_existing_hub_and_has_no_gateway_service(tmp_path):
+    generator = module("generate")
+    assert hasattr(generator, "package_native"), "Task10 native existing-infrastructure packaging missing"
+    project = tmp_path / "example"
+    source = project / "src/agent"
+    source.mkdir(parents=True)
+    (project / "azure.yaml").write_text(
+        "name: returns\nservices:\n  returns:\n    host: azure.ai.agent\n    project: ./src/agent\n")
+    (source / "container.py").write_text("from governance_host import main\n")
+    (source / "governance_application.py").write_text("# trusted application supplied separately\n")
+    (source / "pyproject.toml").write_text('[project]\nname="returns"\nversion="1"\ndependencies=[]\n')
+    (source / "skills").mkdir()
+    (source / "skills/domain").mkdir()
+    (source / "skills/domain/SKILL.md").write_text("existing business skill")
+    (project / "infra").mkdir()
+    (project / "infra/main.bicep").write_text("// existing customer hub: do not replace")
+    original = (project / "azure.yaml").read_bytes()
+    result = generator.package_native(project, contract("microsoft-agent-framework"),
+                                      configuration={"agent_service": "returns"})
+    assert result["status"] == "source-packaged-unverified"
+    assert (project / "azure.yaml").read_bytes() == original
+    assert (project / "infra/main.bicep").read_text() == "// existing customer hub: do not replace"
+    assert (source / "governance_host.py").read_bytes() == (REFERENCES / "maf-container.py").read_bytes()
+    assert (source / "runtime/trusted_context.py").is_file()
+    assert (source / "skills/_shared/manifest.py").is_file()
+    assert (source / "skills/domain/SKILL.md").read_text() == "existing business skill"
+    assert (source / "vendor/control-plane/app.py").is_file()
+    assert (project / "src/governance-control-plane/vendor/control-plane/app.py").is_file()
+    assert not (project / "src/govern-gateway").exists()
+    assert not (source / "governance-config.json").exists()
+    assert not (source / "policy-envelope.json").exists()
+    assert "threadlight-govern-control-plane==0.1.0" in (source / "pyproject.toml").read_text()
+
+
 def test_ghcp_no_direct_bound_alias_on_another_server():
     servers = {
         "mixed": {"type": "http", "url": "https://original.example/mcp", "tools": ["act", "read"]},

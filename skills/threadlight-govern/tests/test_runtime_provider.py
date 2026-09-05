@@ -258,6 +258,88 @@ def tool_responses(name="act", args=None):
     ]
 
 
+@pytest.mark.parametrize("fault", ["valid", "missing", "other-run", "expired", "oversized", "mutated",
+                                  "clock-rollback-at-ack"])
+def test_trusted_backend_context_uses_native_run_and_exact_effect(tmp_path, fault):
+    from agent_framework import tool
+    api = runtime()
+    assert hasattr(api, "TrustedContextSnapshot"), "bounded trusted backend snapshot seam missing"
+    effects = []
+    reads = []
+    frozen = []
+    async def trusted(identity, tool_call, receipts):
+        reads.append(receipts)
+        facts = {"case": "case-1"} if receipts else {}
+        if fault == "oversized":
+            facts["payload"] = "x" * 65537
+        if fault == "clock-rollback-at-ack":
+            frozen.append(datetime.now(timezone.utc))
+        return api.TrustedContextSnapshot(
+            facts=facts, expires_at=(frozen[0] if frozen else datetime.now(timezone.utc)) + timedelta(
+                seconds=-1 if fault == "expired" else 0.05 if frozen else 15))
+    p, _, _ = provider(tmp_path, decisions={"pre_tool_call": '''
+{"decision": "allow"} if {
+    input.snapshot.trusted.facts.case == "case-1"
+    input.snapshot.trusted.reads[0].result.case == "case-1"
+    input.snapshot.trusted.tool_call.args.case == "case-1"
+} else := {"decision": "deny"}
+'''},
+        trusted_context_provider=trusted, principal="authenticated-workload", tenant="tenant")
+    if fault == "clock-rollback-at-ack":
+        clock = p._now
+        p._now = lambda: frozen[0] if frozen else clock()
+        class SlowAck:
+            def append(self, **fields):
+                import time
+                if fields["decision"] == "allow":
+                    time.sleep(0.08)
+                return "offline-test-receipt"
+        p.audit = SlowAck()
+
+    @tool(approval_mode="never_require")
+    def read() -> str:
+        """Read the trusted backend."""
+        value = {"case": "case-1"}
+        api.record_trusted_read("read", value)
+        value["case"] = "forged-after-read"
+        return "read"
+
+    @tool(approval_mode="never_require")
+    def act(case: str) -> str:
+        """Write exactly the selected case."""
+        snapshot = api.trusted_effect_snapshot()
+        assert snapshot["identity"]["principal"] == "authenticated-workload"
+        assert snapshot["identity"]["session_id"]
+        assert snapshot["tool_call"]["args"] == {"case": case}
+        assert snapshot["facts"]["case"] == case
+        effects.append(case)
+        return "written"
+
+    async def scenario():
+        if fault == "other-run":
+            client = native_model_client(tool_responses("read"))
+            agent = api.create_governed_agent(p, client=client, tools=[read, act])
+            await agent.run("read")
+            client.responses.extend(tool_responses("act", {"case": "case-1"}))
+        else:
+            responses = []
+            if fault not in {"missing"}:
+                responses.extend(tool_responses("read")[:1])
+            responses.extend(tool_responses("act", {"case": "case-2" if fault == "mutated" else "case-1"}))
+            client = native_model_client(responses)
+            agent = api.create_governed_agent(p, client=client, tools=[read, act])
+        try:
+            await agent.run("do not trust model evidence")
+        except Exception:
+            if fault == "valid":
+                raise
+    asyncio.run(scenario())
+    assert effects == (["case-1"] if fault == "valid" else [])
+    assert len(reads) == 1, "unbound read must not invoke the selected ACS producer"
+    if fault not in {"missing", "other-run"}:
+        assert reads[0][0]["result"] == {"case": "case-1"}
+
+
 def run_tool(p, *, name="act", args=None, result=None, middleware=(), on_effect=None):
     from agent_framework import FunctionTool
     from agent_framework._tools import SKIP_PARSING

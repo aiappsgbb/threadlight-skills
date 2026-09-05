@@ -34,7 +34,7 @@ def project_transaction(operation):
     def transactional(project, document, *, configuration=None):
         if validate_contract(document)["governance"]["mode"] == "off":
             return {"status": "off"}
-        if operation.__name__ == "generate" and configuration is None:
+        if operation.__name__ in ("generate", "package_native") and configuration is None:
             raise ValueError("configuration_required")
         if operation.__name__ == "bind":
             validate_images((configuration or {}).get("images", {}))
@@ -46,10 +46,11 @@ def project_transaction(operation):
         if operation.__name__ != "foundation":
             seeds.update(Path(name) for name in (
                 "azure.yaml", "agent.yaml", ".threadlight/governance-package.json",
-                ".threadlight/governance-deployment.json", "src/govern-control-plane", "src/govern-gateway"))
+                ".threadlight/governance-deployment.json", "src/govern-control-plane", "src/govern-gateway",
+                "src/governance-control-plane"))
             azure = yaml.safe_load(checked(project / "azure.yaml").read_text())
             config = configuration or {}
-            if operation.__name__ != "generate":
+            if operation.__name__ not in ("generate", "package_native"):
                 package = json.loads(checked(project / ".threadlight/governance-package.json").read_text())
                 config = package["configuration"]
             relative = Path(azure["services"][config["agent_service"]]["project"])
@@ -1127,16 +1128,70 @@ def copy_sources(target):
         shutil.copyfile(source, target / destination)
 
 
+@project_transaction
+def package_native(project, document, *, configuration=None):
+    """Source-only Task10 closure for an existing hub; never bind or provision.
+
+    Unlike generate/bind this deliberately needs no invented deployment identity,
+    signing envelope, image digest, or replacement network. The resulting host
+    still requires all of those relevant runtime inputs before selected effects.
+    """
+    import yaml
+    document = validate_contract(document)
+    if document["framework"] != "microsoft-agent-framework":
+        raise ValueError("native_source_requires_maf")
+    if any(t["enforcement_path"] == "governed-tool-gateway" for t in document["tools"]):
+        raise ValueError("native_source_does_not_mediate_gateway_tools")
+    config = configuration or {}
+    probe = validate_probe_observability(config)
+    azure = yaml.safe_load((project / "azure.yaml").read_text())
+    service = azure["services"][config["agent_service"]]
+    if service["host"] != "azure.ai.agent":
+        raise ValueError("explicit_hosted_agent_required")
+    agent = project / service["project"]
+    if not (agent / "governance_application.py").is_file() or not (agent / "container.py").is_file():
+        raise ValueError("native_application_and_entrypoint_required")
+    target = project / (".native-source-" + uuid.uuid4().hex)
+    target.mkdir()
+    try:
+        copy_sources(target)
+        vendor_control_plane(target)
+        if probe:
+            vendor_gateway(target)
+        shutil.copyfile(REFERENCE / "maf-container.py", target / "governance_host.py")
+        shutil.copyfile(REFERENCE / "audit_delivery.py", target / "audit_delivery.py")
+        (target / "pyproject.toml").write_text(merge_dependencies(
+            (agent / "pyproject.toml").read_text(), (REFERENCE / "pyproject-maf.toml").read_text()))
+        write_dockerfile(target, agent=True, gateway=bool(probe))
+        for path in target.iterdir():
+            if path.name != "skills" and path.is_dir() and (agent / path.name).exists():
+                raise ValueError("native_generated_namespace_already_exists")
+            if path.is_dir():
+                shutil.copytree(path, agent / path.name, dirs_exist_ok=path.name == "skills")
+            else:
+                shutil.copyfile(path, agent / path.name)
+        control = project / "src/governance-control-plane"
+        control.mkdir()
+        vendor_control_plane(control)
+        shutil.copyfile(REFERENCE / "service_entry.py", control / "service_entry.py")
+        write_dockerfile(control)
+    finally:
+        shutil.rmtree(target)
+    return {"status": "source-packaged-unverified", "signature": "not-configured",
+            "deployment": "not-bound", "probe_fixture_installed": False}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("foundation", "generate", "agent-image", "stage-gateway", "bind"):
+    for name in ("foundation", "generate", "agent-image", "stage-gateway", "bind", "package-native"):
         command = commands.add_parser(name)
         command.add_argument("--project", type=Path, required=True)
         command.add_argument("--contract", type=Path, required=True)
         command.add_argument("--configuration", type=Path)
     args = parser.parse_args()
     result = {"foundation": foundation, "generate": generate,
+              "package-native": package_native,
               "agent-image": agent_image, "stage-gateway": stage_gateway, "bind": bind}[args.command](
         args.project, json.loads(args.contract.read_text()),
         configuration=json.loads(args.configuration.read_text()) if args.configuration else None)

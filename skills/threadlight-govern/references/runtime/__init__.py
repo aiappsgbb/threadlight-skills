@@ -5,9 +5,11 @@ from .maf_agent_hooks_acs import (
 )
 from .evidence import ApprovalGrant, ApprovalIntent, ApprovalService, DurableSpool
 from .probe_telemetry import NativeProbeTelemetry
+from .trusted_context import TrustedContextSnapshot, record_trusted_read, trusted_effect_snapshot
 
 __all__ = [
     "AcsGovernanceProvider", "GovernanceProvider", "VerifiedPolicy",
     "AcsInterceptor", "create_governed_agent", "GovernedToolUnavailable", "OutputLimitExceeded", "hooks_bundle",
     "ApprovalGrant", "ApprovalIntent", "ApprovalService", "DurableSpool", "NativeProbeTelemetry",
+    "TrustedContextSnapshot", "record_trusted_read", "trusted_effect_snapshot",
 ]

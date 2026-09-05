@@ -89,6 +89,7 @@ jobs:
         run: az bicep version || az bicep install
       - name: Exact-pin generated deployments and native host probes
         # Public wheels + local Docker only. No Azure login, credentials or deployment.
+        # Includes examples/returns-triage-governed/tests in the no-skip native gate.
         run: python scripts/ci/run-governance-pin-tests.py --deployment
       - name: Preserve generation evidence
         if: always()

@@ -1,6 +1,15 @@
 # ContainerAgent definition — Returns Triage assistant
 # Consumed by threadlight-deploy (Foundry hosted agent, workshop §6.2–6.4).
 name: returns-triage
+framework: microsoft-agent-framework
+governance:
+  mode: selective
+  environment_modes:
+    development: evaluate_only
+    staging: evaluate_only
+    preproduction: enforce
+    production: enforce
+  lifecycle_bindings: []
 model:
   deployment: gpt-5.4
   version: "2026-03-05"
@@ -11,11 +20,41 @@ model:
 instructions_file: AGENTS.md
 skills_dir: src/agent/skills
 tools:
-  - oms_get_order
-  - returns_get_case
-  - returns_list_open
-  - customer_get_profile
-  - returns_apply_decision
+  - id: oms_get_order
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: []
+    requires: []
+  - id: returns_get_case
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: []
+    requires: []
+  - id: returns_list_open
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: []
+    requires: []
+  - id: customer_get_profile
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: []
+    requires: []
+  - id: returns_apply_decision
+    consequence: write
+    policy_binding: returns-write-v1
+    enforcement_path: local-agent-hooks
+    intervention_points: [pre_tool_call]
+    safe_principles: [Scope, Anchored Decisions, Flow Integrity, Escalation]
+    requires: [durable-audit]
 knowledge:
   - name: contoso-return-policy
     backing: foundry-iq

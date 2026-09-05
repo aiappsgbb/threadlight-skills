@@ -19,7 +19,7 @@ from govern_control_plane.client import ApprovalClient, PolicySnapshot, ServiceT
 from govern_control_plane.models import SignedBundle, envelope_digest, parse
 from govern_control_plane.storage import KeyVaultSigner
 from skills._shared.governance import validate_governance_contract
-from audit_delivery import AuditDelivery
+from audit_delivery import AuditDelivery, workload_credential
 from runtime import (
     AcsGovernanceProvider, ApprovalGrant, ApprovalIntent, DurableSpool, VerifiedPolicy,
     create_governed_agent,
@@ -73,12 +73,14 @@ async def build_provider(config, *, signer, credential):
         raise ValueError("hosted_audit_requires_remote_ack")
     audit = AuditDelivery(
         config["spool_dir"], base_url=config["control_plane_url"],
-        scope=config["control_plane_scope"], required=required_audit)
+        scope=config["control_plane_scope"], required=required_audit,
+        credential_factory=getattr(application, "credential_factory", workload_credential))
     provider = AcsGovernanceProvider(
         contract=config["contract"], bundle_path=BASE / "policy",
         expected_digest=config["policy_digest"], bundle_verifier=verify_bundle,
         contract_validator=validate_governance_contract, signature_verifier=signature,
         safe_provider=safe_evidence, approval_resolver=approval,
+        trusted_context_provider=getattr(application, "trusted_context", None),
         principal=config["principal"], tenant=config["tenant_id"],
         allowed_approval_roles=config["approver_roles"],
         audit=audit, agent_version=config["agent_version"],
@@ -209,8 +211,12 @@ async def main():
     for name, schema in (("agent_version", Identifier), ("image_digest", Digest)):
         parse(schema, canonical(config[name]))
     async with AsyncExitStack() as stack:
-        credential = await stack.enter_async_context(DefaultAzureCredential())
+        import governance_application as application
+        credential_factory = getattr(application, "credential_factory", DefaultAzureCredential)
+        credential = await stack.enter_async_context(credential_factory())
         config["principal"] = await resolve_identity(config, credential)
+        if callable(getattr(application, "initialize", None)):
+            await application.initialize(config, credential, stack)
         crypto = await stack.enter_async_context(CryptographyClient(config["key_id"], credential=credential))
         keys = await stack.enter_async_context(KeyClient(
             config["key_id"].split("/keys/")[0], credential=credential))
@@ -218,6 +224,9 @@ async def main():
             config, signer=KeyVaultSigner(crypto, key_client=keys), credential=credential)
         stack.push_async_callback(provider.approval_resolver.aclose)
         await stack.enter_async_context(provider.audit)
+        if (getattr(application, "require_ready", False)
+                and (await dependency_readiness(provider)).status_code != 200):
+            raise ValueError("required_governance_startup_unavailable")
         if "probe_observability" in config:
             await install_probe_runtime(config, provider, stack)
         client = FoundryChatClient(

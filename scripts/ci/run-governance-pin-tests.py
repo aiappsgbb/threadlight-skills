@@ -309,6 +309,7 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_governance_wiring.py",
              "skills/threadlight-deploy/tests/test_governance_quality.py",
              "skills/threadlight-deploy/tests/test_azd_cli_contract.py",
+             "examples/returns-triage-governed/tests",
              "-q", f"--junitxml={report}", "--basetemp", SCRATCH / "deployment-fixtures",
              "-o", "markers=governance_runtime: exact native runtime",
              "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
@@ -317,6 +318,14 @@ for name, record in {sdk_wheels!r}.items():
                             for tag in ("skipped", "failure", "error")):
             raise RuntimeError("deployment tests missing, skipped, or failed")
         required_cases = {
+            "test_native_returns_safe_context_and_cosmos_effect[valid]",
+            "test_native_returns_safe_context_and_cosmos_effect[forged]",
+            "test_native_returns_safe_context_and_cosmos_effect[stale]",
+            "test_native_supervisor_approval_remote_ack_and_one_use[approved]",
+            "test_native_supervisor_approval_remote_ack_and_one_use[invalid-human]",
+            "test_optional_native_probe_only_proves_reserved_noop[deny]",
+            "test_optional_native_probe_only_proves_reserved_noop[allow]",
+            "test_materialized_actual_module_closure_and_fail_closed_startup[False]",
             "test_generated_maf_native_constructor_host_and_failed_signature",
             "test_ghcp_native_host_and_actual_hook_schema",
             "test_ghcp_pre_mcp_bridge_refreshes_gateway_not_model_token",
