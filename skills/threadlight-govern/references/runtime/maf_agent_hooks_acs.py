@@ -51,7 +51,9 @@ class NativeRecordSink:
         reason = record.verdict.reason
         if decision in {"allow", "transform"}:
             if entry and point == "pre_tool_call" and state is not None:
-                state["calls"][entry["call_id"]] = (entry["tool"], entry["args_hash"])
+                state["calls"][entry["call_id"]] = (
+                    entry["tool"], entry["args_hash"], entry["original_args_hash"],
+                )
             return
         known = {
             "threadlight:engine_failure", "threadlight:policy_unavailable",
@@ -242,6 +244,7 @@ class AcsInterceptor:
                 "action_hash": action_hash(p, context),
                 "call_id": tool.get("id"), "tool": tool.get("name"),
                 "args_hash": digest(tool.get("args")),
+                "original_args_hash": digest(tool.get("args")),
             }
             state["emissions"][(context["session"]["id"], context["sequence"])] = entry
         if context["interception_point"] == "pre_tool_call":
@@ -509,9 +512,13 @@ class _FunctionBoundary(FunctionMiddleware):
         execution = _execution.get()
         expected = execution["calls"].pop(context.metadata.get("call_id"), None) if execution else None
         actual = (context.function.name, digest(dict(context.arguments)))
-        if p.mode == "enforce" and any(b["point"] == "pre_tool_call" for b in selected) and expected != actual:
+        if (p.mode == "enforce" and any(b["point"] == "pre_tool_call" for b in selected)
+                and (expected is None or expected[:2] != actual)):
             _deny_boundary(p, selected, "threadlight:arguments_changed")
-        token = _effect_authorization.set((p, actual, ticket, {"dispatched": False, "called": False}))
+        token = _effect_authorization.set((p, actual, ticket, {
+            "dispatched": False, "called": False,
+            "transformed": bool(expected and expected[1] != expected[2]),
+        }))
         try:
             await call_next()
             return
@@ -522,6 +529,43 @@ class _FunctionBoundary(FunctionMiddleware):
         finally:
             _effect_authorization.reset(token)
         raise GovernedToolUnavailable() from None
+
+
+def _private_validation(call, *args, **kwargs):
+    from agent_framework import MiddlewareTermination
+    from agent_framework.exceptions import UserInputRequiredException
+    try:
+        return call(*args, **kwargs)
+    except (MiddlewareTermination, UserInputRequiredException):
+        raise
+    except Exception:
+        pass
+    # Native auto-invocation catches TypeError before any hooks execute. Do not
+    # return a replacement model or retain Pydantic input/context in the error.
+    raise TypeError("threadlight:invalid_arguments") from None
+
+
+def _guard_input_model(model):
+    class GuardedInput(model):
+        @classmethod
+        def model_validate(cls, *args, **kwargs):
+            return _private_validation(super().model_validate, *args, **kwargs)
+
+        @classmethod
+        def model_validate_json(cls, *args, **kwargs):
+            return _private_validation(super().model_validate_json, *args, **kwargs)
+
+        @classmethod
+        def model_validate_strings(cls, *args, **kwargs):
+            return _private_validation(super().model_validate_strings, *args, **kwargs)
+
+        def model_dump(self, *args, **kwargs):
+            return _private_validation(super().model_dump, *args, **kwargs)
+
+        @classmethod
+        def model_json_schema(cls, *args, **kwargs):
+            return deepcopy(model.model_json_schema(*args, **kwargs))
+    return GuardedInput
 
 
 def _guard_tool(tool, provider):
@@ -537,6 +581,13 @@ def _guard_tool(tool, provider):
             or getattr(tool, "_threadlight_owner", None) is provider):
         return tool
     guarded = copy(tool)
+    # Native provider projection mutates its schema. It must not reach the shared
+    # caller-owned tool, including nested property schemas.
+    guarded._input_schema_cached = deepcopy(guarded.parameters())
+    guarded._cached_parameters = guarded._input_schema_cached
+    original_model = tool.input_model
+    if original_model is not None:
+        guarded.input_model = _guard_input_model(original_model)
     function = tool.func
     if isinstance(function, FunctionTool):
         function = function.func
@@ -593,8 +644,8 @@ def _guard_tool(tool, provider):
     # The pinned auto-invocation pipeline already validated before pre_tool_call.
     # Retain that model/schema on the exposed tool, but use the public schema-only
     # invocation path on a separate execution copy. No model_construct/model_dump
-    # round-trip: user validators, serializers and model_post_init must not run again.
-    guarded.parameters()
+    # round-trip for unchanged canonical arguments. Changed ACS targets must pass
+    # the original model without normalization changing the authorized hash.
     execution_tool = copy(guarded)
     execution_tool.input_model = None
     async def invoke_validated(*, arguments=None, context=None, **kwargs):
@@ -603,6 +654,18 @@ def _guard_tool(tool, provider):
             raise GovernedToolUnavailable("threadlight:tool_unavailable")
         if provider.mode == "enforce" and authorization[1] != (tool.name, digest(dict(arguments or {}))):
             _deny_boundary(provider, selected, "threadlight:arguments_changed")
+        if (provider.mode == "enforce" and authorization[3]["transformed"]
+                and original_model is not None):
+            valid = False
+            try:
+                normalized = original_model.model_validate(deepcopy(arguments)).model_dump(exclude_unset=True)
+                valid = digest(normalized) == authorization[1][1]
+            except (MiddlewareTermination, UserInputRequiredException):
+                raise
+            except Exception:
+                pass
+            if not valid:
+                _deny_boundary(provider, selected, "threadlight:invalid_transform")
         _check_lifecycle(provider, ("agent_startup", "input", "post_model_call"))
         _check_effect(provider, selected, authorization[2] if authorization else None)
         if provider.mode == "enforce":
@@ -708,6 +771,23 @@ def _guard_client(client, provider):
     return guarded
 
 
+def _check_model_transport(client, provider):
+    selected = [b for b in provider._bindings.values() if b["tool"] is None
+                and b["point"] in {"agent_startup", "input", "pre_model_call"}]
+    if not selected:
+        return
+    from agent_framework.openai import OpenAIChatClient, OpenAIChatCompletionClient
+    from agent_framework.foundry import FoundryChatClient
+    from openai import AsyncOpenAI
+    import httpx
+    sdk = getattr(client, "client", None)
+    if (type(client) not in {OpenAIChatClient, OpenAIChatCompletionClient, FoundryChatClient}
+            or not isinstance(sdk, AsyncOpenAI)
+            or not isinstance(getattr(sdk, "_client", None), httpx.AsyncClient)):
+        binding_failure(selected, "threadlight:unsupported_model_transport")
+        raise ValueError("a supported native model HTTP transport is required for selected lifecycle bindings")
+
+
 def _guard_http_client(client, provider):
     """Guard OpenAI HTTP dispatch after auth, retries and asynchronous request hooks.
 
@@ -717,6 +797,7 @@ def _guard_http_client(client, provider):
     """
     from openai import AsyncOpenAI
     import httpx
+    _check_model_transport(client, provider)
     sdk = getattr(client, "client", None)
     if not isinstance(sdk, AsyncOpenAI):
         return
@@ -767,6 +848,7 @@ def create_governed_agent(provider, *, client, middleware=(), default_options=No
     def checked_run(*args, **run_kwargs):
         _check_client_middleware(client)
         _check_client_middleware(agent.client)
+        _check_model_transport(agent.client, provider)
         _check_run_options(run_kwargs)
         return run(*args, **run_kwargs)
     agent.run = checked_run

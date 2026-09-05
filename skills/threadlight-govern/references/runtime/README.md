@@ -59,8 +59,18 @@ immediately before transport dispatch. Original clients, hooks and connection po
 are not mutated; the caller owns pool shutdown. There is no public SDK getter for
 the HTTP client/mounts, so this pin-specific adapter reads those private references
 on host-owned copies; it does not modify installed SDK code or published pins.
-Other/custom transports that add hidden awaits/effects after `_inner_get_response`
-need a corresponding terminal transport guard before claiming that coverage.
+Selecting lifecycle `startup`, `input`, or `pre_model_call` requires a supported
+native model transport: the pinned `OpenAIChatClient`, `OpenAIChatCompletionClient`,
+or `FoundryChatClient`, backed by `AsyncOpenAI` (including `AsyncAzureOpenAI`) and
+an `httpx.AsyncClient`. Other client classes/subclasses are **rejected before
+application middleware/effects**, even if they expose an OpenAI SDK instance or
+self-assert a guard capability. Capability is checked at construction and run
+entry; unsupported bindings report `threadlight:unsupported_model_transport`.
+There is no custom terminal-adapter protocol or blanket custom-client coverage.
+Tool-only bindings do not impose unrelated model-egress requirements; other
+lifecycle selections retain only their own documented tool/output boundaries.
+The pinned Foundry project client obtains its OpenAI client normally; this adapter
+copies and guards that HTTP path without changing the project or its credentials.
 
 ## Selection and failure semantics
 
@@ -92,11 +102,27 @@ need a corresponding terminal transport guard before claiming that coverage.
   runs, and the invocation remains an error, not a successful substitute. Unbound
   callables and the original caller-owned tool objects are unchanged. Framework
   termination and human-input control flow remain native.
-- Native automatic tool dispatch performs Pydantic validation **once**, before
-  `pre_tool_call`. The exposed tool retains its original input model and parameter
-  schema; a separate execution copy uses that same schema without repeating
-  validators, serializers or `model_post_init`. Policy/approval hashes bind to the
-  resulting canonical arguments (or the exact policy-transformed target).
+- Selected Pydantic tools also guard the **pre-hook** native validation entry:
+  a host-owned input-model subclass retains field types, constraints, validators
+  and schema while sanitizing failures from `model_validate` (also JSON/string
+  variants) and native `model_dump`. Failures become
+  `TypeError("threadlight:invalid_arguments")` without exception context or Pydantic
+  input fields. MAF returns a failed argument-parsing result, including with detailed
+  errors enabled, not a successful replacement. The shared input-model class is
+  untouched; parameter caches are copied before native provider projection.
+  This failure precedes native pre/post-tool emissions, so no synthetic hook
+  record or successful authorization receipt is invented for it.
+- Native automatic tool dispatch normalizes original arguments **once**, before
+  `pre_tool_call`. A separate schema-only execution copy avoids repeating validators,
+  serializers or `model_post_init` on unchanged canonical arguments. Each native
+  emission retains both original and authorized argument hashes. An ACS transform
+  that changes the canonical arguments must pass the **original Pydantic model**
+  before dispatch, and its validated/dumped value must have the exact authorized
+  hash. Invalid constraints, coercion, or non-idempotent normalization that changes
+  the transformed target fail closed with `threadlight:invalid_transform` and a
+  bounded denial receipt when a spool is configured. A constraint-preserving
+  transform writes back normally; an identical-to-canonical target is not revalidated.
+  No differently normalized value is silently executed or automatically reapproved.
   Later application-middleware or invoke-time argument changes fail closed with
   `threadlight:arguments_changed`; no revalidation/approval loop is attempted.
   Dispatch tickets are single-use, including middleware that calls its continuation
