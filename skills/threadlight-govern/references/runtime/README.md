@@ -199,11 +199,16 @@ this adapter does not claim every earlier lifecycle target remains identical.
   Distinct providers have independent counters and never consume the caller's original
   budget. Weak identity entries are removed when original tools are discarded.
   The pinned native `__call__` counts exceptions raised synchronously by the actual
-  application call, but not errors raised while awaiting its returned value. Because
-  the guard is async, it restores that synchronous exception accounting explicitly,
-  exactly once on the execution copy. Success does not reset that lifetime exception
-  budget. Authorization checks/denials do not count as application failures. Async
-  functions and sync functions returning awaitables retain the pin's different
+  application call, but not errors raised while awaiting its returned value. The
+  guard runs that native call on the execution copy immediately after the worker's
+  authorization check: budget checks and accounting are not performed early on the
+  event loop for queued sync calls. A single worker therefore rejects queued calls
+  once earlier failures exhaust the budget; multiple workers retain native concurrency
+  semantics (already-started calls may exceed the exception limit), without an added
+  serialization lock. Budget rejection, scheduling failure and authorization denial
+  consume neither an invocation nor an application exception. Success does not reset
+  that lifetime exception budget. Async functions and sync functions returning
+  awaitables retain the pin's different
   behavior: errors from the later await do **not** consume the exception budget.
   This adapter does not silently tighten that native async behavior.
 - `health()` describes configuration and last evaluation, never deployment

@@ -1951,6 +1951,123 @@ def test_native_exception_budget_matches_actual_call_failures(tmp_path, limit, k
     asyncio.run(unbound.client.close())
 
 
+@pytest.mark.parametrize("repeat", range(3))
+@pytest.mark.parametrize("limit", [1, 2])
+@pytest.mark.parametrize("workers", [1, 3])
+@pytest.mark.parametrize("fails", [True, False])
+def test_native_queued_sync_exception_budget_at_worker_boundary(tmp_path, repeat, limit, workers, fails):
+    from concurrent.futures import ThreadPoolExecutor
+    from functools import partial
+    from threading import Event, Lock
+    from agent_framework import Agent, FunctionInvocationContext, FunctionTool
+
+    async def exercise(governed):
+        loop = asyncio.get_running_loop()
+        queued, started = asyncio.Event(), asyncio.Event()
+        release, lock = Event(), Lock()
+        effects, executions, timeouts, submissions = [], [], [], []
+
+        class QueuedExecutor(ThreadPoolExecutor):
+            def submit(self, fn, /, *args, **kwargs):
+                future = super().submit(fn, *args, **kwargs)
+                # Observe to_thread application jobs, not native ACS evaluations.
+                if isinstance(fn, partial) and fn.args and getattr(fn.args[0], "__module__", "") in {
+                    "agent_framework._tools",
+                    "skills.threadlight-govern.references.runtime.maf_agent_hooks_acs",
+                }:
+                    submissions.append(future)
+                    if len(submissions) == 3:
+                        queued.set()
+                return future
+
+        loop.set_default_executor(QueuedExecutor(max_workers=workers))
+
+        def act(amount: int, ctx: FunctionInvocationContext):
+            with lock:
+                effects.append(amount)
+                executions.append(ctx.function)
+                if len(effects) == workers:
+                    loop.call_soon_threadsafe(started.set)
+            if not release.wait(30):
+                timeouts.append(amount)
+            if fails:
+                raise ValueError("PRIVATE-QUEUED-APPLICATION-FAILURE")
+            return "success"
+
+        original = FunctionTool(name="act", func=act, max_invocation_exceptions=limit)
+        client = native_model_client([])
+        client.function_invocation_configuration["include_detailed_errors"] = True
+        spool = None
+        if governed:
+            spool = runtime().DurableSpool(tmp_path / "spool")
+            p, _, _ = provider(
+                tmp_path, decisions={point: {"decision": "allow"}
+                                     for point in ("pre_tool_call", "post_tool_call")},
+                document=contract(points=("pre_tool_call", "post_tool_call")), audit=spool,
+            )
+            agent = runtime().create_governed_agent(p, client=client, tools=[original])
+        else:
+            agent = Agent(client=client, tools=[original])
+        responses = tool_responses(args={"amount": 0})
+        for amount in (1, 2):
+            extra = deepcopy(responses[0].messages[0].contents[0])
+            extra.call_id = f"call-{amount + 1}"
+            extra.arguments = json.dumps({"amount": amount})
+            responses[0].messages[0].contents.append(extra)
+        client.responses.extend(responses)
+        task = asyncio.create_task(agent.run("parallel"))
+        try:
+            await asyncio.wait_for(queued.wait(), 20)
+            await asyncio.wait_for(started.wait(), 20)
+        finally:
+            release.set()
+            first = await asyncio.wait_for(task, 30)
+        assert not timeouts, "application release must be event-driven, not a timeout"
+        assert len(submissions) == 3
+        initial_effects = sorted(effects)
+        owned = executions[0]
+        assert all(t is owned for t in executions)
+        initial_counts = (owned.invocation_count, owned.invocation_exception_count)
+        # The same execution copy must retain the exhausted budget on later runs.
+        client.responses.extend(tool_responses(args={"amount": 3}))
+        second = await agent.run("later")
+        observations = (
+            initial_effects, initial_counts, sorted(effects),
+            (owned.invocation_count, owned.invocation_exception_count),
+        )
+        if governed:
+            records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+            assert records
+            if fails:
+                assert any(r.get("interception_point") == "post_tool_call" for r in records)
+            wire = first.to_json() + second.to_json() + json.dumps(client.requests) + json.dumps(records)
+            assert "PRIVATE-QUEUED-APPLICATION-FAILURE" not in wire
+            results = [c for response in (first, second) for m in response.messages
+                       for c in m.contents if c.type == "function_result"]
+            assert len(results) == 4
+            assert all(c.exception == ("threadlight:tool_unavailable" if fails else None)
+                       for c in results)
+            assert original.invocation_count == original.invocation_exception_count == 0
+            # The caller-owned tool still has its full native budget when unbound.
+            client.responses.extend(tool_responses(args={"amount": 4}))
+            await Agent(client=client, tools=[original]).run("unbound")
+            assert effects[-1] == 4
+            assert (original.invocation_count, original.invocation_exception_count) == (1, int(fails))
+        await client.client.close()
+        return observations
+
+    native = asyncio.run(exercise(False))
+    expected = min(limit, 3) if fails and workers == 1 else 3
+    assert native == (
+        list(range(expected)), (expected, expected if fails else 0),
+        list(range(expected if fails else 4)),
+        (expected if fails else 4, expected if fails else 0),
+    )
+    governed = asyncio.run(exercise(True))
+    assert governed[0] == native[0], "queued workers must not spend an exhausted native exception budget"
+    assert governed == native, "native concurrency, effects and lifetime counters must match exactly"
+
+
 @pytest.mark.parametrize("denial", ["policy", "approval"])
 @pytest.mark.parametrize("limit", [1, 2])
 def test_native_sync_exception_budgets_are_provider_owned_and_exclude_denials(tmp_path, denial, limit):
@@ -1997,10 +2114,80 @@ def test_native_sync_exception_budgets_are_provider_owned_and_exclude_denials(tm
     assert all("PRIVATE-SYNC-FAILURE" not in r.to_json() for r in all_results)
 
 
-def test_sync_effect_expiry_is_not_an_application_exception(tmp_path, monkeypatch):
+@pytest.mark.parametrize("name", ["act", "read"])
+def test_native_sync_scheduler_failure_does_not_consume_budget(tmp_path, name):
+    from concurrent.futures import ThreadPoolExecutor
+    from functools import partial
+    from agent_framework import Agent, FunctionInvocationContext, FunctionTool
+
+    async def exercise(governed):
+        effects, executions = [], []
+
+        class RejectingExecutor(ThreadPoolExecutor):
+            reject = False
+            rejected = 0
+
+            def submit(self, fn, /, *args, **kwargs):
+                if self.reject and isinstance(fn, partial):
+                    self.rejected += 1
+                    raise RuntimeError("PRIVATE-SCHEDULER-FAILURE")
+                return super().submit(fn, *args, **kwargs)
+
+        executor = RejectingExecutor(max_workers=1)
+        asyncio.get_running_loop().set_default_executor(executor)
+        def act(ctx: FunctionInvocationContext):
+            effects.append("effect")
+            executions.append(ctx.function)
+            return "success"
+        original = FunctionTool(name=name, func=act, max_invocations=2, max_invocation_exceptions=1)
+        client = native_model_client([])
+        client.function_invocation_configuration["include_detailed_errors"] = True
+        spool = None
+        if governed:
+            spool = runtime().DurableSpool(tmp_path / "spool")
+            p, _, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}}, audit=spool)
+            agent = runtime().create_governed_agent(p, client=client, tools=[original])
+        else:
+            agent = Agent(client=client, tools=[original])
+        async def run():
+            client.responses.extend(tool_responses(name=name))
+            return await agent.run("input")
+        await run()
+        executor.reject = True
+        denied = await run()
+        assert executor.rejected == 1 and effects == ["effect"]
+        after_rejection = (executions[0].invocation_count, executions[0].invocation_exception_count)
+        executor.reject = False
+        resumed = await run()
+        final = (len(effects), executions[0].invocation_count, executions[0].invocation_exception_count)
+        if governed and name == "act":
+            wire = denied.to_json() + resumed.to_json() + json.dumps(client.requests)
+            wire += "".join(f.read_text() for f in spool.directory.glob("*.json"))
+            assert "PRIVATE-SCHEDULER-FAILURE" not in wire
+            assert "threadlight:tool_unavailable" in denied.to_json()
+            assert original.invocation_count == original.invocation_exception_count == 0
+        else:
+            assert executions[0] is original
+            assert "PRIVATE-SCHEDULER-FAILURE" in denied.to_json()
+        await client.client.close()
+        return after_rejection, final
+
+    native = asyncio.run(exercise(False))
+    assert native == ((1, 0), (2, 2, 0))
+    assert asyncio.run(exercise(True)) == native
+
+
+@pytest.mark.parametrize("expiry", ["policy", "approval"])
+def test_sync_effect_expiry_is_not_an_application_exception(tmp_path, monkeypatch, expiry):
     from agent_framework import FunctionInvocationContext, FunctionTool
     clock = controlled_clock(monkeypatch)
-    p, authority, _ = provider(tmp_path, decisions={"pre_tool_call": {"decision": "allow"}})
+    service = ApprovalService("approve")
+    p, authority, _ = provider(
+        tmp_path, decisions={"pre_tool_call": {"decision": "allow"}},
+        document=contract(requires=("approval",) if expiry == "approval" else ()),
+        approval_resolver=service, principal="host:user", tenant="host:tenant",
+        allowed_approval_roles=("test-reviewer",),
+    )
     executions = []
     def act(ctx: FunctionInvocationContext):
         executions.append(ctx.function)
@@ -2011,13 +2198,15 @@ def test_sync_effect_expiry_is_not_an_application_exception(tmp_path, monkeypatc
     asyncio.run(agent.run("first"))
     to_thread = asyncio.to_thread
     async def scheduled(call, *args, **kwargs):
-        await asyncio.sleep(0)
-        clock.current = authority.expires_at
-        return await to_thread(call, *args, **kwargs)
+        def at_worker():
+            clock.current = authority.expires_at if expiry == "policy" else service.requests[-1].expires_at
+            return call(*args, **kwargs)
+        return await to_thread(at_worker)
     monkeypatch.setattr(asyncio, "to_thread", scheduled)
     client.responses.extend(tool_responses())
     asyncio.run(agent.run("expired"))
     assert len(executions) == 1
+    assert executions[0].invocation_count == 1
     assert executions[0].invocation_exception_count == 0
     assert original.invocation_count == original.invocation_exception_count == 0
     asyncio.run(client.client.close())

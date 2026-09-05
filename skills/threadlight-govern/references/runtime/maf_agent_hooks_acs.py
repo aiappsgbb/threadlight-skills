@@ -671,15 +671,9 @@ def _guard_tool(tool, provider):
                 if authorization[3]["called"]:
                     _deny_boundary(provider, selected, "threadlight:authorization_reused")
                 authorization[3]["called"] = True
-            try:
-                return function(*args, **kwargs)
-            except Exception:
-                # Our async wrapper returns before native __call__ can observe a
-                # sync failure. Count only failures of the application call, on
-                # its execution copy; checks above and later awaits are excluded.
-                if not inspect.iscoroutinefunction(function):
-                    execution_tool.invocation_exception_count += 1
-                raise
+            # Native budget checks and accounting must share the actual call's
+            # worker turn, not run before queued work reaches this boundary.
+            return execution_tool(*args, **kwargs)
         from agent_framework import FunctionInvocationContext
         check()
         try:
@@ -711,6 +705,12 @@ def _guard_tool(tool, provider):
     # the original model without normalization changing the authorized hash.
     execution_tool = copy(guarded)
     execution_tool.input_model = None
+    execution_tool.func = function
+    async def invoke_function(call_kwargs):
+        return await invoke(**call_kwargs)
+    # Keep native validation/context/parsing, but authorize before __call__ so
+    # denied or unscheduled work never consumes an application invocation.
+    execution_tool._invoke_function = invoke_function
     async def invoke_validated(*, arguments=None, context=None, **kwargs):
         authorization = _effect_authorization.get()
         if provider.mode == "enforce" and (authorization is None or authorization[0] is not provider):
