@@ -72,6 +72,25 @@
     "change_plane": {
       "$ref": "#/$defs/changePlane"
     },
+    "action_posture": {
+      "type": "array",
+      "description": "Action-scoped gateway observations; never whole-agent authorization.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["binding_id", "tool_id", "enforcement_path", "policy_digest", "status", "posture", "whole_agent_governed", "evidence_refs"],
+        "properties": {
+          "binding_id": {"type": "string", "minLength": 1},
+          "tool_id": {"type": "string", "minLength": 1},
+          "enforcement_path": {"enum": ["none", "local-agent-hooks", "governed-tool-gateway"]},
+          "policy_digest": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+          "status": {"enum": ["enforced", "observed", "unbound", "unsupported", "unverified", "bypassable"]},
+          "posture": {"enum": ["action-governed", "observed", "unbound", "unsupported", "unverified", "bypassable"]},
+          "whole_agent_governed": {"const": false},
+          "evidence_refs": {"type": "array", "items": {"type": "string", "pattern": "^EV-"}, "uniqueItems": true}
+        }
+      }
+    },
     "findings": {
       "type": "array",
       "items": {

@@ -229,6 +229,10 @@ class AssessmentOptions:
     image_digest: Optional[str] = None
     policy_digest: Optional[str] = None
     environment: Optional[str] = None
+    # Trusted in-process collector seam only; never reconstructed from CLI/file booleans.
+    gateway_bindings: Tuple[Mapping[str, object], ...] = ()
+    effect_observations: Tuple[Mapping[str, object], ...] = ()
+    effect_observation_verifier: Optional[object] = None
 
 
 @dataclass(frozen=True)
@@ -244,6 +248,7 @@ class AssessmentResult:
     conformance_claims: Tuple[Mapping[str, object], ...] = ()
     conformance_reports: Tuple[Mapping[str, object], ...] = ()
     change_plane: Mapping[str, object] = field(default_factory=dict)
+    action_posture: Tuple[Mapping[str, object], ...] = ()
     residual_risks: Tuple[Mapping[str, object], ...] = ()
     deployed_target: Optional[Mapping[str, str]] = None
     #: The trusted, deterministic instant this assessment was captured at

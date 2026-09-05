@@ -1146,6 +1146,10 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
             "application_probes": [_probe_to_dict(probe) for probe in _sorted_probes(result.probes)],
         },
         "change_plane": _normalize_change_plane(result.change_plane, result.source.repository),
+        **({"action_posture": [
+            {**entry, "evidence_refs": sorted(entry["evidence_refs"])}
+            for entry in sorted(result.action_posture, key=lambda entry: entry["binding_id"])
+        ]} if result.action_posture else {}),
         "findings": findings,
         "evidence": [_evidence_to_dict(ref) for ref in _sorted_evidence(result.evidence)],
         "freshness": freshness,
@@ -1759,6 +1763,16 @@ def render_evidence_pack(result: AssessmentResult) -> str:
         "recorded.".format(len(change_plane["workflows"]), len(change_plane["identities"]))
     )
     lines.append("")
+
+    if manifest.get("action_posture"):
+        lines.append("## Gateway action scope")
+        lines.append("")
+        lines.append("These observations do not govern the Copilot internal loop or certify the whole agent.")
+        for entry in manifest["action_posture"]:
+            lines.append("- {}: {} ({}).".format(
+                _md_code_span(entry["tool_id"]), _md_code_span(entry["posture"]),
+                _md_code_span(entry["status"])))
+        lines.append("")
 
     lines.append("## Evidence index")
     lines.append("")

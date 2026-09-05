@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 import httpx
+from pydantic import BaseModel
 
 from .models import (
     ApprovalGrant, ApprovalRequest, Identifier, SignedBundle, canonical, parse, strict_json,
@@ -19,6 +20,8 @@ class ApprovalUnavailable(Exception):
 
 
 def wire_intent(intent):
+    if isinstance(intent, BaseModel):
+        return parse(ApprovalRequest, canonical(intent))
     body = asdict(intent)
     body["allowed_roles"] = list(body["allowed_roles"])
     for field in ("expires_at", "policy_expires_at"):
@@ -27,6 +30,8 @@ def wire_intent(intent):
 
 
 def wire_grant(grant):
+    if isinstance(grant, BaseModel):
+        return parse(ApprovalGrant, canonical(grant))
     body = asdict(grant)
     body["intent"] = wire_intent(grant.intent).model_dump(mode="json")
     return parse(ApprovalGrant, canonical(body))

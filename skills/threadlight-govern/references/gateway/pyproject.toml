@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "threadlight-govern-gateway"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "Signed-registry MCP PEP with local native ACS and durable idempotency"
+dependencies = [
+  "threadlight-govern-control-plane==0.1.0",
+  "agent-governance-toolkit-core==5.0.0",
+  "agent-control-specification==0.3.1b0",
+  "agent-hooks-sdk==0.1.0a5",
+  "mcp==1.29.1",
+  "httpcore==1.0.9",
+  "jsonschema[format]==4.26.0",
+  "PyYAML==6.0.3",
+]
+
+[project.scripts]
+threadlight-govern-gateway = "govern_gateway.server:main"
+
+[tool.setuptools]
+packages = ["govern_gateway", "govern_bundle", "govern_canonical", "govern_shared"]
+package-dir = {govern_gateway = ".", govern_bundle = "../../scripts", govern_canonical = "../../../threadlight-governed-actions/scripts", govern_shared = "../../../_shared"}
+
+[tool.setuptools.package-data]
+govern_shared = ["governance-upstream-pin.json"]

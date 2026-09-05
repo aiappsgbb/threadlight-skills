@@ -1911,9 +1911,20 @@ def _assess_repository_controls(
     )
     findings.extend(replace(finding, phase=phase) for finding in live_findings)
 
-    change_plane_result = ghcp.assess_change_plane(root, live_github, live_azure)
+    change_plane_result = ghcp.assess_change_plane(root, live_github, live_azure,
+        gateway_bindings=options.gateway_bindings, deployed_target=deployment_target,
+        effect_observations=options.effect_observations,
+        observation_verifier=options.effect_observation_verifier, now=options.now)
     findings.extend(replace(finding, phase=phase) for finding in change_plane_result.findings)
     evidence.extend(replace(ref, phase=phase) for ref in change_plane_result.evidence)
+    evidence.extend(contracts.EvidenceRef(
+        evidence_id=item["evidence_id"], kind="gateway-effect-observation", source=item["source"],
+        sha256=item["sha256"], collected_at=item["collected_at"], freshness_seconds=300,
+        live_verified=True, phase=phase, repository=source.repository, source_commit=source.commit,
+        target_environment=options.environment,
+        policy_set_sha256=render.canonical_policy_set_sha256(policy_hashes),
+        deployed_target=item["deployed_target"],
+    ) for item in change_plane_result.action_evidence)
 
     pins = _pins_summary(pin_comparison.expected)
     change_plane = _change_plane_summary(root, source, options, evidence)
@@ -1958,6 +1969,7 @@ def _assess_repository_controls(
         conformance_claims=conformance_claims,
         conformance_reports=(),
         change_plane=change_plane,
+        action_posture=change_plane_result.action_posture,
         residual_risks=(),
         captured_at=options.now,
         phase=phase,

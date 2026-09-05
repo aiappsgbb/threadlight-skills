@@ -69,8 +69,10 @@ import struct
 import subprocess
 import zlib
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from urllib.parse import urlsplit
 
 from contracts import EvidenceRef, Finding, Status
 
@@ -559,6 +561,142 @@ class ChangePlaneResult:
     controls: Mapping[str, "Status | bool"]
     findings: Tuple[Finding, ...]
     evidence: Tuple[EvidenceRef, ...]
+    action_posture: Tuple[Mapping[str, object], ...] = ()
+    action_evidence: Tuple[Mapping[str, object], ...] = ()
+
+
+def _exact_gateway_url(value):
+    """Normalize HTTPS authority, never decode or prefix-match an operation route."""
+    try:
+        if (not isinstance(value, str) or not value.isascii() or len(value) > 512
+                or any(ord(char) <= 32 or ord(char) == 127 for char in value)):
+            return None
+        parsed = urlsplit(value)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+                or parsed.port not in (None, 443) or parsed.query or parsed.fragment
+                or parsed.hostname.endswith(".") or not re.fullmatch(r"[a-z0-9.-]+", parsed.hostname)
+                or not re.fullmatch(r"/[A-Za-z0-9_/-]+", parsed.path) or "//" in parsed.path):
+            return None
+        return f"https://{parsed.hostname}{parsed.path}"
+    except ValueError:
+        return None
+
+
+def assess_effect_closure(bindings, target, observations=(), verifier=None, *, now=None):
+    """Action-scoped posture, not a PEP or whole-agent certification.
+
+    `verifier` is a host-injected authenticated API/live-observation authority.
+    It must validate origin/integrity and collection provenance, including the
+    nested receipt, not echo selectors or accept local declaration flags.
+    No CLI/file path instantiates that authority; Task11 supplies live collection.
+    """
+    target_fields = {"agent_name", "agent_version", "image_digest", "policy_digest",
+                     "environment", "subscription", "resource_group"}
+    valid_target = (
+        isinstance(target, Mapping) and target_fields <= target.keys()
+        and all(isinstance(target[k], str) and target[k] for k in target_fields)
+        and re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", target["subscription"])
+        and all(re.fullmatch(r"sha256:[0-9a-f]{64}", target[k])
+                for k in ("image_digest", "policy_digest")))
+    def same_target(observed):
+        return (valid_target and isinstance(observed, Mapping)
+                and all(observed.get(k) == target[k] for k in target_fields))
+    verified = []
+    if callable(verifier) and valid_target:
+        for record in observations:
+            try:
+                if not isinstance(record, Mapping) or verifier(record) is not True:
+                    continue
+                instant = datetime.fromisoformat(now.replace("Z", "+00:00"))
+                collected = datetime.fromisoformat(record["collected_at"].replace("Z", "+00:00"))
+                if (instant.utcoffset() is None or collected.utcoffset() is None
+                        or not 0 <= (instant - collected).total_seconds() <= 300
+                        or not same_target(record.get("observed_target"))
+                        or not re.fullmatch(r"EV-[A-Za-z0-9._:-]+", record["evidence_ref"])
+                        or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",
+                                            record["agent_principal_id"])):
+                    continue
+                expected_source = ("deployed-invocations" if record["kind"] == "live-probe"
+                                   else "azure-resource-api")
+                if record["source"] == expected_source and isinstance(record.get("observed"), Mapping):
+                    verified.append(record)
+            except (ValueError, KeyError, TypeError, AttributeError):
+                continue
+            except Exception:
+                # An unavailable observation authority cannot confer authorization.
+                continue
+    result = []
+    for binding in bindings:
+        path = binding.get("enforcement_path")
+        posture = {
+            "binding_id": binding["binding_id"], "tool_id": binding["tool_id"],
+            "enforcement_path": path, "policy_digest": binding.get("policy_digest"),
+            "status": "unbound" if path == "none" else "unverified",
+            "posture": "unbound" if path == "none" else "unverified",
+            "whole_agent_governed": False, "evidence_refs": (),
+        }
+        if path != "governed-tool-gateway":
+            result.append(posture)
+            continue
+        records = [r for r in verified if r.get("action_id") == binding["tool_id"]]
+        bypass = any(
+            r["observed"].get("direct_access") == "allowed"
+            or any(r["observed"].get(k) is True for k in (
+                "direct_credentials_present", "builtin_equivalent_effect", "provider_equivalent_effect"))
+            or (r["kind"] == "live-probe" and type(r["observed"].get("side_effects")) is int
+                and r["observed"]["side_effects"] > 0)
+            for r in records)
+        by_kind = {kind: [r for r in records if r["kind"] == kind]
+                   for kind in ("configuration", "network", "iam", "live-probe")}
+        complete = all(len(items) == 1 for items in by_kind.values())
+        gateway = _exact_gateway_url(binding.get("gateway_url"))
+        passed = False
+        if complete and gateway and valid_target and binding.get("policy_digest") == target["policy_digest"]:
+            values = {kind: items[0]["observed"] for kind, items in by_kind.items()}
+            config, probe = values["configuration"], values["live-probe"]
+            receipt, positive = probe.get("receipt", {}), probe.get("positive_control", {})
+            passed = (
+                len({r["agent_principal_id"] for r in records}) == 1
+                and len({r["evidence_ref"] for r in records}) == len(records)
+                and all(_exact_gateway_url(r.get("gateway_url")) == gateway for r in records)
+                and _exact_gateway_url(config.get("mcp_url")) == gateway
+                and config.get("tool_name") == binding["tool_id"]
+                and config.get("credentials_complete") is True
+                and config.get("direct_credentials_present") is False
+                and config.get("equivalent_tools_complete") is True
+                and config.get("builtin_equivalent_effect") is False
+                and config.get("provider_equivalent_effect") is False
+                and all(values[k].get("direct_access") == "blocked"
+                        and values[k].get("paths_complete") is True for k in ("network", "iam"))
+                and probe.get("execution_surface") == "deployed-invocations"
+                and probe.get("outcome") == "blocked"
+                and all(type(probe.get(k)) is int and probe[k] == 0
+                        for k in ("downstream_calls", "side_effects"))
+                and isinstance(receipt, Mapping) and receipt.get("origin") == "gateway-service"
+                and receipt.get("decision") == "deny" and receipt.get("action_id") == binding["tool_id"]
+                and isinstance(receipt.get("receipt_id"), str)
+                and re.fullmatch(r"[0-9a-f]{32}", receipt["receipt_id"])
+                and bool(probe.get("invocation_id"))
+                and receipt.get("correlation_id") == probe["invocation_id"]
+                and same_target(receipt.get("observed_target"))
+                and isinstance(positive, Mapping) and bool(positive.get("invocation_id"))
+                and positive["invocation_id"] != probe["invocation_id"]
+                and positive.get("outcome") == "completed"
+                and all(type(positive.get(k)) is int and positive[k] == 1
+                        for k in ("downstream_calls", "side_effects")))
+        if bypass or passed:
+            posture.update(
+                status="bypassable" if bypass else "enforced",
+                posture="bypassable" if bypass else "action-governed",
+                evidence_refs=tuple(sorted({r["evidence_ref"] for r in records})))
+        result.append(posture)
+    referenced = {reference for entry in result for reference in entry["evidence_refs"]}
+    metadata = tuple({
+        "evidence_id": r["evidence_ref"], "source": r["source"],
+        "sha256": "sha256:" + canonical.sha256_hex(canonical.canonical_bytes(r)),
+        "collected_at": r["collected_at"], "deployed_target": dict(r["observed_target"]),
+    } for r in verified if r["evidence_ref"] in referenced)
+    return tuple(result), metadata
 
 
 # ---------------------------------------------------------------------------
@@ -3094,6 +3232,12 @@ def assess_change_plane(
     root: Path,
     live_github: Optional[Mapping] = None,
     live_azure: Optional[Mapping] = None,
+    *,
+    gateway_bindings=(),
+    deployed_target=None,
+    effect_observations=(),
+    observation_verifier=None,
+    now=None,
 ) -> ChangePlaneResult:
     """Assess an entire repository's GitHub Copilot change plane.
 
@@ -3150,10 +3294,13 @@ def assess_change_plane(
             evidence.append(workflow_evidence)
 
     findings.sort(key=lambda finding: finding.finding_id)
+    action_posture, action_evidence = assess_effect_closure(
+        gateway_bindings, deployed_target, effect_observations, observation_verifier, now=now)
     return ChangePlaneResult(
         controls=controls,
         findings=tuple(findings),
         evidence=tuple(evidence),
+        action_posture=action_posture, action_evidence=action_evidence,
     )
 
 

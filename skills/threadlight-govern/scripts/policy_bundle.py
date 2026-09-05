@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 from dataclasses import dataclass
 import importlib
+import importlib.resources
 from importlib.metadata import version as distribution_version
 import json
 import os
@@ -19,10 +20,15 @@ import stat
 import sys
 import uuid
 
-ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-_canonical = importlib.import_module("skills.threadlight-governed-actions.scripts.canonical")
+if __package__ == "govern_bundle":
+    _canonical = importlib.import_module("govern_canonical.canonical")
+    PIN_FILE = importlib.resources.files("govern_shared").joinpath("governance-upstream-pin.json")
+else:
+    ROOT = Path(__file__).resolve().parents[3]
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    _canonical = importlib.import_module("skills.threadlight-governed-actions.scripts.canonical")
+    PIN_FILE = ROOT / "skills/_shared/governance-upstream-pin.json"
 canonical_bytes = _canonical.canonical_bytes
 sha256_hex = _canonical.sha256_hex
 
@@ -155,7 +161,7 @@ def _confine_references(root: Path, files: dict[str, bytes]) -> None:
 
 
 def validate_native_manifest(root: Path) -> None:
-    pins = json.loads((ROOT / "skills/_shared/governance-upstream-pin.json").read_text())
+    pins = json.loads(PIN_FILE.read_text())
     pin = pins["acs"]
     if distribution_version(pin["distribution"]) != pin["version"]:
         raise ValueError(f"native loader requires {pin['distribution']}=={pin['version']}")

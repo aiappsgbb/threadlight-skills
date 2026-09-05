@@ -12,8 +12,10 @@ import importlib.metadata
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import tomllib
 import urllib.request
 import uuid
 import venv
@@ -25,6 +27,8 @@ SCRATCH = ROOT / ".governance-validation"
 VENV = SCRATCH / "linux-venv"
 PIN_FILE = ROOT / "skills/_shared/governance-upstream-pin.json"
 IMAGE = "python:3.12-slim"
+GATEWAY = ROOT / "skills/threadlight-govern/references/gateway"
+CONTROL_PLANE = ROOT / "skills/threadlight-govern/references/control-plane"
 
 
 def requirements(pins):
@@ -108,6 +112,109 @@ def verify_junit(path):
     return len(cases)
 
 
+def verify_gateway_junit(path):
+    cases = ET.parse(path).findall(".//testcase")
+    if not cases or any(case.find(tag) is not None
+                        for case in cases for tag in ("skipped", "failure", "error")):
+        raise RuntimeError("gateway controls missing, skipped, failed, or errored")
+    names = {case.attrib.get("name") for case in cases}
+    required = {
+        "test_gateway_native_deny_receipt_zero_effects",
+        "test_gateway_native_duplicate_same_outcome_one_effect",
+        "test_gateway_native_actual_mcp_authenticated_protocol",
+        "test_gateway_native_transform_and_post_deny",
+        "test_gateway_native_concurrent_reservation_single_winner",
+        "test_gateway_native_approval_consume_replay_and_fresh_positive",
+        "test_gateway_native_transformed_approval_binds_actual_effect",
+        "test_gateway_native_transport_wait_expiry_and_no_redirect",
+        "test_gateway_native_post_transform_duplicate_uses_same_enforced_arguments",
+    }
+    if not required <= names:
+        raise RuntimeError("required native gateway controls did not run")
+    return len(cases)
+
+
+def gateway_requirements():
+    result = {"pytest==9.0.3", "setuptools==80.9.0"}
+    for directory in (GATEWAY, CONTROL_PLANE):
+        project = tomllib.loads((directory / "pyproject.toml").read_text())
+        result.update(item for item in project["project"]["dependencies"]
+                      if not item.startswith("threadlight-govern-"))
+    return sorted(result)
+
+
+def gateway_runtime(pins):
+    """Separate service virtualenv: never modify the published MAF/ACS proof environment."""
+    python = SCRATCH / "task9-linux-venv/bin/python"
+    if not python.exists():
+        venv.EnvBuilder(with_pip=True).create(python.parent.parent)
+    wheelhouses = [SCRATCH / name for name in ("gateway-wheels", "wheels", "task8-wheelhouse")]
+    links = [arg for path in wheelhouses if path.exists() for arg in ("--find-links", str(path))]
+    required = gateway_requirements()
+    probe = (
+        "import importlib.metadata as m; "
+        f"assert all(m.version(p.split('==')[0].split('[')[0]) == p.split('==')[1] for p in {required!r})")
+    if subprocess.run([str(python), "-c", probe], cwd=ROOT).returncode:
+        run([python, "-m", "pip", "install", "--quiet", "--no-index", *links, *required])
+    # Read-only checkout compatible wheel builds: copy only portable source, never SDKs.
+    staging = SCRATCH / f"gateway-build-{uuid.uuid4().hex}"
+    for directory in (GATEWAY, CONTROL_PLANE):
+        dest = staging / directory.relative_to(ROOT)
+        dest.mkdir(parents=True, exist_ok=True)
+        for source in (*directory.glob("*.py"), directory / "pyproject.toml"):
+            shutil.copyfile(source, dest / source.name)
+    for relative in (
+        "skills/threadlight-govern/scripts/policy_bundle.py",
+        "skills/threadlight-governed-actions/scripts/__init__.py",
+        "skills/threadlight-governed-actions/scripts/canonical.py",
+        "skills/_shared/governance-upstream-pin.json",
+    ):
+        dest = staging / relative
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / relative, dest)
+    wheelhouse = staging / "wheels"
+    try:
+        run([python, "-m", "pip", "wheel", "--quiet", "--no-deps", "--no-build-isolation",
+             "--wheel-dir", wheelhouse,
+             staging / CONTROL_PLANE.relative_to(ROOT), staging / GATEWAY.relative_to(ROOT)])
+        run([python, "-m", "pip", "install", "--quiet", "--no-deps", "--force-reinstall",
+             *sorted(wheelhouse.glob("*.whl"))])
+        run([python, "-m", "pip", "check"])
+        # Compare every installed ACS/AGT/Hooks execution byte to the same published wheels.
+        verification = """
+import hashlib, importlib.metadata as m, json, pathlib, zipfile
+scratch = pathlib.Path('.governance-validation')
+pins = json.loads(pathlib.Path('skills/_shared/governance-upstream-pin.json').read_text())
+names = {pins[key]['distribution'] for key in ('agt', 'acs', 'agent_hooks')}
+records = [r for r in json.loads((scratch / 'wheel-provenance.json').read_text()) if r['distribution'] in names]
+assert len(records) == 3
+for record in records:
+    artifact = scratch / 'wheels' / record['filename']
+    assert hashlib.sha256(artifact.read_bytes()).hexdigest() == record['sha256']
+    dist = m.distribution(record['distribution'])
+    assert dist.version == record['version']
+    with zipfile.ZipFile(artifact) as archive:
+        for name in archive.namelist():
+            if name.endswith(('.py', '.so')) and '.data/' not in name:
+                assert dist.locate_file(name).read_bytes() == archive.read(name), name
+"""
+        run([python, "-c", verification])
+        report = SCRATCH / f"gateway-{uuid.uuid4().hex}.xml"
+        env = {**os.environ, "THREADLIGHT_GOVERNANCE_RUNTIME": "1",
+               "ACS_OPA_PATH": str(SCRATCH / "opa-linux-amd64")}
+        env.pop("PYTEST_ADDOPTS", None)
+        run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_gateway.py",
+             "-q", f"--junitxml={report}", "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
+        count = verify_gateway_junit(report)
+        run([python, "-c", verification])
+        proof = {"tests_passed": count, "junit": report.name,
+                 "scope": "native ACS/OPA + real MCP protocol, external HTTP/storage doubles; no live Azure"}
+        (SCRATCH / "gateway-proof.json").write_text(json.dumps(proof, indent=2) + "\n")
+        return proof
+    finally:
+        shutil.rmtree(staging)
+
+
 def runtime(pins):
     if Path(sys.prefix).resolve() != VENV.resolve() or sys.prefix == sys.base_prefix:
         raise RuntimeError("runtime proof requires the isolated validation virtualenv")
@@ -184,9 +291,11 @@ def runtime(pins):
                 if name.endswith((".py", ".so")) and ".data/" not in name:
                     if distribution.locate_file(name).read_bytes() != archive.read(name):
                         raise RuntimeError(f"runtime changed during conformance tests: {name}")
+    gateway_proof = gateway_runtime(pins)
     proof = {
         "packages": installed, "opa_version": pins["opa"]["version"], "opa_sha256": expected,
         "runtime_tests_passed": count, "junit": report.name,
+        "gateway": gateway_proof,
         "scope": "local native ACS/OPA + MAF enforcement; synthetic model/tools, no Azure calls",
         "ctk": {"declared_passed": len(vector_results), "declared_failed": 0,
                 "tool_seam_host_error": "terminate", "undeclared": optional,
@@ -210,6 +319,9 @@ def main():
     )
     os.environ.pop("PYTHONPATH", None)
     pins = json.loads(PIN_FILE.read_text())
+    if sys.argv[1:] == ["--gateway-prepared"]:
+        gateway_runtime(pins)
+        return
     if sys.argv[1:] == ["--runtime"]:
         runtime(pins)
         return
@@ -231,6 +343,18 @@ def main():
             ])
             marker.write_text(json.dumps(requested))
         verify_wheels(wheelhouse, pins)
+        gateway_wheels = SCRATCH / "gateway-wheels"
+        gateway_wheels.mkdir(exist_ok=True)
+        marker = gateway_wheels / "requirements.json"
+        requested = gateway_requirements()
+        if not marker.exists() or json.loads(marker.read_text()) != requested:
+            run([
+                sys.executable, "-m", "pip", "download", "--quiet", "--only-binary=:all:",
+                "--platform", "manylinux_2_28_x86_64", "--platform", "manylinux2014_x86_64",
+                "--python-version", "3.12", "--implementation", "cp", "--abi", "cp312",
+                "--abi", "abi3", "--abi", "none", "--dest", gateway_wheels, *requested,
+            ])
+            marker.write_text(json.dumps(requested))
         opa = SCRATCH / "opa-linux-amd64"
         if not opa.exists():
             url = (f"https://github.com/open-policy-agent/opa/releases/download/"
