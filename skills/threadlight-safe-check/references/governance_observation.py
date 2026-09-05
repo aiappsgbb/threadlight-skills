@@ -10,6 +10,7 @@ import importlib
 import re
 import subprocess
 from urllib.parse import urlsplit
+from skills._shared.governance_configuration import project_environment, SERVICE_ENVIRONMENT
 
 UUID = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
 SELECTORS = frozenset({"subscription", "resource_group", "project_resource_id", "agent_name", "requested_version"})
@@ -133,7 +134,8 @@ def observe(selection, run=run_command):
                 "agent_id": version["name"], "agent_version": version["version"],
                 "image_digest": image.split("@")[1], "subject": identity["principal_id"],
                 "client_id": identity["client_id"], "protocol": choices[0],
-                "version_selector": rules, "latest_version": latest}
+                "version_selector": rules, "latest_version": latest,
+                "configuration_digests": project_environment(definition.get("environment_variables", {}))}
     except ObservationError:
         raise
     except Exception:
@@ -163,7 +165,9 @@ def observe_service(expected, subscription, resource_group, run=run_command):
         return {"resource_id": value["id"], "url": origin,
                 "principal_id": identity["principalId"], "client_id": identity["clientId"],
                 "image": containers[0]["image"], "revision": properties["latestReadyRevisionName"],
-                "source": "azure-arm"}
+                "source": "azure-arm",
+                "configuration_digests": project_environment(containers[0].get("env", []),
+                                                              names=SERVICE_ENVIRONMENT)}
     except ObservationError:
         raise
     except Exception:

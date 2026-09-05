@@ -58,6 +58,28 @@ def bindings(contract, policy_digest=None, environment="preproduction"):
     return result
 
 
+def host_environment(project, agent, service, config):
+    import yaml
+    from skills._shared.governance_configuration import environment_values
+    actual = environment_values(service.get("env", {}), service.get("environmentVariables", []))
+    image = service.get("image") or "${TL_GOV_AGENT_IMAGE}"
+    spool = "${TL_GOV_SPOOL_DIR}"
+    if image != "${TL_GOV_AGENT_IMAGE}":
+        spool = actual.get("TL_GOV_SPOOL_DIR", "")
+        if not spool.startswith("/") or spool == "/":
+            raise ValueError("host-spool-configuration-unavailable")
+    expected = generator().agent_environment(config, image, spool)
+    if actual != expected:
+        raise ValueError("host-governance-environment-mismatch")
+    for legacy in (project / "agent.yaml", agent / "agent.yaml"):
+        legacy = contained(project, legacy.relative_to(project))
+        if legacy.exists():
+            value = yaml.safe_load(legacy.read_text())
+            if environment_values(value.get("environment_variables", {})) != expected:
+                raise ValueError("legacy-host-governance-environment-mismatch")
+    return expected
+
+
 def check(project, document):
     if not enabled(document):
         return {}
@@ -89,6 +111,7 @@ def check(project, document):
         svc = azure["services"][config["agent_service"]]
         if svc["host"] != "azure.ai.agent":
             raise ValueError("hosted-runtime-path-mismatch")
+        env = host_environment(project, agent, svc, config)
 
         def same(actual, expected, label):
             actual = contained(project, actual.relative_to(project))
@@ -130,6 +153,7 @@ def check(project, document):
             docker = (directory / "Dockerfile").read_text()
             if docker != gen.dockerfile_text(gateway=name == "govern-gateway", opa_pin=pins["opa"]):
                 raise ValueError("service-docker-adapter-not-installed")
+        same(project / "infra/governance.bicep", gen.REFERENCE / "governance.bicep", "governance.bicep")
         import govern_gateway
         for expected in Path(govern_gateway.__file__).parent.glob("*.py"):
             same(project / "src/govern-gateway/vendor/gateway" / expected.name, expected,
@@ -155,7 +179,6 @@ def check(project, document):
         if image and image != "${TL_GOV_AGENT_IMAGE}":
             result["stage"] = "image-bound"
             digest = image.split("@")[1]
-            env = {**svc.get("env", {}), **{v["name"]: v["value"] for v in svc.get("environmentVariables", [])}}
             if env.get("TL_GOV_IMAGE_DIGEST") != digest:
                 raise ValueError("image-metadata-digest-mismatch")
             if registry is not None and registry.deployment.image_digest != digest:
@@ -179,6 +202,28 @@ def check(project, document):
                     raise ValueError("service-auth-or-role-binding-mismatch")
             if b["gateway_config"]["control_plane_url"] != config["control_plane_url"]:
                 raise ValueError("service-endpoint-binding-mismatch")
+            from skills._shared.governance_configuration import SERVICE_ENVIRONMENT, environment_values, project_environment
+            for name, key, kind in (("govern-control-plane", "control_config", "control-plane"),
+                                    ("govern-gateway", "gateway_config", "gateway")):
+                service = azure["services"][name]
+                overrides = environment_values(service.get("env", {}), service.get("environmentVariables", []),
+                                                names=SERVICE_ENVIRONMENT)
+                if overrides:
+                    setting = "GOV_CONFIG_JSON" if kind == "control-plane" else "GATEWAY_CONFIG_JSON"
+                    expected = {setting: json.dumps(b[key]), "TL_GOV_SERVICE": kind}
+                    if kind == "control-plane":
+                        expected["AZURE_CLIENT_ID"] = b["control_client"]
+                    actual = project_environment(overrides, names=SERVICE_ENVIRONMENT)
+                    wanted = project_environment(expected, names=SERVICE_ENVIRONMENT)
+                    if any(wanted.get(k) != v for k, v in actual.items()):
+                        raise ValueError("service-governance-environment-mismatch")
+            parameters = contained(project, "infra/main.parameters.json")
+            if parameters.exists():
+                values = read(parameters)["parameters"]
+                for key, expected in (("governanceBindings", b), ("governanceImages", deployment["images"]),
+                                      ("governanceConfig", infra)):
+                    if values.get(key, {}).get("value") != expected:
+                        raise ValueError("generated-service-configuration-mismatch")
             if native and "native_probe_config" in b:
                 from govern_gateway.probe_runtime import ProbeConfiguration
                 from govern_control_plane.models import canonical
@@ -209,6 +254,12 @@ def check(project, document):
                 except Exception:
                     raise ValueError("native-probe-association-content-mismatch") from None
         else:
+            from skills._shared.governance_configuration import SERVICE_ENVIRONMENT, environment_values
+            for name in ("govern-control-plane", "govern-gateway"):
+                service = azure["services"][name]
+                if environment_values(service.get("env", {}), service.get("environmentVariables", []),
+                                      names=SERVICE_ENVIRONMENT):
+                    raise ValueError("service-configuration-requires-frozen-binding")
             result["unverified"].append("deployment-binding-not-built")
         # Credential/RBAC/egress closure is not inferred from packaging.
         for item in contract["tools"]:

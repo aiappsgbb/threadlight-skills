@@ -26,7 +26,14 @@ except ImportError:
     import governance_static as static
 
 from skills._shared.governance import validate_governance_contract
-from skills._shared.probe_evidence import ProbeEvidenceError, require, state, fresh, advance, evaluate_pair
+from skills._shared.probe_evidence import (
+    ProbeEvidenceError, require, state, fresh, advance, evaluate_pair,
+    require_target, require_selected_target,
+)
+from skills._shared.governance_configuration import (
+    AGENT_ENVIRONMENT, SERVICE_ENVIRONMENT, DECLARED_FILES,
+    project_environment, configuration_digest, validate_digests,
+)
 
 
 def now():
@@ -111,6 +118,8 @@ def preflight(config):
             "exact-probe-binding-required")
     require(contract["governance"]["environment_modes"][registry.deployment.environment] == "enforce",
             "evaluate_only-is-not-enforced")
+    require(config.get("expected_deployment") == registry.deployment.model_dump(mode="json"),
+            "declared-deployment-does-not-match-signed-registry")
     require(config["subject"] in action.workloads and registry.tenant_id == config["tenant_id"],
             "probe-workload-scope-mismatch")
     require(config["producer_url"] + "/mcp" == registry.gateway_url
@@ -134,6 +143,24 @@ def preflight(config):
     for name, service in config["services"].items():
         require(service["url"] == config[name + "_url"], "service-endpoint-binding-mismatch")
     return contract, registry, action
+
+
+def expected_target(config):
+    return {**config["expected_deployment"], "tenant": config["tenant_id"],
+            "subject": config["subject"], "client_id": config["client_id"]}
+
+
+def configuration_projection(config):
+    wiring = config["runtime_configuration"]
+    agent = wiring["agent"]
+    require(set(agent) == AGENT_ENVIRONMENT
+            and agent["GOV_CONTROL_PLANE_URL"] == config["control_plane_url"]
+            and agent["GOVERNED_TOOL_GATEWAY_URL"] == config["producer_url"] + "/mcp"
+            and agent["TL_GOV_IMAGE_DIGEST"] == config["expected_deployment"]["image_digest"]
+            and set(wiring["services"]) == set(config["services"]),
+            "declared-runtime-configuration-mismatch")
+    return {"agent": project_environment(agent), "services": {
+        name: project_environment(value, names=SERVICE_ENVIRONMENT) for name, value in wiring["services"].items()}}
 
 
 async def health(api, producer, digest):
@@ -191,7 +218,7 @@ async def invoke(target, run_id, variant, credential, http, timeout):
 
 
 async def collect(config, *, credential, signer, run=observation.run_command, http=None,
-                  force=False, timeout=30, poll_interval=0.25):
+                  force=False, timeout=30, poll_interval=0.25, required_target=None):
     """No force override: collection is opt-in, exact-scope and binding-specific."""
     started = now()
     selection = config.get("selection", {})
@@ -207,6 +234,10 @@ async def collect(config, *, credential, signer, run=observation.run_command, ht
                 and type(poll_interval) in (int, float) and 0 < poll_interval <= 5,
                 "invalid-collection-bounds")
         contract, registry, action = preflight(config)
+        expected = expected_target(config)
+        report["expected_target"] = deepcopy(expected)
+        declared_configuration = configuration_projection(config)
+        file_digests = validate_digests(config.get("declared_file_digests", {}), DECLARED_FILES)
         runtime_digest = registry.native_policy_digest or config["policy"]["policy_digest"]
         report["governance_health"]["bindings"] = static.bindings(contract, runtime_digest, registry.deployment.environment)
         from govern_gateway.dispatcher import NativePolicy
@@ -226,16 +257,24 @@ async def collect(config, *, credential, signer, run=observation.run_command, ht
                 require(registry.native_policy_digest is None, "gateway-policy-association-invalid")
         target = await asyncio.to_thread(observation.observe, config["selection"], run)
         report["observed_target"] = target
+        require_selected_target(expected, required_target if required_target is not None else {})
         deployment = registry.deployment.model_dump(mode="json")
-        require(all(target[key] == value for key, value in deployment.items() if key != "environment")
-                and target["tenant"] == registry.tenant_id
-                and target["subject"] == config["subject"] and target["client_id"] == config["client_id"],
-                "observed-deployment-does-not-match-signed-registry")
+        require_target(target, expected, deployment)
+        require(target["configuration_digests"] == declared_configuration["agent"],
+                "observed-host-configuration-mismatch")
         require(target["protocol"] == ("responses" if config["producer"] == "native" else "invocations"),
                 "runtime-invocation-path-mismatch")
         services = {name: await asyncio.to_thread(observation.observe_service, value,
             target["subscription"], target["resource_group"], run) for name, value in config["services"].items()}
         report["observed_services"] = services
+        observed_configuration = {"agent": target["configuration_digests"],
+                                  "services": {name: value["configuration_digests"] for name, value in services.items()}}
+        report["configuration_evidence"] = {
+            "declared": declared_configuration, "observed": observed_configuration,
+            "file_visibility": "image-and-mounted-file-interiors-not-observed-by-azure",
+            "declared_file_digests": file_digests,
+        }
+        require(observed_configuration == declared_configuration, "observed-service-configuration-mismatch")
         async with AsyncExitStack() as stack:
             if http is None:
                 http = await stack.enter_async_context(httpx.AsyncClient(
@@ -307,7 +346,7 @@ async def collect(config, *, credential, signer, run=observation.run_command, ht
             finished = now()
             report["started_at"], report["finished_at"] = started.isoformat(), finished.isoformat()
             report["governance_probes"] = evaluate_pair(
-                report["probe_evidence"], target=target, registration_scope=scope,
+                report["probe_evidence"], target=target, expected_target=expected, registration_scope=scope,
                 started_at=started, finished_at=finished)
             for binding in report["governance_health"]["bindings"]:
                 if binding["tool_id"] == action.name and binding["intervention_points"] == ["pre_tool_call"]:
@@ -356,6 +395,7 @@ def manifest(report, config):
         "collection_evidence": {
             "source": report["provenance"], "declared_selection": report["declared_selection"],
             "observed_target": target, "started_at": report["started_at"], "finished_at": report["finished_at"],
+            "expected_target": report["expected_target"], "configuration": report["configuration_evidence"],
             "registration_scope": report["registration_scope"], "records": report["probe_evidence"]},
     }
     return validate_governance_manifest(value)
@@ -422,6 +462,27 @@ def load_configuration(project, configuration):
                 "native-deployment-association-mismatch")
     def auth(settings):
         return {name: value for name, value in settings.model_dump(mode="json").items() if name in Settings.model_fields}
+    import yaml
+    service = yaml.safe_load(static.contained(project, "azure.yaml").read_text())["services"][packaged["agent_service"]]
+    host_environment = static.host_environment(project, agent, service, packaged)
+    service_environments = {name: {} for name in options["services"]}
+    service_environments["control_plane"] = {
+        "TL_GOV_SERVICE": "control-plane", "AZURE_CLIENT_ID": binding["control_client"],
+        "GOV_CONFIG_JSON": canonical(control).decode(),
+    }
+    if not native:
+        service_environments["producer"] = {
+            "TL_GOV_SERVICE": "gateway", "GATEWAY_CONFIG_JSON": canonical(producer).decode(),
+        }
+    declared_files = {
+        "host": configuration_digest({key: frozen[key] for key in (
+            "contract", "environment", "tenant_id", "agent_id", "control_plane_url", "control_plane_scope",
+            "gateway_url", "gateway_scope", "policy_id", "policy_version", "policy_digest", "key_id",
+            "approver_roles", "probe_observability") if key in frozen}),
+        "fixture": configuration_digest(fixture.model_dump(mode="json")),
+    }
+    if native:
+        declared_files["native_probe"] = configuration_digest(producer.model_dump(mode="json"))
     return {
         "schema": "threadlight-governance-probe/v1", "producer": "native" if native else "gateway",
         "selection": options["selection"], "contract": package["contract"],
@@ -433,11 +494,21 @@ def load_configuration(project, configuration):
         "allowed_endpoints": producer.allowed_endpoints, "services": options["services"],
         "auth": {"producer": auth(producer), "fixture": auth(fixture), "control_plane": auth(control)},
         "controller_principal": options["controller_principal"], "controller_client_id": options["controller_client_id"],
+        "expected_deployment": {
+            "agent_id": packaged["agent_id"], "agent_version": binding["agent_version"],
+            "image_digest": deployment["images"]["agent"].split("@")[1],
+            "environment": packaged["environment"],
+            "subscription": packaged.get("subscription", options["selection"]["project_resource_id"].split("/")[2]),
+            "resource_group": packaged.get("resource_group", options["selection"]["resource_group"]),
+        },
+        "runtime_configuration": {"agent": host_environment, "services": service_environments},
+        "declared_file_digests": declared_files,
     }
 
 
 async def collect_project(project, configuration=None, *, credential=None, signer=None,
-                          run=observation.run_command, http=None, timeout=30, force=False, manifest_path=None):
+                          run=observation.run_command, http=None, timeout=30, force=False, manifest_path=None,
+                          required_target=None):
     project = Path(project).resolve()
     selected_manifest = Path(manifest_path or "specs/manifest.json")
     if selected_manifest.is_absolute():
@@ -446,10 +517,11 @@ async def collect_project(project, configuration=None, *, credential=None, signe
     if not static.enabled(document):
         return {}
     declaration = static.check(project, document)
-    failure = {"governance_health": declaration, "governance_probes": [], "governance_gaps": []}
+    failure = {"governance_health": declaration, "governance_probes": [],
+               "governance_gaps": list(declaration["gaps"])}
     configuration = Path(configuration or project / ".threadlight/governance-probe.json")
     if not configuration.is_file():
-        failure["governance_gaps"] = ["no-explicit-safe-probe-configuration"]
+        failure["governance_gaps"].append("no-explicit-safe-probe-configuration")
         return failure
     try:
         require(not declaration["gaps"], "static-governance-gaps-remain")
@@ -479,10 +551,10 @@ async def collect_project(project, configuration=None, *, credential=None, signe
                     connection_timeout=5, read_timeout=5))
                 signer = KeyVaultSigner(crypto, key_client=keys)
             return await collect(config, credential=credential, signer=signer, run=run, http=http,
-                                 timeout=timeout, force=force)
+                                 timeout=timeout, force=force, required_target=required_target)
     except Exception as error:
-        failure["governance_gaps"] = [str(error) if isinstance(error, ProbeEvidenceError)
-                                      else "collector-configuration-or-dependency-unavailable"]
+        failure["governance_gaps"].append(str(error) if isinstance(error, ProbeEvidenceError)
+                                        else "collector-configuration-or-dependency-unavailable")
         return failure
 
 

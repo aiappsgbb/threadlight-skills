@@ -51,10 +51,40 @@ def advance(before, after):
         require(before == after, "terminal-state-changed")
 
 
-def evaluate_pair(records, *, target, registration_scope, started_at, finished_at):
+DEPLOYMENT_FIELDS = frozenset({
+    "agent_id", "agent_version", "image_digest", "environment", "subscription", "resource_group",
+})
+TARGET_FIELDS = DEPLOYMENT_FIELDS | {"tenant", "subject", "client_id"}
+
+
+def require_target(target, expected_target, deployment=None):
+    """Environment is a frozen declaration, not a field invented by ARM observation."""
+    require(isinstance(expected_target, dict) and set(expected_target) == TARGET_FIELDS
+            and all(isinstance(v, str) and 0 < len(v) <= 512 for v in expected_target.values()),
+            "exact-expected-target-required")
+    require(all(target.get(key) == value for key, value in expected_target.items() if key != "environment")
+            and ("environment" not in target or target["environment"] == expected_target["environment"]),
+            "observed-target-scope-mismatch")
+    if deployment is not None:
+        require(deployment == {key: expected_target[key] for key in DEPLOYMENT_FIELDS},
+                "registered-target-scope-mismatch")
+
+
+def require_selected_target(expected_target, required_target):
+    require(isinstance(required_target, dict) and set(required_target) <= TARGET_FIELDS
+            and all(expected_target.get(k) == v for k, v in required_target.items()),
+            "selected-target-scope-mismatch")
+
+
+def evaluate_pair(records, *, target, expected_target, registration_scope, started_at, finished_at):
     """Only an explicit noop binding at pre_tool_call can consume this evidence."""
     from govern_control_plane.models import DecisionReceipt, canonical, parse
     from govern_gateway.dispatcher import digest
+    require_target(target, expected_target, registration_scope["registration"]["deployment"])
+    require(registration_scope["tenant"] == target["tenant"]
+            and registration_scope["registration"]["subject"] == target["subject"]
+            and registration_scope["registration"]["action"] == "governance_probe_noop",
+            "registration-target-identity-mismatch")
     require(len(records) == 2 and {r["variant"] for r in records} == {"allow", "deny"},
             "positive-and-deny-required")
     require(len({r["run_id"] for r in records}) == 2, "fresh-distinct-nonces-required")

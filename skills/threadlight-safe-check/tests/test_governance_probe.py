@@ -165,6 +165,24 @@ async def native_collector_harness(path, monkeypatch, *, fault=None):
                 "latestReadyRevisionName": "one", "latestRevisionName": "one",
                 "configuration": {"activeRevisionsMode": "Single", "ingress": {"fqdn": item["url"].removeprefix("https://")}},
                 "template": {"containers": [{"image": item["image"]}]}}}
+    control_configuration = {
+        **settings, "blob_url": "https://fixture.blob.core.windows.net", "blob_container": "signed-catalog",
+        "cosmos_url": "https://fixture.documents.azure.com:443/", "cosmos_database": "governance",
+        "cosmos_container": "governance-records",
+    }
+    config["expected_deployment"] = registry.deployment.model_dump(mode="json")
+    config["runtime_configuration"] = {
+        "agent": module("generate").agent_environment(
+            {"control_plane_url": config["control_plane_url"], "gateway_url": config["producer_url"] + "/mcp"},
+            oracle.version["definition"]["container_configuration"]["image"], "/mnt/audit"),
+        "services": {"fixture": {}, "control_plane": {
+            "TL_GOV_SERVICE": "control-plane", "AZURE_CLIENT_ID": config["services"]["control_plane"]["client_id"],
+            "GOV_CONFIG_JSON": json.dumps(control_configuration),
+        }},
+    }
+    oracle.version["definition"]["environment_variables"].update(config["runtime_configuration"]["agent"])
+    control_container = oracle.resources[config["services"]["control_plane"]["resource_id"]]["properties"]["template"]["containers"][0]
+    control_container["env"] = [{"name": k, "value": v} for k, v in config["runtime_configuration"]["services"]["control_plane"].items()]
     calls, statuses = [], []
     receipt_reads = 0
     class Transport(httpx.AsyncBaseTransport):
@@ -389,12 +407,30 @@ def test_collector_actual_copilot_invocations_mcp_gateway_fixture(tmp_path, monk
                                     policy_id="safe", policy_digest=gateway_h.policy.digest)
             config["contract"]["framework"] = "github-copilot-sdk"
             config["contract"]["tools"][0]["enforcement_path"] = "governed-tool-gateway"
+            config["auth"]["producer"]["workloads"].pop(OTHER)
+            gateway_h.dispatcher.auth = cp("auth").EntraAuth(
+                cp("auth").Settings.model_validate(config["auth"]["producer"]), h.cp.http)
             rid = f"/subscriptions/{TENANT}/resourceGroups/rg-staging/providers/Microsoft.App/containerApps/gateway"
             config["services"]["producer"] = {**config["services"]["fixture"], "resource_id": rid,
                                                "url": "https://gateway.example"}
+            gateway_configuration = {
+                **config["auth"]["producer"], "gateway_url": config["producer_url"] + "/mcp",
+                "control_plane_url": config["control_plane_url"], "control_plane_scope": config["control_plane_scope"],
+                "service_client_id": config["services"]["producer"]["client_id"], "service_principal": WORKLOAD,
+                "service_agent_id": "agent-1", "downstream_client_id": DOWNSTREAM_CLIENT,
+                "cosmos_url": "https://fixture.documents.azure.com:443/", "cosmos_database": "governance",
+                "cosmos_container": "gateway-records", "bundle_path": "/app/policy",
+                "policy_id": "safe", "policy_version": "1", "policy_digest": gateway_h.policy.digest,
+                "allowed_endpoints": config["allowed_endpoints"], "probe_enabled": True, "probe_container": "probe-gateway",
+            }
+            config["runtime_configuration"]["services"]["producer"] = {
+                "TL_GOV_SERVICE": "gateway",
+                "GATEWAY_CONFIG_JSON": gateway("server").Configuration.model_validate(gateway_configuration).model_dump_json()}
             h.run.resources[rid] = deepcopy(h.run.resources[config["services"]["fixture"]["resource_id"]])
             h.run.resources[rid]["id"] = rid
             h.run.resources[rid]["properties"]["configuration"]["ingress"]["fqdn"] = "gateway.example"
+            h.run.resources[rid]["properties"]["template"]["containers"][0]["env"] = [
+                {"name": k, "value": v} for k, v in config["runtime_configuration"]["services"]["producer"].items()]
             h.run.version["definition"]["protocol_versions"] = [{"protocol": "invocations", "version": "2.0.0"}]
 
             responses, model_calls = [], []

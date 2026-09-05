@@ -1005,7 +1005,8 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
                 except ImportError:
                     from governance_probe import collect_project
                 collected = asyncio.run(collect_project(
-                    resolved_root, configuration, manifest_path=manifest_path, **(governance_dependencies or {})))
+                    resolved_root, configuration, manifest_path=manifest_path,
+                    **{**(governance_dependencies or {}), "required_target": {"resource_group": rg}}))
                 governance_gaps.extend(collected["governance_gaps"])
                 payload.update({k: v for k, v in collected.items() if k != "governance_gaps"})
             except Exception:

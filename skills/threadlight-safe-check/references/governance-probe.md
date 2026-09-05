@@ -114,6 +114,44 @@ The currently routed version is checked immediately before each invocation and
 again afterwards; the request's durable producer/receipt deployment must match.
 Azure and service changes invalidate the whole probe pair.
 
+### Exact target and configuration contract
+
+The parent safe-check `--rg` is an independent constraint, passed as
+`required_target={"resource_group": ...}` to `collect_project`/`collect`.
+It must match the frozen/selected target and the independently observed target;
+a mismatch fails without invoking the agent, rewriting selectors, or losing
+existing gaps. Direct collectors require `expected_deployment` (agent ID/version,
+image digest, environment, subscription and resource group), independently of
+the signed registry. The reusable `evaluate_pair` requires `expected_target`:
+those six fields plus `tenant`, `subject` and `client_id`. All must match the
+registration and observed facts. Environment comes from frozen configuration,
+**not** an invented ARM environment observation.
+
+Static checks compare the closed generated host wiring in `env`,
+`environmentVariables`, and existing legacy `agent.yaml`, including pre-image
+URLs. Bound service settings and generated parameter files must agree with the
+frozen deployment. Unrelated application environment values may differ.
+
+The collector's `runtime_configuration` expectations are loaded from Task10's
+generated host and bound service configuration, not copied from observations.
+Foundry/ARM observations retain only `configuration_digests` over a closed
+allowlist: the four generated host settings, and service `TL_GOV_SERVICE`,
+`AZURE_CLIENT_ID`, `GOV_CONFIG_JSON` and `GATEWAY_CONFIG_JSON`. The two JSON
+settings are parsed using their strict service schemas before hashing, binding
+their roles, scopes, policy identity, mode-related settings and full endpoints.
+No arbitrary environment values, API keys, raw URLs from these settings, or
+provider response dumps are saved. Unknown `GOV_`-prefixed variables are not
+selected. Missing or unresolved required settings (including secret references)
+are unverified. First observations must match expectations; changes before each
+invocation or at final observation invalidate the pair.
+
+`configuration_evidence` separates declared and observed configuration digests.
+Image-embedded native configuration and mounted native/fixture secret files are
+**not readable through ARM**. Their bounded configuration digests are explicitly
+`declared_file_digests`, not Azure observations of file interiors. Signed policy
+checks and actual noop execution remain required; these declarations do not
+establish general runtime/configuration attestation.
+
 Both runs must be freshly registered with zero counts and null terminal at both
 services. An allow needs one received/intercepted/dispatch/completed producer event
 and one independent fixture effect. A deny needs one received/intercepted/completed,

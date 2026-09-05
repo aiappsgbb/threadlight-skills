@@ -959,7 +959,7 @@ def _validate_collection_evidence(manifest):
     evidence = _require_object(manifest["collection_evidence"], "collection_evidence")
     _require_exact_keys(evidence, "collection_evidence", {
         "source", "declared_selection", "observed_target", "started_at", "finished_at",
-        "registration_scope", "records",
+        "registration_scope", "records", "expected_target", "configuration",
     })
     if evidence["source"] != "authenticated-service-reads-and-azure-observation-not-attestation":
         _raise("collection_evidence source must identify the collector, not local conformance")
@@ -974,7 +974,31 @@ def _validate_collection_evidence(manifest):
         _, finished = _parse_timestamp(evidence["finished_at"], "collection_evidence.finished_at")
         if finished < started:
             _raise("collection_evidence time reversed")
+        configuration = evidence["configuration"]
+        from skills._shared.governance_configuration import (
+            AGENT_ENVIRONMENT, SERVICE_ENVIRONMENT, DECLARED_FILES, validate_digests,
+        )
+        _require_exact_keys(configuration, "collection_evidence.configuration", {
+            "declared", "observed", "file_visibility", "declared_file_digests",
+        })
+        validate_digests(configuration["declared_file_digests"], DECLARED_FILES)
+        for part in ("declared", "observed"):
+            projection = configuration[part]
+            _require_exact_keys(projection, "configuration." + part, {"agent", "services"})
+            if set(validate_digests(projection["agent"], AGENT_ENVIRONMENT)) != AGENT_ENVIRONMENT:
+                _raise("collection_evidence host configuration incomplete")
+            services = {"control_plane", "fixture"}
+            if evidence["registration_scope"]["producer"] == "gateway":
+                services.add("producer")
+            _require_exact_keys(projection["services"], "configuration.services", services)
+            for digests in projection["services"].values():
+                validate_digests(digests, SERVICE_ENVIRONMENT)
+        if (configuration["declared"] != configuration["observed"]
+                or configuration["observed"]["agent"] != target["configuration_digests"]
+                or configuration["file_visibility"] != "image-and-mounted-file-interiors-not-observed-by-azure"):
+            _raise("collection_evidence configuration mismatch")
         expected = evaluate_pair(evidence["records"], target=target,
+            expected_target=evidence["expected_target"],
             registration_scope=evidence["registration_scope"], started_at=started, finished_at=finished)
         if manifest["live_probes"] != expected:
             _raise("collection_evidence does not match live probes")

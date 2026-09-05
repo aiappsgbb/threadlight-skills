@@ -563,6 +563,16 @@ def write_dockerfile(target, *, agent=False, gateway=False):
         "deployment*.json\nagent.yaml\nagent.manifest.yaml\n*.pem\n*.key\nrun/\naudit/\n")
 
 
+def agent_environment(config, image="${TL_GOV_AGENT_IMAGE}", spool_directory="${TL_GOV_SPOOL_DIR}"):
+    """The closed host wiring emitted by Task10 and checked by its consumers."""
+    return {
+        "GOV_CONTROL_PLANE_URL": config["control_plane_url"],
+        "GOVERNED_TOOL_GATEWAY_URL": config["gateway_url"],
+        "TL_GOV_IMAGE_DIGEST": "${TL_GOV_IMAGE_DIGEST}" if image == "${TL_GOV_AGENT_IMAGE}" else image.split("@")[1],
+        "TL_GOV_SPOOL_DIR": spool_directory,
+    }
+
+
 def compose(project, azure, config, framework):
     import yaml
     additions = yaml.safe_load((REFERENCE / "azure-services.yaml").read_text())
@@ -577,12 +587,7 @@ def compose(project, azure, config, framework):
             extensions[name] = f">=1.0.0-beta.{minimum}"
     service = azure["services"][config["agent_service"]]
     service["image"] = "${TL_GOV_AGENT_IMAGE}"
-    values = {
-        "GOV_CONTROL_PLANE_URL": config["control_plane_url"],
-        "GOVERNED_TOOL_GATEWAY_URL": config["gateway_url"],
-        "TL_GOV_IMAGE_DIGEST": "${TL_GOV_IMAGE_DIGEST}",
-        "TL_GOV_SPOOL_DIR": "${TL_GOV_SPOOL_DIR}",
-    }
+    values = agent_environment(config)
     # Current azd uses env; preserve older environmentVariables without duplicate definitions.
     if "environmentVariables" in service:
         entries = {entry["name"]: entry for entry in service["environmentVariables"]}
