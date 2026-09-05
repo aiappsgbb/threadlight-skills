@@ -1250,13 +1250,16 @@ def test_lifecycle_expiry_at_actual_native_transport(tmp_path, monkeypatch, stre
             clock.current = authority.expires_at
             await call_next()
     client = native_model_client(tool_responses())
+    prepared = []
     if stage == "preparation":
-        client.compaction_strategy = object()
-        async def prepare(messages, **kwargs):
-            await asyncio.sleep(0)
-            clock.current = authority.expires_at
-            return messages
-        monkeypatch.setattr(client, "_prepare_messages_for_model_call", prepare)
+        # Selected pre-model compaction is unsupported. Exercise the real
+        # preparation path's non-target-changing token annotation instead.
+        class ExpiringTokenizer:
+            def count_tokens(self, text):
+                prepared.append(True)
+                clock.current = authority.expires_at
+                return 1
+        client.tokenizer = ExpiringTokenizer()
     agent = runtime().create_governed_agent(p, client=client, middleware=[Delay()] if stage == "chat" else [])
     async def run():
         if stream:
@@ -1269,6 +1272,8 @@ def test_lifecycle_expiry_at_actual_native_transport(tmp_path, monkeypatch, stre
     except Exception as exc:
         assert "threadlight:policy_unavailable" in str(exc)
     assert client.requests == [], "expired lifecycle authorization reached the transport"
+    if stage == "preparation":
+        assert prepared
 
 
 @pytest.mark.parametrize("point", ["startup", "input"])
@@ -1936,4 +1941,239 @@ def test_host_owned_validation_entrypoints_drop_exception_context(tmp_path):
             getattr(model, method)(value)
         assert error.value.__context__ is None and error.value.__cause__ is None
     assert original.input_model is Arguments
+    asyncio.run(client.client.close())
+
+
+@pytest.mark.parametrize("case", [
+    "field-serializer", "model-serializer", "root-validator", "non-object",
+    "returned-model", "returned-object", "valid-serializer", "schema-only",
+])
+@pytest.mark.parametrize("detailed", [False, True])
+def test_native_entire_argument_pipeline_is_private(tmp_path, case, detailed):
+    from typing import Literal
+    from agent_framework import Agent, FunctionTool
+    from pydantic import BaseModel, field_serializer, model_serializer, model_validator
+    validations, serializations, effects = [], [], []
+    class Arguments(BaseModel):
+        state: Literal["ok", "ready"]
+
+        @model_validator(mode="after")
+        def validate_state(self):
+            validations.append(self.state)
+            if case == "root-validator":
+                self.state = "PRIVATE"
+            if case == "returned-model":
+                return Arguments.model_construct(state="PRIVATE")
+            if case == "returned-object":
+                class Result:
+                    def model_dump(self, **kwargs):
+                        return {"state": "PRIVATE"}
+                return Result()
+            return self
+
+        @field_serializer("state")
+        def serialize_state(self, value):
+            serializations.append(value)
+            if case == "field-serializer":
+                return "PRIVATE"
+            return "ready" if case == "valid-serializer" else value
+
+        @model_serializer(mode="wrap")
+        def serialize_model(self, handler):
+            value = handler(self)
+            if case == "model-serializer":
+                return {"state": "PRIVATE"}
+            return "PRIVATE" if case == "non-object" else value
+
+    async def act(state):
+        effects.append(state)
+        return "done"
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(
+        tmp_path, audit=spool,
+        decisions={"pre_tool_call": {"decision": "allow"}},
+    )
+    schema = {"type": "object", "properties": {"state": {"enum": ["ready"]}}}
+    tool = FunctionTool(name="act", func=act, input_model=schema if case == "schema-only" else Arguments)
+    original_schema = deepcopy(tool.parameters())
+    client = native_model_client(tool_responses(args={"state": "ok"}))
+    client.function_invocation_configuration["include_detailed_errors"] = detailed
+    agent = runtime().create_governed_agent(p, client=client, tools=[tool])
+    result = asyncio.run(agent.run("input"))
+    records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+    wire = str(client.requests) + result.to_json() + json.dumps(records)
+    assert "PRIVATE" not in wire
+    assert len(client.requests) == 2
+    results = [c for m in result.messages for c in m.contents if c.type == "function_result"]
+    assert len(results) == 1
+    if case == "valid-serializer":
+        assert effects == ["ready"] and results[0].exception is None
+    else:
+        assert effects == []
+        assert results[0].exception == "threadlight:invalid_arguments"
+        assert not any(r["decision"] in {"allow", "transform"} for r in records)
+    assert validations == ([] if case == "schema-only" else ["ok"])
+    assert len(serializations) == (0 if case in {"schema-only", "returned-object"} else 1)
+    assert tool.parameters() == original_schema
+    assert tool.input_model is (None if case == "schema-only" else Arguments)
+    # Unbound tools retain the original SDK validation/serialization semantics.
+    unbound = native_model_client(tool_responses(args={"state": "ok"}))
+    try:
+        original_result = asyncio.run(Agent(client=unbound, tools=[tool]).run("input"))
+        if case not in {"valid-serializer", "schema-only"}:
+            assert "PRIVATE" in original_result.to_json()
+    except ValueError:
+        assert case == "non-object"
+    asyncio.run(client.client.close())
+    asyncio.run(unbound.client.close())
+
+
+@pytest.mark.parametrize("strategy_name", ["truncation", "window"])
+@pytest.mark.parametrize("source", ["client", "agent", "run", "middleware"])
+def test_selected_model_scope_rejects_native_compaction(tmp_path, strategy_name, source):
+    from agent_framework import (
+        Agent, ChatMiddleware, ChatResponse, Message, SlidingWindowStrategy, TruncationStrategy,
+    )
+    def strategy():
+        return (TruncationStrategy(max_n=1, compact_to=1) if strategy_name == "truncation"
+                else SlidingWindowStrategy(keep_last_groups=1))
+    def messages():
+        return [Message("user", ["first"]), Message("assistant", ["second"]), Message("user", ["third"])]
+    def responses():
+        return [ChatResponse(messages=[Message("assistant", ["finished"])])]
+    # Reproduce the actual built-in mutation, not a patched SDK or pretend strategy.
+    unbound = native_model_client(responses())
+    asyncio.run(Agent(client=unbound, compaction_strategy=strategy()).run(messages()))
+    assert len(unbound.requests[0][0]) == 1
+    service = ApprovalService("approve")
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_model_call",), requires=("approval",)),
+        decisions={"pre_model_call": (
+            '{"decision": "allow"} if {count(input.snapshot.messages) == 3} '
+            'else := {"decision": "deny"}'
+        )}, audit=spool, approval_resolver=service, principal="host:user", tenant="host:tenant",
+        allowed_approval_roles=("test-reviewer",),
+    )
+    from agent_framework._agent_hooks import _ModelRequestCodec
+    final = _ModelRequestCodec.to_wire(messages()[-1:])
+    decision = asyncio.run(p._engine.evaluate_intervention_point(
+        "pre_model_call", {"messages": final}, mode="enforce",
+    ))
+    assert decision.verdict.decision.value == "deny", "real ACS denies the compacted target"
+    class Mutate(ChatMiddleware):
+        async def process(self, context, call_next):
+            context.kwargs["compaction_strategy"] = strategy()
+            await call_next()
+    client = native_model_client(responses())
+    if source == "client":
+        client.compaction_strategy = strategy()
+    with pytest.raises((ValueError, RuntimeError), match="threadlight:unsupported_model_compaction"):
+        agent = runtime().create_governed_agent(
+            p, client=client, middleware=[Mutate()] if source == "middleware" else [],
+            **({"compaction_strategy": strategy()} if source == "agent" else {}),
+        )
+        asyncio.run(agent.run(messages(), **({"compaction_strategy": strategy()} if source == "run" else {})))
+    assert client.requests == []
+    assert len(service.requests) <= 1, "no reapproval loop"
+    if source == "middleware":
+        records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+        assert any(r.get("reason_code") == "threadlight:unsupported_model_compaction" for r in records)
+    asyncio.run(client.client.close())
+    asyncio.run(unbound.client.close())
+
+
+@pytest.mark.parametrize("mutation", ["none", "messages", "options", "tools", "http", "http-stream"])
+@pytest.mark.parametrize("chat_completions", [False, True])
+def test_model_approval_is_bound_to_final_target(tmp_path, monkeypatch, mutation, chat_completions):
+    from agent_framework import ChatMiddleware, ChatResponse, FunctionTool, Message
+    service = ApprovalService("approve")
+    adapter = importlib.import_module("skills.threadlight-govern.references.runtime.maf_agent_hooks_acs")
+    observed = []
+    intercept = adapter.AcsInterceptor.intercept
+    async def capture(self, context):
+        if context["interception_point"] == "pre_model_call":
+            observed.append(deepcopy(context))
+        return await intercept(self, context)
+    monkeypatch.setattr(adapter.AcsInterceptor, "intercept", capture)
+    spool = runtime().DurableSpool(tmp_path / "spool")
+    p, _, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_model_call",), requires=("approval",)),
+        decisions={"pre_model_call": {"decision": "allow"}}, audit=spool,
+        approval_resolver=service, principal="host:user", tenant="host:tenant",
+        allowed_approval_roles=("test-reviewer",),
+    )
+    class Mutate(ChatMiddleware):
+        async def process(self, context, call_next):
+            if mutation == "messages":
+                context.messages[:] = [Message("user", ["changed"])]
+            elif mutation == "options":
+                context.options["instructions"] = "changed"
+            elif mutation == "tools":
+                context.options["tools"].append(FunctionTool(name="other", func=lambda: None))
+            await call_next()
+    async def request_hook(request):
+        if mutation in {"http", "http-stream"}:
+            body = json.loads(request.content)
+            body["messages" if chat_completions else "input"] = [{"role": "user", "content": "changed"}]
+            changed = json.dumps(body).encode()
+            if mutation == "http":
+                request._content = changed
+            else:
+                import httpx
+                request.stream = httpx.ByteStream(changed)
+        await asyncio.sleep(0)
+    client = native_model_client(
+        [ChatResponse(messages=[Message("assistant", ["finished"])])],
+        request_hook=request_hook, chat_completions=chat_completions,
+    )
+    agent = runtime().create_governed_agent(
+        p, client=client, middleware=[Mutate()], instructions="host instructions",
+        tools=[FunctionTool(name="read", func=lambda: None)],
+    )
+    if mutation == "none":
+        assert asyncio.run(agent.run("input")).text == "finished"
+        assert len(client.requests) == 1
+    else:
+        with pytest.raises(Exception, match="threadlight:model_target_changed"):
+            asyncio.run(agent.run("input"))
+        assert client.requests == []
+        records = [json.loads(f.read_text()) for f in spool.directory.glob("*.json")]
+        assert any(r.get("reason_code") == "threadlight:model_target_changed" for r in records)
+    assert len(service.requests) == 1
+    assert service.requests[0].action_hash == adapter.action_hash(p, observed[0])
+    assert all("input" not in f.read_text() and "changed" not in f.read_text().replace(
+        "threadlight:model_target_changed", "") for f in spool.directory.glob("*.json"))
+    asyncio.run(client.client.close())
+
+
+@pytest.mark.parametrize("source", ["preparer", "options", "extra-body"])
+def test_native_posthook_message_replacements_are_unsupported(tmp_path, source):
+    from agent_framework import AgentMiddleware, ChatResponse, Message
+    effects = []
+    class Effect(AgentMiddleware):
+        async def process(self, context, call_next):
+            effects.append(True)
+            await call_next()
+    p, _, _ = provider(
+        tmp_path, document=contract(points=(), lifecycle=("pre_model_call",)),
+        decisions={"pre_model_call": {"decision": "allow"}},
+    )
+    client = native_model_client(
+        [ChatResponse(messages=[Message("assistant", ["finished"])])], chat_completions=True,
+    )
+    options = {}
+    if source == "preparer":
+        client.message_preparer = lambda message, prepared: [{"role": "user", "content": "changed"}]
+    elif source == "options":
+        options["messages"] = [{"role": "user", "content": "changed"}]
+    else:
+        options["extra_body"] = {"messages": [{"role": "user", "content": "changed"}]}
+    reason = "preparer" if source == "preparer" else "override"
+    with pytest.raises(ValueError, match=f"threadlight:unsupported_model_{reason}"):
+        agent = runtime().create_governed_agent(
+            p, client=client, default_options=options, middleware=[Effect()],
+        )
+        asyncio.run(agent.run("input"))
+    assert effects == client.requests == []
     asyncio.run(client.client.close())

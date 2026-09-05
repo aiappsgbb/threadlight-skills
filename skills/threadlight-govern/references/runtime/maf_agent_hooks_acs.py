@@ -50,6 +50,8 @@ class NativeRecordSink:
         decision = record.verdict.decision.value
         reason = record.verdict.reason
         if decision in {"allow", "transform"}:
+            if entry and point == "pre_model_call" and state is not None and "model_scope" in state:
+                state["model_scope"]["target"] = entry["target_hash"]
             if entry and point == "pre_tool_call" and state is not None:
                 state["calls"][entry["call_id"]] = (
                     entry["tool"], entry["args_hash"], entry["original_args_hash"],
@@ -214,7 +216,8 @@ class BoundApprovalResolver:
                     if state is None:
                         raise ValueError("approval scope unavailable")
                     state["lifecycle_tickets"][request.context["interception_point"]] = (
-                        None, None, intent.expires_at, deadline,
+                        request.context["interception_point"], digest(request.context["target"]),
+                        intent.expires_at, deadline,
                     )
                 verdict = ALLOW
             elif not grant.approved:
@@ -245,6 +248,7 @@ class AcsInterceptor:
                 "call_id": tool.get("id"), "tool": tool.get("name"),
                 "args_hash": digest(tool.get("args")),
                 "original_args_hash": digest(tool.get("args")),
+                "target_hash": digest(context["target"]),
             }
             state["emissions"][(context["session"]["id"], context["sequence"])] = entry
         if context["interception_point"] == "pre_tool_call":
@@ -306,6 +310,14 @@ class AcsInterceptor:
                 )
                 if entry is not None and point == "pre_tool_call":
                     entry["args_hash"] = digest(value)
+                    entry["action_hash"] = action_hash(p, context, value)
+                if entry is not None and point == "pre_model_call":
+                    from agent_framework._agent_hooks import _ModelRequestCodec
+                    # Compare in the owning hook codec, including its equivalent
+                    # string/single-text-content representations after writeback.
+                    entry["target_hash"] = digest(_ModelRequestCodec.to_wire(
+                        _ModelRequestCodec.write_back([], [], value) or [],
+                    ))
                     entry["action_hash"] = action_hash(p, context, value)
                 binding_success(selected)
                 if not receipt(p, selected, context, "transform", value):
@@ -375,6 +387,7 @@ class _ChatBoundary(ChatMiddleware):
         self.provider = provider
 
     async def process(self, context, call_next):
+        _check_model_config(self.provider, context.client, context.kwargs, context.options)
         context.options = {**_check_options(context.options or {}), "store": False}
         context.kwargs = _check_options(context.kwargs)
         tools = context.options.get("tools")
@@ -545,26 +558,46 @@ def _private_validation(call, *args, **kwargs):
     raise TypeError("threadlight:invalid_arguments") from None
 
 
-def _guard_input_model(model):
-    class GuardedInput(model):
+def _guard_input_model(model, tool):
+    from agent_framework._tools import _validate_arguments_against_schema
+    from pydantic import RootModel
+    base = model if model is not None else RootModel[dict]
+    def checked_dump(dump, *args, **kwargs):
+        value = dump(*args, **kwargs)
+        return _validate_arguments_against_schema(
+            arguments=value, schema=tool.parameters(), tool_name=tool.name,
+        )
+    class ValidatedInput:
+        def __init__(self, value):
+            self.value = value
+
+        def model_dump(self, *args, **kwargs):
+            # A root/wrap validator may return a different model (or object).
+            # Keep lookup, serialization and the downstream native schema check
+            # inside one private boundary, regardless of that returned type.
+            return _private_validation(
+                lambda: checked_dump(self.value.model_dump, *args, **kwargs),
+            )
+
+    class GuardedInput(base):
         @classmethod
         def model_validate(cls, *args, **kwargs):
-            return _private_validation(super().model_validate, *args, **kwargs)
+            return ValidatedInput(_private_validation(base.model_validate, *args, **kwargs))
 
         @classmethod
         def model_validate_json(cls, *args, **kwargs):
-            return _private_validation(super().model_validate_json, *args, **kwargs)
+            return ValidatedInput(_private_validation(base.model_validate_json, *args, **kwargs))
 
         @classmethod
         def model_validate_strings(cls, *args, **kwargs):
-            return _private_validation(super().model_validate_strings, *args, **kwargs)
+            return ValidatedInput(_private_validation(base.model_validate_strings, *args, **kwargs))
 
         def model_dump(self, *args, **kwargs):
-            return _private_validation(super().model_dump, *args, **kwargs)
+            return _private_validation(checked_dump, super().model_dump, *args, **kwargs)
 
         @classmethod
         def model_json_schema(cls, *args, **kwargs):
-            return deepcopy(model.model_json_schema(*args, **kwargs))
+            return deepcopy(model.model_json_schema(*args, **kwargs) if model else tool.parameters())
     return GuardedInput
 
 
@@ -586,8 +619,9 @@ def _guard_tool(tool, provider):
     guarded._input_schema_cached = deepcopy(guarded.parameters())
     guarded._cached_parameters = guarded._input_schema_cached
     original_model = tool.input_model
-    if original_model is not None:
-        guarded.input_model = _guard_input_model(original_model)
+    guarded.input_model = _guard_input_model(original_model, guarded)
+    # Route schema-only tools through the same private pre-hook check as models.
+    guarded._schema_supplied = False
     function = tool.func
     if isinstance(function, FunctionTool):
         function = function.func
@@ -685,6 +719,83 @@ def _check_client_middleware(client):
         raise ValueError("client middleware must be supplied inside the governed Agent Hooks bundle")
 
 
+def _model_bindings(provider):
+    return [b for b in provider._bindings.values()
+            if b["tool"] is None and b["point"] == "pre_model_call"]
+
+
+def _check_model_config(provider, client, *values):
+    selected = _model_bindings(provider)
+    if not selected or provider.mode != "enforce":
+        return
+    def check(value):
+        if not isinstance(value, Mapping):
+            return
+        for key, item in value.items():
+            reason = None
+            if key == "compaction_strategy" and item is not None:
+                reason = "threadlight:unsupported_model_compaction"
+            elif key in {"input", "messages"} and item is not None:
+                reason = "threadlight:unsupported_model_override"
+            if reason:
+                if _execution.get() is not None:
+                    _deny_boundary(provider, selected, reason)
+                binding_failure(selected, reason)
+                raise ValueError(reason)
+            check(item)
+    check({"compaction_strategy": getattr(client, "compaction_strategy", None)})
+    for value in values:
+        check(value)
+    if getattr(client, "message_preparer", None) is not None:
+        reason = "threadlight:unsupported_model_preparer"
+        if _execution.get() is not None:
+            _deny_boundary(provider, selected, reason)
+        binding_failure(selected, reason)
+        raise ValueError(reason)
+
+
+def _model_configuration(options, kwargs):
+    from agent_framework import FunctionTool
+    from agent_framework._serialization import make_json_safe
+    def project(value):
+        if isinstance(value, FunctionTool):
+            return {"name": value.name, "description": value.description,
+                    "parameters": deepcopy(value.parameters())}
+        if isinstance(value, Mapping):
+            return {k: project(v) for k, v in value.items() if k not in {"store", "tokenizer"}}
+        if isinstance(value, (list, tuple)):
+            return [project(v) for v in value]
+        return make_json_safe(value)
+    return digest([project(options or {}), project(kwargs)])
+
+
+class _ModelScope(ChatMiddleware):
+    """Hold the invariant configuration beside the native message authorization."""
+    def __init__(self, provider):
+        self.provider = provider
+
+    async def process(self, context, call_next):
+        if _model_bindings(self.provider) and self.provider.mode == "enforce":
+            _check_model_config(self.provider, context.client, context.kwargs, context.options)
+            _execution.get()["model_scope"] = {
+                "configuration": _model_configuration(context.options, context.kwargs),
+                "target": None, "wire": None,
+            }
+        await call_next()
+
+
+def _check_model_target(provider, messages, options, kwargs):
+    selected = _model_bindings(provider)
+    if not selected or provider.mode != "enforce":
+        return
+    from agent_framework._agent_hooks import _ModelRequestCodec
+    state = _execution.get()
+    scope = state.get("model_scope") if state else None
+    if (scope is None or scope["target"] != digest(_ModelRequestCodec.to_wire(messages))
+            or scope["configuration"] != _model_configuration(options, kwargs)):
+        _deny_boundary(provider, selected, "threadlight:model_target_changed")
+
+
 def _middleware_entries(value):
     return list(value) if isinstance(value, (list, tuple)) else [] if value is None else [value]
 
@@ -748,12 +859,19 @@ def _guard_client(client, provider):
     _check_client_middleware(client)
     guarded = copy(client)
     _guard_http_client(guarded, provider)
+    prepare = guarded._prepare_messages_for_model_call
+    async def prepare_messages(messages, **kwargs):
+        _check_model_config(provider, guarded, kwargs)
+        return await prepare(messages, **kwargs)
+    guarded._prepare_messages_for_model_call = prepare_messages
     dispatch = guarded._inner_get_response
     def transport(*, messages, stream, options, **kwargs):
         # BaseChatClient calls this extension point AFTER awaited compaction.
         _check_lifecycle(provider, ("agent_startup", "input", "pre_model_call"))
+        _check_model_config(provider, guarded, options, kwargs)
         options = {**_check_options(options or {}), "store": False}
         kwargs = _check_options(kwargs)
+        _check_model_target(provider, messages, options, kwargs)
         result = dispatch(messages=messages, stream=stream, options=options, **kwargs)
         if not inspect.isawaitable(result) or isinstance(result, ResponseStream):
             return result
@@ -798,16 +916,47 @@ def _guard_http_client(client, provider):
     from openai import AsyncOpenAI
     import httpx
     _check_model_transport(client, provider)
+    _check_model_config(provider, client)
     sdk = getattr(client, "client", None)
     if not isinstance(sdk, AsyncOpenAI):
         return
     http = copy(sdk._client)
+    selected = _model_bindings(provider)
+    def request_identity(body):
+        try:
+            return digest(json.loads(body))
+        except Exception:
+            pass
+        _deny_boundary(provider, selected, "threadlight:model_target_changed")
+    async def capture_request(request):
+        if not selected or provider.mode != "enforce":
+            return
+        scope = _execution.get()["model_scope"]
+        identity = request_identity(request.content)
+        if scope["wire"] is None:
+            scope["wire"] = identity
+        elif scope["wire"] != identity:
+            _deny_boundary(provider, selected, "threadlight:model_target_changed")
+    # Snapshot the pinned provider's serialization before user HTTP hooks/auth,
+    # not raw bytes compared with the hook's different message representation.
+    http.event_hooks = {**http.event_hooks, "request": [
+        capture_request, *http.event_hooks.get("request", []),
+    ]}
     class Transport(httpx.AsyncBaseTransport):
         def __init__(self, inner):
             self.inner = inner
 
         async def handle_async_request(self, request):
             _check_lifecycle(provider, ("agent_startup", "input", "pre_model_call"))
+            if selected and provider.mode == "enforce":
+                scope = _execution.get()["model_scope"]
+                # httpx.content is a cache; transports send stream instead.
+                # Pinned native JSON requests use a replayable ByteStream, not
+                # arbitrary body producers with effects during iteration.
+                if (type(request.stream) is not httpx.ByteStream
+                        or scope["wire"] != request_identity(request.content)
+                        or scope["wire"] != request_identity(b"".join(request.stream))):
+                    _deny_boundary(provider, selected, "threadlight:model_target_changed")
             return await self.inner.handle_async_request(request)
 
         async def aclose(self):
@@ -825,6 +974,7 @@ def create_governed_agent(provider, *, client, middleware=(), default_options=No
         raise ValueError("each agent requires its own governance provider and bundle")
     hooks = provider.middleware()
     _check_client_middleware(client)
+    _check_model_config(provider, client, kwargs, default_options or {})
     _check_tools(kwargs.get("tools") or [])
     installed = _middleware_entries(middleware)
     if any(isinstance(m, MiddlewareBundle) and m is not hooks for m in installed):
@@ -837,6 +987,7 @@ def create_governed_agent(provider, *, client, middleware=(), default_options=No
     _check_extra_middleware([m for m in installed if m is not hooks])
     _check_run_options(kwargs)
     _check_run_options(default_options or {})
+    installed.insert(0, _ModelScope(provider))
     installed.insert(0, _ExecutionScope(provider, client))
     installed.extend([_RunBoundary(provider), _ChatBoundary(provider), _FunctionBoundary(provider)])
     agent = Agent(
@@ -849,6 +1000,9 @@ def create_governed_agent(provider, *, client, middleware=(), default_options=No
         _check_client_middleware(client)
         _check_client_middleware(agent.client)
         _check_model_transport(agent.client, provider)
+        _check_model_config(provider, agent.client, run_kwargs, {
+            "compaction_strategy": agent.compaction_strategy,
+        })
         _check_run_options(run_kwargs)
         return run(*args, **run_kwargs)
     agent.run = checked_run

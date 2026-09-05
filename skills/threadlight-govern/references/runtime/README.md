@@ -51,8 +51,8 @@ tool list after constructor defaults, call-time options, progressive tool exposu
 and middleware merges; native option/`client_kwargs`/`extra_body` tool overrides
 and Chat Completions `web_search_options` cannot hide provider-hosted execution.
 Unbound local functions remain permitted. This assumes the pinned client pipeline.
-The model-dispatch guard runs at `BaseChatClient._inner_get_response`, after awaited
-compaction/preparation. Native OpenAI clients additionally use a copied SDK/HTTP
+The model-dispatch guard runs at `BaseChatClient._inner_get_response`, after native
+preparation. Native OpenAI clients additionally use a copied SDK/HTTP
 client with guarded default **and mounted** `AsyncBaseTransport`s: authorization is
 checked after awaited HTTP request hooks/authentication and on each retry/redirect,
 immediately before transport dispatch. Original clients, hooks and connection pools
@@ -71,6 +71,48 @@ Tool-only bindings do not impose unrelated model-egress requirements; other
 lifecycle selections retain only their own documented tool/output boundaries.
 The pinned Foundry project client obtains its OpenAI client normally; this adapter
 copies and guards that HTTP path without changing the project or its credentials.
+
+### Selected pre-model scope: invariant targeting only
+
+In enforce mode, `pre_model_call` binds the **native hook's message projection**
+to its successful ACS decision / exact approval emission. Immediately before
+provider preparation, the adapter compares the actual messages with that authorized
+target using MAF's owning codec, not provider wire bytes. ACS message transforms
+are compared with their authorized, write-back-canonical target, not the original.
+The options and local tool definitions present when that hook begins must also
+remain invariant through application middleware. Those settings are host-owned
+configuration constraints: the pinned hook exposes messages (and model identity),
+**not a policy evaluation of every provider option or tool inventory**.
+
+Any later unauthorized message/configuration change fails closed with
+`threadlight:model_target_changed`; a configured spool receives a payload-free
+denial linked to the original authorization, and no model dispatch occurs.
+There is no automatic reevaluation/reapproval loop. The copied HTTP client snapshots
+the pinned provider's generated JSON before request hooks/authentication and checks
+both cached content and the actual replayable `httpx.ByteStream` at final transport,
+including retries. Other request body producers are unsupported in this scope.
+JSON whitespace/key ordering is
+irrelevant; native role/content/instruction serialization happens before that
+snapshot and is not mistaken for a hook-target mutation.
+
+**All post-policy native compaction is unsupported for selected pre-model enforce
+bindings**, even a no-op strategy: client, agent, per-run and middleware-supplied
+strategies fail with `threadlight:unsupported_model_compaction`, before the strategy
+can summarize, truncate or dispatch. This is not a blacklist of named strategies.
+Constructor/run configuration is checked before application effects; late injected
+configuration is rejected at the chat/preparation boundary with a denial receipt.
+Native token-only annotation remains supported. Custom message preparers and
+`input`/`messages` option-body replacements are likewise rejected
+(`threadlight:unsupported_model_preparer` / `threadlight:unsupported_model_override`).
+Do any desired compaction **before** entering this governed model scope, so the
+actual compacted messages receive their own policy decision and approval.
+Tool-only bindings do not impose these model-scope restrictions.
+
+Startup/input decisions authorize their own native seam projections; their later
+lifetime checks do **not** mean the full eventual model request was evaluated there.
+Instructions, history and later authorized input/pre-model transforms can legitimately
+change the request. Select `pre_model_call` to authorize the final message scope;
+this adapter does not claim every earlier lifecycle target remains identical.
 
 ## Selection and failure semantics
 
@@ -102,10 +144,18 @@ copies and guards that HTTP path without changing the project or its credentials
   runs, and the invocation remains an error, not a successful substitute. Unbound
   callables and the original caller-owned tool objects are unchanged. Framework
   termination and human-input control flow remain native.
-- Selected Pydantic tools also guard the **pre-hook** native validation entry:
+- Selected tools also guard the **whole pre-hook** native argument pipeline:
   a host-owned input-model subclass retains field types, constraints, validators
-  and schema while sanitizing failures from `model_validate` (also JSON/string
-  variants) and native `model_dump`. Failures become
+  and schema, delegates validation once to the original model (also JSON/string
+  variants), and returns a guarded serialization holder. This also covers root/wrap
+  validators returning a different model or arbitrary object. Serialization lookup,
+  field/model serializers, and the pinned SDK's actual downstream lightweight
+  schema checker run inside the private boundary. Only a successfully checked plain
+  argument dictionary reaches the native schema check outside hooks. Schema-only
+  tools take this same path through a dictionary root model; unbound tools remain
+  untouched. This reuses the actual native schema/enum/type rules, not a replacement
+  validator or an additional validation package. User validators/serializers are
+  not repeated on the unchanged execution path. Failures become
   `TypeError("threadlight:invalid_arguments")` without exception context or Pydantic
   input fields. MAF returns a failed argument-parsing result, including with detailed
   errors enabled, not a successful replacement. The shared input-model class is
