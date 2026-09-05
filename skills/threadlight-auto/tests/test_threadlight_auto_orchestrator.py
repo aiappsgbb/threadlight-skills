@@ -110,6 +110,7 @@ def test_actual_dag_validates_gates_before_deploy_and_invoke(tmp_path, monkeypat
         if stage == "governance_probe":
             fresh, _, _, _ = live_fixture(now=clock[0], target=current["expected_target"])
             fresh["policy_bundle"] = value["policy_bundle"]
+            fresh["collection_evidence"]["verified_policies"] = value["collection_evidence"]["verified_policies"]
             write(root, ".threadlight/governance-live.json", {
                 "governance_manifest": fresh, "governance_gaps": []})
         return 0
@@ -303,6 +304,12 @@ def test_real_redeploy_replan_requires_new_attempt_proof(tmp_path, monkeypatch, 
     monkeypatch.setattr(orch, "decide", plan)
     attempted = []
     prior_collection = (root / ".threadlight/governance-live.json").read_bytes()
+    # A pre-deploy gate assesses source/infra inputs that already exist.
+    for path in ("infra/main.bicep", "azure.yaml"):
+        dest = root / path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text("local deployment artifact\n")
+    assert orch.record_governed_actions_gate(root)
     def worker(stage):
         attempted.append(stage)
         clock[0] += timedelta(seconds=5)
@@ -324,6 +331,7 @@ def test_real_redeploy_replan_requires_new_attempt_proof(tmp_path, monkeypatch, 
                 now=clock[0] if probe_result != "old-timestamps" else clock[0] - timedelta(seconds=15),
                 target=current["expected_target"])
             fresh["policy_bundle"] = value["policy_bundle"]
+            fresh["collection_evidence"]["verified_policies"] = value["collection_evidence"]["verified_policies"]
             write(root, ".threadlight/governance-live.json",
                   {"governance_manifest": fresh, "governance_gaps": []})
             clock[0] += timedelta(seconds=1)
@@ -385,6 +393,9 @@ def test_cli_records_actual_deploy_attempt_without_changing_cloud_artifacts(tmp_
 
 
 def test_attempt_must_start_before_completion_and_interruption_invalidates(tmp_path, monkeypatch):
+    sys.path.insert(0, str(REPO / "skills/threadlight-production-ready/tests"))
+    from test_governed_actions_manifest import make_committed_target, _golden
+    tmp_path = make_committed_target(tmp_path, _golden())
     from skills._shared.tests.governance_consumer_fixtures import live_fixture, write
     from skills._shared import governance_readiness
     value, document, current, _ = live_fixture()
@@ -392,6 +403,7 @@ def test_attempt_must_start_before_completion_and_interruption_invalidates(tmp_p
     write(tmp_path, "specs/governance-manifest.json", value)
     write(tmp_path, ".threadlight/governance-live.json", {"governance_manifest": value, "governance_gaps": []})
     monkeypatch.setattr(governance_readiness, "current_context", lambda root: current)
+    assert orch.record_governed_actions_gate(tmp_path)
     assert not orch.record_deploy_completed(tmp_path)
     orch.record_deploy_started(tmp_path)
     assert orch._check_governance_probe(tmp_path, {}).decision == "run"

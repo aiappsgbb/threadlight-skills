@@ -11,6 +11,52 @@ class ProbeEvidenceError(ValueError):
     pass
 
 
+def policy_bindings(config, *, as_of=None):
+    """Fingerprint complete current artifacts; this function does NOT verify signatures."""
+    import base64
+    import hashlib
+    from pathlib import Path
+    from govern_control_plane.models import SignedBundle, canonical, parse
+    from govern_bundle.policy_bundle import verify_bundle
+    as_of = as_of or datetime.now(timezone.utc)
+    result = {}
+    for name in ("policy", "native_policy") if config["producer"] == "native" else ("policy",):
+        policy = config[name]
+        signed = parse(SignedBundle, canonical(policy["signed"]))
+        base64.b64decode(signed.signature, validate=True)
+        envelope = signed.envelope
+        require(envelope.tenant_id == config["tenant_id"]
+                and envelope.key_id == policy["key_id"]
+                and envelope.policy_id == policy["policy_id"]
+                and envelope.version == policy["policy_version"]
+                and envelope.content_digest == policy["policy_digest"]
+                and envelope.expires_at > as_of, "current-signed-policy-mismatch")
+        verify_bundle(Path(policy["bundle_path"]), expected_digest=envelope.content_digest)
+        result[name] = {
+            "signed_bundle_sha256": "sha256:" + hashlib.sha256(canonical(policy["signed"])).hexdigest(),
+            "bundle_digest": envelope.content_digest,
+            "expires_at": envelope.model_dump(mode="json")["expires_at"],
+        }
+    return result
+
+
+def validate_policy_bindings(bindings, producer, policy_bundle, finished_at):
+    import re
+    names = {"policy", "native_policy"} if producer == "native" else {"policy"}
+    require(isinstance(bindings, dict) and set(bindings) == names, "complete-policy-chain-required")
+    for value in bindings.values():
+        require(isinstance(value, dict) and set(value) == {
+            "signed_bundle_sha256", "bundle_digest", "expires_at"}, "invalid-policy-binding")
+        require(all(isinstance(value[k], str) and re.fullmatch(r"sha256:[0-9a-f]{64}", value[k])
+                    for k in ("signed_bundle_sha256", "bundle_digest")), "invalid-policy-binding-digest")
+        expiry = datetime.fromisoformat(value["expires_at"].replace("Z", "+00:00"))
+        require(expiry.tzinfo is not None and expiry > finished_at, "verified-policy-expired")
+    runtime = bindings["native_policy" if producer == "native" else "policy"]
+    require(policy_bundle["signature_verified"] is True
+            and policy_bundle["digest"] == runtime["bundle_digest"]
+            and policy_bundle["expires_at"] == runtime["expires_at"], "verified-policy-provenance-mismatch")
+
+
 def require(condition, reason):
     if not condition:
         raise ProbeEvidenceError(reason)

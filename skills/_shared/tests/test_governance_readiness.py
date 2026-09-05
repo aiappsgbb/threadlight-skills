@@ -21,6 +21,21 @@ def test_current_protocol_is_required_and_validated():
     assert result["live"] is True
 
 
+@pytest.mark.parametrize("producer", ["native", "gateway"])
+def test_collection_schema_requires_exact_signature_dependency_chain(producer):
+    import json
+    from pathlib import Path
+    import jsonschema
+    value, _, _, _ = live_fixture()
+    evidence = value["collection_evidence"]
+    evidence["registration_scope"]["producer"] = producer
+    if producer == "gateway":
+        evidence["verified_policies"]["native_policy"] = deepcopy(evidence["verified_policies"]["policy"])
+    schema = json.loads((Path(__file__).resolve().parents[1] / "governance-manifest.schema.json").read_text())
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(value, schema)
+
+
 @pytest.mark.parametrize("mutation", [
     "fake-status", "expired", "wrong-target", "wrong-receipt", "business", "lifecycle",
     "coverage", "duplicates", "nonce", "evaluate-only", "gap", "missing-current",

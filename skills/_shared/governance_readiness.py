@@ -5,7 +5,6 @@ No function in this module invokes a model, business tool, Azure or a probe.
 """
 from datetime import datetime, timedelta, timezone
 import importlib
-import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -16,55 +15,12 @@ from skills._shared.governance import (
 )
 from skills._shared.governance_configuration import configuration_digest
 from skills._shared.probe_evidence import ProbeEvidenceError, require, require_target, require_selected_target
+from skills._shared.governance_selection import load_contract, read_json, parse_json, source_digest
+from skills._shared.probe_evidence import policy_bindings
 
 MANIFEST = "specs/governance-manifest.json"
 CONTRACT = "specs/governance-contract.json"
 COLLECTION = ".threadlight/governance-live.json"
-
-
-def read_json(path):
-    with Path(path).open("rb") as stream:
-        return parse_json(stream.read(2 * 1024 * 1024 + 1))
-
-
-def parse_json(raw):
-    def unique(pairs):
-        value = {}
-        for key, item in pairs:
-            if key in value:
-                raise ValueError("duplicate-json-key")
-            value[key] = item
-        return value
-    require(len(raw) <= 2 * 1024 * 1024, "governance-artifact-too-large")
-    value = json.loads(raw, object_pairs_hook=unique,
-                       parse_constant=lambda _: (_ for _ in ()).throw(ValueError("non-finite-json")))
-    require(isinstance(value, dict), "governance-artifact-must-be-object")
-    return value
-
-
-def load_contract(root, *, required=True):
-    root = Path(root)
-    documents = []
-    if (root / CONTRACT).exists():
-        documents.append(read_json(root / CONTRACT))
-    manifest = root / "specs/manifest.json"
-    if manifest.exists():
-        value = read_json(manifest)
-        require(not {"governance_mode", "governanceMode"} & value.keys(),
-                "unsupported-governance-selector")
-        if "governance" in value:
-            documents.append({k: value[k] for k in ("framework", "governance", "tools")})
-    if (root / "specs/SPEC.md").exists():
-        producer = importlib.import_module("skills.threadlight-govern.scripts.govern_check")
-        document, _, _ = producer._spec_contract(root)
-        if document is not None:
-            documents.append(document)
-    if not documents and not required:
-        return None
-    require(bool(documents), "explicit-governance-contract-missing")
-    normalized = [validate_governance_contract(d, deployment_target="demo-sandbox") for d in documents]
-    require(all(d == normalized[0] for d in normalized), "governance-contract-mirrors-disagree")
-    return documents[0]
 
 
 def selected(document):
@@ -108,15 +64,17 @@ def current_context(root):
             if key in deployment:
                 require_selected_target(target, {field: deployment[key]})
     policy = config["native_policy"] if config["producer"] == "native" else config["policy"]
-    envelope = policy["signed"]["envelope"]
-    require(envelope["content_digest"] == policy["policy_digest"], "current-policy-mismatch")
+    bindings = policy_bindings(config)
+    from govern_control_plane.models import SignedBundle, canonical, parse
+    envelope = parse(SignedBundle, canonical(policy["signed"])).envelope.model_dump(mode="json")
     return {
         "contract": config["contract"], "expected_target": target,
         "declared_selection": config["selection"],
         "producer": config["producer"], "configuration": collector.configuration_projection(config),
         "declared_file_digests": config["declared_file_digests"],
+        "policy_bindings": bindings,
         "policy_bundle": {"id": envelope["policy_id"], "version": envelope["version"],
-                          "digest": envelope["content_digest"], "signature_verified": True,
+                          "digest": envelope["content_digest"],
                           "expires_at": envelope["expires_at"]},
     }
 
@@ -228,7 +186,11 @@ def evaluate(manifest, document, *, current=None, now=None):
                        evidence["registration_scope"]["registration"]["deployment"])
         require(evidence["expected_target"] == current["expected_target"], "current-target-mismatch")
         require(evidence["declared_selection"] == current["declared_selection"], "current-selection-mismatch")
-        require(manifest["policy_bundle"] == current["policy_bundle"], "current-policy-provenance-mismatch")
+        require({k: v for k, v in manifest["policy_bundle"].items() if k != "signature_verified"}
+                == current["policy_bundle"], "current-policy-provenance-mismatch")
+        require(evidence["verified_policies"] == current["policy_bindings"], "current-signed-policy-chain-mismatch")
+        require(all(now < _time(p["expires_at"]) for p in evidence["verified_policies"].values()),
+                "signed-policy-chain-expired")
         require(now < _time(manifest["policy_bundle"]["expires_at"]), "policy-expired")
         require(evidence["configuration"]["declared"] == current["configuration"]
                 and evidence["configuration"]["declared_file_digests"] == current["declared_file_digests"],
@@ -286,8 +248,8 @@ def assess(root, *, now=None, required_target=None):
         for evidence in manifest.get("offline_evidence", []):
             if evidence["reason_code"] == "contract-declared-only":
                 source = evidence["source"]
-                require(source in {CONTRACT, "specs/SPEC.md"}, "inventory-source-invalid")
-                actual = "sha256:" + hashlib.sha256((root / source).read_bytes()).hexdigest()
+                require(source in {CONTRACT, "specs/SPEC.md", "specs/manifest.json"}, "inventory-source-invalid")
+                actual = source_digest(root, source)
                 require(actual == evidence["sha256"], "inventory-source-changed")
         current = None
         needs_context = is_selected or any(

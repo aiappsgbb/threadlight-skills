@@ -152,6 +152,15 @@ def live_fixture(*, environment="preproduction", now=None, target=None):
                                "producer": {"GATEWAY_CONFIG_JSON": DIGEST}, "fixture": {}}}
     policy = {"id": "safe", "version": "1", "digest": DIGEST, "signature_verified": True,
               "expires_at": (now + timedelta(minutes=9)).isoformat()}
+    # Protocol-only test signature and hash: no cryptographic verification claim.
+    policies = {"policy": {
+        "signed_bundle_sha256": digest({"envelope": {
+            "policy_id": "safe", "version": "1", "content_digest": DIGEST,
+            "expires_at": policy["expires_at"], "tenant_id": target["tenant"],
+            "key_id": "https://test.vault.azure.net/keys/test/version"},
+            "signature": "dGVzdC1zaWduYXR1cmU="}),
+        "bundle_digest": DIGEST, "expires_at": policy["expires_at"],
+    }}
     value = {
         "schema": "threadlight-governance-manifest/v1",
         "agent": {"runtime": document["framework"], "version": "1", "image_digest": DIGEST},
@@ -163,12 +172,15 @@ def live_fixture(*, environment="preproduction", now=None, target=None):
             "observed_target": {**target, "source": "azure-arm-and-foundry", "configuration_digests": projection["agent"]},
             "expected_target": target, "started_at": started.isoformat(), "finished_at": finished.isoformat(),
             "registration_scope": scope, "records": records,
+            "verified_policies": deepcopy(policies),
             "configuration": {"declared": projection, "observed": projection,
                               "file_visibility": "image-and-mounted-file-interiors-not-observed-by-azure",
                               "declared_file_digests": {"host": DIGEST, "fixture": DIGEST}},
         },
     }
-    current = {"contract": document, "expected_target": target, "policy_bundle": policy,
+    current = {"contract": document, "expected_target": target,
+               "policy_bundle": {k: v for k, v in policy.items() if k != "signature_verified"},
+               "policy_bindings": policies,
                "declared_selection": {"requested_version": "1"},
                "configuration": projection, "declared_file_digests": {"host": DIGEST, "fixture": DIGEST},
                "producer": "gateway"}

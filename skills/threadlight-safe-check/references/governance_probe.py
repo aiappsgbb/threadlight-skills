@@ -29,6 +29,7 @@ from skills._shared.governance import validate_governance_contract
 from skills._shared.probe_evidence import (
     ProbeEvidenceError, require, state, fresh, advance, evaluate_pair,
     require_target, require_selected_target,
+    policy_bindings,
 )
 from skills._shared.governance_configuration import (
     AGENT_ENVIRONMENT, SERVICE_ENVIRONMENT, DECLARED_FILES,
@@ -255,6 +256,8 @@ async def collect(config, *, credential, signer, run=observation.run_command, ht
                 await verify_native(native, config["tenant_id"], signer)
             else:
                 require(registry.native_policy_digest is None, "gateway-policy-association-invalid")
+        # Only reached after trusted-key cryptographic verification of every dependency.
+        verified_policies = policy_bindings(config)
         target = await asyncio.to_thread(observation.observe, config["selection"], run)
         report["observed_target"] = target
         require_selected_target(expected, required_target if required_target is not None else {})
@@ -343,6 +346,8 @@ async def collect(config, *, credential, signer, run=observation.run_command, ht
             policy.fresh()
             if config["producer"] == "native":
                 await verify_native(config["native_policy"], config["tenant_id"], signer)
+            require(policy_bindings(config) == verified_policies, "signed-policy-changed-during-collection")
+            report["verified_policies"] = verified_policies
             finished = now()
             report["started_at"], report["finished_at"] = started.isoformat(), finished.isoformat()
             report["governance_probes"] = evaluate_pair(
@@ -396,6 +401,7 @@ def manifest(report, config):
             "source": report["provenance"], "declared_selection": report["declared_selection"],
             "observed_target": target, "started_at": report["started_at"], "finished_at": report["finished_at"],
             "expected_target": report["expected_target"], "configuration": report["configuration_evidence"],
+            "verified_policies": report["verified_policies"],
             "registration_scope": report["registration_scope"], "records": report["probe_evidence"]},
     }
     return validate_governance_manifest(value)

@@ -712,6 +712,22 @@ def test_collector_actual_copilot_invocations_mcp_gateway_fixture(tmp_path, monk
                 assert len(effects.store.docs) == 2
                 assert all(p["receipt"]["policy_digest"] == config["policy"]["policy_digest"]
                            for p in report["probe_evidence"])
+                if staged_project is True:
+                    from skills._shared import governance_readiness as readiness
+                    from skills._shared.tests.governance_consumer_fixtures import write
+                    write(project, "specs/governance-manifest.json", report["governance_manifest"])
+                    write(project, ".threadlight/governance-live.json", report)
+                    assert readiness.assess(project)["live"]
+                    bindings = report["governance_manifest"]["collection_evidence"]["verified_policies"]
+                    assert set(bindings) == {"policy"}
+                    path = project / "src/govern-gateway/policy-envelope.json"
+                    original = path.read_bytes()
+                    changed = json.loads(original)
+                    changed["signature"] = base64.b64encode(b"valid-shape-not-verified").decode()
+                    path.write_text(json.dumps(changed))
+                    assert not readiness.assess(project)["live"]
+                    path.write_bytes(original)
+                    assert readiness.assess(project)["live"]
             finally:
                 server.should_exit = True
                 await asyncio.wait_for(task, 10)

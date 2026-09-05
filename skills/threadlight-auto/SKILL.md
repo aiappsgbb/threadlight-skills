@@ -109,6 +109,16 @@ start after that exact successful attempt; file modification times are not proof
 The programmatic driver records these transitions automatically. Do not edit
 collector timestamps or cloud history to satisfy a checkpoint.
 
+The pre-deploy fingerprint covers normalized selection, policy/configuration,
+scope, source files and actual host wiring. Parent runtime FQDN, image digest and
+agent-version outputs do not invalidate that authorization; completed attempts
+separately bind those outputs for subsequent Task11 verification. Source, tools,
+policy, scopes and non-output configuration changes still require a new gate.
+Interrupted/failed attempts force an actual deploy retry even if an old FQDN
+exists. A successfully completed unchanged attempt may resume its proof without
+redeploying. With no governance selection, the legacy `govern` worker remains
+advisory and cannot assert live enforcement; malformed selections remain blocked.
+
 Contract JSON, parent manifest declarations and SPEC YAML use the shared contract
 validator. Malformed declarations, unsupported mode aliases, duplicate keys or
 conflicting mirrors produce `invalid-governance-configuration` and block all

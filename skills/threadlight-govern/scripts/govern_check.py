@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
-import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -15,6 +13,7 @@ if str(ROOT) not in sys.path:
 from skills._shared.governance import (
     BINDING_STATUSES, validate_governance_contract, validate_governance_manifest,
 )
+from skills._shared.governance_selection import discover_contract, spec_contract, source_digest
 
 VERSION = "1.0.0"
 MANIFEST_SCHEMA = "threadlight-governance-manifest/v1"
@@ -41,70 +40,11 @@ def _empty(reason="contract-missing"):
 
 
 def _contract(root):
-    if __package__:
-        from .policy_bundle import checked_path, _read_file
-    else:
-        from policy_bundle import checked_path, _read_file
-    path = root / "specs/governance-contract.json"
-    if path.exists() or path.is_symlink():
-        from skills._shared.governance_readiness import parse_json
-        data = _read_file(checked_path(path))
-        return parse_json(data), path, data
-    return _spec_contract(root)
+    return discover_contract(root, required=False)
 
 
 def _spec_contract(root):
-    """Locate declarations without interpreting invalid/missing fields as governance off."""
-    if __package__:
-        from .policy_bundle import checked_path, _read_file
-    else:
-        from policy_bundle import checked_path, _read_file
-    path = root / "specs/SPEC.md"
-    if path.exists() or path.is_symlink():
-        import yaml
-
-        class SpecLoader(yaml.SafeLoader):
-            def construct_mapping(self, node, deep=False):
-                mapping = {}
-                for key_node, value_node in node.value:
-                    key = self.construct_object(key_node, deep=deep)
-                    if not isinstance(key, str) or key in mapping:
-                        raise ValueError("SPEC governance mapping key invalid or duplicated")
-                    mapping[key] = self.construct_object(value_node, deep=deep)
-                return mapping
-
-        # YAML 1.2 booleans leave the documented governance mode "off" a string.
-        SpecLoader.yaml_implicit_resolvers = {
-            key: [(tag, pattern) for tag, pattern in resolvers
-                  if tag != "tag:yaml.org,2002:bool"]
-            for key, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
-        }
-        SpecLoader.add_implicit_resolver(
-            "tag:yaml.org,2002:bool", re.compile(r"^(?:true|false)$", re.I), list("tTfF"),
-        )
-        data = _read_file(checked_path(path))
-        text = data.decode("utf-8")
-        candidates = []
-        declaration = re.compile(
-            r'(?im)^\s*(?:[-*]\s*)?(?:\*\*|`)?governance(?:[_ ]?mode)?(?:\*\*|`)?\s*:'
-            r'|["\']governance(?:_mode|Mode)?["\']\s*:'
-            r'|^#{1,6}\s+(?:\d+[a-z]?\.\s*)?Runtime Governance Contract\b')
-        for block in re.findall(r"```(?:yaml|yml)\s*\n(.*?)```", text, re.S):
-            try:
-                document = yaml.load(block, Loader=SpecLoader)
-            except (yaml.YAMLError, ValueError):
-                if declaration.search(block):
-                    raise ValueError("SPEC governance YAML invalid") from None
-                continue
-            if isinstance(document, dict) and any(
-                    key in document for key in ("governance", "governance_mode", "governanceMode")):
-                candidates.append(document)
-        if not candidates and not declaration.search(text):
-            return None, None, None
-        if len(candidates) != 1:
-            raise ValueError("SPEC must contain exactly one explicit governance contract")
-        return candidates[0], path, data
-    return None, None, None
+    return spec_contract(root)
 
 
 def evaluate(root: str, freshness_days: int = 90, *, bundle_path: str | None = None) -> dict:
@@ -119,7 +59,7 @@ def evaluate(root: str, freshness_days: int = 90, *, bundle_path: str | None = N
     man["agent"]["runtime"] = contract["framework"]
     evidence = man["offline_evidence"][0]
     evidence.update(source=path.relative_to(root).as_posix(),
-                    sha256="sha256:" + hashlib.sha256(data).hexdigest(),
+                    sha256=source_digest(root, path.relative_to(root).as_posix(), data),
                     reason_code="contract-declared-only")
     policy_root = checked_path(root / (bundle_path or "policies"))
     if not policy_root.is_relative_to(root):

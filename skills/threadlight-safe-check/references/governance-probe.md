@@ -195,6 +195,18 @@ receipts. On completed collection, `governance_manifest` uses the shared
 does not fabricate wheel-provenance fields from service health. Static reports
 identify pre-image facts that cannot yet be verified without calling them enforced.
 
+`collection_evidence.verified_policies` is required for current assurance. Only
+after trusted-key signature verification does the collector record the canonical
+SHA-256 of each **complete SignedBundle** (signature and every envelope field),
+its verified bundle digest and expiry. Native collection includes both `policy`
+(the post-image association registry) and `native_policy`; gateway includes
+`policy`. Offline readiness validates the complete current schemas and bundle
+bytes, then matches those exact fingerprints to the bounded, fresh collection
+chain. It does not perform network verification or manufacture a
+`signature_verified` claim from a digest. Missing signatures, valid-shape changed
+signatures, key/tenant/metadata changes, expiry, and old proofs without this
+binding cannot pass. Legacy records are migration provenance only.
+
 `skills._shared.probe_evidence.evaluate_pair` and the shared manifest validator
 are the reusable evidence evaluators. Native receipt hashes use the actual
 native hook-context digest committed at interception; fixture/gateway wire action

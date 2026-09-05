@@ -61,8 +61,25 @@
       },
       "collection_evidence": {
         "type": "object", "additionalProperties": false,
-        "required": ["source", "declared_selection", "observed_target", "started_at", "finished_at", "registration_scope", "records", "expected_target", "configuration"],
+        "allOf": [{
+          "if": {
+            "properties": {"registration_scope": {
+              "required": ["producer"], "properties": {"producer": {"const": "native"}}
+            }},
+            "required": ["registration_scope"]
+          },
+          "then": {"properties": {"verified_policies": {"required": ["policy", "native_policy"]}}},
+          "else": {"properties": {"verified_policies": {"maxProperties": 1}}}
+        }],
+        "required": ["source", "declared_selection", "observed_target", "started_at", "finished_at", "registration_scope", "records", "expected_target", "configuration", "verified_policies"],
         "properties": {
+          "verified_policies": {
+            "type": "object", "required": ["policy"], "additionalProperties": false,
+            "properties": {
+              "policy": {"$ref": "#/definitions/verifiedPolicy"},
+              "native_policy": {"$ref": "#/definitions/verifiedPolicy"}
+            }
+          },
           "source": {"const": "authenticated-service-reads-and-azure-observation-not-attestation"},
           "declared_selection": {"type": "object"}, "observed_target": {"type": "object"},
           "expected_target": {"type": "object"}, "configuration": {"type": "object"},
@@ -71,6 +88,16 @@
           "records": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "object"}}
         }
       }
+    }
+  },
+  "verifiedPolicy": {
+    "description": "Exact full SignedBundle fingerprint emitted only after collector trusted-key verification; not an uploaded-file attestation.",
+    "type": "object", "additionalProperties": false,
+    "required": ["signed_bundle_sha256", "bundle_digest", "expires_at"],
+    "properties": {
+      "signed_bundle_sha256": {"$ref": "#/definitions/sha256Digest"},
+      "bundle_digest": {"$ref": "#/definitions/sha256Digest"},
+      "expires_at": {"type": "string", "format": "date-time"}
     }
   },
   "runtimeManifest": {
