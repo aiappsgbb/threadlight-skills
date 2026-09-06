@@ -137,11 +137,11 @@ def test_real_native_effect_boundary_rechecks_bootstrap_after_await(tmp_path):
 
             async def act(amount: int = 1):
                 entered.append("tool")
-                authorization = runtime().require_effect_authorization("act", {"amount": amount})
+                authorization = await runtime().require_effect_authorization_async("act", {"amount": amount})
                 entered.append("authorized")
                 await asyncio.sleep(0)
                 signed.binding.__dict__["expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
-                authorization()
+                await authorization()
                 effects.append("terminal")
                 return "done"
 
@@ -307,6 +307,28 @@ def test_remote_gateway_stages_distinct_final_immutable_policy_version(tmp_path)
         "gateway_bundle": str(final.root), "policy_digest": final.bundle_digest,
         "signed_envelope": str(signed_path), "agent_image": deployment["images"]["agent"]})
     assert staged["policy_digest"] == final.bundle_digest
+    # The installed collector runs without checkout imports, against this exact
+    # generated final package. A valid v2 final envelope must not be checked as v1.
+    import subprocess
+    check = subprocess.run([sys.executable, "-I", "-c",
+        "import json,sys; from pathlib import Path; "
+        "from governance_references.governance_static import check; "
+        "print(json.dumps(check(Path(sys.argv[1]), json.loads(sys.argv[2]))))",
+        str(project), json.dumps(document)], cwd=project, capture_output=True, text=True)
+    assert check.returncode == 0, check.stderr
+    result = json.loads(check.stdout)
+    assert result["gaps"] == [], result["gaps"]
+    assert result["policy_trust"]["source"] == "staged-envelope"
+    assert result["policy_trust"]["digest"] == final.bundle_digest
+    deployment["bindings"].update(policy_version="2", policy_digest=final.bundle_digest)
+    deployment.update(gateway_bundle=str(final.root), gateway_source_digest=staged["gateway_source_digest"])
+    gen.bind(project, document, configuration=deployment)
+    bound = subprocess.run(check.args, cwd=project, capture_output=True, text=True)
+    assert bound.returncode == 0, bound.stderr
+    finalized = json.loads(bound.stdout)
+    assert finalized["gaps"] == [], finalized["gaps"]
+    assert finalized["policy_trust"]["source"] == "deployment-binding"
+    assert finalized["policy_trust"]["digest"] == final.bundle_digest
 
 
 @pytest.mark.governance_runtime

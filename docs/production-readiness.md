@@ -71,6 +71,11 @@ refund finalization remains blocked when prerequisites are incomplete. Its
 transport rechecks after credential awaits at the actual Cosmos dispatch.
 
 Every new deployment attempt requires fresh **after-deployment** collection.
+Remote attempts record start/completion timestamps and the exact bootstrap
+reference/canonical digest. The strict exporter requires that linkage to match
+both collected and current signed bindings. It exports only bounded summaries,
+including the public-proof/no-network-isolation disclosure—not configuration,
+credentials, raw diagnostics or signed-envelope payloads.
 Current file mtime, reused nonces or yesterday's green cannot satisfy it.
 The full signed envelope, key/signature, bundle, current environment/configuration
 and exact image/version/identity must still match the verified record; changing

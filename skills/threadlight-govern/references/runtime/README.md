@@ -67,7 +67,11 @@ The model-dispatch guard runs at `BaseChatClient._inner_get_response`, after nat
 preparation. Native OpenAI clients additionally use a copied SDK/HTTP
 client with guarded default **and mounted** `AsyncBaseTransport`s: authorization is
 checked after awaited HTTP request hooks/authentication and on each retry/redirect,
-immediately before transport dispatch. Original clients, hooks and connection pools
+and again at the public httpcore header/body-send trace events after connection
+pool and TLS waits. Existing caller trace hooks run first; authorization and wire
+identity are rechecked after their awaits. Remote bootstrap additionally performs
+bounded authenticated reauthorization, including current key health, not only a
+cached expiry check. Original clients, hooks and connection pools
 are not mutated; the caller owns pool shutdown. There is no public SDK getter for
 the HTTP client/mounts, so this pin-specific adapter reads those private references
 on host-owned copies; it does not modify installed SDK code or published pins.
@@ -144,12 +148,20 @@ this adapter does not claim every earlier lifecycle target remains identical.
 
 Async business tools must recheck authority **after** awaited preparation, not
 only at function entry. Inside the native selected pre-tool call, use
-`check = require_effect_authorization(tool_name, canonical_arguments)` and call
-`check()` immediately before the effect. Capture once; pass the returned recheck
+`check = await require_effect_authorization_async(tool_name, canonical_arguments)`
+and `await check()` immediately before the effect. Capture once; pass the returned recheck
 to the host-owned transport and run it again **after** credentials, request hooks,
 retry delays and transport setup. Freeze the intended target before those awaits
 and compare the actual serialized request at that final boundary. A backend must
 not reconstruct authorization from model metadata.
+
+The synchronous `require_effect_authorization` remains available for local-file
+integrations but fails closed when a remote bootstrap binding is selected.
+`bootstrap.check()` is only a local lease/expiry check, never live revocation
+authority. Async terminal rechecks call `bootstrap.authorize()` with a bounded
+deadline and revalidate the exact native lease after the network await. Sync
+tools queued to workers bridge the check to the owning event loop after the
+executor wait; they do not block that event loop or run credentials on a new loop.
 
 The recheck remains bound to the exact native emission, selected provider,
 principal/tenant, run scope and canonical argument hash. It checks the authenticated

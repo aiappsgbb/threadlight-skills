@@ -12,6 +12,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
+import inspect
 from importlib.metadata import version as distribution_version
 import json
 import os
@@ -313,8 +314,10 @@ class AuthorizedTransport(httpx.AsyncBaseTransport):
         ticket = _transport_ticket.get()
         if ticket is None or ticket["sent"]:
             raise GateError("transport_not_authorized")
-        def check():
-            ticket["guard"]()
+        async def check():
+            guarded = ticket["guard"]()
+            if inspect.isawaitable(guarded):
+                await guarded
             if (request.method != ticket["method"] or request.url != httpx.URL(ticket["endpoint"])
                     or type(request.stream) is not httpx.ByteStream
                     or b"".join(request.stream) != ticket["body"]
@@ -322,11 +325,11 @@ class AuthorizedTransport(httpx.AsyncBaseTransport):
                 raise GateError("wire_changed")
         async def trace(event, info):
             if event in ("http11.send_request_headers.started", "http11.send_request_body.started"):
-                check()
-        check()
+                await check()
+        await check()
         if ticket.get("on_dispatch") is not None:
             await ticket["on_dispatch"]()
-            check()
+            await check()
         ticket["sent"] = True
         # Replace, rather than trust, a request hook's trace callback.
         request.extensions["trace"] = trace
@@ -368,11 +371,13 @@ class DownstreamClient:
             if action.probe_safe:
                 headers["X-Probe-Run-ID"] = arguments["probe_run_id"]
                 headers["X-Requester-Client"] = facts["client"]
-            def final_check():
-                guard()
+            async def final_check():
+                checked = guard()
+                if inspect.isawaitable(checked):
+                    await checked
                 if token.expires_on <= time.time():
                     raise GateError("downstream_authentication_expired")
-            final_check()
+            await final_check()
             marker = _transport_ticket.set({
                 "method": method, "endpoint": endpoint, "body": content or b"",
                 "headers": dict(headers), "guard": final_check, "sent": False,
@@ -390,6 +395,7 @@ class DownstreamClient:
                             raise GateError("downstream_unavailable")
             finally:
                 _transport_ticket.reset(marker)
+            await final_check()
             reply = strict_json(bytes(raw))
             if not isinstance(reply, dict) or set(reply) != {"receipt_id", "result"}:
                 raise GateError("downstream_unavailable")

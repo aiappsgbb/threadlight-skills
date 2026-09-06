@@ -197,6 +197,7 @@ class BootstrapGate:
         self.invalid = self.closed = False
 
     def check(self):
+        """Local lease check only; live key/policy authority requires await authorize()."""
         if self.closed or self.invalid or self.signed is None:
             raise BootstrapUnavailable()
         fresh(self.signed.binding)

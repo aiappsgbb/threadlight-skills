@@ -113,7 +113,7 @@ class NativeProbeTelemetry:
         from agent_framework import FunctionTool
         from govern_control_plane.probes import PROBE_INPUT, PROBE_OUTPUT, hashed
         from govern_gateway.dispatcher import digest, validated
-        from .maf_agent_hooks_acs import _effect_authorization
+        from .maf_agent_hooks_acs import _effect_authorization, require_effect_authorization_async
 
         async def noop(probe_run_id: str, variant: str):
             authorization = _effect_authorization.get()
@@ -126,10 +126,12 @@ class NativeProbeTelemetry:
             await self.flush_entry(entry)
             probe = entry["probe"]
             args = validated({"probe_run_id": probe_run_id, "variant": variant}, PROBE_INPUT)
+            authorize = await require_effect_authorization_async(self.action.name, args)
             facts = {"tenant": probe.tenant, "subject": probe.subject, "client": self.client_id,
                      "action": self.action.name, "scope": self.action.scope,
                      "policy": probe.policy_digest, "deployment": probe.deployment.model_dump(mode="json")}
-            def guard():
+            async def guard():
+                await authorize()
                 self.provider._refresh()
                 self.service.fresh()
                 if not all(b["ready"] for b in self.provider._tool_bindings(self.action.name)):
@@ -140,7 +142,7 @@ class NativeProbeTelemetry:
                     action_hash=digest({"facts": facts, "arguments": args}),
                     provenance=entry["receipt_id"], facts=facts, guard=guard,
                     on_dispatch=lambda: self.service.dispatch(probe))
-                guard()
+                await guard()
                 output = validated(result["result"], PROBE_OUTPUT)
                 await self.service.complete(probe, terminal="completed")
                 return output

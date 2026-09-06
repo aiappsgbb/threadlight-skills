@@ -226,8 +226,13 @@ def count(value):
 
 
 def attempt(value):
-    require(isinstance(value, dict) and set(value) == {
-        "run_id", "run_attempt", "started_at", "completed_at"})
+    fields = {"run_id", "run_attempt", "started_at", "completed_at"}
+    remote = {"bootstrap_reference", "bootstrap_sha256"}
+    require(isinstance(value, dict) and (set(value) == fields or set(value) == fields | remote))
+    if remote <= value.keys():
+        from govern_control_plane.models import Identifier, Digest, canonical, parse
+        parse(Identifier, canonical(value["bootstrap_reference"]))
+        parse(Digest, canonical(value["bootstrap_sha256"]))
     identity = run_identity()
     require(value["run_id"] == identity["GITHUB_RUN_ID"]
             and value["run_attempt"] == identity["GITHUB_RUN_ATTEMPT"])
@@ -262,11 +267,27 @@ def governance(value, project, journal_value):
                 and evidence["verified_policies"] == current["policy_bindings"]
                 and evidence["configuration"]["declared"] == current["configuration"]
                 and evidence["configuration"]["declared_file_digests"] == current["declared_file_digests"])
+        if "bootstrap" in current or "bootstrap" in evidence or "bootstrap_reference" in deployment:
+            from govern_control_plane.bootstrap_assets import digest
+            from govern_control_plane.models import canonical
+            require(evidence.get("bootstrap") is not None and evidence.get("bootstrap") == current.get("bootstrap"))
+            require(deployment.get("bootstrap_reference") == evidence["bootstrap"]["binding"]["reference"]
+                   and deployment.get("bootstrap_sha256") == digest(canonical(evidence["bootstrap"])))
+        if "network_evidence" in current or "network_evidence" in evidence:
+            from skills._shared.governance_configuration import validate_network_evidence
+            require(evidence.get("network_evidence") == current.get("network_evidence"))
+            validate_network_evidence(evidence.get("network_evidence"))
     else:
         require("offline_evidence" in value)
-    return {"scope": "collection-not-readiness" if "collection_evidence" in value else "offline-inventory",
-            "coverage": {key: count(number) for key, number in value["coverage"].items()},
-            "gap_count": count(len(value["gaps"]))}
+    result = {"scope": "collection-not-readiness" if "collection_evidence" in value else "offline-inventory",
+              "coverage": {key: count(number) for key, number in value["coverage"].items()},
+              "gap_count": count(len(value["gaps"]))}
+    if "collection_evidence" in value:
+        if "bootstrap_reference" in deployment:
+            result.update({key: deployment[key] for key in ("bootstrap_reference", "bootstrap_sha256")})
+        if "network_evidence" in evidence:
+            result["network_evidence"] = dict(evidence["network_evidence"])
+    return result
 
 
 def validate_readiness(value):
@@ -288,9 +309,13 @@ def validate_readiness(value):
             "gaps": {"anyOf": [{"$ref": f"#/definitions/{kind}/properties/gaps"}
                                for kind in ("runtimeManifest", "offlineManifest", "collectedManifest")]},
             "live_receipts": {"type": "array", "items": {"type": "string", "maxLength": 512}},
+            "network_evidence": {"$ref": "#/definitions/collectedManifest/properties/collection_evidence/properties/network_evidence"},
         },
     }
     jsonschema.Draft7Validator(schema, format_checker=jsonschema.FormatChecker()).validate(value)
+    if "network_evidence" in value:
+        from skills._shared.governance_configuration import validate_network_evidence
+        validate_network_evidence(value["network_evidence"])
     require(value["live"] or not value.get("live_receipts"))
 
 
@@ -326,7 +351,8 @@ def projection(relative, value, project, journal_value):
             governance(recorded(project, journal_value, "specs/governance-manifest.json"), project, journal_value)
             require(value["status"] == "pass" and value["live"] and assess(project) == value)
         return {"status": value["status"], "live": value["live"],
-                "gap_count": count(len(value.get("gaps", [])))}
+                "gap_count": count(len(value.get("gaps", []))),
+                **({"network_evidence": dict(value["network_evidence"])} if "network_evidence" in value else {})}
     if relative == ".threadlight/readiness-attempt.json":
         return attempt(value)
     raise ValueError("unrecognized artifact")

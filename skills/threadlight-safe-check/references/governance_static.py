@@ -183,7 +183,8 @@ def check(project, document):
                                else signed.envelope.content_digest)
         bundle = verify_bundle(root, expected_digest=expected_digest)
         validate_native_manifest(bundle.root)
-        gen.validate_policy(bundle, signed, config)
+        policy_selection = gen.gateway_policy_selection(config) if final_gateway else config
+        gen.validate_policy(bundle, signed, policy_selection)
         if native and signed.model_dump(mode="json") != package["signed_policy"]:
             raise ValueError("frozen-signed-policy-changed")
         registry = None

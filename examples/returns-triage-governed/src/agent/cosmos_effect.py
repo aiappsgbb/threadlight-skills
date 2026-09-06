@@ -1,6 +1,7 @@
 """Selected batch guard at Azure Core's public, post-auth transport boundary."""
 from contextlib import contextmanager
 from contextvars import ContextVar
+import inspect
 import json
 from urllib.parse import unquote, urlsplit
 
@@ -12,6 +13,7 @@ from runtime.evidence import digest
 class CosmosEffectTransport(AsyncHttpTransport):
     def __init__(self, transport=None, *, endpoint):
         self._transport = transport if transport is not None else AioHttpTransport()
+        self._traced = False
         self._batch = ContextVar("returns_cosmos_batch", default=None)
         address = urlsplit(endpoint)
         if (address.scheme != "https" or not address.hostname or address.username or address.password
@@ -39,6 +41,27 @@ class CosmosEffectTransport(AsyncHttpTransport):
         await self.close()
 
     async def open(self):
+        if isinstance(self._transport, AioHttpTransport) and not self._traced:
+            if self._transport.session is not None:
+                raise ValueError("cosmos_effect_requires_owned_trace_session")
+            import aiohttp
+            trace = aiohttp.TraceConfig()
+            async def before_headers(session, context, params):
+                state = self._batch.get()
+                if state is not None and params.headers.get("x-ms-cosmos-is-batch-request") == "True":
+                    await self._authorize(state)
+                    self._wire(state, params.method, str(params.url), params.headers, state["wire_body"])
+            async def before_chunk(session, context, params):
+                state = self._batch.get()
+                if state is not None and params.method == "POST" and state.get("wire_body") is not None:
+                    await self._authorize(state)
+                    if digest(json.loads(params.chunk)) != state["body"]:
+                        reject_effect()
+            trace.on_request_headers_sent.append(before_headers)
+            trace.on_request_chunk_sent.append(before_chunk)
+            self._transport.session = aiohttp.ClientSession(
+                trust_env=False, cookie_jar=aiohttp.DummyCookieJar(), auto_decompress=False, trace_configs=[trace])
+            self._traced = True
         await self._transport.open()
 
     async def close(self):
@@ -46,6 +69,31 @@ class CosmosEffectTransport(AsyncHttpTransport):
 
     async def sleep(self, duration):
         await self._transport.sleep(duration)
+
+    async def _authorize(self, state):
+        checked = state["check"]()
+        if inspect.isawaitable(checked):
+            await checked
+
+    def _wire(self, state, method, url, headers, body):
+        valid = False
+        try:
+            address = urlsplit(url)
+            valid = (
+                state["active"] and method == "POST"
+                and (address.scheme, address.hostname, address.port or 443) == self._origin
+                and not address.username and not address.password and not address.query and not address.fragment
+                and unquote(address.path).rstrip("/") == state["path"]
+                and headers.get("x-ms-cosmos-is-batch-request") == "True"
+                and headers.get("x-ms-documentdb-isquery") != "True"
+                and headers.get("x-ms-cosmos-batch-atomic") == "True"
+                and headers.get("x-ms-cosmos-batch-continue-on-error") == "False"
+                and digest(json.loads(headers["x-ms-documentdb-partitionkey"])) == state["partition"]
+                and digest(json.loads(body)) == state["body"])
+        except (TypeError, ValueError, KeyError):
+            pass
+        if not valid:
+            reject_effect()
 
     @contextmanager
     def batch(self, check, container, partition_key, operations):
@@ -63,7 +111,6 @@ class CosmosEffectTransport(AsyncHttpTransport):
                  "path": "/" + container.container_link.strip("/") + "/docs", "active": True}
         token = self._batch.set(state)
         try:
-            check()
             yield
         finally:
             state["active"] = False
@@ -73,30 +120,14 @@ class CosmosEffectTransport(AsyncHttpTransport):
         # Credential acquisition and SDK retry/scheduling already completed.
         # Pre-open the delegate before checking, so transport setup cannot yield
         # between authorization and handing off the request.
-        await self._transport.open()
+        await self.open()
         state = self._batch.get()
         query = request.headers.get("x-ms-documentdb-isquery") == "True"
         batch = request.headers.get("x-ms-cosmos-is-batch-request") == "True"
         read_only = not batch and (request.method == "GET" or request.method == "POST" and query)
         if state is not None and not read_only:
-            state["check"]()
-            valid = False
-            try:
-                address = urlsplit(request.url)
-                valid = (
-                    state["active"] and request.method == "POST" and batch and not query
-                    and (address.scheme, address.hostname, address.port or 443) == self._origin
-                    and not address.username and not address.password and not address.query and not address.fragment
-                    and unquote(address.path).rstrip("/") == state["path"]
-                    and request.headers.get("x-ms-cosmos-is-batch-request") == "True"
-                    and request.headers.get("x-ms-cosmos-batch-atomic") == "True"
-                    and request.headers.get("x-ms-cosmos-batch-continue-on-error") == "False"
-                    and digest(json.loads(request.headers["x-ms-documentdb-partitionkey"])) == state["partition"]
-                    and digest(json.loads(request.body)) == state["body"]
-                )
-            except (TypeError, ValueError, KeyError):
-                pass
-            if not valid:
-                reject_effect()
-            state["check"]()
+            await self._authorize(state)
+            self._wire(state, request.method, request.url, request.headers, request.body)
+            state["wire_body"] = request.body
+            await self._authorize(state)
         return await self._transport.send(request, **kwargs)

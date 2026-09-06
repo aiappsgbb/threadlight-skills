@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from runtime import (
-    TrustedContextSnapshot, record_trusted_read, trusted_effect_snapshot, require_effect_authorization,
+    TrustedContextSnapshot, record_trusted_read, trusted_effect_snapshot, require_effect_authorization_async,
     reject_effect,
 )
 from runtime.evidence import digest
@@ -78,7 +78,7 @@ class ReturnsBackend:
 
     async def apply_decision(self, **arguments):
         arguments = deepcopy(arguments)
-        check = require_effect_authorization("returns_apply_decision", arguments)
+        check = await require_effect_authorization_async("returns_apply_decision", arguments)
         authorized = trusted_effect_snapshot()
         facts, identity = authorized["facts"], authorized["identity"]
         # This is a consistency boundary, not an alternative policy decision.
@@ -87,7 +87,7 @@ class ReturnsBackend:
         # Approval/audit delivery can yield after ACS. Re-read through the same
         # authority, including profile absence, before applying the case CAS.
         current = await self.trusted_context(identity, authorized["tool_call"], authorized["reads"])
-        check()
+        await check()
         if current.facts != facts:
             reject_effect()
         case = deepcopy(facts["case"])
@@ -131,7 +131,7 @@ class ReturnsBackend:
             # External SDK-protocol fixtures share the same pretransaction check.
             scope = nullcontext()
         with scope:
-            check()
+            await check()
             await self.container.execute_item_batch(
                 batch_operations=operations, partition_key=case["id"])
         return {"ok": True, "audit_id": audit_id}

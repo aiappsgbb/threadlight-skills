@@ -149,6 +149,7 @@ def test_protected_input_loader_accepts_only_pinned_acknowledged_resume(tmp_path
 def test_native_gate_runs_bootstrap_protocol_and_real_host_regressions():
     text = (ROOT / "scripts/ci/run-governance-pin-tests.py").read_text()
     for name in ("test_bootstrap_assets.py", "test_remote_bootstrap.py",
+                 "test_bootstrap_transport.py",
                  "test_native_bootstrap_assets.py", "test_remote_bootstrap_hosts.py",
                  "test_hosted_bootstrap_lifecycle.py", "test_public_authenticated_proof.py"):
         assert name in text

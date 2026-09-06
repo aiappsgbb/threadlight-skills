@@ -91,6 +91,7 @@ def deploy(project, config):
     from govern_control_plane.bootstrap import SignedBootstrap
     from govern_control_plane.bootstrap_assets import digest
     project = Path(project)
+    started_at = driver.utc()
     remote = config["remote_bootstrap"]
     creation = remote["creation_values"]
     validate_selection(config, creation)
@@ -145,8 +146,17 @@ def deploy(project, config):
     binding = parse(SignedBootstrap, canonical(driver.read(output)))
     if binding.binding.config_digest != digest(canonical(frozen)):
         raise ValueError("published_frozen_configuration_mismatch")
-    driver.write(project / driver.ATTEMPT, {
+    record_completed_attempt(project, binding, started_at=started_at)
+
+
+def record_completed_attempt(project, binding, *, started_at):
+    from scripts.ci import runtime_readiness as driver
+    from govern_control_plane.bootstrap import SignedBootstrap
+    from govern_control_plane.bootstrap_assets import digest
+    from govern_control_plane.models import canonical, parse
+    binding = parse(SignedBootstrap, canonical(binding))
+    driver.write(Path(project) / driver.ATTEMPT, {
         "run_id": os.environ["GITHUB_RUN_ID"], "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
-        "completed_at": driver.utc(), "bootstrap_reference": binding.binding.reference,
+        "started_at": started_at, "completed_at": driver.utc(), "bootstrap_reference": binding.binding.reference,
         "bootstrap_sha256": digest(canonical(binding)),
     })

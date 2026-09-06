@@ -231,6 +231,84 @@ def test_real_readiness_result_is_rechecked_without_exporting_reason_text(bounda
     assert value["evidence"] == {"status": "pass", "live": True, "gap_count": 0}
 
 
+@pytest.mark.parametrize("mutation", [None, "hash", "reference", "missing-start", "private-field", "missing-network"])
+def test_real_remote_attempt_and_public_readiness_export_sanitized_linkage(boundary, monkeypatch, mutation):
+    from datetime import timedelta
+    from scripts.ci import runtime_readiness, runtime_readiness_remote
+    from skills._shared import governance_readiness
+    from skills._shared.tests.governance_consumer_fixtures import live_fixture
+    from skills._shared.governance_configuration import public_proof_network_evidence
+    from govern_control_plane.bootstrap import BootstrapBinding, SignedBootstrap
+    from govern_control_plane.models import canonical, parse
+    assert callable(getattr(runtime_readiness_remote, "record_completed_attempt", None)), (
+        "remote attempt producer must include start time and bounded bootstrap linkage")
+    mod, project, state = boundary
+    manifest, document, current, now = live_fixture()
+    target = current["expected_target"]
+    binding = parse(BootstrapBinding, canonical({
+        "schema": "threadlight-hosted-bootstrap/v1", "reference": "attempt-1",
+        "tenant_id": target["tenant"], "principal": target["subject"], "client_id": target["client_id"],
+        **{key: target[key] for key in ("agent_id", "agent_version", "image_digest",
+                                       "environment", "subscription", "resource_group")},
+        "project_endpoint": "https://fixture.services.ai.azure.com/api/projects/fixture",
+        "key_id": "https://fixture.vault.azure.net/keys/policy/" + "a" * 32,
+        "policy_id": "safe", "policy_version": "1", "policy_digest": current["policy_bundle"]["digest"],
+        "native_policy_digest": current["policy_bundle"]["digest"], "config_digest": "sha256:" + "a" * 64,
+        "issued_at": (now - timedelta(seconds=60)).isoformat(),
+        "expires_at": (now + timedelta(minutes=5)).isoformat()}))
+    # Wire-protocol fixture only; exporter must not claim cryptographic attestation.
+    signed = SignedBootstrap(binding=binding, signature="dGVzdC1zaWduYXR1cmU=")
+    current["bootstrap"] = signed.model_dump(mode="json")
+    current["network_evidence"] = public_proof_network_evidence()
+    manifest["collection_evidence"].update(
+        bootstrap=current["bootstrap"], network_evidence=current["network_evidence"])
+    monkeypatch.setattr(governance_readiness, "current_context", lambda *_: current)
+    monkeypatch.setattr(runtime_readiness, "utc", lambda: (now - timedelta(seconds=10)).isoformat())
+    mod.begin_stage(state, project, "deploy")
+    runtime_readiness_remote.record_completed_attempt(
+        project, signed, started_at=(now - timedelta(seconds=20)).isoformat())
+    actual = json.loads((project / ".threadlight/readiness-attempt.json").read_text())
+    assert actual["started_at"] and actual["bootstrap_reference"] == binding.reference
+    if mutation == "hash":
+        actual["bootstrap_sha256"] = "sha256:" + "f" * 64
+    elif mutation == "reference":
+        actual["bootstrap_reference"] = "other-attempt"
+    elif mutation == "missing-start":
+        actual.pop("started_at")
+    elif mutation == "private-field":
+        actual["private_configuration"] = "PRIVATE"
+    put(project, ".threadlight/readiness-attempt.json", actual)
+    mod.finish_stage(state, project, "deploy", True)
+    mod.begin_stage(state, project, "postdeploy")
+    put(project, "specs/governance-contract.json", document)
+    put(project, "specs/governance-manifest.json", manifest)
+    put(project, ".threadlight/governance-live.json", {"governance_manifest": manifest, "governance_gaps": []})
+    result = governance_readiness.assess(project)
+    assert result["status"] == "pass" and result["network_evidence"] == current["network_evidence"]
+    if mutation == "missing-network":
+        result.pop("network_evidence")
+    put(project, "tests/runtime-readiness.json", result)
+    put(project, ".threadlight/private-configuration.json", {"token": "PRIVATE"})
+    (project / "raw.log").write_text("PRIVATE transport diagnostics")
+    mod.finish_stage(state, project, "postdeploy", True)
+    success = mod.export(state, project)
+    exported = state.parent / "upload"
+    if mutation is not None:
+        assert not success
+        assert not (exported / "runtime-readiness.json").exists()
+        assert all("PRIVATE" not in file.read_text() for file in exported.iterdir() if file.is_file())
+        return
+    assert success
+    attempt_summary = json.loads((exported / "deployment-attempt.json").read_text())["evidence"]
+    readiness_summary = json.loads((exported / "runtime-readiness.json").read_text())["evidence"]
+    assert attempt_summary["bootstrap_sha256"] == actual["bootstrap_sha256"]
+    assert readiness_summary["network_evidence"]["network_isolation"] == "not-established"
+    for file in exported.rglob("*"):
+        if file.is_file():
+            assert "PRIVATE" not in file.read_text()
+            assert "dGVzdC1zaWduYXR1cmU=" not in file.read_text()
+
+
 @pytest.mark.parametrize("poison", [None, "file", "symlink"])
 def test_upload_path_is_released_only_after_sanitized_export(boundary, monkeypatch, poison):
     mod, project, state = boundary

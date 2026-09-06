@@ -166,8 +166,10 @@ cross-case/customer scope, stale revisions, forbidden payments, idempotence,
 human-review failures/replay, and the real optional noop producer/fixture.
 Local RSA keys/JWTs and model/backend doubles are test-only, not tenant evidence.
 
-The write adapter captures the runtime's native terminal-effect recheck, compares
-the final reread, then checks again before the Cosmos transaction. Production
+The write adapter captures the runtime's asynchronous native terminal-effect
+recheck, compares the final reread, then awaits current authorization again before
+the Cosmos transaction. Remote bootstrap includes live signing-key/CP checks,
+not merely a cached lease. Production
 initialization supplies `CosmosEffectTransport` through the public `CosmosClient`
 `transport` argument. Its
 [`AsyncHttpTransport.send`](https://learn.microsoft.com/python/api/azure-core/azure.core.pipeline.transport.asynchttptransport)
@@ -180,6 +182,11 @@ unbound reads remain available. A real SDK container without the guarded transpo
 fails explicitly. The transport's `connect()` owns public client creation and
 records its container handles; passing an unrelated transport does not satisfy
 that requirement. No installed SDK code, policy bytes or foreign hooks are patched.
+The owned aiohttp session also rechecks through public pre-write tracing after
+pool/TLS waits, before headers and body chunks are transmitted. A pre-opened
+foreign aiohttp session cannot silently omit these guards. Loopback regressions
+use the actual Cosmos SDK/AioHTTP transport and a real TLS handshake delay to
+verify zero unauthorized batch bytes after signing-key revocation.
 
 Native canonical-prompt regressions cover policy expiry during the third Cosmos
 read, missing-profile safe information requests, genuine Task8 human approval

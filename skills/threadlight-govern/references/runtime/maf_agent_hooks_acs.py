@@ -557,6 +557,18 @@ def _check_bootstrap(provider, selected, *, authorization=None):
                            authorization=authorization)
 
 
+async def _reauthorize_bootstrap(provider, selected, *, authorization=None):
+    bootstrap = getattr(provider, "bootstrap_gate", None)
+    if bootstrap is not None:
+        try:
+            async with asyncio.timeout(10):
+                await bootstrap.authorize()
+        except Exception:
+            _deny_boundary(provider, selected, "threadlight:bootstrap_unavailable",
+                           authorization=authorization)
+        _check_bootstrap(provider, selected, authorization=authorization)
+
+
 def _check_effect(provider, selected, ticket, *, authorization=None):
     _check_bootstrap(provider, selected, authorization=authorization)
     if provider.mode != "enforce":
@@ -581,14 +593,7 @@ def _check_effect(provider, selected, ticket, *, authorization=None):
         _deny_boundary(provider, selected, "threadlight:trusted_context_expired", authorization=authorization)
 
 
-def require_effect_authorization(tool_name, arguments):
-    """Recheck the current native call at a cooperative host's terminal effect.
-
-    This never issues authorization, consumes another approval, or validates a
-    model again. Call after every awaited preparation, including transport auth.
-    Return a recheck bound to this exact lease, not to a later native invocation.
-    Unbound reads do not call this opt-in API.
-    """
+def _effect_check(tool_name, arguments):
     authorization = _effect_authorization.get()
     if authorization is None:
         raise GovernedToolUnavailable("threadlight:effect_authorization_unavailable")
@@ -609,7 +614,33 @@ def require_effect_authorization(tool_name, arguments):
         _check_lifecycle(provider, ("agent_startup", "input", "post_model_call"))
         _check_effect(provider, selected, ticket, authorization=authorization)
     check()
+    return check, authorization
+
+
+def require_effect_authorization(tool_name, arguments):
+    """Local-file terminal recheck. Remote bootstrap requires the async API."""
+    check, authorization = _effect_check(tool_name, arguments)
+    provider = authorization[0]
+    if getattr(provider, "bootstrap_gate", None) is not None:
+        _deny_boundary(provider, authorization[3]["selected"],
+                       "threadlight:async_bootstrap_authorization_required", authorization=authorization)
     return check
+
+
+async def require_effect_authorization_async(tool_name, arguments):
+    """Return an awaitable recheck of this exact lease and current remote authority.
+
+    Await it again after preparation/credential/transport waits. It does not
+    issue another approval or consume a second nonce.
+    """
+    check, authorization = _effect_check(tool_name, arguments)
+    provider = authorization[0]
+    async def reauthorize():
+        check()
+        await _reauthorize_bootstrap(provider, authorization[3]["selected"], authorization=authorization)
+        check()
+    await reauthorize()
+    return reauthorize
 
 
 def reject_effect():
@@ -634,6 +665,7 @@ class _FunctionBoundary(FunctionMiddleware):
         if telemetry is not None and execution is not None:
             # Early drain only: queued synchronous work rechecks at its worker.
             await telemetry.flush(execution)
+        await _reauthorize_bootstrap(p, p._tool_bindings(context.function.name))
         if not p._bindings:
             await call_next()
             return
@@ -819,6 +851,7 @@ def _guard_tool(tool, provider):
     telemetry = getattr(provider, "probes", None)
     @wraps(function)
     async def invoke(*args, **kwargs):
+        owner_loop = asyncio.get_running_loop()
         def check():
             authorization = _effect_authorization.get()
             if provider.mode == "enforce":
@@ -837,6 +870,16 @@ def _guard_tool(tool, provider):
         def call():
             if telemetry is not None and not on_loop:
                 telemetry.flush_sync(_execution.get())
+            if not on_loop and getattr(provider, "bootstrap_gate", None) is not None:
+                authorization = _effect_authorization.get()
+                future = asyncio.run_coroutine_threadsafe(
+                    _reauthorize_bootstrap(provider, selected, authorization=authorization), owner_loop)
+                try:
+                    future.result(timeout=11)
+                except Exception:
+                    future.cancel()
+                    _deny_boundary(provider, selected, "threadlight:bootstrap_unavailable",
+                                   authorization=authorization)
             check()
             authorization = _effect_authorization.get()
             if provider.mode == "enforce" and authorization is not None:
@@ -853,6 +896,7 @@ def _guard_tool(tool, provider):
             if on_loop:
                 if telemetry is not None:
                     await telemetry.flush(_execution.get())
+                await _reauthorize_bootstrap(provider, selected, authorization=_effect_authorization.get())
                 value = call()
             else:
                 value = await asyncio.to_thread(call)
@@ -860,6 +904,7 @@ def _guard_tool(tool, provider):
                 try:
                     if telemetry is not None:
                         await telemetry.flush(_execution.get())
+                    await _reauthorize_bootstrap(provider, selected, authorization=_effect_authorization.get())
                     check()
                 except BaseException:
                     if inspect.iscoroutine(value):
@@ -1181,25 +1226,44 @@ def _guard_http_client(client, provider):
             self.inner = inner
 
         async def handle_async_request(self, request):
-            _check_lifecycle(provider, ("agent_startup", "input", "pre_model_call"))
-            if selected and provider.mode == "enforce":
-                scope = _execution.get()["model_scope"]
-                # httpx.content is a cache; transports send stream instead.
-                # Pinned native JSON requests use a replayable ByteStream, not
-                # arbitrary body producers with effects during iteration.
-                if type(request.stream) is not httpx.ByteStream:
-                    _deny_boundary(provider, selected, "threadlight:model_target_changed")
-                body = b"".join(request.stream)
-                try:
-                    content = request.content
-                except httpx.RequestNotRead:
-                    # HTTPX redirects retain the replayable stream without a
-                    # content cache. There is no second cached value to verify.
-                    content = body
-                if (scope["wire"] != request_identity(content)
-                        or scope["wire"] != request_identity(body)):
-                    _deny_boundary(provider, selected, "threadlight:model_target_changed")
-            return await self.inner.handle_async_request(request)
+            def check():
+                _check_lifecycle(provider, ("agent_startup", "input", "pre_model_call"))
+                if selected and provider.mode == "enforce":
+                    scope = _execution.get()["model_scope"]
+                    if type(request.stream) is not httpx.ByteStream:
+                        _deny_boundary(provider, selected, "threadlight:model_target_changed")
+                    body = b"".join(request.stream)
+                    try:
+                        content = request.content
+                    except httpx.RequestNotRead:
+                        content = body
+                    if (scope["wire"] != request_identity(content)
+                            or scope["wire"] != request_identity(body)):
+                        _deny_boundary(provider, selected, "threadlight:model_target_changed")
+
+            previous_trace = request.extensions.get("trace")
+            async def trace(event, info):
+                if previous_trace is not None:
+                    result = previous_trace(event, info)
+                    if inspect.isawaitable(result):
+                        await result
+                if event in (
+                        "http11.send_request_headers.started", "http11.send_request_body.started",
+                        "http2.send_request_headers.started", "http2.send_request_body.started"):
+                    await _reauthorize_bootstrap(provider, selected)
+                    check()
+
+            await _reauthorize_bootstrap(provider, selected)
+            check()
+            request.extensions["trace"] = trace
+            response = await self.inner.handle_async_request(request)
+            try:
+                await _reauthorize_bootstrap(provider, selected)
+                check()
+            except BaseException:
+                await response.aclose()
+                raise
+            return response
 
         async def aclose(self):
             # The caller owns the shared connection pools and their lifetime.
