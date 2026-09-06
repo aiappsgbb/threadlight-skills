@@ -4,17 +4,22 @@ The container must be provisioned with partition key /case_id and seeded by an
 operator. Runtime never seeds, resets, settles money, or writes local case files.
 """
 from copy import deepcopy
+from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 
-from runtime import TrustedContextSnapshot, record_trusted_read, trusted_effect_snapshot
+from runtime import (
+    TrustedContextSnapshot, record_trusted_read, trusted_effect_snapshot, require_effect_authorization,
+    reject_effect,
+)
 from runtime.evidence import digest
 
 
 class ReturnsBackend:
-    def __init__(self, *, container, samples):
+    def __init__(self, *, container, samples, effect_transport=None):
         self.container = container
+        self.effect_transport = effect_transport
         self.samples = Path(samples)
         self.orders = self._samples("orders")
         self.customers = self._samples("customers")
@@ -72,25 +77,26 @@ class ReturnsBackend:
             facts=facts, expires_at=datetime.now(timezone.utc) + timedelta(seconds=20))
 
     async def apply_decision(self, **arguments):
+        arguments = deepcopy(arguments)
+        check = require_effect_authorization("returns_apply_decision", arguments)
         authorized = trusted_effect_snapshot()
         facts, identity = authorized["facts"], authorized["identity"]
         # This is a consistency boundary, not an alternative policy decision.
         if authorized["tool_call"]["args"] != arguments:
-            raise ValueError("authorized_target_changed")
+            reject_effect()
         # Approval/audit delivery can yield after ACS. Re-read through the same
         # authority, including profile absence, before applying the case CAS.
         current = await self.trusted_context(identity, authorized["tool_call"], authorized["reads"])
+        check()
         if current.facts != facts:
-            raise ValueError("backend_snapshot_changed")
-        if datetime.now(timezone.utc) >= datetime.fromisoformat(authorized["expires_at"]):
-            raise ValueError("backend_snapshot_expired")
+            reject_effect()
         case = deepcopy(facts["case"])
         existing = facts.get("audit", {})
         if all(existing.get(key) == value for key, value in arguments.items()):
             return {"ok": True, "audit_id": existing["id"]}
         etag = case.pop("_etag")
         if not isinstance(etag, str) or not etag:
-            raise ValueError("backend_revision_required")
+            reject_effect()
         for key in list(case):
             if key.startswith("_"):
                 del case[key]
@@ -110,9 +116,22 @@ class ReturnsBackend:
             "decision_trace": {"outcome": arguments["decision"], "business_rules_fired": [rule, "BR-005"]},
             "answer": {"citations": arguments["citations"]}, "actor": identity["principal"],
         }
-        await self.container.execute_item_batch(
-            batch_operations=[
-                ("replace", (case["id"], case), {"if_match_etag": etag}),
-                ("create", (audit,), {}),
-            ], partition_key=case["id"])
+        operations = [
+            ("replace", (case["id"], case), {"if_match_etag": etag}),
+            ("create", (audit,), {}),
+        ]
+        from azure.cosmos.aio import ContainerProxy
+        from cosmos_effect import CosmosEffectTransport
+        if isinstance(self.container, ContainerProxy):
+            if not isinstance(self.effect_transport, CosmosEffectTransport):
+                reject_effect()
+            scope = self.effect_transport.batch(
+                check, self.container, case["id"], operations)
+        else:
+            # External SDK-protocol fixtures share the same pretransaction check.
+            scope = nullcontext()
+        with scope:
+            check()
+            await self.container.execute_item_batch(
+                batch_operations=operations, partition_key=case["id"])
         return {"ok": True, "audit_id": audit_id}

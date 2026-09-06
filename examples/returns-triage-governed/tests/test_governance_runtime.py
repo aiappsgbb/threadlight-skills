@@ -320,7 +320,9 @@ def test_optional_native_probe_only_proves_reserved_noop(tmp_path, monkeypatch, 
 @pytest.mark.parametrize("review", ["absent", "invalid-human", "approved", "rejected"])
 @pytest.mark.parametrize("overlap", ["complete", "flagged-missing-reason", "high-value-missing-photos",
                                     "wrong-request-more-info", "missing-profile",
-                                    "missing-profile-wrong-info", "missing-profile-insert-during-approval"])
+                                    "missing-profile-wrong-info", "missing-profile-insert-during-approval",
+                                    "approval-expired-final-read", "approval-expired-http-auth",
+                                    "approval-valid-http-auth"])
 def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch, review, overlap):
     import base64
     import httpx
@@ -331,7 +333,15 @@ def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch
     from test_runtime_provider import native_model_client
     from govern_control_plane.models import BundleEnvelope, SignedBundle, canonical, envelope_digest
     from azure.core.credentials import AccessToken
-    store = MemoryCosmos()
+    class ApprovalDelayedCosmos(MemoryCosmos):
+        expiry = None
+
+        async def read_item(self, **kwargs):
+            result = await super().read_item(**kwargs)
+            if len(self.reads) == 3 and self.expiry and overlap == "approval-expired-final-read":
+                await asyncio.sleep(max(0, (self.expiry - datetime.now(timezone.utc)).total_seconds()) + .05)
+            return result
+    store = ApprovalDelayedCosmos()
     app = application(store)
     if overlap in {"flagged-missing-reason", "wrong-request-more-info"}:
         store.docs["RMA-2026-004425"]["reason_code"] = None
@@ -392,7 +402,11 @@ def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch
                     assert response.status_code == 202
                     assert not store.decisions
                     pending.append(body["intent"])
+                    if overlap.startswith("approval-expired-"):
+                        store.expiry = datetime.fromisoformat(body["intent"]["expires_at"].replace("Z", "+00:00"))
                     if review != "absent":
+                        if overlap.startswith("approval-expired-"):
+                            await asyncio.sleep(.1)
                         headers = h.headers(human=True, changes={"roles": ["WrongRole"]}
                                             if review == "invalid-human" else None)
                         decided = await h.client.post("/approvals/resolve", headers=headers, json={
@@ -414,7 +428,28 @@ def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch
             assert receipts, "Task8 remote durable ACK, not a local spool, must precede Cosmos write"
         store.before_batch = require_ack_before_effect
         try:
-            async with provider.audit:
+            from contextlib import AsyncExitStack
+            async with provider.audit, AsyncExitStack() as stack:
+                if overlap.endswith("http-auth"):
+                    from cosmos_effect import CosmosEffectTransport
+                    from test_terminal_effect import CosmosHTTP, past
+                    service = CosmosHTTP(store)
+                    token_waits = []
+
+                    class CosmosCredential:
+                        async def get_token(self, *args, **kwargs):
+                            if len(store.reads) == 3:
+                                token_waits.append(True)
+                                if store.expiry:
+                                    await past(store.expiry)
+                                else:
+                                    await asyncio.sleep(.02)
+                            return AccessToken("external-cosmos-token", 1)
+
+                    transport = CosmosEffectTransport(service, endpoint="https://fixture.documents.azure.com")
+                    app.backend.container = await transport.connect(
+                        stack=stack, credential=CosmosCredential(), database="test", container="cases")
+                    app.backend.effect_transport = transport
                 client = native_model_client(sequence(
                         "RMA-2026-004425", decision="request_more_info" if wrong_info
                         else "escalate_to_supervisor"))
@@ -427,13 +462,26 @@ def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch
             if wrong_info:
                 assert any(doc.get("receipt", {}).get("decision") == "deny"
                            for doc, _ in h.store.docs.values()), "selected binding must deny wrong model choice"
-            effect = review == "approved" and not wrong_info and overlap != "missing-profile-insert-during-approval"
+            effect = review == "approved" and not wrong_info and overlap not in {
+                "missing-profile-insert-during-approval", "approval-expired-final-read",
+                "approval-expired-http-auth"}
             assert len(store.decisions) == int(effect)
+            if review == "approved" and overlap.startswith("approval-expired-"):
+                assert len(store.reads) == 3 and grants
+                assert provider._trust.expires_at > datetime.now(timezone.utc), "only approval expired"
+                assert any(doc.get("receipt", {}).get("reason_code") == "threadlight:approval_unavailable"
+                           for doc, _ in h.store.docs.values())
+                replay = await h.post("consume", intent=pending[0], grant=grants[0])
+                assert replay.status_code == 409, "expired grant remains consumed"
+                if overlap == "approval-expired-http-auth":
+                    assert token_waits == [True] and service.batches == []
             if effect:
                 assert store.docs["RMA-2026-004425"]["status"] == "escalated"
                 assert store.docs["RMA-2026-004425"]["decision"] == "escalate_to_supervisor"
                 replay = await h.post("consume", intent=pending[0], grant=grants[0])
                 assert replay.status_code == 409
+                if overlap == "approval-valid-http-auth":
+                    assert len(service.batches) == 1 and token_waits == [True]
         finally:
             await provider.approval_resolver.aclose()
             await h.close()

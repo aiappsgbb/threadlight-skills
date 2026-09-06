@@ -83,9 +83,9 @@ async def trusted_context(identity, tool_call, reads):
 
 
 async def initialize(config, credential, stack):
-    from azure.cosmos.aio import CosmosClient
     from deployment_config import DeploymentConfiguration
     from returns_backend import ReturnsBackend
+    from cosmos_effect import CosmosEffectTransport
     global _application, tools
     if _application is not None:
         raise ValueError("returns_backend_already_initialized")
@@ -94,10 +94,12 @@ async def initialize(config, credential, stack):
     if (os.environ.get("AZURE_CLIENT_ID") != settings.agent_client_id
             or os.environ.get("FOUNDRY_PROJECT_ENDPOINT") != settings.citadel_project_endpoint):
         raise ValueError("existing_uami_and_citadel_binding_required")
-    client = await stack.enter_async_context(CosmosClient(settings.cosmos_url, credential=credential))
-    container = client.get_database_client(settings.cosmos_database).get_container_client(settings.cosmos_container)
+    transport = CosmosEffectTransport(endpoint=settings.cosmos_url)
+    container = await transport.connect(stack=stack, credential=credential,
+                                        database=settings.cosmos_database, container=settings.cosmos_container)
     properties = await container.read()
     if properties.get("partitionKey", {}).get("paths") != ["/case_id"]:
         raise ValueError("case_partition_transaction_required")
-    _application = ReturnsApplication(ReturnsBackend(container=container, samples=SAMPLES))
+    _application = ReturnsApplication(ReturnsBackend(
+        container=container, samples=SAMPLES, effect_transport=transport))
     tools = _application.tools

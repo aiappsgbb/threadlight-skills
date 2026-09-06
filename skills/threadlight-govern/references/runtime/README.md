@@ -140,6 +140,33 @@ this adapter does not claim every earlier lifecycle target remains identical.
 
 ## Selection and failure semantics
 
+### Opt-in terminal effects
+
+Async business tools must recheck authority **after** awaited preparation, not
+only at function entry. Inside the native selected pre-tool call, use
+`check = require_effect_authorization(tool_name, canonical_arguments)` and call
+`check()` immediately before the effect. Capture once; pass the returned recheck
+to the host-owned transport and run it again **after** credentials, request hooks,
+retry delays and transport setup. Freeze the intended target before those awaits
+and compare the actual serialized request at that final boundary. A backend must
+not reconstruct authorization from model metadata.
+
+The recheck remains bound to the exact native emission, selected provider,
+principal/tenant, run scope and canonical argument hash. It checks the authenticated
+bundle/version digest and wall/monotonic expiry, consumed approval ticket deadline,
+trusted evidence deadline and audit readiness. It neither repeats validators nor
+consumes another grant. The shared lease is revoked on call completion/cancellation,
+including contexts copied into late child tasks. Unbound reads do not opt in;
+post-only or missing native pre-tool authority cannot issue a terminal recheck.
+`GovernedToolUnavailable` and payload-free boundary denial receipts signal failure;
+`reject_effect()` provides the same sanitized failure for changed/unsupported
+backend targets. Missing native context is an explicit error, not a new receipt
+with a fabricated action identity. Other runtime/tool behavior is unchanged.
+
+This is a cooperative-host dispatch boundary, not authorization by a remote
+database or a guarantee about arrival/commit time. Preserve backend CAS,
+transactionality and idempotence; never blindly retry uncertain completion.
+
 - Unbound tools return native `ALLOW` without ACS evaluation. A consequential
   tool being present does not authorize labeling the entire agent “enforced.”
 - Selected local tool `pre_tool_call` and `post_tool_call` bindings use the real

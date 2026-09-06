@@ -66,6 +66,8 @@ class NativeRecordSink:
                     entry["tool"], entry["args_hash"], entry["original_args_hash"],
                     entry.get("trusted"),
                     entry.get("trusted_deadline"),
+                    entry["authority"],
+                    entry,
                 )
             return
         known = {
@@ -265,6 +267,7 @@ class AcsInterceptor:
                 "selected": selected, "receipt_decision": None,
                 "point": context["interception_point"], "session_hash": digest(context["session"]["id"]),
                 "action_hash": action_hash(p, context),
+                "authority": (p.policy_digest(), p.principal, p.tenant),
                 "call_id": tool.get("id"), "tool": tool.get("name"),
                 "args_hash": digest(tool.get("args")),
                 "original_args_hash": digest(tool.get("args")),
@@ -497,21 +500,23 @@ def _argument_hash(arguments):
     raise GovernedToolUnavailable("threadlight:invalid_arguments") from None
 
 
-def _deny_boundary(provider, selected, reason):
+def _deny_boundary(provider, selected, reason, *, authorization=None):
     binding_failure(selected, reason)
-    state = _execution.get()
+    state = authorization[3]["execution"] if authorization else _execution.get()
     if state is not None:
         state["boundary_error"] = reason
         ids = {id(b) for b in selected}
-        entry = next((e for e in reversed(list(state["emissions"].values()))
-                      if any(id(b) in ids for b in e["selected"])), None)
+        entry = authorization[3]["entry"] if authorization else next(
+            (e for e in reversed(list(state["emissions"].values()))
+             if any(id(b) in ids for b in e["selected"])), None)
         key = (id(entry), tuple(sorted(ids)), reason)
         if provider.audit is not None and entry and key not in state["boundary_receipts"]:
             state["boundary_receipts"].add(key)
             try:
                 provider.audit.append(
                     correlation_id=entry["session_hash"], decision="deny",
-                    action_hash=entry["action_hash"], policy_hash=provider.policy_digest(),
+                    action_hash=entry["action_hash"],
+                    policy_hash=entry["authority"][0] if authorization else provider.policy_digest(),
                     agent_version=provider.agent_version, image_digest=provider.image_digest,
                     reason_code=reason, interception_point=entry["point"],
                     action_id=entry["tool"] or entry["point"],
@@ -541,27 +546,67 @@ def _check_lifecycle(provider, points):
         _check_effect(provider, selected, ticket)
 
 
-def _check_effect(provider, selected, ticket):
+def _check_effect(provider, selected, ticket, *, authorization=None):
     if provider.mode != "enforce":
         return
     state = _execution.get()
     if state is not None and any(
         id(b) in state["audit_failed"] and AUDIT.intersection(b["requires"]) for b in selected
     ):
-        _deny_boundary(provider, selected, "threadlight:audit_unavailable")
+        _deny_boundary(provider, selected, "threadlight:audit_unavailable", authorization=authorization)
     if not authorized(provider, selected):
-        _deny_boundary(provider, selected, "threadlight:policy_unavailable")
+        _deny_boundary(provider, selected, "threadlight:policy_unavailable", authorization=authorization)
     if ticket is not None and (
         provider._now() >= ticket[2] or time.monotonic() >= ticket[3]
     ):
-        _deny_boundary(provider, selected, "threadlight:approval_unavailable")
-    authorization = _effect_authorization.get()
-    trusted = authorization[3].get("trusted") if authorization else None
+        _deny_boundary(provider, selected, "threadlight:approval_unavailable", authorization=authorization)
+    current = authorization or _effect_authorization.get()
+    trusted = current[3].get("trusted") if current else None
     if trusted is not None and (
         provider._now() >= datetime.fromisoformat(trusted["expires_at"])
-        or time.monotonic() >= authorization[3]["trusted_deadline"]
+        or time.monotonic() >= current[3]["trusted_deadline"]
     ):
-        _deny_boundary(provider, selected, "threadlight:trusted_context_expired")
+        _deny_boundary(provider, selected, "threadlight:trusted_context_expired", authorization=authorization)
+
+
+def require_effect_authorization(tool_name, arguments):
+    """Recheck the current native call at a cooperative host's terminal effect.
+
+    This never issues authorization, consumes another approval, or validates a
+    model again. Call after every awaited preparation, including transport auth.
+    Return a recheck bound to this exact lease, not to a later native invocation.
+    Unbound reads do not call this opt-in API.
+    """
+    authorization = _effect_authorization.get()
+    if authorization is None:
+        raise GovernedToolUnavailable("threadlight:effect_authorization_unavailable")
+    provider, actual, ticket, lease = authorization
+    selected = lease["selected"]
+    if actual != (tool_name, _argument_hash(arguments)):
+        _deny_boundary(provider, selected, "threadlight:arguments_changed", authorization=authorization)
+
+    def check():
+        if (provider.mode != "enforce" or not selected or not lease["active"]
+                or not lease["called"] or not lease["dispatched"]
+                or _effect_authorization.get() is not authorization
+                or _execution.get() is not lease["execution"]
+                or lease["native_target"] != actual
+                or lease["authority"] != (provider.policy_digest(), provider.principal, provider.tenant)):
+            _deny_boundary(provider, selected, "threadlight:effect_authorization_unavailable",
+                           authorization=authorization)
+        _check_lifecycle(provider, ("agent_startup", "input", "post_model_call"))
+        _check_effect(provider, selected, ticket, authorization=authorization)
+    check()
+    return check
+
+
+def reject_effect():
+    """Fail an unsupported or changed terminal target without leaking its data."""
+    authorization = _effect_authorization.get()
+    if authorization is None:
+        raise GovernedToolUnavailable("threadlight:effect_authorization_unavailable")
+    _deny_boundary(authorization[0], authorization[3]["selected"], "threadlight:effect_unavailable",
+                   authorization=authorization)
 
 
 class _FunctionBoundary(FunctionMiddleware):
@@ -599,8 +644,12 @@ class _FunctionBoundary(FunctionMiddleware):
         if (p.mode == "enforce" and any(b["point"] == "pre_tool_call" for b in selected)
                 and (expected is None or expected[:2] != actual)):
             _deny_boundary(p, selected, "threadlight:arguments_changed")
-        token = _effect_authorization.set((p, actual, ticket, {
+        lease = {
             "dispatched": False, "called": False,
+            "active": True, "selected": tuple(selected), "execution": execution,
+            "native_target": expected[:2] if expected else None,
+            "authority": expected[5] if expected else None,
+            "entry": expected[6] if expected else None,
             "transformed": bool(expected and expected[1] != expected[2]),
             "trusted": expected[3] if expected else None,
             "trusted_deadline": expected[4] if expected else None,
@@ -608,7 +657,8 @@ class _FunctionBoundary(FunctionMiddleware):
                                  if e["call_id"] == context.metadata.get("call_id")
                                  and e.get("probe") is not None), None)
             if execution and getattr(p, "probes", None) is not None else None,
-        }))
+        }
+        token = _effect_authorization.set((p, actual, ticket, lease))
         try:
             await call_next()
             return
@@ -617,6 +667,7 @@ class _FunctionBoundary(FunctionMiddleware):
         except Exception:
             pass
         finally:
+            lease["active"] = False
             _effect_authorization.reset(token)
         raise GovernedToolUnavailable() from None
 
@@ -808,6 +859,10 @@ def _guard_tool(tool, provider):
             raise
         except Exception:
             pass
+        finally:
+            authorization = _effect_authorization.get()
+            if authorization is not None and authorization[0] is provider:
+                authorization[3]["active"] = False
         # Raise outside the handler so the private exception is not retained
         # as __context__, and MAF still emits its error post-tool bracket.
         raise GovernedToolUnavailable() from None

@@ -166,6 +166,31 @@ cross-case/customer scope, stale revisions, forbidden payments, idempotence,
 human-review failures/replay, and the real optional noop producer/fixture.
 Local RSA keys/JWTs and model/backend doubles are test-only, not tenant evidence.
 
+The write adapter captures the runtime's native terminal-effect recheck, compares
+the final reread, then checks again before the Cosmos transaction. Production
+initialization supplies `CosmosEffectTransport` through the public `CosmosClient`
+`transport` argument. Its
+[`AsyncHttpTransport.send`](https://learn.microsoft.com/python/api/azure-core/azure.core.pipeline.transport.asynchttptransport)
+boundary rechecks **after** credential acquisition, SDK retries and transport
+opening, matching an immutable semantic hash of the exact replace/create batch,
+configured HTTPS account, partition, path, ETag and atomic flags. Endpoint discovery
+is disabled for this fixed-target adapter; regional/alternate destinations are
+unsupported and rejected, not silently authorized. Only that call's selected batch is scoped;
+unbound reads remain available. A real SDK container without the guarded transport
+fails explicitly. The transport's `connect()` owns public client creation and
+records its container handles; passing an unrelated transport does not satisfy
+that requirement. No installed SDK code, policy bytes or foreign hooks are patched.
+
+Native canonical-prompt regressions cover policy expiry during the third Cosmos
+read, missing-profile safe information requests, genuine Task8 human approval
+expiring during that read or Cosmos token acquisition, delayed/fallback credentials,
+retry/open waits, changed HTTP targets, expired evidence, and late child dispatch.
+HTTP tests run the actual Azure Cosmos SDK pipeline with only external credential
+and HTTP service doubles; SDK-protocol fixtures retain the pretransaction guard.
+ETag CAS and same-partition case/audit atomicity remain unchanged. Uncertain
+completion is not automatically retried by this adapter. These are local dispatch
+proofs, not live authorization or a claim that authority cannot expire in transit.
+
 `specs/governance-manifest.json` is the current canonical **offline inventory**:
 write binding unverified, reads unbound, no live probes, no deployed image/version.
 It can be regenerated with the shared `govern_check.py --emit` command using the

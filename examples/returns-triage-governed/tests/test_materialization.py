@@ -181,7 +181,10 @@ def test_production_initializer_uses_existing_cosmos_and_citadel(monkeypatch, fa
     seen = []
     credential = object()
     class Cosmos:
-        def __init__(self, url, *, credential):
+        def __init__(self, url, *, credential, transport, enable_endpoint_discovery, raw_request_hook):
+            from cosmos_effect import CosmosEffectTransport
+            assert isinstance(transport, CosmosEffectTransport)
+            assert enable_endpoint_discovery is False
             seen.append((url, credential))
         async def __aenter__(self): return self
         async def __aexit__(self, *args): pass
