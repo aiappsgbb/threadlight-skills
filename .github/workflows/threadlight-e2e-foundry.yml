@@ -14,9 +14,10 @@
 #               threadlight-evals + threadlight-redteam + threadlight-govern
 #               in report mode and renders the outcome-KPI scorecard without
 #               asserting production readiness
-#   strict path readiness-proof adds green post-deploy safe-check plus
-#               evidence-gated assurance verdicts, a ready production
-#               scorecard, and measured outcome KPIs (see Phase 5)
+#   strict path readiness-proof is a separate protected preproduction job:
+#               real bundle/generation, local predeploy gate, bound service/agent
+#               deployment, fresh hosted noop collection and strict v1 consumers.
+#               Noop never certifies business bindings. See docs/production-readiness.md.
 #
 # The Pattern 0 phase is a CI-only gate that is NOT in the workshop runbook's
 # critical path (the workshop runs §4.4 Streamlit live for the same purpose).
@@ -50,10 +51,9 @@
 #                                          invokes, but does NOT assert
 #                                          readiness.
 #     mode: readiness-proof
-#                         ~$1      ~45-60m  live-smoke plus green safe-check,
-#                                          passing assurance verdicts, a ready
-#                                          production scorecard, and measured
-#                                          outcome KPIs.
+#                         operator budget  registered foundation/fixture + exact
+#                                          signed images/config required;
+#                                          local-native-contract is separate.
 #     mode: full         alias            deprecated alias for live-smoke.
 #
 #   design-only exists because most design→deploy contract breaks are
@@ -61,9 +61,10 @@
 #   dollar. Reach for `live-smoke` when the question is genuinely about
 #   provisioning, the hosted agent, or the paid deployment/invocation path;
 #   use `readiness-proof` when you need strict lifecycle evidence semantics.
-# - Always-teardown via `azd down --force --purge` in `if: always()` step;
+# - Smoke path always-teardown via `azd down --force --purge` in `if: always()` step;
 #   per-run RG name includes `github.run_id` to avoid collisions. Teardown
 #   is skipped in design-only/smoke-only — no RG was ever created.
+#   Protected readiness services are not automatically deleted; operator cleanup.
 #
 # FEATURE-BRANCH AUTH (when this workflow needs to run from a non-main ref)
 # =========================================================================
@@ -160,7 +161,7 @@ on:
           - "true"
           - "false"
       mode:
-        description: "live-smoke = smoke + design + local-test + deploy + invoke + evals/red-team/govern + teardown (~$1/run, ~45-60min) and deploys + invokes without asserting readiness; readiness-proof = live-smoke plus green safe-check, passing assurance verdicts, a ready production scorecard, and measured outcome KPIs; full = deprecated alias to live-smoke; design-only = smoke + design + Pattern 0 gate + design→deploy contract check, stops before azd up (~$0.20/run in model tokens, ~10min, ZERO Azure resource cost); smoke-only = registry discovery gate only (~$0/run, ~30s)"
+        description: "live-smoke = design/deploy/invoke/report/teardown, not readiness (~$1); readiness-proof = separate protected preproduction runtime pipeline requiring signed config, registered fixture, safe-probe opt-in and current v1 evidence (operator budget; noop cannot certify business); full = deprecated alias to live-smoke; design-only = design/Pattern0 contract, no Azure resource cost; smoke-only = registry discovery."
         required: false
         default: "live-smoke"
         type: choice
@@ -170,6 +171,11 @@ on:
           - full
           - design-only
           - smoke-only
+      governance_safe_probe:
+        description: "Explicit preproduction reserved-noop probe opt-in for readiness-proof only; never authorizes business writes."
+        required: false
+        type: boolean
+        default: false
       wire_api:
         description: "Copilot BYO provider wire API. 'responses' for GPT-5-series direct deployments (e.g. gpt-5.4-mini); 'completions' for model-router (its Responses v1 route returns 400 'operation unsupported', but chat-completions works)."
         required: false
@@ -198,7 +204,126 @@ env:
   E2E_TENANT_ALIAS: ci
 
 jobs:
+  local-native-contract:
+    if: inputs.mode == 'readiness-proof'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Local published native and declared CTK contracts — no live proof
+        run: |
+          set -euo pipefail
+          python -m pip install pyyaml
+          az bicep install
+          python scripts/ci/run-governance-pin-tests.py
+          python scripts/ci/run-governance-pin-tests.py --deployment
+      - name: Preserve local-only proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-local-contract-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .governance-validation/*proof.json
+            .governance-validation/*tests.xml
+            .governance-validation/wheel-provenance.json
+
+  readiness-proof:
+    if: inputs.mode == 'readiness-proof'
+    needs: local-native-contract
+    environment: governance-preproduction
+    # Explicit operator-managed network/MI context. Never fall back to a public
+    # runner or the smoke job's broad deployment identity to make this green.
+    runs-on: [self-hosted, linux, x64, governance-preproduction]
+    timeout-minutes: 90
+    env:
+      GOVERNANCE_SAFE_PROBE: ${{ inputs.governance_safe_probe }}
+      GOVERNANCE_CI_CONFIG: ${{ vars.GOVERNANCE_CI_CONFIG }}
+      GOVERNANCE_CI_CONFIG_SHA256: ${{ vars.GOVERNANCE_CI_CONFIG_SHA256 }}
+      GOV_PROJECT: ${{ runner.temp }}/governance-${{ github.run_id }}-${{ github.run_attempt }}
+      AZURE_CONFIG_DIR: ${{ runner.temp }}/azure-governance-${{ github.run_id }}-${{ github.run_attempt }}
+      AZD_CONFIG_DIR: ${{ runner.temp }}/azd-governance-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Install declaration parser
+        run: python -m pip install pyyaml
+      - name: Require protected configuration and explicit safe probe
+        id: governance-inputs
+        run: |
+          set -euo pipefail
+          python scripts/ci/runtime_readiness.py validate-inputs --configuration "$GOVERNANCE_CI_CONFIG" --project "$GOV_PROJECT"
+      - name: Install exact Linux native artifacts and portable collector
+        run: |
+          set -euo pipefail
+          python -m pip install pyyaml
+          python scripts/ci/run-governance-pin-tests.py --prepare-local
+          # Container-prepared venv paths are not runner executable paths.
+          # Build/install the same verified wheels into a runner-local venv.
+          python - <<'PY'
+          import importlib.util, json
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location("pin_runner", "scripts/ci/run-governance-pin-tests.py")
+          runner = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(runner)
+          runner.VENV = Path(".governance-validation/runner-venv").resolve()
+          runner.deployment_runtime(json.loads(runner.PIN_FILE.read_text()), local_only=True)
+          PY
+          echo "$GITHUB_WORKSPACE/.governance-validation/runner-venv/bin" >> "$GITHUB_PATH"
+          echo "ACS_OPA_PATH=$GITHUB_WORKSPACE/.governance-validation/opa-linux-amd64" >> "$GITHUB_ENV"
+      - name: Build native policy bundle and generate real host/services
+        run: |
+          set -euo pipefail
+          python scripts/ci/runtime_readiness.py prepare --configuration "$GOVERNANCE_CI_CONFIG" --project "$GOV_PROJECT"
+      - name: Executed local pre-deploy governed-actions gate
+        run: |
+          set -euo pipefail
+          python scripts/ci/runtime_readiness.py predeploy --configuration "$GOVERNANCE_CI_CONFIG" --project "$GOV_PROJECT"
+      - name: Login with protected scoped deployment identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.GOVERNANCE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ vars.GOVERNANCE_TENANT_ID }}
+          subscription-id: ${{ vars.GOVERNANCE_SUBSCRIPTION_ID }}
+      - name: Authenticate azd independently
+        env:
+          DEPLOY_CLIENT: ${{ secrets.GOVERNANCE_DEPLOY_CLIENT_ID }}
+          DEPLOY_TENANT: ${{ vars.GOVERNANCE_TENANT_ID }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_CLIENT:?protected deployment identity required}"
+          : "${DEPLOY_TENANT:?protected tenant required}"
+          azd auth login --client-id "$DEPLOY_CLIENT" --tenant-id "$DEPLOY_TENANT" --federated-credential-provider github
+      - name: Bind immutable images, provision service phase and deploy generated agent
+        run: |
+          set -euo pipefail
+          python scripts/ci/runtime_readiness.py deploy --configuration "$GOVERNANCE_CI_CONFIG" --project "$GOV_PROJECT"
+      - name: Fresh post-deploy collector and strict v1 readiness consumers
+        run: |
+          set -euo pipefail
+          python scripts/ci/runtime_readiness.py postdeploy --configuration "$GOVERNANCE_CI_CONFIG" --project "$GOV_PROJECT"
+      - name: Preserve scoped evidence even when business bindings remain unverified
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-readiness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.GOV_PROJECT }}/specs/governance-manifest.json
+            ${{ env.GOV_PROJECT }}/.threadlight/governance-live.json
+            ${{ env.GOV_PROJECT }}/.threadlight/readiness-attempt.json
+            ${{ env.GOV_PROJECT }}/tests/*manifest.json
+            ${{ env.GOV_PROJECT }}/tests/runtime-readiness.json
+            ${{ env.GOV_PROJECT }}/docs/governance/evidence-pack.md
+            ${{ env.GOV_PROJECT }}/docs/production-readiness-report.md
+          if-no-files-found: warn
+
   e2e:
+    if: inputs.mode != 'readiness-proof'
     runs-on: ubuntu-latest
     # Budget: design 10min + deploy 15min + invoke 5min + teardown 15min + headroom.
     # Raised 60 -> 90 because the Phase 3 step budget went 30 -> 45 (see that step
@@ -228,7 +353,7 @@ jobs:
               echo "::warning::mode=full is a deprecated alias; treating this run as live-smoke"
               echo "mode=live-smoke" >> "$GITHUB_OUTPUT"
               ;;
-            live-smoke|readiness-proof)
+            live-smoke)
               echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
               ;;
             *)
@@ -1029,21 +1154,6 @@ jobs:
           }
           echo "✅ Agent active"
 
-      - name: "[Readiness proof] Run post-deploy safe-check"
-        if: success() && steps.evidence-mode.outputs.mode == 'readiness-proof'
-        timeout-minutes: 5
-        run: |
-          set -euo pipefail
-          REPO="${GITHUB_WORKSPACE}"
-          PILOT_DIR="$E2E_WORKSPACE/${PILOT_SUBDIR}"
-          if [ ! -f "$PILOT_DIR/azure.yaml" ]; then
-            PILOT_DIR=$(find "$E2E_WORKSPACE" -mindepth 2 -maxdepth 2 -name azure.yaml -printf '%h\n' 2>/dev/null | head -1)
-          fi
-          cd "$PILOT_DIR"
-          python3 "$REPO/skills/threadlight-safe-check/scripts/safe_check.py" \
-            --phase post-deploy \
-            --out tests
-
       # ── Discover / Protect / Govern control-plane legs ────────────────
       # Workflow-owned + deterministic (no agent, no model spend), in the
       # same spirit as the Pattern 0 §4.3 gate above. Runs the three leg
@@ -1073,23 +1183,14 @@ jobs:
             --target "$PILOT_DIR" --emit 2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::red-team leg reported gaps"
           python3 "$REPO/skills/threadlight-govern/scripts/govern_check.py" \
             --target "$PILOT_DIR" --emit 2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::govern leg reported gaps"
-          # Render the scorecard that consumes the three manifests + joins the
-          # outcome-KPI section. readiness-proof hard-fails on scorecard gaps;
-          # live-smoke records them without asserting readiness.
-          if [ "$MODE" = "readiness-proof" ]; then
-            python3 "$REPO/skills/threadlight-production-ready/scripts/production_ready.py" \
-              --root "$PILOT_DIR" --target citadel-spoke --static --no-rights-probe --quiet \
-              --out "$PILOT_DIR/tests/production-readiness-manifest.json" \
-              --report "$PILOT_DIR/docs/production-readiness-report.md" \
-              2>&1 | tee -a /tmp/phase-legs.log
-          else
-            python3 "$REPO/skills/threadlight-production-ready/scripts/production_ready.py" \
-              --root "$PILOT_DIR" --target citadel-spoke --static --no-rights-probe --quiet \
-              --accept-stale-safe-check \
-              --out "$PILOT_DIR/tests/production-readiness-manifest.json" \
-              --report "$PILOT_DIR/docs/production-readiness-report.md" \
-              2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::scorecard reported gaps"
-          fi
+          # Smoke records findings without asserting readiness. The separate
+          # protected job never accepts stale safe-check or legacy v2 evidence.
+          python3 "$REPO/skills/threadlight-production-ready/scripts/production_ready.py" \
+            --root "$PILOT_DIR" --target citadel-spoke --static --no-rights-probe --quiet \
+            --accept-stale-safe-check \
+            --out "$PILOT_DIR/tests/production-readiness-manifest.json" \
+            --report "$PILOT_DIR/docs/production-readiness-report.md" \
+            2>&1 | tee -a /tmp/phase-legs.log || echo "::notice::scorecard reported gaps"
 
       - name: Evaluate lifecycle evidence semantics
         if: success() && steps.evidence-mode.outputs.mode != 'none'
@@ -1129,15 +1230,8 @@ jobs:
           {
             echo "## Paid run"
             echo ""
-            if [ "$MODE" = "readiness-proof" ]; then
-              if [ "$EVIDENCE_STATUS" = "pass" ]; then
-                echo "Readiness semantics were asserted."
-              elif [ -n "$EVIDENCE_STATUS" ]; then
-                echo "Readiness semantics were NOT asserted — evidence evaluation reported status: $EVIDENCE_STATUS. Check run artifacts for deploy/invoke/evidence logs."
-              else
-                echo "Readiness semantics could not be asserted — evidence evaluation did not run, failed before emitting readable JSON, or produced no status. Check run artifacts for deploy/invoke/evidence logs."
-              fi
-            else
+            # This job has no readiness branch: only the protected runtime
+            # job may evaluate current v1 binding readiness.
               # live-smoke path: require explicit passing evidence from evidence_gate.json
               if [ "$EVIDENCE_STATUS" = "pass" ]; then
                 echo "Deployment and invocation were asserted; production readiness was not asserted."
@@ -1157,7 +1251,6 @@ jobs:
                   echo "- Invocation/assert step did not complete successfully (missing invoke-results.md or transcripts)"
                 fi
               fi
-            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Snapshot deployed resources

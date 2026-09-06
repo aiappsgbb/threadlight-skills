@@ -1,25 +1,43 @@
 ---
 name: threadlight-production-ready
 description: >-
-  Use after threadlight-safe-check post-deploy returns green to take a
-  deployed pilot from lab to ready for customer architecture review / CISO
-  sign-off / paved path to production. Reads SPEC § 12 (posture, must-have
-  pillars, residency, RTO/RPO, SLA, incident owner) and probes Azure to
-  produce an advisory production-readiness scorecard + uplift plan + customer
-  hand-off package across 13 pillars. Soft advisory — never fails a build. USE
-  FOR: production readiness, prod-ready gate, customer architecture review,
-  CISO sign-off prep, pilot-to-prod handover, paved path to production,
-  citadel uplift, AGT uplift, AI gateway uplift, go-live readiness, hand-off
-  package, SRE handover, Kratos export readiness. DO NOT USE FOR: deployment
-  itself (threadlight-deploy), structural completeness gate
-  (threadlight-safe-check), invocation testing (foundry-evals), middleware
-  authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
-  access contracts (citadel-spoke-onboarding).
+  Use when a pilot needs production-readiness review, CISO or customer
+  architecture handoff, current runtime-binding evidence, missing live proof,
+  remediation ownership or an explicit CI readiness gate. Not for deployment,
+  runtime implementation, model evaluation or hub provisioning.
 metadata:
   version: "0.12.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
+
+## Current runtime-binding contract
+
+Consume `specs/governance-manifest.json` (`threadlight-governance-manifest/v1`)
+through the shared strict validator and `governance_readiness.assess`, also used
+by evidence_gate and Auto. This is **not whole-agent** governance. SAFE is the
+method; ACS/Rego is the PDP; Agent Hooks is the host/interceptor contract; the
+native host/gateway is the PEP; AGT is the toolkit; ASSERT is assurance.
+
+Selected bindings need current live evidence for their exact tool, point and
+path. Preserve unbound reads without ACS. Consequential unbound actions require
+explicit current acceptance bound to tool, risk, source commit, environment and
+owner; a boolean does not suffice. Invalid selected configuration is not off.
+Legacy v2 green is provenance only, never a readiness fallback.
+
+The current collector certifies only `governance_probe_noop` allow/deny and
+supported signed-policy/audit requirements. Business bindings, other lifecycle
+points and unproved approval requirements stay unverified. Do not force
+`gaps: []`, a whole-agent `governed` verdict or SAFE-complete from local tests.
+The canonical returns business write has local native proof but no live proof.
+
+Full signed envelope/key, bundle, configuration and observed target must still
+match the verified record. Re-signing, expiry or any selected config change
+invalidates that evidence. A new deploy attempt needs fresh after-deployment
+collection, not file mtime. The ordinary scorecard remains advisory; explicit
+`readiness-proof` CI is strict and fails on missing evidence. Route runtime
+implementation to `threadlight-govern`/`threadlight-governed-actions` real
+generators rather than just recommending another assessment.
 
 > **v0.12.0 — advisory assessment + explicit remediation workflow.** The
 > current contract is simple: the assessment phase is always read-only. It
@@ -201,7 +219,7 @@ skills threadlight delegates to.
 | Customer architecture review in 3 days | `python tests/production_ready.py --target citadel-spoke` (or other posture) | Same as above, scored against the declared target |
 | Pilot has been parked for weeks; someone asks "could we ship this?" | `python tests/production_ready.py --static` (no live Azure auth needed) | Pure static scorecard from repo + safe-check manifests |
 | You inherited a pilot whose SPEC has no § 12 | Skill still runs — posture falls back to `standard-ai-gateway`, an `RDY-002` warning surfaces "SPEC § 12 missing — add it from `references/spec-section-12-template.md`" | Author § 12, re-run for full scorecard |
-| AGT v4 shipped (2026-06-01) and you want deep checks against the v4 surface | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | AGT-only scorecard against the 5-distribution reorg, ACS `intervention_points:` schema, dynamic policy conditions, composite-action pinning, and v4 audit-field set (AGT-V4-001/002/003/006/007 + AGT-V4-101 live stub), in addition to the version-agnostic AGT-001..006 / AGT-101..102 |
+| Historical AGT v4 compatibility inspection | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | Legacy diagnostics only; never substitutes for current v1 runtime-binding readiness |
 | Customer accepted some `must-fix` findings as risk | Author `tests/production-readiness-waivers.json`, re-run | Report shows `score_with_waivers` and `would_fail_hard_gate` flags |
 
 > **Rule of thumb.** This skill runs at most twice per pilot
@@ -219,7 +237,7 @@ about findings, not just emit them.
 | # | Pillar | What "good" looks like | Primary remediation skill |
 |---|---|---|---|
 | 1 | [`network-posture`](references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); data-residency considered (model region, APIM region, backup region, cross-border support) — declarative SPEC check, not sub-scored | `citadel-spoke-onboarding`, `foundry-vnet-deploy`, `foundry-network-runbook` |
-| 2 | [`agent-governance`](references/pillars/02-agent-governance.md) | AGT module imported in app code (capability-based, version-agnostic) — wiring depth not asserted by static check; policy + verifier artefacts present; OWASP-ASI reference present | `foundry-agt` |
+| 2 | [`agent-governance`](references/pillars/02-agent-governance.md) | Current selected-binding v1 evidence and exact signed policy/config/deployment; module imports and legacy policy/verifier artifacts alone are not enforcement | `threadlight-govern`, `threadlight-governed-actions` |
 | 3 | [`identity-access`](references/pillars/03-identity-access.md) | Workloads use managed identity; **no client secrets**; RBAC least-privilege; KV access via RBAC not access policies | `foundry-hosted-agents`, `azure-tenant-isolation`, `azd-patterns` |
 | 4 | [`secrets`](references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `azd-patterns`, `foundry-hosted-agents` |
 | 5 | [`observability`](references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `foundry-observability` |

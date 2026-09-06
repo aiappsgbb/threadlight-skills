@@ -1,8 +1,8 @@
 # Threadlight — Pilot Pipeline Skills
 
-> **A business process becomes a governed working pilot with an evidence-backed path to production.**
+> **A business process becomes a working pilot with selected runtime governance and an evidence-backed path to production.**
 >
-> Twenty-two pipeline skills plus one agent-guided lifecycle planner (23 total) take a brief into a governed working pilot. A working session produces the pilot and auditable evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
+> Twenty-two pipeline skills plus one agent-guided lifecycle planner (23 total) take a brief into a working pilot. Governance is evidenced per selected binding, not asserted for the whole agent. A working session produces the pilot and auditable evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
 >
 > SPEC § 14 is the value-model contract: baseline, target, owner, timeframe,
 > measurement source, and maturity policy. Its public arc is forecast →
@@ -11,8 +11,70 @@
 The paid live workflow has two evidence meanings. **Live smoke** proves the
 design, deployment, invocation, and assurance producers executed; it does not
 assert production readiness. **Readiness proof** additionally requires a green
-post-deploy safe-check, governed/comprehensive/hardened assurance verdicts, a
-ready production scorecard, and measured outcome KPIs.
+post-deploy safe-check, current per-binding runtime evidence, comprehensive evals,
+hardened red-team evidence, a ready production scorecard, and measured outcome KPIs.
+The `local-native-contract` CI job is local proof only. The separate protected
+`readiness-proof` job fails without actual signed policy, registered services,
+explicit preproduction probe opt-in and fresh hosted evidence; it does not
+substitute a noop result for an unverified business binding.
+
+## Runtime governance: method, enforcement and evidence
+
+**SAFE is the method** for defining business invariants. **ACS is the PDP**
+(policy decision point), evaluating native Rego through OPA locally.
+**Agent Hooks is the host/interceptor contract SDK**; the **native host or
+governed-tool gateway is the PEP** (policy enforcement point) at the selected
+action lifecycle boundary. **AGT is the toolkit**, not automatic all-tools
+protection. **ASSERT is assurance**, not an enforcement engine.
+
+Select tool, intervention point and execution path explicitly. Report each as
+`enforced`, `observed`, `unbound`, `unverified`, `unsupported` or `bypassable`.
+A policy file, green CI, or one enforced binding never means whole-agent
+`governed` or SAFE-complete. Unbound read tools remain usable without ACS;
+unbound consequential actions require current scoped risk acceptance for
+readiness, not an arbitrary boolean. Invalid selected configuration is not `off`.
+
+Required controls fail closed **before effects**: a trusted, signed, fresh
+policy; authenticated human approval bound to tenant, roles, full action scope
+and a one-use CAS nonce; trusted target/schema and dynamic backend facts; and
+centrally durable audit ACK. Local spool fsync is retry safety, not hosted
+durability. Host facts, not model claims, supply SAFE evidence; authorization
+must survive waits and be rechecked at terminal dispatch.
+
+- **Native MAF:** selected local hooks support tool/lifecycle and buffered-output
+  controls. Selection is not automatic full SAFE. Compaction, provider-hosted
+  tools and incremental streaming/custom clients remain unsupported.
+- **GHCP:** only registered gateway action paths can claim effect closure.
+  No arbitrary URL/shell routing, full lifecycle or full-output coverage.
+- **Distribution:** actual registered ACA control-plane/gateway services use
+  Cosmos, Blob, Key Vault and separate UAMIs/permissions. ACS stays the local
+  policy engine; signing/publishing is distinct from runtime verify/read.
+
+The authoritative [shared pin](skills/_shared/governance-upstream-pin.json)
+uses `agent-governance-toolkit-core==5.0.0` (not the old umbrella installer),
+ACS `0.3.1b0`, Agent Hooks `0.1.0a5`, MAF core `1.14.0`, Foundry `1.11.0`,
+hosting `1.0.0b260813`, OPA `1.18.2`. Preview/alpha integrations and explicit
+experimental defaults require review. The immutable official runtime is not
+patched: the corrected CTK **test-only oracle** covers 47 declared vectors;
+four incremental-output vectors are undeclared, not “51 passed”.
+
+Evidence remains separated: offline inventory → executed **LOCAL-14** proof and
+exact-published native/CTK tests (local only) → ARM/Foundry-observed deployment
+and fresh hosted invocation. The Task11 collector registers fresh allow/deny
+nonces, observes tenant/subscription/RG/version/image/principal and closed config
+before/after, and joins authenticated producer/fixture counters with control-plane
+receipts. Only reserved `governance_probe_noop` is probed; business bindings stay
+unverified. The current canonical [returns example](examples/returns-triage-governed/)
+records a Cosmos decision/audit, not payment settlement; its business binding
+has local proof, not live proof.
+
+Current artifacts are `specs/governance-manifest.json`
+(`threadlight-governance-manifest/v1`), `tests/governed-actions-manifest.json`,
+and `.threadlight/governance-live.json`. Legacy v2 verdicts are historical
+provenance only. A new deployment attempt needs new **after-deployment** proof;
+file mtime, a prior empty gaps array or a changed signing envelope cannot renew it.
+See [production guidance and CI inputs](docs/production-readiness.md#runtime-governance-lifecycle)
+and [coding-agent guidance](AGENTS.md).
 
 | Skill | What it does |
 |-------|-------------|
@@ -20,7 +82,7 @@ ready production scorecard, and measured outcome KPIs.
 | [`threadlight-design`](skills/threadlight-design/) | Locks the technical foundation (framework, model, hosting, identity, observability) up front, then produces SPEC.md, demo deck, prep guide, experience page from a brief |
 | [`threadlight-local-test`](skills/threadlight-local-test/) | Boots the agent locally for rapid iteration (Pattern 0 quickstart) |
 | [`threadlight-deploy`](skills/threadlight-deploy/) | 7-phase `azd up` orchestration — ACR, Bicep, hooks, Foundry, Citadel |
-| [`threadlight-safe-check`](skills/threadlight-safe-check/) | Pre/post-deploy gate — validates every resource selector before go-live |
+| [`threadlight-safe-check`](skills/threadlight-safe-check/) | Pre/post-deploy gate — resource selectors plus mandatory scoped collector evidence for selected governance |
 | [`threadlight-demo-data-factory`](skills/threadlight-demo-data-factory/) | Generates industry-realistic seed data for demos |
 | [`threadlight-event-triggers`](skills/threadlight-event-triggers/) | Wires ACA Jobs, Event Grid, and cron receivers into the deploy lifecycle |
 | [`threadlight-connect`](skills/threadlight-connect/) | **NEW v0.1.0** — the **CONNECT leg** (manual hand-off). Evidence-based swap of a scaffolded **mock** Foundry tool for a **real** endpoint — extracts the contract the tool source actually reads, generates conformance tests, and gates `mock → real` on conformance **AND** OBO user-scoped evidence **AND** required-role revalidation vs the current identity. Config writes need `--apply` + a validated `--real-endpoint`; emits `specs/connect-manifest.json` (INT-001..004). `threadlight-auto` does **not** run it. |
@@ -30,8 +92,8 @@ ready production scorecard, and measured outcome KPIs.
 | [`threadlight-consumption-iq`](skills/threadlight-consumption-iq/) | Current forecast + read-only actuals + reconciliation + measured cost per successful interaction; actuals are later-pilot. Walks Bicep + `azd env`, reads SPEC § 12 `load_profile{}` (wizard writes it if absent), hits Azure Retail Prices for current SKUs + 2–3 alternatives per resource (AOAI, Foundry, ACA, Cosmos, Storage, APIM, AI Search), emits `docs/cost-projection.md` + `specs/cost-manifest.json`. Soft-advisory; consumed by `production-ready`'s tightened COST-005 + new COST-006. |
 | [`threadlight-evals`](skills/threadlight-evals/) | **NEW v0.1.0** — the **DISCOVER/GOVERN evals leg**. Runs offline batch quality evals (delegates invoke+score to `foundry-evals`), wires **Foundry Continuous Evaluation** on live threads (`create_agent_evaluation` → App Insights), and an **A/B champion–challenger** comparison gate before a model/prompt swap. Emits `specs/evals-manifest.json` that `production-ready` pillar 6 (EVAL-001..004) consumes as leg-verified evidence. |
 | [`threadlight-redteam`](skills/threadlight-redteam/) | **NEW v0.1.0** — the **DISCOVER safety leg**. Runs the **AI Red Teaming Agent** (PyRIT-based) adversarial scan for jailbreak / prompt-injection / data-exfiltration / harmful-content, emits `docs/redteam-report.md` + `specs/redteam-manifest.json`. Maps attack-success-rate to `production-ready` pillar 7 SAFE-101..106 findings. |
-| [`threadlight-govern`](skills/threadlight-govern/) | **NEW v0.1.0** — the **PROTECT/AGT leg**. Wraps `foundry-agt`: scaffolds/validates the agent-runtime governance policy artefact, verifies in-process middleware is wired at the container boundary, and emits a committed verifier report + `specs/govern-manifest.json`. Produces the artefacts `production-ready` pillar 2 (AGT-001..005) and pillar 7 (RAI-002/003) look for. |
-| [`threadlight-governed-actions`](skills/threadlight-governed-actions/) | **NEW v0.1.0** — the **GOVERNED-ACTIONS evidence leg**. Read-only by default: proves whether every *consequential* action the pilot can take is inventoried, mediated, enforced, approved, and auditable, then renders a customer-facing **Governance Evidence Pack**. Inventories declared vs implemented actions, traces mediation across all six execution modes, runs hermetic application-path probes (deny / transform / crash / timeout / malformed verdict / approval replay / output gating / payload-free audit), and assesses the **GitHub Copilot change plane** (PR-only, CODEOWNERS, required checks, SHA pins, OIDC/WIF, identity separation). Emits `tests/governed-actions-manifest.json` + `docs/governance/evidence-pack.md` under `--emit`; the MAF interceptor scaffold needs `--scaffold maf --confirm-scaffold`. **Conformance, not certification** — Agent Hooks is a cooperative alpha, not a security boundary, and this leg does **not** own the production rollout. `production-ready` consumes it as AGT-007 / HITL-008 / SUP-014 evidence. |
+| [`threadlight-govern`](skills/threadlight-govern/) | Authors and validates native ACS/Rego bundles, routes explicit host/service generation, emits offline per-binding `specs/governance-manifest.json`; never declares runtime enforcement from policy/CI. |
+| [`threadlight-governed-actions`](skills/threadlight-governed-actions/) | Produces selected runtime templates through the real generator and assesses inventory, executed LOCAL-14/native path proof, approvals, audit and the change plane. `--emit --gate` writes `tests/governed-actions-manifest.json` and the Governance Evidence Pack. Local conformance is not live enforcement or certification. |
 | [`threadlight-production-ready`](skills/threadlight-production-ready/) | Advisory scorecard/handoff, not certification; remediation and deployment are explicit separate choices. BicepGraph parser, 13 pillars, Defender / Policy / quota / restore-drill checks, `--gate-preview`, `--diff`, `--remediate`, `--trend-csv`, OIDC CI. Hard dep on `bicep` CLI; no regex fallback. Pillars 2/6/7 consume the govern/evals/red-team leg manifests when present + fresh, plus the connect/ground/load/upgrade gap-evidence legs. |
 | [`threadlight-loadtest`](skills/threadlight-loadtest/) | **NEW v0.1.0** — the **LOAD leg** (manual, live, cost-bearing). Runs one budget-capped load profile through **k6 / locust** (or an injected adapter) and emits `specs/load-manifest.json` (`threadlight.load/v1`, LOAD-001..003) with real p50/p95/p99 latency, error-rate, and tokens/request evidence. Aborts before any run if the projected cost exceeds `budget_ceiling_usd`, or if a production endpoint lacks explicit `allow_production`; never installs k6/locust; never loops. `threadlight-auto` does **not** run it. |
 | [`threadlight-upgrade`](skills/threadlight-upgrade/) | **NEW v0.1.0** — the **UPGRADE leg** (plan-only). Scans dependency pins, hosted-agent runtime policy, governance profile, and model families against a dated `compatibility-matrix.json` and emits `specs/upgrade-manifest.json` (UPG-001..003) + **one ordered migration plan**. No network calls, no `--apply` — it **never edits the project**. Acting on the plan is a manual, human-driven step. |
@@ -62,7 +124,7 @@ CONNECT: threadlight-connect (mock→real tool swap — manual, evidence-gated) 
 DISCOVER: threadlight-evals (offline + online CE) + threadlight-redteam (adversarial scan) +
           threadlight-ground (ACL / citation / refusal grounding — manual) →
 PROTECT: threadlight-govern (AGT runtime governance) +
-         threadlight-governed-actions (consequential-action mediation evidence — read-only) →
+         threadlight-governed-actions (selected runtime generation + scoped evidence) →
 foundry-observability →
 threadlight-loadtest (budget-capped, production-confirmed load evidence — manual) →
 threadlight-production-ready (advisory; verifies the legs ran) → customer architecture review →

@@ -72,7 +72,10 @@ All three manifests have a top-level `"gaps": []`. **Empty array = pass.**
 ## Selected runtime governance
 
 When the SPEC selects governance, resource presence alone is insufficient.
-`off` and legacy manifests add no governance work or network calls.
+Explicit `off` and unselected legacy projects add no governance network calls.
+Invalid selected configuration is not off: it fails closed. Legacy v2 evidence
+never passes new runtime readiness. This is binding evidence, **not whole-agent**
+certification.
 
 - **Pre-deploy:** verify the exact selected adapter, packaged code/configuration,
   bundle integrity, required controls and service bindings. Before an image
@@ -98,6 +101,16 @@ When the SPEC selects governance, resource presence alone is insufficient.
 
 See [collector installation, inputs and limits](references/governance-probe.md)
 and the [actual producer contract](references/probe-fixture/README.md).
+
+The collector independently observes ARM/Foundry tenant/subscription/RG,
+version/image/principal and closed configuration before and after invocation.
+Pin the parent with `--subscription` and `--rg`; constrain tenant through the
+deployment manifest and independently checked account context. Never derive
+the expected parent from the probe configuration. Every deployment attempt
+needs fresh after-deployment proof, not current mtime or a reused nonce.
+Readiness rechecks the full signed envelope/key, bundle and current configuration
+against previously verified evidence. Changed signatures invalidate it.
+Required audit uses remote ACK; local overlay fsync is not hosted durability.
 
 ---
 

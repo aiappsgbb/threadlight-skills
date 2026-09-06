@@ -1,7 +1,11 @@
 # Threadlight — Technical Briefing
 
-> **Engineering reference for a governed working pilot with an evidence-backed path to production.**
-> Threadlight is a library of twenty-three `threadlight-*` skills (22 pipeline skills + the `threadlight-auto` lifecycle planner) that takes a customer engagement from a brief into a governed working pilot with auditable evidence. A working session produces the pilot and the evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
+> **Engineering reference for a working pilot with selected runtime governance and an evidence-backed path to production.**
+> Threadlight is a library of twenty-three `threadlight-*` skills (22 pipeline skills + the `threadlight-auto` lifecycle planner) that takes a customer engagement from a brief into a working pilot with selected runtime governance and auditable evidence. A working session produces the pilot and the evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
+>
+> Governance evidence is per binding, not whole-agent. See the current
+> [runtime lifecycle](docs/production-readiness.md#runtime-governance-lifecycle);
+> legacy policy/verdict captures are historical only.
 >
 > SPEC § 14 is the value-model contract: baseline, target, owner, timeframe, measurement source, and maturity policy. The public value arc is forecast → settled Azure actuals → reconciliation → cost per successful interaction.
 
@@ -78,7 +82,7 @@ skill sounds most exciting.
 | The agent is deployed and you need to **run** quality evals (offline batch + online/continuous on live threads + an A/B champion–challenger gate before a model/prompt swap) | `threadlight-evals` (writes `specs/evals-manifest.json`; delegates invoke+score to `foundry-evals`, wires Foundry Continuous Evaluation → App Insights) | production-ready (pillar 6 EVAL-001..004 verifies the leg ran) |
 | The agent is deployed and you need an **AI Red Teaming** adversarial scan (jailbreak / prompt-injection / exfiltration / harmful-content) before sign-off | `threadlight-redteam` (writes `docs/redteam-report.md` + `specs/redteam-manifest.json`; runs the PyRIT-based AI Red Teaming Agent) | production-ready (pillar 7 SAFE-101..106 verifies the scan ran) |
 | The agent grounds answers on a **knowledge source** and you need to prove retrieval is ACL-safe, cited, and honest about what it doesn't know | `threadlight-ground` (writes `specs/ground-manifest.json` GRD-001..004 from caller-supplied ACL / citation / refusal probe evidence; a coordinator — never calls Foundry IQ, never runs a live probe) | production-ready (GRD-001..004). **Manual hand-off — `threadlight-auto` never runs probes** |
-| You need to **govern the agent runtime** — wire AGT policy + in-process middleware at the container boundary and emit a committed verifier report | `threadlight-govern` (writes `specs/govern-manifest.json`; wraps `foundry-agt`) | production-ready (pillar 2 AGT-001..005 + pillar 7 RAI-002/003 verify the artefact) |
+| You need to **govern selected runtime actions** — author ACS/Rego and generate native host/gateway/service wiring, then collect scoped evidence | `threadlight-govern` and `threadlight-governed-actions` (`specs/governance-manifest.json`) | production-ready verifies current binding evidence; policy/CI alone cannot pass |
 | You need to **prove the agent's consequential actions are governed** — action inventory, interceptor mediation, fail-closed enforcement, one-time approvals, output gating, payload-free audit, and the GitHub Copilot change plane | `threadlight-governed-actions` (read-only by default; `--emit` writes `tests/governed-actions-manifest.json` + `docs/governance/evidence-pack.md`) | production-ready (AGT-007 / HITL-008 / SUP-014 consume the manifest as leg-verified evidence) |
 | Safe-check is green and you need a cost story (per-resource projection + cheaper-SKU recommendations) before architecture review | `threadlight-consumption-iq` (writes `docs/cost-projection.md` + `specs/cost-manifest.json`; the wizard back-fills SPEC § 12 `load_profile{}` if it's empty) | production-ready (COST-005 + COST-006 consume the manifest) |
 | You need **real latency / throughput / error-rate evidence** under a hard budget cap before go-live | `threadlight-loadtest` (writes `specs/load-manifest.json` LOAD-001..003 from one budget-capped k6/locust run; aborts if the projection exceeds `budget_ceiling_usd` or a production endpoint lacks explicit `allow_production`; never installs engines, never loops) | production-ready (LOAD-001..003). **Manual, live, cost-bearing — `threadlight-auto` does not run it** |
@@ -470,18 +474,17 @@ un-scanned agent reads as `not-verified` rather than silently green.
 
 ### 14. `threadlight-govern` ([SKILL.md](skills/threadlight-govern/SKILL.md))
 
-**Purpose.** The **Protect** leg — wraps `foundry-agt` to make agent-runtime
-governance *executable*. Scaffolds/validates the governance policy artefact,
-verifies in-process governance middleware is wired at the container boundary,
-and emits a committed verifier report.
+**Purpose.** The **Protect** leg authors native ACS/Rego bundles and routes real
+selected host/gateway/service generation. Required signed policy, authenticated
+one-use approval, trusted backend facts and central audit ACK precede effects.
+Offline/local evidence never implies deployed enforcement.
 
 **Inputs.** The deployed container/agent project + the declared policy
 (SPEC § governance, when present).
 
-**Outputs.** verifier report + `specs/govern-manifest.json`. Produces the
-artefacts `production-ready` pillar 2 (AGT-001..005) and pillar 7
-(RAI-002/003) look for, flipping them from "remediate → go run AGT" to
-"verify the leg ran + artefact fresh".
+**Outputs.** offline report + `specs/governance-manifest.json`. Current readiness
+consumers validate per-binding evidence. The live collector only proves reserved
+`governance_probe_noop`, not business bindings or whole-agent governance.
 
 **Depends on.** `threadlight-deploy`. Idempotent + gracefully degrading.
 
@@ -489,11 +492,11 @@ artefacts `production-ready` pillar 2 (AGT-001..005) and pillar 7
 
 ### 15. `threadlight-governed-actions` ([SKILL.md](skills/threadlight-governed-actions/SKILL.md))
 
-**Purpose.** The **governed-actions evidence leg** — proves whether every
-*consequential* action the pilot can take is **inventoried, mediated,
-enforced, approved, and auditable**, then renders a customer-facing
-**Governance Evidence Pack**. Read-only by default: it assesses and reports,
-and only writes artefacts under `--emit`.
+**Purpose.** Implement selected native host/gateway action paths through the real
+generator, then assess inventory, execution, approval and audit evidence.
+The **assessor CLI** is read-only by default and emits a customer-facing
+**Governance Evidence Pack** under `--emit`; local conformance is not live
+enforcement, and neither implies a whole-agent verdict.
 
 **Inputs.** SPEC § 8 (the declared consequential actions), the action /
 tool registries, the runtime + middleware wiring, the policy / approval /
@@ -563,7 +566,8 @@ handover, model lifecycle) to produce a customer-facing hand-off
 package.
 
 **Posture priority.** Citadel-spoke is the **recommended** enterprise
-target. AGT v4 in-process middleware is second. Standard remote AI
+target. Selected native ACS/Agent Hooks enforcement is a separate action layer.
+Standard remote AI
 gateway / VNet is the third-party fallback. The skill resolves the
 actual target from `SPEC § 12 → SPEC § 11b → deployed evidence →
 default standard-ai-gateway` and adapts its checks — it does not

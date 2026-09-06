@@ -7,6 +7,34 @@ field.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-06
+
+### Breaking migration
+
+- Runtime readiness consumes `threadlight-governance-manifest/v1` per-binding
+  evidence at `specs/governance-manifest.json`. Legacy v2 whole-agent verdicts,
+  policy presence and old green CI remain historical provenance, not current
+  readiness. New deployment attempts require fresh after-deployment collection
+  matching the full signed envelope, bundle, key, configuration and observed scope.
+- Public guidance and skill routing now lead to real ACS/Rego bundle and selected
+  native-host/gateway/service generation, not assessment-only checklists.
+  Unbound reads are preserved; current scoped acceptance is required for
+  consequential unbound actions. Noop proof cannot certify business bindings.
+
+### Added
+
+- Separate local-native-contract and protected preproduction readiness-proof
+  workflow jobs: actual bundle/native validation, exported CTK/LOCAL-14 pre-deploy
+  gate, digest-bound service provisioning/agent deployment, installed post-deploy
+  collector and strict shared v1/readiness consumers. Required operator inputs
+  fail closed; no signatures, fixtures, business seed or broad grants are invented.
+- Root `AGENTS.md`, wording/skill pressure regressions and executable CI input,
+  publication, scope and deployment-attempt tests. Correct shared AGT core 5.0.0
+  identity and 47 declared CTK vectors (four incremental vectors undeclared).
+
+This release publishes local implementation/contract evidence only. No Azure
+deployment or business live proof is claimed; broader acceptance is separate.
+
 ### Changed
 
 - The public narrative now describes a governed working pilot, an evidence-
