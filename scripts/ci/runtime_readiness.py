@@ -144,6 +144,8 @@ def load_inputs(path):
             file = checked_path(base, item["path"])
             if hashlib.sha256(file.read_bytes()).hexdigest() != item["sha256"]:
                 raise ValueError("protected input digest mismatch")
+        if "remote_bootstrap" in config:
+            config["remote_bootstrap"] = remote_driver().load(config, base)
         return config
     except (OSError, ValueError, KeyError, TypeError, ImportError) as error:
         raise ValueError("protected configuration invalid/incomplete; supply actual signed policy, "
@@ -327,7 +329,13 @@ def account_matches(target):
         raise ValueError("observed Azure parent does not match protected tenant/subscription")
 
 
+def remote_driver():
+    return importlib.import_module("scripts.ci.runtime_readiness_remote")
+
+
 def deploy(project, config):
+    if config.get("remote_bootstrap", {}).get("mode") == "resume-signed-bootstrap/v1":
+        return remote_driver().deploy(project, config)
     # Never run azd deploy after binding: beta.10 always creates another version.
     raise ValueError(HOSTED_LIFECYCLE_BLOCKER)
 
@@ -426,7 +434,8 @@ def main():
             raise ValueError("protected configuration SHA256 required/mismatched")
         config = load_inputs(args.configuration)
         if args.stage == "validate-inputs":
-            raise ValueError(HOSTED_LIFECYCLE_BLOCKER)
+            if config.get("remote_bootstrap", {}).get("mode") != "resume-signed-bootstrap/v1":
+                raise ValueError(HOSTED_LIFECYCLE_BLOCKER)
         project = args.project.resolve()
         if args.stage not in {"validate-inputs", "prepare"}:
             if read(project / ".threadlight/ci-input.json") != {"digest": config["input_digest"]}:

@@ -160,6 +160,8 @@ def test_operator_cli_exposes_create_observe_publish_wait_without_azd():
     result = subprocess.run([sys.executable, str(path), "--help"], text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     assert all(command in result.stdout for command in ("create", "observe", "publish", "wait"))
+    assert "--native-probe-assets" in result.stdout
+    assert "--observation-output" in result.stdout and "--expected-observation" in result.stdout
 
 
 def test_public_docs_distinguish_signed_bootstrap_from_live_acceptance():
@@ -167,4 +169,29 @@ def test_public_docs_distinguish_signed_bootstrap_from_live_acceptance():
     assert "threadlight-hosted-bootstrap/v1" in text
     assert "hosted_bootstrap.py" in text
     assert "create-once" in text
-    assert "hosted-native-probe remains unsupported" in text
+    assert "hosted-native-probe remains unverified" in text
+
+
+def test_operator_lifetime_cannot_outlive_any_policy_dependency():
+    from datetime import datetime, timedelta, timezone
+    lib = lifecycle()
+    assert callable(getattr(lib, "bounded_lifetime", None)), "bounded policy lease selection missing"
+    now = datetime.now(timezone.utc)
+    assert lib.bounded_lifetime(3600, [now + timedelta(minutes=10), now + timedelta(minutes=5)], now=now) == 295
+    assert lib.bounded_lifetime(120, [now + timedelta(minutes=10)], now=now) == 120
+    with pytest.raises(ValueError):
+        lib.bounded_lifetime(3600, [now + timedelta(seconds=30)], now=now)
+
+
+def test_resumed_observation_file_is_idempotent_but_never_overwritten(tmp_path):
+    lib = lifecycle()
+    assert callable(getattr(lib, "record_observation", None)), "safe repeated observation handoff missing"
+    path = tmp_path / "observation.json"
+    value = {"agent_version": "17", "principal": "22222222-2222-2222-2222-222222222222"}
+    lib.record_observation(path, value)
+    before = path.read_bytes()
+    lib.record_observation(path, value)
+    assert path.read_bytes() == before
+    with pytest.raises(ValueError):
+        lib.record_observation(path, {**value, "agent_version": "18"})
+    assert path.read_bytes() == before

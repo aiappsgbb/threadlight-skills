@@ -62,13 +62,18 @@ def read_configuration(path):
 
 
 @asynccontextmanager
-async def open_runtime(config, *, platform_credential=None):
+async def open_runtime(config, *, platform_credential=None, bundle_path=None, signed_envelope_path=None,
+                       fresh_guard=None):
     from azure.identity.aio import DefaultAzureCredential
     from azure.cosmos.aio import CosmosClient
     from azure.keyvault.keys.aio import KeyClient
     from azure.keyvault.keys.crypto.aio import CryptographyClient
     from govern_control_plane.app import configure_logging
     configure_logging()
+    if (bundle_path is None) != (signed_envelope_path is None):
+        raise ValueError("complete_materialized_probe_paths_required")
+    if bundle_path is not None and config.credential_mode != "platform-noop":
+        raise ValueError("materialized_assets_require_platform_noop")
     async with AsyncExitStack() as stack:
         async def managed(client):
             async def close():
@@ -107,10 +112,10 @@ async def open_runtime(config, *, platform_credential=None):
             crypto = await managed(CryptographyClient(config.key_id, credential=credential, retry_total=0))
             keys = await managed(KeyClient(config.key_id.split("/keys/")[0], credential=credential, retry_total=0))
             from govern_control_plane.models import SignedBundle
-            with Path(config.signed_envelope_path).open("rb") as stream:
+            with Path(signed_envelope_path or config.signed_envelope_path).open("rb") as stream:
                 signed = parse(SignedBundle, stream.read(16385))
             policy = await NativePolicy.load(
-                bundle_path=Path(config.bundle_path), signed=signed.model_dump(mode="json"),
+                bundle_path=Path(bundle_path or config.bundle_path), signed=signed.model_dump(mode="json"),
                 signer=KeyVaultSigner(crypto, key_client=keys),
                 tenant=config.tenant_id, key_id=config.key_id, policy_id=config.policy_id,
                 version=config.policy_version, expected_digest=config.policy_digest,
@@ -126,8 +131,12 @@ async def open_runtime(config, *, platform_credential=None):
                     or not policy.registry.actions[0].probe_safe
                     or policy.registry.actions[0].workloads != [authenticated.subject]):
                 raise ValueError("dedicated_platform_noop_registration_required")
+            def fresh():
+                policy.fresh()
+                if fresh_guard is not None:
+                    fresh_guard()
             service = ProbeService(store=store, registry=policy.registry,
-                policy_digest=native_digest or policy.digest, producer=config.producer, fresh=policy.fresh)
+                policy_digest=native_digest or policy.digest, producer=config.producer, fresh=fresh)
             downstream = None
             if config.producer == "native":
                 downstream = DownstreamClient(credential=credential if config.credential_mode == "platform-noop"

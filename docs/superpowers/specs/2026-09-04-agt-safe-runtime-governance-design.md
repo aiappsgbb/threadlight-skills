@@ -14,8 +14,10 @@
 alternative now has a create-once operator SDK lifecycle, Task8 immutable binding
 publication/read, and pending generated host gates. It replaces no native SDK
 bytes and makes no Azure acceptance claim. Final policy versions are distinct
-from bootstrap versions. The legacy protected workflow, remote native probe
-asset delivery and native live AgentIdentity/Cosmos proof remain open; see
+from bootstrap versions. Native assets and both SDK bootstrap-check protocols
+are implemented locally, with an explicit protected SDK-resume workflow. The
+legacy start/mount sequence remains unsupported. Native live AgentIdentity/Cosmos
+authorization and controller reachability remain unverified; see
 `docs/production-readiness.md`. Do not mark Task14/15 complete from these local
 protocol tests or apply noop receipts to business actions.
 

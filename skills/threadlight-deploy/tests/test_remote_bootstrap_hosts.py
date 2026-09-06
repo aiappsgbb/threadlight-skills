@@ -215,7 +215,8 @@ def test_ghcp_relay_rechecks_binding_after_credential_wait():
     asyncio.run(scenario())
 
 
-def test_collector_checks_actual_pending_host_signed_binding_before_probe():
+@pytest.mark.parametrize("protocol", ["invocations", "responses"])
+def test_collector_checks_actual_pending_host_signed_binding_before_probe(protocol):
     sys.path.insert(0, str(ROOT / "skills/threadlight-govern/tests"))
     from test_remote_bootstrap import binding, harness
     from govern_control_plane.bootstrap import BootstrapGate, BootstrapBinding
@@ -239,18 +240,22 @@ def test_collector_checks_actual_pending_host_signed_binding_before_probe():
             transport = httpx.ASGITransport(app=gate)
             class Platform(httpx.AsyncBaseTransport):
                 async def handle_async_request(self, request):
-                    assert request.url.path.endswith("/agents/agent-1/endpoint/protocols/invocations")
-                    request.url = httpx.URL("https://host/invocations")
+                    if protocol == "invocations":
+                        assert request.url.path.endswith("/agents/agent-1/endpoint/protocols/invocations")
+                    else:
+                        assert request.url.path.endswith("/responses")
+                    request.url = httpx.URL("https://host/" + protocol)
                     return await transport.handle_async_request(request)
             class Credential:
-                async def get_token(self, scope):
-                    return SimpleNamespace(token="platform-external-fixture")
+                async def get_token(self, *scopes, **kwargs):
+                    return SimpleNamespace(token="platform-external-fixture", expires_on=9999999999)
             config = {"bootstrap": signed.model_dump(mode="json"), "tenant_id": signed.binding.tenant_id,
                       "policy": {"key_id": signed.binding.key_id, "policy_digest": signed.binding.policy_digest}}
+            config["native_policy"] = dict(config["policy"])
             target = {**{key: getattr(signed.binding, key) for key in (
                 "agent_id", "agent_version", "image_digest", "project_endpoint", "subscription", "resource_group",
                 "environment", "client_id")}, "subject": signed.binding.principal,
-                "tenant": signed.binding.tenant_id, "protocol": "invocations"}
+                "tenant": signed.binding.tenant_id, "protocol": protocol}
             async with httpx.AsyncClient(transport=Platform()) as http:
                 with pytest.raises(ValueError):
                     await collector.verify_host_bootstrap(config, target, Credential(), http, h.service.signer)
@@ -302,3 +307,51 @@ def test_remote_gateway_stages_distinct_final_immutable_policy_version(tmp_path)
         "gateway_bundle": str(final.root), "policy_digest": final.bundle_digest,
         "signed_envelope": str(signed_path), "agent_image": deployment["images"]["agent"]})
     assert staged["policy_digest"] == final.bundle_digest
+
+
+@pytest.mark.governance_runtime
+def test_native_bootstrap_check_uses_actual_responses_sdk_without_inference():
+    sys.path.insert(0, str(ROOT / "skills/threadlight-govern/tests"))
+    from test_remote_bootstrap import binding, harness
+    from govern_control_plane import bootstrap
+    from govern_control_plane.models import canonical, parse
+    from types import SimpleNamespace
+    import httpx
+    assert callable(getattr(bootstrap, "read_host_binding", None)), "native Responses bootstrap check missing"
+
+    async def scenario():
+        h = await harness()
+        try:
+            signed = await h.service.publish_bootstrap(parse(bootstrap.BootstrapBinding, canonical(binding())))
+            effects = []
+            async def fetch():
+                return signed
+            async def application(scope, receive, send):
+                effects.append("inference")
+                raise AssertionError("bootstrap check must not enter the application")
+            async def initialize(binding, stack):
+                return application
+            gate = bootstrap.BootstrapGate(expected=binding(), fetch=fetch, signer=h.service.signer,
+                                           initialize=initialize)
+            await gate.activate()
+            asgi = httpx.ASGITransport(app=gate)
+            class Platform(httpx.AsyncBaseTransport):
+                async def handle_async_request(self, request):
+                    assert request.url.path.endswith("/responses")
+                    body = json.loads(request.content)
+                    assert body["input"] == [] and body["store"] is False
+                    assert body["agent_reference"]["version"] == "17"
+                    request.url = httpx.URL("https://host/responses")
+                    return await asgi.handle_async_request(request)
+            class Credential:
+                async def get_token(self, *scopes, **kwargs):
+                    return SimpleNamespace(token="platform-local-fixture", expires_on=9999999999)
+            target = {"protocol": "responses", "project_endpoint": signed.binding.project_endpoint,
+                      "agent_id": signed.binding.agent_id, "agent_version": "17"}
+            async with httpx.AsyncClient(transport=Platform()) as http:
+                await bootstrap.read_host_binding(target, signed, credential=Credential(), http=http)
+            assert effects == []
+            await gate.aclose()
+        finally:
+            await h.close()
+    asyncio.run(scenario())

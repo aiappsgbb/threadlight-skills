@@ -29,9 +29,12 @@ Vault cryptography, Bicep, pytest/unittest, Azure CLI/azd.
 `control-plane/bootstrap.py`, `control-plane/hosted_lifecycle.py` and
 `scripts/ci/hosted_bootstrap.py`, gates both generated server entrypoints, and
 carries the signed chain into current-readiness. The local RED/GREEN suites do
-not close Task14/15. The existing protected workflow is still blocked; native
-remote probe asset delivery/check routing and actual AgentIdentity access to the
-native Cosmos producer remain unresolved. No live evidence or business-write
+not close Task14/15. Native assets now use bounded authenticated Blob delivery,
+frozen policy/endpoint constraints, and the real platform credential. Both native
+protocols support a no-inference bootstrap check. The protected workflow accepts
+only the explicit SDK-resume contract, not legacy register/bind/start.
+Actual AgentIdentity access to the native Cosmos producer and hosted controller
+reachability still require live evidence. No live evidence or business-write
 acceptance is inherited from older artifacts.
 
 ### Shared contracts

@@ -75,6 +75,7 @@ These routes exist (no OpenAPI/docs/publishing route):
 | `POST /receipts` | Workload only; durable receipt acknowledgement |
 | `GET /receipts/{receipt_id}` | Owning workload or authorized tenant auditor |
 | `GET /bootstrap/{reference}` | Exact authenticated workload principal/client/agent; immutable signed hosted binding |
+| `GET /bootstrap/{reference}/assets/{path}?chunk=N` | Same receiver authentication; one bounded signed-manifest asset chunk |
 
 Anonymous health returns `200 {"status":"healthy"}` or 503 unhealthy. If an
 `Authorization` header is supplied, it must authenticate an allowed workload:
@@ -200,6 +201,17 @@ recheck through the authenticated service and an independent key verifier.
 This is local protocol implementation, not a live deployment/attestation claim.
 See the generated deployment README for the operator lifecycle and remaining
 native-probe limitations.
+
+Optional native asset descriptors bind an exact, bounded data inventory. Asset
+paths cannot escape their directory or name Python/shell code. Publication caps
+the entire payload at 512 KiB (32 files, 64 KiB/file), writes create-only 8 KiB
+chunks, rechecks key/policy freshness, and publishes the signed binding last.
+The operator bulk deadline is 120 seconds; HTTP read deadlines remain unchanged.
+Identical chunks can be reused after a partial publication, never overwritten.
+The host authenticates each read and verifies the whole-file hashes before
+materialization. Native validation additionally requires frozen policy bytes and
+predeclared endpoints, identities and scope. None of this grants signing or
+fixture-counter write rights to the agent.
 
 Install this package alongside the separately copied Task7 runtime package.
 `client.ApprovalClient` implements Task7's async `resolve`/`verify` protocol.

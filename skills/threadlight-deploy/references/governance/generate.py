@@ -1088,7 +1088,8 @@ def native_probe_binding(config, bindings, packaged, images, document):
     if (runtime.producer != "native" or runtime.tenant_id != packaged["tenant_id"]
             or runtime.key_id != packaged["key_id"] or registry.tenant_id != packaged["tenant_id"]
             or runtime.service_client_id != bindings["agent_client_id"]
-            or runtime.downstream_client_id != bindings["downstream_client"]
+            or (runtime.credential_mode == "separate-managed-identity"
+                and runtime.downstream_client_id != bindings["downstream_client"])
             or runtime.cosmos_url != config["observations"]["foundation"]["cosmos_url"]
             or runtime.cosmos_database != "governance"
             or runtime.expected_deployment.model_dump(mode="json") != expected

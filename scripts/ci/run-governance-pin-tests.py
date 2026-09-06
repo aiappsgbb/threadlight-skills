@@ -43,6 +43,16 @@ def run(args, **kwargs):
     subprocess.run([str(arg) for arg in args], cwd=ROOT, check=True, **kwargs)
 
 
+def install_reference_wheels(python, wheels):
+    # Source and portable reference wheels share some namespaces. Remove the
+    # previous reference owners before installing any replacement; otherwise a
+    # later uninstall can delete a freshly installed collector module.
+    run([python, "-m", "pip", "uninstall", "--quiet", "--yes",
+         "threadlight-govern-control-plane", "threadlight-govern-gateway",
+         "threadlight-govern-probe-fixture", "threadlight-governance-safe-check"])
+    run([python, "-m", "pip", "install", "--quiet", "--no-deps", *wheels])
+
+
 def verify_wheels(wheelhouse, pins):
     """A configured package mirror is transport, not package provenance."""
     records = []
@@ -256,8 +266,7 @@ def deployment_runtime(pins, *, local_only=False):
         run([python, "-m", "pip", "wheel", "--quiet", "--no-deps", "--no-build-isolation",
              "--wheel-dir", staging / "wheels", staging / "vendor/control-plane", staging / "vendor/gateway",
              fixture_staging, collector_skills / "threadlight-safe-check"])
-        run([python, "-m", "pip", "install", "--quiet", "--no-deps", "--force-reinstall",
-             *sorted((staging / "wheels").glob("*.whl"))])
+        install_reference_wheels(python, sorted((staging / "wheels").glob("*.whl")))
         run([python, "-m", "pip", "check"])
         # Includes exact shared MAF/Hooks/ACS execution bytes, not just versions.
         records = json.loads((SCRATCH / "wheel-provenance.json").read_text())
@@ -309,11 +318,17 @@ for name, record in {sdk_wheels!r}.items():
         report = SCRATCH / "deployment-tests.xml"
         env = {
             **os.environ, "THREADLIGHT_GOVERNANCE_RUNTIME": "1",
+            "THREADLIGHT_READINESS_SDK": "1",
             "THREADLIGHT_GOVERNANCE_BICEP": str(SCRATCH / "deployment-bicep.json"),
             "ACS_OPA_PATH": str(SCRATCH / "opa-linux-amd64"), "OTEL_SDK_DISABLED": "true",
         }
         env.pop("PYTEST_ADDOPTS", None)
         run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_probe_telemetry.py",
+             "skills/threadlight-govern/tests/test_bootstrap_assets.py",
+             "skills/threadlight-govern/tests/test_remote_bootstrap.py",
+             "skills/threadlight-deploy/tests/test_native_bootstrap_assets.py",
+             "skills/threadlight-deploy/tests/test_remote_bootstrap_hosts.py",
+             "tests/ci/test_hosted_bootstrap_lifecycle.py",
               "skills/threadlight-safe-check/tests",
                "skills/_shared/tests/test_governance.py",
              "skills/threadlight-deploy/tests/test_governance_wiring.py",
@@ -329,6 +344,14 @@ for name, record in {sdk_wheels!r}.items():
                             for tag in ("skipped", "failure", "error")):
             raise RuntimeError("deployment tests missing, skipped, or failed")
         required_cases = {
+            "test_publish_is_immutable_authorized_read_and_real_signature",
+            "test_request_cannot_observe_partially_initialized_host",
+            "test_assets_use_authenticated_create_only_chunked_blob_transport",
+            "test_native_assets_reuse_frozen_code_exact_identity_and_registered_endpoints[None]",
+            "test_generated_native_host_prepares_remote_data_without_mounts",
+            "test_native_bootstrap_check_uses_actual_responses_sdk_without_inference",
+            "test_real_sdk_version17_created_once_and_lost_reply_never_retries[False]",
+            "test_real_sdk_version17_created_once_and_lost_reply_never_retries[True]",
             "test_native_returns_safe_context_and_cosmos_effect[valid]",
             "test_native_returns_safe_context_and_cosmos_effect[forged]",
             "test_native_returns_safe_context_and_cosmos_effect[stale]",

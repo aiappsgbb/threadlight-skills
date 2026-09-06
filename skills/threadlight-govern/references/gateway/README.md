@@ -287,5 +287,6 @@ No `downstream_client_id` or fixture writer credential is accepted in this mode.
 The signed registry must contain exactly one probe-safe `governance_probe_noop`
 for that authenticated subject. The independent fixture remains the only writer
 of its counter store. Default/native local-file and business gateway identity
-separation are unchanged. This option does not implement remote native assets or
+separation are unchanged. The generated native host now supplies authenticated,
+materialized bootstrap assets and reuses the platform credential; it does not
 prove that hosted AgentIdentity can access the native Cosmos producer.

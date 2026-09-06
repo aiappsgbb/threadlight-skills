@@ -31,12 +31,14 @@ The project must already contain:
   `.threadlight/governance-deployment.json`, and the actual packaged agent/services;
 - For frozen `remote_bootstrap` hosts, the operator-published
   `.threadlight/hosted-bootstrap.json`. Its reference and canonical configuration
-  digest must match the unchanged image configuration. GHCP collection verifies
+  digest must match the unchanged image configuration. Collection verifies
   the signature/key and exact observed target, then obtains the same signed
-  binding from the running host's empty-input Invocations bootstrap check before
+  binding from the running host's empty-input Invocations check or actual SDK
+  Responses metadata check before
   either noop invocation. Current-readiness requires the same fresh signed chain.
-  This check is not effect proof. Remote native probe assets/check routing remain
-  explicitly unsupported; local native evidence does not close that hosted gap.
+  This check is not effect proof. Native remote assets are authenticated and
+  checked against frozen policy/endpoint constraints; local tests do not prove
+  actual hosted AgentIdentity/Cosmos authorization or controller reachability.
 - the explicitly installed fixture's mounted `ProbeConfiguration`, copied as a
   protected project-relative configuration file (never include credentials);
 - the signed probe bundle and envelope. Native MAF uses the separately signed,

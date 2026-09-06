@@ -171,13 +171,14 @@ def build_host(provider, *, client, **host_options):
     return host
 
 
-async def install_probe_runtime(config, provider, stack):
+async def install_probe_runtime(config, provider, stack, *, credential=None, runtime_configuration=None,
+                                assets=None):
     from govern_control_plane.probes import ProbeOptIn
     from govern_control_plane.models import canonical
     from govern_gateway.probe_runtime import open_runtime, read_configuration
     from runtime import NativeProbeTelemetry
     option = parse(ProbeOptIn, canonical(config["probe_observability"]))
-    probe_config = read_configuration(option.configuration_file)
+    probe_config = runtime_configuration or read_configuration(option.configuration_file)
     actual = {name: config[name] for name in (
         "agent_id", "agent_version", "image_digest", "environment", "subscription", "resource_group")}
     if (probe_config.producer != "native" or probe_config.tenant_id != provider.tenant
@@ -186,7 +187,11 @@ async def install_probe_runtime(config, provider, stack):
     workload = probe_config.workloads.get(provider.principal)
     if workload is None or workload.client_id != probe_config.service_client_id:
         raise ValueError("native_probe_identity_mismatch")
-    service, auth, downstream = await stack.enter_async_context(open_runtime(probe_config))
+    materialized = ({"bundle_path": assets / "policy", "signed_envelope_path": assets / "envelope.json"}
+                    if assets is not None else {})
+    service, auth, downstream = await stack.enter_async_context(open_runtime(
+        probe_config, platform_credential=credential,
+        fresh_guard=getattr(getattr(provider, "bootstrap_gate", None), "check", None), **materialized))
     if service.registry.native_policy_digest != provider.policy_digest():
         raise ValueError("native_probe_policy_association_mismatch")
     telemetry = NativeProbeTelemetry(
@@ -195,7 +200,32 @@ async def install_probe_runtime(config, provider, stack):
 
 
 def remote_host(config, *, credential, signer, http=None, env=None, **host_options):
-    from govern_control_plane.bootstrap import runtime_gate
+    from govern_control_plane.bootstrap import runtime_gate, BootstrapReference
+    from govern_control_plane.models import canonical
+    reference = parse(BootstrapReference, canonical(config["remote_bootstrap"]))
+    prepared = {}
+
+    async def prepare(signed, stack):
+        if "probe_observability" not in config:
+            if signed.binding.native_probe_assets is not None or reference.native_probe is not None:
+                raise ValueError("unexpected_native_bootstrap_assets")
+            return
+        if reference.native_probe is None or signed.binding.native_probe_assets is None:
+            raise ValueError("native_bootstrap_assets_required")
+        from govern_control_plane.bootstrap_assets import materialize
+        from govern_gateway.bootstrap_native import validate_assets
+        import shutil
+        root = await materialize(signed, gate.bootstrap_client,
+                                 destination=Path((env or os.environ)["TL_GOV_SPOOL_DIR"]) / "bootstrap")
+        try:
+            producer = await validate_assets(
+                root, native_bundle=BASE / "policy", binding=signed.binding,
+                constraints=reference.native_probe, signer=signer)
+        except BaseException:
+            shutil.rmtree(root)
+            raise
+        prepared.update(configuration=producer, root=root)
+        stack.callback(shutil.rmtree, root)
 
     async def initialize(binding, stack):
         verify_bundle(BASE / "policy", expected_digest=binding.native_policy_digest)
@@ -217,8 +247,6 @@ def remote_host(config, *, credential, signer, http=None, env=None, **host_optio
             "spool_dir": (env or os.environ)["TL_GOV_SPOOL_DIR"]}
         if resolved["policy_digest"] != binding.native_policy_digest:
             raise ValueError("bootstrap_native_policy_mismatch")
-        if "probe_observability" in resolved:
-            raise ValueError("remote_native_probe_assets_required")
         if callable(getattr(application, "initialize", None)):
             await application.initialize(resolved, credential, stack)
         provider = await build_provider(resolved, signer=signer, credential=credential)
@@ -228,6 +256,9 @@ def remote_host(config, *, credential, signer, http=None, env=None, **host_optio
         if (getattr(application, "require_ready", False)
                 and (await dependency_readiness(provider)).status_code != 200):
             raise ValueError("required_governance_startup_unavailable")
+        if "probe_observability" in resolved:
+            await install_probe_runtime(resolved, provider, stack, credential=credential,
+                                        runtime_configuration=prepared["configuration"], assets=prepared["root"])
         client = FoundryChatClient(
             project_endpoint=binding.project_endpoint,
             model=(env or os.environ)["AZURE_AI_MODEL_DEPLOYMENT_NAME"], credential=credential)
@@ -236,7 +267,7 @@ def remote_host(config, *, credential, signer, http=None, env=None, **host_optio
         return host
 
     gate = runtime_gate(config, env=env or os.environ, credential=credential,
-                        signer=signer, initialize=initialize, http=http)
+                        signer=signer, initialize=initialize, http=http, prepare=prepare)
     return gate
 
 
@@ -278,7 +309,7 @@ async def main():
                 and (await dependency_readiness(provider)).status_code != 200):
             raise ValueError("required_governance_startup_unavailable")
         if "probe_observability" in config:
-            await install_probe_runtime(config, provider, stack)
+            await install_probe_runtime(config, provider, stack, credential=credential)
         client = FoundryChatClient(
             project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
             model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"], credential=credential)

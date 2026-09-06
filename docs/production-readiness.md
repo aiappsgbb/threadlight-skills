@@ -113,22 +113,40 @@ re-verifies that signed chain against the running host and independent Azure
 observations before invoking its registered noop. Current-readiness rejects missing,
 changed or expired bootstrap proof for a remote-selected frozen package.
 
-**Limits:** no live Azure proof is supplied by these local tests. The existing
-all-in-one protected workflow below is still blocked; it has not been converted
-into these separate operator steps. **hosted-native-probe remains unsupported**:
-the native remote host explicitly rejects post-registration probe assets rather
-than pretending they are mounted. The explicit `platform-noop` credential mode
-removes the invented attachable-agent-UAMI requirement only for the dedicated
-registered noop; actual AgentIdentity authorization to the separate native Cosmos
-producer still needs live verification, and remote native probe asset delivery
-and Responses bootstrap-check routing are not implemented. Native business
-runtime remains available with its signed embedded policy; no native-to-GHCP
-substitution or business effect proof is implied.
+Native post-registration data is delivered as signed, bounded asset descriptors
+and authenticated, create-only Blob chunks. There is no archive extraction or
+mount attachment. Native policy code must byte-match the frozen image; only its
+signed probe registry/metadata and typed configuration are post-registration
+data. Cosmos target, audience, fixture endpoints/scope and controller identities
+are pinned in `remote_bootstrap.native_probe` before building the image. The
+Responses bootstrap check uses the actual pinned SDK and an empty-input metadata
+control exchange, not a model call.
 
-**NEEDS_CONTEXT — hosted readiness deployment is blocked.** The protected
+The protected workflow now accepts **only** explicit
+`remote_bootstrap.mode: resume-signed-bootstrap/v1`. It resumes an acknowledged
+prior SDK creation and operator-prepared service deployment; it does not create
+another agent version or call azd. Its content-pinned inputs are `creation`,
+`attempt`, `publisher`, `policy_bundle`, `policy_envelope`, and native-only
+`native_assets`. File entries contain `{path, sha256}`; directory entries contain
+`{path, tree_digest}`. Paths are relative to the protected configuration directory.
+The image/source digest and original source commit must match the prepared
+project. Fresh SDK identity observations must match the supplied service bindings
+before publication. Publication, native protocol check and fresh collection remain
+separate gates. Existing service images, app roles and registered fixture are
+operator prerequisites, not resources silently provisioned by this resume mode.
+
+**Limits:** no live Azure proof is supplied by these local tests.
+**hosted-native-probe remains unverified as live assurance** until the actual
+platform AgentIdentity can authorize against the native Cosmos producer and the
+registered producer API is reachable by its controller. The code uses that
+service-authenticated credential only for the dedicated noop; it does not attach
+a UAMI or silently substitute another identity/runtime. Native business runtime
+retains its embedded policy. No business effect proof is implied.
+
+**NEEDS_CONTEXT — the legacy register/bind/start mode remains blocked.** The protected
 `validate-inputs` stage refuses before login/provisioning, and direct `deploy`
-also refuses before any command or project mutation, for both native MAF and
-GHCP. Local preparation/validation remains available. This is not a completed
+also refuses before any command or project mutation unless the explicit
+SDK-resume contract above is selected. Local preparation/validation remains available. This is not a completed
 register → observe → bind → start lifecycle or a readiness pass.
 
 The actual published contracts prevent the requested sequence:
@@ -160,9 +178,8 @@ Re-enabling this driver requires an approved lifecycle/configuration contract,
 not a guessed next version, patched frozen package, fabricated mount API, or
 protected selectors relabelled as server observations. GHCP has a signed final
 gateway-bundle phase, but that alone does not supply register-without-activation.
-This legacy all-in-one driver does not invoke the signed remote bootstrap
-operator commands above. It must not be unblocked merely because those local
-protocol tests pass.
+No local protocol test alone authorizes the legacy all-in-one lifecycle. Select
+the concrete SDK-resume contract, not an invented start/mount operation.
 
 **Target/application staging is also unresolved, not fixed by this blocker.**
 The same beta.10 implementation reads `AZURE_AI_PROJECT_ID` and

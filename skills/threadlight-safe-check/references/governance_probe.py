@@ -219,30 +219,21 @@ async def invoke(target, run_id, variant, credential, http, timeout):
 
 
 async def verify_host_bootstrap(config, target, credential, http, signer):
-    """Read-only Invocations check; neither a model prompt nor noop effect proof."""
-    from govern_control_plane.bootstrap import SignedBootstrap, verify
+    """Read-only native protocol check; neither inference nor noop effect proof."""
+    from govern_control_plane.bootstrap import SignedBootstrap, verify, read_host_binding, BootstrapUnavailable
     from govern_control_plane.models import canonical, parse
     signed = parse(SignedBootstrap, canonical(config["bootstrap"]))
     binding = await verify(signed, signer, tenant_id=config["tenant_id"], key_id=config["policy"]["key_id"])
-    require(target["protocol"] == "invocations", "native-remote-bootstrap-check-unsupported")
+    selected_policy = config["native_policy"] if target["protocol"] == "responses" else config["policy"]
     require(binding.tenant_id == target["tenant"] and binding.principal == target["subject"]
-            and binding.policy_digest == config["policy"]["policy_digest"]
+            and binding.policy_digest == selected_policy["policy_digest"]
             and all(getattr(binding, key) == target[key] for key in (
                 "agent_id", "agent_version", "image_digest", "project_endpoint", "subscription",
                 "resource_group", "environment", "client_id")), "bootstrap-observed-target-mismatch")
-    token = await credential.get_token("https://ai.azure.com/.default")
-    url = target["project_endpoint"] + "/agents/" + target["agent_id"] + "/endpoint/protocols/invocations?api-version=v1"
-    async with http.stream("POST", url, headers={"Authorization": "Bearer " + token.token},
-            json={"input": "", "bootstrap_reference": binding.reference}, follow_redirects=False) as response:
-        require(response.status_code == 200, "host-bootstrap-unavailable")
-        raw = bytearray()
-        async for part in response.aiter_bytes():
-            raw.extend(part)
-            require(len(raw) <= 16384, "host-bootstrap-response-too-large")
-    from govern_control_plane.models import strict_json
-    body = strict_json(bytes(raw))
-    require(set(body) == {"bootstrap"}
-            and parse(SignedBootstrap, canonical(body["bootstrap"])) == signed, "host-bootstrap-chain-mismatch")
+    try:
+        await read_host_binding(target, signed, credential=credential, http=http)
+    except BootstrapUnavailable:
+        raise ProbeEvidenceError("host-bootstrap-unavailable") from None
     await verify(signed, signer, tenant_id=config["tenant_id"], key_id=config["policy"]["key_id"])
     return signed.model_dump(mode="json")
 
@@ -442,6 +433,18 @@ def manifest(report, config):
     return validate_governance_manifest(value)
 
 
+def validate_fixture_identity(producer, fixture, binding, *, native):
+    if native and producer.credential_mode == "platform-noop":
+        require(fixture.fixture_callers == {binding["agent_principal"]: binding["agent_client_id"]}
+                and fixture.service_client_id != binding["agent_client_id"],
+                "native-fixture-writer-must-remain-separate")
+    else:
+        require(binding["agent_principal"] not in fixture.fixture_callers
+                and binding["downstream_principal"] in fixture.fixture_callers
+                and fixture.fixture_callers[binding["downstream_principal"]] == binding["downstream_client"],
+                "fixture-credentials-not-exclusive")
+
+
 def load_configuration(project, configuration):
     """Resolve operator inputs against Task10's frozen package and bound services."""
     from govern_control_plane.auth import Settings
@@ -476,10 +479,7 @@ def load_configuration(project, configuration):
     require(control.audience == packaged["control_plane_scope"][6:-9]
             and binding["gateway_config"]["control_plane_url"] == packaged["control_plane_url"],
             "control-plane-binding-disagrees")
-    require(binding["agent_principal"] not in fixture.fixture_callers
-            and binding["downstream_principal"] in fixture.fixture_callers
-            and fixture.fixture_callers[binding["downstream_principal"]] == binding["downstream_client"],
-            "fixture-credentials-not-exclusive")
+    validate_fixture_identity(producer, fixture, binding, native=native)
     for service, principal, client, image in (
         ("control_plane", binding["control_principal"], binding["control_client"], deployment["images"]["control_plane"]),
         *(() if native else (("producer", binding["gateway_principal"], binding["gateway_client"],

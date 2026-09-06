@@ -10,11 +10,12 @@ import base64
 from contextlib import AsyncExitStack
 from datetime import datetime, timedelta, timezone
 import hashlib
+import uuid
 from typing import Annotated, Literal
 
 import httpx
 from azure.core.exceptions import AzureError
-from pydantic import Field, StringConstraints
+from pydantic import Field, StringConstraints, model_validator
 from starlette.responses import JSONResponse
 
 from .client import ApprovalUnavailable, ServiceTransport
@@ -22,6 +23,7 @@ from .models import (
     Digest, Identifier, KeyId, ObjectId, StrictModel, Timestamp, canonical, parse, strict_json,
 )
 from .storage import Conflict
+from .bootstrap_assets import BootstrapAsset, NativeProbeConstraints, validate_descriptors
 
 DEPENDENCY_ERRORS = (ApprovalUnavailable, ValueError, RuntimeError, OSError, httpx.HTTPError, AzureError)
 
@@ -51,8 +53,16 @@ class BootstrapBinding(StrictModel):
     client_id: ObjectId
     issued_at: Timestamp
     expires_at: Timestamp
+    native_probe_assets: Annotated[tuple[BootstrapAsset, ...], Field(min_length=5, max_length=32)] | None = Field(
+        default=None, exclude_if=lambda value: value is None)
 
     model_config = {**StrictModel.model_config, "serialize_by_alias": True}
+
+    @model_validator(mode="after")
+    def asset_inventory(self):
+        if self.native_probe_assets is not None:
+            validate_descriptors(self.native_probe_assets)
+        return self
 
 
 class SignedBootstrap(StrictModel):
@@ -68,11 +78,16 @@ class BootstrapReference(StrictModel):
     resource_group: Identifier
     native_policy_digest: Digest
     final_policy_version: Identifier | None = None
+    native_probe: NativeProbeConstraints | None = None
 
 
 class BootstrapUnavailable(RuntimeError):
     def __init__(self):
         super().__init__("bootstrap_unavailable")
+
+
+class BootstrapNotReady(BootstrapUnavailable):
+    pass
 
 
 def binding_digest(binding):
@@ -118,10 +133,12 @@ async def policy_chain(service, binding):
             raise Conflict()
 
 
-async def publish(service, binding):
+async def publish(service, binding, *, assets=None):
     """Operator backend only; API identity must not have sign or Blob write rights."""
     binding = parse(BootstrapBinding, canonical(binding))
-    async with asyncio.timeout(service.settings.request_timeout):
+    from . import bootstrap_assets
+    bootstrap_assets.validate_content(binding, assets)
+    async with asyncio.timeout(120 if assets is not None else service.settings.request_timeout):
         if (binding.tenant_id != service.settings.tenant_id
                 or binding.key_id != service.settings.key_id):
             raise Conflict()
@@ -131,6 +148,8 @@ async def publish(service, binding):
             await service.signer.sign(binding_digest(binding))).decode())
         await verify(signed, service.signer, tenant_id=service.settings.tenant_id,
                      key_id=service.settings.key_id)
+        await bootstrap_assets.publish(service, binding, assets)
+        await verify(signed, service.signer, tenant_id=service.settings.tenant_id, key_id=service.settings.key_id)
         await policy_chain(service, binding)
         await service.store.blob_create(blob_name(binding.tenant_id, binding.reference), canonical(signed))
         fresh(binding)
@@ -150,6 +169,7 @@ async def read(service, identity, reference):
         raise Forbidden()
     await verify(signed, service.signer, tenant_id=service.settings.tenant_id,
                  key_id=service.settings.key_id)
+    await policy_chain(service, binding)
     return signed
 
 
@@ -166,9 +186,10 @@ class BootstrapClient(ServiceTransport):
 
 class BootstrapGate:
     """Liveness alone is available pending binding; initialization never repeats."""
-    def __init__(self, *, expected, fetch, signer, initialize):
+    def __init__(self, *, expected, fetch, signer, initialize, prepare=None):
         self.expected = dict(expected)
         self.fetch, self.signer, self.initialize = fetch, signer, initialize
+        self.prepare = prepare
         self.lock = asyncio.Lock()
         self.resources = AsyncExitStack()
         self.signed = self.app = None
@@ -201,6 +222,8 @@ class BootstrapGate:
                 return
             # A missing publication is retryable. No app code has run yet.
             signed = await self.authenticate()
+            if self.prepare is not None:
+                await self.prepare(signed, self.resources)
             self.signed = signed
             try:
                 self.app = await self.initialize(signed.binding, self.resources)
@@ -242,7 +265,7 @@ class BootstrapGate:
             await self.authorize()
         except DEPENDENCY_ERRORS:
             return await JSONResponse({"status": "bootstrap_unavailable"}, 503)(scope, receive, send)
-        if scope["path"] == "/invocations" and scope["method"] == "POST":
+        if scope["path"] in ("/invocations", "/responses") and scope["method"] == "POST":
             raw = bytearray()
             try:
                 async with asyncio.timeout(5):
@@ -251,14 +274,38 @@ class BootstrapGate:
                         if message["type"] == "http.disconnect":
                             return
                         raw.extend(message.get("body", b""))
-                        if len(raw) > 32768:
+                        limit = 32768 if scope["path"] == "/invocations" else 16777216
+                        if len(raw) > limit:
                             raise ValueError("bounded_request_required")
                         if not message.get("more_body", False):
                             break
-                body = strict_json(bytes(raw))
+                body = strict_json(bytes(raw)) if raw else None
             except (TimeoutError, ValueError):
                 return await JSONResponse({"error": "invalid_request"}, 400)(scope, receive, send)
-            if isinstance(body, dict) and "bootstrap_reference" in body:
+            if (scope["path"] == "/responses" and isinstance(body, dict)
+                    and isinstance(body.get("metadata"), dict)
+                    and "threadlight_bootstrap_reference" in body["metadata"]):
+                expected = {"threadlight_bootstrap_reference": self.signed.binding.reference}
+                selection = {"type": "agent_reference", "name": self.signed.binding.agent_id,
+                             "version": self.signed.binding.agent_version}
+                if (body.get("input") != [] or body.get("store") is not False
+                        or body["metadata"] != expected
+                        or set(body) - {"input", "metadata", "store", "agent_reference", "model"}
+                        or body.get("agent_reference", selection) != selection):
+                    return await JSONResponse({"status": "bootstrap_unavailable"}, 503)(scope, receive, send)
+                try:
+                    await self.authorize()
+                except DEPENDENCY_ERRORS:
+                    return await JSONResponse({"status": "bootstrap_unavailable"}, 503)(scope, receive, send)
+                from .bootstrap_assets import digest
+                return await JSONResponse({
+                    "id": "resp_bootstrap_" + uuid.uuid4().hex, "object": "response",
+                    "created_at": int(datetime.now(timezone.utc).timestamp()), "status": "completed",
+                    "model": "threadlight-bootstrap-control", "output": [], "tools": [], "store": False,
+                    "parallel_tool_calls": False, "tool_choice": "none",
+                    "metadata": {"threadlight_bootstrap_sha256": digest(canonical(self.signed))},
+                })(scope, receive, send)
+            if scope["path"] == "/invocations" and isinstance(body, dict) and "bootstrap_reference" in body:
                 if body != {"input": "", "bootstrap_reference": self.signed.binding.reference}:
                     return await JSONResponse({"status": "bootstrap_unavailable"}, 503)(scope, receive, send)
                 try:
@@ -307,14 +354,65 @@ class BootstrapGate:
             await send({"type": "lifespan.shutdown.complete"})
 
 
-def runtime_gate(config, *, env, credential, signer, initialize, http=None):
+async def read_host_binding(target, signed, *, credential, http):
+    """A read-only control exchange on the existing native protocol, never inference."""
+    from .bootstrap_assets import digest
+    fresh(signed.binding)
+    if any(getattr(signed.binding, key) != target[key] for key in (
+            "agent_id", "agent_version", "project_endpoint")):
+        raise BootstrapUnavailable()
+    async with asyncio.timeout(30):
+        if target["protocol"] == "responses":
+            from azure.ai.projects.aio import AIProjectClient
+            from openai import APIStatusError
+            async with AIProjectClient(endpoint=target["project_endpoint"], credential=credential,
+                                       allow_preview=True, retry_total=0) as project:
+                client = project.get_openai_client(
+                    agent_name=target["agent_id"], http_client=http, max_retries=0)
+                try:
+                    response = await client.responses.create(
+                        input=[], store=False,
+                        metadata={"threadlight_bootstrap_reference": signed.binding.reference},
+                        extra_body={"agent_reference": {"type": "agent_reference", "name": target["agent_id"],
+                                                         "version": target["agent_version"]}})
+                except APIStatusError as error:
+                    if error.status_code in (404, 409, 429, 503):
+                        raise BootstrapNotReady() from None
+                    raise BootstrapUnavailable() from None
+                if (response.output != [] or response.metadata != {
+                        "threadlight_bootstrap_sha256": digest(canonical(signed))}):
+                    raise BootstrapUnavailable()
+        elif target["protocol"] == "invocations":
+            token = await credential.get_token("https://ai.azure.com/.default")
+            url = target["project_endpoint"] + "/agents/" + target["agent_id"] + "/endpoint/protocols/invocations?api-version=v1"
+            async with http.stream("POST", url, headers={"Authorization": "Bearer " + token.token},
+                    json={"input": "", "bootstrap_reference": signed.binding.reference},
+                    follow_redirects=False) as response:
+                if response.status_code != 200:
+                    if response.status_code in (404, 409, 429, 503):
+                        raise BootstrapNotReady()
+                    raise BootstrapUnavailable()
+                raw = bytearray()
+                async for part in response.aiter_bytes():
+                    raw.extend(part)
+                    if len(raw) > 16384:
+                        raise BootstrapUnavailable()
+            body = strict_json(bytes(raw))
+            if set(body) != {"bootstrap"} or parse(SignedBootstrap, canonical(body["bootstrap"])) != signed:
+                raise BootstrapUnavailable()
+        else:
+            raise BootstrapUnavailable()
+    fresh(signed.binding)
+
+
+def runtime_gate(config, *, env, credential, signer, initialize, http=None, prepare=None):
     """Only frozen image configuration and platform-injected identity are selectors."""
     reference = parse(BootstrapReference, canonical(config["remote_bootstrap"]))
     if (env["FOUNDRY_PROJECT_ENDPOINT"] != reference.project_endpoint
             or env["FOUNDRY_AGENT_NAME"] != config["agent_id"]
             or env["GOV_CONTROL_PLANE_URL"] != config["control_plane_url"]):
         raise ValueError("bootstrap_platform_mismatch")
-    reference_fields = reference.model_dump(exclude={"final_policy_version"})
+    reference_fields = reference.model_dump(exclude={"final_policy_version", "native_probe"})
     expected = {
         **reference_fields, "tenant_id": config["tenant_id"], "key_id": config["key_id"],
         "policy_id": config["policy_id"], "environment": config["environment"],
@@ -333,7 +431,8 @@ def runtime_gate(config, *, env, credential, signer, initialize, http=None):
         # record. No locally decoded token claims are trusted by this receiver.
         return await client.load(reference.reference)
 
-    gate = BootstrapGate(expected=expected, fetch=fetch, signer=signer, initialize=initialize)
+    gate = BootstrapGate(expected=expected, fetch=fetch, signer=signer, initialize=initialize, prepare=prepare)
+    gate.bootstrap_client = client
     gate.resources.push_async_callback(client.aclose)
     return gate
 

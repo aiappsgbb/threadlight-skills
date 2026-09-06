@@ -15,8 +15,7 @@ deployment after publishing its binding.
 
 ## Signed remote bootstrap operator contract
 
-This is implemented local code, **not live acceptance or an unblocked Task14
-workflow**. `package.json` can include `remote_bootstrap` with `reference`,
+This is implemented local code, **not live acceptance**. `package.json` can include `remote_bootstrap` with `reference`,
 `project_endpoint`, `subscription`, `resource_group`, `native_policy_digest`;
 GHCP additionally requires `final_policy_version`, distinct from the original
 bootstrap policy version. All values are frozen before the agent image is built.
@@ -52,21 +51,42 @@ Their portable control-plane dependency exports the bootstrap modules.
    generated agent's unchanged JSON, `--policy-envelope` selecting the final
    signed policy, `--publisher-config` containing the existing Task8
    `AzureConfiguration`, and `--binding-output .threadlight/hosted-bootstrap.json`.
-   `--lifetime-seconds` must fit **both** policy expiries (60–86400 seconds).
+   `--lifetime-seconds` is capped by all signed policy dependencies with a small
+   safety margin (60–86400 seconds); an insufficient remaining lease fails.
    Blob/key permissions belong only to the operator publisher, never the agent.
-6. For GHCP, `wait` with `--binding-output` verifies the exact signed response
-   from the existing Invocations endpoint's empty-input bootstrap check. Then
+6. `wait` with `--binding-output` and `--frozen-config` checks the configured
+   key and exact binding on the existing Invocations or Responses endpoint. Then
    run the existing explicit collector with independently observed target scope.
    The check itself produces no model/tool effect and cannot replace allow/deny
    noop receipts or any business-binding proof.
 
 Native business startup verifies its embedded policy before importing the app.
-Remote native probe assets and a platform Responses bootstrap-check route are
-not implemented; these modes fail explicitly. `platform-noop` in the separate
-probe runtime accepts a caller-owned, service-authenticated platform credential
-only for a sole registered `governance_probe_noop`. Fixture identity/counters and
-business gateway identities remain separate. Actual native AgentIdentity/Cosmos
-authorization is unverified; no UAMI is attached by this implementation.
+For native probes, freeze `remote_bootstrap.native_probe` with `audience`,
+`cosmos_url`, `cosmos_database`, `gateway_url`, `allowed_endpoints`,
+`fixture_scope`, `policy_id`, `policy_version`, and `controller_digest`.
+The controller digest is canonical SHA-256 of each controller's client ID and
+actions, excluding the not-yet-assigned subjects; every final subject must equal
+the observed agent principal. Publish using `--native-probe-assets <directory>`.
+That directory contains `config.json`, `envelope.json`, and the complete signed
+association under `policy/`. Configuration paths retain their legacy logical
+names, but actual bytes are materialized privately under the local spool, not
+mounted by Foundry. Up to 32 files/512 KiB are supported; individual files are
+bounded to 64 KiB and transmitted in authenticated 8 KiB Blob chunks. Policy
+code must match the frozen native bundle, not merely another operator signature.
+
+Preparation can retry before application initialization. Activation and cleanup
+remain one-time. `platform-noop` accepts the actual, service-authenticated
+platform credential only for the sole registered noop. Fixture writer/counters
+and business gateway identities remain separate. Actual native AgentIdentity/
+Cosmos authorization and hosted controller reachability remain unverified.
+
+`--observation-output` saves an independent SDK observation; use
+`--expected-observation` for subsequent publication/wait to reject identity
+races. Publication recovery reuses an identical, still-fresh immutable binding;
+it never extends its expiry. The protected readiness workflow's explicit
+`resume-signed-bootstrap/v1` mode consumes content-pinned prior creation and
+service inputs, verifies source/identity consistency, then publishes, waits and
+collects. It does not invoke azd or create the agent again.
 
 ## Legacy local-file generation ordering
 
