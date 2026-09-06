@@ -76,6 +76,7 @@ def current_context(root):
         "policy_bundle": {"id": envelope["policy_id"], "version": envelope["version"],
                           "digest": envelope["content_digest"],
                           "expires_at": envelope["expires_at"]},
+        **({"bootstrap": config["bootstrap"]} if "bootstrap" in config else {}),
     }
 
 
@@ -182,6 +183,13 @@ def evaluate(manifest, document, *, current=None, now=None):
                 "noop-proof-requires-enforcing-staging-target")
         evidence = manifest.get("collection_evidence")
         require(isinstance(evidence, dict), "authenticated-collection-evidence-required")
+        if "bootstrap" in current or "bootstrap" in evidence:
+            require(evidence.get("bootstrap") is not None
+                    and evidence.get("bootstrap") == current.get("bootstrap"),
+                    "current-bootstrap-chain-required")
+            binding = evidence["bootstrap"]["binding"]
+            require(_time(binding["issued_at"]) <= now < _time(binding["expires_at"]),
+                    "bootstrap-chain-expired")
         require_target(evidence["observed_target"], current["expected_target"],
                        evidence["registration_scope"]["registration"]["deployment"])
         require(evidence["expected_target"] == current["expected_target"], "current-target-mismatch")

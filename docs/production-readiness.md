@@ -78,6 +78,53 @@ any of them invalidates the previous evidence. Saved JSON is not remote attestat
 
 ### Protected readiness-proof CI inputs
 
+#### Signed remote bootstrap implementation (not live acceptance)
+
+The approved alternative is now implemented as **create-once**, then authenticated
+observation and publication of `threadlight-hosted-bootstrap/v1`.
+`scripts/ci/hosted_bootstrap.py` provides separate `create`, `observe`, `publish`,
+and `wait` commands. They use the pinned Projects 2.3.0 SDK and an explicitly
+selected, tenant-bound Azure CLI credential, not `azd deploy`, a guessed version,
+a mutable `"latest"` pointer, or a nonexistent start/mount API.
+
+The frozen image selects `remote_bootstrap`: reference, project endpoint,
+subscription/RG and native policy digest. GHCP also pins a **distinct**
+`final_policy_version`; its original signed bootstrap bundle and final registry
+can therefore both be published immutably. The signed binding covers the canonical
+frozen configuration digest, exact platform version (including arbitrary `"17"`),
+image, project, tenant, parent scope, principal/client, policy digests and version,
+versioned key, issue time and expiry. Task8 verifies both immutable policy indexes,
+fresh key state and RSA signature. Only the operator backend signs or writes Blob.
+The workload-only read endpoint authenticates the receiver with EntraAuth; decoded
+claims are not identity proof.
+
+Generated Responses and Invocations entrypoints stay pending before importing
+application tools or starting a Copilot process. `/liveness` may return 200;
+request/readiness surfaces return 503 until verification and one-time activation.
+Requests reauthenticate the binding, native effect/model boundaries recheck
+expiry, and the GHCP relay rechecks after credential waits. Local-file/off
+behavior remains separate. The Invocations bootstrap check is an empty-input,
+read-only request on the **existing Invocations endpoint**, not a model invocation
+or noop effect test.
+
+Use `--help` and the [operator contract](../skills/threadlight-deploy/references/governance/README.md#signed-remote-bootstrap-operator-contract).
+Publish to the protected `.threadlight/hosted-bootstrap.json`; the collector
+re-verifies that signed chain against the running host and independent Azure
+observations before invoking its registered noop. Current-readiness rejects missing,
+changed or expired bootstrap proof for a remote-selected frozen package.
+
+**Limits:** no live Azure proof is supplied by these local tests. The existing
+all-in-one protected workflow below is still blocked; it has not been converted
+into these separate operator steps. **hosted-native-probe remains unsupported**:
+the native remote host explicitly rejects post-registration probe assets rather
+than pretending they are mounted. The explicit `platform-noop` credential mode
+removes the invented attachable-agent-UAMI requirement only for the dedicated
+registered noop; actual AgentIdentity authorization to the separate native Cosmos
+producer still needs live verification, and remote native probe asset delivery
+and Responses bootstrap-check routing are not implemented. Native business
+runtime remains available with its signed embedded policy; no native-to-GHCP
+substitution or business effect proof is implied.
+
 **NEEDS_CONTEXT — hosted readiness deployment is blocked.** The protected
 `validate-inputs` stage refuses before login/provisioning, and direct `deploy`
 also refuses before any command or project mutation, for both native MAF and
@@ -113,8 +160,9 @@ Re-enabling this driver requires an approved lifecycle/configuration contract,
 not a guessed next version, patched frozen package, fabricated mount API, or
 protected selectors relabelled as server observations. GHCP has a signed final
 gateway-bundle phase, but that alone does not supply register-without-activation.
-No new lifecycle API, permissions, remote configuration mechanism or deployment
-target is selected here.
+This legacy all-in-one driver does not invoke the signed remote bootstrap
+operator commands above. It must not be unblocked merely because those local
+protocol tests pass.
 
 **Target/application staging is also unresolved, not fixed by this blocker.**
 The same beta.10 implementation reads `AZURE_AI_PROJECT_ID` and

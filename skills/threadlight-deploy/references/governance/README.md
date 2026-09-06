@@ -9,6 +9,67 @@ templates.
 
 ## Order and required inputs
 
+For the explicitly selected remote path, use the create-once operator contract
+below instead of the legacy register/bind/azd ordering. Do not run a second agent
+deployment after publishing its binding.
+
+## Signed remote bootstrap operator contract
+
+This is implemented local code, **not live acceptance or an unblocked Task14
+workflow**. `package.json` can include `remote_bootstrap` with `reference`,
+`project_endpoint`, `subscription`, `resource_group`, `native_policy_digest`;
+GHCP additionally requires `final_policy_version`, distinct from the original
+bootstrap policy version. All values are frozen before the agent image is built.
+The real generated MAF/GHCP entrypoints gate requests before application startup.
+Their portable control-plane dependency exports the bootstrap modules.
+
+1. Generate/build the immutable agent image and publish its original signed
+   policy through the existing Task8 operator backend. Do not embed the image's
+   own digest in its bytes. Independently retain image/source provenance.
+2. Prepare a protected `threadlight-hosted-create/v1` JSON file with exactly:
+   `reference`, `tenant_id`, `subscription`, `resource_group`, `project_id`,
+   `project_endpoint`, `agent_name`, `image`, `cpu`, `memory`, `protocol`,
+   `source_commit`, `source_digest`, `environment_variables`, and `schema`.
+   `image` must be digest-pinned; protocol is `responses` or `invocations`.
+   Environment keys are allowlisted: `TL_GOV_IMAGE_DIGEST`,
+   `GOV_CONTROL_PLANE_URL`, `GOVERNED_TOOL_GATEWAY_URL`,
+   `AZURE_AI_MODEL_DEPLOYMENT_NAME`, `TL_GOV_SPOOL_DIR`, and optional
+   `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`. No `FOUNDRY_*`,
+   credentials, or invented identity attachments are accepted. Use a writable
+   `/home/...` local spool path, never claim it is durable hosted evidence.
+3. Under an explicitly approved logged-in operator, run:
+   `python scripts/ci/hosted_bootstrap.py create --creation <protected-create.json>
+   --attempt <protected-attempt.json> --credential-mode azure-cli`.
+   An authenticated ARM project/endpoint observation precedes creation. The
+   persisted creating intent precedes the sole SDK call; an ambiguous lost reply
+   requires operator reconciliation and **never** automatically creates again.
+4. Run `observe` with the same arguments. Independently retrieved version, image,
+   principal and client—not a configured next version—drive subsequent service
+   allowlists and the final gateway registry. Stage/build/deploy only those
+   separate services, using their own immutable images and approved permissions.
+   Publish the final gateway policy at the preselected `final_policy_version`.
+5. Run `publish` with the same arguments plus `--frozen-config` pointing to the
+   generated agent's unchanged JSON, `--policy-envelope` selecting the final
+   signed policy, `--publisher-config` containing the existing Task8
+   `AzureConfiguration`, and `--binding-output .threadlight/hosted-bootstrap.json`.
+   `--lifetime-seconds` must fit **both** policy expiries (60–86400 seconds).
+   Blob/key permissions belong only to the operator publisher, never the agent.
+6. For GHCP, `wait` with `--binding-output` verifies the exact signed response
+   from the existing Invocations endpoint's empty-input bootstrap check. Then
+   run the existing explicit collector with independently observed target scope.
+   The check itself produces no model/tool effect and cannot replace allow/deny
+   noop receipts or any business-binding proof.
+
+Native business startup verifies its embedded policy before importing the app.
+Remote native probe assets and a platform Responses bootstrap-check route are
+not implemented; these modes fail explicitly. `platform-noop` in the separate
+probe runtime accepts a caller-owned, service-authenticated platform credential
+only for a sole registered `governance_probe_noop`. Fixture identity/counters and
+business gateway identities remain separate. Actual native AgentIdentity/Cosmos
+authorization is unverified; no UAMI is attached by this implementation.
+
+## Legacy local-file generation ordering
+
 1. **Foundation, without application revisions.** Supply a dedicated governance
    resource group, existing registry and ACA environment, approved network
    topology, and the Entra application registrations described below:

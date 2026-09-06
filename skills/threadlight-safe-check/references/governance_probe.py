@@ -218,6 +218,35 @@ async def invoke(target, run_id, variant, credential, http, timeout):
                     require(size <= 262144, "invocation-stream-limit")
 
 
+async def verify_host_bootstrap(config, target, credential, http, signer):
+    """Read-only Invocations check; neither a model prompt nor noop effect proof."""
+    from govern_control_plane.bootstrap import SignedBootstrap, verify
+    from govern_control_plane.models import canonical, parse
+    signed = parse(SignedBootstrap, canonical(config["bootstrap"]))
+    binding = await verify(signed, signer, tenant_id=config["tenant_id"], key_id=config["policy"]["key_id"])
+    require(target["protocol"] == "invocations", "native-remote-bootstrap-check-unsupported")
+    require(binding.tenant_id == target["tenant"] and binding.principal == target["subject"]
+            and binding.policy_digest == config["policy"]["policy_digest"]
+            and all(getattr(binding, key) == target[key] for key in (
+                "agent_id", "agent_version", "image_digest", "project_endpoint", "subscription",
+                "resource_group", "environment", "client_id")), "bootstrap-observed-target-mismatch")
+    token = await credential.get_token("https://ai.azure.com/.default")
+    url = target["project_endpoint"] + "/agents/" + target["agent_id"] + "/endpoint/protocols/invocations?api-version=v1"
+    async with http.stream("POST", url, headers={"Authorization": "Bearer " + token.token},
+            json={"input": "", "bootstrap_reference": binding.reference}, follow_redirects=False) as response:
+        require(response.status_code == 200, "host-bootstrap-unavailable")
+        raw = bytearray()
+        async for part in response.aiter_bytes():
+            raw.extend(part)
+            require(len(raw) <= 16384, "host-bootstrap-response-too-large")
+    from govern_control_plane.models import strict_json
+    body = strict_json(bytes(raw))
+    require(set(body) == {"bootstrap"}
+            and parse(SignedBootstrap, canonical(body["bootstrap"])) == signed, "host-bootstrap-chain-mismatch")
+    await verify(signed, signer, tenant_id=config["tenant_id"], key_id=config["policy"]["key_id"])
+    return signed.model_dump(mode="json")
+
+
 async def collect(config, *, credential, signer, run=observation.run_command, http=None,
                   force=False, timeout=30, poll_interval=0.25, required_target=None):
     """No force override: collection is opt-in, exact-scope and binding-specific."""
@@ -283,6 +312,8 @@ async def collect(config, *, credential, signer, run=observation.run_command, ht
                 http = await stack.enter_async_context(httpx.AsyncClient(
                     timeout=timeout, trust_env=False, follow_redirects=False))
             api = API(config, credential, http, timeout)
+            if "bootstrap" in config:
+                report["bootstrap"] = await verify_host_bootstrap(config, target, credential, http, signer)
             report["governance_health"]["dependencies"] = await health(api, config["producer"], runtime_digest)
             scope = {"registration": {"subject": config["subject"], "action": action.name,
                     "deployment": deployment, "policy_digest": runtime_digest}, "tenant": config["tenant_id"],
@@ -292,6 +323,9 @@ async def collect(config, *, credential, signer, run=observation.run_command, ht
             used = set()
             for variant in ("allow", "deny"):
                 policy.fresh()
+                if "bootstrap" in config:
+                    require(await verify_host_bootstrap(config, target, credential, http, signer)
+                            == report["bootstrap"], "bootstrap-changed-during-collection")
                 run_id = str(uuid.uuid4())
                 require(run_id not in used, "nonce-reused")
                 used.add(run_id)
@@ -402,6 +436,7 @@ def manifest(report, config):
             "observed_target": target, "started_at": report["started_at"], "finished_at": report["finished_at"],
             "expected_target": report["expected_target"], "configuration": report["configuration_evidence"],
             "verified_policies": report["verified_policies"],
+            **({"bootstrap": report["bootstrap"]} if "bootstrap" in config else {}),
             "registration_scope": report["registration_scope"], "records": report["probe_evidence"]},
     }
     return validate_governance_manifest(value)
@@ -489,6 +524,18 @@ def load_configuration(project, configuration):
     }
     if native:
         declared_files["native_probe"] = configuration_digest(producer.model_dump(mode="json"))
+    bootstrap = {}
+    if "remote_bootstrap" in frozen:
+        import hashlib
+        from govern_control_plane.bootstrap import SignedBootstrap, BootstrapReference
+        reference = parse(BootstrapReference, canonical(frozen["remote_bootstrap"]))
+        signed_bootstrap = parse(SignedBootstrap, canonical(static.read(
+            static.contained(project, ".threadlight/hosted-bootstrap.json"))))
+        require(signed_bootstrap.binding.reference == reference.reference
+                and signed_bootstrap.binding.native_policy_digest == reference.native_policy_digest
+                and signed_bootstrap.binding.config_digest == "sha256:" + hashlib.sha256(canonical(frozen)).hexdigest(),
+                "frozen-bootstrap-configuration-mismatch")
+        bootstrap["bootstrap"] = signed_bootstrap.model_dump(mode="json")
     return {
         "schema": "threadlight-governance-probe/v1", "producer": "native" if native else "gateway",
         "selection": options["selection"], "contract": package["contract"],
@@ -509,6 +556,7 @@ def load_configuration(project, configuration):
         },
         "runtime_configuration": {"agent": host_environment, "services": service_environments},
         "declared_file_digests": declared_files,
+        **bootstrap,
     }
 
 

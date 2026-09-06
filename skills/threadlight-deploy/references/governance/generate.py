@@ -284,6 +284,15 @@ def portable_configuration(config, contract, framework):
         "bundle_path", "signed_envelope", "network", "agent_service")}
     portable["contract"] = deepcopy(contract)
     normalized = validate_contract(contract)
+    if "remote_bootstrap" in config:
+        from govern_control_plane.bootstrap import BootstrapReference
+        from govern_control_plane.models import canonical, parse
+        reference = parse(BootstrapReference, canonical(config["remote_bootstrap"]))
+        if reference.native_policy_digest != config["policy_digest"]:
+            raise ValueError("frozen_bootstrap_policy_mismatch")
+        if framework == "github-copilot-sdk" and (
+                reference.final_policy_version is None or reference.final_policy_version == config["policy_version"]):
+            raise ValueError("distinct_final_gateway_policy_version_required")
     for source, target in zip(normalized["tools"], portable["contract"]["tools"], strict=True):
         target["requires"] = source["requires"]
     for source, target in zip(normalized["governance"]["lifecycle_bindings"],
@@ -396,10 +405,22 @@ def frozen_configuration(project, package):
     return agent, frozen
 
 
+def gateway_policy_selection(config):
+    if "remote_bootstrap" not in config:
+        return config
+    from govern_control_plane.bootstrap import BootstrapReference
+    from govern_control_plane.models import canonical, parse
+    reference = parse(BootstrapReference, canonical(config["remote_bootstrap"]))
+    if reference.final_policy_version is None:
+        raise ValueError("final_gateway_policy_version_required")
+    return {**config, "policy_version": reference.final_policy_version}
+
+
 def validate_gateway_policy(bundle, signed, config, document, agent_image, bindings=None):
     """Shared stage/bind/static association checks; signature verification stays live."""
     from govern_control_plane.models import parse
     from govern_gateway.dispatcher import Registry
+    config = gateway_policy_selection(config)
     registry = parse(Registry, (bundle.root / "gateway-registry.json").read_bytes())
     validate_policy(bundle, signed, config)
     validate_bundle_contract(bundle, document, config, registry)
@@ -916,6 +937,8 @@ def bind(project, document, *, configuration=None):
             or infrastructure["network"] != packaged["network"]):
         raise ValueError("deployment_trust_changed")
     agent, frozen = frozen_configuration(project, package)
+    if package["framework"] == "github-copilot-sdk":
+        frozen = gateway_policy_selection(frozen)
     if infrastructure["environment"] != frozen["environment"]:
         raise ValueError("frozen_deployment_environment_mismatch")
     if (bindings["policy_id"] != frozen["policy_id"]

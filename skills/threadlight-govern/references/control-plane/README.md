@@ -65,7 +65,7 @@ approval lifetime. Exact digest and policy expiry must match a verified,
 published envelope. IDs contain only bounded identifier characters; models are
 strict, forbid extra fields and do not coerce strings to booleans/numbers.
 
-Only these five routes exist (no OpenAPI/docs/publishing route):
+These routes exist (no OpenAPI/docs/publishing route):
 
 | Method/path | Authorization and result |
 |---|---|
@@ -74,6 +74,7 @@ Only these five routes exist (no OpenAPI/docs/publishing route):
 | `POST /approvals/resolve` | Discriminated operation described below |
 | `POST /receipts` | Workload only; durable receipt acknowledgement |
 | `GET /receipts/{receipt_id}` | Owning workload or authorized tenant auditor |
+| `GET /bootstrap/{reference}` | Exact authenticated workload principal/client/agent; immutable signed hosted binding |
 
 Anonymous health returns `200 {"status":"healthy"}` or 503 unhealthy. If an
 `Authorization` header is supplied, it must authenticate an allowed workload:
@@ -179,6 +180,26 @@ as a live key-health check. Key rotation requires explicit configuration and
 republishing under new versions, not an unversioned `"latest"` key.
 
 ## Runtime client
+
+### Signed hosted bootstrap
+
+`bootstrap.BootstrapBinding` is bounded declarative deployment data, not remote
+executable configuration. `ControlPlane.publish_bootstrap()` is an **operator
+backend method only**: both selected policy indexes must already be immutable,
+correctly signed and fresh through the binding's lifetime. The binding itself is
+RSA signed by the existing `KeyVaultSigner` and created at
+`{tenant}/bootstrap/{reference}.json` with `overwrite=False`.
+
+The HTTP reader requires an EntraAuth-confirmed exact principal, client, tenant,
+agent and policy permission. Every read rechecks key health, binding signature,
+expiry and both policy indexes. There is no HTTP publish/sign/overwrite route.
+The versioned key and reference cannot float to `"latest"`.
+`BootstrapGate` initializes once under an async lock and denies request surfaces
+while pending or invalid; expiry/revocation cannot fall back to off. Clients
+recheck through the authenticated service and an independent key verifier.
+This is local protocol implementation, not a live deployment/attestation claim.
+See the generated deployment README for the operator lifecycle and remaining
+native-probe limitations.
 
 Install this package alongside the separately copied Task7 runtime package.
 `client.ApprovalClient` implements Task7's async `resolve`/`verify` protocol.

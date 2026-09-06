@@ -278,3 +278,14 @@ Task 11a adds an opt-in signed noop action, authenticated registration/status
 routes outside MCP, server-observed durable phases and direct denial receipt
 metadata. It does not add a live collector or automatically deploy a fixture.
 See [the producer contract and operator instructions](../../../threadlight-safe-check/references/probe-fixture/README.md).
+
+`ProbeConfiguration.credential_mode="platform-noop"` is an explicit native-only
+option for `open_runtime(config, platform_credential=...)`. The caller owns the
+actual platform credential; the service confirms its Entra claims before using
+it. `service_client_id` is the observed agent client, **not** a UAMI selector.
+No `downstream_client_id` or fixture writer credential is accepted in this mode.
+The signed registry must contain exactly one probe-safe `governance_probe_noop`
+for that authenticated subject. The independent fixture remains the only writer
+of its counter store. Default/native local-file and business gateway identity
+separation are unchanged. This option does not implement remote native assets or
+prove that hosted AgentIdentity can access the native Cosmos producer.

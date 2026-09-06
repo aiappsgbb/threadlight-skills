@@ -21,6 +21,38 @@ def test_current_protocol_is_required_and_validated():
     assert result["live"] is True
 
 
+@pytest.mark.parametrize("mutation", ["missing", "expired", "mismatch", "valid"])
+def test_remote_bootstrap_chain_is_required_when_current_host_selects_it(mutation):
+    value, document, current, now = live_fixture()
+    target = current["expected_target"]
+    bootstrap = {
+        "binding": {
+            "schema": "threadlight-hosted-bootstrap/v1", "reference": "attempt-1",
+            "tenant_id": target["tenant"], "principal": target["subject"], "client_id": target["client_id"],
+            **{key: target[key] for key in (
+                "agent_id", "agent_version", "image_digest", "environment", "subscription", "resource_group")},
+            "project_endpoint": "https://test.services.ai.azure.com/api/projects/test",
+            "key_id": "https://test.vault.azure.net/keys/test/" + "a" * 32,
+            "policy_id": "safe", "policy_version": "1", "policy_digest": current["policy_bundle"]["digest"],
+            "native_policy_digest": current["policy_bundle"]["digest"],
+            "config_digest": current["declared_file_digests"]["host"],
+            "issued_at": (now - timedelta(minutes=1)).isoformat(),
+            "expires_at": (now + timedelta(minutes=5)).isoformat(),
+        },
+        "signature": "dGVzdC1zaWduYXR1cmU=",
+    }
+    current["bootstrap"] = deepcopy(bootstrap)
+    if mutation != "missing":
+        value["collection_evidence"]["bootstrap"] = deepcopy(bootstrap)
+    if mutation == "expired":
+        current["bootstrap"]["binding"]["expires_at"] = (now - timedelta(seconds=1)).isoformat()
+        value["collection_evidence"]["bootstrap"] = deepcopy(current["bootstrap"])
+    elif mutation == "mismatch":
+        value["collection_evidence"]["bootstrap"]["binding"]["reference"] = "other-attempt"
+    result = api().evaluate(value, document, current=current, now=now)
+    assert (result["status"] == "pass") == (mutation == "valid")
+
+
 @pytest.mark.parametrize("producer", ["native", "gateway"])
 def test_collection_schema_requires_exact_signature_dependency_chain(producer):
     import json

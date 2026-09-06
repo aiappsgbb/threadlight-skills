@@ -25,6 +25,15 @@ Vault cryptography, Bicep, pytest/unittest, Azure CLI/azd.
 
 ## File map
 
+**2026-09-06 status:** signed remote bootstrap implementation adds
+`control-plane/bootstrap.py`, `control-plane/hosted_lifecycle.py` and
+`scripts/ci/hosted_bootstrap.py`, gates both generated server entrypoints, and
+carries the signed chain into current-readiness. The local RED/GREEN suites do
+not close Task14/15. The existing protected workflow is still blocked; native
+remote probe asset delivery/check routing and actual AgentIdentity access to the
+native Cosmos producer remain unresolved. No live evidence or business-write
+acceptance is inherited from older artifacts.
+
 ### Shared contracts
 
 - Create `skills/_shared/governance.py` — typed normalization and manifest

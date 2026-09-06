@@ -533,6 +533,7 @@ def _effect_lifecycle(provider):
 
 
 def _check_lifecycle(provider, points):
+    _check_bootstrap(provider, [])
     for point in points:
         selected = [b for b in provider._bindings.values()
                     if b["tool"] is None and b["point"] == point]
@@ -546,7 +547,18 @@ def _check_lifecycle(provider, points):
         _check_effect(provider, selected, ticket)
 
 
+def _check_bootstrap(provider, selected, *, authorization=None):
+    bootstrap = getattr(provider, "bootstrap_gate", None)
+    if bootstrap is not None:
+        try:
+            bootstrap.check()
+        except RuntimeError:
+            _deny_boundary(provider, selected, "threadlight:bootstrap_unavailable",
+                           authorization=authorization)
+
+
 def _check_effect(provider, selected, ticket, *, authorization=None):
+    _check_bootstrap(provider, selected, authorization=authorization)
     if provider.mode != "enforce":
         return
     state = _execution.get()

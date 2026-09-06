@@ -19,6 +19,7 @@ from .dispatcher import DownstreamClient, NativePolicy
 class ProbeConfiguration(Settings):
     enabled: bool
     producer: Literal["native", "fixture"]
+    credential_mode: Literal["separate-managed-identity", "platform-noop"] = "separate-managed-identity"
     service_client_id: ObjectId
     downstream_client_id: ObjectId | None = None
     cosmos_url: Annotated[str, Field(pattern=r"^https://[a-z0-9-]+\.documents\.azure\.com:443/$")]
@@ -40,10 +41,14 @@ class ProbeConfiguration(Settings):
                 or self.cosmos_container != "probe-" + self.producer or not self.probe_controllers):
             raise ValueError("explicit_staging_probe_configuration_required")
         if self.producer == "native":
-            if (self.downstream_client_id is None or self.downstream_client_id == self.service_client_id
-                    or self.fixture_callers):
+            if self.credential_mode == "platform-noop":
+                if self.downstream_client_id is not None or self.fixture_callers:
+                    raise ValueError("platform_probe_must_not_attach_downstream_identity")
+            elif (self.downstream_client_id is None or self.downstream_client_id == self.service_client_id
+                  or self.fixture_callers):
                 raise ValueError("native_separate_downstream_identity_required")
-        elif not self.fixture_callers or self.downstream_client_id is not None:
+        elif (not self.fixture_callers or self.downstream_client_id is not None
+              or self.credential_mode != "separate-managed-identity"):
             raise ValueError("fixture_caller_allowlist_required")
         return self
 
@@ -57,7 +62,7 @@ def read_configuration(path):
 
 
 @asynccontextmanager
-async def open_runtime(config):
+async def open_runtime(config, *, platform_credential=None):
     from azure.identity.aio import DefaultAzureCredential
     from azure.cosmos.aio import CosmosClient
     from azure.keyvault.keys.aio import KeyClient
@@ -79,9 +84,21 @@ async def open_runtime(config):
                 exclude_powershell_credential=True, exclude_developer_cli_credential=True,
                 exclude_interactive_browser_credential=True, exclude_broker_credential=True))
         async with asyncio.timeout(30):
-            credential = await identity(config.service_client_id)
+            if config.credential_mode == "platform-noop":
+                if platform_credential is None:
+                    raise ValueError("authenticated_platform_credential_required")
+                credential = platform_credential
+            else:
+                credential = await identity(config.service_client_id)
             http = await stack.enter_async_context(httpx.AsyncClient(timeout=5, trust_env=False, follow_redirects=False))
             auth = EntraAuth(config, http)
+            if config.credential_mode == "platform-noop":
+                audience = config.audience if config.audience.startswith("api://") else "api://" + config.audience
+                token = await credential.get_token(audience + "/.default")
+                authenticated = await auth.authenticate("Bearer " + token.token)
+                if (authenticated.workload is None or authenticated.client != config.service_client_id
+                        or authenticated.workload.agent_id != config.expected_deployment.agent_id):
+                    raise ValueError("platform_probe_identity_mismatch")
             cosmos = await managed(CosmosClient(config.cosmos_url, credential=credential,
                 consistency_level="Strong", retry_total=0, connection_timeout=5, read_timeout=5))
             store = ProbeStore(None, cosmos.get_database_client(config.cosmos_database)
@@ -103,11 +120,18 @@ async def open_runtime(config):
             native_digest = policy.registry.native_policy_digest
             if config.producer == "native" and native_digest is None:
                 raise ValueError("separately_signed_native_policy_association_required")
+            if config.credential_mode == "platform-noop" and (
+                    len(policy.registry.actions) != 1
+                    or policy.registry.actions[0].name != "governance_probe_noop"
+                    or not policy.registry.actions[0].probe_safe
+                    or policy.registry.actions[0].workloads != [authenticated.subject]):
+                raise ValueError("dedicated_platform_noop_registration_required")
             service = ProbeService(store=store, registry=policy.registry,
                 policy_digest=native_digest or policy.digest, producer=config.producer, fresh=policy.fresh)
             downstream = None
             if config.producer == "native":
-                downstream = DownstreamClient(credential=await identity(config.downstream_client_id))
+                downstream = DownstreamClient(credential=credential if config.credential_mode == "platform-noop"
+                                              else await identity(config.downstream_client_id))
                 stack.push_async_callback(downstream.aclose)
             await store.health()
             await auth.health()

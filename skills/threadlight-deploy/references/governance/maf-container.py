@@ -194,11 +194,61 @@ async def install_probe_runtime(config, provider, stack):
     telemetry.auth = auth
 
 
+def remote_host(config, *, credential, signer, http=None, env=None, **host_options):
+    from govern_control_plane.bootstrap import runtime_gate
+
+    async def initialize(binding, stack):
+        verify_bundle(BASE / "policy", expected_digest=binding.native_policy_digest)
+        signed = parse(SignedBundle, (BASE / "policy-envelope.json").read_bytes())
+        envelope = signed.envelope
+        await signer.health()
+        if (envelope.tenant_id != binding.tenant_id or envelope.key_id != binding.key_id
+                or envelope.policy_id != config["policy_id"]
+                or envelope.version != config["policy_version"]
+                or envelope.content_digest != binding.native_policy_digest
+                or envelope.expires_at <= datetime.now(timezone.utc)
+                or not await signer.verify(envelope_digest(envelope),
+                    base64.b64decode(signed.signature, validate=True))):
+            raise ValueError("bootstrap_native_policy_unavailable")
+        gate.check()
+        import governance_application as application
+        resolved = {**config, **{name: getattr(binding, name) for name in (
+            "agent_version", "image_digest", "principal", "subscription", "resource_group")},
+            "spool_dir": (env or os.environ)["TL_GOV_SPOOL_DIR"]}
+        if resolved["policy_digest"] != binding.native_policy_digest:
+            raise ValueError("bootstrap_native_policy_mismatch")
+        if "probe_observability" in resolved:
+            raise ValueError("remote_native_probe_assets_required")
+        if callable(getattr(application, "initialize", None)):
+            await application.initialize(resolved, credential, stack)
+        provider = await build_provider(resolved, signer=signer, credential=credential)
+        provider.bootstrap_gate = gate
+        stack.push_async_callback(provider.approval_resolver.aclose)
+        await stack.enter_async_context(provider.audit)
+        if (getattr(application, "require_ready", False)
+                and (await dependency_readiness(provider)).status_code != 200):
+            raise ValueError("required_governance_startup_unavailable")
+        client = FoundryChatClient(
+            project_endpoint=binding.project_endpoint,
+            model=(env or os.environ)["AZURE_AI_MODEL_DEPLOYMENT_NAME"], credential=credential)
+        host = build_host(provider, client=client, **host_options)
+        await stack.enter_async_context(host.router.lifespan_context(host))
+        return host
+
+    gate = runtime_gate(config, env=env or os.environ, credential=credential,
+                        signer=signer, initialize=initialize, http=http)
+    return gate
+
+
 async def main():
     from azure.identity.aio import DefaultAzureCredential
     from azure.keyvault.keys.aio import KeyClient
     from azure.keyvault.keys.crypto.aio import CryptographyClient
     config = json.loads((BASE / "governance-config.json").read_text())
+    if "remote_bootstrap" in config:
+        from govern_control_plane.bootstrap import serve_remote
+        await serve_remote(config, remote_host)
+        return
     for key, variable in {
         "agent_version": "FOUNDRY_AGENT_VERSION",
         "image_digest": "TL_GOV_IMAGE_DIGEST",

@@ -83,6 +83,8 @@
           "source": {"const": "authenticated-service-reads-and-azure-observation-not-attestation"},
           "declared_selection": {"type": "object"}, "observed_target": {"type": "object"},
           "expected_target": {"type": "object"}, "configuration": {"type": "object"},
+          "bootstrap": {"type": "object", "required": ["binding", "signature"], "additionalProperties": false,
+            "properties": {"binding": {"type": "object"}, "signature": {"type": "string", "maxLength": 1024}}},
           "started_at": {"type": "string", "format": "date-time"}, "finished_at": {"type": "string", "format": "date-time"},
           "registration_scope": {"type": "object"},
           "records": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "object"}}

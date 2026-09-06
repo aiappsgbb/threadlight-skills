@@ -158,13 +158,17 @@ class McpRelay:
         Host-issued tickets bind SDK call identity to exact arguments; no model token,
         caller URL, caller Authorization header or model-provided nonce is forwarded.
         """
-        def __init__(self, *, gateway_url, scope, credential, invocation_id, tools, http):
+        def __init__(self, *, gateway_url, scope, credential, invocation_id, tools, http,
+                     bootstrap_gate=None):
             self.url, self.scope, self.credential, self.http = gateway_url, scope, credential, http
+            self.bootstrap_gate = bootstrap_gate
             self.invocation_id, self.tools = invocation_id, frozenset(tools)
             self.secret = secrets.token_urlsafe(32)
             self.tickets = {}
 
         async def pre_mcp(self, event, context):
+            if self.bootstrap_gate is not None:
+                await self.bootstrap_gate.authorize()
             if event["serverName"] != "threadlight-governed":
                 return None
             if event["toolName"] not in self.tools or not event.get("toolCallId"):
@@ -211,9 +215,16 @@ class McpRelay:
                     if "MCP-Protocol-Version" in request.headers:
                         headers["MCP-Protocol-Version"] = request.headers["MCP-Protocol-Version"]
                     token = await self.credential.get_token(self.scope)
+                    if self.bootstrap_gate is not None:
+                        await self.bootstrap_gate.authorize()
                     headers["Authorization"] = f"Bearer {token.token}"
+                    async def trace(name, info):
+                        if self.bootstrap_gate is not None and name in (
+                                "http11.send_request_headers.started", "http11.send_request_body.started"):
+                            self.bootstrap_gate.check()
                     async with self.http.stream("POST", self.url, content=canonical(document),
-                                                headers=headers, follow_redirects=False) as response:
+                                                headers=headers, follow_redirects=False,
+                                                extensions={"trace": trace}) as response:
                         output = bytearray()
                         async for part in response.aiter_bytes():
                             output.extend(part)
@@ -226,7 +237,7 @@ class McpRelay:
             return Starlette(routes=[Route("/mcp", forward, methods=["POST"])])
 
 
-def build_host(config, **host_options):
+def build_host(config, *, bootstrap_gate=None, **host_options):
         from azure.ai.agentserver.invocations import InvocationAgentServerHost
         from azure.identity.aio import DefaultAzureCredential
         from copilot import CopilotClient, PermissionHandler, ProviderConfig
@@ -279,10 +290,13 @@ def build_host(config, **host_options):
                 credential = DefaultAzureCredential()
                 http = httpx.AsyncClient(timeout=30, trust_env=False, follow_redirects=False)
                 model_token = await credential.get_token("https://ai.azure.com/.default")
+                if bootstrap_gate is not None:
+                    await bootstrap_gate.authorize()
                 relay = McpRelay(
                     gateway_url=os.environ["GOVERNED_TOOL_GATEWAY_URL"], scope=config["gateway_scope"],
                     credential=credential, invocation_id=invocation_id,
-                    tools=routed["threadlight-governed"]["tools"], http=http)
+                    tools=routed["threadlight-governed"]["tools"], http=http,
+                    bootstrap_gate=bootstrap_gate)
                 sock = socket.socket()
                 sock.bind(("127.0.0.1", 0))
                 port = sock.getsockname()[1]
@@ -300,6 +314,8 @@ def build_host(config, **host_options):
                 servers["threadlight-governed"].update(
                     url=f"http://127.0.0.1:{port}/mcp", headers={"X-Threadlight-Relay": relay.secret})
                 await client.start()
+                if bootstrap_gate is not None:
+                    await bootstrap_gate.authorize()
                 session = await client.create_session(
                     provider=ProviderConfig(type="azure", base_url=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
                                             wire_api="responses", bearer_token=model_token.token),
@@ -316,7 +332,11 @@ def build_host(config, **host_options):
                     queue.put_nowait(event)
                 unsubscribe = session.on(event_received)
                 # New session + fresh BYOK bearer per invocation; never run past its validity.
-                async with asyncio.timeout(max(1, model_token.expires_on - time.time() - 60)):
+                deadline = model_token.expires_on - 60
+                if bootstrap_gate is not None:
+                    await bootstrap_gate.authorize()
+                    deadline = min(deadline, bootstrap_gate.signed.binding.expires_at.timestamp())
+                async with asyncio.timeout(max(0, deadline - time.time())):
                     await session.send(prompt)
                     while True:
                         event = await queue.get()
@@ -382,6 +402,25 @@ def _route_selected(result, servers, selected, bindings, gateway_url):
     return result
 
 
+def remote_host(config, *, credential, signer, http=None, env=None, **host_options):
+    from govern_control_plane.bootstrap import runtime_gate
+
+    async def initialize(binding, stack):
+        resolved = {**config, "policy_digest": binding.policy_digest,
+                    "policy_version": binding.policy_version}
+        host = build_host(resolved, bootstrap_gate=gate, **host_options)
+        await stack.enter_async_context(host.router.lifespan_context(host))
+        return host
+
+    gate = runtime_gate(config, env=env or os.environ, credential=credential,
+                        signer=signer, initialize=initialize, http=http)
+    return gate
+
+
 if __name__ == "__main__":
     configuration = json.loads((Path(__file__).resolve().parent / "governance-config.json").read_text())
-    build_host(configuration).run()
+    if "remote_bootstrap" in configuration:
+        from govern_control_plane.bootstrap import serve_remote
+        asyncio.run(serve_remote(configuration, remote_host))
+    else:
+        build_host(configuration).run()

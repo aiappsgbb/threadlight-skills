@@ -971,7 +971,7 @@ def _validate_collection_evidence(manifest):
     _require_exact_keys(evidence, "collection_evidence", {
         "source", "declared_selection", "observed_target", "started_at", "finished_at",
         "registration_scope", "records", "expected_target", "configuration", "verified_policies",
-    })
+    } | ({"bootstrap"} if "bootstrap" in evidence else set()))
     if evidence["source"] != "authenticated-service-reads-and-azure-observation-not-attestation":
         _raise("collection_evidence source must identify the collector, not local conformance")
     try:
@@ -985,6 +985,17 @@ def _validate_collection_evidence(manifest):
         _, finished = _parse_timestamp(evidence["finished_at"], "collection_evidence.finished_at")
         if finished < started:
             _raise("collection_evidence time reversed")
+        if "bootstrap" in evidence:
+            from govern_control_plane.bootstrap import SignedBootstrap
+            from govern_control_plane.models import canonical, parse
+            bootstrap = parse(SignedBootstrap, canonical(evidence["bootstrap"])).binding
+            if (bootstrap.issued_at > started or bootstrap.expires_at <= finished
+                    or bootstrap.tenant_id != target["tenant"] or bootstrap.principal != target["subject"]
+                    or bootstrap.client_id != target["client_id"]
+                    or any(getattr(bootstrap, key) != target[key] for key in (
+                        "agent_id", "agent_version", "image_digest", "environment", "subscription", "resource_group"))
+                    or "project_endpoint" in target and bootstrap.project_endpoint != target["project_endpoint"]):
+                _raise("collection_evidence bootstrap mismatch")
         validate_policy_bindings(evidence["verified_policies"], evidence["registration_scope"]["producer"],
                                  manifest["policy_bundle"], finished)
         configuration = evidence["configuration"]

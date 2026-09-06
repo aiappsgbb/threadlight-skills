@@ -63,6 +63,10 @@ class ControlPlane:
     def digest_name(self, digest):
         return f"{self.settings.tenant_id}/digests/{digest[7:]}.json"
 
+    async def publish_bootstrap(self, binding):
+        from .bootstrap import publish
+        return await publish(self, binding)
+
     async def authenticate_bundle(self, raw):
         try:
             bundle = parse(SignedBundle, raw)
@@ -446,6 +450,13 @@ def create_app(*, service=None, auth=None):
         async def action(current, identity):
             return await current.bundle(identity, parse(Identifier, canonical(policy_id)),
                                         parse(Identifier, canonical(version)))
+        return await dispatch(request, action)
+
+    @app.get("/bootstrap/{reference}")
+    async def bootstrap(request: Request, reference: str):
+        async def action(current, identity):
+            from .bootstrap import read
+            return await read(current, identity, parse(Identifier, canonical(reference)))
         return await dispatch(request, action)
 
     @app.post("/approvals/resolve")

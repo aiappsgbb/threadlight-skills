@@ -10,6 +10,15 @@
 
 ## 1. Problem
 
+**2026-09-06 implementation boundary:** the approved signed remote bootstrap
+alternative now has a create-once operator SDK lifecycle, Task8 immutable binding
+publication/read, and pending generated host gates. It replaces no native SDK
+bytes and makes no Azure acceptance claim. Final policy versions are distinct
+from bootstrap versions. The legacy protected workflow, remote native probe
+asset delivery and native live AgentIdentity/Cosmos proof remain open; see
+`docs/production-readiness.md`. Do not mark Task14/15 complete from these local
+protocol tests or apply noop receipts to business actions.
+
 Threadlight currently has two incompatible governance stories:
 
 1. `threadlight-govern` can emit `verdict: governed` from policy files, CI
