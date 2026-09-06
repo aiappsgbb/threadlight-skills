@@ -124,7 +124,7 @@ def create_once(client, config, attempt):
         cpu=config["cpu"], memory=config["memory"],
         container_configuration=ContainerConfiguration(image=config["image"]),
         protocol_versions=[ProtocolVersionRecord(
-            protocol=config["protocol"], version="2.0.0" if config["protocol"] == "responses" else "1.0.0")],
+            protocol=config["protocol"], version="2.0.0")],
         environment_variables=config["environment_variables"],
     )
     persist(attempt, state, exclusive=True)

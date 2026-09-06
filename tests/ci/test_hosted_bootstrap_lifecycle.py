@@ -64,6 +64,7 @@ def test_real_sdk_version17_created_once_and_lost_reply_never_retries(tmp_path, 
             if request.method == "POST":
                 assert calls == ["POST"]
                 definition = json.loads(request.body)["definition"]
+                assert definition["protocol_versions"] == [{"protocol": "invocations", "version": "2.0.0"}]
                 assert not any(key.startswith("FOUNDRY_") for key in definition["environment_variables"])
                 record = dict(id="fixture-id", object="agent.version", name="fixture", version="17",
                               created_at=int(time.time()), metadata={}, status="active",
