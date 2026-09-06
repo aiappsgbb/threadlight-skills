@@ -1,7 +1,9 @@
 """Offline packaging must not invent production configuration or live proof."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -39,6 +41,9 @@ def test_materialized_actual_module_closure_and_fail_closed_startup(tmp_path, pr
     assert not (output / "src/govern-gateway").exists()
     assert (output / ".governance-tools/scripts/ci/run-governance-pin-tests.py").is_file()
     assert (output / ".governance-tools/skills/_shared/native_validation.py").is_file()
+    for name in ("Cargo.toml", "Cargo.lock", "src/main.rs"):
+        relative = Path("scripts/ci/ctk-oracle") / name
+        assert (output / ".governance-tools" / relative).read_bytes() == (ROOT / relative).read_bytes()
     assert (output / "governance/probe-contract.json").is_file()
     assert (output / "scripts/local_probe.py").is_file()
     assert (output / ".github/CODEOWNERS").read_bytes() == (ROOT / ".github/CODEOWNERS").read_bytes()
@@ -56,6 +61,53 @@ def test_materialized_actual_module_closure_and_fail_closed_startup(tmp_path, pr
     assert probe.returncode != 0
     assert "governance-config.json" in probe.stderr
     assert "diagnostic" not in (agent / "container.py").read_text()
+
+
+def test_exported_default_ctk_sources_and_inventory_are_complete(tmp_path):
+    import importlib
+    generator = importlib.import_module("skills.threadlight-deploy.references.governance.generate")
+    (tmp_path / "governance").mkdir()
+    generator.export_local_validation(tmp_path)
+    tools = tmp_path / ".governance-tools"
+    for name in ("Cargo.toml", "Cargo.lock", "src/main.rs"):
+        relative = Path("scripts/ci/ctk-oracle") / name
+        assert (tools / relative).is_file(), f"default CTK prerequisite missing: {relative}"
+        assert (tools / relative).read_bytes() == (ROOT / relative).read_bytes()
+    inventory = json.loads((tools / "source-manifest.json").read_text())
+    actual = {p.relative_to(tools).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+              for p in tools.rglob("*") if p.is_file() and p.name != "source-manifest.json"}
+    assert inventory["files"] == actual
+    cache = tools / ".governance-validation"
+    cache.mkdir()
+    archive = ROOT / ".governance-validation/ctk-upstream.tar.gz"
+    if archive.exists():
+        shutil.copyfile(archive, cache / archive.name)
+    prepared = subprocess.run([sys.executable, "-I", str(tools / "scripts/ci/governance_ctk.py")],
+                              cwd=tmp_path, capture_output=True, text=True)
+    assert prepared.returncode == 0, prepared.stderr
+    for name in ("Cargo.toml", "Cargo.lock", "src/main.rs"):
+        assert (cache / "ctk/oracle" / name).read_bytes() == (
+            ROOT / "scripts/ci/ctk-oracle" / name).read_bytes()
+
+
+@pytest.mark.parametrize("missing", [
+    "scripts/ci/ctk-oracle/Cargo.toml", "scripts/ci/ctk-oracle/Cargo.lock",
+    "scripts/ci/ctk-oracle/src/main.rs", "scripts/ci/governance_ctk.py",
+    "skills/threadlight-govern/tests/test_agent_hooks_ctk.py",
+    "skills/_shared/local_model_fixture.py",
+])
+def test_standalone_ci_readiness_requires_exported_execution_sources(tmp_path, monkeypatch, missing):
+    import importlib
+    monkeypatch.syspath_prepend(str(ROOT / "skills/threadlight-governed-actions/scripts"))
+    generator = importlib.import_module("skills.threadlight-deploy.references.governance.generate")
+    ghcp = importlib.import_module("ghcp")
+    (tmp_path / "governance").mkdir()
+    generator.export_local_validation(tmp_path)
+    workflow = tmp_path / ".github/workflows/native-local.yml"
+    assert ghcp.assess_workflow(workflow).ci_probes == "pass"
+    path = tmp_path / ".governance-tools" / missing
+    path.unlink(missing_ok=True)
+    assert ghcp.assess_workflow(workflow).ci_probes == "must-fix", missing
 
 
 def test_application_startup_requires_typed_existing_environment():

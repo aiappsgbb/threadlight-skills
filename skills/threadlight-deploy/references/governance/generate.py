@@ -7,6 +7,7 @@ from copy import deepcopy
 from functools import wraps
 import importlib
 import importlib.util
+import hashlib
 import ipaddress
 import json
 from pathlib import Path
@@ -39,6 +40,15 @@ def export_local_validation(project):
     (tools / "scripts/ci").mkdir(parents=True)
     for name in ("run-governance-pin-tests.py", "governance_ctk.py"):
         shutil.copyfile(CATALOG / "scripts/ci" / name, tools / "scripts/ci" / name)
+    for name in ("Cargo.toml", "Cargo.lock", "src/main.rs"):
+        destination = tools / "scripts/ci/ctk-oracle" / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(CATALOG / "scripts/ci/ctk-oracle" / name, destination)
+    (tools / "source-manifest.json").write_text(json.dumps({
+        "files": {p.relative_to(tools).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                  for p in sorted(tools.rglob("*")) if p.is_file()},
+        "scope": "exported local validation sources only; not live evidence",
+    }, indent=2) + "\n")
     (project / ".github/workflows").mkdir(parents=True)
     shutil.copyfile(CATALOG / ".github/CODEOWNERS", project / ".github/CODEOWNERS")
     shutil.copyfile(REFERENCE / "native-local.yml", project / ".github/workflows/native-local.yml")

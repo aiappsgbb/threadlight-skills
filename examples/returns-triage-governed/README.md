@@ -34,6 +34,17 @@ run/action/principal-bound, and expires within 20 seconds. Cosmos `if_match_etag
 prevents a later backend revision from being overwritten. Identical recorded
 decisions return their existing audit id without another mutation.
 
+An absent profile is the backend's exact `{"not_found": requested_customer_id}`
+receipt, correlated with the case and any existing order in the same invocation.
+A model-supplied boolean or cross-customer receipt never substitutes for it.
+Missing profiles permit only information requests or authenticated supervisor
+handoffs, never refund approval or final denial. Known high value still requires
+supervisor review. The adapter re-reads the same authoritative context after
+approval/ACK and rejects changed facts (including a newly present profile) before
+the case CAS. This is not a cross-system transaction: OMS/CRM are immutable mock
+inputs here; replacing them with mutable remote systems requires corresponding
+revision/absence controls at their consistency boundary.
+
 Case state and decision audits live in **Cosmos**, partitioned by `/case_id`.
 OMS/customer JSON is immutable mock input; `returns.json` specifies operator
 seed data only. There is no automatic seed, reset, or filesystem business store.
@@ -185,6 +196,11 @@ native factory with real Hooks, ACS/OPA and Task8 authenticated services.
 Only upstream model HTTP, local RSA/JWKS, signature-service and SDK storage seams
 are fixtures. The Cosmos adapter, its conditional batch, policy decisions,
 approval requests/consume checks and durable-ACK ordering remain real code.
+The factory reads the actual served `src/agent/copilot-instructions.md` and
+runtime skills; the assessor never replaces them with root `AGENTS.md`. It checks
+the instructions actually sent in model HTTP requests and fingerprints the
+served markdown. Predetermined model tool calls prove technical enforcement and
+artifact parity, **not model reasoning or end-to-end business behavior**.
 Interactive, batched, scheduled-background and independently governed child-agent
 calls are exercised. Raw direct-tool invocation must fail at the backend's
 trusted-context guard; this is explicitly **not** evidence of raw-tool Hooks
@@ -229,6 +245,7 @@ ownership with the operator; it is a declaration, never evidence that reviews
 are enforced. In the project's own Git checkout with its actual origin:
 
 ```bash
+python .governance-tools/scripts/ci/run-governance-pin-tests.py
 python .governance-tools/scripts/ci/run-governance-pin-tests.py --prepare-local
 python .governance-tools/skills/threadlight-governed-actions/scripts/governed_actions.py \
   --target . --phase pre-deploy --gate
@@ -236,5 +253,12 @@ python .governance-tools/skills/threadlight-governed-actions/scripts/governed_ac
 
 The dedicated environment and caches are created inside that project. Neither
 command needs the parent catalog's temporary environment. The exported CI also
-runs the existing corrected official CTK runner; its source pin and SDK tests are
-unchanged. No source package is a built image or an installed-package receipt.
+runs the existing corrected official CTK runner. The export includes its exact
+`scripts/ci/ctk-oracle/{Cargo.toml,Cargo.lock,src/main.rs}` build sources alongside
+the runner, tests and immutable CTK pin. `source-manifest.json` inventories every
+exported validation source; CI-readiness rejects missing or changed sources,
+including the oracle, rather than crediting command names alone. Docker, its
+pinned Rust build image, and public pinned dependency downloads/caches are
+required; no parent checkout supplies code. Execution SDK bytes and the approved
+CTK source pin are unchanged. No source package is a built image or an
+installed-package receipt.

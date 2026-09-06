@@ -77,12 +77,17 @@ class ReturnsBackend:
         # This is a consistency boundary, not an alternative policy decision.
         if authorized["tool_call"]["args"] != arguments:
             raise ValueError("authorized_target_changed")
+        # Approval/audit delivery can yield after ACS. Re-read through the same
+        # authority, including profile absence, before applying the case CAS.
+        current = await self.trusted_context(identity, authorized["tool_call"], authorized["reads"])
+        if current.facts != facts:
+            raise ValueError("backend_snapshot_changed")
+        if datetime.now(timezone.utc) >= datetime.fromisoformat(authorized["expires_at"]):
+            raise ValueError("backend_snapshot_expired")
         case = deepcopy(facts["case"])
         existing = facts.get("audit", {})
         if all(existing.get(key) == value for key, value in arguments.items()):
             return {"ok": True, "audit_id": existing["id"]}
-        if datetime.now(timezone.utc) >= datetime.fromisoformat(authorized["expires_at"]):
-            raise ValueError("backend_snapshot_expired")
         etag = case.pop("_etag")
         if not isinstance(etag, str) or not etag:
             raise ValueError("backend_revision_required")

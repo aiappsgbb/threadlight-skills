@@ -49,8 +49,8 @@ ordered_reads if {
 intake if {
     ordered_reads
     f.case.order_id == f.order.id
-    f.case.customer_id == f.customer.id
-    f.order.customer_id == f.customer.id
+    customer_correlated
+    f.order.customer_id == f.case.customer_id
     f.order.status == "delivered"
     f.case.currency == f.order.currency
     f.case.currency == "USD"
@@ -62,7 +62,17 @@ intake if {
 intake if {
     ordered_reads
     f.order.not_found == f.case.order_id
-    f.case.customer_id == f.customer.id
+    customer_correlated
+    a.decision in {"request_more_info", "escalate_to_supervisor"}
+}
+
+customer_correlated if { f.customer.id == f.case.customer_id }
+customer_correlated if {
+    is_string(f.case.customer_id)
+    count(f.case.customer_id) > 0
+    # The backend read returns the requested ID, not a model-supplied boolean.
+    # ordered_reads binds this exact receipt to the current invocation/snapshot.
+    f.customer == {"not_found": f.case.customer_id}
     a.decision in {"request_more_info", "escalate_to_supervisor"}
 }
 

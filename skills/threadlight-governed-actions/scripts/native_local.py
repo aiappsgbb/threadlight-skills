@@ -24,7 +24,7 @@ MODES = mediation.REQUIRED_NON_PROVIDER_MODES
 def source_fingerprints(root, project):
     files = {project / name for name in ("agent.yaml", "AGENTS.md", "governance/probe-contract.json")}
     files.update(p for p in (project / "src/agent").rglob("*")
-                 if p.is_file() and p.suffix in {".py", ".rego", ".yaml", ".json"})
+                 if p.is_file() and p.suffix in {".py", ".rego", ".yaml", ".json", ".md"})
     files.update((root / "skills/threadlight-govern/references/runtime").glob("*.py"))
     files.update((root / "skills/threadlight-deploy/references/governance").glob("*.py"))
     files.update(root / "skills/_shared" / name for name in (
@@ -117,6 +117,11 @@ def evaluate(events, declaration, actions):
     if selected != set(declaration["actions"]) or selected != {"returns_apply_decision"}:
         raise probes.ProbeContractError("native-selected-action-coverage-mismatch")
     installed = events[0]["observation"]
+    served_hash = events[0]["source_hashes"]["project:src/agent/copilot-instructions.md"]
+    for terminal in (e for e in events if e["event"] == "terminal" and e["mode"] != "direct-tool"):
+        _require(any(e["event"] == "model_instructions" and e["case"] == terminal["case"]
+                     and e["mode"] == terminal["mode"] and e["served_sha256"] == served_hash
+                     for e in events), "served-model-instructions-not-observed")
     pins = json.loads((ROOT / "skills/_shared/governance-upstream-pin.json").read_text())
     tuple_observed = maf_adapter.compare_native_observation(installed, pins)
     result, paths = [], []
@@ -167,7 +172,9 @@ def evaluate(events, declaration, actions):
     for case, effects, requests in (("approved", 2, 2), ("rejected", 0, 1), ("absent", 0, 1),
                                    ("invalid-human", 0, 1), ("expired", 0, 1),
                                    ("changed", 0, 1), ("risk-incomplete", 1, 1), ("audit-down", 0, 0),
-                                   ("incomplete", 1, 0), ("schema", 0, 0)):
+                                   ("incomplete", 1, 0), ("schema", 0, 0),
+                                   ("missing-profile-low", 1, 0), ("missing-profile-risk", 1, 1),
+                                   ("missing-profile-absent", 0, 1), ("missing-profile-wrong-info", 0, 0)):
         records = [e for e in events if e.get("case") == case]
         terminal = _terminal(records)
         _require(terminal["effects"] == effects and terminal["approval_requests"] == requests,

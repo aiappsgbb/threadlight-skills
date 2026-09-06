@@ -48,7 +48,7 @@ def sequence(rma=RMA, *, fault="valid", decision="approve_refund"):
         calls.reverse()
     if fault == "missing":
         calls = []
-    if fault == "cross-customer":
+    if fault in {"cross-customer", "missing-profile-cross-customer"}:
         calls[-1][1]["customer_id"] = "CR-CUST-00108"
     args = {"rma_id": "RMA-2026-004418" if fault == "cross-case" else rma,
             "decision": "settle_payment" if fault == "payment" else decision,
@@ -66,6 +66,8 @@ def sequence(rma=RMA, *, fault="valid", decision="approve_refund"):
         calls = []
         args["rationale"] = json.dumps({"checks_complete": True, "evidence_verified": True,
                                         "order": case, "roles": ["returns-supervisor"]})
+    if fault == "missing-profile-forged":
+        args.update(customer={"not_found": case["customer_id"]}, not_found=True)
     responses = [tool_responses(name, values)[0] for name, values in calls]
     responses.extend(tool_responses("returns_apply_decision", args))
     for index, response in enumerate(responses[:-1]):
@@ -79,7 +81,12 @@ def sequence(rma=RMA, *, fault="valid", decision="approve_refund"):
                                   "final-sale", "incomplete", "unmatched-order", "replay", "read-stale",
                                   "risk-autoapprove", "invalid-customer", "irrelevant-citation",
                                   "missing-reason", "second-info", "missing-revision", "forged-rationale",
-                                  "unknown-risk"])
+                                  "unknown-risk", "missing-profile-info", "missing-profile-approve",
+                                  "missing-profile-deny", "missing-profile-cross-customer",
+                                  "missing-profile-boolean", "missing-profile-wrong-id",
+                                  "missing-profile-forged", "missing-profile-no-order",
+                                  "missing-profile-before-gate", "missing-profile-before-effect",
+                                  "profile-changed-after-gate"])
 def test_native_returns_safe_context_and_cosmos_effect(tmp_path, monkeypatch, fault):
     from test_runtime_provider import native_model_client
     from test_policy_bundle import bundle_module
@@ -88,13 +95,28 @@ def test_native_returns_safe_context_and_cosmos_effect(tmp_path, monkeypatch, fa
     store = MemoryCosmos()
     app = application(store)
     expected_write = fault in {"valid", "final-sale", "unmatched-order", "replay", "missing-reason",
-                              "unknown-risk"}
-    rma = "RMA-2026-004418" if fault == "final-sale" else "RMA-2026-004440" if fault in {"incomplete", "second-info"} else (
+                              "unknown-risk", "missing-profile-info", "missing-profile-no-order"}
+    rma = "RMA-2026-004418" if fault in {"final-sale", "missing-profile-deny"} else "RMA-2026-004440" if fault in {"incomplete", "second-info"} else (
         "RMA-2026-004425" if fault == "risk-autoapprove" else RMA)
-    outcome = "deny_refund" if fault == "final-sale" else (
+    outcome = "deny_refund" if fault in {"final-sale", "missing-profile-deny"} else (
         "request_more_info" if fault in {"incomplete", "unmatched-order", "missing-reason", "second-info",
-                                        "unknown-risk"}
+                                        "unknown-risk", "missing-profile-info", "missing-profile-cross-customer",
+                                        "missing-profile-boolean", "missing-profile-wrong-id",
+                                        "missing-profile-forged", "missing-profile-no-order",
+                                        "missing-profile-before-gate", "missing-profile-before-effect"}
         else "approve_refund")
+    customer_id = store.docs[rma]["customer_id"]
+    original_customer = deepcopy(app.backend.customers[customer_id])
+    if fault.startswith("missing-profile-"):
+        app.backend.customers.pop(customer_id)
+    if fault == "missing-profile-cross-customer":
+        app.backend.customers.pop("CR-CUST-00108")
+    if fault == "missing-profile-boolean":
+        app.backend.customers[customer_id] = {"not_found": True}
+    if fault == "missing-profile-wrong-id":
+        app.backend.customers[customer_id] = {"not_found": "CR-CUST-OTHER"}
+    if fault == "missing-profile-no-order":
+        app.backend.orders.pop(store.docs[rma]["order_id"])
     if fault == "unmatched-order":
         app.backend.orders.pop(store.docs[RMA]["order_id"])
     if fault in {"invalid-customer", "unknown-risk"}:
@@ -119,6 +141,8 @@ def test_native_returns_safe_context_and_cosmos_effect(tmp_path, monkeypatch, fa
             if fault == "audit-down":
                 raise OSError("remote-ack-unavailable")
             receipts.append(fields)
+            if fault in {"missing-profile-before-effect", "profile-changed-after-gate"}:
+                app.backend.customers[customer_id] = {**original_customer, "account_status": "review_flagged"}
             return "receipt-1"
     definition = yaml.safe_load((EXAMPLE / "agent.yaml").read_text())
     provider = runtime.AcsGovernanceProvider(
@@ -153,10 +177,13 @@ def test_native_returns_safe_context_and_cosmos_effect(tmp_path, monkeypatch, fa
         args = json.loads(content.arguments)
         args["citations"] = ["policy#final-sale"]
         content.arguments = json.dumps(args)
-    if fault == "read-stale":
+    if fault in {"read-stale", "missing-profile-before-gate"}:
         snapshot = app.trusted_context
         async def change_before_snapshot(*args):
-            store.docs[RMA]["_etag"] = "2"
+            if fault == "read-stale":
+                store.docs[RMA]["_etag"] = "2"
+            else:
+                app.backend.customers[customer_id] = {**original_customer, "account_status": "review_flagged"}
             return await snapshot(*args)
         provider._trusted_context_provider = change_before_snapshot
     host = container.build_host(provider, client=client, configure_observability=None)
@@ -170,6 +197,8 @@ def test_native_returns_safe_context_and_cosmos_effect(tmp_path, monkeypatch, fa
             if expected_write:
                 raise
     asyncio.run(scenario())
+    prompt = (EXAMPLE / "src/agent/copilot-instructions.md").read_text()
+    assert client.requests and all(prompt in body.get("instructions", "") for _, body in client.requests)
     assert len(store.decisions) == (1 if expected_write else 0), json.dumps(
         {"receipts": receipts, "native_result": [s["native_result"] for s in evaluated],
          "tool_outputs": [v for v in client.requests[-1][0]
@@ -181,9 +210,19 @@ def test_native_returns_safe_context_and_cosmos_effect(tmp_path, monkeypatch, fa
         if fault == "replay":
             result = [v for v in client.requests[-1][0] if v.get("type") == "function_call_output"][-1]
             assert json.loads(result["output"]).get("ok") is True
-    elif fault not in {"forged", "payment", "stale", "audit-down"}:
+        if fault.startswith("missing-profile-"):
+            trusted = evaluated[0]["trusted"]
+            assert trusted["facts"]["customer"] == {"not_found": customer_id}
+            assert trusted["reads"][-1] == {
+                "name": "customer_get_profile", "result": {"not_found": customer_id}}
+    elif fault in {"missing-profile-before-effect", "profile-changed-after-gate"}:
+        assert receipts[0]["decision"] == "allow"
+        assert len(store.reads) == 3, "actual backend must be read again after ACS/ACK"
+    elif fault not in {"forged", "payment", "stale", "audit-down", "missing-profile-forged",
+                       "missing-profile-before-effect", "profile-changed-after-gate"}:
         assert receipts[0]["decision"] == "deny", "real ACS must deny invalid backend context"
-    assert len(evaluated) == (0 if fault in {"forged", "payment"} else 2 if fault == "replay" else 1)
+    assert len(evaluated) == (0 if fault in {"forged", "payment", "missing-profile-forged"}
+                              else 2 if fault == "replay" else 1)
 
 
 @pytest.mark.governance_runtime
@@ -280,7 +319,8 @@ def test_optional_native_probe_only_proves_reserved_noop(tmp_path, monkeypatch, 
 @pytest.mark.governance_runtime
 @pytest.mark.parametrize("review", ["absent", "invalid-human", "approved", "rejected"])
 @pytest.mark.parametrize("overlap", ["complete", "flagged-missing-reason", "high-value-missing-photos",
-                                    "wrong-request-more-info"])
+                                    "wrong-request-more-info", "missing-profile",
+                                    "missing-profile-wrong-info", "missing-profile-insert-during-approval"])
 def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch, review, overlap):
     import base64
     import httpx
@@ -299,11 +339,16 @@ def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch
         customer.update(account_status="review_flagged", lifetime_return_rate=0.8)
     elif overlap == "high-value-missing-photos":
         store.docs["RMA-2026-004425"].update(reason_code="arrived_damaged", photos_provided=False)
+    if overlap.startswith("missing-profile"):
+        customer_id = store.docs["RMA-2026-004425"]["customer_id"]
+        original_customer = app.backend.customers.pop(customer_id)
+    wrong_info = overlap in {"wrong-request-more-info", "missing-profile-wrong-info"}
     monkeypatch.setitem(sys.modules, "governance_application", app)
     monkeypatch.syspath_prepend(str(ROOT / "skills/threadlight-deploy/references/governance"))
     host_module = module("maf-container")
     host_module.BASE = tmp_path
-    (tmp_path / "copilot-instructions.md").write_text("Use the returns tools.")
+    (tmp_path / "copilot-instructions.md").write_bytes(
+        (EXAMPLE / "src/agent/copilot-instructions.md").read_bytes())
     bundle = bundle_module().build_bundle(
         source=EXAMPLE / "src/agent/governance/policy", destination=tmp_path / "policy",
         policy_id="returns-write-v1", version="1")
@@ -356,6 +401,8 @@ def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch
                         assert decided.status_code == (403 if review == "invalid-human" else 200)
                         if decided.status_code == 200:
                             grants.append(decided.json()["grant"])
+                            if overlap == "missing-profile-insert-during-approval":
+                                app.backend.customers[customer_id] = original_customer
                 return response
         provider.approval_resolver.http = httpx.AsyncClient(
             transport=ReviewedTransport(app=h.app), base_url="https://control.example")
@@ -368,16 +415,21 @@ def test_native_supervisor_approval_remote_ack_and_one_use(tmp_path, monkeypatch
         store.before_batch = require_ack_before_effect
         try:
             async with provider.audit:
-                host = host_module.build_host(
-                    provider, client=native_model_client(sequence(
-                        "RMA-2026-004425", decision="request_more_info" if overlap ==
-                        "wrong-request-more-info" else "escalate_to_supervisor")),
-                    configure_observability=None)
+                client = native_model_client(sequence(
+                        "RMA-2026-004425", decision="request_more_info" if wrong_info
+                        else "escalate_to_supervisor"))
+                host = host_module.build_host(provider, client=client, configure_observability=None)
                 await host._agent.run("triage high value")
-            assert len(pending) == (0 if overlap == "wrong-request-more-info" else 1)
-            assert len(store.decisions) == (1 if review == "approved" and overlap !=
-                                          "wrong-request-more-info" else 0)
-            if review == "approved" and overlap != "wrong-request-more-info":
+            prompt = (EXAMPLE / "src/agent/copilot-instructions.md").read_text()
+            assert client.requests and all(prompt in body.get("instructions", "")
+                                           for _, body in client.requests)
+            assert len(pending) == (0 if wrong_info else 1)
+            if wrong_info:
+                assert any(doc.get("receipt", {}).get("decision") == "deny"
+                           for doc, _ in h.store.docs.values()), "selected binding must deny wrong model choice"
+            effect = review == "approved" and not wrong_info and overlap != "missing-profile-insert-during-approval"
+            assert len(store.decisions) == int(effect)
+            if effect:
                 assert store.docs["RMA-2026-004425"]["status"] == "escalated"
                 assert store.docs["RMA-2026-004425"]["decision"] == "escalate_to_supervisor"
                 replay = await h.post("consume", intent=pending[0], grant=grants[0])

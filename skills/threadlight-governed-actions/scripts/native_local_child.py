@@ -46,7 +46,6 @@ async def scenario(root, project, fixture, scratch, emit, *, case, mode="interac
         factory_path = root / "skills/threadlight-deploy/references/governance/maf-container.py"
     factory = load("governance_host", factory_path)
     factory.BASE = directory
-    (directory / "copilot-instructions.md").write_text((project / "AGENTS.md").read_text())
     store = fixture.MemoryCosmos()
     app = fixture.application(store)
     app_module = importlib.import_module("governance_application")
@@ -175,10 +174,17 @@ async def scenario(root, project, fixture, scratch, emit, *, case, mode="interac
         store.docs[rma].update(reason_code=None)
         app.backend.customers[store.docs[rma]["customer_id"]].update(
             account_status="review_flagged", lifetime_return_rate=0.8)
+    if case.startswith("missing-profile-"):
+        app.backend.customers.pop(store.docs[rma]["customer_id"])
+        if case in {"missing-profile-low", "missing-profile-wrong-info"}:
+            decision = "request_more_info"
     responses = fixture.sequence(rma, fault="missing" if case == "deny" else
                                  "schema" if case == "schema" else "valid", decision=decision)
     arguments = json.loads(responses[-2].messages[0].contents[0].arguments)
     client = native_model_client(responses)
+    # Only credentials/policy state are local fixtures. The model gets the actual
+    # served instructions and SkillsProvider tree, not corrected root AGENTS.md.
+    factory.BASE = project / "src/agent"
     host = container.build_host(provider, client=client, configure_observability=None)
     route = f"{type(host).__module__}:{type(host).__qualname__}._agent"
     record("routing_target", expected_resolved_path=route)
@@ -217,7 +223,12 @@ async def scenario(root, project, fixture, scratch, emit, *, case, mode="interac
                     client.responses.extend(fixture.sequence(rma, fault="missing"))
                     await host._agent.run("next batch item without evidence")
                     record("batch_completed", items=2)
-            for request, _ in client.requests:
+            prompt_bytes = (project / "src/agent/copilot-instructions.md").read_bytes()
+            for request, body in client.requests:
+                assert prompt_bytes.decode() in body.get("instructions", "")
+                record("model_instructions", served_sha256=hashlib.sha256(prompt_bytes).hexdigest(),
+                       request_sha256=digest(body["instructions"]),
+                       scope="actual HTTP instructions; scripted responses, not model business reasoning")
                 for item in request:
                     if item.get("type") == "function_call_output":
                         try:
@@ -285,7 +296,10 @@ def main():
                              ("absent", "absent"), ("invalid-human", "invalid-human"),
                              ("expired", "expired"), ("changed", "changed"),
                              ("risk-incomplete", "approved"), ("audit-down", None),
-                             ("incomplete", None), ("schema", None)):
+                             ("incomplete", None), ("schema", None),
+                             ("missing-profile-low", None), ("missing-profile-risk", "approved"),
+                             ("missing-profile-absent", "absent"),
+                             ("missing-profile-wrong-info", "approved")):
             await scenario(root, project, fixture, scratch, emit, case=case, review=review)
     asyncio.run(run())
     observe(pins, wheelhouse, root=root)

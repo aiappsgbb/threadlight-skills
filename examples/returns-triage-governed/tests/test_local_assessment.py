@@ -1,5 +1,6 @@
 """Task13 Step6 is executed local evidence, never a deployed-image attestation."""
 import importlib
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -36,6 +37,25 @@ def test_intake_contract_cannot_finalize_before_known_risk():
     skills = EXAMPLE / "src/agent/skills"
     assert '"verdict": "complete | incomplete"' in (skills / "intake-validation/SKILL.md").read_text()
     assert "completeness verdict `incomplete`" in (skills / "disposition-decision/SKILL.md").read_text()
+
+
+def test_served_instructions_require_known_risk_before_incomplete_disposition():
+    prompt = (EXAMPLE / "src/agent/copilot-instructions.md").read_text()
+    assert "Do not stop on missing information" in prompt
+    assert "regardless of eligibility or completeness" in prompt
+    assert "unknown risk never authorizes a refund" in prompt
+    assert "before stopping" not in prompt
+    fraud = (EXAMPLE / "src/agent/skills/fraud-escalation/SKILL.md").read_text()
+    assert "incomplete" in fraud and "request_more_info" in fraud
+
+
+def test_assessor_fingerprints_cover_actual_served_prompt_and_runtime_skills():
+    native = importlib.import_module("native_local")
+    hashes = native.source_fingerprints(ROOT, EXAMPLE)
+    for path in [EXAMPLE / "src/agent/copilot-instructions.md",
+                 *sorted((EXAMPLE / "src/agent/skills").glob("*/SKILL.md"))]:
+        assert hashes.get("project:" + path.relative_to(EXAMPLE).as_posix()) == hashlib.sha256(
+            path.read_bytes()).hexdigest()
 
 
 def test_native_pin_uses_shared_runtime_and_observed_wheels_not_old_maf_claim():
@@ -106,6 +126,13 @@ def test_native_local_gate_selected_proof_not_live(tmp_path):
     events = native.execute(EXAMPLE, contract)
     paths, results, pins = native.evaluate(events, contract, inventory.build_action_inventory(EXAMPLE).actions)
     assert events[0]["observation"]["deployed_image"] == "not-verified"
+    prompt_hash = hashlib.sha256((EXAMPLE / "src/agent/copilot-instructions.md").read_bytes()).hexdigest()
+    requests = [e for e in events if e["event"] == "model_instructions"]
+    assert requests and all(e["served_sha256"] == prompt_hash for e in requests)
+    assert any(e["case"] == "risk-incomplete" for e in requests)
+    profile_cases = {"missing-profile-low", "missing-profile-risk", "missing-profile-absent",
+                     "missing-profile-wrong-info"}
+    assert profile_cases <= {e["case"] for e in events if e["event"] == "terminal"}
     paths, findings = mediation.apply_execution_receipts(paths, results)
     assert not findings
     selected = [p for p in results if p.action_id == "returns_apply_decision"]
@@ -116,10 +143,14 @@ def test_native_local_gate_selected_proof_not_live(tmp_path):
     from copy import deepcopy
     for remove in ("native_evaluation", "pre_action_decision", "invocation", "approval_replay",
                    "approval_changed", "approval_expired", "approval_fresh", "terminal",
-                   "audit_failure", "schema_output"):
+                   "audit_failure", "schema_output", "model_instructions"):
         corrupt = [e for e in deepcopy(events) if e["event"] != remove]
         with pytest.raises(Exception):
             native.evaluate(corrupt, contract, inventory.build_action_inventory(EXAMPLE).actions)
+    for case in profile_cases:
+        with pytest.raises(Exception):
+            native.evaluate([e for e in events if e.get("case") != case], contract,
+                            inventory.build_action_inventory(EXAMPLE).actions)
     corrupt = deepcopy(events)
     corrupt[0]["observation"]["packages"][0]["sha256"] = "f" * 64
     with pytest.raises(Exception):

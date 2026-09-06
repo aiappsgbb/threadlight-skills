@@ -2246,6 +2246,12 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
     deploy_action_job_steps = _azure_deploy_action_job_steps(document)
     deploy_identity_refs, non_deploy_identity_refs = _job_scoped_identity_refs(document)
     environment_identity_refs = _environment_scoped_identity_refs(document)
+    ci_probes = _ci_probes_static_status(document, triggers)
+    text = "\n".join(_governance_relevant_run_command_texts(document))
+    if ".governance-tools/scripts/ci/run-governance-pin-tests.py" in text:
+        root = _infer_repo_root_from_workflow_path(path)
+        if root is None or not _exported_native_sources_present(root):
+            ci_probes = "must-fix"
     return WorkflowAssessment(
         path=path,
         triggers=triggers,
@@ -2259,13 +2265,40 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
             deploy_action_job_steps,
             _has_azure_deploy_evidence(document, deploy_action_job_steps),
         ),
-        ci_probes=_ci_probes_static_status(document, triggers),
+        ci_probes=ci_probes,
         identity_refs=_identity_refs(login_job_steps),
         sha_violations=sha_violations,
         deploy_identity_refs=deploy_identity_refs,
         non_deploy_identity_refs=non_deploy_identity_refs,
         environment_identity_refs=environment_identity_refs,
     )
+
+
+def _exported_native_sources_present(root: Path) -> bool:
+    """Check the exported execution closure, not only the workflow's command names."""
+    tools = root / ".governance-tools"
+    required = {
+        "scripts/ci/run-governance-pin-tests.py", "scripts/ci/governance_ctk.py",
+        "scripts/ci/ctk-oracle/Cargo.toml", "scripts/ci/ctk-oracle/Cargo.lock",
+        "scripts/ci/ctk-oracle/src/main.rs",
+        "skills/_shared/governance-ctk-pin.json", "skills/_shared/governance-upstream-pin.json",
+        "skills/threadlight-govern/tests/test_agent_hooks_ctk.py",
+        "skills/threadlight-governed-actions/scripts/governed_actions.py",
+    }
+    try:
+        manifest = json.loads((tools / "source-manifest.json").read_text())
+        files = manifest["files"]
+        if not isinstance(files, dict) or not required <= files.keys():
+            return False
+        for name, expected in files.items():
+            path = tools / name
+            if (Path(name).is_absolute() or ".." in Path(name).parts
+                    or path.is_symlink() or not path.resolve().is_relative_to(tools.resolve())
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != expected):
+                return False
+        return True
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 # ---------------------------------------------------------------------------
