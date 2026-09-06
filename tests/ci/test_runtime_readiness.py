@@ -103,11 +103,15 @@ def prepared_project(tmp_path_factory):
         "auditor_subjects": [], "approver_roles": ["Approver"],
     }}
     mod.write(directory / "protected-token.json", {"token": "LOCAL-ONLY-DO-NOT-COMMIT"})
+    mod.write(directory / "operator-private.json", {"operator_private": "PRIVATE-ARTIFACT-CANARY"})
     config = {
         "source_project": source, "policy_source": policy, "package": package,
         "deployment": deployment, "input_base": directory, "input_digest": "local-only",
         "probe_input": {"local_only": True},
-        "probe_files": {"fixtures/protected-token.json": {"path": "protected-token.json"}},
+        "probe_files": {
+            "fixtures/protected-token.json": {"path": "protected-token.json"},
+            "tests/operator-private-manifest.json": {"path": "operator-private.json"},
+        },
         "source_digests": {"source_project": generator.tree_digest(source),
                            "policy_source": generator.tree_digest(policy)},
     }
@@ -125,8 +129,14 @@ def prepared_project(tmp_path_factory):
     return project, config
 
 
-def test_actual_prepare_has_traceable_standalone_snapshot_and_runs_gate(prepared_project):
+def test_actual_prepare_has_traceable_standalone_snapshot_and_runs_gate(prepared_project, monkeypatch):
     project, config = prepared_project
+    from scripts.ci import readiness_evidence as evidence
+    monkeypatch.setenv("RUNNER_TEMP", str(project.parent))
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    journal = evidence.initialize(project)
+    evidence.begin_stage(journal, project, "predeploy")
     script = project / ".governance-tools/skills/threadlight-governed-actions/scripts/governed_actions.py"
     result = subprocess.run([sys.executable, str(script), "--target", str(project),
                              "--phase", "pre-deploy", "--emit", "--gate"],
@@ -134,6 +144,10 @@ def test_actual_prepare_has_traceable_standalone_snapshot_and_runs_gate(prepared
                             env={**os.environ, "GIT_CEILING_DIRECTORIES": str(project.parent)})
     (project.parent / "gate.log").write_text(result.stdout + result.stderr)
     assert result.returncode == 0, result.stdout + result.stderr
+    evidence.finish_stage(journal, project, "predeploy", True)
+    assert evidence.export(journal, project)
+    exported = json.loads((journal.parent / "upload/governed-actions-summary.json").read_text())
+    assert exported["evidence"]["scope"] == "local-assessment-not-deployment"
     def git(*args):
         return subprocess.check_output(["git", "-C", str(project), *args], text=True).strip()
     assert Path(git("rev-parse", "--show-toplevel")) == project
@@ -216,6 +230,118 @@ def test_actual_prepare_served_factory_executes_existing_native_local14(prepared
                    "/work/.governance-tools/.governance-validation/linux-venv/bin/python", "-I", "-c", code]
     imports = subprocess.run(command, cwd=project / "src/agent", text=True, capture_output=True)
     assert imports.returncode == 0, imports.stderr
+
+
+def test_actual_prepare_gitignored_private_manifest_is_not_an_upload(prepared_project, monkeypatch):
+    project, _ = prepared_project
+    private = project / "tests/operator-private-manifest.json"
+    assert "PRIVATE-ARTIFACT-CANARY" in private.read_text()
+    assert subprocess.check_output(
+        ["git", "-C", str(project), "check-ignore", "tests/operator-private-manifest.json"],
+        text=True).strip() == "tests/operator-private-manifest.json"
+    assert "tests/operator-private-manifest.json" not in subprocess.check_output(
+        ["git", "-C", str(project), "ls-files"], text=True).splitlines()
+    # Git ignore is irrelevant to upload-artifact's filesystem glob matching.
+    assert private in list((project / "tests").glob("*manifest.json"))
+    step = next(s for s in workflow()["jobs"]["readiness-proof"]["steps"]
+                if s.get("uses", "").startswith("actions/upload-artifact"))
+    for pattern in step["with"]["path"].splitlines():
+        if pattern.startswith("${{ env.GOV_PROJECT }}/"):
+            relative = pattern.removeprefix("${{ env.GOV_PROJECT }}/")
+            assert private not in project.glob(relative), "protected Git-ignored file selected for upload"
+    from scripts.ci import readiness_evidence as evidence
+    monkeypatch.setenv("RUNNER_TEMP", str(project.parent))
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    journal = evidence.initialize(project)
+    evidence.begin_stage(journal, project, "postdeploy")
+    helper().write(project / "tests/runtime-readiness.json", {
+        "status": "not-verified", "live": False, "reason": "PRIVATE-ARTIFACT-CANARY"})
+    evidence.finish_stage(journal, project, "postdeploy", False)
+    assert evidence.export(journal, project)
+    exported = list((journal.parent / "upload").iterdir())
+    assert {p.name for p in exported} == {"export-status.json", "runtime-readiness.json"}
+    assert all("PRIVATE-ARTIFACT-CANARY" not in p.read_text() for p in exported)
+
+
+def test_readiness_upload_only_uses_automatic_export_tree():
+    steps = workflow()["jobs"]["readiness-proof"]["steps"]
+    upload = next(s for s in steps if s.get("uses", "").startswith("actions/upload-artifact"))
+    assert upload["with"]["path"] == "${{ steps.evidence-export.outputs.upload }}"
+    export = next(s for s in steps if s.get("id") == "evidence-export")
+    assert export["if"] == "always()" and upload["if"] == "always()"
+    assert not export.get("continue-on-error")
+
+
+@pytest.mark.parametrize("destination", [
+    "tests/postdeploy-manifest.json", "tests/runtime-readiness.json",
+    "tests/governed-actions-manifest.json", "tests/production-readiness-manifest.json",
+    "specs/governance-manifest.json", "specs/manifest.json", "specs/governance-contract.json",
+    "specs/governance-acceptances.json", "governance/probe-contract.json",
+    "governance/installed-packages.json", "specs/SPEC.md", "AGENTS.md",
+    ".threadlight/readiness-attempt.json", ".threadlight/governance-probe.json",
+    ".threadlight/ci-input.json", ".threadlight/governance-package.json",
+    "governance/source-provenance.json", ".git/config", ".gitignore",
+    ".governance-tools/source-manifest.json", "tests/runtime-readiness.json/child",
+    "../outside", "/absolute", "tests/../fixtures/alias.json", "./fixtures/alias.json",
+    "fixtures//alias.json", "fixtures\\alias.json",
+    "tests/Runtime-readiness.json",
+])
+def test_supplemental_paths_cannot_supply_evidence_or_trust_metadata(destination, tmp_path):
+    path, config = input_fixture(tmp_path)
+    config["probe_files"] = {destination: next(iter(config["probe_files"].values()))}
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="protected configuration"):
+        helper().load_inputs(path)
+
+
+@pytest.mark.parametrize("destination", [
+    "tests/operator-private-manifest.json", ".threadlight/fixture/config.json",
+    "config/probe-fixture.json", "mounts/governance-probe/config.json",
+])
+def test_private_config_and_read_only_mount_mappings_remain_accepted(destination, tmp_path):
+    path, config = input_fixture(tmp_path)
+    config["probe_files"] = {destination: next(iter(config["probe_files"].values()))}
+    path.write_text(json.dumps(config))
+    assert helper().load_inputs(path)["probe_files"] == config["probe_files"]
+
+
+def test_supplemental_input_internal_symlink_parent_is_rejected(tmp_path):
+    path, config = input_fixture(tmp_path)
+    (tmp_path / "alias").symlink_to(tmp_path / "policy", target_is_directory=True)
+    (tmp_path / "policy/input.json").write_text("{}")
+    config["probe_files"]["fixtures/config.json"]["path"] = "alias/input.json"
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="protected configuration"):
+        helper().load_inputs(path)
+
+
+def test_supplemental_destinations_cannot_overlap_each_other(tmp_path):
+    path, config = input_fixture(tmp_path)
+    item = next(iter(config["probe_files"].values()))
+    config["probe_files"] = {"fixtures/config.json": item, "fixtures/config.json/child": item}
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="protected configuration"):
+        helper().load_inputs(path)
+
+
+def test_documented_artifacts_are_projections_not_parent_snapshots():
+    text = (ROOT / "docs/production-readiness.md").read_text()
+    section = text[text.index("Artifacts are"):text.index("> **What's new")]
+    for term in ("RUNNER_TEMP", "projection", "raw", "journal", "export-status.json"):
+        assert term in section
+    assert "preserves all\nresource gaps" not in section
+
+
+def test_every_workflow_script_still_parses():
+    import re
+    snippets = [s["run"] for job in workflow()["jobs"].values()
+                for s in job["steps"] if "run" in s]
+    assert len(snippets) >= 44
+    for snippet in snippets:
+        result = subprocess.run(["bash", "-n"], input=re.sub(r"\$\{\{.*?\}\}", "test", snippet),
+                                text=True, capture_output=True)
+        assert result.returncode == 0, result.stderr
 
 
 def test_root_readiness_guidance_requires_current_binding_evidence_not_verdict_labels():

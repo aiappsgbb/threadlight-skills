@@ -21,6 +21,8 @@ import re
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+from scripts.ci import readiness_evidence
+
 GENERATOR = ROOT / "skills/threadlight-deploy/references/governance/generate.py"
 ATTEMPT = ".threadlight/readiness-attempt.json"
 PROTECTED_PATTERNS = (
@@ -56,11 +58,19 @@ def checked_path(base, value, *, directory=False):
     if not isinstance(value, str) or not value:
         raise ValueError("protected configuration: concrete input path required")
     path = base / value
-    if path.is_symlink() or not path.resolve().is_relative_to(base.resolve()):
+    if (path.is_symlink() or not path.resolve().is_relative_to(base.resolve())
+            or any(p.is_symlink() for p in path.parents if p != base and base in p.parents)):
         raise ValueError("protected configuration: input path escapes protected directory")
     if not (path.is_dir() if directory else path.is_file()):
         raise ValueError("protected configuration: required input file/directory missing")
     return path.resolve()
+
+
+def validate_supplemental_destinations(config):
+    paths = [readiness_evidence.supplemental_path(p) for p in config["probe_files"]]
+    if any(readiness_evidence.overlaps(a, b)
+           for i, a in enumerate(paths) for b in paths[i + 1:]):
+        raise ValueError("supplemental paths overlap")
 
 
 def load_inputs(path):
@@ -121,6 +131,7 @@ def load_inputs(path):
         if config["probe_input"]["selection"]["resource_group"] != target["resource_group"]:
             raise ValueError("probe resource group mismatch")
         # Every protected supplemental input is content-pinned before copying.
+        validate_supplemental_destinations(config)
         for destination, item in config["probe_files"].items():
             if Path(destination).is_absolute() or ".." in Path(destination).parts:
                 raise ValueError("unsafe supplemental path")
@@ -241,6 +252,7 @@ def snapshot_generated_sources(project, source_root, provenance, approved, confi
 
 
 def prepare(project, config):
+    validate_supplemental_destinations(config)
     if project.exists():
         raise ValueError("fresh project directory required; no reuse of previous deployment proof")
     generator = importlib.import_module("skills.threadlight-deploy.references.governance.generate")
@@ -256,8 +268,7 @@ def prepare(project, config):
                     ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache",
                                                  ".governance-validation", ".governance-tools"))
     # Evidence may be archived, never carried forward as current runtime proof.
-    for relative in ("specs/governance-manifest.json", ".threadlight/governance-live.json",
-                     "tests/postdeploy-manifest.json", ATTEMPT):
+    for relative in {p for paths in readiness_evidence.OUTPUTS.values() for p in paths}:
         (project / relative).unlink(missing_ok=True)
     bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
     destination = project / ".threadlight/ci-policy"
@@ -274,7 +285,7 @@ def prepare(project, config):
     generator.export_local_validation(project)
     snapshot_generated_sources(project, source_root, provenance, approved, config)
     for destination, item in config["probe_files"].items():
-        output = project / destination
+        output = readiness_evidence.contained(project, destination)
         if output.is_symlink() or not output.resolve().is_relative_to(project.resolve()):
             raise ValueError("supplemental input escapes project")
         # Never overwrite generated code, frozen settings or policy metadata.
@@ -441,7 +452,20 @@ def main():
             if read(project / ".threadlight/ci-input.json") != {"digest": config["input_digest"]}:
                 raise ValueError("protected configuration changed during workflow")
         if args.stage != "validate-inputs":
-            globals()[args.stage](project, config)
+            # Only the workflow-generated journal is accepted, never a path in
+            # the protected configuration. Direct API tests remain local-only.
+            state = Path(os.environ["READINESS_EVIDENCE_STATE"])
+            readiness_evidence.journal(state, project)
+            if args.stage in readiness_evidence.OUTPUTS:
+                readiness_evidence.begin_stage(state, project, args.stage)
+                succeeded = False
+                try:
+                    globals()[args.stage](project, config)
+                    succeeded = True
+                finally:
+                    readiness_evidence.finish_stage(state, project, args.stage, succeeded)
+            else:
+                globals()[args.stage](project, config)
         print(f"{args.stage}: completed; no whole-agent governance assertion")
         return 0
     except (OSError, ValueError, KeyError, TypeError, ImportError, subprocess.SubprocessError) as error:

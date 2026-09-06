@@ -111,7 +111,7 @@ object (`schema: threadlight-readiness-input/v1`) requires:
 | `agent_image` | Task10 immutable image and spool configuration, matching the registered agent definition |
 | `deployment` | Task10 bind input: actual immutable agent/CP/gateway images, infrastructure, identities, role assignments, observations and native probe association (or gateway registry) |
 | `probe_input` | Exact Task11 `.threadlight/governance-probe.json`, not a permission-to-write boolean |
-| `probe_files` | Destination → `{path, sha256}` for protected fixture/registry/envelope inputs; cannot overwrite generated code/config |
+| `probe_files` | Literal project-relative destination → `{path, sha256}` for protected fixture/registry/envelope inputs. Evidence outputs, project trust metadata, traversal, symlinks and overlapping destinations are rejected. Separate config/read-only mount mappings remain supported; no supplemental input is committed or uploaded. |
 | `source_digests` | Task10 `tree_digest` values for `source_project`, `policy_source`, and generated `agent`, `govern-control-plane`, `govern-gateway` contexts associated with the approved published images |
 | `azd_environment`, `location` | Explicit operator-selected environment and region |
 | `gateway_stage` (GHCP only) | Final Task9 signed registry/bundle and image association; not the bootstrap digest |
@@ -149,10 +149,35 @@ paper over parent gaps. A changed agent version during deployment requires new
 operator association; the collector rejects the old one rather than rewriting it.
 
 Artifacts are `governance-local-contract-<run_id>-<attempt>` and
-`governance-readiness-<run_id>-<attempt>`. Only scoped reports, manifests and attempt
-timestamps are uploaded, not protected configs/tokens. `.threadlight/governance-live.json`
-retains the parent's actual result, `tests/postdeploy-manifest.json` preserves all
-resource gaps, and `tests/runtime-readiness.json` reports binding status.
+`governance-readiness-<run_id>-<attempt>`. Both upload **only** a new, automatically
+named export directory under `RUNNER_TEMP`, outside the project. Configuration
+cannot select this directory. Git ignore rules are **not** an artifact boundary.
+
+The local artifact contains validated workflow step outcomes only, not native
+receipts, raw test logs, JUnit bodies or prepared fixture files. Native/CTK
+validation still runs separately; its complete local outputs remain on the runner.
+
+The readiness artifact contains explicit payload-free JSON **projections**:
+`governance-summary.json` (offline inventory or current collection coverage),
+`governed-actions-summary.json` (local finding-status counts),
+`postdeploy-summary.json` (validated governance coverage and resource/governance
+gap counts), `runtime-readiness.json` (binding status/live flag/gap count), and
+`deployment-attempt.json` (run identity and timestamps), when produced.
+Existing governance validators and the governed-actions schema validate their
+source evidence; open parent reports are never copied. Names, gap text, business
+payloads, original configs/envelopes, signatures, raw Markdown/stdout/stderr,
+scorecard details and project input snapshots are not exported.
+
+A private run/attempt-bound journal outside the upload tree records exact output
+hashes after each producer. Declared outputs are removed before invocation;
+checked-in or copied stale receipts cannot be exported as this run's proof.
+Missing outputs are skipped. `export-status.json` distinguishes producer
+failure, missing artifacts and invalid evidence; invalid evidence fails the
+export step without disguising the original failed job. Both export and upload
+run with `always()`. The export status itself is never a readiness pass.
+
+The full parent report and generated scorecard remain **local runner files**,
+not artifacts. Operators must handle those files as protected material.
 Business evidence absent means **not verified and failed readiness**; current
 noop-only collection cannot make the canonical business workload fully ready.
 There is no automatic teardown of protected shared services; operators own
