@@ -227,7 +227,7 @@ def export_local_validation(project, document=None, *, configuration=None):
         ignored.write("\n.governance-validation/\n__pycache__/\n*.pyc\n")
 
 
-def validate_network(network):
+def validate_network(network, *, environment=None):
     if network.get("posture") == "private-required":
         required = ("environment_id", "vnet_id", "private_endpoint_subnet_id",
                     "foundry_injection_subnet_id", "blob_dns_zone_id",
@@ -245,6 +245,11 @@ def validate_network(network):
         if not ranges or any(ip.version != 4 or ip.prefixlen in (0, 31)
                              or ipaddress.ip_address("0.0.0.0") in ip for ip in parsed):
             raise ValueError("explicit_restricted_ip_allowlist_required")
+    elif network.get("posture") == "public-authenticated-proof":
+        if (environment not in ("staging", "preproduction")
+                or network.get("proof_only") is not True or network.get("cleanup_required") is not True
+                or set(network) != {"posture", "environment_id", "proof_only", "cleanup_required"}):
+            raise ValueError("explicit_nonproduction_public_authenticated_proof_required")
     else:
         raise ValueError("explicit_network_posture_required")
     if not re.fullmatch(RESOURCE + r"Microsoft.App/managedEnvironments/[^/]+",
@@ -283,6 +288,10 @@ def portable_configuration(config, contract, framework):
     portable = {k: v for k, v in config.items() if k not in (
         "bundle_path", "signed_envelope", "network", "agent_service")}
     portable["contract"] = deepcopy(contract)
+    if config.get("network", {}).get("posture") == "public-authenticated-proof":
+        validate_network(config["network"], environment=config.get("environment"))
+        from skills._shared.governance_configuration import public_proof_network_evidence
+        portable["network_evidence"] = public_proof_network_evidence()
     normalized = validate_contract(contract)
     if "remote_bootstrap" in config:
         from govern_control_plane.bootstrap import BootstrapReference
@@ -505,7 +514,7 @@ def generate(project, document, *, configuration=None):
                 or selected_probe["intervention_points"] != ["pre_tool_call"]
                 or document["governance"]["environment_modes"][config["environment"]] != "enforce"):
             raise ValueError("explicit_enforced_probe_binding_required")
-    validate_network(config["network"])
+    validate_network(config["network"], environment=config["environment"])
     for key in ("tenant_id",):
         if not re.fullmatch(UUID, config.get(key, "")):
             raise ValueError("invalid_tenant_id")
@@ -1025,6 +1034,8 @@ def bind(project, document, *, configuration=None):
     deployment = {"schema": "threadlight-governance-deployment/v1", "images": images,
                   "infrastructure": infrastructure, "bindings": bindings,
                   "status": "bound-unverified", "scope": "not-live-effect-closure"}
+    if "network_evidence" in frozen:
+        deployment["network_evidence"] = deepcopy(frozen["network_evidence"])
     if probe_option:
         deployment["probe_observability"] = (
             probe_declaration if package["framework"] == "microsoft-agent-framework" else {
@@ -1119,7 +1130,7 @@ def native_probe_binding(config, bindings, packaged, images, document):
 def validate_infrastructure(config):
     validate_environment(config)
     validate_probe_observability(config)
-    validate_network(config["network"])
+    validate_network(config["network"], environment=config["environment"])
     for key in ("tenant_id", "control_plane_app_id", "gateway_app_id"):
         if not re.fullmatch(UUID, config.get(key, "")):
             raise ValueError("provided_entra_application_ids_required")

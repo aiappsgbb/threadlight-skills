@@ -77,6 +77,7 @@ def current_context(root):
                           "digest": envelope["content_digest"],
                           "expires_at": envelope["expires_at"]},
         **({"bootstrap": config["bootstrap"]} if "bootstrap" in config else {}),
+        **({"network_evidence": config["network_evidence"]} if "network_evidence" in config else {}),
     }
 
 
@@ -183,6 +184,11 @@ def evaluate(manifest, document, *, current=None, now=None):
                 "noop-proof-requires-enforcing-staging-target")
         evidence = manifest.get("collection_evidence")
         require(isinstance(evidence, dict), "authenticated-collection-evidence-required")
+        if "network_evidence" in current or "network_evidence" in evidence:
+            from skills._shared.governance_configuration import validate_network_evidence
+            require(evidence.get("network_evidence") == current.get("network_evidence"),
+                    "current-network-disclosure-required")
+            validate_network_evidence(evidence.get("network_evidence"))
         if "bootstrap" in current or "bootstrap" in evidence:
             require(evidence.get("bootstrap") is not None
                     and evidence.get("bootstrap") == current.get("bootstrap"),
@@ -222,8 +228,12 @@ def evaluate(manifest, document, *, current=None, now=None):
         for record in evidence["records"]:
             for service in ("producer", "fixture"):
                 require(now < _time(record[service]["expires_at"]), "probe-registration-expired")
-        return _result("pass", "Current exact binding evidence; not whole-agent certification.",
-                       live=True, manifest=manifest, gaps=gaps)
+        result = _result("pass", "Current exact binding evidence; not whole-agent certification.",
+                         live=True, manifest=manifest, gaps=gaps)
+        if "network_evidence" in evidence:
+            result["network_evidence"] = dict(evidence["network_evidence"])
+            result["reason"] += " Public authenticated proof; network isolation not established."
+        return result
     except (GovernanceContractError, ProbeEvidenceError, ValueError, TypeError, KeyError, ImportError):
         # Never echo raw JSON / payload-bearing validation errors.
         return _result("must-fix" if is_selected or isinstance(document, dict) else "not-verified",

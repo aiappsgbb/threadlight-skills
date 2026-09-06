@@ -150,6 +150,6 @@ def test_native_gate_runs_bootstrap_protocol_and_real_host_regressions():
     text = (ROOT / "scripts/ci/run-governance-pin-tests.py").read_text()
     for name in ("test_bootstrap_assets.py", "test_remote_bootstrap.py",
                  "test_native_bootstrap_assets.py", "test_remote_bootstrap_hosts.py",
-                 "test_hosted_bootstrap_lifecycle.py"):
+                 "test_hosted_bootstrap_lifecycle.py", "test_public_authenticated_proof.py"):
         assert name in text
     assert '"THREADLIGHT_READINESS_SDK": "1"' in text

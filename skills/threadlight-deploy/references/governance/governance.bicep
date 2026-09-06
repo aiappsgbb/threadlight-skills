@@ -11,6 +11,10 @@ param bindings object = {}
 param location string = resourceGroup().location
 
 var privateRequired = config.network.posture == 'private-required'
+// This is public access with Entra authorization, never restricted-network evidence.
+var publicAuthenticatedProof = config.network.posture == 'public-authenticated-proof'
+  ? (contains(['staging', 'preproduction'], config.environment) && config.network.proof_only == true && config.network.cleanup_required == true)
+  : false
 var prefix = config.prefix
 var probesEnabled = contains(config, 'probe_observability')
   ? (config.probe_observability.enabled == true && contains(['staging', 'preproduction'], config.environment))
@@ -61,8 +65,8 @@ resource storage 'Microsoft.Storage/storageAccounts@2025-01-01' = {
     publicNetworkAccess: privateRequired ? 'Disabled' : 'Enabled'
     networkAcls: {
       bypass: 'None'
-      defaultAction: 'Deny'
-      ipRules: [for ip in (privateRequired ? [] : config.network.allowed_ips): {
+      defaultAction: publicAuthenticatedProof ? 'Allow' : 'Deny'
+      ipRules: [for ip in (privateRequired || publicAuthenticatedProof ? [] : config.network.allowed_ips): {
         action: 'Allow'
         // Storage requires individual addresses, not /32 CIDR ranges.
         value: endsWith(ip, '/32') ? split(ip, '/')[0] : ip
@@ -100,7 +104,7 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2025-04-15' = {
     locations: [{ locationName: location, failoverPriority: 0 }]
     consistencyPolicy: { defaultConsistencyLevel: 'Strong' }
     publicNetworkAccess: privateRequired ? 'Disabled' : 'Enabled'
-    ipRules: [for ip in (privateRequired ? [] : config.network.allowed_ips): { ipAddressOrRange: ip }]
+    ipRules: [for ip in (privateRequired || publicAuthenticatedProof ? [] : config.network.allowed_ips): { ipAddressOrRange: ip }]
   }
 }
 resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2025-04-15' = {
@@ -254,8 +258,8 @@ resource vault 'Microsoft.KeyVault/vaults@2024-11-01' = {
     publicNetworkAccess: privateRequired ? 'Disabled' : 'Enabled'
     networkAcls: {
       bypass: 'None'
-      defaultAction: 'Deny'
-      ipRules: [for ip in (privateRequired ? [] : config.network.allowed_ips): { value: ip }]
+      defaultAction: publicAuthenticatedProof ? 'Allow' : 'Deny'
+      ipRules: [for ip in (privateRequired || publicAuthenticatedProof ? [] : config.network.allowed_ips): { value: ip }]
     }
   }
 }
@@ -408,7 +412,7 @@ module registryPull 'registry-pull.bicep' = [for identity in ['control', 'gatewa
 // These objects are validated with the actual Task8/9 Pydantic schemas by bind.
 var controlConfig = phase == 'services' ? bindings.control_config : {}
 var gatewayConfig = phase == 'services' ? bindings.gateway_config : {}
-var ipRestrictions = [for (ip, i) in (privateRequired ? [] : config.network.allowed_ips): {
+var ipRestrictions = [for (ip, i) in (privateRequired || publicAuthenticatedProof ? [] : config.network.allowed_ips): {
   name: 'allowed-${i}', action: 'Allow', ipAddressRange: ip
 }]
 var ingress = {
@@ -482,6 +486,7 @@ resource gatewayApp 'Microsoft.App/containerApps@2025-01-01' = if (phase == 'ser
 }
 
 output GOV_CONTROL_PLANE_URL string = controlUrl
+output TL_GOV_SERVICE_INGRESS object = ingress
 output GOVERNED_TOOL_GATEWAY_URL string = gatewayUrl
 output TL_GOV_KEY_VERSION string = policyKey.properties.keyUriWithVersion
 output TL_GOV_CONTROL_CLIENT string = controlIdentity.properties.clientId

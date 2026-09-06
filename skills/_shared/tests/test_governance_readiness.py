@@ -53,6 +53,24 @@ def test_remote_bootstrap_chain_is_required_when_current_host_selects_it(mutatio
     assert (result["status"] == "pass") == (mutation == "valid")
 
 
+@pytest.mark.parametrize("mutation", [None, "missing", "isolation", "integer-opt-in"])
+def test_public_proof_evidence_cannot_hide_or_claim_network_isolation(mutation):
+    from skills._shared.governance_configuration import public_proof_network_evidence
+    value, document, current, now = live_fixture()
+    current["network_evidence"] = public_proof_network_evidence()
+    if mutation != "missing":
+        value["collection_evidence"]["network_evidence"] = public_proof_network_evidence()
+    if mutation == "isolation":
+        value["collection_evidence"]["network_evidence"]["network_isolation"] = "established"
+    elif mutation == "integer-opt-in":
+        value["collection_evidence"]["network_evidence"]["cleanup_required"] = 1
+    result = api().evaluate(value, document, current=current, now=now)
+    assert (result["status"] == "pass") == (mutation is None)
+    if mutation is None:
+        assert result["network_evidence"]["network_isolation"] == "not-established"
+        assert "network isolation not established" in result["reason"]
+
+
 @pytest.mark.parametrize("producer", ["native", "gateway"])
 def test_collection_schema_requires_exact_signature_dependency_chain(producer):
     import json

@@ -90,6 +90,50 @@ collects. It does not invoke azd or create the agent again.
 
 ## Legacy local-file generation ordering
 
+### Explicit public authenticated proof networking
+
+`public-authenticated-proof` is an operator-approved **staging/preproduction
+proof only** posture, not an alias for `public-pilot` (restricted public ingress)
+or `private-required`. Use exactly this network shape in both package and
+infrastructure configuration:
+
+```json
+{
+  "environment": "preproduction",
+  "network": {
+    "posture": "public-authenticated-proof",
+    "environment_id": "<existing-ACA-environment-ARM-ID>",
+    "proof_only": true,
+    "cleanup_required": true
+  }
+}
+```
+
+Missing/nonboolean opt-ins, production/development, `allowed_ips`, and unrelated
+network fields are rejected. The existing public IP allowlist and private-network
+contracts are unchanged. This mode deliberately opens HTTPS network reachability:
+ACA ingress restrictions are empty, Storage/Key Vault network default action is
+Allow, and Cosmos has public access with no IP filter. **Authentication is not
+optional:** existing Entra identity/app-role allowlists, policy signature checks,
+one-use approvals and audit ACKs remain unchanged. Storage shared keys and
+anonymous blob access stay disabled; Cosmos local auth stays disabled; Key Vault
+uses RBAC; HTTPS/TLS settings remain enforced. Anonymous protected/data operations
+are not introduced. Existing payload-free health/liveness routes are not proof
+of authorization or enforcement.
+
+`TL_GOV_SERVICE_INGRESS` exposes the generated HTTPS ingress object for the
+operator-installed fixture to use consistently; normal generation still does
+not automatically deploy a fixture. ACR pull authorization remains separate.
+The generated frozen configuration, deployment declarations and collected
+evidence disclose `network_evidence`, whose scope is
+`runtime-governance-proof-only`: **network isolation is not established**.
+Readiness cannot drop or relabel this disclosure as isolation evidence.
+
+Explicit cleanup is an operator obligation after verification: remove only the
+dedicated test resources and grants. The flag is a required commitment, not a
+claim that cleanup already happened. This posture must not be promoted to
+production or used to bypass the existing restricted/private requirements.
+
 1. **Foundation, without application revisions.** Supply a dedicated governance
    resource group, existing registry and ACA environment, approved network
    topology, and the Entra application registrations described below:

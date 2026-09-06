@@ -13,6 +13,19 @@ SERVICE_ENVIRONMENT = frozenset({
 DECLARED_FILES = frozenset({"host", "fixture", "native_probe"})
 
 
+def public_proof_network_evidence():
+    return {"posture": "public-authenticated-proof", "scope": "runtime-governance-proof-only",
+            "network_isolation": "not-established", "cleanup_required": True}
+
+
+def validate_network_evidence(value):
+    expected = public_proof_network_evidence()
+    if (not isinstance(value, dict) or set(value) != set(expected)
+            or any(type(value[key]) is not type(item) or value[key] != item for key, item in expected.items())):
+        raise ValueError("public-proof-network-disclosure-invalid")
+    return dict(value)
+
+
 def validate_digests(value, names):
     if (not isinstance(value, dict) or not set(value) <= names
             or any(not isinstance(v, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", v) for v in value.values())):

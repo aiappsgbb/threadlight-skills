@@ -31,6 +31,13 @@ changes a policy verdict. Production-environment registries reject probe actions
    Generation also requires explicit `subscription` and `resource_group`.
 
 There is deliberately **no fixture deployment in normal generated Azure YAML**.
+For an explicitly approved `public-authenticated-proof` staging/preproduction
+run, deploy the fixture using the generated `TL_GOV_SERVICE_INGRESS` HTTPS
+settings. Its protected endpoints still require the existing Entra caller/
+controller allowlists; do not add anonymous operations, secrets or fixture-store
+access for the calling agent. This public mode proves no network isolation.
+Use only the dedicated proof resources and clean them up after verification.
+
 Task 10's Bicep emits separate `probe-gateway`, `probe-native`, `probe-fixture`
 containers and the fixture UAMI only with the explicit staging opt-in. It grants
 each producer write access only to its own container, plus account metadata read.

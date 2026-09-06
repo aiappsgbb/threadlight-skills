@@ -78,6 +78,24 @@ any of them invalidates the previous evidence. Saved JSON is not remote attestat
 
 ### Protected readiness-proof CI inputs
 
+#### Public authenticated proof is not network isolation
+
+An explicitly approved, dedicated staging/preproduction proof may select
+`network.posture: public-authenticated-proof` with literal `proof_only: true`
+and `cleanup_required: true`. It intentionally enables public HTTPS reachability
+to proof services and public data-plane reachability to the dedicated stores/key
+vault, while preserving mandatory Entra authorization and signed policy.
+Storage shared keys/anonymous blobs and Cosmos local auth remain disabled.
+This is **not** `public-pilot` IP restriction or `private-required` isolation.
+Neither existing mode nor production defaults are relaxed.
+
+Use the exact [generation contract](../skills/threadlight-deploy/references/governance/README.md#explicit-public-authenticated-proof-networking);
+do not supply `allowed_ips` or pretend Any is restricted. Frozen configuration,
+deployment and collection emit a `network_evidence` disclosure with
+`network_isolation: not-established`. A successful runtime noop proof cannot
+establish network isolation or certify business bindings. Cleanup remains an
+explicit operator action confined to the dedicated proof resources.
+
 #### Signed remote bootstrap implementation (not live acceptance)
 
 The approved alternative is now implemented as **create-once**, then authenticated

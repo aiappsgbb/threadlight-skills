@@ -255,6 +255,9 @@ async def collect(config, *, credential, signer, run=observation.run_command, ht
                 and type(poll_interval) in (int, float) and 0 < poll_interval <= 5,
                 "invalid-collection-bounds")
         contract, registry, action = preflight(config)
+        if "network_evidence" in config:
+            from skills._shared.governance_configuration import validate_network_evidence
+            report["network_evidence"] = validate_network_evidence(config["network_evidence"])
         expected = expected_target(config)
         report["expected_target"] = deepcopy(expected)
         declared_configuration = configuration_projection(config)
@@ -428,6 +431,7 @@ def manifest(report, config):
             "expected_target": report["expected_target"], "configuration": report["configuration_evidence"],
             "verified_policies": report["verified_policies"],
             **({"bootstrap": report["bootstrap"]} if "bootstrap" in config else {}),
+            **({"network_evidence": report["network_evidence"]} if "network_evidence" in config else {}),
             "registration_scope": report["registration_scope"], "records": report["probe_evidence"]},
     }
     return validate_governance_manifest(value)
@@ -556,6 +560,7 @@ def load_configuration(project, configuration):
         },
         "runtime_configuration": {"agent": host_environment, "services": service_environments},
         "declared_file_digests": declared_files,
+        **({"network_evidence": frozen["network_evidence"]} if "network_evidence" in frozen else {}),
         **bootstrap,
     }
 

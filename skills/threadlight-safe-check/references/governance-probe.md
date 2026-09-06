@@ -4,6 +4,13 @@ This is an explicit staging/preproduction noop test, not a business-operation
 test, Azure deployment tool, or remote attestation system. Read
 [the producer protocol](probe-fixture/README.md) before configuring it.
 
+For an explicitly approved `public-authenticated-proof` deployment, the collector
+preserves the frozen `network_evidence` declaration. It says
+`runtime-governance-proof-only` and `network_isolation: not-established`; current
+readiness rejects a missing or relabelled disclosure. Entra authorization and
+all existing signed-registry/receipt checks still apply. Public reachability is
+not an isolation control, and cleanup is an operator obligation.
+
 ## Install
 
 Use the existing pinned Linux amd64 governance environment with the published

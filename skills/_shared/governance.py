@@ -971,10 +971,13 @@ def _validate_collection_evidence(manifest):
     _require_exact_keys(evidence, "collection_evidence", {
         "source", "declared_selection", "observed_target", "started_at", "finished_at",
         "registration_scope", "records", "expected_target", "configuration", "verified_policies",
-    } | ({"bootstrap"} if "bootstrap" in evidence else set()))
+    } | ({"bootstrap", "network_evidence"} & evidence.keys()))
     if evidence["source"] != "authenticated-service-reads-and-azure-observation-not-attestation":
         _raise("collection_evidence source must identify the collector, not local conformance")
     try:
+        if "network_evidence" in evidence:
+            from skills._shared.governance_configuration import validate_network_evidence
+            validate_network_evidence(evidence["network_evidence"])
         target = evidence["observed_target"]
         if (target["source"] != "azure-arm-and-foundry"
                 or target["agent_version"] != manifest["agent"]["version"]

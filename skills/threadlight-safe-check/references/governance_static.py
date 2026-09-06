@@ -106,6 +106,9 @@ def check(project, document):
         config = package["configuration"]
         result["bindings"] = bindings(contract, config.get("policy_digest"), config["environment"])
         agent, frozen = gen.frozen_configuration(project, package)
+        if "network_evidence" in frozen:
+            from skills._shared.governance_configuration import validate_network_evidence
+            result["network_evidence"] = validate_network_evidence(frozen["network_evidence"])
         agent = contained(project, agent.relative_to(project))
         azure = yaml.safe_load(contained(project, "azure.yaml").read_text())
         svc = azure["services"][config["agent_service"]]
