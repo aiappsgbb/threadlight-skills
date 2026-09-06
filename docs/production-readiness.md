@@ -81,7 +81,8 @@ any of them invalidates the previous evidence. Saved JSON is not remote attestat
 `.github/workflows/threadlight-e2e-foundry.yml` separates:
 
 - `local-native-contract`: published native/CTK and deployment-contract tests,
-  no Azure proof.
+  plus real preparation → standalone Git snapshot → native pre-deploy gate with
+  explicitly local-only test inputs. No Azure proof.
 - `readiness-proof`: explicit `governance_safe_probe=true`, protected
   `governance-preproduction` environment and a Linux x64 self-hosted runner
   labelled `governance-preproduction`, with private reachability and a separately
@@ -91,7 +92,7 @@ any of them invalidates the previous evidence. Saved JSON is not remote attestat
 The protected environment must provide `GOVERNANCE_CI_CONFIG` (absolute path to
 operator-mounted, credential-free JSON) and `GOVERNANCE_CI_CONFIG_SHA256` (exact
 approved bytes), `GOVERNANCE_TENANT_ID`, `GOVERNANCE_SUBSCRIPTION_ID`, and secret
-`GOVERNANCE_DEPLOY_CLIENT_ID` for scoped OIDC deployment. The runner needs Docker,
+`GOVERNANCE_DEPLOY_CLIENT_ID` for scoped OIDC deployment. The runner needs Git, Docker,
 Azure CLI, Bicep and the existing pinned azd/agent extension
 (`azd 1.31.1`, `azure.ai.agents 1.0.0-beta.10`). The collector uses its configured
 controller UAMI, not the deployment OIDC token, for authenticated service calls.
@@ -105,7 +106,7 @@ object (`schema: threadlight-readiness-input/v1`) requires:
 |---|---|
 | `environment` | `preproduction`, never implicit production or a sandbox default |
 | `expected_target` | Independent canonical tenant/subscription UUIDs and resource_group; checked against account context and collector observations |
-| `source_project`, `policy_source` | Paths below the protected JSON directory to a reviewed application/local-proof contract and native policy source |
+| `source_project`, `policy_source` | Paths below the protected JSON directory to a reviewed Git-tracked application/local-proof contract (resource-group infrastructure ejection required) and native policy source |
 | `package` | Task10 package configuration: actual signed envelope, digest, policy identity/expiry, versioned signing key, service scopes/URLs, roles, network; paths passed to generator APIs must be absolute |
 | `agent_image` | Task10 immutable image and spool configuration, matching the registered agent definition |
 | `deployment` | Task10 bind input: actual immutable agent/CP/gateway images, infrastructure, identities, role assignments, observations and native probe association (or gateway registry) |
@@ -125,6 +126,16 @@ embedded bundle. Missing prerequisites **fail descriptively**: CI does not
 manufacture signatures, fixtures, source attestations or broad role assignments.
 For returns, business Cosmos seed and protected role/token configuration are also
 external prerequisites; there are no automatic business writes or seed/reset steps.
+
+Preparation creates an isolated local Git repository over explicitly allowlisted
+application/generated sources and exported validation tooling. The actual input
+checkout commit, project boundary, dirty state and approved tree digest remain in
+`governance/source-provenance.json`; the separate generated snapshot commit is
+**not a deployment commit**. Its local origin is the input checkout, not fabricated
+GitHub protection. Protected configuration, envelopes, token files, supplemental
+inputs and runtime evidence stay ignored/untracked. Existing ignore rules are
+preserved. The canonical native container wrapper continues to serve the same
+generated `governance_host.build_host` that the native child verifies.
 
 The stages actually run bundle build/native validation → `generate.py foundation`
 and `generate` → exported CTK/native preparation and

@@ -11,9 +11,14 @@
 
 The paid live workflow has two evidence meanings. **Live smoke** proves the
 design, deployment, invocation, and assurance producers executed; it does not
-assert production readiness. **Readiness proof** additionally requires a green
-post-deploy safe-check, governed/comprehensive/hardened assurance verdicts, a
-ready production scorecard, and measured outcome KPIs.
+assert production readiness. **Readiness proof** additionally requires current
+`governance-manifest/v1` per-binding evidence: each selected binding must be
+enforced for the exact deployed scope, plus a green post-deploy safe-check, a
+ready production scorecard, and measured outcome KPIs. A local pre-deploy gate
+can pass with aggregate status `partial`; it is not hosted or production proof.
+Absent current business-binding live proof blocks production readiness; reserved
+noop proof cannot be borrowed to certify business tools. Whole-agent verdict
+labels are not an acceptance criterion.
 
 > **Runtime-policy authority.**
 > [`skills/threadlight-design/references/runtime-policy.json`](skills/threadlight-design/references/runtime-policy.json)

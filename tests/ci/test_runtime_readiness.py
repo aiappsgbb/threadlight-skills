@@ -8,6 +8,9 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import shutil
+import hashlib
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import yaml
@@ -27,6 +30,236 @@ def helper():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture(scope="module")
+def prepared_project(tmp_path_factory):
+    """LOCAL ONLY: syntax-valid placeholder inputs, never a deployment credential.
+
+    Execute production preparation unchanged. Only native model/transport/storage
+    seams in the existing child are fixtures; no Azure commands are executed.
+    """
+    if os.environ.get("THREADLIGHT_READINESS_NATIVE") != "1":
+        pytest.skip("Run the explicit local-native-contract preparation job; not a docs/native proof")
+    directory = tmp_path_factory.mktemp("actual-readiness")
+    mod = helper()
+    generator = importlib.import_module("skills.threadlight-deploy.references.governance.generate")
+    bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
+    example = ROOT / "examples/returns-triage-governed"
+    source = directory / "source"
+    approved = subprocess.check_output(["git", "-C", str(example), "ls-files", "-z"], text=True)
+    paths = [p for p in approved.split("\0") if p and not p.startswith("infra/")]
+    for relative in paths:
+        target = source / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(example / relative, target)
+    # The protected pipeline requires a reviewed resource-group ejection, not the
+    # example's subscription bootstrap. This fixture intentionally has no infra.
+    env = {**os.environ, "GIT_AUTHOR_NAME": "Local fixture", "GIT_COMMITTER_NAME": "Local fixture",
+           "GIT_AUTHOR_EMAIL": "fixture@localhost", "GIT_COMMITTER_EMAIL": "fixture@localhost"}
+    def source_git(*args):
+        subprocess.run(["git", "-C", str(source), *args], check=True, env=env, capture_output=True)
+    source_git("init", "-q")
+    source_git("remote", "add", "origin", "file:///local-fixtures/readiness-input.git")
+    source_git("add", "--", *paths)
+    source_git("-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false",
+               "commit", "-qm", "Reviewed local-only input")
+    (source / ".gitignore").write_text("keep-local-only/\n")
+    (source / ".env").write_text("LOCAL_ONLY_TOKEN=never-commit\n")
+    with (source / "README.md").open("a") as readme:
+        readme.write("\nLocal fixture: reviewed working-tree changes are digest-pinned.\n")
+    policy = source / "src/agent/governance/policy"
+    bundle = bundle_api.build_bundle(source=policy, destination=directory / "bundle",
+                                     policy_id="returns-write-v1", version="1")
+    tenant = "11111111-1111-1111-1111-111111111111"
+    package = {
+        "agent_service": "returns-triage", "agent_id": "returns-triage",
+        "environment": "preproduction", "policy_id": "returns-write-v1", "policy_version": "1",
+        "policy_digest": bundle.bundle_digest, "signed_envelope": str(directory / "envelope.json"),
+        "tenant_id": tenant, "key_id": "https://local-only.vault.azure.net/keys/policy/" + "a" * 32,
+        "control_plane_scope": "api://22222222-2222-2222-2222-222222222222/.default",
+        "gateway_scope": "api://33333333-3333-3333-3333-333333333333/.default",
+        "control_plane_url": "https://control.example", "gateway_url": "https://gateway.example/mcp",
+        "approver_roles": ["Approver"],
+        "network": {"posture": "public-pilot", "allowed_ips": ["192.0.2.10/32"],
+                    "environment_id": f"/subscriptions/{tenant}/resourceGroups/local-only/providers/Microsoft.App/managedEnvironments/test"},
+    }
+    mod.write(package["signed_envelope"], {
+        "envelope": {"policy_id": "returns-write-v1", "version": "1",
+                     "content_digest": bundle.bundle_digest, "tenant_id": tenant,
+                     "key_id": package["key_id"],
+                     "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()},
+        "signature": "bG9jYWwtb25seS1ub3QtYS1wcm9kdWN0aW9uLXNpZ25hdHVyZQ==",
+    })
+    deployment = {"infrastructure": {
+        "prefix": "fixture", "storage_name": "fixturestorage", "cosmos_name": "fixturecosmos",
+        "vault_name": "local-only", "acr_id": f"/subscriptions/{tenant}/resourceGroups/local-only/providers/Microsoft.ContainerRegistry/registries/fixture",
+        "acr_authorization": "rbac", "tenant_id": tenant,
+        "control_plane_app_id": package["control_plane_scope"][6:-9],
+        "gateway_app_id": package["gateway_scope"][6:-9],
+        "network": package["network"], "agent_id": package["agent_id"],
+        "environment": package["environment"], "runtime": "microsoft-agent-framework",
+        "enable_gateway": False, "human_clients": [tenant], "approver_subjects": [tenant],
+        "auditor_subjects": [], "approver_roles": ["Approver"],
+    }}
+    mod.write(directory / "protected-token.json", {"token": "LOCAL-ONLY-DO-NOT-COMMIT"})
+    config = {
+        "source_project": source, "policy_source": policy, "package": package,
+        "deployment": deployment, "input_base": directory, "input_digest": "local-only",
+        "probe_input": {"local_only": True},
+        "probe_files": {"fixtures/protected-token.json": {"path": "protected-token.json"}},
+        "source_digests": {"source_project": generator.tree_digest(source),
+                           "policy_source": generator.tree_digest(policy)},
+    }
+    project = directory / "prepared"
+    mod.prepare(project, config)
+    tools = project / ".governance-tools"
+    cache = tools / ".governance-validation"
+    cache.mkdir()
+    # Reuse qualified installed bytes, not old proof. Child observe() verifies
+    # every wheel/installed module and the unchanged OPA pin inside Linux.
+    for name in ("linux-venv", "wheels"):
+        shutil.copytree(ROOT / ".governance-validation" / name, cache / name,
+                        ignore=shutil.ignore_patterns("lib64"))
+    shutil.copyfile(ROOT / ".governance-validation/opa-linux-amd64", cache / "opa-linux-amd64")
+    return project, config
+
+
+def test_actual_prepare_has_traceable_standalone_snapshot_and_runs_gate(prepared_project):
+    project, config = prepared_project
+    script = project / ".governance-tools/skills/threadlight-governed-actions/scripts/governed_actions.py"
+    result = subprocess.run([sys.executable, str(script), "--target", str(project),
+                             "--phase", "pre-deploy", "--emit", "--gate"],
+                            cwd=project, text=True, capture_output=True, timeout=180,
+                            env={**os.environ, "GIT_CEILING_DIRECTORIES": str(project.parent)})
+    (project.parent / "gate.log").write_text(result.stdout + result.stderr)
+    assert result.returncode == 0, result.stdout + result.stderr
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(project), *args], text=True).strip()
+    assert Path(git("rev-parse", "--show-toplevel")) == project
+    provenance = json.loads((project / "governance/source-provenance.json").read_text())
+    expected = subprocess.check_output(["git", "-C", str(config["source_project"]),
+                                       "rev-parse", "HEAD"], text=True).strip()
+    assert provenance["source_commit"] == expected
+    assert provenance["source_project"] == "."
+    assert provenance["source_dirty"] is True
+    assert provenance["scope"] == "local-generated-snapshot-not-deployment"
+    assert git("rev-parse", "HEAD") != expected
+    tracked = set(git("ls-files").splitlines())
+    assert {"src/agent/container.py", "src/agent/governance_host.py",
+            "src/agent/runtime/governance_provider.py",
+            ".github/workflows/native-local.yml"} <= tracked
+    protected = {"fixtures/protected-token.json", "src/agent/governance-config.json",
+                 "src/agent/policy-envelope.json", "infra/main.parameters.json"}
+    assert not tracked & protected
+    assert not any(p.startswith(".threadlight/") for p in tracked)
+    assert ".env" not in tracked
+    assert "keep-local-only/" in (project / ".gitignore").read_text()
+    for path in protected:
+        assert git("check-ignore", path) == path
+    assert git("status", "--porcelain", "--untracked-files=no") == ""
+    manifest = json.loads((project / "tests/governed-actions-manifest.json").read_text())
+    assert manifest["source"]["commit"] == git("rev-parse", "HEAD")
+    assert manifest["source"]["dirty"] is False
+    assert manifest["summary"]["verdict"] == "partial"
+    agent = project / "src/agent/container.py"
+    original = agent.read_bytes()
+    try:
+        agent.write_bytes(original + b"\n# observed local modification\n")
+        assert "src/agent/container.py" in git("diff", "--name-only")
+        checked = subprocess.run([sys.executable, "-c",
+            "import sys; from pathlib import Path; sys.path.insert(0,sys.argv[1]); "
+            "import governed_actions; assert governed_actions.resolve_source(Path(sys.argv[2])).dirty",
+            str(script.parent), str(project)], cwd=project, capture_output=True, text=True)
+        assert checked.returncode == 0, checked.stderr
+    finally:
+        agent.write_bytes(original)
+
+
+def test_actual_prepare_served_factory_executes_existing_native_local14(prepared_project):
+    project, _ = prepared_project
+    scripts = project / ".governance-tools/skills/threadlight-governed-actions/scripts"
+    code = (
+        "import sys,json; from pathlib import Path; sys.path.insert(0, sys.argv[1]); "
+        "import native_local,inventory; project=Path(sys.argv[2]); "
+        "declaration=native_local.contract(project); events=native_local.execute(project,declaration); "
+        "paths,results,pins=native_local.evaluate(events,declaration,inventory.build_action_inventory(project).actions); "
+        "assert len([r for r in results if r.status=='pass']) == 14; "
+        "assert events[0]['observation']['deployed_image']=='not-verified'; "
+        "print(json.dumps({'native_passes':14,'paths':len(paths),"
+        "'terminals':len([e for e in events if e['event']=='terminal'])}))"
+    )
+    result = subprocess.run([sys.executable, "-I", "-c", code, str(scripts), str(project)],
+                            cwd=project, text=True, capture_output=True, timeout=180)
+    (project.parent / "native.log").write_text(result.stdout + result.stderr)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["native_passes"] == 14
+    assert (project / "src/agent/container.py").read_bytes() == (
+        ROOT / "examples/returns-triage-governed/src/agent/container.py").read_bytes()
+    assert (project / "src/agent/governance_host.py").read_bytes() == (
+        ROOT / "skills/threadlight-deploy/references/governance/maf-container.py").read_bytes()
+    # Imports come from the generated deployment tree, never the catalog or the
+    # runner's installed control-plane package; the child tests this same factory.
+    code = (
+        "import sys; from pathlib import Path; sys.path.insert(0, '.'); "
+        "import container,governance_host,governance_application,runtime,govern_control_plane; "
+        "assert container.build_host is governance_host.build_host; "
+        "assert all(Path(m.__file__).resolve().is_relative_to(Path.cwd()) for m in "
+        "(container,governance_host,governance_application,runtime,govern_control_plane))"
+    )
+    if sys.platform == "linux":
+        command = [sys.executable, "-I", "-c", code]
+    else:
+        command = ["docker", "run", "--rm", "--pull", "never", "--network", "none",
+                   "--platform", "linux/amd64", "-v", f"{project}:/work:ro",
+                   "-w", "/work/src/agent", "python:3.12-slim",
+                   "/work/.governance-tools/.governance-validation/linux-venv/bin/python", "-I", "-c", code]
+    imports = subprocess.run(command, cwd=project / "src/agent", text=True, capture_output=True)
+    assert imports.returncode == 0, imports.stderr
+
+
+def test_root_readiness_guidance_requires_current_binding_evidence_not_verdict_labels():
+    text = (ROOT / "THREADLIGHT.md").read_text()
+    workflow_guidance = text[text.index("The paid live workflow"):text.index("> **Runtime-policy authority.")]
+    assert "governed/comprehensive/hardened" not in workflow_guidance
+    for term in ("per-binding", "exact", "current", "local", "partial", "business", "noop"):
+        assert term in workflow_guidance.lower()
+
+
+def test_native_workflow_runs_actual_preparation_tests_separately_from_fixed_pin_suite():
+    steps = workflow()["jobs"]["local-native-contract"]["steps"]
+    step = next((s for s in steps if s.get("name") == "Actual prepared-project local gate"), None)
+    assert step is not None, "Prepared-project regressions must execute on the native CI path"
+    assert step["env"]["THREADLIGHT_READINESS_NATIVE"] == "1"
+    for term in ("runner-venv", "deployment_runtime", "tests/ci/test_runtime_readiness.py",
+                 "actual_prepare", "--prepare-local"):
+        assert term in step["run"]
+
+
+def test_snapshot_refuses_operator_ignores_that_hide_served_source(tmp_path):
+    project = tmp_path / "generated"
+    (project / "src/agent").mkdir(parents=True)
+    (project / "src/agent/container.py").write_text("# approved served source\n")
+    (project / ".governance-tools").mkdir()
+    (project / ".governance-tools/source-manifest.json").write_text('{"files":{}}')
+    (project / "azure.yaml").write_text("services:\n  agent:\n    project: src/agent\n")
+    (project / ".gitignore").write_text("src/agent/container.py\n")
+    with pytest.raises(ValueError, match="served source is ignored"):
+        helper().snapshot_generated_sources(
+            project, ROOT, {"source_commit": "a" * 40}, {"src/agent/container.py"},
+            {"package": {"agent_service": "agent"}, "probe_files": {}})
+
+
+def test_checked_out_subproject_preserves_input_commit_and_boundary():
+    source = ROOT / "examples/returns-triage-governed"
+    root, identity, approved = helper().source_identity(source, "approved-input-digest")
+    assert root == ROOT
+    assert identity["source_project"] == "examples/returns-triage-governed"
+    assert identity["source_commit"] == subprocess.check_output(
+        ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+    assert identity["source_digest"] == "approved-input-digest"
+    assert "src/agent/container.py" in approved
+    assert not any(p.startswith("../") for p in approved)
 
 
 def test_separate_local_and_live_jobs_do_not_use_legacy_smoke_path():

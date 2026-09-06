@@ -52,7 +52,8 @@ def export_local_validation(project):
     (project / ".github/workflows").mkdir(parents=True)
     shutil.copyfile(CATALOG / ".github/CODEOWNERS", project / ".github/CODEOWNERS")
     shutil.copyfile(REFERENCE / "native-local.yml", project / ".github/workflows/native-local.yml")
-    (project / ".gitignore").write_text(".governance-validation/\n__pycache__/\n*.pyc\n")
+    with (project / ".gitignore").open("a") as ignored:
+        ignored.write("\n.governance-validation/\n__pycache__/\n*.pyc\n")
     (project / "governance/change-plane.json").write_text(json.dumps({
         "scope": "standalone", "workflows": [".github/workflows/native-local.yml"],
         "ownership": "copied from catalog CODEOWNERS; operator review required; not live verification",
@@ -514,7 +515,7 @@ def generate(project, document, *, configuration=None):
         target = staging / "agent"
         target.mkdir()
         copy_sources(target)
-        shutil.copyfile(REFERENCE / template, target / "container.py")
+        configure_entrypoint(agent, target, template)
         if document["framework"] == "microsoft-agent-framework":
             shutil.copyfile(REFERENCE / "audit_delivery.py", target / "audit_delivery.py")
         pyproject = (REFERENCE / "pyproject-maf.toml").read_text()
@@ -570,6 +571,22 @@ def generate(project, document, *, configuration=None):
         shutil.rmtree(staging)
     return {"status": "packaged-not-deployed", "signature": "runtime-keyvault-verification-required",
             "policy_digest": bundle.bundle_digest}
+
+
+def configure_entrypoint(agent, target, template):
+    """Keep the canonical wrapper and its actual served factory in one module.
+
+    Arbitrary application entrypoints still use the existing generic generator;
+    only the exact reviewed native wrapper opts into the named host module.
+    """
+    wrapper = REFERENCE / "maf-entrypoint.py"
+    existing = agent / "container.py"
+    if (template == "maf-container.py" and existing.is_file()
+            and existing.read_bytes() == wrapper.read_bytes()):
+        shutil.copyfile(existing, target / "container.py")
+        shutil.copyfile(REFERENCE / template, target / "governance_host.py")
+    else:
+        shutil.copyfile(REFERENCE / template, target / "container.py")
 
 
 def merge_dependencies(original, template):

@@ -221,6 +221,26 @@ jobs:
           az bicep install
           python scripts/ci/run-governance-pin-tests.py
           python scripts/ci/run-governance-pin-tests.py --deployment
+      - name: Actual prepared-project local gate
+        env:
+          THREADLIGHT_READINESS_NATIVE: "1"
+        run: |
+          set -euo pipefail
+          mkdir -p .governance-validation/tmp
+          export TMPDIR="$PWD/.governance-validation/tmp"
+          python scripts/ci/run-governance-pin-tests.py --prepare-local
+          # Host Git records the isolated source snapshot; the existing child
+          # runs the published Linux native bytes with external networking off.
+          python - <<'PY'
+          import importlib.util, json
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location("pin_runner", "scripts/ci/run-governance-pin-tests.py")
+          runner = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(runner)
+          runner.VENV = Path(".governance-validation/runner-venv").resolve()
+          runner.deployment_runtime(json.loads(runner.PIN_FILE.read_text()), local_only=True)
+          PY
+          .governance-validation/runner-venv/bin/python -m pytest tests/ci/test_runtime_readiness.py -k actual_prepare --basetemp=.governance-validation/preparation-tests -q
       - name: Preserve local-only proof
         if: always()
         uses: actions/upload-artifact@v4
@@ -230,6 +250,10 @@ jobs:
             .governance-validation/*proof.json
             .governance-validation/*tests.xml
             .governance-validation/wheel-provenance.json
+            .governance-validation/preparation-tests/actual-readiness*/gate.log
+            .governance-validation/preparation-tests/actual-readiness*/native.log
+            .governance-validation/preparation-tests/actual-readiness*/prepared/governance/source-provenance.json
+            .governance-validation/preparation-tests/actual-readiness*/prepared/tests/governed-actions-manifest.json
 
   readiness-proof:
     if: inputs.mode == 'readiness-proof'

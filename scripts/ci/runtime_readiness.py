@@ -17,11 +17,24 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 GENERATOR = ROOT / "skills/threadlight-deploy/references/governance/generate.py"
 ATTEMPT = ".threadlight/readiness-attempt.json"
+PROTECTED_PATTERNS = (
+    ".threadlight/", ".azure/", ".governance-validation/", ".env", ".env.*",
+    "__pycache__/", "*.pyc", "*.pem", "*.key", "*token*.json", "*token*.txt",
+    "*secret*.json", "*secret*.txt", "*credential*.json", "*credential*.txt",
+    "governance-config.json", "policy-envelope.json", "*configuration.json",
+    "config.json", ".netrc", ".npmrc", ".pypirc", "token", "tokens", "secret",
+    "secrets", "credentials", "*token*.yaml", "*token*.yml",
+    "*secret*.yaml", "*secret*.yml", "*credential*.yaml", "*credential*.yml",
+    "/infra/main.parameters.json",
+    "/specs/governance-manifest.json", "/tests/*manifest.json",
+    "/tests/governed-actions-apply-plan.json", "/docs/governance/evidence-pack.md",
+)
 
 
 def read(path):
@@ -133,6 +146,100 @@ def generate(command, project, config, configuration):
          "--configuration", input_file])
 
 
+def local_git(project, *args, returncodes=(0,)):
+    # No prompts, global configuration writes, hooks, signing, or remote traffic.
+    env = {k: v for k, v in os.environ.items()
+           if k not in {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+                        "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"}}
+    env.update(GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0")
+    result = subprocess.run(
+        ["git", *(["--literal-pathspecs"] if args[0] == "add" else []),
+         "-C", str(project), "-c", "core.hooksPath=/dev/null",
+         "-c", "commit.gpgsign=false", "-c", "user.name=Threadlight local staging",
+         "-c", "user.email=staging@localhost", *args],
+        env=env, capture_output=True, text=True)
+    if result.returncode not in returncodes:
+        raise ValueError("local source snapshot Git operation failed")
+    return result.stdout.strip()
+
+
+def source_identity(source, digest):
+    root = Path(local_git(source, "rev-parse", "--show-toplevel")).resolve()
+    commit = local_git(source, "rev-parse", "HEAD")
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("checked-out source commit required")
+    return root, {
+        "scope": "local-generated-snapshot-not-deployment",
+        "source_commit": commit, "source_project": source.resolve().relative_to(root).as_posix(),
+        "source_dirty": bool(local_git(source, "status", "--porcelain", "--untracked-files=no")),
+        "source_digest": digest,
+    }, set(local_git(source, "ls-files", "-z").split("\0")) - {""}
+
+
+def snapshot_generated_sources(project, source_root, provenance, approved, config):
+    """Commit an explicit source allowlist, never protected runtime inputs.
+
+    The local commit identifies the generated files, not the input commit and not
+    a deployed image. The real source checkout is a local origin, with no fabricated
+    GitHub protection/remote state. Supplemental inputs are excluded regardless of
+    their filename, and all non-allowlisted files remain untracked.
+    """
+    import yaml
+    agent = Path(yaml.safe_load((project / "azure.yaml").read_text())[
+        "services"][config["package"]["agent_service"]]["project"])
+    approved = set(approved)
+    approved.update({".gitignore", "azure.yaml", "agent.yaml", ".github/CODEOWNERS",
+                     ".github/workflows/native-local.yml", "governance/change-plane.json",
+                     "governance/source-provenance.json", "infra/main.bicep",
+                     "infra/governance.bicep", "infra/registry-pull.bicep"})
+    # Exact namespaces owned by the generator, not a recursive `git add .`.
+    namespaces = ("runtime", "govern_control_plane", "govern_bundle", "govern_canonical",
+                  "govern_shared", "skills/_shared", "vendor")
+    for base in (agent, Path("src/govern-control-plane"), Path("src/govern-gateway")):
+        for name in ("container.py", "governance_host.py", "audit_delivery.py", "service_entry.py",
+                     "pyproject.toml", "Dockerfile", ".dockerignore", "skills/__init__.py"):
+            approved.add((base / name).as_posix())
+        for namespace in namespaces:
+            approved.update(p.relative_to(project).as_posix()
+                            for p in (project / base / namespace).rglob("*")
+                            if p.is_file() and p.suffix in {".py", ".toml", ".json"})
+    # Bundled policy is reviewed source; configuration/envelopes are not.
+    for base in (agent / "policy", Path("src/govern-gateway/policy")):
+        approved.update(p.relative_to(project).as_posix() for p in (project / base).rglob("*")
+                        if p.is_file() and p.suffix in {".rego", ".yaml", ".json"})
+    exported = read(project / ".governance-tools/source-manifest.json")["files"]
+    approved.update(".governance-tools/" + p for p in exported)
+    approved.add(".governance-tools/source-manifest.json")
+    write(project / "governance/source-provenance.json", provenance)
+    extra = set(config["probe_files"])
+    if any("\n" in p or "\r" in p or any(c in p for c in "*?[\\") for p in extra):
+        raise ValueError("literal supplemental paths required")
+    with (project / ".gitignore").open("a") as ignored:
+        ignored.write("\n# Protected runtime inputs and local evidence are never source.\n")
+        ignored.write("\n".join(PROTECTED_PATTERNS) + "\n")
+        ignored.write("".join("/" + p + "\n" for p in sorted(extra)))
+    local_git(project, "init", "--quiet", "--template=")
+    local_git(project, "remote", "add", "origin", source_root.as_uri())
+    candidates = sorted(p for p in approved - extra
+                        if (project / p).is_file() and not (project / p).is_symlink())
+    # Git applies both the preserved operator ignores and our protected paths.
+    # No --force: ignored inputs can never enter this snapshot.
+    for start in range(0, len(candidates), 100):
+        batch = candidates[start:start + 100]
+        ignored = local_git(project, "check-ignore", "--", *batch, returncodes=(0, 1))
+        selected = sorted(set(batch) - set(ignored.splitlines()))
+        if selected:
+            local_git(project, "add", "--", *selected)
+    required = {p.relative_to(project).as_posix() for p in (project / agent).rglob("*")
+                if p.is_file() and p.suffix in {".py", ".rego", ".md"}}
+    tracked = set(local_git(project, "ls-files", "-z").split("\0"))
+    if not required <= tracked:
+        raise ValueError("served source is ignored or outside the approved source allowlist")
+    local_git(project, "commit", "--quiet", "-m",
+              "Local generated source snapshot (not deployment)\n\n"
+              f"Source-Commit: {provenance['source_commit']}")
+
+
 def prepare(project, config):
     if project.exists():
         raise ValueError("fresh project directory required; no reuse of previous deployment proof")
@@ -143,6 +250,8 @@ def prepare(project, config):
             raise ValueError("protected source digest mismatch")
         if any(p.is_symlink() for p in config[key].rglob("*")):
             raise ValueError("symlinked source input refused")
+    source_root, provenance, approved = source_identity(
+        config["source_project"], expected_sources["source_project"])
     shutil.copytree(config["source_project"], project,
                     ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache",
                                                  ".governance-validation", ".governance-tools"))
@@ -163,6 +272,7 @@ def prepare(project, config):
     generate("generate", project, config, package)
     # Copy the complete real local producer/CTK closure, never invented receipts.
     generator.export_local_validation(project)
+    snapshot_generated_sources(project, source_root, provenance, approved, config)
     for destination, item in config["probe_files"].items():
         output = project / destination
         if output.is_symlink() or not output.resolve().is_relative_to(project.resolve()):
