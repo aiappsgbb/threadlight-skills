@@ -25,41 +25,6 @@ UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 RESOURCE = rf"/subscriptions/{UUID}/resourceGroups/[^/]+/providers/"
 
 
-def export_local_validation(project):
-    """Export real catalog tooling/ownership; no installed or live evidence is copied."""
-    project = Path(project)
-    tools = project / ".governance-tools"
-    for skill in ("_shared", "threadlight-govern", "threadlight-deploy",
-                  "threadlight-governed-actions", "threadlight-safe-check"):
-        shutil.copytree(CATALOG / "skills" / skill, tools / "skills" / skill,
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache",
-                                                     "*.egg-info", "build", "dist"))
-    # Explicit package wins over the generated application's smaller vendored
-    # skills namespace during local validation; deployment source is unchanged.
-    (tools / "skills/__init__.py").write_text("")
-    (tools / "scripts/ci").mkdir(parents=True)
-    for name in ("run-governance-pin-tests.py", "governance_ctk.py"):
-        shutil.copyfile(CATALOG / "scripts/ci" / name, tools / "scripts/ci" / name)
-    for name in ("Cargo.toml", "Cargo.lock", "src/main.rs"):
-        destination = tools / "scripts/ci/ctk-oracle" / name
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(CATALOG / "scripts/ci/ctk-oracle" / name, destination)
-    (tools / "source-manifest.json").write_text(json.dumps({
-        "files": {p.relative_to(tools).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-                  for p in sorted(tools.rglob("*")) if p.is_file()},
-        "scope": "exported local validation sources only; not live evidence",
-    }, indent=2) + "\n")
-    (project / ".github/workflows").mkdir(parents=True)
-    shutil.copyfile(CATALOG / ".github/CODEOWNERS", project / ".github/CODEOWNERS")
-    shutil.copyfile(REFERENCE / "native-local.yml", project / ".github/workflows/native-local.yml")
-    with (project / ".gitignore").open("a") as ignored:
-        ignored.write("\n.governance-validation/\n__pycache__/\n*.pyc\n")
-    (project / "governance/change-plane.json").write_text(json.dumps({
-        "scope": "standalone", "workflows": [".github/workflows/native-local.yml"],
-        "ownership": "copied from catalog CODEOWNERS; operator review required; not live verification",
-    }, indent=2) + "\n")
-
-
 def project_transaction(operation):
     """Prepare in a same-filesystem shadow; publish only changed, owned paths.
 
@@ -67,8 +32,9 @@ def project_transaction(operation):
     A rollback never removes the project or an unrelated writer's files.
     """
     @wraps(operation)
-    def transactional(project, document, *, configuration=None):
-        if validate_contract(document)["governance"]["mode"] == "off":
+    def transactional(project, document=None, *, configuration=None):
+        exporting = operation.__name__ == "export_local_validation"
+        if not exporting and validate_contract(document)["governance"]["mode"] == "off":
             return {"status": "off"}
         if operation.__name__ in ("generate", "package_native") and configuration is None:
             raise ValueError("configuration_required")
@@ -78,8 +44,10 @@ def project_transaction(operation):
         checked = bundle_api.checked_path
         project = checked(Path(project))
         import yaml
-        seeds = {Path("infra")}
-        if operation.__name__ != "foundation":
+        seeds = ({Path(name) for name in (
+            ".governance-tools", ".github/CODEOWNERS", ".github/workflows/native-local.yml",
+            ".gitignore", "governance/change-plane.json")} if exporting else {Path("infra")})
+        if not exporting and operation.__name__ != "foundation":
             seeds.update(Path(name) for name in (
                 "azure.yaml", "agent.yaml", ".threadlight/governance-package.json",
                 ".threadlight/governance-deployment.json", "src/govern-control-plane", "src/govern-gateway",
@@ -201,6 +169,62 @@ def project_transaction(operation):
             if not preserve_recovery:
                 shutil.rmtree(staging)
     return transactional
+
+
+def local_validation_files():
+    return {
+        ".github/CODEOWNERS": (CATALOG / ".github/CODEOWNERS").read_bytes(),
+        ".github/workflows/native-local.yml": (REFERENCE / "native-local.yml").read_bytes(),
+        "governance/change-plane.json": (json.dumps({
+            "scope": "standalone", "workflows": [".github/workflows/native-local.yml"],
+            "ownership": "copied from catalog CODEOWNERS; operator review required; not live verification",
+        }, indent=2) + "\n").encode(),
+    }
+
+
+def validate_local_validation_destinations(project):
+    checked = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle").checked_path
+    for relative, contents in local_validation_files().items():
+        if relative == "governance/change-plane.json":
+            continue  # Rebase the catalog declaration to the standalone export's ownership.
+        path = checked(Path(project) / relative)
+        if path.exists() and (not path.is_file() or path.read_bytes() != contents):
+            raise ValueError(f"local_validation_export_conflict:{relative}")
+
+
+@project_transaction
+def export_local_validation(project, document=None, *, configuration=None):
+    """Export the real producer closure with the generator's per-file transaction."""
+    project = Path(project)
+    validate_local_validation_destinations(project)
+    tools = project / ".governance-tools"
+    if tools.exists():
+        raise ValueError("local_validation_export_conflict:.governance-tools")
+    for skill in ("_shared", "threadlight-govern", "threadlight-deploy",
+                  "threadlight-governed-actions", "threadlight-safe-check"):
+        shutil.copytree(CATALOG / "skills" / skill, tools / "skills" / skill,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache",
+                                                     "*.egg-info", "build", "dist"))
+    # Explicit package wins over the application's smaller vendored namespace.
+    (tools / "skills/__init__.py").write_text("")
+    (tools / "scripts/ci").mkdir(parents=True)
+    for name in ("run-governance-pin-tests.py", "governance_ctk.py"):
+        shutil.copyfile(CATALOG / "scripts/ci" / name, tools / "scripts/ci" / name)
+    for name in ("Cargo.toml", "Cargo.lock", "src/main.rs"):
+        destination = tools / "scripts/ci/ctk-oracle" / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(CATALOG / "scripts/ci/ctk-oracle" / name, destination)
+    (tools / "source-manifest.json").write_text(json.dumps({
+        "files": {p.relative_to(tools).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                  for p in sorted(tools.rglob("*")) if p.is_file()},
+        "scope": "exported local validation sources only; not live evidence",
+    }, indent=2) + "\n")
+    for relative, contents in local_validation_files().items():
+        destination = project / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(contents)
+    with (project / ".gitignore").open("a") as ignored:
+        ignored.write("\n.governance-validation/\n__pycache__/\n*.pyc\n")
 
 
 def validate_network(network):

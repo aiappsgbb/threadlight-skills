@@ -78,6 +78,56 @@ any of them invalidates the previous evidence. Saved JSON is not remote attestat
 
 ### Protected readiness-proof CI inputs
 
+**NEEDS_CONTEXT — hosted readiness deployment is blocked.** The protected
+`validate-inputs` stage refuses before login/provisioning, and direct `deploy`
+also refuses before any command or project mutation, for both native MAF and
+GHCP. Local preparation/validation remains available. This is not a completed
+register → observe → bind → start lifecycle or a readiness pass.
+
+The actual published contracts prevent the requested sequence:
+
+- `azure.ai.agents 1.0.0-beta.10`, release commit
+  [`947d8a3dd4059a0b0826adfbefaf9d4cc7f82649`](https://github.com/Azure/azure-dev/blob/947d8a3dd4059a0b0826adfbefaf9d4cc7f82649/cli/azd/extensions/azure.ai.agents/internal/project/service_target_agent.go#L3113-L3135),
+  always calls `CreateAgentVersion` for container deployment, using API `v1`.
+  Re-running `azd deploy` after binding therefore invalidates an exact existing
+  version association; changing the protected expected version just chases it.
+- Installed `azure-ai-projects==2.3.0` exposes `create_version`, `get_version`,
+  `update_details` (agent endpoint routing), and agent-scoped `enable`/`disable`.
+  Its `HostedAgentDefinition` includes immutable environment variables and
+  `ContainerConfiguration` has only `image`. There is **no separate start**
+  operation for an existing immutable version. [Official deployment guidance](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent#deploy-using-the-python-sdk)
+  says creation automatically provisions the agent.
+- [Drafts](https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-agent#create-a-draft-version-preview)
+  cannot be routing targets; promotion creates a **new version**, and disabled
+  subscription support can turn `draft=true` into a normal release. Neither
+  drafts nor agent-scoped enable are a safe substitute for register-without-start.
+- Native `ProbeConfiguration` requires a separately signed post-image registry,
+  exact server version/principal/client, and files at `/mnt/governance-probe/`.
+  The current native runtime reads those files, not a remote configuration
+  indirection. The hosted schema has no mount attachment or version-environment
+  update operation. Platform-injected `FOUNDRY_AGENT_VERSION` solves the native
+  host's version lookup, **not** delivery of those post-registration files.
+  Task8's existing signed-bundle lookup does not supply that native configuration.
+
+Re-enabling this driver requires an approved lifecycle/configuration contract,
+not a guessed next version, patched frozen package, fabricated mount API, or
+protected selectors relabelled as server observations. GHCP has a signed final
+gateway-bundle phase, but that alone does not supply register-without-activation.
+No new lifecycle API, permissions, remote configuration mechanism or deployment
+target is selected here.
+
+**Target/application staging is also unresolved, not fixed by this blocker.**
+The same beta.10 implementation reads `AZURE_AI_PROJECT_ID` and
+`FOUNDRY_PROJECT_ENDPOINT` from the **azd environment**, not just runner process
+variables; the generated governance Bicep outputs neither. A future supported
+driver must first observe the Task11-selected project ARM resource and endpoint,
+match the independent tenant/subscription/RG, then stage a strictly allowlisted,
+credential-free target/application configuration before provisioning. It must
+resolve all required application substitutions (including Cosmos and Citadel
+model/identity settings), reject missing configuration before mutation, avoid
+secret CLI arguments/logs, and qualify explicit registered-version retry handles
+against actual server identity and image. None of this is claimed implemented.
+
 `.github/workflows/threadlight-e2e-foundry.yml` separates:
 
 - `local-native-contract`: published native/CTK and deployment-contract tests,
@@ -119,10 +169,11 @@ object (`schema: threadlight-readiness-input/v1`) requires:
 `package.probe_observability` must be
 `{"enabled":true,"configuration_file":"/mnt/governance-probe/config.json"}`.
 The preproduction fixture must already be installed, registered and reachable.
-Task8 authority/policy publication, image build/publication, actual agent
-bootstrap version/instance identity, human roles, network and service grants are
-operator prerequisites. Native post-image probe registration must match the
-embedded bundle. Missing prerequisites **fail descriptively**: CI does not
+Task8 authority/policy publication, image build/publication, human roles, network
+and service grants remain operator prerequisites, but supplying a bootstrap
+version/instance or local mount mapping cannot unblock the API constraints above.
+Native post-image probe registration must match the embedded bundle.
+Missing prerequisites **fail descriptively**: CI does not
 manufacture signatures, fixtures, source attestations or broad role assignments.
 For returns, business Cosmos seed and protected role/token configuration are also
 external prerequisites; there are no automatic business writes or seed/reset steps.
@@ -136,17 +187,21 @@ GitHub protection. Protected configuration, envelopes, token files, supplemental
 inputs and runtime evidence stay ignored/untracked. Existing ignore rules are
 preserved. The canonical native container wrapper continues to serve the same
 generated `governance_host.build_host` that the native child verifies.
+Local-validation export preserves unrelated workflows and accepts byte-identical
+generated workflow/ownership files. Different contents fail with a
+`local_validation_export_conflict` path before publishing any export changes;
+preparation checks these collisions before copying the source project. Export
+uses the generator's same-filesystem shadow and cooperative per-file atomic
+publication/rollback. It never overwrites operator CI or imports prior proof.
 
-The stages actually run bundle build/native validation → `generate.py foundation`
+The local stages run bundle build/native validation → `generate.py foundation`
 and `generate` → exported CTK/native preparation and
-`governed_actions.py --phase pre-deploy --emit --gate` → `agent-image`
-(GHCP `stage-gateway`) and `bind` → `azd provision --no-prompt` for bound ACA
-services and `azd deploy <agent_service> --no-prompt` for the generated agent →
-installed safe-check post-deploy with explicit `--subscription`/`--rg` →
-publication of that same parent collector result → strict v1 validation/current
-readiness → scorecard and evidence_gate. No second noop invocation is used to
-paper over parent gaps. A changed agent version during deployment requires new
-operator association; the collector rejects the old one rather than rewriting it.
+`governed_actions.py --phase pre-deploy --emit --gate`. The previously documented
+`bind` → `azd deploy` readiness path is disabled, not replaced by a simulated
+activation. The existing post-deploy collector/current-readiness/scorecard gates
+are retained but cannot be reached by a successful protected deployment until the
+blocker is resolved. No reused version, noop invocation or old deployment receipt
+can stand in for that missing lifecycle.
 
 Artifacts are `governance-local-contract-<run_id>-<attempt>` and
 `governance-readiness-<run_id>-<attempt>`. Both upload **only** a new, automatically

@@ -25,6 +25,12 @@ from scripts.ci import readiness_evidence
 
 GENERATOR = ROOT / "skills/threadlight-deploy/references/governance/generate.py"
 ATTEMPT = ".threadlight/readiness-attempt.json"
+HOSTED_LIFECYCLE_BLOCKER = (
+    "NEEDS_CONTEXT: immutable register-bind-start lifecycle is unavailable in the pinned "
+    "Foundry v1 / azure-ai-projects 2.3.0 contract; creation auto-provisions, draft promotion "
+    "creates a new version, and native post-registration probe files have no supported mount. "
+    "No readiness deployment is attempted; see docs/production-readiness.md."
+)
 PROTECTED_PATTERNS = (
     ".threadlight/", ".azure/", ".governance-validation/", ".env", ".env.*",
     "__pycache__/", "*.pyc", "*.pem", "*.key", "*token*.json", "*token*.txt",
@@ -262,6 +268,7 @@ def prepare(project, config):
             raise ValueError("protected source digest mismatch")
         if any(p.is_symlink() for p in config[key].rglob("*")):
             raise ValueError("symlinked source input refused")
+    generator.validate_local_validation_destinations(config["source_project"])
     source_root, provenance, approved = source_identity(
         config["source_project"], expected_sources["source_project"])
     shutil.copytree(config["source_project"], project,
@@ -321,37 +328,8 @@ def account_matches(target):
 
 
 def deploy(project, config):
-    target = config["expected_target"]
-    account_matches(target)
-    generate("agent-image", project, config, config["agent_image"])
-    if config.get("gateway_stage"):
-        generate("stage-gateway", project, config, config["gateway_stage"])
-    generator = importlib.import_module("skills.threadlight-deploy.references.governance.generate")
-    # Images are already built/published by the approved build/bootstrap identity.
-    # Binding cannot silently point them at newly edited source.
-    agent, _ = generator.frozen_configuration(project, read(project / ".threadlight/governance-package.json"))
-    for service, source in (("agent", agent), ("govern-control-plane", project / "src/govern-control-plane"),
-                            ("govern-gateway", project / "src/govern-gateway")):
-        if not source.is_dir() or generator.tree_digest(source) != config["source_digests"].get(service):
-            raise ValueError("published image/source provenance missing or changed")
-    generate("bind", project, config, config["deployment"])
-    for relative in ("specs/governance-manifest.json", ".threadlight/governance-live.json",
-                     "tests/postdeploy-manifest.json"):
-        (project / relative).unlink(missing_ok=True)
-    attempt = {"run_id": os.environ["GITHUB_RUN_ID"], "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
-               "started_at": utc(), "completed_at": None}
-    write(project / ATTEMPT, attempt)
-    env = {**os.environ, "AZURE_TENANT_ID": target["tenant"],
-           "AZURE_SUBSCRIPTION_ID": target["subscription"],
-           "AZURE_RESOURCE_GROUP": target["resource_group"], "AZURE_LOCATION": config["location"],
-           "AZURE_ENV_NAME": config["azd_environment"]}
-    run(["azd", "env", "new", config["azd_environment"], "--no-prompt"], cwd=project, env=env)
-    # Bound ACA service phase deploys real pinned CP/gateway revisions via Bicep;
-    # azd deploy is only for the generated, immutable agent definition.
-    run(["azd", "provision", "--no-prompt"], cwd=project, env=env)
-    run(["azd", "deploy", config["package"]["agent_service"], "--no-prompt"], cwd=project, env=env)
-    attempt["completed_at"] = utc()
-    write(project / ATTEMPT, attempt)
+    # Never run azd deploy after binding: beta.10 always creates another version.
+    raise ValueError(HOSTED_LIFECYCLE_BLOCKER)
 
 
 def attempt_start(project):
@@ -447,6 +425,8 @@ def main():
         if not expected or hashlib.sha256(args.configuration.read_bytes()).hexdigest() != expected:
             raise ValueError("protected configuration SHA256 required/mismatched")
         config = load_inputs(args.configuration)
+        if args.stage == "validate-inputs":
+            raise ValueError(HOSTED_LIFECYCLE_BLOCKER)
         project = args.project.resolve()
         if args.stage not in {"validate-inputs", "prepare"}:
             if read(project / ".threadlight/ci-input.json") != {"digest": config["input_digest"]}:

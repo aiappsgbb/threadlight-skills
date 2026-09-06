@@ -229,6 +229,7 @@ jobs:
         id: prepared
         env:
           THREADLIGHT_READINESS_NATIVE: "1"
+          THREADLIGHT_READINESS_SDK: "1"
         run: |
           set -euo pipefail
           mkdir -p .governance-validation/tmp
@@ -245,7 +246,7 @@ jobs:
           runner.VENV = Path(".governance-validation/runner-venv").resolve()
           runner.deployment_runtime(json.loads(runner.PIN_FILE.read_text()), local_only=True)
           PY
-          .governance-validation/runner-venv/bin/python -m pytest tests/ci/test_runtime_readiness.py -k actual_prepare --basetemp=.governance-validation/preparation-tests -q
+          .governance-validation/runner-venv/bin/python -m pytest tests/ci/test_runtime_readiness.py tests/ci/test_readiness_foundry_contract.py -k 'actual_prepare or pinned_' --basetemp=.governance-validation/preparation-tests -q
       - name: Export local workflow outcomes without raw logs or fixture files
         id: evidence-export
         if: always()

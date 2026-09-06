@@ -53,6 +53,10 @@ def prepared_project(tmp_path_factory):
         target = source / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(example / relative, target)
+    operator_workflow = ".github/workflows/operator.yml"
+    (source / operator_workflow).parent.mkdir(parents=True, exist_ok=True)
+    (source / operator_workflow).write_text("name: unrelated operator workflow\n")
+    paths.append(operator_workflow)
     # The protected pipeline requires a reviewed resource-group ejection, not the
     # example's subscription bootstrap. This fixture intentionally has no infra.
     env = {**os.environ, "GIT_AUTHOR_NAME": "Local fixture", "GIT_COMMITTER_NAME": "Local fixture",
@@ -129,6 +133,15 @@ def prepared_project(tmp_path_factory):
     return project, config
 
 
+def test_actual_prepare_preserves_operator_workflow_without_mutating_source(prepared_project):
+    project, config = prepared_project
+    relative = ".github/workflows/operator.yml"
+    expected = b"name: unrelated operator workflow\n"
+    assert (project / relative).read_bytes() == (config["source_project"] / relative).read_bytes() == expected
+    assert (project / ".github/workflows/native-local.yml").is_file()
+    assert not (config["source_project"] / ".github/workflows/native-local.yml").exists()
+
+
 def test_actual_prepare_has_traceable_standalone_snapshot_and_runs_gate(prepared_project, monkeypatch):
     project, config = prepared_project
     from scripts.ci import readiness_evidence as evidence
@@ -163,6 +176,9 @@ def test_actual_prepare_has_traceable_standalone_snapshot_and_runs_gate(prepared
     assert {"src/agent/container.py", "src/agent/governance_host.py",
             "src/agent/runtime/governance_provider.py",
             ".github/workflows/native-local.yml"} <= tracked
+    assert ".github/workflows/operator.yml" in tracked
+    assert (project / ".github/workflows/operator.yml").read_bytes() == (
+        config["source_project"] / ".github/workflows/operator.yml").read_bytes()
     protected = {"fixtures/protected-token.json", "src/agent/governance-config.json",
                  "src/agent/policy-envelope.json", "infra/main.parameters.json"}
     assert not tracked & protected
@@ -455,9 +471,8 @@ def test_generated_commands_use_actual_shared_apis():
     mod = helper()
     text = SCRIPT.read_text()
     for term in ("build_bundle(", "verify_bundle(", "validate_native_manifest(",
-                 '"generate"', '"agent-image"', '"bind"',
+                 '"generate"', "HOSTED_LIFECYCLE_BLOCKER",
                  '"--phase", "pre-deploy", "--emit", "--gate"',
-                 '"azd", "provision"', '"azd", "deploy"',
                  '"--phase", "post-deploy"', '"--subscription"',
                  "validate_governance_manifest(", "assess(",
                  "started_at", "governance-live.json"):
@@ -504,7 +519,7 @@ def test_predeploy_is_an_executed_gated_command_not_report_only(tmp_path, monkey
     assert any("--prepare-local" in c for c in commands)
 
 
-def test_parent_scope_mismatch_prevents_provisioning(tmp_path, monkeypatch):
+def test_account_observation_rejects_parent_scope_mismatch(monkeypatch):
     mod = helper()
     calls = []
     def wrong_parent(*args, **kwargs):
@@ -512,7 +527,7 @@ def test_parent_scope_mismatch_prevents_provisioning(tmp_path, monkeypatch):
         return subprocess.CompletedProcess(args, 0, '{"id":"wrong","tenantId":"wrong"}')
     monkeypatch.setattr(mod.subprocess, "run", wrong_parent)
     with pytest.raises(ValueError, match="observed Azure parent"):
-        mod.deploy(tmp_path, {"expected_target": {"subscription": "expected", "tenant": "expected"}})
+        mod.account_matches({"subscription": "expected", "tenant": "expected"})
     assert len(calls) == 1
 
 
@@ -606,7 +621,7 @@ def test_workflow_input_script_rejects_modified_protected_bytes(tmp_path):
     assert "SHA256 required/mismatched" in result.stderr
 
 
-def test_deploy_uses_actual_generated_agent_path_and_completes_only_after_azd(tmp_path, monkeypatch):
+def test_deploy_cannot_complete_attempt_with_command_recording_only(tmp_path, monkeypatch):
     mod = helper()
     generator = importlib.import_module("skills.threadlight-deploy.references.governance.generate")
     agent = tmp_path / "src/custom-agent"
@@ -627,11 +642,12 @@ def test_deploy_uses_actual_generated_agent_path_and_completes_only_after_azd(tm
     monkeypatch.setattr(mod, "run", lambda args, **kwargs: commands.append(list(map(str, args))))
     monkeypatch.setenv("GITHUB_RUN_ID", "100")
     monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
-    mod.deploy(tmp_path, config)
-    assert commands[:2] == [["agent-image"], ["bind"]]
-    assert commands[-2:] == [["azd", "provision", "--no-prompt"],
-                            ["azd", "deploy", "actual-agent", "--no-prompt"]]
-    assert mod.attempt_start(tmp_path)
+    with pytest.raises(ValueError, match="NEEDS_CONTEXT"):
+        mod.deploy(tmp_path, config)
+    assert commands == []
+    assert not (tmp_path / mod.ATTEMPT).exists()
+    with pytest.raises(ValueError, match="deployment attempt"):
+        mod.attempt_start(tmp_path)
 
 
 @pytest.mark.parametrize("mutation", ["none", "business", "prior-deployment", "signed-envelope", "failed-parent"])
