@@ -218,9 +218,13 @@ def test_ghcp_relay_rechecks_binding_after_credential_wait():
 @pytest.mark.parametrize("protocol", ["invocations", "responses"])
 def test_collector_checks_actual_pending_host_signed_binding_before_probe(protocol):
     sys.path.insert(0, str(ROOT / "skills/threadlight-govern/tests"))
+    sys.path.insert(0, str(ROOT / "skills/threadlight-safe-check/tests"))
     from test_remote_bootstrap import binding, harness
-    from govern_control_plane.bootstrap import BootstrapGate, BootstrapBinding
+    from test_governance_observation import ARMFoundry, selection
+    from govern_control_plane.bootstrap import BootstrapGate, BootstrapBinding, SignedBootstrap
     from govern_control_plane.models import canonical, parse
+    import base64
+    import hashlib
     import importlib
     collector = importlib.import_module("skills.threadlight-safe-check.references.governance_probe")
     assert callable(getattr(collector, "verify_host_bootstrap", None)), "collector remote bootstrap chain missing"
@@ -231,17 +235,29 @@ def test_collector_checks_actual_pending_host_signed_binding_before_probe(protoc
     async def scenario():
         h = await harness()
         try:
-            signed = await h.service.publish_bootstrap(parse(BootstrapBinding, canonical(binding())))
+            source = ARMFoundry()
+            source.version["definition"]["protocol_versions"][0]["protocol"] = protocol
+            target = collector.observation.observe(selection(), source)
+            assert "environment" not in target
+            declared = binding()
+            declared.update({key: target[key] for key in (
+                "agent_id", "agent_version", "image_digest", "project_endpoint", "subscription",
+                "resource_group", "client_id")})
+            declared.update(tenant_id=target["tenant"], principal=target["subject"])
+            parsed = parse(BootstrapBinding, canonical(declared))
+            signed = SignedBootstrap(binding=parsed, signature=base64.b64encode(
+                await h.signer.sign(hashlib.sha256(canonical(parsed)).digest())).decode())
             async def fetch():
                 return signed
             async def initialize(binding, stack):
                 return JSONResponse({"unexpected": "application"})
-            gate = BootstrapGate(expected=binding(), fetch=fetch, signer=h.service.signer, initialize=initialize)
+            gate = BootstrapGate(expected=declared, fetch=fetch, signer=h.service.signer, initialize=initialize)
             transport = httpx.ASGITransport(app=gate)
             class Platform(httpx.AsyncBaseTransport):
                 async def handle_async_request(self, request):
                     if protocol == "invocations":
-                        assert request.url.path.endswith("/agents/agent-1/endpoint/protocols/invocations")
+                        assert request.url.path.endswith(
+                            f"/agents/{target['agent_id']}/endpoint/protocols/invocations")
                     else:
                         assert request.url.path.endswith("/responses")
                     request.url = httpx.URL("https://host/" + protocol)
@@ -250,12 +266,12 @@ def test_collector_checks_actual_pending_host_signed_binding_before_probe(protoc
                 async def get_token(self, *scopes, **kwargs):
                     return SimpleNamespace(token="platform-external-fixture", expires_on=9999999999)
             config = {"bootstrap": signed.model_dump(mode="json"), "tenant_id": signed.binding.tenant_id,
-                      "policy": {"key_id": signed.binding.key_id, "policy_digest": signed.binding.policy_digest}}
+                      "subject": signed.binding.principal, "client_id": signed.binding.client_id,
+                      "policy": {"key_id": signed.binding.key_id, "policy_digest": signed.binding.policy_digest},
+                      "expected_deployment": {key: declared[key] for key in (
+                          "agent_id", "agent_version", "image_digest", "environment", "subscription",
+                          "resource_group")}}
             config["native_policy"] = dict(config["policy"])
-            target = {**{key: getattr(signed.binding, key) for key in (
-                "agent_id", "agent_version", "image_digest", "project_endpoint", "subscription", "resource_group",
-                "environment", "client_id")}, "subject": signed.binding.principal,
-                "tenant": signed.binding.tenant_id, "protocol": protocol}
             async with httpx.AsyncClient(transport=Platform()) as http:
                 with pytest.raises(ValueError):
                     await collector.verify_host_bootstrap(config, target, Credential(), http, h.service.signer)
@@ -265,6 +281,13 @@ def test_collector_checks_actual_pending_host_signed_binding_before_probe(protoc
                 with pytest.raises(ValueError):
                     await collector.verify_host_bootstrap(config, {**target, "agent_version": "18"},
                                                           Credential(), http, h.service.signer)
+                drifted = {**config, "expected_deployment": {
+                    **config["expected_deployment"], "environment": "production"}}
+                with pytest.raises(ValueError, match="bootstrap-observed-target-mismatch"):
+                    await collector.verify_host_bootstrap(
+                        drifted, {**target, "environment": declared["environment"]},
+                        Credential(), http, h.service.signer)
+                assert "environment" not in target
             await gate.aclose()
         finally:
             await h.close()

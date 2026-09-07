@@ -21,9 +21,12 @@ def test_current_protocol_is_required_and_validated():
     assert result["live"] is True
 
 
-@pytest.mark.parametrize("mutation", ["missing", "expired", "mismatch", "valid"])
+@pytest.mark.parametrize("mutation", [
+    "missing", "expired", "mismatch", "expected-environment", "registered-environment", "valid",
+])
 def test_remote_bootstrap_chain_is_required_when_current_host_selects_it(mutation):
     value, document, current, now = live_fixture()
+    assert "environment" not in value["collection_evidence"]["observed_target"]
     target = current["expected_target"]
     bootstrap = {
         "binding": {
@@ -49,6 +52,10 @@ def test_remote_bootstrap_chain_is_required_when_current_host_selects_it(mutatio
         value["collection_evidence"]["bootstrap"] = deepcopy(current["bootstrap"])
     elif mutation == "mismatch":
         value["collection_evidence"]["bootstrap"]["binding"]["reference"] = "other-attempt"
+    elif mutation == "expected-environment":
+        value["collection_evidence"]["expected_target"]["environment"] = "production"
+    elif mutation == "registered-environment":
+        value["collection_evidence"]["registration_scope"]["registration"]["deployment"]["environment"] = "production"
     result = api().evaluate(value, document, current=current, now=now)
     assert (result["status"] == "pass") == (mutation == "valid")
 

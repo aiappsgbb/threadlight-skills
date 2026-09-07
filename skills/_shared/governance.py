@@ -995,8 +995,10 @@ def _validate_collection_evidence(manifest):
             if (bootstrap.issued_at > started or bootstrap.expires_at <= finished
                     or bootstrap.tenant_id != target["tenant"] or bootstrap.principal != target["subject"]
                     or bootstrap.client_id != target["client_id"]
+                    or bootstrap.environment != evidence["expected_target"]["environment"]
+                    or bootstrap.environment != evidence["registration_scope"]["registration"]["deployment"]["environment"]
                     or any(getattr(bootstrap, key) != target[key] for key in (
-                        "agent_id", "agent_version", "image_digest", "environment", "subscription", "resource_group"))
+                        "agent_id", "agent_version", "image_digest", "subscription", "resource_group"))
                     or "project_endpoint" in target and bootstrap.project_endpoint != target["project_endpoint"]):
                 _raise("collection_evidence bootstrap mismatch")
         validate_policy_bindings(evidence["verified_policies"], evidence["registration_scope"]["producer"],

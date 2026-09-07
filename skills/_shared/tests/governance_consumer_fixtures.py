@@ -169,7 +169,8 @@ def live_fixture(*, environment="preproduction", now=None, target=None):
         "collection_evidence": {
             "source": "authenticated-service-reads-and-azure-observation-not-attestation",
             "declared_selection": {"requested_version": "1"},
-            "observed_target": {**target, "source": "azure-arm-and-foundry", "configuration_digests": projection["agent"]},
+            "observed_target": {**{k: v for k, v in target.items() if k != "environment"},
+                                "source": "azure-arm-and-foundry", "configuration_digests": projection["agent"]},
             "expected_target": target, "started_at": started.isoformat(), "finished_at": finished.isoformat(),
             "registration_scope": scope, "records": records,
             "verified_policies": deepcopy(policies),

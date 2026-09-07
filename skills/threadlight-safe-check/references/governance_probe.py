@@ -227,9 +227,10 @@ async def verify_host_bootstrap(config, target, credential, http, signer):
     selected_policy = config["native_policy"] if target["protocol"] == "responses" else config["policy"]
     require(binding.tenant_id == target["tenant"] and binding.principal == target["subject"]
             and binding.policy_digest == selected_policy["policy_digest"]
+            and binding.environment == expected_target(config)["environment"]
             and all(getattr(binding, key) == target[key] for key in (
                 "agent_id", "agent_version", "image_digest", "project_endpoint", "subscription",
-                "resource_group", "environment", "client_id")), "bootstrap-observed-target-mismatch")
+                "resource_group", "client_id")), "bootstrap-observed-target-mismatch")
     try:
         await read_host_binding(target, signed, credential=credential, http=http)
     except BootstrapUnavailable:
