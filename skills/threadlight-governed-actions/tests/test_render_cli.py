@@ -413,7 +413,7 @@ def test_manifest_schema_assessor_and_source_exact():
     assert manifest["schema"] == "threadlight-governed-actions-manifest/v1"
     assert manifest["assessor"] == {
         "name": "threadlight-governed-actions",
-        "version": "0.1.0",
+        "version": "2.0.0",
         "adapter": "maf/v1",
     }
     assert manifest["source"]["repository"] == _REPOSITORY

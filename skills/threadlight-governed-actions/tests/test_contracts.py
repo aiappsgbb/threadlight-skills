@@ -70,8 +70,8 @@ def _validator_for(schema):
 
 def test_public_constants_match_spec():
     assert contracts.SCHEMA_VERSION == "1.0.0"
-    assert contracts.ASSESSOR_VERSION == "0.1.0"
-    assert contracts.SKILL_VERSION == "0.1.0"
+    assert contracts.ASSESSOR_VERSION == "2.0.0"
+    assert contracts.SKILL_VERSION == "2.0.0"
     assert contracts.SUPPORTED_PHASES == ("design", "pre-deploy", "post-deploy")
     assert contracts.CONSEQUENCE_CLASSES == (
         "read",
@@ -132,7 +132,7 @@ def test_skill_md_version_matches_the_cli_assessor_version():
     import governed_actions
     import render
 
-    assert contracts.SKILL_VERSION == "0.1.0"
+    assert contracts.SKILL_VERSION == "2.0.0"
     assert contracts.ASSESSOR_VERSION == contracts.SKILL_VERSION
     assert governed_actions.contracts.ASSESSOR_VERSION == contracts.ASSESSOR_VERSION
     assert render.contracts.ASSESSOR_VERSION == contracts.ASSESSOR_VERSION

@@ -2,7 +2,7 @@
 
 ## Scope and trust model
 
-- Assessor: threadlight-governed-actions v0.1.0 (adapter: maf/v1), phase `pre-deploy`.
+- Assessor: threadlight-governed-actions v2.0.0 (adapter: maf/v1), phase `pre-deploy`.
 - Source: `octo-org/governed-actions-fixtures` @ `0123456789abcdef0123456789abcdef01234567` (dirty: False).
 - Agent Hooks is cooperative/alpha and is never treated as this assessment's security boundary.
 - Conformance recorded in this pack is never a certification.

@@ -163,6 +163,43 @@ def _discovered_fixture_paths(root: Path):
     return mediation.build_mediation_graph(root, actions, maf_adapter.MAFAdapter()).paths
 
 
+@pytest.mark.parametrize("kind", ["application", "execution-path", "approval"])
+def test_probe_child_consumes_eof_and_is_reaped(
+    approval_root, approval_binding, monkeypatch, kind,
+):
+    created = []
+    original = probes.subprocess.Popen
+
+    def start(*args, **kwargs):
+        process = original(*args, **kwargs)
+        created.append(process)
+        return process
+
+    monkeypatch.setattr(probes.subprocess, "Popen", start)
+    try:
+        if kind == "application":
+            result = run_application_probe(
+                approval_root, ProbeCase("deny", "payments.refund", "deny", {"amount": 7}))
+            assert result.status == "pass"
+        elif kind == "execution-path":
+            results = probes.run_execution_path_probe_set(
+                approval_root, _discovered_fixture_paths(approval_root))
+            assert results and all(result.status == "pass" for result in results)
+        else:
+            result = run_approval_probe(
+                approval_root, approval_binding, now="2026-09-01T12:00:00Z")
+            assert result.status == "pass"
+        assert created and all(process.returncode == 0 for process in created)
+    finally:
+        for process in created:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5)
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None:
+                    stream.close()
+
+
 def test_execution_path_bindings_match_assessor_discovery(fixture_root: Path):
     root = fixture_root / "conformant-maf"
     contract = load_probe_contract(root)
@@ -190,6 +227,9 @@ def test_execution_path_probes_exercise_allow_and_deny_receipts(
     results = probes.run_execution_path_probe_set(root, paths)
 
     assert len(results) == 2 * len([path for path in paths if path.discovered])
+    allowed = [result for result in results if result.probe_id == "path-dispatch-allow"]
+    assert len(allowed) == len(paths)
+    assert {result.status for result in allowed} == {"pass"}
     denied = [result for result in results if result.probe_id == "path-dispatch-deny"]
     assert len(denied) == len(paths)
     assert {result.status for result in denied} == {"pass"}

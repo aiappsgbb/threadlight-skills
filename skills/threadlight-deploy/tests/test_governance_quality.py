@@ -34,7 +34,11 @@ def sdk_log_policy_isolation():
         if isinstance(logger, logging.Logger) and (
                 name == "copilot.client" or name.startswith("copilot.client.")
                 or name == "copilot._jsonrpc" or name.startswith("copilot._jsonrpc.")):
-            logger.filters[:] = filters.get(name, [])
+            # A retained lifetime installer must keep protecting newly created SDK loggers.
+            if name in filters:
+                logger.filters[:] = filters[name]
+            elif not getattr(original_get_logger, "_threadlight_sdk_privacy", False):
+                logger.filters[:] = []
 
 
 def snapshot(project):
@@ -945,6 +949,23 @@ def test_quality_sdk_cleanup_redacts_before_user_handlers(monkeypatch, caplog, l
                 "exc_info", "exc_text", "stack_info", "payload", "message_cache"))
     finally:
         logger.removeHandler(handler)
+
+
+def test_quality_preexisting_privacy_survives_fixture_created_logger(caplog):
+    import logging
+    from uuid import uuid4
+    module("ghcp-container")
+    original = logging.Manager.getLogger
+    assert getattr(original, "_threadlight_sdk_privacy", False)
+    scope = sdk_log_policy_isolation.__wrapped__()
+    next(scope)
+    logger = logging.getLogger("copilot._jsonrpc.fixture_" + uuid4().hex)
+    with pytest.raises(StopIteration):
+        next(scope)
+    assert logging.Manager.getLogger is original
+    logger.warning("PRIVATE POST-FIXTURE SDK DIAGNOSTIC")
+    assert "PRIVATE" not in caplog.text
+    assert caplog.records[-1].getMessage() == "governance_cleanup_sdk_transport_diagnostic"
 
 
 def test_quality_sdk_lifetime_policy_installs_once_without_muting_application():

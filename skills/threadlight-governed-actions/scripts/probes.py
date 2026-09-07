@@ -1662,14 +1662,17 @@ def _dispatch_child(
 
     try:
         assert process.stdin is not None  # narrows Optional for mypy/readers
-        process.stdin.write(stdin_bytes)
-        process.stdin.close()
+        with process.stdin:
+            process.stdin.write(stdin_bytes)
     except (OSError, ValueError):
         # A child that crashed before ever reading stdin (e.g. an
         # unresolvable dispatch reference) can close its end of the pipe
         # first; the ready-handshake wait below still correctly resolves
         # this to an abnormal/unobservable outcome.
         pass
+    finally:
+        # EOF precedes the ready handshake; communicate must not flush that closed pipe.
+        process.stdin = None
 
     ready = _wait_for_child_ready(process, _CHILD_READY_TIMEOUT_S)
     if not ready:
@@ -1888,10 +1891,12 @@ def _dispatch_path_child(
 
         try:
             assert process.stdin is not None
-            process.stdin.write(stdin_bytes)
-            process.stdin.close()
+            with process.stdin:
+                process.stdin.write(stdin_bytes)
         except (OSError, ValueError):
             pass
+        finally:
+            process.stdin = None
 
         child_error: Optional[str] = None
         stdout_bytes = b""
@@ -2330,17 +2335,20 @@ def _run_path_as_child() -> None:
             "payment_id": "threadlight-synthetic-payment",
         },
     }
+    async def resolve(awaitable):
+        return await awaitable
+
     try:
         result = dispatch(action_id, mode, case, target_ledger_path)
         if inspect.isawaitable(result):
-            result = asyncio.run(result)
+            result = asyncio.run(resolve(result))
         if not isinstance(result, Mapping):
             raise TypeError("execution_dispatch result must be a mapping")
         if result.get("action_id") != action_id or result.get("mode") != mode:
             raise ValueError("execution_dispatch result action_id/mode mismatch")
         routed_result = result.get("result")
         if inspect.isawaitable(routed_result):
-            asyncio.run(routed_result)
+            asyncio.run(resolve(routed_result))
     except _SyntheticPathDenied:
         pass
     report = {
@@ -2431,13 +2439,15 @@ def _dispatch_task6_child(
 
     try:
         assert process.stdin is not None  # narrows Optional for mypy/readers
-        process.stdin.write(stdin_bytes)
-        process.stdin.close()
+        with process.stdin:
+            process.stdin.write(stdin_bytes)
     except (OSError, ValueError):
         # A child that crashed before ever reading stdin can close its
         # end of the pipe first; the ready-handshake wait below still
         # correctly resolves this to an abnormal/unobservable outcome.
         pass
+    finally:
+        process.stdin = None
 
     child_error: Optional[str] = None
     audit_records: Optional[list] = None

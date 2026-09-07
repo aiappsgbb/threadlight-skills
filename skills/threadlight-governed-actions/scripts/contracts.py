@@ -22,8 +22,8 @@ from typing import Dict, Literal, Mapping, Optional, Tuple
 
 
 SCHEMA_VERSION = "1.0.0"
-ASSESSOR_VERSION = "0.1.0"
-SKILL_VERSION = "0.1.0"
+ASSESSOR_VERSION = "2.0.0"
+SKILL_VERSION = "2.0.0"
 
 SUPPORTED_PHASES: Tuple[str, ...] = ("design", "pre-deploy", "post-deploy")
 CONSEQUENCE_CLASSES: Tuple[str, ...] = (
