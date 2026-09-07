@@ -1,21 +1,14 @@
-"""Sample governed agent entry-point (FIXTURE — governed).
+"""Legacy assessment-only fixture retained for negative regression tests.
 
-Governance is enforced through the *real* Agent Governance Toolkit, two ways:
-
-  1. A committed ``policy.yaml`` (real agent-governance-toolkit schema) that CI
-     gates with ``agt lint-policy`` + ``agt verify`` — see
-     ``.github/workflows/governance.yml``. This is the always-on gate.
-  2. Optionally, the real ``agent_compliance`` evaluators called in the agent's
-     own request path for defence-in-depth.
-
-No in-process "governance middleware" is imported — enforcement is proven at CI
-time via the committed policy + attestation, not asserted by a runtime shim.
+Committed policy, CI checks and optional prompt grading are not runtime enforcement.
+This example has no mandatory interception or effect authorization and must not
+be used as a production governed-agent template.
 """
 from agent_framework import ChatAgent
 
 try:  # optional, real: pip install "agent-governance-toolkit[core]"
     from agent_compliance import PromptDefenseEvaluator, PromptDefenseConfig
-except ImportError:  # governance still enforced at CI time via `agt verify`
+except ImportError:  # Legacy optional grading, not an enforcement fallback.
     PromptDefenseEvaluator = None
     PromptDefenseConfig = None
 
@@ -25,10 +18,10 @@ def build_agent() -> ChatAgent:
 
 
 def guard_prompt(prompt: str) -> bool:
-    """Defence-in-depth: reject a prompt that fails the prompt-defense grade.
+    """Legacy optional prompt grading, intentionally insufficient for governance.
 
-    Optional — returns True (allow) when the evaluator is not installed, because
-    the committed policy + `agt verify` attestation remain the load-bearing gate.
+    Returns True when the evaluator is absent. Policy files and CI do not make
+    that permissive behavior a governed runtime.
     """
     if PromptDefenseEvaluator is None:
         return True

@@ -130,6 +130,17 @@ def test_offline_gate_never_passes_legacy_wired_fixture():
     assert gc.main(["--target", str(root), "--gate"]) == 2
 
 
+def test_legacy_wired_fixture_does_not_advertise_ci_as_runtime_enforcement():
+    import ast
+    source = (ROOT / "skills/threadlight-govern/references/fixtures/sample-wired/src/app.py").read_text()
+    documentation = ast.get_docstring(ast.parse(source))
+    assert "assessment-only fixture" in documentation
+    assert "not runtime enforcement" in documentation
+    for claim in ("enforcement is proven at CI", "governance still enforced at CI",
+                  "remain the load-bearing gate"):
+        assert claim not in source
+
+
 def test_failure_emits_explicit_unverified_manifest(tmp_path, monkeypatch):
     def boom(*args, **kwargs):
         raise RuntimeError("synthetic validator failure")
