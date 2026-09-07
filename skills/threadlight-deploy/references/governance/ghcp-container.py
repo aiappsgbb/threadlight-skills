@@ -1,7 +1,9 @@
 """Copilot SDK / Invocations adapter. Only selected MCP effects use the gateway."""
 import asyncio
-from copy import deepcopy
+from copy import copy, deepcopy
+from contextvars import ContextVar
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -157,18 +159,69 @@ class McpRelay:
         The relay refreshes the gateway-audience bearer for bootstrap and every call.
         Host-issued tickets bind SDK call identity to exact arguments; no model token,
         caller URL, caller Authorization header or model-provided nonce is forwarded.
+        H1 header/body transmission reauthorizes the signed bootstrap after waits
+        and retained callbacks, then validates the actual core wire request. H2 is
+        explicitly unsupported; its body-start event precedes flow-control waits.
         """
         def __init__(self, *, gateway_url, scope, credential, invocation_id, tools, http,
                      bootstrap_gate=None):
-            self.url, self.scope, self.credential, self.http = gateway_url, scope, credential, http
+            self.url, self.scope, self.credential = gateway_url, scope, credential
+            self.http = copy(http)
+            self._outbound = ContextVar("threadlight_relay_wire", default=None)
+            # The caller still owns the shared pools. Copy hook lists so their
+            # legitimate callbacks run before our final trace is installed.
+            self.http.event_hooks = {
+                "request": [*http.event_hooks.get("request", []), self._bind_request],
+                "response": list(http.event_hooks.get("response", [])),
+            }
             self.bootstrap_gate = bootstrap_gate
             self.invocation_id, self.tools = invocation_id, frozenset(tools)
             self.secret = secrets.token_urlsafe(32)
             self.tickets = {}
 
-        async def pre_mcp(self, event, context):
+        async def _authorize(self):
             if self.bootstrap_gate is not None:
-                await self.bootstrap_gate.authorize()
+                async with asyncio.timeout(10):
+                    await self.bootstrap_gate.authorize()
+                self.bootstrap_gate.check()
+
+        async def _bind_request(self, request):
+            import httpcore
+            import httpx
+            expected = self._outbound.get()
+            if (expected is None or request.method != "POST" or request.url != httpx.URL(self.url)
+                    or type(request.stream) is not httpx.ByteStream
+                    or request.content != expected["body"] or b"".join(request.stream) != expected["body"]
+                    or any(request.headers.get(name) != value for name, value in expected["headers"].items())):
+                raise ValueError("relay_wire_changed")
+            method = request.method.encode("ascii")
+            url = (request.url.raw_scheme, request.url.raw_host, request.url.port, request.url.raw_path)
+            headers = tuple(request.headers.raw)
+            previous = request.extensions.get("trace")
+
+            def check(core):
+                if (type(core) is not httpcore.Request or core.method != method
+                        or type(core.url) is not httpcore.URL
+                        or (core.url.scheme, core.url.host, core.url.port, core.url.target) != url
+                        or tuple(core.headers) != headers or type(core.stream) is not httpx.ByteStream
+                        or b"".join(core.stream) != expected["body"]):
+                    raise ValueError("relay_wire_changed")
+
+            async def trace(event, info):
+                if event.startswith("http2."):
+                    raise ValueError("unsupported_relay_transport")
+                if previous is not None:
+                    result = previous(event, info)
+                    if inspect.isawaitable(result):
+                        await result
+                if event in ("http11.send_request_headers.started", "http11.send_request_body.started"):
+                    await self._authorize()
+                    check(info.get("request"))
+            await self._authorize()
+            request.extensions["trace"] = trace
+
+        async def pre_mcp(self, event, context):
+            await self._authorize()
             if event["serverName"] != "threadlight-governed":
                 return None
             if event["toolName"] not in self.tools or not event.get("toolCallId"):
@@ -215,23 +268,23 @@ class McpRelay:
                     if "MCP-Protocol-Version" in request.headers:
                         headers["MCP-Protocol-Version"] = request.headers["MCP-Protocol-Version"]
                     token = await self.credential.get_token(self.scope)
-                    if self.bootstrap_gate is not None:
-                        await self.bootstrap_gate.authorize()
+                    await self._authorize()
                     headers["Authorization"] = f"Bearer {token.token}"
-                    async def trace(name, info):
-                        if self.bootstrap_gate is not None and name in (
-                                "http11.send_request_headers.started", "http11.send_request_body.started"):
-                            self.bootstrap_gate.check()
-                    async with self.http.stream("POST", self.url, content=canonical(document),
-                                                headers=headers, follow_redirects=False,
-                                                extensions={"trace": trace}) as response:
-                        output = bytearray()
-                        async for part in response.aiter_bytes():
-                            output.extend(part)
-                            if len(output) > 65536:
-                                raise ValueError()
-                        return Response(bytes(output), status_code=response.status_code,
-                                        media_type=response.headers.get("Content-Type", "application/json"))
+                    body = canonical(document)
+                    marker = self._outbound.set({"body": body, "headers": dict(headers)})
+                    try:
+                        async with self.http.stream("POST", self.url, content=body,
+                                                    headers=headers, follow_redirects=False) as response:
+                            output = bytearray()
+                            async for part in response.aiter_bytes():
+                                output.extend(part)
+                                if len(output) > 65536:
+                                    raise ValueError()
+                            await self._authorize()
+                            return Response(bytes(output), status_code=response.status_code,
+                                            media_type=response.headers.get("Content-Type", "application/json"))
+                    finally:
+                        self._outbound.reset(marker)
                 except Exception:
                     return JSONResponse({"error": "gateway_unavailable"}, 503)
             return Starlette(routes=[Route("/mcp", forward, methods=["POST"])])
