@@ -263,7 +263,10 @@ resource vault 'Microsoft.KeyVault/vaults@2024-11-01' = {
     }
   }
 }
-resource policyKey 'Microsoft.KeyVault/vaults/keys@2024-11-01' = {
+// Private data-plane provisioning precedes foundation; do not recreate or
+// query that pinned key through an ARM caller outside the private network.
+var existingSigningKey = contains(config, 'existing_key_id')
+resource policyKey 'Microsoft.KeyVault/vaults/keys@2024-11-01' = if (!existingSigningKey) {
   parent: vault
   name: 'policy'
   properties: {
@@ -488,7 +491,7 @@ resource gatewayApp 'Microsoft.App/containerApps@2025-01-01' = if (phase == 'ser
 output GOV_CONTROL_PLANE_URL string = controlUrl
 output TL_GOV_SERVICE_INGRESS object = ingress
 output GOVERNED_TOOL_GATEWAY_URL string = gatewayUrl
-output TL_GOV_KEY_VERSION string = policyKey.properties.keyUriWithVersion
+output TL_GOV_KEY_VERSION string = existingSigningKey ? config.existing_key_id : policyKey!.properties.keyUriWithVersion
 output TL_GOV_CONTROL_CLIENT string = controlIdentity.properties.clientId
 output TL_GOV_CONTROL_PRINCIPAL string = controlIdentity.properties.principalId
 output TL_GOV_GATEWAY_CLIENT string = gatewayIdentity.properties.clientId

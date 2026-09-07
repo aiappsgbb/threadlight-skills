@@ -1146,6 +1146,13 @@ def validate_infrastructure(config):
                          ("vault_name", r"[a-z][a-z0-9-]{1,22}[a-z0-9]")):
         if not re.fullmatch(pattern, config.get(key, "")):
             raise ValueError("invalid_dedicated_resource_name")
+    if config["network"]["posture"] == "private-required" and "existing_key_id" not in config:
+        raise ValueError("private_preprovisioned_signing_key_required")
+    if "existing_key_id" in config:
+        from govern_control_plane.models import KeyId, canonical, parse
+        key_id = parse(KeyId, canonical(config["existing_key_id"]))
+        if not key_id.startswith(f"https://{config['vault_name']}.vault.azure.net/keys/policy/"):
+            raise ValueError("existing_signing_key_vault_or_name_mismatch")
 
 
 def verify_observations(config, bindings, observations):
@@ -1170,6 +1177,8 @@ def verify_observations(config, bindings, observations):
                     and link.get("properties", {}).get("virtualNetwork", {}).get("id") == config["network"]["vnet_id"]
                     and link["properties"].get("provisioningState") == "Succeeded" for link in links):
                 raise ValueError("private_dns_vnet_link_observations_required")
+    if "existing_key_id" in config and bindings["key_id"] != config["existing_key_id"]:
+        raise ValueError("foundation_key_pin_mismatch")
     for key in ("gateway_client", "gateway_principal", "downstream_client", "downstream_principal", "key_id"):
         if observations["foundation"][key] != bindings[key]:
             raise ValueError("foundation_identity_mismatch")

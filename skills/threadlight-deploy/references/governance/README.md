@@ -502,6 +502,28 @@ RS256 keys are non-exportable and runtime trust uses a pinned key version.
 Missing private prerequisites are a deployment blocker, not permission to weaken
 the selected posture. This generator does not mutate Foundry network settings.
 
+### Preprovisioned private signing key
+
+`private-required` also requires infrastructure input `existing_key_id`: the
+actual versioned URI `https://<vault_name>.vault.azure.net/keys/policy/<32-hex-version>`.
+Before `foundation`, provision the dedicated RBAC-enabled vault with public
+access disabled, soft-delete and purge protection, its private endpoint and
+linked DNS. From an authorized executor inside that network, create the
+non-exportable RSA-3072 `policy` key with `sign`/`verify` operations and record
+the returned versioned URI. A dedicated initial-creation identity needs only
+key read/create permission at that vault; revoke its creation grant afterward.
+The publisher's separate key-scoped sign permission is not key-creation authority.
+
+The generator rejects a missing private key prerequisite, an invalid selected
+URI, or another vault/key name before editing the pilot. With `existing_key_id`,
+both IaC phases reuse that key without an ARM key PUT or an ARM key-version
+lookup; other resource provisioning and key-scoped runtime grants remain active.
+Do not enable public access, trusted-services bypass, policy exemptions, or
+exclusion tags to make an ARM key-creation request succeed. Public deployments
+can also opt into an existing key; omitting the field retains their ARM key
+creation path. This URI is configuration, not signature/health evidence:
+runtime and collector authentication against the pinned key remain mandatory.
+
 ## What this proves
 
 Run `python scripts/ci/run-governance-pin-tests.py --deployment` in the catalog.

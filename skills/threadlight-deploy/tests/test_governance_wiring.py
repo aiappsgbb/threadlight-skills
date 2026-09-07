@@ -249,6 +249,117 @@ def test_private_generation_requires_network_dependency_not_boolean_claim():
         module("generate").validate_network({"posture": "private-required", "validated": True})
 
 
+def private_foundation_configuration():
+    scope = "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/fixture/providers/"
+    vnet = scope + "Microsoft.Network/virtualNetworks/fixture"
+    return {
+        "environment": "preproduction", "prefix": "fixture", "storage_name": "fixturestorage",
+        "cosmos_name": "fixture-cosmos", "vault_name": "fixture-vault",
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "control_plane_app_id": "22222222-2222-2222-2222-222222222222",
+        "gateway_app_id": "33333333-3333-3333-3333-333333333333",
+        "acr_id": scope + "Microsoft.ContainerRegistry/registries/fixture",
+        "acr_authorization": "rbac",
+        "network": {
+            "posture": "private-required",
+            "environment_id": scope + "Microsoft.App/managedEnvironments/fixture",
+            "vnet_id": vnet, "private_endpoint_subnet_id": vnet + "/subnets/endpoints",
+            "foundry_injection_subnet_id": vnet + "/subnets/agents",
+            "blob_dns_zone_id": scope + "Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net",
+            "cosmos_dns_zone_id": scope + "Microsoft.Network/privateDnsZones/privatelink.documents.azure.com",
+            "keyvault_dns_zone_id": scope + "Microsoft.Network/privateDnsZones/privatelink.vaultcore.azure.net",
+        },
+    }
+
+
+def test_private_foundation_requires_preprovisioned_signing_key_before_writes(tmp_path):
+    project = tmp_path / "pilot"
+    project.mkdir()
+    (project / "azure.yaml").write_text("name: preserve\n")
+    with pytest.raises(ValueError, match="private_preprovisioned_signing_key_required"):
+        module("generate").foundation(project, contract(), configuration=private_foundation_configuration())
+    assert {p.relative_to(project).as_posix() for p in project.rglob("*") if p.is_file()} == {"azure.yaml"}
+    assert (project / "azure.yaml").read_text() == "name: preserve\n"
+
+
+@pytest.mark.parametrize("key_id", [
+    None, "", False,
+    "https://another-vault.vault.azure.net/keys/policy/" + "a" * 32,
+    "https://fixture-vault.vault.azure.net/keys/different/" + "a" * 32,
+    "https://fixture-vault.vault.azure.net/keys/policy",
+    "https://fixture-vault.vault.azure.net/keys/policy/" + "z" * 32,
+])
+def test_foundation_rejects_invalid_selected_existing_key(key_id):
+    config = private_foundation_configuration()
+    config["existing_key_id"] = key_id
+    with pytest.raises(ValueError):
+        module("generate").validate_infrastructure(config)
+
+
+def test_foundation_preserves_versioned_existing_key(tmp_path):
+    config = private_foundation_configuration()
+    config["existing_key_id"] = "https://fixture-vault.vault.azure.net/keys/policy/" + "a" * 32
+    project = tmp_path / "pilot"
+    project.mkdir()
+    result = module("generate").foundation(project, contract(), configuration=config)
+    assert result["status"] == "foundation-generated-not-provisioned"
+    actual = json.loads((project / "infra/main.parameters.json").read_text())
+    assert actual["parameters"]["governanceConfig"]["value"]["existing_key_id"] == config["existing_key_id"]
+
+
+@pytest.mark.parametrize("changed_pin", [False, True])
+def test_private_binding_enforces_preprovisioned_key_pin(changed_pin):
+    config = private_foundation_configuration()
+    key_base = "https://fixture-vault.vault.azure.net/keys/policy/"
+    config["existing_key_id"] = key_base + "a" * 32
+    bindings = {
+        "key_id": key_base + ("b" if changed_pin else "a") * 32,
+        "agent_principal": "44444444-4444-4444-4444-444444444444",
+        "gateway_principal": "55555555-5555-5555-5555-555555555555",
+        "gateway_client": "66666666-6666-6666-6666-666666666666",
+        "downstream_principal": "77777777-7777-7777-7777-777777777777",
+        "downstream_client": "88888888-8888-8888-8888-888888888888",
+    }
+    network = config["network"]
+    role = "99999999-9999-9999-9999-999999999999"
+    observations = {
+        "environment": {"id": network["environment_id"], "properties": {
+            "defaultDomain": "internal.example", "vnetConfiguration": {
+                "internal": True, "infrastructureSubnetId": network["vnet_id"] + "/subnets/services"}}},
+        "control_plane_url": "https://fixture-control.internal.example",
+        "gateway_url": "https://fixture-gateway.internal.example/mcp",
+        "foundry_agent_subnet_id": network["foundry_injection_subnet_id"],
+        "private_dns_links": [
+            {"id": network[key] + "/virtualNetworkLinks/fixture", "properties": {
+                "virtualNetwork": {"id": network["vnet_id"]}, "provisioningState": "Succeeded"}}
+            for key in ("blob_dns_zone_id", "cosmos_dns_zone_id", "keyvault_dns_zone_id")
+        ],
+        "foundation": dict(bindings), "applications": [], "app_role_assignments": [],
+        "downstream_authorizations": [{
+            "principal_id": bindings["downstream_principal"], "role_id": role,
+            "scope": "api://" + bindings["downstream_client"],
+        }],
+    }
+    for service, subjects in (
+        ("control_plane", [bindings["agent_principal"], bindings["gateway_principal"]]),
+        ("gateway", [bindings["agent_principal"]]),
+    ):
+        app_id = config[service + "_app_id"]
+        observations["applications"].append({
+            "appId": app_id, "identifierUris": ["api://" + app_id],
+            "api": {"requestedAccessTokenVersion": 2}, "servicePrincipalId": app_id,
+            "appRoles": [{"value": "Governance.Workload", "id": role, "isEnabled": True,
+                          "allowedMemberTypes": ["Application"]}],
+        })
+        observations["app_role_assignments"].extend(
+            {"principalId": subject, "resourceId": app_id, "appRoleId": role} for subject in subjects)
+    if changed_pin:
+        with pytest.raises(ValueError, match="foundation_key_pin_mismatch"):
+            module("generate").verify_observations(config, bindings, observations)
+    else:
+        module("generate").verify_observations(config, bindings, observations)
+
+
 def test_private_binding_requires_dns_vnet_link_observations():
     network = {
         "posture": "private-required", "environment_id": "/environment",
@@ -352,6 +463,13 @@ def test_bicep_compiles_and_has_separate_scoped_service_identities(tmp_path):
     assert "governance-records" in source and "gateway-idempotency" in source
     assert "azd-service-name" in source
     assert "GOV_CONFIG_JSON" in source and "GATEWAY_CONFIG_JSON" in source
+    key = next(r for r in resources if r["type"] == "Microsoft.KeyVault/vaults/keys")
+    assert key.get("condition") == "[not(variables('existingSigningKey'))]"
+    assert compiled["variables"]["existingSigningKey"] == "[contains(parameters('config'), 'existing_key_id')]"
+    assert compiled["outputs"]["TL_GOV_KEY_VERSION"]["value"] == (
+        "[if(variables('existingSigningKey'), parameters('config').existing_key_id, "
+        "reference(resourceId('Microsoft.KeyVault/vaults/keys', parameters('config').vault_name, "
+        "'policy'), '2024-11-01').keyUriWithVersion)]")
 
 
 def test_ci_runs_exact_pin_generation_gate():
