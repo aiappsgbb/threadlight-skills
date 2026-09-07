@@ -1195,6 +1195,7 @@ def _guard_http_client(client, provider):
     from openai._base_client import _merge_mappings
     from openai._utils._json import openapi_dumps
     import httpx
+    import httpcore
     _check_model_transport(client, provider)
     _check_model_config(provider, client)
     sdk = getattr(client, "client", None)
@@ -1226,6 +1227,17 @@ def _guard_http_client(client, provider):
             self.inner = inner
 
         async def handle_async_request(self, request):
+            wire_guarded = bool(selected and provider.mode == "enforce"
+                                or getattr(provider, "bootstrap_gate", None) is not None)
+            expected_method = request.method.encode("ascii")
+            expected_url = (request.url.raw_scheme, request.url.raw_host, request.url.port, request.url.raw_path)
+            expected_headers = tuple(request.headers.raw)
+            expected_body = None
+            if wire_guarded:
+                if type(request.stream) is not httpx.ByteStream:
+                    _deny_boundary(provider, selected, "threadlight:model_target_changed")
+                expected_body = request_identity(b"".join(request.stream))
+
             def check():
                 _check_lifecycle(provider, ("agent_startup", "input", "pre_model_call"))
                 if selected and provider.mode == "enforce":
@@ -1241,17 +1253,32 @@ def _guard_http_client(client, provider):
                             or scope["wire"] != request_identity(body)):
                         _deny_boundary(provider, selected, "threadlight:model_target_changed")
 
+            def check_core(core):
+                if not wire_guarded:
+                    return
+                if (type(core) is not httpcore.Request
+                        or core.method != expected_method
+                        or type(core.url) is not httpcore.URL
+                        or (core.url.scheme, core.url.host, core.url.port, core.url.target) != expected_url
+                        or tuple(core.headers) != expected_headers
+                        or type(core.stream) is not httpx.ByteStream
+                        or request_identity(b"".join(core.stream)) != expected_body):
+                    _deny_boundary(provider, selected, "threadlight:model_target_changed")
+
             previous_trace = request.extensions.get("trace")
             async def trace(event, info):
+                # H2 body-start precedes flow-control waits; there is no supported
+                # post-window pre-write hook in this pin. Reject before model frames.
+                if wire_guarded and event.startswith("http2."):
+                    _deny_boundary(provider, selected, "threadlight:unsupported_model_transport")
                 if previous_trace is not None:
                     result = previous_trace(event, info)
                     if inspect.isawaitable(result):
                         await result
-                if event in (
-                        "http11.send_request_headers.started", "http11.send_request_body.started",
-                        "http2.send_request_headers.started", "http2.send_request_body.started"):
+                if event in ("http11.send_request_headers.started", "http11.send_request_body.started"):
                     await _reauthorize_bootstrap(provider, selected)
                     check()
+                    check_core(info.get("request"))
 
             await _reauthorize_bootstrap(provider, selected)
             check()

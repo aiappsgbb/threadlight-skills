@@ -504,3 +504,195 @@ def test_native_sync_tool_reauthorizes_after_executor_queue(tmp_path, revoke):
             listener.close()
             await listener.wait_closed()
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("phase", ["headers", "body"])
+@pytest.mark.parametrize("replacement", ["stream", "request", "unchanged"])
+def test_native_h1_checks_actual_core_wire_after_retained_trace(tmp_path, phase, replacement):
+    import httpcore
+    import httpx
+    from openai import AsyncOpenAI
+    from agent_framework.openai import OpenAIChatClient
+
+    async def scenario():
+        headers_seen, bodies, callbacks, original_requests, tasks = [], [], [], [], set()
+        async def receiver(reader, writer):
+            task = asyncio.current_task()
+            tasks.add(task)
+            try:
+                try:
+                    header = await reader.readuntil(b"\r\n\r\n")
+                except asyncio.IncompleteReadError:
+                    return
+                headers_seen.append(header)
+                length = next(int(line.split(b":", 1)[1]) for line in header.split(b"\r\n")
+                              if line.lower().startswith(b"content-length:"))
+                try:
+                    body = await reader.readexactly(length)
+                except asyncio.IncompleteReadError as error:
+                    bodies.append(error.partial)
+                    return
+                bodies.append(body)
+                response = json.dumps({"id": "resp_wire", "object": "response", "created_at": 0,
+                                       "status": "completed", "model": "test", "output": []}).encode()
+                writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n"
+                             b"Content-Length: " + str(len(response)).encode() + b"\r\n\r\n" + response)
+                await writer.drain()
+            finally:
+                writer.close()
+                await writer.wait_closed()
+                tasks.discard(task)
+        listener = await asyncio.start_server(receiver, "127.0.0.1", 0)
+        endpoint = f"http://127.0.0.1:{listener.sockets[0].getsockname()[1]}/v1"
+        async def request_hook(request):
+            original_requests.append(request)
+            async def caller_trace(event, info):
+                callbacks.append(event)
+                if event == f"http11.send_request_{phase}.started":
+                    core = info["request"]
+                    assert b"YES" in request.content
+                    if replacement != "unchanged":
+                        changed = request.content.replace(b"YES", b"BAD")
+                        if replacement == "stream":
+                            core.stream = httpx.ByteStream(changed)
+                        else:
+                            info["request"] = httpcore.Request(
+                                method=core.method, url=core.url, headers=core.headers,
+                                content=httpx.ByteStream(changed), extensions=core.extensions)
+                    await asyncio.sleep(0)
+            request.extensions["trace"] = caller_trace
+        try:
+            async with native_gate(tmp_path / "native") as (p, gate, h):
+                async with httpx.AsyncClient(trust_env=False, timeout=5,
+                        event_hooks={"request": [request_hook]}) as wire:
+                    sdk = AsyncOpenAI(base_url=endpoint, api_key="loopback-only", http_client=wire, max_retries=0)
+                    model = OpenAIChatClient(model="test", async_client=sdk)
+                    agent = runtime().create_governed_agent(p, client=model, tools=[], id="agent-1")
+                    result = await asyncio.gather(agent.run("YES"), return_exceptions=True)
+                    await asyncio.sleep(0.02)
+                    bad_bytes = sum(body.count(b"BAD") for body in bodies)
+                    assert bad_bytes == 0, f"ACTUAL_UNAUTHORIZED_CORE_BODY_SENDS: {bad_bytes}"
+                    assert callbacks and original_requests and b"YES" in original_requests[0].content
+                    if replacement == "unchanged":
+                        assert not isinstance(result[0], BaseException)
+                        assert len(bodies) == 1 and b"YES" in bodies[0]
+                    else:
+                        assert isinstance(result[0], BaseException)
+                        assert "threadlight:model_target_changed" in str(result[0])
+                        if phase == "headers":
+                            assert headers_seen == []
+        finally:
+            listener.close()
+            await listener.wait_closed()
+            for task in list(tasks):
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("warm_connection", [False, True])
+def test_native_http2_is_rejected_before_model_headers_or_flow_control_body(tmp_path, warm_connection):
+    import httpx
+    import h2.config
+    import h2.connection
+    import h2.events
+    import h2.settings
+    from openai import AsyncOpenAI
+    from agent_framework.openai import OpenAIChatClient
+
+    async def scenario():
+        server_ssl, client_ssl = tls_contexts(tmp_path)
+        server_ssl.set_alpn_protocols(["h2"])
+        model_headers, model_data, connections, handlers, trace_events = [], [], [], set(), []
+        blocked_body = asyncio.Event()
+        async def receiver(reader, writer):
+            task = asyncio.current_task()
+            handlers.add(task)
+            connection = h2.connection.H2Connection(
+                config=h2.config.H2Configuration(client_side=False, header_encoding="utf-8"))
+            connections.append((connection, writer))
+            connection.initiate_connection()
+            connection.update_settings({h2.settings.SettingCodes.INITIAL_WINDOW_SIZE: 0})
+            writer.write(connection.data_to_send())
+            await writer.drain()
+            streams = {}
+            try:
+                while data := await reader.read(65536):
+                    for event in connection.receive_data(data):
+                        if isinstance(event, h2.events.RequestReceived):
+                            headers = dict(event.headers)
+                            streams[event.stream_id] = headers
+                            if headers.get(":method") == "POST":
+                                model_headers.append(event.stream_id)
+                        elif isinstance(event, h2.events.DataReceived):
+                            if streams[event.stream_id].get(":method") == "POST":
+                                model_data.append(event.data)
+                        elif isinstance(event, h2.events.StreamEnded):
+                            if streams[event.stream_id].get(":method") == "GET":
+                                payload = b"{}"
+                            else:
+                                payload = json.dumps({"id": "resp_h2", "object": "response",
+                                    "created_at": 0, "status": "completed", "model": "test", "output": []}).encode()
+                            connection.send_headers(event.stream_id, [
+                                (":status", "200"), ("content-type", "application/json"),
+                                ("content-length", str(len(payload)))])
+                            connection.send_data(event.stream_id, payload, end_stream=True)
+                    writer.write(connection.data_to_send())
+                    await writer.drain()
+            except (ConnectionError, asyncio.IncompleteReadError):
+                pass
+            finally:
+                writer.close()
+                await writer.wait_closed()
+                handlers.discard(task)
+        listener = await asyncio.start_server(receiver, "127.0.0.1", 0, ssl=server_ssl)
+        endpoint = f"https://127.0.0.1:{listener.sockets[0].getsockname()[1]}"
+        async def request_hook(request):
+            async def caller_trace(event, info):
+                trace_events.append(event)
+                if event == "http2.send_request_body.started":
+                    blocked_body.set()
+            request.extensions["trace"] = caller_trace
+        try:
+            async with native_gate(tmp_path / "native") as (p, gate, h):
+                async with httpx.AsyncClient(http2=True, verify=client_ssl, trust_env=False,
+                        timeout=5, event_hooks={"request": [request_hook]}) as wire:
+                    if warm_connection:
+                        warm = await wire.get(endpoint + "/warm")
+                        assert warm.http_version == "HTTP/2"
+                        blocked_body.clear()
+                    sdk = AsyncOpenAI(base_url=endpoint + "/v1", api_key="loopback-only", http_client=wire, max_retries=0)
+                    model = OpenAIChatClient(model="test", async_client=sdk)
+                    agent = runtime().create_governed_agent(p, client=model, tools=[], id="agent-1")
+                    pending = asyncio.create_task(agent.run("HTTP2_PROMPT_MUST_NOT_BE_TRANSMITTED"))
+                    waiting = asyncio.create_task(blocked_body.wait())
+                    try:
+                        await asyncio.wait({pending, waiting}, timeout=3, return_when=asyncio.FIRST_COMPLETED)
+                        if not pending.done():
+                            # The real server's zero stream window holds DATA after
+                            # httpcore's body-start callback has already completed.
+                            await asyncio.sleep(0.1)
+                            if warm_connection:
+                                assert model_data == [], "zero-window fixture failed to hold model DATA"
+                            h.keys.revoked = True
+                            for connection, writer in connections:
+                                for stream_id in model_headers:
+                                    if not connection.streams[stream_id].closed:
+                                        connection.increment_flow_control_window(65535, stream_id=stream_id)
+                                writer.write(connection.data_to_send())
+                                await writer.drain()
+                        result = await asyncio.gather(pending, return_exceptions=True)
+                    finally:
+                        waiting.cancel()
+                        await asyncio.gather(waiting, return_exceptions=True)
+                    assert model_headers == [], f"UNSUPPORTED_H2_MODEL_HEADERS_SENT: {len(model_headers)}"
+                    assert model_data == [], f"H2_BODY_BYTES_AFTER_REVOCATION: {sum(map(len, model_data))}"
+                    assert isinstance(result[0], BaseException)
+                    assert "threadlight:unsupported_model_transport" in str(result[0])
+        finally:
+            listener.close()
+            await listener.wait_closed()
+            for task in list(handlers):
+                task.cancel()
+            await asyncio.gather(*handlers, return_exceptions=True)
+    asyncio.run(scenario())

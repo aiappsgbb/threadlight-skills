@@ -75,6 +75,22 @@ cached expiry check. Original clients, hooks and connection pools
 are not mutated; the caller owns pool shutdown. There is no public SDK getter for
 the HTTP client/mounts, so this pin-specific adapter reads those private references
 on host-owned copies; it does not modify installed SDK code or published pins.
+The H1 trace guard validates the **actual httpcore request** supplied to the
+transmission event, after retained caller callbacks and before headers/body.
+It compares method, URL, headers and the replayable stream with the captured
+wire authorization; checking only the earlier HTTPX wrapper is insufficient.
+Callbacks may observe these events but cannot replace the authorized core request
+or change its body/target. Legitimate H1 tracing and normal credential refresh
+remain supported.
+
+**HTTP/2 is explicitly unsupported** for governed model traffic until a supported
+transmission-time guard covers its internal flow-control waits. In the pinned
+httpcore implementation, the body-start trace precedes those waits; it is not a
+final send boundary. The adapter rejects H2 before model request frames on both
+new and already-open H2 connections with `threadlight:unsupported_model_transport`.
+It does not silently downgrade or claim H2 enforcement. Generated defaults use
+HTTP/1.1; allowing H2 negotiation while the server selects H1 retains that H1 path.
+
 Selecting lifecycle `startup`, `input`, or `pre_model_call` requires a supported
 native model transport: the pinned `OpenAIChatClient`, `OpenAIChatCompletionClient`,
 or `FoundryChatClient`, backed by `AsyncOpenAI` (including `AsyncAzureOpenAI`) and

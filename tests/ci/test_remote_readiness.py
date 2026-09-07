@@ -154,3 +154,5 @@ def test_native_gate_runs_bootstrap_protocol_and_real_host_regressions():
                  "test_hosted_bootstrap_lifecycle.py", "test_public_authenticated_proof.py"):
         assert name in text
     assert '"THREADLIGHT_READINESS_SDK": "1"' in text
+    assert "test_native_http2_is_rejected_before_model_headers_or_flow_control_body[True]" in text
+    assert "test_native_h1_checks_actual_core_wire_after_retained_trace[stream-body]" in text
