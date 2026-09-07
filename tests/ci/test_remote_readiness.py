@@ -151,8 +151,21 @@ def test_native_gate_runs_bootstrap_protocol_and_real_host_regressions():
     for name in ("test_bootstrap_assets.py", "test_remote_bootstrap.py",
                  "test_bootstrap_transport.py",
                  "test_native_bootstrap_assets.py", "test_remote_bootstrap_hosts.py",
+                 "test_ghcp_relay_transport.py",
                  "test_hosted_bootstrap_lifecycle.py", "test_public_authenticated_proof.py"):
         assert name in text
     assert '"THREADLIGHT_READINESS_SDK": "1"' in text
     assert "test_native_http2_is_rejected_before_model_headers_or_flow_control_body[True]" in text
     assert "test_native_h1_checks_actual_core_wire_after_retained_trace[stream-body]" in text
+    for case in (
+        "test_actual_relay_pool_wait_rechecks_signing_authority[valid-True]",
+        "test_actual_relay_pool_wait_rechecks_signing_authority[revoke-False]",
+        "test_actual_relay_pool_wait_rechecks_signing_authority[revoke-True]",
+        "test_actual_relay_reauthorizes_after_tls_handshake_wait[True]",
+        "test_relay_validates_actual_core_bytes_after_retained_trace[stream-body]",
+        "test_relay_validates_actual_core_bytes_after_retained_trace[request-headers]",
+        "test_relay_validates_actual_core_bytes_after_retained_trace[revoke-body]",
+        "test_actual_relay_rejects_http2_before_mcp_request_frames[False]",
+        "test_actual_relay_rejects_http2_before_mcp_request_frames[True]",
+    ):
+        assert case in text
