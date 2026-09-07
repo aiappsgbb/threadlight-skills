@@ -237,6 +237,8 @@ def test_collector_checks_actual_pending_host_signed_binding_before_probe(protoc
         try:
             source = ARMFoundry()
             source.version["definition"]["protocol_versions"][0]["protocol"] = protocol
+            source.agent["agent_endpoint"]["protocols"] = [protocol]
+            source.agent["agent_endpoint"]["protocol_configuration"] = {protocol: {}}
             target = collector.observation.observe(selection(), source)
             assert "environment" not in target
             declared = binding()

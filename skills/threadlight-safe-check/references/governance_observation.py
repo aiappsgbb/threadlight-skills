@@ -103,7 +103,7 @@ def observe(selection, run=run_command):
         if not isinstance(latest, str) or not re.fullmatch(r"\d+", latest):
             raise ObservationError("latest-version-not-observed")
         current = rules[0]["agent_version"]
-        if current == "latest":
+        if current in ("@latest", "latest"):
             current = agent["versions"]["latest"]["version"]
         if not isinstance(current, str) or not re.fullmatch(r"\d+", current):
             raise ObservationError("current-version-not-observed")
@@ -126,6 +126,11 @@ def observe(selection, run=run_command):
                    if p.get("version") == "2.0.0" and p.get("protocol") in ("responses", "invocations")]
         if len(choices) != 1:
             raise ObservationError("supported-invocation-protocol-not-observed")
+        exposed = agent["agent_endpoint"].get("protocols")
+        configured = agent["agent_endpoint"].get("protocol_configuration")
+        if (not isinstance(exposed, list) or not isinstance(configured, dict)
+                or choices[0] not in exposed or not isinstance(configured.get(choices[0]), dict)):
+            raise ObservationError("invocation-protocol-not-exposed")
         if definition.get("environment_variables", {}).get("TL_GOV_IMAGE_DIGEST") != image.split("@")[1]:
             raise ObservationError("runtime-image-environment-mismatch")
         return {"source": "azure-arm-and-foundry", "tenant": account["tenantId"],

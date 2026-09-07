@@ -39,7 +39,8 @@ class ARMFoundry:
         self.agent = {"object": "agent", "name": "probe-agent", "id": "probe-agent",
                       "state": "enabled", "versions": {"latest": self.version},
                       "agent_endpoint": {"version_selector": {"version_selection_rules": [
-                          {"type": "FixedRatio", "agent_version": "1", "traffic_percentage": 100}]}}}
+                          {"type": "FixedRatio", "agent_version": "1", "traffic_percentage": 100}]},
+                          "protocols": ["responses"], "protocol_configuration": {"responses": {}}}}
         self.resources = {}
 
     def __call__(self, command):
@@ -74,6 +75,47 @@ def test_observe_actual_pinned_foundry_version_and_preserve_selection():
     assert result["source"] == "azure-arm-and-foundry"
     assert original == selection()
     assert any("/versions/1?api-version=v1" in " ".join(call) for call in run.calls)
+
+
+@pytest.mark.parametrize("alias", ["@latest", "latest"])
+def test_native_sdk_latest_selector_resolves_only_the_observed_current_version(alias):
+    from azure.ai.projects.models import FixedRatioVersionSelectionRule, VersionSelector
+
+    observer = reference("governance_observation")
+    run = ARMFoundry()
+    selector = VersionSelector(version_selection_rules=[
+        FixedRatioVersionSelectionRule(agent_version=alias, traffic_percentage=100),
+    ]).as_dict()
+    run.agent["agent_endpoint"]["version_selector"] = selector
+    result = observer.observe(selection(), run)
+    assert result["agent_version"] == result["latest_version"] == "1"
+    assert result["version_selector"] == selector["version_selection_rules"]
+    assert any("/versions/1?api-version=v1" in " ".join(call) for call in run.calls)
+
+    run.version["version"] = "2"
+    with pytest.raises(observer.ObservationError, match="requested-version-is-not-current"):
+        observer.observe(selection(), run)
+
+
+@pytest.mark.parametrize("alias", ["@latest-preview", "@latest ", "$latest", "LATEST"])
+def test_unknown_latest_selectors_are_not_guessed(alias):
+    observer = reference("governance_observation")
+    run = ARMFoundry()
+    run.agent["agent_endpoint"]["version_selector"]["version_selection_rules"][0]["agent_version"] = alias
+    with pytest.raises(observer.ObservationError, match="current-version-not-observed"):
+        observer.observe(selection(), run)
+
+
+@pytest.mark.parametrize("missing", ["protocols", "protocol_configuration"])
+def test_declared_container_protocol_must_be_exposed_by_the_observed_endpoint(missing):
+    observer = reference("governance_observation")
+    run = ARMFoundry()
+    run.version["definition"]["protocol_versions"][0]["protocol"] = "invocations"
+    run.agent["agent_endpoint"]["protocols"] = ["responses", "invocations"]
+    run.agent["agent_endpoint"]["protocol_configuration"]["invocations"] = {}
+    run.agent["agent_endpoint"][missing] = ["responses"] if missing == "protocols" else {"responses": {}}
+    with pytest.raises(observer.ObservationError, match="invocation-protocol-not-exposed"):
+        observer.observe(selection(), run)
 
 
 @pytest.mark.parametrize("fault", ["tenant", "scope", "image-missing", "image-tag", "identity", "version",
