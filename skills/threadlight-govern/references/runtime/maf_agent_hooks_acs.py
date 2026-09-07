@@ -665,7 +665,8 @@ class _FunctionBoundary(FunctionMiddleware):
         if telemetry is not None and execution is not None:
             # Early drain only: queued synchronous work rechecks at its worker.
             await telemetry.flush(execution)
-        await _reauthorize_bootstrap(p, p._tool_bindings(context.function.name))
+        if getattr(p, "bootstrap_gate", None) is not None:
+            await _reauthorize_bootstrap(p, p._tool_bindings(context.function.name))
         if not p._bindings:
             await call_next()
             return
