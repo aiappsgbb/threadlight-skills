@@ -8,9 +8,36 @@ from contextlib import AsyncExitStack
 import json
 from pathlib import Path
 import sys
+from uuid import UUID
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def validate_credential_options(mode, client_id):
+    if mode == "managed-identity":
+        try:
+            identifier = UUID(client_id) if isinstance(client_id, str) else None
+        except ValueError:
+            identifier = None
+        if identifier is None or identifier.int == 0 or str(identifier) != client_id:
+            raise ValueError("managed-identity requires a canonical nonzero --managed-identity-client-id")
+    elif mode != "azure-cli" or client_id is not None:
+        raise ValueError("managed identity arguments require --credential-mode managed-identity")
+
+
+def make_credential(args, tenant_id, *, asynchronous=False):
+    mode = getattr(args, "credential_mode", "azure-cli")
+    client_id = getattr(args, "managed_identity_client_id", None)
+    validate_credential_options(mode, client_id)
+    if asynchronous:
+        from azure.identity.aio import AzureCliCredential, ManagedIdentityCredential
+    else:
+        from azure.identity import AzureCliCredential, ManagedIdentityCredential
+    if mode == "managed-identity":
+        return ManagedIdentityCredential(
+            client_id=client_id, connection_timeout=5, read_timeout=5, retry_total=0)
+    return AzureCliCredential(tenant_id=tenant_id)
 
 
 def read(path):
@@ -45,7 +72,6 @@ def observe_parent(config, credential):
 
 
 async def publish(config, args, observed):
-    from azure.identity.aio import AzureCliCredential
     from azure.storage.blob.aio import BlobServiceClient
     from azure.keyvault.keys.aio import KeyClient
     from azure.keyvault.keys.crypto.aio import CryptographyClient
@@ -61,7 +87,7 @@ async def publish(config, args, observed):
         raise ValueError("publisher_scope_mismatch")
     assets = read_directory(args.native_probe_assets) if args.native_probe_assets else None
     async with AsyncExitStack() as stack:
-        credential = await stack.enter_async_context(AzureCliCredential(tenant_id=config["tenant_id"]))
+        credential = await stack.enter_async_context(make_credential(args, config["tenant_id"], asynchronous=True))
         blobs = await stack.enter_async_context(BlobServiceClient(
             publisher.blob_url, credential=credential, retry_total=0))
         crypto = await stack.enter_async_context(CryptographyClient(
@@ -93,7 +119,6 @@ async def publish(config, args, observed):
 
 async def wait_ready(config, args, observed):
     import httpx
-    from azure.identity.aio import AzureCliCredential
     from azure.keyvault.keys.aio import KeyClient
     from azure.keyvault.keys.crypto.aio import CryptographyClient
     from govern_control_plane.bootstrap import SignedBootstrap, verify, read_host_binding, BootstrapNotReady
@@ -109,7 +134,7 @@ async def wait_ready(config, args, observed):
     if any(getattr(signed.binding, key) != value for key, value in observed.items()):
         raise ValueError("published_binding_observation_mismatch")
     async with AsyncExitStack() as stack:
-        credential = await stack.enter_async_context(AzureCliCredential(tenant_id=config["tenant_id"]))
+        credential = await stack.enter_async_context(make_credential(args, config["tenant_id"], asynchronous=True))
         crypto = await stack.enter_async_context(CryptographyClient(
             frozen["key_id"], credential=credential, retry_total=0))
         keys = await stack.enter_async_context(KeyClient(
@@ -128,13 +153,15 @@ async def wait_ready(config, args, observed):
                     await asyncio.sleep(2)
 
 
-def main(argv=None):
+def argument_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("create", "observe", "publish", "wait"))
     parser.add_argument("--creation", required=True, type=Path)
     parser.add_argument("--attempt", required=True, type=Path)
-    parser.add_argument("--credential-mode", required=True, choices=("azure-cli",),
-                        help="Explicit tenant-bound CLI credential; no DefaultAzureCredential fallbacks")
+    parser.add_argument("--credential-mode", choices=("azure-cli", "managed-identity"), action="append",
+                        help="azure-cli (default) or one explicit managed identity; never a fallback chain")
+    parser.add_argument("--managed-identity-client-id", action="append",
+                        help="Required canonical client ID for managed-identity mode")
     parser.add_argument("--frozen-config", type=Path)
     parser.add_argument("--policy-envelope", type=Path)
     parser.add_argument("--publisher-config", type=Path)
@@ -144,8 +171,26 @@ def main(argv=None):
     parser.add_argument("--expected-observation", type=Path)
     parser.add_argument("--lifetime-seconds", type=int, default=3600)
     parser.add_argument("--wait-seconds", type=int, default=300)
+    return parser
+
+
+def parse_args(argv=None, *, parser=None):
+    parser = parser or argument_parser()
     args = parser.parse_args(argv)
-    from azure.identity import AzureCliCredential
+    if len(args.credential_mode or []) > 1 or len(args.managed_identity_client_id or []) > 1:
+        parser.error("credential mode and managed identity client ID may each be specified only once")
+    args.credential_mode = args.credential_mode[0] if args.credential_mode else "azure-cli"
+    args.managed_identity_client_id = args.managed_identity_client_id[0] if args.managed_identity_client_id else None
+    try:
+        validate_credential_options(args.credential_mode, args.managed_identity_client_id)
+    except ValueError as error:
+        parser.error(str(error))
+    return args
+
+
+def main(argv=None):
+    parser = argument_parser()
+    args = parse_args(argv, parser=parser)
     from azure.ai.projects import AIProjectClient
     from govern_control_plane.hosted_lifecycle import create_once, observe, validate, record_observation
     from govern_control_plane.app import configure_logging
@@ -157,7 +202,7 @@ def main(argv=None):
     if args.command == "wait" and (
             not args.binding_output or not args.frozen_config or not 1 <= args.wait_seconds <= 3600):
         parser.error("wait requires --binding-output, --frozen-config and bounded --wait-seconds")
-    with AzureCliCredential(tenant_id=config["tenant_id"]) as credential:
+    with make_credential(args, config["tenant_id"]) as credential:
         observe_parent(config, credential)
         with AIProjectClient(endpoint=config["project_endpoint"], credential=credential,
                              api_version="v1", retry_total=0) as client:

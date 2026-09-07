@@ -106,9 +106,14 @@ explicit operator action confined to the dedicated proof resources.
 The approved alternative is now implemented as **create-once**, then authenticated
 observation and publication of `threadlight-hosted-bootstrap/v1`.
 `scripts/ci/hosted_bootstrap.py` provides separate `create`, `observe`, `publish`,
-and `wait` commands. They use the pinned Projects 2.3.0 SDK and an explicitly
-selected, tenant-bound Azure CLI credential, not `azd deploy`, a guessed version,
-a mutable `"latest"` pointer, or a nonexistent start/mount API.
+and `wait` commands. They use the pinned Projects 2.3.0 SDK and either the existing
+tenant-bound Azure CLI credential or an explicitly selected managed identity
+(`--credential-mode managed-identity --managed-identity-client-id <client-id>`),
+not `azd deploy`, a guessed version,
+a mutable `"latest"` pointer, or a nonexistent start/mount API. Managed identity
+mode uses only the native sync/aio credential for that client ID, never a user-cache
+or default-chain fallback. Protected local attempt files are unchanged; an
+external durable create-intent guard for private jobs remains operator-owned.
 
 The frozen image selects `remote_bootstrap`: reference, project endpoint,
 subscription/RG and native policy digest. GHCP also pins a **distinct**

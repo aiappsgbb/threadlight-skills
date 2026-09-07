@@ -88,6 +88,35 @@ it never extends its expiry. The protected readiness workflow's explicit
 service inputs, verifies source/identity consistency, then publishes, waits and
 collects. It does not invoke azd or create the agent again.
 
+### Explicit credentials for private operator jobs
+
+The operator CLI defaults to its existing tenant-bound `azure-cli` mode. An
+approved private ACA job can instead use, on any of `create`, `observe`,
+`publish`, or `wait`:
+
+```text
+--credential-mode managed-identity --managed-identity-client-id <explicit-job-identity-client-id>
+```
+
+The client ID must be one canonical, nonzero GUID. Missing/invalid IDs, repeated
+identity options, and a managed identity ID combined with `azure-cli` (including
+its default selection) are rejected before protected file access or credentials.
+There is no system-assigned fallback, ambient `AZURE_CLIENT_ID` selection,
+`DefaultAzureCredential` chain, user-cache fallback, or copied human token.
+The SDK uses synchronous `ManagedIdentityCredential` for ARM/project observations
+and create/observe, and its asynchronous counterpart for publish/wait operations.
+Token acquisition has bounded transport timeouts and no HTTP retry.
+
+Use separate explicitly selected deployer and publisher identities with only
+their required scoped rights. Publish/wait still perform the existing independent
+ARM/version observations, so those identities also need the applicable read-only
+access; this option grants no permissions. All signed-binding, observed-version,
+create-once and local protected attempt-file checks remain in place.
+
+Local files are **not** durable job orchestration state. The parent/operator owns
+the external durable create-intent guard and any job-to-job artifact handling.
+This CLI extension neither implements nor claims such a store.
+
 ## Legacy local-file generation ordering
 
 ### Explicit public authenticated proof networking
