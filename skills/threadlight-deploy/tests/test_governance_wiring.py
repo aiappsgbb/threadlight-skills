@@ -463,6 +463,12 @@ def test_bicep_compiles_and_has_separate_scoped_service_identities(tmp_path):
     assert "governance-records" in source and "gateway-idempotency" in source
     assert "azd-service-name" in source
     assert "GOV_CONFIG_JSON" in source and "GATEWAY_CONFIG_JSON" in source
+    agent_verify = next(
+        r for r in resources if r["type"] == "Microsoft.Authorization/roleAssignments"
+        and r["properties"].get("principalId") == "[parameters('bindings').agent_principal]")
+    assert agent_verify["condition"] == "[equals(parameters('phase'), 'services')]"
+    assert agent_verify["scope"] == (
+        "[resourceId('Microsoft.KeyVault/vaults/keys', parameters('config').vault_name, 'policy')]")
     key = next(r for r in resources if r["type"] == "Microsoft.KeyVault/vaults/keys")
     assert key.get("condition") == "[not(variables('existingSigningKey'))]"
     assert compiled["variables"]["existingSigningKey"] == "[contains(parameters('config'), 'existing_key_id')]"

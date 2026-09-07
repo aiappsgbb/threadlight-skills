@@ -322,7 +322,7 @@ resource verifyAssignments 'Microsoft.Authorization/roleAssignments@2022-04-01' 
     roleDefinitionId: verifyRole.id
   }
 }]
-resource agentVerify 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (phase == 'services' && config.runtime == 'microsoft-agent-framework') {
+resource agentVerify 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (phase == 'services') {
   name: guid(policyKey.id, bindings.agent_principal, 'verify')
   scope: policyKey
   properties: {

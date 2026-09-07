@@ -513,6 +513,9 @@ non-exportable RSA-3072 `policy` key with `sign`/`verify` operations and record
 the returned versioned URI. A dedicated initial-creation identity needs only
 key read/create permission at that vault; revoke its creation grant afterward.
 The publisher's separate key-scoped sign permission is not key-creation authority.
+Both hosted runtimes receive only key-scoped read/verify permission after their
+actual identity is bound: GHCP also verifies remote bootstrap directly with Key
+Vault, not solely through the gateway.
 
 The generator rejects a missing private key prerequisite, an invalid selected
 URI, or another vault/key name before editing the pilot. With `existing_key_id`,
