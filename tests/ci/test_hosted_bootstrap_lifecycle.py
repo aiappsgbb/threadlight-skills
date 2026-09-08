@@ -619,3 +619,21 @@ def test_endpoint_phase_is_explicit_protected_and_precedes_wait_in_resume_workfl
         assert "Entra-only" in text and "protocol_configuration" in text
         assert "preserves the Responses default" in text
         assert "publish_approval_status" in text and "not a readiness" in text
+
+
+def test_private_noop_proof_is_dated_scoped_and_discloses_operator_steps():
+    text = (ROOT / "docs/production-readiness.md").read_text()
+    heading = "### Private GHCP noop evidence snapshot (2026-09-08)"
+    assert heading in text
+    section = text.split(heading, 1)[1].split("\n### ", 1)[0]
+    for term in (
+        "62cb516", "governance_probe_noop", "allow: 1", "deny: 0",
+        "central audit", "not whole-agent", "returns_apply_decision",
+        "operator", "numeric route", "agent_session_id",
+        "collect_project(http=", "default collector CLI", "timeout",
+        "fresh after-deployment", "retained privately",
+    ):
+        assert term in section
+    assert "Private GHCP noop evidence snapshot" in (
+        ROOT / "skills/threadlight-safe-check/references/governance-probe.md"
+    ).read_text()

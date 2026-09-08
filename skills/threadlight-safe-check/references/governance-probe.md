@@ -141,6 +141,17 @@ The currently routed version is checked immediately before each invocation and
 again afterwards; the request's durable producer/receipt deployment must match.
 Azure and service changes invalidate the whole probe pair.
 
+The [Private GHCP noop evidence snapshot](../../../docs/production-readiness.md#private-ghcp-noop-evidence-snapshot-2026-09-08)
+records one executed private hosted pair and its operator limitations. In that
+run, implicit fresh hosted sessions caused a bootstrap timeout before deny.
+The successful fresh pair used `collect_project`'s public `http` parameter with
+native `agent_session_id` affinity, not a change to the installed collector CLI.
+An embedding operator must independently observe the controller-owned session
+and its exact version before and after collection. Add affinity only on the
+selected Invocations endpoint; preserve `api-version=v1`, authentication,
+signature checks and all target/receipt comparisons. A longer timeout or a
+reused session never permits reusing a failed pair's nonces or receipts.
+
 ### Exact target and configuration contract
 
 The parent safe-check resolves its tenant and subscription IDs through

@@ -81,6 +81,42 @@ The full signed envelope, key/signature, bundle, current environment/configurati
 and exact image/version/identity must still match the verified record; changing
 any of them invalidates the previous evidence. Saved JSON is not remote attestation.
 
+### Private GHCP noop evidence snapshot (2026-09-08)
+
+Source `62cb516fc05b37e1e89f052aa2e6b2b73c69c1bf` produced a fresh,
+private-network hosted GHCP version **2** with the actual native SDK and
+telemetry enabled. Collection completed at **09:35:05 UTC**:
+`governance_probe_noop` **allow: 1** independent fixture effect; **deny: 0**
+effects, each with a correlated central audit receipt and completed invocation
+stream. Independent after-proof ARM/Foundry reads matched the exact target,
+three service images, identities and configuration digests.
+
+The signed policy/bootstrap chain and complete failed/successful reports are
+retained privately, not embedded in this catalog. The independently retrieved
+successful archive has SHA-256
+`4af08521c8f3b83a6f78e5ea60079637501686018999fd03755131a610a6406c`.
+This is a dated, binding-specific execution record, **not whole-agent**
+governance, remote attestation or reusable current-readiness evidence.
+`returns_apply_decision`, other business writes and hosted native MAF assurance
+remain live-unverified. Cleanup or any subsequent deployment/configuration/key
+change requires fresh after-deployment evidence; this snapshot grants no waiver.
+
+Two explicit operator steps were needed and are not automatic CLI capabilities:
+
+- **Version replacement:** `configure-endpoint` intentionally rejects an existing
+  numeric route to a different version. The proof used a separately authorized,
+  guarded native `update_details` transition from 1 to 2 with preserved create
+  intent and repeated old/new observations, followed by the unchanged public
+  `observe_endpoint` gate. It did not recreate after an ambiguous acknowledgement.
+- **Session affinity:** the default collector CLI timed out on a cold bootstrap
+  exchange before registering deny. That failed pair was preserved. A fresh pair
+  used the public `collect_project(http=..., timeout=120)` extension, adding the
+  documented `agent_session_id` only to the exact Invocations endpoint while
+  preserving `api-version=v1`. Native reads under the controller identity checked
+  that the same active session belonged to version 2 before and after collection.
+  The session-only driver is not an installed CLI feature. It changed no runtime,
+  SDK, signatures or receipts; no partial result from the failed pair was reused.
+
 ### Protected readiness-proof CI inputs
 
 #### Public authenticated proof is not network isolation
