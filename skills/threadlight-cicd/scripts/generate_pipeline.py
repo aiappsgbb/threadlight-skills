@@ -13,8 +13,9 @@ Design rules (enforced by tests under ../tests/):
     its spoke/target resource group — never the Citadel hub, which is owned by
     the central platform team via citadel-hub-deploy in a separate repo.
 
-The generator is pure-stdlib and renders `{{TOKEN}}` markers from a framing
-dict. Unknown markers are left visible so gaps are obvious; the test-suite
+The renderer uses the standard library for `{{TOKEN}}` markers from a framing
+dict; optional AgentOps discovery uses the shared contract. Unknown markers are
+left visible so gaps are obvious; the test-suite
 asserts a fully-populated framing leaves zero surviving markers.
 """
 from __future__ import annotations
@@ -28,7 +29,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 
 REF = Path(__file__).resolve().parent.parent / "references"
 
@@ -262,6 +263,166 @@ def _write(dest: Path, content: str) -> Path:
     return dest
 
 
+def _agentops_options(framing: dict, out_root: Path) -> tuple[bool, bool, str | None]:
+    mode = framing.get("agentops", "auto")
+    if mode not in ("auto", "off"):
+        raise ValueError("agentops must be auto or off")
+    refresh = framing.get("agentops_refresh_doctor", False)
+    if type(refresh) is not bool:
+        raise ValueError("agentops_refresh_doctor must be an explicit boolean")
+    schedule = framing.get("agentops_doctor_schedule")
+    if schedule and (not refresh or mode == "off"):
+        raise ValueError("agentops doctor schedule requires explicit doctor refresh opt-in")
+    if schedule and (
+        not isinstance(schedule, str)
+        or len(schedule.split()) != 5
+        or not re.fullmatch(r"[0-9*/,\- ]{9,100}", schedule)
+    ):
+        raise ValueError("agentops doctor schedule must be a five-field numeric cron")
+    if mode == "off":
+        return False, False, None
+    if not out_root.exists():
+        return False, False, None
+    repo = Path(__file__).resolve().parents[3]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    from skills._shared.agentops import discover_opted_in_agents
+    return bool(discover_opted_in_agents(out_root)), refresh, schedule
+
+
+def _agentops_command(platform: str, refresh: bool) -> str:
+    runtime = "python3 .threadlight/skills/threadlight-cicd/scripts/agentops_runtime.py --repo ."
+    event = '${GITHUB_EVENT_NAME:-}' if platform == "github-actions" else '${BUILD_REASON:-}'
+    scheduled = "schedule" if platform == "github-actions" else "Schedule"
+    pull_request = "pull_request" if platform == "github-actions" else "PullRequest"
+    lines = ["set -euo pipefail", "set +x", "unset GITHUB_STEP_SUMMARY", "umask 077",
+             "native_eval_status=0", "native_doctor_status=0"]
+    lines += [f'if [ "{event}" != "{scheduled}" ]; then',
+              f"  {runtime} --run-eval || native_eval_status=$?",
+              '  if [ "$native_eval_status" -ne 0 ] && [ "$native_eval_status" -ne 2 ]; then',
+              '    exit "$native_eval_status"', "  fi",
+              "fi"]
+    if refresh:
+        lines += [f'if [ "{event}" != "{pull_request}" ]; then',
+                  f"  {runtime} --refresh-doctor || native_doctor_status=$?",
+                  '  if [ "$native_doctor_status" -ne 0 ] && [ "$native_doctor_status" -ne 2 ]; then',
+                  '    exit "$native_doctor_status"', "  fi", "fi"]
+    lines += [f'if [ "{event}" != "{scheduled}" ]; then',
+              "  python3 .threadlight/skills/threadlight-evals/scripts/evals_check.py --target . --emit > /dev/null",
+              "fi",
+              'if [ "$native_doctor_status" -ne 0 ]; then exit "$native_doctor_status"; fi',
+              'if [ "$native_eval_status" -eq 2 ]; then',
+              '  echo "Native threshold gate returned 2; preserved in observed evidence and enforced by the canonical eval gate."',
+              "fi"]
+    return "\n".join(lines)
+
+
+def _compose_agentops(text: str, platform: str, ctx: dict,
+                      refresh: bool, schedule: str | None) -> str:
+    command = _agentops_command(platform, refresh)
+    if platform == "github-actions":
+        events = "  pull_request:\n    branches: [ main ]\n"
+        if schedule:
+            events += f"  schedule:\n    - cron: '{schedule}'\n"
+        text = text.replace("on:\n", "on:\n" + events, 1)
+        text = text.replace("  deploy:\n", "  deploy:\n"
+                            "    if: github.event_name != 'pull_request' && github.event_name != 'schedule'\n", 1)
+        text = text.replace("  eval-gate:\n    needs: deploy\n",
+                            "  eval-gate:\n    needs: deploy\n"
+                            "    if: >-\n"
+                            "      always() && !cancelled() &&\n"
+                            "      (needs.deploy.result == 'success' ||\n"
+                            "       (github.event_name == 'pull_request' &&\n"
+                            "        github.event.pull_request.head.repo.full_name == github.repository) ||\n"
+                            "       github.event_name == 'schedule')\n", 1)
+        replacement = (
+            "      - name: AgentOps bound eval / approved Doctor (existing application scope)\n"
+            "        shell: bash\n"
+            "        run: |\n" +
+            "\n".join("          " + line for line in command.splitlines()) + "\n\n"
+        )
+        text, count = re.subn(
+            r"      - name: Run quality evals \(threadlight-evals Discover leg\)\n.*?(?=      - name: Enforce eval verdict)",
+            lambda _: replacement, text, count=1, flags=re.S,
+        )
+        text = text.replace(
+            "      - name: Enforce eval verdict (mode=",
+            "      - if: github.event_name != 'schedule'\n"
+            "        name: Enforce eval verdict (mode=", 1,
+        )
+    else:
+        events = "pr:\n  branches:\n    include: [ main ]\n\n"
+        if schedule:
+            events += (f"schedules:\n  - cron: '{schedule}'\n"
+                       "    displayName: Owner-approved AgentOps Doctor\n"
+                       "    branches:\n      include: [ main ]\n    always: true\n\n")
+        text = text.replace("pool:\n", events + "pool:\n", 1)
+        text = text.replace("  - stage: deploy\n", "  - stage: deploy\n"
+                            "    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), "
+                            "ne(variables['Build.Reason'], 'Schedule'))\n", 1)
+        text = text.replace("  - stage: eval_gate\n", "  - stage: eval_gate\n"
+                            "    condition: and(not(canceled()), or(eq(dependencies.deploy.result, 'Succeeded'), "
+                            "eq(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.Reason'], 'Schedule')))\n", 1)
+        # Deployment jobs, unlike ordinary jobs, honor the existing environment's
+        # approval checks before the federated task can invoke application APIs.
+        text = text.replace("      - job: quality_evals\n        steps:\n",
+                            f"      - deployment: quality_evals\n        environment: {ctx['ENV_NAME']}\n"
+                            "        strategy:\n          runOnce:\n            deploy:\n              steps:\n", 1)
+        start = text.index("      - deployment: quality_evals")
+        end = text.index("\n  - stage: red_team_gate", start)
+        section = text[start:end]
+        lines = section.splitlines()
+        steps_index = next(i for i, line in enumerate(lines) if line.strip() == "steps:")
+        lines[steps_index + 1:] = ["      " + line if line else line for line in lines[steps_index + 1:]]
+        section = "\n".join(lines) + "\n"
+        replacement = (
+            "                - task: AzureCLI@2\n"
+            "                  displayName: AgentOps bound eval / approved Doctor (existing application scope)\n"
+            "                  inputs:\n"
+            f"                    azureSubscription: {ctx['ADO_SERVICE_CONNECTION']}\n"
+            "                    scriptType: bash\n"
+            "                    scriptLocation: inlineScript\n"
+            "                    visibleAzLogin: false\n"
+            "                    inlineScript: |\n" +
+            "\n".join("                      " + line for line in command.splitlines()) + "\n"
+        )
+        section, count = re.subn(
+            r"                - task: AzureCLI@2\n                  displayName: Run quality evals.*?"
+            r"(?=                - task: AzureCLI@2\n                  displayName: Enforce eval verdict)",
+            lambda _: replacement, section, count=1, flags=re.S,
+        )
+        section = section.replace(
+            "                  displayName: Enforce eval verdict (mode=",
+            "                  condition: and(succeeded(), ne(variables['Build.Reason'], 'Schedule'))\n"
+            "                  displayName: Enforce eval verdict (mode=", 1,
+        )
+        text = text[:start] + section + text[end:]
+    if count != 1:
+        raise ValueError("AgentOps composition requires the existing canonical eval gate")
+    return text
+
+
+def _agentops_tooling() -> dict[Path, str]:
+    """Copyable consumers retain the catalog's relative import layout."""
+    skills = Path(__file__).resolve().parents[2]
+    paths = [
+        skills / "_shared/agentops.py",
+        skills / "_shared/manifest.py",
+        skills / "threadlight-agentops/scripts/agentops_check.py",
+        skills / "threadlight-agentops/scripts/native_observer.py",
+        skills / "threadlight-cicd/scripts/agentops_runtime.py",
+        skills / "threadlight-evals/scripts/evals_check.py",
+    ]
+    result = {}
+    for path in paths:
+        if not path.is_file():
+            raise ValueError(f"AgentOps runtime prerequisite missing from this installation: {path.name}")
+        result[Path(".threadlight/skills") / path.relative_to(skills)] = path.read_text(encoding="utf-8")
+    for path in (skills / "threadlight-agentops/references").glob("*.json"):
+        result[Path(".threadlight/skills") / path.relative_to(skills)] = path.read_text(encoding="utf-8")
+    return result
+
+
 def generate(framing: dict, out_root) -> list:
     """Render the pipeline + env-setup runbooks into out_root. Returns paths."""
     out_root = Path(out_root)
@@ -271,19 +432,25 @@ def generate(framing: dict, out_root) -> list:
 
     resolved = resolve_onboarding_path(framing)
     ctx = build_context(framing, resolved)
+    agentops, refresh_doctor, doctor_schedule = _agentops_options(framing, out_root)
+    tooling = _agentops_tooling() if agentops else {}
     env_dir = out_root / "docs" / "threadlight-cicd" / "env-setup"
     written: list[Path] = []
 
     # 1. Pipeline (platform-specific)
+    template = "github-actions/azd-deploy-prod.yml.tmpl" if platform == "github-actions" else "azure-devops/azure-pipelines.yml.tmpl"
+    pipeline = _render_file(REF / template, ctx)
+    if agentops:
+        pipeline = _compose_agentops(pipeline, platform, ctx, refresh_doctor, doctor_schedule)
     if platform == "github-actions":
         written.append(_write(
             out_root / ".github" / "workflows" / "azd-deploy-prod.yml",
-            _render_file(REF / "github-actions" / "azd-deploy-prod.yml.tmpl", ctx),
+            pipeline,
         ))
     else:
         written.append(_write(
             out_root / "azure-pipelines.yml",
-            _render_file(REF / "azure-devops" / "azure-pipelines.yml.tmpl", ctx),
+            pipeline,
         ))
 
     # 2. Env-setup step 1 — UAMI + federated credentials (platform-specific)
@@ -319,6 +486,13 @@ def generate(framing: dict, out_root) -> list:
         json.dumps(record, indent=2) + "\n",
     ))
 
+    for relative, content in tooling.items():
+        written.append(_write(out_root / relative, content))
+    if agentops:
+        written.append(_write(
+            out_root / "docs/threadlight-cicd/agentops-runtime.md",
+            (REF / "agentops-runtime.md").read_text(encoding="utf-8"),
+        ))
     return written
 
 # endregion
@@ -432,6 +606,12 @@ def _parse_args(argv):
                    help="CI/CD MCP supply-chain gate mode: soft (warn-only, "
                         "default) or hard (block the pipeline on any must-fix "
                         "MCP finding).")
+    p.add_argument("--agentops", choices=["auto", "off"], default=None,
+                   help="Compose AgentOps for discovered opt-in roots (auto, default), or leave pipelines unchanged (off).")
+    p.add_argument("--agentops-refresh-doctor", action="store_true", default=None,
+                   help="Opt in to post-deploy Doctor; runtime still requires scoped owner approval.")
+    p.add_argument("--agentops-doctor-schedule", default=None,
+                   help="Optional five-field cron for Doctor only; requires --agentops-refresh-doctor and runtime approval.")
     p.add_argument("--out", default=os.getcwd(), help="Output root (default: cwd).")
     return p.parse_args(argv)
 
@@ -458,6 +638,9 @@ def _framing_from_args(args) -> dict:
         "env_name": args.env_name,
         "eval_gate": args.eval_gate,
         "mcp_gate": args.mcp_gate,
+        "agentops": args.agentops,
+        "agentops_refresh_doctor": args.agentops_refresh_doctor,
+        "agentops_doctor_schedule": args.agentops_doctor_schedule,
     }
     for k, v in cli.items():
         if v is not None:

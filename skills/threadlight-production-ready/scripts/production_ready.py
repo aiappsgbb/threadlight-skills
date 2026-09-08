@@ -509,7 +509,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.12.0"
+VERSION = "0.13.0"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -892,6 +892,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SRE-001": {"title": "SPEC sec 12 names incident owner / on-call", "pillar": "sre-handover", "severity": "must-fix", "tier": 0},
     "SRE-002": {"title": "Runbook present in docs/", "pillar": "sre-handover", "severity": "must-fix", "tier": 0},
     "SRE-003": {"title": "Azure SRE Agent integration considered", "pillar": "sre-handover", "severity": "should-fix", "tier": 0},
+    "AOPS-001": {"title": "Opted-in AgentOps operational evidence verified", "pillar": "sre-handover", "severity": "must-fix", "tier": 0},
     "SRE-004": {"title": "Severity matrix documented", "pillar": "sre-handover", "severity": "should-fix", "tier": 0},
     "SRE-005": {"title": "Postmortem template referenced", "pillar": "sre-handover", "severity": "should-fix", "tier": 0},
     "SRE-101": {"title": "Action group routes to on-call rotation", "pillar": "sre-handover", "severity": "must-fix", "tier": 1},
@@ -6210,6 +6211,178 @@ def _check_reliability_live(ctx: RepoContext, tiers: dict[int, bool], sub: str |
 
 # ---- pillar 12: sre-handover ----------------------------------------------
 
+def _agentops_contract():
+    repo = Path(__file__).resolve().parents[3]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    from skills._shared import agentops
+    return agentops
+
+
+def _check_agentops_manifest(ctx: RepoContext) -> Finding:
+    """Read only the independent normalized contract, never native artifacts."""
+    try:
+        contract = _agentops_contract()
+        if not contract.discover_opted_in_agents(ctx.root):
+            return _mk_finding("AOPS-001", "not-applicable", "No per-agent AgentOps opt-in.")
+        data = contract.load_manifest(ctx.root)
+    except (ImportError, OSError, ValueError):
+        return _not_verified(
+            "AOPS-001", "Opted-in AgentOps evidence is absent or invalid; run threadlight-agentops "
+            "for current, bound evidence before assessing operational readiness.",
+        )
+    order = {"not-applicable": 0, "pass": 1, "should-fix": 2, "not-verified": 3, "must-fix": 4}
+    statuses = []
+    details = []
+    refs = {"specs/agentops-manifest.json"}
+    for agent in data["agents"]:
+        status = _agentops_operational_status(ctx, data, agent)
+        statuses.append(status)
+        open_checks = [f"{key}={cap['status']}" for key, cap in agent["capabilities"].items()
+                       if cap["status"] not in {"verified", "not-applicable"}]
+        blockers = agent["findings"] + [
+            blocker for domain in agent["domains"].values() for blocker in domain["blockers"]
+        ]
+        delegated = {item["owner"] for item in blockers
+                     if _agentops_domain_blocker_represented(ctx, data, agent, item)}
+        note = f"{agent['agent_key']}: {status}"
+        if open_checks:
+            note += " (" + ", ".join(open_checks) + ")"
+        if delegated:
+            note += " — quality blockers represented by canonical " + ", ".join(sorted(delegated))
+            refs.update(f"specs/{owner}-manifest.json" for owner in delegated)
+        details.append(note)
+    status = max(statuses, key=order.__getitem__) if statuses else "not-verified"
+    return _mk_finding(
+        "AOPS-001", status,
+        "AgentOps operations (not deployment certification): " + "; ".join(details),
+        evidence_refs=sorted(refs),
+    )
+
+
+def _agentops_operational_status(ctx: RepoContext, data: dict, agent: dict) -> str:
+    order = {"not-applicable": 0, "pass": 1, "should-fix": 2, "not-verified": 3, "must-fix": 4}
+    evidence_status = {"verified": "pass", "stale": "should-fix", "invalid": "must-fix",
+                       "not-verified": "not-verified", "not-applicable": "not-applicable"}
+    statuses = [evidence_status[cap["status"]] for cap in agent["capabilities"].values()]
+    for finding in agent["findings"]:
+        if not _agentops_domain_blocker_represented(ctx, data, agent, finding):
+            statuses.append(finding["severity"])
+    for domain in agent["domains"].values():
+        for blocker in domain["blockers"]:
+            if not _agentops_domain_blocker_represented(ctx, data, agent, blocker):
+                statuses.append(blocker["severity"])
+    return max(statuses, key=order.__getitem__) if statuses else "not-verified"
+
+
+def _agentops_domain_blocker_represented(ctx: RepoContext, data: dict,
+                                       agent: dict, blocker: dict) -> bool:
+    """Only exact source-bound canonical checks discharge known quality blockers."""
+    mapping = {
+        ("evals", "AOPS-EVAL-QUALITY"): {"latest_pass_rate_ok": "EVAL-105"},
+        ("redteam", "AOPS-REDTEAM-QUALITY"): {
+            "harmful_content_asr_ok": "SAFE-105", "coverage_ok": "SAFE-106",
+        },
+    }
+    owner = blocker.get("owner")
+    checks = mapping.get((owner, blocker.get("code")))
+    if not checks or agent["domains"].get(owner, {}).get("status") != "verified":
+        return False
+    expected_ids = ({
+        "eval_scenarios_present": "EVAL-001", "eval_datasets_present": "EVAL-002",
+        "dataset_shape_ok": "EVAL-003", "thresholds_declared": "EVAL-004",
+        "schedule_present": "EVAL-005", "run_history_present": "EVAL-006",
+        "online_eval_wired": "EVAL-101", "latest_eval_run_fresh": "EVAL-102/EVAL-103",
+        "alert_wired": "EVAL-104", "latest_pass_rate_ok": "EVAL-105",
+        "ab_comparison_present": "F3",
+    } if owner == "evals" else {
+        "scan_present": "SAFE-104", "scan_fresh": "SAFE-104",
+        "jailbreak_asr_ok": "SAFE-101", "prompt_injection_asr_ok": "SAFE-102",
+        "exfiltration_asr_ok": "SAFE-103", "harmful_content_asr_ok": "SAFE-105",
+        "coverage_ok": "SAFE-106",
+    })
+    allowed = {"schema", "tool_version", "captured_at", "verdict", "must_fix", "should_fix",
+               "not_verified", "capabilities", "agentops"}
+    allowed |= ({"freshness_window_days", "metrics"} if owner == "evals" else
+                {"scan_result", "scan_captured_at", "tool", "num_attacks",
+                 "strategies", "asr", "thresholds"})
+    try:
+        contract = _agentops_contract()
+        canonical = contract.read_json(ctx.root, f"specs/{owner}-manifest.json", limit=1024 * 1024)
+        if not isinstance(canonical, dict) or set(canonical) != allowed:
+            return False
+        if canonical["schema"] != f"threadlight-{owner}-manifest/v1":
+            return False
+        if canonical["tool_version"] != ("0.3.0" if owner == "evals" else "0.2.0"):
+            return False
+        captured = datetime.fromisoformat(canonical["captured_at"].replace("Z", "+00:00"))
+        generated = datetime.fromisoformat(data["generated_at"].replace("Z", "+00:00"))
+        days = (canonical["freshness_window_days"] if owner == "evals"
+                else canonical["thresholds"]["freshness_days"])
+        if type(days) is not int or not 1 <= days <= 90 or captured.tzinfo is None:
+            return False
+        age = datetime.now(timezone.utc) - captured
+        if not timedelta(0) <= age <= timedelta(days=days) or captured + timedelta(seconds=1) < generated:
+            return False
+        capabilities = canonical["capabilities"]
+        if set(capabilities) != set(expected_ids):
+            return False
+        id_key = "check_id" if owner == "evals" else "finding_id"
+        status_order = {"not-applicable": 0, "pass": 1, "not-verified": 2,
+                        "should-fix": 3, "must-fix": 4}
+        for key, cap in capabilities.items():
+            if cap.get(id_key) != expected_ids[key] or cap.get("status") not in status_order:
+                return False
+        for field, status in (("must_fix", "must-fix"), ("should_fix", "should-fix"),
+                              ("not_verified", "not-verified")):
+            expected = sorted(key for key, cap in capabilities.items() if cap["status"] == status)
+            if not isinstance(canonical[field], list) or sorted(canonical[field]) != expected:
+                return False
+        if canonical["must_fix"] and canonical["verdict"] not in (
+            ("offline-only", "none") if owner == "evals" else ("vulnerable",)
+        ):
+            return False
+        proof = canonical["agentops"]
+        source_digest = contract.canonical_hash(data)
+        if (proof.get("source") != "specs/agentops-manifest.json"
+                or proof.get("source_manifest_sha256") != source_digest):
+            return False
+        records = proof["agents"]
+        expected_agents = {(item["agent_key"], item["root"]) for item in data["agents"]}
+        if (len(records) != len(expected_agents)
+                or {(item["agent_key"], item["root"]) for item in records} != expected_agents):
+            return False
+        record = next(item for item in records if item["agent_key"] == agent["agent_key"])
+        refs = sorted(agent["provenance"]["artifacts"])
+        represented = record.get("represented_blockers")
+        if (not isinstance(represented, list)
+                or any(not isinstance(code, str) for code in represented)
+                or len(set(represented)) != len(represented)
+                or not set(represented) <= {code for domain, code in mapping if domain == owner}):
+            return False
+        if (record["evidence_refs"] != refs or record.get("source_manifest_sha256") != source_digest
+                or record.get("artifacts") != agent["provenance"]["artifacts"]
+                or record.get("receipt_sha256") != agent["provenance"]["receipt_sha256"]
+                or record.get("domain_status") != "verified"
+                or blocker["code"] not in represented):
+            return False
+        required = status_order[blocker["severity"]]
+        for key in checks:
+            cap = capabilities[key]
+            if (status_order[cap["status"]] < required
+                    or status_order.get(record["capabilities"].get(key), -1) < required):
+                continue
+            if any(source.get("source") == "specs/agentops-manifest.json"
+                   and source.get("agent_key") == agent["agent_key"]
+                   and source.get("evidence_refs") == refs
+                   and status_order.get(source.get("status"), -1) >= required
+                   for source in cap.get("sources", [])):
+                return True
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, StopIteration):
+        pass
+    return False
+
+
 def _check_sre_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     spec = ctx.spec_text
@@ -6234,6 +6407,7 @@ def _check_sre_static(ctx: RepoContext) -> list[Finding]:
     out.append(_mk_finding("SRE-005",
         status="pass" if postmortem else "should-fix",
         detail="Postmortem template referenced" if postmortem else "No postmortem template referenced"))
+    out.append(_check_agentops_manifest(ctx))
     return out
 
 

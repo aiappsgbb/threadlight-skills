@@ -14,6 +14,7 @@ const ALLOWED_FILES = new Set([
   "specs/evals-manifest.json",
   "specs/redteam-manifest.json",
   "specs/govern-manifest.json",
+  "specs/agentops-manifest.json",
   "specs/connect-manifest.json",
   "specs/ground-manifest.json",
   "specs/load-manifest.json",
@@ -178,6 +179,80 @@ export async function createArtifactReader(workspace) {
   }
 
   return Object.freeze({
+    async agentOpsRoots(explicitRoots = []) {
+      if (!Array.isArray(explicitRoots) || explicitRoots.length > 20000) {
+        throw new ArtifactAccessError("agentops.yaml", "invalid explicit root inventory");
+      }
+      const excluded = new Set([
+        ".git", ".agentops", ".azure", ".venv", "venv", "node_modules",
+        "__pycache__", ".pytest_cache", "dist", "build", ".threadlight",
+        "coverage", "test", "tests", "fixture", "fixtures", "example",
+        "examples", "doc", "docs", "sample", "samples", "skills", "catalog",
+      ]);
+      const roots = [];
+      const pending = [workspaceReal];
+      let visited = 0;
+      while (pending.length) {
+        const current = pending.pop();
+        if (++visited > 10000) {
+          throw new ArtifactAccessError("agentops.yaml", "opt-in discovery exceeds directory limit");
+        }
+        // Metadata-only traversal: native configuration and payloads are never read.
+        const details = await lstat(current);
+        if (details.isSymbolicLink() || !details.isDirectory()) {
+          throw new ArtifactAccessError("agentops.yaml", "opt-in directory changed during discovery");
+        }
+        if (await realpath(current) !== current) {
+          throw new ArtifactAccessError("agentops.yaml", "symlinked opt-in ancestry is not allowed");
+        }
+        const entries = await readdir(current, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name === "agentops.yaml") {
+            if (!entry.isFile()) {
+              throw new ArtifactAccessError("agentops.yaml", "opt-in must be a regular file");
+            }
+            roots.push(path.relative(workspaceReal, current).split(path.sep).join("/") || ".");
+          } else if (entry.isDirectory() && !entry.name.startsWith(".") && !excluded.has(entry.name.toLowerCase())) {
+            pending.push(path.join(current, entry.name));
+          }
+        }
+      }
+      for (const relative of explicitRoots) {
+        if (typeof relative !== "string" || relative.length > 512 ||
+            !/^[A-Za-z0-9_. /-]+$/.test(relative) || relative.startsWith("/") ||
+            relative.split("/").includes("..") || path.posix.normalize(relative) !== relative) {
+          throw new ArtifactAccessError("agentops.yaml", "unsafe explicit root");
+        }
+        let candidate = workspaceReal;
+        let missing = false;
+        for (const part of relative.split("/").filter((part) => part !== ".")) {
+          candidate = path.join(candidate, part);
+          let details;
+          try {
+            details = await lstat(candidate);
+          } catch (error) {
+            if (error?.code !== "ENOENT") throw error;
+            missing = true;
+            break;
+          }
+          if (details.isSymbolicLink() || !details.isDirectory()) {
+            throw new ArtifactAccessError("agentops.yaml", "unsafe explicit root ancestry");
+          }
+        }
+        if (missing) continue;
+        try {
+          const marker = await lstat(path.join(candidate, "agentops.yaml"));
+          if (!marker.isFile() || marker.isSymbolicLink()) {
+            throw new ArtifactAccessError("agentops.yaml", "opt-in must be a regular file");
+          }
+          roots.push(relative);
+        } catch (error) {
+          if (error?.code !== "ENOENT") throw error;
+        }
+      }
+      return [...new Set(roots)].sort();
+    },
+
     async exists(relativePath) {
       const resolved = await resolveAllowed(relativePath);
       if (!resolved.exists) {

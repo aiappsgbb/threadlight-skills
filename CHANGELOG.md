@@ -7,6 +7,15 @@ field.
 
 ## [Unreleased]
 
+### Added
+
+- Optional `threadlight-agentops` per-agent evidence normalization and `AOPS-001`
+  residual operational assessment. Native AgentOps adoption stays in awesome-gbb;
+  existing eval, red-team, governance, CI/CD and Citadel ownership is preserved.
+- AgentOps lifecycle registration and read-only Auto stage. No `agentops.yaml`
+  means not applicable, not an adoption requirement. Plugin/marketplace candidate
+  version 2.1.0; no production-readiness or new live-deployment claim.
+
 ## [2.0.0] - 2026-09-06
 
 ### Breaking migration

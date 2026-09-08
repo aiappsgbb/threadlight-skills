@@ -8,7 +8,29 @@
 
 **Tech Stack:** Python 3 stdlib, subprocess-safe AgentOps CLI calls, JSON/JSON Schema, pytest/unittest, GitHub Actions and Azure DevOps templates, Node lifecycle-canvas tests.
 
-**Prerequisite:** `foundry-agentops` must be released from `aiappsgbb/awesome-gbb`; pin its released version/commit before implementing remediation links.
+**Prerequisite:** `foundry-agentops` must be available from `aiappsgbb/awesome-gbb` at an immutable reviewed commit before implementing remediation links. This is satisfied by merged commit `2db28d1f52bf288f2d0fd40b7c8beb913ceeee09`; a merge is not a separate release or production certification.
+
+## Implementation reconciliation (2026-09-08)
+
+The snippets below preserve the original plan, not the final native API. The
+implementation uses the actual AgentOps 0.14.0 artifact contract and current
+Threadlight main after PR #127:
+
+- Binding-scoped `threadlight-governance-manifest/v1` stays authoritative;
+  AgentOps cannot satisfy its policy, runtime or deployed-proof requirements.
+- The shared AgentOps validator rechecks native sources and same-process local
+  receipts. Imported old files alone are not verified. Existing signatures are
+  optional; no new PKI is an adoption prerequisite.
+- Auto normalizes read-only evidence after invoke and **before** eval/red-team
+  consumption to support reuse in the same pass. No opt-in skips without changing
+  the existing pilot flow or initiating native operations.
+- CI and explicit Doctor refresh use one packaged, approval-gated observer.
+  Only normalized metadata may be published, never the raw native artifacts
+  mentioned in the earlier workflow sketch.
+- Canvas is advisory metadata observation, not another readiness gate.
+- Plugin/marketplace candidate is 2.1.0, following current 2.0.0, rather than the
+  superseded 1.14.0 version sketch. New tests are wired into the existing local CI
+  suite; no new Azure run or resource authorization is implied by this change.
 
 ---
 

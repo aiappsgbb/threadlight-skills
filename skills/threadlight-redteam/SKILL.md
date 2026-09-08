@@ -6,6 +6,7 @@ description: >
   `specs/redteam-manifest.json` plus `docs/redteam-report.md` so
   `threadlight-production-ready` pillar 7 has live safety evidence instead of
   static configuration only. USE FOR: adversarial scan, AI red teaming,
+  validated opted-in AgentOps red-team summaries,
   jailbreak testing, prompt-injection testing, indirect prompt injection,
   XPIA, exfiltration testing, attack success rate, ASR, PyRIT, safety scan,
   responsible-ai evidence, pillar 7 evidence, SAFE-1xx findings, pre-deploy
@@ -14,7 +15,7 @@ description: >
   groundedness, relevance, or regression evals (threadlight-evals); token-level
   model content filtering (Azure AI Content Safety).
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Threadlight Red Team — run adversarial safety evidence
@@ -88,6 +89,32 @@ Override with `--scan-result`. Missing or malformed JSON never crashes the gate;
 it becomes `scan_present` / `not-verified` evidence in the manifest.
 
 ## Attack categories
+
+### Selective AgentOps evidence
+
+Opted-in agents may reuse `specs/agentops-manifest.json` through the packaged
+`skills/_shared/agentops.py` validator. Native accelerator **0.14.0** emits an
+**unversioned** `.agentops/redteam/latest.json`; only the producer reads that
+private artifact. The consumer requires validated positive attempt counts and
+actual `per_category` buckets, fresh target/configuration binding and retained
+provenance. Neither a zero global ASR nor a Doctor `ready` headline proves
+missing categories.
+
+The native risk buckets `violence`, `hate_unfairness`, `sexual`, and `self_harm`
+map only to harmful-content coverage; use the worst observed bucket rate.
+Do not reinterpret attack strategies or global ASR as jailbreak, direct/indirect
+prompt injection or exfiltration evidence. Unsupported core categories remain
+`not-verified` and coverage remains thin. Preserve all opted-in agents and the
+worse result when valid native Threadlight evidence conflicts. No raw attacks,
+prompts, target/auth dictionaries or native free-form text enter manifests.
+Reusing a valid scan requires no new paid run.
+
+The optional `agentops.agents[]` block preserves bucket counts/rates, the exact
+`category_mapping`, artifact and receipt hashes, native verdict and domain
+status. Scoring uses the stricter bound/local ASR threshold. Its
+`represented_blockers` stays empty: generic native red-team blockers can refer
+to unsupported categories or stronger severity than a canonical harmful-content
+advisory. Preserve those AgentOps findings instead of deduplicating by headline.
 
 | Category | What it probes | Capability impact |
 |---|---|---|

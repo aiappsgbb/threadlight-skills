@@ -47,9 +47,9 @@ from uuid import uuid4
 # Stage definitions — lockstep with SKILL.md § Resumption table
 # -----------------------------------------------------------------------------
 
-STAGES = ["preflight", "design", "deploy", "safe_check", "cost_projection", "invoke", "evals", "redteam", "govern"]
+STAGES = ["preflight", "design", "deploy", "safe_check", "cost_projection", "invoke", "agentops", "evals", "redteam", "govern"]
 GOVERNANCE_STAGES = ["preflight", "design", "govern", "governed_actions_gate", "deploy",
-                     "governance_probe", "safe_check", "cost_projection", "invoke", "evals", "redteam"]
+                     "governance_probe", "safe_check", "cost_projection", "invoke", "agentops", "evals", "redteam"]
 
 DEFAULT_STATE_PATH = ".threadlight/auto-state.json"
 DEFAULT_NEXT_PATH = ".threadlight/auto-next.json"
@@ -1300,6 +1300,28 @@ def _check_redteam(workspace: Path, _: dict[str, Any]) -> StageDecision:
 
 # Protect leg — agent-runtime governance (AGT). Runs threadlight-govern; emits
 # the binding inventory + specs/governance-manifest.json, not whole-agent proof.
+def _check_agentops(workspace: Path, _: dict[str, Any]) -> StageDecision:
+    from skills._shared.agentops import (
+        AgentOpsValidationError, discover_opted_in_agents, load_manifest,
+    )
+    artifact = "specs/agentops-manifest.json"
+    try:
+        if not discover_opted_in_agents(workspace):
+            return StageDecision("agentops", "skip", "AgentOps not opted in.")
+        value = load_manifest(workspace)
+    except (AgentOpsValidationError, OSError):
+        return StageDecision(
+            "agentops", "run",
+            "AgentOps evidence missing, invalid, stale or changed; run read-only threadlight-agentops.",
+            artifacts_missing=[artifact],
+        )
+    return StageDecision(
+        "agentops", "skip",
+        f"Current AgentOps evidence; verdict={value['verdict']}. Not production certification.",
+        artifacts_seen=[artifact],
+    )
+
+
 def _check_govern(workspace: Path, _: dict[str, Any]) -> StageDecision:
     try:
         from skills._shared.governance_readiness import load_contract, read_json, inventory_matches
@@ -1734,6 +1756,7 @@ STAGE_PROBES = {
     "evals": _check_evals,
     "redteam": _check_redteam,
     "govern": _check_govern,
+    "agentops": _check_agentops,
 }
 
 
@@ -1746,6 +1769,9 @@ def _cascade_invalidations(decisions: list[StageDecision]) -> list[StageDecision
     seen_run = False
     out: list[StageDecision] = []
     for d in decisions:
+        if d.name == "agentops" and d.reason == "AgentOps not opted in.":
+            out.append(d)
+            continue
         if seen_run and d.decision == "skip":
             out.append(
                 StageDecision(
@@ -1860,7 +1886,7 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
         governed = "governance_probe" in report["stages"]
         if governed:
             guards = (["govern", "governed_actions_gate"] if stage == "deploy" else
-                      ["governance_probe"] if stage in ("safe_check", "cost_projection", "invoke", "evals", "redteam") else [])
+                      ["governance_probe"] if stage in ("safe_check", "cost_projection", "invoke", "evals", "redteam", "agentops") else [])
             for guard in guards:
                 if {**STAGE_PROBES, **GOVERNANCE_PROBES}[guard](workspace, {}).decision != "skip":
                     return {"status": "blocked", "stage": guard, "executed": executed}
@@ -1886,7 +1912,7 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
             if (prior_collection == _sha256(workspace / ".threadlight/governance-live.json")
                     or not record_governance_probe(workspace)):
                 return {"status": "blocked", "stage": stage, "executed": executed}
-        if stage in GOVERNANCE_PROBES or (stage == "govern" and "governance_probe" in report["stages"]):
+        if stage in GOVERNANCE_PROBES or stage == "agentops" or (stage == "govern" and "governance_probe" in report["stages"]):
             probe = {**STAGE_PROBES, **GOVERNANCE_PROBES}[stage]
             if probe(workspace, {}).decision != "skip":
                 return {"status": "blocked", "stage": stage, "executed": executed}

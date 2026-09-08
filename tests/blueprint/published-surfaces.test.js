@@ -38,9 +38,9 @@ function extractProducerSectionHeading(text, number) {
 // The single release contract these publication assertions are built from.
 // expectedPipelineSkillCount counts every skill except the threadlight-auto
 // planner, so expectedSkillCount is always expectedPipelineSkillCount + 1.
-const expectedVersion = '2.0.0';
-const expectedSkillCount = 23;
-const expectedPipelineSkillCount = 22;
+const expectedVersion = '2.1.0';
+const expectedSkillCount = 24;
+const expectedPipelineSkillCount = 23;
 
 const NEW_SKILLS = [
   'threadlight-qualify',
@@ -51,6 +51,7 @@ const NEW_SKILLS = [
 ];
 
 const THREADLIGHT_SKILLS = [
+  'threadlight-agentops',
   'threadlight-auto',
   'threadlight-cicd',
   'threadlight-connect',
@@ -93,12 +94,8 @@ const ACTIVE_SURFACES = [
   'docs/index.html',
   'docs/customize.html',
 ];
-// NB: `22 pipeline` is CURRENT (expectedPipelineSkillCount), so only the
-// superseded `21 pipeline` and the superseded `22-skill library` / `all 22
-// skills` / `Threadlight is 22` TOTAL claims are matched here — a bare "22
-// skills" is deliberately not matched, because pipeline-scoped copy may
-// legitimately say it.
-const STALE_COUNT = /17 skills|17 total|16 pipeline|21 pipeline|22 total|13-skill library|22-skill library|all 17 skills|all 22 skills|all 22 threadlight skills|22 threadlight skills|Threadlight is 22|sixteen[ -]skill|seventeen[ -]skill|twenty-two[ -]skill/i;
+// Pipeline and total library counts are distinct; production pillar counts are not skill counts.
+const STALE_COUNT = /17 skills|17 total|16 pipeline|21 pipeline|22 pipeline|22 total|23 total|13-skill library|22-skill library|23-skill library|all 17 skills|all 22 skills|all 23 skills|all 22 threadlight skills|22 threadlight skills|Threadlight is 22|Threadlight is 23|sixteen[ -]skill|seventeen[ -]skill|twenty-two[ -]skill|twenty-three[ -]skill/i;
 
 test(`filesystem publishes exactly ${expectedSkillCount} threadlight-* skills`, () => {
   const dirs = fs
@@ -154,9 +151,9 @@ test(`published surfaces enumerate the ${expectedSkillCount}-skill pack`, () => 
 test(`THREADLIGHT inventory is the exact unique alphabetical ${expectedSkillCount}-skill set`, () => {
   const briefing = read('THREADLIGHT.md');
   const inventory = briefing.match(
-    /The twenty-three skills \(alphabetical,[\s\S]*?\n```(?:text)?\n([\s\S]*?)\n```/,
+    /The twenty-four skills \(alphabetical,[\s\S]*?\n```(?:text)?\n([\s\S]*?)\n```/,
   );
-  assert.ok(inventory, 'THREADLIGHT.md must contain the fenced twenty-three-skill inventory');
+  assert.ok(inventory, 'THREADLIGHT.md must contain the fenced twenty-four-skill inventory');
 
   const published = inventory[1].match(/threadlight-[a-z0-9-]+/g) || [];
   assert.deepStrictEqual(published, THREADLIGHT_SKILLS);
@@ -216,11 +213,12 @@ test('funnel chain enumeration counts governed-actions and adds up to the publis
   // must equal expectedPipelineSkillCount, and threadlight-auto takes the
   // library to expectedSkillCount. Publishing governed-actions without
   // adding it to this enumeration leaves the arithmetic one leg short.
-  assert.match(funnel, /thirteen entry, evidence, and lifecycle legs/i);
+  assert.match(funnel, /fourteen entry, evidence, and lifecycle legs/i);
+  assert.match(funnel, /<code>agentops<\/code>/);
   assert.match(funnel, /<code>governed-actions<\/code>/, 'the leg list must name governed-actions');
   assert.match(
     funnel,
-    new RegExp(`3 \\+ 6 \\+ 13 = <strong>${expectedPipelineSkillCount} pipeline skills</strong>`),
+    new RegExp(`3 \\+ 6 \\+ 14 = <strong>${expectedPipelineSkillCount} pipeline skills</strong>`),
   );
   assert.match(funnel, new RegExp(`<strong>${expectedSkillCount}-skill library</strong>`));
   assert.doesNotMatch(funnel, /3 \+ 6 \+ 12|twelve entry, evidence, and lifecycle legs/i);

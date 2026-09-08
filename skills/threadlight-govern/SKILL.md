@@ -4,9 +4,13 @@ description: >-
   Use when a Threadlight pilot needs native ACS/Rego policy, SAFE business
   invariants, selected tool or lifecycle bindings, approval requirements,
   signed policy distribution, or runtime governance before deployment.
+  AgentOps ASSERT/ACS summaries in specs/agentops-manifest.json are
+  supplemental only, outside canonical binding-scoped proof. They cannot
+  change selected bindings, live enforcement, or policy, signature, approval,
+  audit and attestation acceptance.
   Not for model content filtering, red-team scans or quality evaluations.
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
 ---
 
 # Threadlight Govern — policy into selected runtime enforcement
