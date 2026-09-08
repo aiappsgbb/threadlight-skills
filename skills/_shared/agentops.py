@@ -860,7 +860,7 @@ def _redteam_summary(data):
             "core_category_coverage": CORE_CATEGORIES <= set(normalized)}
 
 
-def _comparison_summary(current, baseline_raw, record, policy, now, hours):
+def _comparison_summary(current, baseline_raw, record, policy, now, hours, *, root):
     baseline = parse_json(baseline_raw)
     _eval_summary(baseline)
     _require(sha256(baseline_raw) == policy.get("baseline_sha256"), "baseline-policy-mismatch")
@@ -870,8 +870,12 @@ def _comparison_summary(current, baseline_raw, record, policy, now, hours):
              "baseline-target-mismatch")
     comparison = current["comparison"]
     _require(isinstance(comparison, dict), "invalid-comparison")
-    _require(comparison.get("baseline_path") == record["artifacts"]["baseline"]["path"]
-             and comparison.get("baseline_started_at") == baseline["started_at"]
+    baseline_ref = record["artifacts"]["baseline"]["path"]
+    reported_path = comparison.get("baseline_path")
+    _require(isinstance(reported_path, str) and
+             reported_path in {baseline_ref, str(safe_path(root, baseline_ref))},
+             "comparison-baseline-mismatch")
+    _require(comparison.get("baseline_started_at") == baseline["started_at"]
              and comparison.get("baseline_overall_passed") == baseline["summary"]["overall_passed"],
              "comparison-baseline-mismatch")
     metrics = comparison.get("metrics")
@@ -980,18 +984,33 @@ def _finding(code, *, owner="agentops", severity="should-fix"):
     return {"code": code, "owner": owner, "severity": severity}
 
 
-def _source_blockers(evidence, domains, *, fresh):
+def _source_blockers(evidence, domains, *, fresh, doctor_findings=()):
     """Assign only specifically represented native blockers to a domain owner."""
     remaining = list(evidence["blockers"])
-    unmatched = evidence["doctor"]["counts"]["critical"] > 0
+    critical = [finding for finding in doctor_findings if finding["severity"] == "critical"]
+    eval_code = _finding("AOPS-EVAL-QUALITY", owner="evals", severity="must-fix")
+    eval_critical = (
+        fresh and evidence["doctor"]["counts"]["critical"] == 1 and len(critical) == 1
+        and critical[0].get("id") == "opex.release.latest_eval_failed"
+        and domains["evals"]["status"] == "verified" and domains["evals"]["verdict"] == "fail"
+        and domains["evals"]["summary"].get("overall_passed") is False
+        and eval_code in domains["evals"]["blockers"]
+    )
+    unmatched = evidence["doctor"]["counts"]["critical"] > 0 and not eval_critical
+    critical_represented = evidence["doctor"]["counts"]["critical"] == 0
     mapped = []
     for check in evidence["checks"]:
         if check["status"] != "blocked":
             continue
         owner = None
         if (check["name"] == "Latest eval gate"
-                and check["summary"] == "Latest evaluation failed configured thresholds."
+                and check["summary"] == "Latest evaluation failed one or more thresholds."
                 and domains["evals"]["summary"].get("overall_passed") is False):
+            owner = "evals"
+            code = "AOPS-EVAL-QUALITY"
+        elif (check["name"] == "Doctor readiness" and eval_critical
+              and check["summary"] == "Doctor reported critical findings."
+              and check.get("evidence") == evidence["doctor"]):
             owner = "evals"
             code = "AOPS-EVAL-QUALITY"
         elif check["name"] == "Red team readiness":
@@ -1015,6 +1034,8 @@ def _source_blockers(evidence, domains, *, fresh):
             # Remove one matching occurrence only; duplicate/unmatched native
             # blockers must not disappear because one recognized check exists.
             remaining.remove(check["summary"])
+            if check["name"] == "Doctor readiness" and eval_critical:
+                critical_represented = True
             finding = _finding(code, owner=owner, severity="must-fix")
             if finding not in mapped:
                 mapped.append(finding)
@@ -1022,6 +1043,7 @@ def _source_blockers(evidence, domains, *, fresh):
             unmatched = True
     unmatched |= bool(remaining)
     unmatched |= evidence["status"] == "blocked" and not mapped
+    unmatched |= not critical_represented
     return mapped, unmatched
 
 
@@ -1134,7 +1156,8 @@ def _agent(repo, identity, state, now, hours):
                 eval_domain["blockers"].append(_finding("AOPS-EVAL-QUALITY", owner="evals", severity="must-fix"))
         if native.get("comparison") is not None:
             if "baseline" in private and status == "verified":
-                clean["comparison"] = _comparison_summary(native, private["baseline"], record, policy, now, hours)
+                clean["comparison"] = _comparison_summary(
+                    native, private["baseline"], record, policy, now, hours, root=root)
             if clean["comparison"]["status"] != "verified":
                 findings.append(_finding("AOPS-COMPARISON-UNVERIFIED", owner="evals"))
         evidence, blocked, doctor_fresh = None, False, False
@@ -1186,7 +1209,9 @@ def _agent(repo, identity, state, now, hours):
                 if not good:
                     rt["blockers"].append(_finding("AOPS-REDTEAM-QUALITY", owner="redteam", severity="must-fix"))
         if blocked:
-            mapped, unmatched = _source_blockers(evidence, result["domains"], fresh=doctor_fresh)
+            history_record = parse_json([line for line in private["history"].splitlines() if line.strip()][-1])
+            mapped, unmatched = _source_blockers(
+                evidence, result["domains"], fresh=doctor_fresh, doctor_findings=history_record["findings"])
             findings.extend(mapped)
             if unmatched:
                 findings.append(_finding("AOPS-DOCTOR-BLOCKED", severity="must-fix"))

@@ -106,9 +106,9 @@ class AgentOpsTests(unittest.TestCase):
             "target": target["raw"],
             "checks": [{"name": "Doctor readiness", "status": "blocked" if doctor_blocked else "ready", "summary": "PRIVATE"}]
                       + ([{"name": "Latest eval gate", "status": "blocked",
-                           "summary": "Latest evaluation failed configured thresholds."}] if not quality else []),
+                           "summary": "Latest evaluation failed one or more thresholds."}] if not quality else []),
             "blockers": (["PRIVATE BLOCKER"] if doctor_blocked else [])
-                        + (["Latest evaluation failed configured thresholds."] if not quality else []),
+                        + (["Latest evaluation failed one or more thresholds."] if not quality else []),
             "warnings": [], "ready": [], "links": [],
             "doctor": {"status": "ok", "findings_total": count, "counts": counts,
                        "max_severity": self.history["max_severity"], "top_findings": findings},
@@ -203,9 +203,32 @@ class AgentOpsTests(unittest.TestCase):
         self.assertIn({"code": "AOPS-EVAL-QUALITY", "owner": "evals", "severity": "must-fix"}, findings)
         self.assertNotIn("AOPS-DOCTOR-BLOCKED", [item["code"] for item in findings])
 
+    def test_native_quality_critical_and_aggregate_keep_the_eval_owner(self):
+        self.fixture(quality=False, doctor_blocked=True)
+        self.history["findings"][0]["id"] = "opex.release.latest_eval_failed"
+        message = "Doctor reported critical findings."
+        self.evidence["blockers"][0] = message
+        self.evidence["checks"][0].update(
+            summary=message, evidence=copy.deepcopy(self.evidence["doctor"]))
+        self.write(self.roles["history"], json.dumps(self.history) + "\n")
+        self.write(self.roles["evidence"], self.evidence)
+        self.sign()
+        result = check.assess(self.repo, now=NOW)
+        self.assertEqual(result["verdict"], "blocked")
+        self.assertIn({"code": "AOPS-EVAL-QUALITY", "owner": "evals", "severity": "must-fix"},
+                      result["agents"][0]["findings"])
+        self.assertNotIn("AOPS-DOCTOR-BLOCKED", [item["code"] for item in result["findings"]])
+
+        self.evidence["checks"].pop(0)
+        self.evidence["blockers"].pop(0)
+        self.write(self.roles["evidence"], self.evidence)
+        self.sign()
+        unrepresented = check.assess(self.repo, now=NOW)
+        self.assertIn("AOPS-DOCTOR-BLOCKED", [item["code"] for item in unrepresented["findings"]])
+
     def test_unmatched_duplicate_native_blocker_is_not_silently_deduplicated(self):
         self.fixture(quality=False)
-        self.evidence["blockers"].append("Latest evaluation failed configured thresholds.")
+        self.evidence["blockers"].append("Latest evaluation failed one or more thresholds.")
         self.write(self.roles["evidence"], self.evidence)
         self.sign()
         result = check.assess(self.repo, now=NOW)
@@ -404,6 +427,24 @@ class AgentOpsTests(unittest.TestCase):
         result = check.assess(self.repo, now=NOW)
         summary = result["agents"][0]["domains"]["evals"]["summary"]
         self.assertEqual(summary["comparison"], {"status": "verified", "regressions": 0})
+
+    def test_native_absolute_baseline_path_is_bound_and_not_exported(self):
+        self.comparison_fixture()
+        self.native["comparison"]["baseline_path"] = str((self.repo / self.roles["baseline"]).resolve())
+        for role in ("result", "latest"):
+            self.write(self.roles[role], self.native)
+        self.sign()
+        result = check.assess(self.repo, now=NOW)
+        self.assertEqual(result["agents"][0]["domains"]["evals"]["summary"]["comparison"]["status"], "verified")
+        self.assertNotIn(str(self.repo), json.dumps(result))
+
+    def test_foreign_absolute_baseline_path_is_not_accepted_by_matching_hashes(self):
+        self.comparison_fixture()
+        self.native["comparison"]["baseline_path"] = str(self.repo.parent / "outside.json")
+        for role in ("result", "latest"):
+            self.write(self.roles[role], self.native)
+        self.sign()
+        self.assertEqual(check.assess(self.repo, now=NOW)["verdict"], "blocked")
 
     def test_forged_comparison_delta_is_integrity_failure(self):
         self.comparison_fixture()

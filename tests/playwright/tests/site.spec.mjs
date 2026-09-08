@@ -44,7 +44,7 @@ function toLocalAssetPath(absUrl) {
 }
 
 test.describe('landing page — the scrubbable demo (index.html)', () => {
-  test('renders the demo hero, the Threadlight brand, and the 23-skill public count', async ({ page }) => {
+  test('renders the demo hero, the Threadlight brand, and the 24-skill public count', async ({ page }) => {
     await page.goto(LANDING);
     await expect(page).toHaveTitle(/working pilot/i);
     await expect(page.locator('header.masthead .brand-name')).toContainText(/Threadlight/);
@@ -52,8 +52,8 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
     await expect(hero).toBeVisible();
     await expect(hero).toContainText(/working pilot/i);
     await expect(hero).not.toContainText(/governed agent/i);
-    // The public library is exactly 23 skills — stated in the primer.
-    await expect(page.locator('#how-it-works')).toContainText(/23\s+skills/i);
+    // The public library is exactly 24 skills — stated in the primer.
+    await expect(page.locator('#how-it-works')).toContainText(/24\s+skills/i);
   });
 
   test('footer is public-safe (open guidance, no "internal use" leak)', async ({ page }) => {
@@ -244,15 +244,15 @@ test.describe('funnel chapter — the five-stage narrative (funnel.html)', () =>
     await expect(page).toHaveTitle(/governed working pilot funnel/i);
     await expect(page.locator('meta[name="description"]')).toHaveAttribute(
       'content',
-      /governed working pilot.*evidence-backed path to production.*23-skill library/i,
+      /governed working pilot.*evidence-backed path to production.*24-skill library/i,
     );
     await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
       'content',
-      /governed working pilot.*evidence-backed path to production.*23-skill library/i,
+      /governed working pilot.*evidence-backed path to production.*24-skill library/i,
     );
     await expect(page.locator('meta[name="twitter:description"]')).toHaveAttribute(
       'content',
-      /governed working pilot.*evidence-backed path to production.*23-skill library/i,
+      /governed working pilot.*evidence-backed path to production.*24-skill library/i,
     );
     const headline = page.locator('#scene-hero .hero-headline');
     await expect(headline).toContainText(/Business\s+process/i);
@@ -303,7 +303,7 @@ test.describe('funnel chapter — the five-stage narrative (funnel.html)', () =>
     }
   });
 
-  test('the skills chain shows the primary cards, supporting chips, and the 23-skill library note', async ({ page }) => {
+  test('the skills chain shows the primary cards, supporting chips, and the 24-skill library note', async ({ page }) => {
     await page.goto('/funnel.html');
     const rail = page.locator('#scene-chain .chain-rail');
     await expect(rail).toHaveCount(1);
@@ -321,7 +321,7 @@ test.describe('funnel chapter — the five-stage narrative (funnel.html)', () =>
     for (const s of ['demo-data-factory', 'local-test', 'safe-check', 'hitl-patterns', 'workspace-ui', 'event-triggers', 'cicd', 'customize']) {
       expect(chipNames, `chain should name supporting skill ${s}`).toContain(s);
     }
-    await expect(page.locator('#scene-chain')).toContainText(/23-skill library/i);
+    await expect(page.locator('#scene-chain')).toContainText(/24-skill library/i);
   });
 
   test('the industries strip shows six sectors, each linking to the industries chapter', async ({ page }) => {

@@ -64,7 +64,7 @@ elif sys.argv[1:3] == ["eval", "run"]:
     result = json.loads((root / ".agentops/results/latest/results.json").read_text())
     result.update(started_at=now, finished_at=now, duration_seconds=0.0)
     if "--baseline" in sys.argv and not (root / ".agentops/omit-comparison").exists():
-        baseline_path = Path(sys.argv[sys.argv.index("--baseline") + 1]).as_posix()
+        baseline_path = str(Path(sys.argv[sys.argv.index("--baseline") + 1]).resolve())
         baseline = json.loads((root / baseline_path).read_text())
         result["comparison"] = {
             "baseline_path": baseline_path, "baseline_started_at": baseline["started_at"],

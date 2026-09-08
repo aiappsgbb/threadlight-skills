@@ -108,6 +108,18 @@ owned by AgentOps, including when other native checks map to domains. Never drop
 unknown blockers to avoid double-counting. Domain quality alone is not the
 operational aggregate, but native release blockers still require a recorded owner.
 
+The pinned native comparison serializes its resolved baseline as an absolute
+path. That private value must equal the safely resolved approved baseline inside
+the current agent root (or its bound relative spelling); it is never copied to
+the normalized manifest. A matching hash cannot authorize another location.
+
+The exact native threshold-failure message is
+`Latest evaluation failed one or more thresholds.` A sole critical
+`opex.release.latest_eval_failed` can share that eval owner only when the complete
+validated Doctor history, matching native aggregate check, fresh failing eval
+and canonical representation agree. Other criticals, unrepresented aggregate
+checks and duplicate/unmatched blockers remain operational findings.
+
 Recognized native **blocked** checks can carry an exact domain owner:
 `Latest eval gate` with the tagged threshold-failure summary maps to
 `AOPS-EVAL-QUALITY` only when the fresh verified eval domain actually fails.
