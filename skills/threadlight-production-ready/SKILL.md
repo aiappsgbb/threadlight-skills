@@ -1,27 +1,45 @@
 ---
 name: threadlight-production-ready
 description: >-
-  Use after threadlight-safe-check post-deploy returns green to take a
-  deployed pilot from lab to ready for customer architecture review / CISO
-  sign-off / paved path to production. Reads SPEC § 12 (posture, must-have
-  pillars, residency, RTO/RPO, SLA, incident owner) and probes Azure to
-  produce an advisory production-readiness scorecard + uplift plan + customer
-  hand-off package across 13 pillars. Soft advisory — never fails a build. USE
-  FOR: production readiness, prod-ready gate, customer architecture review,
-  CISO sign-off prep, pilot-to-prod handover, paved path to production,
-  citadel uplift, AGT uplift, AI gateway uplift, go-live readiness, hand-off
-  package, SRE handover, Kratos export readiness. DO NOT USE FOR: deployment
-  itself (threadlight-deploy), structural completeness gate
-  (threadlight-safe-check), invocation testing (foundry-evals), middleware
-  authoring (foundry-agt), citadel hub provisioning (citadel-hub-deploy),
-  access contracts (citadel-spoke-onboarding).
+  Use when a pilot needs production-readiness review, CISO or customer
+  architecture handoff, current runtime-binding evidence, missing live proof,
+  remediation ownership or an explicit CI readiness gate. Not for deployment,
+  runtime implementation, model evaluation or hub provisioning.
 metadata:
-  version: "0.11.0"
+  version: "0.12.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
 
-> **v0.11.0 — advisory assessment + explicit remediation workflow.** The
+## Current runtime-binding contract
+
+Consume `specs/governance-manifest.json` (`threadlight-governance-manifest/v1`)
+through the shared strict validator and `governance_readiness.assess`, also used
+by evidence_gate and Auto. This is **not whole-agent** governance. SAFE is the
+method; ACS/Rego is the PDP; Agent Hooks is the host/interceptor contract; the
+native host/gateway is the PEP; AGT is the toolkit; ASSERT is assurance.
+
+Selected bindings need current live evidence for their exact tool, point and
+path. Preserve unbound reads without ACS. Consequential unbound actions require
+explicit current acceptance bound to tool, risk, source commit, environment and
+owner; a boolean does not suffice. Invalid selected configuration is not off.
+Legacy v2 green is provenance only, never a readiness fallback.
+
+The current collector certifies only `governance_probe_noop` allow/deny and
+supported signed-policy/audit requirements. Business bindings, other lifecycle
+points and unproved approval requirements stay unverified. Do not force
+`gaps: []`, a whole-agent `governed` verdict or SAFE-complete from local tests.
+The canonical returns business write has local native proof but no live proof.
+
+Full signed envelope/key, bundle, configuration and observed target must still
+match the verified record. Re-signing, expiry or any selected config change
+invalidates that evidence. A new deploy attempt needs fresh after-deployment
+collection, not file mtime. The ordinary scorecard remains advisory; explicit
+`readiness-proof` CI is strict and fails on missing evidence. Route runtime
+implementation to `threadlight-govern`/`threadlight-governed-actions` real
+generators rather than just recommending another assessment.
+
+> **v0.12.0 — advisory assessment + explicit remediation workflow.** The
 > current contract is simple: the assessment phase is always read-only. It
 > inventories evidence, scores 13 pillars, and writes the scorecard/report
 > without patching the repo, querying cost actuals on its own, or deploying
@@ -70,7 +88,7 @@ knowledge.
 always advisory and read-only. The remediation workflow is explicit, reviewable,
 and opt-in.
 
-## What this skill does in v0.11.0
+## What this skill does in v0.12.0
 
 ```mermaid
 flowchart LR
@@ -83,7 +101,7 @@ The skill exposes an **explicit production-onboarding workflow**:
 
 1. **Assess (always safe, always read-only).** A Python script
    (`scripts/production_ready.py`) inventories your target Azure
-   subscription/resource group, scores it against 188 findings spanning 13
+   subscription/resource group, scores it against 191 findings spanning 13
    production-readiness pillars, and emits the scorecard/report plus an
    `apply-plan.json` that names every must-fix gap and the remediation recipe
    that closes it.
@@ -201,7 +219,7 @@ skills threadlight delegates to.
 | Customer architecture review in 3 days | `python tests/production_ready.py --target citadel-spoke` (or other posture) | Same as above, scored against the declared target |
 | Pilot has been parked for weeks; someone asks "could we ship this?" | `python tests/production_ready.py --static` (no live Azure auth needed) | Pure static scorecard from repo + safe-check manifests |
 | You inherited a pilot whose SPEC has no § 12 | Skill still runs — posture falls back to `standard-ai-gateway`, an `RDY-002` warning surfaces "SPEC § 12 missing — add it from `references/spec-section-12-template.md`" | Author § 12, re-run for full scorecard |
-| AGT v4 shipped (2026-06-01) and you want deep checks against the v4 surface | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | AGT-only scorecard against the 5-distribution reorg, ACS `intervention_points:` schema, dynamic policy conditions, composite-action pinning, and v4 audit-field set (AGT-V4-001/002/003/006/007 + AGT-V4-101 live stub), in addition to the version-agnostic AGT-001..006 / AGT-101..102 |
+| Historical AGT v4 compatibility inspection | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | Legacy diagnostics only; never substitutes for current v1 runtime-binding readiness |
 | Customer accepted some `must-fix` findings as risk | Author `tests/production-readiness-waivers.json`, re-run | Report shows `score_with_waivers` and `would_fail_hard_gate` flags |
 
 > **Rule of thumb.** This skill runs at most twice per pilot
@@ -219,7 +237,7 @@ about findings, not just emit them.
 | # | Pillar | What "good" looks like | Primary remediation skill |
 |---|---|---|---|
 | 1 | [`network-posture`](references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); data-residency considered (model region, APIM region, backup region, cross-border support) — declarative SPEC check, not sub-scored | `citadel-spoke-onboarding`, `foundry-vnet-deploy`, `foundry-network-runbook` |
-| 2 | [`agent-governance`](references/pillars/02-agent-governance.md) | AGT module imported in app code (capability-based, version-agnostic) — wiring depth not asserted by static check; policy + verifier artefacts present; OWASP-ASI reference present | `foundry-agt` |
+| 2 | [`agent-governance`](references/pillars/02-agent-governance.md) | Current selected-binding v1 evidence and exact signed policy/config/deployment; module imports and legacy policy/verifier artifacts alone are not enforcement | `threadlight-govern`, `threadlight-governed-actions` |
 | 3 | [`identity-access`](references/pillars/03-identity-access.md) | Workloads use managed identity; **no client secrets**; RBAC least-privilege; KV access via RBAC not access policies | `foundry-hosted-agents`, `azure-tenant-isolation`, `azd-patterns` |
 | 4 | [`secrets`](references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `azd-patterns`, `foundry-hosted-agents` |
 | 5 | [`observability`](references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `foundry-observability` |
@@ -459,6 +477,7 @@ the `AzureCliCredential` for free.
 | `tests/postdeploy-manifest.json` | Latest `safe-check --phase post-deploy` output; **pre-flight checks freshness, RG/sub match, hash** | Yes |
 | `infra/**/*.bicep`, `azure.yaml`, `src/**/Dockerfile` | Static analysis (pillars 4, 9, 10, 11, 13) | Yes |
 | `tests/production-readiness-waivers.json` | Customer-accepted findings | Optional |
+| `tests/governed-actions-manifest.json` | `threadlight-governed-actions` conformance record; **semantically consumed** and rolled up into the three aggregates `AGT-007` / `HITL-008` / `SUP-014` | Optional — absent means those three read `not-verified` |
 | `azd env get-values` | Current deployment binding (subscription, resource group, region) | Yes for live mode |
 | Live Azure via `az` | Live probes (tiered per pillar — see [`references/live-probe-permissions.md`](references/live-probe-permissions.md)) | Optional (default on); missing perms → `not-verified` |
 
@@ -550,6 +569,75 @@ single "Oldest evidence" bullet only when staleness is flagged.
 - Clock skew (a `captured_at` after the run's `checked_at`) also
   surfaces a warning and does not flag staleness — that's a system
   clock problem, not stale evidence.
+
+### Governed-actions evidence (`AGT-007` / `HITL-008` / `SUP-014`)
+
+`threadlight-governed-actions` owns the detailed consequential-action
+assessment — action inventory, mediation paths, enforcement probes, approval
+binding, payload-free outputs, audit completeness, pin integrity, and the
+GitHub Copilot change plane (18 child findings). production-ready **consumes**
+that skill's `tests/governed-actions-manifest.json`; it never re-runs a single
+one of those probes and never imports the assessor.
+
+**Aggregate-only.** The 18 child findings are deliberately *not* copied into
+this skill's catalog. They roll up into exactly three findings, one per
+affected pillar:
+
+| Aggregate | Pillar | Domain | Owns |
+|---|---|---|---|
+| `AGT-007` | agent-governance | runtime | `ACT-001/002`, `MED-001..003`, `ENF-001/002`, `PIN-001`, `OPS-001` |
+| `HITL-008` | hitl-audit | approval + output | `APR-001`, `OUT-001`, `AUD-001` |
+| `SUP-014` | supply-chain | change plane | `GHCP-001..006`, `OPS-001` |
+
+`OPS-001` (operational alerting for governed actions) is the only child owned
+by two aggregates — it is a `both`-plane finding, so it fans out to `AGT-007`
+and `SUP-014`. Every other child maps to exactly one owner, and a child status
+never leaks into an aggregate that does not own it. Each aggregate takes the
+worst status among its children, in the order
+`must-fix` > `not-verified` > `should-fix` > `pass` > `not-applicable`. The
+report names which children are open; the *detail* stays in the governed-actions
+manifest, which remains the single source of truth for it.
+
+**Trust limits.** The manifest is untrusted input sitting in the repository, so
+before any child status is believed production-ready independently re-derives
+what it can from the repo in front of it (stdlib-only — the producer's own
+validator is on the untrusted side of the boundary and is not imported):
+
+- the `threadlight-governed-actions-manifest/v1` schema and its exact top-level shape;
+- a **supported** assessor name and version — an unreviewed future assessor buys
+  no forward trust, because a newer version may redefine what a child status means;
+- a `pre-deploy` or `post-deploy` phase (design-phase evidence describes an
+  intent, not a deployable system);
+- a clean (`dirty: false`) source whose repository and commit match the
+  repository and commit actually under assessment;
+- **recomputed** policy hashes: every recorded policy file is re-hashed from
+  disk and the canonical policy-set digest re-derived, then compared against
+  what each relied-upon evidence entry binds itself to (an entry that asserts
+  no digest is not second-guessed);
+- a single target environment, consistent with the selected azd environment;
+- freshness — `expires_at` must equal `oldest_source_at + valid_for_hours`
+  (the producer anchors expiry to the oldest relied-upon evidence instant, not
+  to its own capture instant), capture must fall inside that window, and so
+  must this run;
+- every cited evidence reference resolving, collected no later than capture,
+  naming the same repository and commit, and carrying a phase that agrees with
+  at least one of the findings citing it;
+- `summary` buckets agreeing exactly (as multisets) with the findings they claim
+  to summarise.
+
+Any failure — missing, malformed, stale, dirty, or mismatched on source,
+repository, commit, policy set, environment, or binding — makes every applicable
+aggregate `not-verified` with the reason attached. Never a `pass`, and never a
+`must-fix` manufactured from evidence we could not stand behind. In particular
+`summary.verdict` is **never** trusted on its own: the aggregates are computed
+from validated child statuses, so a `governed` verdict over a `must-fix` child
+still reports `must-fix`.
+
+**Conformance is not certification.** A trusted, all-`pass` manifest says the
+assessor ran against this exact repository state and raised nothing in that
+domain. It is a conformance record with a stated scope and expiry — it is not a
+certification, an audit, or a guarantee, and the aggregates are advisory like
+every other finding in this skill.
 
 ## Outputs
 

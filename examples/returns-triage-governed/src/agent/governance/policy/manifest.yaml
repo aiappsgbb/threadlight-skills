@@ -1,0 +1,19 @@
+agent_control_specification_version: 0.3.1-beta
+policies:
+  returns-write-v1:
+    type: rego
+    data: [returns.rego]
+    query: data.returns.pre_tool_verdict
+tools:
+  returns_apply_decision:
+    consequence: write
+  governance_probe_noop:
+    consequence: read
+intervention_points:
+  pre_tool_call:
+    policy_target: $.tool_call.args
+    policy_target_kind: tool_args
+    tool_name_from: $.tool_call.name
+    policy:
+      id: returns-write-v1
+      query: data.returns.pre_tool_verdict

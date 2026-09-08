@@ -1,0 +1,542 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "threadlight-governance-contract/v1",
+  "description": "Schema for the machine-readable runtime governance contract emitted by threadlight-design. It enforces exact enums, additionalProperties:false, environment mode constants, lifecycle binding shape, and the off/comprehensive conditionals that JSON Schema can express. Legacy string tools remain valid for backwards compatibility, but they are shape-only here and must be treated as explicit unknown/unbound placeholders until upgraded. The shared validator is authoritative for cross-record rules not schema-expressible.",
+  "type": "object",
+  "required": [
+    "framework",
+    "governance",
+    "tools"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "framework": {
+      "enum": [
+        "github-copilot-sdk",
+        "microsoft-agent-framework"
+      ]
+    },
+    "governance": {
+      "$ref": "#/definitions/governance"
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/legacyTool"
+          },
+          {
+            "$ref": "#/definitions/structuredTool"
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": ".*\\S.*"
+      },
+      "uniqueItems": true
+    },
+    "requirementToken": {
+      "enum": [
+        "approval",
+        "audit",
+        "authorization",
+        "decision-receipt",
+        "durable-audit",
+        "human-approval-record",
+        "idempotency",
+        "idempotency-or-transaction",
+        "operator-review",
+        "output",
+        "output-mediation",
+        "signed-policy-bundle"
+      ]
+    },
+    "requirementList": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "approval",
+          "audit",
+          "authorization",
+          "decision-receipt",
+          "durable-audit",
+          "human-approval-record",
+          "idempotency",
+          "idempotency-or-transaction",
+          "operator-review",
+          "output",
+          "output-mediation",
+          "signed-policy-bundle"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "interventionPoints": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "input",
+          "pre_model_call",
+          "post_model_call",
+          "pre_tool_call",
+          "post_tool_call",
+          "output",
+          "startup",
+          "shutdown"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "environmentModes": {
+      "type": "object",
+      "required": [
+        "development",
+        "staging",
+        "preproduction",
+        "production"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "development": {
+          "const": "evaluate_only"
+        },
+        "staging": {
+          "const": "evaluate_only"
+        },
+        "preproduction": {
+          "const": "enforce"
+        },
+        "production": {
+          "const": "enforce"
+        }
+      }
+    },
+    "acceptanceRecord": {
+      "type": "object",
+      "required": [
+        "owner",
+        "justification",
+        "review_date",
+        "expiry"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 1
+        },
+        "review_date": {
+          "$ref": "#/definitions/rfc3339DateTime"
+        },
+        "expiry": {
+          "$ref": "#/definitions/rfc3339DateTime"
+        }
+      }
+    },
+    "lifecycleBinding": {
+      "type": "object",
+      "required": [
+        "lifecycle_point",
+        "policy_binding",
+        "enforcement_path",
+        "safe_principles",
+        "requires"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "lifecycle_point": {
+          "enum": [
+            "input",
+            "pre_model_call",
+            "post_model_call",
+            "pre_tool_call",
+            "post_tool_call",
+            "output",
+            "startup",
+            "shutdown"
+          ]
+        },
+        "policy_binding": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/identifier"
+            },
+            {
+              "not": {
+                "const": "none"
+              }
+            }
+          ]
+        },
+        "enforcement_path": {
+          "enum": [
+            "local-agent-hooks",
+            "governed-tool-gateway"
+          ]
+        },
+        "safe_principles": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/stringList"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "approval",
+              "audit",
+              "authorization",
+              "decision-receipt",
+              "durable-audit",
+              "human-approval-record",
+              "idempotency",
+              "idempotency-or-transaction",
+              "operator-review",
+              "output",
+              "output-mediation",
+              "signed-policy-bundle"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "required": [
+        "mode",
+        "environment_modes",
+        "lifecycle_bindings"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "off",
+            "selective",
+            "comprehensive"
+          ]
+        },
+        "environment_modes": {
+          "$ref": "#/definitions/environmentModes"
+        },
+        "lifecycle_bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/lifecycleBinding"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "legacyTool": {
+      "description": "Legacy string tools remain accepted where older manifest contracts still permit them, but downstream logic must treat them as unknown/unbound until upgraded to the structured object form.",
+      "$ref": "#/definitions/identifier"
+    },
+    "structuredTool": {
+      "type": "object",
+      "required": [
+        "id",
+        "consequence",
+        "policy_binding",
+        "enforcement_path",
+        "intervention_points",
+        "safe_principles",
+        "requires"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "consequence": {
+          "enum": [
+            "read",
+            "write",
+            "external-egress",
+            "irreversible",
+            "unknown"
+          ]
+        },
+        "policy_binding": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/identifier"
+            },
+            {
+              "const": "none"
+            }
+          ]
+        },
+        "enforcement_path": {
+          "enum": [
+            "none",
+            "local-agent-hooks",
+            "governed-tool-gateway"
+          ]
+        },
+        "intervention_points": {
+          "$ref": "#/definitions/interventionPoints"
+        },
+        "safe_principles": {
+          "$ref": "#/definitions/stringList"
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "approval",
+              "audit",
+              "authorization",
+              "decision-receipt",
+              "durable-audit",
+              "human-approval-record",
+              "idempotency",
+              "idempotency-or-transaction",
+              "operator-review",
+              "output",
+              "output-mediation",
+              "signed-policy-bundle"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "acceptance_record": {
+          "$ref": "#/definitions/acceptanceRecord"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enforcement_path": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "enforcement_path"
+            ]
+          },
+          "then": {
+            "properties": {
+              "policy_binding": {
+                "const": "none"
+              },
+              "intervention_points": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enforcement_path": {
+                "const": "local-agent-hooks"
+              }
+            },
+            "required": [
+              "enforcement_path"
+            ]
+          },
+          "then": {
+            "properties": {
+              "policy_binding": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/identifier"
+                  },
+                  {
+                    "not": {
+                      "const": "none"
+                    }
+                  }
+                ]
+              },
+              "intervention_points": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enforcement_path": {
+                "const": "governed-tool-gateway"
+              }
+            },
+            "required": [
+              "enforcement_path"
+            ]
+          },
+          "then": {
+            "properties": {
+              "policy_binding": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/identifier"
+                  },
+                  {
+                    "not": {
+                      "const": "none"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "rfc3339DateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "governance": {
+            "properties": {
+              "mode": {
+                "const": "off"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "governance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "governance": {
+            "properties": {
+              "lifecycle_bindings": {
+                "maxItems": 0
+              }
+            }
+          },
+          "tools": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/legacyTool"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/structuredTool"
+                    },
+                    {
+                      "properties": {
+                        "policy_binding": {
+                          "const": "none"
+                        },
+                        "enforcement_path": {
+                          "const": "none"
+                        },
+                        "intervention_points": {
+                          "maxItems": 0
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "governance": {
+            "properties": {
+              "mode": {
+                "const": "comprehensive"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "governance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "tools": {
+            "items": {
+              "allOf": [
+                {
+                  "not": {
+                    "$ref": "#/definitions/legacyTool"
+                  }
+                },
+                {
+                  "$ref": "#/definitions/structuredTool"
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "consequence": {
+                        "enum": [
+                          "write",
+                          "external-egress",
+                          "irreversible",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "consequence"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "enforcement_path": {
+                        "not": {
+                          "const": "none"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

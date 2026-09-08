@@ -37,7 +37,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -509,7 +509,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -713,12 +713,16 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "POS-001": {"title": "Declared posture matches detected evidence", "pillar": "network-posture", "severity": "should-fix", "tier": 1},
 
     # ---- agent-governance (AGT)
-    "AGT-001": {"title": "AGT policy is schema-valid (lints clean)", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
+    "AGT-001": {"title": "Selected governance bindings have current exact live evidence", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-002": {"title": "policy.yaml present in repo", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-003": {"title": "OWASP ASI 2026 verifier referenced", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-004": {"title": "AGT policy ruleset version pinned", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-005": {"title": "AGT governance gate runs in CI", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-006": {"title": "AGT telemetry sink configured", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
+    # Aggregate roll-up of the threadlight-governed-actions runtime verdict. The
+    # detail (action inventory, mediation paths, enforcement, pin integrity)
+    # lives in that skill's own manifest and is NEVER restated here.
+    "AGT-007": {"title": "Governed-actions runtime evidence (aggregate)", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-101": {"title": "Workload identity scoped to AGT-required RBAC", "pillar": "agent-governance", "severity": "should-fix", "tier": 1},
     "AGT-102": {"title": "AGT denials visible in App Insights last 24h", "pillar": "agent-governance", "severity": "should-fix", "tier": 2, "experimental": True},
     # ---- agent-governance — v4-preview deep checks (gated to --agt-profile v4_preview)
@@ -823,6 +827,9 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "HITL-005": {"title": "HITL decision SLA documented", "pillar": "hitl-audit", "severity": "should-fix", "tier": 0},
     "HITL-006": {"title": "Skill contracts declare a substantive idempotency statement", "pillar": "hitl-audit", "severity": "must-fix", "tier": 0},
     "HITL-007": {"title": "SPEC sec 8 declares the resume trigger and rehydrated state", "pillar": "hitl-audit", "severity": "should-fix", "tier": 0},
+    # Aggregate roll-up of the threadlight-governed-actions approval + output
+    # verdict (approval binding, payload-free outputs, audit completeness).
+    "HITL-008": {"title": "Governed-actions approval/output evidence (aggregate)", "pillar": "hitl-audit", "severity": "should-fix", "tier": 0},
     "HITL-101": {"title": "Audit storage account / table exists", "pillar": "hitl-audit", "severity": "must-fix", "tier": 1},
     "HITL-102": {"title": "Audit storage has immutability policy", "pillar": "hitl-audit", "severity": "should-fix", "tier": 1},
     "HITL-103": {"title": "HITL audit rows in last 7d (if expected)", "pillar": "hitl-audit", "severity": "should-fix", "tier": 2, "experimental": True},
@@ -841,6 +848,9 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "SUP-011": {"title": "MCP servers resolve from a known registry or source", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-012": {"title": "mcp-lock.json committed and free of undocumented drift", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
     "SUP-013": {"title": "MCP server credentials are not committed inline", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
+    # Aggregate roll-up of the threadlight-governed-actions change-plane verdict
+    # (GitHub Copilot coding-agent governance + operational alerting).
+    "SUP-014": {"title": "Governed-actions change-plane evidence (aggregate)", "pillar": "supply-chain", "severity": "should-fix", "tier": 0},
     "SUP-101": {"title": "SUPPORT.md present at repo root", "pillar": "supply-chain", "severity": "must-fix", "tier": 1},
     "SUP-102": {"title": "ACR has public access disabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1},
     "SUP-103": {"title": "ACR has Microsoft Defender enabled", "pillar": "supply-chain", "severity": "should-fix", "tier": 1, "experimental": True},
@@ -2243,6 +2253,690 @@ def _gap_findings_for_pillar(ctx: RepoContext, pillar: str) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
+# Governed-actions aggregate evidence (Task 13)
+# ---------------------------------------------------------------------------
+#
+# `threadlight-governed-actions` owns the detailed consequential-action
+# assessment. It enumerates the action inventory, walks every mediation path,
+# probes enforcement, checks approval binding and payload-free outputs, verifies
+# pin integrity, and audits the GitHub Copilot change plane — 18 child findings
+# in all. production-ready is a CONSUMER of that work and nothing more:
+#
+#   * it NEVER re-runs a governed-actions probe or imports the assessor;
+#   * it NEVER copies the 18 child ids into its own detailed catalog;
+#   * it surfaces exactly THREE aggregate findings, one per affected pillar.
+#
+#       AGT-007  agent-governance  runtime          (ACT/MED/ENF/PIN/OPS)
+#       HITL-008 hitl-audit        approval-output  (APR/OUT/AUD)
+#       SUP-014  supply-chain      change           (GHCP/OPS)
+#
+# OPS-001 (operational alerting for governed actions) is the single child owned
+# by two aggregates: it is a `both`-plane finding that bears on the runtime
+# governance story AND on the change plane, so it fans out to AGT-007 and
+# SUP-014. Every other child maps to exactly one owner.
+#
+# TRUST MODEL. The manifest is untrusted input sitting in the target repository.
+# It is a conformance record produced by a sibling skill, NOT a certification,
+# and production-ready treats it accordingly: before a single child status is
+# believed, the consumer independently re-derives everything it can from the
+# repository in front of it (stdlib-only — the producer's own validator lives on
+# the untrusted side of this boundary and is deliberately not imported).
+# Anything short of a complete match makes every applicable aggregate
+# `not-verified` — never a scoring `pass`, and never a gate-tripping `must-fix`
+# manufactured from evidence we could not stand behind.
+
+_GOVERNED_ACTIONS_MANIFEST_RELPATH = ("tests", "governed-actions-manifest.json")
+_GOVERNED_ACTIONS_SCHEMA = "threadlight-governed-actions-manifest/v1"
+_GOVERNED_ACTIONS_EVIDENCE_CONTRACT = "governance-ledger/v2"
+_GOVERNED_ACTIONS_PERSISTED_PROBES = {
+    "approval-anti-replay": ("APR-001", {"approval-ledger-records", "approval-binding-digest"}),
+    "output-mediation": ("OUT-001", {"output-ledger-records"}),
+    "payload-free-audit": ("AUD-001", {"audit-ledger-records", "probe-audit-record"}),
+}
+_GOVERNED_ACTIONS_ASSESSOR_NAME = "threadlight-governed-actions"
+
+# Pinned, NOT a floor. A newer assessor may change what a child status means, so
+# an unreviewed future version buys no trust here; it degrades to not-verified
+# until this consumer is deliberately updated alongside it.
+_GOVERNED_ACTIONS_SUPPORTED_ASSESSOR_VERSIONS = frozenset({"0.1.0", "2.0.0"})
+
+# Design-phase evidence describes an intent, not a deployable system, so it can
+# never stand behind a readiness claim.
+_GOVERNED_ACTIONS_TRUSTED_PHASES = frozenset({"pre-deploy", "post-deploy"})
+
+_GOVERNED_ACTIONS_STATUS_ENUM = frozenset(
+    {"pass", "must-fix", "should-fix", "not-verified", "not-applicable"}
+)
+_GOVERNED_ACTIONS_PLANE_ENUM = frozenset({"runtime", "change", "both"})
+_GOVERNED_ACTIONS_VERDICT_ENUM = frozenset({"governed", "partial", "ungoverned"})
+
+# Worst-first. An aggregate takes the worst status among the children it owns.
+_GOVERNED_ACTIONS_PRECEDENCE = (
+    "must-fix", "not-verified", "should-fix", "pass", "not-applicable",
+)
+
+# The aggregate contract: {aggregate id: (domain, owned child finding ids)}.
+GOVERNED_ACTIONS_AGGREGATES: dict[str, tuple[str, frozenset[str]]] = {
+    "AGT-007": ("runtime", frozenset({
+        "ACT-001", "ACT-002", "MED-001", "MED-002", "MED-003",
+        "ENF-001", "ENF-002", "PIN-001", "OPS-001",
+    })),
+    "HITL-008": ("approval-output", frozenset({
+        "APR-001", "OUT-001", "AUD-001",
+    })),
+    "SUP-014": ("change", frozenset({
+        "GHCP-001", "GHCP-002", "GHCP-003",
+        "GHCP-004", "GHCP-005", "GHCP-006", "OPS-001",
+    })),
+}
+_GOVERNED_ACTIONS_AGGREGATE_ORDER = ("AGT-007", "HITL-008", "SUP-014")
+_GOVERNED_ACTIONS_CHILD_IDS = frozenset().union(
+    *(children for _domain, children in GOVERNED_ACTIONS_AGGREGATES.values())
+)
+
+# Exact top-level shape (`additionalProperties: false` on the producer side).
+# Keys prefixed `_` are this consumer's own observations and are exempt.
+_GOVERNED_ACTIONS_TOP_LEVEL_KEYS = frozenset({
+    "schema", "assessor", "phase", "captured_at", "source", "pins",
+    "policy_hashes", "action_inventory", "mediation_paths", "conformance",
+    "change_plane", "findings", "evidence", "freshness", "residual_risks",
+    "summary", "evidence_contract",
+})
+_GOVERNED_ACTIONS_FINDING_KEYS = frozenset({
+    "finding_id", "status", "phase", "plane", "reason_code", "summary",
+    "details", "affected_actions", "affected_paths", "evidence_refs",
+    "remediation_ids", "residual_risk_ref",
+})
+_GOVERNED_ACTIONS_EVIDENCE_KEYS = frozenset({
+    "evidence_id", "kind", "source", "sha256", "collected_at",
+    "freshness_seconds", "live_verified", "phase", "repository",
+    "source_commit", "target_environment", "policy_set_sha256",
+})
+_GOVERNED_ACTIONS_PROBE_KEYS = frozenset({
+    "probe_id", "action_id", "path_id", "mode", "status", "reason_code",
+    "expected_sha256", "observed_sha256", "evidence_refs",
+})
+_GOVERNED_ACTIONS_EXECUTION_MODES = frozenset({
+    "interactive", "batch", "background", "subagent", "direct-tool",
+    "provider-hosted-tool",
+})
+_GOVERNED_ACTIONS_SUMMARY_BUCKETS = (
+    ("pass", "pass"), ("must_fix", "must-fix"), ("should_fix", "should-fix"),
+    ("not_verified", "not-verified"), ("not_applicable", "not-applicable"),
+)
+_GOVERNED_ACTIONS_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+_GOVERNED_ACTIONS_DEPLOYMENT_KEYS = frozenset({
+    "agent_name", "agent_version", "image_digest", "policy_digest",
+    "environment", "subscription", "resource_group",
+})
+
+
+def _governed_actions_valid_deployment(target: object) -> bool:
+    return (
+        isinstance(target, dict)
+        and set(target) == _GOVERNED_ACTIONS_DEPLOYMENT_KEYS
+        and all(isinstance(value, str) and value.strip() for value in target.values())
+        and all(re.fullmatch(r"sha256:[0-9a-f]{64}", target[key])
+                for key in ("image_digest", "policy_digest"))
+        and target["environment"] == "staging"
+        and "prod" not in target["resource_group"].lower()
+    )
+
+
+def _governed_actions_worst(statuses: Iterable[str]) -> str:
+    """Worst status by `_GOVERNED_ACTIONS_PRECEDENCE`.
+
+    An aggregate whose owned children are all absent from an otherwise trusted
+    manifest resolves to `pass`: the assessor validated the pilot and raised
+    nothing in that domain. Absence of a finding in a VERIFIED manifest is a
+    clean result; absence of a verifiable manifest is handled far earlier and
+    never reaches here.
+    """
+    present = set(statuses)
+    for status in _GOVERNED_ACTIONS_PRECEDENCE:
+        if status in present:
+            return status
+    return "pass"
+
+
+def _governed_actions_sha256_file(path: Path) -> str | None:
+    try:
+        return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    except (OSError, ValueError):
+        return None
+
+
+def _governed_actions_policy_set_sha256(entries: Iterable[Mapping[str, Any]]) -> str:
+    """Canonical digest over a policy set — byte-identical to the producer's.
+
+    Entries are reduced to `{path, sha256}`, de-duplicated, sorted by path, then
+    serialised as compact canonical JSON. Recomputing it here is the whole point
+    of the binding check: evidence that names a different policy set than the one
+    on disk right now is evidence about a different repository state.
+    """
+    unique = {
+        (str(entry["path"]), str(entry["sha256"]))
+        for entry in entries
+    }
+    payload = [
+        {"path": path, "sha256": digest}
+        for path, digest in sorted(unique, key=lambda item: item[0])
+    ]
+    canonical = json.dumps(
+        payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _governed_actions_normalize_repo(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    slug = value.strip().strip("/")
+    if slug.lower().endswith(".git"):
+        slug = slug[:-4]
+    return slug.lower() or None
+
+
+def _governed_actions_head_commit(root: Path) -> str:
+    """Resolved HEAD of the target repository, or "" when it cannot be read."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def load_governed_actions_manifest(root: Path) -> dict[str, object] | None:
+    """Parse `tests/governed-actions-manifest.json` under *root*.
+
+    Returns the parsed object with a single extra key, `_observed`, carrying
+    what production-ready itself can see about the target repository (its
+    resolved `owner/repo`, the selected azd environment, and the root path so
+    policy hashes can be recomputed at validation time). Returns ``None`` when
+    the manifest is absent, unreadable, not JSON, or not a JSON object.
+
+    Parsing only — nothing here is trusted. Never raises.
+    """
+    path = root.joinpath(*_GOVERNED_ACTIONS_MANIFEST_RELPATH)
+    try:
+        raw = _read_text(path)
+    except UnicodeDecodeError:
+        return None
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    try:
+        azd_env = _load_azd_env(root)
+    except OSError:
+        azd_env = {}
+    data["_observed"] = {
+        "root": str(root),
+        "repository": _detect_repo_full_name(str(root)),
+        "target_environment": (azd_env.get("AZURE_ENV_NAME") or "").strip() or None,
+        "deployed_target": {
+            key: azd_env.get(env_key)
+            for key, env_key in {
+                "agent_name": "AGENT_NAME", "agent_version": "AGENT_VERSION",
+                "image_digest": "IMAGE_DIGEST", "policy_digest": "POLICY_DIGEST",
+                "environment": "AZURE_ENV_NAME", "subscription": "AZURE_SUBSCRIPTION_ID",
+                "resource_group": "AZURE_RESOURCE_GROUP",
+            }.items()
+        },
+    }
+    return data
+
+
+def _validate_governed_actions_manifest(
+    manifest: Mapping[str, Any], source_commit: str, now: datetime
+) -> str | None:
+    """Re-derive the manifest's claims from the repository in front of us.
+
+    Returns ``None`` when the manifest may be trusted, otherwise a short,
+    payload-free reason string. A non-``None`` reason means EVERY aggregate is
+    reported `not-verified` — the manifest's own `summary.verdict` is never a
+    substitute for these checks.
+    """
+    observed = manifest.get("_observed")
+    if not isinstance(observed, dict):
+        return "manifest was not loaded through load_governed_actions_manifest"
+
+    if any(not isinstance(key, str) for key in manifest):
+        return "manifest contains a non-string top-level key"
+    declared = {key for key in manifest if not key.startswith("_")}
+    missing = sorted(_GOVERNED_ACTIONS_TOP_LEVEL_KEYS - declared)
+    if missing:
+        return "missing required key(s): " + ", ".join(missing)
+    if declared - _GOVERNED_ACTIONS_TOP_LEVEL_KEYS - {"deployed_target", "native_local"}:
+        return "manifest contains unsupported top-level key(s)"
+    deployment = manifest.get("deployed_target")
+    if "deployed_target" in manifest and not _governed_actions_valid_deployment(deployment):
+        return "manifest deployment binding is malformed or not staging"
+
+    if manifest["schema"] != _GOVERNED_ACTIONS_SCHEMA:
+        return f"schema is not {_GOVERNED_ACTIONS_SCHEMA!r}"
+    if manifest["evidence_contract"] != _GOVERNED_ACTIONS_EVIDENCE_CONTRACT:
+        return "unsupported governance evidence contract; re-run threadlight-governed-actions"
+
+    assessor = manifest["assessor"]
+    if not isinstance(assessor, dict):
+        return "assessor must be an object"
+    if assessor.get("name") != _GOVERNED_ACTIONS_ASSESSOR_NAME:
+        return "assessor.name is not the governed-actions assessor"
+    version = assessor.get("version")
+    if not isinstance(version, str) or version not in _GOVERNED_ACTIONS_SUPPORTED_ASSESSOR_VERSIONS:
+        return f"assessor.version {version!r} is not a supported assessor version"
+    if not isinstance(assessor.get("adapter"), str) or not assessor["adapter"]:
+        return "assessor.adapter must be a non-empty string"
+
+    phase = manifest["phase"]
+    if not isinstance(phase, str) or phase not in _GOVERNED_ACTIONS_TRUSTED_PHASES:
+        return f"phase {phase!r} cannot stand behind a readiness claim"
+
+    captured_at = _parse_rfc3339_datetime(manifest["captured_at"])
+    if captured_at is None:
+        return "captured_at must be an RFC3339 timestamp with a timezone"
+
+    # ---- source identity ---------------------------------------------------
+    source = manifest["source"]
+    if not isinstance(source, dict) or set(source) != {"repository", "commit", "dirty"}:
+        return "source must declare exactly repository, commit and dirty"
+    if source["dirty"] is not False:
+        return "source.dirty is true: the assessment ran against uncommitted state"
+    manifest_commit = source["commit"]
+    if not isinstance(manifest_commit, str) or not _GOVERNED_ACTIONS_COMMIT_RE.match(
+        manifest_commit
+    ):
+        return "source.commit must be a 40-character lowercase hex commit"
+    if not isinstance(source_commit, str) or not source_commit.strip():
+        return "the target repository commit could not be determined"
+    if source_commit.strip().lower() != manifest_commit:
+        return "source.commit does not match the commit under assessment"
+    manifest_repo = _governed_actions_normalize_repo(source["repository"])
+    if manifest_repo is None:
+        return "source.repository must be a non-empty string"
+    observed_repo = _governed_actions_normalize_repo(observed.get("repository"))
+    if observed_repo is None:
+        return "the target repository could not be identified"
+    if observed_repo != manifest_repo:
+        return "source.repository does not match the repository under assessment"
+
+    # ---- policy hashes recomputed from disk --------------------------------
+    policy_hashes = manifest["policy_hashes"]
+    if not isinstance(policy_hashes, list) or not policy_hashes:
+        return "policy_hashes must be a non-empty array"
+    root = Path(str(observed.get("root") or "."))
+    for entry in policy_hashes:
+        if not isinstance(entry, dict) or set(entry) != {"path", "sha256"}:
+            return "policy_hashes entries must declare exactly path and sha256"
+        rel = entry["path"]
+        if not isinstance(rel, str) or not rel or rel.startswith("/") or ".." in (
+            Path(rel).parts
+        ):
+            return "policy_hashes contains an unusable path"
+        actual = _governed_actions_sha256_file(root / rel)
+        if actual is None:
+            return f"policy file {rel!r} is missing from the repository"
+        if actual != entry["sha256"]:
+            return f"policy file {rel!r} has changed since the assessment"
+    policy_set_sha256 = _governed_actions_policy_set_sha256(policy_hashes)
+
+    # ---- freshness ---------------------------------------------------------
+    freshness = manifest["freshness"]
+    if not isinstance(freshness, dict) or set(freshness) != {
+        "status", "valid_for_hours", "oldest_source_at", "expires_at"
+    }:
+        return "freshness must declare exactly status, valid_for_hours, oldest_source_at and expires_at"
+    if freshness["status"] != "fresh":
+        return f"freshness.status is {freshness['status']!r}"
+    valid_for_hours = freshness["valid_for_hours"]
+    if not _gap_is_draft7_integer(valid_for_hours) or int(valid_for_hours) < 1:
+        return "freshness.valid_for_hours must be a positive integer"
+    if int(valid_for_hours) > _GAP_MAX_VALID_FOR_HOURS:
+        return "freshness.valid_for_hours exceeds the maximum validity window"
+    oldest_source_at = _parse_rfc3339_datetime(freshness["oldest_source_at"])
+    expires_at = _parse_rfc3339_datetime(freshness["expires_at"])
+    if oldest_source_at is None or expires_at is None:
+        return "freshness timestamps must be RFC3339 with a timezone"
+    if oldest_source_at > captured_at:
+        return "freshness.oldest_source_at post-dates captured_at"
+    # The producer anchors expiry to the OLDEST relied-upon evidence instant
+    # (render._freshness_from_pairs), never to its own capture instant: evidence
+    # is always collected before the manifest is rendered, so re-deriving this
+    # from captured_at would reject every genuine artefact.
+    if expires_at != oldest_source_at + timedelta(hours=int(valid_for_hours)):
+        return "freshness.expires_at does not match oldest_source_at + valid_for_hours"
+    if captured_at > expires_at:
+        return "freshness.status is 'fresh' but captured_at post-dates expires_at"
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    now = now.astimezone(timezone.utc)
+    if now < captured_at:
+        return "captured_at is in the future"
+    if now > expires_at:
+        return "the assessment has expired; re-run threadlight-governed-actions"
+
+    # ---- evidence ----------------------------------------------------------
+    evidence = manifest["evidence"]
+    if not isinstance(evidence, list) or not evidence:
+        return "evidence must be a non-empty array"
+    by_id: dict[str, Mapping[str, Any]] = {}
+    for entry in evidence:
+        if not isinstance(entry, dict) or set(entry) - {"deployed_target"} != _GOVERNED_ACTIONS_EVIDENCE_KEYS:
+            return "evidence entries do not match the evidence contract"
+        evidence_id = entry["evidence_id"]
+        if not isinstance(evidence_id, str) or not evidence_id:
+            return "evidence_id must be a non-empty string"
+        if evidence_id in by_id:
+            return "evidence contains a duplicate evidence_id"
+        by_id[evidence_id] = entry
+
+    # ---- findings ----------------------------------------------------------
+    findings = manifest["findings"]
+    if not isinstance(findings, list):
+        return "findings must be an array"
+    referenced: set[str] = set()
+    mediation_paths = manifest["mediation_paths"]
+    if not isinstance(mediation_paths, list):
+        return "mediation_paths must be an array"
+    path_modes: dict[str, str] = {}
+    for path in mediation_paths:
+        if not isinstance(path, dict):
+            return "mediation_paths entries must be objects"
+        path_id = path.get("path_id")
+        path_mode = path.get("mode")
+        if (
+            not isinstance(path_id, str)
+            or not path_id
+            or not isinstance(path_mode, str)
+            or path_mode not in _GOVERNED_ACTIONS_EXECUTION_MODES
+            or path_id in path_modes
+        ):
+            return "mediation_paths has malformed or duplicate path identity"
+        path_modes[path_id] = path_mode
+        refs = path.get("evidence_refs")
+        if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
+            return "mediation_paths has malformed evidence_refs"
+        referenced.update(refs)
+    phases_by_evidence: dict[str, set[str]] = {}
+    observed_buckets: dict[str, list[str]] = {
+        status: [] for _key, status in _GOVERNED_ACTIONS_SUMMARY_BUCKETS
+    }
+    for entry in findings:
+        if not isinstance(entry, dict) or set(entry) != _GOVERNED_ACTIONS_FINDING_KEYS:
+            return "findings entries do not match the finding contract"
+        finding_id = entry["finding_id"]
+        if not isinstance(finding_id, str) or finding_id not in _GOVERNED_ACTIONS_CHILD_IDS:
+            return f"finding {finding_id!r} is not a known governed-actions finding"
+        status = entry["status"]
+        if not isinstance(status, str) or status not in _GOVERNED_ACTIONS_STATUS_ENUM:
+            return f"finding {finding_id!r} carries an unknown status"
+        phase = entry["phase"]
+        if phase not in ("design", "pre-deploy", "post-deploy"):
+            return f"finding {finding_id!r} carries an unknown phase"
+        plane = entry["plane"]
+        if not isinstance(plane, str) or plane not in _GOVERNED_ACTIONS_PLANE_ENUM:
+            return f"finding {finding_id!r} carries an unknown plane"
+        refs = entry["evidence_refs"]
+        if not isinstance(refs, list) or any(not isinstance(r, str) for r in refs):
+            return f"finding {finding_id!r} has malformed evidence_refs"
+        referenced.update(refs)
+        for ref in refs:
+            phases_by_evidence.setdefault(ref, set()).add(phase)
+        observed_buckets[status].append(finding_id)
+
+    conformance = manifest["conformance"]
+    if not isinstance(conformance, dict):
+        return "conformance must be an object"
+    probes = conformance.get("application_probes", [])
+    if not isinstance(probes, list):
+        return "conformance.application_probes must be an array"
+    try:
+        from skills._shared.native_local_evidence import validated_controls
+        native_controls = validated_controls(
+            manifest.get("native_local"), probes, evidence, source=source, phase=phase,
+            captured_at=manifest["captured_at"], policy_hashes=policy_hashes, assessor=assessor, root=root)
+    except (ValueError, TypeError, KeyError, OSError, RecursionError):
+        return "native local evidence is malformed, incomplete, or mismatched"
+    for probe in probes:
+        if not isinstance(probe, dict) or set(probe) != _GOVERNED_ACTIONS_PROBE_KEYS:
+            return "conformance.application_probes entries do not match the probe contract"
+        path_id = probe["path_id"]
+        mode = probe["mode"]
+        if path_id is None:
+            if mode is not None:
+                return "non-path application probe must have null mode"
+        elif (
+            not isinstance(path_id, str)
+            or path_id not in path_modes
+            or not isinstance(mode, str)
+            or mode != path_modes[path_id]
+        ):
+            return "path application probe mode does not match its mediation path"
+        refs = probe.get("evidence_refs", [])
+        if not isinstance(refs, list) or any(not isinstance(r, str) for r in refs):
+            return "conformance.application_probes has malformed evidence_refs"
+        referenced.update(refs)
+        contract = _GOVERNED_ACTIONS_PERSISTED_PROBES.get(probe["probe_id"])
+        if (contract and probe["status"] == "pass"
+                and (probe["action_id"], probe["probe_id"]) not in native_controls):
+            cited = [by_id[ref] for ref in refs if ref in by_id]
+            if not contract[1] <= {entry["kind"] for entry in cited}:
+                return "passing governance probe lacks required persisted-ledger evidence"
+            for entry in cited:
+                if entry["kind"].endswith("-ledger-records") and (
+                    not isinstance(entry["sha256"], str)
+                    or not re.fullmatch(r"sha256:[0-9a-f]{64}", entry["sha256"])
+                    or entry["evidence_id"] != f"{entry['kind']}-{entry['sha256'][7:]}"
+                    or not isinstance(entry["source"], str)
+                    or not entry["source"].endswith("#assessment-isolated")
+                    or not isinstance(entry["live_verified"], bool)
+                ):
+                    return "persisted governance ledger evidence contract mismatch"
+
+    for probe_id, (finding_id, _kinds) in _GOVERNED_ACTIONS_PERSISTED_PROBES.items():
+        family = [probe for probe in probes if probe["probe_id"] == probe_id]
+        child_statuses = [f["status"] for f in findings if f["finding_id"] == finding_id]
+        if not family and not any(status != "pass" for status in child_statuses):
+            return "governance control has no probe evidence or explicit non-passing finding"
+        if any(p["status"] != "pass" for p in family) and (
+            not child_statuses
+            or _GOVERNED_ACTIONS_PRECEDENCE.index(_governed_actions_worst(child_statuses))
+            > _GOVERNED_ACTIONS_PRECEDENCE.index(_governed_actions_worst(p["status"] for p in family))
+        ):
+            return "governance findings omit a non-passing probe outcome"
+        if probe_id == "approval-anti-replay":
+            digest = lambda value: "sha256:" + hashlib.sha256(value.encode()).hexdigest()
+            for action_id in {p["action_id"] for p in family}:
+                if (action_id, probe_id) in native_controls:
+                    continue
+                sequence = [p for p in family if p["action_id"] == action_id]
+                if not all(p["status"] == "pass" for p in sequence):
+                    continue
+                sequence_observations = [p["observed_sha256"] for p in sequence]
+                ledger_ids = {
+                    ref for p in sequence for ref in p["evidence_refs"]
+                    if ref in by_id and by_id[ref]["kind"] == "approval-ledger-records"
+                }
+                if (
+                    len(sequence) != 14 or len(ledger_ids) != 14
+                    or sequence_observations.count(digest("approval_accepted")) != 2
+                    or sequence_observations.count(digest("expired_rejected")) != 1
+                    or sum(value in {digest("replay_rejected"), digest("binding_mismatch_rejected"),
+                                     digest("reused_nonce_rejected")} for value in sequence_observations) != 11
+                ):
+                    return "approval evidence does not cover the complete ordered sequence contract"
+
+    # ---- binding: only evidence actually relied upon -----------------------
+    # Unreferenced evidence is inert context and is deliberately not policed —
+    # exactly as the producer does it, so a conformant artefact is not rejected
+    # by a rule stricter than the one it was built to.
+    environments: set[str] = set()
+    for ref in sorted(referenced):
+        entry = by_id.get(ref)
+        if entry is None:
+            return "a finding or probe cites evidence that is not in the manifest"
+        collected_at = _parse_rfc3339_datetime(entry["collected_at"])
+        if collected_at is None:
+            return "relied-upon evidence has no usable collected_at"
+        if collected_at > captured_at:
+            return "relied-upon evidence was collected after the assessment"
+        if _governed_actions_normalize_repo(entry["repository"]) != manifest_repo:
+            return "relied-upon evidence names a different repository"
+        if entry["source_commit"] != manifest_commit:
+            return "relied-upon evidence names a different commit"
+        # Mirrors render._required_evidence_is_untrustworthy: an entry is bound
+        # to the phase of the analysis that actually read it, so it must agree
+        # with at least ONE of the findings citing it. Probe-only citations
+        # carry no phase of their own and are deliberately left unchecked.
+        citing_phases = phases_by_evidence.get(ref, set())
+        if not isinstance(entry["phase"], str):
+            return "relied-upon evidence carries a malformed phase"
+        if citing_phases and entry["phase"] not in citing_phases:
+            return "relied-upon evidence disagrees with every finding that cites it"
+        # policy_set_sha256 is nullable in the schema, and the producer only
+        # compares it when a value is actually asserted.
+        if (
+            entry["policy_set_sha256"] is not None
+            and entry["policy_set_sha256"] != policy_set_sha256
+        ):
+            return "relied-upon evidence binds to a different policy set"
+        if "deployed_target" in entry and (
+            not _governed_actions_valid_deployment(entry["deployed_target"])
+            or entry["deployed_target"] != deployment
+            or entry["target_environment"] != deployment["environment"]
+        ):
+            return "relied-upon evidence has a deployment binding mismatch"
+        if entry["live_verified"]:
+            if deployment is None or entry.get("deployed_target") != deployment:
+                return "live evidence lacks an exact deployment binding"
+            if str(entry["kind"]).startswith(("probe-", "path-", "approval-", "output-", "audit-ledger-")):
+                return "local probe evidence cannot claim live deployment enforcement"
+            if observed.get("deployed_target") != deployment:
+                return "live evidence does not match the selected deployment"
+        env = entry["target_environment"]
+        if isinstance(env, str) and env.strip():
+            environments.add(env.strip())
+    if len(environments) > 1:
+        return "relied-upon evidence spans more than one target environment"
+    observed_env = observed.get("target_environment")
+    if environments and isinstance(observed_env, str) and observed_env:
+        if next(iter(environments)) != observed_env:
+            return "relied-upon evidence targets a different environment than the selected one"
+
+    # ---- summary agreement -------------------------------------------------
+    summary = manifest["summary"]
+    if not isinstance(summary, dict) or set(summary) != {
+        "verdict", "pass", "must_fix", "should_fix", "not_verified", "not_applicable"
+    }:
+        return "summary does not match the summary contract"
+    if not isinstance(summary["verdict"], str) or summary["verdict"] not in _GOVERNED_ACTIONS_VERDICT_ENUM:
+        return "summary.verdict is not a known verdict"
+    for key, status in _GOVERNED_ACTIONS_SUMMARY_BUCKETS:
+        bucket = summary[key]
+        if not isinstance(bucket, list) or any(not isinstance(v, str) for v in bucket):
+            return f"summary.{key} must be an array of finding ids"
+        # Multiset comparison: duplicate ids are legal (per-path findings), so a
+        # bucket that drops one of them is a real disagreement, not noise.
+        if sorted(bucket) != sorted(observed_buckets[status]):
+            return f"summary.{key} disagrees with the findings it summarises"
+    return None
+
+
+def aggregate_governed_actions(
+    manifest: Mapping[str, object] | None, source_commit: str, now: datetime
+) -> tuple[Finding, Finding, Finding]:
+    """Roll a governed-actions manifest up into (AGT-007, HITL-008, SUP-014).
+
+    The three aggregates are always returned, always in that order. When the
+    manifest is absent or fails any part of `_validate_governed_actions_manifest`
+    all three are `not-verified` carrying the reason — an untrusted manifest can
+    neither certify readiness nor trip the hard go-live gate.
+
+    When the manifest IS trusted, each aggregate takes the worst status among
+    the child findings it owns (`must-fix` > `not-verified` > `should-fix` >
+    `pass` > `not-applicable`). Child detail is summarised by id only; it is
+    never restated as production-ready findings.
+    """
+    if manifest is None:
+        reason = (
+            "No governed-actions manifest at "
+            + "/".join(_GOVERNED_ACTIONS_MANIFEST_RELPATH)
+            + " — run threadlight-governed-actions to produce one."
+        )
+        return tuple(  # type: ignore[return-value]
+            _not_verified(fid, reason) for fid in _GOVERNED_ACTIONS_AGGREGATE_ORDER
+        )
+
+    try:
+        invalid = _validate_governed_actions_manifest(manifest, source_commit, now)
+    except Exception as exc:  # untrusted input must never abort an assessment
+        invalid = f"manifest is malformed ({type(exc).__name__})"
+    if invalid is not None:
+        reason = f"governed-actions manifest not trusted: {invalid}."
+        return tuple(  # type: ignore[return-value]
+            _not_verified(fid, reason) for fid in _GOVERNED_ACTIONS_AGGREGATE_ORDER
+        )
+
+    by_child: dict[str, list[str]] = {}
+    for entry in manifest["findings"]:  # type: ignore[index]
+        by_child.setdefault(entry["finding_id"], []).append(entry["status"])
+
+    out: list[Finding] = []
+    for fid in _GOVERNED_ACTIONS_AGGREGATE_ORDER:
+        domain, children = GOVERNED_ACTIONS_AGGREGATES[fid]
+        statuses = [s for child in children for s in by_child.get(child, [])]
+        status = _governed_actions_worst(statuses)
+        flagged = sorted(
+            child for child in children
+            if any(s != "pass" and s != "not-applicable"
+                   for s in by_child.get(child, []))
+        )
+        if flagged:
+            detail = (
+                f"threadlight-governed-actions reports {status} for the {domain} "
+                f"domain ({', '.join(flagged)}). See "
+                + "/".join(_GOVERNED_ACTIONS_MANIFEST_RELPATH)
+                + " for the detail; this is a conformance record, not a certification."
+            )
+        else:
+            detail = (
+                f"threadlight-governed-actions verified the {domain} domain with "
+                f"no open findings (conformance record, not a certification)."
+            )
+        out.append(_mk_finding(fid, status=status, detail=detail))
+    return tuple(out)  # type: ignore[return-value]
+
+
+def _governed_actions_findings_for_pillar(
+    ctx: RepoContext, pillar: str
+) -> list[Finding]:
+    """Subset of the three governed-actions aggregates belonging to *pillar*."""
+    wanted = [
+        fid for fid in _GOVERNED_ACTIONS_AGGREGATE_ORDER
+        if FINDING_CATALOG[fid]["pillar"] == pillar
+    ]
+    if not wanted:
+        return []
+    manifest = load_governed_actions_manifest(ctx.root)
+    aggregates = aggregate_governed_actions(
+        manifest,
+        _governed_actions_head_commit(ctx.root),
+        datetime.now(timezone.utc),
+    )
+    by_id = {finding.id: finding for finding in aggregates}
+    return [by_id[fid] for fid in wanted]
+
+
+
+# ---------------------------------------------------------------------------
 # Bicep ARM-graph parser (v0.3.0 — closes the smoking gun)
 # ---------------------------------------------------------------------------
 #
@@ -2720,38 +3414,37 @@ def _canonical_policy_text(ctx: RepoContext) -> tuple[str, bool, str]:
 def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     out: list[Finding] = []
     src = ctx.src_text
-    # Prefer the threadlight-govern leg manifest when it is present and fresh:
-    # the leg has already verified AGT wiring, so report its verdict as
-    # evidence rather than re-deriving from heuristics.
-    gm = _load_leg_manifest(ctx, "govern-manifest.json")
-    if gm is not None and gm.get("_fresh"):
-        verdict = gm.get("verdict", "?")
-        prov = f"threadlight-govern manifest (verdict: {verdict}, {gm.get('_age_days')}d old)"
-        _agt_map = {
-            "AGT-001": "policy_schema_valid",
-            "AGT-002": "policy_artefact_present",
-            "AGT-003": "asi_reference_present",
-            "AGT-004": "policy_versioned",
-            "AGT-005": "ci_gate_present",
+    repo = Path(__file__).resolve().parents[3]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    try:
+        from skills._shared.governance_readiness import assess
+        target = {
+            key: ctx.azd_env[env_key] for key, env_key in {
+                "agent_id": "AGENT_NAME", "agent_version": "AGENT_VERSION",
+                "image_digest": "IMAGE_DIGEST", "environment": "AZURE_ENV_NAME",
+                "tenant": "AZURE_TENANT_ID", "subject": "AGENT_PRINCIPAL_ID",
+                "client_id": "AGENT_CLIENT_ID",
+            }.items() if ctx.azd_env.get(env_key)
         }
-        for fid, cap in _agt_map.items():
-            st = _leg_cap_status(gm, cap)
-            if st is None:
-                out.append(_not_verified(fid, f"{prov}: capability {cap!r} not reported"))
-            else:
-                out.append(_mk_finding(fid, status=st, detail=f"{prov}: {cap}={st}"))
-        # AGT-006 telemetry sink is not part of the govern manifest — keep the
-        # legacy heuristic so the finding still scores.
-        pol_text = ""
-        for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
-            pol_text += "\n" + (_read_text(p) or "")
-        has_telemetry = bool(re.search(r"telemetry|otel|opentelemetry|app[_ -]?insights", pol_text + src, re.I))
-        out.append(_mk_finding("AGT-006",
-            status="pass" if has_telemetry else "should-fix",
-            detail="Telemetry sink wired" if has_telemetry else "No telemetry sink wired for AGT denials"))
-        if agt_profile and agt_profile not in ("none", "auto", "v3_7", "v4_preview"):
-            out.append(_not_verified("AGT-001", f"Unknown --agt-profile {agt_profile!r}; v4 migration considerations apply"))
-        return out
+        scope = _assessment_target_scope_for_ctx(ctx)
+        if scope.subscription_id:
+            target["subscription"] = scope.subscription_id
+        if scope.resource_group:
+            target["resource_group"] = scope.resource_group
+        assurance = assess(ctx.root, required_target=target)
+    except ImportError:
+        assurance = {"status": "not-verified", "reason": "Shared governance evidence validator unavailable."}
+    if any((ctx.root / "specs" / name).exists() for name in (
+        "governance-manifest.json", "govern-manifest.json", "governance-contract.json",
+    )):
+        return [
+            _mk_finding("AGT-001", status=assurance["status"], detail=assurance["reason"]),
+            *[_mk_finding(f"AGT-{number:03d}",
+                          status="not-applicable" if assurance["status"] == "pass" else "not-verified",
+                          detail="Legacy policy-marker check is not binding enforcement evidence.")
+              for number in range(2, 7)],
+        ]
     # ---- legacy heuristic path (no govern manifest) ----
     # Schema/pin checks read the CANONICAL policy file only; OR-presence signals
     # (OWASP, telemetry) may read the merged text.
@@ -2764,9 +3457,7 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
         and re.search(r"^rules\s*:", canon_text, re.I | re.M)
     )
     out.append(_mk_finding("AGT-001",
-        status="pass" if schema_valid else "must-fix",
-        detail="AGT policy has version/name/rules — lints clean" if schema_valid
-               else "No schema-valid AGT policy (author policy.yaml with top-level version + name + rules, then `agt lint-policy`)"))
+        status=assurance["status"], detail=assurance["reason"]))
     # AGT-002 policy artefact present
     out.append(_mk_finding("AGT-002",
         status="pass" if has_policy else "must-fix",
@@ -4156,9 +4847,13 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
     # RAI-002/003 read the canonical policy for the completeness check; the
     # merged text still feeds the OR-presence shield/PII signals below.
     canon_text, has_policy, pol_text = _canonical_policy_text(ctx)
-    # Prefer the threadlight-govern manifest's RAI-policy verdict when fresh.
-    gm = _load_leg_manifest(ctx, "govern-manifest.json")
-    gm_sar = _leg_cap_status(gm, "sensitive_action_rules_present") if (gm and gm.get("_fresh")) else None
+    # Neither old whole-agent verdicts nor a noop prove RAI policy enforcement.
+    if any((ctx.root / "specs" / name).exists() for name in (
+        "governance-manifest.json", "govern-manifest.json",
+    )):
+        gm_sar = "not-verified"
+    else:
+        gm_sar = None
     has_sar = bool(re.search(r"\b(deny|escalate|block|rate_limit)\b|sensitive[_ ]?action|require[_ ]?approval", canon_text, re.I))
     if gm_sar is not None:
         out.append(_mk_finding("RAI-002", status=gm_sar,
@@ -6033,6 +6728,14 @@ def _run_pillar(
     for gap in _gap_findings_for_pillar(ctx, pillar):
         if gap.id not in existing_gap_ids:
             findings.append(gap)
+    # Governed-actions aggregate evidence (Task 13): fold in the aggregate(s)
+    # owned by this pillar. They roll up a sibling skill's manifest without
+    # re-running any of its probes and without restating its child findings, and
+    # default to `not-verified` when no trustworthy manifest is present.
+    existing_ga_ids = {f.id for f in findings}
+    for governed in _governed_actions_findings_for_pillar(ctx, pillar):
+        if governed.id not in existing_ga_ids:
+            findings.append(governed)
     if not static_only:
         live_findings, live_evidence = live_fn(ctx, tiers, sub, rg) if pillar != "network-posture" else live_fn(ctx, tiers, resolved_posture, sub, rg)
         # v4-preview live deep checks: gated to fire only when profile is v4_preview.

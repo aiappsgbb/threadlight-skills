@@ -1,0 +1,35 @@
+agent_control_specification_version: "0.3.1-beta"
+metadata:
+  name: returns-safe-example
+  description: Explicit refund invariants; SAFE is methodology, not blanket coverage.
+policies:
+  returns-safe:
+    type: rego
+    query: data.threadlight.safe.pre_tool_verdict
+    data:
+      - safe.rego
+intervention_points:
+  pre_tool_call:
+    policy_target: "$.tool_call.args"
+    policy_target_kind: tool_args
+    tool_name_from: "$.tool_call.name"
+    policy:
+      id: returns-safe
+  post_tool_call:
+    policy_target: "$.tool_result"
+    policy_target_kind: tool_result
+    tool_name_from: "$.tool_call.name"
+    policy:
+      id: returns-safe
+      query: data.threadlight.safe.post_tool_verdict
+  output:
+    policy_target: "$.output"
+    policy_target_kind: assistant_output
+    policy:
+      id: returns-safe
+      query: data.threadlight.safe.output_verdict
+tools:
+  returns_apply_decision:
+    consequence: write
+  search_catalog:
+    consequence: read

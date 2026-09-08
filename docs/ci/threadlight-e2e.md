@@ -10,6 +10,15 @@
 
 ## What this workflow does
 
+**Current evidence modes:** `live-smoke` runs the workshop path below without
+asserting readiness; `full` is only its deprecated alias. `readiness-proof` uses
+separate `local-native-contract` and protected preproduction jobs with real
+bundle/generation, pre-deploy `--gate`, pinned deployment, fresh hosted collection
+and strict v1 consumers. It does not run the smoke business prompts or borrow a
+legacy green verdict. See [required protected inputs, commands and artifact paths](../production-readiness.md#runtime-governance-lifecycle).
+The collector proves only `governance_probe_noop`; unverified business bindings
+fail readiness. No live proof is claimed by this runbook.
+
 Drives the full threadlight pipeline — `threadlight-design` → `threadlight-deploy` (incl. `azd up`) → `threadlight-safe-check phase=post-deploy` → live agent invoke → **control-plane legs** (`threadlight-govern` + `threadlight-evals` + `threadlight-redteam` against the deployed pilot, then `threadlight-production-ready` rendering the outcome-KPI scorecard that joins them) — in a clean Actions runner, with model calls routed to a Foundry account via BYOK. The leg phase is workflow-owned + deterministic and report-only for verdicts (the workshop scenario legitimately surfaces governance/eval/safety gaps); its hard gate is that each leg executable runs end-to-end and emits its `specs/*-manifest.json`. The offline counterpart that asserts a *fully green + joined* control plane is [`test_e2e_control_plane.py`](../../skills/threadlight-auto/tests/test_e2e_control_plane.py). Deployed Azure resources land in a per-run RG (`rg-threadlight-e2e-<run_id>`) and are torn down via `azd down --force --purge` in an `if: always()` step.
 
 ## When to fire it
@@ -21,7 +30,8 @@ cost dial:
 |---|---|---|---|
 | `smoke-only` | ~$0 | ~30 s | The skills load and the Skill-tools are discoverable |
 | `design-only` | ~$0.20 | ~10 min | Design → Pattern 0 → design→deploy contract holds. **No Azure resources provisioned** |
-| `full` | ~$0.50-1 | ~45-60 min | Everything, incl. `azd up`, live invoke, and the control-plane legs |
+| `live-smoke` / `full` (deprecated alias) | ~$0.50-1 | ~45-60 min | Deploy/invoke and report-only assurance, not readiness |
+| `readiness-proof` | Operator-approved budget | Environment dependent | Selected runtime binding proof; requires registered fixture/CP/images, fails when business live evidence is absent |
 
 | Reason | Recommended tier |
 |---|---|
@@ -62,12 +72,13 @@ gh workflow run threadlight-e2e-foundry.yml \
 1. Open <https://github.com/aiappsgbb/threadlight-skills/actions/workflows/threadlight-e2e-foundry.yml>
 2. Click **Run workflow**
 3. Pick inputs:
-   - **mode** — `full` (default) | `design-only` | `smoke-only`. See the cost table above
+   - **mode** — `live-smoke` (default) | `readiness-proof` | `full` (deprecated alias) | `design-only` | `smoke-only`.
+   - **governance_safe_probe** — `false` (default). Must be explicitly `true` for readiness-proof; authorizes only the registered preproduction noop, never business writes.
    - **workload** — `returns-triage` (default, the workshop retail gate) | `fsi-kyc-aml` (complex regulated KYC/AML)
    - **region** — `westus3` (default). If quota is tight, try `eastus2` or `northcentralus`
    - **model_deployment** — `gpt-5.4-mini` (default). Must already exist on the `AZURE_AI_ENDPOINT` account
    - **wire_api** — `responses` (default, for GPT-5-series) | `completions` (required for model-router)
-   - **teardown** — `true` (default). Set to `false` ONLY when you want to debug post-run — you MUST then manually `az group delete --name rg-threadlight-e2e-<run_id> --yes`. Ignored outside `mode=full`, since no RG is created
+   - **teardown** — `true` (default) for live-smoke/full; false retains the per-run smoke resources for operator cleanup. Does not delete protected readiness services. Ignored for design-only/smoke-only.
 
 ## Expected wallclock
 

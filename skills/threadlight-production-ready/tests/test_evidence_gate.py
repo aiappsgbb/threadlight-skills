@@ -29,6 +29,7 @@ from fixture_workdir import fixture_workdir
 # the module is absent, matching the spec for Task 1.
 import evidence_gate as eg  # noqa: E402
 from evidence_gate import EvidenceGateError
+from skills._shared.tests.governance_consumer_fixtures import seed_inventory
 
 
 def _write(specs_dir: Path, name: str, data: dict) -> None:
@@ -138,6 +139,27 @@ def _write_passing_readiness_artifacts(root: Path) -> None:
     )
 
 
+def test_legacy_green_cannot_assert_readiness():
+    root = fixture_workdir("sample-pilot-broken")
+    for name, value in (("govern", _fresh_govern("governed")),
+                        ("evals", _fresh_evals("comprehensive")),
+                        ("redteam", _fresh_redteam("hardened"))):
+        _write(root / "specs", name + "-manifest.json", value)
+    _write_passing_readiness_artifacts(root)
+    with pytest.raises(EvidenceGateError, match="govern"):
+        eg.evaluate_evidence(root, "readiness-proof")
+
+
+def test_new_read_only_manifest_can_satisfy_readiness():
+    from skills._shared.tests.governance_consumer_fixtures import seed_inventory
+    root = fixture_workdir("sample-pilot-broken")
+    seed_inventory(root)
+    _write(root / "specs", "evals-manifest.json", _fresh_evals("comprehensive"))
+    _write(root / "specs", "redteam-manifest.json", _fresh_redteam("hardened"))
+    _write_passing_readiness_artifacts(root)
+    assert eg.evaluate_evidence(root, "readiness-proof")["readiness_asserted"] is True
+
+
 def test_live_smoke_accepts_non_passing_assurance_verdicts():
     """live-smoke should validate manifest structure but not assert readiness.
 
@@ -154,7 +176,7 @@ def test_live_smoke_accepts_non_passing_assurance_verdicts():
     assert out["mode"] == "live-smoke"
     assert out["readiness_asserted"] is False
     assert out.get("verdicts") == {
-        "govern": "partial",
+        "govern": "not-verified",
         "evals": "none",
         "redteam": "partial",
     }
@@ -172,7 +194,7 @@ def test_readiness_proof_requires_passing_governed():
         raise AssertionError("expected EvidenceGateError for ungoverned manifest")
     except EvidenceGateError as e:
         msg = str(e).lower()
-        assert "govern" in msg and "governed" in msg
+        assert "govern" in msg and "not-verified" in msg
 
 
 @pytest.mark.parametrize(
@@ -214,7 +236,7 @@ def test_readiness_proof_requires_safe_check_and_scorecard_and_fails_postdeploy_
     # remove the postdeploy manifest to simulate missing safe-check
     (root / "tests" / "postdeploy-manifest.json").unlink()
     specs = root / "specs"
-    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    seed_inventory(root)
     _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
 
@@ -231,7 +253,7 @@ def test_readiness_proof_requires_production_scorecard_evidence():
     root = fixture_workdir("sample-pilot-citadel")
     specs = root / "specs"
     # passing manifests
-    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    seed_inventory(root)
     _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
 
@@ -260,7 +282,7 @@ def test_readiness_proof_requires_production_scorecard_evidence():
 def test_readiness_proof_passes_when_assurance_and_readiness_complete():
     root = fixture_workdir("sample-pilot-citadel")
     specs = root / "specs"
-    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    seed_inventory(root)
     _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
     _write_passing_readiness_artifacts(root)
@@ -274,7 +296,7 @@ def test_readiness_proof_passes_when_assurance_and_readiness_complete():
 def test_readiness_proof_rejects_stale_or_malformed_postdeploy_checked_at():
     root = fixture_workdir("sample-pilot-citadel")
     specs = root / "specs"
-    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    seed_inventory(root)
     _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
     _write_passing_readiness_artifacts(root)
@@ -305,7 +327,7 @@ def test_readiness_proof_rejects_stale_or_malformed_postdeploy_checked_at():
 def test_readiness_proof_rejects_postdeploy_manifest_binding_drift():
     root = fixture_workdir("sample-pilot-citadel")
     specs = root / "specs"
-    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    seed_inventory(root)
     _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
     _write_passing_readiness_artifacts(root)
@@ -498,7 +520,7 @@ def test_readiness_proof_rejects_invalid_optional_redteam_typed_fields():
 def test_cli_success_returns_json_payload_and_exit_zero():
     root = fixture_workdir("sample-pilot-citadel")
     specs = root / "specs"
-    _write(specs, "govern-manifest.json", _fresh_govern("governed"))
+    seed_inventory(root)
     _write(specs, "evals-manifest.json", _fresh_evals("comprehensive"))
     _write(specs, "redteam-manifest.json", _fresh_redteam("hardened"))
     _write_passing_readiness_artifacts(root)

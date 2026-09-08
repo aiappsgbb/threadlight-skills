@@ -1009,7 +1009,7 @@ test('design Step 0 and deploy preflight refuse explicit-supported-choice while 
 test("example foundation.md's resolved selector tuple exists in compatible_combinations and matches its named concrete route", () => {
   const policy = loadPolicy();
   const content = read(exampleFoundationPath);
-  const headingPattern = /## Framework & runtime shape\n/;
+  const headingPattern = /# Foundation — canonical Returns Triage\n/;
 
   const framework = firstValueAfterHeading(content, headingPattern, 'framework');
   const runtimeShape = firstValueAfterHeading(content, headingPattern, 'runtime_shape');
@@ -1046,12 +1046,8 @@ test("example foundation.md's resolved selector tuple exists in compatible_combi
     );
   }
 
-  // This example actually runs Microsoft Agent Framework (SkillsProvider +
-  // FoundryChatClient + ResponsesHostServer over the Responses protocol) per
-  // src/agent/container.py + pyproject.toml + azure.yaml. No capability
-  // signal mandates MAF for this pilot (no Toolbox/custom-tool/file-gen/
-  // latency-sensitive trigger) — it is an explicit, compatible operator
-  // choice, not a capability-mandated route.
+  // Canonical native runtime uses a materialized shared host plus actual Python
+  // backend tools. Historical direct-container imports are not the current path.
   assert.strictEqual(framework, 'microsoft-agent-framework');
   assert.strictEqual(runtimeShape, 'agent');
   assert.strictEqual(protocol, 'responses');
@@ -1086,8 +1082,8 @@ test("example foundation.md and SPEC.md § 11e capability_signals blocks are ide
   for (const key of capabilitySignalKeys) {
     assert.strictEqual(
       foundationParsed[key],
-      false,
-      `\`${key}\` must be resolved \`false\` for this pilot (confirmed absent, not merely unknown)`,
+      key === 'requires_custom_python_tools',
+      `\`${key}\` must reflect the actual canonical Python business adapters`,
     );
   }
   assert.deepStrictEqual(
@@ -1100,7 +1096,7 @@ test("example foundation.md and SPEC.md § 11e capability_signals blocks are ide
 
 test('example azure.yaml declared protocol matches the protocol resolved in specs/foundation.md', () => {
   const foundationContent = read(exampleFoundationPath);
-  const headingPattern = /## Framework & runtime shape\n/;
+  const headingPattern = /# Foundation — canonical Returns Triage\n/;
   const foundationProtocol = firstValueAfterHeading(foundationContent, headingPattern, 'protocol');
 
   const azureYamlContent = read(exampleAzureYamlPath);
@@ -1115,7 +1111,7 @@ test('example azure.yaml declared protocol matches the protocol resolved in spec
 
 test("example pyproject.toml's agent-framework packages map to microsoft-agent-framework and match specs/foundation.md's framework", () => {
   const foundationContent = read(exampleFoundationPath);
-  const headingPattern = /## Framework & runtime shape\n/;
+  const headingPattern = /# Foundation — canonical Returns Triage\n/;
   const foundationFramework = firstValueAfterHeading(foundationContent, headingPattern, 'framework');
 
   const pyprojectContent = read(examplePyprojectPath);
@@ -1132,8 +1128,15 @@ test("example pyproject.toml's agent-framework packages map to microsoft-agent-f
   );
 });
 
-test('example container.py names the MAF runtime surfaces (SkillsProvider, ResponsesHostServer) claimed by specs/foundation.md', () => {
-  const content = read(exampleContainerPath);
+test('example container.py delegates to the materialized native MAF host and its real runtime surfaces', () => {
+  const container = read(exampleContainerPath);
+  assert.match(container, /from governance_host import build_host, main/);
+  const materializer = read(`${exampleDir}/scripts/materialize.py`);
+  assert.match(materializer, /"package-native"/);
+  const generator = read('skills/threadlight-deploy/references/governance/generate.py');
+  assert.match(generator, /maf-container\.py/);
+  assert.match(generator, /governance_host\.py/);
+  const content = read('skills/threadlight-deploy/references/governance/maf-container.py');
 
   // Kept intentionally loose (substring checks, no line/format coupling) so
   // this stays robust to refactors of container.py that preserve the same
@@ -1486,4 +1489,47 @@ test('docs-blueprint workflow keeps pull_request.paths and push.paths symmetric'
     pushPaths,
     'pull_request.paths and push.paths must list the exact same entries in the exact same order',
   );
+});
+
+test('docs-blueprint runs the tests/ci CI-wiring suite alongside the blueprint suites', () => {
+  const workflowContent = read('.github/workflows/docs-blueprint.yml');
+
+  // tests/ci/*.test.js guards that every pytest suite is wired into
+  // python-pytest.yml — exactly the "green check that lies about coverage"
+  // failure class. It is a node:test suite with no runner of its own, so
+  // unless this workflow's `node --test` command names it, the checker's own
+  // regression tests never execute in CI: the guard's guard is unguarded.
+  assert.match(
+    workflowContent,
+    /run: node --test tests\/blueprint\/\*\.test\.js tests\/ci\/\*\.test\.js/,
+    'the blueprint test step must also run tests/ci/*.test.js',
+  );
+});
+
+test('docs-blueprint workflow paths (pull_request and push) cover the CI-wiring and governed-actions inputs', () => {
+  const workflowContent = read('.github/workflows/docs-blueprint.yml');
+
+  // Files read by the suites this workflow runs but not covered by the
+  // existing docs/**, tests/blueprint/** and skills/threadlight-design/**
+  // entries. Without these the guards can go stale on a change that never
+  // re-triggers them.
+  const requiredCoverage = [
+    // tests/ci/check-test-dirs-wired.test.js and the checker + workflow it reads.
+    'tests/ci/check-test-dirs-wired.test.js',
+    'scripts/ci/check-test-dirs-wired.py',
+    '.github/workflows/python-pytest.yml',
+    // published-surfaces.test.js asserts the governed-actions contract,
+    // taxonomy and trust boundaries straight out of its SKILL.md.
+    'skills/threadlight-governed-actions/SKILL.md',
+  ];
+
+  for (const triggerKey of ['pull_request', 'push']) {
+    const pathEntries = extractWorkflowPathsList(workflowContent, triggerKey);
+    for (const target of requiredCoverage) {
+      assert.ok(
+        workflowPathsCover(pathEntries, target),
+        `${triggerKey}.paths must cover \`${target}\` (directly or via a \`**\` glob) so CI re-runs when it changes`,
+      );
+    }
+  }
 });

@@ -1,0 +1,10 @@
+tools:
+  - id: customer.lookup
+    consequence: read
+    execution_modes: [interactive, batch]
+    provider_hosted: false
+  - id: payments.refund
+    consequence: irreversible
+    execution_modes: [interactive, background, subagent, direct-tool]
+    provider_hosted: false
+    aliases: [payments.capture]

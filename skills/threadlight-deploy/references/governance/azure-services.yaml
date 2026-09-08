@@ -1,0 +1,24 @@
+# Merged by generate.py; never replace existing services or hooks.
+services:
+  govern-control-plane:
+    host: containerapp
+    project: ./src/govern-control-plane
+    language: docker
+    docker:
+      path: Dockerfile
+      context: .
+    hooks:
+      predeploy:
+        shell: sh
+        run: "echo 'Governance images are deployed by bound Bicep, not azd service rebuilds.' >&2; exit 1"
+  govern-gateway:
+    host: containerapp
+    project: ./src/govern-gateway
+    language: docker
+    docker:
+      path: Dockerfile
+      context: .
+    hooks:
+      predeploy:
+        shell: sh
+        run: "echo 'Governance images are deployed by bound Bicep, not azd service rebuilds.' >&2; exit 1"

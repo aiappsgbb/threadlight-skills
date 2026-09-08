@@ -1,16 +1,19 @@
-# Agent governance (AGT) — wiring report
+# Agent governance — offline binding inventory
 
-> Verdict: **PARTIAL** · profile `auto` · captured 2026-07-07T13:02:05+00:00
+**Offline evidence is not deployment enforcement.** No live probes were run.
+Unknown deployment metadata is null; unsigned bundle integrity is not authenticity.
+Coverage counts declared tool/lifecycle subjects, not invisible provider tools.
 
-| Capability | Status | Evidence / hint |
-|---|---|---|
-| `verifier_artefact_present` | 🟠 should-fix | no committed `agt verify` evidence (docs/agt-verifier-report.md / tests/agt-verifier.json) |
-| `middleware_wired_at_boundary` | ⚪ not-verified | no recognised agent entry-point found to inspect |
-| `verifier_fresh` | ⚪ not-verified | no verifier artefact to age |
-| `policy_artefact_present` | ✅ pass | policy.yaml |
-| `policy_versioned` | ✅ pass | version: 1.0.0 |
-| `rai_policy_present` | ✅ pass | content-filter / prompt-shield / PII block detected in policy |
-| `asi_reference_present` | ✅ pass | OWASP ASI 2026 reference found |
-| `sidecar_pattern` | ➖ not-applicable | in-process (Path A) — no sidecar |
+| Binding / subject | Status | Declared path | Evidence |
+|---|---|---|---|
+| `oms_get_order` | unbound | none | EV-inventory, EV-bundle |
+| `returns_get_case` | unbound | none | EV-inventory, EV-bundle |
+| `returns_list_open` | unbound | none | EV-inventory, EV-bundle |
+| `customer_get_profile` | unbound | none | EV-inventory, EV-bundle |
+| `returns_apply_decision` | unverified | local-agent-hooks | EV-inventory, EV-bundle |
 
-Consumed by `threadlight-production-ready` pillars 2 (agent-governance) + 7 (responsible-ai).
+## Offline evidence
+- EV-inventory: contract-declared-only (specs/governance-contract.json)
+- EV-bundle: native-manifest-valid-not-runtime-proof (src/agent/governance/bundle)
+
+Legacy whole-agent verdict consumers must migrate; no legacy pass is emitted.

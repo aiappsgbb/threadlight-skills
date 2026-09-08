@@ -29,6 +29,17 @@
       "responses"
     ]
   },
+  "governance_compatibility": {
+    "github-copilot-sdk": [
+      "none",
+      "governed-tool-gateway"
+    ],
+    "microsoft-agent-framework": [
+      "none",
+      "local-agent-hooks",
+      "governed-tool-gateway"
+    ]
+  },
   "default": {
     "framework": "github-copilot-sdk",
     "runtime_shape": "agent",

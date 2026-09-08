@@ -1,6 +1,15 @@
 # ContainerAgent definition — Returns Triage assistant
 # Consumed by threadlight-deploy (Foundry hosted agent, workshop §6.2–6.4).
 name: returns-triage
+framework: microsoft-agent-framework
+governance:
+  mode: selective
+  environment_modes:
+    development: evaluate_only
+    staging: evaluate_only
+    preproduction: enforce
+    production: enforce
+  lifecycle_bindings: []
 model:
   deployment: gpt-5.4
   version: "2026-03-05"
@@ -11,11 +20,60 @@ model:
 instructions_file: AGENTS.md
 skills_dir: src/agent/skills
 tools:
-  - oms_get_order
-  - returns_get_case
-  - returns_list_open
-  - customer_get_profile
-  - returns_apply_decision
+  - id: oms_get_order
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: []
+    requires: []
+  - id: returns_get_case
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: []
+    requires: []
+  - id: returns_list_open
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: []
+    requires: []
+  - id: customer_get_profile
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: []
+    requires: []
+  - id: returns_apply_decision
+    execution_modes: [interactive, batch, background, subagent, direct-tool]
+    approval_required: true
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [rma_id, decision, disposition, citations, rationale]
+      properties:
+        rma_id: {type: string, pattern: '^RMA-\d{4}-\d{6}$'}
+        decision: {enum: [approve_refund, deny_refund, escalate_to_supervisor, request_more_info]}
+        disposition: {enum: [restock_a, restock_b, liquidation, return_to_customer, destroy, null]}
+        citations: {type: array, minItems: 1, maxItems: 8, items: {type: string}}
+        rationale: {type: string, minLength: 1, maxLength: 2000}
+    output_schema:
+      type: object
+      additionalProperties: false
+      required: [ok, audit_id]
+      properties:
+        ok: {const: true}
+        audit_id: {type: string, pattern: '^decision-[0-9a-f]{64}$'}
+    consequence: write
+    policy_binding: returns-write-v1
+    enforcement_path: local-agent-hooks
+    intervention_points: [pre_tool_call]
+    safe_principles: [Scope, Anchored Decisions, Flow Integrity, Escalation]
+    requires: [durable-audit]
 knowledge:
   - name: contoso-return-policy
     backing: foundry-iq

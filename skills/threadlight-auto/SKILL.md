@@ -15,7 +15,7 @@ description: >
   DO NOT USE FOR: per-stage control (use threadlight-design / -deploy /
   -safe-check directly), production CI/CD, single-stage iteration.
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # `threadlight-auto` — Full-auto Threadlight driver
@@ -79,7 +79,92 @@ design            local-test       deploy             safe-check
 > `threadlight-router-bench` to harvest a grounded learnings digest (failure
 > taxonomy + recommendations) and, optionally, a model-router cost/quality
 > scorecard. It never drives prod-pipeline, customer-onboarding, or offline
-> self-improvement legs.
+> self-improvement legs. Selected governance bindings add mandatory gates below.
+
+## Governed actions — mandatory for selected bindings
+
+The orchestrator reads the explicit governance contract, without adding bindings,
+omitting business actions or switching frameworks. Selected bindings require:
+
+`design → govern → governed_actions_gate → deploy → governance_probe → safe_check → cost_projection → invoke`
+
+| Stage | Required action and exit condition |
+|---|---|
+| `govern` | Run `threadlight-govern` with `--emit`; validate the current inventory at `specs/governance-manifest.json`. Offline inventory is not live proof. |
+| `governed_actions_gate` | Run `threadlight-governed-actions --phase pre-deploy`. Then run `orchestrator.py --workspace <pilot> --complete-stage governed_actions_gate`. This independently validates the complete `governance-ledger/v2` contract and checkpoints exact input hashes; failure blocks deploy. |
+| `deploy` | Immediately before each actual attempt, run `orchestrator.py --workspace <pilot> --start-stage deploy`. Only after that worker succeeds, run `orchestrator.py --workspace <pilot> --complete-stage deploy`. Failed/interrupted attempts must not be marked complete; retries start a new attempt. |
+| `governance_probe` | After deploy, use `threadlight-safe-check`'s explicit collector with `.threadlight/governance-probe.json`. It writes `.threadlight/governance-live.json`. Run `orchestrator.py --workspace <pilot> --complete-stage governance_probe` to validate and publish its unchanged nested manifest to `specs/governance-manifest.json`; shared validation must pass before any subsequent stage. |
+
+Run the planner before **each** stage and execute only the first runnable stage.
+Never treat pending stages as permission to continue past a failed gate.
+The programmatic `execute(workspace, worker)` driver enforces ordering and
+revalidates artifacts after worker completion. Nonzero exit, missing tooling,
+malformed evidence, legacy v2, or a local assessment labeled green cannot unlock
+the live gate. On resume, changed contract/manifest/image/policy/configuration or
+expired proof invalidates the corresponding checkpoint and downstream stages.
+Every actual deployment invalidates earlier proof, even for an unchanged image or
+version. `.threadlight/governance-execution-state.json` records the attempt ID,
+execution times, input fingerprint and accepted collection digest. Collection must
+start after that exact successful attempt; file modification times are not proof.
+The programmatic driver records these transitions automatically. Do not edit
+collector timestamps or cloud history to satisfy a checkpoint.
+
+The pre-deploy fingerprint covers normalized selection, policy/configuration,
+scope, source files and actual host wiring. Parent runtime FQDN, image digest and
+agent-version outputs do not invalidate that authorization; completed attempts
+separately bind those outputs for subsequent Task11 verification. Source, tools,
+policy, scopes and non-output configuration changes still require a new gate.
+Interrupted/failed attempts force an actual deploy retry even if an old FQDN
+exists. A successfully completed unchanged attempt may resume its proof without
+redeploying. With no governance selection, the legacy `govern` worker remains
+advisory and cannot assert live enforcement; malformed selections remain blocked.
+
+Contract JSON, parent manifest declarations and SPEC YAML use the shared contract
+validator. Malformed declarations, unsupported mode aliases, duplicate keys or
+conflicting mirrors produce `invalid-governance-configuration` and block all
+workers; they never select the legacy/off path. A human-readable selection without
+a complete supported contract is unresolved, not permission to deploy.
+
+Only the **explicitly reserved staging noop**, at its exact binding and
+`pre_tool_call` path, is safe to probe. Never probe business actions or production
+canaries to clear a gate. Its receipts cannot certify another tool, lifecycle
+point, agent or deployment. Unproven business bindings remain blocked.
+
+For an explicitly off or unbound-only valid contract no governance stages are
+scheduled. Without selected bindings, the existing consequential-action advisory
+handoff remains available with the following wording:
+
+| Key | Recommendation |
+|---|---|
+| `execution` | `manual-explicit` |
+| `design` | `run threadlight-governed-actions --phase design after threadlight-design` |
+| `pre_deploy` | `run threadlight-governed-actions --phase pre-deploy before deploy` |
+| `post_deploy` | `run threadlight-governed-actions --phase post-deploy against staging only` |
+| `manifest` | `tests/governed-actions-manifest.json` |
+
+The handoff appears only when the workspace declares a consequential action
+(`specs/manifest.json` `consequential_actions: true`, or a root action registry
+declaring a non-read `consequence`) or already carries a manifest — an
+unrelated pilot is never nagged.
+
+**Manifest summary (`governed_actions_manifest`).** When
+`tests/governed-actions-manifest.json` exists, `summarize_governed_actions_manifest()`
+reads it as untrusted JSON and checks only what auto can check for itself:
+schema `threadlight-governed-actions-manifest/v1`, a known lifecycle phase, a
+clean source bound to the checked-out commit, freshness, and summary counts
+that agree with the findings they claim to summarise. A schema-valid, fresh,
+commit-bound manifest is reported as `summarized` with its verdict and
+per-status counts. Anything else — stale, expired, dirty, mis-bound,
+miscounted, malformed — is reported as `rerun-recommended` with zeroed counts
+and no verdict, and the recommendation is the same approved lifecycle wording.
+
+**Trust limitations.** The advisory summary is a *read*, not a verification.
+The mandatory gate separately reuses `threadlight-production-ready`'s strict
+validator, which re-derives policy hashes, resolves evidence and validates
+mediation paths when it folds the
+manifest into `AGT-007` / `HITL-008` / `SUP-014`. Auto's `summarized` status
+therefore means "this artefact is well-formed, current, and bound to this
+commit", never "this pilot is governed". Production rollout remains human-owned.
 
 ## Input parsing
 
@@ -222,7 +307,9 @@ when ALL conditions hold:
 | Cost-projection | SPEC § 12 `load_profile{}` is complete (all required keys filled, no `TBD` placeholders) AND `specs/cost-manifest.json.schema_version` starts with `1.` AND `generated_at > AZURE_LAST_DEPLOY_AT` (the planner trusts `specs/cost-manifest.json.generated_at` vs `AZURE_LAST_DEPLOY_AT`; `.threadlight/auto-state.json[cost_projection].passed_at` is recorded for audit/echo only and is not used as a skip gate) |
 | Evals (Discover) | `specs/evals-manifest.json` has schema `threadlight-evals-manifest/v1`, a parseable `captured_at`, and a known verdict (`comprehensive` / `partial` / `offline-only` / `none`) captured `< 24 h` ago (re-runs when a fresh deploy/invoke cascades) |
 | Red-team (Discover) | `specs/redteam-manifest.json` has schema `threadlight-redteam-manifest/v1`, a parseable `captured_at`, and a known verdict (`hardened` / `partial` / `vulnerable`) captured `< 24 h` ago |
-| Govern (Protect) | `specs/govern-manifest.json` has schema `threadlight-govern-manifest/v2`, a parseable `captured_at`, and a known verdict (`governed` / `partial` / `ungoverned`) captured `< 24 h` ago |
+| Govern (before deploy when selected) | `specs/governance-manifest.json` validates against the shared binding schema and exact current contract/source hashes |
+| Governed-actions gate | Strict current `governance-ledger/v2` passes, and `.threadlight/governance-gate-state.json` matches the current manifest/package/deployment/ledger hashes |
+| Governance probe (after deploy) | All selected bindings are enforce-mode/enforced with fresh exact-target receipts, zero unverified/bypassable coverage and no gaps |
 | Sell (optional) | `docs/{seller-prep.md,demo-rehearsal.md}` exist |
 
 If a stage's freshness check fails, that stage AND all downstream stages re-run
@@ -246,7 +333,8 @@ sub-skill's closing report; if a report indicates failure, the smart-recovery ta
 | 6 | Invoke | direct `azd ai agent invoke` ×2 | Both demo scenarios from `specs/SPEC.md § Demo Scenarios` succeed |
 | 7 | Evals — Discover (advisory) | `threadlight-evals` (`scripts/evals_check.py`) | `specs/evals-manifest.json` — offline batch (delegates to `foundry-evals`), Foundry Continuous Evaluation wiring on live threads, + A/B champion–challenger gate. Consumed by production-ready pillar 6 (EVAL-001..004). Advisory — degrades to `not-verified`, never blocks. |
 | 8 | Red-team — Discover (advisory) | `threadlight-redteam` (`scripts/redteam_check.py`) | `docs/redteam-report.md` + `specs/redteam-manifest.json` — AI Red Teaming Agent adversarial scan (jailbreak / prompt-injection / exfiltration / harmful-content). Mapped to production-ready pillar 7 (SAFE-101..106). Advisory — never blocks. |
-| 9 | Govern — Protect (advisory) | `threadlight-govern` (`scripts/govern_check.py`) | verifier report + `specs/govern-manifest.json` — wraps `foundry-agt`: policy artefact + in-process middleware at the container boundary. Consumed by production-ready pillar 2 (AGT-001..005) + pillar 7 (RAI-002/003). Advisory — never blocks. |
+| before 3 | Govern + mandatory governed-actions gate (when selected) | `threadlight-govern`, `threadlight-governed-actions` | Current binding inventory + strictly validated pre-deploy ledger. Blocks deploy until satisfied. |
+| after 3 | Governance probe (when selected) | `threadlight-safe-check` explicit collector | Current exact binding evidence at `specs/governance-manifest.json`. Blocks all subsequent stages until satisfied; no business-action probing. |
 | 10 | Production-ready (OPTIONAL, advisory) | `threadlight-production-ready` (file-path CLI) | `docs/production-readiness-report.md` + `tests/production-readiness-manifest.json` — never blocks. Run when the customer asked for a paved-path / architecture-review artifact alongside the demo. Skip for pure throwaway demos. |
 | 11 | Sell (OPTIONAL) | `threadlight-design` regenerates seller-prep | `docs/{seller-prep.md,demo-rehearsal.md}` |
 

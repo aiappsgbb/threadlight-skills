@@ -1,39 +1,38 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
-
+# Existing-infrastructure deployment template, NOT a provisioning plan.
+# Materialize sources, publish signed policy, and supply built images first.
 name: returns-triage
 services:
-    ai-project:
-        project: ""
-        host: azure.ai.project
-        language: ""
-        deployments:
-            - model:
-                format: OpenAI
-                name: gpt-5.4
-                version: "2026-03-05"
-              name: gpt-5.4
-              sku:
-                capacity: 30
-                name: GlobalStandard
-    returns-triage:
-        project: ./src/agent
-        host: azure.ai.agent
-        language: docker
-        docker:
-            remoteBuild: true
-        uses:
-            - ai-project
-        container:
-            resources:
-                cpu: "0.5"
-                memory: 1Gi
-        environmentVariables:
-            - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
-              value: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
-        kind: hosted
-        name: returns-triage
-        protocols:
-            - protocol: responses
-              version: 2.0.0
-infra:
-    provider: microsoft.foundry
+  returns-triage:
+    project: ./src/agent
+    host: azure.ai.agent
+    language: docker
+    image: ${TL_GOV_AGENT_IMAGE}
+    kind: hosted
+    name: returns-triage
+    protocols:
+      - protocol: responses
+        version: 2.0.0
+    environmentVariables:
+      - name: AZURE_CLIENT_ID
+        value: ${RETURNS_AGENT_CLIENT_ID}
+      - name: FOUNDRY_PROJECT_ENDPOINT
+        value: ${CITADEL_PROJECT_ENDPOINT}
+      - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+        value: gpt-5.4
+      - name: FOUNDRY_AGENT_VERSION
+        value: ${FOUNDRY_AGENT_VERSION}
+      - name: TL_GOV_IMAGE_DIGEST
+        value: ${TL_GOV_IMAGE_DIGEST}
+      - name: TL_GOV_SPOOL_DIR
+        value: ${TL_GOV_SPOOL_DIR}
+      - name: GOV_CONTROL_PLANE_URL
+        value: ${GOV_CONTROL_PLANE_URL}
+  governance-control-plane:
+    project: ./src/governance-control-plane
+    host: containerapp
+    language: docker
+    image: ${TL_GOV_CONTROL_IMAGE}
+    env:
+      TL_GOV_SERVICE: control-plane
+      GOV_CONFIG_JSON: ${GOV_CONFIG_JSON}
+      AZURE_CLIENT_ID: ${GOV_CONTROL_CLIENT_ID}

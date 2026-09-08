@@ -7,6 +7,34 @@ field.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-06
+
+### Breaking migration
+
+- Runtime readiness consumes `threadlight-governance-manifest/v1` per-binding
+  evidence at `specs/governance-manifest.json`. Legacy v2 whole-agent verdicts,
+  policy presence and old green CI remain historical provenance, not current
+  readiness. New deployment attempts require fresh after-deployment collection
+  matching the full signed envelope, bundle, key, configuration and observed scope.
+- Public guidance and skill routing now lead to real ACS/Rego bundle and selected
+  native-host/gateway/service generation, not assessment-only checklists.
+  Unbound reads are preserved; current scoped acceptance is required for
+  consequential unbound actions. Noop proof cannot certify business bindings.
+
+### Added
+
+- Separate local-native-contract and protected preproduction readiness-proof
+  workflow jobs: actual bundle/native validation, exported CTK/LOCAL-14 pre-deploy
+  gate, digest-bound service provisioning/agent deployment, installed post-deploy
+  collector and strict shared v1/readiness consumers. Required operator inputs
+  fail closed; no signatures, fixtures, business seed or broad grants are invented.
+- Root `AGENTS.md`, wording/skill pressure regressions and executable CI input,
+  publication, scope and deployment-attempt tests. Correct shared AGT core 5.0.0
+  identity and 47 declared CTK vectors (four incremental vectors undeclared).
+
+This release publishes local implementation/contract evidence only. No Azure
+deployment or business live proof is claimed; broader acceptance is separate.
+
 ### Changed
 
 - The public narrative now describes a governed working pilot, an evidence-
@@ -16,6 +44,35 @@ field.
   `threadlight-auto` as a planner rather than an executable worker.
 
 ### Fixed
+
+- **`threadlight-governed-actions` never actually exercised approval
+  anti-replay, and its approval probe wrote growing state into the target
+  repository.** `_run_approval_coverage` invoked `probes.run_approval_probe`
+  exactly once per assessment, so the only thing an `APR-001` "pass" ever
+  proved was that a *first* redemption was accepted: a target whose
+  redemption seam fails open on a replayed or mutated binding gated `0`
+  with no finding at all on its first run. The probe also redeemed against
+  the target's own contract-declared `nonce_ledger`, so a plain read-only
+  assessment (no `--emit`) created and then unboundedly grew
+  `governance/nonce-ledger.jsonl` inside the assessed repository, and each
+  run's result depended on residue the previous run left behind. The new
+  `probes.run_approval_probe_sequence` drives the real sequence within one
+  assessment — first use, byte-identical replay, and one mutated-binding
+  attempt per design § 7.3 dimension (action, arguments, target scope,
+  tenant, requesting/approving subject, approving role, policy id, policy
+  hash, expiry), all reusing the same already-consumed nonce — against an
+  exclusive, assessment-private ledger removed in a `finally` (including
+  crash, timeout, and tooling-failure paths). `run_approval_probe` gained a
+  strictly validated, keyword-only `ledger_path` override (absolute, an
+  existing regular file, never a symlink, and never resolving onto the
+  target's declared ledger, which stays read-only); its default behaviour
+  and signature are otherwise unchanged. The `approval-replay` fixture's
+  binding is no longer already expired at the frozen Task 12 clock, so it
+  proves the replay defect it is named after instead of a stale expiry, and
+  the four goldens were regenerated through the approved deterministic
+  path. Design/pre-deploy assessments without `--emit` now leave the target
+  byte-identical, and consecutive runs at the same commit produce identical
+  verdicts, findings, and manifests with no ledger growth or residue.
 
 - **E2E job-start `azd auth login` had zero retry against an external OIDC
   outage (run #32296600274).** The initial `azd auth login (federated OIDC)`
@@ -284,6 +341,59 @@ field.
   sanitization checklist (all-zero GUIDs, synthetic-only names, no email/
   URL/credential-shaped content). No raw evidence from the probed
   subscription is retained anywhere in this repository.
+
+## [1.13.0] - 2026-09-01
+
+### Added
+
+- **`threadlight-governed-actions` (skill v0.1.0) — the governed-actions
+  evidence leg.** Proves whether every *consequential* action a pilot agent
+  can take is **inventoried, mediated, enforced, approved, and auditable**,
+  then renders a customer-facing **Governance Evidence Pack**. Read-only by
+  default; artefacts are written only under `--emit`
+  (`tests/governed-actions-manifest.json`,
+  `docs/governance/evidence-pack.md`), `--gate` maps the verdict onto exit
+  codes `0` pass / `1` must-fix / `2` usage / `3` internal, and the MAF
+  interceptor scaffold is a bounded double-opt-in write
+  (`--scaffold maf --confirm-scaffold`). Phases are `design`, `pre-deploy`,
+  and a **staging-only** `post-deploy` that requires an explicit
+  `--staging-resource-group`. Findings are the fixed 18-ID taxonomy
+  `ACT-001/002`, `MED-001..003`, `ENF-001/002`, `APR-001`, `OUT-001`,
+  `AUD-001`, `PIN-001`, `GHCP-001..006`, `OPS-001`; the manifest is
+  `threadlight-governed-actions-manifest/v1` at schema `1.0.0`. Evidence is
+  **payload-free** — no raw prompts, arguments, outputs, or secrets are
+  recorded. `threadlight-production-ready` (skill v0.12.0) consumes the
+  manifest as leg-verified AGT-007 / HITL-008 / SUP-014 evidence, and
+  `threadlight-auto` (skill v1.3.0) treats the leg as a recommendation only.
+  Published as part of plugin **1.13.0** (22 pipeline skills + the
+  `threadlight-auto` planner, 23 total).
+
+  **Tested upstream tuple** (from
+  `skills/threadlight-governed-actions/references/upstream-pin.json` and the
+  committed conformance claim — the authoritative pin files, not prose):
+  Agent Hooks spec `AGENT-HOOKS-0.1` version `0.1.0-alpha` at repository
+  commit `0821ebbae252c45cd225304a464d1130963b82a8`; SDK
+  `agent-hooks-sdk 0.1.0a5`; CTK 47 of 51 vectors applicable and **47
+  passed** (4 skipped); MAF `agent-framework-core 1.13.0`
+  (`integration_status: experimental`); ACS policy schema
+  `not-applicable`; conformance report
+  `conformance/claims/maf/REPORT.md` claim `section-13.1` with
+  `certification: false`; conformance python `3.12.3`; drift policy
+  `exact-tuple-rerun-ctk-and-application-probes`.
+
+  **Boundaries.** The result is **conformance, not certification**. Agent
+  Hooks is a **cooperative alpha, not a security boundary**; MAF
+  interceptors are **experimental**; provider-hosted execution cannot be
+  intercepted in-process; the service must still repeat authorization,
+  validation, idempotency, and transaction controls; and the GitHub Copilot
+  internal loop is **not** intercepted — only its change plane (PR-only,
+  CODEOWNERS, required checks, SHA pins, OIDC/WIF, identity separation) is
+  assessed. Customer policy, thresholds, approvers, identities, and risk
+  appetite are **customer inputs** and are never invented by the skill.
+  **This release does not own the production rollout** — enabling
+  interceptors, approvals, or change-plane controls in a production
+  environment stays a separate, human-owned decision delivered through
+  `threadlight-cicd` / customer platform ownership.
 
 ## [1.12.0] - 2026-08-18
 

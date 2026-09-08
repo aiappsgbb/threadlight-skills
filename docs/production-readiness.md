@@ -1,5 +1,395 @@
 # Production-readiness, the threadlight way
 
+## Runtime governance lifecycle
+
+**SAFE is the method**, **ACS/Rego is the PDP** (native OPA policy decisions),
+**Agent Hooks is the host/interceptor contract SDK**, and the **native host or
+governed-tool gateway is the PEP** enforcing the selected action lifecycle.
+**AGT is the toolkit**; **ASSERT is assurance**, not an engine. Neither a policy
+file, a CI badge nor one enforced tool makes the whole agent governed or
+SAFE-complete.
+
+### Select, implement, prove
+
+1. Select each tool, intervention point and path in the governance contract.
+   Preserve unbound reads without ACS. Report `enforced`, `observed`, `unbound`,
+   `unverified`, `unsupported` and `bypassable` per binding. Consequential unbound
+   actions require current owner/risk/tool/commit/environment acceptance, not a
+   boolean. Invalid selected configuration is not `off`.
+2. Build/validate the real ACS bundle with `policy_bundle.build_bundle`,
+   `verify_bundle` and the native loader. Author host-trusted SAFE evidence from
+   backend reads, target schema and dynamic facts, not model claims. Publish the
+   signed bundle through the authorized control-plane publisher. Generate actual
+   native host/gateway and ACA service sources using
+   [generate.py and its bootstrap contract](../skills/threadlight-deploy/references/governance/README.md).
+3. Enforce required signed/fresh policy, authenticated tenant/role/full-scope human
+   approval with nonce CAS consumption, trusted targets/dynamic facts and central
+   audit ACK **before effects**. Recheck authorization after waits at terminal
+   dispatch. Local overlay fsync is retry safety, not hosted durable proof.
+4. Run offline inventory and executed **LOCAL-14** plus exact native/CTK tests.
+   These remain local proof. The standalone export copies actual producer,
+   validator, CTK and test-only oracle sources and its own CI gate.
+5. After deployment, collect ARM/Foundry-observed tenant/subscription/RG,
+   version/image/principal and closed configuration before/after real hosted
+   invocation. Fresh registered allow/deny nonces, authenticated producer/fixture
+   counters and control-plane receipts are required; text is not an oracle.
+
+Native MAF supports selected tool/lifecycle and buffered-output enforcement, not
+automatic full SAFE. Compaction, provider-hosted tools and incremental
+streaming/custom clients remain unsupported. GHCP supports registered gateway
+action effect closure only: no arbitrary URL/shell routing or claimed full
+lifecycle/full-output coverage. ACS is local; signed policy distribution and
+registered ACA control-plane/gateway services use Cosmos, Blob, Key Vault and
+separate publisher, verifier, workload and downstream UAMI permissions.
+
+Use the [shared published pins](../skills/_shared/governance-upstream-pin.json):
+`agent-governance-toolkit-core==5.0.0`, ACS `0.3.1b0`, Agent Hooks `0.1.0a5`,
+MAF core `1.14.0`, Foundry `1.11.0`, hosting `1.0.0b260813`, OPA `1.18.2`.
+Preview/alpha integrations and experimental defaults are explicit, not GA
+guarantees. Only the CTK test oracle is corrected; the official execution SDK is
+unmodified. **47 declared vectors**, four undeclared incremental-output vectors;
+not “51 passed”.
+
+### Evidence and migration
+
+`specs/governance-manifest.json` (`threadlight-governance-manifest/v1`) is consumed
+by the same strict validator/readiness evaluator in production-ready, evidence_gate
+and Auto. Keep offline inventory, local conformance and live evidence separate.
+Archive legacy v2 policy/verdict receipts as explicit historical provenance;
+they cannot pass current readiness. Regenerate current inventory, implement the
+selected runtime and collect new deployment-bound proof. Never translate an old
+`governed` verdict or policy file into an empty gaps array.
+
+The installed collector only proves reserved **`governance_probe_noop`**. Its
+success cannot close business/lifecycle bindings or unsupported requirement
+evidence. The current [returns example](../examples/returns-triage-governed/)
+materializes real `app`/backend source, native prompt/skill loading, trusted
+ordered backend reads, and Cosmos case/decision-audit persistence. It has **no
+payment settlement**. `returns_apply_decision` is locally tested but live
+unverified. Missing customer data can permit authenticated supervisor handoff;
+refund finalization remains blocked when prerequisites are incomplete. Its
+transport rechecks after credential awaits at the actual Cosmos dispatch.
+
+Every new deployment attempt requires fresh **after-deployment** collection.
+Remote attempts record start/completion timestamps and the exact bootstrap
+reference/canonical digest. The strict exporter requires that linkage to match
+both collected and current signed bindings. It exports only bounded summaries,
+including the public-proof/no-network-isolation disclosure—not configuration,
+credentials, raw diagnostics or signed-envelope payloads.
+Current file mtime, reused nonces or yesterday's green cannot satisfy it.
+The full signed envelope, key/signature, bundle, current environment/configuration
+and exact image/version/identity must still match the verified record; changing
+any of them invalidates the previous evidence. Saved JSON is not remote attestation.
+
+### Private GHCP noop evidence snapshot (2026-09-08)
+
+Source `62cb516fc05b37e1e89f052aa2e6b2b73c69c1bf` produced a fresh,
+private-network hosted GHCP version **2** with the actual native SDK and
+telemetry enabled. Collection completed at **09:35:05 UTC**:
+`governance_probe_noop` **allow: 1** independent fixture effect; **deny: 0**
+effects, each with a correlated central audit receipt and completed invocation
+stream. Independent after-proof ARM/Foundry reads matched the exact target,
+three service images, identities and configuration digests.
+
+The signed policy/bootstrap chain and complete failed/successful reports are
+retained privately, not embedded in this catalog. The independently retrieved
+successful archive has SHA-256
+`4af08521c8f3b83a6f78e5ea60079637501686018999fd03755131a610a6406c`.
+This is a dated, binding-specific execution record, **not whole-agent**
+governance, remote attestation or reusable current-readiness evidence.
+`returns_apply_decision`, other business writes and hosted native MAF assurance
+remain live-unverified. Cleanup or any subsequent deployment/configuration/key
+change requires fresh after-deployment evidence; this snapshot grants no waiver.
+
+Two explicit operator steps were needed and are not automatic CLI capabilities:
+
+- **Version replacement:** `configure-endpoint` intentionally rejects an existing
+  numeric route to a different version. The proof used a separately authorized,
+  guarded native `update_details` transition from 1 to 2 with preserved create
+  intent and repeated old/new observations, followed by the unchanged public
+  `observe_endpoint` gate. It did not recreate after an ambiguous acknowledgement.
+- **Session affinity:** the default collector CLI timed out on a cold bootstrap
+  exchange before registering deny. That failed pair was preserved. A fresh pair
+  used the public `collect_project(http=..., timeout=120)` extension, adding the
+  documented `agent_session_id` only to the exact Invocations endpoint while
+  preserving `api-version=v1`. Native reads under the controller identity checked
+  that the same active session belonged to version 2 before and after collection.
+  The session-only driver is not an installed CLI feature. It changed no runtime,
+  SDK, signatures or receipts; no partial result from the failed pair was reused.
+
+### Protected readiness-proof CI inputs
+
+#### Public authenticated proof is not network isolation
+
+An explicitly approved, dedicated staging/preproduction proof may select
+`network.posture: public-authenticated-proof` with literal `proof_only: true`
+and `cleanup_required: true`. It intentionally enables public HTTPS reachability
+to proof services and public data-plane reachability to the dedicated stores/key
+vault, while preserving mandatory Entra authorization and signed policy.
+Storage shared keys/anonymous blobs and Cosmos local auth remain disabled.
+This is **not** `public-pilot` IP restriction or `private-required` isolation.
+Neither existing mode nor production defaults are relaxed.
+
+Use the exact [generation contract](../skills/threadlight-deploy/references/governance/README.md#explicit-public-authenticated-proof-networking);
+do not supply `allowed_ips` or pretend Any is restricted. Frozen configuration,
+deployment and collection emit a `network_evidence` disclosure with
+`network_isolation: not-established`. A successful runtime noop proof cannot
+establish network isolation or certify business bindings. Cleanup remains an
+explicit operator action confined to the dedicated proof resources.
+
+#### Signed remote bootstrap implementation (not live acceptance)
+
+The approved alternative is now implemented as **create-once**, then authenticated
+observation and publication of `threadlight-hosted-bootstrap/v1`.
+`scripts/ci/hosted_bootstrap.py` provides separate `create`, `observe`,
+`configure-endpoint`, `publish`, and `wait` commands. They use the pinned Projects 2.3.0 SDK and either the existing
+tenant-bound Azure CLI credential or an explicitly selected managed identity
+(`--credential-mode managed-identity --managed-identity-client-id <client-id>`),
+not `azd deploy`, a guessed version,
+a mutable `"latest"` pointer, or a nonexistent start/mount API. Managed identity
+mode uses only the native sync/aio credential for that client ID, never a user-cache
+or default-chain fallback. Protected local attempt files are unchanged; an
+external durable create-intent guard for private jobs remains operator-owned.
+
+Before `wait` or collection, `configure-endpoint` requires the protected created
+attempt and saved independent observation. Native `agents.update_details` pins
+100% to that exact version and explicitly enables its declared protocol through
+`protocol_configuration`; it preserves the Responses default when present,
+retaining Entra-only authorization. An Invocations definition can therefore use
+the documented combined Responses/Invocations endpoint without removing the
+default; unrelated exposed protocols remain rejected. Read-back must confirm that
+the declared protocol is actually exposed. The service's Responses-only
+default does not establish that an Invocations agent is callable. Fresh reads
+reject ownership, identity, image, definition, route or scope drift; the command
+does not create a version, enable a disabled agent, or bypass binding/policy
+registration. It checks read-back, not just the PATCH acknowledgement. `wait`
+independently checks the configured endpoint before its read-only host request.
+Server-populated `publish_approval_status` describes Microsoft 365 store review,
+not a readiness or authorization condition. An endpoint exists from agent
+creation; it need not be published to a store. This metadata is excluded from
+endpoint updates and readiness comparisons, while unknown behavior-changing
+extensions remain fail-closed.
+The protected resume workflow runs this explicit operator mutation before wait
+and live collection; collectors need no endpoint-write permission. Operators
+must serialize endpoint writers where the provider supplies no ETag; re-reading
+does not claim atomic compare-and-swap or hosted proof.
+
+The frozen image selects `remote_bootstrap`: reference, project endpoint,
+subscription/RG and native policy digest. GHCP also pins a **distinct**
+`final_policy_version`; its original signed bootstrap bundle and final registry
+can therefore both be published immutably. The signed binding covers the canonical
+frozen configuration digest, exact platform version (including arbitrary `"17"`),
+image, project, tenant, parent scope, principal/client, policy digests and version,
+versioned key, issue time and expiry. Task8 verifies both immutable policy indexes,
+fresh key state and RSA signature. Only the operator backend signs or writes Blob.
+The workload-only read endpoint authenticates the receiver with EntraAuth; decoded
+claims are not identity proof.
+
+Generated Responses and Invocations entrypoints stay pending before importing
+application tools or starting a Copilot process. `/liveness` may return 200;
+request/readiness surfaces return 503 until verification and one-time activation.
+Requests reauthenticate the binding, native effect/model boundaries recheck
+expiry, and the GHCP relay rechecks after credential waits. Local-file/off
+behavior remains separate. The Invocations bootstrap check is an empty-input,
+read-only request on the **existing Invocations endpoint**, not a model invocation
+or noop effect test.
+
+Use `--help` and the [operator contract](../skills/threadlight-deploy/references/governance/README.md#signed-remote-bootstrap-operator-contract).
+Publish to the protected `.threadlight/hosted-bootstrap.json`; the collector
+re-verifies that signed chain against the running host and independent Azure
+observations before invoking its registered noop. Current-readiness rejects missing,
+changed or expired bootstrap proof for a remote-selected frozen package.
+
+Native post-registration data is delivered as signed, bounded asset descriptors
+and authenticated, create-only Blob chunks. There is no archive extraction or
+mount attachment. Native policy code must byte-match the frozen image; only its
+signed probe registry/metadata and typed configuration are post-registration
+data. Cosmos target, audience, fixture endpoints/scope and controller identities
+are pinned in `remote_bootstrap.native_probe` before building the image. The
+Responses bootstrap check uses the actual pinned SDK and an empty-input metadata
+control exchange, not a model call.
+
+The protected workflow now accepts **only** explicit
+`remote_bootstrap.mode: resume-signed-bootstrap/v1`. It resumes an acknowledged
+prior SDK creation and operator-prepared service deployment; it does not create
+another agent version or call azd. Its content-pinned inputs are `creation`,
+`attempt`, `publisher`, `policy_bundle`, `policy_envelope`, and native-only
+`native_assets`. File entries contain `{path, sha256}`; directory entries contain
+`{path, tree_digest}`. Paths are relative to the protected configuration directory.
+The image/source digest and original source commit must match the prepared
+project. Fresh SDK identity observations must match the supplied service bindings
+before publication. Publication, native protocol check and fresh collection remain
+separate gates. Existing service images, app roles and registered fixture are
+operator prerequisites, not resources silently provisioned by this resume mode.
+
+**Limits:** no live Azure proof is supplied by these local tests.
+**hosted-native-probe remains unverified as live assurance** until the actual
+platform AgentIdentity can authorize against the native Cosmos producer and the
+registered producer API is reachable by its controller. The code uses that
+service-authenticated credential only for the dedicated noop; it does not attach
+a UAMI or silently substitute another identity/runtime. Native business runtime
+retains its embedded policy. No business effect proof is implied.
+
+**NEEDS_CONTEXT — the legacy register/bind/start mode remains blocked.** The protected
+`validate-inputs` stage refuses before login/provisioning, and direct `deploy`
+also refuses before any command or project mutation unless the explicit
+SDK-resume contract above is selected. Local preparation/validation remains available. This is not a completed
+register → observe → bind → start lifecycle or a readiness pass.
+
+The actual published contracts prevent the requested sequence:
+
+- `azure.ai.agents 1.0.0-beta.10`, release commit
+  [`947d8a3dd4059a0b0826adfbefaf9d4cc7f82649`](https://github.com/Azure/azure-dev/blob/947d8a3dd4059a0b0826adfbefaf9d4cc7f82649/cli/azd/extensions/azure.ai.agents/internal/project/service_target_agent.go#L3113-L3135),
+  always calls `CreateAgentVersion` for container deployment, using API `v1`.
+  Re-running `azd deploy` after binding therefore invalidates an exact existing
+  version association; changing the protected expected version just chases it.
+- Installed `azure-ai-projects==2.3.0` exposes `create_version`, `get_version`,
+  `update_details` (agent endpoint routing), and agent-scoped `enable`/`disable`.
+  Its `HostedAgentDefinition` includes immutable environment variables and
+  `ContainerConfiguration` has only `image`. There is **no separate start**
+  operation for an existing immutable version. [Official deployment guidance](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent#deploy-using-the-python-sdk)
+  says creation automatically provisions the agent.
+- [Drafts](https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-agent#create-a-draft-version-preview)
+  cannot be routing targets; promotion creates a **new version**, and disabled
+  subscription support can turn `draft=true` into a normal release. Neither
+  drafts nor agent-scoped enable are a safe substitute for register-without-start.
+- Native `ProbeConfiguration` requires a separately signed post-image registry,
+  exact server version/principal/client, and files at `/mnt/governance-probe/`.
+  The current native runtime reads those files, not a remote configuration
+  indirection. The hosted schema has no mount attachment or version-environment
+  update operation. Platform-injected `FOUNDRY_AGENT_VERSION` solves the native
+  host's version lookup, **not** delivery of those post-registration files.
+  Task8's existing signed-bundle lookup does not supply that native configuration.
+
+Re-enabling this driver requires an approved lifecycle/configuration contract,
+not a guessed next version, patched frozen package, fabricated mount API, or
+protected selectors relabelled as server observations. GHCP has a signed final
+gateway-bundle phase, but that alone does not supply register-without-activation.
+No local protocol test alone authorizes the legacy all-in-one lifecycle. Select
+the concrete SDK-resume contract, not an invented start/mount operation.
+
+**Target/application staging is also unresolved, not fixed by this blocker.**
+The same beta.10 implementation reads `AZURE_AI_PROJECT_ID` and
+`FOUNDRY_PROJECT_ENDPOINT` from the **azd environment**, not just runner process
+variables; the generated governance Bicep outputs neither. A future supported
+driver must first observe the Task11-selected project ARM resource and endpoint,
+match the independent tenant/subscription/RG, then stage a strictly allowlisted,
+credential-free target/application configuration before provisioning. It must
+resolve all required application substitutions (including Cosmos and Citadel
+model/identity settings), reject missing configuration before mutation, avoid
+secret CLI arguments/logs, and qualify explicit registered-version retry handles
+against actual server identity and image. None of this is claimed implemented.
+
+`.github/workflows/threadlight-e2e-foundry.yml` separates:
+
+- `local-native-contract`: published native/CTK and deployment-contract tests,
+  plus real preparation → standalone Git snapshot → native pre-deploy gate with
+  explicitly local-only test inputs. No Azure proof.
+- `readiness-proof`: explicit `governance_safe_probe=true`, protected
+  `governance-preproduction` environment and a Linux x64 self-hosted runner
+  labelled `governance-preproduction`, with private reachability and a separately
+  assigned collector managed identity. No fallback to smoke identity/permissions.
+- `e2e`: live-smoke/design-only/smoke-only; never a legacy readiness shortcut.
+
+The protected environment must provide `GOVERNANCE_CI_CONFIG` (absolute path to
+operator-mounted, credential-free JSON) and `GOVERNANCE_CI_CONFIG_SHA256` (exact
+approved bytes), `GOVERNANCE_TENANT_ID`, `GOVERNANCE_SUBSCRIPTION_ID`, and secret
+`GOVERNANCE_DEPLOY_CLIENT_ID` for scoped OIDC deployment. The runner needs Git, Docker,
+Azure CLI, Bicep and the existing pinned azd/agent extension
+(`azd 1.31.1`, `azure.ai.agents 1.0.0-beta.10`). The collector uses its configured
+controller UAMI, not the deployment OIDC token, for authenticated service calls.
+The workflow installs published Linux wheels and the portable safe-check package;
+it does not rely on checkout-relative imports outside the catalog.
+
+`scripts/ci/runtime_readiness.py` defines the closed stage driver. Its input
+object (`schema: threadlight-readiness-input/v1`) requires:
+
+| Field | Actual protected input |
+|---|---|
+| `environment` | `preproduction`, never implicit production or a sandbox default |
+| `expected_target` | Independent canonical tenant/subscription UUIDs and resource_group; checked against account context and collector observations |
+| `source_project`, `policy_source` | Paths below the protected JSON directory to a reviewed Git-tracked application/local-proof contract (resource-group infrastructure ejection required) and native policy source |
+| `package` | Task10 package configuration: actual signed envelope, digest, policy identity/expiry, versioned signing key, service scopes/URLs, roles, network; paths passed to generator APIs must be absolute |
+| `agent_image` | Task10 immutable image and spool configuration, matching the registered agent definition |
+| `deployment` | Task10 bind input: actual immutable agent/CP/gateway images, infrastructure, identities, role assignments, observations and native probe association (or gateway registry) |
+| `probe_input` | Exact Task11 `.threadlight/governance-probe.json`, not a permission-to-write boolean |
+| `probe_files` | Literal project-relative destination → `{path, sha256}` for protected fixture/registry/envelope inputs. Evidence outputs, project trust metadata, traversal, symlinks and overlapping destinations are rejected. Separate config/read-only mount mappings remain supported; no supplemental input is committed or uploaded. |
+| `source_digests` | Task10 `tree_digest` values for `source_project`, `policy_source`, and generated `agent`, `govern-control-plane`, `govern-gateway` contexts associated with the approved published images |
+| `azd_environment`, `location` | Explicit operator-selected environment and region |
+| `gateway_stage` (GHCP only) | Final Task9 signed registry/bundle and image association; not the bootstrap digest |
+
+`package.probe_observability` must be
+`{"enabled":true,"configuration_file":"/mnt/governance-probe/config.json"}`.
+The preproduction fixture must already be installed, registered and reachable.
+Task8 authority/policy publication, image build/publication, human roles, network
+and service grants remain operator prerequisites, but supplying a bootstrap
+version/instance or local mount mapping cannot unblock the API constraints above.
+Native post-image probe registration must match the embedded bundle.
+Missing prerequisites **fail descriptively**: CI does not
+manufacture signatures, fixtures, source attestations or broad role assignments.
+For returns, business Cosmos seed and protected role/token configuration are also
+external prerequisites; there are no automatic business writes or seed/reset steps.
+
+Preparation creates an isolated local Git repository over explicitly allowlisted
+application/generated sources and exported validation tooling. The actual input
+checkout commit, project boundary, dirty state and approved tree digest remain in
+`governance/source-provenance.json`; the separate generated snapshot commit is
+**not a deployment commit**. Its local origin is the input checkout, not fabricated
+GitHub protection. Protected configuration, envelopes, token files, supplemental
+inputs and runtime evidence stay ignored/untracked. Existing ignore rules are
+preserved. The canonical native container wrapper continues to serve the same
+generated `governance_host.build_host` that the native child verifies.
+Local-validation export preserves unrelated workflows and accepts byte-identical
+generated workflow/ownership files. Different contents fail with a
+`local_validation_export_conflict` path before publishing any export changes;
+preparation checks these collisions before copying the source project. Export
+uses the generator's same-filesystem shadow and cooperative per-file atomic
+publication/rollback. It never overwrites operator CI or imports prior proof.
+
+The local stages run bundle build/native validation → `generate.py foundation`
+and `generate` → exported CTK/native preparation and
+`governed_actions.py --phase pre-deploy --emit --gate`. The previously documented
+`bind` → `azd deploy` readiness path is disabled, not replaced by a simulated
+activation. The existing post-deploy collector/current-readiness/scorecard gates
+are retained but cannot be reached by a successful protected deployment until the
+blocker is resolved. No reused version, noop invocation or old deployment receipt
+can stand in for that missing lifecycle.
+
+Artifacts are `governance-local-contract-<run_id>-<attempt>` and
+`governance-readiness-<run_id>-<attempt>`. Both upload **only** a new, automatically
+named export directory under `RUNNER_TEMP`, outside the project. Configuration
+cannot select this directory. Git ignore rules are **not** an artifact boundary.
+
+The local artifact contains validated workflow step outcomes only, not native
+receipts, raw test logs, JUnit bodies or prepared fixture files. Native/CTK
+validation still runs separately; its complete local outputs remain on the runner.
+
+The readiness artifact contains explicit payload-free JSON **projections**:
+`governance-summary.json` (offline inventory or current collection coverage),
+`governed-actions-summary.json` (local finding-status counts),
+`postdeploy-summary.json` (validated governance coverage and resource/governance
+gap counts), `runtime-readiness.json` (binding status/live flag/gap count), and
+`deployment-attempt.json` (run identity and timestamps), when produced.
+Existing governance validators and the governed-actions schema validate their
+source evidence; open parent reports are never copied. Names, gap text, business
+payloads, original configs/envelopes, signatures, raw Markdown/stdout/stderr,
+scorecard details and project input snapshots are not exported.
+
+A private run/attempt-bound journal outside the upload tree records exact output
+hashes after each producer. Declared outputs are removed before invocation;
+checked-in or copied stale receipts cannot be exported as this run's proof.
+Missing outputs are skipped. `export-status.json` distinguishes producer
+failure, missing artifacts and invalid evidence; invalid evidence fails the
+export step without disguising the original failed job. Both export and upload
+run with `always()`. The export status itself is never a readiness pass.
+
+The full parent report and generated scorecard remain **local runner files**,
+not artifacts. Operators must handle those files as protected material.
+Business evidence absent means **not verified and failed readiness**; current
+noop-only collection cannot make the canonical business workload fully ready.
+There is no automatic teardown of protected shared services; operators own
+cleanup. Broader acceptance/deployment verification is separate.
+
 > **What's new in v0.3.0** (Nov 2025). The 0.3.0 release closed an
 > adversarial-review smoking gun: 16 critical static checks were
 > regex-searching the concatenated raw text of every `.bicep` file in
@@ -84,17 +474,24 @@ A pilot's production posture is **resolved from SPEC § 12** (the production-rea
 
 ### 🛡️ Citadel spoke *(default · recommended)*
 
-The customer's **AI Citadel hub** fronts every model call via APIM — JWT enforcement, per-tenant rate-limit, content filter, semantic cache, ledger. The pilot's Foundry project is onboarded as a **spoke** with access contracts, and AGT in-process middleware enforces fine-grained policy inside the agent itself.
+The customer's **AI Citadel hub** fronts model calls via its configured APIM
+controls and access contracts. Selected native host or tool-gateway enforcement
+is a separate action boundary, requiring its own current policy and evidence.
 
-**Two layers, one audit chain.** APIM perimeter governs *who and what reaches the model*. AGT in-process governs *what the agent does with the response*.
+**Separate boundaries.** A model gateway governs access to the model, not every
+downstream action. Correlate its records with selected action-policy and durable
+receipt evidence; do not assume a shared audit chain from topology alone.
 
 **Right when** the customer tenant already has — or is provisioning — Citadel. This is the GBB AI Apps recommended posture for any new pilot.
 
 Remediation skills: [`citadel-spoke-onboarding`](https://github.com/aiappsgbb/awesome-gbb), [`citadel-hub-deploy`](https://github.com/aiappsgbb/awesome-gbb), [`foundry-agt`](https://github.com/aiappsgbb/awesome-gbb).
 
-### 🧬 AGT-only, in-process middleware
+### 🧬 Native selected runtime enforcement
 
-No central AI gateway available. The [**Agent Governance Toolkit**](https://github.com/microsoft/agent-governance-toolkit) (v4.1 preview, detected automatically) sits inside the agent process — 8–12 μs per evaluation, hash-chained audit, OWASP-ASI 2026 evidence. Policy + verifier artefacts are committed to the repo.
+No central model gateway available. Local ACS/Rego decisions can be enforced by
+the selected native Agent Hooks host path. Required distribution, approval and
+central audit services still need real configuration; policy/verifier artifacts
+alone do not establish runtime enforcement. See the lifecycle above.
 
 **Right when** the customer is in a greenfield or experimental tenant where introducing APIM mid-pilot would be premature. Still produces auditable evidence; just operates one defence layer instead of two.
 
@@ -119,7 +516,7 @@ Every pillar has its own [reference doc under `references/pillars/`](https://git
 | # | Pillar | What "good" looks like | Primary remediation skill |
 |---|---|---|---|
 | 1 | [`network-posture`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); **data-residency sub-scored** (model region, APIM region, data-plane regions, backups, cross-border support) | `citadel-spoke-onboarding`, `foundry-vnet-deploy` |
-| 2 | [`agent-governance`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/02-agent-governance.md) | AGT in-process middleware wired (capability-based, version-agnostic); policy + verifier artefacts present; OWASP-ASI evidence current; v4-preview deep checks when v4 detected | `foundry-agt` |
+| 2 | [`agent-governance`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/02-agent-governance.md) | Current selected-binding v1 evidence; exact policy/config/deployment and live-proof requirements, not import or policy-file presence | `threadlight-govern`, `threadlight-governed-actions` |
 | 3 | [`identity-access`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/03-identity-access.md) | Workloads use **managed identity**; **no client secrets**; RBAC least-privilege; Key Vault access via RBAC not access policies; **agent (non-human) identity governed** &mdash; passwordless binding, named owner, least-privilege scope, lifecycle/review (emits `agent-identity.json`) | `foundry-hosted-agents`, `entra-agent-id`, `foundry-agt`, `azure-tenant-isolation` |
 | 4 | [`secrets`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `azd-patterns`, `foundry-hosted-agents` |
 | 5 | [`observability`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `foundry-observability` |
@@ -172,7 +569,7 @@ Every live probe stamps a `captured_at` timestamp (ISO 8601 UTC, second precisio
 | Customer architecture review in 3 days, posture is known | `python tests/production_ready.py --target citadel-spoke` | Same, scored against the declared target |
 | Pilot has been parked for weeks; someone asks "could we ship this?" | `python tests/production_ready.py --static` | Pure static scorecard from repo + safe-check manifests (no Azure auth needed) |
 | Inherited a pilot whose SPEC has no § 12 | Skill still runs — falls back to `standard-ai-gateway`; `RDY-002` surfaces "author § 12" | Author § 12 from the [template](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/spec-section-12-template.md), re-run for full scorecard |
-| AGT v4 shipped and you want deep checks | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | AGT-only scorecard against the v4 surface (5-distribution reorg, ACS `intervention_points:` schema, dynamic policy conditions, composite-action pinning, v4 audit-field set) |
+| Historical AGT v4 inspection | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | Legacy compatibility diagnostics only, never current v1 runtime readiness |
 | Customer accepted some `must-fix` findings as risk | Author `tests/production-readiness-waivers.json`, re-run | Report shows `score_with_waivers` + `would_fail_hard_gate` flags |
 
 ---
@@ -192,7 +589,7 @@ This skill is **the cross-cutting scorecard.** It does not replace any of the fo
 | Provisioning Citadel hub | `citadel-hub-deploy` |
 | Onboarding spoke to Citadel | `citadel-spoke-onboarding` |
 | Provisioning Azure SRE Agent | `azure-sre-agent` |
-| Authoring AGT in-process middleware | `foundry-agt` |
+| Authoring selected native policy/host/service bindings | `threadlight-govern`, `threadlight-governed-actions` |
 | Generating Bicep / Terraform | `azd-patterns`, `azureterraform`, `bicepschema` |
 | Deploying to a VNet-injected Foundry | `foundry-vnet-deploy` |
 

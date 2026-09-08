@@ -228,7 +228,11 @@ def test_repo_root_falls_back_to_grandparent_without_markers() -> None:
     (root / "specs").mkdir(parents=True)
     manifest = root / "specs" / "manifest.json"
     manifest.write_text("{}", encoding="utf-8")
-    assert sc._repo_root_for_manifest(manifest) == manifest.parent.parent == root
+    # Scratch can live inside a checkout; isolate this test's no-marker premise
+    # from an unrelated ancestor .git directory without using OS temp paths.
+    from unittest.mock import patch
+    with patch.object(sc, "_looks_like_repo_root", return_value=False):
+        assert sc._repo_root_for_manifest(manifest) == manifest.parent.parent == root
 
 
 def test_nested_manifest_binding_gap_uses_correct_root() -> None:
@@ -261,7 +265,10 @@ def test_phase_postdeploy_embeds_checked_manifest_snapshot() -> None:
     original_repo_root = sc._repo_root_for_manifest
     original_load_mcp = sc._load_effective_mcp_config
     try:
-        sc._az = lambda *args: "[]"
+        sc._az = lambda *args, **kwargs: (
+            '{"id":"11111111-1111-1111-1111-111111111111",'
+            '"tenantId":"11111111-1111-1111-1111-111111111111"}'
+            if args[:2] == ("account", "show") else "[]")
         sc._repo_root_for_manifest = lambda manifest, explicit_root=None: tmp_path
         sc._load_effective_mcp_config = lambda root: {}
 
@@ -285,15 +292,12 @@ def test_phase_postdeploy_embeds_checked_manifest_snapshot() -> None:
 # Canonical <-> example parity: the two safe_check.py copies never drift.
 # ---------------------------------------------------------------------------
 
-def test_example_safe_check_is_byte_identical_to_canonical() -> None:
+def test_example_safe_check_delegates_to_current_canonical_gate() -> None:
     assert EXAMPLE_COPY.exists(), f"example copy missing at {EXAMPLE_COPY}"
-    canonical = SCRIPT.read_bytes()
-    example = EXAMPLE_COPY.read_bytes()
-    assert canonical == example, (
-        "examples/returns-triage-governed/tests/safe_check.py has drifted from "
-        "skills/threadlight-safe-check/scripts/safe_check.py — the example copy "
-        "must be re-synchronized byte-for-byte."
-    )
+    import runpy
+    module = runpy.run_path(str(EXAMPLE_COPY))
+    for name in ("main", "phase_postdeploy"):
+        assert Path(module[name].__code__.co_filename).resolve() == SCRIPT.resolve()
 
 
 if __name__ == "__main__":

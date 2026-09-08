@@ -1,0 +1,66 @@
+"""Scaffolded local contract test (Task 11 bounded MAF scaffold).
+
+Exercises exactly one property: the scaffolded
+``src/governance/agent_hooks_interceptor.py`` denies an action id when the
+scaffolded (still-empty) ``policies/governed-actions.policy.yaml`` has no
+matching rule for it. This is the only claim this scaffold's own
+generated test makes -- it is deliberately not a general-purpose policy
+test suite, since no real rule, approver, or threshold exists yet to test
+against.
+
+This file runs entirely against local, synthetic fixtures: it makes no
+network call, no live GitHub/Azure call, and reads no data outside this
+repository. Once a customer (via the ``foundry-agt`` skill) authors real
+policy rules and approvers, add further contract tests alongside this one
+for those specific rules -- this generated test is a starting point, not a
+substitute for testing real, customer-authored policy.
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+from types import ModuleType
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_INTERCEPTOR_PATH = _REPO_ROOT / "src" / "governance" / "agent_hooks_interceptor.py"
+_FIXTURE_PATH = Path(__file__).resolve().parent / "approval-binding-fixture.json"
+
+
+def _load_interceptor() -> ModuleType:
+    """Load the scaffolded interceptor by file path rather than by
+    package import -- this test makes no assumption about how (or
+    whether) the customer's own project turns ``src/governance`` into an
+    importable package.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "governed_actions_scaffold_interceptor", _INTERCEPTOR_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_fixture() -> dict:
+    return json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+
+
+def test_fixture_uses_only_deterministic_synthetic_identifiers() -> None:
+    fixture = _load_fixture()
+    for key in ("action_id", "request_id", "approver_id"):
+        assert fixture[key].startswith("synthetic-"), (
+            f"scaffolded fixture field {key!r} must stay a deterministic, "
+            "synthetic placeholder until real policy exists"
+        )
+
+
+def test_interceptor_denies_when_no_customer_rule_matches() -> None:
+    interceptor = _load_interceptor()
+    fixture = _load_fixture()
+
+    decision = interceptor.evaluate(fixture["action_id"], project_root=_REPO_ROOT)
+
+    assert decision["decision"] == "deny"
+    assert decision["rule_id"] is None
+    assert decision["action_id"] == fixture["action_id"]

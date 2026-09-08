@@ -1,0 +1,20 @@
+{
+  "environment": "preproduction",
+  "tenant_id": "${TENANT_ID}",
+  "agent_client_id": "${RETURNS_AGENT_CLIENT_ID}",
+  "agent_id": "returns-triage",
+  "control_plane_url": "${GOV_CONTROL_PLANE_URL}",
+  "control_plane_scope": "${GOV_CONTROL_PLANE_SCOPE}",
+  "key_id": "${VERSIONED_POLICY_KEY_ID}",
+  "approver_roles": ["${RETURNS_SUPERVISOR_APP_ROLE}"],
+  "cosmos_url": "${RETURNS_COSMOS_URL}",
+  "cosmos_database": "${RETURNS_COSMOS_DATABASE}",
+  "cosmos_container": "${RETURNS_COSMOS_CONTAINER}",
+  "citadel_project_endpoint": "${CITADEL_PROJECT_ENDPOINT}",
+  "signed_envelope": "${SIGNED_POLICY_ENVELOPE_FILE}",
+  "policy_id": "returns-write-v1",
+  "policy_version": "1",
+  "policy_digest": "${SOURCE_BUNDLE_DIGEST}",
+  "subscription": null,
+  "resource_group": null
+}

@@ -1,0 +1,10 @@
+[package]
+name = "threadlight-ctk-oracle"
+version = "0.1.0"
+edition = "2021"
+
+# Built in .governance-validation/ctk/oracle, not in the source checkout.
+# This separate executable exposes only the upstream test assertion function.
+[dependencies]
+agent-hooks-sdk = { path = "../upstream/sdk/rust/core", features = ["ctk"] }
+serde_json = { version = "1", features = ["raw_value"] }

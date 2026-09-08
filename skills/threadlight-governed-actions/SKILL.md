@@ -1,0 +1,378 @@
+---
+name: threadlight-governed-actions
+description: >-
+  Use when a pilot needs consequential-action runtime implementation or
+  evidence: selected native hooks, gateway effect closure, action inventory,
+  pre-deploy enforcement gates, approval anti-replay, payload-free audit,
+  Governance Evidence Pack or GHCP change-plane controls. Not for quality
+  evals, model content filtering or production certification.
+metadata:
+  version: "2.0.0"
+---
+
+# Threadlight Governed Actions — implement and prove selected action paths
+
+An agent that can only read is a demo risk. An agent that can *write*, *egress*,
+or do something *irreversible* is a production risk, and the question a customer
+actually asks is narrow: **when this agent takes a consequential action, what
+stops it, who approved it, and where is the record?**
+
+For implementation requests, produce actual selected runtime templates using
+[generate.py](../threadlight-deploy/references/governance/generate.py) and its
+[configuration/ordering contract](../threadlight-deploy/references/governance/README.md).
+Use `threadlight-govern` for the real ACS bundle and authorized signed distribution;
+implement the host-owned application seam, not an allow-only test adapter.
+Assessment alone is not implementation. Deployment remains separately authorized.
+
+The **assessor CLI** is read-only by default and renders a deterministic manifest,
+evidence pack and never-self-applying remediation plan. These are selected-path
+evidence, **not whole-agent** governance. SAFE is the method, ACS/Rego the PDP,
+Agent Hooks the host/interceptor contract, native host/gateway the PEP, AGT the
+toolkit, and ASSERT assurance.
+
+### Native selected local proof
+
+The current `LOCAL-14` producer runs the actual served application/native path
+and returns assessor-verified allow/deny/failure/approval/terminal-effect proof.
+The standalone export includes `.governance-tools`, exact-pin tooling, official
+CTK sources/test-oracle build inputs and native-local CI. Follow the generated
+commands; do not depend on a catalog checkout accidentally on `PYTHONPATH`.
+Native/CTK uses published unmodified execution packages: 47 declared vectors,
+four undeclared incremental-output vectors and only a corrected test oracle.
+Native APIs are preview/alpha, with explicit experimental defaults.
+
+Unbound reads remain unbound and never invoke ACS. Selected bindings require
+signed fresh policy, host-trusted facts, authenticated one-use human approval
+when required, and central audit ACK before effects. Recheck after awaits at
+the actual terminal target; a check at function start is insufficient. GHCP
+supports registered gateway effects only, not arbitrary URLs/shells or full
+lifecycle/output coverage. `enforced`, `observed`, `unbound`, `unverified`,
+`unsupported` and `bypassable` are binding statuses, not whole-agent verdicts.
+
+Local proof remains local. The Task11 collector only invokes the reserved,
+registered `governance_probe_noop`; it cannot certify business bindings.
+`returns_apply_decision` has local Cosmos decision/audit proof, not live payment
+or settlement proof. A new deployment requires fresh after-deploy evidence;
+policy/CI or legacy v2 green cannot replace it.
+
+```
+declared actions ─┐
+implemented code ─┼─► inventory ─► mediation graph ─► application probes ─┐
+policy/approval  ─┘                                                       ├─► manifest
+workflows/CODEOWNERS ─────────────► change-plane assessment ──────────────┤   evidence pack
+alert catalog ────────────────────► alert posture ────────────────────────┘   apply plan
+```
+
+## When to invoke
+
+| Phase | Invoke | What it proves |
+| --- | --- | --- |
+| `design` | after `threadlight-design`, before code exists | the SPEC § 8 action declaration is complete and every action has an explicit consequence class |
+| `pre-deploy` | before `threadlight-deploy` | declared and implemented actions agree; path-bound allow/deny receipts verify mediation candidates; separate generic probes exercise deny/transform/fail-closed, approval anti-replay, output gating, and payload-free audit |
+| `post-deploy` | **staging only** | the same assessment against a deployed non-production environment; `--phase post-deploy` refuses to run without `--staging-resource-group` naming an explicit, non-production staging resource group |
+
+`post-deploy` is deliberately staging-only. This skill never runs, not even
+read-only, against an unnamed or production environment.
+
+## Inputs
+
+Everything is repository-relative and read-only. Nine categories, each an
+explicit rule — discovery never widens into "anything under the repository":
+
+| Input | Where | Used by |
+| --- | --- | --- |
+| SPEC action declaration | `specs/SPEC.md` § 8 (required for `design`/`pre-deploy`) | `ACT-001`, `ACT-002` |
+| Action registries | `agent.yaml`, `agent.yml`, `tool-registry.json`, `tool_registry.json` (target root) | `ACT-001`, `ACT-002` |
+| Runtime + middleware source | every non-vendored `*.py` under the target | `MED-001`..`MED-003`, `ENF-001`, `ENF-002` |
+| Policy files | `governance/**/*.{json,yaml,yml}`, `policies/**/*.{json,yaml,yml}` | `MED-001`, `ENF-001` |
+| Approval handling | runtime files whose AST references `issue_approval`, `consume_approval`, `redeem_approval`, or `ApprovalHandler` | `APR-001` |
+| Tests, conformance, evals | `tests/**`, `**/conformance/**`, `**/evals/**` | `ENF-001`, `GHCP-003`, `PIN-001` |
+| Workflows | `.github/workflows/*.yml`, `*.yaml` (direct children) | `GHCP-001`, `GHCP-003`..`GHCP-006` |
+| Ownership | `CODEOWNERS` and `.github/CODEOWNERS` | `GHCP-002` |
+| Dependency pins | `pyproject.toml`, `requirements*.txt`, lockfiles | `PIN-001` |
+| Alert catalog | `governance/alerts.json` | `OPS-001` |
+| Optional live evidence | `--live-github` (`gh api`), `--subscription`/`--deploy-identity` (`az ... list`) | `GHCP-002`, `GHCP-006` |
+
+Optional live evidence is exactly that: **optional**. When it is not selected, or
+when a permission is missing, the affected control is reported `not-verified`.
+A `not-verified` finding is never silently converted to `pass`.
+
+## Path-bound execution contract
+
+`governance/probe-contract.json` must declare one importable application
+execution dispatcher and bind every assessor-discovered, non-provider mediation
+path to its recomputed path id and action/mode routing-table key:
+
+```json
+{
+  "dispatch": "app.agent:dispatch",
+  "execution_dispatch": "app.agent:dispatch_execution_path",
+  "execution_paths": [
+    {
+      "action_id": "payments.refund",
+      "mode": "background",
+      "path_id": "400019bbedc16b75"
+    }
+  ]
+}
+```
+
+The top-level `dispatch` remains the generic deny/transform/fault probe seam; it
+does **not** prove mediation for any path. `execution_dispatch` is the only
+callable used for path proof. Every `execution_paths` record contains exactly
+`action_id`, `mode`, and `path_id`; those values must match the assessor's
+recomputed `PathRecord`, and the set must be unique and complete.
+
+The application module owns an explicit `EXECUTION_ROUTES` table with exactly
+the declared action/mode keys. In an isolated child, the assessor calls
+`execution_dispatch(action_id, mode, case, target_ledger_path)` and replaces the
+routing-table target's hook/tool/provider namespaces with assessor-owned
+synthetic implementations. The assessor wraps that selected target and records
+whether the wrapper was invoked; this verifies the declared local routing-table
+selection, not stronger application or production reachability. Target-written
+metadata goes only to its separate target ledger. On POSIX, proof events flow
+through an assessor-created pipe whose write descriptor alone is inherited by
+the child; each canonical JSONL event carries an assessor nonce that the parent
+matches exactly. The Windows fallback uses an assessor-private temporary
+directory outside the target plus the same unpredictable nonce. Neither proof
+location nor nonce is passed to the target dispatcher. A deny followed by any
+invocation is fail-open. Allow may invoke only after `pre_action_decision`.
+Startup failure, timeout, nonzero exit, or malformed output remains
+`not-verified` unless the assessor proof channel independently proves a bypass.
+Static AST classifies each path as `bypass-proven`, `mediated-candidate`, or
+`incomplete`; only a mediated candidate plus a valid receipt passes.
+
+This is **scoped local conformance evidence only**: it proves what happened when
+the declared application dispatcher was executed with synthetic inputs. It
+does not prove that every undeclared entry point, scheduler, provider runtime,
+or deployed request can reach that dispatcher. Production enforcement still
+requires live deployed evidence from the production routing and control plane;
+local path receipts must never be presented as proof of production reachability.
+The assessor-owned proof channel strengthens this local conformance signal, but
+a hostile target still executes in the same child process and remains outside
+the security boundary. Trust comes from the static source assessment, executed
+path receipts, and live deployed evidence collectively; no one layer is
+sufficient by itself.
+
+## Outputs
+
+| Artifact | Default path | Shape |
+| --- | --- | --- |
+| Conformance manifest | `tests/governed-actions-manifest.json` | `threadlight-governed-actions-manifest/v1`, schema `1.0.0` |
+| Governance Evidence Pack | `docs/governance/evidence-pack.md` | customer-facing markdown |
+| Remediation plan | `tests/governed-actions-apply-plan.json` | `threadlight-governed-actions-apply-plan/v1`, always `self_applying: false` |
+
+Paths are overridable with `--manifest-path`, `--evidence-path`, and
+`--apply-plan-path`. Writes are atomic: a partial artifact never replaces a
+previously valid one.
+
+## Running it
+
+```bash
+# Assess only — nothing is written.
+python3 skills/threadlight-governed-actions/scripts/governed_actions.py \
+  --target . --phase design
+
+# Assess, write the three artifacts, and fail the build on an open requirement.
+python3 skills/threadlight-governed-actions/scripts/governed_actions.py \
+  --target . --phase pre-deploy --emit --gate
+
+# Staging-only post-deploy, with optional live GitHub evidence.
+python3 skills/threadlight-governed-actions/scripts/governed_actions.py \
+  --target . --phase post-deploy \
+  --staging-resource-group rg-pilot-staging --live-github --emit
+```
+
+The assessor is **read-only by default**: without `--emit` it writes no file at
+all, and it never edits the assessed project's source, policy, or workflows.
+The only writing mode beyond `--emit` is the bounded scaffold, which requires a
+**double opt-in**: `--scaffold maf` *and* `--confirm-scaffold` together. Either
+flag alone refuses and writes nothing. The scaffold places exactly five starter
+files (interceptor, empty deny-by-default policy, approval-binding fixture,
+contract test, workflow); its `rules` and `approvers` are always empty. Turning
+that skeleton into a real policy belongs to `foundry-agt`, and turning the
+workflow into a real deploy pipeline belongs to `threadlight-cicd`.
+
+### Exit codes
+
+| Exit | Meaning |
+| --- | --- |
+| `0` | Assessment completed; when `--gate` is set, the selected phase's requirements passed. |
+| `1` | Assessment completed and a `must-fix` — or a selected-phase required `not-verified` — finding remains; valid requested artifacts are still emitted. |
+| `2` | Invalid arguments, invalid schema, missing required local inputs, unsafe post-deploy target, or a refused scaffold request. |
+| `3` | Assessor/tooling failure or atomic artifact-write failure. |
+
+Without `--gate`, a completed assessment always exits `0` regardless of
+findings — the findings are the product, not the exit code.
+
+## The finding taxonomy
+
+Exactly 18 IDs, two planes. `unsupported` is a stable *reason* on a `must-fix`
+finding, never a status.
+
+| ID | Plane | Condition |
+| --- | --- | --- |
+| `ACT-001` | runtime | SPEC/code inventory is incomplete or an action has no explicit consequence class. |
+| `ACT-002` | runtime | Declared and implemented actions, aliases, or provider tools drift. |
+| `MED-001` | runtime | A consequential path lacks evidenced pre-action mediation. |
+| `MED-002` | runtime | Interactive, batch, background, subagent, or direct-tool coverage is absent or indeterminate. |
+| `MED-003` | runtime | A provider-hosted side effect is not pre-interceptable and lacks equivalent server-side proof. |
+| `ENF-001` | runtime | The separate generic enforcement probe does not enforce deny or transform. |
+| `ENF-002` | runtime | Crash, timeout, or malformed verdict does not fail closed. |
+| `APR-001` | runtime | Approval is not actor-, tenant-, policy-, action-, argument-, expiry-, and nonce-bound with atomic one-time redemption. |
+| `OUT-001` | runtime | Protected output can egress before mediation. |
+| `AUD-001` | runtime | Audit is incomplete, uncorrelated, undelivered, or contains payload data. |
+| `PIN-001` | both | The tested upstream tuple drifted without a rerun, or pinned evidence is inaccessible. |
+| `GHCP-001` | change | A protected branch accepts agent changes outside pull requests. |
+| `GHCP-002` | change | CODEOWNERS, ruleset/branch protection, or required-check coverage is missing or unavailable. |
+| `GHCP-003` | change | Required CI omits CTK, application probes, or relevant evals. |
+| `GHCP-004` | change | An action SHA floats, or a workflow permission is excessive. |
+| `GHCP-005` | change | Azure deployment uses a long-lived secret instead of OIDC/WIF. |
+| `GHCP-006` | change | Build/test/deploy identities are shared, over-broad, or not evidenced. |
+| `OPS-001` | both | The required alert posture is missing, or mandatory governance events are proven to be silently dropped. |
+
+A consequential path without pre-action mediation always emits `MED-001` as
+`must-fix`. A Conformance Test Kit claim alone never satisfies `ENF-001` or
+`ENF-002`: those require this target's own application probes.
+
+`APR-001` is proven by an actual redemption *sequence*, never a single
+redemption — one accepted first use proves only that the approval worked once.
+Within a single assessment the target's declared binding is redeemed once,
+replayed byte-for-byte, and re-presented once per bound dimension (action,
+arguments, target scope, tenant, both subjects, approving role, policy id,
+policy hash, expiry) reusing the same, already-consumed nonce. Any accepted
+replay or mutated binding — and any rejection the target still reaches the
+protected tool for — is `must-fix`. The whole sequence runs against an
+assessment-private nonce ledger that is created and deleted inside that one
+run, so the target's own declared ledger is never read or written and two
+consecutive assessments at the same commit are byte-identical and residue-free.
+
+## Operational alerts (`OPS-001`)
+
+A control that cannot report its own failure leaves an operator silently
+unprotected. `governance/alerts.json` must declare, enable, and give a stable
+`reason_code`/`correlation_id` pair (and never a payload field) for exactly
+these eight classes:
+
+| Alert class | Fires on |
+| --- | --- |
+| `unmediated-action` | repeated fail-closed denials or a consequential action reaching a tool without mediation |
+| `interceptor-failure` | interceptor timeout or crash |
+| `approval-replay` | a redeemed approval presented again |
+| `output-mediator-failure` | the output gate failing or being bypassed |
+| `audit-delivery-failure` | an audit record that cannot be written or delivered |
+| `tuple-drift` | the tested upstream pin tuple drifting |
+| `repository-protection-drift` | branch protection, ruleset, or required-check drift |
+| `deployment-identity-drift` | evidence staleness or change in deployment identity/federation |
+
+The skill asserts the *definitions* exist. It never invents a threshold, an
+on-call rotation, a severity policy, or an approver.
+
+## Privacy: payload-free evidence
+
+Every artifact this skill produces is payload-free. It **never records raw
+prompts, tool arguments, model output, or secrets** — only identifiers, hashes,
+decisions, counts, statuses, and repository-relative paths. Probe children
+report an invocation count, an argument *hash*, a decision, an exception class,
+and audit event IDs, and nothing more. `AUD-001` fires when the assessed
+target's own audit trail carries payload data.
+
+## Trust boundaries and known limits
+
+Read these as *published limits*, not caveats to be softened later.
+
+- **Agent Hooks is a cooperative, alpha host/interceptor contract — it is not a
+  security boundary.** A caller that skips the hook is not stopped by the hook;
+  `ENF-002` exists precisely to name that bypass surface and demand a
+  compensating control (allow-list, network policy, provider-side restriction).
+- **The local proof channel is not a hostile-process sandbox.** It narrows and
+  authenticates assessor receipts, but target code shares the probe child
+  process. Static, executed, and live layers must corroborate one another rather
+  than treating the channel alone as a security boundary.
+- **The Microsoft Agent Framework (MAF) integration is experimental.** Current
+  native pins are in `../_shared/governance-upstream-pin.json` and CTK provenance
+  in `../_shared/governance-ctk-pin.json`. The older `references/upstream-pin.json`
+  remains a legacy assessor-fixture tuple, not current execution provenance.
+  Drift is `PIN-001` and requires rerunning CTK and application probes.
+- **Conformance is evidence, not certification.** A green manifest records what
+  was proven against a pinned tuple at a commit. Nothing here certifies a
+  product, a framework, or a customer's compliance posture.
+- **Provider-hosted tools are a real limitation.** When a side effect happens
+  inside a provider's own hosted tool, there is no pre-action interception
+  point; absent equivalent server-side proof the finding is `MED-003`/`MED-001`
+  with reason `unsupported` — never an inferred pass.
+- **Mediation is not a substitute for server-side controls.** Even with a
+  perfect interceptor, the called service still owns its own authorization,
+  input validation, idempotency, and transactional integrity. This skill
+  repeats that constraint rather than absorbing it.
+- **The GitHub Copilot change plane is not the Copilot loop.** This assessor
+  governs how an agent's changes reach a branch and an environment; it
+  **never claims, and never intercepts, GitHub Copilot's own internal loop**
+  — its reasoning and tool-calling stay outside this boundary — and it
+  evaluates only the declared, static change-plane controls (branch
+  protection, required checks, pinning, OIDC, identity separation) that the
+  manifest's `change_plane` object records.
+- **Customer policy stays with the customer.** No business threshold,
+  authorization rule, named approver, tenant identity, or risk appetite is ever
+  invented here; a missing one produces an explicit customer-decision
+  remediation item.
+
+## How this relates to the surrounding frameworks
+
+| Framework | Role here |
+| --- | --- |
+| SAFE | a **method / design framework** for business invariants and consequences, not an enforcement mechanism |
+| Agent Control Specification (ACS) | the native Rego/OPA **policy-decision** engine (PDP), not the interceptor or automatic all-tools protection |
+| Agent Hooks | the **host/interceptor contract** the runtime seam is expressed through — cooperative, alpha |
+| Native host / governed-tool gateway | the PEP that enforces decisions at selected action boundaries |
+| AGT | the toolkit; current runtime distribution is `agent-governance-toolkit-core==5.0.0` |
+| ASSERT / evals | **offline assurance** that measures behaviour before and after release; they are never pre-action runtime enforcement |
+
+## Integration with the threadlight chain
+
+- `threadlight-production-ready` **consumes** `tests/governed-actions-manifest.json`
+  and rolls it up into the three aggregates `AGT-007` / `HITL-008` / `SUP-014`.
+  It never re-runs a probe; the detail stays here.
+- `threadlight-auto` is **recommendation-only** for this skill. It may surface a
+  handoff and summarize an already-committed manifest; it never runs the
+  assessor, never scaffolds, and never rolls out enforcement.
+- `threadlight-govern` authors native policy; this skill routes actual runtime
+  generation and proves selected local paths. `threadlight-hitl-patterns` designs
+  the human experience, never replacing Task8 authentication/nonce CAS.
+  `threadlight-cicd` owns the explicitly requested production pipeline.
+- **Production rollout is not owned here.** Deciding to enforce in production is
+  an explicit, human, customer-owned choice.
+
+## Rejected alternatives
+
+Recorded so the boundary is not silently re-litigated:
+
+1. **Extending `threadlight-production-ready`** was rejected: its broad posture
+   assessment should **consume** aggregate evidence, not own runtime
+   conformance probes.
+2. **Splitting the feature across `threadlight-safe-check` and
+   `threadlight-hitl-patterns`** was rejected: it fragments one customer
+   evidence chain and one pass/fail matrix across two skills.
+3. **An invented universal host contract** is rejected. Native MAF and the GHCP
+   registered-action gateway retain different supported surfaces; the legacy
+   assessor `RuntimeAdapter` contract does not imply equal runtime coverage.
+
+## Files in this skill
+
+| Path | What it is |
+| --- | --- |
+| `scripts/governed_actions.py` | CLI entry point: `parse_args`, `assess`, `exit_code`, `main` |
+| `scripts/contracts.py` | typed contracts, fixed constants, and schema version |
+| `scripts/inventory.py` | `build_action_inventory` |
+| `scripts/mediation.py` | `build_mediation_graph` |
+| `scripts/probes.py` | `run_application_probe` (hermetic, subprocess-isolated) and `run_approval_probe_sequence` (isolated, self-cleaning anti-replay) |
+| `scripts/ghcp.py` | `assess_change_plane` + optional read-only live collectors |
+| `scripts/alerts.py` | `assess_alerts` |
+| `scripts/maf_adapter.py` | the `RuntimeAdapter` contract and its MAF implementation |
+| `scripts/render.py` | `build_manifest`, `build_apply_plan`, evidence-pack rendering, atomic writes |
+| `scripts/scaffold.py` | the bounded, double-opt-in scaffold |
+| `references/governed-actions-manifest.schema.json` | manifest v1 schema |
+| `references/governed-actions-apply-plan.schema.json` | apply-plan v1 schema |
+| `references/finding-catalog.json` | the 18-ID catalog |
+| `references/upstream-pin.json` | the exact tested upstream tuple |
+| `tests/` | contracts, inventory, mediation, probes, GHCP, alerts, render/CLI, scaffold, and golden-fixture suites |

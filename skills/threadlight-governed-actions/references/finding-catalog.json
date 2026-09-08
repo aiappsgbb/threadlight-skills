@@ -1,0 +1,168 @@
+{
+  "schema": "threadlight-governed-actions-finding-catalog/v1",
+  "description": "Fixed taxonomy of findings threadlight-governed-actions can emit: consequential-action inventory, mediation-path coverage, enforcement, approval, output payload-freedom, audit-trail completeness, pin integrity, GitHub Copilot coding-agent change-plane posture, and operational alerting. Agent Hooks is cooperative/alpha and never a security boundary; conformance is never certification; not-verified never becomes pass on its own \u2014 'unsupported' is a reason_code the assessor records, never a status.",
+  "findings": [
+    {
+      "finding_id": "ACT-001",
+      "category": "consequential-inventory",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "A consequential action (write/external-egress/irreversible) is invocable but not present in the declared action inventory.",
+      "remediation": "Declare the action (name, consequence class, reversibility, execution modes) so it can be mediated and audited; do not leave consequential actions undeclared."
+    },
+    {
+      "finding_id": "ACT-002",
+      "category": "consequential-inventory",
+      "plane": "runtime",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "A declared action is missing metadata (consequence class, reversibility, or compensation reference) needed for downstream policy and approval decisions.",
+      "remediation": "Complete the action's declaration with an explicit consequence class, reversibility flag, and compensation reference where reversible=false."
+    },
+    {
+      "finding_id": "MED-001",
+      "category": "path",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "A discovered execution path reaches a consequential action without passing through any interceptor/policy seam.",
+      "remediation": "Route the path through the declared pre-action seam (Agent Hooks or an equivalent interceptor) before the action executes."
+    },
+    {
+      "finding_id": "MED-002",
+      "category": "path",
+      "plane": "runtime",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "Path tracing could not conclusively determine whether a route to a consequential action is mediated (e.g. dynamic dispatch or subagent delegation); recorded not-verified rather than assumed covered.",
+      "remediation": "Add a deterministic probe case or static reference that lets the assessor confirm coverage instead of leaving it ambiguous."
+    },
+    {
+      "finding_id": "MED-003",
+      "category": "path",
+      "plane": "runtime",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "A path without a direct interceptor seam instead relies on an equivalent compensating control (e.g. a provider-hosted tool allow-list) that has not been independently verified.",
+      "remediation": "Provide evidence (references, live verification, or a probe result) for the claimed equivalent control, or add a direct seam."
+    },
+    {
+      "finding_id": "ENF-001",
+      "category": "enforcement",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "No enforcement seam (Agent Hooks or a declared equivalent) is wired for at least one execution mode a consequential action runs under.",
+      "remediation": "Wire the enforcement seam for every execution mode the action supports, including subagent and provider-hosted-tool modes."
+    },
+    {
+      "finding_id": "ENF-002",
+      "category": "enforcement",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "Agent Hooks is cooperative and can be bypassed by a caller that skips the hook, and no compensating control (allow-list, network policy, provider-side restriction) was found for that bypass surface.",
+      "remediation": "Add a compensating control for the bypass surface; do not rely on Agent Hooks alone as the security boundary."
+    },
+    {
+      "finding_id": "APR-001",
+      "category": "approval",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "An action flagged approval_required has no verifiable approval-redemption evidence in the audit trail prior to execution.",
+      "remediation": "Record an approval_redemption_hash in the audit trail before the action is permitted to execute, and verify it is checked at the enforcement seam."
+    },
+    {
+      "finding_id": "OUT-001",
+      "category": "output",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "Protected output is not mediated before release: it is released before its governing verdict is known, or an incremental (streaming) release has no declared, ledger-proven exposure bound and chunk mediation.",
+      "remediation": "Buffer protected output until the verdict is known (a denied verdict must release zero bytes), and bound and chunk-mediate any incremental release instead of streaming it unmediated."
+    },
+    {
+      "finding_id": "AUD-001",
+      "category": "audit",
+      "plane": "runtime",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "A consequential-action invocation has no corresponding payload-free audit record (event_id, decision, and hash chain), making the decision unauditable after the fact.",
+      "remediation": "Emit one payload-free audit record per consequential-action decision, including policy_hash/action_hash and delivery_status."
+    },
+    {
+      "finding_id": "PIN-001",
+      "category": "pin",
+      "plane": "both",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "A pinned dependency, specification, or probe-suite version referenced by the assessment no longer matches the version/hash recorded at capture time (pin drift).",
+      "remediation": "Re-pin to the current version/hash and re-run the assessment, or restore the originally pinned version."
+    },
+    {
+      "finding_id": "GHCP-001",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "Protected branch accepts agent changes outside pull requests.",
+      "remediation": "Require every change to land through a pull request: reject direct pushes and `pull_request_target` workflows that check out the pull request's own untrusted head content, and reject bypass commands (commit-message CI-skip markers, forced pushes, administrative merge overrides)."
+    },
+    {
+      "finding_id": "GHCP-002",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "CODEOWNERS, ruleset/branch protection, or required-check coverage is missing or unavailable.",
+      "remediation": "Add a real `CODEOWNERS`/`.github/CODEOWNERS` file covering every required governance/policy/test path, and confirm live branch protection actually requires review and enforces the change plane's own required checks; static file coverage alone can never prove live enforcement."
+    },
+    {
+      "finding_id": "GHCP-003",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "Required CI omits CTK, application probes, or relevant evals.",
+      "remediation": "Run the Conformance Test Kit and governed application probes in every pull_request-triggered required workflow, and, when the repository ships an eval suite, run that suite's own runner from the same required CI."
+    },
+    {
+      "finding_id": "GHCP-004",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "Action SHA floats or workflow permission is excessive.",
+      "remediation": "Pin every third-party and first-party action reference to an exact 40-character commit SHA, and declare explicit, least-privilege `permissions` at the workflow or job level instead of `write-all` or an equivalent scope-by-scope write grant."
+    },
+    {
+      "finding_id": "GHCP-005",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "Azure deployment uses a long-lived secret instead of OIDC/WIF.",
+      "remediation": "Authenticate Azure deployment steps via OpenID Connect/workload-identity-federation (`client-id`/`tenant-id`, `id-token: write` permission) and remove any long-lived secret-based login (`creds`/`client-secret`/`password`/`publish-profile`)."
+    },
+    {
+      "finding_id": "GHCP-006",
+      "category": "change-plane",
+      "plane": "change",
+      "severity": "must-fix",
+      "gate": true,
+      "summary": "Build/test/deploy identities are shared, over-broad, or not evidenced.",
+      "remediation": "Use separate, narrowly scoped identities for build/test and deployment, and confirm with live evidence that they are genuinely distinct principals; separation can never be proven by static files alone."
+    },
+    {
+      "finding_id": "OPS-001",
+      "category": "alerts",
+      "plane": "both",
+      "severity": "should-fix",
+      "gate": false,
+      "summary": "No alerting/notification path was found for enforcement failures, hook errors, or audit delivery_status failures, so governance-relevant failures go unmonitored.",
+      "remediation": "Add alerting on enforcement errors, non-delivered audit records, and abnormal interceptor_duration_ms so failures are noticed rather than silently accumulating."
+    }
+  ]
+}

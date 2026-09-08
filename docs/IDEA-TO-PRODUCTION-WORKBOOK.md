@@ -1,5 +1,13 @@
 # Idea → Production Workbook
 
+> **Current runtime boundary:** SAFE is the method; ACS/Rego is the PDP;
+> Agent Hooks is the host/interceptor contract SDK; native host/gateway is
+> the PEP; AGT is the toolkit; ASSERT is assurance. Governance is per selected
+> binding, not the whole agent. Unbound reads remain unbound without ACS;
+> missing live proof remains unverified. Use `specs/governance-manifest.json`
+> and the [current lifecycle/CI inputs](production-readiness.md#runtime-governance-lifecycle).
+> The historical prompts below are not current enforcement receipts.
+
 > **"How do I test it?"** — this is the answer. A self-paced runbook that
 > walks the **exact chain** from the [case study](./case-study.html): one
 > paragraph of intent → a working agent on **your own Azure subscription**
@@ -13,7 +21,7 @@ The workbook splits into two halves:
 
 | | What you get | Where it runs | Time | Cost |
 |---|---|---|---|---|
-| **Part 1 — Hands-on to MVP** | A live, governed-ready agent you invoked yourself | **Your own Azure subscription** | ~60 min | A few $ of model + a Container App |
+| **Part 1 — Hands-on to MVP** | A live pilot you invoked yourself; runtime bindings need separate proof | **Your own Azure subscription** | ~60 min | A few $ of model + a Container App |
 | **Part 2 — The production track** | The real prompts that took the pilot to a governed Citadel spoke | Needs a **Citadel hub** + budget | A few hours | Real Azure spend |
 
 Part 1 is fully reproducible solo today. Part 2 is **documented with the
@@ -242,7 +250,7 @@ not the agent). The hard borrower trips its policy floors — each flagged with
 threshold, value, and clause — and escalates. **That `pending_review` state
 is the whole point:** the agent drafts, a person decides.
 
-🎉 **That's the MVP.** You took a paragraph to a governed-ready agent running
+🎉 **That's the MVP.** You took a paragraph to a working pilot running
 on your own Azure, and you proved it yourself. Everything past here is the
 road to production.
 
@@ -326,16 +334,28 @@ production-ready pillar 7 (`SAFE-1xx`) so an un-scanned agent reads as
 ### 8b · Govern — is the runtime actually governed? 🟡
 
 ```
-Use the threadlight-govern skill to wire foundry-agt at the container
-boundary: scaffold/validate the policy artefact, attach the in-process
-governance middleware, and emit a committed verifier report
-(specs/govern-manifest.json).
+Use threadlight-govern to author/build/validate the native ACS bundle and
+threadlight-governed-actions to generate real selected host/service templates.
+Preserve unbound read tools. Run the actual pre-deploy --emit --gate.
+After approved deployment, run safe-check with the protected registered
+preproduction noop fixture and independent expected tenant/subscription/RG.
+Report business bindings as unverified when their own live proof is absent.
 ```
 
-The **Protect** leg turns pillar 2 from "AGT scored, remediation delegated"
-into "AGT runtime governance *ran* and left an artefact." It produces exactly
-what pillars 2 and 7 look for — policy + middleware + verifier evidence — so
-the scorecard can verify the leg ran rather than just recommending it.
+The **Protect** leg implements required signed/fresh policy, authenticated
+one-use human approval, trusted target/schema/backend facts and remote audit ACK
+before effects. Spool fsync is not hosted durability. LOCAL-14/native/CTK tests
+are local only: 47 declared CTK vectors, four undeclared incremental vectors.
+The official execution SDK is unmodified; only a test oracle is corrected.
+
+Native MAF selection is not automatic full SAFE; compaction, provider-hosted tools
+and incremental streaming/custom clients are unsupported. GHCP is registered
+gateway action enforcement, not full lifecycle/output or arbitrary URL/shell
+routing. The current collector proves only `governance_probe_noop`.
+Actual returns decision/audit writes are locally tested but live unverified;
+there is no settlement tool. Required runtime services, role-bound approvals and
+fresh after-deploy evidence cannot be replaced with the old policy/CI badge.
+Legacy v2 captures stay historical and cannot pass the new readiness gate.
 
 ### 9 · Observability — can we see what it's doing? 🟡
 

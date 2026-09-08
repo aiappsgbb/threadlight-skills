@@ -4,6 +4,10 @@
 .env
 .env.*
 .env.local
+.threadlight/
+deployment-config.json
+policy-envelope.json
+probe-config.json
 
 # Python
 __pycache__/

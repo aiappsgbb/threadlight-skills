@@ -1,7 +1,8 @@
 name: docs-blueprint
 
 # Runs the Blueprint composer guards: the static data asset shape + the
-# skill-derivation logic, plus a generated-data drift/idempotence check,
+# skill-derivation logic, the CI-wiring checker's own regression suite,
+# plus a generated-data drift/idempotence check,
 # and the published Pages browser suite.
 on:
   pull_request:
@@ -25,6 +26,12 @@ on:
       - ".github/plugin/marketplace.json"
       - "skills/threadlight-consumption-iq/SKILL.md"
       - "skills/threadlight-production-ready/**"
+      - "skills/threadlight-governed-actions/SKILL.md"
+      - "tests/ci/**"
+      - "scripts/ci/check-test-dirs-wired.py"
+      - "scripts/ci/runtime_readiness.py"
+      - ".github/workflows/threadlight-e2e-foundry.yml"
+      - ".github/workflows/python-pytest.yml"
   push:
     branches: [main]
     paths:
@@ -46,6 +53,12 @@ on:
       - ".github/plugin/marketplace.json"
       - "skills/threadlight-consumption-iq/SKILL.md"
       - "skills/threadlight-production-ready/**"
+      - "skills/threadlight-governed-actions/SKILL.md"
+      - "tests/ci/**"
+      - "scripts/ci/check-test-dirs-wired.py"
+      - "scripts/ci/runtime_readiness.py"
+      - ".github/workflows/threadlight-e2e-foundry.yml"
+      - ".github/workflows/python-pytest.yml"
   workflow_dispatch: {}
 
 jobs:
@@ -60,7 +73,17 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run blueprint data + logic tests
-        run: node --test tests/blueprint/*.test.js
+        # tests/ci/*.test.js rides along here: it guards that every pytest
+        # suite is wired into python-pytest.yml, and has no runner of its own,
+        # so without this the guard's own regression tests never run in CI.
+        run: node --test tests/blueprint/*.test.js tests/ci/*.test.js
+      - name: Runtime guidance and real workflow script regressions
+        run: |
+          python -m pip install pytest pyyaml "jsonschema[format]==4.26.0" ./skills/threadlight-govern/references/control-plane
+          # Protocol validators import real service models; no native SDK calls
+          # or fabricated wire models in this documentation/CI regression suite.
+          python -m pip install --no-deps ./skills/threadlight-govern/references/gateway
+          python -m pytest tests/ci skills/threadlight-production-ready/tests/test_script_strings.py skills/threadlight-auto/tests/test_threadlight_auto_cost_contract.py -q
       - name: Regenerate process-library.json and check for drift
         # Idempotence/drift gate: feeding the committed asset back through
         # its own producer as --source must reproduce it byte-for-byte. This

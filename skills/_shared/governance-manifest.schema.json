@@ -1,0 +1,901 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "threadlight-governance-manifest/v1",
+  "anyOf": [
+    {"$ref": "#/definitions/runtimeManifest"},
+    {"$ref": "#/definitions/offlineManifest"},
+    {"$ref": "#/definitions/collectedManifest"}
+  ],
+  "definitions": {
+  "collectedManifest": {
+    "description": "Payload-free authenticated collection, not binary provenance or remote attestation. Python validation rechecks the strict producer and receipt models.",
+    "type": "object",
+    "required": ["schema", "agent", "policy_bundle", "enforcement", "coverage", "bindings", "live_probes", "gaps", "collection_evidence"],
+    "additionalProperties": false,
+    "properties": {
+      "schema": {"const": "threadlight-governance-manifest/v1"},
+      "agent": {"$ref": "#/definitions/runtimeManifest/properties/agent"},
+      "policy_bundle": {"$ref": "#/definitions/runtimeManifest/properties/policy_bundle"},
+      "enforcement": {
+        "type": "object", "required": ["adapter", "mode"], "additionalProperties": false,
+        "properties": {"adapter": {"type": "string", "minLength": 1}, "mode": {"const": "enforce"}}
+      },
+      "coverage": {"$ref": "#/definitions/runtimeManifest/properties/coverage"},
+      "bindings": {
+        "type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["binding_id", "tool_id", "enforcement_path", "intervention_points", "mode", "safe_principles", "status", "policy_digest", "probe_ids", "evidence_refs"],
+          "properties": {
+            "binding_id": {"$ref": "#/definitions/binding/properties/binding_id"},
+            "tool_id": {"$ref": "#/definitions/binding/properties/tool_id"},
+            "enforcement_path": {"$ref": "#/definitions/binding/properties/enforcement_path"},
+            "intervention_points": {"$ref": "#/definitions/binding/properties/intervention_points"},
+            "mode": {"const": "enforce"},
+            "safe_principles": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+            "status": {"enum": ["enforced", "unverified", "unbound"]},
+            "policy_digest": {"$ref": "#/definitions/sha256Digest"},
+            "probe_ids": {"$ref": "#/definitions/binding/properties/probe_ids"},
+            "evidence_refs": {"$ref": "#/definitions/binding/properties/evidence_refs"}
+          },
+          "allOf": [{
+            "if": {"properties": {"status": {"const": "enforced"}}},
+            "then": {"properties": {
+              "binding_id": {"const": "governance_probe_noop"}, "tool_id": {"const": "governance_probe_noop"},
+              "intervention_points": {"const": ["pre_tool_call"]},
+              "probe_ids": {"minItems": 2}, "evidence_refs": {"minItems": 4}
+            }}
+          }]
+        }
+      },
+      "live_probes": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/definitions/liveProbe"}},
+      "gaps": {
+        "type": "array", "items": {
+          "type": "object", "required": ["binding_id", "status", "reason_code", "evidence_refs"], "additionalProperties": false,
+          "properties": {
+            "binding_id": {"$ref": "#/definitions/binding/properties/binding_id"},
+            "status": {"enum": ["unverified", "unbound"]},
+            "reason_code": {"type": "string", "minLength": 1},
+            "evidence_refs": {"type": "array", "maxItems": 0}
+          }
+        }
+      },
+      "collection_evidence": {
+        "type": "object", "additionalProperties": false,
+        "allOf": [{
+          "if": {
+            "properties": {"registration_scope": {
+              "required": ["producer"], "properties": {"producer": {"const": "native"}}
+            }},
+            "required": ["registration_scope"]
+          },
+          "then": {"properties": {"verified_policies": {"required": ["policy", "native_policy"]}}},
+          "else": {"properties": {"verified_policies": {"maxProperties": 1}}}
+        }],
+        "required": ["source", "declared_selection", "observed_target", "started_at", "finished_at", "registration_scope", "records", "expected_target", "configuration", "verified_policies"],
+        "properties": {
+          "verified_policies": {
+            "type": "object", "required": ["policy"], "additionalProperties": false,
+            "properties": {
+              "policy": {"$ref": "#/definitions/verifiedPolicy"},
+              "native_policy": {"$ref": "#/definitions/verifiedPolicy"}
+            }
+          },
+          "source": {"const": "authenticated-service-reads-and-azure-observation-not-attestation"},
+          "declared_selection": {"type": "object"}, "observed_target": {"type": "object"},
+          "expected_target": {"type": "object"}, "configuration": {"type": "object"},
+          "network_evidence": {"const": {"posture": "public-authenticated-proof",
+            "scope": "runtime-governance-proof-only", "network_isolation": "not-established", "cleanup_required": true}},
+          "bootstrap": {"type": "object", "required": ["binding", "signature"], "additionalProperties": false,
+            "properties": {"binding": {"type": "object"}, "signature": {"type": "string", "maxLength": 1024}}},
+          "started_at": {"type": "string", "format": "date-time"}, "finished_at": {"type": "string", "format": "date-time"},
+          "registration_scope": {"type": "object"},
+          "records": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "object"}}
+        }
+      }
+    }
+  },
+  "verifiedPolicy": {
+    "description": "Exact full SignedBundle fingerprint emitted only after collector trusted-key verification; not an uploaded-file attestation.",
+    "type": "object", "additionalProperties": false,
+    "required": ["signed_bundle_sha256", "bundle_digest", "expires_at"],
+    "properties": {
+      "signed_bundle_sha256": {"$ref": "#/definitions/sha256Digest"},
+      "bundle_digest": {"$ref": "#/definitions/sha256Digest"},
+      "expires_at": {"type": "string", "format": "date-time"}
+    }
+  },
+  "runtimeManifest": {
+  "type": "object",
+  "required": [
+    "schema",
+    "agent",
+    "policy_bundle",
+    "enforcement",
+    "coverage",
+    "bindings",
+    "live_probes",
+    "gaps"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enforcement": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "const": "evaluate_only"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "enforcement"
+        ]
+      },
+      "then": {
+        "properties": {
+          "coverage": {
+            "properties": {
+              "tools_enforced": {
+                "const": 0
+              }
+            }
+          },
+          "bindings": {
+            "not": {
+              "contains": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "const": "enforced"
+                      }
+                    },
+                    "required": [
+                      "status"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "const": "enforce"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent": {
+            "type": "object",
+            "properties": {
+              "runtime": {
+                "const": "github-copilot-sdk"
+              }
+            },
+            "required": [
+              "runtime"
+            ]
+          }
+        },
+        "required": [
+          "agent"
+        ]
+      },
+      "then": {
+        "properties": {
+          "bindings": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "enforcement_path": {
+                    "const": "local-agent-hooks"
+                  }
+                },
+                "required": [
+                  "enforcement_path"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "policy_bundle": {
+            "type": "object",
+            "properties": {
+              "signature_verified": {
+                "const": false
+              }
+            },
+            "required": [
+              "signature_verified"
+            ]
+          }
+        },
+        "required": [
+          "policy_bundle"
+        ]
+      },
+      "then": {
+        "properties": {
+          "bindings": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "enforced",
+                      "observed"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "threadlight-governance-manifest/v1"
+    },
+    "agent": {
+      "type": "object",
+      "required": [
+        "runtime",
+        "version",
+        "image_digest"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "runtime": {
+          "enum": [
+            "github-copilot-sdk",
+            "maf-responses",
+            "microsoft-agent-framework"
+          ]
+        },
+        "version": {
+          "$ref": "#/definitions/version"
+        },
+        "image_digest": {
+          "$ref": "#/definitions/sha256Digest"
+        }
+      }
+    },
+    "policy_bundle": {
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "digest",
+        "signature_verified",
+        "expires_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "version": {
+          "$ref": "#/definitions/version"
+        },
+        "digest": {
+          "$ref": "#/definitions/sha256Digest"
+        },
+        "signature_verified": {
+          "type": "boolean"
+        },
+        "expires_at": {
+          "type": "string",
+          "pattern": "^(?!.*[\\r\\n]).+$",
+          "format": "date-time",
+          "description": "RFC 3339 timestamp shape only. Freshness against the caller or runtime clock is evaluated outside Draft 7 validation."
+        }
+      }
+    },
+    "enforcement": {
+      "type": "object",
+      "required": [
+        "adapter",
+        "mode",
+        "agent_hooks_distribution",
+        "agent_hooks_artifact_sha256",
+        "acs_distribution",
+        "acs_artifact_sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "enforce",
+            "evaluate_only"
+          ]
+        },
+        "agent_hooks_distribution": {
+          "$ref": "#/definitions/version"
+        },
+        "agent_hooks_artifact_sha256": {
+          "$ref": "#/definitions/sha256Digest"
+        },
+        "acs_distribution": {
+          "$ref": "#/definitions/version"
+        },
+        "acs_artifact_sha256": {
+          "$ref": "#/definitions/sha256Digest"
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "tools_total",
+        "tools_bound",
+        "tools_enforced",
+        "tools_observed",
+        "tools_unbound",
+        "tools_unverified",
+        "tools_unsupported",
+        "tools_bypassable"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tools_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tools_bound": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tools_enforced": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tools_observed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tools_unbound": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tools_unverified": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tools_unsupported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tools_bypassable": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/binding"
+      }
+    },
+    "live_probes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/liveProbe"
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/gap"
+      }
+    }
+  }
+  },
+  "offlineManifest": {
+    "type": "object",
+    "required": ["schema", "agent", "policy_bundle", "enforcement", "coverage", "bindings", "live_probes", "gaps", "offline_evidence"],
+    "additionalProperties": false,
+    "properties": {
+      "schema": {"const": "threadlight-governance-manifest/v1"},
+      "agent": {
+        "type": "object",
+        "required": ["runtime", "version", "image_digest"],
+        "additionalProperties": false,
+        "properties": {
+          "runtime": {"enum": [null, "github-copilot-sdk", "maf-responses", "microsoft-agent-framework"]},
+          "version": {"type": "null"},
+          "image_digest": {"type": "null"}
+        }
+      },
+      "policy_bundle": {
+        "anyOf": [
+          {"type": "null"},
+          {
+            "type": "object",
+            "required": ["id", "version", "digest", "signature_verified", "expires_at"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/definitions/identifier"},
+              "version": {"$ref": "#/definitions/version"},
+              "digest": {"$ref": "#/definitions/sha256Digest"},
+              "signature_verified": {"const": false},
+              "expires_at": {"type": "null"}
+            }
+          }
+        ]
+      },
+      "enforcement": {
+        "const": {
+          "adapter": "offline-inventory",
+          "mode": "evaluate_only",
+          "agent_hooks_distribution": null,
+          "agent_hooks_artifact_sha256": null,
+          "acs_distribution": null,
+          "acs_artifact_sha256": null
+        }
+      },
+      "coverage": {
+        "allOf": [
+          {"$ref": "#/definitions/runtimeManifest/properties/coverage"},
+          {"properties": {"tools_enforced": {"const": 0}, "tools_observed": {"const": 0}, "tools_bypassable": {"const": 0}}}
+        ]
+      },
+      "bindings": {"type": "array", "items": {"$ref": "#/definitions/offlineBinding"}},
+      "live_probes": {"const": []},
+      "gaps": {"type": "array", "items": {"$ref": "#/definitions/gapBinding"}},
+      "offline_evidence": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "required": ["evidence_ref", "source", "sha256", "reason_code"],
+          "additionalProperties": false,
+          "properties": {
+            "evidence_ref": {"$ref": "#/definitions/evidenceRef"},
+            "source": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "\\S"}]},
+            "sha256": {"anyOf": [{"type": "null"}, {"$ref": "#/definitions/sha256Digest"}]},
+            "reason_code": {"$ref": "#/definitions/identifier"}
+          }
+        }
+      }
+    },
+    "allOf": [
+      {
+        "if": {"properties": {"agent": {"properties": {"runtime": {"const": "github-copilot-sdk"}}}}},
+        "then": {"properties": {"bindings": {"items": {"properties": {"enforcement_path": {"not": {"const": "local-agent-hooks"}}}}}}}
+      }
+    ]
+  },
+  "offlineBinding": {
+    "type": "object",
+    "required": ["binding_id", "tool_id", "enforcement_path", "intervention_points", "mode", "safe_principles", "status", "policy_digest", "probe_ids", "evidence_refs"],
+    "additionalProperties": false,
+    "properties": {
+      "binding_id": {"$ref": "#/definitions/identifier"},
+      "tool_id": {"$ref": "#/definitions/identifier"},
+      "enforcement_path": {"enum": ["none", "local-agent-hooks", "governed-tool-gateway"]},
+      "intervention_points": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/interventionPoint"}},
+      "mode": {"const": "evaluate_only"},
+      "safe_principles": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "\\S"}},
+      "status": {"enum": ["unverified", "unbound", "unsupported"]},
+      "policy_digest": {"anyOf": [{"type": "null"}, {"$ref": "#/definitions/sha256Digest"}]},
+      "probe_ids": {"const": []},
+      "evidence_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/evidenceRef"}}
+    },
+    "allOf": [
+      {
+        "if": {"properties": {"status": {"const": "unbound"}}},
+        "then": {"properties": {"enforcement_path": {"const": "none"}}}
+      },
+      {
+        "if": {"properties": {"enforcement_path": {"const": "none"}}},
+        "then": {"properties": {"intervention_points": {"maxItems": 0}}}
+      }
+    ]
+  },
+    "identifier": {
+      "type": "string",
+      "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(?!.*[\\r\\n])\\d+(?:\\.\\d+)*(?:[A-Za-z][0-9A-Za-z.-]*)?$"
+    },
+    "sha256Digest": {
+      "type": "string",
+      "pattern": "^(?!.*[\\r\\n])sha256:[0-9a-f]{64}$"
+    },
+    "evidenceRef": {
+      "type": "string",
+      "pattern": "^(?!.*[\\r\\n])EV-[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "interventionPoint": {
+      "enum": [
+        "input",
+        "pre_model_call",
+        "post_model_call",
+        "pre_tool_call",
+        "post_tool_call",
+        "output",
+        "startup",
+        "shutdown"
+      ]
+    },
+    "binding": {
+      "type": "object",
+      "required": [
+        "binding_id",
+        "tool_id",
+        "enforcement_path",
+        "intervention_points",
+        "mode",
+        "safe_principles",
+        "status",
+        "policy_digest",
+        "probe_ids",
+        "evidence_refs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "tool_id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "enforcement_path": {
+          "enum": [
+            "none",
+            "local-agent-hooks",
+            "governed-tool-gateway"
+          ]
+        },
+        "intervention_points": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/interventionPoint"
+          }
+        },
+        "mode": {
+          "enum": [
+            "enforce",
+            "evaluate_only"
+          ]
+        },
+        "safe_principles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "status": {
+          "enum": [
+            "enforced",
+            "observed",
+            "unbound",
+            "unsupported",
+            "unverified",
+            "bypassable"
+          ]
+        },
+        "policy_digest": {
+          "$ref": "#/definitions/sha256Digest"
+        },
+        "probe_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/identifier"
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/evidenceRef"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "enforced",
+                  "observed"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "probe_ids": {
+                "minItems": 1
+              },
+              "evidence_refs": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "enforced"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mode": {
+                "const": "enforce"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "observed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mode": {
+                "const": "evaluate_only"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "unbound"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "enforcement_path": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "enforced",
+                  "observed",
+                  "bypassable"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "enforcement_path": {
+                "not": {
+                  "const": "none"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enforcement_path": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "enforcement_path"
+            ]
+          },
+          "then": {
+            "properties": {
+              "intervention_points": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "liveProbe": {
+      "type": "object",
+      "required": [
+        "probe_id",
+        "binding_id",
+        "environment",
+        "agent_version",
+        "decision",
+        "downstream_effect_delta",
+        "decision_receipt_ref",
+        "service_oracle_ref",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "probe_id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "binding_id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "environment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent_version": {
+          "$ref": "#/definitions/version"
+        },
+        "decision": {
+          "enum": [
+            "allow",
+            "deny",
+            "escalate",
+            "transform"
+          ]
+        },
+        "downstream_effect_delta": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "decision_receipt_ref": {
+          "$ref": "#/definitions/evidenceRef"
+        },
+        "service_oracle_ref": {
+          "$ref": "#/definitions/evidenceRef"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        }
+      }
+    },
+    "gapBinding": {
+      "type": "object",
+      "required": [
+        "binding_id",
+        "status",
+        "reason_code",
+        "evidence_refs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "status": {
+          "enum": [
+            "observed",
+            "unbound",
+            "unsupported",
+            "unverified",
+            "bypassable"
+          ]
+        },
+        "reason_code": {
+          "$ref": "#/definitions/identifier"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/evidenceRef"
+          }
+        }
+      }
+    },
+    "gapTool": {
+      "type": "object",
+      "required": [
+        "tool_id",
+        "status",
+        "reason_code",
+        "evidence_refs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tool_id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "status": {
+          "enum": [
+            "observed",
+            "unbound",
+            "unsupported",
+            "unverified",
+            "bypassable"
+          ]
+        },
+        "reason_code": {
+          "$ref": "#/definitions/identifier"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/evidenceRef"
+          }
+        }
+      }
+    },
+    "gap": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/gapBinding"
+        },
+        {
+          "$ref": "#/definitions/gapTool"
+        }
+      ]
+    }
+  },
+  "description": "Schema-level shape checks for the threadlight governance manifest. validate_governance_manifest remains authoritative for referential, arithmetic, uniqueness, digest, count, and gap invariants that Draft 7 cannot express (including cross-record reference resolution, cross-array uniqueness, policy digest coherence, coverage derivation, and complete non-enforced gap coverage)."
+}

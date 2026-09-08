@@ -110,6 +110,27 @@ def _articles_by_id(articles):
     return {a["id"]: a for a in articles}
 
 
+def test_article9_legacy_green_is_only_partial():
+    root = _full_repo()
+    _, articles = m.assess(root)
+    assert _articles_by_id(articles)["art-9-risk-management"]["coverage"] == "partial"
+
+
+def test_article9_uses_binding_proof_not_scorecard(tmp_path, monkeypatch):
+    from skills._shared.tests.governance_consumer_fixtures import live_fixture, write
+    from skills._shared import governance_readiness
+    value, document, current, now = live_fixture()
+    write(tmp_path, "specs/governance-manifest.json", value)
+    write(tmp_path, "specs/governance-contract.json", document)
+    monkeypatch.setattr(governance_readiness, "current_context", lambda root: current)
+    _, articles = m.assess(tmp_path, now=now.isoformat())
+    article = _articles_by_id(articles)["art-9-risk-management"]
+    assert article["coverage"] == "covered"
+    assert article["binding_evidence"]["coverage"] == value["coverage"]
+    assert article["binding_evidence"]["policy_bundle"]["digest"] == value["policy_bundle"]["digest"]
+    assert article["binding_evidence"]["live_receipts"]
+
+
 # ---------------------------------------------------------------- basics
 def test_version():
     assert m.EVIDENCE_VERSION == "0.8.0"

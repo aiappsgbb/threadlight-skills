@@ -1,0 +1,13 @@
+{
+  "protocol": "native-local/v1",
+  "entrypoint": "scripts/local_probe.py",
+  "actions": ["returns_apply_decision"],
+  "execution_modes": ["interactive", "batch", "background", "subagent", "direct-tool"],
+  "side_effect_mode": "local-sdk-storage",
+  "approval_action_id": "returns_apply_decision",
+  "audit_action_id": "returns_apply_decision",
+  "output_action_id": "returns_apply_decision",
+  "output_contract": "tool-result-schema",
+  "factory": "src/agent/container.py:build_host",
+  "provenance": "local; real Hooks/ACS/OPA/Task8; HTTP, JWKS, signing and SDK storage fixtures; no live certification"
+}

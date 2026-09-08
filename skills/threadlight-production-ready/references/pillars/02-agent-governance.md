@@ -1,10 +1,47 @@
 # Pillar 2 — `agent-governance`
 
-> **What this pillar answers.** Is the agent's behaviour governed by a
-> committed policy (AGT — Agent Governance Toolkit) that:
-> (a) is **schema-valid** and lints clean under `agt lint-policy`;
-> (b) carries a pinned ruleset version; and (c) is gated in CI so a
-> policy regression fails the pipeline before it reaches production?
+> **What this pillar answers.** Do the explicitly selected bindings have
+> current, exact deployed-target enforcement evidence?
+
+## Binding evidence contract
+
+`AGT-001` consumes `specs/governance-manifest.json` through the shared
+`governance.py` and `probe_evidence.py` validators and shared readiness evaluator.
+Raw `status: enforced`, policy syntax, local conformance and old
+`govern-manifest.json` v2 verdicts cannot establish enforcement. Legacy v2 is
+provenance only (`not-verified`); missing/malformed files fail closed.
+
+For selected bindings the composite predicate requires **enforce** mode, every
+selected binding **enforced**, zero unverified/bypassable tools and `gaps: []`
+in the normalized assessment. The producer's explicit-unbound inventory rows
+are removed from effective gaps only after their exact read/acceptance checks;
+raw producer evidence is preserved and still strictly validated.
+Receipts must be well formed and fresh (including registration and signed-policy
+expiry), and match the current binding, intervention point, path, agent/version,
+image, policy, environment, tenant, subscription/RG and workload identity.
+Current declarations are re-read from the frozen deployment package and collector
+configuration; they are never relabeled as Azure observations. Changed inputs
+require recollection. Missing validator dependencies are unverified, never pass.
+
+The collector proves only the explicit reserved staging `governance_probe_noop`
+at `pre_tool_call`. It does **not** prove business actions, lifecycle points or a
+whole agent. Requirements outside that pair's evidence remain unverified.
+
+An exact unbound read-only (or zero-tool/off) inventory can pass without claiming
+live enforcement. Unbound consequential/unknown tools need the existing
+per-tool contract `acceptance_record` (`owner`, `justification`, `review_date`,
+`expiry`) plus an explicit `specs/governance-acceptances.json` scope:
+`{"acceptances": [{"tool_id": "...", "contract_sha256": "sha256:...",
+"target": {...}, "source_commit": "<current HEAD>"}]}`.
+The contract digest uses shared canonical `configuration_digest`; target is the
+exact current deployment/identity tuple, not a wildcard. Unbound-only projects
+declare that tuple in `specs/manifest.json.deployment_manifest`. A record for
+another tool, deployment or source revision, an expired record or missing reason
+cannot be borrowed. Acceptance is risk ownership, never enforcement.
+
+The following legacy marker checks remain diagnostic only; they cannot override
+`AGT-001`. With binding evidence, their inapplicable legacy predicates are not
+counted as additional policy failures.
 
 This pillar is **capability-based, not version-pinned.** AGT is
 evolving rapidly (v3.7 → v4 shipped 2026-06-01) and the upstream
@@ -31,12 +68,53 @@ for the recon evidence and design rationale.
 
 | ID | Check | Default status |
 |---|---|---|
-| `AGT-001` | Policy is **schema-valid** — top-level `version` + `name` + `rules:` present, lints clean under `agt lint-policy` | `must-fix` if not schema-valid |
+| `AGT-001` | Current exact binding-level enforcement evidence (or valid explicit unbound inventory) | `must-fix` for unproven selected bindings; `not-verified` for absent/legacy/malformed evidence |
 | `AGT-002` | AGT policy artefact present (`policy.yaml`, `agt-policy.yaml`, or equivalent referenced from `agent.yaml`) | `must-fix` if missing |
 | `AGT-003` | OWASP / Agentic Security Initiative 2026 ("ASI") reference present in policy / source / docs | `should-fix` if absent |
 | `AGT-004` | Policy ruleset carries a pinned semver `version:` (not `latest`, not absent) | `should-fix` if missing |
 | `AGT-005` | A CI workflow runs the toolkit (`agt verify` / `lint-policy` / `test`) so a policy regression fails the pipeline | `should-fix` if no gate |
 | `AGT-006` | Telemetry sink configured so policy decisions are auditable | `should-fix` if absent |
+| `AGT-007` | **Aggregate** roll-up of the `threadlight-governed-actions` runtime verdict — see below | `not-verified` if no trustworthy manifest |
+
+### `AGT-007` — governed-actions runtime evidence (aggregate)
+
+`threadlight-governed-actions` owns the detailed consequential-action
+assessment. production-ready never re-runs any of it and never imports the
+assessor; it reads that skill's `tests/governed-actions-manifest.json` and rolls
+the **runtime** domain up into this single finding.
+
+`AGT-007` owns nine child findings — `ACT-001`, `ACT-002` (action inventory),
+`MED-001`, `MED-002`, `MED-003` (mediation paths), `ENF-001`, `ENF-002`
+(enforcement), `PIN-001` (pin integrity), and `OPS-001` (operational alerting).
+`OPS-001` is a `both`-plane finding, so it is the one child shared with the
+change plane: it also feeds `SUP-014` in pillar 9. Every other child maps here
+and nowhere else.
+
+The aggregate takes the **worst** status among those children —
+`must-fix` > `not-verified` > `should-fix` > `pass` > `not-applicable` — and
+names which of them are open. It deliberately does **not** restate the child
+findings as production-ready findings: the child IDs do not appear in this
+skill's catalog, and the manifest stays the single source of truth for detail,
+remediation, and residual risk.
+
+**Trust limits.** The manifest is untrusted repository content. Before a single
+child status is believed, production-ready independently re-derives what it can:
+the `threadlight-governed-actions-manifest/v1` schema and exact top-level shape,
+a supported assessor name and version (no forward trust for an unreviewed
+future assessor), a `pre-deploy`/`post-deploy` phase, a clean source matching
+the repository and commit actually under assessment, **recomputed** policy
+hashes and policy-set digest matched against what each relied-upon evidence
+entry binds to, a single target environment consistent with the selected azd
+environment, an intact freshness window, resolvable evidence references, and a
+`summary` that agrees exactly with the findings it summarises. Anything missing,
+malformed, stale, dirty, or mismatched makes `AGT-007` `not-verified` with the
+reason attached — never `pass`, and never a `must-fix` manufactured from
+evidence we could not stand behind. `summary.verdict` alone is never believed.
+
+**Conformance is not certification.** A trusted, all-`pass` manifest means the
+assessor ran against this exact repository state and raised nothing in the
+runtime domain. It is a scoped, expiring conformance record — not a
+certification, not an audit, and (like every finding here) advisory.
 
 ### Live (tier 1)
 
@@ -65,7 +143,7 @@ The `--agt-profile` flag toggles which capabilities are **required**:
 
 | Profile | Required capabilities |
 |---|---|
-| `none` | none (pillar marked `not-applicable`) |
+| `none` | Does not override a selected binding's evidence requirement |
 | `v3_7` | `policy_artefact_present`, `policy_schema_valid` |
 | `v4_preview` | `policy_artefact_present`, `policy_schema_valid`, `ci_gate_present`, `asi_reference_present` |
 | `auto` (default) | Best-effort: detect profile by capability set; if unknown → `not-verified` with v4-migration callout |

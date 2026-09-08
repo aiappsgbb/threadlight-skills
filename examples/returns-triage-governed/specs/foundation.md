@@ -1,126 +1,72 @@
-# Foundation — Returns Triage (Contoso Retail)
-
-> Fast-PoC mode: this record was **house-defaulted after skipping the interactive
-> Step 0 foundation interview**. Every row is `source: defaulted-after-skip`
-> except **Framework** (`provided` — captured from the already-shipped MAF /
-> Responses implementation; an explicit, compatible choice, not a house
-> default) and **Governance** (`provided` — explicit override, see below).
-> Override in SPEC § 7b / § 11c / § 11e / § 11f / § 13 when a real review happens.
-
-## Framework & runtime shape
+# Foundation — canonical Returns Triage
 
 ```yaml
-schema: threadlight.runtime-policy/v1   # runtime-policy contract this record was resolved against
-framework: microsoft-agent-framework    # already-shipped — src/agent/container.py Agent + SkillsProvider + FoundryChatClient
-runtime_shape: agent                    # single agent + skills + tools (not a DurableWorkflow)
-protocol: responses                     # ResponsesHostServer (azure.yaml `protocols: [{ protocol: responses }]`)
-policy_route: explicit-supported-choice # operator's compatible tuple choice — no capability signal mandates MAF here
-source: provided                        # captured from the already-shipped run, not guessed or re-decided
+schema: threadlight.runtime-policy/v1
+framework: microsoft-agent-framework
+runtime_shape: agent
+protocol: responses
+policy_route: explicit-supported-choice
+source: provided
 capability_signals:
   requires_toolbox: false
-  requires_custom_python_tools: false
+  requires_custom_python_tools: true
   requires_file_generation: false
   latency_sensitive_data_queries: false
   unresolved_signals: []
   source: provided
 ```
 
-Rationale: returns triage is a per-case decision with tool-gathering + a small
-rule set + one human gate — an **agent** with skills fits better than a
-deterministic multi-phase DurableWorkflow. None of the four `capability_signals`
-are active for this pilot: the five bound tools (`oms_get_order`,
-`returns_get_case`, `returns_list_open`, `customer_get_profile`,
-`returns_apply_decision`) plus the **Foundry IQ** knowledge surface for the
-return policy are ordinary MCP-bound tool calls, not a curated Foundry
-Toolbox — and there is no bespoke `@tool` Python function, no file-generation
-output, and no latency-sensitive fast-path query in this pilot.
-`unresolved_signals` is empty, so `maf-agent-capabilities` does not apply here.
-The MAF + Responses tuple recorded above is instead an **explicit, compatible
-operator choice** (`policy_route: explicit-supported-choice`) that matches
-what `src/agent/container.py` already ships: **Microsoft Agent Framework**
-`Agent` + `FoundryChatClient`, with progressive skill loading via
-`SkillsProvider.from_paths("skills/")`, served by
-`agent_framework_foundry_hosting.ResponsesHostServer`; `pyproject.toml` pins
-`agent-framework-core` / `agent-framework-foundry` /
-`agent-framework-foundry-hosting`; and `azure.yaml`'s `returns-triage` service
-declares `protocols: [{ protocol: responses }]`. `source: provided` — this
-record was **captured from the already-shipped run**, not freshly decided;
-nothing here forces MAF, it is simply the framework this pilot already uses.
-Confirm at SPEC § 11e.
+The actual application uses the Task10 `maf-container.py` factory, one native
+Agent Hooks bundle before application middleware, and the shared ACS provider.
+Exact distributions/versions come from `skills/_shared/governance-upstream-pin.json`
+in the catalog: **agent-governance-toolkit-core** 5.0.0 (not the umbrella package),
+ACS 0.3.1b0, Agent Hooks 0.1.0a5, MAF core 1.14.0, Foundry 1.11.0, hosting
+1.0.0b260813, OPA 1.18.2 with its pinned release hash.
 
-## Model & capacity
+## Business boundary
 
-```yaml
-model: gpt-5.4                 # 2026-03-05 — house default for multi-skill pilots
-region: swedencentral
-fallback_region: westeurope
-capacity_type: GlobalStandard
-capacity_tpm: 50K
-data_boundary: EU
-source: defaulted-after-skip
-```
+The four existing decisions and five tool contracts remain. Native read-only
+adapters return immutable mock OMS/customer data and Cosmos case data.
+`returns_apply_decision` is the sole business write; it recommends, never settles
+money. Cosmos is the authoritative case/audit store. No filesystem case store,
+automatic seeding, reset, payment tool, or generic write endpoint is provided.
+Single-line sample orders are in scope; ambiguous multi-line returns fail closed.
 
-Rationale: customer region is EU → EU data boundary, Sweden Central primary with
-West Europe fallback. `gpt-5.4` handles the 4-skill / multi-tool chain reliably.
+SAFE policy verifies declared case scope, ordered backend read receipts, current
+case revision, order/customer correlation, eligibility, risk, disposition, and
+citations. It does not attest which prose skills the model read. The native
+pre-tool gate evaluates those prerequisites before any decision write. The
+backend uses the exact authorized arguments and revision in one transactional
+case-replace/audit-create batch; stale snapshots never overwrite a newer case.
 
-## Hosting shape
+## Existing infrastructure, explicit new governance configuration
 
-```yaml
-hosting: aca-hosted-agent      # Foundry hosted agent (§6.2–6.4 of the workshop)
-local_runtime: threadlight_quickstart  # Pattern 0 local for §4.3
-deployment_target: customer-pilot
-source: defaulted-after-skip
-```
+Model: `gpt-5.4`, version 2026-03-05, through the **existing** Citadel endpoint
+`https://apim-citadel-hub.azure-api.net`, contract `tl-returns-triage`.
+The operator supplies its existing Foundry project proxy route. No bypass to a
+direct model endpoint is accepted. UAMI-only `DefaultAzureCredential` is used
+for runtime and audit tokens. Existing EU placement/90-day retention are design
+requirements, not verified deployment facts.
 
-## Tools & data
+Task8 supplies authenticated signed-policy lookup, approval request/review/
+consume, and durable receipt ACK. Required approval role mappings, tenant,
+versioned signing key, service endpoints, Cosmos containers and actual built
+image identities are **not known offline**. Supply `deployment-config.template.json`
+values before startup; never replace placeholders with invented identifiers.
+The local retry spool holds payload-free delivery receipts only, not business
+state or durable authority. A remote Task8 ACK precedes consequential effects.
 
-```yaml
-tool_binding: mcp
-mock_first: true               # OMS, returns-db, customer-profile are all mocked
-toolbox: [oms_get_order, returns_get_case, returns_list_open, customer_get_profile, returns_apply_decision]
-source: defaulted-after-skip
-```
+`package-native` materializes the real shared host/control-plane sources without
+provisioning infrastructure. No tool-gateway run service is needed for local
+native enforcement. `--probe` optionally vendors the shared gateway *library*
+because Task11's native noop producer uses its authenticated downstream protocol;
+the separate fixed noop fixture must be explicitly installed by the operator.
 
-## Identity & RBAC
+## Evidence boundaries
 
-```yaml
-identity: user-assigned-managed-identity
-auth: DefaultAzureCredential   # keyless end-to-end, no API keys
-rbac: least-privilege
-source: defaulted-after-skip
-```
-
-## Observability baseline
-
-```yaml
-telemetry: otel + application-insights
-trace_conventions: gen_ai.*
-wired_from_day_one: true
-source: defaulted-after-skip
-```
-
-## Data residency & compliance
-
-```yaml
-residency: EU
-retention: 90d                 # demo default; regulated-7y is a deferred decision
-deferred_decisions:
-  - waf-front-door
-  - dr-runbook
-  - regulated-7y-retention
-source: defaulted-after-skip
-```
-
-## Decision summary
-
-| Area | Choice | Source |
-|------|--------|--------|
-| Framework | microsoft-agent-framework + agent + responses (`policy_route: explicit-supported-choice`) | provided |
-| Capability signals | requires_toolbox=false, requires_custom_python_tools=false, requires_file_generation=false, latency_sensitive_data_queries=false; `unresolved_signals: []` | provided |
-| Model | gpt-5.4 @ Sweden Central, GlobalStandard 50K TPM, EU boundary | defaulted-after-skip |
-| Hosting | ACA hosted agent (Foundry) + local `threadlight_quickstart` | defaulted-after-skip |
-| Tools | MCP, mock-first (3 mocked systems) | defaulted-after-skip |
-| Identity | UAMI + DefaultAzureCredential, keyless | defaulted-after-skip |
-| Observability | OTel + App Insights, day one | defaulted-after-skip |
-| Governance | **Citadel governance-hub spoke (override — see SPEC § 11b)** | provided |
-| Residency | EU, 90-day retention (regulated-7y deferred) | defaulted-after-skip |
+`specs/governance-manifest.json` is an unsigned offline inventory: the write
+binding is **unverified**, reads are deliberately **unbound**, and live probes
+are empty. Local native tests use external transport/backend doubles and are not
+deployment proof. Historical AGT v4/v2 reports are in `archive/`, not current truth.
+The generic pre-deploy assessor may remain unverified for additional execution
+modes/approval/output evidence not supplied by this single-agent example.

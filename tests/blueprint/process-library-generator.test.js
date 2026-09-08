@@ -67,7 +67,7 @@ const FULL_ARTIFACTS = [
   'docs/safe-check-post.md',
   'docs/redteam-report.md',
   'specs/redteam-manifest.json',
-  'specs/govern-manifest.json',
+  'specs/governance-manifest.json',
   'azure.yaml',
   'infra/main.bicep',
   '.github/workflows/azd-deploy-prod.yml',

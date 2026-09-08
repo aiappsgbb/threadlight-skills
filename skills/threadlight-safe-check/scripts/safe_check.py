@@ -107,7 +107,7 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _az(*args: str, capture: bool = True) -> str:
+def _az(*args: str, capture: bool = True, redact_errors: bool = False) -> str:
     """Run `az <args>` safely across platforms.
 
     On POSIX (macOS/Linux) the args are passed as an argv list with
@@ -131,7 +131,7 @@ def _az(*args: str, capture: bool = True) -> str:
         )
         return result.stdout
     except subprocess.CalledProcessError as e:
-        stderr = (e.stderr or "").strip()
+        stderr = "Azure CLI context unavailable" if redact_errors else (e.stderr or "").strip()
         print(f"[ERROR] {display}\n        {stderr}", file=sys.stderr)
         raise SystemExit(3)
     except FileNotFoundError:
@@ -279,17 +279,47 @@ def _repo_root_for_manifest(manifest_path: Path,
     return manifest_path.parent.parent
 
 
-def _print_active_context() -> None:
-    """First line of output: which tenant + sub will az calls hit."""
+def _account_target(rg: str, subscription: str | None = None) -> dict[str, str]:
+    """Resolve IDs from the CLI account, never from collector declarations."""
+    if subscription is not None and (
+            not isinstance(subscription, str) or not subscription.strip() or len(subscription) > 512):
+        raise ValueError("invalid subscription selector")
+    options = ("--subscription", subscription) if subscription is not None else ()
+    ctx = json.loads(_az("account", "show", *options,
+                        "--query", "{id:id,tenantId:tenantId}", "-o", "json",
+                        redact_errors=True))
+    uuid = r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"
+    if not isinstance(ctx, dict) or any(
+            not isinstance(ctx.get(key), str) or not re.fullmatch(uuid, ctx[key])
+            for key in ("id", "tenantId")):
+        raise ValueError("invalid observed account IDs")
+    if subscription is not None and re.fullmatch(uuid, subscription) and subscription.lower() != ctx["id"].lower():
+        raise ValueError("subscription selector does not match observed account")
+    return {"tenant": ctx["tenantId"].lower(), "subscription": ctx["id"].lower(),
+            "resource_group": rg}
+
+
+def _parent_scope(dm: dict, rg: str, subscription: str | None) -> tuple[dict | None, list[str]]:
     try:
-        out = _az("account", "show", "--query", "{t:tenantId,s:name,sid:id}",
-                  "-o", "json").strip()
-        ctx = json.loads(out)
-        print(f"[ctx] tenant={ctx['t']} sub={ctx['s']!r} sub_id={ctx['sid']}")
-    except SystemExit:
-        raise
-    except Exception:
-        print("[ctx] (az account show failed; continuing)")
+        target = _account_target(rg, subscription)
+    except (Exception, SystemExit):
+        return None, ["parent-scope: Azure CLI account context unavailable or invalid; not verified"]
+    print(f"[ctx] tenant={target['tenant']} sub_id={target['subscription']}")
+    try:
+        for key in ("tenant_id", "tenant"):
+            if key in dm and (not isinstance(dm[key], str) or dm[key].lower() != target["tenant"]):
+                raise ValueError("tenant selector mismatch")
+        for key in ("subscription_id", "subscription"):
+            if key not in dm:
+                continue
+            selected = dm[key]
+            if not isinstance(selected, str) or not selected.strip():
+                raise ValueError("invalid subscription selector")
+            if selected.lower() != target["subscription"] and _account_target(rg, selected) != target:
+                raise ValueError("subscription selector mismatch")
+    except (Exception, SystemExit):
+        return target, ["parent-scope: manifest tenant/subscription does not match observed CLI account"]
+    return target, []
 
 
 # ---------------------------------------------------------------------------
@@ -358,19 +388,22 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
     selectors = dm.get("module_selectors", {})
     services = {s["name"]: s for s in dm.get("services", [])}
     gaps: list[str] = []
+    governance = _governance_static(repo, data, manifest_path=manifest_path)
+    gaps.extend(governance.get("gaps", []))
+    extra = {"repo": str(repo), **({"governance_health": governance} if governance else {})}
 
     azure_yaml = repo / "azure.yaml"
     if not azure_yaml.exists():
         gaps.append("azure.yaml missing at repo root")
         return _write_and_emit(out_path, "pre-deploy", gaps,
-                               extra={"repo": str(repo)})
+                               extra=extra)
     azure_text = azure_yaml.read_text(encoding="utf-8")
 
     main_bicep = repo / "infra" / "main.bicep"
     if not main_bicep.exists():
         gaps.append("infra/main.bicep missing")
         return _write_and_emit(out_path, "pre-deploy", gaps,
-                               extra={"repo": str(repo)})
+                               extra=extra)
     main_text = main_bicep.read_text(encoding="utf-8")
 
     for selector, val in selectors.items():
@@ -429,6 +462,8 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
         parts = rel.parts
         if "core" in parts or "modules" in parts or rel.name == "main.bicep":
             continue
+        if rel.as_posix() in governance.get("auxiliary_modules", []):
+            continue
         base = bicep.stem
         if base not in main_text and rel.as_posix() not in main_text:
             gaps.append(
@@ -455,7 +490,70 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
                         "entry in azure.yaml services")
 
     return _write_and_emit(out_path, "pre-deploy", gaps,
-                           extra={"repo": str(repo)})
+                           extra=extra)
+
+
+def _governance_enabled(data):
+    """Conservative validation hint, never authority to disable a selected contract."""
+    if not isinstance(data, dict):
+        return True
+    value = data.get("governance")
+    return (bool({"governance_mode", "governanceMode"} & data.keys())
+            or ("governance" in data and (value != {"mode": "off"}
+                or bool({"framework", "tools", "lifecycle_bindings", "required", "requires"} & data.keys()))))
+
+
+def _legacy_governance_unselected(repo, data, manifest_path):
+    """Conservative stdlib-only fallback for the copied CLI, not a contract validator."""
+    if _governance_enabled(data):
+        return False
+    try:
+        def unique(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError()
+                result[key] = value
+            return result
+        for path in {repo / "specs/manifest.json", Path(manifest_path) if manifest_path else repo / "specs/manifest.json",
+                     repo / "specs/governance-contract.json", repo / "specs/SPEC.md"}:
+            if (any(p.is_symlink() for p in (path, *path.parents))
+                    or not path.resolve().is_relative_to(repo.resolve())):
+                return False
+            if not path.exists():
+                continue
+            with path.open("rb") as stream:
+                raw = stream.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                return False
+            if path.name == "governance-contract.json":
+                return False
+            if path.name == "SPEC.md":
+                if re.search(r"governance", raw.decode("utf-8"), re.I):
+                    return False
+            elif _governance_enabled(json.loads(raw, object_pairs_hook=unique,
+                    parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))):
+                return False
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _governance_static(repo, data, *, manifest_path=None):
+    try:
+        from governance_references.governance_static import check
+    except ImportError:
+        reference = Path(__file__).resolve().parent.parent / "references"
+        if reference.is_dir():
+            sys.path.insert(0, str(reference))
+        try:
+            from governance_static import check
+        except ImportError:
+            if _legacy_governance_unselected(repo, data, manifest_path):
+                return {}
+            return {"gaps": ["governance: install the governance safe-check collector package"],
+                    "scope": "static-declarations-not-enforcement"}
+    return check(repo, data, manifest_path=manifest_path)
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +561,9 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
 # ---------------------------------------------------------------------------
 
 def phase_postdeploy(manifest_path: Path, out_path: Path,
-                     rg: str | None, repo_root: Path | None = None) -> int:
+                     rg: str | None, repo_root: Path | None = None,
+                     governance_dependencies: dict | None = None,
+                     subscription: str | None = None) -> int:
     data = _load_manifest(manifest_path)
     dm = data["deployment_manifest"]
     selectors = {k for k, v in dm.get("module_selectors", {}).items() if v == "yes"}
@@ -487,13 +587,21 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         raise SystemExit(2)
 
     print(f"[ctx] resource_group={rg}")
+    parent_target, parent_gaps = _parent_scope(dm, rg, subscription)
+    gaps.extend(parent_gaps)
 
-    deployed_raw = _az("resource", "list", "-g", rg,
+    def scoped_az(*args: str) -> str:
+        # Never read an unknown scope; pin every read even if the CLI default changes.
+        if parent_target is None:
+            return "[]"
+        return _az(*args, "--subscription", parent_target["subscription"])
+
+    deployed_raw = scoped_az("resource", "list", "-g", rg,
                        "--query", "[].{type:type,name:name}", "-o", "json")
     deployed_resources = json.loads(deployed_raw or "[]")
     deployed_types = {r["type"] for r in deployed_resources}
 
-    acas_raw = _az("containerapp", "list", "-g", rg,
+    acas_raw = scoped_az("containerapp", "list", "-g", rg,
                    "--query",
                    "[].{name:name,fqdn:properties.configuration.ingress.fqdn,"
                    "image:properties.template.containers[0].image,"
@@ -501,14 +609,14 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
                    "-o", "json")
     deployed_acas = json.loads(acas_raw or "[]")
 
-    jobs_raw = _az("containerapp", "job", "list", "-g", rg,
+    jobs_raw = scoped_az("containerapp", "job", "list", "-g", rg,
                    "--query",
                    "[].{name:name,schedule:properties.configuration."
                    "scheduleTriggerConfig.cronExpression,"
                    "image:properties.template.containers[0].image}", "-o", "json")
     deployed_jobs = json.loads(jobs_raw or "[]")
 
-    bots_raw = _az("resource", "list", "-g", rg,
+    bots_raw = scoped_az("resource", "list", "-g", rg,
                    "--resource-type", "Microsoft.BotService/botServices",
                    "-o", "json")
     deployed_bots = json.loads(bots_raw or "[]")
@@ -576,7 +684,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         if not job_name:
             continue
         try:
-            execs_raw = _az(
+            execs_raw = scoped_az(
                 "containerapp", "job", "execution", "list",
                 "-n", job_name, "-g", rg,
                 "--query",
@@ -636,7 +744,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
     )
     if appin_expected:
         try:
-            appin_raw = _az(
+            appin_raw = scoped_az(
                 "resource", "list",
                 "-g", rg,
                 "--resource-type", "Microsoft.Insights/components",
@@ -707,7 +815,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         for bot_svc in deployed_bots:
             bot_name = bot_svc.get("name") or ""
             try:
-                bot_props_raw = _az(
+                bot_props_raw = scoped_az(
                     "bot", "show", "-g", rg, "-n", bot_name,
                     "--query",
                     "{appType:properties.msaAppType,"
@@ -744,7 +852,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
                 )
                 continue
             try:
-                env_raw = _az(
+                env_raw = scoped_az(
                     "containerapp", "show", "-g", rg, "-n", bot_aca["name"],
                     "--query",
                     "properties.template.containers[0].env[].{name:name,"
@@ -808,7 +916,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
     cosmos_firewall_health_results: list[dict[str, Any]] = []
     if "cosmos-db" in selectors:
         try:
-            cosmos_raw = _az(
+            cosmos_raw = scoped_az(
                 "cosmosdb", "list", "-g", rg,
                 "--query",
                 "[].{name:name,pna:publicNetworkAccess,"
@@ -950,6 +1058,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         "deployed_at": _utc_now(),
         "deployment_manifest": dm,
         "rg": rg,
+        "parent_target": parent_target,
         "checked_selectors": sorted(selectors),
         "deployed_resource_types": sorted(deployed_types),
         "image_probe": image_probe_results,
@@ -962,6 +1071,28 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         "scheduled_jobs": job_results,
         "gaps": gaps,
     }
+    health = _governance_static(resolved_root, data, manifest_path=manifest_path)
+    if health:
+        governance_gaps = [*parent_gaps, *health.get("gaps", [])]
+        payload.update(governance_health=health, governance_probes=[], governance_gaps=governance_gaps)
+        configuration = resolved_root / ".threadlight/governance-probe.json"
+        if not configuration.is_file():
+            governance_gaps.append("governance: no explicit signed safe probe configuration; not verified")
+        elif not governance_gaps:
+            try:
+                import asyncio
+                try:
+                    from governance_references.governance_probe import collect_project
+                except ImportError:
+                    from governance_probe import collect_project
+                collected = asyncio.run(collect_project(
+                    resolved_root, configuration, manifest_path=manifest_path,
+                    **{**(governance_dependencies or {}), "required_target": parent_target}))
+                governance_gaps.extend(collected["governance_gaps"])
+                payload.update({k: v for k, v in collected.items() if k != "governance_gaps"})
+            except Exception:
+                governance_gaps.append("governance: collector unavailable; not verified")
+        gaps.extend(g for g in governance_gaps if g not in parent_gaps)
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return _emit(out_path, gaps)
 
@@ -1048,18 +1179,20 @@ def main() -> int:
                              "(default: %(default)s)")
     parser.add_argument("--rg",
                         help="Override AZURE_RESOURCE_GROUP for post-deploy")
+    parser.add_argument("--subscription",
+                        help="Post-deploy subscription ID or name (default: current CLI account)")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
     repo = Path.cwd()
-    manifest_path = (repo / args.manifest).resolve()
+    manifest_path = repo / args.manifest
     out_dir = (repo / args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.phase == "post-deploy":
-        _print_active_context()
         out = out_dir / "postdeploy-manifest.json"
-        return phase_postdeploy(manifest_path, out, args.rg, repo_root=repo)
+        return phase_postdeploy(manifest_path, out, args.rg, repo_root=repo,
+                                subscription=args.subscription)
     if args.phase == "design":
         out = out_dir / "safe-check-design-manifest.json"
         return phase_design(manifest_path, out)
