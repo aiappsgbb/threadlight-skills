@@ -143,13 +143,19 @@ def observe(client, config, attempt):
     state = creation_state(config, attempt)
     if state["state"] != "created":
         raise ValueError("created_attempt_required")
-    actual = client.agents.get_version(agent_name=config["agent_name"], agent_version=state["version"])
+    return _observe_version(client, config, state)[1]
+
+
+def _observe_version(client, config, state):
+    actual = client.agents.get_version(
+        agent_name=config["agent_name"], agent_version=state["version"],
+        retry_total=0, connection_timeout=5, read_timeout=30)
     if (actual.name != config["agent_name"] or actual.version != state["version"]
             or actual.id != state["version_id"] or actual.instance_identity is None
             or actual.definition.container_configuration.image != config["image"]
             or dict(actual.definition.environment_variables) != config["environment_variables"]):
         raise ValueError("observed_immutable_version_mismatch")
-    return {
+    return actual, {
         "agent_id": actual.name, "agent_version": actual.version,
         "image_digest": actual.definition.container_configuration.image.split("@")[1],
         "principal": parse(ObjectId, canonical(actual.instance_identity.principal_id)),
@@ -158,6 +164,125 @@ def observe(client, config, attempt):
         "subscription": config["subscription"], "resource_group": config["resource_group"],
         "tenant_id": config["tenant_id"], "reference": config["reference"],
     }
+
+
+def _endpoint_inputs(client, config, attempt, expected):
+    config = validate(config)
+    if (version("azure-ai-projects") != "2.3.0"
+            or getattr(getattr(client, "_config", None), "endpoint", None) != config["project_endpoint"]
+            or getattr(getattr(client, "_config", None), "api_version", None) != "v1"):
+        raise ValueError("pinned_project_client_endpoint_required")
+    state = creation_state(config, attempt)
+    if (state.get("schema") != "threadlight-hosted-attempt/v1" or state["state"] != "created"
+            or state.get("reference") != config["reference"]
+            or not isinstance(state.get("version_id"), str) or not 0 < len(state["version_id"]) <= 512
+            or not isinstance(state.get("version"), str) or not re.fullmatch(r"[1-9][0-9]*", state["version"])
+            or not isinstance(expected, dict)):
+        raise ValueError("created_attempt_and_protected_observation_required")
+    return config, state
+
+
+def _endpoint_snapshot(client, config, state, expected):
+    actual, observed = _observe_version(client, config, state)
+    if observed != expected:
+        raise ValueError("independently_observed_binding_changed")
+    definition = actual.definition
+    if (actual.object != "agent.version" or actual.status != "active" or actual.get("draft", False) is not False
+            or definition.kind != "hosted" or definition.cpu != config["cpu"] or definition.memory != config["memory"]
+            or [item.as_dict() for item in definition.protocol_versions or []]
+            != [{"protocol": config["protocol"], "version": "2.0.0"}]):
+        raise ValueError("observed_hosted_definition_mismatch")
+    details, etag = client.agents.get(
+        agent_name=config["agent_name"], retry_total=0, connection_timeout=5, read_timeout=30,
+        cls=lambda response, model, _: (model, response.http_response.headers.get("ETag")))
+    latest = details.versions.latest if details.versions else None
+    if (details.object != "agent" or details.name != config["agent_name"] or details.state != "enabled"
+            or not isinstance(details.id, str) or not 0 < len(details.id) <= 512
+            or latest is None or latest.name != actual.name or latest.version != actual.version
+            or latest.id != actual.id or details.agent_endpoint is None):
+        raise ValueError("observed_endpoint_owner_or_version_mismatch")
+    for identity in (details.instance_identity, latest.instance_identity):
+        if identity is not None and (
+                identity.principal_id != observed["principal"] or identity.client_id != observed["client_id"]):
+            raise ValueError("observed_endpoint_identity_mismatch")
+    endpoint = details.agent_endpoint.as_dict()
+    # Projects 2.3 retains this unmodeled server field; store review is not invocation readiness.
+    publication = endpoint.pop("publish_approval_status", None)
+    if publication is not None and (not isinstance(publication, str) or not 0 < len(publication) <= 128):
+        raise ValueError("invalid_endpoint_publication_metadata")
+    allowed = {"version_selector", "protocol_configuration", "authorization_schemes", "protocols"}
+    if (set(endpoint) - allowed or endpoint.get("authorization_schemes") != [{"type": "Entra"}]
+            or not isinstance(endpoint.get("version_selector"), dict)
+            or set(endpoint["version_selector"]) != {"version_selection_rules"}):
+        raise ValueError("explicit_entra_only_endpoint_required")
+    rules = endpoint["version_selector"]["version_selection_rules"]
+    if (not isinstance(rules, list) or len(rules) != 1 or not isinstance(rules[0], dict)
+            or set(rules[0]) != {"type", "agent_version", "traffic_percentage"}
+            or rules[0]["type"] != "FixedRatio" or type(rules[0]["traffic_percentage"]) is not int
+            or rules[0]["traffic_percentage"] != 100
+            or rules[0]["agent_version"] not in (actual.version, "@latest", "latest")):
+        raise ValueError("unambiguous_owned_endpoint_route_required")
+    protocols = endpoint.get("protocol_configuration")
+    if protocols not in ({"responses": {}}, {config["protocol"]: {}}, {"responses": {}, config["protocol"]: {}}):
+        raise ValueError("unexpected_endpoint_protocol_configuration")
+    if "protocols" in endpoint and (
+            not isinstance(endpoint["protocols"], list)
+            or any(not isinstance(item, str) for item in endpoint["protocols"])
+            or len(endpoint["protocols"]) != len(protocols) or set(endpoint["protocols"]) != set(protocols)):
+        raise ValueError("observed_endpoint_protocols_mismatch")
+    if "protocols" in endpoint:
+        endpoint["protocols"] = sorted(endpoint["protocols"])
+    if etag is not None and (not isinstance(etag, str) or not re.fullmatch(r'"[^"\\\r\n]{1,256}"', etag)):
+        raise ValueError("unsupported_endpoint_etag")
+    return details.id, endpoint, etag
+
+
+def _endpoint_result(config, state, endpoint):
+    rule = endpoint["version_selector"]["version_selection_rules"][0]
+    if (rule["agent_version"] != state["version"]
+            or config["protocol"] not in endpoint["protocol_configuration"]):
+        raise ValueError("explicit_endpoint_configuration_required")
+    return {"agent_id": config["agent_name"], "agent_version": state["version"],
+            "protocol": config["protocol"], "authorization": "Entra"}
+
+
+def observe_endpoint(client, config, attempt, expected):
+    """Read-only pre-invocation gate; a declaration or PATCH acknowledgement is not readiness."""
+    config, state = _endpoint_inputs(client, config, attempt, expected)
+    _, endpoint, _ = _endpoint_snapshot(client, config, state, expected)
+    return _endpoint_result(config, state, endpoint)
+
+
+def configure_endpoint(client, config, attempt, expected):
+    """Configure only the preserved create-once target; never create/enable/replace a version."""
+    config, state = _endpoint_inputs(client, config, attempt, expected)
+    before = _endpoint_snapshot(client, config, state, expected)
+    current = _endpoint_snapshot(client, config, state, expected)
+    if current != before:
+        raise ValueError("observed_endpoint_changed_before_configuration")
+    owner, endpoint, etag = current
+    rule = endpoint["version_selector"]["version_selection_rules"][0]
+    if rule["agent_version"] == state["version"] and config["protocol"] in endpoint["protocol_configuration"]:
+        return _endpoint_result(config, state, endpoint)
+    from azure.ai.projects.models import (
+        AgentEndpointConfig, EntraAuthorizationScheme, FixedRatioVersionSelectionRule,
+        InvocationsProtocolConfiguration, ProtocolConfiguration, ResponsesProtocolConfiguration, VersionSelector,
+    )
+    protocol_type = (InvocationsProtocolConfiguration if config["protocol"] == "invocations"
+                     else ResponsesProtocolConfiguration)
+    client.agents.update_details(
+        agent_name=config["agent_name"],
+        agent_endpoint=AgentEndpointConfig(
+            version_selector=VersionSelector(version_selection_rules=[
+                FixedRatioVersionSelectionRule(agent_version=state["version"], traffic_percentage=100)]),
+            protocol_configuration=ProtocolConfiguration(**{config["protocol"]: protocol_type()}),
+            authorization_schemes=[EntraAuthorizationScheme()]),
+        headers={"If-Match": etag} if etag is not None else {},
+        retry_total=0, connection_timeout=5, read_timeout=30)
+    after_owner, after_endpoint, _ = _endpoint_snapshot(client, config, state, expected)
+    if after_owner != owner:
+        raise ValueError("observed_endpoint_changed_after_configuration")
+    return _endpoint_result(config, state, after_endpoint)
 
 
 def binding_from_observation(config, frozen, observed, *, policy_digest, policy_version=None,

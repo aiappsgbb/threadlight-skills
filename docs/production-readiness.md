@@ -105,8 +105,8 @@ explicit operator action confined to the dedicated proof resources.
 
 The approved alternative is now implemented as **create-once**, then authenticated
 observation and publication of `threadlight-hosted-bootstrap/v1`.
-`scripts/ci/hosted_bootstrap.py` provides separate `create`, `observe`, `publish`,
-and `wait` commands. They use the pinned Projects 2.3.0 SDK and either the existing
+`scripts/ci/hosted_bootstrap.py` provides separate `create`, `observe`,
+`configure-endpoint`, `publish`, and `wait` commands. They use the pinned Projects 2.3.0 SDK and either the existing
 tenant-bound Azure CLI credential or an explicitly selected managed identity
 (`--credential-mode managed-identity --managed-identity-client-id <client-id>`),
 not `azd deploy`, a guessed version,
@@ -114,6 +114,29 @@ a mutable `"latest"` pointer, or a nonexistent start/mount API. Managed identity
 mode uses only the native sync/aio credential for that client ID, never a user-cache
 or default-chain fallback. Protected local attempt files are unchanged; an
 external durable create-intent guard for private jobs remains operator-owned.
+
+Before `wait` or collection, `configure-endpoint` requires the protected created
+attempt and saved independent observation. Native `agents.update_details` pins
+100% to that exact version and explicitly enables its declared protocol through
+`protocol_configuration`; it preserves the Responses default when present,
+retaining Entra-only authorization. An Invocations definition can therefore use
+the documented combined Responses/Invocations endpoint without removing the
+default; unrelated exposed protocols remain rejected. Read-back must confirm that
+the declared protocol is actually exposed. The service's Responses-only
+default does not establish that an Invocations agent is callable. Fresh reads
+reject ownership, identity, image, definition, route or scope drift; the command
+does not create a version, enable a disabled agent, or bypass binding/policy
+registration. It checks read-back, not just the PATCH acknowledgement. `wait`
+independently checks the configured endpoint before its read-only host request.
+Server-populated `publish_approval_status` describes Microsoft 365 store review,
+not a readiness or authorization condition. An endpoint exists from agent
+creation; it need not be published to a store. This metadata is excluded from
+endpoint updates and readiness comparisons, while unknown behavior-changing
+extensions remain fail-closed.
+The protected resume workflow runs this explicit operator mutation before wait
+and live collection; collectors need no endpoint-write permission. Operators
+must serialize endpoint writers where the provider supplies no ETag; re-reading
+does not claim atomic compare-and-swap or hosted proof.
 
 The frozen image selects `remote_bootstrap`: reference, project endpoint,
 subscription/RG and native policy digest. GHCP also pins a **distinct**

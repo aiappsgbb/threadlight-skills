@@ -141,6 +141,7 @@ def deploy(project, config):
         "--binding-output", output, "--expected-observation", observed_path,
         *(["--native-probe-assets", remote["native_assets"]] if "native_assets" in remote else []),
         "--lifetime-seconds", "600"])
+    driver.run([sys.executable, cli, "configure-endpoint", *common, "--expected-observation", observed_path])
     driver.run([sys.executable, cli, "wait", *common, "--binding-output", output,
                 "--frozen-config", agent / "governance-config.json", "--expected-observation", observed_path])
     binding = parse(SignedBootstrap, canonical(driver.read(output)))

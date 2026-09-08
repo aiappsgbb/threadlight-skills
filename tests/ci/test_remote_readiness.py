@@ -158,14 +158,24 @@ def test_native_gate_runs_bootstrap_protocol_and_real_host_regressions():
     assert "test_native_http2_is_rejected_before_model_headers_or_flow_control_body[True]" in text
     assert "test_native_h1_checks_actual_core_wire_after_retained_trace[stream-body]" in text
     for case in (
-        "test_actual_relay_pool_wait_rechecks_signing_authority[valid-True]",
-        "test_actual_relay_pool_wait_rechecks_signing_authority[revoke-False]",
-        "test_actual_relay_pool_wait_rechecks_signing_authority[revoke-True]",
-        "test_actual_relay_reauthorizes_after_tls_handshake_wait[True]",
-        "test_relay_validates_actual_core_bytes_after_retained_trace[stream-body]",
-        "test_relay_validates_actual_core_bytes_after_retained_trace[request-headers]",
-        "test_relay_validates_actual_core_bytes_after_retained_trace[revoke-body]",
-        "test_actual_relay_rejects_http2_before_mcp_request_frames[False]",
-        "test_actual_relay_rejects_http2_before_mcp_request_frames[True]",
+        "test_actual_relay_pool_wait_rechecks_signing_authority[valid-True-False]",
+        "test_actual_relay_pool_wait_rechecks_signing_authority[valid-True-True]",
+        "test_actual_relay_pool_wait_rechecks_signing_authority[revoke-False-False]",
+        "test_actual_relay_pool_wait_rechecks_signing_authority[revoke-True-False]",
+        "test_actual_relay_pool_wait_rechecks_signing_authority[revoke-False-True]",
+        "test_actual_relay_pool_wait_rechecks_signing_authority[revoke-True-True]",
+        "test_actual_relay_pool_wait_rechecks_signing_authority[expire-True-True]",
+        "test_actual_relay_reauthorizes_after_tls_handshake_wait[False-True]",
+        "test_actual_relay_reauthorizes_after_tls_handshake_wait[True-True]",
+        "test_relay_validates_actual_core_bytes_after_retained_trace[False-stream-body]",
+        "test_relay_validates_actual_core_bytes_after_retained_trace[False-request-headers]",
+        "test_relay_validates_actual_core_bytes_after_retained_trace[False-revoke-body]",
+        "test_relay_validates_actual_core_bytes_after_retained_trace[True-none-headers]",
+        "test_relay_validates_actual_core_bytes_after_retained_trace[True-authorization-headers]",
+        "test_relay_validates_actual_core_bytes_after_retained_trace[True-traceparent-body]",
+        "test_actual_relay_rejects_http2_before_mcp_request_frames[False-False]",
+        "test_actual_relay_rejects_http2_before_mcp_request_frames[False-True]",
+        "test_actual_relay_rejects_http2_before_mcp_request_frames[True-False]",
+        "test_actual_relay_rejects_http2_before_mcp_request_frames[True-True]",
     ):
         assert case in text

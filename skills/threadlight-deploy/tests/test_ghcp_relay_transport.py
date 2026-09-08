@@ -1,6 +1,6 @@
 """Real McpRelay + signed bootstrap authority + loopback HTTP/TLS transmission."""
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
@@ -66,9 +66,109 @@ async def make_relay(http, gate, url):
     return relay, body
 
 
+@pytest.fixture
+def native_instrumentation(monkeypatch):
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+
+    @contextmanager
+    def instrument(client, enabled=True, request_hook=None):
+        provider = TracerProvider()
+        exporter = InMemorySpanExporter()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        if enabled:
+            HTTPXClientInstrumentor.instrument_client(
+                client, tracer_provider=provider, request_hook=request_hook)
+        try:
+            yield exporter
+        finally:
+            if enabled:
+                HTTPXClientInstrumentor.uninstrument_client(client)
+            provider.shutdown()
+    return instrument
+
+
+@pytest.mark.parametrize("method", ["initialize", "notifications/initialized", "ping", "tools/list", "tools/call"])
+@pytest.mark.parametrize("mutation", ["none", "authorization", "extra-header", "baggage"])
+def test_native_instrumented_relay_handshake(
+    method, mutation, native_instrumentation,
+):
+    from opentelemetry import baggage, context, trace
+    async def scenario():
+        requests, spans, tasks = [], [], set()
+        async def receiver(reader, writer):
+            task = asyncio.current_task()
+            tasks.add(task)
+            try:
+                try:
+                    raw = await reader.readuntil(b"\r\n\r\n")
+                except asyncio.IncompleteReadError:
+                    return
+                headers = dict(line.split(b": ", 1) for line in raw.split(b"\r\n")[1:] if b": " in line)
+                body = await reader.readexactly(int(headers[b"Content-Length"]))
+                requests.append((headers, json.loads(body)))
+                output = b'{"jsonrpc":"2.0","id":1,"result":{}}'
+                writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "
+                             + str(len(output)).encode() + b"\r\n\r\n" + output)
+                await writer.drain()
+            finally:
+                writer.close()
+                await writer.wait_closed()
+                tasks.discard(task)
+        async def instrumentation_hook(span, request):
+            spans.append(span.get_span_context())
+            if mutation != "none":
+                name = {"authorization": "Authorization", "extra-header": "X-Unapproved",
+                        "baggage": "baggage"}[mutation]
+                request.headers[name] = "unapproved"
+        listener = await asyncio.start_server(receiver, "127.0.0.1", 0)
+        url = f"http://127.0.0.1:{listener.sockets[0].getsockname()[1]}/mcp"
+        try:
+            async with authority() as (gate, _):
+                async with httpx.AsyncClient(trust_env=False, timeout=5) as wire, AsyncExitStack() as stack:
+                    exporter = stack.enter_context(native_instrumentation(wire, request_hook=instrumentation_hook))
+                    token = context.attach(
+                        baggage.clear() if mutation == "baggage" else baggage.set_baggage("proof", "local"))
+                    stack.callback(context.detach, token)
+                    parent = trace.NonRecordingSpan(trace.SpanContext(
+                        trace_id=1, span_id=2, is_remote=True, trace_flags=trace.TraceFlags(1),
+                        trace_state=trace.TraceState([("proof", "state")])))
+                    stack.enter_context(trace.use_span(parent))
+                    relay, body = await make_relay(wire, gate, url)
+                    if method != "tools/call":
+                        body = {"jsonrpc": "2.0", "id": 1, "method": method}
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app()),
+                                                base_url="http://relay") as caller:
+                        response = await caller.post("/mcp", json=body, headers={"X-Threadlight-Relay": relay.secret})
+                    assert response.status_code == (200 if mutation == "none" else 503)
+                    assert len(requests) == (1 if mutation == "none" else 0)
+                    assert spans and exporter.get_finished_spans(), "native HTTPX instrumentation must remain active"
+                    if mutation == "none":
+                        headers, actual = requests[0]
+                        span = spans[0]
+                        assert headers[b"traceparent"] == f"00-{span.trace_id:032x}-{span.span_id:016x}-01".encode()
+                        assert headers[b"tracestate"] == b"proof=state"
+                        assert headers[b"baggage"] == b"proof=local"
+                        assert headers[b"Authorization"] == b"Bearer local-gateway-only"
+                        assert actual == body
+        finally:
+            listener.close()
+            await listener.wait_closed()
+            for task in list(tasks):
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("instrumented", [False, True])
 @pytest.mark.parametrize("secure", [False, True])
 @pytest.mark.parametrize("failure", ["valid", "revoke", "expire"])
-def test_actual_relay_pool_wait_rechecks_signing_authority(tmp_path, secure, failure):
+def test_actual_relay_pool_wait_rechecks_signing_authority(
+    tmp_path, secure, failure, instrumented, native_instrumentation,
+):
     async def scenario():
         server_ssl, client_ssl = tls_contexts(tmp_path) if secure else (None, None)
         occupied, release, queued = asyncio.Event(), asyncio.Event(), asyncio.Event()
@@ -106,7 +206,9 @@ def test_actual_relay_pool_wait_rechecks_signing_authority(tmp_path, secure, fai
         try:
             async with authority() as (gate, h):
                 async with httpx.AsyncClient(verify=client_ssl or True, trust_env=False, timeout=8,
-                        limits=httpx.Limits(max_connections=1), event_hooks={"request": [hook]}) as wire:
+                        limits=httpx.Limits(max_connections=1), event_hooks={"request": [hook]}) as wire, \
+                        AsyncExitStack() as stack:
+                    exporter = stack.enter_context(native_instrumentation(wire, instrumented))
                     blocking = asyncio.create_task(wire.get(origin + "/occupied"))
                     await asyncio.wait_for(occupied.wait(), 3)
                     relay, body = await make_relay(wire, gate, origin + "/mcp")
@@ -126,6 +228,10 @@ def test_actual_relay_pool_wait_rechecks_signing_authority(tmp_path, secure, fai
                         assert len(calls) == (1 if failure == "valid" else 0), (
                             f"ACTUAL_RELAY_CALLS_AFTER_{failure.upper()}: {len(calls)}")
                         assert response.status_code == (200 if failure == "valid" else 503)
+                        if instrumented:
+                            assert exporter.get_finished_spans()
+                            if failure == "valid":
+                                assert b"traceparent:" in calls[0].lower()
                         if failure == "revoke":
                             with pytest.raises(RuntimeError):
                                 await gate.authorize()
@@ -140,8 +246,11 @@ def test_actual_relay_pool_wait_rechecks_signing_authority(tmp_path, secure, fai
 
 
 @pytest.mark.parametrize("phase", ["headers", "body"])
-@pytest.mark.parametrize("mutation", ["none", "stream", "request", "revoke"])
-def test_relay_validates_actual_core_bytes_after_retained_trace(tmp_path, phase, mutation):
+@pytest.mark.parametrize("mutation", ["none", "stream", "request", "revoke", "authorization", "traceparent", "extra-header", "method", "url"])
+@pytest.mark.parametrize("instrumented", [False, True])
+def test_relay_validates_actual_core_bytes_after_retained_trace(
+    tmp_path, phase, mutation, instrumented, native_instrumentation,
+):
     import httpcore
     async def scenario():
         bodies, seen_headers, callbacks, tasks = [], [], [], set()
@@ -182,15 +291,29 @@ def test_relay_validates_actual_core_bytes_after_retained_trace(tmp_path, phase,
                         h.keys.revoked = True
                     elif mutation == "stream":
                         core.stream = httpx.ByteStream(body)
-                    else:
+                    elif mutation == "request":
                         info["request"] = httpcore.Request(method=core.method, url=core.url,
                             headers=core.headers, content=httpx.ByteStream(body), extensions=core.extensions)
+                    elif mutation == "method":
+                        core.method = b"PUT"
+                    elif mutation == "url":
+                        core.url = httpcore.URL(scheme=core.url.scheme, host=core.url.host,
+                                                port=core.url.port, target=b"/unapproved")
+                    else:
+                        name = {"authorization": b"Authorization", "traceparent": b"traceparent",
+                                "extra-header": b"X-Unapproved"}[mutation]
+                        core.headers = [(key, value) for key, value in core.headers
+                                        if key.lower() != name.lower()]
+                        value = b"00-" + b"1" * 32 + b"-" + b"2" * 16 + b"-01" if mutation == "traceparent" else b"unapproved"
+                        core.headers.append((name, value))
                     assert b"YES" in request.content
                 await asyncio.sleep(0)
             request.extensions["trace"] = retained
         try:
             async with authority() as (gate, h):
-                async with httpx.AsyncClient(trust_env=False, timeout=5, event_hooks={"request": [hook]}) as wire:
+                async with httpx.AsyncClient(trust_env=False, timeout=5, event_hooks={"request": [hook]}) as wire, \
+                        AsyncExitStack() as stack:
+                    stack.enter_context(native_instrumentation(wire, instrumented))
                     relay, body = await make_relay(wire, gate, url)
                     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app()),
                                                 base_url="http://relay") as caller:
@@ -211,7 +334,10 @@ def test_relay_validates_actual_core_bytes_after_retained_trace(tmp_path, phase,
 
 
 @pytest.mark.parametrize("warm", [False, True])
-def test_actual_relay_rejects_http2_before_mcp_request_frames(tmp_path, warm):
+@pytest.mark.parametrize("instrumented", [False, True])
+def test_actual_relay_rejects_http2_before_mcp_request_frames(
+    tmp_path, warm, instrumented, native_instrumentation,
+):
     import h2.config
     import h2.connection
     import h2.events
@@ -255,7 +381,9 @@ def test_actual_relay_rejects_http2_before_mcp_request_frames(tmp_path, warm):
         origin = f"https://127.0.0.1:{listener.sockets[0].getsockname()[1]}"
         try:
             async with authority() as (gate, h):
-                async with httpx.AsyncClient(http2=True, verify=client_ssl, trust_env=False, timeout=5) as wire:
+                async with httpx.AsyncClient(http2=True, verify=client_ssl, trust_env=False, timeout=5) as wire, \
+                        AsyncExitStack() as stack:
+                    stack.enter_context(native_instrumentation(wire, instrumented))
                     if warm:
                         response = await wire.get(origin + "/warm")
                         assert response.http_version == "HTTP/2"
@@ -276,7 +404,10 @@ def test_actual_relay_rejects_http2_before_mcp_request_frames(tmp_path, warm):
 
 
 @pytest.mark.parametrize("revoke", [False, True])
-def test_actual_relay_reauthorizes_after_tls_handshake_wait(tmp_path, revoke):
+@pytest.mark.parametrize("instrumented", [False, True])
+def test_actual_relay_reauthorizes_after_tls_handshake_wait(
+    tmp_path, revoke, instrumented, native_instrumentation,
+):
     async def scenario():
         server_ssl, client_ssl = tls_contexts(tmp_path)
         waiting, release = asyncio.Event(), asyncio.Event()
@@ -317,7 +448,9 @@ def test_actual_relay_reauthorizes_after_tls_handshake_wait(tmp_path, revoke):
         url = f"https://127.0.0.1:{listener.sockets[0].getsockname()[1]}/mcp"
         try:
             async with authority() as (gate, h):
-                async with httpx.AsyncClient(verify=client_ssl, trust_env=False, timeout=5) as wire:
+                async with httpx.AsyncClient(verify=client_ssl, trust_env=False, timeout=5) as wire, \
+                        AsyncExitStack() as stack:
+                    stack.enter_context(native_instrumentation(wire, instrumented))
                     relay, body = await make_relay(wire, gate, url)
                     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app()),
                                                 base_url="http://relay") as caller:
@@ -336,4 +469,41 @@ def test_actual_relay_reauthorizes_after_tls_handshake_wait(tmp_path, revoke):
             for transport in transports:
                 transport.close()
             await asyncio.gather(*handshakes, return_exceptions=True)
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("instrumented", [False, True])
+def test_native_relay_rejects_proxy_connect_before_wire(instrumented, native_instrumentation):
+    async def scenario():
+        received, tasks = [], set()
+        async def proxy(reader, writer):
+            task = asyncio.current_task()
+            tasks.add(task)
+            try:
+                data = await reader.read(65536)
+                if data:
+                    received.append(data)
+            finally:
+                writer.close()
+                await writer.wait_closed()
+                tasks.discard(task)
+        listener = await asyncio.start_server(proxy, "127.0.0.1", 0)
+        proxy_url = f"http://127.0.0.1:{listener.sockets[0].getsockname()[1]}"
+        try:
+            async with authority() as (gate, _):
+                async with httpx.AsyncClient(proxy=proxy_url, trust_env=False, timeout=3) as wire, \
+                        AsyncExitStack() as stack:
+                    stack.enter_context(native_instrumentation(wire, instrumented))
+                    relay, body = await make_relay(wire, gate, "https://gateway.invalid/mcp")
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app()),
+                                                base_url="http://relay") as caller:
+                        response = await caller.post("/mcp", json=body, headers={"X-Threadlight-Relay": relay.secret})
+                    assert response.status_code == 503
+                    assert received == []
+        finally:
+            listener.close()
+            await listener.wait_closed()
+            for task in list(tasks):
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
     asyncio.run(scenario())

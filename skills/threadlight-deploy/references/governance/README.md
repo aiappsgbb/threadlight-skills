@@ -42,7 +42,8 @@ Their portable control-plane dependency exports the bootstrap modules.
    An authenticated ARM project/endpoint observation precedes creation. The
    persisted creating intent precedes the sole SDK call; an ambiguous lost reply
    requires operator reconciliation and **never** automatically creates again.
-4. Run `observe` with the same arguments. Independently retrieved version, image,
+4. Run `observe` with the same arguments and `--observation-output <protected-observation.json>`.
+   Independently retrieved version, image,
    principal and client—not a configured next version—drive subsequent service
    allowlists and the final gateway registry. Stage/build/deploy only those
    separate services, using their own immutable images and approved permissions.
@@ -54,7 +55,28 @@ Their portable control-plane dependency exports the bootstrap modules.
    `--lifetime-seconds` is capped by all signed policy dependencies with a small
    safety margin (60–86400 seconds); an insufficient remaining lease fails.
    Blob/key permissions belong only to the operator publisher, never the agent.
-6. `wait` with `--binding-output` and `--frozen-config` checks the configured
+6. Run `configure-endpoint` with the same creation/attempt arguments and
+   `--expected-observation <protected-observation.json>`. The pinned SDK's
+   `agents.update_details(..., agent_endpoint=AgentEndpointConfig(...))` explicitly
+   pins one `FixedRatio` route at 100% to the independently observed created
+   version. `protocol_configuration` explicitly enables its declared Responses or
+   Invocations 2.0.0 protocol and preserves the Responses default when present,
+   without creating another version. Read-back must expose the declared protocol:
+   a pinned numeric route plus a Responses-only default is insufficient for an
+   Invocations definition. A combined Responses/Invocations endpoint is accepted
+   for an Invocations definition, but unrelated exposed protocols are rejected.
+   The Responses default is not proof that the hosted definition serves Responses.
+   Server-populated `publish_approval_status` is Microsoft 365 store review
+   metadata, not a readiness condition or the signed-bootstrap publication above.
+   `not_published`, missing status, or other review states do not block an otherwise
+   verified endpoint. This metadata is neither sent in PATCH nor used to authorize
+   invocation; unknown behavior-changing endpoint extensions remain rejected.
+   Authorization remains
+   **Entra-only**; another authorization scheme, ambiguous route, foreign owner,
+   changed identity/image/definition or project endpoint is rejected, not repaired.
+   This is an operator endpoint-write action, not a collector permission.
+7. `wait` with `--binding-output` and `--frozen-config` first independently
+   verifies that exact endpoint route/protocol/authentication, then checks the configured
    key and exact binding on the existing Invocations or Responses endpoint. Then
    run the existing explicit collector with independently observed target scope.
    The check itself produces no model/tool effect and cannot replace allow/deny
@@ -81,18 +103,30 @@ and business gateway identities remain separate. Actual native AgentIdentity/
 Cosmos authorization and hosted controller reachability remain unverified.
 
 `--observation-output` saves an independent SDK observation; use
-`--expected-observation` for subsequent publication/wait to reject identity
+`--expected-observation` for subsequent configuration/publication/wait to reject identity
 races. Publication recovery reuses an identical, still-fresh immutable binding;
 it never extends its expiry. The protected readiness workflow's explicit
 `resume-signed-bootstrap/v1` mode consumes content-pinned prior creation and
-service inputs, verifies source/identity consistency, then publishes, waits and
+service inputs, verifies source/identity consistency, then publishes, configures the endpoint, waits and
 collects. It does not invoke azd or create the agent again.
+
+Endpoint configuration re-reads ownership and routing immediately before its
+single non-retried PATCH, sends `If-Match` when an observed strong ETag is available,
+and independently reads back the version and endpoint afterwards. An already
+correct endpoint is a read-only success. Lost acknowledgements and failed
+read-back remain failures; an explicit retry first observes the current state.
+Without a provider ETag these reads are not atomic compare-and-swap: the operator
+must serialize endpoint writers. SDK connections/read waits are bounded to
+5/30 seconds, with no retries. Configuration is not signed-bootstrap activation,
+policy registration, live noop proof, or authority to invoke business effects.
+See [endpoint routing](https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-agent#configure-agent-endpoint-routing)
+and [endpoint configuration](https://learn.microsoft.com/azure/foundry/agents/how-to/configure-agent).
 
 ### Explicit credentials for private operator jobs
 
 The operator CLI defaults to its existing tenant-bound `azure-cli` mode. An
 approved private ACA job can instead use, on any of `create`, `observe`,
-`publish`, or `wait`:
+`configure-endpoint`, `publish`, or `wait`:
 
 ```text
 --credential-mode managed-identity --managed-identity-client-id <explicit-job-identity-client-id>
@@ -104,7 +138,7 @@ its default selection) are rejected before protected file access or credentials.
 There is no system-assigned fallback, ambient `AZURE_CLIENT_ID` selection,
 `DefaultAzureCredential` chain, user-cache fallback, or copied human token.
 The SDK uses synchronous `ManagedIdentityCredential` for ARM/project observations
-and create/observe, and its asynchronous counterpart for publish/wait operations.
+and create/observe/configure-endpoint, and its asynchronous counterpart for publish/wait operations.
 Token acquisition has bounded transport timeouts and no HTTP retry.
 
 Use separate explicitly selected deployer and publisher identities with only

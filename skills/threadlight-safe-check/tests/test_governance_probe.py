@@ -555,6 +555,8 @@ def test_collector_actual_copilot_invocations_mcp_gateway_fixture(tmp_path, monk
             h.run.resources[rid]["properties"]["template"]["containers"][0]["env"] = [
                 {"name": k, "value": v} for k, v in config["runtime_configuration"]["services"]["producer"].items()]
             h.run.version["definition"]["protocol_versions"] = [{"protocol": "invocations", "version": "2.0.0"}]
+            h.run.agent["agent_endpoint"]["protocols"] = ["invocations"]
+            h.run.agent["agent_endpoint"]["protocol_configuration"] = {"invocations": {}}
             if staged_project:
                 project, options, config = await packaged_gateway_project(tmp_path, h, config)
                 if staged_project in ("signature", "self-blessed"):

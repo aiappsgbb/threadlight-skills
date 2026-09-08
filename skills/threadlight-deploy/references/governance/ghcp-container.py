@@ -162,6 +162,8 @@ class McpRelay:
         H1 header/body transmission reauthorizes the signed bootstrap after waits
         and retained callbacks, then validates the actual core wire request. H2 is
         explicitly unsupported; its body-start event precedes flow-control waits.
+        Native OTel's bounded W3C propagation must exactly match its active span
+        context; the complete resulting header set is then frozen for transmission.
         """
         def __init__(self, *, gateway_url, scope, credential, invocation_id, tools, http,
                      bootstrap_gate=None):
@@ -196,8 +198,31 @@ class McpRelay:
                 raise ValueError("relay_wire_changed")
             method = request.method.encode("ascii")
             url = (request.url.raw_scheme, request.url.raw_host, request.url.port, request.url.raw_path)
-            headers = tuple(request.headers.raw)
+            original_headers = tuple(request.headers.raw)
+            headers = None
             previous = request.extensions.get("trace")
+
+            def bind_headers():
+                nonlocal headers
+                if headers is not None:
+                    return
+                observed = tuple(request.headers.raw)
+                if observed != original_headers:
+                    from opentelemetry.propagate import inject
+                    propagation = {}
+                    inject(propagation)
+                    limits = {"traceparent": 55, "tracestate": 512, "baggage": 8192}
+                    if any(name not in limits or not isinstance(value, str)
+                           or not value.isascii() or len(value) > limits[name]
+                           or any(ord(char) < 32 or ord(char) == 127 for char in value)
+                           for name, value in propagation.items()):
+                        raise ValueError("unsupported_relay_trace_propagation")
+                    propagated = httpx.Headers(original_headers)
+                    for name, value in propagation.items():
+                        propagated[name] = value
+                    if observed != tuple(propagated.raw):
+                        raise ValueError("relay_wire_changed")
+                headers = observed
 
             def check(core):
                 if (type(core) is not httpcore.Request or core.method != method
@@ -210,6 +235,9 @@ class McpRelay:
             async def trace(event, info):
                 if event.startswith("http2."):
                     raise ValueError("unsupported_relay_transport")
+                # Native OTel injects after HTTPX hooks, inside its client span.
+                # Freeze only that exact propagation, before retained callbacks.
+                bind_headers()
                 if previous is not None:
                     result = previous(event, info)
                     if inspect.isawaitable(result):

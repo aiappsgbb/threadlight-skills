@@ -2298,7 +2298,7 @@ _GOVERNED_ACTIONS_ASSESSOR_NAME = "threadlight-governed-actions"
 # Pinned, NOT a floor. A newer assessor may change what a child status means, so
 # an unreviewed future version buys no trust here; it degrades to not-verified
 # until this consumer is deliberately updated alongside it.
-_GOVERNED_ACTIONS_SUPPORTED_ASSESSOR_VERSIONS = frozenset({"0.1.0"})
+_GOVERNED_ACTIONS_SUPPORTED_ASSESSOR_VERSIONS = frozenset({"0.1.0", "2.0.0"})
 
 # Design-phase evidence describes an intent, not a deployable system, so it can
 # never stand behind a readiness claim.

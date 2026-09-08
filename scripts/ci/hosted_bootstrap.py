@@ -155,7 +155,7 @@ async def wait_ready(config, args, observed):
 
 def argument_parser():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("create", "observe", "publish", "wait"))
+    parser.add_argument("command", choices=("create", "observe", "configure-endpoint", "publish", "wait"))
     parser.add_argument("--creation", required=True, type=Path)
     parser.add_argument("--attempt", required=True, type=Path)
     parser.add_argument("--credential-mode", choices=("azure-cli", "managed-identity"), action="append",
@@ -185,6 +185,8 @@ def parse_args(argv=None, *, parser=None):
         validate_credential_options(args.credential_mode, args.managed_identity_client_id)
     except ValueError as error:
         parser.error(str(error))
+    if args.command == "configure-endpoint" and args.expected_observation is None:
+        parser.error("configure-endpoint requires the protected --expected-observation from observe")
     return args
 
 
@@ -192,7 +194,9 @@ def main(argv=None):
     parser = argument_parser()
     args = parse_args(argv, parser=parser)
     from azure.ai.projects import AIProjectClient
-    from govern_control_plane.hosted_lifecycle import create_once, observe, validate, record_observation
+    from govern_control_plane.hosted_lifecycle import (
+        create_once, observe, validate, record_observation, configure_endpoint, observe_endpoint,
+    )
     from govern_control_plane.app import configure_logging
     configure_logging()
     config = validate(read(args.creation))
@@ -205,7 +209,7 @@ def main(argv=None):
     with make_credential(args, config["tenant_id"]) as credential:
         observe_parent(config, credential)
         with AIProjectClient(endpoint=config["project_endpoint"], credential=credential,
-                             api_version="v1", retry_total=0) as client:
+                             api_version="v1", retry_total=0, connection_timeout=5, read_timeout=30) as client:
             if args.command == "create":
                 state = create_once(client, config, args.attempt)
                 print(json.dumps({"status": "created-pending-binding", "version": state["version"]}))
@@ -215,9 +219,12 @@ def main(argv=None):
                 raise ValueError("independently_observed_binding_changed")
             if args.observation_output:
                 record_observation(args.observation_output, observed)
-            if args.command == "publish":
+            if args.command == "configure-endpoint":
+                configure_endpoint(client, config, args.attempt, read(args.expected_observation))
+            elif args.command == "publish":
                 asyncio.run(publish(config, args, observed))
             elif args.command == "wait":
+                observe_endpoint(client, config, args.attempt, observed)
                 asyncio.run(wait_ready(config, args, observed))
             print(json.dumps({"status": args.command + "-complete-not-live-proof", "observation": observed}))
 

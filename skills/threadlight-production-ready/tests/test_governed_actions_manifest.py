@@ -275,6 +275,23 @@ def validation_reason(tmp_path: Path, manifest: dict) -> str | None:
     )
 
 
+@pytest.mark.parametrize("version", ["0.1.0", "2.0.0"])
+def test_reviewed_assessor_versions_preserve_strict_ledger_validation(tmp_path, version):
+    manifest = _golden()
+    manifest["assessor"]["version"] = version
+    assert validation_reason(tmp_path, manifest) is None
+    manifest.pop("evidence_contract")
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("version", ["0.1.1", "1.0.0", "2.0.1", "2.1.0", "3.0.0"])
+def test_unreviewed_assessor_versions_do_not_inherit_trust(tmp_path, version):
+    manifest = _golden()
+    manifest["assessor"]["version"] = version
+    assert "not a supported assessor version" in validation_reason(tmp_path, manifest)
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
 def test_legacy_evidence_contract_is_not_supported(tmp_path):
     manifest = _golden()
     manifest.pop("evidence_contract", None)

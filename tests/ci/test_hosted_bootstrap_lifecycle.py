@@ -195,3 +195,427 @@ def test_resumed_observation_file_is_idempotent_but_never_overwritten(tmp_path):
     with pytest.raises(ValueError):
         lib.record_observation(path, {**value, "agent_version": "18"})
     assert path.read_bytes() == before
+
+
+def endpoint_fixture(tmp_path, *, protocol="invocations", etag=True, sdk_endpoint=None, sdk_api_version="v1"):
+    """Exercise the published SDK and its real transport against an HTTP fixture."""
+    from contextlib import contextmanager
+    from copy import deepcopy
+    from azure.ai.projects import AIProjectClient
+    from azure.ai.projects.models import ContainerConfiguration, HostedAgentDefinition, ProtocolVersionRecord
+    from azure.core.credentials import AccessToken
+    from azure.core.pipeline.transport import RequestsTransport
+    from requests import Response, Session
+    from requests.adapters import BaseAdapter
+    from urllib3.response import HTTPResponse
+
+    @contextmanager
+    def opened():
+        lib, config = lifecycle(), inputs()
+        config["protocol"] = protocol
+        attempt = tmp_path / "attempt.json"
+        state = lib.creation_state(config, attempt)
+        state.update(state="created", version="17", version_id="fixture-version-17")
+        lib.persist(attempt, state, exclusive=True)
+        identity = {"principal_id": "22222222-2222-2222-2222-222222222222",
+                    "client_id": "33333333-3333-3333-3333-333333333333"}
+        definition = HostedAgentDefinition(
+            cpu=config["cpu"], memory=config["memory"],
+            container_configuration=ContainerConfiguration(image=config["image"]),
+            environment_variables=config["environment_variables"],
+            protocol_versions=[ProtocolVersionRecord(protocol=protocol, version="2.0.0")],
+        ).as_dict()
+        version_record = dict(id=state["version_id"], object="agent.version", name=config["agent_name"],
+                              version="17", created_at=int(time.time()), metadata={}, status="active",
+                              definition=deepcopy(definition), instance_identity=identity)
+        details = dict(id="fixture-agent-id", object="agent", name=config["agent_name"], state="enabled",
+                       versions={"latest": deepcopy(version_record)}, instance_identity=deepcopy(identity),
+                       agent_endpoint={
+                           "version_selector": {"version_selection_rules": [
+                               {"type": "FixedRatio", "agent_version": "@latest", "traffic_percentage": 100}]},
+                           "protocol_configuration": {"responses": {}},
+                           "protocols": ["responses"], "authorization_schemes": [{"type": "Entra"}],
+                           "publish_approval_status": "not_published"})
+        expected = dict(tenant_id=config["tenant_id"], reference=config["reference"],
+                        agent_id=config["agent_name"], agent_version="17",
+                        project_endpoint=config["project_endpoint"], subscription=config["subscription"],
+                        resource_group=config["resource_group"], image_digest=config["image"].split("@")[1],
+                        principal=identity["principal_id"], client_id=identity["client_id"])
+        wire = dict(calls=[], version=version_record, details=details, before_send=None, lost_ack=False,
+                    patch_status=200)
+
+        class Credential:
+            def get_token(self, *scopes, **kwargs):
+                return AccessToken("local-endpoint-fixture-only", int(time.time()) + 3600)
+
+        def merge(target, patch):
+            for key, value in patch.items():
+                if value is None:
+                    target.pop(key, None)
+                elif isinstance(value, dict):
+                    merge(target.setdefault(key, {}), value)
+                else:
+                    target[key] = value
+
+        class Foundry(BaseAdapter):
+            def send(self, request, **kwargs):
+                call = {"method": request.method, "url": request.url, "headers": dict(request.headers),
+                        "timeout": kwargs.get("timeout"),
+                        "body": json.loads(request.body) if request.body else None}
+                wire["calls"].append(call)
+                if wire["before_send"]:
+                    wire["before_send"](call, wire)
+                assert request.url.startswith(config["project_endpoint"] + "/agents/fixture")
+                assert "api-version=v1" in request.url
+                status = wire["patch_status"] if request.method == "PATCH" else 200
+                if status != 200:
+                    body = {"error": {"code": "fixture-denied", "message": "local-fixture-only"}}
+                elif request.method == "PATCH":
+                    assert "/versions/" not in request.url
+                    assert set(call["body"]) == {"agent_endpoint"}
+                    if etag:
+                        assert request.headers["If-Match"] == '"fixture-etag"'
+                    merge(wire["details"], call["body"])
+                    wire["details"]["agent_endpoint"]["protocols"] = sorted(
+                        wire["details"]["agent_endpoint"]["protocol_configuration"])
+                    if wire["lost_ack"]:
+                        raise RuntimeError("fixture-lost-endpoint-ack")
+                    body = wire["details"]
+                else:
+                    assert request.method == "GET", "no new agent/version or other mutation is authorized"
+                    body = wire["version"] if "/versions/17?" in request.url else wire["details"]
+                response = Response()
+                response.request, response.status_code = request, status
+                response.headers["Content-Type"] = "application/json"
+                if etag:
+                    response.headers["ETag"] = '"fixture-etag"'
+                response._content = json.dumps(body).encode()
+                response.raw = HTTPResponse(body=BytesIO(response._content), headers=response.headers,
+                                            status=status, preload_content=False)
+                return response
+
+            def close(self):
+                pass
+
+        with Session() as session:
+            session.trust_env = False
+            session.mount("https://", Foundry())
+            with AIProjectClient(endpoint=sdk_endpoint or config["project_endpoint"], credential=Credential(),
+                                 api_version=sdk_api_version,
+                                 retry_total=0, transport=RequestsTransport(
+                                     session=session, session_owner=False)) as client:
+                yield lib, client, config, attempt, expected, wire
+    return opened()
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+@pytest.mark.parametrize("protocol", ["responses", "invocations"])
+@pytest.mark.parametrize("etag", [False, True])
+def test_real_sdk_configures_only_created_endpoint_and_reobserves_without_new_version(tmp_path, protocol, etag):
+    lib = lifecycle()
+    assert callable(getattr(lib, "configure_endpoint", None)), "explicit endpoint configuration missing"
+    with endpoint_fixture(tmp_path, protocol=protocol, etag=etag) as (lib, client, config, attempt, expected, wire):
+        original = attempt.read_bytes()
+        result = lib.configure_endpoint(client, config, attempt, expected)
+        assert result == {"agent_id": "fixture", "agent_version": "17", "protocol": protocol,
+                          "authorization": "Entra"}
+        patches = [call for call in wire["calls"] if call["method"] == "PATCH"]
+        assert len(patches) == 1
+        patch = patches[0]
+        protocols = {protocol: {}}
+        assert patch["body"] == {"agent_endpoint": {
+            "version_selector": {"version_selection_rules": [
+                {"type": "FixedRatio", "agent_version": "17", "traffic_percentage": 100}]},
+            "protocol_configuration": protocols,
+            "authorization_schemes": [{"type": "Entra"}]}}
+        assert patch["headers"]["Content-Type"] == "application/merge-patch+json"
+        assert wire["details"]["agent_endpoint"]["protocol_configuration"] == {"responses": {}, protocol: {}}
+        assert wire["calls"][-1]["method"] == "GET"
+        assert all(call["timeout"] == (5, 30) for call in wire["calls"])
+        assert lib.configure_endpoint(client, config, attempt, expected) == result
+        assert len([call for call in wire["calls"] if call["method"] == "PATCH"]) == 1
+        assert attempt.read_bytes() == original
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+@pytest.mark.parametrize("protocol_order", [["invocations", "responses"], ["responses", "invocations"]])
+def test_documented_combined_endpoint_is_already_configured_without_protocol_removal(tmp_path, protocol_order):
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        endpoint = wire["details"]["agent_endpoint"]
+        endpoint["version_selector"]["version_selection_rules"][0]["agent_version"] = "17"
+        endpoint["protocol_configuration"] = {"responses": {}, "invocations": {}}
+        endpoint["protocols"] = protocol_order
+        assert lib.observe_endpoint(client, config, attempt, expected)["protocol"] == "invocations"
+        assert lib.configure_endpoint(client, config, attempt, expected)["protocol"] == "invocations"
+        assert all(call["method"] == "GET" for call in wire["calls"])
+        assert endpoint["protocol_configuration"] == {"responses": {}, "invocations": {}}
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+def test_fixed_numeric_route_does_not_infer_declared_protocol_is_exposed(tmp_path):
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        endpoint = wire["details"]["agent_endpoint"]
+        endpoint["version_selector"]["version_selection_rules"][0]["agent_version"] = "17"
+        with pytest.raises(ValueError, match="explicit_endpoint_configuration_required"):
+            lib.observe_endpoint(client, config, attempt, expected)
+        assert all(call["method"] == "GET" for call in wire["calls"])
+        assert lib.configure_endpoint(client, config, attempt, expected)["protocol"] == "invocations"
+        patches = [call for call in wire["calls"] if call["method"] == "PATCH"]
+        assert len(patches) == 1
+        assert patches[0]["body"]["agent_endpoint"]["protocol_configuration"] == {"invocations": {}}
+        assert endpoint["protocol_configuration"] == {"responses": {}, "invocations": {}}
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+def test_sanitized_actual_native_endpoint_ignores_readonly_publication_metadata(tmp_path):
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        # Actual native GET shape; only its deployment-specific version is sanitized.
+        endpoint = {
+            "version_selector": {"version_selection_rules": [
+                {"agent_version": "17", "traffic_percentage": 100, "type": "FixedRatio"}]},
+            "protocols": ["invocations", "responses"],
+            "protocol_configuration": {"responses": {}, "invocations": {}},
+            "authorization_schemes": [{"type": "Entra"}],
+            "publish_approval_status": "not_published",
+        }
+        wire["details"]["agent_endpoint"] = endpoint
+        native = client.agents.get(agent_name=config["agent_name"])
+        assert native.agent_endpoint.as_dict() == endpoint
+        result = lib.observe_endpoint(client, config, attempt, expected)
+        assert result["protocol"] == "invocations" and "publish_approval_status" not in result
+        assert lib.configure_endpoint(client, config, attempt, expected) == result
+        assert all(call["method"] == "GET" for call in wire["calls"])
+        endpoint["version_selector"]["version_selection_rules"][0]["agent_version"] = "@latest"
+        def publication_changes_independently(call, wire):
+            if call["method"] == "GET" and "/versions/" not in call["url"]:
+                endpoint["publish_approval_status"] = (
+                    "pending" if endpoint["publish_approval_status"] == "not_published" else "not_published")
+        wire["before_send"] = publication_changes_independently
+        assert lib.configure_endpoint(client, config, attempt, expected) == result
+        patches = [call for call in wire["calls"] if call["method"] == "PATCH"]
+        assert len(patches) == 1
+        assert "publish_approval_status" not in patches[0]["body"]["agent_endpoint"]
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+@pytest.mark.parametrize("status", [None, "not_published", "pending", "approved", "rejected", "no_approval_needed"])
+def test_publication_status_never_substitutes_for_declared_protocol_exposure(tmp_path, status):
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        endpoint = wire["details"]["agent_endpoint"]
+        endpoint["version_selector"]["version_selection_rules"][0]["agent_version"] = "17"
+        endpoint["publish_approval_status"] = status
+        with pytest.raises(ValueError, match="explicit_endpoint_configuration_required"):
+            lib.observe_endpoint(client, config, attempt, expected)
+        assert all(call["method"] == "GET" for call in wire["calls"])
+        endpoint["protocol_configuration"] = {"responses": {}, "invocations": {}}
+        endpoint["protocols"] = ["invocations", "responses"]
+        assert lib.observe_endpoint(client, config, attempt, expected)["protocol"] == "invocations"
+        endpoint.pop("publish_approval_status")
+        assert lib.observe_endpoint(client, config, attempt, expected)["protocol"] == "invocations"
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+@pytest.mark.parametrize("extension", [
+    {"authentication_disabled": True},
+    {"publish_requires_approval": False},
+    {"future_endpoint_options": {"protocols": ["activity"]}},
+    {"publish_approval_status": {"authorization_schemes": []}},
+    {"publish_approval_status": False},
+])
+def test_publication_allowance_does_not_allow_unknown_or_malformed_endpoint_extensions(tmp_path, extension):
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        wire["details"]["agent_endpoint"].update(extension)
+        with pytest.raises(ValueError):
+            lib.configure_endpoint(client, config, attempt, expected)
+        assert all(call["method"] == "GET" for call in wire["calls"])
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+@pytest.mark.parametrize("bad", [
+    "no-attempt", "creating-attempt", "source-changed", "missing-expected", "expected-identity",
+    "foreign-client", "foreign-agent", "foreign-latest", "foreign-version-id", "foreign-identity",
+    "image", "environment", "cpu", "memory", "definition-protocol", "inactive", "draft", "draft-zero",
+    "wrong-route", "split-route", "boolean-traffic", "route-kind", "missing-auth", "extra-auth",
+    "missing-protocol", "extra-protocol", "protocol-alias-mismatch", "endpoint-drift",
+])
+def test_endpoint_configuration_rejects_ambiguous_or_foreign_state_before_mutation(tmp_path, bad):
+    lib = lifecycle()
+    assert callable(getattr(lib, "configure_endpoint", None)), "explicit endpoint configuration missing"
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        details, actual = wire["details"], wire["version"]
+        endpoint = details["agent_endpoint"]
+        rule = endpoint["version_selector"]["version_selection_rules"][0]
+        if bad == "no-attempt":
+            attempt.unlink()
+        elif bad == "creating-attempt":
+            state = json.loads(attempt.read_bytes())
+            state["state"] = "creating"
+            lib.persist(attempt, state)
+        elif bad == "source-changed":
+            config["source_commit"] = "f" * 40
+        elif bad == "missing-expected":
+            expected = None
+        elif bad == "expected-identity":
+            expected["principal"] = config["tenant_id"]
+        elif bad == "foreign-client":
+            config["project_endpoint"] = "https://other.services.ai.azure.com/api/projects/test"
+        elif bad == "foreign-agent":
+            details["name"] = "another-agent"
+        elif bad == "foreign-latest":
+            details["versions"]["latest"]["version"] = "18"
+        elif bad == "foreign-version-id":
+            actual["id"] = "other-owner-version"
+        elif bad == "foreign-identity":
+            details["instance_identity"]["principal_id"] = config["tenant_id"]
+        elif bad == "image":
+            actual["definition"]["container_configuration"]["image"] = "other.azurecr.io/agent@sha256:" + "f" * 64
+        elif bad == "environment":
+            actual["definition"]["environment_variables"]["GOV_CONTROL_PLANE_URL"] = "https://other.example"
+        elif bad in ("cpu", "memory"):
+            actual["definition"][bad] = "4" if bad == "cpu" else "4Gi"
+        elif bad == "definition-protocol":
+            actual["definition"]["protocol_versions"][0]["protocol"] = "responses"
+        elif bad == "inactive":
+            actual["status"] = "creating"
+        elif bad == "draft":
+            actual["draft"] = True
+        elif bad == "draft-zero":
+            actual["draft"] = 0
+        elif bad == "wrong-route":
+            rule["agent_version"] = "18"
+        elif bad == "split-route":
+            endpoint["version_selector"]["version_selection_rules"].append(dict(rule))
+        elif bad == "boolean-traffic":
+            rule["traffic_percentage"] = True
+        elif bad == "route-kind":
+            rule["type"] = "Unknown"
+        elif bad == "missing-auth":
+            endpoint.pop("authorization_schemes")
+        elif bad == "extra-auth":
+            endpoint["authorization_schemes"].append({"type": "BotServiceTenant"})
+        elif bad == "missing-protocol":
+            endpoint["protocol_configuration"] = {}
+        elif bad == "extra-protocol":
+            endpoint["protocol_configuration"]["activity"] = {}
+        elif bad == "protocol-alias-mismatch":
+            endpoint["protocols"] = ["invocations"]
+        elif bad == "endpoint-drift":
+            def change_on_second_details(call, wire):
+                gets = [c for c in wire["calls"] if c["method"] == "GET" and "/versions/" not in c["url"]]
+                if len(gets) == 2:
+                    wire["details"]["id"] = "other-agent-object"
+            wire["before_send"] = change_on_second_details
+        with pytest.raises(ValueError):
+            lib.configure_endpoint(client, config, attempt, expected)
+        assert all(call["method"] == "GET" for call in wire["calls"])
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+def test_endpoint_lost_ack_and_failed_readback_are_not_success_or_retried_mutations(tmp_path):
+    lib = lifecycle()
+    assert callable(getattr(lib, "configure_endpoint", None)), "explicit endpoint configuration missing"
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        wire["lost_ack"] = True
+        with pytest.raises(RuntimeError, match="lost-endpoint-ack"):
+            lib.configure_endpoint(client, config, attempt, expected)
+        assert len([c for c in wire["calls"] if c["method"] == "PATCH"]) == 1
+        wire["lost_ack"] = False
+        assert lib.configure_endpoint(client, config, attempt, expected)["agent_version"] == "17"
+        assert len([c for c in wire["calls"] if c["method"] == "PATCH"]) == 1
+        wire["details"]["agent_endpoint"]["version_selector"]["version_selection_rules"][0]["agent_version"] = "@latest"
+        def revert_after_patch(call, wire):
+            if call["method"] == "GET" and len([c for c in wire["calls"] if c["method"] == "PATCH"]) == 2:
+                wire["details"]["agent_endpoint"]["protocol_configuration"] = {"responses": {}}
+                wire["details"]["agent_endpoint"]["protocols"] = ["responses"]
+        wire["before_send"] = revert_after_patch
+        with pytest.raises(ValueError):
+            lib.configure_endpoint(client, config, attempt, expected)
+        assert len([c for c in wire["calls"] if c["method"] == "PATCH"]) == 2
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+def test_wait_endpoint_check_is_read_only_and_requires_pinned_declared_protocol(tmp_path):
+    lib = lifecycle()
+    assert callable(getattr(lib, "observe_endpoint", None)), "read-only endpoint gate missing"
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        with pytest.raises(ValueError):
+            lib.observe_endpoint(client, config, attempt, expected)
+        assert all(call["method"] == "GET" for call in wire["calls"])
+        configured = lib.configure_endpoint(client, config, attempt, expected)
+        wire["calls"].clear()
+        assert lib.observe_endpoint(client, config, attempt, expected) == configured
+        assert all(call["method"] == "GET" for call in wire["calls"])
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+@pytest.mark.parametrize("status", [403, 412, 429, 503])
+def test_native_endpoint_http_failures_never_retry_or_claim_configuration(tmp_path, status):
+    from azure.core.exceptions import HttpResponseError
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        wire["patch_status"] = status
+        before = json.dumps(wire["details"], sort_keys=True)
+        with pytest.raises(HttpResponseError):
+            lib.configure_endpoint(client, config, attempt, expected)
+        assert len([call for call in wire["calls"] if call["method"] == "PATCH"]) == 1
+        assert json.dumps(wire["details"], sort_keys=True) == before
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+@pytest.mark.parametrize("options", [
+    {"sdk_endpoint": "https://other.services.ai.azure.com/api/projects/test"},
+    {"sdk_api_version": "unsupported-preview"},
+])
+def test_endpoint_rejects_wrong_native_client_target_or_api_before_transport(tmp_path, options):
+    with endpoint_fixture(tmp_path, **options) as (lib, client, config, attempt, expected, wire):
+        with pytest.raises(ValueError, match="pinned_project_client_endpoint_required"):
+            lib.configure_endpoint(client, config, attempt, expected)
+        assert wire["calls"] == []
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+def test_cli_wait_rejects_default_endpoint_before_any_host_request(tmp_path, monkeypatch):
+    from test_hosted_bootstrap_credentials import cli
+    import sys
+    import azure.ai.projects
+    from contextlib import nullcontext
+    app = cli()
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        creation = tmp_path / "creation.json"
+        creation.write_text(json.dumps(config))
+        expected_file = tmp_path / "observed.json"
+        expected_file.write_text(json.dumps(expected))
+        monkeypatch.setitem(sys.modules, "govern_control_plane.hosted_lifecycle", lib)
+        monkeypatch.setattr(azure.ai.projects, "AIProjectClient", lambda **_: nullcontext(client))
+        monkeypatch.setattr(app, "make_credential", lambda *_: nullcontext(None))
+        monkeypatch.setattr(app, "observe_parent", lambda *_: config["project_id"])
+        monkeypatch.setattr(app, "wait_ready", lambda *_: pytest.fail("unconfigured endpoint reached host request"))
+        common = ["--creation", str(creation), "--attempt", str(attempt),
+                  "--expected-observation", str(expected_file)]
+        with pytest.raises(ValueError, match="explicit_endpoint_configuration_required"):
+            app.main(["wait", *common, "--binding-output", "never-read-binding.json",
+                      "--frozen-config", "never-read-frozen.json"])
+        assert all(call["method"] == "GET" for call in wire["calls"])
+        app.main(["configure-endpoint", *common])
+        assert len([call for call in wire["calls"] if call["method"] == "PATCH"]) == 1
+
+
+def test_endpoint_phase_is_explicit_protected_and_precedes_wait_in_resume_workflow():
+    import subprocess
+    import sys
+    cli = ROOT / "scripts/ci/hosted_bootstrap.py"
+    help_result = subprocess.run([sys.executable, str(cli), "--help"], text=True, capture_output=True)
+    assert "configure-endpoint" in help_result.stdout, "explicit operator endpoint phase missing"
+    invalid = subprocess.run([sys.executable, str(cli), "configure-endpoint", "--creation", "absent.json",
+                              "--attempt", "absent.json"], text=True, capture_output=True)
+    assert invalid.returncode == 2 and "--expected-observation" in invalid.stderr
+    source = cli.read_text()
+    assert source.index("observe_endpoint(client,") < source.index("asyncio.run(wait_ready(")
+    workflow = (ROOT / "scripts/ci/runtime_readiness_remote.py").read_text()
+    assert workflow.index('cli, "configure-endpoint"') < workflow.index('cli, "wait"')
+    assert '"--expected-observation", observed_path' in workflow.split('cli, "configure-endpoint"', 1)[1].split("])", 1)[0]
+    for relative in ("docs/production-readiness.md", "skills/threadlight-deploy/references/governance/README.md"):
+        text = (ROOT / relative).read_text()
+        assert "configure-endpoint" in text and "update_details" in text
+        assert "Entra-only" in text and "protocol_configuration" in text
+        assert "preserves the Responses default" in text
+        assert "publish_approval_status" in text and "not a readiness" in text
