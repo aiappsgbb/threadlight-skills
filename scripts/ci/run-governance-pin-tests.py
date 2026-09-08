@@ -156,6 +156,69 @@ def gateway_requirements():
     return sorted(result)
 
 
+def native_local_cases():
+    return {
+        "test_real_native_controls_render_fresh_and_are_consumed",
+        "test_real_materialized_assessment_emits_consumable_native_envelope",
+        *(f"test_native_recorder_rejects_incomplete_or_malformed_evidence[{fault}]"
+          for fault in ("action-scope", "bool-effect", "approval-consume", "payload-field",
+                        "python-version", "import-names")),
+        *(f"test_each_consumer_rejects_corrupt_native_evidence[{fault}]"
+          for fault in (
+              "missing", "empty", "schema", "phase", "source", "capture", "policy",
+              "events-empty", "event-scope", "event-order", "receipt-payload", "receipt-replay",
+              "ack-after-effect", "consumption-missing", "nonce-reuse", "approval-replay-accepted",
+              "approval-changed-accepted", "approval-expired-accepted", "audit-failure-missing",
+              "source-digest", "live-evidence", "output-promoted",
+          )),
+        *(f"test_native_contract_requires_its_reviewed_assessor[{assessor}]"
+          for assessor in ("None", "assessor1", "assessor2", "assessor3")),
+    }
+
+
+def verify_native_local_junit(path):
+    cases = ET.parse(path).findall(".//testcase")
+    if not cases or any(case.find(tag) is not None for case in cases
+                        for tag in ("skipped", "failure", "error")):
+        raise RuntimeError("native local evidence tests missing, skipped, failed, or errored")
+    if not native_local_cases() <= {case.attrib.get("name") for case in cases}:
+        raise RuntimeError("required native local evidence cases did not run")
+    return len(cases)
+
+
+def native_local_runtime():
+    """Use the prepared exact wheels; Git is only for fresh fixture repositories."""
+    report = SCRATCH / "native-local-tests.xml"
+    proof = SCRATCH / "native-local-proof.json"
+    report.unlink(missing_ok=True)
+    proof.unlink(missing_ok=True)
+    if not (VENV / "pyvenv.cfg").is_file() or not (SCRATCH / "wheels").is_dir():
+        raise RuntimeError("run the exact-pin runtime and --prepare-local before --native-local")
+    run([
+        "docker", "run", "--rm", "--network", "none", "--platform", "linux/amd64",
+        "--user", f"{os.getuid()}:{os.getgid()}",
+        "-v", f"{ROOT}:/work:ro", "-v", f"{SCRATCH}:/work/.governance-validation",
+        "-v", f"{VENV}:/work/.governance-validation/linux-venv:ro",
+        "-w", "/work", "-e", "THREADLIGHT_GOVERNANCE_RUNTIME=1",
+        "-e", "ACS_OPA_PATH=/work/.governance-validation/opa-linux-amd64",
+        "-e", "TMPDIR=/work/.governance-validation/tmp",
+        "-e", "PYTHONPYCACHEPREFIX=/work/.governance-validation/pycache",
+        "-e", "HOME=/work/.governance-validation/runtime-home",
+        "-e", "OTEL_SDK_DISABLED=true", "-e", "PYTHONNOUSERSITE=1",
+        "python:3.12-bookworm", ".governance-validation/linux-venv/bin/python",
+        "-m", "pytest", "skills/threadlight-governed-actions/tests/test_native_local_evidence.py",
+        "-q", "--junitxml=/work/.governance-validation/native-local-tests.xml",
+        "--basetemp=/work/.governance-validation/native-local-fixtures",
+        "-o", "cache_dir=/work/.governance-validation/native-local-cache",
+        "-o", "markers=governance_runtime: exact native runtime",
+    ])
+    count = verify_native_local_junit(report)
+    proof.write_text(json.dumps({
+        "tests_passed": count, "junit": report.name,
+        "scope": "executed local native ledger, exported assessor and strict consumers; no live Azure",
+    }, indent=2) + "\n")
+
+
 def prepare_service_runtime(python):
     """Install real service packages from writable copies, preserving read-only source."""
     if not python.exists():
@@ -706,6 +769,9 @@ def main():
     )
     os.environ.pop("PYTHONPATH", None)
     pins = json.loads(PIN_FILE.read_text())
+    if sys.argv[1:] == ["--native-local"]:
+        native_local_runtime()
+        return
     if sys.argv[1:] == ["--prepare-local"]:
         prepare_deployment(pins, local_only=True)
         return

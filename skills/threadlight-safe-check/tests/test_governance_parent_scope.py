@@ -89,6 +89,7 @@ async def parent_gate(parent, monkeypatch, project, h, *, entry="phase", subscri
     {"id": OTHER_SUB, "tenantId": OTHER_TENANT},
     {"id": TENANT, "tenantId": OTHER_TENANT},
 ], ids=["same-tenant-other-sub", "other-tenant-other-sub", "other-tenant"])
+@pytest.mark.governance_runtime
 def test_parent_account_mismatch_blocks_real_collector_before_registration(tmp_path, monkeypatch, parent, entry, account):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -119,6 +120,7 @@ def test_parent_account_mismatch_blocks_real_collector_before_registration(tmp_p
     ({"id": False, "tenantId": TENANT}, True),
     ({"id": TENANT, "tenantId": TENANT}, False),
 ], ids=["empty", "array", "null", "missing-tenant", "missing-sub", "bad-sub", "bad-tenant", "boolean", "unavailable"])
+@pytest.mark.governance_runtime
 def test_parent_missing_context_is_gap_without_registration(tmp_path, monkeypatch, parent, account, available):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -139,6 +141,7 @@ def test_parent_missing_context_is_gap_without_registration(tmp_path, monkeypatc
 
 @pytest.mark.parametrize("entry", ["cli", "phase"])
 @pytest.mark.parametrize("selector", [None, TENANT, "Staging subscription"])
+@pytest.mark.governance_runtime
 def test_parent_matching_account_passes_and_pins_all_reads(tmp_path, monkeypatch, parent, entry, selector):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -173,6 +176,7 @@ def test_parent_matching_account_passes_and_pins_all_reads(tmp_path, monkeypatch
     ("tenant_id", OTHER_TENANT), ("tenant", OTHER_TENANT),
     ("subscription_id", None), ("tenant_id", []),
 ])
+@pytest.mark.governance_runtime
 def test_parent_manifest_selectors_must_match_observed_account(tmp_path, monkeypatch, parent, field, value):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -193,6 +197,7 @@ def test_parent_manifest_selectors_must_match_observed_account(tmp_path, monkeyp
     asyncio.run(case())
 
 
+@pytest.mark.governance_runtime
 def test_parent_manifest_display_name_canonicalizes_without_selecting_global_account(tmp_path, monkeypatch, parent):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:

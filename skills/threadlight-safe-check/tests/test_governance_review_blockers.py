@@ -193,6 +193,7 @@ def test_looping_selected_symlink_is_a_sanitized_gap(tmp_path):
 
 
 @pytest.mark.parametrize("fault", [None, "wrapper", "host", "missing-host", "wrapper-link", "host-link"])
+@pytest.mark.governance_runtime
 def test_real_generator_preserved_maf_wrapper_gate(tmp_path, fault):
     from test_governance_quality import inputs
     project, document, config, _, _ = inputs(tmp_path, environment="preproduction")
@@ -219,6 +220,7 @@ def test_real_generator_preserved_maf_wrapper_gate(tmp_path, fault):
                                   "fixture-client", "fixture-caller", "deployment", "controller",
                                   "unknown-mode", "platform-downstream", "probe-envelope",
                                   "probe-envelope-scope"])
+@pytest.mark.governance_runtime
 def test_real_platform_noop_static_association(tmp_path, monkeypatch, fault):
     from govern_control_plane.models import canonical, parse
     from govern_gateway.probe_runtime import ProbeConfiguration

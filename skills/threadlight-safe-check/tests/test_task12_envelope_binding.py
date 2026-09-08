@@ -9,6 +9,8 @@ import sys
 
 import pytest
 
+pytestmark = pytest.mark.governance_runtime
+
 from test_governance_probe import native_collector_harness, packaged_collector_project, reference
 from skills._shared import governance_readiness as readiness
 from skills._shared.tests.governance_consumer_fixtures import write

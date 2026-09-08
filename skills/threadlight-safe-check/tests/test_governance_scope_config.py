@@ -13,6 +13,7 @@ from test_governance_probe import native_collector_harness, packaged_collector_p
 
 @pytest.mark.parametrize("field", ["GOV_CONTROL_PLANE_URL", "GOVERNED_TOOL_GATEWAY_URL"])
 @pytest.mark.parametrize("location", ["env", "environmentVariables", "legacy"])
+@pytest.mark.governance_runtime
 def test_generated_host_wiring_must_match_before_image(tmp_path, field, location):
     project, _, manifest, *_ = generated(tmp_path)
     path = project / "azure.yaml"
@@ -31,6 +32,7 @@ def test_generated_host_wiring_must_match_before_image(tmp_path, field, location
     assert path.read_bytes() == before
 
 
+@pytest.mark.governance_runtime
 def test_normal_environment_and_unknown_governance_secret_are_not_configuration(tmp_path):
     project, document, _, *_ = generated(tmp_path)
     path = project / "azure.yaml"
@@ -44,6 +46,7 @@ def test_normal_environment_and_unknown_governance_secret_are_not_configuration(
 
 @pytest.mark.parametrize("when", ["before", "after"])
 @pytest.mark.parametrize("field", ["GOV_CONTROL_PLANE_URL", "GOVERNED_TOOL_GATEWAY_URL"])
+@pytest.mark.governance_runtime
 def test_actual_foundry_configuration_wrong_before_or_drifting_after(tmp_path, monkeypatch, when, field):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -74,6 +77,7 @@ def test_actual_foundry_configuration_wrong_before_or_drifting_after(tmp_path, m
 
 
 @pytest.mark.parametrize("field", ["GOV_CONTROL_PLANE_URL", "TL_GOV_SPOOL_DIR"])
+@pytest.mark.governance_runtime
 def test_missing_or_unresolved_required_host_configuration_is_unverified(tmp_path, monkeypatch, field):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -90,6 +94,7 @@ def test_missing_or_unresolved_required_host_configuration_is_unverified(tmp_pat
 
 
 @pytest.mark.parametrize("entry", ["cli", "phase", "project", "direct"])
+@pytest.mark.governance_runtime
 def test_parent_target_scope_refuses_without_invocation_and_preserves_inputs(tmp_path, monkeypatch, entry):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -130,6 +135,7 @@ def test_parent_target_scope_refuses_without_invocation_and_preserves_inputs(tmp
 
 
 @pytest.mark.parametrize("field", ["agent_id", "agent_version", "environment", "subscription", "resource_group"])
+@pytest.mark.governance_runtime
 def test_reusable_evidence_rejects_target_transplant(tmp_path, monkeypatch, field):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -158,6 +164,7 @@ def test_reusable_evidence_rejects_target_transplant(tmp_path, monkeypatch, fiel
 
 @pytest.mark.parametrize("field", ["approver_roles", "workloads", "key_id"])
 @pytest.mark.parametrize("when", ["before", "after"])
+@pytest.mark.governance_runtime
 def test_actual_arm_service_configuration_binds_roles_policy_and_endpoints(tmp_path, monkeypatch, field, when):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -215,6 +222,7 @@ def test_observer_closed_allowlist_retains_only_digests_and_detects_changes():
 
 
 @pytest.mark.parametrize("change", ["roles", "policy", "scope", "endpoint"])
+@pytest.mark.governance_runtime
 def test_real_generated_service_environment_overrides_cannot_change_frozen_configuration(tmp_path, monkeypatch, change):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -240,6 +248,7 @@ def test_real_generated_service_environment_overrides_cannot_change_frozen_confi
 
 
 @pytest.mark.parametrize("field", ["agent_id", "agent_version", "environment", "subscription", "resource_group"])
+@pytest.mark.governance_runtime
 def test_known_direct_target_mismatch_is_refused_before_invocation(tmp_path, monkeypatch, field):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -253,6 +262,7 @@ def test_known_direct_target_mismatch_is_refused_before_invocation(tmp_path, mon
     asyncio.run(case())
 
 
+@pytest.mark.governance_runtime
 def test_declared_file_digest_input_cannot_export_payloads(tmp_path, monkeypatch):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -264,6 +274,7 @@ def test_declared_file_digest_input_cannot_export_payloads(tmp_path, monkeypatch
     asyncio.run(case())
 
 
+@pytest.mark.governance_runtime
 def test_unbound_service_config_override_is_not_silently_accepted(tmp_path):
     project, document, _, *_ = generated(tmp_path)
     path = project / "azure.yaml"
@@ -282,6 +293,7 @@ def test_collector_reference_documents_exact_scope_and_configuration_visibility(
 
 
 @pytest.mark.parametrize("framework", ["microsoft-agent-framework", "github-copilot-sdk"])
+@pytest.mark.governance_runtime
 def test_full_generated_bound_preflight_and_parameter_drift(tmp_path, framework):
     from test_governance_quality import inputs, package
     data = inputs(tmp_path, framework=framework, environment="preproduction")
@@ -299,6 +311,7 @@ def test_full_generated_bound_preflight_and_parameter_drift(tmp_path, framework)
     assert parameters.read_bytes() == before
 
 
+@pytest.mark.governance_runtime
 def test_actual_native_flow_ignores_unselected_environment_changes_and_labels_file_visibility(tmp_path, monkeypatch):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:
@@ -325,6 +338,7 @@ def test_actual_native_flow_ignores_unselected_environment_changes_and_labels_fi
 
 
 @pytest.mark.parametrize("field", ["declared_file_digests", "services"])
+@pytest.mark.governance_runtime
 def test_shared_configuration_evidence_rejects_unbounded_payloads(tmp_path, monkeypatch, field):
     async def case():
         async with native_collector_harness(tmp_path, monkeypatch) as h:

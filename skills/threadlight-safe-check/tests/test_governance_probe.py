@@ -13,6 +13,8 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
+pytestmark = pytest.mark.governance_runtime
+
 from test_governance_gates import ROOT, reference
 from test_governance_observation import ARMFoundry, PROJECT, ENDPOINT
 from test_control_plane import APP, HUMAN, TENANT, WORKLOAD, OTHER, KEY, MemoryStore, module as cp

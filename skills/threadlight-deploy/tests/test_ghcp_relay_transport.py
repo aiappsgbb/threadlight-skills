@@ -11,6 +11,8 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
+pytestmark = pytest.mark.governance_runtime
+
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "skills/threadlight-govern/tests"))
 from test_remote_bootstrap import binding, harness

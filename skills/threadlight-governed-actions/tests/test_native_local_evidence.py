@@ -11,6 +11,8 @@ import sys
 
 import pytest
 
+pytestmark = pytest.mark.governance_runtime
+
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = ROOT / "skills/threadlight-governed-actions/scripts"
 sys.path.insert(0, str(SCRIPTS))

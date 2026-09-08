@@ -49,6 +49,7 @@ def generated(tmp_path):
     return project, manifest, path, config, deployment, signer
 
 
+@pytest.mark.governance_runtime
 def test_selected_binding_missing_runtime_adapter_is_gap(tmp_path):
     project, _, path, *_ = generated(tmp_path)
     (project / "src/agent/runtime/maf_agent_hooks_acs.py").unlink()
@@ -57,6 +58,7 @@ def test_selected_binding_missing_runtime_adapter_is_gap(tmp_path):
     assert "selected binding has no runtime adapter" in " ".join(json.loads(output.read_text())["gaps"])
 
 
+@pytest.mark.governance_runtime
 def test_intentionally_unbound_read_tool_is_not_gap(tmp_path):
     project, document, path, *_ = generated(tmp_path)
     result = reference("governance_static").check(project, document)
@@ -135,6 +137,7 @@ def staged_gateway_project(tmp_path, *, phase="bound"):
 
 
 @pytest.mark.parametrize("phase", ["bootstrap", "image", "staged", "bound"])
+@pytest.mark.governance_runtime
 def test_real_gateway_staging_static_gate(tmp_path, phase):
     project, document, config, deployment, _ = staged_gateway_project(tmp_path, phase=phase)
     result = reference("governance_static").check(project, document)
@@ -152,6 +155,7 @@ def test_real_gateway_staging_static_gate(tmp_path, phase):
 
 
 @pytest.mark.parametrize("phase", ["bootstrap", "image", "staged"])
+@pytest.mark.governance_runtime
 def test_gateway_without_final_binding_cannot_collect_live_evidence(tmp_path, phase):
     import asyncio
     project, _, *_ = staged_gateway_project(tmp_path, phase=phase)
@@ -165,6 +169,7 @@ def test_gateway_without_final_binding_cannot_collect_live_evidence(tmp_path, ph
     assert all(b["status"] != "enforced" for b in result["governance_health"]["bindings"])
 
 
+@pytest.mark.governance_runtime
 def test_native_package_digest_cannot_be_replaced_by_deployment_digest(tmp_path):
     from test_governance_wiring import module
     project, document, _, config, deployment, _ = generated(tmp_path)
@@ -184,6 +189,7 @@ def test_native_package_digest_cannot_be_replaced_by_deployment_digest(tmp_path)
     "bundle", "envelope", "digest", "image", "version", "agent", "tenant", "native-association",
     "roles", "workload", "gateway-client", "agent-client", "endpoint", "policy-id", "missing-envelope",
 ])
+@pytest.mark.governance_runtime
 def test_real_gateway_staging_static_rejects_tamper(tmp_path, fault):
     project, document, _, _, _ = staged_gateway_project(tmp_path)
     if fault == "bundle":
@@ -241,6 +247,7 @@ def test_real_gateway_staging_static_rejects_tamper(tmp_path, fault):
 @pytest.mark.parametrize("fault", [
     "image", "version", "agent", "tenant", "native-association", "roles", "binding", "workload",
 ])
+@pytest.mark.governance_runtime
 def test_final_gateway_signed_digest_does_not_override_frozen_association(tmp_path, fault):
     import asyncio
     import base64
@@ -291,6 +298,7 @@ def test_final_gateway_signed_digest_does_not_override_frozen_association(tmp_pa
 
 
 @pytest.mark.parametrize("change", ["adapter", "bundle", "config", "service", "requires", "image", "docker", "bundle-loader"])
+@pytest.mark.governance_runtime
 def test_static_tamper_is_actionable_gap(tmp_path, change):
     project, document, _, config, deployment, _ = generated(tmp_path)
     if change == "adapter":
@@ -328,6 +336,7 @@ def test_governance_off_and_absent_are_true_noops(tmp_path):
         assert gate.check(tmp_path, document) == {}
 
 
+@pytest.mark.governance_runtime
 def test_predeploy_keeps_existing_non_governance_gaps(tmp_path):
     project, document, path, *_ = generated(tmp_path)
     document["deployment_manifest"]["module_selectors"]["aca-bot"] = "yes"
@@ -339,6 +348,7 @@ def test_predeploy_keeps_existing_non_governance_gaps(tmp_path):
     assert value["governance_health"]["scope"] == "static-declarations-not-enforcement"
 
 
+@pytest.mark.governance_runtime
 def test_postdeploy_no_contract_never_automatically_invokes_and_keeps_gaps(tmp_path, monkeypatch):
     project, document, path, *_ = generated(tmp_path)
     document["deployment_manifest"]["expected_resource_types"] = ["Microsoft.Storage/storageAccounts"]
@@ -367,6 +377,7 @@ def test_collector_cli_is_runnable_and_off_is_no_network_noop(tmp_path):
     assert result.returncode == 0 and "--project" in result.stdout and "--configuration" in result.stdout
 
 
+@pytest.mark.governance_runtime
 def test_collect_project_has_no_automatic_probe_without_configuration(tmp_path):
     import asyncio
     project, _, *_ = generated(tmp_path)
@@ -390,6 +401,7 @@ def test_skill_and_ci_cover_real_governance_not_local_badges():
 
 
 @pytest.mark.parametrize("malformed", [None, False, [], "selective"])
+@pytest.mark.governance_runtime
 def test_invalid_governance_is_a_gap_not_an_uncaught_exception(tmp_path, malformed):
     project, document, path, *_ = generated(tmp_path)
     document["governance"] = malformed
