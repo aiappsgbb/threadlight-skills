@@ -10,6 +10,7 @@ from skills._shared.probe_evidence import require
 CONTRACT = "specs/governance-contract.json"
 PARENT = "specs/manifest.json"
 SPEC = "specs/SPEC.md"
+_UNSET = object()
 
 
 def parse_json(raw):
@@ -33,9 +34,19 @@ def read_json(path):
 
 
 def parent_contract(value):
+    require(isinstance(value, dict), "governance-artifact-must-be-object")
     require(not {"governance_mode", "governanceMode"} & value.keys(),
             "unsupported-governance-selector")
+    require("governance" not in value or {"framework", "governance", "tools"} <= value.keys(),
+            "incomplete-governance-contract")
     return {k: value[k] for k in ("framework", "governance", "tools")} if "governance" in value else None
+
+
+def legacy_off(value):
+    require(isinstance(value, dict), "governance-artifact-must-be-object")
+    return (value.get("governance") == {"mode": "off"}
+            and not {"framework", "tools", "governance_mode", "governanceMode",
+                     "lifecycle_bindings", "required", "requires"} & value.keys())
 
 
 def spec_contract(root, path=None):
@@ -85,8 +96,8 @@ def spec_contract(root, path=None):
 
 def _read_source(root, path):
     root, path = Path(root).resolve(), Path(path)
-    require(path.resolve().is_relative_to(root)
-            and not any(p.is_symlink() for p in (path, *path.parents) if p != root.parent),
+    require(not any(p.is_symlink() for p in (path, *path.parents) if p != root.parent)
+            and path.resolve().is_relative_to(root),
             "contract-source-outside-project-or-symlinked")
     with path.open("rb") as stream:
         data = stream.read(2 * 1024 * 1024 + 1)
@@ -94,24 +105,39 @@ def _read_source(root, path):
     return data
 
 
-def discover_contract(root, *, required=True, contract_path=None, manifest_path=None, spec_path=None):
+def discover_contract(root, *, required=True, contract_path=None, manifest_path=None, spec_path=None,
+                      current_document=_UNSET, allow_legacy_off=False):
     root = Path(root)
     documents = []
-    for name, explicit, parent in ((CONTRACT, contract_path, False), (PARENT, manifest_path, True)):
+    legacy = []
+
+    def append(value, path, data, *, parent):
+        if parent and allow_legacy_off and legacy_off(value):
+            legacy.append((value, path, data))
+            return
+        document = parent_contract(value) if parent else value
+        if document is not None:
+            documents.append((document, path, data))
+
+    sources = [(CONTRACT, contract_path, False), (PARENT, manifest_path, True)]
+    if current_document is not _UNSET:
+        append(current_document, None, None, parent=True)
+        if manifest_path is not None:
+            sources.append((PARENT, None, True))
+    for name, explicit, parent in sources:
         path = Path(explicit) if explicit is not None else Path(name)
         path = path if path.is_absolute() else root / path
         if path.exists() or path.is_symlink() or explicit is not None:
             data = _read_source(root, path)
             value = parse_json(data)
-            document = parent_contract(value) if parent else value
-            if document is not None:
-                documents.append((document, path, data))
+            append(value, path, data, parent=parent)
     path = Path(spec_path) if spec_path is not None else root / SPEC
     if spec_path is not None and not path.is_absolute():
         path = root / path
     document = spec_contract(root, path)
     if document[0] is not None:
         documents.append(document)
+    require(not (legacy and documents), "governance-contract-mirrors-disagree")
     if not documents and not required:
         return None, None, None
     require(bool(documents), "explicit-governance-contract-missing")

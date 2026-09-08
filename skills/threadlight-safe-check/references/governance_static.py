@@ -7,9 +7,19 @@ import json
 from pathlib import Path
 
 
-def enabled(document):
-    value = document.get("governance")
-    return "governance" in document and (not isinstance(value, dict) or value.get("mode") != "off")
+def enabled(document, project=None, *, manifest_path=None):
+    try:
+        from skills._shared.governance import validate_governance_contract
+        from skills._shared.governance_selection import legacy_off, load_contract, parent_contract
+        if project is not None:
+            contract = load_contract(project, required=False, manifest_path=manifest_path,
+                                     current_document=document, allow_legacy_off=True)
+        else:
+            contract = None if legacy_off(document) else parent_contract(document)
+        return contract is not None and validate_governance_contract(
+            contract, deployment_target="demo-sandbox")["governance"]["mode"] != "off"
+    except (ImportError, OSError, ValueError):
+        return True
 
 
 def generator():
@@ -80,13 +90,20 @@ def host_environment(project, agent, service, config):
     return expected
 
 
-def check(project, document):
-    if not enabled(document):
-        return {}
+def check(project, document, *, manifest_path=None):
     result = {"scope": "static-declarations-not-enforcement", "stage": "pre-image",
               "bindings": [], "gaps": [], "unverified": ["signature-verification-required-at-collection",
                                                        "live-effect-closure-not-verified"]}
     gaps = result["gaps"]
+    try:
+        from skills._shared.governance_selection import load_contract
+        document = load_contract(project, required=False, manifest_path=manifest_path,
+                                 current_document=document, allow_legacy_off=True)
+        if document is None or document["governance"]["mode"] == "off":
+            return {}
+    except (ImportError, OSError, ValueError):
+        gaps.append("governance: governance-contract-invalid-or-conflicting")
+        return result
     try:
         import yaml
         from govern_bundle.policy_bundle import PIN_FILE, verify_bundle, validate_native_manifest
@@ -125,8 +142,14 @@ def check(project, document):
 
         native = contract["framework"] == "microsoft-agent-framework"
         pins = read(PIN_FILE)
-        same(agent / "container.py", gen.REFERENCE / ("maf-container.py" if native else "ghcp-container.py"),
-             "container.py")
+        entrypoint = contained(project, (agent / "container.py").relative_to(project))
+        wrapper = gen.REFERENCE / "maf-entrypoint.py"
+        if native and entrypoint.is_file() and entrypoint.read_bytes() == wrapper.read_bytes():
+            same(agent / "container.py", wrapper, "container.py")
+            same(agent / "governance_host.py", gen.REFERENCE / "maf-container.py", "governance_host.py")
+        else:
+            same(agent / "container.py", gen.REFERENCE / ("maf-container.py" if native else "ghcp-container.py"),
+                 "container.py")
         runtime_spec = importlib.util.find_spec("govern_native")
         runtime = Path(runtime_spec.origin).parent if runtime_spec else gen.GOVERN / "references/runtime"
         if native:
@@ -258,12 +281,18 @@ def check(project, document):
                             "image_digest": image.split("@")[1], "environment": config["environment"],
                             "subscription": config["subscription"], "resource_group": config["resource_group"]}
                 if (association.expected_deployment.model_dump(mode="json") != expected
-                        or association.producer != "native" or association.key_id != config["key_id"]
+                        or association.producer != "native" or association.tenant_id != config["tenant_id"]
+                        or association.key_id != config["key_id"]
                         or association.service_client_id != b["agent_client_id"]
-                        or association.downstream_client_id != b["downstream_client"]
+                        or (association.credential_mode == "separate-managed-identity"
+                            and association.downstream_client_id != b["downstream_client"])
                         or {k: v.model_dump(mode="json") for k, v in association.probe_controllers.items()}
                         != b["control_config"]["probe_controllers"]):
                     raise ValueError("native-probe-association-binding-mismatch")
+                workload = association.workloads.get(b["agent_principal"])
+                if (workload is None or workload.client_id != b["agent_client_id"]
+                        or workload.agent_id != config["agent_id"]):
+                    raise ValueError("native-probe-association-workload-mismatch")
                 options = contained(project, ".threadlight/governance-probe.json")
                 if not options.is_file():
                     raise ValueError("native-probe-association-content-unavailable")
@@ -274,6 +303,8 @@ def check(project, document):
                         from governance_probe import load_configuration, preflight
                     probe_config = load_configuration(project, options)
                     _, registered, _ = preflight(probe_config)
+                    from skills._shared.probe_evidence import policy_bindings
+                    policy_bindings(probe_config)  # Full envelope declarations, not signature verification.
                     if (registered.native_policy_digest != bundle.bundle_digest
                             or registered.deployment.model_dump(mode="json") != expected):
                         raise ValueError()

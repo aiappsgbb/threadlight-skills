@@ -388,7 +388,7 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
     selectors = dm.get("module_selectors", {})
     services = {s["name"]: s for s in dm.get("services", [])}
     gaps: list[str] = []
-    governance = _governance_static(repo, data)
+    governance = _governance_static(repo, data, manifest_path=manifest_path)
     gaps.extend(governance.get("gaps", []))
     extra = {"repo": str(repo), **({"governance_health": governance} if governance else {})}
 
@@ -494,13 +494,52 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
 
 
 def _governance_enabled(data):
+    """Conservative validation hint, never authority to disable a selected contract."""
+    if not isinstance(data, dict):
+        return True
     value = data.get("governance")
-    return "governance" in data and (not isinstance(value, dict) or value.get("mode") != "off")
+    return (bool({"governance_mode", "governanceMode"} & data.keys())
+            or ("governance" in data and (value != {"mode": "off"}
+                or bool({"framework", "tools", "lifecycle_bindings", "required", "requires"} & data.keys()))))
 
 
-def _governance_static(repo, data):
-    if not _governance_enabled(data):
-        return {}
+def _legacy_governance_unselected(repo, data, manifest_path):
+    """Conservative stdlib-only fallback for the copied CLI, not a contract validator."""
+    if _governance_enabled(data):
+        return False
+    try:
+        def unique(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError()
+                result[key] = value
+            return result
+        for path in {repo / "specs/manifest.json", Path(manifest_path) if manifest_path else repo / "specs/manifest.json",
+                     repo / "specs/governance-contract.json", repo / "specs/SPEC.md"}:
+            if (any(p.is_symlink() for p in (path, *path.parents))
+                    or not path.resolve().is_relative_to(repo.resolve())):
+                return False
+            if not path.exists():
+                continue
+            with path.open("rb") as stream:
+                raw = stream.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                return False
+            if path.name == "governance-contract.json":
+                return False
+            if path.name == "SPEC.md":
+                if re.search(r"governance", raw.decode("utf-8"), re.I):
+                    return False
+            elif _governance_enabled(json.loads(raw, object_pairs_hook=unique,
+                    parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))):
+                return False
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _governance_static(repo, data, *, manifest_path=None):
     try:
         from governance_references.governance_static import check
     except ImportError:
@@ -510,9 +549,11 @@ def _governance_static(repo, data):
         try:
             from governance_static import check
         except ImportError:
+            if _legacy_governance_unselected(repo, data, manifest_path):
+                return {}
             return {"gaps": ["governance: install the governance safe-check collector package"],
                     "scope": "static-declarations-not-enforcement"}
-    return check(repo, data)
+    return check(repo, data, manifest_path=manifest_path)
 
 
 # ---------------------------------------------------------------------------
@@ -1030,8 +1071,8 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         "scheduled_jobs": job_results,
         "gaps": gaps,
     }
-    if _governance_enabled(data):
-        health = _governance_static(resolved_root, data)
+    health = _governance_static(resolved_root, data, manifest_path=manifest_path)
+    if health:
         governance_gaps = [*parent_gaps, *health.get("gaps", [])]
         payload.update(governance_health=health, governance_probes=[], governance_gaps=governance_gaps)
         configuration = resolved_root / ".threadlight/governance-probe.json"
@@ -1144,7 +1185,7 @@ def main() -> int:
     args = parser.parse_args()
 
     repo = Path.cwd()
-    manifest_path = (repo / args.manifest).resolve()
+    manifest_path = repo / args.manifest
     out_dir = (repo / args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 

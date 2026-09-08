@@ -570,13 +570,9 @@ async def collect_project(project, configuration=None, *, credential=None, signe
                           run=observation.run_command, http=None, timeout=30, force=False, manifest_path=None,
                           required_target=None):
     project = Path(project).resolve()
-    selected_manifest = Path(manifest_path or "specs/manifest.json")
-    if selected_manifest.is_absolute():
-        selected_manifest = selected_manifest.relative_to(project)
-    document = static.read(static.contained(project, selected_manifest))
-    if not static.enabled(document):
+    declaration = static.check(project, {}, manifest_path=manifest_path)
+    if not declaration:
         return {}
-    declaration = static.check(project, document)
     failure = {"governance_health": declaration, "governance_probes": [],
                "governance_gaps": list(declaration["gaps"])}
     configuration = Path(configuration or project / ".threadlight/governance-probe.json")
