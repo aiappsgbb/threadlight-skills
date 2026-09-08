@@ -98,6 +98,31 @@ def test_reference_reinstall_clears_shared_namespace_owners_before_install(monke
     assert calls[1][-3:] == [str(path) for path in wheels]
 
 
+@pytest.mark.parametrize("standalone", [None, "/opt/bicep"])
+def test_native_deployment_uses_matching_bicep_cli_syntax(monkeypatch, tmp_path, standalone):
+    path = ROOT / "scripts/ci/run-governance-pin-tests.py"
+    spec = importlib.util.spec_from_file_location("bootstrap_pin_runner", path)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    monkeypatch.setattr(runner, "SCRATCH", tmp_path)
+    monkeypatch.setattr(runner.shutil, "which", lambda name: standalone if name == "bicep" else None)
+    calls = []
+
+    class CompilationCaptured(Exception):
+        pass
+
+    def capture(args, **kwargs):
+        calls.append([str(arg) for arg in args])
+        raise CompilationCaptured
+
+    monkeypatch.setattr(runner, "run", capture)
+    with pytest.raises(CompilationCaptured):
+        runner.prepare_deployment({})
+    prefix = [standalone, "build"] if standalone else ["az", "bicep", "build", "--file"]
+    assert calls == [[*prefix, str(ROOT / "skills/threadlight-deploy/references/governance/governance.bicep"),
+                      "--outfile", str(tmp_path / "deployment-bicep.json")]]
+
+
 def test_protected_input_loader_accepts_only_pinned_acknowledged_resume(tmp_path):
     from test_runtime_readiness import input_fixture, helper
     from test_hosted_bootstrap_lifecycle import inputs

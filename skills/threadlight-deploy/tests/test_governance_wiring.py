@@ -442,9 +442,10 @@ def test_bicep_compiles_and_has_separate_scoped_service_identities(tmp_path):
     if os.environ.get("THREADLIGHT_GOVERNANCE_BICEP"):
         output = Path(os.environ["THREADLIGHT_GOVERNANCE_BICEP"])
     else:
-        command = [shutil.which("bicep")] if shutil.which("bicep") else ["az", "bicep"]
+        compiler = shutil.which("bicep")
+        command = [compiler, "build"] if compiler else ["az", "bicep", "build", "--file"]
         output = tmp_path / "compiled.json"
-        result = subprocess.run([*command, "build", "--file", str(path), "--outfile", str(output)],
+        result = subprocess.run([*command, str(path), "--outfile", str(output)],
                                 capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
     compiled = json.loads(output.read_text())

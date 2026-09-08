@@ -73,8 +73,9 @@ def test_frozen_proof_configuration_discloses_no_network_isolation():
 def test_compiled_proof_network_is_public_but_authentication_remains_mandatory(tmp_path):
     output = Path(os.environ["THREADLIGHT_GOVERNANCE_BICEP"]) if os.environ.get("THREADLIGHT_GOVERNANCE_BICEP") else tmp_path / "compiled.json"
     if not os.environ.get("THREADLIGHT_GOVERNANCE_BICEP"):
-        command = [shutil.which("bicep")] if shutil.which("bicep") else ["az", "bicep"]
-        result = subprocess.run([*command, "build", "--file", str(REFERENCES / "governance.bicep"),
+        compiler = shutil.which("bicep")
+        command = [compiler, "build"] if compiler else ["az", "bicep", "build", "--file"]
+        result = subprocess.run([*command, str(REFERENCES / "governance.bicep"),
                                  "--outfile", str(output)], capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
     template = json.loads(output.read_text())

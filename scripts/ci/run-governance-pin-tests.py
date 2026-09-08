@@ -451,9 +451,10 @@ def prepare_deployment(pins, *, local_only=False):
     (SCRATCH / "deployment-proof.json").unlink(missing_ok=True)
     reference = ROOT / "skills/threadlight-deploy/references/governance"
     output = SCRATCH / "deployment-bicep.json"
-    bicep = [shutil.which("bicep")] if shutil.which("bicep") else ["az", "bicep"]
+    compiler = shutil.which("bicep")
+    bicep = [compiler, "build"] if compiler else ["az", "bicep", "build", "--file"]
     if not local_only:
-        run([*bicep, "build", "--file", reference / "governance.bicep", "--outfile", output])
+        run([*bicep, reference / "governance.bicep", "--outfile", output])
     deps = tomllib.loads((reference / "pyproject-maf.toml").read_text())["project"]["dependencies"]
     requested = sorted(set(requirements(pins) + gateway_requirements() + [
         item for item in deps if not item.startswith("threadlight-govern-")
@@ -489,7 +490,7 @@ def prepare_deployment(pins, *, local_only=False):
     if len(fixtures) != 1:
         raise RuntimeError("generated external fixture missing")
     fixture = fixtures[0]
-    run([*bicep, "build", "--file", fixture / "infra/main.bicep",
+    run([*bicep, fixture / "infra/main.bicep",
          "--outfile", SCRATCH / "deployment-main-bicep.json"])
     proof_dir = SCRATCH / "deployment-isolated-proof"
     proof_dir.mkdir(exist_ok=True)

@@ -279,8 +279,10 @@ def test_only_readiness_proof_runs_the_strict_post_deploy_safe_check():
 
 def test_readiness_uses_generated_runtime_gate_not_smoke_design_or_business_invocation():
     names = names_for("readiness-proof")
-    assert "Executed local pre-deploy governed-actions gate" in names
-    assert "Bind immutable images, provision service phase and deploy generated agent" in names
+    predeploy = "Executed local pre-deploy governed-actions gate"
+    resume = "Resume immutable SDK version and publish signed bootstrap binding"
+    assert names.index(predeploy) < names.index(resume) < names.index(READINESS_SAFE_CHECK_STEP)
+    assert "Bind immutable images, provision service phase and deploy generated agent" not in names
     assert GATE_STEP not in names
     assert "[Phase 4/4] Drive §6.4 — invoke killer prompts" not in names
 
