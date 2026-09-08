@@ -233,6 +233,9 @@ jobs:
         run: python -m pytest skills/threadlight-production-ready/tests/ -v
       - name: Run threadlight-auto tests
         run: python -m pytest skills/threadlight-auto/tests/ -v
+      - name: Run threadlight-agentops evidence contracts
+        # Synthetic native-shaped artifacts and bounded fake commands only; no Azure or inference.
+        run: python -m pytest skills/threadlight-agentops/tests/ -v
       - name: Run standalone (non-pytest) test suites
         # Several suites are stdlib-only scripts exposing `t_*` functions and a
         # main() instead of pytest-collectable `test_*` functions. pytest

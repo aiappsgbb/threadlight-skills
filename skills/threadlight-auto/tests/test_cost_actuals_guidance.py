@@ -65,8 +65,8 @@ CONSUMPTION_IQ = (
     REPO / "skills" / "threadlight-consumption-iq" / "scripts" / "consumption_iq.py"
 )
 
-AUTO_VERSION = "1.3.0"
-PROD_VERSION = "0.12.0"
+AUTO_VERSION = "1.4.0"
+PROD_VERSION = "0.13.0"
 
 # The stage list is a contract, not an implementation detail: production-ready,
 # the Canvas control plane, and the state schema all key off these names.
@@ -77,6 +77,7 @@ EXPECTED_STAGES = [
     "safe_check",
     "cost_projection",
     "invoke",
+    "agentops",
     "evals",
     "redteam",
     "govern",

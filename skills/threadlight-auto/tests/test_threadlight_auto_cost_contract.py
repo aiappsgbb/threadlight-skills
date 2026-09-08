@@ -5,7 +5,7 @@ Two things are frozen here, both of which a future edit could silently break:
 
   1. **The published version.** `threadlight-auto` gained a governed-actions
      lifecycle *recommendation* (never an execution stage), so its SKILL
-     metadata must read `1.3.0` and the existing cost-actuals lockstep test
+     metadata must read `1.4.0` and the existing cost-actuals lockstep test
      must agree with it — a version pinned in two places that disagree is a
      published-surface bug, not a formatting detail.
 
@@ -30,7 +30,7 @@ AUTO_SKILL = REPO / "skills" / "threadlight-auto" / "SKILL.md"
 ORCHESTRATOR = REPO / "skills" / "threadlight-auto" / "references" / "orchestrator.py"
 COST_ACTUALS_TEST = Path(__file__).resolve().parent / "test_cost_actuals_guidance.py"
 
-AUTO_VERSION = "1.3.0"
+AUTO_VERSION = "1.4.0"
 
 EXPECTED_HANDOFF = {
     "execution": "manual-explicit",

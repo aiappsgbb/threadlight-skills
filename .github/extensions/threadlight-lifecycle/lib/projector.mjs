@@ -1205,6 +1205,39 @@ async function projectSkill({
   errors,
   now,
 }) {
+  let agentOpsRoots = null;
+  if (definition.applicability === "agentops-opt-in") {
+    try {
+      let explicitRoots = [];
+      const metadata = await reader.metadata("specs/agentops-manifest.json");
+      if (metadata?.size > 1024 * 1024) {
+        throw new ArtifactAccessError("specs/agentops-manifest.json", "manifest exceeds size limit");
+      }
+      try {
+        const inventory = await reader.readJson("specs/agentops-manifest.json");
+        if (Array.isArray(inventory?.agents)) {
+          explicitRoots = inventory.agents.map((agent) => agent?.root);
+        }
+      } catch (error) {
+        if (!isArtifactParseError(error)) throw error;
+        // Malformed evidence is handled below when a real opt-in is present.
+      }
+      agentOpsRoots = await reader.agentOpsRoots(explicitRoots);
+    } catch (error) {
+      if (!(error instanceof ArtifactAccessError) && !["EACCES", "ENOENT", "ENOTDIR", "EPERM"].includes(error?.code)) {
+        throw error;
+      }
+      errors.push({
+        code: "agentops-discovery-invalid",
+        path: "agentops.yaml",
+        message: "AgentOps opt-in discovery is incomplete or unsafe.",
+      });
+      return { definition, status: "failed", evidence: [], blockers: [] };
+    }
+    if (agentOpsRoots.length === 0) {
+      return { definition, status: "not-applicable", evidence: [], blockers: [] };
+    }
+  }
   if (!isSkillApplicable(definition, manifest, manifestInvalid)) {
     return {
       definition,
@@ -1279,6 +1312,57 @@ async function projectSkill({
           path: jsonPath,
           message: "Required JSON evidence must not be null.",
         });
+      } else if (jsonExists && agentOpsRoots !== null) {
+        const topKeys = ["schema", "tool_version", "generated_at", "freshness", "status",
+          "findings", "repository", "verdict", "agents", "summary"];
+        const capabilities = ["config", "pin", "binding", "integrity", "doctor_freshness",
+          "release_consistency", "workflow"];
+        const capabilityStatuses = ["verified", "not-verified", "stale", "invalid", "not-applicable"];
+        const generated = parseRfc3339Timestamp(json?.generated_at);
+        const oldest = parseRfc3339Timestamp(json?.freshness?.source_oldest_at);
+        const hours = json?.freshness?.valid_for_hours;
+        const valid = isPlainObject(json) &&
+          Object.keys(json).length === topKeys.length &&
+          topKeys.every((key) => Object.hasOwn(json, key)) &&
+          json.schema === "threadlight-agentops-manifest/v1" &&
+          json.tool_version === "0.1.0" &&
+          Array.isArray(json.agents) &&
+          json.agents.length === agentOpsRoots.length &&
+          new Set(json.agents.map((agent) => agent?.root)).size === agentOpsRoots.length &&
+          json.agents.every((agent) => isPlainObject(agent) && agentOpsRoots.includes(agent.root) &&
+            ["operational", "partial", "blocked"].includes(agent.verdict) &&
+            isPlainObject(agent.capabilities) &&
+            Object.keys(agent.capabilities).length === capabilities.length &&
+            capabilities.every((key) => isPlainObject(agent.capabilities[key]) &&
+              Object.keys(agent.capabilities[key]).length === 1 &&
+              capabilityStatuses.includes(agent.capabilities[key].status))) &&
+          isPlainObject(json.repository) && isPlainObject(json.summary) &&
+          typeof json.repository.dirty === "boolean" &&
+          json.summary.agents_total === json.agents.length &&
+          ["operational", "partial", "blocked"].every((verdict) =>
+            json.summary[verdict] === json.agents.filter((agent) => agent.verdict === verdict).length) &&
+          Array.isArray(json.findings) &&
+          ["complete", "partial", "aborted"].includes(json.status) &&
+          ["operational", "partial", "blocked"].includes(json.verdict) &&
+          generated !== null && generated <= now &&
+          isPlainObject(json.freshness) &&
+          Object.keys(json.freshness).length === 2 &&
+          Number.isInteger(hours) && hours >= 1 && hours <= 8760 &&
+          (json.freshness.source_oldest_at === null || (oldest !== null && oldest <= generated));
+        // This surface observes a normalized manifest; only the Python consumer
+        // rechecks source hashes and binding. Presence is never runtime proof.
+        status = valid ? "running" : "failed";
+        if (!valid) {
+          errors.push({
+            code: "agentops-manifest-invalid",
+            path: jsonPath,
+            message: "AgentOps normalized evidence is invalid or does not cover current opt-in roots.",
+          });
+        } else {
+          timestamp = oldest ?? generated;
+          if (now - timestamp >= Math.min(hours, definition.freshnessHours) * 3_600_000) status = "stale";
+          if (json.verdict === "blocked") status = "failed";
+        }
       } else if (jsonExists && legContract) {
         // Live-leg artifact: only project from its status once the safe common
         // envelope validates. A malformed manifest renders `failed` + a
@@ -1333,7 +1417,11 @@ async function projectSkill({
       if (!isArtifactParseError(error)) {
         throw error;
       }
-      errors.push(parseError(error));
+      errors.push(agentOpsRoots !== null ? {
+        code: "agentops-manifest-invalid",
+        path: jsonPath,
+        message: "AgentOps normalized evidence is malformed.",
+      } : parseError(error));
       status = "failed";
     }
   }
@@ -1380,6 +1468,7 @@ async function projectSkill({
   return {
     definition,
     status,
+    ...(agentOpsRoots !== null ? { evidenceState: "manifest-observed" } : {}),
     ...(evidenceState !== undefined ? { evidenceState } : {}),
     evidence,
     blockers: incompletePrerequisite

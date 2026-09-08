@@ -54,6 +54,7 @@ test("reader accepts allowlisted JSON and rejects denied paths", async () => {
     assert.deepEqual(await reader.readJson("specs/manifest.json"), {
       name: "pilot",
     });
+
     await assert.rejects(
       reader.readText(".env"),
       (error) =>
@@ -66,6 +67,43 @@ test("reader accepts allowlisted JSON and rejects denied paths", async () => {
         error instanceof ArtifactAccessError &&
         error.relativePath === "../outside.txt",
     );
+  });
+});
+
+test("AgentOps discovery reads only opt-in filenames and ignores cached workspaces", async () => {
+  await withWorkspace("agentops", async ({ workspace, workspacePath }) => {
+    for (const root of ["agents/first", "agents/second", ".venv/cached", ".agentops/cached"]) {
+      await mkdir(new URL(`${root}/`, workspace), { recursive: true });
+      await writeFile(new URL(`${root}/agentops.yaml`, workspace), "private-config: never-read");
+    }
+    await writeFile(new URL("agentops.yaml", workspace), "private-config: never-read");
+    const reader = await createArtifactReader(workspacePath);
+    assert.deepEqual(await reader.agentOpsRoots(), [".", "agents/first", "agents/second"]);
+    await assert.rejects(reader.readText("agents/first/agentops.yaml"), ArtifactAccessError);
+  });
+});
+
+test("AgentOps opt-in discovery never follows symlinked configuration or directories", async () => {
+  await withWorkspace("agentops-symlink", async ({ workspace, workspacePath, base }) => {
+    await mkdir(new URL("outside/", base));
+    await writeFile(new URL("outside/agentops.yaml", base), "private-config");
+    await symlink(fileURLToPath(new URL("outside/", base)), new URL("linked", workspace));
+    const reader = await createArtifactReader(workspacePath);
+    assert.deepEqual(await reader.agentOpsRoots(), []);
+    await symlink(fileURLToPath(new URL("outside/agentops.yaml", base)), new URL("agentops.yaml", workspace));
+    await assert.rejects(reader.agentOpsRoots(), ArtifactAccessError);
+  });
+});
+
+test("AgentOps can observe an explicit normalized root without reading its configuration", async () => {
+  await withWorkspace("agentops-explicit", async ({ workspace, workspacePath }) => {
+    await mkdir(new URL("examples/deployed/", workspace), { recursive: true });
+    await writeFile(new URL("examples/deployed/agentops.yaml", workspace), "private config");
+    const reader = await createArtifactReader(workspacePath);
+    assert.deepEqual(await reader.agentOpsRoots(), []);
+    assert.deepEqual(await reader.agentOpsRoots(["examples/deployed"]), ["examples/deployed"]);
+    await assert.rejects(reader.agentOpsRoots(["../outside"]), ArtifactAccessError);
+    await assert.rejects(reader.readText("examples/deployed/agentops.yaml"), ArtifactAccessError);
   });
 });
 

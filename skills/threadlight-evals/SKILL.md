@@ -1,23 +1,22 @@
 ---
 name: threadlight-evals
 description: >-
-  DISCOVER + GOVERN + IMPROVE evals leg for threadlight pilots on Microsoft
-  Foundry. Runs and verifies offline batch quality evals, Foundry Continuous
-  Evaluation on live threads, and champion-challenger comparison gates, then
-  emits `specs/evals-manifest.json` for pillar 6 production-readiness scoring.
+  Threadlight evals leg: offline batch quality, Foundry Continuous Evaluation
+  and champion-challenger gates. Emits `specs/evals-manifest.json` for pillar 6.
+  Reuses validated opted-in AgentOps batches without reruns or live-wiring claims.
   USE FOR: continuous evals, offline eval gate, eval schedule, Foundry
   Continuous Evaluation, create_agent_evaluation, Application Insights eval
   results, eval threshold alert, eval run freshness, eval dataset shape,
   tool_calls tool_outputs, champion challenger, A/B eval gate,
   model/prompt swap gate, judge calibration, LLM-as-judge,
-  foundry-evals pipeline leg, continuous-evals pillar,
+  foundry-evals pipeline leg,
   EVAL-001..006, EVAL-101..105, evals-manifest. DO NOT USE FOR: token-level
-  content filtering at the model edge — use the model guardrail / Azure AI
-  Content Safety; adversarial scanning — use threadlight-redteam;
+  content filtering — use Azure AI Content Safety;
+  adversarial scanning — use threadlight-redteam;
   agent-runtime action governance — use threadlight-govern; deep evaluator or
   dataset authoring — use foundry-evals.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # Threadlight Evals — run continuous evals, then prove they ran
@@ -155,6 +154,36 @@ Flags:
 | `--freshness-days N` | Max age for latest eval run. Default: `7`. |
 
 ## The leg, end-to-end
+
+### Selective AgentOps consumption
+
+For explicitly opted-in agents, reuse `specs/agentops-manifest.json` only through
+the packaged `skills/_shared/agentops.py` validator. Do not rerun the same batch
+merely to populate Threadlight evidence. The producer owns native ingestion,
+binding, hashes and freshness; this consumer never reads raw `.agentops` payloads
+or imports customer-repository helpers.
+
+Fresh, bound summary counts, aggregate metrics and nonempty threshold results
+can fill run history, run freshness, declared thresholds and quality checks.
+Native `items_pass_rate` is an **execution pass rate**, not a measured per-row
+quality pass rate: retain it under per-agent execution metrics, never promote it
+to the outcome-KPI `metrics.pass_rate`. Threshold failures and partial row errors
+stay negative. Native comparison directions remain descriptive, not automatic
+quality policy or A/B approval. Keep every opted-in agent and
+the worst status across agents and valid conflicting native evidence.
+
+AgentOps cannot fill scenarios, dataset shape, scheduling, online evaluation,
+alerts or champion–challenger/A-B gates. A comparison summary alone is not an
+A/B deployment gate. Missing, malformed, stale, future or mismatched summaries
+remain unverified; a Doctor `ready` headline is not eval quality proof. Emit
+allowlisted aggregates and provenance only, never rows, prompts, effective
+configuration or native free-form report text.
+
+The optional `agentops.agents[]` block retains each agent's `domain_status`,
+execution metrics, artifact hashes and receipt hash. `represented_blockers`
+contains `AOPS-EVAL-QUALITY` only when the verified domain's matching blocker
+is actually represented by a canonical must-fix quality finding. Unknown
+blockers remain separate AgentOps findings; a verdict alone cannot deduplicate.
 
 This is a **producing** leg. It emits artefacts. It does not silently mutate the
 user's repo for findings; remediation is performed by the agent after reviewing

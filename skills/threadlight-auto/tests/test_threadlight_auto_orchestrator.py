@@ -40,6 +40,63 @@ def _load_orchestrator():
 orch = _load_orchestrator()
 
 
+def test_agentops_no_opt_in_skips_even_after_cascade(tmp_path):
+    decision = orch._check_agentops(tmp_path, {})
+    assert decision.decision == "skip"
+    assert decision.reason == "AgentOps not opted in."
+    decisions = orch._cascade_invalidations([
+        orch.StageDecision("deploy", "run", "fixture"), decision,
+    ])
+    assert decisions[-1].decision == "skip"
+
+
+def test_agentops_opt_in_needs_normalized_manifest(tmp_path):
+    (tmp_path / "agentops.yaml").write_text("target: demo:1\n")
+    decision = orch._check_agentops(tmp_path, {})
+    assert decision.decision == "run"
+    assert decision.artifacts_missing == ["specs/agentops-manifest.json"]
+
+
+def test_agentops_stage_is_after_governance_and_does_not_replace_gates(tmp_path):
+    from skills._shared.tests.governance_consumer_fixtures import contract, seed_inventory
+    seed_inventory(tmp_path, contract(selected=True))
+    stages = orch._stages_for(tmp_path)
+    assert stages.index("invoke") < stages.index("agentops") < stages.index("evals")
+    assert stages.index("govern") < stages.index("governed_actions_gate") < stages.index("deploy")
+    assert stages.index("deploy") < stages.index("governance_probe") < stages.index("agentops")
+
+
+@pytest.mark.parametrize("verdict", ["operational", "partial", "blocked"])
+def test_agentops_reuses_valid_nonpassing_observation(tmp_path, monkeypatch, verdict):
+    from skills._shared import agentops
+    (tmp_path / "agentops.yaml").write_text("target: demo:1\n")
+    monkeypatch.setattr(agentops, "load_manifest", lambda repo: {"verdict": verdict})
+    decision = orch._check_agentops(tmp_path, {})
+    assert decision.decision == "skip"
+    assert f"verdict={verdict}" in decision.reason
+
+
+def test_agentops_stale_or_malformed_manifest_requires_normalization(tmp_path):
+    (tmp_path / "agentops.yaml").write_text("target: demo:1\n")
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs/agentops-manifest.json").write_text('{"verdict":"operational"}')
+    assert orch._check_agentops(tmp_path, {}).decision == "run"
+
+
+def test_agentops_worker_exit_zero_cannot_replace_emitted_evidence(tmp_path, monkeypatch):
+    (tmp_path / "agentops.yaml").write_text("target: demo:1\n")
+    for name in orch.STAGE_PROBES:
+        if name != "agentops":
+            monkeypatch.setitem(
+                orch.STAGE_PROBES, name,
+                lambda workspace, state, name=name: orch.StageDecision(name, "skip", "fixture"),
+            )
+    result = orch.execute(tmp_path, lambda stage: 0)
+    assert result["status"] == "blocked"
+    assert result["stage"] == "agentops"
+    assert result["executed"] == ["agentops"]
+
+
 def test_selected_bindings_require_actual_ordered_gates(tmp_path):
     from skills._shared.tests.governance_consumer_fixtures import contract, seed_inventory
     seed_inventory(tmp_path, contract(selected=True))

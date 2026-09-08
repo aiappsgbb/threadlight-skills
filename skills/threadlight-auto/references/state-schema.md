@@ -34,6 +34,7 @@ pretty-printed JSON written by the guidance/agent side.
   "evals":      { "..." },
   "redteam":    { "..." },
   "govern":     { "..." },
+  "agentops":   { "..." },
   "recovery_events": [ "...event shape (below)..." ]
 }
 ```
@@ -69,6 +70,16 @@ pretty-printed JSON written by the guidance/agent side.
 | evals | `specs/evals-manifest.json` | Discover leg — offline + online (Foundry CE) + A/B eval evidence consumed by production-ready pillar 6 |
 | redteam | `specs/redteam-manifest.json` | Discover leg — AI Red Teaming Agent scan evidence consumed by production-ready pillar 7 (SAFE-1xx) |
 | govern | `specs/govern-manifest.json` | Protect leg — AGT runtime-governance artefact consumed by production-ready pillar 2 + pillar 7 (RAI-002/003) |
+
+### Optional AgentOps evidence
+
+The `agentops` stage after invoke and before evals reads `specs/agentops-manifest.json` for roots
+that contain `agentops.yaml`. It uses the packaged shared validator for exact
+schema, current roots, binding, source hashes and freshness. A valid nonpassing
+verdict is evidence, not permission to rerun a native evaluation or Doctor.
+No opt-in skips even when earlier stages cascade; malformed opt-in remains
+visible. The selected-governance gates and deployment-attempt checkpoints below
+remain authoritative and run before AgentOps.
 
 ### Cost-projection fields
 

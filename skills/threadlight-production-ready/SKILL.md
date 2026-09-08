@@ -6,10 +6,29 @@ description: >-
   remediation ownership or an explicit CI readiness gate. Not for deployment,
   runtime implementation, model evaluation or hub provisioning.
 metadata:
-  version: "0.12.0"
+  version: "0.13.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
+
+## Optional AgentOps operations evidence
+
+`AOPS-001` is an additive, tier-0 `sre-handover` aggregate. Per-agent
+`agentops.yaml` is the only opt-in: without it the finding is not-applicable
+and non-scoring; opt-in without valid evidence is not-verified. Consume only
+`specs/agentops-manifest.json` through the independent strict shared contract
+validator (freshness, binding, artifact hashes, all roots, statuses and counts),
+never native JSON or the producer implementation. Aggregate the worst
+operational status across opted-in agents.
+
+Canonical eval, red-team and binding-scoped governance checks retain ownership.
+Exclude a domain blocker from AOPS only when its exact source is represented
+by current validated canonical evidence; a claimed mapping alone is not proof.
+Unknown operational blockers and worse conflicts remain. Remediate adoption
+through the pinned merged `foundry-agentops` sibling, then run
+`threadlight-agentops`; this is not certification or a tagged-release claim.
+No paid probes, deployment, new secrets, RBAC expansion or Citadel writes occur
+as a side effect of assessment.
 
 ## Current runtime-binding contract
 
@@ -101,7 +120,7 @@ The skill exposes an **explicit production-onboarding workflow**:
 
 1. **Assess (always safe, always read-only).** A Python script
    (`scripts/production_ready.py`) inventories your target Azure
-   subscription/resource group, scores it against 191 findings spanning 13
+   subscription/resource group, scores it against 192 findings spanning 13
    production-readiness pillars, and emits the scorecard/report plus an
    `apply-plan.json` that names every must-fix gap and the remediation recipe
    that closes it.

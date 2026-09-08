@@ -15,7 +15,7 @@ description: >-
   hub (use citadel-spoke-onboarding); the first-run sandbox deploy (use
   threadlight-deploy).
 metadata:
-  version: "0.3.1"
+  version: "0.4.0"
 ---
 
 # Threadlight CI/CD — prod-deploy pipeline + env-setup runbooks
@@ -110,11 +110,15 @@ flowchart LR
 | Private-VNet target (self-hosted / managed pool) | add `--private-network` (and `--ado-pool-name <pool>` for ADO) |
 | Eval + red-team CI/CD gate mode | add `--eval-gate soft` (default, warn-only) or `--eval-gate hard` (block on a non-pass verdict) |
 | MCP supply-chain CI/CD gate mode | add `--mcp-gate soft` (default, warn-only) or `--mcp-gate hard` (block on any must-fix MCP finding) |
+| Optional AgentOps integration | `--agentops auto` (default; no opt-in means no pipeline change) or `--agentops off` |
+| Explicit post-deploy Doctor opt-in | add `--agentops-refresh-doctor`; runtime owner approval and existing application telemetry scope are still required |
+| Doctor-only schedule | add `--agentops-refresh-doctor --agentops-doctor-schedule "0 6 * * *"`; never schedules deployment |
 | From a saved framing file | `--framing-file framing.json` |
 | Run the test suite | `python -m pytest tests/ -v` |
 
 > If `python` resolves to Python 2 on your machine, use `python3` (the generator
-> is pure Python 3 stdlib).
+> renderer uses Python 3 stdlib; optional AgentOps authoritative service
+> discovery uses the shared contract and PyYAML).
 
 **Spoke flags:** `--hub-sub` / `--hub-apim-id` / `--access-contract-product` surface
 the hub coordinates the platform team needs to wire the Access Contract; they are
@@ -163,6 +167,54 @@ that `threadlight-production-ready` writes (`tests/mcp-sbom.json`): `soft`
 (default) warns only and keeps the pipeline green; `hard` blocks the pipeline on
 any must-fix MCP finding (an unpinned server, undocumented lock drift, or an
 inline credential). OIDC / WIF only — no secret.
+
+### `--agentops auto|off`
+
+Discover opted-in roots from the **target output repository**, using the shared
+AgentOps discovery contract. The only opt-in is each agent's `agentops.yaml`;
+there is no second agent registry. `auto` without opt-in and `off` preserve
+the existing workflows and do not emit AgentOps tooling.
+
+With opt-in, compose into the existing `eval-gate` job / `eval_gate` stage:
+
+- PRs run the bound AgentOps eval once, including an explicitly bound baseline
+  comparison when a baseline exists. They never deploy or promote a baseline.
+  Untrusted fork PRs do not receive the GitHub federated execution context.
+- Canonical `evals_check.py --target . --emit` consumes the existing validated
+  batch; it does not execute a second evaluation. Existing quality verdict gates
+  retain their soft/hard policy. Runtime approval/binding failures fail closed,
+  independently of that advisory quality policy.
+- Post-deploy Doctor is **off by default**. Enabling it requires both the
+  generator option and explicit current runtime owner approval for the existing
+  application's identity, target, environment and telemetry scope.
+- An optional Doctor-only schedule skips provisioning, deployment and paid
+  eval. It uses the same approved environment, private runner selection and
+  OIDC/WIF context. ADO quality execution is an environment-bound deployment job
+  so environment approval checks still apply.
+
+The generator vendors the minimal tooling under `.threadlight/skills/`
+to make the emitted commands executable in the application repository. Review
+and commit this tooling and the existing workflow before enabling runtime
+execution. Prepare the exact native `agentops-accelerator==0.14.0` runtime,
+PyYAML for bounded authoritative `azure.yaml` service discovery,
+committed binding policy and scoped owner approval using `foundry-agentops` /
+`threadlight-agentops`. The packaged native observer records and rechecks an
+actual same-process receipt without requiring new PKI or an external signer; absent
+prerequisites are an actionable failure, not a green placeholder. Generated
+runtime evidence must be ignored by Git while committed policy and tooling
+remain tracked, so capture does not invalidate the clean source binding.
+
+Do not use `agentops workflow generate`, create another workflow, install a new
+identity, widen RBAC, provision telemetry or modify Citadel. No keys or storage
+resources are generated. Existing application-scoped authentication must already
+authorize the requested native operation.
+
+**Native-output privacy:** unset `GITHUB_STEP_SUMMARY`, disable shell tracing,
+use bounded private capture and clean raw outputs. Never upload native `.agentops`
+artifacts, raw eval/Doctor logs, or public step summaries. Only the normalized
+allowlisted manifest may be published; this generator publishes nothing by
+default. Raw retention needs separate explicit owner-approved location,
+permissions and retention scope—not invented secrets or infrastructure.
 
 ## Relationship to threadlight-production-ready
 

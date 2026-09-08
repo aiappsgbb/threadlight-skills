@@ -159,6 +159,29 @@ def test_report_is_explicit_about_proof_boundaries(tmp_path):
     assert "returns_apply_decision" in text and "unverified" in text
 
 
+def test_agentops_ready_does_not_change_canonical_binding_manifest(tmp_path):
+    write_contract(tmp_path)
+    before = gc.evaluate(str(tmp_path))
+    (tmp_path / "agentops.yaml").write_text("target: agent:fixture:1\n")
+    (tmp_path / "specs/agentops-manifest.json").write_text(json.dumps({
+        "schema": "threadlight-agentops-manifest/v1",
+        "status": "ready",
+        "verdict": "ready",
+        "agents": [{
+            "agent_key": ".", "domains": {
+                "govern": {"status": "pass", "assert": "pass", "acs": "pass"},
+            },
+        }],
+    }))
+    after = gc.evaluate(str(tmp_path))
+    assert after == before
+    assert after["coverage"]["tools_enforced"] == 0
+    assert after["coverage"]["tools_unverified"] == 1
+    assert after["coverage"]["tools_unbound"] == 1
+    assert gc.manifest(str(tmp_path), after) == before
+    assert gc.main(["--target", str(tmp_path), "--gate"]) == 2
+
+
 def test_rejects_symlink_contract(tmp_path):
     target = tmp_path / "actual.json"
     target.write_text(json.dumps(contract()))

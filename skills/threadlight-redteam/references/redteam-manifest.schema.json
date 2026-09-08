@@ -29,6 +29,65 @@
     "must_fix": {"type": "array", "items": {"type": "string"}},
     "should_fix": {"type": "array", "items": {"type": "string"}},
     "not_verified": {"type": "array", "items": {"type": "string"}},
+    "agentops": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "agents"],
+      "properties": {
+        "source": {"const": "specs/agentops-manifest.json"},
+        "source_manifest_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "agents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["agent_key", "root", "capabilities", "asr"],
+            "properties": {
+              "agent_key": {"type": "string"},
+              "service": {"type": ["string", "null"]},
+              "root": {"type": "string"},
+              "scan_captured_at": {"type": ["string", "null"], "format": "date-time"},
+              "num_attacks": {"type": ["integer", "null"], "minimum": 0},
+              "asr": {"$ref": "#/properties/asr"},
+              "evidence_refs": {"type": "array", "items": {"type": "string"}},
+              "artifacts": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+              "receipt_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+              "native_verdict": {"enum": ["pass", "fail", "unknown"]},
+              "domain_status": {"enum": ["verified", "not-verified", "stale", "invalid", "not-applicable"]},
+              "represented_blockers": {"type": "array", "maxItems": 0},
+              "max_asr": {"type": "number", "minimum": 0, "maximum": 1},
+              "category_mapping": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "harmful_content": {
+                    "type": "array",
+                    "items": {"enum": ["violence", "hate_unfairness", "sexual", "self_harm"]}
+                  }
+                }
+              },
+              "per_category": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["total", "successful", "attack_success_rate"],
+                  "properties": {
+                    "total": {"type": "integer", "minimum": 1},
+                    "successful": {"type": "integer", "minimum": 0},
+                    "attack_success_rate": {"type": "number", "minimum": 0, "maximum": 1}
+                  }
+                }
+              },
+              "capabilities": {
+                "type": "object",
+                "additionalProperties": {"enum": ["pass", "must-fix", "should-fix", "not-verified", "not-applicable"]}
+              }
+            }
+          }
+        }
+      }
+    },
     "asr": {
       "type": "object",
       "additionalProperties": false,
@@ -84,6 +143,20 @@
         },
         "evidence": {"type": ["string", "null"]},
         "hint": {"type": ["string", "null"]},
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "status"],
+            "properties": {
+              "source": {"type": ["string", "null"]},
+              "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified", "not-applicable"]},
+              "agent_key": {"type": "string"},
+              "evidence_refs": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
         "finding_id": {
           "enum": ["SAFE-101", "SAFE-102", "SAFE-103", "SAFE-104", "SAFE-105", "SAFE-106"]
         }

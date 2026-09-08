@@ -16,6 +16,7 @@ _spec.loader.exec_module(mod)
 
 def test_version_is_semver():
     assert re.match(r"^\d+\.\d+\.\d+$", mod.VERSION)
+    assert mod.VERSION == "0.4.0"
 
 
 def test_version_matches_skill_md():
