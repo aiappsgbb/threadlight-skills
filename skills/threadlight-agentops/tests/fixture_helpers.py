@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from contextlib import contextmanager
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 
 def create_agentops_fixture(repo: Path, *, state="healthy", now=None, redteam=True) -> dict:
@@ -48,4 +50,26 @@ def create_agentops_fixture(repo: Path, *, state="healthy", now=None, redteam=Tr
     return manifest
 
 
-__all__ = ["create_agentops_fixture"]
+@contextmanager
+def native_observer_fixture():
+    """Yield a real bounded synthetic runner and scoped owner-approval helper.
+
+    Only installed-package/executable discovery is simulated. The observer,
+    subprocess, receipt writer, validation and normalization are real. The
+    context owns its synthetic repository and restores all patches on exit.
+    """
+    spec = importlib.util.spec_from_file_location("threadlight_reusable_runtime_fixture",
+        Path(__file__).with_name("test_runtime_integration.py"))
+    source = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(source)
+    case = source.RuntimeIntegrationTests(methodName="runTest")
+    try:
+        case.setUp()
+        yield SimpleNamespace(
+            repo=case.repo, observer=case.observer, runtime=case.runtime,
+            run_command=case.observer.contract.bounded_command, approve=case.approve)
+    finally:
+        case.doCleanups()
+
+
+__all__ = ["create_agentops_fixture", "native_observer_fixture"]

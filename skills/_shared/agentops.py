@@ -300,7 +300,6 @@ def discover_opted_in_agents(repo: Path) -> list[dict]:
     _require(root.is_dir(), "repository-unavailable")
     if not _has_optin_marker(root):
         return []
-    azd = _azd_agent_roots(root)
     pending, markers, foundry, seen = [root], set(), set(), 0
     while pending:
         directory = pending.pop()
@@ -329,6 +328,7 @@ def discover_opted_in_agents(repo: Path) -> list[dict]:
                         pending.append(Path(entry.path))
         except OSError:
             raise AgentOpsValidationError("discovery-unreadable") from None
+    azd = _azd_agent_roots(root)
     candidates = set(azd) | foundry | {"."} if azd or foundry else markers | {"."}
     found = []
     for relative in sorted(candidates):
@@ -411,6 +411,17 @@ def _verify_local_observation(record, policy, private, now):
     operation = observation.get("operation")
     _require(operation in {"eval", "doctor"} and record.get("operation") == operation, "observation-operation-mismatch")
     result = parse_json(private["result"])
+    if observation["exit_code"] == 2:
+        if operation == "eval":
+            _require(_eval_summary(result, policy)["overall_passed"] is False,
+                     "observed-exit-artifact-mismatch")
+        else:
+            _require({"evidence", "history"} <= private.keys(), "missing-observed-doctor")
+            evidence = parse_json(private["evidence"])
+            _doctor(evidence, private["history"], policy.get("required_doctor_sources"), now, 24)
+            _require(any(evidence["doctor"]["counts"][severity] > 0
+                         for severity in ("critical", "warning", "info")),
+                     "observed-exit-artifact-mismatch")
     if operation == "eval":
         _require(_timestamp(result["started_at"]) >= start
                  and _timestamp(result["finished_at"]) <= end, "unobserved-eval-output")
@@ -558,10 +569,12 @@ def begin_observation(repo, root, *, operation, run_id_sha256, approval_sha256, 
     for role in ("analysis", "dataset"):
         if role == "dataset":
             _require(before[role] is not None, "missing-observation-dataset")
+    candidates = _snapshot_result_candidates(root) if operation == "eval" and "result" not in paths else {}
     token = object()
     _OBSERVATIONS[token] = {
         "repo": repo, "root": root, "state": state, "policy": policy, "paths": paths,
         "started": started, "before": before, "previous": previous,
+        "result_candidates": candidates,
         "record": {"schema": "threadlight-agentops-run-receipt/v1", "producer": "observed-run",
             "operation": operation, "repository_commit": state["commit"], "root": relative,
             "config_sha256": sha256(read_bytes(root, "agentops.yaml", limit=65536)),
@@ -576,11 +589,37 @@ def cancel_observation(token):
     _OBSERVATIONS.pop(token, None)
 
 
-def _observed_result_path(root, latest, started):
+def _snapshot_result_candidates(root):
+    directory = safe_path(root, ".agentops/results", exists=False)
+    if not directory.exists():
+        return {}
+    _require(directory.is_dir(), "unsafe-results-directory")
+    snapshots, scanned, total = {}, 0, 0
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            scanned += 1
+            _require(scanned <= 4096, "result-discovery-limit")
+            if entry.name == "latest":
+                continue
+            _require(not entry.is_symlink(), "symlink-result-candidate")
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            relative = f".agentops/results/{entry.name}/results.json"
+            path = safe_path(root, relative, exists=False)
+            if not path.is_file():
+                continue
+            total += path.stat().st_size
+            _require(total <= 32 * 1024 * 1024, "result-discovery-limit")
+            snapshots[relative] = sha256(read_bytes(root, relative))
+    return snapshots
+
+
+def _observed_result_path(root, latest, started, previous):
     """Find a unique recent native run mirror, never invent a timestamped path."""
     data = parse_json(latest)
     _version(data)
     _require(_timestamp(data.get("started_at")) >= started, "unobserved-eval-output")
+    _require(sha256(latest) not in previous.values(), "unchanged-observed-output")
     directory = safe_path(root, ".agentops/results", exists=False)
     _require(directory.is_dir(), "missing-observed-result")
     found, scanned, total = [], 0, 0
@@ -620,7 +659,9 @@ def finish_observation(token, *, exit_code):
     _require(current_policy == capture["policy"], "observation-scope-changed")
     if "result" not in capture["paths"]:
         latest = read_bytes(root, capture["paths"]["latest"])
-        capture["paths"]["result"] = _observed_result_path(root, latest, capture["started"])
+        selected = _observed_result_path(root, latest, capture["started"], capture["result_candidates"])
+        capture["paths"]["result"] = selected
+        capture["before"]["result"] = capture["result_candidates"].get(selected)
     private, refs = {}, {}
     for role, name in capture["paths"].items():
         base = repo if role == "workflow" else root

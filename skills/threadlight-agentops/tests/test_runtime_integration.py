@@ -94,20 +94,24 @@ elif sys.argv[1] == "doctor":
     path = root / ".agentops/agent/history.jsonl"
     history = json.loads(path.read_text().splitlines()[-1])
     history["timestamp"] = now
-    warning_gate = "--severity-fail" in sys.argv and sys.argv[sys.argv.index("--severity-fail") + 1] == "warning"
-    if warning_gate:
-        findings = [{"severity": "warning", "title": "PRIVATE warning", "id": "synthetic", "category": "security"}]
-        counts = {"critical": 0, "warning": 1, "info": 0}
-        evidence.update(status="ready_with_warnings", warnings=["PRIVATE warning"],
-                        checks=[{"name": "Doctor readiness", "status": "warning", "summary": "PRIVATE"}])
-        evidence["doctor"].update(findings_total=1, counts=counts, max_severity="warning", top_findings=findings)
+    floor = sys.argv[sys.argv.index("--severity-fail") + 1] if "--severity-fail" in sys.argv else "critical"
+    finding_gate = floor in {"warning", "info"}
+    if finding_gate:
+        findings = [{"severity": floor, "title": "PRIVATE finding", "id": "synthetic", "category": "security"}]
+        counts = {"critical": 0, "warning": 0, "info": 0}
+        counts[floor] = 1
+        evidence.update(status="ready_with_warnings" if floor == "warning" else "ready",
+                        warnings=["PRIVATE warning"] if floor == "warning" else [],
+                        checks=[{"name": "Doctor readiness", "status": "warning" if floor == "warning" else "ready",
+                                 "summary": "PRIVATE"}])
+        evidence["doctor"].update(findings_total=1, counts=counts, max_severity=floor, top_findings=findings)
         history.update(findings_total=1, findings_by_severity=counts, findings_by_category={"security": 1},
-                       max_severity="warning", findings=findings)
+                       max_severity=floor, findings=findings)
     (root / ".agentops/release/latest/evidence.json").write_text(json.dumps(evidence))
     with path.open("a") as stream:
         stream.write(json.dumps(history) + "\\n")
     print("PRIVATE Doctor payload")
-    if warning_gate:
+    if finding_gate:
         sys.exit(2)
 else:
     sys.exit(3)
@@ -186,6 +190,20 @@ else:
                 self.runtime.observe(self.repo, operation="eval")
         self.assertFalse(any(str(self.executable) in call.args[0] for call in runner.call_args_list))
 
+    def test_reusable_native_runner_fixture_closes_observe_load_roundtrip(self):
+        helpers = load(SKILL / "tests/fixture_helpers.py", "_reusable_observer_fixture")
+        with helpers.native_observer_fixture() as fixture:
+            fixture.approve("eval")
+            observed = fixture.observer.observe(fixture.repo, operation="eval",
+                                                run_command=fixture.run_command)
+            self.assertEqual(observed["agents"][0]["domains"]["evals"]["verdict"], "pass")
+            checker = load(SKILL / "scripts/agentops_check.py", "_fixture_readonly_checker")
+            import contextlib
+            import io
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(checker.main(["--target", str(fixture.repo), "--emit"]), 0)
+            self.assertEqual(fixture.observer.contract.load_manifest(fixture.repo)["agents"], observed["agents"])
+
     def test_doctor_preserves_observed_warning_floor_exit_two(self):
         self.approve("eval")
         self.assertEqual(self.runtime.main(["--repo", str(self.repo), "--run-eval"]), 0)
@@ -195,6 +213,18 @@ else:
         self.assertEqual(self.runtime.main(["--repo", str(self.repo), "--refresh-doctor"]), 2)
         result = self.observer.contract.load_manifest(self.repo)
         self.assertEqual(result["verdict"], "partial")
+        self.assertEqual(self.observer.contract.read_json(
+            self.repo, ".agentops/threadlight/receipt.json")["observation"]["exit_code"], 2)
+
+    def test_doctor_preserves_info_floor_exit_two_despite_operational_summary(self):
+        self.approve("eval")
+        self.assertEqual(self.runtime.main(["--repo", str(self.repo), "--run-eval"]), 0)
+        approval = self.approve("doctor")
+        approval["doctor_severity"] = "info"
+        self.fixture.write(".agentops/threadlight/approvals/doctor.json", approval)
+        self.assertEqual(self.runtime.main(["--repo", str(self.repo), "--refresh-doctor"]), 2)
+        result = self.observer.contract.load_manifest(self.repo)
+        self.assertEqual(result["verdict"], "operational")
         self.assertEqual(self.observer.contract.read_json(
             self.repo, ".agentops/threadlight/receipt.json")["observation"]["exit_code"], 2)
 

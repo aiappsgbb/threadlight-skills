@@ -547,7 +547,7 @@ class AgentOpsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             helper.create_agentops_fixture(self.repo / "healthy", now=NOW)
 
-    def observe_fake_command(self, *, operation="eval"):
+    def observe_fake_command(self, *, operation="eval", exit_code=None):
         script = self.write(".agentops/operations/fake_native.py", '''
 import json
 from datetime import datetime, timezone
@@ -577,7 +577,7 @@ print("PRIVATE bounded native output")
         code, out, _ = contract.bounded_command(
             [sys.executable, str(script), operation], cwd=self.repo, timeout=10, max_bytes=4096)
         self.assertIn(b"PRIVATE", out)
-        return contract.finish_observation(token, exit_code=code)
+        return contract.finish_observation(token, exit_code=code if exit_code is None else exit_code)
 
     def test_same_process_observation_roundtrip_without_pki(self):
         self.fixture(signed=False)
@@ -588,6 +588,21 @@ print("PRIVATE bounded native output")
         self.assertEqual(result["verdict"], "operational", result)
         self.write("specs/agentops-manifest.json", result)
         self.assertEqual(contract.load_manifest(self.repo), result)
+
+    def test_observed_exit_two_cannot_wrap_success_shaped_eval(self):
+        self.fixture(signed=False)
+        with self.assertRaises(contract.AgentOpsValidationError):
+            self.observe_fake_command(exit_code=2)
+        self.assertFalse((self.repo / ".agentops/threadlight/receipt.json").exists())
+
+    def test_observed_exit_two_cannot_wrap_success_shaped_doctor(self):
+        self.fixture(signed=False)
+        self.observe_fake_command()
+        receipt = self.repo / ".agentops/threadlight/receipt.json"
+        original = receipt.read_bytes()
+        with self.assertRaises(contract.AgentOpsValidationError):
+            self.observe_fake_command(operation="doctor", exit_code=2)
+        self.assertEqual(receipt.read_bytes(), original)
 
     def test_local_capture_supports_readonly_consumers_and_sequential_emission(self):
         import contextlib
@@ -669,6 +684,32 @@ print("PRIVATE bounded native output")
             contract.finish_observation(token, exit_code=0)
         self.assertFalse((self.repo / ".agentops/threadlight/receipt.json").exists())
 
+    def test_inferred_result_cannot_anchor_a_preexisting_candidate(self):
+        from unittest.mock import patch
+        self.fixture(signed=False)
+        current = datetime.now(timezone.utc)
+        cached = copy.deepcopy(self.native)
+        cached.update(started_at=current.isoformat(), finished_at=current.isoformat(), duration_seconds=0.0)
+        self.write(self.roles["result"], cached)
+
+        class Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return current
+
+        paths = {key: value for key, value in self.roles.items()
+                 if key not in {"result", "evidence", "history"}}
+        with patch.object(contract, "datetime", Frozen):
+            token = contract.begin_observation(self.repo, self.repo, operation="eval",
+                run_id_sha256=contract.sha256(b"new-observation"), approval_sha256=contract.sha256(b"approval"),
+                artifact_paths=paths)
+            contract.bounded_command([sys.executable, "-c",
+                "import shutil;shutil.copyfile('.agentops/results/run-one/results.json',"
+                "'.agentops/results/latest/results.json')"], cwd=self.repo)
+            with self.assertRaises(contract.AgentOpsValidationError):
+                contract.finish_observation(token, exit_code=0)
+        self.assertFalse((self.repo / ".agentops/threadlight/receipt.json").exists())
+
     def test_unsigned_native_receipt_without_process_observation_is_not_verified(self):
         self.fixture(signed=False)
         self.record["artifacts"] = {role: {"path": name, "sha256": contract.sha256((self.repo / name).read_bytes())}
@@ -742,8 +783,26 @@ print("PRIVATE bounded native output")
             self.assertEqual(check.assess(self.repo, now=NOW)["verdict"], "not-applicable")
 
     def test_no_optin_does_not_validate_unrelated_malformed_azure_yaml(self):
-        self.write("azure.yaml", "unrelated legacy Azure metadata: [")
-        self.assertEqual(contract.discover_opted_in_agents(self.repo), [])
+        from unittest.mock import patch
+        for text in ("unrelated legacy Azure metadata: [", "local deployment artifact\n"):
+            with self.subTest(metadata=text):
+                self.write("azure.yaml", text)
+                with patch.object(contract, "_azd_agent_roots", side_effect=AssertionError("unselected metadata")):
+                    self.assertEqual(contract.discover_opted_in_agents(self.repo), [])
+                    self.assertEqual(check.assess(self.repo, now=NOW)["verdict"], "not-applicable")
+
+    def test_scalar_azure_metadata_stays_invalid_when_an_agent_really_opts_in(self):
+        self.optin()
+        self.write("azure.yaml", "local deployment artifact\n")
+        with self.assertRaises(contract.AgentOpsValidationError):
+            contract.discover_opted_in_agents(self.repo)
+
+    def test_marker_safety_is_checked_before_unrelated_azure_metadata(self):
+        self.write("opaque.yaml", "agent: fixture:1\n")
+        (self.repo / "agentops.yaml").symlink_to("opaque.yaml")
+        self.write("azure.yaml", "local deployment artifact\n")
+        with self.assertRaisesRegex(contract.AgentOpsValidationError, "symlink-path"):
+            contract.discover_opted_in_agents(self.repo)
 
     def test_config_is_opaque_and_missing_evidence_is_partial(self):
         self.optin()

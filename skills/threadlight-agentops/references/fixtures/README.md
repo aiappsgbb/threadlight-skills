@@ -42,3 +42,22 @@ receipts. `now` should match the consumer test's validation clock.
 Add desired project files and commit them **before** minting a different fixture
 run: modifying a returned healthy fixture's source/HEAD intentionally invalidates
 its binding. Do not patch a manifest verdict or source hash to manufacture green.
+
+For the ordinary no-PKI route, the same helper module exposes the context manager
+`native_observer_fixture()`. It yields `repo`, `observer`, `runtime`,
+`run_command`, and `approve(operation)`. Example test sequence:
+
+```python
+with helpers.native_observer_fixture() as fixture:
+    fixture.approve("eval")
+    document = fixture.observer.observe(
+        fixture.repo, operation="eval", run_command=fixture.run_command
+    )
+```
+
+The injected runner is the actual bounded subprocess runner, not a prebuilt
+result or in-memory fake. Only the installed-package/executable lookup boundary
+is simulated; the synthetic executable writes native-shaped outputs. Finish
+all canonical consumer checks inside the context, before its private repository
+and scoped environment are cleaned up. The existing `create_agentops_fixture`
+API is unchanged.

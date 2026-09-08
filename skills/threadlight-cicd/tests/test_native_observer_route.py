@@ -376,12 +376,6 @@ def test_observed_noncritical_doctor_exit_two_is_not_reconstructed_from_must_fix
     fixture.approve("eval")
     assert runtime.main(["--repo", str(fixture.repo), "--run-eval",
                          "--agentops-bin", str(fixture.executable)]) == 0
-    if floor == "info":
-        program = fixture.executable.read_text()
-        condition = 'sys.argv[sys.argv.index("--severity-fail") + 1] == "warning"'
-        assert condition in program
-        fixture.executable.write_text(program.replace(
-            condition, 'sys.argv[sys.argv.index("--severity-fail") + 1] in {"warning", "info"}'))
     approval = fixture.approve("doctor")
     approval["doctor_severity"] = floor
     fixture.fixture.write(".agentops/threadlight/approvals/doctor.json", approval)

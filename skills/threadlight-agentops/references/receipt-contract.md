@@ -57,7 +57,11 @@ execution/identity/export/retention approval:
    token; it is not an execution authorization.
    Eval requires `dataset`, `analysis` and `latest` paths; an explicit `result`
    path is optional. Without it, completion identifies the unique newly written
-   native result matching latest. Doctor reuses missing eval paths from the
+   native result matching latest. Begin hashes preexisting result candidates
+   first; replaying their unchanged bytes, even through a refreshed latest alias,
+   is rejected. Snapshot/discovery reads are bounded to 4,096 entries and 32 MiB.
+   Native run directories are mutable; hashes do not make them immutable.
+   Doctor reuses missing eval paths from the
    already validated prior receipt, never from unbound native files.
 2. Execute the approved command through the real bounded runtime runner. Do not
    print raw stdout/stderr; unset `GITHUB_STEP_SUMMARY`.
@@ -65,6 +69,9 @@ execution/identity/export/retention approval:
    exit 2, checks unchanged inputs, new output hashes and native timestamps inside
    the actual invocation, and writes a receipt. Other failures cancel observation.
    `cancel_observation(token)` releases a failed/abandoned capture.
+   Exit 2 additionally requires internally valid negative artifacts: failed eval
+   outcome, or actual Doctor findings that can trigger the approved severity
+   floor. Success-shaped artifacts cannot be used as an exit-2 fallback.
 
 The actual native package/identity checks belong to the runtime before capture,
 not a constant field in a receipt. Offline tests use a clearly synthetic command,
