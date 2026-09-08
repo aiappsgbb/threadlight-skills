@@ -181,7 +181,10 @@ def test_native_gate_runs_bootstrap_protocol_and_real_host_regressions():
         assert name in text
     assert '"THREADLIGHT_READINESS_SDK": "1"' in text
     assert "test_native_http2_is_rejected_before_model_headers_or_flow_control_body[True]" in text
-    assert "test_native_h1_checks_actual_core_wire_after_retained_trace[stream-body]" in text
+    for mode in ("native", "bootstrap"):
+        for phase in ("headers", "body"):
+            assert f"test_native_h1_checks_actual_core_wire_after_retained_trace[stream-{phase}-{mode}]" in text
+        assert f"test_native_h1_checks_actual_core_wire_after_retained_trace[unchanged-headers-{mode}]" in text
     for case in (
         "test_actual_relay_pool_wait_rechecks_signing_authority[valid-True-False]",
         "test_actual_relay_pool_wait_rechecks_signing_authority[valid-True-True]",

@@ -156,9 +156,8 @@ def gateway_requirements():
     return sorted(result)
 
 
-def gateway_runtime(pins):
-    """Separate service virtualenv: never modify the published MAF/ACS proof environment."""
-    python = SCRATCH / "task9-linux-venv/bin/python"
+def prepare_service_runtime(python):
+    """Install real service packages from writable copies, preserving read-only source."""
     if not python.exists():
         venv.EnvBuilder(with_pip=True).create(python.parent.parent)
     wheelhouses = [SCRATCH / name for name in ("gateway-wheels", "wheels", "task8-wheelhouse")]
@@ -193,8 +192,20 @@ def gateway_runtime(pins):
         run([python, "-m", "pip", "install", "--quiet", "--no-deps", "--force-reinstall",
              *sorted(wheelhouse.glob("*.whl"))])
         run([python, "-m", "pip", "check"])
-        # Compare every installed ACS/AGT/Hooks execution byte to the same published wheels.
-        verification = """
+        run([python, "-I", "-c",
+             "import govern_control_plane.storage; "
+             "from govern_control_plane.bootstrap import BootstrapGate; "
+             "import govern_gateway"])
+    finally:
+        shutil.rmtree(staging)
+
+
+def gateway_runtime(pins):
+    """Separate service proof environment; never execute gateway tests in the MAF environment."""
+    python = SCRATCH / "task9-linux-venv/bin/python"
+    prepare_service_runtime(python)
+    # Compare every installed ACS/AGT/Hooks execution byte to the same published wheels.
+    verification = """
 import hashlib, importlib.metadata as m, json, pathlib, zipfile
 scratch = pathlib.Path('.governance-validation')
 pins = json.loads(pathlib.Path('skills/_shared/governance-upstream-pin.json').read_text())
@@ -211,21 +222,19 @@ for record in records:
             if name.endswith(('.py', '.so')) and '.data/' not in name:
                 assert dist.locate_file(name).read_bytes() == archive.read(name), name
 """
-        run([python, "-c", verification])
-        report = SCRATCH / f"gateway-{uuid.uuid4().hex}.xml"
-        env = {**os.environ, "THREADLIGHT_GOVERNANCE_RUNTIME": "1",
-               "ACS_OPA_PATH": str(SCRATCH / "opa-linux-amd64")}
-        env.pop("PYTEST_ADDOPTS", None)
-        run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_gateway.py",
-             "-q", f"--junitxml={report}", "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
-        count = verify_gateway_junit(report)
-        run([python, "-c", verification])
-        proof = {"tests_passed": count, "junit": report.name,
-                 "scope": "native ACS/OPA + real MCP protocol, external HTTP/storage doubles; no live Azure"}
-        (SCRATCH / "gateway-proof.json").write_text(json.dumps(proof, indent=2) + "\n")
-        return proof
-    finally:
-        shutil.rmtree(staging)
+    run([python, "-c", verification])
+    report = SCRATCH / f"gateway-{uuid.uuid4().hex}.xml"
+    env = {**os.environ, "THREADLIGHT_GOVERNANCE_RUNTIME": "1",
+           "ACS_OPA_PATH": str(SCRATCH / "opa-linux-amd64")}
+    env.pop("PYTEST_ADDOPTS", None)
+    run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_gateway.py",
+         "-q", f"--junitxml={report}", "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
+    count = verify_gateway_junit(report)
+    run([python, "-c", verification])
+    proof = {"tests_passed": count, "junit": report.name,
+             "scope": "native ACS/OPA + real MCP protocol, external HTTP/storage doubles; no live Azure"}
+    (SCRATCH / "gateway-proof.json").write_text(json.dumps(proof, indent=2) + "\n")
+    return proof
 
 
 def deployment_runtime(pins, *, local_only=False):
@@ -357,14 +366,80 @@ for name, record in {sdk_wheels!r}.items():
             "test_real_sdk_version17_created_once_and_lost_reply_never_retries[True]",
             "test_real_generation_freezes_proof_disclosure_and_rejects_production_transactionally",
             "test_compiled_proof_network_is_public_but_authentication_remains_mandatory",
-            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[expiry-False]",
-            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[revocation-True]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[expiry-False-False]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[expiry-False-True]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[expiry-True-False]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[expiry-True-True]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[revocation-False-False]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[revocation-False-True]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[revocation-True-False]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[revocation-True-True]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[valid-False-False]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[valid-False-True]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[valid-True-False]",
+            "test_real_model_pool_wait_reauthorizes_before_any_http_bytes[valid-True-True]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[expiry-tls-False]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[expiry-tls-True]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[expiry-credential-False]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[expiry-credential-True]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[expiry-caller-trace-False]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[expiry-caller-trace-True]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[revocation-tls-False]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[revocation-tls-True]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[revocation-credential-False]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[revocation-credential-True]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[revocation-caller-trace-False]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[revocation-caller-trace-True]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[valid-tls-False]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[valid-tls-True]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[valid-credential-False]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[valid-credential-True]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[valid-caller-trace-False]",
+            "test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace[valid-caller-trace-True]",
             "test_real_cosmos_batch_reauthorizes_after_tls_wait[True]",
             "test_native_sync_tool_reauthorizes_after_executor_queue[True]",
             "test_native_http2_is_rejected_before_model_headers_or_flow_control_body[False]",
             "test_native_http2_is_rejected_before_model_headers_or_flow_control_body[True]",
-            "test_native_h1_checks_actual_core_wire_after_retained_trace[stream-headers]",
-            "test_native_h1_checks_actual_core_wire_after_retained_trace[stream-body]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[unchanged-headers-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[unchanged-headers-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[unchanged-body-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[unchanged-body-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[authorization-headers-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[authorization-headers-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[authorization-body-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[authorization-body-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[extra-header-headers-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[extra-header-headers-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[extra-header-body-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[extra-header-body-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[traceparent-headers-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[traceparent-headers-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[traceparent-body-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[traceparent-body-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[target-headers-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[target-headers-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[target-body-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[target-body-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[request-headers-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[request-headers-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[request-body-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[request-body-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[stream-headers-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[stream-headers-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[stream-body-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[stream-body-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-authorization-headers-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-authorization-headers-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-authorization-body-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-authorization-body-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-extra-header-headers-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-extra-header-headers-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-extra-header-body-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-extra-header-body-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-baggage-headers-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-baggage-headers-bootstrap]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-baggage-body-native]",
+            "test_native_h1_checks_actual_core_wire_after_retained_trace[injected-baggage-body-bootstrap]",
             "test_native_returns_safe_context_and_cosmos_effect[valid]",
             "test_native_returns_safe_context_and_cosmos_effect[forged]",
             "test_native_returns_safe_context_and_cosmos_effect[stale]",
@@ -446,6 +521,19 @@ def collector_requirements():
     return [item for item in project["project"]["dependencies"] if not item.startswith("threadlight-")]
 
 
+def generated_deployment_fixture():
+    # pytest's "current" symlink aliases its numbered fixture; it is not a second artifact.
+    base = SCRATCH / "deployment-fixtures"
+    fixtures = {path.resolve(strict=True)
+                for path in base.glob("test_generated_maf_native*/external-pilot")}
+    if len(fixtures) != 1:
+        raise RuntimeError("generated external fixture missing or ambiguous")
+    fixture = fixtures.pop()
+    if not fixture.is_relative_to(base.resolve()):
+        raise RuntimeError("generated external fixture outside isolated test artifacts")
+    return fixture
+
+
 def prepare_deployment(pins, *, local_only=False):
     """Host downloads retain working TLS settings; Linux container executes published wheels."""
     (SCRATCH / "deployment-proof.json").unlink(missing_ok=True)
@@ -477,24 +565,25 @@ def prepare_deployment(pins, *, local_only=False):
         opa.chmod(0o755)
     if hashlib.sha256(opa.read_bytes()).hexdigest() != pins["opa"]["linux_amd64_static_sha256"]:
         raise RuntimeError("OPA published checksum mismatch")
+    (SCRATCH / "deployment-home").mkdir(exist_ok=True)
     run(["docker", "run", "--rm", "--platform", "linux/amd64",
+         "--user", f"{os.getuid()}:{os.getgid()}",
          "-v", f"{ROOT}:/work:ro", "-v", f"{SCRATCH}:/work/.governance-validation",
          "-w", "/work", "-e", "TMPDIR=/work/.governance-validation/tmp",
+         "-e", "HOME=/work/.governance-validation/deployment-home",
          "-e", "PYTHONPYCACHEPREFIX=/work/.governance-validation/pycache",
          "-e", "PIP_CACHE_DIR=/work/.governance-validation/pip-cache",
          IMAGE, "python", "scripts/ci/run-governance-pin-tests.py",
          "--local-prepared" if local_only else "--deployment-prepared"])
     if local_only:
         return
-    fixtures = list((SCRATCH / "deployment-fixtures").glob("test_generated_maf_native*/external-pilot"))
-    if len(fixtures) != 1:
-        raise RuntimeError("generated external fixture missing")
-    fixture = fixtures[0]
+    fixture = generated_deployment_fixture()
     run([*bicep, fixture / "infra/main.bicep",
          "--outfile", SCRATCH / "deployment-main-bicep.json"])
     proof_dir = SCRATCH / "deployment-isolated-proof"
     proof_dir.mkdir(exist_ok=True)
     run(["docker", "run", "--rm", "--network", "none", "--platform", "linux/amd64",
+         "--user", f"{os.getuid()}:{os.getgid()}",
          "-v", f"{fixture / 'src/agent'}:/app:ro",
          "-v", f"{VENV}:/validation:ro",
          "-v", f"{proof_dir}:/proof", "-w", "/app",
@@ -609,7 +698,7 @@ def runtime(pins):
 def main():
     SCRATCH.mkdir(exist_ok=True)
     (SCRATCH / "runtime-proof.json").unlink(missing_ok=True)
-    for child in ("tmp", "pip-cache"):
+    for child in ("tmp", "pip-cache", "runtime-home"):
         (SCRATCH / child).mkdir(exist_ok=True)
     os.environ.update(
         TMPDIR=str(SCRATCH / "tmp"), PIP_CACHE_DIR=str(SCRATCH / "pip-cache"),
@@ -678,9 +767,10 @@ def main():
         # Read-only source plus a dedicated writable artifact mount.
         run([
             "docker", "run", "--rm", "--platform", "linux/amd64",
+            "--user", f"{os.getuid()}:{os.getgid()}",
             "--mount", f"type=bind,source={ROOT},target=/workspace,readonly",
             "--mount", f"type=bind,source={SCRATCH},target=/workspace/.governance-validation",
-            "-w", "/workspace", IMAGE,
+            "-w", "/workspace", "-e", "HOME=/workspace/.governance-validation/runtime-home", IMAGE,
             "python", "scripts/ci/run-governance-pin-tests.py", "--prepared",
         ])
         return
@@ -708,6 +798,7 @@ def main():
         run([python, "-m", "pip", "install", "--quiet", "--only-binary=:all:",
              "--no-index", "--find-links", wheelhouse,
              *requirements(pins), "pytest", "jsonschema[format]"])
+    prepare_service_runtime(python)
     run([python, __file__, "--runtime"])
 
 
