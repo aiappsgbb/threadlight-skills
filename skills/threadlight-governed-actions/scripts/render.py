@@ -45,6 +45,7 @@ from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 import canonical
 import contracts
+from skills._shared.native_local_evidence import validated_controls
 from contracts import (
     ActionRecord,
     AssessmentResult,
@@ -863,8 +864,21 @@ def _required_evidence_is_untrustworthy(
     """
     required_ids = _required_evidence_ids(result)
     evidence_by_id = {ref.evidence_id: ref for ref in result.evidence}
+    try:
+        native_controls = validated_controls(
+            result.native_local, [_probe_to_dict(p) for p in result.probes],
+            [_evidence_to_dict(e) for e in result.evidence],
+            source={"repository": result.source.repository, "commit": result.source.commit,
+                    "dirty": result.source.dirty},
+            phase=_phase_for(result), captured_at=result.captured_at,
+            policy_hashes=_normalize_policy_hashes(result.policy_hashes),
+            assessor={"name": ASSESSOR_NAME, "version": contracts.ASSESSOR_VERSION, "adapter": ADAPTER_NAME})
+    except (ValueError, TypeError, KeyError, OSError, RecursionError):
+        return True
     approvals = [p for p in result.probes if p.probe_id == "approval-anti-replay"]
     for action_id in {p.action_id for p in approvals}:
+        if (action_id, "approval-anti-replay") in native_controls:
+            continue
         sequence = [p for p in approvals if p.action_id == action_id]
         if all(p.status == "pass" for p in sequence):
             observed = [p.observed for p in sequence]
@@ -882,7 +896,8 @@ def _required_evidence_is_untrustworthy(
                 return True
     for probe in result.probes:
         required_kinds = _PERSISTED_PROBE_KINDS.get(probe.probe_id, set())
-        if probe.status == "pass" and required_kinds:
+        if (probe.status == "pass" and required_kinds
+                and (probe.action_id, probe.probe_id) not in native_controls):
             refs = [evidence_by_id[key] for key in probe.evidence_refs if key in evidence_by_id]
             if not required_kinds <= {ref.kind for ref in refs}:
                 return True
@@ -1123,6 +1138,7 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
     return {
         "schema": MANIFEST_SCHEMA,
         "evidence_contract": EVIDENCE_CONTRACT,
+        **({"native_local": dict(result.native_local)} if result.native_local is not None else {}),
         "assessor": {
             "name": ASSESSOR_NAME,
             "version": contracts.ASSESSOR_VERSION,

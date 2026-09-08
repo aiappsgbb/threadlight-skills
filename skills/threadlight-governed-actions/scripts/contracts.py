@@ -311,3 +311,5 @@ class AssessmentResult:
     #: ``AssessmentOptions.live_azure`` once an orchestrator wires the
     #: two together.
     live_azure_selected: bool = False
+    #: Validated payload-free LOCAL-14 recorder envelope, not hosted attestation.
+    native_local: Optional[Mapping[str, object]] = None

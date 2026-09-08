@@ -102,16 +102,23 @@ async def scenario(root, project, fixture, scratch, emit, *, case, mode="interac
                        intent_hash=digest(changed["intent"]), grant_hash=digest(changed["grant"]))
                 return response
             response = await super().handle_async_request(request)
+            if request.url.path == "/approvals/resolve" and body.get("operation") == "consume":
+                record("approval_consume", status=response.status_code,
+                       intent_hash=digest(body["intent"]), grant_hash=digest(body["grant"]),
+                       nonce_hash=digest(body["intent"]["nonce"]),
+                       action_hash=body["intent"]["action_hash"], policy_hash=body["intent"]["policy_hash"])
             if request.url.path == "/approvals/resolve" and body.get("operation") == "request":
                 pending.append(body["intent"])
-                record("approval_request", intent_hash=digest(body["intent"]), status=response.status_code)
+                record("approval_request", intent_hash=digest(body["intent"]),
+                       nonce_hash=digest(body["intent"]["nonce"]), status=response.status_code)
                 assert not store.decisions or case == "approved"
                 if review not in {None, "absent"}:
                     result = await h.client.post("/approvals/resolve", headers=h.headers(
                         human=True, changes={"roles": ["WrongRole"]} if review == "invalid-human" else None),
                         json={"operation": "decide", "intent": body["intent"],
                               "approved": review not in {"rejected"}, "approving_role": "Approver"})
-                    record("human_decision", status=result.status_code, approved=review != "rejected")
+                    record("human_decision", status=result.status_code, approved=review != "rejected",
+                           intent_hash=digest(body["intent"]), grant_hash=digest(result.json().get("grant")))
                     if result.status_code == 200:
                         grants.append(result.json()["grant"])
                 if review == "expired":
@@ -146,7 +153,7 @@ async def scenario(root, project, fixture, scratch, emit, *, case, mode="interac
         decisions.append(fields["decision"])
         record("pre_action_decision", decision=fields["decision"], receipt_id=receipt_id,
                action_hash=fields["action_hash"], policy_hash=fields["policy_hash"],
-               receipt_hash=digest(receipt))
+               receipt_hash=digest(receipt), receipt=deepcopy(receipt))
         return receipt_id
     provider.audit.append = observed_ack
     if case == "audit-down":

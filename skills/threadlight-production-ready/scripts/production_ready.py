@@ -2514,7 +2514,7 @@ def _validate_governed_actions_manifest(
     missing = sorted(_GOVERNED_ACTIONS_TOP_LEVEL_KEYS - declared)
     if missing:
         return "missing required key(s): " + ", ".join(missing)
-    if declared - _GOVERNED_ACTIONS_TOP_LEVEL_KEYS - {"deployed_target"}:
+    if declared - _GOVERNED_ACTIONS_TOP_LEVEL_KEYS - {"deployed_target", "native_local"}:
         return "manifest contains unsupported top-level key(s)"
     deployment = manifest.get("deployed_target")
     if "deployed_target" in manifest and not _governed_actions_valid_deployment(deployment):
@@ -2698,6 +2698,13 @@ def _validate_governed_actions_manifest(
     probes = conformance.get("application_probes", [])
     if not isinstance(probes, list):
         return "conformance.application_probes must be an array"
+    try:
+        from skills._shared.native_local_evidence import validated_controls
+        native_controls = validated_controls(
+            manifest.get("native_local"), probes, evidence, source=source, phase=phase,
+            captured_at=manifest["captured_at"], policy_hashes=policy_hashes, assessor=assessor, root=root)
+    except (ValueError, TypeError, KeyError, OSError, RecursionError):
+        return "native local evidence is malformed, incomplete, or mismatched"
     for probe in probes:
         if not isinstance(probe, dict) or set(probe) != _GOVERNED_ACTIONS_PROBE_KEYS:
             return "conformance.application_probes entries do not match the probe contract"
@@ -2718,7 +2725,8 @@ def _validate_governed_actions_manifest(
             return "conformance.application_probes has malformed evidence_refs"
         referenced.update(refs)
         contract = _GOVERNED_ACTIONS_PERSISTED_PROBES.get(probe["probe_id"])
-        if contract and probe["status"] == "pass":
+        if (contract and probe["status"] == "pass"
+                and (probe["action_id"], probe["probe_id"]) not in native_controls):
             cited = [by_id[ref] for ref in refs if ref in by_id]
             if not contract[1] <= {entry["kind"] for entry in cited}:
                 return "passing governance probe lacks required persisted-ledger evidence"
@@ -2747,6 +2755,8 @@ def _validate_governed_actions_manifest(
         if probe_id == "approval-anti-replay":
             digest = lambda value: "sha256:" + hashlib.sha256(value.encode()).hexdigest()
             for action_id in {p["action_id"] for p in family}:
+                if (action_id, probe_id) in native_controls:
+                    continue
                 sequence = [p for p in family if p["action_id"] == action_id]
                 if not all(p["status"] == "pass" for p in sequence):
                     continue

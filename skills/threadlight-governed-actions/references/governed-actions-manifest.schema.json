@@ -24,7 +24,28 @@
     "residual_risks",
     "summary"
   ],
+  "allOf": [{
+    "if": {"properties": {"conformance": {"properties": {"application_probes": {
+      "contains": {"properties": {"reason_code": {"const": "native-local-executed"}}, "required": ["reason_code"]}
+    }}}}},
+    "then": {"required": ["native_local"]}
+  }],
   "properties": {
+    "native_local": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "phase", "execution_mode", "source", "captured_at", "policy_set_sha256", "events"],
+      "description": "Optional executed LOCAL-14 envelope, revalidated by skills/_shared/native_local_evidence.py. Never substitutes for generic fourteen-result approval ledgers or deployed proof.",
+      "properties": {
+        "schema": {"const": "threadlight-native-local-evidence/v1"},
+        "phase": {"const": "pre-deploy"},
+        "execution_mode": {"const": "local"},
+        "source": {"$ref": "#/$defs/source"},
+        "captured_at": {"$ref": "#/$defs/timestamp"},
+        "policy_set_sha256": {"$ref": "#/$defs/sha256"},
+        "events": {"type": "array", "minItems": 25, "maxItems": 999, "items": {"type": "object"}}
+      }
+    },
     "evidence_contract": {
       "const": "governance-ledger/v2",
       "description": "Closed payload-free persisted-ledger contracts and ordered approval sequence semantics. Earlier evidence contracts cannot certify passing approval/output/audit controls."
@@ -572,7 +593,8 @@
       "additionalProperties": false,
       "allOf": [
         {
-          "if": {"properties": {"status": {"const": "pass"}, "probe_id": {"const": "approval-anti-replay"}}},
+          "if": {"properties": {"status": {"const": "pass"}, "probe_id": {"const": "approval-anti-replay"},
+                               "reason_code": {"not": {"const": "native-local-executed"}}}},
           "then": {"properties": {"evidence_refs": {"minItems": 2, "contains": {"pattern": "^approval-ledger-records-[0-9a-f]{64}$"}}}}
         },
         {
@@ -580,8 +602,21 @@
           "then": {"properties": {"evidence_refs": {"contains": {"pattern": "^output-ledger-records-[0-9a-f]{64}$"}}}}
         },
         {
-          "if": {"properties": {"status": {"const": "pass"}, "probe_id": {"const": "payload-free-audit"}}},
+          "if": {"properties": {"status": {"const": "pass"}, "probe_id": {"const": "payload-free-audit"},
+                               "reason_code": {"not": {"const": "native-local-executed"}}}},
           "then": {"properties": {"evidence_refs": {"minItems": 2, "contains": {"pattern": "^audit-ledger-records-[0-9a-f]{64}$"}}}}
+        },
+        {
+          "if": {"properties": {"reason_code": {"const": "native-local-executed"}}},
+          "then": {"properties": {
+            "probe_id": {"enum": ["approval-anti-replay", "payload-free-audit", "native-tool-result-schema", "native-enforcement"]},
+            "action_id": {"const": "returns_apply_decision"},
+            "path_id": {"type": "null"}, "mode": {"type": "null"}, "status": {"const": "pass"},
+            "evidence_refs": {"minItems": 2, "maxItems": 2, "uniqueItems": true, "allOf": [
+              {"contains": {"pattern": "^native-(approval|durable-audit|tool-result-schema|enforcement)-[0-9a-f]{64}$"}},
+              {"contains": {"pattern": "^(approval-anti-replay|payload-free-audit|native-tool-result-schema|native-enforcement)-installation$"}}
+            ]}
+          }}
         }
       ],
       "required": [

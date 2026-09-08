@@ -889,6 +889,15 @@ def _bind_probe_evidence(
                 deployed_target=_deployment_target(options),
             )
     findings.extend(probes.findings_from_probes(tuple(kept), phase=options.phase))
+    for probe in kept:
+        if (probe.probe_id == probes.OUTPUT_PROBE_ID and probe.status == "not-applicable"
+                and probe.reason_code == "native-output-hook-not-selected"):
+            findings.append(contracts.Finding(
+                finding_id="OUT-001", status="not-applicable", phase=options.phase, plane="runtime",
+                reason_code=probe.reason_code,
+                summary="Native output lifecycle mediation is not selected.",
+                details="Executed tool-result schema validation is not output-hook or streaming evidence.",
+                affected_actions=(probe.action_id,), evidence_refs=probe.evidence_refs))
     evidence = tuple(evidence_by_id[key] for key in sorted(evidence_by_id))
     return tuple(kept), tuple(findings), evidence
 
@@ -1856,9 +1865,13 @@ def _assess_repository_controls(
     pin = maf_adapter.load_upstream_pin(_UPSTREAM_PIN_PATH)
     native_contract = native_local.contract(root) if phase == "pre-deploy" else None
     native_pins = None
+    native_evidence = None
     if native_contract:
         events = native_local.execute(root, native_contract)
         native_paths, probe_results, native_pins = native_local.evaluate(events, native_contract, inv.actions)
+        native_evidence = native_local.native_local_evidence.build_envelope(
+            events, source={"repository": source.repository, "commit": source.commit, "dirty": source.dirty},
+            captured_at=options.now, policy_hashes=policy_hashes)
         graph = mediation.MediationGraph(nodes=(), edges=(), paths=native_paths, findings=())
         raw_probe_contract = probe_contract = native_contract
     else:
@@ -1997,6 +2010,7 @@ def _assess_repository_controls(
         live_github_selected=options.live_github,
         live_azure_selected=options.live_azure,
         deployed_target=deployment_target,
+        native_local=native_evidence,
     )
 
 

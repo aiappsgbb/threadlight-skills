@@ -16,26 +16,14 @@ from contracts import PathRecord, ProbeResult, ProbeEvidence
 import maf_adapter
 import mediation
 import probes
+from skills._shared import native_local_evidence
 
 ROOT = Path(__file__).resolve().parents[3]
 MODES = mediation.REQUIRED_NON_PROVIDER_MODES
 
 
 def source_fingerprints(root, project):
-    files = {project / name for name in ("agent.yaml", "AGENTS.md", "governance/probe-contract.json")}
-    files.update(p for p in (project / "src/agent").rglob("*")
-                 if p.is_file() and p.suffix in {".py", ".rego", ".yaml", ".json", ".md"})
-    files.update((root / "skills/threadlight-govern/references/runtime").glob("*.py"))
-    files.update((root / "skills/threadlight-deploy/references/governance").glob("*.py"))
-    files.update(root / "skills/_shared" / name for name in (
-        "governance.py", "native_validation.py", "local_control_fixture.py", "local_model_fixture.py",
-        "governance-upstream-pin.json"))
-    files.update(root / "skills/threadlight-governed-actions/scripts" / name
-                 for name in ("native_local.py", "native_local_child.py"))
-    files.add(project / "scripts/local_probe.py")
-    return {("project:" + p.relative_to(project).as_posix() if p.is_relative_to(project)
-             else "runner:" + p.relative_to(root).as_posix()): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(files)}
+    return native_local_evidence.source_fingerprints(root, project)
 
 
 def contract(root):
@@ -113,6 +101,7 @@ def execute(project, declaration):
 
 
 def evaluate(events, declaration, actions):
+    native_local_evidence.validate_events(events)
     selected = {a.action_id for a in actions if a.policy_binding not in {None, "", "none"}}
     if selected != set(declaration["actions"]) or selected != {"returns_apply_decision"}:
         raise probes.ProbeContractError("native-selected-action-coverage-mismatch")
@@ -194,11 +183,8 @@ def evaluate(events, declaration, actions):
                            (probes.AUDIT_PROBE_ID, "native-durable-audit"),
                            ("native-tool-result-schema", "native-tool-result-schema"),
                            ("native-enforcement", "native-enforcement")):
-        prefix = {probes.APPROVAL_PROBE_ID: "approval-ledger-records-",
-                  probes.AUDIT_PROBE_ID: "audit-ledger-records-",
-                  probes.OUTPUT_PROBE_ID: "output-ledger-records-"}.get(probe_id, probe_id + "-ledger-records-")
         record_hash = hashlib.sha256(canonical.canonical_bytes(events)).hexdigest()
-        item = _evidence(prefix + record_hash, kind, events)
+        item = _evidence(kind + "-" + record_hash, kind, events)
         installation = _evidence(probe_id + "-installation", "native-loader-integrity", installed)
         result.append(ProbeResult(probe_id=probe_id, action_id="returns_apply_decision", path_id=None,
                                   status="pass", reason_code="native-local-executed",

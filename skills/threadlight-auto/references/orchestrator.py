@@ -426,6 +426,15 @@ def summarize_governed_actions_manifest(
         "output-mediation": {"output-ledger-records"},
         "payload-free-audit": {"audit-ledger-records", "probe-audit-record"},
     }
+    try:
+        from skills._shared.native_local_evidence import validated_controls
+        native_controls = validated_controls(
+            manifest.get("native_local"), probes, evidence, source=manifest.get("source"),
+            phase=manifest.get("phase"), captured_at=manifest.get("captured_at"),
+            policy_hashes=manifest.get("policy_hashes"), assessor=manifest.get("assessor"),
+            root=path.parent.parent)
+    except (ValueError, TypeError, KeyError, OSError, RecursionError):
+        return _governed_actions_untrusted("native local evidence is malformed, incomplete, or mismatched")
     for probe in probes:
         if not isinstance(probe, dict) or not isinstance(probe.get("probe_id"), str):
             return _governed_actions_untrusted("malformed governance probe")
@@ -434,7 +443,8 @@ def summarize_governed_actions_manifest(
                 or not isinstance(probe["action_id"], (str, type(None)))):
             return _governed_actions_untrusted("malformed governance probe status or identity")
         kinds = required_kinds.get(probe["probe_id"])
-        if not kinds or probe.get("status") != "pass":
+        if (not kinds or probe.get("status") != "pass"
+                or (probe["action_id"], probe["probe_id"]) in native_controls):
             continue
         refs = probe.get("evidence_refs")
         if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
@@ -534,6 +544,8 @@ def summarize_governed_actions_manifest(
         if probe_id == "approval-anti-replay":
             digest = lambda value: "sha256:" + hashlib.sha256(value.encode()).hexdigest()
             for action_id in {p["action_id"] for p in family}:
+                if (action_id, probe_id) in native_controls:
+                    continue
                 sequence = [p for p in family if p["action_id"] == action_id]
                 if not all(p["status"] == "pass" for p in sequence):
                     continue
