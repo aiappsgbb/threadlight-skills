@@ -50,7 +50,7 @@ _CANDIDATES = {
                   "docs/production-readiness-manifest.json"],
     "mcp_sbom": ["mcp-sbom.json", "docs/mcp-sbom.json"],
     "agent_identity": ["agent-identity.json", "docs/agent-identity.json"],
-    "govern": ["govern-manifest.json", "specs/govern-manifest.json",
+    "govern": ["specs/governance-manifest.json", "govern-manifest.json", "specs/govern-manifest.json",
                "docs/govern-manifest.json"],
     "evals": ["specs/evals-manifest.json", "evals-manifest.json"],
     "redteam": ["specs/redteam-manifest.json", "redteam-manifest.json"],
@@ -137,7 +137,8 @@ def _has_content(sources: dict, key: str) -> bool:
 # ------------------------------------------------------------------ mapping
 def _coverage_art9(src, sc):
     present = src["govern"]["present"]
-    if _has_content(src, "govern") and _pillar_status(sc, "agent-governance") == "green":
+    assurance = src["govern"].get("binding_evidence", {})
+    if assurance.get("status") == "pass" and assurance.get("live") is True:
         return "covered"
     if present:
         return "partial"
@@ -239,6 +240,16 @@ def assess(root, *, now=None, governance=None):
     and *evidence* is the full manifest from :func:`build_evidence`.
     """
     sources = discover(root)
+    repo = Path(__file__).resolve().parents[3]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    try:
+        from skills._shared.governance_readiness import assess as binding_assess
+        clock = datetime.fromisoformat(now.replace("Z", "+00:00")) if isinstance(now, str) else now
+        sources["govern"]["binding_evidence"] = binding_assess(root, now=clock)
+    except ImportError:
+        sources["govern"]["binding_evidence"] = {
+            "status": "not-verified", "live": False, "reason": "Shared governance tooling unavailable."}
     sc = sources["scorecard"]["data"]
     articles = []
     for aid, title, obligation, keys, skill, fn in ARTICLE_MAP:
@@ -251,6 +262,8 @@ def assess(root, *, now=None, governance=None):
             "sources": [_src_ref(sources, k) for k in keys],
             "remediation_skill": skill,
         }
+        if aid == "art-9-risk-management":
+            art["binding_evidence"] = sources["govern"]["binding_evidence"]
         if coverage in _REMEDIATION:
             art["remediation"] = _REMEDIATION[coverage]
         articles.append(art)

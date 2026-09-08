@@ -97,6 +97,17 @@ def _golden() -> dict:
     return json.loads(GOLDEN_MANIFEST.read_text(encoding="utf-8"))
 
 
+def _with_probe_modes(manifest: dict | None = None) -> dict:
+    manifest = manifest or _golden()
+    path_modes = {
+        path["path_id"]: path["mode"] for path in manifest["mediation_paths"]
+    }
+    for probe in manifest["conformance"]["application_probes"]:
+        path_id = probe["path_id"]
+        probe["mode"] = path_modes[path_id] if path_id is not None else None
+    return manifest
+
+
 def _rebuild_summary(manifest: dict) -> dict:
     """Restamp `summary` so it agrees with `findings` (counts included).
 
@@ -253,6 +264,129 @@ def aggregate(
 
 def all_not_verified(statuses: dict[str, str]) -> bool:
     return all(statuses[fid] == "not-verified" for fid in AGGREGATE_IDS)
+
+
+def validation_reason(tmp_path: Path, manifest: dict) -> str | None:
+    root = make_target(tmp_path, manifest)
+    loaded = pr.load_governed_actions_manifest(root)
+    assert loaded is not None
+    return pr._validate_governed_actions_manifest(
+        loaded, GOLDEN_COMMIT, FRESH_NOW
+    )
+
+
+@pytest.mark.parametrize("version", ["0.1.0", "2.0.0"])
+def test_reviewed_assessor_versions_preserve_strict_ledger_validation(tmp_path, version):
+    manifest = _golden()
+    manifest["assessor"]["version"] = version
+    assert validation_reason(tmp_path, manifest) is None
+    manifest.pop("evidence_contract")
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("version", ["0.1.1", "1.0.0", "2.0.1", "2.1.0", "3.0.0"])
+def test_unreviewed_assessor_versions_do_not_inherit_trust(tmp_path, version):
+    manifest = _golden()
+    manifest["assessor"]["version"] = version
+    assert "not a supported assessor version" in validation_reason(tmp_path, manifest)
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_legacy_evidence_contract_is_not_supported(tmp_path):
+    manifest = _golden()
+    manifest.pop("evidence_contract", None)
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_binding_manifest_cannot_replace_strict_governance_ledger(tmp_path):
+    from skills._shared.tests.governance_consumer_fixtures import live_fixture, write
+    manifest = _golden()
+    del manifest["evidence_contract"]
+    root = make_target(tmp_path, manifest)
+    write(root, "specs/governance-manifest.json", live_fixture()[0])
+    findings = pr.aggregate_governed_actions(
+        pr.load_governed_actions_manifest(root), GOLDEN_COMMIT, FRESH_NOW)
+    assert all(f.status == "not-verified" for f in findings)
+
+
+@pytest.mark.parametrize("family", ("approval", "output", "audit", "all"))
+def test_removing_persisted_ledger_evidence_and_refs_never_passes(tmp_path, family):
+    manifest = _golden()
+    removed = {
+        e["evidence_id"] for e in manifest["evidence"]
+        if e["kind"].endswith("-ledger-records")
+        and (family == "all" or e["kind"].startswith(family + "-"))
+    }
+    assert removed
+    manifest["evidence"] = [e for e in manifest["evidence"] if e["evidence_id"] not in removed]
+    for entry in manifest["findings"] + manifest["conformance"]["application_probes"]:
+        entry["evidence_refs"] = [ref for ref in entry["evidence_refs"] if ref not in removed]
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+@pytest.mark.parametrize("probe_id", ("approval-anti-replay", "output-mediation", "payload-free-audit"))
+def test_removing_probe_family_cannot_be_implicit_pass(tmp_path, probe_id):
+    manifest = _golden()
+    manifest["conformance"]["application_probes"] = [
+        p for p in manifest["conformance"]["application_probes"] if p["probe_id"] != probe_id
+    ]
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_partial_approval_sequence_cannot_pass_consumer(tmp_path):
+    manifest = _golden()
+    probes = manifest["conformance"]["application_probes"]
+    probes.remove(next(p for p in probes if p["probe_id"] == "approval-anti-replay"))
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_nonpassing_probe_cannot_be_hidden_by_absent_findings(tmp_path):
+    manifest = _golden()
+    probe = next(p for p in manifest["conformance"]["application_probes"]
+                 if p["probe_id"] == "output-mediation")
+    probe["status"] = "not-verified"
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+DEPLOYED_TARGET = {
+    "agent_name": "refund-agent", "agent_version": "3",
+    "image_digest": "sha256:" + "b" * 64,
+    "policy_digest": "sha256:" + "c" * 64,
+    "environment": "staging", "subscription": "subscription-1",
+    "resource_group": "rg-refund-staging",
+}
+
+
+def test_consumer_accepts_exact_local_deployment_binding_schema(tmp_path):
+    manifest = _golden()
+    manifest["deployed_target"] = dict(DEPLOYED_TARGET)
+    for ref in manifest["evidence"]:
+        ref["deployed_target"] = dict(DEPLOYED_TARGET)
+        ref["target_environment"] = "staging"
+    assert validation_reason(tmp_path, manifest) is None
+
+
+@pytest.mark.parametrize("field", tuple(DEPLOYED_TARGET))
+def test_consumer_rejects_live_deployment_binding_mismatch(tmp_path, field):
+    manifest = _golden()
+    manifest["deployed_target"] = dict(DEPLOYED_TARGET)
+    cited = manifest["conformance"]["application_probes"][0]["evidence_refs"][0]
+    ref = next(ref for ref in manifest["evidence"] if ref["evidence_id"] == cited)
+    ref["live_verified"] = True
+    ref["deployed_target"] = {**DEPLOYED_TARGET, field: "different"}
+    ref["target_environment"] = "staging"
+    reason = validation_reason(tmp_path, manifest)
+    assert reason and "deployment" in reason
+
+
+def test_consumer_never_upgrades_local_probe_to_live_enforcement(tmp_path):
+    manifest = _golden()
+    manifest["deployed_target"] = dict(DEPLOYED_TARGET)
+    cited = manifest["conformance"]["application_probes"][0]["evidence_refs"][0]
+    ref = next(ref for ref in manifest["evidence"] if ref["evidence_id"] == cited)
+    ref.update(live_verified=True, deployed_target=dict(DEPLOYED_TARGET), target_environment="staging")
+    reason = validation_reason(tmp_path, manifest)
+    assert reason and ("local" in reason or "selected deployment" in reason)
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +571,37 @@ def test_non_object_manifest_is_not_verified(tmp_path):
 def test_wrong_schema_is_not_verified(tmp_path):
     manifest = _golden()
     manifest["schema"] = "threadlight-governed-actions-manifest/v2"
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_application_probe_missing_mode_is_not_verified(tmp_path):
+    manifest = _with_probe_modes()
+    del manifest["conformance"]["application_probes"][0]["mode"]
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_approval_probe_missing_action_id_is_not_verified(tmp_path):
+    manifest = _golden()
+    probe = next(p for p in manifest["conformance"]["application_probes"]
+                 if p["probe_id"] == "approval-anti-replay")
+    del probe["action_id"]
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_application_probe_malformed_mode_is_not_verified(tmp_path):
+    manifest = _with_probe_modes()
+    manifest["conformance"]["application_probes"][0]["mode"] = 42
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_path_probe_mode_must_match_mediation_path(tmp_path):
+    manifest = _with_probe_modes()
+    probe = next(
+        item
+        for item in manifest["conformance"]["application_probes"]
+        if item["path_id"] is not None
+    )
+    probe["mode"] = "provider-hosted-tool"
     assert all_not_verified(aggregate(tmp_path, manifest))
 
 
@@ -631,6 +796,53 @@ def test_summary_referencing_an_absent_finding_is_not_verified(tmp_path):
 def test_malformed_finding_entry_is_not_verified(tmp_path):
     manifest = _golden()
     manifest["findings"].append("not-an-object")
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_non_list_mediation_paths_is_not_verified(tmp_path):
+    manifest = _golden()
+    manifest["mediation_paths"] = {"not": "an array"}
+    assert validation_reason(tmp_path, manifest) == "mediation_paths must be an array"
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_non_object_mediation_path_entry_degrades_all_aggregates_without_exception(tmp_path):
+    manifest = _golden()
+    manifest["mediation_paths"].insert(0, "not-an-object")
+    assert (
+        validation_reason(tmp_path, manifest)
+        == "mediation_paths entries must be objects"
+    )
+    root = make_target(tmp_path, manifest)
+    loaded = pr.load_governed_actions_manifest(root)
+    findings = pr.aggregate_governed_actions(loaded, GOLDEN_COMMIT, FRESH_NOW)
+    expected_reason = (
+        "governed-actions manifest not trusted: "
+        "mediation_paths entries must be objects."
+    )
+    for finding in findings:
+        assert finding.status == "not-verified"
+        assert finding.detail == expected_reason
+
+
+def test_malformed_mediation_path_evidence_refs_is_not_verified(tmp_path):
+    manifest = _golden()
+    manifest["mediation_paths"][0]["evidence_refs"] = [17]
+    assert (
+        validation_reason(tmp_path, manifest)
+        == "mediation_paths has malformed evidence_refs"
+    )
+    assert all_not_verified(aggregate(tmp_path, manifest))
+
+
+def test_dangling_mediation_path_evidence_ref_is_not_verified(tmp_path):
+    manifest = _golden()
+    manifest["mediation_paths"][0]["evidence_refs"].append(
+        "sha256:" + "d" * 64
+    )
+    assert validation_reason(
+        tmp_path, manifest
+    ) == "a finding or probe cites evidence that is not in the manifest"
     assert all_not_verified(aggregate(tmp_path, manifest))
 
 

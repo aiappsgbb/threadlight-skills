@@ -83,9 +83,9 @@ not actually declared in the target repository.
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import canonical
 from contracts import ActionRecord, Finding, PathRecord
@@ -99,6 +99,7 @@ if TYPE_CHECKING:
     # import exists purely so static type checkers can resolve
     # ``RuntimeAdapter`` as the real adapter contract instead of the
     # untyped ``object``.
+    from contracts import ProbeResult
     from maf_adapter import RuntimeAdapter
 
 
@@ -320,15 +321,16 @@ def _call_qualified_name(call: ast.Call) -> Optional[str]:
 
 # Statement/expression types under which a nested call might not actually
 # execute at runtime — an ``if``/``elif``/``else`` branch, a ternary
-# expression's branch, a ``try``/``except``/``finally`` block, or a
+# expression's branch, a ``try``/``except``/``finally`` block, a
+# ``with``/``async with`` body (whose context-manager entry can fail), or a
 # ``while``/``for``/``async for`` loop body (which can run zero times).
-# Every call reached only through one of these is "conditional"; a
-# ``with`` block is deliberately excluded because its body always executes
-# once its context manager is entered.
+# Every call reached only through one of these is "conditional".
 _CONDITIONAL_NODE_TYPES: Tuple[type, ...] = (
     ast.If,
     ast.IfExp,
     ast.Try,
+    ast.With,
+    ast.AsyncWith,
     ast.While,
     ast.For,
     ast.AsyncFor,
@@ -386,6 +388,7 @@ def _iter_calls_in_order(node: ast.AST, conditional: bool = False):
 @dataclass
 class _CallTrace:
     pre_action_seam: Optional[int] = None
+    pre_action_seam_candidate: Optional[int] = None
     approval_check: Optional[int] = None
     tool_service: Optional[int] = None
     provider: Optional[int] = None
@@ -418,12 +421,11 @@ def _trace_calls(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> _CallTrac
     for statement in func_node.body:
         for call, conditional in _iter_calls_in_order(statement):
             qualified = _call_qualified_name(call)
-            if (
-                qualified == _PRE_ACTION_SEAM_CALL
-                and not conditional
-                and trace.pre_action_seam is None
-            ):
-                trace.pre_action_seam = position
+            if qualified == _PRE_ACTION_SEAM_CALL:
+                if trace.pre_action_seam_candidate is None:
+                    trace.pre_action_seam_candidate = position
+                if not conditional and trace.pre_action_seam is None:
+                    trace.pre_action_seam = position
             elif (
                 qualified == _APPROVAL_CHECK_CALL
                 and not conditional
@@ -551,17 +553,15 @@ def _build_ast_index(
 
 def _node_evidence(
     func_node: "ast.FunctionDef | ast.AsyncFunctionDef", mode: str
-) -> Tuple[Tuple[str, ...], bool]:
-    """Return ``(nodes, is_bypass)`` for one already-located dispatch
+) -> Tuple[Tuple[str, ...], str]:
+    """Return ``(nodes, static_assessment)`` for one located dispatch
     function definition, from its own traced calls alone.
 
-    ``is_bypass`` is true exactly when this definition's own body reaches
-    a state change (``tool_service.*``/``provider.*``) without a
-    pre-action seam call proven to precede it — the same test
-    :func:`_recompute_coverage` applies, computed early so duplicate
-    definitions of the same dispatch name can be reduced (see
-    :func:`_best_definition_evidence`) before a single ``(nodes,
-    found_relative)`` result is chosen for the whole file.
+    A state change is ``bypass-proven`` only when no recognized seam-call
+    candidate occurs before it. A candidate hidden by conditional control
+    flow is not enough to prove mediation, but its presence also prevents
+    static analysis from claiming that the path definitely has no seam;
+    that path is ``incomplete`` until execution evidence resolves it.
     """
     trace = _trace_calls(func_node)
     state_positions = [
@@ -578,6 +578,11 @@ def _node_evidence(
         trace.pre_action_seam is not None
         and state_change_pos is not None
         and trace.pre_action_seam < state_change_pos
+    )
+    seam_candidate_precedes_service = (
+        trace.pre_action_seam_candidate is not None
+        and state_change_pos is not None
+        and trace.pre_action_seam_candidate < state_change_pos
     )
 
     nodes: List[str] = ["entry"]
@@ -603,13 +608,18 @@ def _node_evidence(
     if trace.audit_sink is not None:
         nodes.append("audit-sink")
 
-    is_bypass = state_change_pos is not None and not seam_precedes_service
-    return tuple(nodes), is_bypass
+    if seam_precedes_service:
+        static_assessment = "mediated-candidate"
+    elif state_change_pos is not None and not seam_candidate_precedes_service:
+        static_assessment = "bypass-proven"
+    else:
+        static_assessment = "incomplete"
+    return tuple(nodes), static_assessment
 
 
 def _best_definition_evidence(
     func_nodes: Tuple["ast.FunctionDef | ast.AsyncFunctionDef", ...], mode: str
-) -> Tuple[Tuple[str, ...], bool]:
+) -> Tuple[Tuple[str, ...], str]:
     """Reduce every same-named definition within one file to one verdict.
 
     Any evidenced bypass among the definitions always wins over a
@@ -625,9 +635,9 @@ def _best_definition_evidence(
     yet) is the one that matters.
     """
     evaluated = [_node_evidence(node, mode) for node in func_nodes]
-    for nodes, is_bypass in evaluated:
-        if is_bypass:
-            return nodes, is_bypass
+    for nodes, static_assessment in evaluated:
+        if static_assessment == "bypass-proven":
+            return nodes, static_assessment
     return evaluated[-1]
 
 
@@ -637,8 +647,8 @@ def _static_evidence(
     mode: str,
     ast_index: _AstIndex,
     candidate_files: Tuple[Path, ...],
-) -> Optional[Tuple[Tuple[str, ...], str]]:
-    """Return ``(nodes, found_relative)`` from static AST scanning, or
+) -> Optional[Tuple[Tuple[str, ...], str, str]]:
+    """Return ``(nodes, found_relative, static_assessment)`` from static AST scanning, or
     ``None`` if no matching dispatch function was found anywhere.
 
     Every candidate file is scanned — not just the first one where the
@@ -647,10 +657,9 @@ def _static_evidence(
     mediated implementation left behind alongside a newer bypassing one),
     and (via :func:`_best_definition_evidence`) more than once *within*
     one module too. Whenever any candidate's evidence proves a bypass (a
-    state change with no pre-action seam actually preceding it, and never
-    inferred from a closure that is merely defined but never proven
-    called, or from a call reached only through a conditional branch —
-    see :func:`_trace_calls`), that bypass evidence always wins over a
+    state change with no recognized pre-action seam candidate preceding
+    it, and never inferred from a closure that is merely defined but never
+    proven called — see :func:`_trace_calls`), that bypass evidence always wins over a
     duplicate's mediated evidence — a real bypass is never masked just
     because a differently-named or earlier-sorted file happens to look
     clean. Only when no candidate shows a bypass does the first file (in
@@ -661,7 +670,7 @@ def _static_evidence(
     re-parsed/re-walked per lookup.
     """
     function_name = _mode_action_function_name(action.action_id, mode)
-    matches: List[Tuple[Tuple[str, ...], str, bool]] = []
+    matches: List[Tuple[Tuple[str, ...], str, str]] = []
 
     for candidate in candidate_files:
         functions = ast_index.get(candidate)
@@ -671,18 +680,17 @@ def _static_evidence(
         if not func_nodes:
             continue
 
-        nodes, is_bypass = _best_definition_evidence(func_nodes, mode)
+        nodes, static_assessment = _best_definition_evidence(func_nodes, mode)
         found_relative = candidate.relative_to(root.resolve()).as_posix()
-        matches.append((nodes, found_relative, is_bypass))
+        matches.append((nodes, found_relative, static_assessment))
 
     if not matches:
         return None
 
-    for nodes, found_relative, is_bypass in matches:
-        if is_bypass:
-            return nodes, found_relative
-    first_nodes, first_found_relative, _ = matches[0]
-    return first_nodes, first_found_relative
+    for nodes, found_relative, static_assessment in matches:
+        if static_assessment == "bypass-proven":
+            return nodes, found_relative, static_assessment
+    return matches[0]
 
 
 # ---------------------------------------------------------------------------
@@ -715,6 +723,178 @@ def _recompute_coverage(nodes: Tuple[str, ...]) -> Tuple[bool, str]:
     if seam_index is not None and seam_index < service_index:
         return True, "pass"
     return False, "must-fix"
+
+
+def _matching_receipts(
+    path: PathRecord, probe_results: Sequence["ProbeResult"]
+) -> Tuple["ProbeResult", ...]:
+    return tuple(
+        probe
+        for probe in probe_results
+        if (
+            probe.action_id == path.action_id
+            and probe.path_id == path.path_id
+            and probe.mode == path.mode
+        )
+    )
+
+
+def _receipt_evidence_kinds(probe: "ProbeResult") -> frozenset[str]:
+    items_by_id = {item.evidence_id: item for item in probe.evidence_items}
+    if (
+        not probe.evidence_refs
+        or len(items_by_id) != len(probe.evidence_items)
+        or any(reference not in items_by_id for reference in probe.evidence_refs)
+    ):
+        return frozenset()
+    return frozenset(items_by_id[reference].kind for reference in probe.evidence_refs)
+
+
+def _receipt_status(probe: "ProbeResult") -> str:
+    kinds = _receipt_evidence_kinds(probe)
+    if not kinds:
+        return "not-verified"
+    has_decision = "path-pre-action-decision" in kinds
+    has_invocation = "path-tool-invocation" in kinds
+    if probe.status == "must-fix":
+        return "must-fix" if has_invocation else "not-verified"
+    if probe.status == "should-fix":
+        return "should-fix"
+    if probe.status == "pass" and has_decision:
+        if probe.observed not in (
+            "pre_action_decision_before_invocation",
+            "deny_decision_without_invocation",
+        ):
+            return "not-verified"
+        return "pass"
+    return "not-verified"
+
+
+def _receipt_is_executed(probe: "ProbeResult") -> bool:
+    kinds = _receipt_evidence_kinds(probe)
+    return bool(
+        kinds
+        & {
+            "path-pre-action-decision",
+            "path-tool-invocation",
+        }
+    )
+
+
+def _mediation_findings(
+    paths: Sequence[PathRecord], phase: str = "design"
+) -> Tuple[Finding, ...]:
+    uncovered = [
+        path
+        for path in paths
+        if path.mode != "provider-hosted-tool" and path.status != "pass"
+    ]
+    findings: List[Finding] = []
+    for path in paths:
+        if path.mode == "provider-hosted-tool" or path.status not in ("must-fix", "should-fix"):
+            continue
+        findings.append(
+            Finding(
+                finding_id="MED-001",
+                status=path.status,
+                phase=phase,
+                plane="runtime",
+                reason_code="bypass",
+                summary=f"{path.mode} path for {path.action_id} lacks pre-action mediation",
+                details=(
+                    f"The {path.mode} dispatch path for '{path.action_id}' "
+                    "was executed with evidence that did not prove a "
+                    "pre-action mediation decision before tool execution. "
+                    "Only a correlated, path-bound execution receipt can "
+                    "elevate a mediation path above not-verified; an "
+                    "executed bypass remains must-fix."
+                ),
+                affected_actions=(path.action_id,),
+                affected_paths=(path.path_id,),
+                evidence_refs=path.evidence_refs,
+            )
+        )
+    if uncovered:
+        findings.append(
+            Finding(
+                finding_id="MED-002",
+                status=(
+                    "must-fix"
+                    if any(path.status in ("must-fix", "should-fix") for path in uncovered)
+                    else "not-verified"
+                ),
+                phase=phase,
+                plane="runtime",
+                reason_code="coverage-incomplete",
+                summary="declared mediation coverage is incomplete",
+                details=(
+                    "One or more interactive/batch/background/subagent/"
+                    "direct-tool paths for a consequential action are "
+                    "either still only statically discovered or were "
+                    "executed without verified pre-action mediation; every "
+                    "required family must be backed by correlated "
+                    "execution evidence before it can pass."
+                ),
+                affected_actions=tuple(sorted({path.action_id for path in uncovered})),
+                affected_paths=tuple(sorted(path.path_id for path in uncovered)),
+                evidence_refs=tuple(
+                    sorted(set().union(*(path.evidence_refs for path in uncovered)))
+                ),
+            )
+        )
+    findings.sort(key=lambda finding: (finding.finding_id, finding.summary))
+    return tuple(findings)
+
+
+def apply_execution_receipts(
+    paths: Tuple[PathRecord, ...],
+    probe_results: Sequence["ProbeResult"],
+    *,
+    phase: str = "design",
+) -> Tuple[Tuple[PathRecord, ...], Tuple[Finding, ...]]:
+    updated: List[PathRecord] = []
+    for path in paths:
+        matches = _matching_receipts(path, probe_results)
+        if not matches:
+            updated.append(path)
+            continue
+        duplicate_receipts = len(
+            {(probe.probe_id, probe.path_id) for probe in matches}
+        ) != len(matches)
+        receipt_statuses = {_receipt_status(probe) for probe in matches}
+        executed = any(_receipt_is_executed(probe) for probe in matches)
+        if (
+            duplicate_receipts
+            or "must-fix" in receipt_statuses
+            or {"pass", "should-fix"} <= receipt_statuses
+        ):
+            status = "must-fix"
+        elif "not-verified" in receipt_statuses:
+            status = "not-verified"
+        elif "should-fix" in receipt_statuses:
+            status = "should-fix"
+        elif receipt_statuses == {"pass"} and executed:
+            if path.static_assessment == "bypass-proven":
+                status = "must-fix"
+            elif path.static_assessment == "mediated-candidate" or all(
+                "native-loader-integrity" in _receipt_evidence_kinds(probe) for probe in matches
+            ):
+                status = "pass"
+            else:
+                status = "not-verified"
+        else:
+            status = "not-verified"
+        updated.append(
+            replace(
+                path,
+                executed=executed,
+                status=status,
+                evidence_refs=tuple(
+                    sorted(set(path.evidence_refs).union(*(probe.evidence_refs for probe in matches)))
+                ),
+            )
+        )
+    return tuple(updated), _mediation_findings(updated, phase=phase)
 
 
 # ---------------------------------------------------------------------------
@@ -814,12 +994,13 @@ def _build_path(
     """
     static = _static_evidence(root, action, mode, ast_index, candidate_files)
     if static is not None:
-        nodes, found_relative = static
+        nodes, found_relative, static_assessment = static
         evidence_refs = tuple(
             sorted(set(entry_refs) | {found_relative})
         )
     elif adapter_declared is not None:
         nodes = adapter_declared.nodes
+        static_assessment = "incomplete"
         evidence_refs = tuple(sorted(set(entry_refs) | set(adapter_declared.evidence_refs)))
     else:
         nodes = ("entry",)
@@ -833,9 +1014,11 @@ def _build_path(
             covered=False,
             status="not-verified",
             evidence_refs=entry_refs,
+            discovered=False,
+            executed=False,
         )
 
-    covered, status = _recompute_coverage(nodes)
+    covered, _status = _recompute_coverage(nodes)
 
     pre_action_seam: Optional[str] = None
     if "pre-action-seam" in nodes:
@@ -851,8 +1034,11 @@ def _build_path(
         pre_action_seam=pre_action_seam,
         equivalent_control_ref=None,
         covered=covered,
-        status=status,
+        status="not-verified",
         evidence_refs=evidence_refs,
+        discovered=True,
+        executed=False,
+        static_assessment=static_assessment,
     )
 
 
@@ -935,9 +1121,6 @@ def build_mediation_graph(
     ast_index = _build_ast_index(non_provider_actions, candidates_by_action)
 
     paths: List[PathRecord] = []
-    uncovered: List[PathRecord] = []
-    findings: List[Finding] = []
-
     for action in non_provider_actions:
         candidate_files = candidates_by_action[action.action_id]
         for mode in REQUIRED_NON_PROVIDER_MODES:
@@ -951,75 +1134,11 @@ def build_mediation_graph(
                 candidate_files,
             )
             paths.append(record)
-            if not record.covered:
-                uncovered.append(record)
-            if record.status == "must-fix":
-                findings.append(
-                    Finding(
-                        finding_id="MED-001",
-                        status="must-fix",
-                        phase="design",
-                        plane="runtime",
-                        reason_code="bypass",
-                        summary=(
-                            f"{mode} path for {action.action_id} lacks "
-                            "pre-action mediation"
-                        ),
-                        details=(
-                            f"The {mode} dispatch path for '{action.action_id}' "
-                            "reaches tool-service (or an equivalent direct "
-                            "provider call) without ever calling the Agent "
-                            "Hooks pre-action seam first, and no fully-named "
-                            "equivalent server-side control is declared for "
-                            "it either. A control observed only after the "
-                            "action already executed is never treated as "
-                            "pre-action mediation."
-                        ),
-                        affected_actions=(action.action_id,),
-                        affected_paths=(record.path_id,),
-                        evidence_refs=record.evidence_refs,
-                    )
-                )
-
-    if uncovered:
-        med002_status = (
-            "must-fix"
-            if any(path.status == "must-fix" for path in uncovered)
-            else "not-verified"
-        )
-        med002_evidence = tuple(
-            sorted(set().union(*(path.evidence_refs for path in uncovered)))
-        ) or entry_refs
-        findings.append(
-            Finding(
-                finding_id="MED-002",
-                status=med002_status,
-                phase="design",
-                plane="runtime",
-                reason_code="coverage-incomplete",
-                summary="declared mediation coverage is incomplete",
-                details=(
-                    "One or more interactive/batch/background/subagent/"
-                    "direct-tool paths for a consequential action are "
-                    "either a proven bypass or could not be verified as "
-                    "covered; every required family must be either "
-                    "explicitly mediated or evidenced absent, never "
-                    "assumed covered."
-                ),
-                affected_actions=tuple(
-                    sorted({path.action_id for path in uncovered})
-                ),
-                affected_paths=tuple(sorted(path.path_id for path in uncovered)),
-                evidence_refs=med002_evidence,
-            )
-        )
-
-    findings.sort(key=lambda finding: (finding.finding_id, finding.summary))
     return MediationGraph(
         nodes=_GRAPH_NODES,
         edges=_GRAPH_EDGES,
         paths=tuple(paths),
-        findings=tuple(findings),
+        findings=_mediation_findings(paths),
     )
 
 
@@ -1138,6 +1257,8 @@ def assess_provider_paths(
                     covered=covered,
                     status=status,
                     evidence_refs=action.declaration_refs,
+                    discovered=True,
+                    executed=False,
                 )
             )
 

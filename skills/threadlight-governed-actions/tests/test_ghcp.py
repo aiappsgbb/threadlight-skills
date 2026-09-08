@@ -46,6 +46,181 @@ CATALOG_PATH = (
 )
 
 
+def effect_closure_fixture():
+    from copy import deepcopy
+    target = {
+        "agent_name": "agent-1", "agent_version": "1",
+        "image_digest": "sha256:" + "a" * 64, "policy_digest": "sha256:" + "b" * 64,
+        "environment": "preproduction", "subscription": "11111111-1111-1111-1111-111111111111",
+        "resource_group": "rg-staging",
+    }
+    binding = {"binding_id": "refund-pre", "tool_id": "refund",
+               "enforcement_path": "governed-tool-gateway", "gateway_url": "https://gateway.example/mcp",
+               "policy_digest": target["policy_digest"]}
+    base = {"action_id": "refund", "observed_target": target,
+            "agent_principal_id": "22222222-2222-2222-2222-222222222222",
+            "collected_at": "2026-09-05T10:00:00Z", "gateway_url": binding["gateway_url"]}
+    values = {
+        "configuration": {"mcp_url": binding["gateway_url"], "tool_name": "refund",
+                          "credentials_complete": True, "direct_credentials_present": False,
+                          "equivalent_tools_complete": True, "builtin_equivalent_effect": False,
+                          "provider_equivalent_effect": False},
+        "network": {"direct_access": "blocked", "paths_complete": True},
+        "iam": {"direct_access": "blocked", "paths_complete": True},
+        "live-probe": {
+            "execution_surface": "deployed-invocations", "invocation_id": "deny-1",
+            "outcome": "blocked", "downstream_calls": 0, "side_effects": 0,
+            "receipt": {"origin": "gateway-service", "receipt_id": "a" * 32,
+                        "correlation_id": "deny-1", "action_id": "refund", "decision": "deny",
+                        "observed_target": deepcopy(target)},
+            "positive_control": {"invocation_id": "positive-2", "outcome": "completed",
+                                 "downstream_calls": 1, "side_effects": 1},
+        },
+    }
+    observations = [
+        {**deepcopy(base), "kind": kind, "source": "deployed-invocations" if kind == "live-probe"
+         else "azure-resource-api", "evidence_ref": f"EV-{kind}", "observed": value}
+        for kind, value in values.items()
+    ]
+    # Simulates a trusted collector's authenticated observation set, NOT a marker
+    # parsed from repository JSON. A future live collector supplies this seam.
+    def verifier(record):
+        return any(record == candidate for candidate in observations)
+    return binding, target, observations, verifier
+
+
+def test_effect_closure_is_consumed_by_actual_assessor(tmp_path):
+    binding, target, observations, verifier = effect_closure_fixture()
+    result = assess_change_plane(tmp_path, gateway_bindings=[binding], deployed_target=target,
+        effect_observations=observations, observation_verifier=verifier, now="2026-09-05T10:00:01Z")
+    assert result.action_posture[0]["status"] == "enforced"
+    assert result.action_posture[0]["posture"] == "action-governed"
+    assert result.controls["ghcp_internal_loop_intercepted"] is False
+    assert result.action_posture[0]["whole_agent_governed"] is False
+
+
+@pytest.mark.parametrize("missing", ["configuration", "network", "iam", "live-probe", "verifier"])
+def test_effect_closure_missing_coverage_is_unverified(tmp_path, missing):
+    binding, target, observations, verifier = effect_closure_fixture()
+    result = assess_change_plane(tmp_path, gateway_bindings=[binding], deployed_target=target,
+        effect_observations=[r for r in observations if r["kind"] != missing],
+        observation_verifier=None if missing == "verifier" else verifier, now="2026-09-05T10:00:01Z")
+    assert result.action_posture[0]["status"] == "unverified"
+
+
+@pytest.mark.parametrize("kind,field,value", [
+    ("configuration", "direct_credentials_present", True),
+    ("configuration", "builtin_equivalent_effect", True),
+    ("configuration", "provider_equivalent_effect", True),
+    ("network", "direct_access", "allowed"),
+    ("iam", "direct_access", "allowed"),
+    ("live-probe", "side_effects", 1),
+])
+def test_effect_closure_positive_bypass_survives_local_deny(tmp_path, kind, field, value):
+    binding, target, observations, verifier = effect_closure_fixture()
+    next(r for r in observations if r["kind"] == kind)["observed"][field] = value
+    observations.append({"kind": "local-receipt", "decision": "deny", "signature_verified": True})
+    result = assess_change_plane(tmp_path, gateway_bindings=[binding], deployed_target=target,
+        effect_observations=observations, observation_verifier=verifier, now="2026-09-05T10:00:01Z")
+    assert result.action_posture[0]["status"] == "bypassable"
+
+
+@pytest.mark.parametrize("url", [
+    "https://gateway.example.evil/mcp", "https://gateway.example/mcp/extra",
+    "https://gateway.example/mcp?redirect=x", "https://gateway.example/%6dcp",
+    "https://gateway.example:444/mcp", "https://user@gateway.example/mcp",
+    "https://gateway.example/mcp\n", "\nhttps://gateway.example/mcp",
+])
+def test_effect_closure_requires_exact_canonical_gateway(tmp_path, url):
+    binding, target, observations, verifier = effect_closure_fixture()
+    observations[0]["observed"]["mcp_url"] = url
+    result = assess_change_plane(tmp_path, gateway_bindings=[binding], deployed_target=target,
+        effect_observations=observations, observation_verifier=verifier, now="2026-09-05T10:00:01Z")
+    assert result.action_posture[0]["status"] != "enforced"
+
+
+@pytest.mark.parametrize("field", ["agent_name", "agent_version", "image_digest", "policy_digest",
+                                  "environment", "subscription", "resource_group"])
+def test_effect_closure_receipt_must_correlate_exact_deployment(tmp_path, field):
+    binding, target, observations, verifier = effect_closure_fixture()
+    observations[-1]["observed"]["receipt"]["observed_target"][field] = "wrong"
+    result = assess_change_plane(tmp_path, gateway_bindings=[binding], deployed_target=target,
+        effect_observations=observations, observation_verifier=verifier, now="2026-09-05T10:00:01Z")
+    assert result.action_posture[0]["status"] == "unverified"
+
+
+def test_effect_closure_unbound_mcp_unaffected(tmp_path):
+    binding, target, observations, verifier = effect_closure_fixture()
+    binding.update(enforcement_path="none", policy_digest=None)
+    result = assess_change_plane(tmp_path, gateway_bindings=[binding], deployed_target=target,
+        effect_observations=observations, observation_verifier=verifier, now="2026-09-05T10:00:01Z")
+    assert result.action_posture[0]["status"] == "unbound"
+
+
+def test_effect_closure_full_read_only_assessment_and_render(tmp_path):
+    import contracts
+    import governed_actions
+    import render
+    import shutil
+    binding, target, observations, verifier = effect_closure_fixture()
+    target["environment"] = "staging"
+    observations[-1]["observed"]["receipt"]["observed_target"]["environment"] = "staging"
+    for record in observations:
+        record["observed_target"]["environment"] = "staging"
+    root = tmp_path / "fixture"
+    shutil.copytree(FIXTURES_DIR / "conformant-maf", root)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "remote", "add", "origin",
+                    "https://github.com/example/gateway-fixture.git"], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(root), "-c", "user.name=Gateway Test",
+                    "-c", "user.email=gateway-test@example.invalid", "commit", "-qm",
+                    "Fixture\n\nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"],
+                   check=True)
+    options = contracts.AssessmentOptions(
+        root=root, phase="pre-deploy", now="2026-09-05T10:00:01Z",
+        agent_name=target["agent_name"], agent_version=target["agent_version"],
+        image_digest=target["image_digest"], policy_digest=target["policy_digest"],
+        environment="staging", subscription=target["subscription"],
+        staging_resource_group=target["resource_group"], gateway_bindings=(binding,),
+        effect_observations=tuple(observations), effect_observation_verifier=verifier)
+    result = governed_actions.assess(options)
+    assert result.action_posture[0]["posture"] == "action-governed"
+    indexed = {ref.evidence_id: ref for ref in result.evidence}
+    for reference in result.action_posture[0]["evidence_refs"]:
+        assert reference in indexed
+        assert indexed[reference].live_verified is True
+        assert indexed[reference].deployed_target == target
+    manifest = render.build_manifest(result)
+    assert manifest["action_posture"][0]["posture"] == "action-governed"
+
+
+@pytest.mark.parametrize("mutate", ["credentials", "iam", "receipt-local", "receipt-correlation",
+                                   "identity", "stale", "zero-string", "zero-bool", "positive"])
+def test_effect_closure_rejects_incomplete_or_misleading_observations(tmp_path, mutate):
+    binding, target, observations, verifier = effect_closure_fixture()
+    config, network, iam, probe = observations
+    if mutate == "credentials":
+        del config["observed"]["direct_credentials_present"]
+    elif mutate == "iam":
+        iam["observed"]["paths_complete"] = False
+    elif mutate == "receipt-local":
+        probe["observed"]["receipt"]["origin"] = "local-test"
+    elif mutate == "receipt-correlation":
+        probe["observed"]["receipt"]["correlation_id"] = "other"
+    elif mutate == "identity":
+        iam["agent_principal_id"] = target["subscription"]
+    elif mutate == "stale":
+        network["collected_at"] = "2026-08-05T10:00:00Z"
+    elif mutate in ("zero-string", "zero-bool"):
+        probe["observed"]["downstream_calls"] = "0" if mutate == "zero-string" else False
+    else:
+        probe["observed"]["positive_control"]["downstream_calls"] = 0
+    result = assess_change_plane(tmp_path, gateway_bindings=[binding], deployed_target=target,
+        effect_observations=observations, observation_verifier=verifier, now="2026-09-05T10:00:01Z")
+    assert result.action_posture[0]["status"] == "unverified"
+
+
 @pytest.fixture
 def fixture_root() -> Path:
     return FIXTURES_DIR
@@ -8039,8 +8214,8 @@ def test_live_azure_digest_is_bound_to_scope():
     result_a = collect_live_azure("sub-a", "rg", "identity", run=_FakeRunner([_ok("[]"), _ok("[]")]))
     result_b = collect_live_azure("sub-b", "rg", "identity", run=_FakeRunner([_ok("[]"), _ok("[]")]))
     assert result_a.data["collected_sha256"] != result_b.data["collected_sha256"]
-    assert result_a.data["subscription"] == "sub-a"
-    assert result_b.data["subscription"] == "sub-b"
+    assert result_a.data["selected_scope"]["subscription"] == "sub-a"
+    assert result_b.data["selected_scope"]["subscription"] == "sub-b"
 
 
 def test_live_azure_federated_credentials_entry_must_be_a_mapping():

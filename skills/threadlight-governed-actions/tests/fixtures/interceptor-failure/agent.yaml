@@ -7,3 +7,4 @@ tools:
     consequence: irreversible
     execution_modes: [interactive, background, subagent, direct-tool]
     provider_hosted: false
+    aliases: [payments.capture]

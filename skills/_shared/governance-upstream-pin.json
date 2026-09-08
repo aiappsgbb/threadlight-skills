@@ -1,0 +1,54 @@
+{
+  "schema": "threadlight-governance-upstream-pin/v1",
+  "agt": {
+    "distribution": "agent-governance-toolkit-core",
+    "version": "5.0.0"
+  },
+  "acs": {
+    "distribution": "agent-control-specification",
+    "version": "0.3.1b0"
+  },
+  "agent_hooks": {
+    "distribution": "agent-hooks-sdk",
+    "version": "0.1.0a5"
+  },
+  "maf": {
+    "agent-framework-core": "1.14.0",
+    "agent-framework-foundry": "1.11.0",
+    "agent-framework-foundry-hosting": "1.0.0b260813"
+  },
+  "opa": {
+    "version": "1.18.2",
+    "linux_amd64_static_sha256": "9903e5125ac281104f2c4b7371d10cc3b74a98933743fcbfc174f9bf0ab20de8"
+  },
+  "wheels": {
+    "agent-governance-toolkit-core": {
+      "filename": "agent_governance_toolkit_core-5.0.0-py3-none-any.whl",
+      "sha256": "6f8494c5ada3d5824f90e56d5e450f8ca6fba9759c107f077bdc0c87b7c496d2"
+    },
+    "agent-control-specification": {
+      "filename": "agent_control_specification-0.3.1b0-cp311-abi3-manylinux_2_28_x86_64.whl",
+      "sha256": "c45ffb572f42247e4c9317539cddbab3eb9009bfce3eccc865fdc764760c60c7"
+    },
+    "agent-hooks-sdk": {
+      "filename": "agent_hooks_sdk-0.1.0a5-cp310-abi3-manylinux_2_28_x86_64.whl",
+      "sha256": "a4b53cce9dabf1ee8ffffa4b5f6c6d34d269daa699d468e49fad286f0070d23f"
+    },
+    "agent-framework-core": {
+      "filename": "agent_framework_core-1.14.0-py3-none-any.whl",
+      "sha256": "0d161490bb26bde185dd325fcdbb3b109d85e91076ef6ed5df118c4e5f715cba"
+    },
+    "agent-framework-foundry": {
+      "filename": "agent_framework_foundry-1.11.0-py3-none-any.whl",
+      "sha256": "6750b01927ec6350a084d7bc71a5edb01e4ecec97e9c87cf593e8c6c72b6ddb2"
+    },
+    "agent-framework-foundry-hosting": {
+      "filename": "agent_framework_foundry_hosting-1.0.0b260813-py3-none-any.whl",
+      "sha256": "d822ea0f4a1151a7d43d281da9a2141cac8dbcd5810e60afe2b315ee1a815d33"
+    }
+  },
+  "safe_reference": {
+    "repository": "placerda/safe-agent-on-foundry",
+    "commit": "f9d2a55954d447554907686d59135489c393e826"
+  }
+}

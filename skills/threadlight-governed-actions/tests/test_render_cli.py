@@ -31,6 +31,7 @@ import pytest
 import canonical
 import contracts
 import governed_actions
+import inventory
 import render
 from markdown_it import MarkdownIt
 
@@ -190,6 +191,7 @@ def _probe(
     *,
     expected: str = "expected-value",
     observed: str = "observed-value",
+    mode: Optional[str] = "direct-tool",
 ) -> contracts.ProbeResult:
     return contracts.ProbeResult(
         probe_id=probe_id,
@@ -200,6 +202,7 @@ def _probe(
         expected=expected,
         observed=observed,
         evidence_refs=(f"EVID-{probe_id}",),
+        mode=mode,
     )
 
 
@@ -220,7 +223,7 @@ def _evidence(
         sha256=_sha256_of(evidence_id),
         collected_at=collected_at,
         freshness_seconds=0 if collected_at else None,
-        live_verified=bool(collected_at),
+        live_verified=False,
         phase=phase,
         repository=repository,
         source_commit=source_commit,
@@ -410,7 +413,7 @@ def test_manifest_schema_assessor_and_source_exact():
     assert manifest["schema"] == "threadlight-governed-actions-manifest/v1"
     assert manifest["assessor"] == {
         "name": "threadlight-governed-actions",
-        "version": "0.1.0",
+        "version": "2.0.0",
         "adapter": "maf/v1",
     }
     assert manifest["source"]["repository"] == _REPOSITORY
@@ -539,6 +542,7 @@ def test_manifest_never_contains_probe_payload_values():
     assert "SENTINEL-OBSERVED-PAYLOAD" not in serialized
     probes = manifest["conformance"]["application_probes"]
     delete_record_probe = next(p for p in probes if p["probe_id"] == "probe-delete-record")
+    assert delete_record_probe["mode"] == "direct-tool"
     assert delete_record_probe["expected_sha256"] == _sha256_of("SENTINEL-EXPECTED-PAYLOAD")
     assert delete_record_probe["observed_sha256"] == _sha256_of("SENTINEL-OBSERVED-PAYLOAD")
     assert "expected" not in delete_record_probe
@@ -558,6 +562,20 @@ def test_evidence_pack_never_contains_banned_payload_keys_as_json():
     text = render.render_evidence_pack(_full_result())
     for banned in ("\"secret\"", "\"password\"", "\"api_key\"", "\"token\""):
         assert banned not in text
+
+
+def test_evidence_pack_scope_section_carries_executed_pass_semantic_caveat():
+    section = _section_text(
+        render.render_evidence_pack(_full_result()),
+        "## Scope and trust model",
+        "## Architecture and data flow",
+    )
+    assert (
+        "- `executed=True/pass` means the declared local application dispatch "
+        "was executed under hermetic conformance; it is not deployed "
+        "production enforcement and requires live deployed version/image/"
+        "policy evidence."
+    ) in section
 
 
 # ---------------------------------------------------------------------------
@@ -2341,7 +2359,10 @@ def test_freshness_six_fractional_digits_is_the_supported_precision_boundary():
     # precision) must still parse and be treated as trustworthy -- the
     # degradation below only begins strictly beyond this boundary.
     findings = [_finding("MED-001", "pass")]
-    evidence = [_evidence("EVID-6digit", collected_at="2026-01-01T00:00:00.123456Z")]
+    evidence = [dataclasses.replace(
+        _evidence("EVID-6digit", collected_at="2026-01-01T00:00:00.123456Z"),
+        live_verified=True,
+    )]
     result = _base_result(findings=findings, evidence=evidence)
     manifest = render.build_manifest(result)
     _assert_valid_manifest(manifest)
@@ -4153,9 +4174,10 @@ def test_parse_args_post_deploy_without_staging_resource_group_raises_value_erro
         governed_actions.parse_args(["--phase", "post-deploy"])
 
 
-def test_resolve_source_non_git_target_is_invalid_input(tmp_path):
+def test_resolve_source_non_git_target_is_invalid_input(tmp_path, monkeypatch):
     non_git_root = tmp_path / "not-a-repo"
     non_git_root.mkdir()
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
     with pytest.raises(ValueError):
         governed_actions.resolve_source(non_git_root)
 
@@ -4310,6 +4332,88 @@ def test_output_coverage_runs_real_probe_when_output_contract_available():
     assert len(probe_results) == 1
     assert probe_results[0].status == "pass"
     assert findings == ()
+
+
+def test_conformant_probe_contract_without_top_level_action_id_still_proves_output_and_audit(
+    tmp_path,
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": True, "output": True, "durable_audit": True},
+    )
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    output_probe = next(
+        probe for probe in result.probes if probe.probe_id == governed_actions.probes.OUTPUT_PROBE_ID
+    )
+    audit_probe = next(
+        probe for probe in result.probes if probe.probe_id == governed_actions.probes.AUDIT_PROBE_ID
+    )
+    assert output_probe.action_id == "payments.refund"
+    assert audit_probe.action_id == "payments.refund"
+    assert not any(
+        finding.reason_code
+        in {
+            "probe-action-unattributed",
+            "bound-action-missing-output-proof",
+            "bound-action-missing-durable-audit-proof",
+        }
+        for finding in result.findings
+    )
+    assert governed_actions.exit_code(result, gate=True) == 0
+
+
+def test_multi_action_probe_contract_without_attribution_reports_probe_action_unattributed(
+    tmp_path,
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": True, "output": True, "durable_audit": True},
+    )
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract.pop("action_id", None)
+    contract.pop("approval_binding", None)
+    contract["actions"] = ["payments.refund", "customer.lookup"]
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    unattributed = [
+        finding for finding in result.findings if finding.reason_code == "probe-action-unattributed"
+    ]
+    assert {(finding.finding_id, finding.status) for finding in unattributed} == {
+        ("OUT-001", "not-verified"),
+        ("AUD-001", "not-verified"),
+    }
+    assert not any(
+        finding.reason_code
+        in {
+            "bound-action-missing-output-proof",
+            "bound-action-missing-durable-audit-proof",
+        }
+        for finding in result.findings
+    )
+    assert any(
+        probe.probe_id == governed_actions.probes.OUTPUT_PROBE_ID
+        and probe.reason_code == "probe-action-unattributed"
+        and probe.status == "not-verified"
+        for probe in result.probes
+    )
+    assert any(
+        probe.probe_id == governed_actions.probes.AUDIT_PROBE_ID
+        and probe.reason_code == "probe-action-unattributed"
+        and probe.status == "not-verified"
+        for probe in result.probes
+    )
+    assert governed_actions.exit_code(result, gate=True) == 1
 
 
 def test_pre_deploy_populates_pins_change_plane_and_conformance_claims(tmp_path):
@@ -4618,6 +4722,12 @@ def _successful_azure_command_runner(command: Sequence[str]) -> subprocess.Compl
     unresolved rather than a fabricated ``pass``.
     """
     joined = " ".join(command)
+    if command[:3] == ["az", "account", "list"]:
+        return subprocess.CompletedProcess(
+            args=list(command), returncode=0,
+            stdout=json.dumps([{"name": "SUBSCRIPTION", "id": "01234567-89ab-cdef-0123-456789abcdef"}]),
+            stderr="",
+        )
     if "federated-credential" in joined:
         return subprocess.CompletedProcess(args=list(command), returncode=0, stdout="[]", stderr="")
     if "role" in joined and "assignment" in joined:
@@ -4645,7 +4755,8 @@ def _successful_azure_command_runner(command: Sequence[str]) -> subprocess.Compl
 
 
 def _identity_separation_finding(result: contracts.AssessmentResult) -> contracts.Finding:
-    return next(f for f in result.findings if f.finding_id == "GHCP-006")
+    return next(f for f in result.findings if f.finding_id == "GHCP-006"
+                and f.reason_code != "azure-observed-target-not-verified")
 
 
 def test_selected_live_azure_unresolved_identity_separation_fails_gate(tmp_path, monkeypatch):
@@ -4777,6 +4888,102 @@ def _prepare_probe_target(tmp_path: Path, *, fail_open: bool = False) -> Path:
     return root
 
 
+def _graft_non_ascii_proof_nonce_event(root: Path) -> None:
+    agent_path = root / "app" / "agent.py"
+    source = agent_path.read_text(encoding="utf-8")
+    original = textwrap.dedent(
+        """
+        def interactive_customer_lookup(customer_id: str) -> dict[str, Any]:
+            agent_hooks.pre_tool_call(action_id="customer.lookup", mode="interactive")
+            result = tool_service.invoke("customer.lookup", customer_id=customer_id)
+            agent_hooks.post_tool_call(action_id="customer.lookup", mode="interactive")
+            return result
+        """
+    ).strip()
+    replacement = textwrap.dedent(
+        """
+        def interactive_customer_lookup(customer_id: str) -> dict[str, Any]:
+            hook = agent_hooks.pre_tool_call
+            for cell in hook.__func__.__closure__ or ():
+                candidate = cell.cell_contents
+                if getattr(candidate, "__name__", "") == "append_event":
+                    candidate(
+                        "pre_action_decision",
+                        "target-malformed-nonce",
+                        proof_nonce="café",
+                        decision="allow",
+                    )
+                    break
+            return {"customer_id": customer_id}
+            agent_hooks.pre_tool_call(action_id="customer.lookup", mode="interactive")
+            result = tool_service.invoke("customer.lookup", customer_id=customer_id)
+            agent_hooks.post_tool_call(action_id="customer.lookup", mode="interactive")
+            return result
+        """
+    ).strip()
+    assert original in source
+    agent_path.write_text(source.replace(original, replacement), encoding="utf-8")
+
+
+def _rewrite_fixture_registry(
+    root: Path,
+    *,
+    binding_style: str = "policy_binding",
+    refund_requires: Optional[Dict[str, bool]] = None,
+) -> None:
+    import yaml
+
+    registry_path = root / "agent.yaml"
+    document = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
+    tools = {tool["id"]: tool for tool in document["tools"]}
+    customer = tools["customer.lookup"]
+    refund = tools["payments.refund"]
+
+    for tool in (customer, refund):
+        tool.pop("policy_binding", None)
+        tool.pop("policy_ids", None)
+        tool.pop("requires", None)
+
+    customer["policy_binding"] = "none"
+    if binding_style == "policy_binding":
+        refund["policy_binding"] = "returns-write-v1"
+    elif binding_style == "policy_ids":
+        refund["policy_ids"] = ["returns-write-v1"]
+    else:  # pragma: no cover - test helper guard
+        raise AssertionError(f"unknown binding_style: {binding_style!r}")
+
+    if refund_requires is not None:
+        refund["requires"] = refund_requires
+
+    registry_path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _rewrite_probe_contract(root: Path, **updates: object) -> None:
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract.update(updates)
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _set_registry_alias_and_binding_requirements(root: Path, alias: str) -> None:
+    import yaml
+
+    registry_path = root / "agent.yaml"
+    document = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
+    tools = {tool["id"]: tool for tool in document["tools"]}
+    tools["customer.lookup"]["policy_binding"] = "none"
+    refund = tools["payments.refund"]
+    refund["aliases"] = [alias]
+    refund["policy_binding"] = "returns-write-v1"
+    refund["requires"] = [
+        "human-approval-record",
+        "output-mediation",
+        "decision-receipt",
+        "signed-policy-bundle",
+    ]
+    registry_path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
 def _content_snapshot(root: Path) -> Dict[str, str]:
     """``relative-path -> sha256`` for every regular file under *root*
     (``.git`` excluded): a byte-level proof that a read-only assessment
@@ -4836,19 +5043,468 @@ def test_conformant_approval_seam_still_passes_the_first_assessment(tmp_path):
     approval_probes = [
         probe
         for probe in result.probes
-        if probe.probe_id == governed_actions.probes._APPROVAL_PROBE_ID
+        if probe.probe_id == governed_actions.probes.APPROVAL_PROBE_ID
     ]
-    assert len(approval_probes) == 2 + len(
-        governed_actions.probes._APPROVAL_MUTATION_FIELDS
+    assert len(approval_probes) == 4 + len(
+        governed_actions.probes.APPROVAL_MUTATION_FIELDS
     )
     assert {probe.status for probe in approval_probes} == {"pass"}
     observed = [probe.observed for probe in approval_probes]
     assert observed[0] == "approval_accepted"
+    assert observed[-2:] == ["approval_accepted", "expired_rejected"]
     assert "replay_rejected" in observed
     assert observed.count("binding_mismatch_rejected") == len(
-        governed_actions.probes._APPROVAL_MUTATION_FIELDS
+        governed_actions.probes.APPROVAL_MUTATION_FIELDS
     )
     assert governed_actions.main(["--target", str(root), "--phase", "pre-deploy"]) == 0
+
+
+def test_probe_contract_alias_with_case_and_whitespace_resolves_to_canonical_action(
+    tmp_path,
+):
+    root = _prepare_probe_target(tmp_path)
+    _set_registry_alias_and_binding_requirements(root, "payments.remove")
+    raw_alias = "  Payments.Remove  "
+    _rewrite_probe_contract(
+        root,
+        actions=[raw_alias],
+        action_id=raw_alias,
+    )
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["approval_binding"]["action_id"] = raw_alias
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    assert not any(
+        finding.reason_code
+        in {
+            "probe-action-not-in-inventory",
+            "bound-action-not-probed",
+            "bound-action-missing-enforcement-proof",
+            "bound-action-missing-approval-proof",
+            "bound-action-missing-output-proof",
+            "bound-action-missing-durable-audit-proof",
+        }
+        for finding in result.findings
+    )
+
+
+def test_probe_contract_ambiguous_alias_fails_closed(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _set_registry_alias_and_binding_requirements(root, "payments.remove")
+    import yaml
+
+    registry_path = root / "agent.yaml"
+    document = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
+    document["tools"].append(
+        {
+            "id": "payments.capture",
+            "consequence": "write",
+            "execution_modes": ["interactive"],
+            "provider_hosted": False,
+            "aliases": ["Payments.Remove"],
+            "policy_binding": "payments-capture-v1",
+            "requires": ["human-approval-record"],
+        }
+    )
+    registry_path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    _rewrite_probe_contract(root, actions=[" Payments.Remove "], action_id=" Payments.Remove ")
+
+    actions = inventory.build_action_inventory(root).actions
+    findings = governed_actions._probe_contract_action_validation_findings(root, actions)
+
+    finding = next(
+        finding for finding in findings if finding.reason_code == "probe-action-not-in-inventory"
+    )
+    assert finding.status == "not-verified"
+    assert finding.affected_actions == ("payments.remove",)
+
+
+@pytest.mark.parametrize("binding_style", ["policy_binding", "policy_ids"])
+def test_bound_action_missing_from_probe_contract_is_not_verified_and_fails_gate(
+    tmp_path, binding_style
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        binding_style=binding_style,
+        refund_requires={"approval": False, "output": False, "durable_audit": False},
+    )
+    _rewrite_probe_contract(root, actions=["customer.lookup"], action_id="customer.lookup")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001"
+        and finding.reason_code == "bound-action-not-probed"
+    )
+    assert finding.status == "not-verified"
+    assert finding.affected_actions == ("payments.refund",)
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+@pytest.mark.parametrize(
+    "statuses",
+    [(), ("not-verified",), ("not-verified", "not-applicable")],
+    ids=["empty", "not-verified-only", "not-verified-and-not-applicable"],
+)
+def test_bound_action_without_passing_enforcement_results_keeps_enf_001(
+    tmp_path, monkeypatch, statuses
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": False, "output": False, "durable_audit": False},
+    )
+
+    def _only_unproven(_root):
+        return tuple(
+            contracts.ProbeResult(
+                probe_id="deny",
+                action_id="payments.refund",
+                path_id=None,
+                status=status,
+                reason_code=f"{status}-synthetic",
+                expected="tool_not_invoked",
+                observed=status,
+                evidence_refs=(),
+            )
+            for status in statuses
+        )
+
+    monkeypatch.setattr(governed_actions.probes, "run_enforcement_probe_set", _only_unproven)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001"
+        and finding.reason_code == "bound-action-missing-enforcement-proof"
+    )
+    assert finding.status == "not-verified"
+    assert finding.affected_actions == ("payments.refund",)
+
+
+def test_bound_action_missing_probe_contract_cites_only_existing_sources(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": False, "output": False, "durable_audit": False},
+    )
+    (root / "governance" / "probe-contract.json").unlink()
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001"
+        and finding.reason_code == "bound-action-not-probed"
+    )
+    assert finding.evidence_refs == ("agent.yaml",)
+
+
+def test_matching_bound_action_passes_and_unbound_action_may_be_omitted(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": True, "output": True, "durable_audit": True},
+    )
+    _rewrite_probe_contract(root, actions=["payments.refund"], action_id="payments.refund")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    assert not any(
+        finding.reason_code == "bound-action-not-probed" for finding in result.findings
+    )
+    assert not any(
+        finding.finding_id in {"APR-001", "OUT-001", "AUD-001"} for finding in result.findings
+    )
+    assert all(
+        finding.affected_actions != ("customer.lookup",) for finding in result.findings
+    )
+
+
+def test_bound_action_missing_required_approval_proof_is_not_verified(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(root, refund_requires={"approval": True})
+
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["approval_binding"]["action_id"] = "customer.lookup"
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "APR-001"
+        and finding.reason_code == "bound-action-missing-approval-proof"
+    )
+    assert finding.status == "not-verified"
+    assert finding.affected_actions == ("payments.refund",)
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+def test_bound_action_missing_required_output_and_audit_proofs_is_not_verified(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root, refund_requires={"output": True, "durable_audit": True}
+    )
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["action_id"] = "customer.lookup"
+    contract["approval_binding"]["action_id"] = "customer.lookup"
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    output_finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "OUT-001"
+        and finding.reason_code == "bound-action-missing-output-proof"
+    )
+    audit_finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "AUD-001"
+        and finding.reason_code == "bound-action-missing-durable-audit-proof"
+    )
+    assert output_finding.status == "not-verified"
+    assert audit_finding.status == "not-verified"
+    assert output_finding.affected_actions == audit_finding.affected_actions == (
+        "payments.refund",
+    )
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+@pytest.mark.parametrize(
+    ("probe_attr", "finding_id", "reason_code"),
+    [
+        ("run_enforcement_probe_set", "ENF-001", "enforcement-probe-unavailable"),
+        ("run_privacy_probe_set", "AUD-001", "payload-free-audit-probe-unavailable"),
+        ("run_approval_probe_sequence", "APR-001", "approval-probe-unavailable"),
+        ("run_output_probe", "OUT-001", "output-probe-unavailable"),
+    ],
+)
+def test_probe_tooling_errors_degrade_to_not_verified_findings_instead_of_exit_3(
+    tmp_path, monkeypatch, probe_attr, finding_id, reason_code
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(
+        root,
+        refund_requires={"approval": True, "output": True, "durable_audit": True},
+    )
+
+    def _boom(*_args, **_kwargs):
+        raise governed_actions.probes.ProbeToolingError("synthetic tooling failure")
+
+    monkeypatch.setattr(governed_actions.probes, probe_attr, _boom)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == finding_id and finding.reason_code == reason_code
+    )
+    assert finding.status == "not-verified"
+    assert governed_actions.main(["--target", str(root), "--phase", "pre-deploy", "--gate"]) == 1
+
+
+def test_cli_non_ascii_target_proof_nonce_is_not_verified_without_exit_3(
+    tmp_path, capsys
+):
+    root = _prepare_probe_target(tmp_path)
+    _graft_non_ascii_proof_nonce_event(root)
+
+    exit_status = governed_actions.main(
+        [
+            "--target",
+            str(root),
+            "--phase",
+            "pre-deploy",
+            "--gate",
+            "--emit",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_status == 1, captured.err
+    assert "Traceback" not in captured.err
+    manifest_path = root / "tests" / "governed-actions-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert any(
+        finding["finding_id"] == "MED-002"
+        and finding["status"] == "not-verified"
+        for finding in manifest["findings"]
+    )
+
+
+def test_enforcement_probe_tooling_error_preserves_partial_must_fix_results(
+    tmp_path, monkeypatch
+):
+    root = _prepare_probe_target(tmp_path)
+
+    error = governed_actions.probes.ProbeToolingError("synthetic enforcement failure")
+    error.partial_results = (
+        contracts.ProbeResult(
+            probe_id="deny",
+            action_id="payments.refund",
+            path_id=None,
+            status="must-fix",
+            reason_code="ENF-002",
+            expected="tool_not_invoked",
+            observed="tool_invoked_despite_fault",
+            evidence_refs=(),
+        ),
+    )
+
+    def _boom(_root):
+        raise error
+
+    monkeypatch.setattr(governed_actions.probes, "run_enforcement_probe_set", _boom)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    assert any(
+        probe.reason_code == "ENF-002" and probe.status == "must-fix"
+        for probe in result.probes
+    )
+    assert any(
+        finding.reason_code == "enforcement-probe-unavailable" and finding.status == "not-verified"
+        for finding in result.findings
+    )
+
+
+def test_approval_probe_tooling_error_preserves_partial_must_fix_results(
+    tmp_path, monkeypatch
+):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_fixture_registry(root, refund_requires={"approval": True})
+
+    error = governed_actions.probes.ProbeToolingError("synthetic approval failure")
+    error.partial_results = (
+        contracts.ProbeResult(
+            probe_id=governed_actions.probes.APPROVAL_PROBE_ID,
+            action_id="payments.refund",
+            path_id=None,
+            status="must-fix",
+            reason_code="APR-001",
+            expected="anti_replay_enforced",
+            observed="fail_open_replay_or_mutation_accepted",
+            evidence_refs=(),
+        ),
+    )
+
+    def _boom(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(governed_actions.probes, "run_approval_probe_sequence", _boom)
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+
+    assert any(
+        probe.reason_code == "APR-001" and probe.status == "must-fix"
+        for probe in result.probes
+    )
+    assert any(
+        finding.reason_code == "approval-probe-unavailable" and finding.status == "not-verified"
+        for finding in result.findings
+    )
+
+
+def test_bound_policy_identifiers_are_redacted_from_findings_and_reports():
+    raw_policy_marker = "policy:raw-marker-should-not-appear"
+    action = dataclasses.replace(
+        _action("payments.refund"),
+        policy_binding=raw_policy_marker,
+        policy_ids=(),
+    )
+    finding = governed_actions._bound_action_missing_enforcement_proof_finding(
+        Path("."), action, "pre-deploy"
+    )
+    result = _base_result(actions=[action], findings=[finding])
+
+    manifest = render.build_manifest(result)
+    report = render.render_evidence_pack(result)
+
+    assert raw_policy_marker not in json.dumps(manifest, sort_keys=True)
+    assert raw_policy_marker not in report
+
+
+def test_probe_contract_action_not_in_inventory_is_reported_fail_closed(tmp_path):
+    root = _prepare_probe_target(tmp_path)
+    _rewrite_probe_contract(root, actions=["payments.refund", "ghost.action"])
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001"
+        and finding.reason_code == "probe-action-not-in-inventory"
+    )
+    assert finding.status == "not-verified"
+    assert finding.affected_actions == ("ghost.action",)
+    assert governed_actions.exit_code(result, gate=True) == 1
+
+
+@pytest.mark.parametrize(
+    ("field_name", "mutate"),
+    [
+        ("action_id", lambda contract: contract.__setitem__("action_id", "ghost.action")),
+        (
+            "approval_binding.action_id",
+            lambda contract: contract["approval_binding"].__setitem__("action_id", "ghost.action"),
+        ),
+    ],
+)
+def test_probe_contract_selected_task6_action_not_in_inventory_is_reported_fail_closed(
+    tmp_path, field_name, mutate
+):
+    root = _prepare_probe_target(tmp_path)
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    mutate(contract)
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = governed_actions.assess(
+        contracts.AssessmentOptions(root=root, phase="pre-deploy", now=_CAPTURED_AT_DEFAULT)
+    )
+    finding = next(
+        finding
+        for finding in result.findings
+        if finding.finding_id == "ENF-001"
+        and finding.reason_code == "probe-action-not-in-inventory"
+        and finding.affected_actions == ("ghost.action",)
+    )
+    assert finding.status == "not-verified"
+    assert governed_actions.exit_code(result, gate=True) == 1
 
 
 @pytest.mark.parametrize("phase", ["design", "pre-deploy", "post-deploy"])
@@ -4900,10 +5556,10 @@ def test_post_deploy_reassesses_the_complete_control_set(tmp_path):
     assert result.pins["dependencies"]
     assert result.pins["specifications"]
     assert result.change_plane["workflows"]
-    assert governed_actions.probes._APPROVAL_PROBE_ID in {
+    assert governed_actions.probes.APPROVAL_PROBE_ID in {
         probe.probe_id for probe in result.probes
     }
-    assert governed_actions.probes._OUTPUT_PROBE_ID in {
+    assert governed_actions.probes.OUTPUT_PROBE_ID in {
         probe.probe_id for probe in result.probes
     }
     assert any(finding.finding_id == "OPS-001" for finding in result.findings)

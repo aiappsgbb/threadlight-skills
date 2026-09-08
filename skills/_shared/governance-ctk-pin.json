@@ -1,0 +1,14 @@
+{
+  "schema": "threadlight-governance-testkit-pin/v1",
+  "repository": "responsibleai/agent-hooks",
+  "commit": "569b7c408091f65115755d2a0ef992efb88dc1e6",
+  "correction_commit": "4f7af786c2757e26711b141e69144b6a336f403b",
+  "archive_sha256": "7a394ee2741ec164bc9436d869d36f9bd6ac5103661f4b3b425e1d9478ecbae1",
+  "maf_harness_sha256": "4cc30decc127e380dd18448ed6935ac4a8c9f12d2603c4b8369744ef5a7d7cbd",
+  "vector_count": 51,
+  "declared_vector_count": 47,
+  "undeclared_capabilities": ["incremental_output"],
+  "tool_seam_host_error": "terminate",
+  "purpose": "Test-only PR72 posture and shape-independent assertion corrections; never a runtime SDK replacement",
+  "oracle_build_image": "rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f"
+}

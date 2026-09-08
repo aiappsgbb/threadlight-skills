@@ -1,0 +1,179 @@
+{
+  "schema": "threadlight-governance-manifest/v1",
+  "agent": {
+    "runtime": "microsoft-agent-framework",
+    "version": null,
+    "image_digest": null
+  },
+  "policy_bundle": {
+    "id": "returns-write-v1",
+    "version": "1",
+    "digest": "sha256:ed0a408d28baa45d2ccecb6c30fd8978183399a95de4f248bcc3243d1daeddd4",
+    "signature_verified": false,
+    "expires_at": null
+  },
+  "enforcement": {
+    "adapter": "offline-inventory",
+    "mode": "evaluate_only",
+    "agent_hooks_distribution": null,
+    "agent_hooks_artifact_sha256": null,
+    "acs_distribution": null,
+    "acs_artifact_sha256": null
+  },
+  "coverage": {
+    "tools_total": 5,
+    "tools_bound": 1,
+    "tools_bypassable": 0,
+    "tools_enforced": 0,
+    "tools_observed": 0,
+    "tools_unbound": 4,
+    "tools_unsupported": 0,
+    "tools_unverified": 1
+  },
+  "bindings": [
+    {
+      "binding_id": "binding.oms_get_order",
+      "tool_id": "oms_get_order",
+      "enforcement_path": "none",
+      "intervention_points": [],
+      "mode": "evaluate_only",
+      "safe_principles": [],
+      "status": "unbound",
+      "policy_digest": "sha256:ed0a408d28baa45d2ccecb6c30fd8978183399a95de4f248bcc3243d1daeddd4",
+      "probe_ids": [],
+      "evidence_refs": [
+        "EV-inventory",
+        "EV-bundle"
+      ]
+    },
+    {
+      "binding_id": "binding.returns_get_case",
+      "tool_id": "returns_get_case",
+      "enforcement_path": "none",
+      "intervention_points": [],
+      "mode": "evaluate_only",
+      "safe_principles": [],
+      "status": "unbound",
+      "policy_digest": "sha256:ed0a408d28baa45d2ccecb6c30fd8978183399a95de4f248bcc3243d1daeddd4",
+      "probe_ids": [],
+      "evidence_refs": [
+        "EV-inventory",
+        "EV-bundle"
+      ]
+    },
+    {
+      "binding_id": "binding.returns_list_open",
+      "tool_id": "returns_list_open",
+      "enforcement_path": "none",
+      "intervention_points": [],
+      "mode": "evaluate_only",
+      "safe_principles": [],
+      "status": "unbound",
+      "policy_digest": "sha256:ed0a408d28baa45d2ccecb6c30fd8978183399a95de4f248bcc3243d1daeddd4",
+      "probe_ids": [],
+      "evidence_refs": [
+        "EV-inventory",
+        "EV-bundle"
+      ]
+    },
+    {
+      "binding_id": "binding.customer_get_profile",
+      "tool_id": "customer_get_profile",
+      "enforcement_path": "none",
+      "intervention_points": [],
+      "mode": "evaluate_only",
+      "safe_principles": [],
+      "status": "unbound",
+      "policy_digest": "sha256:ed0a408d28baa45d2ccecb6c30fd8978183399a95de4f248bcc3243d1daeddd4",
+      "probe_ids": [],
+      "evidence_refs": [
+        "EV-inventory",
+        "EV-bundle"
+      ]
+    },
+    {
+      "binding_id": "binding.returns_apply_decision",
+      "tool_id": "returns_apply_decision",
+      "enforcement_path": "local-agent-hooks",
+      "intervention_points": [
+        "pre_tool_call"
+      ],
+      "mode": "evaluate_only",
+      "safe_principles": [
+        "Scope",
+        "Anchored Decisions",
+        "Flow Integrity",
+        "Escalation"
+      ],
+      "status": "unverified",
+      "policy_digest": "sha256:ed0a408d28baa45d2ccecb6c30fd8978183399a95de4f248bcc3243d1daeddd4",
+      "probe_ids": [],
+      "evidence_refs": [
+        "EV-inventory",
+        "EV-bundle"
+      ]
+    }
+  ],
+  "live_probes": [],
+  "gaps": [
+    {
+      "binding_id": "binding.oms_get_order",
+      "status": "unbound",
+      "reason_code": "explicitly-unbound",
+      "evidence_refs": [
+        "EV-inventory",
+        "EV-bundle"
+      ]
+    },
+    {
+      "binding_id": "binding.returns_get_case",
+      "status": "unbound",
+      "reason_code": "explicitly-unbound",
+      "evidence_refs": [
+        "EV-inventory",
+        "EV-bundle"
+      ]
+    },
+    {
+      "binding_id": "binding.returns_list_open",
+      "status": "unbound",
+      "reason_code": "explicitly-unbound",
+      "evidence_refs": [
+        "EV-inventory",
+        "EV-bundle"
+      ]
+    },
+    {
+      "binding_id": "binding.customer_get_profile",
+      "status": "unbound",
+      "reason_code": "explicitly-unbound",
+      "evidence_refs": [
+        "EV-inventory",
+        "EV-bundle"
+      ]
+    },
+    {
+      "binding_id": "binding.returns_apply_decision",
+      "status": "unverified",
+      "reason_code": "runtime-proof-required",
+      "evidence_refs": [
+        "EV-inventory",
+        "EV-bundle"
+      ]
+    }
+  ],
+  "offline_evidence": [
+    {
+      "evidence_ref": "EV-inventory",
+      "source": "specs/governance-contract.json",
+      "sha256": "sha256:e354470fa2c6935849c09a80ce4fc7a6205c649888476c9f3cb8a35edd916b92",
+      "reason_code": "contract-declared-only"
+    },
+    {
+      "evidence_ref": "EV-bundle",
+      "source": "src/agent/governance/bundle",
+      "sha256": "sha256:ed0a408d28baa45d2ccecb6c30fd8978183399a95de4f248bcc3243d1daeddd4",
+      "reason_code": "native-manifest-valid-not-runtime-proof"
+    }
+  ]
+}

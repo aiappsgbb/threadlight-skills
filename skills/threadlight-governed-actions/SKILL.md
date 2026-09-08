@@ -1,36 +1,59 @@
 ---
 name: threadlight-governed-actions
 description: >-
-  Proves whether every *consequential* action a pilot agent can take is
-  inventoried, mediated, enforced, approved, and auditable — then emits a
-  customer-facing Governance Evidence Pack. Read-only by default. Inventories
-  declared vs implemented actions, traces mediation across all six execution
-  modes, runs hermetic application-path probes (deny, transform, crash,
-  timeout, malformed verdict, approval replay, output gating, payload-free
-  audit), and assesses the GitHub Copilot change plane (PR-only, CODEOWNERS,
-  required checks, SHA pins, OIDC/WIF, identity separation). USE FOR:
-  governance evidence, evidence pack, consequential actions, action inventory,
-  Agent Hooks mediation, interceptor coverage, fail-closed enforcement,
-  approval anti-replay, output mediation, payload-free audit, GHCP
-  change-plane governance, governed-actions manifest. DO NOT USE FOR: policy
-  authoring (foundry-agt), readiness scoring (threadlight-production-ready),
-  HITL cards (threadlight-hitl-patterns).
+  Use when a pilot needs consequential-action runtime implementation or
+  evidence: selected native hooks, gateway effect closure, action inventory,
+  pre-deploy enforcement gates, approval anti-replay, payload-free audit,
+  Governance Evidence Pack or GHCP change-plane controls. Not for quality
+  evals, model content filtering or production certification.
 metadata:
-  version: "0.1.0"
+  version: "2.0.0"
 ---
 
-# Threadlight Governed Actions — prove the consequential actions are governed
+# Threadlight Governed Actions — implement and prove selected action paths
 
 An agent that can only read is a demo risk. An agent that can *write*, *egress*,
 or do something *irreversible* is a production risk, and the question a customer
 actually asks is narrow: **when this agent takes a consequential action, what
 stops it, who approved it, and where is the record?**
 
-This skill answers that question with evidence rather than prose. It assesses a
-pilot repository and renders one deterministic manifest, one customer-facing
-evidence pack, and one never-self-applying remediation plan. It is an
-**assessor**, not a runtime: it never becomes the interceptor, never writes a
-policy, and never deploys anything.
+For implementation requests, produce actual selected runtime templates using
+[generate.py](../threadlight-deploy/references/governance/generate.py) and its
+[configuration/ordering contract](../threadlight-deploy/references/governance/README.md).
+Use `threadlight-govern` for the real ACS bundle and authorized signed distribution;
+implement the host-owned application seam, not an allow-only test adapter.
+Assessment alone is not implementation. Deployment remains separately authorized.
+
+The **assessor CLI** is read-only by default and renders a deterministic manifest,
+evidence pack and never-self-applying remediation plan. These are selected-path
+evidence, **not whole-agent** governance. SAFE is the method, ACS/Rego the PDP,
+Agent Hooks the host/interceptor contract, native host/gateway the PEP, AGT the
+toolkit, and ASSERT assurance.
+
+### Native selected local proof
+
+The current `LOCAL-14` producer runs the actual served application/native path
+and returns assessor-verified allow/deny/failure/approval/terminal-effect proof.
+The standalone export includes `.governance-tools`, exact-pin tooling, official
+CTK sources/test-oracle build inputs and native-local CI. Follow the generated
+commands; do not depend on a catalog checkout accidentally on `PYTHONPATH`.
+Native/CTK uses published unmodified execution packages: 47 declared vectors,
+four undeclared incremental-output vectors and only a corrected test oracle.
+Native APIs are preview/alpha, with explicit experimental defaults.
+
+Unbound reads remain unbound and never invoke ACS. Selected bindings require
+signed fresh policy, host-trusted facts, authenticated one-use human approval
+when required, and central audit ACK before effects. Recheck after awaits at
+the actual terminal target; a check at function start is insufficient. GHCP
+supports registered gateway effects only, not arbitrary URLs/shells or full
+lifecycle/output coverage. `enforced`, `observed`, `unbound`, `unverified`,
+`unsupported` and `bypassable` are binding statuses, not whole-agent verdicts.
+
+Local proof remains local. The Task11 collector only invokes the reserved,
+registered `governance_probe_noop`; it cannot certify business bindings.
+`returns_apply_decision` has local Cosmos decision/audit proof, not live payment
+or settlement proof. A new deployment requires fresh after-deploy evidence;
+policy/CI or legacy v2 green cannot replace it.
 
 ```
 declared actions ─┐
@@ -45,7 +68,7 @@ alert catalog ────────────────────► al
 | Phase | Invoke | What it proves |
 | --- | --- | --- |
 | `design` | after `threadlight-design`, before code exists | the SPEC § 8 action declaration is complete and every action has an explicit consequence class |
-| `pre-deploy` | before `threadlight-deploy` | declared and implemented actions agree, every consequential path is mediated, and the application probes actually enforce deny/transform/fail-closed, approval anti-replay, output gating, and payload-free audit |
+| `pre-deploy` | before `threadlight-deploy` | declared and implemented actions agree; path-bound allow/deny receipts verify mediation candidates; separate generic probes exercise deny/transform/fail-closed, approval anti-replay, output gating, and payload-free audit |
 | `post-deploy` | **staging only** | the same assessment against a deployed non-production environment; `--phase post-deploy` refuses to run without `--staging-resource-group` naming an explicit, non-production staging resource group |
 
 `post-deploy` is deliberately staging-only. This skill never runs, not even
@@ -73,6 +96,63 @@ explicit rule — discovery never widens into "anything under the repository":
 Optional live evidence is exactly that: **optional**. When it is not selected, or
 when a permission is missing, the affected control is reported `not-verified`.
 A `not-verified` finding is never silently converted to `pass`.
+
+## Path-bound execution contract
+
+`governance/probe-contract.json` must declare one importable application
+execution dispatcher and bind every assessor-discovered, non-provider mediation
+path to its recomputed path id and action/mode routing-table key:
+
+```json
+{
+  "dispatch": "app.agent:dispatch",
+  "execution_dispatch": "app.agent:dispatch_execution_path",
+  "execution_paths": [
+    {
+      "action_id": "payments.refund",
+      "mode": "background",
+      "path_id": "400019bbedc16b75"
+    }
+  ]
+}
+```
+
+The top-level `dispatch` remains the generic deny/transform/fault probe seam; it
+does **not** prove mediation for any path. `execution_dispatch` is the only
+callable used for path proof. Every `execution_paths` record contains exactly
+`action_id`, `mode`, and `path_id`; those values must match the assessor's
+recomputed `PathRecord`, and the set must be unique and complete.
+
+The application module owns an explicit `EXECUTION_ROUTES` table with exactly
+the declared action/mode keys. In an isolated child, the assessor calls
+`execution_dispatch(action_id, mode, case, target_ledger_path)` and replaces the
+routing-table target's hook/tool/provider namespaces with assessor-owned
+synthetic implementations. The assessor wraps that selected target and records
+whether the wrapper was invoked; this verifies the declared local routing-table
+selection, not stronger application or production reachability. Target-written
+metadata goes only to its separate target ledger. On POSIX, proof events flow
+through an assessor-created pipe whose write descriptor alone is inherited by
+the child; each canonical JSONL event carries an assessor nonce that the parent
+matches exactly. The Windows fallback uses an assessor-private temporary
+directory outside the target plus the same unpredictable nonce. Neither proof
+location nor nonce is passed to the target dispatcher. A deny followed by any
+invocation is fail-open. Allow may invoke only after `pre_action_decision`.
+Startup failure, timeout, nonzero exit, or malformed output remains
+`not-verified` unless the assessor proof channel independently proves a bypass.
+Static AST classifies each path as `bypass-proven`, `mediated-candidate`, or
+`incomplete`; only a mediated candidate plus a valid receipt passes.
+
+This is **scoped local conformance evidence only**: it proves what happened when
+the declared application dispatcher was executed with synthetic inputs. It
+does not prove that every undeclared entry point, scheduler, provider runtime,
+or deployed request can reach that dispatcher. Production enforcement still
+requires live deployed evidence from the production routing and control plane;
+local path receipts must never be presented as proof of production reachability.
+The assessor-owned proof channel strengthens this local conformance signal, but
+a hostile target still executes in the same child process and remains outside
+the security boundary. Trust comes from the static source assessment, executed
+path receipts, and live deployed evidence collectively; no one layer is
+sufficient by itself.
 
 ## Outputs
 
@@ -137,7 +217,7 @@ finding, never a status.
 | `MED-001` | runtime | A consequential path lacks evidenced pre-action mediation. |
 | `MED-002` | runtime | Interactive, batch, background, subagent, or direct-tool coverage is absent or indeterminate. |
 | `MED-003` | runtime | A provider-hosted side effect is not pre-interceptable and lacks equivalent server-side proof. |
-| `ENF-001` | runtime | Deny or transform is not enforced on the application path. |
+| `ENF-001` | runtime | The separate generic enforcement probe does not enforce deny or transform. |
 | `ENF-002` | runtime | Crash, timeout, or malformed verdict does not fail closed. |
 | `APR-001` | runtime | Approval is not actor-, tenant-, policy-, action-, argument-, expiry-, and nonce-bound with atomic one-time redemption. |
 | `OUT-001` | runtime | Protected output can egress before mediation. |
@@ -205,10 +285,15 @@ Read these as *published limits*, not caveats to be softened later.
   security boundary.** A caller that skips the hook is not stopped by the hook;
   `ENF-002` exists precisely to name that bypass surface and demand a
   compensating control (allow-list, network policy, provider-side restriction).
-- **The Microsoft Agent Framework (MAF) integration is experimental.** The
-  pinned tuple in `references/upstream-pin.json` records the exact spec,
-  SDK, CTK, MAF, and conformance-report versions that were tested; drift is
-  `PIN-001` and requires rerunning both the CTK and the application probes.
+- **The local proof channel is not a hostile-process sandbox.** It narrows and
+  authenticates assessor receipts, but target code shares the probe child
+  process. Static, executed, and live layers must corroborate one another rather
+  than treating the channel alone as a security boundary.
+- **The Microsoft Agent Framework (MAF) integration is experimental.** Current
+  native pins are in `../_shared/governance-upstream-pin.json` and CTK provenance
+  in `../_shared/governance-ctk-pin.json`. The older `references/upstream-pin.json`
+  remains a legacy assessor-fixture tuple, not current execution provenance.
+  Drift is `PIN-001` and requires rerunning CTK and application probes.
 - **Conformance is evidence, not certification.** A green manifest records what
   was proven against a pinned tuple at a commit. Nothing here certifies a
   product, a framework, or a customer's compliance posture.
@@ -236,9 +321,11 @@ Read these as *published limits*, not caveats to be softened later.
 
 | Framework | Role here |
 | --- | --- |
-| SAFE | a **design framework** for declaring actions and consequences — it is the source of the SPEC § 8 declaration this skill assesses, not an enforcement mechanism |
-| Agent Constraint Service (ACS) | the **policy-decision** runtime and interceptor that can answer allow/deny/transform at call time |
+| SAFE | a **method / design framework** for business invariants and consequences, not an enforcement mechanism |
+| Agent Control Specification (ACS) | the native Rego/OPA **policy-decision** engine (PDP), not the interceptor or automatic all-tools protection |
 | Agent Hooks | the **host/interceptor contract** the runtime seam is expressed through — cooperative, alpha |
+| Native host / governed-tool gateway | the PEP that enforces decisions at selected action boundaries |
+| AGT | the toolkit; current runtime distribution is `agent-governance-toolkit-core==5.0.0` |
 | ASSERT / evals | **offline assurance** that measures behaviour before and after release; they are never pre-action runtime enforcement |
 
 ## Integration with the threadlight chain
@@ -249,9 +336,10 @@ Read these as *published limits*, not caveats to be softened later.
 - `threadlight-auto` is **recommendation-only** for this skill. It may surface a
   handoff and summarize an already-committed manifest; it never runs the
   assessor, never scaffolds, and never rolls out enforcement.
-- `foundry-agt` authors the policy. `threadlight-hitl-patterns` designs the
-  human approval experience. `threadlight-cicd` builds the production pipeline.
-  This skill only assesses and evidences.
+- `threadlight-govern` authors native policy; this skill routes actual runtime
+  generation and proves selected local paths. `threadlight-hitl-patterns` designs
+  the human experience, never replacing Task8 authentication/nonce CAS.
+  `threadlight-cicd` owns the explicitly requested production pipeline.
 - **Production rollout is not owned here.** Deciding to enforce in production is
   an explicit, human, customer-owned choice.
 
@@ -265,10 +353,9 @@ Recorded so the boundary is not silently re-litigated:
 2. **Splitting the feature across `threadlight-safe-check` and
    `threadlight-hitl-patterns`** was rejected: it fragments one customer
    evidence chain and one pass/fail matrix across two skills.
-3. **A cross-framework-first implementation** was rejected: alpha host
-   integrations multiply unstable surface area. MAF is first, behind the
-   explicit `RuntimeAdapter` contract, so a second framework is an adapter
-   rather than a rewrite.
+3. **An invented universal host contract** is rejected. Native MAF and the GHCP
+   registered-action gateway retain different supported surfaces; the legacy
+   assessor `RuntimeAdapter` contract does not imply equal runtime coverage.
 
 ## Files in this skill
 

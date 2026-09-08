@@ -19,8 +19,9 @@ description: Emit the final triage decision (approve_refund / deny_refund / esca
 
 ## Procedure
 1. Resolve the terminal decision:
-   - completeness verdict `request_more_info` → **`request_more_info`** (BR-004)
-   - else escalation `escalate` → **`escalate_to_supervisor`** (BR-003)
+   - known authoritative risk `escalate` → **`escalate_to_supervisor`** (BR-003),
+     even with missing reason/photos; require authenticated supervisor approval
+   - else completeness verdict `incomplete` → **`request_more_info`** (BR-004)
    - else eligibility `approve_candidate` → **`approve_refund`** (BR-001)
    - else eligibility `deny_candidate` → **`deny_refund`** (BR-002)
 2. Recommend disposition:

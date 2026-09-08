@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Iterable, Mapping
@@ -24,6 +25,10 @@ class CanonicalizationError(ValueError):
 
 class PayloadExposureError(ValueError):
     """Raised when a payload-carrying key is found in a payload-free record."""
+
+
+class IncompleteEvidenceError(PayloadExposureError):
+    """A known record shape lacks required evidence, without proving a leak."""
 
 
 # Case-insensitive key names that would carry prompt/argument/output/secret
@@ -216,9 +221,66 @@ def hash_files(root: Path, paths: Iterable[Path]) -> dict[str, object]:
 _JSON_SCALAR_TYPES = (str, int, float, bool, type(None))
 
 
+def validate_governance_record(record: Mapping[str, object], *, audit: bool = False) -> None:
+    """Validate the closed, payload-free Task 6 ledger/audit record contract.
+
+    Unlike the generic document guard, unknown fields and unbounded/free-form
+    values cannot establish evidence. No failing value is echoed in errors.
+    """
+    if not isinstance(record, Mapping):
+        raise PayloadExposureError("governance record must be an object")
+    event = record.get("event")
+    if audit or "audit_id" in record or event in (
+        None, "audit", "approval_redemption_attempt", "output_mediation_decision",
+    ):
+        required = {
+            "audit_id", "correlation_id", "decision", "action_hash",
+            "policy_hash", "delivery_status",
+        }
+        optional = {"event", "action_id", "digest_hash", "input_hash", "output_hash"}
+        events = {"audit", "approval_redemption_attempt", "output_mediation_decision"}
+    elif event == "decision":
+        required, optional = {"event", "nonce", "digest", "accepted"}, {"reason"}
+        events = {"decision"}
+    elif event == "invocation":
+        required, optional, events = {"event", "nonce"}, set(), {"invocation"}
+    elif event == "verdict_received":
+        required, optional, events = {"event", "verdict"}, set(), {"verdict_received"}
+    elif event in ("egress", "chunk"):
+        required, optional, events = {"event", "bytes"}, {"mediated"}, {"egress", "chunk"}
+    else:
+        raise PayloadExposureError("unknown governance record type")
+    if record.keys() - required - optional:
+        raise PayloadExposureError("governance record fields do not match the contract")
+    enums = {
+        "event": events,
+        "decision": {"allow", "deny", "transform", "stream"},
+        "verdict": {"allow", "deny", "stream"},
+        "reason": {"accepted", "expiry", "replay", "binding"},
+        "delivery_status": {"persisted", "delivered"},
+    }
+    for field, value in record.items():
+        if field in enums:
+            valid = isinstance(value, str) and value in enums[field]
+        elif field in ("accepted", "mediated"):
+            valid = isinstance(value, bool)
+        elif field == "bytes":
+            valid = type(value) is int and 0 <= value <= 2**53 - 1
+        elif field == "digest" or field.endswith("_hash"):
+            valid = isinstance(value, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", value)
+        else:
+            valid = isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.:/#-]{1,256}", value)
+        if not valid:
+            raise PayloadExposureError("governance record value does not match the contract")
+    if not required <= record.keys():
+        raise IncompleteEvidenceError("governance record lacks required fields")
+
+
 def validate_payload_free_audit(record: Mapping[str, object]) -> None:
     """Recursively assert *record* carries no payload-bearing key.
 
+    This generic document guard is not a record contract; evidence records
+    additionally require :func:`validate_governance_record`.
     Walks every nested mapping and sequence in *record* and raises
     :class:`PayloadExposureError` the moment a key case-insensitively equals
     one of the banned payload-carrying names (``prompt``, ``messages``,

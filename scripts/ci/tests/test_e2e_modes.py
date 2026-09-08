@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "threadlight-e2e-foundry.yml"
 
 GATE_STEP = "[contract gate] design→deploy contract check"
-READINESS_SAFE_CHECK_STEP = "[Readiness proof] Run post-deploy safe-check"
+READINESS_SAFE_CHECK_STEP = "Fresh post-deploy collector and strict v1 readiness consumers"
 EVIDENCE_GATE_STEP = "Evaluate lifecycle evidence semantics"
 LIFECYCLE_SUMMARY_STEP = "[paid run] Lifecycle summary"
 
@@ -84,9 +84,13 @@ def step_runs(condition: str | None, mode: str, teardown: str = "true") -> bool:
 
 
 def names_for(mode: str) -> list[str]:
+    doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    job = doc["jobs"]["readiness-proof" if mode == "readiness-proof" else "e2e"]
+    if not step_runs(job.get("if"), mode):
+        return []
     return [
         s.get("name", s.get("uses", "?"))
-        for s in load_steps()
+        for s in job["steps"]
         if step_runs(s.get("if"), mode)
     ]
 
@@ -246,12 +250,12 @@ def test_the_referenced_contract_checker_exists():
 
 
 def test_contract_gate_runs_for_every_non_smoke_mode():
-    for mode in ("design-only", "live-smoke", "readiness-proof", "full"):
+    for mode in ("design-only", "live-smoke", "full"):
         assert GATE_STEP in names_for(mode), f"{mode} must run the contract gate"
     assert GATE_STEP not in names_for("smoke-only")
 
 
-@pytest.mark.parametrize("mode", ["live-smoke", "readiness-proof", "full"])
+@pytest.mark.parametrize("mode", ["live-smoke", "full"])
 def test_paid_modes_run_the_major_lifecycle_steps(mode):
     """Paid modes share the deploy/invoke/report spine; `full` aliases live-smoke."""
     names = names_for(mode)
@@ -271,6 +275,16 @@ def test_only_readiness_proof_runs_the_strict_post_deploy_safe_check():
     assert READINESS_SAFE_CHECK_STEP in names_for("readiness-proof")
     for mode in ("live-smoke", "full", "design-only", "smoke-only"):
         assert READINESS_SAFE_CHECK_STEP not in names_for(mode)
+
+
+def test_readiness_uses_generated_runtime_gate_not_smoke_design_or_business_invocation():
+    names = names_for("readiness-proof")
+    predeploy = "Executed local pre-deploy governed-actions gate"
+    resume = "Resume immutable SDK version and publish signed bootstrap binding"
+    assert names.index(predeploy) < names.index(resume) < names.index(READINESS_SAFE_CHECK_STEP)
+    assert "Bind immutable images, provision service phase and deploy generated agent" not in names
+    assert GATE_STEP not in names
+    assert "[Phase 4/4] Drive §6.4 — invoke killer prompts" not in names
 
 
 def test_full_alias_keeps_live_smoke_semantics():

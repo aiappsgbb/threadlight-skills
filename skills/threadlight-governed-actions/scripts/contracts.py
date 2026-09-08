@@ -22,8 +22,8 @@ from typing import Dict, Literal, Mapping, Optional, Tuple
 
 
 SCHEMA_VERSION = "1.0.0"
-ASSESSOR_VERSION = "0.1.0"
-SKILL_VERSION = "0.1.0"
+ASSESSOR_VERSION = "2.0.0"
+SKILL_VERSION = "2.0.0"
 
 SUPPORTED_PHASES: Tuple[str, ...] = ("design", "pre-deploy", "post-deploy")
 CONSEQUENCE_CLASSES: Tuple[str, ...] = (
@@ -61,6 +61,7 @@ class UnsafeTargetError(ValueError):
 Phase = Literal["design", "pre-deploy", "post-deploy"]
 Status = Literal["pass", "must-fix", "should-fix", "not-verified", "not-applicable"]
 Consequence = Literal["read", "write", "external-egress", "irreversible"]
+StaticAssessment = Literal["bypass-proven", "mediated-candidate", "incomplete"]
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,7 @@ class EvidenceRef:
     source_commit: str
     target_environment: Optional[str]
     policy_set_sha256: Optional[str]
+    deployed_target: Optional[Mapping[str, str]] = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +123,10 @@ class ActionRecord:
     provider_hosted: bool
     approval_required: Optional[bool]
     policy_ids: Tuple[str, ...] = ()
+    policy_binding: Optional[str] = None
+    binding_requires_approval: Optional[bool] = None
+    binding_requires_output: Optional[bool] = None
+    binding_requires_durable_audit: Optional[bool] = None
     known_runtime_paths: Tuple[str, ...] = ()
     inventory_status: Status = "not-verified"
 
@@ -136,6 +142,9 @@ class PathRecord:
     covered: bool
     status: Status
     evidence_refs: Tuple[str, ...]
+    discovered: bool = False
+    executed: bool = False
+    static_assessment: StaticAssessment = "incomplete"
 
 
 @dataclass(frozen=True)
@@ -194,6 +203,10 @@ class ProbeResult:
     #: an orchestrator must treat as not-verified rather than bind to
     #: invented provenance.
     evidence_items: Tuple[ProbeEvidence, ...] = ()
+    #: Execution family for a path-bound receipt. Generic enforcement,
+    #: approval, output, audit, and staging probes leave this ``None``;
+    #: without a matching mode a result can never prove a mediation path.
+    mode: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -211,6 +224,15 @@ class AssessmentOptions:
     staging_resource_group: Optional[str] = None
     deploy_identity: Optional[str] = None
     now: str = "1970-01-01T00:00:00Z"
+    agent_name: Optional[str] = None
+    agent_version: Optional[str] = None
+    image_digest: Optional[str] = None
+    policy_digest: Optional[str] = None
+    environment: Optional[str] = None
+    # Trusted in-process collector seam only; never reconstructed from CLI/file booleans.
+    gateway_bindings: Tuple[Mapping[str, object], ...] = ()
+    effect_observations: Tuple[Mapping[str, object], ...] = ()
+    effect_observation_verifier: Optional[object] = None
 
 
 @dataclass(frozen=True)
@@ -226,7 +248,9 @@ class AssessmentResult:
     conformance_claims: Tuple[Mapping[str, object], ...] = ()
     conformance_reports: Tuple[Mapping[str, object], ...] = ()
     change_plane: Mapping[str, object] = field(default_factory=dict)
+    action_posture: Tuple[Mapping[str, object], ...] = ()
     residual_risks: Tuple[Mapping[str, object], ...] = ()
+    deployed_target: Optional[Mapping[str, str]] = None
     #: The trusted, deterministic instant this assessment was captured at
     #: (an RFC3339 timestamp string), independent of any evidence's own
     #: ``collected_at``. Freshness is evaluated *at* this instant, never
@@ -287,3 +311,5 @@ class AssessmentResult:
     #: ``AssessmentOptions.live_azure`` once an orchestrator wires the
     #: two together.
     live_azure_selected: bool = False
+    #: Validated payload-free LOCAL-14 recorder envelope, not hosted attestation.
+    native_local: Optional[Mapping[str, object]] = None

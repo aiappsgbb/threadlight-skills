@@ -143,23 +143,65 @@ def _by_id(findings) -> dict[str, "pr.Finding"]:
 # AGT (pillar 2): govern manifest flips AGT-001..005 to manifest-sourced pass
 # ---------------------------------------------------------------------------
 
-def test_agt_manifest_flips_to_pass() -> None:
+def test_v2_govern_manifest_is_legacy_not_enforcement() -> None:
     ctx = _make_ctx(manifests={"govern-manifest.json": _fresh_govern_manifest()})
     f = _by_id(pr._check_agt_static(ctx, "auto"))
     for fid in ("AGT-001", "AGT-002", "AGT-003", "AGT-004", "AGT-005"):
         assert fid in f, f"{fid} missing"
-        assert f[fid].status == "pass", f"{fid} expected pass, got {f[fid].status}: {f[fid].detail}"
-    assert "threadlight-govern manifest" in f["AGT-001"].detail
+        assert f[fid].status == "not-verified", f[fid].detail
+    assert "legacy" in f["AGT-001"].detail.lower()
     assert "AGT-006" in f, "AGT-006 still emitted (legacy telemetry heuristic)"
 
 
 def test_agt_no_manifest_uses_legacy() -> None:
     ctx = _make_ctx()  # no manifests
     f = _by_id(pr._check_agt_static(ctx, "auto"))
-    # Legacy heuristic: bare repo has no AGT import -> AGT-001 must-fix.
-    assert f["AGT-001"].status == "must-fix", f["AGT-001"].detail
-    assert "manifest" not in f["AGT-001"].detail.lower(), \
-        "AGT-001 detail must not cite a manifest on the legacy path"
+    assert f["AGT-001"].status == "not-verified", f["AGT-001"].detail
+
+
+def test_selected_binding_without_live_proof_is_must_fix(tmp_path):
+    from skills._shared.tests.governance_consumer_fixtures import contract, seed_inventory
+    seed_inventory(tmp_path, contract(selected=True))
+    ctx = _make_ctx()
+    ctx.root = tmp_path
+    assert _by_id(pr._check_agt_static(ctx, "auto"))["AGT-001"].status == "must-fix"
+
+
+def test_unbound_read_tool_does_not_fail_readiness(tmp_path):
+    from skills._shared.tests.governance_consumer_fixtures import seed_inventory
+    seed_inventory(tmp_path)
+    ctx = _make_ctx()
+    ctx.root = tmp_path
+    assert _by_id(pr._check_agt_static(ctx, "auto"))["AGT-001"].status == "pass"
+
+
+def test_live_binding_proof_cannot_be_used_for_other_assessment_target(tmp_path, monkeypatch):
+    from skills._shared.tests.governance_consumer_fixtures import live_fixture, write
+    from skills._shared import governance_readiness
+    value, document, current, _ = live_fixture()
+    write(tmp_path, "specs/governance-manifest.json", value)
+    write(tmp_path, "specs/governance-contract.json", document)
+    monkeypatch.setattr(governance_readiness, "current_context", lambda root: current)
+    ctx = _make_ctx()
+    ctx.root = tmp_path
+    ctx.assessment_target_scope = pr.AssessmentTargetScope("other", "other", "cli", "cli")
+    assert _by_id(pr._check_agt_static(ctx, "none"))["AGT-001"].status == "must-fix"
+
+
+def test_unknown_unbound_gap_cannot_pass_production_readiness(tmp_path, monkeypatch):
+    from skills._shared.tests.governance_consumer_fixtures import live_fixture, write
+    from skills._shared import governance_readiness
+    value, document, current, _ = live_fixture()
+    write(tmp_path, "specs/governance-manifest.json", value)
+    write(tmp_path, "specs/governance-contract.json", document)
+    monkeypatch.setattr(governance_readiness, "current_context", lambda root: current)
+    ctx = _make_ctx()
+    ctx.root = tmp_path
+    assert _by_id(pr._check_agt_static(ctx, "auto"))["AGT-001"].status == "pass"
+    value["gaps"] = [{"tool_id": "undeclared", "status": "unbound",
+                      "reason_code": "intentionally-unbound", "evidence_refs": []}]
+    write(tmp_path, "specs/governance-manifest.json", value)
+    assert _by_id(pr._check_agt_static(ctx, "auto"))["AGT-001"].status == "must-fix"
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +231,7 @@ def test_rai_manifest_flips_and_emits_safe() -> None:
         "redteam-manifest.json": _fresh_redteam_manifest(),
     })
     f = _by_id(pr._check_rai_static(ctx))
-    assert f["RAI-002"].status == "pass", f["RAI-002"].detail
+    assert f["RAI-002"].status == "not-verified", f["RAI-002"].detail
     assert "sensitive_action_rules_present" in f["RAI-002"].detail
     # RAI-003 is decoupled from the govern manifest (prompt shields = model-edge
     # Content Safety). The synthetic ctx has no shield evidence -> must-fix.

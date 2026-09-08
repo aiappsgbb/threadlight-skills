@@ -9,8 +9,9 @@ description: Correlate a return case with its order and customer profile, and va
 
 ## Operational contract
 - **Inputs**: an RMA id or an order id.
-- **Outputs**: a consolidated case object `{ return, order, customer }`, or a
-  `request_more_info` verdict with the list of missing items.
+- **Outputs**: a consolidated case object `{ return, order, customer }` and a
+  nonterminal `complete` / `incomplete` verdict with the missing items. Intake
+  never chooses a persisted decision before the known-risk gate.
 - **Deps**: tools `returns_get_case`, `oms_get_order`, `customer_get_profile`.
 - **Idempotency**: read-only; safe to re-run.
 - **Failure behavior**: if any of the three fetches fails after retries → mark the
@@ -20,18 +21,21 @@ description: Correlate a return case with its order and customer profile, and va
 1. Resolve the case: if given an RMA, call `returns_get_case`; if given an order id,
    call `returns_list_open` and match.
 2. Fetch the originating order via `oms_get_order(return.order_id)`.
-   - If `not_found` → emit `request_more_info` ("order could not be matched").
+   - If `not_found` → collect "order could not be matched"; continue the customer read.
 3. Fetch the customer via `customer_get_profile(return.customer_id)`.
 4. Completeness check (BR-004):
    - `reason_code` present?
    - if `reason_code == arrived_damaged` → `photos_provided == true`?
    - order line matched to the returned SKU?
-   - Any failure → emit `request_more_info` with the exact missing field(s).
-5. Otherwise emit the consolidated case object and pass to policy-eligibility.
+   - Any failure → collect the exact missing field(s), without finalizing a verdict.
+5. Pass the consolidated case and missing fields to fraud-escalation. Known
+   authoritative BR-003 risk requires `escalate_to_supervisor` even on incomplete
+   cases. Only without known risk choose `request_more_info`; never refund while
+   risk data is unknown. Complete cases continue to policy-eligibility.
 
 ## Output schema
 ```json
-{ "verdict": "complete | request_more_info",
+{ "verdict": "complete | incomplete",
   "missing": ["reason_code"],
   "case": { "return": {}, "order": {}, "customer": {} } }
 ```

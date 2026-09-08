@@ -81,6 +81,39 @@ subphase has run. That key is written by agent guidance, not read by
 intentionally left out of a fixed shape here — see `SKILL.md` § "Cost-projection
 stage — optional reconciled-actuals subphase" for its informal contract.
 
+### Selected-governance checkpoints
+
+The orchestrator separately writes `.threadlight/governance-gate-state.json`
+and `.threadlight/governance-execution-state.json`. The gate binds declared
+inputs; the execution record binds a successful deployment and its fresh probe.
+Neither stores environment values or secrets, only fingerprints.
+
+The gate projects `.azure/<env>/.env` through the local dotenv-value parser,
+without shell evaluation or variable expansion. Environment/default selection,
+tenant, subscription, resource group, region, static azd configuration, and all
+unrecognized variables remain inputs. Only these deployment output names are
+excluded from authorization and instead bound by the deployment fingerprint:
+`AGENT_FQDN`, `AZURE_LAST_DEPLOY_AT`, `GOV_CONTROL_PLANE_URL`,
+`GOVERNED_TOOL_GATEWAY_URL`, `TL_GOV_FOUNDATION`, `TL_GOV_AGENT_IMAGE`, and
+`TL_GOV_IMAGE_DIGEST`. Foundation/build names follow the shipped Task10 contracts;
+there is no `GOV_`/`TL_GOV_` prefix exemption. Explicit runtime expected-image and
+policy pins in configuration remain protected.
+
+A missing dotenv file and a file containing only generated outputs in the same
+selected environment have the same input projection. Environment directory names
+are bound even before `.env` exists; select the target environment before the gate.
+Formatting, comments, and assignment order do not change the input projection.
+Changing/removing recorded deployment observations invalidates existing proof;
+reset the checkpoint before redeploying and collecting fresh evidence.
+
+Service and probe-input paths are canonicalized to workspace-relative identities
+before exclusion or deduplication. `.`, `./`, and `src/agent/../..` address the
+same root when the intermediate directories exist; the host configuration itself
+is still bound. Every lexical parent is checked before collapsing `..`.
+Symlinks and workspace escapes produce an explicit unverified gate, never an
+outside read. Root scans omit raw `.azure` bytes only because the separate
+projection binds its relevant inputs.
+
 ## `recovery_events` shape
 
 Every auto-recovery action `threadlight-auto` fires is appended to this list.

@@ -1,181 +1,87 @@
 ---
 name: threadlight-govern
 description: >-
-  PROTECT-leg for threadlight pilots: makes the Microsoft Agent Governance
-  Toolkit (AGT) actually govern a deployed agent — not just document it.
-  Scaffolds a real, schema-valid, versioned `policy.yaml`, commits `agt test`
-  fixtures, gates CI on `agt lint-policy` + `agt verify` (OWASP ASI 2026
-  attestation), and emits `specs/govern-manifest.json` for
-  threadlight-production-ready pillars 2 and 7. USE FOR: agent action
-  governance, AGT policy, agt lint-policy, agt test, agt verify, tool
-  allow/deny, excessive-agency guardrail, default-deny policy, OWASP ASI 2026,
-  governance CI gate, policy attestation, responsible-ai policy, PROTECT stage,
-  govern leg, govern-manifest. DO NOT USE FOR: content filtering at the model
-  edge (Azure AI Content Safety) — AGT governs actions; adversarial scanning
-  (threadlight-redteam); quality evals (threadlight-evals); completeness gate
-  (threadlight-safe-check); deep AGT authoring upstream (foundry-agt).
+  Use when a Threadlight pilot needs native ACS/Rego policy, SAFE business
+  invariants, selected tool or lifecycle bindings, approval requirements,
+  signed policy distribution, or runtime governance before deployment.
+  Not for model content filtering, red-team scans or quality evaluations.
 metadata:
-  version: "0.2.0"
+  version: "2.0.0"
 ---
 
-# Threadlight Govern — make AGT *govern*, then prove it
+# Threadlight Govern — policy into selected runtime enforcement
 
-The **PROTECT** leg of `path2production`. `threadlight-production-ready`
-*scores* agent-runtime governance (pillar 2) and responsible-AI controls
-(pillar 7), but until now the scorecard could only say *"go wire AGT"* and
-delegate the actual work to the external `foundry-agt` skill. Nothing in the
-pipeline ever produced governance evidence. This skill is that missing
-executable leg.
+SAFE is the method; ACS/Rego through native OPA is the PDP. Agent Hooks is the
+host/interceptor contract SDK; the native host/gateway is the PEP. AGT is the
+toolkit, ASSERT is assurance. Evidence is per binding, **not whole-agent**.
 
-```
-DESIGN → BUILD/DEPLOY → DISCOVER → [ PROTECT ] → GOVERN → IMPROVE
-                                   threadlight-govern
-```
+## Produce, then assess
 
-> **Why this skill exists.** A pilot can pass every structural gate —
-> resources deployed, evals green, telemetry flowing — and still ship an
-> agent with **no action-level governance**: a tool-calling agent that can
-> `shell_exec`, email externally, or act with excessive agency because
-> nothing constrains its actions. Microsoft's Responsible-AI guidance for
-> Foundry treats agent-runtime controls as a **PROTECT** checkpoint, not an
-> afterthought. The real Agent Governance Toolkit
-> (`pip install agent-governance-toolkit`, CLI `agt`) governs those actions
-> through a committed, schema-valid **policy** that CI **lints, replays, and
-> verifies**, plus a committed OWASP ASI 2026 **attestation**. This leg
-> scaffolds that policy, wires the CI gate, and scores the committed evidence
-> so the scorecard can *verify the leg ran* instead of *asking the operator to
-> go run it*.
+1. Read `specs/governance-contract.json` and the framework selection. Preserve
+   unbound reads, including their tool names and responses; never enroll every
+   tool to make a report green. Invalid selected config is not `off`.
+2. Author real `manifest.yaml` and Rego invariants from
+   [native-bundles.md](references/native-bundles.md). Use `build_bundle` and
+   `verify_bundle` from `scripts/policy_bundle.py`; native loading is mandatory.
+   These produce unsigned integrity metadata, **not signing authority**.
+3. Route explicit runtime implementation to
+   [generate.py](../threadlight-deploy/references/governance/generate.py) and its
+   [input contract](../threadlight-deploy/references/governance/README.md):
+   `foundation` → authorized Task8 publication → `generate` → immutable images /
+   registered agent → `agent-image` (GHCP also `stage-gateway`) → `bind`.
+   Follow the documented bootstrap order, not blanket `azd up` after binding.
+   Produce actual host/application and ACA service sources, not just an assessment.
+4. Supply host-trusted backend facts to SAFE, never model booleans. Required
+   signed fresh policy, authenticated tenant/role/full-scope human approval with
+   one-use CAS nonce, trusted target/schema/dynamic checks and central receipt ACK
+   precede effects. Use actual Task8 services; text saying “escalate” is not approval.
+   Recheck at terminal dispatch after waits. Local spool fsync is not durability.
+5. Emit offline inventory, then run `threadlight-governed-actions`' real
+   pre-deploy `--emit --gate`. For hosted evidence use `threadlight-safe-check`
+   with explicit protected preproduction fixture/controller configuration.
 
-## What this skill governs (and does not)
-
-- **Governs:** agent **actions** — tool calls, tool allow/deny, approval
-  gates, excessive-agency limits — expressed as a real AGT `policy.yaml` and
-  proven by `agt lint-policy` / `agt test` / `agt verify` in CI.
-- **Does NOT govern tokens:** prompt/response token-level filtering is the
-  *model* guardrail (Azure AI Content Safety / prompt shields configured on
-  the model). AGT references the RAI posture; it does not replace the model
-  filter.
-- **Does NOT red-team:** running adversarial probes against the agent is the
-  DISCOVER leg → `threadlight-redteam`. Govern enforces the policy that
-  red-team findings harden.
-- **Runtime enforcement depth is `foundry-agt`'s.** Raising `agt verify`
-  coverage means wiring the real framework governance integration
-  (`agent_compliance` / `agent_os.integrations.*`) into the agent runtime —
-  the deep upstream work `foundry-agt` owns. This leg governs the *evidence*.
-
-## The contract — `specs/govern-manifest.json`
-
-`scripts/govern_check.py` walks the pilot repo and emits a manifest whose
-capability keys **mirror the pillar-02 capability-detection table exactly**,
-so `threadlight-production-ready` and this skill never disagree:
-
-| Capability key | Meaning | Severity when missing |
-|---|---|---|
-| `policy_artefact_present` | a committed `agt-policy.yaml` / `policy.yaml` exists | must-fix |
-| `policy_schema_valid` | policy carries the real required fields `version` + `name` + `rules[]` (what `agt lint-policy` requires) | must-fix |
-| `policy_versioned` | ruleset pins a real semver (not `latest`) | should-fix |
-| `policy_default_deny` | policy declares a default-deny posture (`deny_by_default` / `default_action: deny`) | should-fix |
-| `sensitive_action_rules_present` | ≥1 rule `deny`/`block`/`escalate`s a sensitive or state-changing action (pillar 7) | should-fix¹ |
-| `policy_tests_present` | committed `agt test` fixtures (`{input, expected_verdict}`) | should-fix |
-| `ci_gate_present` | a CI workflow runs `agt verify` / `agt lint-policy` / `agt test` | should-fix |
-| `attestation_present` | committed `agt verify` attestation (`governance-attestation/v1`) exists | should-fix |
-| `attestation_fresh` | attestation within the freshness window | should-fix |
-| `asi_reference_present` | OWASP ASI 2026 anchor present | should-fix |
-
-¹ becomes `must-fix` when no policy artefact exists at all.
-
-Verdict roll-up: any `must-fix` → `ungoverned`; only `should-fix`/`not-verified`
-→ `partial`; all clear → `governed`.
-
-## Usage
-
-```bash
-# 1. Assess an existing pilot (read-only) — prints the governance report
-python3 scripts/govern_check.py --target ../my-pilot
-
-# 2. Emit the manifest + human report the scorecard consumes
-python3 scripts/govern_check.py --target ../my-pilot --emit
-#   → writes specs/govern-manifest.json + docs/agt-governance-report.md
-
-# 3. CI gate — exit 2 on any must-fix capability
-python3 scripts/govern_check.py --target ../my-pilot --gate
-
-# JSON for piping
-python3 scripts/govern_check.py --target ../my-pilot --json
+```sh
+python3 skills/threadlight-govern/scripts/govern_check.py \
+  --target ../my-pilot --emit
 ```
 
-Flags: `--profile {auto,v3_7,v4_preview,none}` (matches pillar-02
-`--agt-profile`; `none` → governance not applicable), `--freshness-days N`
-(attestation staleness window, default 90).
+This writes `specs/governance-manifest.json`
+(`threadlight-governance-manifest/v1`) and `docs/agt-governance-report.md`.
+Declared bindings remain `unverified`; unbound tools remain `unbound`.
+`--gate` exits 2: offline inventory cannot pass a runtime gate.
 
-### The leg, end-to-end (what the agent does)
+## Boundaries under pressure
 
-This is a **producing** leg — it explicitly creates artefacts (it does not
-silently mutate the user's repo for *findings*; per the SACRED rule, finding
-remediation is dispatched). The agent runs the leg in three moves:
+| Temptation | Required behavior |
+|---|---|
+| “Policy/CI is green; ship governed.” | Report offline/local scope; require fresh hosted proof for selected bindings. |
+| “MAF means full SAFE automatically.” | Only selected supported points execute policy; compaction, provider-hosted tools and incremental streaming/custom clients are unsupported. |
+| “Approve all” or pasted supervisor text | Require authenticated human service decision and atomic one-time consume, not SDK permission callbacks. |
+| “Reuse yesterday's receipt.” | New deployment attempt needs after-deployment evidence; full signed envelope/key and current bundle/config must match. |
+| “Noop passed, so refund is verified.” | `governance_probe_noop` proves only its registered route; business bindings stay unverified. |
 
-1. **Author policy** — if `policy_artefact_present` / `policy_schema_valid` is
-   must-fix, copy the right template from `references/policy-templates/`
-   (`default`, `hitl`, or `pii-deny`), pin a ruleset `version`, fill the tool
-   families from the pilot's `agent.yaml` tool set, and validate with
-   `agt lint-policy`. Commit `agt test` fixtures alongside it.
-2. **Gate CI** — if `ci_gate_present` is missing, add a workflow that runs
-   `agt lint-policy` + `agt verify` as required gates, plus `agt test` as an
-   **advisory** step (`continue-on-error: true` — 4.1.0's replay schema rejects
-   valid `escalate`/`conditions[]` policies; see `references/wiring-snippet.md`;
-   parity with recipe `AGT-001`).
-3. **Attest + score** — commit the `agt verify` attestation to
-   `docs/agt-verifier-report.md`, then re-run `govern_check.py --emit` so the
-   manifest flips to `governed`.
+Native MAF is selected local enforcement; GHCP supports registered gateway action
+effect closure only, not lifecycle/full-output coverage or arbitrary URL/shell
+routing. Control-plane/gateway ACA services, Cosmos, Blob, Key Vault and separate
+publisher/verify/workload/downstream permissions are real deployment prerequisites.
+Do not substitute broad RBAC or health stubs.
 
-## How `production-ready` consumes this
+## Pins, migration and verification
 
-`threadlight-production-ready` pillar 2 reads `specs/govern-manifest.json`. If
-the manifest is present and `verdict == governed` (and `attestation_fresh`),
-pillar 2 and the RAI half of pillar 7 report **verified** with the manifest as
-evidence, instead of emitting the `AGT-001` remediation. A stale or `ungoverned`
-manifest re-opens the finding. No manifest → unchanged legacy behaviour
-(score + delegate).
+Use `skills/_shared/governance-upstream-pin.json`:
+`agent-governance-toolkit-core==5.0.0`, ACS `0.3.1b0`, Hooks `0.1.0a5`,
+MAF core `1.14.0`, Foundry `1.11.0`, hosting `1.0.0b260813`, OPA `1.18.2`.
+Preview/alpha APIs and experimental defaults are explicit limitations.
+The corrected test-only CTK oracle covers 47 declared vectors; four incremental
+vectors are undeclared. Never modify the published execution SDK.
 
-## Relationship to `foundry-agt`
+Legacy v2 policies/verdict fixtures remain historical provenance in `references/fixtures/`;
+they cannot pass current readiness. See [migration and CI](../../docs/production-readiness.md#runtime-governance-lifecycle).
 
-`foundry-agt` (awesome-gbb) is the deep upstream skill that *authors* AGT
-capabilities and knows the full AGT / AgentOS runtime surface.
-`threadlight-govern` is the **thin pipeline leg** that decides *whether AGT
-governs this pilot*, drives the three moves above, and produces the manifest the
-threadlight scorecard understands. Use `foundry-agt` for advanced policy
-authoring and runtime integration; use this skill to make governance a *step
-that runs* in `path2production`.
-
-## Files
-
-```
-scripts/govern_check.py                 # stdlib validator → govern-manifest.json
-references/policy-templates/
-  default.policy.yaml                   # baseline default-deny + block/deny rules
-  hitl.policy.yaml                      # adds human-approval (escalate) gates
-  pii-deny.policy.yaml                  # strict PII-egress denial
-references/wiring-snippet.md            # author → lint → test → CI-gate → attest
-references/govern-manifest.schema.json  # the manifest contract (v2)
-references/fixtures/sample-wired/        # governed pilot (verdict: governed)
-  policy.yaml · fixtures/ · .github/workflows/ · docs/agt-verifier-report.md
-references/fixtures/sample-bare/          # ungoverned pilot (verdict: ungoverned)
-tests/test_govern_check.py              # stdlib unittest (no pytest)
+```sh
+python3 -m pytest skills/threadlight-govern/tests -q
+python3 scripts/ci/run-governance-pin-tests.py
 ```
 
-## Tests
-
-```bash
-python3 -m unittest discover -s tests -v
-```
-
-## See also — official Azure Skills
-
-Threadlight exists to make Microsoft's own platform **trivial to adopt** — never
-to replace it. For first-party depth behind this governance leg, reach for the
-official **[Azure Skills](https://github.com/microsoft/azure-skills)** catalog.
-*Further reading, not a dependency* — Threadlight's guidance stays the source of
-truth for the pilot flow:
-
-- **[`entra-agent-id`](https://github.com/microsoft/azure-skills/blob/main/skills/entra-agent-id/SKILL.md)** — **Entra Agent Identity Blueprints** + OAuth token exchange (OBO / `fmi_path`); the first-party agent-identity this governance leg binds policy to.
-- **[`azure-rbac`](https://github.com/microsoft/azure-skills/blob/main/skills/azure-rbac/SKILL.md)** — **least-privilege role** selection + assignment for the agent's managed identity.
+Ordinary native skips are not proof. The pinned runner executes local native/CTK
+tests only; it does not attest Azure deployment.

@@ -354,7 +354,6 @@ SCENARIOS: Dict[str, Tuple[int, FrozenSet[str]]] = {
     "upstream-version-drift": (1, frozenset({"PIN-001"})),
 }
 
-
 @pytest.mark.parametrize("fixture_name", sorted(SCENARIOS))
 def test_scenario_matrix_gate_exit_and_must_fix_ids(tmp_path: Path, fixture_name: str) -> None:
     expected_exit, expected_must_fix = SCENARIOS[fixture_name]
@@ -385,26 +384,129 @@ def test_approval_replay_fixture_proves_replay_not_stale_expiry(tmp_path: Path) 
 
     result = assess_fixture(tmp_path, "approval-replay")
     approval_probes = [
-        probe for probe in result.probes if probe.probe_id == probes._APPROVAL_PROBE_ID
+        probe for probe in result.probes if probe.probe_id == probes.APPROVAL_PROBE_ID
     ]
-    assert len(approval_probes) == 2 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert len(approval_probes) == 4 + len(probes.APPROVAL_MUTATION_FIELDS)
     assert approval_probes[0].observed == "approval_accepted"
-    failing = [probe for probe in approval_probes if probe.status == "must-fix"]
-    assert len(failing) == 1 + len(probes._APPROVAL_MUTATION_FIELDS)
+    failing = [probe for probe in approval_probes[:-2] if probe.status == "must-fix"]
+    assert len(failing) == 1 + len(probes.APPROVAL_MUTATION_FIELDS)
     assert {probe.observed for probe in failing} == {
         "fail_open_replay_or_mutation_accepted"
     }
-    assert "expired_rejected" not in {probe.observed for probe in approval_probes}
+    assert approval_probes[-2].observed == "approval_accepted"
+    assert approval_probes[-1].observed == "expired_binding_fail_open_accepted"
 
 
-def test_conformant_maf_manifest_verdict_is_governed(tmp_path: Path) -> None:
+def test_conformant_maf_executes_every_required_path_and_is_governed(
+    tmp_path: Path,
+) -> None:
     result = assess_fixture(tmp_path, "conformant-maf")
     manifest = render.build_manifest(result)
     assert manifest["summary"]["verdict"] == "governed"
     assert manifest["summary"]["must_fix"] == []
+    assert not [
+        path
+        for path in manifest["mediation_paths"]
+        if path["status"] != "pass" or not path["discovered"] or not path["executed"]
+    ]
+    assert not [
+        finding for finding in manifest["findings"] if finding["finding_id"].startswith("MED-")
+    ]
+
+
+def test_unmediated_background_executes_actual_bypass_paths(tmp_path: Path) -> None:
+    result = assess_fixture(tmp_path, "unmediated-background")
+    refund_paths = {
+        path.mode: path
+        for path in result.paths
+        if path.action_id == "payments.refund"
+    }
+    for mode in ("batch", "background"):
+        assert refund_paths[mode].executed is True
+        assert refund_paths[mode].status == "must-fix"
+    assert {"MED-001", "MED-002"} <= {
+        finding.finding_id
+        for finding in result.findings
+        if finding.status == "must-fix"
+    }
+
+
+def _mutate_actual_dispatch_with_never_called_convention_decoy(root: Path) -> None:
+    """Keep the application router on a renamed bypass and add a clean decoy."""
+    source_path = root / "app" / "agent.py"
+    source = source_path.read_text(encoding="utf-8")
+    original = """def background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="background")
+    agent_hooks.require_approval(action_id="payments.refund", mode="background")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
+    audit_sink.record(action_id="payments.refund", mode="background")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="background")
+    return result
+"""
+    renamed_bypass = """def actual_background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    return provider.refund(payment_id=payment_id, amount=amount)
+"""
+    assert original in source
+    source = source.replace(original, renamed_bypass, 1)
+
+    route_entry = (
+        '("payments.refund", "background"): background_payments_refund,'
+    )
+    assert route_entry in source
+    source = source.replace(
+        route_entry,
+        '("payments.refund", "background"): actual_background_payments_refund,',
+        1,
+    )
+
+    source += """
+
+def background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="background")
+    agent_hooks.require_approval(action_id="payments.refund", mode="background")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
+    audit_sink.record(action_id="payments.refund", mode="background")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="background")
+    return result
+"""
+    source_path.write_text(source, encoding="utf-8")
+
+
+def test_application_dispatch_strong_decoy_is_must_fix_through_full_assess(
+    tmp_path: Path,
+) -> None:
+    root = _prepare_temp_fixture(
+        tmp_path,
+        "conformant-maf",
+        mutate=_mutate_actual_dispatch_with_never_called_convention_decoy,
+        dest_name="strong-dispatch-decoy",
+    )
+
+    with _patched_live_evidence():
+        result = governed_actions.assess(_frozen_options(root))
+    path = next(
+        path
+        for path in result.paths
+        if path.action_id == "payments.refund" and path.mode == "background"
+    )
+
+    assert path.executed is True
+    assert path.status == "must-fix"
+    assert gate_exit(result) == 1
+    assert {"MED-001", "MED-002"} <= _must_fix_ids(result)
 
 
 _CONFORMANT_STATUSES: FrozenSet[str] = frozenset({"pass", "not-applicable"})
+
+_RUNTIME_UNRESOLVED_EXPECTATIONS: Dict[str, FrozenSet[str]] = {
+    "conformant-maf": frozenset(),
+    "unmediated-background": frozenset({"MED-001", "MED-002"}),
+    "provider-hosted-side-effect": frozenset({"MED-003"}),
+    "approval-replay": frozenset({"APR-001"}),
+    "interceptor-failure": frozenset({"ENF-002"}),
+    "output-streaming": frozenset({"OUT-001"}),
+    "upstream-version-drift": frozenset({"PIN-001"}),
+}
 
 
 @pytest.mark.parametrize("fixture_name", _RUNTIME_FOCUSED_SCENARIOS)
@@ -423,7 +525,7 @@ def test_runtime_focused_scenarios_isolate_only_their_declared_defect(
     ``not-applicable``): the only findings left over are the scenario's
     own declared defect ids.
     """
-    _expected_exit, expected_defects = SCENARIOS[fixture_name]
+    expected_defects = _RUNTIME_UNRESOLVED_EXPECTATIONS[fixture_name]
     result = assess_fixture(tmp_path, fixture_name)
     unresolved = {
         finding.finding_id
@@ -672,6 +774,7 @@ def test_conformant_goldens_share_the_conformant_maf_source() -> None:
     manifest = json.loads(CONFORMANT_MANIFEST_GOLDEN.read_text(encoding="utf-8"))
     assert manifest["summary"]["verdict"] == "governed"
     assert manifest["summary"]["must_fix"] == []
+    assert manifest["summary"]["not_verified"] == []
     evidence_pack_text = CONFORMANT_EVIDENCE_PACK_GOLDEN.read_text(encoding="utf-8")
     assert evidence_pack_text.strip() != ""
 
@@ -680,7 +783,8 @@ def test_nonconformant_goldens_share_the_unmediated_background_source() -> None:
     manifest = json.loads(NONCONFORMANT_MANIFEST_GOLDEN.read_text(encoding="utf-8"))
     assert manifest["summary"]["verdict"] != "governed"
     summary = manifest["summary"]
-    assert set(summary["must_fix"]) == {"MED-001", "MED-002"}
+    assert summary["must_fix"] == ["MED-001", "MED-001", "MED-002"]
+    assert summary["not_verified"] == []
     # The nonconformant golden isolates ``unmediated-background``'s own
     # declared mediation defect: no incidental "control file absent"
     # finding may ride along in the artifact customers read.
@@ -689,7 +793,10 @@ def test_nonconformant_goldens_share_the_unmediated_background_source() -> None:
         assert not incidental & set(summary[bucket]), (bucket, summary[bucket])
     apply_plan = json.loads(NONCONFORMANT_APPLY_PLAN_GOLDEN.read_text(encoding="utf-8"))
     assert isinstance(apply_plan, dict)
-    assert {item["finding_id"] for item in apply_plan["items"]} == {"MED-001", "MED-002"}
+    assert {item["finding_id"] for item in apply_plan["items"]} == {
+        "MED-001",
+        "MED-002",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -757,6 +864,8 @@ def test_every_finding_evidence_reference_resolves_to_a_declared_evidence_entry(
         declared = {ref.evidence_id for ref in result.evidence}
         unresolved = render._required_evidence_ids(result) - declared
         assert not unresolved, (fixture_name, sorted(unresolved))
+        for path in result.paths:
+            assert set(path.evidence_refs) <= declared, (fixture_name, path.path_id, path.evidence_refs)
         for probe in result.probes:
             assert set(probe.evidence_refs) <= declared, (
                 fixture_name,

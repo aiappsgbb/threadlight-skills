@@ -1,154 +1,187 @@
-"""stdlib unittest suite for govern_check.py (no pytest)."""
-import os
+"""Offline inventory is not runtime enforcement, including legacy markers."""
+import json
+from pathlib import Path
 import sys
-import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SKILL = os.path.dirname(HERE)
-sys.path.insert(0, os.path.join(SKILL, "scripts"))
+import pytest
 
-import govern_check as gc  # noqa: E402
-
-FIXTURES = os.path.join(SKILL, "references", "fixtures")
-WIRED = os.path.join(FIXTURES, "sample-wired")
-BARE = os.path.join(FIXTURES, "sample-bare")
-
-# The real, v2 capability set. Keep in lockstep with govern_check + the
-# production-ready pillar-02 map.
-V2_CAPS = {
-    "policy_artefact_present",
-    "policy_schema_valid",
-    "policy_versioned",
-    "policy_default_deny",
-    "sensitive_action_rules_present",
-    "policy_tests_present",
-    "ci_gate_present",
-    "attestation_present",
-    "attestation_fresh",
-    "asi_reference_present",
-}
-# Capabilities that were part of the old fictional runtime-middleware model and
-# must no longer exist.
-REMOVED_CAPS = {"middleware_wired_at_boundary", "sidecar_pattern",
-                "rai_policy_present", "verifier_artefact_present",
-                "verifier_fresh"}
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "skills/threadlight-govern/scripts"))
+import govern_check as gc
+from skills._shared.governance import validate_governance_manifest
 
 
-class GovernedFixtureTests(unittest.TestCase):
-    def setUp(self):
-        self.caps = gc.evaluate(WIRED, freshness_days=3650)
-        self.man = gc.manifest(WIRED, self.caps, "auto", 3650)
-
-    def test_exact_capability_set(self):
-        self.assertEqual(set(self.caps), V2_CAPS)
-
-    def test_no_fictional_caps(self):
-        self.assertEqual(set(self.caps) & REMOVED_CAPS, set())
-
-    def test_policy_present_schema_valid_versioned(self):
-        self.assertEqual(self.caps["policy_artefact_present"]["status"], "pass")
-        self.assertEqual(self.caps["policy_schema_valid"]["status"], "pass")
-        self.assertEqual(self.caps["policy_versioned"]["status"], "pass")
-
-    def test_default_deny_detected(self):
-        self.assertEqual(self.caps["policy_default_deny"]["status"], "pass")
-
-    def test_sensitive_action_rules_detected(self):
-        self.assertEqual(
-            self.caps["sensitive_action_rules_present"]["status"], "pass")
-
-    def test_policy_tests_present(self):
-        self.assertEqual(self.caps["policy_tests_present"]["status"], "pass")
-
-    def test_ci_gate_present(self):
-        self.assertEqual(self.caps["ci_gate_present"]["status"], "pass")
-
-    def test_attestation_present_and_fresh(self):
-        self.assertEqual(self.caps["attestation_present"]["status"], "pass")
-        self.assertEqual(self.caps["attestation_fresh"]["status"], "pass")
-
-    def test_asi_reference(self):
-        self.assertEqual(self.caps["asi_reference_present"]["status"], "pass")
-
-    def test_verdict_governed(self):
-        self.assertEqual(self.man["must_fix"], [])
-        self.assertEqual(self.man["should_fix"], [])
-        self.assertEqual(self.man["verdict"], "governed")
+def contract(framework="microsoft-agent-framework"):
+    return {
+        "framework": framework,
+        "governance": {
+            "mode": "selective",
+            "environment_modes": {
+                "development": "evaluate_only", "staging": "evaluate_only",
+                "preproduction": "enforce", "production": "enforce",
+            },
+            "lifecycle_bindings": [],
+        },
+        "tools": [
+            {
+                "id": "returns_apply_decision", "consequence": "write",
+                "policy_binding": "returns-safe", "enforcement_path": "governed-tool-gateway",
+                "intervention_points": ["pre_tool_call", "post_tool_call"],
+                "safe_principles": ["scope", "audit"], "requires": [],
+            },
+            "search_catalog",
+        ],
+    }
 
 
-class UngovernedFixtureTests(unittest.TestCase):
-    def setUp(self):
-        self.caps = gc.evaluate(BARE, freshness_days=90)
-        self.man = gc.manifest(BARE, self.caps, "auto", 90)
-
-    def test_policy_missing_is_must_fix(self):
-        self.assertEqual(self.caps["policy_artefact_present"]["status"], "must-fix")
-
-    def test_schema_valid_missing_is_must_fix(self):
-        self.assertEqual(self.caps["policy_schema_valid"]["status"], "must-fix")
-
-    def test_verdict_ungoverned(self):
-        self.assertEqual(self.man["verdict"], "ungoverned")
-        self.assertIn("policy_artefact_present", self.man["must_fix"])
-
-    def test_no_fictional_caps(self):
-        self.assertEqual(set(self.caps) & REMOVED_CAPS, set())
+def write_contract(root, document=None):
+    (root / "specs").mkdir()
+    (root / "specs/governance-contract.json").write_text(
+        json.dumps(document or contract()), encoding="utf-8"
+    )
 
 
-class ManifestShapeTests(unittest.TestCase):
-    def test_schema_is_v2(self):
-        self.assertEqual(gc.MANIFEST_SCHEMA, "threadlight-govern-manifest/v2")
-
-    def test_schema_and_keys(self):
-        caps = gc.evaluate(WIRED, 3650)
-        man = gc.manifest(WIRED, caps, "auto", 3650)
-        self.assertEqual(man["schema"], gc.MANIFEST_SCHEMA)
-        for key in ("verdict", "must_fix", "should_fix", "capabilities",
-                    "captured_at", "tool_version"):
-            self.assertIn(key, man)
-
-    def test_verdict_enum_values(self):
-        for target in (WIRED, BARE):
-            caps = gc.evaluate(target, 3650)
-            man = gc.manifest(target, caps, "auto", 3650)
-            self.assertIn(man["verdict"], ("governed", "partial", "ungoverned"))
-
-    def test_gate_exit_code(self):
-        rc = gc.main(["--target", BARE, "--gate"])
-        self.assertEqual(rc, 2)
-
-    def test_clean_target_passes_gate(self):
-        rc = gc.main(["--target", WIRED, "--gate", "--freshness-days", "3650"])
-        self.assertEqual(rc, 0)
+@pytest.mark.parametrize("fixture", ["sample-wired", "sample-bare"])
+def test_static_fixture_never_proves_governance(fixture):
+    root = ROOT / "skills/threadlight-govern/references/fixtures" / fixture
+    man = gc.manifest(str(root), gc.evaluate(str(root), 90), "auto", 90)
+    assert man["schema"] == "threadlight-governance-manifest/v1"
+    assert man["coverage"]["tools_enforced"] == 0
+    assert man["coverage"]["tools_observed"] == 0
+    assert man["live_probes"] == []
+    assert "verdict" not in man and "governed" not in man
+    assert man["offline_evidence"]
+    assert validate_governance_manifest(man) == man
 
 
-class GracefulDegradationTests(unittest.TestCase):
-    """An unexpected evaluate() failure must still emit a valid manifest
-    (verdict present, no fabricated must-fix) so the live E2E leg-assert
-    never hard-fails on a manifest that was simply never written."""
-
-    def test_emit_writes_manifest_when_evaluate_raises(self):
-        import json
-        import tempfile
-
-        def _boom(*_a, **_k):
-            raise RuntimeError("synthetic validator failure")
-
-        original = gc.evaluate
-        gc.evaluate = _boom
-        try:
-            with tempfile.TemporaryDirectory() as d:
-                code = gc.main(["--target", d, "--emit"])
-                self.assertEqual(code, 0)
-                path = os.path.join(d, "specs", "govern-manifest.json")
-                self.assertTrue(os.path.isfile(path))
-                man = json.loads(open(path, encoding="utf-8").read())
-                self.assertEqual(man["verdict"], "partial")
-                self.assertEqual(man["must_fix"], [])
-                self.assertEqual(set(man["capabilities"]), V2_CAPS)
-        finally:
-            gc.evaluate = original
+@pytest.mark.parametrize("framework", ["github-copilot-sdk", "microsoft-agent-framework"])
+def test_bound_missing_engine_is_unverified_without_framework_switch(tmp_path, framework):
+    write_contract(tmp_path, contract(framework))
+    man = gc.evaluate(str(tmp_path), 90)
+    assert man["agent"]["runtime"] == framework
+    assert man["coverage"]["tools_bound"] == 1
+    assert man["coverage"]["tools_unverified"] == 1
+    assert man["coverage"]["tools_unbound"] == 1
+    assert {b["status"] for b in man["bindings"]} == {"unverified", "unbound"}
+    assert man["policy_bundle"] is None
+    assert man["agent"]["image_digest"] is None
+    assert man["enforcement"]["acs_artifact_sha256"] is None
+    assert man["gaps"]
+    validate_governance_manifest(man)
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+def test_governance_off_is_unbound_and_still_emits_report(tmp_path, capsys):
+    doc = contract()
+    doc["governance"]["mode"] = "off"
+    doc["tools"] = ["search_catalog"]
+    write_contract(tmp_path, doc)
+    assert gc.main(["--target", str(tmp_path), "--profile", "none", "--emit", "--json"]) == 0
+    man = json.loads(capsys.readouterr().out)
+    assert man["coverage"]["tools_unbound"] == 1
+    assert (tmp_path / "specs/governance-manifest.json").exists()
+    assert man["coverage"]["tools_enforced"] == 0
+
+
+def test_spec_yaml_unquoted_off_preserves_explicit_governance_mode(tmp_path):
+    import yaml
+    doc = contract()
+    doc["governance"]["mode"] = "off"
+    doc["tools"] = ["search_catalog"]
+    (tmp_path / "specs").mkdir()
+    block = yaml.safe_dump(doc).replace("mode: 'off'", "mode: off")
+    assert "mode: off" in block
+    (tmp_path / "specs/SPEC.md").write_text(f"```yaml\n{block}```\n")
+    man = gc.evaluate(str(tmp_path))
+    assert man["agent"]["runtime"] == doc["framework"]
+    assert man["coverage"]["tools_unbound"] == 1
+    assert man["coverage"]["tools_enforced"] == 0
+    assert man["offline_evidence"][0]["reason_code"] == "contract-declared-only"
+
+
+@pytest.mark.parametrize("mode", ["true", "false"])
+def test_spec_yaml_boolean_is_not_a_governance_mode(tmp_path, mode):
+    import yaml
+    doc = contract()
+    (tmp_path / "specs").mkdir()
+    block = yaml.safe_dump(doc).replace("mode: selective", f"mode: {mode}")
+    (tmp_path / "specs/SPEC.md").write_text(f"```yaml\n{block}```\n")
+    with pytest.raises(ValueError):
+        gc.evaluate(str(tmp_path))
+
+
+def test_json_duplicate_governance_cannot_silently_select_off(tmp_path):
+    doc = contract()
+    doc["governance"]["mode"] = "off"
+    doc["tools"] = ["search_catalog"]
+    write_contract(tmp_path, doc)
+    path = tmp_path / "specs/governance-contract.json"
+    path.write_text('{"governance": {"mode": "selective"},' + path.read_text()[1:])
+    with pytest.raises(ValueError):
+        gc.evaluate(str(tmp_path))
+
+
+def test_legacy_boolean_contract_does_not_pass_gate(tmp_path):
+    write_contract(tmp_path, {"governed": True})
+    assert gc.main(["--target", str(tmp_path), "--gate"]) == 2
+
+
+def test_offline_gate_never_passes_legacy_wired_fixture():
+    root = ROOT / "skills/threadlight-govern/references/fixtures/sample-wired"
+    assert gc.main(["--target", str(root), "--gate"]) == 2
+
+
+def test_legacy_wired_fixture_does_not_advertise_ci_as_runtime_enforcement():
+    import ast
+    source = (ROOT / "skills/threadlight-govern/references/fixtures/sample-wired/src/app.py").read_text()
+    documentation = ast.get_docstring(ast.parse(source))
+    assert "assessment-only fixture" in documentation
+    assert "not runtime enforcement" in documentation
+    for claim in ("enforcement is proven at CI", "governance still enforced at CI",
+                  "remain the load-bearing gate"):
+        assert claim not in source
+
+
+def test_failure_emits_explicit_unverified_manifest(tmp_path, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("synthetic validator failure")
+    monkeypatch.setattr(gc, "evaluate", boom)
+    assert gc.main(["--target", str(tmp_path), "--emit", "--gate"]) == 2
+    man = json.loads((tmp_path / "specs/governance-manifest.json").read_text())
+    assert man["coverage"]["tools_enforced"] == 0
+    assert any(e["reason_code"] == "validator-error" for e in man["offline_evidence"])
+    validate_governance_manifest(man)
+
+
+def test_report_is_explicit_about_proof_boundaries(tmp_path):
+    write_contract(tmp_path)
+    text = gc.render(gc.evaluate(str(tmp_path), 90))
+    assert "offline" in text.lower() and "not deployment enforcement" in text.lower()
+    assert "returns_apply_decision" in text and "unverified" in text
+
+
+def test_rejects_symlink_contract(tmp_path):
+    target = tmp_path / "actual.json"
+    target.write_text(json.dumps(contract()))
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs/governance-contract.json").symlink_to(target)
+    assert gc.main(["--target", str(tmp_path), "--gate"]) == 2
+
+
+def test_new_manifest_does_not_fall_back_to_legacy_consumer_pass(tmp_path):
+    import importlib
+    import shutil
+    sys.path.insert(0, str(ROOT / "skills/threadlight-production-ready/scripts"))
+    pr = importlib.import_module("production_ready")
+    shutil.copytree(ROOT / "skills/threadlight-govern/references/fixtures/sample-wired",
+                    tmp_path, dirs_exist_ok=True)
+    gc.main(["--target", str(tmp_path), "--emit"])
+    ctx = pr.RepoContext(
+        root=tmp_path, bicep_files=[], src_files=[], test_files=[], spec_text="",
+        spec_12={}, spec_11b={}, azure_yaml_text="", docs_text="", azd_env={},
+        manifest={}, bicep_text="", src_text="",
+        bicep_graph=pr.BicepGraph(resources=[], source_files=[]),
+    )
+    findings = pr._check_agt_static(ctx, "auto") + pr._check_rai_static(ctx)
+    for finding in findings:
+        if finding.id in {"AGT-001", "AGT-002", "AGT-003", "AGT-004", "AGT-005", "RAI-002"}:
+            assert finding.status == "not-verified", (finding.id, finding.status)

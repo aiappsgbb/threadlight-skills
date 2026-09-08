@@ -713,7 +713,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "POS-001": {"title": "Declared posture matches detected evidence", "pillar": "network-posture", "severity": "should-fix", "tier": 1},
 
     # ---- agent-governance (AGT)
-    "AGT-001": {"title": "AGT policy is schema-valid (lints clean)", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
+    "AGT-001": {"title": "Selected governance bindings have current exact live evidence", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-002": {"title": "policy.yaml present in repo", "pillar": "agent-governance", "severity": "must-fix", "tier": 0},
     "AGT-003": {"title": "OWASP ASI 2026 verifier referenced", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
     "AGT-004": {"title": "AGT policy ruleset version pinned", "pillar": "agent-governance", "severity": "should-fix", "tier": 0},
@@ -2287,12 +2287,18 @@ def _gap_findings_for_pillar(ctx: RepoContext, pillar: str) -> list[Finding]:
 
 _GOVERNED_ACTIONS_MANIFEST_RELPATH = ("tests", "governed-actions-manifest.json")
 _GOVERNED_ACTIONS_SCHEMA = "threadlight-governed-actions-manifest/v1"
+_GOVERNED_ACTIONS_EVIDENCE_CONTRACT = "governance-ledger/v2"
+_GOVERNED_ACTIONS_PERSISTED_PROBES = {
+    "approval-anti-replay": ("APR-001", {"approval-ledger-records", "approval-binding-digest"}),
+    "output-mediation": ("OUT-001", {"output-ledger-records"}),
+    "payload-free-audit": ("AUD-001", {"audit-ledger-records", "probe-audit-record"}),
+}
 _GOVERNED_ACTIONS_ASSESSOR_NAME = "threadlight-governed-actions"
 
 # Pinned, NOT a floor. A newer assessor may change what a child status means, so
 # an unreviewed future version buys no trust here; it degrades to not-verified
 # until this consumer is deliberately updated alongside it.
-_GOVERNED_ACTIONS_SUPPORTED_ASSESSOR_VERSIONS = frozenset({"0.1.0"})
+_GOVERNED_ACTIONS_SUPPORTED_ASSESSOR_VERSIONS = frozenset({"0.1.0", "2.0.0"})
 
 # Design-phase evidence describes an intent, not a deployable system, so it can
 # never stand behind a readiness claim.
@@ -2334,7 +2340,7 @@ _GOVERNED_ACTIONS_TOP_LEVEL_KEYS = frozenset({
     "schema", "assessor", "phase", "captured_at", "source", "pins",
     "policy_hashes", "action_inventory", "mediation_paths", "conformance",
     "change_plane", "findings", "evidence", "freshness", "residual_risks",
-    "summary",
+    "summary", "evidence_contract",
 })
 _GOVERNED_ACTIONS_FINDING_KEYS = frozenset({
     "finding_id", "status", "phase", "plane", "reason_code", "summary",
@@ -2346,11 +2352,35 @@ _GOVERNED_ACTIONS_EVIDENCE_KEYS = frozenset({
     "freshness_seconds", "live_verified", "phase", "repository",
     "source_commit", "target_environment", "policy_set_sha256",
 })
+_GOVERNED_ACTIONS_PROBE_KEYS = frozenset({
+    "probe_id", "action_id", "path_id", "mode", "status", "reason_code",
+    "expected_sha256", "observed_sha256", "evidence_refs",
+})
+_GOVERNED_ACTIONS_EXECUTION_MODES = frozenset({
+    "interactive", "batch", "background", "subagent", "direct-tool",
+    "provider-hosted-tool",
+})
 _GOVERNED_ACTIONS_SUMMARY_BUCKETS = (
     ("pass", "pass"), ("must_fix", "must-fix"), ("should_fix", "should-fix"),
     ("not_verified", "not-verified"), ("not_applicable", "not-applicable"),
 )
 _GOVERNED_ACTIONS_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+_GOVERNED_ACTIONS_DEPLOYMENT_KEYS = frozenset({
+    "agent_name", "agent_version", "image_digest", "policy_digest",
+    "environment", "subscription", "resource_group",
+})
+
+
+def _governed_actions_valid_deployment(target: object) -> bool:
+    return (
+        isinstance(target, dict)
+        and set(target) == _GOVERNED_ACTIONS_DEPLOYMENT_KEYS
+        and all(isinstance(value, str) and value.strip() for value in target.values())
+        and all(re.fullmatch(r"sha256:[0-9a-f]{64}", target[key])
+                for key in ("image_digest", "policy_digest"))
+        and target["environment"] == "staging"
+        and "prod" not in target["resource_group"].lower()
+    )
 
 
 def _governed_actions_worst(statuses: Iterable[str]) -> str:
@@ -2451,6 +2481,15 @@ def load_governed_actions_manifest(root: Path) -> dict[str, object] | None:
         "root": str(root),
         "repository": _detect_repo_full_name(str(root)),
         "target_environment": (azd_env.get("AZURE_ENV_NAME") or "").strip() or None,
+        "deployed_target": {
+            key: azd_env.get(env_key)
+            for key, env_key in {
+                "agent_name": "AGENT_NAME", "agent_version": "AGENT_VERSION",
+                "image_digest": "IMAGE_DIGEST", "policy_digest": "POLICY_DIGEST",
+                "environment": "AZURE_ENV_NAME", "subscription": "AZURE_SUBSCRIPTION_ID",
+                "resource_group": "AZURE_RESOURCE_GROUP",
+            }.items()
+        },
     }
     return data
 
@@ -2475,11 +2514,16 @@ def _validate_governed_actions_manifest(
     missing = sorted(_GOVERNED_ACTIONS_TOP_LEVEL_KEYS - declared)
     if missing:
         return "missing required key(s): " + ", ".join(missing)
-    if declared - _GOVERNED_ACTIONS_TOP_LEVEL_KEYS:
+    if declared - _GOVERNED_ACTIONS_TOP_LEVEL_KEYS - {"deployed_target", "native_local"}:
         return "manifest contains unsupported top-level key(s)"
+    deployment = manifest.get("deployed_target")
+    if "deployed_target" in manifest and not _governed_actions_valid_deployment(deployment):
+        return "manifest deployment binding is malformed or not staging"
 
     if manifest["schema"] != _GOVERNED_ACTIONS_SCHEMA:
         return f"schema is not {_GOVERNED_ACTIONS_SCHEMA!r}"
+    if manifest["evidence_contract"] != _GOVERNED_ACTIONS_EVIDENCE_CONTRACT:
+        return "unsupported governance evidence contract; re-run threadlight-governed-actions"
 
     assessor = manifest["assessor"]
     if not isinstance(assessor, dict):
@@ -2585,7 +2629,7 @@ def _validate_governed_actions_manifest(
         return "evidence must be a non-empty array"
     by_id: dict[str, Mapping[str, Any]] = {}
     for entry in evidence:
-        if not isinstance(entry, dict) or set(entry) != _GOVERNED_ACTIONS_EVIDENCE_KEYS:
+        if not isinstance(entry, dict) or set(entry) - {"deployed_target"} != _GOVERNED_ACTIONS_EVIDENCE_KEYS:
             return "evidence entries do not match the evidence contract"
         evidence_id = entry["evidence_id"]
         if not isinstance(evidence_id, str) or not evidence_id:
@@ -2599,6 +2643,28 @@ def _validate_governed_actions_manifest(
     if not isinstance(findings, list):
         return "findings must be an array"
     referenced: set[str] = set()
+    mediation_paths = manifest["mediation_paths"]
+    if not isinstance(mediation_paths, list):
+        return "mediation_paths must be an array"
+    path_modes: dict[str, str] = {}
+    for path in mediation_paths:
+        if not isinstance(path, dict):
+            return "mediation_paths entries must be objects"
+        path_id = path.get("path_id")
+        path_mode = path.get("mode")
+        if (
+            not isinstance(path_id, str)
+            or not path_id
+            or not isinstance(path_mode, str)
+            or path_mode not in _GOVERNED_ACTIONS_EXECUTION_MODES
+            or path_id in path_modes
+        ):
+            return "mediation_paths has malformed or duplicate path identity"
+        path_modes[path_id] = path_mode
+        refs = path.get("evidence_refs")
+        if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
+            return "mediation_paths has malformed evidence_refs"
+        referenced.update(refs)
     phases_by_evidence: dict[str, set[str]] = {}
     observed_buckets: dict[str, list[str]] = {
         status: [] for _key, status in _GOVERNED_ACTIONS_SUMMARY_BUCKETS
@@ -2632,13 +2698,81 @@ def _validate_governed_actions_manifest(
     probes = conformance.get("application_probes", [])
     if not isinstance(probes, list):
         return "conformance.application_probes must be an array"
+    try:
+        from skills._shared.native_local_evidence import validated_controls
+        native_controls = validated_controls(
+            manifest.get("native_local"), probes, evidence, source=source, phase=phase,
+            captured_at=manifest["captured_at"], policy_hashes=policy_hashes, assessor=assessor, root=root)
+    except (ValueError, TypeError, KeyError, OSError, RecursionError):
+        return "native local evidence is malformed, incomplete, or mismatched"
     for probe in probes:
-        if not isinstance(probe, dict):
-            return "conformance.application_probes entries must be objects"
+        if not isinstance(probe, dict) or set(probe) != _GOVERNED_ACTIONS_PROBE_KEYS:
+            return "conformance.application_probes entries do not match the probe contract"
+        path_id = probe["path_id"]
+        mode = probe["mode"]
+        if path_id is None:
+            if mode is not None:
+                return "non-path application probe must have null mode"
+        elif (
+            not isinstance(path_id, str)
+            or path_id not in path_modes
+            or not isinstance(mode, str)
+            or mode != path_modes[path_id]
+        ):
+            return "path application probe mode does not match its mediation path"
         refs = probe.get("evidence_refs", [])
         if not isinstance(refs, list) or any(not isinstance(r, str) for r in refs):
             return "conformance.application_probes has malformed evidence_refs"
         referenced.update(refs)
+        contract = _GOVERNED_ACTIONS_PERSISTED_PROBES.get(probe["probe_id"])
+        if (contract and probe["status"] == "pass"
+                and (probe["action_id"], probe["probe_id"]) not in native_controls):
+            cited = [by_id[ref] for ref in refs if ref in by_id]
+            if not contract[1] <= {entry["kind"] for entry in cited}:
+                return "passing governance probe lacks required persisted-ledger evidence"
+            for entry in cited:
+                if entry["kind"].endswith("-ledger-records") and (
+                    not isinstance(entry["sha256"], str)
+                    or not re.fullmatch(r"sha256:[0-9a-f]{64}", entry["sha256"])
+                    or entry["evidence_id"] != f"{entry['kind']}-{entry['sha256'][7:]}"
+                    or not isinstance(entry["source"], str)
+                    or not entry["source"].endswith("#assessment-isolated")
+                    or not isinstance(entry["live_verified"], bool)
+                ):
+                    return "persisted governance ledger evidence contract mismatch"
+
+    for probe_id, (finding_id, _kinds) in _GOVERNED_ACTIONS_PERSISTED_PROBES.items():
+        family = [probe for probe in probes if probe["probe_id"] == probe_id]
+        child_statuses = [f["status"] for f in findings if f["finding_id"] == finding_id]
+        if not family and not any(status != "pass" for status in child_statuses):
+            return "governance control has no probe evidence or explicit non-passing finding"
+        if any(p["status"] != "pass" for p in family) and (
+            not child_statuses
+            or _GOVERNED_ACTIONS_PRECEDENCE.index(_governed_actions_worst(child_statuses))
+            > _GOVERNED_ACTIONS_PRECEDENCE.index(_governed_actions_worst(p["status"] for p in family))
+        ):
+            return "governance findings omit a non-passing probe outcome"
+        if probe_id == "approval-anti-replay":
+            digest = lambda value: "sha256:" + hashlib.sha256(value.encode()).hexdigest()
+            for action_id in {p["action_id"] for p in family}:
+                if (action_id, probe_id) in native_controls:
+                    continue
+                sequence = [p for p in family if p["action_id"] == action_id]
+                if not all(p["status"] == "pass" for p in sequence):
+                    continue
+                sequence_observations = [p["observed_sha256"] for p in sequence]
+                ledger_ids = {
+                    ref for p in sequence for ref in p["evidence_refs"]
+                    if ref in by_id and by_id[ref]["kind"] == "approval-ledger-records"
+                }
+                if (
+                    len(sequence) != 14 or len(ledger_ids) != 14
+                    or sequence_observations.count(digest("approval_accepted")) != 2
+                    or sequence_observations.count(digest("expired_rejected")) != 1
+                    or sum(value in {digest("replay_rejected"), digest("binding_mismatch_rejected"),
+                                     digest("reused_nonce_rejected")} for value in sequence_observations) != 11
+                ):
+                    return "approval evidence does not cover the complete ordered sequence contract"
 
     # ---- binding: only evidence actually relied upon -----------------------
     # Unreferenced evidence is inert context and is deliberately not policed —
@@ -2674,6 +2808,19 @@ def _validate_governed_actions_manifest(
             and entry["policy_set_sha256"] != policy_set_sha256
         ):
             return "relied-upon evidence binds to a different policy set"
+        if "deployed_target" in entry and (
+            not _governed_actions_valid_deployment(entry["deployed_target"])
+            or entry["deployed_target"] != deployment
+            or entry["target_environment"] != deployment["environment"]
+        ):
+            return "relied-upon evidence has a deployment binding mismatch"
+        if entry["live_verified"]:
+            if deployment is None or entry.get("deployed_target") != deployment:
+                return "live evidence lacks an exact deployment binding"
+            if str(entry["kind"]).startswith(("probe-", "path-", "approval-", "output-", "audit-ledger-")):
+                return "local probe evidence cannot claim live deployment enforcement"
+            if observed.get("deployed_target") != deployment:
+                return "live evidence does not match the selected deployment"
         env = entry["target_environment"]
         if isinstance(env, str) and env.strip():
             environments.add(env.strip())
@@ -3267,38 +3414,37 @@ def _canonical_policy_text(ctx: RepoContext) -> tuple[str, bool, str]:
 def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
     out: list[Finding] = []
     src = ctx.src_text
-    # Prefer the threadlight-govern leg manifest when it is present and fresh:
-    # the leg has already verified AGT wiring, so report its verdict as
-    # evidence rather than re-deriving from heuristics.
-    gm = _load_leg_manifest(ctx, "govern-manifest.json")
-    if gm is not None and gm.get("_fresh"):
-        verdict = gm.get("verdict", "?")
-        prov = f"threadlight-govern manifest (verdict: {verdict}, {gm.get('_age_days')}d old)"
-        _agt_map = {
-            "AGT-001": "policy_schema_valid",
-            "AGT-002": "policy_artefact_present",
-            "AGT-003": "asi_reference_present",
-            "AGT-004": "policy_versioned",
-            "AGT-005": "ci_gate_present",
+    repo = Path(__file__).resolve().parents[3]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    try:
+        from skills._shared.governance_readiness import assess
+        target = {
+            key: ctx.azd_env[env_key] for key, env_key in {
+                "agent_id": "AGENT_NAME", "agent_version": "AGENT_VERSION",
+                "image_digest": "IMAGE_DIGEST", "environment": "AZURE_ENV_NAME",
+                "tenant": "AZURE_TENANT_ID", "subject": "AGENT_PRINCIPAL_ID",
+                "client_id": "AGENT_CLIENT_ID",
+            }.items() if ctx.azd_env.get(env_key)
         }
-        for fid, cap in _agt_map.items():
-            st = _leg_cap_status(gm, cap)
-            if st is None:
-                out.append(_not_verified(fid, f"{prov}: capability {cap!r} not reported"))
-            else:
-                out.append(_mk_finding(fid, status=st, detail=f"{prov}: {cap}={st}"))
-        # AGT-006 telemetry sink is not part of the govern manifest — keep the
-        # legacy heuristic so the finding still scores.
-        pol_text = ""
-        for p in _glob_repo(ctx.root, "**/policy*.y*ml"):
-            pol_text += "\n" + (_read_text(p) or "")
-        has_telemetry = bool(re.search(r"telemetry|otel|opentelemetry|app[_ -]?insights", pol_text + src, re.I))
-        out.append(_mk_finding("AGT-006",
-            status="pass" if has_telemetry else "should-fix",
-            detail="Telemetry sink wired" if has_telemetry else "No telemetry sink wired for AGT denials"))
-        if agt_profile and agt_profile not in ("none", "auto", "v3_7", "v4_preview"):
-            out.append(_not_verified("AGT-001", f"Unknown --agt-profile {agt_profile!r}; v4 migration considerations apply"))
-        return out
+        scope = _assessment_target_scope_for_ctx(ctx)
+        if scope.subscription_id:
+            target["subscription"] = scope.subscription_id
+        if scope.resource_group:
+            target["resource_group"] = scope.resource_group
+        assurance = assess(ctx.root, required_target=target)
+    except ImportError:
+        assurance = {"status": "not-verified", "reason": "Shared governance evidence validator unavailable."}
+    if any((ctx.root / "specs" / name).exists() for name in (
+        "governance-manifest.json", "govern-manifest.json", "governance-contract.json",
+    )):
+        return [
+            _mk_finding("AGT-001", status=assurance["status"], detail=assurance["reason"]),
+            *[_mk_finding(f"AGT-{number:03d}",
+                          status="not-applicable" if assurance["status"] == "pass" else "not-verified",
+                          detail="Legacy policy-marker check is not binding enforcement evidence.")
+              for number in range(2, 7)],
+        ]
     # ---- legacy heuristic path (no govern manifest) ----
     # Schema/pin checks read the CANONICAL policy file only; OR-presence signals
     # (OWASP, telemetry) may read the merged text.
@@ -3311,9 +3457,7 @@ def _check_agt_static(ctx: RepoContext, agt_profile: str) -> list[Finding]:
         and re.search(r"^rules\s*:", canon_text, re.I | re.M)
     )
     out.append(_mk_finding("AGT-001",
-        status="pass" if schema_valid else "must-fix",
-        detail="AGT policy has version/name/rules — lints clean" if schema_valid
-               else "No schema-valid AGT policy (author policy.yaml with top-level version + name + rules, then `agt lint-policy`)"))
+        status=assurance["status"], detail=assurance["reason"]))
     # AGT-002 policy artefact present
     out.append(_mk_finding("AGT-002",
         status="pass" if has_policy else "must-fix",
@@ -4703,9 +4847,13 @@ def _check_rai_static(ctx: RepoContext) -> list[Finding]:
     # RAI-002/003 read the canonical policy for the completeness check; the
     # merged text still feeds the OR-presence shield/PII signals below.
     canon_text, has_policy, pol_text = _canonical_policy_text(ctx)
-    # Prefer the threadlight-govern manifest's RAI-policy verdict when fresh.
-    gm = _load_leg_manifest(ctx, "govern-manifest.json")
-    gm_sar = _leg_cap_status(gm, "sensitive_action_rules_present") if (gm and gm.get("_fresh")) else None
+    # Neither old whole-agent verdicts nor a noop prove RAI policy enforcement.
+    if any((ctx.root / "specs" / name).exists() for name in (
+        "governance-manifest.json", "govern-manifest.json",
+    )):
+        gm_sar = "not-verified"
+    else:
+        gm_sar = None
     has_sar = bool(re.search(r"\b(deny|escalate|block|rate_limit)\b|sensitive[_ ]?action|require[_ ]?approval", canon_text, re.I))
     if gm_sar is not None:
         out.append(_mk_finding("RAI-002", status=gm_sar,

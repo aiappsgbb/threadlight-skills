@@ -21,7 +21,7 @@ class EvidenceGateError(ValueError):
 
 # Allowed schemas and verdicts
 _ASSURANCE_SPECS = {
-    "govern": ("threadlight-govern-manifest/v2", {"governed", "partial", "ungoverned"}, "governed"),
+    "govern": ("threadlight-governance-manifest/v1", {"enforced", "pass", "must-fix", "not-verified"}, "enforced"),
     "evals": ("threadlight-evals-manifest/v1", {"comprehensive", "partial", "offline-only", "none"}, "comprehensive"),
     "redteam": ("threadlight-redteam-manifest/v1", {"hardened", "partial", "vulnerable"}, "hardened"),
 }
@@ -298,6 +298,21 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
 
     # Load assurance manifests if present and validate shape.
     for key, (expected_schema, allowed, passing) in _ASSURANCE_SPECS.items():
+        if key == "govern" and (specs_dir / "governance-manifest.json").exists():
+            repo = Path(__file__).resolve().parents[3]
+            if str(repo) not in sys.path:
+                sys.path.insert(0, str(repo))
+            try:
+                from skills._shared.governance import validate_governance_manifest
+                from skills._shared.governance_readiness import assess, read_json
+                validate_governance_manifest(read_json(specs_dir / "governance-manifest.json"))
+            except (OSError, ValueError, ImportError) as error:
+                raise EvidenceGateError("governance-manifest.json not-verified: invalid evidence or missing tooling") from error
+            result = assess(root)
+            verdicts[key] = "enforced" if result["status"] == "pass" and result["live"] else result["status"]
+            if mode == "readiness-proof" and result["status"] != "pass":
+                raise EvidenceGateError("governance-manifest.json " + result["status"] + ": " + result["reason"])
+            continue
         path = specs_dir / f"{key}-manifest.json"
         if not path.exists():
             # absent manifest: in live-smoke we accept missing ones; in
@@ -305,6 +320,10 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
             continue
         data = _load_json(path)
         schema = data.get("schema")
+        if key == "govern":
+            # Validate old provenance strictly, but never upgrade it to assurance.
+            expected_schema = "threadlight-govern-manifest/v2"
+            allowed = {"governed", "partial", "ungoverned"}
         if schema != expected_schema:
             raise EvidenceGateError(f"{path.name} schema expected {expected_schema!r}")
         # Common required fields for govern/evals/redteam
@@ -328,7 +347,7 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
             _validate_redteam_manifest(path, data)
 
         # record verdict
-        verdicts[key] = verdict
+        verdicts[key] = "not-verified" if key == "govern" else verdict
 
     # For live-smoke we require the assurance manifests be present and structurally valid
     missing = [k for k in _ASSURANCE_SPECS.keys() if k not in verdicts]
@@ -348,6 +367,8 @@ def evaluate_evidence(root: Path | str, mode: str) -> Dict[str, Any]:
 
     for key, (_, allowed, passing) in _ASSURANCE_SPECS.items():
         v = verdicts.get(key)
+        if key == "govern" and v in {"enforced", "pass"}:
+            continue
         if v != passing:
             raise EvidenceGateError(f"{key}-manifest.json expected {passing!r}, got {v!r}")
 

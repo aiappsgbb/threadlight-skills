@@ -33,8 +33,9 @@ customer-facing Governance Evidence Pack.
 
 1. Produce a complete, classified inventory of agent tools and actions.
 2. Prove that every consequential runtime path reaches pre-action mediation.
-3. Exercise deny, transform, fail-closed, approval anti-replay, output
-   mediation, and payload-free audit behavior through the application path.
+3. Exercise path-bound allow/deny receipts plus separate generic deny,
+   transform, fail-closed, approval anti-replay, output-mediation, and
+   payload-free-audit probes.
 4. Assess the separate GitHub Copilot change plane through repository and
    deployment controls.
 5. Emit deterministic machine-readable evidence, a customer-facing pass/fail
@@ -591,7 +592,7 @@ The overall verdict is:
 | `MED-001` | Runtime | Every consequential path reaches evidenced pre-action mediation. | Any bypass path: `must-fix`. |
 | `MED-002` | Runtime | Interactive, batch, background, subagent, and direct-tool paths are explicitly covered or evidenced absent. | Known consequential bypass: `must-fix`; inability to determine whether a path exists: `not-verified`. |
 | `MED-003` | Runtime | Provider-hosted side-effecting tools are pre-interceptable or have equivalent server-side controls. | Not pre-interceptable without equivalent proof: `must-fix` with reason `unsupported`. |
-| `ENF-001` | Runtime | Deny and transform application-path probes pass. | Tool reached after deny or transform mismatch: `must-fix`. |
+| `ENF-001` | Runtime | Separate generic deny and transform enforcement probes pass. | Tool reached after deny or transform mismatch: `must-fix`. |
 | `ENF-002` | Runtime | Crash, timeout, and malformed verdict fail closed. | Any fail-open behavior: `must-fix`. |
 | `APR-001` | Runtime | Approval is action-, actor-, tenant-, policy-, expiry-, and nonce-bound with atomic one-time redemption. | Replay or mutation succeeds: `must-fix`. |
 | `OUT-001` | Runtime | Protected output is mediated before release, including streaming posture. | Pre-verdict release or unstoppable stream: `must-fix`. |
@@ -842,9 +843,9 @@ No phase applies remediations or deploys a pilot.
    and provider-hosted path is either pre-action mediated or explicitly fails.
 5. A CTK claim without passing application-path probes cannot produce
    `governed`.
-6. Deny, transform, crash, timeout, malformed-verdict, replay, mutation,
-   output-mediation, and payload-free-audit probes have deterministic positive
-   and negative fixtures.
+6. Path-bound allow/deny receipts and the separate generic deny, transform,
+   crash, timeout, malformed-verdict, replay, mutation, output-mediation, and
+   payload-free-audit probes have deterministic positive and negative fixtures.
 7. Provider-hosted side-effecting tools without pre-interception or equivalent
    server-side proof are `must-fix`/unsupported.
 8. Approval replay or mutation never reaches the tool service.

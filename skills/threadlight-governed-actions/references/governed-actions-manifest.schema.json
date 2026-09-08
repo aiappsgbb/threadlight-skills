@@ -7,6 +7,7 @@
   "additionalProperties": false,
   "required": [
     "schema",
+    "evidence_contract",
     "assessor",
     "phase",
     "captured_at",
@@ -23,7 +24,33 @@
     "residual_risks",
     "summary"
   ],
+  "allOf": [{
+    "if": {"properties": {"conformance": {"properties": {"application_probes": {
+      "contains": {"properties": {"reason_code": {"const": "native-local-executed"}}, "required": ["reason_code"]}
+    }}}}},
+    "then": {"required": ["native_local"]}
+  }],
   "properties": {
+    "native_local": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "phase", "execution_mode", "source", "captured_at", "policy_set_sha256", "events"],
+      "description": "Optional executed LOCAL-14 envelope, revalidated by skills/_shared/native_local_evidence.py. Never substitutes for generic fourteen-result approval ledgers or deployed proof.",
+      "properties": {
+        "schema": {"const": "threadlight-native-local-evidence/v1"},
+        "phase": {"const": "pre-deploy"},
+        "execution_mode": {"const": "local"},
+        "source": {"$ref": "#/$defs/source"},
+        "captured_at": {"$ref": "#/$defs/timestamp"},
+        "policy_set_sha256": {"$ref": "#/$defs/sha256"},
+        "events": {"type": "array", "minItems": 25, "maxItems": 999, "items": {"$ref": "#/$defs/nativeEvent"}}
+      }
+    },
+    "evidence_contract": {
+      "const": "governance-ledger/v2",
+      "description": "Closed payload-free persisted-ledger contracts and ordered approval sequence semantics. Earlier evidence contracts cannot certify passing approval/output/audit controls."
+    },
+    "deployed_target": {"$ref": "#/$defs/deployedTarget"},
     "schema": {
       "const": "threadlight-governed-actions-manifest/v1"
     },
@@ -66,6 +93,25 @@
     "change_plane": {
       "$ref": "#/$defs/changePlane"
     },
+    "action_posture": {
+      "type": "array",
+      "description": "Action-scoped gateway observations; never whole-agent authorization.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["binding_id", "tool_id", "enforcement_path", "policy_digest", "status", "posture", "whole_agent_governed", "evidence_refs"],
+        "properties": {
+          "binding_id": {"type": "string", "minLength": 1},
+          "tool_id": {"type": "string", "minLength": 1},
+          "enforcement_path": {"enum": ["none", "local-agent-hooks", "governed-tool-gateway"]},
+          "policy_digest": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+          "status": {"enum": ["enforced", "observed", "unbound", "unsupported", "unverified", "bypassable"]},
+          "posture": {"enum": ["action-governed", "observed", "unbound", "unsupported", "unverified", "bypassable"]},
+          "whole_agent_governed": {"const": false},
+          "evidence_refs": {"type": "array", "items": {"type": "string", "pattern": "^EV-"}, "uniqueItems": true}
+        }
+      }
+    },
     "findings": {
       "type": "array",
       "items": {
@@ -92,6 +138,262 @@
     }
   },
   "$defs": {
+    "nativeText": {"type": "string", "minLength": 1, "maxLength": 256},
+    "nativeHexDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nativeCount": {"type": "integer", "minimum": 0, "maximum": 1000},
+    "nativeDecision": {"enum": ["allow", "deny", "escalate", "transform", "error"]},
+    "nativeSourceHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "patternProperties": {"^(project|runner):.+$": {"$ref": "#/$defs/nativeHexDigest"}}
+    },
+    "nativeImports": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_framework", "agent_framework.foundry", "agent_framework_foundry_hosting",
+                   "agent_primitives", "agent_hooks", "agent_control_specification"],
+      "properties": {
+        "agent_framework": {"type": "string", "pattern": "/__init__\\.py$"},
+        "agent_framework.foundry": {"type": "string", "pattern": "/__init__\\.py$"},
+        "agent_framework_foundry_hosting": {"type": "string", "pattern": "/__init__\\.py$"},
+        "agent_primitives": {"type": "string", "pattern": "/__init__\\.py$"},
+        "agent_hooks": {"type": "string", "pattern": "/__init__\\.py$"},
+        "agent_control_specification": {"type": "string", "pattern": "/__init__\\.py$"}
+      }
+    },
+    "nativePackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["distribution", "version", "filename", "sha256"],
+      "properties": {
+        "distribution": {"$ref": "#/$defs/nativeText"},
+        "version": {"$ref": "#/$defs/nativeText"},
+        "filename": {"type": "string", "minLength": 1, "pattern": "\\.whl$"},
+        "sha256": {"$ref": "#/$defs/nativeHexDigest"}
+      }
+    },
+    "nativeInstallation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "execution_mode", "phase", "platform", "python_version", "collected_at",
+                   "packages", "imports", "opa_sha256", "deployed_image"],
+      "properties": {
+        "schema": {"const": "native-installed-observation/v1"},
+        "execution_mode": {"const": "local"},
+        "phase": {"const": "pre-deploy"},
+        "platform": {"const": "linux-amd64"},
+        "python_version": {"type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$"},
+        "collected_at": {"$ref": "#/$defs/timestamp"},
+        "packages": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"$ref": "#/$defs/nativePackage"}},
+        "imports": {"$ref": "#/$defs/nativeImports"},
+        "opa_sha256": {"$ref": "#/$defs/nativeHexDigest"},
+        "deployed_image": {"const": "not-verified"}
+      }
+    },
+    "nativeReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt_id", "correlation_id", "action_id", "action_hash", "policy_digest",
+                   "decision", "reason_code", "agent_version", "image_digest", "recorded_at"],
+      "properties": {
+        "receipt_id": {"$ref": "#/$defs/nativeText"},
+        "correlation_id": {"$ref": "#/$defs/nativeText"},
+        "action_id": {"const": "returns_apply_decision"},
+        "action_hash": {"$ref": "#/$defs/sha256"},
+        "policy_digest": {"$ref": "#/$defs/sha256"},
+        "decision": {"$ref": "#/$defs/nativeDecision"},
+        "reason_code": {"$ref": "#/$defs/nativeText"},
+        "agent_version": {"const": "local-fixture"},
+        "image_digest": {"const": "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+        "recorded_at": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "nativeEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Closed recorder variants. Each discriminator has an exact required/allowed field set; sequence, source, approval and receipt correlation remain enforced by native_local_evidence.py.",
+      "required": ["event", "counter"],
+      "properties": {
+        "event": {"type": "string"},
+        "counter": {"type": "integer", "minimum": 1, "maximum": 999},
+        "observation": {"$ref": "#/$defs/nativeInstallation"},
+        "source_hashes": {"$ref": "#/$defs/nativeSourceHashes"},
+        "action_id": {"const": "returns_apply_decision"},
+        "case": {"enum": ["allow", "deny", "approved", "rejected", "absent", "invalid-human", "expired", "changed",
+                          "risk-incomplete", "audit-down", "incomplete", "schema", "missing-profile-low",
+                          "missing-profile-risk", "missing-profile-absent", "missing-profile-wrong-info"]},
+        "mode": {"enum": ["interactive", "batch", "background", "subagent", "direct-tool"]},
+        "expected_resolved_path": {"$ref": "#/$defs/nativeText"},
+        "resolved_path": {"$ref": "#/$defs/nativeText"},
+        "tool_id": {"$ref": "#/$defs/nativeText"},
+        "queries": {"$ref": "#/$defs/nativeCount"},
+        "acs_evaluations": {"$ref": "#/$defs/nativeCount"},
+        "effects": {"$ref": "#/$defs/nativeCount"},
+        "point": {"const": "pre_tool_call"},
+        "snapshot_hash": {"$ref": "#/$defs/sha256"},
+        "result_hash": {"$ref": "#/$defs/sha256"},
+        "native_decision": {"$ref": "#/$defs/nativeText"},
+        "read_names": {"type": "array", "items": {"$ref": "#/$defs/nativeText"}},
+        "decision": {"$ref": "#/$defs/nativeDecision"},
+        "receipt_id": {"$ref": "#/$defs/nativeText"},
+        "action_hash": {"$ref": "#/$defs/sha256"},
+        "policy_hash": {"$ref": "#/$defs/sha256"},
+        "receipt_hash": {"$ref": "#/$defs/sha256"},
+        "receipt": {"$ref": "#/$defs/nativeReceipt"},
+        "argument_hash": {"$ref": "#/$defs/sha256"},
+        "original_argument_hash": {"$ref": "#/$defs/sha256"},
+        "effect_count": {"$ref": "#/$defs/nativeCount"},
+        "served_sha256": {"$ref": "#/$defs/nativeHexDigest"},
+        "request_sha256": {"$ref": "#/$defs/sha256"},
+        "scope": {"$ref": "#/$defs/nativeText"},
+        "output_hash": {"$ref": "#/$defs/sha256"},
+        "reads": {"$ref": "#/$defs/nativeCount"},
+        "decisions": {"type": "array", "items": {"$ref": "#/$defs/nativeDecision"}},
+        "approval_requests": {"$ref": "#/$defs/nativeCount"},
+        "binding_status": {"const": "unverified"},
+        "items": {"$ref": "#/$defs/nativeCount"},
+        "child_factory_hash": {"$ref": "#/$defs/nativeHexDigest"},
+        "exception_class": {"$ref": "#/$defs/nativeText"},
+        "intent_hash": {"$ref": "#/$defs/sha256"},
+        "nonce_hash": {"$ref": "#/$defs/sha256"},
+        "status": {"$ref": "#/$defs/nativeCount"},
+        "grant_hash": {"$ref": "#/$defs/sha256"},
+        "approved": {"type": "boolean"},
+        "requests": {"$ref": "#/$defs/nativeCount"},
+        "distinct_nonces": {"$ref": "#/$defs/nativeCount"}
+      },
+      "oneOf": [
+        {
+          "properties": {"event": {"const": "installed"}},
+          "required": ["observation", "source_hashes"],
+          "propertyNames": {"enum": ["event", "counter", "observation", "source_hashes"]}
+        },
+        {
+          "properties": {"event": {"const": "complete"}},
+          "propertyNames": {"enum": ["event", "counter"]}
+        },
+        {
+          "properties": {"event": {"const": "routing_target"}},
+          "required": ["action_id", "case", "mode", "expected_resolved_path"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "expected_resolved_path"]}
+        },
+        {
+          "properties": {"event": {"const": "resolved_path"}},
+          "required": ["action_id", "case", "mode", "resolved_path"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "resolved_path"]}
+        },
+        {
+          "properties": {"event": {"const": "unbound_read"}},
+          "required": ["action_id", "case", "mode", "tool_id", "queries", "acs_evaluations", "effects"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "tool_id", "queries", "acs_evaluations", "effects"]}
+        },
+        {
+          "properties": {"event": {"const": "native_evaluation"}},
+          "required": ["action_id", "case", "mode", "point", "snapshot_hash", "result_hash", "native_decision", "read_names"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "point", "snapshot_hash", "result_hash", "native_decision", "read_names"]}
+        },
+        {
+          "properties": {"event": {"const": "pre_action_decision"}},
+          "required": ["action_id", "case", "mode", "decision", "receipt_id", "action_hash", "policy_hash", "receipt_hash", "receipt"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "decision", "receipt_id", "action_hash", "policy_hash", "receipt_hash", "receipt"]}
+        },
+        {
+          "properties": {"event": {"const": "invocation"}},
+          "required": ["action_id", "case", "mode", "argument_hash", "original_argument_hash", "action_hash", "receipt_hash", "effect_count"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "argument_hash", "original_argument_hash", "action_hash", "receipt_hash", "effect_count"]}
+        },
+        {
+          "properties": {"event": {"const": "model_instructions"}},
+          "required": ["action_id", "case", "mode", "served_sha256", "request_sha256", "scope"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "served_sha256", "request_sha256", "scope"]}
+        },
+        {
+          "properties": {"event": {"const": "schema_output"}},
+          "required": ["action_id", "case", "mode", "output_hash"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "output_hash"]}
+        },
+        {
+          "properties": {"event": {"const": "terminal"}},
+          "required": ["action_id", "case", "mode", "effects", "reads", "decisions", "approval_requests", "binding_status"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "effects", "reads", "decisions", "approval_requests", "binding_status"]}
+        },
+        {
+          "properties": {"event": {"const": "batch_completed"}},
+          "required": ["action_id", "case", "mode", "items"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "items"]}
+        },
+        {
+          "properties": {"event": {"const": "background_completed"}},
+          "required": ["action_id", "case", "mode"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode"]}
+        },
+        {
+          "properties": {"event": {"const": "nested_host"}},
+          "required": ["action_id", "case", "mode", "child_factory_hash"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "child_factory_hash"]}
+        },
+        {
+          "properties": {"event": {"const": "direct_guard"}},
+          "required": ["action_id", "case", "mode", "exception_class"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "exception_class"]}
+        },
+        {
+          "properties": {"event": {"const": "approval_request"}},
+          "required": ["action_id", "case", "mode", "intent_hash", "nonce_hash", "status"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "intent_hash", "nonce_hash", "status"]}
+        },
+        {
+          "properties": {"event": {"const": "human_decision"}},
+          "required": ["action_id", "case", "mode", "intent_hash", "grant_hash", "status", "approved"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "intent_hash", "grant_hash", "status", "approved"]}
+        },
+        {
+          "properties": {"event": {"const": "approval_consume"}},
+          "required": ["action_id", "case", "mode", "intent_hash", "grant_hash", "nonce_hash", "action_hash", "policy_hash", "status"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "intent_hash", "grant_hash", "nonce_hash", "action_hash", "policy_hash", "status"]}
+        },
+        {
+          "properties": {"event": {"const": "approval_replay"}},
+          "required": ["action_id", "case", "mode", "intent_hash", "grant_hash", "status"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "intent_hash", "grant_hash", "status"]}
+        },
+        {
+          "properties": {"event": {"const": "approval_expired"}},
+          "required": ["action_id", "case", "mode", "intent_hash", "grant_hash", "status"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "intent_hash", "grant_hash", "status"]}
+        },
+        {
+          "properties": {"event": {"const": "approval_changed"}},
+          "required": ["action_id", "case", "mode", "intent_hash", "grant_hash", "status"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "intent_hash", "grant_hash", "status"]}
+        },
+        {
+          "properties": {"event": {"const": "approval_fresh"}},
+          "required": ["action_id", "case", "mode", "requests", "effects", "distinct_nonces"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "requests", "effects", "distinct_nonces"]}
+        },
+        {
+          "properties": {"event": {"const": "audit_failure"}},
+          "required": ["action_id", "case", "mode", "exception_class"],
+          "propertyNames": {"enum": ["event", "counter", "action_id", "case", "mode", "exception_class"]}
+        }
+      ]
+    },
+    "deployedTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_name", "agent_version", "image_digest", "policy_digest", "environment", "subscription", "resource_group"],
+      "properties": {
+        "agent_name": {"type": "string", "minLength": 1},
+        "agent_version": {"type": "string", "minLength": 1},
+        "image_digest": {"$ref": "#/$defs/sha256"},
+        "policy_digest": {"$ref": "#/$defs/sha256"},
+        "environment": {"const": "staging"},
+        "subscription": {"type": "string", "minLength": 1},
+        "resource_group": {"type": "string", "minLength": 1}
+      }
+    },
     "sha256": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
@@ -257,6 +559,7 @@
         "policy_set_sha256"
       ],
       "properties": {
+        "deployed_target": {"$ref": "#/$defs/deployedTarget"},
         "evidence_id": {
           "type": "string"
         },
@@ -480,6 +783,8 @@
         "pre_action_seam",
         "equivalent_control_ref",
         "covered",
+        "discovered",
+        "executed",
         "status",
         "evidence_refs"
       ],
@@ -508,6 +813,12 @@
         "covered": {
           "type": "boolean"
         },
+        "discovered": {
+          "type": "boolean"
+        },
+        "executed": {
+          "type": "boolean"
+        },
         "status": {
           "$ref": "#/$defs/status"
         },
@@ -522,10 +833,39 @@
     "probe": {
       "type": "object",
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "pass"}, "probe_id": {"const": "approval-anti-replay"},
+                               "reason_code": {"not": {"const": "native-local-executed"}}}},
+          "then": {"properties": {"evidence_refs": {"minItems": 2, "contains": {"pattern": "^approval-ledger-records-[0-9a-f]{64}$"}}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "pass"}, "probe_id": {"const": "output-mediation"}}},
+          "then": {"properties": {"evidence_refs": {"contains": {"pattern": "^output-ledger-records-[0-9a-f]{64}$"}}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "pass"}, "probe_id": {"const": "payload-free-audit"},
+                               "reason_code": {"not": {"const": "native-local-executed"}}}},
+          "then": {"properties": {"evidence_refs": {"minItems": 2, "contains": {"pattern": "^audit-ledger-records-[0-9a-f]{64}$"}}}}
+        },
+        {
+          "if": {"properties": {"reason_code": {"const": "native-local-executed"}}},
+          "then": {"properties": {
+            "probe_id": {"enum": ["approval-anti-replay", "payload-free-audit", "native-tool-result-schema", "native-enforcement"]},
+            "action_id": {"const": "returns_apply_decision"},
+            "path_id": {"type": "null"}, "mode": {"type": "null"}, "status": {"const": "pass"},
+            "evidence_refs": {"minItems": 2, "maxItems": 2, "uniqueItems": true, "allOf": [
+              {"contains": {"pattern": "^native-(approval|durable-audit|tool-result-schema|enforcement)-[0-9a-f]{64}$"}},
+              {"contains": {"pattern": "^(approval-anti-replay|payload-free-audit|native-tool-result-schema|native-enforcement)-installation$"}}
+            ]}
+          }}
+        }
+      ],
       "required": [
         "probe_id",
         "action_id",
         "path_id",
+        "mode",
         "status",
         "reason_code",
         "expected_sha256",
@@ -541,6 +881,9 @@
         },
         "path_id": {
           "type": ["string", "null"]
+        },
+        "mode": {
+          "anyOf": [{ "$ref": "#/$defs/executionMode" }, { "type": "null" }]
         },
         "status": {
           "$ref": "#/$defs/status"

@@ -1,7 +1,7 @@
 # SpecKit: Returns Triage
 
 > Generated: 2026-07-07
-> Status: draft
+> Status: canonical native-runtime example; deployment unverified
 > Mode: **Fast-PoC** (neutral demo defaults — see § 13)
 
 ## 1. Process Overview
@@ -130,9 +130,12 @@ agent runs the assistant; a returns supervisor handles escalations.
 
 ### BR-004: Request more information on incomplete cases
 - **Condition**: order cannot be matched OR `reason_code` missing OR
-  (`reason_code == arrived_damaged` AND `photos_provided == false`).
+  (`reason_code == arrived_damaged` AND `photos_provided == false`) OR
+  authoritative customer risk data is unavailable. Unknown risk never authorizes
+  a finalized refund; any already-known BR-003 risk still overrides immediately.
 - **Action**: `request_more_info` with a templated list of exactly what's needed.
-- **Exception**: if info is still missing after one request cycle → escalate.
+- **Exception**: known authoritative BR-003 risk overrides missing information
+  immediately; if info is still missing after one request cycle → escalate.
 - **KPI**: `first_touch_resolution_pct`, `info_request_rate`.
 
 ### BR-005: Cite policy and write an audit record on every decision
@@ -202,7 +205,9 @@ agent runs the assistant; a returns supervisor handles escalations.
 ### Returns database
 - **Direction**: read + write (applies the decision)
 - **Auth**: managed identity (real) / none (mock)
-- **Availability**: **mock** — backed by `specs/sample-data/returns.json`
+- **Availability**: real Cosmos adapter over **synthetic, operator-seeded cases**.
+  `specs/sample-data/returns.json` is a read-only seed specification, not a runtime
+  writable database. The runtime never resets or seeds customer storage.
 
 ### Customer-profile service
 - **Direction**: read
@@ -214,7 +219,8 @@ agent runs the assistant; a returns supervisor handles escalations.
 ## 5b. External Systems & Mocks (MCP contract)
 
 ### Returns Triage MCP server
-- **MCP server**: `mock` (FastMCP backed by `specs/sample-data/*.json`)
+- **Runtime transport**: native MAF tools; immutable mock OMS/customer snapshots
+  retain these read contracts. The legacy MCP URL is not a parallel write path.
 - **Endpoint shape**:
   - Style: `request-response`
   - Pagination: `offset-limit` (for `returns_list_open`)
@@ -229,7 +235,7 @@ agent runs the assistant; a returns supervisor handles escalations.
   | `returns_apply_decision` | W | <150ms | Writes `decision`+`disposition`+audit; idempotent on `returns.id` |
 - **Mock data scale**: `orders: 10, returns: 8, customers: 8` (narrative scale;
   `threadlight-demo-data-factory` scales to executive volume on demand).
-- **Reset semantics**: `idempotent` (re-seed wipes + repopulates from JSON in <30s).
+- **Reset semantics**: operator-controlled synthetic environment only; no reset tool.
 - **Demo state machine**: `pristine (all in_triage) → decisions-applied → reset`.
 - **Real-system swap notes**: replace each mock tool with the customer's OMS /
   returns / CRM endpoint; schema in § 4 is the contract, auth becomes managed
@@ -268,8 +274,14 @@ agent runs the assistant; a returns supervisor handles escalations.
 - **Used by**: disposition-decision
 - **Inputs**: `rma_id, decision, disposition, citations[], rationale`
 - **Output Schema**: `{ ok: bool, audit_id: string }`
-- **Side Effects**: writes to returns-DB; **idempotent** on `rma_id`
-- **Backed by**: returns-DB (mock)
+- **Side Effects**: Cosmos case replace + decision-audit create in one batch on
+  `/case_id`, using the authorized case `_etag` as `if_match_etag`. No settlement.
+  An identical persisted decision returns the existing audit id without another
+  business mutation; a stale read cannot authorize a new write.
+- **Backed by**: Cosmos production SDK adapter, keyless UAMI.
+- **Native enforcement**: `returns-write-v1`, `local-agent-hooks`, `pre_tool_call`.
+  Extra argument fields, forged evidence/roles, unknown decisions, uncorrelated
+  facts, and misordered reads cannot authorize this tool.
 
 ---
 
@@ -304,21 +316,37 @@ agent runs the assistant; a returns supervisor handles escalations.
 
 ## 8. Human Interaction Points
 
+These checked declarations select required local controls, not runtime proof:
+- [x] Authorization: `returns_apply_decision` requires ordered backend receipts,
+  fresh case revision and a native pre-tool Hooks/ACS/OPA decision.
+- [x] Approval: known BR-003 risk always needs exact-action authenticated supervisor approval.
+- [x] Idempotency-or-transaction: one Cosmos conditional case/audit batch.
+- [x] Output-mediation: bounded tool input schema and `{ok, audit_id}` result schema;
+  no claim of lifecycle/model-stream mediation.
+- [x] Audit: payload-free governance receipt with durable Task8 ACK before effect.
+
+`returns_apply_decision` uses `returns-write-v1` / `local-agent-hooks` /
+`pre_tool_call`. `governance/probe-contract.json` selects the registered native
+factory and explicit action/path/mode evidence. Unbound reads are positive
+controls, never evidence for the write binding. Local proof is not Azure proof.
+
 ### Supervisor escalation review
 - **Trigger**: BR-003 fires (refund > $250, serial-returner ≥ 0.40, flagged
   account, or window-lapsed with a judgement-call override).
 - **Actor**: Returns supervisor
-- **Channel**: Teams adaptive card / workspace queue
+- **Channel**: authenticated Task8 `/approvals/resolve` API. A Teams/workspace
+  review frontend is an operator integration, not supplied by this runtime.
 - **Data Presented**: consolidated case, agent's risk rationale, policy citations,
   refund amount, customer return history.
-- **Options**: approve refund, deny refund, request more info, uphold escalation.
+- **Options**: approve or reject the exact proposed supervisor-handoff action.
+  Approving it records `escalate_to_supervisor`, never finalizes a refund.
 - **Timeout/SLA**: manual review < 24h.
-- **Action gate**: `escalate` → then `edit-and-approve` on the supervisor's side.
-- **Resume trigger**: the supervisor's decision posts to the approval webhook
-  receiver; the run does not stay open waiting for it.
-- **Rehydrated state**: the pending case is reloaded from Cosmos by `rma_id` —
-  consolidated case, risk rationale, policy citations and refund amount — so the
-  resumed invocation needs nothing from the process that escalated.
+- **Action gate**: ACS escalation → native Agent Hooks resolver → Task8 pending
+  request → authenticated, role-allowlisted human `decide` → exact-action one-use
+  `consume` → remote durable receipt ACK → conditional Cosmos handoff write.
+- **Timeout**: the shared native approval wait is bounded; absent/expired review
+  denies this invocation. A fresh invocation must reread the case and request a
+  new exact-action approval. A 24-hour asynchronous Teams resume is not implemented.
 - **Linked business rules**: BR-003, BR-005.
 
 ### Info request to customer
@@ -371,7 +399,7 @@ agent runs the assistant; a returns supervisor handles escalations.
 | S-002 | Boundary — refund exactly at ceiling | refund = $250, in-window | `approve_refund` (≤ ceiling) | BR-001, BR-003 | edge-case |
 | S-003 | Final-sale changed-mind | RMA-2026-004418 | `deny_refund`, cite final-sale clause | BR-002, BR-005 | happy-path |
 | S-004 | High-value refund | RMA-2026-004425 ($1,180) | `escalate_to_supervisor` | BR-003, BR-005 | approval |
-| S-005 | Window lapsed, no override | RMA-2026-004431 (86 days) | `escalate_to_supervisor` | BR-002, BR-003 | edge-case |
+| S-005 | Window lapsed, no override | RMA-2026-004431 (86 days) | `deny_refund` | BR-002, BR-005 | edge-case |
 | S-006 | Damage claim, no photos | RMA-2026-004440 | `request_more_info` (ask for photos) | BR-004, BR-005 | error |
 | S-007 | Serial returner | RMA-2026-004452 (return rate 0.63) | `escalate_to_supervisor` | BR-003, BR-005 | approval |
 | S-008 | Unmatched order | unknown order id | `request_more_info` | BR-004 | error |
@@ -480,16 +508,18 @@ governance_hub:
 | `service-bus` | no | Not needed at PoC scale |
 | `storage-blob` | yes | Policy corpus + dataset hosting |
 | `app-insights` | yes | Telemetry — required for continuous evals |
-| `aca-job` | yes | Optional scheduled open-queue sweep |
-| `aca-mcp` | yes | Mock MCP server for OMS / returns / customer |
-| `aca-bot` | yes | Teams supervisor escalation card |
+| `aca-job` | no | Scheduled sweep deferred; no background write path |
+| `aca-mcp` | no | Native read adapters replace the legacy mock MCP scaffold |
+| `aca-bot` | no | Teams review frontend deferred; Task8 API is implemented |
+| `key-vault` | yes | Existing versioned policy-signing key; no application passwords |
 | `foundry-iq-index` | yes | Pre-provisioned return-policy Knowledge Base |
 
-**Implications**: `aca-bot` → implies `aca-mcp` (satisfied); `foundry-iq-index` →
-implies `ai-search` + `storage-blob` (satisfied); `aca-job` receiver present for
-the optional sweep.
+**Implications**: Foundry IQ still requires the operator's existing AI Search +
+Blob integration. Native enforcement does not require an MCP gateway run service.
+The production deployment of all dependencies remains unverified offline.
 
-**Keyless by mandate**: no `key-vault` — managed identity end-to-end.
+**Keyless by mandate**: UAMI end-to-end. The governance service uses a versioned
+Key Vault signing key, not application secrets or local signing material.
 
 ---
 
@@ -520,7 +550,7 @@ workflow_model: agent  # single agent + skills + tools
 
 capability_signals:
   requires_toolbox: false
-  requires_custom_python_tools: false
+  requires_custom_python_tools: true
   requires_file_generation: false
   latency_sensitive_data_queries: false
   unresolved_signals: []

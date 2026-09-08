@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "threadlight-governed-agent"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "agent-governance-toolkit-core==5.0.0",
+  "agent-control-specification==0.3.1b0",
+  "agent-hooks-sdk==0.1.0a5",
+  "agent-framework-core==1.14.0",
+  "agent-framework-foundry==1.11.0",
+  "agent-framework-foundry-hosting==1.0.0b260813",
+  "azure-ai-projects==2.3.0",
+  "azure-ai-agentserver-core==2.1.0",
+  "azure-ai-agentserver-responses==2.2.0b1",
+  "azure-ai-agentserver-invocations==1.2.0b1",
+  "threadlight-govern-control-plane==0.1.0",
+  "mcp==1.29.1",
+  "PyYAML==6.0.3",
+]
+
+[tool.setuptools]
+packages = []

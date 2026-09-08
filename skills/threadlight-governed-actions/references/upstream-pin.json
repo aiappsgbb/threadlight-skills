@@ -1,6 +1,7 @@
 {
   "pin_schema_version": "1.0.0",
   "status": "alpha-experimental",
+  "runtime_pin": "../../_shared/governance-upstream-pin.json",
   "agent_hooks": {
     "spec": "AGENT-HOOKS-0.1",
     "spec_version": "0.1.0-alpha",
@@ -24,16 +25,19 @@
   },
   "maf": {
     "distribution": "agent-framework-core",
-    "version": "1.13.0",
-    "source_commit": "4b1afd90520310547cb0e9cdc70f644d80161e82",
+    "version": "1.14.0",
+    "source_commit": "not-verified",
+    "artifact_sha256": "0d161490bb26bde185dd325fcdbb3b109d85e91076ef6ed5df118c4e5f715cba",
     "integration_packages": {
-      "agent-framework-core": "1.13.0"
+      "agent-framework-core": "1.14.0",
+      "agent-framework-foundry": "1.11.0",
+      "agent-framework-foundry-hosting": "1.0.0b260813"
     },
     "integration_status": "experimental"
   },
   "acs": {
-    "policy_schema": null,
-    "status": "not-applicable"
+    "policy_schema": "0.3.1-beta",
+    "status": "native-local"
   },
   "conformance_report": {
     "repository_commit": "0821ebbae252c45cd225304a464d1130963b82a8",

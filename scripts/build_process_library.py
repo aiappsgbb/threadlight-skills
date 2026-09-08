@@ -110,7 +110,7 @@ SKILL_ARTIFACTS = {
         "specs/redteam-manifest.json",
     ],
     "threadlight-govern": [
-        "specs/govern-manifest.json",
+        "specs/governance-manifest.json",
     ],
     "threadlight-deploy": [
         "azure.yaml",

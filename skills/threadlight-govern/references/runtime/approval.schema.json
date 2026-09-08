@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "threadlight-approval/v1",
+  "description": "Portable approval wire shape, not authentication proof. The trusted ApprovalService.verify contract authenticates every field, checks exact request scope and role authority, and atomically consumes the nonce. Datetime fields serialize as RFC3339; allowed_roles serializes as an array.",
+  "$ref": "#/definitions/grant",
+  "definitions": {
+    "identity": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "roles": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"$ref": "#/definitions/identity"}
+    },
+    "hostIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["principal", "tenant", "allowed_approval_roles"],
+      "properties": {
+        "principal": {"$ref": "#/definitions/identity"},
+        "tenant": {"$ref": "#/definitions/identity"},
+        "allowed_approval_roles": {"$ref": "#/definitions/roles"}
+      }
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action_hash", "policy_hash", "principal", "tenant", "agent_id",
+        "session_id", "context_identity", "nonce", "expires_at", "allowed_roles",
+        "policy_expires_at"
+      ],
+      "properties": {
+        "action_hash": {"$ref": "#/definitions/digest"},
+        "policy_hash": {"$ref": "#/definitions/digest"},
+        "principal": {"$ref": "#/definitions/identity"},
+        "tenant": {"$ref": "#/definitions/identity"},
+        "agent_id": {"$ref": "#/definitions/identity"},
+        "session_id": {"$ref": "#/definitions/identity"},
+        "context_identity": {"$ref": "#/definitions/identity"},
+        "nonce": {"$ref": "#/definitions/identity"},
+        "expires_at": {"$ref": "#/definitions/timestamp"},
+        "allowed_roles": {"$ref": "#/definitions/roles"},
+        "policy_expires_at": {"$ref": "#/definitions/timestamp"}
+      }
+    },
+    "grant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent", "approved", "approver", "approver_tenant", "approver_role", "provenance"
+      ],
+      "properties": {
+        "intent": {"$ref": "#/definitions/intent"},
+        "approved": {"type": "boolean"},
+        "approver": {"$ref": "#/definitions/identity"},
+        "approver_tenant": {"$ref": "#/definitions/identity"},
+        "approver_role": {"$ref": "#/definitions/identity"},
+        "provenance": {"$ref": "#/definitions/identity"}
+      }
+    }
+  }
+}
