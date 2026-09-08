@@ -1232,12 +1232,35 @@ def _guard_http_client(client, provider):
                                 or getattr(provider, "bootstrap_gate", None) is not None)
             expected_method = request.method.encode("ascii")
             expected_url = (request.url.raw_scheme, request.url.raw_host, request.url.port, request.url.raw_path)
-            expected_headers = tuple(request.headers.raw)
+            original_headers = tuple(request.headers.raw)
+            expected_headers = None
             expected_body = None
             if wire_guarded:
                 if type(request.stream) is not httpx.ByteStream:
                     _deny_boundary(provider, selected, "threadlight:model_target_changed")
                 expected_body = request_identity(b"".join(request.stream))
+
+            def bind_headers():
+                nonlocal expected_headers
+                if not wire_guarded or expected_headers is not None:
+                    return
+                observed = tuple(request.headers.raw)
+                if observed != original_headers:
+                    from opentelemetry.propagate import inject
+                    propagation = {}
+                    inject(propagation)
+                    limits = {"traceparent": 55, "tracestate": 512, "baggage": 8192}
+                    if any(name not in limits or not isinstance(value, str)
+                           or not value.isascii() or len(value) > limits[name]
+                           or any(ord(char) < 32 or ord(char) == 127 for char in value)
+                           for name, value in propagation.items()):
+                        _deny_boundary(provider, selected, "threadlight:model_target_changed")
+                    propagated = httpx.Headers(original_headers)
+                    for name, value in propagation.items():
+                        propagated[name] = value
+                    if observed != tuple(propagated.raw):
+                        _deny_boundary(provider, selected, "threadlight:model_target_changed")
+                expected_headers = observed
 
             def check():
                 _check_lifecycle(provider, ("agent_startup", "input", "pre_model_call"))
@@ -1272,6 +1295,9 @@ def _guard_http_client(client, provider):
                 # post-window pre-write hook in this pin. Reject before model frames.
                 if wire_guarded and event.startswith("http2."):
                     _deny_boundary(provider, selected, "threadlight:unsupported_model_transport")
+                # Native HTTPX instrumentation injects inside its client span.
+                # Bind only exact configured W3C propagation before caller code.
+                bind_headers()
                 if previous_trace is not None:
                     result = previous_trace(event, info)
                     if inspect.isawaitable(result):

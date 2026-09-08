@@ -1,6 +1,6 @@
 """Real loopback HTTPX/OpenAI sends, not mocked transport completion events."""
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
 import ipaddress
 import json
@@ -40,15 +40,19 @@ def tls_contexts(path):
 
 
 @asynccontextmanager
-async def native_gate(path, *, seconds=60, tool=False):
+async def native_gate(path, *, seconds=60, tool=False, bootstrap=True, selected=True):
     from govern_control_plane.bootstrap import BootstrapBinding, BootstrapGate
     from govern_control_plane.models import BundleEnvelope, canonical, parse
-    h = await harness()
     point = "pre_tool_call" if tool else "pre_model_call"
     p, authority, built = provider(path, document=contract(
-        points=("pre_tool_call",) if tool else (), lifecycle=() if tool else ("pre_model_call",)),
+        points=("pre_tool_call",) if tool else (),
+        lifecycle=("pre_model_call",) if selected and not tool else ()),
         decisions={point: {"decision": "allow"}}, principal=WORKLOAD, tenant=TENANT,
         agent_version="17", image_digest=DIGEST)
+    if not bootstrap:
+        yield p, None, None
+        return
+    h = await harness()
     h.store.blobs.clear()
     await h.service.publish(BundleEnvelope(
         policy_id="safe", version="1", content_digest=built.bundle_digest,
@@ -78,9 +82,37 @@ async def native_gate(path, *, seconds=60, tool=False):
         await h.close()
 
 
+@pytest.fixture
+def native_model_instrumentation(monkeypatch):
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "false")
+
+    @contextmanager
+    def instrument(client, enabled=True, request_hook=None):
+        tracer = TracerProvider()
+        exporter = InMemorySpanExporter()
+        tracer.add_span_processor(SimpleSpanProcessor(exporter))
+        if enabled:
+            HTTPXClientInstrumentor.instrument_client(
+                client, tracer_provider=tracer, request_hook=request_hook)
+        try:
+            yield exporter
+        finally:
+            if enabled:
+                HTTPXClientInstrumentor.uninstrument_client(client)
+            tracer.shutdown()
+    return instrument
+
+
+@pytest.mark.parametrize("instrumented", [False, True])
 @pytest.mark.parametrize("secure", [False, True])
 @pytest.mark.parametrize("failure", ["expiry", "revocation", "valid"])
-def test_real_model_pool_wait_reauthorizes_before_any_http_bytes(tmp_path, secure, failure):
+def test_real_model_pool_wait_reauthorizes_before_any_http_bytes(
+    tmp_path, secure, failure, instrumented, native_model_instrumentation,
+):
     import httpx
     from openai import AsyncOpenAI
     from agent_framework.openai import OpenAIChatClient
@@ -128,10 +160,11 @@ def test_real_model_pool_wait_reauthorizes_before_any_http_bytes(tmp_path, secur
                 request.extensions["trace"] = original_trace
                 entering.set()
         try:
-            async with native_gate(tmp_path / "runtime", seconds=2 if failure == "expiry" else 60) as (p, gate, h):
+            async with native_gate(tmp_path / "runtime", seconds=10 if failure == "expiry" else 60) as (p, gate, h):
                 async with httpx.AsyncClient(verify=client_ssl or True, trust_env=False,
-                        limits=httpx.Limits(max_connections=1), timeout=10,
-                        event_hooks={"request": [request_hook]}) as wire:
+                        limits=httpx.Limits(max_connections=1), timeout=20,
+                        event_hooks={"request": [request_hook]}) as wire, AsyncExitStack() as stack:
+                    exporter = stack.enter_context(native_model_instrumentation(wire, instrumented))
                     blocking = asyncio.create_task(wire.get(url + "/occupied"))
                     await asyncio.wait_for(occupied.wait(), 5)
                     sdk = AsyncOpenAI(base_url=url + "/v1", api_key="loopback-only", http_client=wire, max_retries=0)
@@ -151,6 +184,10 @@ def test_real_model_pool_wait_reauthorizes_before_any_http_bytes(tmp_path, secur
                         f"ACTUAL_HTTP_MODEL_SENDS_AFTER_{failure.upper()}: {len(model_bytes)}")
                     assert observed_traces, "caller trace was discarded"
                     assert isinstance(outcome[0], BaseException) == (failure != "valid")
+                    if instrumented:
+                        assert exporter.get_finished_spans(), "native instrumentation did not export"
+                        if failure == "valid":
+                            assert b"\r\ntraceparent: " in model_bytes[0]
         finally:
             release.set()
             server.close()
@@ -161,9 +198,12 @@ def test_real_model_pool_wait_reauthorizes_before_any_http_bytes(tmp_path, secur
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("instrumented", [False, True])
 @pytest.mark.parametrize("wait_at", ["tls", "credential", "caller-trace"])
 @pytest.mark.parametrize("failure", ["expiry", "revocation", "valid"])
-def test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace(tmp_path, wait_at, failure):
+def test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace(
+    tmp_path, wait_at, failure, instrumented, native_model_instrumentation,
+):
     import httpx
     from openai import AsyncOpenAI
     from agent_framework.openai import OpenAIChatClient
@@ -224,9 +264,10 @@ def test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace(t
         port = server.sockets[0].getsockname()[1]
         url = f"{'https' if wait_at == 'tls' else 'http'}://127.0.0.1:{port}/v1"
         try:
-            async with native_gate(tmp_path / "runtime", seconds=2 if failure == "expiry" else 60) as (p, gate, h):
+            async with native_gate(tmp_path / "runtime", seconds=10 if failure == "expiry" else 60) as (p, gate, h):
                 async with httpx.AsyncClient(verify=client_ssl, auth=CredentialWait(), trust_env=False,
-                        timeout=10, event_hooks={"request": [hook]}) as wire:
+                        timeout=20, event_hooks={"request": [hook]}) as wire, AsyncExitStack() as stack:
+                    exporter = stack.enter_context(native_model_instrumentation(wire, instrumented))
                     model = OpenAIChatClient(model="test", async_client=AsyncOpenAI(
                         base_url=url, api_key="loopback-only", http_client=wire, max_retries=0))
                     agent = runtime().create_governed_agent(p, client=model, tools=[], id="agent-1")
@@ -243,6 +284,10 @@ def test_real_model_send_rechecks_after_handshake_credentials_and_caller_trace(t
                     assert isinstance(outcome[0], BaseException) == (failure != "valid")
                     if failure == "valid" or wait_at != "credential":
                         assert traces
+                        if instrumented:
+                            assert exporter.get_finished_spans(), "native instrumentation did not export"
+                    if failure == "valid" and instrumented:
+                        assert b"\r\ntraceparent: " in b"".join(captured)
         finally:
             release.set()
             server.close()
@@ -506,16 +551,24 @@ def test_native_sync_tool_reauthorizes_after_executor_queue(tmp_path, revoke):
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("binding_scope", ["native", "bootstrap"])
 @pytest.mark.parametrize("phase", ["headers", "body"])
-@pytest.mark.parametrize("replacement", ["stream", "request", "unchanged"])
-def test_native_h1_checks_actual_core_wire_after_retained_trace(tmp_path, phase, replacement):
+@pytest.mark.parametrize("replacement", [
+    "stream", "request", "unchanged", "authorization", "extra-header", "traceparent",
+    "target", "injected-authorization", "injected-extra-header", "injected-baggage",
+])
+def test_native_h1_checks_actual_core_wire_after_retained_trace(
+    tmp_path, phase, replacement, binding_scope, native_model_instrumentation,
+):
     import httpcore
     import httpx
     from openai import AsyncOpenAI
     from agent_framework.openai import OpenAIChatClient
+    from opentelemetry import baggage, context, trace
 
     async def scenario():
         headers_seen, bodies, callbacks, original_requests, tasks = [], [], [], [], set()
+        spans = []
         async def receiver(reader, writer):
             task = asyncio.current_task()
             tasks.add(task)
@@ -551,7 +604,7 @@ def test_native_h1_checks_actual_core_wire_after_retained_trace(tmp_path, phase,
                 if event == f"http11.send_request_{phase}.started":
                     core = info["request"]
                     assert b"YES" in request.content
-                    if replacement != "unchanged":
+                    if replacement in {"stream", "request"}:
                         changed = request.content.replace(b"YES", b"BAD")
                         if replacement == "stream":
                             core.stream = httpx.ByteStream(changed)
@@ -559,12 +612,36 @@ def test_native_h1_checks_actual_core_wire_after_retained_trace(tmp_path, phase,
                             info["request"] = httpcore.Request(
                                 method=core.method, url=core.url, headers=core.headers,
                                 content=httpx.ByteStream(changed), extensions=core.extensions)
+                    elif replacement in {"authorization", "extra-header", "traceparent"}:
+                        name = {"authorization": b"Authorization", "extra-header": b"X-Unapproved",
+                                "traceparent": b"traceparent"}[replacement]
+                        core.headers = [(key, value) for key, value in core.headers
+                                        if key.lower() != name.lower()] + [(name, b"unapproved")]
+                    elif replacement == "target":
+                        core.url = httpcore.URL(scheme=core.url.scheme, host=core.url.host,
+                                                port=core.url.port, target=b"/unapproved")
                     await asyncio.sleep(0)
             request.extensions["trace"] = caller_trace
+        async def instrumentation_hook(span, request):
+            spans.append(span.get_span_context())
+            if replacement.startswith("injected-"):
+                name = {"injected-authorization": "Authorization", "injected-extra-header": "X-Unapproved",
+                        "injected-baggage": "baggage"}[replacement]
+                request.headers[name] = "unapproved"
         try:
-            async with native_gate(tmp_path / "native") as (p, gate, h):
+            async with native_gate(tmp_path / "native", bootstrap=binding_scope == "bootstrap",
+                                   selected=binding_scope == "native") as (p, gate, h):
                 async with httpx.AsyncClient(trust_env=False, timeout=5,
-                        event_hooks={"request": [request_hook]}) as wire:
+                        event_hooks={"request": [request_hook]}) as wire, AsyncExitStack() as stack:
+                    exporter = stack.enter_context(native_model_instrumentation(
+                        wire, request_hook=instrumentation_hook))
+                    token = context.attach(baggage.clear() if replacement == "injected-baggage"
+                                           else baggage.set_baggage("proof", "local"))
+                    stack.callback(context.detach, token)
+                    parent = trace.NonRecordingSpan(trace.SpanContext(
+                        trace_id=1, span_id=2, is_remote=True, trace_flags=trace.TraceFlags(1),
+                        trace_state=trace.TraceState([("proof", "state")])))
+                    stack.enter_context(trace.use_span(parent))
                     sdk = AsyncOpenAI(base_url=endpoint, api_key="loopback-only", http_client=wire, max_retries=0)
                     model = OpenAIChatClient(model="test", async_client=sdk)
                     agent = runtime().create_governed_agent(p, client=model, tools=[], id="agent-1")
@@ -572,14 +649,23 @@ def test_native_h1_checks_actual_core_wire_after_retained_trace(tmp_path, phase,
                     await asyncio.sleep(0.02)
                     bad_bytes = sum(body.count(b"BAD") for body in bodies)
                     assert bad_bytes == 0, f"ACTUAL_UNAUTHORIZED_CORE_BODY_SENDS: {bad_bytes}"
-                    assert callbacks and original_requests and b"YES" in original_requests[0].content
+                    assert original_requests and b"YES" in original_requests[0].content
+                    assert spans and exporter.get_finished_spans(), "native HTTPX instrumentation must remain active"
+                    if not replacement.startswith("injected-"):
+                        assert callbacks, "retained trace was discarded"
                     if replacement == "unchanged":
                         assert not isinstance(result[0], BaseException)
                         assert len(bodies) == 1 and b"YES" in bodies[0]
+                        span = spans[0]
+                        assert (f"\r\ntraceparent: 00-{span.trace_id:032x}-{span.span_id:016x}-01\r\n"
+                                .encode()) in headers_seen[0]
+                        assert b"\r\ntracestate: proof=state\r\n" in headers_seen[0]
+                        assert b"\r\nbaggage: proof=local\r\n" in headers_seen[0]
                     else:
                         assert isinstance(result[0], BaseException)
                         assert "threadlight:model_target_changed" in str(result[0])
-                        if phase == "headers":
+                        assert not any(b"YES" in body for body in bodies)
+                        if phase == "headers" or replacement.startswith("injected-"):
                             assert headers_seen == []
         finally:
             listener.close()
