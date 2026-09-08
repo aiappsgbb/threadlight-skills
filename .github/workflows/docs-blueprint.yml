@@ -29,6 +29,8 @@ on:
       - "skills/threadlight-governed-actions/SKILL.md"
       - "tests/ci/**"
       - "scripts/ci/check-test-dirs-wired.py"
+      - "scripts/ci/runtime_readiness.py"
+      - ".github/workflows/threadlight-e2e-foundry.yml"
       - ".github/workflows/python-pytest.yml"
   push:
     branches: [main]
@@ -54,6 +56,8 @@ on:
       - "skills/threadlight-governed-actions/SKILL.md"
       - "tests/ci/**"
       - "scripts/ci/check-test-dirs-wired.py"
+      - "scripts/ci/runtime_readiness.py"
+      - ".github/workflows/threadlight-e2e-foundry.yml"
       - ".github/workflows/python-pytest.yml"
   workflow_dispatch: {}
 
@@ -73,6 +77,13 @@ jobs:
         # suite is wired into python-pytest.yml, and has no runner of its own,
         # so without this the guard's own regression tests never run in CI.
         run: node --test tests/blueprint/*.test.js tests/ci/*.test.js
+      - name: Runtime guidance and real workflow script regressions
+        run: |
+          python -m pip install pytest pyyaml "jsonschema[format]==4.26.0" ./skills/threadlight-govern/references/control-plane
+          # Protocol validators import real service models; no native SDK calls
+          # or fabricated wire models in this documentation/CI regression suite.
+          python -m pip install --no-deps ./skills/threadlight-govern/references/gateway
+          python -m pytest tests/ci skills/threadlight-production-ready/tests/test_script_strings.py skills/threadlight-auto/tests/test_threadlight_auto_cost_contract.py -q
       - name: Regenerate process-library.json and check for drift
         # Idempotence/drift gate: feeding the committed asset back through
         # its own producer as --source must reproduce it byte-for-byte. This

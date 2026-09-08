@@ -185,6 +185,7 @@ def dispatch(*args):
 def _contract(*, approval: bool) -> dict:
     contract = {
         "dispatch": "app.agent:dispatch",
+        "execution_dispatch": "app.agent:dispatch",
         "audit_sink": "app.agent:AUDIT_EVENTS",
         "observation_ledger": "governance/observation-ledger.jsonl",
         "nonce_ledger": "governance/nonce-ledger.jsonl",
@@ -327,6 +328,39 @@ def test_unresolvable_probe_citation_can_never_pass(target: Path, monkeypatch):
         assert any(ref.evidence_id == evidence_id for ref in result.evidence)
 
 
+def test_unresolvable_path_receipt_maps_to_med002_with_path_evidence(
+    tmp_path: Path,
+):
+    probe = contracts.ProbeResult(
+        probe_id="path-dispatch-allow",
+        action_id="payments.refund",
+        path_id="path-1",
+        mode="background",
+        status="pass",
+        reason_code="path-dispatch-mediated",
+        expected="pre_action_decision_before_invocation_or_deny",
+        observed="pre_action_decision_before_invocation",
+        evidence_refs=("missing-proof",),
+        evidence_items=(),
+    )
+
+    kept, findings, evidence = governed_actions._bind_probe_evidence(
+        (probe,),
+        contracts.SourceRef(repository=REPOSITORY, commit=COMMIT, dirty=False),
+        contracts.AssessmentOptions(root=tmp_path, phase="pre-deploy", now=NOW),
+        (),
+        path_evidence_by_id={"path-1": ("agent.yaml", "app/agent.py")},
+    )
+
+    assert kept[0].status == "not-verified"
+    assert evidence == ()
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.finding_id == "MED-002"
+    assert finding.affected_paths == ("path-1",)
+    assert finding.evidence_refs == ("agent.yaml", "app/agent.py")
+
+
 # ---------------------------------------------------------------------------
 # APR-001
 # ---------------------------------------------------------------------------
@@ -343,14 +377,14 @@ def test_declared_approval_binding_yields_honest_apr001_pass(approval_target: Pa
     # use, a byte-identical replay of it, and one mutated-binding
     # attempt per design-required dimension -- never a lone first use,
     # which could only ever have proven the acceptance.
-    assert len(approval_probes) == 2 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert len(approval_probes) == 4 + len(probes._APPROVAL_MUTATION_FIELDS)
     assert {probe.status for probe in approval_probes} == {"pass"}
     observed = [probe.observed for probe in approval_probes]
     assert observed[0] == "approval_accepted"
-    assert observed.count("replay_rejected") == 1
-    assert observed.count("binding_mismatch_rejected") == len(
+    assert observed.count("reused_nonce_rejected") == 1 + len(
         probes._APPROVAL_MUTATION_FIELDS
     )
+    assert observed[-2:] == ["approval_accepted", "expired_rejected"]
     evidence_ids = {ref.evidence_id for ref in result.evidence}
     for probe in approval_probes:
         assert probe.evidence_refs
@@ -630,7 +664,8 @@ def test_pre_deploy_binds_every_probe_citation_to_its_own_exact_provenance(
 
     # No probe was falsely downgraded merely because independent probes
     # collided on an id: every distinct observed artifact is honestly
-    # represented, so the fixture remains governed.
+    # represented. Every discovered path is now backed by its own executed
+    # receipt, so this conformant fixture remains governed.
     assert not [
         finding
         for finding in result.findings

@@ -54,6 +54,33 @@ def _member_names() -> set[str]:
         return {n for n in archive.namelist() if not n.endswith("/")}
 
 
+def _source_file_names() -> set[str]:
+    return {
+        path.relative_to(SRC).as_posix()
+        for path in SRC.rglob("*")
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix != ".pyc"
+        and path.name != ".DS_Store"
+    }
+
+
+def test_design_source_exceeds_companion_cap_without_test_exclusion():
+    source_names = _source_file_names()
+
+    assert len(source_names) > 20
+    assert any(name.startswith("tests/") for name in source_names)
+
+
+def test_design_zip_excludes_tests_and_keeps_required_governance_references():
+    names = _member_names()
+
+    assert "references/governance-contract.schema.json" in names
+    assert "references/runtime-policy.json" in names
+    assert not any(name.startswith("tests/") for name in names)
+    assert len(names) - 1 <= 20
+
+
 def test_design_zip_speckit_template_has_section14_value_model():
     text = _read_member("references/speckit-template.md")
     missing = [m for m in SPECKIT_SECTION14_MARKERS if m not in text]
@@ -88,5 +115,25 @@ def test_design_zip_value_model_schema_matches_current_source():
     source = (SRC / "references" / "value-model-schema.md").read_text(encoding="utf-8")
     assert published == source, (
         "committed threadlight-design.zip value-model-schema.md drifted from source "
+        "(rebuild scripts/build-cowork-zips.sh)"
+    )
+
+
+def test_design_zip_governance_contract_schema_matches_current_source():
+    published = _read_member("references/governance-contract.schema.json")
+    source = (SRC / "references" / "governance-contract.schema.json").read_text(
+        encoding="utf-8"
+    )
+    assert published == source, (
+        "committed threadlight-design.zip governance-contract.schema.json drifted "
+        "from source (rebuild scripts/build-cowork-zips.sh)"
+    )
+
+
+def test_design_zip_runtime_policy_matches_current_source():
+    published = _read_member("references/runtime-policy.json")
+    source = (SRC / "references" / "runtime-policy.json").read_text(encoding="utf-8")
+    assert published == source, (
+        "committed threadlight-design.zip runtime-policy.json drifted from source "
         "(rebuild scripts/build-cowork-zips.sh)"
     )

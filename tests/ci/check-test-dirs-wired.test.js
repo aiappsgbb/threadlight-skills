@@ -82,8 +82,16 @@ test('keeping the governed-actions step wired passes the same fixture', () => {
 
 test('python-pytest.yml runs the governed-actions suite as its own explicit step', () => {
   const workflow = fs.readFileSync(path.join(repoRoot, WORKFLOW), 'utf8');
-  assert.match(
-    workflow,
-    /- name: Test threadlight-governed-actions\n\s+run: python -m pytest skills\/threadlight-governed-actions\/tests -q/,
+  const step = workflow.match(
+    /^\s+- name: Test threadlight-governed-actions\n((?:[ \t]{8,}[^\n]*(?:\n|$))*)/m,
   );
+  assert.ok(step, 'governed-actions must keep its own unit-test step');
+  const command = step[1].split('\n').map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#')).join(' ');
+  assert.match(
+    command,
+    /^run:\s*(?:>-\s*)?python -m pytest skills\/threadlight-governed-actions\/tests -q(?:\s|$)/,
+  );
+  assert.match(command, /-m "not governance_runtime"/);
+  assert.match(workflow, /run: python scripts\/ci\/run-governance-pin-tests\.py --native-local/);
 });

@@ -2,16 +2,14 @@
 
 This one module is everything the fixture declares under ``app/``: the
 statically-inspected action declarations and mediation graph, *and* the
-one real dispatch seam every probe kind drives. ``dispatch`` below is the
-single callable named by ``governance/probe-contract.json``; it routes to
-the enforcement seam (``dispatch_probe``), the approval seam (``redeem``),
-or the output seam (``emit_output``) purely by the shape of the arguments
-the probe harness passes, so a target never has to declare -- or a
-fixture tree never has to carry -- a separate module per probe kind.
+generic dispatch seam used by enforcement, approval, and output probes.
+``dispatch`` routes those generic probe families by argument shape, while
+``dispatch_execution_path`` routes action/mode pairs through ``EXECUTION_ROUTES``.
 
-Nothing here is ever imported or executed in-process by the assessor: the
-static analysis paths only inspect this source, and every probe path runs
-it in an isolated child subprocess. No record this module writes, to a
+The assessor imports this module only in isolated child subprocesses. For
+path probes it executes the application dispatcher after replacing the resolved
+route's hook/tool/provider namespaces with assessor-owned implementations;
+no target self-report can establish ledger order. No record this module writes, to a
 ledger or to ``AUDIT_EVENTS``, ever carries a raw argument payload -- only
 canonical hashes and payload-free identifiers.
 """
@@ -28,11 +26,10 @@ from typing import Any, Callable, Mapping, MutableMapping
 class _Namespace:
     """Minimal stand-in for a mediation seam namespace.
 
-    mediation.py recognizes mediation evidence by statically inspecting the
-    *shape* of calls in dispatch function bodies (bare ``name.attr(...)``
-    call expressions); it never imports or executes this module, so these
-    stand-ins only need to exist to keep the module free of unresolved-name
-    lint noise -- they are never actually invoked at runtime.
+    These stand-ins keep an ordinary module import executable. The isolated
+    path-probe child replaces them with assessor-owned instrumented namespaces
+    before invoking the application-resolved route, so these target stubs are
+    never accepted as mediation evidence or invoked by a path probe.
     """
 
     def __getattr__(self, _name: str) -> Callable[..., Any]:
@@ -79,10 +76,10 @@ def payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
 # non-exclusively-provider-hosted action is assessed across all five
 # REQUIRED_NON_PROVIDER_MODES, so both ``customer.lookup`` and
 # ``payments.refund`` need one dispatch function per mode below. Each
-# function is never imported or executed -- mediation.py only inspects the
-# call shapes in its body: a bare ``agent_hooks.pre_tool_call(...)`` call
-# that source-precedes a bare ``tool_service.*``/``provider.*`` call proves a
-# pre-action seam mediates the tool-service invocation.
+# function is statically discovered and then executed by an isolated path-probe
+# child with assessor-owned instrumented namespaces. Static call shape can find
+# a candidate bypass, but only the assessor-calculated ledger order can pass a
+# path.
 
 
 def interactive_customer_lookup(customer_id: str) -> dict[str, Any]:
@@ -282,11 +279,11 @@ def dispatch_probe(
     ``AUDIT_EVENTS`` for audit IDs; this function never returns the raw
     arguments or any tool output.
 
-    ``governance/probe-contract.json`` declares this same function as
-    its ``dispatch`` target for every probe kind this fixture proves
-    (application enforcement, and by extension the base output
-    mediation coverage every fixture is checked against). The output
-    probe harness calls ``dispatch`` with a bare ``(verdict, ledger_path)``
+    ``governance/probe-contract.json`` declares this function as its generic
+    ``dispatch`` target for enforcement and Task 6 probes only; mediation path
+    receipts use ``dispatch_execution_path`` and ``EXECUTION_ROUTES``. The
+    output probe harness calls ``dispatch`` with a bare
+    ``(verdict, ledger_path)``
     tuple rather than a ``ProbeCase`` mapping, so this seam is never
     mediated by anything other than itself: it records a
     ``verdict_received`` event and zero released bytes, proving this
@@ -603,6 +600,16 @@ def redeem(nonce: str, digest: str, expires_at: str, now: str, ledger_path: str)
             )
             expired = now >= expires_at
             accepted = (not expired) and (not already_accepted)
+            prior_digest = next(
+                (record["digest"] for record in existing
+                 if record.get("nonce") == nonce and record.get("accepted") is True),
+                None,
+            )
+            reason = (
+                "expiry" if expired else
+                "binding" if already_accepted and prior_digest != digest else
+                "replay" if already_accepted else "accepted"
+            )
             handle.write(
                 json.dumps(
                     {
@@ -610,6 +617,7 @@ def redeem(nonce: str, digest: str, expires_at: str, now: str, ledger_path: str)
                         "nonce": nonce,
                         "digest": digest,
                         "accepted": accepted,
+                        "reason": reason,
                     }
                 )
                 + "\n"
@@ -622,13 +630,18 @@ def redeem(nonce: str, digest: str, expires_at: str, now: str, ledger_path: str)
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
-    AUDIT_EVENTS.append(
-        {
+    audit_record = {
             "audit_id": f"audit-approval-{nonce}",
             "event": "approval_redemption_attempt",
             "digest_hash": digest,
+            "correlation_id": f"approval-{nonce}",
+            "decision": "allow" if accepted else "deny",
+            "action_hash": digest,
+            "policy_hash": _canonical_hash("policy:refund-v1"),
+            "delivery_status": "persisted",
         }
-    )
+    AUDIT_EVENTS.append(audit_record)
+    _append_ledger(ledger_path, **audit_record)
 
 
 # ---------------------------------------------------------------------------
@@ -659,7 +672,61 @@ def emit_output(verdict: str, ledger_path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The single declared dispatch callable.
+# The application-owned execution routing table and dispatch callable.
+# ---------------------------------------------------------------------------
+
+
+EXECUTION_ROUTES = {
+    ("customer.lookup", "interactive"): interactive_customer_lookup,
+    ("customer.lookup", "batch"): batch_customer_lookup,
+    ("customer.lookup", "background"): background_customer_lookup,
+    ("customer.lookup", "subagent"): subagent_customer_lookup,
+    ("customer.lookup", "direct-tool"): direct_tool_customer_lookup,
+    ("payments.refund", "interactive"): interactive_payments_refund,
+    ("payments.refund", "batch"): batch_payments_refund,
+    ("payments.refund", "background"): background_payments_refund,
+    ("payments.refund", "subagent"): subagent_payments_refund,
+    ("payments.refund", "direct-tool"): direct_tool_payments_refund,
+}
+_EXECUTION_ARGUMENT_NAMES = {
+    "customer.lookup": ("customer_id",),
+    "payments.refund": ("payment_id", "amount"),
+}
+
+
+def dispatch_execution_path(
+    action_id: str,
+    mode: str,
+    case: Mapping[str, object],
+    ledger_path: str,
+) -> Mapping[str, object]:
+    target = EXECUTION_ROUTES[(action_id, mode)]
+    resolved_path = f"{target.__module__}:{target.__qualname__}"
+    _append_ledger(
+        ledger_path,
+        "resolved_path",
+        evidence_id=f"path-resolved-{case['path_id']}",
+        action_id=action_id,
+        mode=mode,
+        path_id=case["path_id"],
+        resolved_path=resolved_path,
+    )
+    supplied = case["arguments"]
+    if not isinstance(supplied, Mapping):
+        raise TypeError("execution case arguments must be a mapping")
+    arguments = {
+        name: supplied[name] for name in _EXECUTION_ARGUMENT_NAMES[action_id]
+    }
+    return {
+        "action_id": action_id,
+        "mode": mode,
+        "resolved_path": resolved_path,
+        "result": target(**arguments),
+    }
+
+
+# ---------------------------------------------------------------------------
+# The generic enforcement/approval/output dispatch callable.
 # ---------------------------------------------------------------------------
 
 

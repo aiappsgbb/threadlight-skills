@@ -70,8 +70,8 @@ def _validator_for(schema):
 
 def test_public_constants_match_spec():
     assert contracts.SCHEMA_VERSION == "1.0.0"
-    assert contracts.ASSESSOR_VERSION == "0.1.0"
-    assert contracts.SKILL_VERSION == "0.1.0"
+    assert contracts.ASSESSOR_VERSION == "2.0.0"
+    assert contracts.SKILL_VERSION == "2.0.0"
     assert contracts.SUPPORTED_PHASES == ("design", "pre-deploy", "post-deploy")
     assert contracts.CONSEQUENCE_CLASSES == (
         "read",
@@ -132,7 +132,7 @@ def test_skill_md_version_matches_the_cli_assessor_version():
     import governed_actions
     import render
 
-    assert contracts.SKILL_VERSION == "0.1.0"
+    assert contracts.SKILL_VERSION == "2.0.0"
     assert contracts.ASSESSOR_VERSION == contracts.SKILL_VERSION
     assert governed_actions.contracts.ASSESSOR_VERSION == contracts.ASSESSOR_VERSION
     assert render.contracts.ASSESSOR_VERSION == contracts.ASSESSOR_VERSION
@@ -869,6 +869,7 @@ def test_atomic_write_bytes_replace_failure_removes_only_its_own_temp(
 def _minimal_manifest():
     return {
         "schema": "threadlight-governed-actions-manifest/v1",
+        "evidence_contract": "governance-ledger/v2",
         "assessor": {
             "name": "threadlight-governed-actions",
             "version": "0.1.0",
@@ -979,6 +980,8 @@ def _populated_manifest():
             "pre_action_seam": "policy-gate",
             "equivalent_control_ref": None,
             "covered": True,
+            "discovered": True,
+            "executed": True,
             "status": "pass",
             "evidence_refs": ["evidence-1"],
         }
@@ -1007,6 +1010,7 @@ def _populated_manifest():
                 "probe_id": "probe-1",
                 "action_id": "send_email",
                 "path_id": "path-1",
+                "mode": "interactive",
                 "status": "pass",
                 "reason_code": "hook-observed",
                 "expected_sha256": _sha("4"),
@@ -1146,6 +1150,8 @@ def test_manifest_schema_accepts_summary_status_array_with_catalog_finding_id(
     [
         ("action_inventory", 0, "consequence"),
         ("mediation_paths", 0, "status"),
+        ("mediation_paths", 0, "discovered"),
+        ("mediation_paths", 0, "executed"),
         ("evidence", 0, "sha256"),
         ("findings", 0, "reason_code"),
     ],
@@ -1207,6 +1213,7 @@ def test_manifest_schema_requires_all_listed_root_fields():
     )
     assert set(schema["required"]) == {
         "schema",
+        "evidence_contract",
         "assessor",
         "phase",
         "captured_at",

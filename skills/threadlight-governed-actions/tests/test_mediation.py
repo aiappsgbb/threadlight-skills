@@ -26,10 +26,11 @@ import contracts
 import inventory
 import maf_adapter
 import mediation
-from contracts import ActionRecord, Finding, PathRecord
+from contracts import ActionRecord, Finding, PathRecord, ProbeEvidence
 from mediation import (
     CANONICAL_NODE_ORDER,
     MediationGraph,
+    apply_execution_receipts,
     assess_provider_paths,
     build_mediation_graph,
 )
@@ -76,6 +77,76 @@ def _action_record(
         provider_hosted=provider_hosted,
         approval_required=None,
         known_runtime_paths=known_runtime_paths,
+    )
+
+
+def _probe_result(
+    probe_id: str,
+    action_id: str,
+    path_id: str,
+    *,
+    status: str,
+    observed: str,
+    evidence_refs: tuple[str, ...] = ("EVID-receipt",),
+) -> contracts.ProbeResult:
+    return contracts.ProbeResult(
+        probe_id=probe_id,
+        action_id=action_id,
+        path_id=path_id,
+        status=status,
+        reason_code="ENF-002" if status == "must-fix" else "probe-ok",
+        expected="tool_received_transformed_arguments",
+        observed=observed,
+        evidence_refs=evidence_refs,
+    )
+
+
+def _path_receipt(
+    probe_id: str,
+    *,
+    status: str = "pass",
+    observed: str = "deny_decision_without_invocation",
+    mode: str = "direct-tool",
+    path_id: str = "path-1",
+    action_id: str = "payments.refund",
+    include_decision: bool = True,
+    include_invocation: bool = False,
+) -> contracts.ProbeResult:
+    decision_ref = f"decision-{probe_id}"
+    refs = []
+    items = []
+    if include_decision:
+        refs.append(decision_ref)
+        items.append(
+            ProbeEvidence(
+                evidence_id=decision_ref,
+                kind="path-pre-action-decision",
+                source="governance/probe-ledger.jsonl",
+                sha256="sha256:" + "a" * 64,
+            )
+        )
+    if include_invocation:
+        invocation_ref = f"invocation-{probe_id}"
+        refs.append(invocation_ref)
+        items.append(
+            ProbeEvidence(
+                evidence_id=invocation_ref,
+                kind="path-tool-invocation",
+                source="governance/probe-ledger.jsonl",
+                sha256="sha256:" + "b" * 64,
+            )
+        )
+    return contracts.ProbeResult(
+        probe_id=probe_id,
+        action_id=action_id,
+        path_id=path_id,
+        status=status,
+        reason_code="path-dispatch-mediated" if status == "pass" else "ENF-002",
+        expected="pre_action_decision_before_invocation_or_deny",
+        observed=observed,
+        evidence_refs=tuple(refs),
+        evidence_items=tuple(items),
+        mode=mode,
     )
 
 
@@ -154,14 +225,6 @@ def test_every_consequential_mode_becomes_a_graph_path(fixture_root: Path):
         ("payments.refund", "direct-tool"),
     }
     assert {(finding.finding_id, finding.summary) for finding in graph.findings} == {
-        (
-            "MED-001",
-            "batch path for payments.refund lacks pre-action mediation",
-        ),
-        (
-            "MED-001",
-            "background path for payments.refund lacks pre-action mediation",
-        ),
         ("MED-002", "declared mediation coverage is incomplete"),
     }
     med002 = next(f for f in graph.findings if f.finding_id == "MED-002")
@@ -178,8 +241,10 @@ def test_covered_paths_route_through_pre_action_seam_before_tool_service(
     by_mode = {path.mode: path for path in graph.paths}
     for mode in ("interactive", "subagent", "direct-tool"):
         path = by_mode[mode]
+        assert path.discovered is True
+        assert path.executed is False
         assert path.covered is True
-        assert path.status == "pass"
+        assert path.status == "not-verified"
         assert path.pre_action_seam is not None
         assert "pre-action-seam" in path.nodes
         assert path.nodes.index("pre-action-seam") < path.nodes.index("tool-service")
@@ -195,8 +260,10 @@ def test_bypass_paths_reach_tool_service_without_a_pre_action_seam(
     by_mode = {path.mode: path for path in graph.paths}
     for mode in ("batch", "background"):
         path = by_mode[mode]
+        assert path.discovered is True
+        assert path.executed is False
         assert path.covered is False
-        assert path.status == "must-fix"
+        assert path.status == "not-verified"
         assert path.pre_action_seam is None
         assert "pre-action-seam" not in path.nodes
         assert "tool-service" in path.nodes
@@ -283,6 +350,8 @@ def test_mode_with_no_discoverable_dispatch_evidence_is_not_verified(
     }
     for path in graph.paths:
         assert path.action_id == "orders.cancel"
+        assert path.discovered is False
+        assert path.executed is False
         assert path.covered is False
         assert path.status == "not-verified"
 
@@ -294,17 +363,407 @@ def test_mode_with_no_discoverable_dispatch_evidence_is_not_verified(
     assert "agent.yaml" in finding.evidence_refs
 
 
+def test_static_decoy_path_never_passes_without_executed_proof(tmp_path: Path):
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [batch]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _ToolService:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            tool_service = _ToolService()
+            provider = _Provider()
+
+
+            def batch_orders_cancel(**kwargs):
+                # Convention-shaped decoy: static AST markers look perfect,
+                # but nothing proves this is the path that actually runs.
+                agent_hooks.pre_tool_call(**kwargs)
+                return tool_service.cancel_order(**kwargs)
+
+
+            def real_worker_entrypoint(**kwargs):
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+
+    batch_path = next(path for path in graph.paths if path.mode == "batch")
+    assert batch_path.discovered is True
+    assert batch_path.executed is False
+    assert batch_path.covered is True
+    assert batch_path.status == "not-verified"
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
+
+
+def test_correlated_executed_receipt_turns_a_discovered_path_into_pass():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+        static_assessment="mediated-candidate",
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _path_receipt(
+                "transform",
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
+            ),
+        ),
+    )
+
+    updated = updated_paths[0]
+    assert updated.discovered is True
+    assert updated.executed is True
+    assert updated.covered is True
+    assert updated.status == "pass"
+    assert updated.evidence_refs == (
+        "app/agent.py",
+        "decision-transform",
+        "invocation-transform",
+    )
+    assert findings == ()
+
+
+def test_executed_bypass_receipt_remains_must_fix():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "tool-service"),
+        pre_action_seam=None,
+        equivalent_control_ref=None,
+        covered=False,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+        static_assessment="bypass-proven",
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _path_receipt(
+                "deny",
+                status="must-fix",
+                observed="tool_invoked_without_pre_action_decision",
+                include_decision=False,
+                include_invocation=True,
+            ),
+        ),
+    )
+
+    updated = updated_paths[0]
+    assert updated.executed is True
+    assert updated.covered is False
+    assert updated.status == "must-fix"
+    assert len(findings) == 2
+    assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
+
+
+def test_static_bypass_cannot_be_erased_by_a_passing_receipt():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "tool-service"),
+        pre_action_seam=None,
+        equivalent_control_ref=None,
+        covered=False,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+        static_assessment="bypass-proven",
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _path_receipt(
+                "allow",
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
+            ),
+        ),
+    )
+
+    assert updated_paths[0].executed is True
+    assert updated_paths[0].status == "must-fix"
+    assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
+
+
+def test_wrong_action_or_path_receipt_cannot_verify_the_path():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+        static_assessment="mediated-candidate",
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _probe_result(
+                "transform",
+                "payments.refund",
+                "other-path",
+                status="pass",
+                observed="tool_received_transformed_arguments",
+            ),
+            _probe_result(
+                "transform",
+                "other.action",
+                "path-1",
+                status="pass",
+                observed="tool_received_transformed_arguments",
+            ),
+        ),
+    )
+
+    updated = updated_paths[0]
+    assert updated.executed is False
+    assert updated.status == "not-verified"
+    assert len(findings) == 1
+    assert findings[0].finding_id == "MED-002"
+
+
+def test_conflicting_receipts_fail_closed():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _path_receipt(
+                "transform",
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
+            ),
+            _path_receipt(
+                "deny",
+                status="must-fix",
+                observed="tool_invoked_without_pre_action_decision",
+                include_decision=False,
+                include_invocation=True,
+            ),
+        ),
+    )
+
+    updated = updated_paths[0]
+    assert updated.executed is True
+    assert updated.status == "must-fix"
+    assert "invocation-deny" in updated.evidence_refs
+    assert "invocation-transform" in updated.evidence_refs
+    assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
+
+
+def test_multiple_valid_fault_receipts_for_one_path_aggregate_to_pass():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+        static_assessment="mediated-candidate",
+    )
+    receipts = (
+        _path_receipt("deny"),
+        _path_receipt("crash"),
+        _path_receipt("timeout"),
+        _path_receipt("malformed-verdict"),
+        _path_receipt(
+            "transform",
+            observed="pre_action_decision_before_invocation",
+            include_invocation=True,
+        ),
+    )
+
+    updated_paths, findings = apply_execution_receipts((path,), receipts)
+
+    assert updated_paths[0].executed is True
+    assert updated_paths[0].status == "pass"
+    assert findings == ()
+
+
+def test_duplicate_probe_id_and_path_receipts_fail_closed():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _path_receipt(
+                "transform",
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
+            ),
+            _path_receipt(
+                "transform",
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
+            ),
+        ),
+    )
+
+    assert updated_paths[0].status == "must-fix"
+    assert {finding.finding_id for finding in findings} == {"MED-001", "MED-002"}
+
+
+def test_receipt_mode_must_match_discovered_path():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _path_receipt(
+                "transform",
+                mode="background",
+                observed="pre_action_decision_before_invocation",
+                include_invocation=True,
+            ),
+        ),
+    )
+
+    assert updated_paths[0].executed is False
+    assert updated_paths[0].status == "not-verified"
+    assert [finding.finding_id for finding in findings] == ["MED-002"]
+
+
+def test_receipt_without_evidence_items_is_not_verified():
+    path = PathRecord(
+        path_id="path-1",
+        action_id="payments.refund",
+        mode="direct-tool",
+        nodes=("entry", "tool-router", "pre-action-seam", "tool-service"),
+        pre_action_seam="hook:pre",
+        equivalent_control_ref=None,
+        covered=True,
+        status="not-verified",
+        evidence_refs=("app/agent.py",),
+        discovered=True,
+        executed=False,
+    )
+
+    updated_paths, findings = apply_execution_receipts(
+        (path,),
+        (
+            _probe_result(
+                "transform",
+                "payments.refund",
+                "path-1",
+                status="pass",
+                observed="tool_received_transformed_arguments",
+            ),
+        ),
+    )
+
+    assert updated_paths[0].executed is False
+    assert updated_paths[0].status == "not-verified"
+    assert [finding.finding_id for finding in findings] == ["MED-002"]
+
+
 def test_undeclared_execution_mode_is_still_assessed_from_static_evidence(
     tmp_path: Path,
 ):
     """A mode absent from the registry's ``execution_modes`` list is still
     assessed if the target's own code implements it. ``orders.cancel``
-    here only declares ``interactive`` (mediated), but its module also
-    defines a ``batch_orders_cancel`` dispatch function that bypasses
-    mediation entirely — the assessor must find and flag it exactly like
-    a declared bypass, since MED-002 requires every one of the five
-    families to be explicitly covered or evidenced absent, regardless of
-    what the registry happens to declare.
+    here only declares ``interactive`` (structurally mediated), but its
+    module also defines a ``batch_orders_cancel`` dispatch function that
+    structurally bypasses mediation entirely. Both remain discovery only
+    until correlated execution evidence exists, so the assessor must
+    still enumerate both modes but leave them ``not-verified``.
     """
     (tmp_path / "agent.yaml").write_text(
         textwrap.dedent(
@@ -356,14 +815,15 @@ def test_undeclared_execution_mode_is_still_assessed_from_static_evidence(
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     by_mode = {path.mode: path for path in graph.paths}
-    assert by_mode["interactive"].status == "pass"
-    assert by_mode["batch"].status == "must-fix"
+    assert by_mode["interactive"].covered is True
+    assert by_mode["interactive"].status == "not-verified"
+    assert by_mode["batch"].covered is False
+    assert by_mode["batch"].status == "not-verified"
     assert by_mode["batch"].covered is False
 
-    assert (
-        "MED-001",
-        "batch path for orders.cancel lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert {(finding.finding_id, finding.summary) for finding in graph.findings} == {
+        ("MED-002", "declared mediation coverage is incomplete"),
+    }
 
 
 def test_build_mediation_graph_skips_exclusively_provider_hosted_actions(
@@ -384,7 +844,12 @@ def test_build_mediation_graph_skips_exclusively_provider_hosted_actions(
 
     provider_hosted = {"mail.send", "search.lookup"}
     assert {path.action_id for path in graph.paths} & provider_hosted == set()
-    assert {finding.action_id for finding in graph.findings} & provider_hosted == set()
+    affected_actions = {
+        action_id
+        for finding in graph.findings
+        for action_id in finding.affected_actions
+    }
+    assert affected_actions & provider_hosted == set()
 
 
 def test_adapter_declared_status_is_never_trusted_and_is_recomputed(
@@ -448,16 +913,15 @@ def test_adapter_declared_status_is_never_trusted_and_is_recomputed(
 
     recomputed_bogus = by_mode["direct-tool"]
     assert recomputed_bogus.covered is False
-    assert recomputed_bogus.status == "must-fix"
+    assert recomputed_bogus.executed is False
+    assert recomputed_bogus.status == "not-verified"
     assert recomputed_bogus.equivalent_control_ref is None
-    assert (
-        "MED-001",
-        "direct-tool path for reports.export lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
     recomputed_genuine = by_mode["subagent"]
     assert recomputed_genuine.covered is True
-    assert recomputed_genuine.status == "pass"
+    assert recomputed_genuine.executed is False
+    assert recomputed_genuine.status == "not-verified"
 
 
 def test_adapter_declared_paths_never_supply_provider_hosted_mode(
@@ -553,15 +1017,12 @@ def test_unverified_equivalent_control_never_masks_a_non_provider_bypass(
     direct_tool_path = next(
         path for path in graph.paths if path.mode == "direct-tool"
     )
-    assert direct_tool_path.status == "must-fix"
+    assert direct_tool_path.discovered is True
+    assert direct_tool_path.executed is False
+    assert direct_tool_path.status == "not-verified"
     assert direct_tool_path.covered is False
     assert direct_tool_path.equivalent_control_ref is None
-
-    assert any(
-        finding.finding_id == "MED-001"
-        and "payments.settle" in finding.affected_actions
-        for finding in graph.findings
-    )
+    assert any(finding.finding_id == "MED-002" for finding in graph.findings)
 
 
 def test_incomplete_equivalent_control_does_not_cover_a_bypassed_path(
@@ -614,14 +1075,12 @@ def test_incomplete_equivalent_control_does_not_cover_a_bypassed_path(
     direct_tool_path = next(
         path for path in graph.paths if path.mode == "direct-tool"
     )
-    assert direct_tool_path.status == "must-fix"
+    assert direct_tool_path.discovered is True
+    assert direct_tool_path.executed is False
+    assert direct_tool_path.status == "not-verified"
     assert direct_tool_path.covered is False
     assert direct_tool_path.equivalent_control_ref is None
-
-    assert (
-        "MED-001",
-        "direct-tool path for payments.settle lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(finding.finding_id == "MED-002" for finding in graph.findings)
 
 
 # ---------------------------------------------------------------------------
@@ -660,16 +1119,14 @@ def test_post_hoc_pre_action_seam_call_does_not_cover_a_bypass_path(
         for path in graph.paths
         if path.action_id == "payments.refund" and path.mode == "background"
     )
-    assert background_path.status == "must-fix"
+    assert background_path.discovered is True
+    assert background_path.executed is False
+    assert background_path.status == "not-verified"
     assert background_path.covered is False
     assert background_path.pre_action_seam is None
     assert "pre-action-seam" not in background_path.nodes
     assert "tool-service" in background_path.nodes
-
-    assert (
-        "MED-001",
-        "background path for payments.refund lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
 
 def test_pre_action_seam_call_inside_a_nested_closure_is_not_credited(
@@ -732,16 +1189,14 @@ def test_pre_action_seam_call_inside_a_nested_closure_is_not_credited(
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     path = next(p for p in graph.paths if p.mode == "direct-tool")
-    assert path.status == "must-fix"
+    assert path.discovered is True
+    assert path.executed is False
+    assert path.status == "not-verified"
     assert path.covered is False
     assert path.pre_action_seam is None
     assert "pre-action-seam" not in path.nodes
     assert "tool-service" in path.nodes
-
-    assert (
-        "MED-001",
-        "direct-tool path for orders.cancel lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
 
 def test_conditionally_executed_pre_action_seam_call_never_produces_a_false_pass(
@@ -800,16 +1255,234 @@ def test_conditionally_executed_pre_action_seam_call_never_produces_a_false_pass
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     path = next(p for p in graph.paths if p.mode == "direct-tool")
-    assert path.status == "must-fix"
+    assert path.discovered is True
+    assert path.executed is False
+    assert path.status == "not-verified"
     assert path.covered is False
     assert path.pre_action_seam is None
     assert "pre-action-seam" not in path.nodes
     assert "tool-service" in path.nodes
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
-    assert (
-        "MED-001",
-        "direct-tool path for orders.cancel lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+
+@pytest.mark.parametrize(
+    ("function_prefix", "with_statement"),
+    [
+        ("def", "with contextlib.suppress(Exception):"),
+        ("async def", "async with contextlib.nullcontext():"),
+    ],
+)
+def test_context_manager_scoped_pre_action_seam_is_not_credited(
+    tmp_path: Path,
+    function_prefix: str,
+    with_statement: str,
+):
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            f"""
+            import contextlib
+
+
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {{"decision": "allow"}}
+
+
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {{"cancelled": True}}
+
+
+            agent_hooks = _AgentHooks()
+            provider = _Provider()
+
+
+            {function_prefix} direct_tool_orders_cancel(**kwargs):
+                {with_statement}
+                    agent_hooks.pre_tool_call(**kwargs)
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+    path = next(p for p in graph.paths if p.mode == "direct-tool")
+    receipt = _path_receipt(
+        "allow",
+        action_id="orders.cancel",
+        path_id=path.path_id,
+        observed="pre_action_decision_before_invocation",
+        include_invocation=True,
+    )
+    updated, findings = apply_execution_receipts(graph.paths, (receipt,))
+    updated_path = next(p for p in updated if p.path_id == path.path_id)
+
+    assert path.pre_action_seam is None
+    assert path.covered is False
+    assert path.static_assessment == "incomplete"
+    assert updated_path.executed is True
+    assert updated_path.status == "not-verified"
+    assert any(f.finding_id == "MED-002" for f in findings)
+    assert not any(f.finding_id == "MED-001" for f in findings)
+
+
+def test_try_scoped_pre_action_seam_stays_incomplete_with_honest_receipt(
+    tmp_path: Path,
+):
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _Provider:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            provider = _Provider()
+
+
+            def direct_tool_orders_cancel(**kwargs):
+                try:
+                    agent_hooks.pre_tool_call(**kwargs)
+                except RuntimeError:
+                    pass
+                return provider.cancel_order(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+    path = next(p for p in graph.paths if p.mode == "direct-tool")
+    receipt = _path_receipt(
+        "allow",
+        action_id="orders.cancel",
+        path_id=path.path_id,
+        observed="pre_action_decision_before_invocation",
+        include_invocation=True,
+    )
+
+    updated, findings = apply_execution_receipts(graph.paths, (receipt,))
+    updated_path = next(p for p in updated if p.path_id == path.path_id)
+
+    assert path.pre_action_seam is None
+    assert path.covered is False
+    assert path.static_assessment == "incomplete"
+    assert updated_path.executed is True
+    assert updated_path.status == "not-verified"
+    assert any(f.finding_id == "MED-002" for f in findings)
+    assert not any(f.finding_id == "MED-001" for f in findings)
+
+
+def test_helper_delegation_with_valid_receipt_stays_not_verified(
+    tmp_path: Path,
+):
+    (tmp_path / "agent.yaml").write_text(
+        textwrap.dedent(
+            """
+            tools:
+              - id: orders.cancel
+                consequence: write
+                execution_modes: [direct-tool]
+                provider_hosted: false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "agent.py").write_text(
+        textwrap.dedent(
+            """
+            class _AgentHooks:
+                def pre_tool_call(self, **kwargs):
+                    return {"decision": "allow"}
+
+
+            class _ToolService:
+                def cancel_order(self, **kwargs):
+                    return {"cancelled": True}
+
+
+            agent_hooks = _AgentHooks()
+            tool_service = _ToolService()
+
+
+            def _invoke_cancel(**kwargs):
+                return tool_service.cancel_order(**kwargs)
+
+
+            def direct_tool_orders_cancel(**kwargs):
+                agent_hooks.pre_tool_call(**kwargs)
+                return _invoke_cancel(**kwargs)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    actions = inventory.build_action_inventory(tmp_path).actions
+    graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
+    path = next(p for p in graph.paths if p.mode == "direct-tool")
+    receipt = _path_receipt(
+        "allow",
+        action_id="orders.cancel",
+        path_id=path.path_id,
+        observed="pre_action_decision_before_invocation",
+        include_invocation=True,
+    )
+
+    updated, findings = apply_execution_receipts(graph.paths, (receipt,))
+    updated_path = next(p for p in updated if p.path_id == path.path_id)
+    med002 = next(f for f in findings if f.finding_id == "MED-002")
+
+    assert path.static_assessment == "incomplete"
+    assert updated_path.executed is True
+    assert updated_path.status == "not-verified"
+    assert "app/agent.py" in med002.evidence_refs
+    assert path.path_id in med002.affected_paths
+    assert not [f for f in findings if f.finding_id == "MED-001"]
 
 
 def test_within_file_duplicate_dispatch_bypass_wins_over_later_mediated_definition(
@@ -879,14 +1552,12 @@ def test_within_file_duplicate_dispatch_bypass_wins_over_later_mediated_definiti
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     path = next(p for p in graph.paths if p.mode == "batch")
-    assert path.status == "must-fix"
+    assert path.discovered is True
+    assert path.executed is False
+    assert path.status == "not-verified"
     assert path.covered is False
     assert path.pre_action_seam is None
-
-    assert (
-        "MED-001",
-        "batch path for orders.cancel lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
 
 def test_within_file_duplicate_dispatch_uses_actual_last_binding_when_no_bypass(
@@ -949,7 +1620,9 @@ def test_within_file_duplicate_dispatch_uses_actual_last_binding_when_no_bypass(
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     path = next(p for p in graph.paths if p.mode == "batch")
-    assert path.status == "pass"
+    assert path.discovered is True
+    assert path.executed is False
+    assert path.status == "not-verified"
     assert path.covered is True
     assert path.pre_action_seam is not None
     assert "pre-action-seam" in path.nodes
@@ -1121,14 +1794,13 @@ def test_duplicate_dispatch_definitions_bypass_evidence_wins_over_mediated_one(
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     batch_path = next(path for path in graph.paths if path.mode == "batch")
-    assert batch_path.status == "must-fix"
+    assert batch_path.discovered is True
+    assert batch_path.executed is False
+    assert batch_path.status == "not-verified"
     assert batch_path.covered is False
     assert batch_path.pre_action_seam is None
 
-    assert (
-        "MED-001",
-        "batch path for orders.cancel lacks pre-action mediation",
-    ) in {(f.finding_id, f.summary) for f in graph.findings}
+    assert any(f.finding_id == "MED-002" for f in graph.findings)
 
 
 def test_ast_files_are_parsed_once_per_assessment_not_per_action_mode(
@@ -1289,7 +1961,9 @@ def test_known_runtime_paths_ignores_declarations_that_escape_the_project_root(
     graph = build_mediation_graph(root, (action,), maf_adapter.MAFAdapter())
 
     batch_path = next(path for path in graph.paths if path.mode == "batch")
-    assert batch_path.status == "must-fix"
+    assert batch_path.discovered is True
+    assert batch_path.executed is False
+    assert batch_path.status == "not-verified"
     assert batch_path.covered is False
     assert not any(
         "escape.py" in ref for ref in batch_path.evidence_refs
@@ -1385,19 +2059,22 @@ def test_malformed_equivalent_control_yaml_degrades_to_no_control_not_a_crash(
     direct_tool_path = next(
         path for path in graph.paths if path.mode == "direct-tool"
     )
-    assert direct_tool_path.status == "must-fix"
+    assert direct_tool_path.discovered is True
+    assert direct_tool_path.executed is False
+    assert direct_tool_path.status == "not-verified"
     assert direct_tool_path.covered is False
     assert direct_tool_path.equivalent_control_ref is None
 
 
-def test_med002_status_is_must_fix_when_any_uncovered_path_is_a_proven_bypass(
+def test_med002_stays_not_verified_without_executed_path_proof_even_for_static_bypass(
     tmp_path: Path,
 ):
-    """``MED-002``'s own ``status`` must reflect ``must-fix`` — not
-    ``not-verified`` — whenever at least one of the uncovered families it
-    aggregates is a proven bypass rather than merely indeterminate, even
-    when other uncovered families for the same action have no evidence at
-    all.
+    """Static source alone never upgrades ``MED-002`` to ``must-fix``.
+
+    Even when one family is structurally a bypass and the other uncovered
+    families are merely absent, the aggregate mediation finding remains
+    ``not-verified`` until a correlated executed receipt proves which path
+    actually ran.
     """
     (tmp_path / "agent.yaml").write_text(
         textwrap.dedent(
@@ -1437,12 +2114,12 @@ def test_med002_status_is_must_fix_when_any_uncovered_path_is_a_proven_bypass(
     graph = build_mediation_graph(tmp_path, actions, maf_adapter.MAFAdapter())
 
     by_mode = {path.mode: path for path in graph.paths}
-    assert by_mode["batch"].status == "must-fix"
+    assert by_mode["batch"].status == "not-verified"
     for mode in ("interactive", "background", "subagent", "direct-tool"):
         assert by_mode[mode].status == "not-verified"
 
     med002 = next(f for f in graph.findings if f.finding_id == "MED-002")
-    assert med002.status == "must-fix"
+    assert med002.status == "not-verified"
 
 
 # ---------------------------------------------------------------------------

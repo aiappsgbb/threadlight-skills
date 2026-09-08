@@ -77,15 +77,89 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
+  native-generation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Ensure local Bicep compiler
+        run: az bicep version || az bicep install
+      - name: Exact-pin generated deployments and native host probes
+        # Public wheels + local Docker only. No Azure login, credentials or deployment.
+        # Includes examples/returns-triage-governed/tests in the no-skip native gate.
+        run: python scripts/ci/run-governance-pin-tests.py --deployment
+      - name: Selected native local pre-deploy gate
+        run: |
+          python scripts/ci/run-governance-pin-tests.py
+          python scripts/ci/run-governance-pin-tests.py --prepare-local
+          python -m pip install pytest pyyaml
+          python -m pytest examples/returns-triage-governed/tests/test_local_assessment.py -q
+          PYTHONPATH=. python skills/threadlight-governed-actions/scripts/governed_actions.py --target examples/returns-triage-governed --phase pre-deploy --gate
+      - name: Native local evidence and strict consumer matrix
+        # Every native-ledger case excluded from the unit job runs here, with no skips.
+        # Uses the real prepared wheels and fresh fixture Git metadata, not checkout Git mounts.
+        run: python scripts/ci/run-governance-pin-tests.py --native-local
+      - name: Preserve generation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deploy-generation-evidence
+          include-hidden-files: true
+          path: |
+            .governance-validation/deployment-proof.json
+            .governance-validation/deployment-tests.xml
+            .governance-validation/deployment-bicep.json
+            .governance-validation/deployment-main-bicep.json
+            .governance-validation/native-local-proof.json
+            .governance-validation/native-local-tests.xml
+  governance-runtime:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Exact published runtime pins and corrected official CTK
+        # Public artifact downloads only. No Azure credentials or deployments.
+        # Both oracle build and runtime run in Linux amd64 Docker containers;
+        # runtime source is read-only and scratch has its own writable mount.
+        run: python scripts/ci/run-governance-pin-tests.py
+      - name: Preserve governance conformance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: governance-runtime-evidence
+          include-hidden-files: true
+          path: |
+            .governance-validation/runtime-proof.json
+            .governance-validation/runtime-*.xml
+            .governance-validation/wheel-provenance.json
+            .governance-validation/ctk/*provenance.json
+            .governance-validation/ctk/results/*.json
+            .governance-validation/ctk/undeclared-capabilities.json
   pytest:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip pytest pyyaml packaging "jsonschema[format]" markdown-it-py
+      - name: Install unit and real governance protocol dependencies
+        run: |
+          python -m pip install --upgrade pip pytest pyyaml packaging "jsonschema[format]==4.26.0" markdown-it-py "mcp==1.29.1" "httpcore==1.0.9" "azure-ai-projects==2.3.0" "openai==2.54.0" ./skills/threadlight-govern/references/control-plane
+          python -m pip install --no-deps ./skills/threadlight-govern/references/gateway
       - name: Guard - SKILL.md description length (<=1024 chars)
         # Deterministic per-PR guard for the silent loader-drop regression:
         # any skills/*/SKILL.md whose parsed `description` exceeds 1024 chars
@@ -144,8 +218,11 @@ jobs:
         run: python -m pytest skills/threadlight-upgrade/tests/ -v
       - name: Run threadlight-safe-check tests
         # Includes the applied mock→real integration binding recognition that
-        # threadlight-connect's --apply produces.
-        run: python -m pytest skills/threadlight-safe-check/tests/ -v
+        # threadlight-connect's --apply produces. Native generator/collector
+        # fixtures run in full in native-generation; off/stdlib controls remain here.
+        run: >-
+          python -m pytest skills/threadlight-safe-check/tests/ -v
+          -m "not governance_runtime" -o "markers=governance_runtime: exact native runtime"
       - name: Run threadlight-design tests
         # Contract linter for a generated pilot's src/agent/skills/. The suite
         # also asserts the shipped examples/returns-triage-governed pilot stays
@@ -192,6 +269,14 @@ jobs:
         # failure otherwise surfaces at deploy time as `unknown command` (which
         # is exactly how a mandatory Step 6 gate shipped broken). Static: reads
         # markdown, runs no azd, no network.
-        run: python -m pytest skills/threadlight-deploy/tests/ -v
+        # Native generation/Bicep tests run, without skips, in deploy-generation above.
+        run: >-
+          python -m pytest skills/threadlight-deploy/tests/ -v
+          -m "not governance_runtime" -o "markers=governance_runtime: exact native runtime"
+          --ignore=skills/threadlight-deploy/tests/test_governance_wiring.py
+          --ignore=skills/threadlight-deploy/tests/test_governance_quality.py
       - name: Test threadlight-governed-actions
-        run: python -m pytest skills/threadlight-governed-actions/tests -q
+        # The executed native ledger has its own zero-skip native-generation step.
+        run: >-
+          python -m pytest skills/threadlight-governed-actions/tests -q
+          -m "not governance_runtime" -o "markers=governance_runtime: exact native runtime"

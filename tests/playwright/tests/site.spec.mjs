@@ -46,11 +46,12 @@ function toLocalAssetPath(absUrl) {
 test.describe('landing page — the scrubbable demo (index.html)', () => {
   test('renders the demo hero, the Threadlight brand, and the 23-skill public count', async ({ page }) => {
     await page.goto(LANDING);
-    await expect(page).toHaveTitle(/governed agent/i);
+    await expect(page).toHaveTitle(/working pilot/i);
     await expect(page.locator('header.masthead .brand-name')).toContainText(/Threadlight/);
     const hero = page.locator('#demo-h');
     await expect(hero).toBeVisible();
-    await expect(hero).toContainText(/governed agent/i);
+    await expect(hero).toContainText(/working pilot/i);
+    await expect(hero).not.toContainText(/governed agent/i);
     // The public library is exactly 23 skills — stated in the primer.
     await expect(page.locator('#how-it-works')).toContainText(/23\s+skills/i);
   });
@@ -98,7 +99,7 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
 
   test('puts value contract and evidence wording boundaries on the primary pages journey', async ({ page }) => {
     await page.goto(LANDING);
-    await expect(page.locator('#how-it-works')).toContainText(/governed working pilot/i);
+    await expect(page.locator('#how-it-works')).toContainText(/working pilot with selected runtime governance/i);
     await expect(page.locator('.demo-sub')).toContainText(/curated demo path|evidence-backed recreation/i);
     await expect(page.locator('main')).not.toContainText(/one continuous run/i);
 

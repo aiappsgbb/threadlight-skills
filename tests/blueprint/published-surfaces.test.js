@@ -38,7 +38,7 @@ function extractProducerSectionHeading(text, number) {
 // The single release contract these publication assertions are built from.
 // expectedPipelineSkillCount counts every skill except the threadlight-auto
 // planner, so expectedSkillCount is always expectedPipelineSkillCount + 1.
-const expectedVersion = '1.13.0';
+const expectedVersion = '2.0.0';
 const expectedSkillCount = 23;
 const expectedPipelineSkillCount = 22;
 
@@ -125,7 +125,7 @@ test(`plugin.json is version ${expectedVersion} with the ${expectedSkillCount}-t
   assert.match(
     plugin.description,
     new RegExp(
-      `${expectedPipelineSkillCount} pipeline skills \\+ threadlight-auto agent-guided lifecycle planner \\(${expectedSkillCount} total\\).*brief to a governed working pilot with an evidence-backed path to production`,
+      `${expectedPipelineSkillCount} pipeline skills \\+ threadlight-auto agent-guided lifecycle planner \\(${expectedSkillCount} total\\).*brief to a working pilot with selected runtime governance and an evidence-backed path to production`,
       'i',
     ),
   );
@@ -280,7 +280,7 @@ test('plugin.json and marketplace metadata use governed-pilot planner wording', 
   for (const [label, description] of descriptions) {
     assert.match(description, new RegExp(`${expectedSkillCount} total`));
     assert.match(description, /agent-guided lifecycle planner/i, `${label} must call threadlight-auto a planner`);
-    assert.match(description, /governed working pilot/i, `${label} must describe a governed pilot`);
+    assert.match(description, /working pilot with selected runtime governance/i, `${label} must scope governance`);
     assert.doesNotMatch(description, /full-auto orchestrator/i, `${label} must not claim full-auto orchestration`);
     assert.doesNotMatch(description, /brief to a deployed, production-ready Foundry agent/i, `${label} must not claim brief-to-production-ready`);
     assert.doesNotMatch(description, /17 total|16 pipeline|22 total/i, `${label} must not keep the stale count`);
@@ -311,7 +311,7 @@ test('root docs describe a governed pilot, explicit value evidence, and Auto as 
 
   for (const surface of [readme, threadlight]) {
     for (const phrase of [
-      'governed working pilot',
+      'working pilot with selected runtime governance',
       'evidence-backed path to production',
       'SPEC § 14',
       'settled Azure actuals',
@@ -532,7 +532,7 @@ test('the governed-actions SKILL.md publishes its contract, taxonomy, and trust 
   const skill = read('skills/threadlight-governed-actions/SKILL.md');
 
   assert.match(skill, /^name: threadlight-governed-actions$/m);
-  assert.match(skill, /^ {2}version: "0\.1\.0"$/m);
+  assert.match(skill, /^ {2}version: "2\.0\.0"$/m);
 
   assert.strictEqual(
     GOVERNED_ACTIONS_FINDING_IDS.length,
@@ -600,7 +600,7 @@ test('the governed-actions SKILL.md publishes its contract, taxonomy, and trust 
   );
   assert.match(skill, /never\s+intercepts[\s\S]{0,120}internal\s+loop/i);
   assert.match(skill, /SAFE[\s\S]{0,120}design\s+framework/i);
-  assert.match(skill, /Agent Constraint Service[\s\S]{0,160}policy-decision/i);
+  assert.match(skill, /Agent Control Specification[\s\S]{0,160}policy-decision/i);
   assert.match(skill, /ASSERT[\s\S]{0,160}offline\s+assurance/i);
   assert.doesNotMatch(
     skill,
@@ -611,19 +611,18 @@ test('the governed-actions SKILL.md publishes its contract, taxonomy, and trust 
   // The rejected alternatives the approved design requires this skill to record.
   assert.match(skill, /threadlight-production-ready[\s\S]{0,200}consume[\s\S]{0,200}aggregate/i);
   assert.match(skill, /threadlight-safe-check[\s\S]{0,160}threadlight-hitl-patterns/i);
-  assert.match(skill, /MAF\s+is\s+first,\s+behind\s+the\s+explicit\s+`RuntimeAdapter`\s+contract/i);
+  assert.match(skill, /Native MAF and the GHCP[\s\S]{0,160}different supported surfaces/i);
 });
 
-test('the returns-triage receipt distinguishes run capture from regenerated assessment', () => {
+test('the returns-triage canonical runtime separates local evidence from historical capture', () => {
   const readme = read('examples/returns-triage-governed/README.md');
-  const report = read('examples/returns-triage-governed/docs/production-readiness-report.md');
+  const report = read('examples/returns-triage-governed/archive/legacy/docs/production-readiness-report.md');
   const spec = read('examples/returns-triage-governed/specs/SPEC.md');
 
-  assert.match(readme, /captured 2026-07-07/i);
-  assert.match(readme, /regenerated 2026-08-19/i);
-  assert.match(readme, /29% NOT READY/i);
-  assert.match(readme, /agent-governance pillar.*amber 57%/i);
-  assert.match(readme, /14 numbered sections/i);
+  assert.match(readme, /offline, unverified deployment template/i);
+  assert.match(readme, /historical.*v4/i);
+  assert.match(readme, /local.*proof/i);
+  assert.match(readme, /not.*payment\/settlement|no payment\/settlement/i);
 
   assert.match(report, /Raw score.*29%/i);
   assert.match(report, /Agent governance \(AGT\).*57%/i);
@@ -631,28 +630,15 @@ test('the returns-triage receipt distinguishes run capture from regenerated asse
   assert.match(spec, /^## 14\. Value Model$/m);
 });
 
-test('the returns-triage README discloses receipt compatibility limits and preserves report findings', () => {
+test('returns historical findings remain archived and cannot certify current business bindings', () => {
   const readme = read('examples/returns-triage-governed/README.md');
-  const report = read('examples/returns-triage-governed/docs/production-readiness-report.md');
-  const spec = read('examples/returns-triage-governed/specs/SPEC.md');
+  const report = read('examples/returns-triage-governed/archive/legacy/docs/production-readiness-report.md');
+  const archive = read('examples/returns-triage-governed/archive/README.md');
 
-  for (const phrase of [
-    'exact committed snapshot',
-    'no different input set',
-    'older section shape',
-    'current parser cannot verify all existing information',
-    '§9 evaluation evidence',
-    '§10 cost contract',
-    'visible compatibility findings',
-    'not hidden corrections',
-  ]) {
-    assert.match(readme, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), `README must disclose: ${phrase}`);
-  }
-
-  assert.match(spec, /^### Evaluation Scenarios$/m);
-  assert.match(spec, /success_event:\s*\n\s+name:\s+return_decision_completed/);
-  assert.match(spec, /target_cost_per_successful_interaction_usd:\s+0\.18/);
-  assert.match(spec, /actual_cost_basis:\s+usage-pretax/);
+  assert.match(archive, /not current readiness scores/i);
+  assert.match(archive, /not live receipts/i);
+  assert.match(readme, /noop success proves only/i);
+  assert.match(readme, /not.*\n?.*returns_apply_decision/i);
 
   assert.match(report, /SPEC sec 9 missing — no eval scenarios declared/i);
   assert.match(report, /SPEC sec 10 \(Cost\) missing — pricing plan undocumented/i);

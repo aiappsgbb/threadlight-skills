@@ -315,6 +315,31 @@ def test_validate_envelope_accepts_one_year_validity_limit():
     assert validate_envelope(envelope) is None
 
 
+def test_public_helper_aliases_remain_available():
+    assert manifest_module.is_draft7_integer is manifest_module._is_draft7_integer
+    assert (
+        manifest_module.validate_iso8601_timestamp
+        is manifest_module._validate_iso8601_timestamp
+    )
+
+
+def test_public_is_draft7_integer_matches_draft7_rules():
+    assert manifest_module.is_draft7_integer(1) is True
+    assert manifest_module.is_draft7_integer(1.0) is True
+    assert manifest_module.is_draft7_integer(1.5) is False
+    assert manifest_module.is_draft7_integer(True) is False
+
+
+def test_public_validate_iso8601_timestamp_rejects_trailing_newline():
+    with pytest.raises(
+        ManifestValidationError,
+        match="generated_at must be an ISO-8601 timestamp",
+    ):
+        manifest_module.validate_iso8601_timestamp(
+            "2026-08-17T10:00:00Z\n", "generated_at"
+        )
+
+
 def test_atomic_write_json_preserves_valid_file_when_validation_fails(tmp_path):
     path = tmp_path / "nested" / "manifest.json"
     original = valid_envelope()

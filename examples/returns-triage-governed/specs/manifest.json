@@ -22,6 +22,16 @@
     "hub_endpoint": "https://apim-citadel-hub.azure-api.net",
     "access_contracts": ["tl-returns-triage"]
   },
+  "runtime": {
+    "framework": "microsoft-agent-framework",
+    "protocol": "responses",
+    "contract": "agent.yaml",
+    "governance_manifest": "specs/governance-manifest.json",
+    "source_materializer": "scripts/materialize.py",
+    "business_store": "cosmos",
+    "case_partition_key": "/case_id",
+    "deployment_status": "unverified"
+  },
   "deployment_manifest": {
     "module_selectors": {
       "foundry-account": "yes",
@@ -29,36 +39,28 @@
       "ai-search": "yes",
       "foundry-iq-index": "yes",
       "storage-blob": "yes",
-      "aca-mcp": "yes",
-      "aca-bot": "yes",
-      "aca-job": "yes",
-      "workspace-ui": "yes",
+      "aca-mcp": "no",
+      "aca-bot": "no",
+      "aca-job": "no",
+      "workspace-ui": "no",
       "app-insights": "yes",
-      "key-vault": "no",
+      "key-vault": "yes",
       "event-grid": "no",
       "service-bus": "no"
     },
     "services": [
-      {"name": "agent", "host": "azure.ai.agent", "src": "src/agent"},
-      {"name": "mcp", "host": "containerapp", "src": "src/mcp"},
-      {"name": "bot", "host": "containerapp", "src": "src/bot"},
-      {"name": "workspace", "host": "containerapp", "src": "src/workspace"}
+      {"name": "returns-triage", "host": "azure.ai.agent", "src": "src/agent"},
+      {"name": "governance-control-plane", "host": "containerapp", "src": "src/governance-control-plane"}
     ],
-    "scheduled_jobs": [
-      {"name": "open-queue-sweep", "schedule": "*/15 * * * *", "tool": "returns_list_open", "src": "src/jobs/open-queue-sweep"}
-    ],
-    "channels": [
-      {"name": "Returns Workspace", "type": "web", "service": "workspace"},
-      {"name": "Teams supervisor escalation card", "type": "teams", "service": "bot"}
-    ],
+    "scheduled_jobs": [],
+    "channels": [],
     "expected_resource_types": [
       "Microsoft.CognitiveServices/accounts",
       "Microsoft.DocumentDB/databaseAccounts",
       "Microsoft.Search/searchServices",
       "Microsoft.App/managedEnvironments",
       "Microsoft.App/containerApps",
-      "Microsoft.App/jobs",
-      "Microsoft.BotService/botServices",
+      "Microsoft.KeyVault/vaults",
       "Microsoft.ManagedIdentity/userAssignedIdentities",
       "Microsoft.ContainerRegistry/registries",
       "Microsoft.Insights/components"

@@ -4,10 +4,57 @@ import pathlib
 import re
 import sys
 import unittest
+import pytest
+import yaml
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "production_ready.py"
+REPO = ROOT.parents[1]
+
+
+@pytest.mark.parametrize("surface", [
+    "README.md", "docs/production-readiness.md",
+    "docs/IDEA-TO-PRODUCTION-WORKBOOK.md", "docs/index.html", "docs/production.html",
+])
+def test_public_runtime_ontology_and_scope(surface):
+    text = (REPO / surface).read_text()
+    for term in ("SAFE", "method", "ACS", "PDP", "Agent Hooks", "host/interceptor",
+                 "PEP", "AGT", "toolkit", "ASSERT", "assurance", "unbound", "unverified"):
+        assert term in text, f"{surface}: missing runtime boundary {term}"
+    assert "governance-manifest" in text
+    for overclaim in ("governed-ready agent", "become a governed agent",
+                      "governed/comprehensive/hardened", "AGT in-process middleware"):
+        assert overclaim not in text, f"{surface}: stale whole-agent claim"
+
+
+@pytest.mark.parametrize("skill,required", [
+    ("govern", ("build_bundle", "generate.py", "signed", "offline")),
+    ("governed-actions", ("generate.py", "--gate", "LOCAL-14", "47", "unbound")),
+    ("safe-check", ("--subscription", "governance_probe_noop", "business bindings", "fresh")),
+    ("production-ready", ("governance-manifest/v1", "legacy", "signed", "unbound")),
+])
+def test_pressure_routing_uses_real_producers_without_promoting_assessment(skill, required):
+    # Read-only pressure scenarios: ship quickly after green CI; missing approval;
+    # reuse a previous run; certify a business write from a noop. No agent/Azure calls.
+    text = (REPO / f"skills/threadlight-{skill}/SKILL.md").read_text()
+    description = yaml.safe_load(text.split("---", 2)[1])["description"]
+    assert description.strip().startswith("Use when")
+    assert len(description) < 650
+    for term in required:
+        assert term in text, f"{skill}: pressure scenario lacks {term}"
+    assert "not whole-agent" in text
+    assert "never becomes the interceptor, never writes a" not in text
+
+
+def test_agent_guidance_and_migration_are_published():
+    guidance = REPO / "AGENTS.md"
+    assert guidance.exists(), "Coding agents need current source and evidence boundaries"
+    text = guidance.read_text()
+    assert "governance-upstream-pin.json" in text
+    assert "governance_probe_noop" in text
+    assert "RED" in text
+    assert "legacy v2" in (REPO / "docs/production-readiness.md").read_text()
 
 _spec = importlib.util.spec_from_file_location("production_ready", SCRIPT)
 _mod = importlib.util.module_from_spec(_spec)

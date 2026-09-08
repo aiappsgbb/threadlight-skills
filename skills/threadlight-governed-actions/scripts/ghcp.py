@@ -37,10 +37,15 @@ live proof.
 Task 8 adds two optional, read-only *collectors* --
 :func:`collect_live_github` and :func:`collect_live_azure` -- that a
 caller may run separately, independently of ``assess_change_plane``.
-They are the only functions in this module that ever run an external
-command (always through an injected runner, never a real subprocess in
-a unit test), and only ever a fixed set of read-only ``gh api``/``az
-... list`` commands: no write, no mutation, no secret.
+Along with :func:`resolve_subscription_id`, they are the only functions in
+this module that run an external command (always through an injected
+runner, never a real subprocess in a unit test), and only ever a fixed
+set of read-only ``gh api``/``az ... list`` commands: no write, no mutation,
+no secret. Display names resolve against ``az account list --all`` before
+scope comparison or deployment binding; failed or ambiguous resolution
+raises :class:`SubscriptionResolutionError`. GUIDs require no account lookup.
+Neither account resolution nor selected deployment metadata proves live
+runtime identity or enforcement.
 :func:`collect_live_github`'s ``data["default_branch"]``,
 ``data["branch_protection"]``, and ``data["environments"]`` are shaped
 to match exactly what ``assess_change_plane`` already reads from a
@@ -64,16 +69,25 @@ import struct
 import subprocess
 import zlib
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from urllib.parse import urlsplit
 
-from contracts import EvidenceRef, Finding, Status
-
-import canonical
+try:
+    from .contracts import EvidenceRef, Finding, Status
+    from . import canonical
+except ImportError:
+    from contracts import EvidenceRef, Finding, Status
+    import canonical
 
 
 class ChangePlaneError(RuntimeError):
     """Raised when a change-plane input cannot be read or parsed at all."""
+
+
+class SubscriptionResolutionError(ValueError):
+    """An Azure selector could not be bound to one canonical subscription ID."""
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +268,16 @@ def _ci_probes_satisfied(text: str) -> bool:
     without ever actually running either.
     """
     lines = text.splitlines()
+    # The catalog's actual no-skip CTK runner and local native assessor are
+    # executable commands, not keyword matches or declarations in comments.
+    native_ctk = any(re.fullmatch(
+        r"python3?\s+(?:\.governance-tools/)?scripts/ci/run-governance-pin-tests\.py", line.strip()) for line in lines)
+    native_probe = any(re.fullmatch(
+        r"(?:PYTHONPATH=\.\s+)?python3?\s+(?:\.governance-tools/)?skills/threadlight-governed-actions/scripts/"
+        r"governed_actions\.py\s+--target\s+\S+\s+--phase\s+pre-deploy\s+--gate", line.strip())
+        for line in lines)
+    if native_ctk and native_probe:
+        return True
     ctk_ok = any(_RECOGNIZED_CTK_RUNNER_RE.match(line) for line in lines)
     probe_ok = any(
         _RECOGNIZED_APPLICATION_PROBE_RUNNER_RE.match(line)
@@ -550,6 +574,142 @@ class ChangePlaneResult:
     controls: Mapping[str, "Status | bool"]
     findings: Tuple[Finding, ...]
     evidence: Tuple[EvidenceRef, ...]
+    action_posture: Tuple[Mapping[str, object], ...] = ()
+    action_evidence: Tuple[Mapping[str, object], ...] = ()
+
+
+def _exact_gateway_url(value):
+    """Normalize HTTPS authority, never decode or prefix-match an operation route."""
+    try:
+        if (not isinstance(value, str) or not value.isascii() or len(value) > 512
+                or any(ord(char) <= 32 or ord(char) == 127 for char in value)):
+            return None
+        parsed = urlsplit(value)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+                or parsed.port not in (None, 443) or parsed.query or parsed.fragment
+                or parsed.hostname.endswith(".") or not re.fullmatch(r"[a-z0-9.-]+", parsed.hostname)
+                or not re.fullmatch(r"/[A-Za-z0-9_/-]+", parsed.path) or "//" in parsed.path):
+            return None
+        return f"https://{parsed.hostname}{parsed.path}"
+    except ValueError:
+        return None
+
+
+def assess_effect_closure(bindings, target, observations=(), verifier=None, *, now=None):
+    """Action-scoped posture, not a PEP or whole-agent certification.
+
+    `verifier` is a host-injected authenticated API/live-observation authority.
+    It must validate origin/integrity and collection provenance, including the
+    nested receipt, not echo selectors or accept local declaration flags.
+    No CLI/file path instantiates that authority; Task11 supplies live collection.
+    """
+    target_fields = {"agent_name", "agent_version", "image_digest", "policy_digest",
+                     "environment", "subscription", "resource_group"}
+    valid_target = (
+        isinstance(target, Mapping) and target_fields <= target.keys()
+        and all(isinstance(target[k], str) and target[k] for k in target_fields)
+        and re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", target["subscription"])
+        and all(re.fullmatch(r"sha256:[0-9a-f]{64}", target[k])
+                for k in ("image_digest", "policy_digest")))
+    def same_target(observed):
+        return (valid_target and isinstance(observed, Mapping)
+                and all(observed.get(k) == target[k] for k in target_fields))
+    verified = []
+    if callable(verifier) and valid_target:
+        for record in observations:
+            try:
+                if not isinstance(record, Mapping) or verifier(record) is not True:
+                    continue
+                instant = datetime.fromisoformat(now.replace("Z", "+00:00"))
+                collected = datetime.fromisoformat(record["collected_at"].replace("Z", "+00:00"))
+                if (instant.utcoffset() is None or collected.utcoffset() is None
+                        or not 0 <= (instant - collected).total_seconds() <= 300
+                        or not same_target(record.get("observed_target"))
+                        or not re.fullmatch(r"EV-[A-Za-z0-9._:-]+", record["evidence_ref"])
+                        or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",
+                                            record["agent_principal_id"])):
+                    continue
+                expected_source = ("deployed-invocations" if record["kind"] == "live-probe"
+                                   else "azure-resource-api")
+                if record["source"] == expected_source and isinstance(record.get("observed"), Mapping):
+                    verified.append(record)
+            except (ValueError, KeyError, TypeError, AttributeError):
+                continue
+            except Exception:
+                # An unavailable observation authority cannot confer authorization.
+                continue
+    result = []
+    for binding in bindings:
+        path = binding.get("enforcement_path")
+        posture = {
+            "binding_id": binding["binding_id"], "tool_id": binding["tool_id"],
+            "enforcement_path": path, "policy_digest": binding.get("policy_digest"),
+            "status": "unbound" if path == "none" else "unverified",
+            "posture": "unbound" if path == "none" else "unverified",
+            "whole_agent_governed": False, "evidence_refs": (),
+        }
+        if path != "governed-tool-gateway":
+            result.append(posture)
+            continue
+        records = [r for r in verified if r.get("action_id") == binding["tool_id"]]
+        bypass = any(
+            r["observed"].get("direct_access") == "allowed"
+            or any(r["observed"].get(k) is True for k in (
+                "direct_credentials_present", "builtin_equivalent_effect", "provider_equivalent_effect"))
+            or (r["kind"] == "live-probe" and type(r["observed"].get("side_effects")) is int
+                and r["observed"]["side_effects"] > 0)
+            for r in records)
+        by_kind = {kind: [r for r in records if r["kind"] == kind]
+                   for kind in ("configuration", "network", "iam", "live-probe")}
+        complete = all(len(items) == 1 for items in by_kind.values())
+        gateway = _exact_gateway_url(binding.get("gateway_url"))
+        passed = False
+        if complete and gateway and valid_target and binding.get("policy_digest") == target["policy_digest"]:
+            values = {kind: items[0]["observed"] for kind, items in by_kind.items()}
+            config, probe = values["configuration"], values["live-probe"]
+            receipt, positive = probe.get("receipt", {}), probe.get("positive_control", {})
+            passed = (
+                len({r["agent_principal_id"] for r in records}) == 1
+                and len({r["evidence_ref"] for r in records}) == len(records)
+                and all(_exact_gateway_url(r.get("gateway_url")) == gateway for r in records)
+                and _exact_gateway_url(config.get("mcp_url")) == gateway
+                and config.get("tool_name") == binding["tool_id"]
+                and config.get("credentials_complete") is True
+                and config.get("direct_credentials_present") is False
+                and config.get("equivalent_tools_complete") is True
+                and config.get("builtin_equivalent_effect") is False
+                and config.get("provider_equivalent_effect") is False
+                and all(values[k].get("direct_access") == "blocked"
+                        and values[k].get("paths_complete") is True for k in ("network", "iam"))
+                and probe.get("execution_surface") == "deployed-invocations"
+                and probe.get("outcome") == "blocked"
+                and all(type(probe.get(k)) is int and probe[k] == 0
+                        for k in ("downstream_calls", "side_effects"))
+                and isinstance(receipt, Mapping) and receipt.get("origin") == "gateway-service"
+                and receipt.get("decision") == "deny" and receipt.get("action_id") == binding["tool_id"]
+                and isinstance(receipt.get("receipt_id"), str)
+                and re.fullmatch(r"[0-9a-f]{32}", receipt["receipt_id"])
+                and bool(probe.get("invocation_id"))
+                and receipt.get("correlation_id") == probe["invocation_id"]
+                and same_target(receipt.get("observed_target"))
+                and isinstance(positive, Mapping) and bool(positive.get("invocation_id"))
+                and positive["invocation_id"] != probe["invocation_id"]
+                and positive.get("outcome") == "completed"
+                and all(type(positive.get(k)) is int and positive[k] == 1
+                        for k in ("downstream_calls", "side_effects")))
+        if bypass or passed:
+            posture.update(
+                status="bypassable" if bypass else "enforced",
+                posture="bypassable" if bypass else "action-governed",
+                evidence_refs=tuple(sorted({r["evidence_ref"] for r in records})))
+        result.append(posture)
+    referenced = {reference for entry in result for reference in entry["evidence_refs"]}
+    metadata = tuple({
+        "evidence_id": r["evidence_ref"], "source": r["source"],
+        "sha256": "sha256:" + canonical.sha256_hex(canonical.canonical_bytes(r)),
+        "collected_at": r["collected_at"], "deployed_target": dict(r["observed_target"]),
+    } for r in verified if r["evidence_ref"] in referenced)
+    return tuple(result), metadata
 
 
 # ---------------------------------------------------------------------------
@@ -2086,6 +2246,12 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
     deploy_action_job_steps = _azure_deploy_action_job_steps(document)
     deploy_identity_refs, non_deploy_identity_refs = _job_scoped_identity_refs(document)
     environment_identity_refs = _environment_scoped_identity_refs(document)
+    ci_probes = _ci_probes_static_status(document, triggers)
+    text = "\n".join(_governance_relevant_run_command_texts(document))
+    if ".governance-tools/scripts/ci/run-governance-pin-tests.py" in text:
+        root = _infer_repo_root_from_workflow_path(path)
+        if root is None or not _exported_native_sources_present(root):
+            ci_probes = "must-fix"
     return WorkflowAssessment(
         path=path,
         triggers=triggers,
@@ -2099,13 +2265,40 @@ def assess_workflow(path: Path) -> WorkflowAssessment:
             deploy_action_job_steps,
             _has_azure_deploy_evidence(document, deploy_action_job_steps),
         ),
-        ci_probes=_ci_probes_static_status(document, triggers),
+        ci_probes=ci_probes,
         identity_refs=_identity_refs(login_job_steps),
         sha_violations=sha_violations,
         deploy_identity_refs=deploy_identity_refs,
         non_deploy_identity_refs=non_deploy_identity_refs,
         environment_identity_refs=environment_identity_refs,
     )
+
+
+def _exported_native_sources_present(root: Path) -> bool:
+    """Check the exported execution closure, not only the workflow's command names."""
+    tools = root / ".governance-tools"
+    required = {
+        "scripts/ci/run-governance-pin-tests.py", "scripts/ci/governance_ctk.py",
+        "scripts/ci/ctk-oracle/Cargo.toml", "scripts/ci/ctk-oracle/Cargo.lock",
+        "scripts/ci/ctk-oracle/src/main.rs",
+        "skills/_shared/governance-ctk-pin.json", "skills/_shared/governance-upstream-pin.json",
+        "skills/threadlight-govern/tests/test_agent_hooks_ctk.py",
+        "skills/threadlight-governed-actions/scripts/governed_actions.py",
+    }
+    try:
+        manifest = json.loads((tools / "source-manifest.json").read_text())
+        files = manifest["files"]
+        if not isinstance(files, dict) or not required <= files.keys():
+            return False
+        for name, expected in files.items():
+            path = tools / name
+            if (Path(name).is_absolute() or ".." in Path(name).parts
+                    or path.is_symlink() or not path.resolve().is_relative_to(tools.resolve())
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != expected):
+                return False
+        return True
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -3081,10 +3274,45 @@ def _assess_workflow_or_flag(root: Path, path: Path) -> Tuple[WorkflowAssessment
         return _unreadable_workflow_assessment(path, reason), False
 
 
+def resolve_change_plane_root(project: Path):
+    """Only an explicit project declaration may select its observed git worktree."""
+    project = Path(project).resolve()
+    declaration = project / "governance/change-plane.json"
+    if not declaration.is_file():
+        return project, ""
+    raw = json.loads(declaration.read_text())
+    if raw.get("scope") not in {"worktree", "standalone"}:
+        return project, ""
+    standalone = raw["scope"] == "standalone"
+    candidate = project if standalone else (project / raw["root"]).resolve()
+    if not project.is_relative_to(candidate):
+        raise ChangePlaneError("change-plane-root-must-be-project-ancestor")
+    try:
+        completed = subprocess.run(["git", "-C", str(project), "rev-parse", "--show-toplevel"],
+                                   capture_output=True, text=True, check=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ChangePlaneError("standalone-or-worktree-not-observed") from error
+    if candidate != Path(completed.stdout.strip()).resolve():
+        raise ChangePlaneError("standalone-root-is-not-current-worktree" if standalone
+                               else "change-plane-root-is-not-current-worktree")
+    if standalone:
+        return project, ""
+    prefix = project.relative_to(candidate).as_posix()
+    if prefix != raw["project"]:
+        raise ChangePlaneError("change-plane-project-relative-path-mismatch")
+    return candidate, prefix
+
+
 def assess_change_plane(
     root: Path,
     live_github: Optional[Mapping] = None,
     live_azure: Optional[Mapping] = None,
+    *,
+    gateway_bindings=(),
+    deployed_target=None,
+    effect_observations=(),
+    observation_verifier=None,
+    now=None,
 ) -> ChangePlaneResult:
     """Assess an entire repository's GitHub Copilot change plane.
 
@@ -3108,8 +3336,21 @@ def assess_change_plane(
     every other discovered workflow is still assessed and reported
     normally.
     """
-    root = Path(root).resolve()
+    project = Path(root).resolve()
+    root, project_prefix = resolve_change_plane_root(project)
     discovered_paths = _discover_workflow_files(root)
+    declaration = project / "governance/change-plane.json"
+    if declaration.is_file():
+        declared = json.loads(declaration.read_text())
+        if declared.get("scope") in {"worktree", "standalone"}:
+            selected = declared.get("workflows", [])
+            if not selected or any(not isinstance(p, str) or not p.startswith(".github/workflows/")
+                                   or not (root / p).resolve().is_relative_to(root) for p in selected):
+                raise ChangePlaneError("invalid-scoped-ci-declaration")
+            paths = tuple(root / p for p in selected)
+            if any(p not in discovered_paths for p in paths):
+                raise ChangePlaneError("declared-ci-workflow-missing")
+            discovered_paths = paths
     assessments_list: List[WorkflowAssessment] = []
     safe_workflow_paths: List[Path] = []
     for path in discovered_paths:
@@ -3124,8 +3365,9 @@ def assess_change_plane(
     controls: Dict[str, "Status | bool"] = {}
 
     _assess_pr_gate(root, assessments, findings, controls)
-    _assess_codeowners(root, assessments, live_github, findings, controls)
-    _assess_ci_probes(root, assessments, findings, controls)
+    _assess_codeowners(root, assessments, live_github, findings, controls,
+                      project_prefix=project_prefix)
+    _assess_ci_probes(project, assessments, findings, controls)
     _assess_actions_and_permissions(root, assessments, findings, controls)
     _assess_oidc(root, assessments, findings, controls)
     _assess_identity_separation(assessments, live_azure, findings, controls)
@@ -3141,10 +3383,13 @@ def assess_change_plane(
             evidence.append(workflow_evidence)
 
     findings.sort(key=lambda finding: finding.finding_id)
+    action_posture, action_evidence = assess_effect_closure(
+        gateway_bindings, deployed_target, effect_observations, observation_verifier, now=now)
     return ChangePlaneResult(
         controls=controls,
         findings=tuple(findings),
         evidence=tuple(evidence),
+        action_posture=action_posture, action_evidence=action_evidence,
     )
 
 
@@ -3276,6 +3521,38 @@ def _command_failure_detail(error_class: str, exit_code: Optional[int]) -> str:
     if exit_code is None:
         return f"{error_class} (no process exit code available)"
     return f"{error_class}, exit code {exit_code}"
+
+
+def resolve_subscription_id(selector: str, run: CommandRunner) -> str:
+    """Resolve display names read-only; GUID selectors need no account lookup.
+
+    The local Azure CLI account list is selector resolution, not independent
+    evidence of a deployment. Missing, ambiguous or malformed results stop the
+    assessment before it can bind evidence to an unresolved display name.
+    """
+    guid = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+    if guid.fullmatch(selector):
+        return selector.lower()
+    accounts, error, exit_code = _run_read_only_command(
+        run, ["az", "account", "list", "--all", "--query", "[].{id:id,name:name}", "-o", "json"],
+    )
+    if error is not None:
+        raise SubscriptionResolutionError(
+            "Azure subscription resolution failed: " + _command_failure_detail(error, exit_code)
+        )
+    if not isinstance(accounts, list) or any(
+        not isinstance(account, Mapping)
+        or not isinstance(account.get("name"), str)
+        or not isinstance(account.get("id"), str)
+        or not guid.fullmatch(account["id"])
+        for account in accounts
+    ):
+        raise SubscriptionResolutionError("Azure subscription resolution returned malformed accounts")
+    matches = [account["id"].lower() for account in accounts
+               if account["name"].casefold() == selector.casefold()]
+    if len(matches) != 1:
+        raise SubscriptionResolutionError("Azure subscription name is missing or ambiguous")
+    return matches[0]
 
 
 def _is_json_list(payload: object) -> bool:
@@ -3939,10 +4216,45 @@ def collect_live_azure(
             )
         role_definitions[role_name] = matching_definition
 
+    observed_scopes = []
+    observed_identities = []
+    identity_fields = {
+        "agent_name", "agent_version", "image_digest", "policy_digest", "environment",
+    }
+    for record in federated_credentials:
+        resource_id = record.get("id")
+        identity_match = re.fullmatch(
+            r"/subscriptions/[^/]+/resourceGroups/[^/]+/providers/"
+            r"Microsoft\.ManagedIdentity/userAssignedIdentities/([^/]+)/"
+            r"federatedIdentityCredentials/[^/]+/?",
+            resource_id, re.I,
+        ) if isinstance(resource_id, str) else None
+        if identity_match:
+            observed_identities.append({"deploy_identity": identity_match[1]})
+    for record in federated_credentials + role_assignments:
+        scopes = [record[field] for field in ("id", "scope") if field in record]
+        for scope in scopes or [None]:
+            match = re.match(
+                r"^/subscriptions/([^/]+)(?:/resourceGroups/([^/]+))?(?:/|$)",
+                scope, re.I,
+            ) if isinstance(scope, str) else None
+            observed_scopes.append(
+                {"subscription": match[1], **({"resource_group": match[2]} if match[2] else {})}
+                if match else {}
+            )
+        for values in (record, record.get("properties", {})):
+            if isinstance(values, Mapping):
+                identity = {key: values[key] for key in identity_fields if key in values}
+                if identity:
+                    observed_identities.append(identity)
     data: Dict[str, object] = {
-        "subscription": subscription,
-        "resource_group": resource_group,
-        "deploy_identity": deploy_identity,
+        "selected_scope": {
+            "subscription": subscription,
+            "resource_group": resource_group,
+            "deploy_identity": deploy_identity,
+        },
+        "observed_scopes": sorted(observed_scopes, key=canonical.canonical_bytes),
+        "observed_identities": sorted(observed_identities, key=canonical.canonical_bytes),
         "federated_credentials": _sorted_by_field(federated_credentials, "name"),
         "role_assignments": _sorted_by_field(role_assignments, "roleDefinitionName"),
         "role_definitions": role_definitions,
@@ -4385,6 +4697,7 @@ def _assess_codeowners(
     live_github: Optional[Mapping],
     findings: List[Finding],
     controls: Dict[str, "Status | bool"],
+    project_prefix: str = "",
 ) -> None:
     ownership_path = _find_ownership_file(root)
     if ownership_path is None:
@@ -4411,9 +4724,12 @@ def _assess_codeowners(
         return
 
     entries = _parse_codeowners_entries(ownership_path)
-    required_patterns = _REQUIRED_CODEOWNERS_PATTERNS + (
-        _discover_infrastructure_codeowners_requirements(root)
-    )
+    project_root = root / project_prefix if project_prefix else root
+    infrastructure = _discover_infrastructure_codeowners_requirements(project_root)
+    required_patterns = _REQUIRED_CODEOWNERS_PATTERNS + tuple(
+        project_prefix + "/" + p.lstrip("/") if project_prefix else p for p in infrastructure)
+    if project_prefix:
+        required_patterns += (project_prefix + "/**",)
     missing = tuple(
         requirement
         for requirement in required_patterns
@@ -4441,7 +4757,7 @@ def _assess_codeowners(
         )
         return
 
-    eval_suite_files = _discover_eval_suite_files(root)
+    eval_suite_files = _discover_eval_suite_files(project_root)
     eval_directories = (
         _eval_suite_directories(root, eval_suite_files) if eval_suite_files else set()
     )

@@ -45,6 +45,7 @@ from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 import canonical
 import contracts
+from skills._shared.native_local_evidence import validated_controls
 from contracts import (
     ActionRecord,
     AssessmentResult,
@@ -76,6 +77,12 @@ MANIFEST_SCHEMA = "threadlight-governed-actions-manifest/v1"
 APPLY_PLAN_SCHEMA = "threadlight-governed-actions-apply-plan/v1"
 ADAPTER_NAME = "maf/v1"
 ASSESSOR_NAME = "threadlight-governed-actions"
+EVIDENCE_CONTRACT = "governance-ledger/v2"
+_PERSISTED_PROBE_KINDS = {
+    "approval-anti-replay": {"approval-ledger-records", "approval-binding-digest"},
+    "output-mediation": {"output-ledger-records"},
+    "payload-free-audit": {"audit-ledger-records", "probe-audit-record"},
+}
 
 #: Same fallback the rest of this project uses (``AssessmentOptions.now``'s
 #: own default) when no evidence carries a trustworthy collection
@@ -455,6 +462,8 @@ def _path_to_dict(path: PathRecord) -> Dict[str, object]:
         "pre_action_seam": path.pre_action_seam,
         "equivalent_control_ref": path.equivalent_control_ref,
         "covered": path.covered,
+        "discovered": path.discovered,
+        "executed": path.executed,
         "status": path.status,
         "evidence_refs": sorted(path.evidence_refs),
     }
@@ -470,6 +479,7 @@ def _probe_to_dict(probe: ProbeResult) -> Dict[str, object]:
         "probe_id": probe.probe_id,
         "action_id": probe.action_id,
         "path_id": probe.path_id,
+        "mode": probe.mode,
         "status": probe.status,
         "reason_code": probe.reason_code,
         "expected_sha256": f"sha256:{canonical.sha256_hex(probe.expected.encode('utf-8'))}",
@@ -512,6 +522,7 @@ def _evidence_to_dict(ref: EvidenceRef) -> Dict[str, object]:
         "source_commit": ref.source_commit,
         "target_environment": ref.target_environment,
         "policy_set_sha256": ref.policy_set_sha256,
+        **({"deployed_target": dict(ref.deployed_target)} if ref.deployed_target is not None else {}),
     }
 
 
@@ -848,16 +859,58 @@ def _required_evidence_is_untrustworthy(
     -- or a ``governed`` summary verdict -- on the strength of evidence
     nothing actually needed.
 
-    Deliberately does *not* check a "target environment" or "tested
-    tuple" expectation: ``AssessmentResult`` carries no authoritative
-    expected value for either today, and this module never invents one
-    to compare against -- a real check there would need a new, explicit
-    assessment-level binding field, not a fabricated expectation.
+    Live evidence also requires an exact assessment-level deployment binding.
+    Local probe provenance cannot be relabeled as live enforcement evidence.
     """
     required_ids = _required_evidence_ids(result)
+    evidence_by_id = {ref.evidence_id: ref for ref in result.evidence}
+    try:
+        native_controls = validated_controls(
+            result.native_local, [_probe_to_dict(p) for p in result.probes],
+            [_evidence_to_dict(e) for e in result.evidence],
+            source={"repository": result.source.repository, "commit": result.source.commit,
+                    "dirty": result.source.dirty},
+            phase=_phase_for(result), captured_at=result.captured_at,
+            policy_hashes=_normalize_policy_hashes(result.policy_hashes),
+            assessor={"name": ASSESSOR_NAME, "version": contracts.ASSESSOR_VERSION, "adapter": ADAPTER_NAME})
+    except (ValueError, TypeError, KeyError, OSError, RecursionError):
+        return True
+    approvals = [p for p in result.probes if p.probe_id == "approval-anti-replay"]
+    for action_id in {p.action_id for p in approvals}:
+        if (action_id, "approval-anti-replay") in native_controls:
+            continue
+        sequence = [p for p in approvals if p.action_id == action_id]
+        if all(p.status == "pass" for p in sequence):
+            observed = [p.observed for p in sequence]
+            ledger_ids = {
+                key for p in sequence for key in p.evidence_refs
+                if key in evidence_by_id and evidence_by_id[key].kind == "approval-ledger-records"
+            }
+            if (
+                len(sequence) != 14 or len(ledger_ids) != 14
+                or observed.count("approval_accepted") != 2
+                or observed.count("expired_rejected") != 1
+                or sum(value in {"replay_rejected", "binding_mismatch_rejected", "reused_nonce_rejected"}
+                       for value in observed) != 11
+            ):
+                return True
+    for probe in result.probes:
+        required_kinds = _PERSISTED_PROBE_KINDS.get(probe.probe_id, set())
+        if (probe.status == "pass" and required_kinds
+                and (probe.action_id, probe.probe_id) not in native_controls):
+            refs = [evidence_by_id[key] for key in probe.evidence_refs if key in evidence_by_id]
+            if not required_kinds <= {ref.kind for ref in refs}:
+                return True
+            for ref in refs:
+                if ref.kind.endswith("-ledger-records") and (
+                    not re.fullmatch(r"sha256:[0-9a-f]{64}", ref.sha256 or "")
+                    or ref.evidence_id != f"{ref.kind}-{ref.sha256[7:]}"
+                    or not ref.source.endswith("#assessment-isolated")
+                    or ref.live_verified
+                ):
+                    return True
     if not required_ids:
         return False
-    evidence_by_id = {ref.evidence_id: ref for ref in result.evidence}
     finding_phases_by_evidence = _evidence_finding_phases(result)
     expected_policy_set_sha256 = _canonical_policy_set_sha256(result)
     for evidence_id in required_ids:
@@ -877,6 +930,16 @@ def _required_evidence_is_untrustworthy(
         if finding_phases and ref.phase not in finding_phases:
             return True
         if ref.policy_set_sha256 is not None and ref.policy_set_sha256 != expected_policy_set_sha256:
+            return True
+        if ref.live_verified and (
+            result.deployed_target is None or ref.deployed_target != result.deployed_target
+            or ref.kind.startswith(("probe-", "path-", "approval-", "output-", "audit-ledger-"))
+        ):
+            return True
+        if ref.deployed_target is not None and (
+            ref.deployed_target != result.deployed_target
+            or ref.target_environment != ref.deployed_target.get("environment")
+        ):
             return True
     return False
 
@@ -1074,12 +1137,15 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
 
     return {
         "schema": MANIFEST_SCHEMA,
+        "evidence_contract": EVIDENCE_CONTRACT,
+        **({"native_local": dict(result.native_local)} if result.native_local is not None else {}),
         "assessor": {
             "name": ASSESSOR_NAME,
             "version": contracts.ASSESSOR_VERSION,
             "adapter": ADAPTER_NAME,
         },
         "phase": _phase_for(result),
+        **({"deployed_target": dict(result.deployed_target)} if result.deployed_target is not None else {}),
         "captured_at": captured_at,
         "source": {
             "repository": result.source.repository,
@@ -1096,6 +1162,10 @@ def build_manifest(result: AssessmentResult) -> Dict[str, object]:
             "application_probes": [_probe_to_dict(probe) for probe in _sorted_probes(result.probes)],
         },
         "change_plane": _normalize_change_plane(result.change_plane, result.source.repository),
+        **({"action_posture": [
+            {**entry, "evidence_refs": sorted(entry["evidence_refs"])}
+            for entry in sorted(result.action_posture, key=lambda entry: entry["binding_id"])
+        ]} if result.action_posture else {}),
         "findings": findings,
         "evidence": [_evidence_to_dict(ref) for ref in _sorted_evidence(result.evidence)],
         "freshness": freshness,
@@ -1500,10 +1570,15 @@ def _action_row(action: Dict[str, object]) -> str:
 
 
 def _path_row(path: Dict[str, object]) -> str:
-    return "- {path_id} action={action_id} mode={mode} covered={covered} status={status}".format(
+    return (
+        "- {path_id} action={action_id} mode={mode} discovered={discovered} "
+        "executed={executed} covered={covered} status={status}"
+    ).format(
         path_id=_md_code_span(path["path_id"]),
         action_id=_md_code_span(path["action_id"]),
         mode=_md_escape_inline(path["mode"]),
+        discovered=path["discovered"],
+        executed=path["executed"],
         covered=path["covered"],
         status=_md_escape_inline(path["status"]),
     )
@@ -1637,6 +1712,12 @@ def render_evidence_pack(result: AssessmentResult) -> str:
         "deployment supply chain a change travels through is assessed."
     )
     lines.append(
+        "- `executed=True/pass` means the declared local application dispatch "
+        "was executed under hermetic conformance; it is not deployed "
+        "production enforcement and requires live deployed version/image/"
+        "policy evidence."
+    )
+    lines.append(
         "- Provider-hosted tool side effects without an equivalent, "
         "independently verified server-side control are not supported by "
         "this assessment's mediation model."
@@ -1698,6 +1779,16 @@ def render_evidence_pack(result: AssessmentResult) -> str:
         "recorded.".format(len(change_plane["workflows"]), len(change_plane["identities"]))
     )
     lines.append("")
+
+    if manifest.get("action_posture"):
+        lines.append("## Gateway action scope")
+        lines.append("")
+        lines.append("These observations do not govern the Copilot internal loop or certify the whole agent.")
+        for entry in manifest["action_posture"]:
+            lines.append("- {}: {} ({}).".format(
+                _md_code_span(entry["tool_id"]), _md_code_span(entry["posture"]),
+                _md_code_span(entry["status"])))
+        lines.append("")
 
     lines.append("## Evidence index")
     lines.append("")

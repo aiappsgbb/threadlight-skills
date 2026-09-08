@@ -3,10 +3,11 @@
 A Conformance Test Kit (CTK) claim or upstream conformance report is
 useful dependency evidence, but it is never sufficient by itself: it
 proves the *framework* implements a contract, not that *this* target
-application's dispatch path actually enforces it. This module drives the
-target's real dispatch seam — named by a probe contract, never
-guessed — with synthetic fixtures and proves whether a denied or
-transformed consequential action ever reaches its tool service.
+application's dispatch path actually enforces it. This module drives both the
+target's generic enforcement seam and one declared application execution
+dispatcher in isolated children. The dispatcher must route each assessor-bound
+action/mode through the application's real routing table; convention-named
+functions are discovery evidence only and are never selected by the assessor.
 
 Every probe runs the target's dispatch callable in an isolated
 subprocess: a sanitized (allow-listed, not inherited) environment,
@@ -157,9 +158,14 @@ own docstring.
 """
 from __future__ import annotations
 
+import asyncio
 import importlib
+import inspect
 import json
 import os
+import re
+import secrets
+import select
 import subprocess
 import sys
 import tempfile
@@ -167,13 +173,17 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Callable, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import urlsplit
 
 import canonical
 from contracts import Finding, Phase, ProbeEvidence, ProbeResult, UnsafeTargetError
+
+if TYPE_CHECKING:
+    from contracts import PathRecord
 
 
 THIS_FILE = Path(__file__).resolve()
@@ -193,6 +203,13 @@ _REQUIRED_REPORT_KEYS: Tuple[str, ...] = (
     "invocation_count",
     "argument_hash",
     "exception_class",
+)
+
+_REQUIRED_PATH_REPORT_KEYS: Tuple[str, ...] = (
+    "action_id",
+    "mode",
+    "resolved_path",
+    "expected_resolved_path",
 )
 
 # The only decision values a *completed* child report is ever allowed to
@@ -215,6 +232,11 @@ _CHILD_READY_MARKER: bytes = b"PROBE-CHILD-READY\n"
 # ever becoming ready cannot block a probe run forever; ordinary startup
 # (well under a few hundred milliseconds) never comes close to it.
 _CHILD_READY_TIMEOUT_S: float = 5.0
+
+# Assessor-owned technical bounds for draining the execution-path proof pipe.
+# Target contracts cannot raise either limit.
+_PATH_PROOF_DRAIN_TIMEOUT_S: float = 0.25
+_MAX_PATH_PROOF_BYTES: int = 1_048_576
 
 # What a passing probe must observe, keyed by ``ProbeCase.fault``. Also
 # doubles as the harness's registry of recognized fault names (see
@@ -510,20 +532,70 @@ class ProbeToolingError(RuntimeError):
     """
 
 
+class PartialProbeToolingError(ProbeToolingError):
+    """A tooling failure that happened after some probe results were already proven."""
+
+    def __init__(self, message: str, *, partial_results: Tuple[ProbeResult, ...]):
+        super().__init__(message)
+        self.partial_results = partial_results
+
+
+class ProofChannelReadError(ProbeToolingError):
+    """A bounded proof-channel drain ended with only partial bytes."""
+
+    def __init__(self, message: str, *, reason: str, partial_bytes: bytes):
+        super().__init__(message)
+        self.reason = reason
+        self.partial_bytes = partial_bytes
+
+
 @dataclass(frozen=True)
 class ProbeCase:
     probe_id: str
     action_id: str
     fault: str
     arguments: Mapping[str, object]
+    path_id: Optional[str] = None
+
+
+def _validated_execution_paths(raw: Mapping[str, object]) -> Tuple[Mapping[str, str], ...]:
+    declared = raw.get("execution_paths", ())
+    if not isinstance(declared, (list, tuple)):
+        raise ProbeContractError(
+            "probe contract 'execution_paths' must be a list of "
+            "{action_id, mode, path_id} records"
+        )
+    normalized: List[Mapping[str, str]] = []
+    required = {"action_id", "mode", "path_id"}
+    for index, item in enumerate(declared):
+        if not isinstance(item, Mapping) or set(item) != required:
+            raise ProbeContractError(
+                f"probe contract execution_paths[{index}] must contain exactly "
+                f"{tuple(sorted(required))!r}; got {item!r}"
+            )
+        values = {}
+        for key in sorted(required):
+            value = item.get(key)
+            if not isinstance(value, str) or not value.strip():
+                raise ProbeContractError(
+                    f"probe contract execution_paths[{index}].{key} must be "
+                    f"a non-empty string; got {value!r}"
+                )
+            values[key] = value.strip()
+        normalized.append(MappingProxyType(values))
+    return tuple(normalized)
 
 
 def load_probe_contract(root: Path) -> Mapping[str, object]:
     """Load and validate ``<root>/governance/probe-contract.json``.
 
-    Returns a read-only mapping with exactly ``dispatch``, ``audit_sink``,
-    ``timeout_ms``, ``side_effect_mode``, ``observation_ledger``, and
-    ``actions`` (normalized to a tuple). Raises :class:`ProbeContractError`
+    Returns a read-only mapping with ``dispatch``, ``execution_dispatch``,
+    ``audit_sink``, ``timeout_ms``, ``side_effect_mode``,
+    ``observation_ledger``, ``actions`` (normalized to a tuple), and normalized
+    ``execution_paths``.
+    A legacy top-level ``path_id`` may be read but is never attached to a
+    generic dispatch result and therefore cannot prove mediation. Raises
+    :class:`ProbeContractError`
     for anything missing, malformed, or unsafe — including a
     ``timeout_ms`` outside the assessor-owned safe range, a
     ``side_effect_mode`` other than ``synthetic``/``dry-run``, and an
@@ -546,9 +618,13 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
             f"probe contract must be a JSON object: {contract_path}"
         )
 
-    for key in ("dispatch", "audit_sink"):
+    for key in ("dispatch", "execution_dispatch", "audit_sink"):
         value = raw.get(key)
-        if not isinstance(value, str) or ":" not in value:
+        if (
+            not isinstance(value, str)
+            or value.count(":") != 1
+            or not all(part.strip() for part in value.split(":", 1))
+        ):
             raise ProbeContractError(
                 f"probe contract {key!r} must be an importable 'module:attr' "
                 f"reference string; got {value!r}"
@@ -612,16 +688,80 @@ def load_probe_contract(root: Path) -> Mapping[str, object]:
             f"non-empty strings; got {actions!r}"
         )
 
+    path_id = raw.get("path_id")
+    if path_id is not None and (not isinstance(path_id, str) or not path_id.strip()):
+        raise ProbeContractError(
+            "probe contract 'path_id' must be a non-empty string when "
+            f"declared; got {path_id!r}"
+        )
+
     return MappingProxyType(
         {
             "dispatch": raw["dispatch"],
+            "execution_dispatch": raw["execution_dispatch"],
             "audit_sink": raw["audit_sink"],
             "timeout_ms": timeout_ms,
             "side_effect_mode": side_effect_mode,
             "observation_ledger": observation_ledger,
+            "path_id": path_id,
             "actions": tuple(actions),
+            "execution_paths": _validated_execution_paths(raw),
         }
     )
+
+
+def validate_execution_paths(
+    contract: Mapping[str, object],
+    discovered_paths: Sequence["PathRecord"],
+) -> Tuple[Mapping[str, str], ...]:
+    """Bind action/mode declarations to the assessor's recomputed inventory.
+
+    Per-path callable references are deliberately forbidden. The isolated child
+    invokes only ``execution_dispatch`` and verifies the resolved target against
+    the dispatcher's same-module ``EXECUTION_ROUTES`` table.
+    """
+    bindings = tuple(contract.get("execution_paths", ()))
+    expected = {
+        (path.action_id, path.mode): path
+        for path in discovered_paths
+        if path.discovered and path.mode != "provider-hosted-tool"
+    }
+    seen_keys = set()
+    seen_path_ids = set()
+    validated: List[Mapping[str, str]] = []
+    for binding in bindings:
+        action_id = binding["action_id"]
+        mode = binding["mode"]
+        path_id = binding["path_id"]
+        key = (action_id, mode)
+        if key in seen_keys or path_id in seen_path_ids:
+            raise ProbeContractError(
+                f"duplicate execution path binding for {action_id!r}/{mode!r} "
+                f"({path_id!r})"
+            )
+        seen_keys.add(key)
+        seen_path_ids.add(path_id)
+
+        path = expected.get(key)
+        if path is None or path.path_id != path_id:
+            raise ProbeContractError(
+                f"execution path binding {action_id!r}/{mode!r}/{path_id!r} "
+                "does not match assessor-discovered PathRecord"
+            )
+        validated.append(binding)
+
+    missing = sorted(set(expected) - seen_keys)
+    if missing:
+        action_id, mode = missing[0]
+        raise ProbeContractError(
+            f"unlisted assessor-discovered path for {action_id!r}/{mode!r}; "
+            "every discovered path requires one execution_paths binding"
+        )
+    if len(validated) != len(expected):
+        raise ProbeContractError(
+            "probe contract binds a path outside the assessor-discovered inventory"
+        )
+    return tuple(validated)
 
 
 def _missing_ancestor_dirs(ledger_dir: Path) -> List[Path]:
@@ -728,8 +868,280 @@ def run_enforcement_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
     results = []
     for action_id in contract["actions"]:
         for probe_id, fault in _ENFORCEMENT_PROBE_SUITE:
-            case = ProbeCase(probe_id, action_id, fault, _ENFORCEMENT_PROBE_ARGUMENTS)
-            results.append(run_application_probe(root, case))
+            case = ProbeCase(
+                probe_id,
+                action_id,
+                fault,
+                _ENFORCEMENT_PROBE_ARGUMENTS,
+            )
+            try:
+                results.append(run_application_probe(root, case))
+            except ProbeToolingError as error:
+                raise PartialProbeToolingError(
+                    str(error), partial_results=tuple(results)
+                ) from error
+    return tuple(results)
+
+
+_PATH_PROBE_ID_PREFIX = "path-dispatch-"
+_PATH_PROBE_DECISIONS = ("allow", "deny")
+_PATH_PROBE_IDS = frozenset(
+    f"{_PATH_PROBE_ID_PREFIX}{decision}" for decision in _PATH_PROBE_DECISIONS
+)
+_PATH_PROBE_EXPECTED = "pre_action_decision_before_invocation_or_deny"
+_PATH_PRE_DECISION_KIND = "path-pre-action-decision"
+_PATH_INVOCATION_KIND = "path-tool-invocation"
+_PATH_RESOLVED_KIND = "path-resolved-function"
+_PATH_ROUTING_TARGET_KIND = "path-routing-table-target"
+_PATH_PROOF_SOURCE = "assessor:execution-path-proof-channel"
+_PATH_CHILD_ARG = "--path-child"
+PATH_PROBE_IDS = _PATH_PROBE_IDS
+
+_PATH_CHILD_ERROR_REASONS = {
+    "startup_failed": "path-dispatch-startup-failed",
+    "timeout": "path-dispatch-timeout",
+    "nonzero_exit": "path-dispatch-nonzero-exit",
+    "malformed_output": "path-dispatch-malformed-output",
+    "proof_timeout": "path-proof-channel-timeout",
+    "proof_oversized": "path-proof-channel-oversized",
+}
+
+
+def _build_path_probe_result(
+    binding: Mapping[str, str],
+    outcome: Mapping[str, object],
+    ledger_source: str,
+    probe_id: str,
+) -> ProbeResult:
+    action_id = binding["action_id"]
+    mode = binding["mode"]
+    path_id = binding["path_id"]
+    correlated = [
+        event
+        for event in outcome["events"]
+        if event.get("action_id") == action_id
+        and event.get("mode") == mode
+        and event.get("path_id") == path_id
+    ]
+    decision_index = next(
+        (
+            index
+            for index, event in enumerate(correlated)
+            if event.get("event") == "pre_action_decision"
+        ),
+        None,
+    )
+    invocation_index = next(
+        (
+            index
+            for index, event in enumerate(correlated)
+            if event.get("event") == "invocation"
+        ),
+        None,
+    )
+    decision = (
+        correlated[decision_index].get("decision")
+        if decision_index is not None
+        else None
+    )
+    ledger_resolved_paths = {
+        str(event["resolved_path"])
+        for event in correlated
+        if event.get("event") == "resolved_path"
+        and isinstance(event.get("resolved_path"), str)
+    }
+    ledger_expected_paths = {
+        str(event["expected_resolved_path"])
+        for event in correlated
+        if event.get("event") == "routing_target"
+        and isinstance(event.get("expected_resolved_path"), str)
+    }
+    reported_resolved_path = (
+        str(outcome["resolved_path"])
+        if isinstance(outcome.get("resolved_path"), str)
+        else None
+    )
+    reported_expected_path = (
+        str(outcome["expected_resolved_path"])
+        if isinstance(outcome.get("expected_resolved_path"), str)
+        else None
+    )
+    identity_mismatch = (
+        len(ledger_resolved_paths) > 1
+        or len(ledger_expected_paths) > 1
+        or (
+            bool(ledger_resolved_paths)
+            and bool(ledger_expected_paths)
+            and ledger_resolved_paths != ledger_expected_paths
+        )
+        or (
+            reported_resolved_path is not None
+            and bool(ledger_resolved_paths)
+            and reported_resolved_path not in ledger_resolved_paths
+        )
+        or (
+            reported_expected_path is not None
+            and bool(ledger_expected_paths)
+            and reported_expected_path not in ledger_expected_paths
+        )
+        or (
+            reported_resolved_path is not None
+            and reported_expected_path is not None
+            and reported_resolved_path != reported_expected_path
+        )
+    )
+    identity_unobservable = (
+        len(ledger_resolved_paths) != 1
+        or len(ledger_expected_paths) != 1
+    )
+    child_error = outcome.get("child_error")
+
+    if invocation_index is not None and decision == "deny":
+        status = "must-fix"
+        reason_code = "ENF-002"
+        observed = "tool_invoked_despite_deny"
+    elif invocation_index is not None and (
+        decision_index is None or decision_index > invocation_index
+    ):
+        status = "must-fix"
+        reason_code = "ENF-002"
+        observed = "tool_invoked_without_pre_action_decision"
+    elif identity_mismatch:
+        status = "must-fix"
+        reason_code = "ENF-002"
+        observed = "resolved_path_identity_mismatch"
+    elif child_error is not None:
+        status = "not-verified"
+        reason_code = _PATH_CHILD_ERROR_REASONS.get(
+            str(child_error), "path-dispatch-unobservable"
+        )
+        observed = f"path_dispatch_child_error:{child_error}"
+    elif identity_unobservable:
+        status = "not-verified"
+        reason_code = "path-dispatch-unobservable"
+        observed = "resolved_path_identity_unobservable"
+    elif invocation_index is not None and decision in ("allow", "transform"):
+        status = "pass"
+        reason_code = "path-dispatch-mediated"
+        observed = "pre_action_decision_before_invocation"
+    elif decision_index is not None and decision == "deny":
+        status = "pass"
+        reason_code = "path-dispatch-denied"
+        observed = "deny_decision_without_invocation"
+    else:
+        status = "not-verified"
+        reason_code = "path-dispatch-unobservable"
+        observed = "path_dispatch_did_not_reach_decision_or_tool"
+
+    evidence_events = [
+        event
+        for event in correlated
+        if event.get("event")
+        in ("routing_target", "resolved_path", "pre_action_decision", "invocation")
+        and isinstance(event.get("evidence_id"), str)
+    ]
+    evidence_refs = tuple(str(event["evidence_id"]) for event in evidence_events)
+    evidence_items = tuple(
+        _record_evidence(
+            str(event["evidence_id"]),
+            (
+                {
+                    "routing_target": _PATH_ROUTING_TARGET_KIND,
+                    "resolved_path": _PATH_RESOLVED_KIND,
+                    "pre_action_decision": _PATH_PRE_DECISION_KIND,
+                    "invocation": _PATH_INVOCATION_KIND,
+                }[str(event["event"])]
+            ),
+            ledger_source,
+            {
+                key: value
+                for key, value in event.items()
+                if key != "proof_nonce"
+            },
+        )
+        for event in evidence_events
+    )
+    return ProbeResult(
+        probe_id=probe_id,
+        action_id=action_id,
+        path_id=path_id,
+        mode=mode,
+        status=status,
+        reason_code=reason_code,
+        expected=_PATH_PROBE_EXPECTED,
+        observed=observed,
+        evidence_refs=evidence_refs,
+        evidence_items=evidence_items,
+    )
+
+
+def run_execution_path_probe_set(
+    root: Path, discovered_paths: Sequence["PathRecord"]
+) -> Tuple[ProbeResult, ...]:
+    """Execute every bound action/mode through the application dispatcher."""
+    root_path = Path(root).resolve()
+    contract = load_probe_contract(root_path)
+    bindings = validate_execution_paths(contract, discovered_paths)
+    ledger_dir = root_path / Path(contract["observation_ledger"]).parent
+    created_dirs = _missing_ancestor_dirs(ledger_dir)
+    try:
+        ledger_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        _remove_created_dirs(created_dirs)
+        raise ProbeToolingError(
+            f"cannot create execution-path observation ledger directory: {error}"
+        ) from error
+
+    results: List[ProbeResult] = []
+    try:
+        for binding in sorted(
+            bindings,
+            key=lambda item: (item["action_id"], item["mode"], item["path_id"]),
+        ):
+            for decision in _PATH_PROBE_DECISIONS:
+                target_ledger_path: Optional[Path] = None
+                try:
+                    target_ledger_fd, target_ledger_name = tempfile.mkstemp(
+                        dir=str(ledger_dir),
+                        prefix=f".path-target-{binding['path_id']}-{decision}-",
+                        suffix=".jsonl",
+                    )
+                    os.close(target_ledger_fd)
+                    target_ledger_path = Path(target_ledger_name)
+                except OSError as error:
+                    if target_ledger_path is not None:
+                        target_ledger_path.unlink(missing_ok=True)
+                    raise PartialProbeToolingError(
+                        f"cannot create execution-path observation ledger: {error}",
+                        partial_results=tuple(results),
+                    ) from error
+                try:
+                    assert target_ledger_path is not None
+                    try:
+                        outcome = _dispatch_path_child(
+                            root_path,
+                            contract,
+                            binding,
+                            target_ledger_path,
+                            decision,
+                        )
+                    except ProbeToolingError as error:
+                        raise PartialProbeToolingError(
+                            str(error), partial_results=tuple(results)
+                        ) from error
+                    results.append(
+                        _build_path_probe_result(
+                            binding,
+                            outcome,
+                            _PATH_PROOF_SOURCE,
+                            f"{_PATH_PROBE_ID_PREFIX}{decision}",
+                        )
+                    )
+                finally:
+                    if target_ledger_path is not None:
+                        target_ledger_path.unlink(missing_ok=True)
+    finally:
+        _remove_created_dirs(created_dirs)
     return tuple(results)
 
 
@@ -753,6 +1165,11 @@ def findings_from_probes(
     """
     findings = []
     for probe in probes:
+        if probe.probe_id in _PATH_PROBE_IDS:
+            # Path dispatch receipts are aggregated into MED-001/MED-002 by
+            # mediation.apply_execution_receipts. Emitting an ENF finding
+            # here as well would double-count the same observed bypass.
+            continue
         if probe.status in ("pass", "not-applicable", "not-verified"):
             continue
         template = _FINDING_TEMPLATES.get(probe.reason_code)
@@ -831,6 +1248,21 @@ def _record_evidence(
         source=source,
         sha256="sha256:" + canonical.sha256_hex(canonical.canonical_bytes(dict(record))),
     )
+
+
+def _persisted_records_evidence(
+    records: Sequence[Mapping[str, object]], kind: str, source: str
+) -> Tuple[ProbeEvidence, ...]:
+    if not records:
+        return ()
+    document = {"records": list(records)}
+    try:
+        for record in records:
+            canonical.validate_governance_record(record)
+        item = _record_evidence("", kind, source, document)
+    except (canonical.PayloadExposureError, canonical.CanonicalizationError):
+        return ()
+    return (replace(item, evidence_id=f"{kind}-{item.sha256[7:]}"),)
 
 
 def _evidence_items_for(
@@ -1066,7 +1498,7 @@ def _build_probe_result(
         return ProbeResult(
             probe_id=case.probe_id,
             action_id=case.action_id,
-            path_id=None,
+            path_id=case.path_id,
             status=status,
             reason_code=reason_code,
             expected=expected,
@@ -1167,7 +1599,7 @@ def _build_probe_result(
     return ProbeResult(
         probe_id=case.probe_id,
         action_id=case.action_id,
-        path_id=None,
+        path_id=case.path_id,
         status=status,
         reason_code=reason_code,
         expected=expected,
@@ -1230,14 +1662,17 @@ def _dispatch_child(
 
     try:
         assert process.stdin is not None  # narrows Optional for mypy/readers
-        process.stdin.write(stdin_bytes)
-        process.stdin.close()
+        with process.stdin:
+            process.stdin.write(stdin_bytes)
     except (OSError, ValueError):
         # A child that crashed before ever reading stdin (e.g. an
         # unresolvable dispatch reference) can close its end of the pipe
         # first; the ready-handshake wait below still correctly resolves
         # this to an abnormal/unobservable outcome.
         pass
+    finally:
+        # EOF precedes the ready handshake; communicate must not flush that closed pipe.
+        process.stdin = None
 
     ready = _wait_for_child_ready(process, _CHILD_READY_TIMEOUT_S)
     if not ready:
@@ -1292,6 +1727,255 @@ def _dispatch_child(
         "ledger_observable": bool(events),
         "invocation_argument_hash": invocation_argument_hash,
         "events": events,
+    }
+
+
+def _decode_path_proof_events(raw: bytes, proof_nonce: str) -> List[Mapping[str, object]]:
+    events: List[Mapping[str, object]] = []
+    expected_nonce = proof_nonce.encode("ascii")
+    for line in raw.splitlines():
+        try:
+            parsed = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(parsed, Mapping):
+            continue
+        event_nonce = parsed.get("proof_nonce")
+        if not isinstance(event_nonce, str):
+            continue
+        try:
+            event_nonce_bytes = event_nonce.encode("ascii")
+        except UnicodeEncodeError:
+            continue
+        if (
+            len(event_nonce_bytes) == len(expected_nonce)
+            and all(byte in b"0123456789abcdef" for byte in event_nonce_bytes)
+            and secrets.compare_digest(event_nonce_bytes, expected_nonce)
+        ):
+            events.append(parsed)
+    return events
+
+
+def _read_all_fd(fd: int) -> bytes:
+    collected = bytearray()
+    deadline = time.monotonic() + _PATH_PROOF_DRAIN_TIMEOUT_S
+    os.set_blocking(fd, False)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ProofChannelReadError(
+                "execution-path proof pipe drain exceeded its fixed deadline",
+                reason="timeout",
+                partial_bytes=bytes(collected),
+            )
+        try:
+            readable, _, _ = select.select([fd], [], [], remaining)
+        except InterruptedError:
+            continue
+        if not readable:
+            raise ProofChannelReadError(
+                "execution-path proof pipe drain exceeded its fixed deadline",
+                reason="timeout",
+                partial_bytes=bytes(collected),
+            )
+        try:
+            chunk = os.read(
+                fd,
+                min(65_536, _MAX_PATH_PROOF_BYTES - len(collected) + 1),
+            )
+        except (BlockingIOError, InterruptedError):
+            continue
+        if not chunk:
+            return bytes(collected)
+        available = _MAX_PATH_PROOF_BYTES - len(collected)
+        collected.extend(chunk[:available])
+        if len(chunk) > available:
+            raise ProofChannelReadError(
+                "execution-path proof pipe exceeded its fixed byte limit",
+                reason="oversized",
+                partial_bytes=bytes(collected),
+            )
+
+
+def _dispatch_path_child(
+    root_path: Path,
+    contract: Mapping[str, object],
+    binding: Mapping[str, str],
+    target_ledger_path: Path,
+    decision: str,
+) -> Mapping[str, object]:
+    proof_nonce = secrets.token_hex(32)
+    proof_read_fd: Optional[int] = None
+    proof_write_fd: Optional[int] = None
+    proof_path: Optional[Path] = None
+    proof_directory: Optional[tempfile.TemporaryDirectory[str]] = None
+    popen_extra: Mapping[str, object] = {}
+    try:
+        if os.name == "posix":
+            proof_read_fd, proof_write_fd = os.pipe()
+            popen_extra = {"pass_fds": (proof_write_fd,)}
+        else:
+            proof_base = Path(tempfile.gettempdir()).resolve()
+            try:
+                proof_base.relative_to(root_path)
+            except ValueError:
+                pass
+            else:
+                raise ProbeToolingError(
+                    "assessor proof directory would resolve inside the target root"
+                )
+            proof_directory = tempfile.TemporaryDirectory(
+                prefix="threadlight-assessor-path-proof-",
+                dir=str(proof_base),
+            )
+            proof_path = (
+                Path(proof_directory.name).resolve()
+                / f"{secrets.token_hex(32)}.jsonl"
+            )
+            proof_fd = os.open(
+                proof_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o600,
+            )
+            os.close(proof_fd)
+    except OSError as error:
+        if proof_directory is not None:
+            proof_directory.cleanup()
+        raise ProbeToolingError(
+            f"cannot create assessor execution-path proof channel: {error}"
+        ) from error
+
+    stdin_bytes = canonical.canonical_bytes(
+        {
+            "binding": dict(binding),
+            "declared_routes": [
+                [item["action_id"], item["mode"]]
+                for item in contract["execution_paths"]
+            ],
+            "decision": decision,
+            "execution_dispatch": contract["execution_dispatch"],
+            "proof_fd": proof_write_fd,
+            "proof_path": str(proof_path) if proof_path is not None else None,
+            "proof_nonce": proof_nonce,
+            "target_ledger_path": str(target_ledger_path),
+        }
+    )
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "PYTHONHASHSEED": "0",
+        "PYTHONPATH": str(root_path),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONIOENCODING": "utf-8",
+    }
+    proof_bytes = b""
+    proof_read_error: Optional[ProofChannelReadError] = None
+    try:
+        try:
+            process = subprocess.Popen(  # noqa: S603 - fixed, trusted argv; no shell
+                [sys.executable, str(THIS_FILE), _PATH_CHILD_ARG],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                cwd=str(root_path),
+                **popen_extra,
+            )
+        except OSError as error:
+            raise ProbeToolingError(
+                f"cannot start isolated execution-path probe subprocess: {error}"
+            ) from error
+        finally:
+            if proof_write_fd is not None:
+                os.close(proof_write_fd)
+                proof_write_fd = None
+
+        try:
+            assert process.stdin is not None
+            with process.stdin:
+                process.stdin.write(stdin_bytes)
+        except (OSError, ValueError):
+            pass
+        finally:
+            process.stdin = None
+
+        child_error: Optional[str] = None
+        stdout_bytes = b""
+        exit_code: Optional[int] = None
+        if not _wait_for_child_ready(process, _CHILD_READY_TIMEOUT_S):
+            process.kill()
+            _reap_killed_child(process)
+            child_error = "startup_failed"
+        else:
+            try:
+                stdout_bytes, _stderr_bytes = process.communicate(
+                    timeout=contract["timeout_ms"] / 1000.0
+                )
+                exit_code = process.returncode
+            except subprocess.TimeoutExpired:
+                process.kill()
+                _reap_killed_child(process)
+                child_error = "timeout"
+            else:
+                if exit_code != 0:
+                    child_error = "nonzero_exit"
+    finally:
+        if proof_write_fd is not None:
+            os.close(proof_write_fd)
+        if proof_read_fd is not None:
+            try:
+                try:
+                    proof_bytes = _read_all_fd(proof_read_fd)
+                except ProofChannelReadError as error:
+                    proof_bytes = error.partial_bytes
+                    proof_read_error = error
+            finally:
+                os.close(proof_read_fd)
+        elif proof_path is not None:
+            try:
+                proof_bytes = proof_path.read_bytes()
+            except OSError:
+                proof_bytes = b""
+        if proof_directory is not None:
+            proof_directory.cleanup()
+
+    if proof_read_error is not None:
+        child_error = f"proof_{proof_read_error.reason}"
+    report: Optional[Mapping[str, object]] = None
+    if child_error is None:
+        try:
+            parsed = json.loads(stdout_bytes.decode("utf-8"))
+            _validate_path_child_report(parsed)
+            report = parsed
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            child_error = "malformed_output"
+    events = _decode_path_proof_events(proof_bytes, proof_nonce)
+    resolved_path = report.get("resolved_path") if report is not None else None
+    expected_resolved_path = (
+        report.get("expected_resolved_path") if report is not None else None
+    )
+    if resolved_path is None:
+        resolved_path = next(
+            (
+                event.get("resolved_path")
+                for event in events
+                if event.get("event") == "resolved_path"
+            ),
+            None,
+        )
+    if expected_resolved_path is None:
+        expected_resolved_path = next(
+            (
+                event.get("expected_resolved_path")
+                for event in events
+                if event.get("event") == "routing_target"
+            ),
+            None,
+        )
+    return {
+        "events": events,
+        "child_error": child_error,
+        "resolved_path": resolved_path,
+        "expected_resolved_path": expected_resolved_path,
     }
 
 
@@ -1355,43 +2039,38 @@ def _wait_for_child_ready(process: "subprocess.Popen[bytes]", timeout_s: float) 
         return False
     return bytes(result[0]) == _CHILD_READY_MARKER
 
-def _read_ledger_events(ledger_path: Path) -> list:
-    """Read an observation/nonce ledger's JSONL events, tolerantly.
+def _unique_ledger_object(pairs: list) -> dict:
+    record = {}
+    for key, value in pairs:
+        if key in record:
+            raise ProbeToolingError("observation ledger contains duplicate JSON keys")
+        record[key] = value
+    return record
 
-    A missing ledger file, or a line that fails to parse as JSON at
-    all, is treated as *no evidence yet* — a killed child can leave a
-    partial trailing line, and that must never be mistaken for a real
-    recorded event. But a line that *does* parse as valid JSON while
-    not being a JSON object (a bare string, number, boolean, ``null``,
-    or array) is never silently accepted as an event either: every
-    caller unconditionally calls ``.get(...)`` on each returned event,
-    so returning anything non-mapping here would let a malformed or
-    adversarial target crash a caller with a raw ``AttributeError``
-    instead of a typed probe failure. Such a line raises
-    :class:`ProbeToolingError` instead — the ledger is corrupt/
-    malformed evidence, which is exactly as unobservable as no
-    evidence at all, never a silent pass.
-    """
+
+def _read_ledger_events(ledger_path: Path) -> list:
+    """Read whole JSONL evidence without silently dropping corrupt records."""
     try:
         text = ledger_path.read_text(encoding="utf-8")
-    except OSError:
+    except FileNotFoundError:
         return []
+    except (OSError, UnicodeError) as error:
+        raise ProbeToolingError("observation ledger is unreadable") from error
     events = []
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
         try:
-            parsed = json.loads(line)
-        except json.JSONDecodeError:
-            # A killed child can leave a partial trailing line; ignore
-            # it rather than let it look like a real recorded event.
-            continue
+            parsed = json.loads(line, object_pairs_hook=_unique_ledger_object)
+        except json.JSONDecodeError as error:
+            raise ProbeToolingError(
+                "observation ledger contains a malformed JSON event"
+            ) from error
         if not isinstance(parsed, Mapping):
             raise ProbeToolingError(
-                f"observation ledger {ledger_path} contains a malformed "
-                f"event that is valid JSON but not a JSON object: "
-                f"{parsed!r}"
+                "observation ledger contains a malformed event "
+                "that is valid JSON but not a JSON object"
             )
         events.append(parsed)
     return events
@@ -1419,6 +2098,19 @@ def _validate_child_report(report: object) -> None:
         isinstance(audit_id, str) for audit_id in audit_ids
     ):
         raise ValueError("child report 'audit_ids' must be a list of strings")
+
+
+def _validate_path_child_report(report: object) -> None:
+    if not isinstance(report, dict) or set(report) != set(_REQUIRED_PATH_REPORT_KEYS):
+        raise ValueError(
+            "execution-path child report must contain exactly "
+            f"{_REQUIRED_PATH_REPORT_KEYS!r}"
+        )
+    for key in _REQUIRED_PATH_REPORT_KEYS:
+        if not isinstance(report[key], str) or not report[key]:
+            raise ValueError(
+                f"execution-path child report {key!r} must be a non-empty string"
+            )
 
 
 def _run_as_child() -> None:
@@ -1465,6 +2157,205 @@ def _run_as_child() -> None:
         "argument_hash": result.get("argument_hash"),
         "exception_class": result.get("exception_class"),
         "audit_ids": audit_ids,
+    }
+    sys.stdout.buffer.write(canonical.canonical_bytes(report))
+    sys.stdout.flush()
+
+
+def _run_path_as_child() -> None:
+    """Execute one application-routed path with assessor-owned namespaces."""
+    payload = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    binding = payload["binding"]
+    declared_routes = {
+        (str(item[0]), str(item[1])) for item in payload["declared_routes"]
+    }
+    requested_decision = str(payload["decision"])
+    proof_nonce = str(payload["proof_nonce"])
+    proof_fd = payload.get("proof_fd")
+    proof_path = payload.get("proof_path")
+    if proof_fd is not None:
+        if not isinstance(proof_fd, int) or isinstance(proof_fd, bool):
+            raise TypeError("proof_fd must be an integer or null")
+        os.set_inheritable(proof_fd, False)
+    elif not isinstance(proof_path, str) or not proof_path:
+        raise TypeError("proof_path must be a non-empty string when proof_fd is absent")
+    target_ledger_path = str(payload["target_ledger_path"])
+    action_id = str(binding["action_id"])
+    mode = str(binding["mode"])
+    path_id = str(binding["path_id"])
+    dispatch_ref = str(payload["execution_dispatch"])
+    module_name, attr = dispatch_ref.split(":", 1)
+    module = importlib.import_module(module_name)
+    dispatch = getattr(module, attr)
+
+    def append_event(event: str, evidence_id: str, **fields: object) -> None:
+        record = {
+            "event": event,
+            "evidence_id": evidence_id,
+            "proof_nonce": proof_nonce,
+            "action_id": action_id,
+            "mode": mode,
+            "path_id": path_id,
+            **fields,
+        }
+        encoded = canonical.canonical_bytes(record) + b"\n"
+        if proof_fd is not None:
+            view = memoryview(encoded)
+            while view:
+                written = os.write(proof_fd, view)
+                view = view[written:]
+        else:
+            assert isinstance(proof_path, str)
+            with open(proof_path, "ab") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+
+    class _AwaitableMapping(dict):
+        def __await__(self):
+            async def resolved():
+                return self
+
+            return resolved().__await__()
+
+    class _AwaitableNoop:
+        def __await__(self):
+            async def resolved():
+                return None
+
+            return resolved().__await__()
+
+    class _SyntheticPathDenied(RuntimeError):
+        pass
+
+    class _SyntheticHooks:
+        def pre_tool_call(self, *args: object, **kwargs: object) -> Mapping[str, object]:
+            del args, kwargs
+            append_event(
+                "pre_action_decision",
+                f"path-decision-{path_id}",
+                decision=requested_decision,
+            )
+            if requested_decision == "deny":
+                raise _SyntheticPathDenied("synthetic path probe denial")
+            return _AwaitableMapping(decision=requested_decision)
+
+        def __getattr__(self, _name: str) -> Callable[..., _AwaitableNoop]:
+            return lambda *args, **kwargs: _AwaitableNoop()
+
+    class _SyntheticTool:
+        def __getattr__(self, _name: str) -> Callable[..., Mapping[str, object]]:
+            def invoke(*args: object, **kwargs: object) -> Mapping[str, object]:
+                argument_hash = "sha256:" + canonical.sha256_hex(
+                    canonical.canonical_bytes(
+                        {"args": list(args), "kwargs": dict(kwargs)}
+                    )
+                )
+                append_event(
+                    "invocation",
+                    f"path-invocation-{path_id}",
+                    argument_hash=argument_hash,
+                )
+                return _AwaitableMapping(synthetic=True)
+
+            return invoke
+
+    class _SyntheticNoop:
+        def __getattr__(self, _name: str) -> Callable[..., _AwaitableNoop]:
+            return lambda *args, **kwargs: _AwaitableNoop()
+
+    dispatch_globals = getattr(dispatch, "__globals__", None)
+    if not isinstance(dispatch_globals, dict):
+        raise TypeError("execution_dispatch must be a module-level function")
+    routing_table = dispatch_globals.get("EXECUTION_ROUTES")
+    if not isinstance(routing_table, dict):
+        raise TypeError(
+            "execution_dispatch must expose same-module EXECUTION_ROUTES mapping"
+        )
+    route_keys = set(routing_table)
+    if route_keys != declared_routes:
+        raise ValueError(
+            "EXECUTION_ROUTES keys must exactly match declared execution_paths"
+        )
+    target = routing_table.get((action_id, mode))
+    if not callable(target):
+        raise TypeError("EXECUTION_ROUTES target must be callable")
+    if getattr(target, "__module__", None) != module_name:
+        raise TypeError("EXECUTION_ROUTES targets must belong to execution_dispatch module")
+    expected_resolved_path = (
+        f"{target.__module__}:{getattr(target, '__qualname__', target.__name__)}"
+    )
+    resolved_path = ""
+
+    def instrumented_target(*args: object, **kwargs: object) -> object:
+        nonlocal resolved_path
+        resolved_path = expected_resolved_path
+        append_event(
+            "resolved_path",
+            f"path-resolved-{path_id}",
+            resolved_path=resolved_path,
+        )
+        return target(*args, **kwargs)
+
+    instrumented_target.__module__ = target.__module__
+    instrumented_target.__name__ = target.__name__
+    instrumented_target.__qualname__ = target.__qualname__
+    routing_table[(action_id, mode)] = instrumented_target
+
+    target_globals = getattr(target, "__globals__", None)
+    if not isinstance(target_globals, dict):
+        raise TypeError("EXECUTION_ROUTES targets must be module-level functions")
+    dispatch_globals["agent_hooks"] = _SyntheticHooks()
+    dispatch_globals["tool_service"] = _SyntheticTool()
+    dispatch_globals["provider"] = _SyntheticTool()
+    dispatch_globals["audit_sink"] = _SyntheticNoop()
+    dispatch_globals["output_mediator"] = _SyntheticNoop()
+    target_globals["agent_hooks"] = dispatch_globals["agent_hooks"]
+    target_globals["tool_service"] = dispatch_globals["tool_service"]
+    target_globals["provider"] = dispatch_globals["provider"]
+    target_globals["audit_sink"] = dispatch_globals["audit_sink"]
+    target_globals["output_mediator"] = dispatch_globals["output_mediator"]
+
+    sys.stdout.buffer.write(_CHILD_READY_MARKER)
+    sys.stdout.buffer.flush()
+    append_event(
+        "routing_target",
+        f"path-routing-target-{path_id}",
+        expected_resolved_path=expected_resolved_path,
+    )
+    case = {
+        "probe_id": f"{_PATH_PROBE_ID_PREFIX}{requested_decision}",
+        "path_id": path_id,
+        "arguments": {
+            "amount": 7,
+            "count": 7,
+            "number": 7,
+            "customer_id": "threadlight-synthetic-customer",
+            "order_id": "threadlight-synthetic-order",
+            "payment_id": "threadlight-synthetic-payment",
+        },
+    }
+    async def resolve(awaitable):
+        return await awaitable
+
+    try:
+        result = dispatch(action_id, mode, case, target_ledger_path)
+        if inspect.isawaitable(result):
+            result = asyncio.run(resolve(result))
+        if not isinstance(result, Mapping):
+            raise TypeError("execution_dispatch result must be a mapping")
+        if result.get("action_id") != action_id or result.get("mode") != mode:
+            raise ValueError("execution_dispatch result action_id/mode mismatch")
+        routed_result = result.get("result")
+        if inspect.isawaitable(routed_result):
+            asyncio.run(resolve(routed_result))
+    except _SyntheticPathDenied:
+        pass
+    report = {
+        "action_id": action_id,
+        "mode": mode,
+        "resolved_path": resolved_path,
+        "expected_resolved_path": expected_resolved_path,
     }
     sys.stdout.buffer.write(canonical.canonical_bytes(report))
     sys.stdout.flush()
@@ -1548,13 +2439,15 @@ def _dispatch_task6_child(
 
     try:
         assert process.stdin is not None  # narrows Optional for mypy/readers
-        process.stdin.write(stdin_bytes)
-        process.stdin.close()
+        with process.stdin:
+            process.stdin.write(stdin_bytes)
     except (OSError, ValueError):
         # A child that crashed before ever reading stdin can close its
         # end of the pipe first; the ready-handshake wait below still
         # correctly resolves this to an abnormal/unobservable outcome.
         pass
+    finally:
+        process.stdin = None
 
     child_error: Optional[str] = None
     audit_records: Optional[list] = None
@@ -1641,7 +2534,8 @@ class ApprovalBinding:
     changing *any single one* of them — including reusing an
     already-consumed ``nonce`` with a different value for every other
     field — always yields a different digest, and is therefore always
-    rejected as a binding mismatch rather than silently accepted. Frozen
+    rejected rather than silently accepted. A probe reports binding-mismatch
+    discrimination only when the target records that reason. Frozen
     so an approval can never be mutated in place after it is issued;
     every "mutated" scenario a probe exercises always constructs a new
     binding via ``dataclasses.replace`` instead.
@@ -1704,6 +2598,7 @@ def approval_digest(binding: ApprovalBinding) -> str:
 _APPROVAL_PROBE_ID = "approval-anti-replay"
 _APPROVAL_EXPECTED = "single_use_canonical_binding_enforced"
 _APPROVAL_PASS_REASON = "approval-anti-replay-enforced"
+APPROVAL_PROBE_ID = _APPROVAL_PROBE_ID
 
 #: Every binding dimension design section 7.3 requires an approval to be
 #: bound to, one mutation variant each: the canonical action (its own
@@ -1726,6 +2621,7 @@ _APPROVAL_MUTATION_FIELDS: Tuple[str, ...] = (
     "target_scope",
     "tenant",
 )
+APPROVAL_MUTATION_FIELDS = _APPROVAL_MUTATION_FIELDS
 
 #: Fixed, synthetic mutation values. Every one is derived so the mutated
 #: binding's digest can never accidentally equal the original's: plain
@@ -1757,12 +2653,14 @@ _APPROVAL_ISOLATED_LEDGER_SOURCE_SUFFIX = "#assessment-isolated"
 _OUTPUT_PROBE_ID = "output-mediation"
 _OUTPUT_EXPECTED = "output_buffered_or_bound_chunk_mediated"
 _OUTPUT_PASS_REASON = "output-mediation-enforced"
+OUTPUT_PROBE_ID = _OUTPUT_PROBE_ID
 _RECOGNIZED_OUTPUT_VERDICTS: Tuple[str, ...] = ("deny", "allow", "stream")
 
 _AUDIT_EXPECTED = "audit_record_payload_free"
 _AUDIT_PASS_REASON = "payload-free-audit-enforced"
 _AUDIT_PROBE_ID = "payload-free-audit"
 _AUDIT_NOT_VERIFIED_REASON = "audit-probe-outcome-not-verified"
+AUDIT_PROBE_ID = _AUDIT_PROBE_ID
 
 # Fixed, deterministic, synthetic arguments for ``run_privacy_probe_set``'s
 # own single driven dispatch call against an approval-family target —
@@ -1855,7 +2753,64 @@ def _load_raw_contract(root_path: Path) -> Mapping[str, object]:
     return raw
 
 
-def load_approval_contract(root: Path) -> Mapping[str, object]:
+def load_raw_probe_contract(root: Path) -> Mapping[str, object]:
+    return _load_raw_contract(Path(root))
+
+
+def _optional_nonempty_contract_string(value: object) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _declared_contract_actions(raw: Mapping[str, object]) -> Tuple[str, ...]:
+    actions = raw.get("actions")
+    if not isinstance(actions, (list, tuple)):
+        return ()
+    declared = []
+    for action in actions:
+        text = _optional_nonempty_contract_string(action)
+        if text is not None:
+            declared.append(text)
+    return tuple(declared)
+
+
+def _resolve_task6_action_id(raw: Mapping[str, object]) -> Tuple[Optional[str], Tuple[str, ...]]:
+    explicit_action_id = _optional_nonempty_contract_string(raw.get("action_id"))
+    if explicit_action_id is not None:
+        return explicit_action_id, ()
+    declared_binding = raw.get("approval_binding")
+    if isinstance(declared_binding, Mapping):
+        binding_action_id = _optional_nonempty_contract_string(declared_binding.get("action_id"))
+        if binding_action_id is not None:
+            return binding_action_id, ()
+    declared_actions = _declared_contract_actions(raw)
+    if len(declared_actions) == 1:
+        return declared_actions[0], ()
+    if len(declared_actions) > 1:
+        return None, declared_actions
+    return None, ()
+
+
+def _probe_action_unattributed_result(
+    probe_id: str, *, expected: str
+) -> ProbeResult:
+    return ProbeResult(
+        probe_id=probe_id,
+        action_id=None,
+        path_id=None,
+        status="not-verified",
+        reason_code="probe-action-unattributed",
+        expected=expected,
+        observed="probe_action_unattributed",
+        evidence_refs=(),
+    )
+
+
+def load_approval_contract(
+    root: Path, *, raw_contract: Optional[Mapping[str, object]] = None
+) -> Mapping[str, object]:
     """Load and validate an approval-anti-replay fixture's probe contract.
 
     Returns a read-only mapping with exactly ``dispatch``, ``audit_sink``,
@@ -1865,7 +2820,7 @@ def load_approval_contract(root: Path) -> Mapping[str, object]:
     ``nonce_ledger`` that would resolve outside *root* (symlink escape).
     """
     root_path = Path(root)
-    raw = _load_raw_contract(root_path)
+    raw = raw_contract if raw_contract is not None else _load_raw_contract(root_path)
     _validate_dispatch_and_audit_sink_refs(raw)
     nonce_ledger = raw.get("nonce_ledger")
     _validate_relative_ledger_path(root_path, "nonce_ledger", nonce_ledger)
@@ -1878,7 +2833,9 @@ def load_approval_contract(root: Path) -> Mapping[str, object]:
     )
 
 
-def load_output_contract(root: Path) -> Mapping[str, object]:
+def load_output_contract(
+    root: Path, *, raw_contract: Optional[Mapping[str, object]] = None
+) -> Mapping[str, object]:
     """Load and validate an output-mediation fixture's probe contract.
 
     Returns a read-only mapping with ``dispatch``, ``audit_sink``,
@@ -1891,7 +2848,7 @@ def load_output_contract(root: Path) -> Mapping[str, object]:
     ``OUT-001`` rather than pass by omission.
     """
     root_path = Path(root)
-    raw = _load_raw_contract(root_path)
+    raw = raw_contract if raw_contract is not None else _load_raw_contract(root_path)
     _validate_dispatch_and_audit_sink_refs(raw)
     observation_ledger = raw.get("observation_ledger")
     _validate_relative_ledger_path(root_path, "observation_ledger", observation_ledger)
@@ -1935,7 +2892,7 @@ def _read_nonce_records(ledger_path: Path) -> List[Mapping[str, object]]:
 
     A missing ledger file reads as no records at all — a nonce's very
     first redemption attempt has nothing to append to yet. Reuses
-    ``_read_ledger_events``'s tolerant, best-effort line parsing.
+    ``_read_ledger_events``'s strict parsing; a corrupt ledger is not evidence.
     """
     return _read_ledger_events(ledger_path)
 
@@ -1991,6 +2948,35 @@ def _validated_isolated_ledger(
             "target's own declared nonce ledger, which stays read-only"
         )
     return resolved
+
+
+def _create_private_task6_ledger(
+    root_path: Path, *, directory_prefix: str, file_prefix: str
+) -> Tuple[Path, Path]:
+    governance_dir = root_path / "governance"
+    resolved_governance_dir = governance_dir.resolve()
+    try:
+        resolved_governance_dir.relative_to(root_path)
+    except ValueError as error:
+        raise ProbeContractError(
+            "probe contract's governance directory resolves outside the "
+            "target root (symlink escape?)"
+        ) from error
+
+    private_dir = governance_dir / f".{directory_prefix}-{uuid.uuid4().hex}"
+    try:
+        private_dir.mkdir(parents=False, exist_ok=False)
+        descriptor, raw_ledger_path = tempfile.mkstemp(
+            dir=str(private_dir), prefix=file_prefix, suffix=".jsonl"
+        )
+        os.close(descriptor)
+    except OSError as error:
+        _remove_created_dirs([private_dir])
+        raise ProbeToolingError(
+            f"cannot create the assessment-private {directory_prefix.replace('-', ' ')} "
+            f"ledger: {error}"
+        ) from error
+    return private_dir, Path(raw_ledger_path)
 
 
 def _mutated_binding(binding: ApprovalBinding, field: str) -> ApprovalBinding:
@@ -2090,8 +3076,9 @@ def run_approval_probe(
     again is a proven fail-open acceptance (``APR-001``) regardless of
     whether it is a byte-identical replay or a mutated binding, and
     only a genuinely rejected (``accepted: false``) later attempt
-    passes — distinguished as a replay (digest matches the original
-    accepted record) or a binding mismatch (it does not, covering every
+    passes. Target-provided rejection reasons must match the exercised
+    scenario; absent reasons prove only reused-nonce rejection, not target
+    discrimination between replay and binding mismatch (covering every
     mutated field: subject, role, target, tenant, policy, action, or
     arguments, including a reused nonce whose original approval was
     bound to different, pre-transform arguments).
@@ -2149,7 +3136,14 @@ def run_approval_probe(
         record for record in new_records if record.get("event") == "invocation"
     ]
 
-    expired = now >= binding.expires_at
+    try:
+        now_instant = datetime.fromisoformat(now.replace("Z", "+00:00"))
+        expiry_instant = datetime.fromisoformat(binding.expires_at.replace("Z", "+00:00"))
+        if now_instant.tzinfo is None or expiry_instant.tzinfo is None:
+            raise ValueError("approval timestamps require a timezone")
+        expired = now_instant >= expiry_instant
+    except ValueError as error:
+        raise ProbeContractError("invalid approval expiry timestamp") from error
     status: str
     observed: str
 
@@ -2162,7 +3156,11 @@ def run_approval_probe(
         status = "must-fix"
     else:
         decision = new_decisions[0]
-        if decision.get("nonce") != binding.nonce:
+        if (
+            decision.get("nonce") != binding.nonce
+            or decision.get("digest") != digest
+            or not isinstance(decision.get("accepted"), bool)
+        ):
             observed = "nonce_redemption_not_recorded"
             status = "must-fix"
         else:
@@ -2182,6 +3180,7 @@ def run_approval_probe(
                 status = "must-fix"
             elif accepted_now and (
                 len(matching_invocations) != 1
+                or len(new_invocations) != 1
                 or new_records.index(matching_invocations[0]) <= decision_index
             ):
                 # Accepted, but the ledger fails to prove the tool was
@@ -2215,6 +3214,29 @@ def run_approval_probe(
                 )
                 status = "pass"
 
+            if status == "pass" and not accepted_now:
+                expected_reason = (
+                    "expiry" if expired else
+                    "replay" if prior_accepted_digest == digest else "binding"
+                )
+                if "reason" in decision and decision["reason"] != expected_reason:
+                    observed = "approval_rejection_reason_mismatch"
+                    status = "must-fix"
+                elif "reason" not in decision and not expired:
+                    observed = "reused_nonce_rejected"
+
+    ledger_evidence = _persisted_records_evidence(
+        new_records, "approval-ledger-records", evidence_source
+    )
+    if status == "pass" and (
+        not ledger_evidence or after_records[:len(before_records)] != before_records
+    ):
+        status, observed = "must-fix", "approval_ledger_evidence_invalid"
+    binding_evidence = (
+        (_digest_evidence(digest, "approval-binding-digest", evidence_source),)
+        if any(record.get("digest") == digest for record in new_decisions) else ()
+    )
+    evidence_items = binding_evidence + ledger_evidence
     reason_code = _APPROVAL_PASS_REASON if status == "pass" else "APR-001"
     return ProbeResult(
         probe_id=_APPROVAL_PROBE_ID,
@@ -2224,7 +3246,7 @@ def run_approval_probe(
         reason_code=reason_code,
         expected=_APPROVAL_EXPECTED,
         observed=observed,
-        evidence_refs=(digest,),
+        evidence_refs=tuple(item.evidence_id for item in evidence_items),
         # The cited digest is the canonical hash of the exact 12-field
         # binding this attempt redeemed -- the same value the target's
         # own ledger records for it -- bound here to the nonce ledger it
@@ -2232,9 +3254,7 @@ def run_approval_probe(
         # assessment's own private, isolated one rather than the
         # target's declared path. Payload-free: no approver, argument,
         # or ledger record content ever leaves this call.
-        evidence_items=(
-            _digest_evidence(digest, "approval-binding-digest", evidence_source),
-        ),
+        evidence_items=evidence_items,
     )
 
 
@@ -2252,7 +3272,9 @@ def run_approval_probe_sequence(
     requires (:data:`_APPROVAL_MUTATION_FIELDS` -- the canonical action
     and its arguments, target scope, tenant, both subjects and the
     approving role, policy id and hash, and expiry), every one of them
-    reusing the same, already-consumed nonce.
+    reusing the same, already-consumed nonce. Finally a second valid binding
+    with a fresh nonce must succeed and a fresh expired binding must fail:
+    a store that indiscriminately rejects everything after first use fails.
 
     All of it runs against a single, freshly created, exclusive,
     *private* nonce ledger under the target's own ``governance``
@@ -2285,42 +3307,47 @@ def run_approval_probe_sequence(
     # unsafe approval contract is refused before anything is created,
     # exactly as each individual attempt below would refuse it.
     load_approval_contract(root_path)
-
-    governance_dir = root_path / "governance"
     try:
-        governance_dir.resolve().relative_to(root_path)
-    except ValueError as error:
-        raise ProbeContractError(
-            "probe contract's governance directory resolves outside the "
-            "target root (symlink escape?)"
-        ) from error
-
-    private_dir = governance_dir / f".approval-probe-{uuid.uuid4().hex}"
-    try:
-        private_dir.mkdir(parents=False, exist_ok=False)
-        descriptor, raw_ledger_path = tempfile.mkstemp(
-            dir=str(private_dir), prefix="nonce-ledger-", suffix=".jsonl"
+        issued, current, expiry = (
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+            for value in (binding.issued_at, now, binding.expires_at)
         )
-        os.close(descriptor)
-    except OSError as error:
-        _remove_created_dirs([private_dir])
-        raise ProbeToolingError(
-            "cannot create the assessment-private approval anti-replay "
-            f"ledger: {error}"
-        ) from error
-
-    ledger_path = Path(raw_ledger_path)
+        if any(value.tzinfo is None for value in (issued, current, expiry)):
+            raise ValueError("timestamps require a timezone")
+        if not issued <= current < expiry:
+            raise ValueError("baseline must be currently valid")
+    except (ValueError, TypeError) as error:
+        raise ProbeContractError("approval sequence requires a valid baseline") from error
     attempts = (binding, binding) + tuple(
         _mutated_binding(binding, field) for field in _APPROVAL_MUTATION_FIELDS
+    ) + (
+        replace(binding, nonce=binding.nonce + "#fresh"),
+        replace(binding, nonce=binding.nonce + "#fresh-expired", expires_at=now),
+    )
+    private_dir, ledger_path = _create_private_task6_ledger(
+        root_path,
+        directory_prefix="approval-probe",
+        file_prefix="nonce-ledger-",
     )
     results: List[ProbeResult] = []
     try:
-        for attempt in attempts:
-            result = run_approval_probe(
-                root_path, attempt, now, ledger_path=ledger_path
-            )
+        for position, attempt in enumerate(attempts):
+            try:
+                result = run_approval_probe(root_path, attempt, now, ledger_path=ledger_path)
+            except ProbeToolingError as error:
+                raise PartialProbeToolingError(
+                    str(error), partial_results=tuple(results)
+                ) from error
             if attempt.action_id != binding.action_id:
                 result = replace(result, action_id=binding.action_id)
+            expected_observations = (
+                {"approval_accepted"} if position in (0, len(attempts) - 2) else
+                {"expired_rejected"} if position == len(attempts) - 1 else
+                {"replay_rejected", "reused_nonce_rejected"} if position == 1 else
+                {"binding_mismatch_rejected", "reused_nonce_rejected"}
+            )
+            if result.status == "pass" and result.observed not in expected_observations:
+                result = replace(result, status="must-fix", reason_code="APR-001")
             results.append(result)
     finally:
         ledger_path.unlink(missing_ok=True)
@@ -2384,18 +3411,25 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
     (``AUD-001``) can never mask, or be masked by, this probe's own
     independent mediation finding.
 
-    Resets (deletes) the fixture's ledger file before calling dispatch
-    and again afterward, so a fixture's ledger — checked in once and
-    reused across separate verdict calls — never leaks a prior call's
-    events into this one; never mutates the target repository beyond
-    that, mirroring ``run_application_probe``'s own directory-creation
-    and cleanup discipline.
+    Uses an exclusive, assessment-private temporary ledger under the
+    target's own ``governance/`` directory, removing it again when done.
+    The contract's declared ``observation_ledger`` remains provenance
+    only; it is never opened, unlinked, truncated, or otherwise mutated
+    by this probe, so even a hostile contract pointing that field at a
+    tracked target file cannot let the assessment delete or rewrite it.
     """
     if verdict not in _RECOGNIZED_OUTPUT_VERDICTS:
         raise ProbeContractError(f"unknown output verdict: {verdict!r}")
 
     root_path = Path(root).resolve()
-    contract = load_output_contract(root_path)
+    raw_contract = _load_raw_contract(root_path)
+    contract = load_output_contract(root_path, raw_contract=raw_contract)
+    action_id, ambiguous_actions = _resolve_task6_action_id(raw_contract)
+    if ambiguous_actions:
+        return _probe_action_unattributed_result(
+            _OUTPUT_PROBE_ID,
+            expected=_OUTPUT_EXPECTED,
+        )
 
     if verdict == "stream":
         exposure_bound_bytes = contract["exposure_bound_bytes"]
@@ -2407,7 +3441,7 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         ):
             return ProbeResult(
                 probe_id=_OUTPUT_PROBE_ID,
-                action_id=contract["action_id"],
+                action_id=action_id,
                 path_id=None,
                 status="must-fix",
                 reason_code="OUT-001",
@@ -2416,13 +3450,10 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
                 evidence_refs=(),
             )
 
-    ledger_relative = Path(contract["observation_ledger"])
-    ledger_dir = root_path / ledger_relative.parent
-    ledger_path = root_path / ledger_relative
-    created_dirs = _missing_ancestor_dirs(ledger_dir)
+    private_dir, ledger_path = _create_private_task6_ledger(
+        root_path, directory_prefix="output-probe", file_prefix="ledger-"
+    )
     try:
-        ledger_dir.mkdir(parents=True, exist_ok=True)
-        ledger_path.unlink(missing_ok=True)
         _dispatch_task6_child(
             root_path,
             str(contract["dispatch"]),
@@ -2430,9 +3461,13 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
             (verdict, str(ledger_path)),
         )
         events = _read_ledger_events(ledger_path)
+        evidence_items = _persisted_records_evidence(
+            events, "output-ledger-records",
+            f"{contract['observation_ledger']}#assessment-isolated",
+        )
     finally:
         ledger_path.unlink(missing_ok=True)
-        _remove_created_dirs(created_dirs)
+        _remove_created_dirs([private_dir])
 
     verdict_index = _first_event_index(events, "verdict_received")
     release_indices = [
@@ -2448,6 +3483,12 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         verdict_index is None or index < verdict_index for index in release_indices
     ):
         observed = "output_released_before_verdict"
+        status = "must-fix"
+    elif (
+        len([event for event in events if event.get("event") == "verdict_received"]) != 1
+        or events[verdict_index].get("verdict") != verdict
+    ):
+        observed = "output_verdict_evidence_mismatch"
         status = "must-fix"
     elif verdict == "deny":
         release_events = [
@@ -2485,6 +3526,14 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
         if any(event.get("event") == "chunk" for event in events):
             observed = "incremental_release_without_declared_stream_posture"
             status = "must-fix"
+        elif len(release_indices) != 1 or any(
+            not isinstance(events[index].get("bytes"), int)
+            or isinstance(events[index].get("bytes"), bool)
+            or events[index]["bytes"] <= 0
+            for index in release_indices
+        ):
+            observed = "buffered_release_evidence_missing_or_invalid"
+            status = "must-fix"
         else:
             observed = "buffered_release_after_verdict"
             status = "pass"
@@ -2516,16 +3565,19 @@ def run_output_probe(root: Path, verdict: str) -> ProbeResult:
             observed = "unmediated_or_oversized_chunk_release"
             status = "must-fix"
 
+    if status == "pass" and not evidence_items:
+        status, observed = "not-verified", "output_evidence_not_payload_free"
     reason_code = _OUTPUT_PASS_REASON if status == "pass" else "OUT-001"
     return ProbeResult(
         probe_id=_OUTPUT_PROBE_ID,
-        action_id=contract["action_id"],
+        action_id=action_id,
         path_id=None,
         status=status,
         reason_code=reason_code,
         expected=_OUTPUT_EXPECTED,
         observed=observed,
-        evidence_refs=(),
+        evidence_refs=tuple(item.evidence_id for item in evidence_items),
+        evidence_items=evidence_items,
     )
 
 
@@ -2576,14 +3628,15 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
     ``OUT-001`` finding those probes report on their own.
     """
     root_path = Path(root).resolve()
+    raw_contract = _load_raw_contract(root_path)
 
     approval_contract: Optional[Mapping[str, object]] = None
     output_contract: Optional[Mapping[str, object]] = None
     try:
-        approval_contract = load_approval_contract(root_path)
+        approval_contract = load_approval_contract(root_path, raw_contract=raw_contract)
     except ProbeContractError:
         try:
-            output_contract = load_output_contract(root_path)
+            output_contract = load_output_contract(root_path, raw_contract=raw_contract)
         except ProbeContractError as error:
             raise ProbeContractError(
                 f"{root_path} is neither a recognized approval-anti-replay "
@@ -2594,24 +3647,18 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
 
     contract = approval_contract if approval_contract is not None else output_contract
     assert contract is not None  # one of the two branches above always set it
+    action_id, ambiguous_actions = _resolve_task6_action_id(raw_contract)
+    if ambiguous_actions:
+        return (
+            _probe_action_unattributed_result(
+                _AUDIT_PROBE_ID,
+                expected=_AUDIT_EXPECTED,
+            ),
+        )
 
-    governance_dir = root_path / "governance"
-    resolved_governance_dir = governance_dir.resolve()
-    try:
-        resolved_governance_dir.relative_to(root_path)
-    except ValueError as error:
-        raise ProbeContractError(
-            "probe contract's governance directory resolves outside the "
-            "target root (symlink escape?)"
-        ) from error
-
-    private_dir = governance_dir / f".privacy-probe-{uuid.uuid4().hex}"
-    private_dir.mkdir(parents=False, exist_ok=False)
-    descriptor, raw_ledger_path = tempfile.mkstemp(
-        dir=str(private_dir), prefix="ledger-", suffix=".jsonl"
+    private_dir, ledger_path = _create_private_task6_ledger(
+        root_path, directory_prefix="privacy-probe", file_prefix="ledger-"
     )
-    os.close(descriptor)
-    ledger_path = Path(raw_ledger_path)
 
     try:
         if approval_contract is not None:
@@ -2628,19 +3675,28 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
         dispatch_result = _dispatch_task6_child(
             root_path, str(contract["dispatch"]), str(contract["audit_sink"]), args
         )
+        persisted_records = _read_ledger_events(ledger_path)
+        persisted_evidence = _persisted_records_evidence(
+            persisted_records, "audit-ledger-records",
+            f"{contract.get('nonce_ledger', contract.get('observation_ledger'))}#assessment-isolated",
+        )
+        return _privacy_results(
+            action_id, contract, dispatch_result["audit_records"],
+            persisted_records, persisted_evidence,
+        )
     finally:
         ledger_path.unlink(missing_ok=True)
-        try:
-            private_dir.rmdir()
-        except OSError:
-            pass
+        _remove_created_dirs([private_dir])
 
-    action_id: Optional[str] = None
-    if output_contract is not None:
-        contract_action_id = contract.get("action_id")
-        action_id = str(contract_action_id) if contract_action_id else None
 
-    audit_records = dispatch_result["audit_records"]
+def _privacy_results(
+    action_id: Optional[str],
+    contract: Mapping[str, object],
+    audit_records: Optional[list],
+    persisted_records: Sequence[Mapping[str, object]],
+    persisted_evidence: Tuple[ProbeEvidence, ...],
+) -> Tuple[ProbeResult, ...]:
+    """Bind audit records to persisted, payload-free evidence before cleanup."""
     if audit_records is None:
         return (
             ProbeResult(
@@ -2671,22 +3727,15 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
                 )
             )
             continue
-        audit_id = record.get("audit_id")
-        audit_id_text = str(audit_id) if audit_id else None
-        audit_evidence: Tuple[ProbeEvidence, ...] = (
-            (
-                _record_evidence(
-                    audit_id_text,
-                    "probe-audit-record",
-                    str(contract["audit_sink"]),
-                    record,
-                ),
-            )
-            if audit_id_text
-            else ()
-        )
         try:
-            canonical.validate_payload_free_audit(record)
+            canonical.validate_governance_record(record, audit=True)
+        except canonical.IncompleteEvidenceError:
+            results.append(ProbeResult(
+                probe_id=_AUDIT_PROBE_ID, action_id=action_id, path_id=None,
+                status="not-verified", reason_code=_AUDIT_NOT_VERIFIED_REASON,
+                expected=_AUDIT_EXPECTED, observed="audit_evidence_incomplete_or_not_persisted",
+                evidence_refs=(),
+            ))
         except canonical.PayloadExposureError:
             results.append(
                 ProbeResult(
@@ -2697,21 +3746,30 @@ def run_privacy_probe_set(root: Path) -> Tuple[ProbeResult, ...]:
                     reason_code="AUD-001",
                     expected=_AUDIT_EXPECTED,
                     observed="payload_bearing_audit_record",
-                    evidence_refs=(audit_id_text,) if audit_id_text else (),
-                    evidence_items=audit_evidence,
+                    evidence_refs=(),
                 )
             )
         else:
+            durable = record in persisted_records and bool(persisted_evidence)
+            if durable:
+                audit_evidence = (
+                    _record_evidence(
+                        record["audit_id"], "probe-audit-record",
+                        persisted_evidence[0].source, record,
+                    ),
+                ) + persisted_evidence
+            else:
+                audit_evidence = ()
             results.append(
                 ProbeResult(
                     probe_id=_AUDIT_PROBE_ID,
                     action_id=action_id,
                     path_id=None,
-                    status="pass",
-                    reason_code=_AUDIT_PASS_REASON,
+                    status="pass" if durable else "not-verified",
+                    reason_code=_AUDIT_PASS_REASON if durable else _AUDIT_NOT_VERIFIED_REASON,
                     expected=_AUDIT_EXPECTED,
-                    observed="payload_free_audit_record",
-                    evidence_refs=(audit_id_text,) if audit_id_text else (),
+                    observed="payload_free_audit_record" if durable else "audit_evidence_incomplete_or_not_persisted",
+                    evidence_refs=tuple(item.evidence_id for item in audit_evidence),
                     evidence_items=audit_evidence,
                 )
             )
@@ -2819,6 +3877,28 @@ _STAGING_CANARY_MAX_RESPONSE_HEADER_VALUE_LENGTH = 4096
 #: attacker/target-controlled value of unbounded original size as if it
 #: were trustworthy, bounded evidence.
 _STAGING_CANARY_MAX_DEPLOYMENT_ID_LENGTH = 256
+
+
+def validate_staging_scope(
+    selected: Mapping[str, object], evidence: Optional[Mapping[str, object]] = None
+) -> None:
+    """Pure, fail-closed staging selector check; never discovers or mutates Azure."""
+    resource_group = selected.get("resource_group")
+    environment = selected.get("environment")
+    if not isinstance(resource_group, str) or not re.fullmatch(r"[\w().-]+", resource_group):
+        raise UnsafeTargetError("an explicit staging resource group is required")
+    if "prod" in resource_group.lower() or (
+        isinstance(environment, str) and "prod" in environment.lower()
+    ):
+        raise UnsafeTargetError("production scopes are forbidden; select staging")
+    if environment is not None and environment != "staging":
+        raise UnsafeTargetError("environment must explicitly name staging")
+    if environment is None and not re.search(r"(^|[-_.])(stage|staging)([-_.]|$)", resource_group, re.I):
+        raise UnsafeTargetError("resource group does not identify staging")
+    if evidence is not None:
+        for field, value in selected.items():
+            if value is not None and evidence.get(field) != value:
+                raise UnsafeTargetError(f"staging evidence {field} mismatch")
 
 
 def validate_post_deploy_target(phase: Phase, staging: bool, destructive: bool) -> None:
@@ -3310,6 +4390,8 @@ def run_staging_canary(
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--child":
         _run_as_child()
+    elif len(sys.argv) > 1 and sys.argv[1] == _PATH_CHILD_ARG:
+        _run_path_as_child()
     elif len(sys.argv) > 1 and sys.argv[1] == _TASK6_CHILD_ARG:
         _run_task6_as_child()
     else:

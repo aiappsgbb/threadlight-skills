@@ -31,6 +31,7 @@ Trust boundaries this module preserves (never re-derives, never widens):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -40,6 +41,10 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple
 
+_TOOL_ROOT = Path(__file__).resolve().parents[3]
+if (_TOOL_ROOT / "skills/_shared/governance.py").is_file():
+    sys.path.insert(0, str(_TOOL_ROOT))
+
 import alerts
 import canonical
 import contracts
@@ -48,6 +53,7 @@ import inputs
 import inventory
 import maf_adapter
 import mediation
+import native_local
 import probes
 import render
 import scaffold
@@ -178,6 +184,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--subscription", default=None, help="Azure subscription id/name")
     parser.add_argument("--deploy-identity", dest="deploy_identity", default=None, help="Azure deploy identity name")
+    for name in ("agent-name", "agent-version", "image-digest", "policy-digest", "environment"):
+        parser.add_argument(f"--{name}", default=None, help="exact deployed target binding")
     parser.add_argument(
         "--live-github",
         dest="live_github",
@@ -237,6 +245,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "--phase post-deploy requires --staging-resource-group naming an "
             "explicit, non-production staging resource group"
         )
+    if namespace.phase == "post-deploy":
+        probes.validate_staging_scope({
+            "resource_group": namespace.staging_resource_group,
+            "environment": namespace.environment,
+            "subscription": namespace.subscription,
+        })
     return namespace
 
 
@@ -505,7 +519,11 @@ def _missing_probe_contract_finding(phase: str) -> contracts.Finding:
     )
 
 
-def _run_probe_sets(root: Path, phase: str) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...]]:
+def _run_probe_sets(
+    root: Path,
+    phase: str,
+    discovered_paths: Sequence[contracts.PathRecord],
+) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...]]:
     """Run the enforcement and privacy application probe suites.
 
     Returns the raw probe results plus only the findings that stand in
@@ -523,22 +541,118 @@ def _run_probe_sets(root: Path, phase: str) -> Tuple[Tuple[contracts.ProbeResult
     """
     if not (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
         return (), (_missing_probe_contract_finding(phase),)
-    probe_results = probes.run_enforcement_probe_set(root) + probes.run_privacy_probe_set(root)
-    return probe_results, ()
+    findings: List[contracts.Finding] = []
+    try:
+        enforcement_results = probes.run_enforcement_probe_set(root)
+    except probes.ProbeToolingError as error:
+        enforcement_results = tuple(getattr(error, "partial_results", ()))
+        findings.append(
+            _probe_tooling_unavailable_finding(
+                finding_id="ENF-001",
+                phase=phase,
+                reason_code="enforcement-probe-unavailable",
+                summary="Enforcement probes could not be completed.",
+                details=(
+                    "The enforcement probe runner could not produce an observable "
+                    "outcome for at least one declared action, so ENF-001 is "
+                    "reported not-verified rather than aborting the assessment."
+                ),
+            )
+        )
+    try:
+        path_results = probes.run_execution_path_probe_set(root, discovered_paths)
+    except probes.ProbeToolingError as error:
+        path_results = tuple(getattr(error, "partial_results", ()))
+        findings.append(
+            _probe_tooling_unavailable_finding(
+                finding_id="MED-002",
+                phase=phase,
+                reason_code="execution-path-probe-unavailable",
+                summary="Execution-path probes could not be completed.",
+                details=(
+                    "At least one contract-bound path dispatch did not produce "
+                    "an observable assessor-owned proof-channel receipt, so mediation "
+                    "coverage remains not-verified."
+                ),
+            )
+        )
+    try:
+        privacy_results = probes.run_privacy_probe_set(root)
+    except probes.ProbeToolingError as error:
+        privacy_results = tuple(getattr(error, "partial_results", ()))
+        findings.append(
+            _probe_tooling_unavailable_finding(
+                finding_id="AUD-001",
+                phase=phase,
+                reason_code="payload-free-audit-probe-unavailable",
+                summary="Payload-free audit probe could not be completed.",
+                details=(
+                    "The payload-free audit probe could not produce observable "
+                    "audit evidence for this assessment, so AUD-001 is reported "
+                    "not-verified rather than aborting the assessment."
+                ),
+            )
+        )
+    return enforcement_results + path_results + privacy_results, tuple(findings)
 
 
 #: Which finding id an unresolvable-evidence downgrade must be reported
 #: under, per probe kind. Purely a mapping onto the existing finding
 #: catalog -- never a new control or business policy.
 _PROBE_FINDING_IDS: Mapping[str, str] = {
-    probes._APPROVAL_PROBE_ID: "APR-001",
-    probes._OUTPUT_PROBE_ID: "OUT-001",
-    probes._AUDIT_PROBE_ID: "AUD-001",
+    probes.APPROVAL_PROBE_ID: "APR-001",
+    probes.OUTPUT_PROBE_ID: "OUT-001",
+    probes.AUDIT_PROBE_ID: "AUD-001",
 }
 _DEFAULT_PROBE_FINDING_ID = "ENF-001"
 
 
-def _probe_evidence_unresolved_finding(probe: contracts.ProbeResult, phase: str) -> contracts.Finding:
+def _probe_tooling_unavailable_finding(
+    *,
+    finding_id: str,
+    phase: str,
+    reason_code: str,
+    summary: str,
+    details: str,
+) -> contracts.Finding:
+    return contracts.Finding(
+        finding_id=finding_id,
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code=reason_code,
+        summary=summary,
+        details=details,
+    )
+
+
+def _probe_action_unattributed_finding(
+    probe: contracts.ProbeResult, phase: str, affected_actions: Tuple[str, ...]
+) -> contracts.Finding:
+    finding_id = _PROBE_FINDING_IDS.get(probe.probe_id, _DEFAULT_PROBE_FINDING_ID)
+    return contracts.Finding(
+        finding_id=finding_id,
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code="probe-action-unattributed",
+        summary="Probe result could not be attributed to a single declared action.",
+        details=(
+            "The probe contract left this probe without a single action "
+            "attribution after trying, in order, top-level action_id, "
+            "approval_binding.action_id, and a sole actions[0] declaration. "
+            "Because multiple declared actions remained possible, the result is "
+            "reported not-verified instead of being borrowed by a different action."
+        ),
+        affected_actions=affected_actions,
+    )
+
+
+def _probe_evidence_unresolved_finding(
+    probe: contracts.ProbeResult,
+    phase: str,
+    path_evidence_by_id: Mapping[str, Tuple[str, ...]],
+) -> contracts.Finding:
     """An explicit not-verified finding for a probe that cited evidence
     the probe pipeline could not actually resolve to an observed
     artifact.
@@ -548,7 +662,17 @@ def _probe_evidence_unresolved_finding(probe: contracts.ProbeResult, phase: str)
     result is reported not-verified so it fails ``--gate`` exactly like
     any other unproven control.
     """
-    finding_id = _PROBE_FINDING_IDS.get(probe.probe_id, _DEFAULT_PROBE_FINDING_ID)
+    is_path_receipt = probe.probe_id in probes.PATH_PROBE_IDS
+    finding_id = (
+        "MED-002"
+        if is_path_receipt
+        else _PROBE_FINDING_IDS.get(probe.probe_id, _DEFAULT_PROBE_FINDING_ID)
+    )
+    path_refs = (
+        path_evidence_by_id.get(probe.path_id, ())
+        if is_path_receipt and probe.path_id is not None
+        else ()
+    )
     return contracts.Finding(
         finding_id=finding_id,
         status="not-verified",
@@ -564,6 +688,8 @@ def _probe_evidence_unresolved_finding(probe: contracts.ProbeResult, phase: str)
             "unresolvable citation."
         ),
         affected_actions=(probe.action_id,) if probe.action_id else (),
+        affected_paths=(probe.path_id,) if is_path_receipt and probe.path_id else (),
+        evidence_refs=tuple(sorted(path_refs)),
     )
 
 
@@ -594,6 +720,8 @@ def _bind_probe_evidence(
     source: contracts.SourceRef,
     options: contracts.AssessmentOptions,
     policy_hashes: Sequence[Mapping[str, str]],
+    *,
+    path_evidence_by_id: Optional[Mapping[str, Tuple[str, ...]]] = None,
 ) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...], Tuple[contracts.EvidenceRef, ...]]:
     """Bind every probe-cited evidence id to a real :class:`contracts.EvidenceRef`.
 
@@ -643,6 +771,7 @@ def _bind_probe_evidence(
     """
     policy_set_sha256 = render.canonical_policy_set_sha256(policy_hashes)
     findings: List[contracts.Finding] = []
+    path_evidence_by_id = path_evidence_by_id or {}
 
     # First pass: filter out probes citing an id their own
     # evidence_items never resolved at all -- unchanged from before,
@@ -681,7 +810,11 @@ def _bind_probe_evidence(
                     evidence_items=(),
                 )
             )
-            findings.append(_probe_evidence_unresolved_finding(probe, options.phase))
+            findings.append(
+                _probe_evidence_unresolved_finding(
+                    probe, options.phase, path_evidence_by_id
+                )
+            )
             continue
 
         _, items = resolved[index]
@@ -726,7 +859,11 @@ def _bind_probe_evidence(
                     evidence_items=(),
                 )
             )
-            findings.append(_probe_evidence_unresolved_finding(probe, options.phase))
+            findings.append(
+                _probe_evidence_unresolved_finding(
+                    probe, options.phase, path_evidence_by_id
+                )
+            )
             continue
 
         probe = replace(
@@ -747,10 +884,20 @@ def _bind_probe_evidence(
                 phase=options.phase,
                 repository=source.repository,
                 source_commit=source.commit,
-                target_environment=None,
+                target_environment=options.environment,
                 policy_set_sha256=policy_set_sha256,
+                deployed_target=_deployment_target(options),
             )
     findings.extend(probes.findings_from_probes(tuple(kept), phase=options.phase))
+    for probe in kept:
+        if (probe.probe_id == probes.OUTPUT_PROBE_ID and probe.status == "not-applicable"
+                and probe.reason_code == "native-output-hook-not-selected"):
+            findings.append(contracts.Finding(
+                finding_id="OUT-001", status="not-applicable", phase=options.phase, plane="runtime",
+                reason_code=probe.reason_code,
+                summary="Native output lifecycle mediation is not selected.",
+                details="Executed tool-result schema validation is not output-hook or streaming evidence.",
+                affected_actions=(probe.action_id,), evidence_refs=probe.evidence_refs))
     evidence = tuple(evidence_by_id[key] for key in sorted(evidence_by_id))
     return tuple(kept), tuple(findings), evidence
 
@@ -833,6 +980,7 @@ def _bind_static_source_evidence(
     options: contracts.AssessmentOptions,
     policy_hashes: Sequence[Mapping[str, str]],
     already_collected: FrozenSet[str] = frozenset(),
+    paths: Sequence[contracts.PathRecord] = (),
 ) -> Tuple[contracts.EvidenceRef, ...]:
     """Bind every repository-relative source path a *static* finding
     cites to a real :class:`contracts.EvidenceRef`.
@@ -884,6 +1032,13 @@ def _bind_static_source_evidence(
             if not _is_static_source_evidence_ref(reference):
                 continue
             phases_by_reference.setdefault(reference, []).append(finding.phase)
+    for path in paths:
+        for reference in path.evidence_refs:
+            if reference in already_collected:
+                continue
+            if not _is_static_source_evidence_ref(reference):
+                continue
+            phases_by_reference.setdefault(reference, []).append(options.phase)
     collected: List[contracts.EvidenceRef] = []
     for reference in sorted(phases_by_reference):
         digest = _static_source_sha256(root, reference)
@@ -1007,6 +1162,16 @@ def _declared_approval_binding(root: Path) -> Optional[probes.ApprovalBinding]:
     return probes.ApprovalBinding(**values)  # type: ignore[arg-type]
 
 
+def _load_probe_contract_context(
+    root: Path,
+) -> Tuple[Optional[Mapping[str, object]], Optional[Mapping[str, object]]]:
+    if not (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
+        return None, None
+    raw_contract = probes.load_raw_probe_contract(root)
+    probe_contract = probes.load_probe_contract(root)
+    return raw_contract, probe_contract
+
+
 def _run_approval_coverage(
     root: Path, phase: str, now: str
 ) -> Tuple[Tuple[contracts.ProbeResult, ...], Tuple[contracts.Finding, ...]]:
@@ -1033,6 +1198,20 @@ def _run_approval_coverage(
         results = probes.run_approval_probe_sequence(root, binding, now=now)
     except probes.ProbeContractError:
         return (), (_approval_not_verified_finding(phase),)
+    except probes.ProbeToolingError as error:
+        return tuple(getattr(error, "partial_results", ())), (
+            _probe_tooling_unavailable_finding(
+                finding_id="APR-001",
+                phase=phase,
+                reason_code="approval-probe-unavailable",
+                summary="Approval anti-replay probe could not be completed.",
+                details=(
+                    "The approval anti-replay probe could not produce an observable "
+                    "result for the declared binding, so APR-001 is reported "
+                    "not-verified rather than aborting the assessment."
+                ),
+            ),
+        )
     return results, ()
 
 
@@ -1078,7 +1257,337 @@ def _run_output_coverage(
         result = probes.run_output_probe(root, "deny")
     except probes.ProbeContractError:
         return (), (_output_contract_unavailable_finding(phase),)
+    except probes.ProbeToolingError:
+        return (), (
+            _probe_tooling_unavailable_finding(
+                finding_id="OUT-001",
+                phase=phase,
+                reason_code="output-probe-unavailable",
+                summary="Output mediation probe could not be completed.",
+                details=(
+                    "The output mediation probe could not produce an observable "
+                    "result for this assessment, so OUT-001 is reported "
+                    "not-verified rather than aborting the assessment."
+                ),
+            ),
+        )
     return (result,), ()
+
+
+def _bound_action_evidence_refs(root: Path, action: contracts.ActionRecord) -> Tuple[str, ...]:
+    refs = list(action.declaration_refs)
+    if (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
+        refs.append(str(_PROBE_CONTRACT_RELATIVE_PATH))
+    return tuple(dict.fromkeys(refs))
+
+
+def _action_is_bound(action: contracts.ActionRecord) -> bool:
+    return action.policy_binding is not None or bool(action.policy_ids)
+
+
+def _probe_action_resolution(
+    actions: Sequence[contracts.ActionRecord],
+) -> Tuple[Mapping[str, contracts.ActionRecord], Mapping[str, str]]:
+    registry = {action.action_id: action for action in actions}
+    return registry, inventory.build_alias_index(registry)
+
+
+def _canonical_probe_action_id(
+    raw_action_id: str,
+    registry: Mapping[str, contracts.ActionRecord],
+    alias_index: Mapping[str, str],
+) -> str:
+    return inventory.canonicalize_action_id(raw_action_id, registry, alias_index)
+
+
+def _bound_policy_binding_text(action: contracts.ActionRecord) -> str:
+    bindings = action.policy_ids or ((action.policy_binding,) if action.policy_binding else ())
+    if not bindings:
+        return "declared runtime binding"
+    digest = hashlib.sha256("\0".join(sorted(bindings)).encode("utf-8")).hexdigest()[:12]
+    label = "binding" if len(bindings) == 1 else "bindings"
+    return f"{len(bindings)} declared runtime policy {label} (set-sha256:{digest})"
+
+
+def _bound_action_missing_enforcement_proof_finding(
+    root: Path, action: contracts.ActionRecord, phase: str
+) -> contracts.Finding:
+    binding_text = _bound_policy_binding_text(action)
+    return contracts.Finding(
+        finding_id="ENF-001",
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code="bound-action-missing-enforcement-proof",
+        summary=f"Bound action '{action.action_id}' has no verified enforcement probe proof.",
+        details=(
+            f"Action '{action.action_id}' declares runtime policy binding(s) "
+            f"{binding_text}, and governance/probe-contract.json names it for "
+            "enforcement probing, but every enforcement probe result for that "
+            "action remained not-verified. Unproven enforcement stays an "
+            "explicit ENF-001 finding rather than disappearing."
+        ),
+        affected_actions=(action.action_id,),
+        evidence_refs=_bound_action_evidence_refs(root, action),
+    )
+
+
+def _canonicalize_probe_results(
+    probe_results: Sequence[contracts.ProbeResult],
+    actions: Sequence[contracts.ActionRecord],
+) -> Tuple[contracts.ProbeResult, ...]:
+    registry, alias_index = _probe_action_resolution(actions)
+    normalized: List[contracts.ProbeResult] = []
+    for probe in probe_results:
+        if probe.action_id is None:
+            normalized.append(probe)
+            continue
+        normalized.append(
+            replace(
+                probe,
+                action_id=_canonical_probe_action_id(probe.action_id, registry, alias_index),
+            )
+        )
+    return tuple(normalized)
+
+
+def _probe_contract_action_validation_findings(
+    root: Path,
+    actions: Sequence[contracts.ActionRecord],
+    *,
+    raw_contract: Optional[Mapping[str, object]] = None,
+    probe_contract: Optional[Mapping[str, object]] = None,
+) -> Tuple[contracts.Finding, ...]:
+    if raw_contract is None and not (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
+        return ()
+    probe_contract = probe_contract if probe_contract is not None else probes.load_probe_contract(root)
+    registry, alias_index = _probe_action_resolution(actions)
+    raw_contract = raw_contract if raw_contract is not None else probes.load_raw_probe_contract(root)
+    declared_actions = {
+        _canonical_probe_action_id(str(action_id), registry, alias_index)
+        for action_id in raw_contract.get("actions", ())
+        if isinstance(action_id, str) and action_id.strip()
+    }
+    selected_output_action = raw_contract.get("action_id")
+    if isinstance(selected_output_action, str) and selected_output_action:
+        declared_actions.add(
+            _canonical_probe_action_id(selected_output_action, registry, alias_index)
+        )
+    approval_binding = raw_contract.get("approval_binding")
+    if isinstance(approval_binding, Mapping):
+        selected_approval_action = approval_binding.get("action_id")
+        if isinstance(selected_approval_action, str) and selected_approval_action:
+            declared_actions.add(
+                _canonical_probe_action_id(selected_approval_action, registry, alias_index)
+            )
+    inventory_actions = set(registry)
+    unknown = sorted({action_id for action_id in declared_actions if action_id not in inventory_actions})
+    findings = tuple(
+        contracts.Finding(
+            finding_id="ENF-001",
+            status="not-verified",
+            phase="pre-deploy",
+            plane="runtime",
+            reason_code="probe-action-not-in-inventory",
+            summary=f"Probe contract action '{action_id}' is absent from the inventory.",
+            details=(
+                f"governance/probe-contract.json declares action '{action_id}', but the "
+                "action inventory did not declare it from registry/spec/Python sources. "
+                "Probe actions must not silently outgrow the inventory."
+            ),
+            affected_actions=(action_id,),
+            evidence_refs=(str(_PROBE_CONTRACT_RELATIVE_PATH),),
+        )
+        for action_id in unknown
+    )
+    return findings
+
+
+def _declared_enforcement_probe_actions(
+    root: Path,
+    actions: Sequence[contracts.ActionRecord],
+    *,
+    probe_contract: Optional[Mapping[str, object]] = None,
+) -> Tuple[str, ...]:
+    if probe_contract is None and not (root / _PROBE_CONTRACT_RELATIVE_PATH).is_file():
+        return ()
+    registry, alias_index = _probe_action_resolution(actions)
+    contract = probe_contract if probe_contract is not None else probes.load_probe_contract(root)
+    return tuple(
+        _canonical_probe_action_id(str(action_id), registry, alias_index)
+        for action_id in contract["actions"]
+    )
+
+
+def _bound_action_not_probed_finding(
+    root: Path, action: contracts.ActionRecord, phase: str
+) -> contracts.Finding:
+    binding_text = _bound_policy_binding_text(action)
+    return contracts.Finding(
+        finding_id="ENF-001",
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code="bound-action-not-probed",
+        summary=f"Bound action '{action.action_id}' has no enforcement probe coverage.",
+        details=(
+            f"Action '{action.action_id}' declares runtime policy binding(s) "
+            f"{binding_text}, but governance/probe-contract.json names no "
+            "enforcement probe action for it. Bound actions must be probed "
+            "explicitly; omission is never inferred as covered."
+        ),
+        affected_actions=(action.action_id,),
+        evidence_refs=_bound_action_evidence_refs(root, action),
+    )
+
+
+def _required_runtime_proof_missing_finding(
+    root: Path,
+    action: contracts.ActionRecord,
+    phase: str,
+    *,
+    finding_id: str,
+    reason_code: str,
+    control_name: str,
+) -> contracts.Finding:
+    return contracts.Finding(
+        finding_id=finding_id,
+        status="not-verified",
+        phase=phase,
+        plane="runtime",
+        reason_code=reason_code,
+        summary=f"Bound action '{action.action_id}' has no verified {control_name} proof.",
+        details=(
+            f"Action '{action.action_id}' is runtime-bound in the inventory and "
+            f"declares {control_name} as required, but this assessment produced "
+            "no passing probe result for that same action. Missing proof is "
+            "reported not-verified rather than invented or borrowed from a "
+            "different action."
+        ),
+        affected_actions=(action.action_id,),
+        evidence_refs=_bound_action_evidence_refs(root, action),
+    )
+
+
+def _all_not_verified(statuses: Sequence[str]) -> bool:
+    remaining = {status for status in statuses if status != "not-applicable"}
+    return not remaining or remaining == {"not-verified"}
+
+
+def _reconcile_bound_action_probe_coverage(
+    root: Path,
+    actions: Sequence[contracts.ActionRecord],
+    probe_results: Sequence[contracts.ProbeResult],
+    phase: str,
+    *,
+    raw_contract: Optional[Mapping[str, object]] = None,
+    probe_contract: Optional[Mapping[str, object]] = None,
+) -> Tuple[contracts.Finding, ...]:
+    registry, alias_index = _probe_action_resolution(actions)
+    declared_probe_actions = set(
+        _declared_enforcement_probe_actions(root, actions, probe_contract=probe_contract)
+    )
+    passing_actions_by_probe: Dict[str, set[str]] = {}
+    enforcement_statuses_by_action: Dict[str, set[str]] = {}
+    unattributed_probe_ids = {
+        probe.probe_id for probe in probe_results if probe.reason_code == "probe-action-unattributed"
+    }
+    for probe in probe_results:
+        if probe.action_id is None:
+            continue
+        canonical_action_id = _canonical_probe_action_id(probe.action_id, registry, alias_index)
+        if (
+            probe.probe_id not in _PROBE_FINDING_IDS
+            and probe.probe_id not in probes.PATH_PROBE_IDS
+        ):
+            enforcement_statuses_by_action.setdefault(canonical_action_id, set()).add(probe.status)
+        if probe.status != "pass":
+            continue
+        passing_actions_by_probe.setdefault(probe.probe_id, set()).add(canonical_action_id)
+
+    findings: List[contracts.Finding] = list(
+        replace(finding, phase=phase)
+        for finding in _probe_contract_action_validation_findings(
+            root,
+            actions,
+            raw_contract=raw_contract,
+            probe_contract=probe_contract,
+        )
+    )
+    for probe in probe_results:
+        if probe.reason_code != "probe-action-unattributed":
+            continue
+        findings.append(
+            _probe_action_unattributed_finding(
+                probe, phase, tuple(sorted(declared_probe_actions))
+            )
+        )
+    for action in actions:
+        if not _action_is_bound(action):
+            continue
+        if action.action_id not in declared_probe_actions:
+            findings.append(_bound_action_not_probed_finding(root, action, phase))
+        elif _all_not_verified(tuple(enforcement_statuses_by_action.get(action.action_id, ()))):
+            findings.append(_bound_action_missing_enforcement_proof_finding(root, action, phase))
+
+        approval_required = (
+            action.binding_requires_approval is True or action.approval_required is True
+        )
+        if (
+            probes.APPROVAL_PROBE_ID not in unattributed_probe_ids
+            and (
+                approval_required
+                and action.action_id
+                not in passing_actions_by_probe.get(probes.APPROVAL_PROBE_ID, set())
+            )
+        ):
+            findings.append(
+                _required_runtime_proof_missing_finding(
+                    root,
+                    action,
+                    phase,
+                    finding_id="APR-001",
+                    reason_code="bound-action-missing-approval-proof",
+                    control_name="approval",
+                )
+            )
+        if (
+            probes.OUTPUT_PROBE_ID not in unattributed_probe_ids
+            and (
+                action.binding_requires_output is True
+                and action.action_id
+                not in passing_actions_by_probe.get(probes.OUTPUT_PROBE_ID, set())
+            )
+        ):
+            findings.append(
+                _required_runtime_proof_missing_finding(
+                    root,
+                    action,
+                    phase,
+                    finding_id="OUT-001",
+                    reason_code="bound-action-missing-output-proof",
+                    control_name="output mediation",
+                )
+            )
+        if (
+            probes.AUDIT_PROBE_ID not in unattributed_probe_ids
+            and (
+                action.binding_requires_durable_audit is True
+                and action.action_id
+                not in passing_actions_by_probe.get(probes.AUDIT_PROBE_ID, set())
+            )
+        ):
+            findings.append(
+                _required_runtime_proof_missing_finding(
+                    root,
+                    action,
+                    phase,
+                    finding_id="AUD-001",
+                    reason_code="bound-action-missing-durable-audit-proof",
+                    control_name="durable audit",
+                )
+            )
+    return tuple(findings)
 
 
 #: The assessor's own tested complete-tuple pin, split into the two
@@ -1214,6 +1723,32 @@ def _default_branch_unresolved_finding() -> contracts.Finding:
     )
 
 
+def _deployment_target(options: contracts.AssessmentOptions) -> Optional[Mapping[str, str]]:
+    """An exact selected binding, never an inferred deployment observation."""
+    selected = {
+        "agent_name": options.agent_name,
+        "agent_version": options.agent_version,
+        "image_digest": options.image_digest,
+        "policy_digest": options.policy_digest,
+        "environment": options.environment,
+        "subscription": options.subscription,
+        "resource_group": options.staging_resource_group,
+    }
+    if not any((options.agent_name, options.agent_version, options.image_digest,
+                options.policy_digest, options.environment)):
+        return None
+    if not all(isinstance(value, str) and value.strip() for value in selected.values()):
+        raise ValueError("deployed target requires agent name/version, image/policy digests and staging scope")
+    if any(not re.fullmatch(r"sha256:[0-9a-f]{64}", selected[field])
+           for field in ("image_digest", "policy_digest")):
+        raise ValueError("deployed target requires exact sha256 image/policy digests")
+    probes.validate_staging_scope(selected)
+    selected["subscription"] = ghcp.resolve_subscription_id(
+        options.subscription, _default_command_runner,
+    )
+    return selected
+
+
 def _collect_selected_live_evidence(
     root: Path,
     options: contracts.AssessmentOptions,
@@ -1248,6 +1783,16 @@ def _collect_selected_live_evidence(
 
     live_azure: Optional[Mapping[str, object]] = None
     if options.subscription and options.staging_resource_group and options.deploy_identity:
+        selected_scope = {
+            "subscription": options.subscription,
+            "resource_group": options.staging_resource_group,
+            "environment": options.environment,
+        }
+        probes.validate_staging_scope(selected_scope)
+        options = replace(options, subscription=ghcp.resolve_subscription_id(
+            options.subscription, _default_command_runner,
+        ))
+        selected_scope["subscription"] = options.subscription
         result = ghcp.collect_live_azure(
             options.subscription,
             options.staging_resource_group,
@@ -1257,6 +1802,44 @@ def _collect_selected_live_evidence(
         if result.finding is not None:
             findings.append(result.finding)
         live_azure = result.data
+        if live_azure is not None:
+            selected = {
+                **(_deployment_target(options) or selected_scope),
+                "deploy_identity": options.deploy_identity,
+            }
+            # Only API-derived observations participate in comparison. Query
+            # selectors bind collection provenance but are not observations.
+            observations = live_azure.get("observed_scopes")
+            if observations is None:
+                observations = [live_azure.get("scope", live_azure)]
+            identities = live_azure.get("observed_identities", [])
+            available = set()
+            incomplete_scope = not observations
+            for observed in list(observations) + list(identities):
+                if not isinstance(observed, Mapping):
+                    incomplete_scope = True
+                    continue
+                for field, value in selected.items():
+                    if value is not None and field in observed:
+                        observed_value = observed[field]
+                        if field == "subscription" and isinstance(observed_value, str):
+                            observed_value = observed_value.lower()
+                        if observed_value != value:
+                            raise contracts.UnsafeTargetError(f"staging evidence {field} mismatch")
+                        available.add(field)
+            for observed in observations:
+                if not isinstance(observed, Mapping) or not {
+                    "subscription", "resource_group",
+                } <= observed.keys():
+                    incomplete_scope = True
+            required = {field for field, value in selected.items() if value is not None}
+            if incomplete_scope or required - available:
+                findings.append(contracts.Finding(
+                    finding_id="GHCP-006", status="not-verified", phase=options.phase,
+                    plane="change", reason_code="azure-observed-target-not-verified",
+                    summary="Selected staging target is not independently verified.",
+                    details="Read-only evidence lacks observed scope or selected deployment identity; selectors are not proof.",
+                ))
 
     return live_github, live_azure, findings
 
@@ -1268,6 +1851,9 @@ def _assess_repository_controls(
     phase: str,
 ) -> contracts.AssessmentResult:
     """Assess the complete repository control set for a deploy phase."""
+    deployment_target = _deployment_target(options)
+    if deployment_target is not None:
+        options = replace(options, subscription=deployment_target["subscription"])
     inv = inventory.build_action_inventory(root)
     findings: List[contracts.Finding] = list(inv.findings)
     evidence: List[contracts.EvidenceRef] = list(_spec_section_8_evidence(inv, source, options.now))
@@ -1277,34 +1863,66 @@ def _assess_repository_controls(
         policy_hashes = tuple(canonical.hash_files(root, inv.policy_paths)["files"])
 
     pin = maf_adapter.load_upstream_pin(_UPSTREAM_PIN_PATH)
-    observed_tuple = maf_adapter.MAFAdapter().resolved_tuple(root)
-    pin_comparison = maf_adapter.compare_upstream_tuple(observed_tuple, pin)
-    if pin_comparison.finding is not None:
-        findings.append(replace(pin_comparison.finding, phase=phase))
-
-    graph = mediation.build_mediation_graph(root, inv.actions, maf_adapter.MAFAdapter())
+    native_contract = native_local.contract(root) if phase == "pre-deploy" else None
+    native_pins = None
+    native_evidence = None
+    if native_contract:
+        events = native_local.execute(root, native_contract)
+        native_paths, probe_results, native_pins = native_local.evaluate(events, native_contract, inv.actions)
+        native_evidence = native_local.native_local_evidence.build_envelope(
+            events, source={"repository": source.repository, "commit": source.commit, "dirty": source.dirty},
+            captured_at=options.now, policy_hashes=policy_hashes)
+        graph = mediation.MediationGraph(nodes=(), edges=(), paths=native_paths, findings=())
+        raw_probe_contract = probe_contract = native_contract
+    else:
+        observed_tuple = maf_adapter.MAFAdapter().resolved_tuple(root)
+        pin_comparison = maf_adapter.compare_upstream_tuple(observed_tuple, pin)
+        if pin_comparison.finding is not None:
+            findings.append(replace(pin_comparison.finding, phase=phase))
+        graph = mediation.build_mediation_graph(root, inv.actions, maf_adapter.MAFAdapter())
     provider_graph = mediation.assess_provider_paths(root, inv.actions)
     paths = graph.paths + provider_graph.paths
-    findings.extend(graph.findings)
     findings.extend(provider_graph.findings)
 
-    probe_results, probe_findings = _run_probe_sets(root, phase)
-    findings.extend(probe_findings)
-
-    approval_probe_results, approval_findings = _run_approval_coverage(
-        root, phase, options.now
+    approval_probe_results = output_probe_results = ()
+    if native_contract is None:
+        probe_results, probe_findings = _run_probe_sets(root, phase, graph.paths)
+        findings.extend(probe_findings)
+        raw_probe_contract, probe_contract = _load_probe_contract_context(root)
+        approval_probe_results, approval_findings = _run_approval_coverage(root, phase, options.now)
+        findings.extend(approval_findings)
+        output_probe_results, output_findings = _run_output_coverage(root, phase)
+        findings.extend(output_findings)
+    probe_results = _canonicalize_probe_results(
+        probe_results + approval_probe_results + output_probe_results,
+        inv.actions,
     )
-    findings.extend(approval_findings)
-    output_probe_results, output_findings = _run_output_coverage(root, phase)
-    findings.extend(output_findings)
 
     probe_results, derived_findings, probe_evidence = _bind_probe_evidence(
-        probe_results + approval_probe_results + output_probe_results,
+        probe_results,
         source,
         options,
         policy_hashes,
+        path_evidence_by_id={
+            path.path_id: path.evidence_refs for path in graph.paths
+        },
     )
+    mediated_paths, mediation_findings = mediation.apply_execution_receipts(
+        graph.paths, probe_results, phase=phase
+    )
+    paths = mediated_paths + provider_graph.paths
+    findings.extend(mediation_findings)
     findings.extend(derived_findings)
+    findings.extend(
+        _reconcile_bound_action_probe_coverage(
+            root,
+            inv.actions,
+            probe_results,
+            phase,
+            raw_contract=raw_probe_contract,
+            probe_contract=probe_contract,
+        )
+    )
     evidence.extend(probe_evidence)
 
     alert_finding, alert_evidence = alerts.assess_alerts(root, phase, None)
@@ -1317,12 +1935,33 @@ def _assess_repository_controls(
     )
     findings.extend(replace(finding, phase=phase) for finding in live_findings)
 
-    change_plane_result = ghcp.assess_change_plane(root, live_github, live_azure)
+    change_plane_result = ghcp.assess_change_plane(root, live_github, live_azure,
+        gateway_bindings=options.gateway_bindings, deployed_target=deployment_target,
+        effect_observations=options.effect_observations,
+        observation_verifier=options.effect_observation_verifier, now=options.now)
     findings.extend(replace(finding, phase=phase) for finding in change_plane_result.findings)
     evidence.extend(replace(ref, phase=phase) for ref in change_plane_result.evidence)
+    evidence.extend(contracts.EvidenceRef(
+        evidence_id=item["evidence_id"], kind="gateway-effect-observation", source=item["source"],
+        sha256=item["sha256"], collected_at=item["collected_at"], freshness_seconds=300,
+        live_verified=True, phase=phase, repository=source.repository, source_commit=source.commit,
+        target_environment=options.environment,
+        policy_set_sha256=render.canonical_policy_set_sha256(policy_hashes),
+        deployed_target=item["deployed_target"],
+    ) for item in change_plane_result.action_evidence)
 
-    pins = _pins_summary(pin_comparison.expected)
-    change_plane = _change_plane_summary(root, source, options, evidence)
+    pins = _pins_summary(maf_adapter._expected_tuple_from_pin(pin))
+    if native_pins is not None:
+        pins["dependencies"] = tuple({"name": k, "version": v} for k, v in native_pins.items())
+        pins["specifications"] = (
+            {"name": "python", "version": events[0]["observation"]["python_version"]},
+            {"name": "acs-policy-schema", "version": pin["acs"]["policy_schema"]},
+        )
+    change_root, _ = ghcp.resolve_change_plane_root(root)
+    change_plane = _change_plane_summary(change_root, source, options, evidence)
+    evidence.extend(_bind_static_source_evidence(
+        change_root, [f for f in findings if f.plane == "change"], source, options,
+        policy_hashes, already_collected=frozenset(ref.evidence_id for ref in evidence), paths=()))
     conformance_claims = _conformance_claims_from_controls(change_plane_result.controls)
 
     findings.sort(key=lambda finding: (finding.finding_id, finding.reason_code))
@@ -1339,8 +1978,19 @@ def _assess_repository_controls(
             options,
             policy_hashes,
             already_collected=frozenset(ref.evidence_id for ref in evidence),
+            paths=paths,
         )
     )
+    if deployment_target is not None:
+        for ref in evidence:
+            if ref.deployed_target is not None:
+                probes.validate_staging_scope(deployment_target, ref.deployed_target)
+            if ref.live_verified and ref.deployed_target is None:
+                raise contracts.UnsafeTargetError("live evidence lacks an exact deployed target binding")
+        evidence = [
+            replace(ref, deployed_target=deployment_target, target_environment=options.environment)
+            for ref in evidence
+        ]
     return contracts.AssessmentResult(
         source=source,
         actions=inv.actions,
@@ -1353,11 +2003,14 @@ def _assess_repository_controls(
         conformance_claims=conformance_claims,
         conformance_reports=(),
         change_plane=change_plane,
+        action_posture=change_plane_result.action_posture,
         residual_risks=(),
         captured_at=options.now,
         phase=phase,
         live_github_selected=options.live_github,
         live_azure_selected=options.live_azure,
+        deployed_target=deployment_target,
+        native_local=native_evidence,
     )
 
 
@@ -1373,7 +2026,18 @@ def _assess_post_deploy(
 ) -> contracts.AssessmentResult:
     """Rerun the complete assessment against a non-production deployment."""
     probes.validate_post_deploy_target("post-deploy", options.staging, destructive=False)
-    return _assess_repository_controls(root, source, options, "post-deploy")
+    probes.validate_staging_scope({
+        "resource_group": options.staging_resource_group,
+        "subscription": options.subscription,
+        "environment": options.environment,
+    })
+    result = _assess_repository_controls(root, source, options, "post-deploy")
+    return replace(result, findings=result.findings + (contracts.Finding(
+        finding_id="ENF-001", status="not-verified", phase="post-deploy", plane="runtime",
+        reason_code="live-runtime-enforcement-not-verified",
+        summary="Local probes are not deployed runtime enforcement evidence.",
+        details="Staging-only assessment; a later safe-check live probe must verify the exact deployment.",
+    ),))
 
 
 def assess(options: contracts.AssessmentOptions) -> contracts.AssessmentResult:
@@ -1485,6 +2149,11 @@ def _options_from_namespace(namespace: argparse.Namespace) -> contracts.Assessme
         staging_resource_group=namespace.staging_resource_group,
         deploy_identity=namespace.deploy_identity,
         now=_now(),
+        agent_name=namespace.agent_name,
+        agent_version=namespace.agent_version,
+        image_digest=namespace.image_digest,
+        policy_digest=namespace.policy_digest,
+        environment=namespace.environment,
     )
 
 

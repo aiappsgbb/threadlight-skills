@@ -78,14 +78,17 @@ for skill in "${COWORK_SAFE_SKILLS[@]}"; do
 
   zip_path="${OUT_DIR}/${skill}.zip"
 
-  # Stage a clean copy (no .DS_Store / __pycache__ / *.pyc), then build a
-  # reproducible FLAT zip: SKILL.md at the root, references/ (+ scripts/ tests/)
-  # as siblings. Cowork's installer expects SKILL.md at the top level of the
-  # archive. The whole-folder member set is the design skill's outer contract.
+  # Stage a clean copy (no .DS_Store / __pycache__ / *.pyc), drop repo-local test
+  # fixtures from the shipped design bundle, then build a reproducible FLAT zip:
+  # SKILL.md at the root, references/ (+ scripts/) as siblings. Cowork's
+  # installer expects SKILL.md at the top level of the archive. The whole-folder
+  # member set is the design skill's outer contract except tests/, which are CI
+  # only and would otherwise burn the per-skill companion budget.
   design_stage="${REPO_ROOT}/.cowork-build-tmp/${skill}.$$"
   rm -rf "${design_stage}"
   mkdir -p "${design_stage}"
   cp -R "${SRC_DIR}/${skill}/." "${design_stage}/"
+  rm -rf "${design_stage}/tests"
   find "${design_stage}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
   find "${design_stage}" \( -name '*.pyc' -o -name '.DS_Store' \) -delete 2>/dev/null || true
 

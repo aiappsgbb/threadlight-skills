@@ -1,26 +1,13 @@
 ---
 name: threadlight-safe-check
 description: >
-  Three-lifecycle completeness gate for threadlight pilots
-  (design / pre-deploy / post-deploy). Reads SPEC § 11c selectors via
-  `specs/manifest.json` `deployment_manifest` and asserts: every
-  selector maps to a deployed `Microsoft.*` type, every channel
-  reaches, every scheduled job is wired. Post-deploy also runs
-  behavioural checks: deployed images differ from the azuredocs
-  helloworld placeholder, no ACA Job has its last 5 runs all Failed,
-  App Insights exists when SPEC declared it.
-  USE FOR: completeness gate, deploy gate, post-deploy gate,
-  pre-deploy check, manifest drift, orphan modules, partial PoC,
-  missing bot/workspace/aca-job, deployment_manifest, manifest.json,
-  placeholder image, helloworld image, image probe, job execution
-  failed, cron rot, app insights missing, telemetry not flowing,
-  blank appin, Kratos export gate, trimmed infra, derive expected
-  types from infra.
-  DO NOT USE FOR: invocation/runtime tests (foundry-evals), `azd up`
-  orchestration (threadlight-deploy), schema authoring
-  (threadlight-design).
+  Use when a Threadlight pilot needs design, pre-deploy or post-deploy
+  completeness checks: manifest drift, missing resources, orphan modules,
+  placeholder images, failed jobs, missing telemetry, or selected runtime
+  governance requiring deployed enforcement evidence. Not for deployment
+  orchestration (threadlight-deploy) or general agent evaluations (foundry-evals).
 metadata:
-  version: "1.1.1"
+  version: "1.2.0"
 ---
 
 # Threadlight Safe Check — three lifecycle gates, one CLI
@@ -82,6 +69,49 @@ and re-readable later (CI, demo prep, postmortem):
 
 All three manifests have a top-level `"gaps": []`. **Empty array = pass.**
 
+## Selected runtime governance
+
+When the SPEC selects governance, resource presence alone is insufficient.
+Explicit `off` and unselected legacy projects add no governance network calls.
+Invalid selected configuration is not off: it fails closed. Legacy v2 evidence
+never passes new runtime readiness. This is binding evidence, **not whole-agent**
+certification.
+
+- **Pre-deploy:** verify the exact selected adapter, packaged code/configuration,
+  bundle integrity, required controls and service bindings. Before an image
+  exists, record `pre-image` and explicit unverified image/deployment facts;
+  never call a static declaration enforced. Intentionally unbound read tools
+  are not missing adapters and must not be auto-selected or removed.
+- **Post-deploy:** use the installed collector and the operator's protected
+  `.threadlight/governance-probe.json`. A Key Vault verified registry must
+  explicitly declare **`probe_safe: true`** for **`governance_probe_noop`**.
+  Without it, do not invoke the model or improvise a business operation,
+  even with `--force`. Missing setup is an unverified governance gap.
+- Register fresh, independent allow/deny UUIDs at both producer and fixture
+  before invoking the actual hosted agent. Require terminal producer states,
+  an authenticated Task 8 receipt, one allow effect and zero deny effects.
+  Ignored prompts, replay, unavailable dependencies, wrong scope or changed
+  deployment remain unverified. Model text is never an oracle.
+- Dedicated noop proof **cannot certify business bindings** or other lifecycle
+  points. Those remain unverified without their own explicit safe live evidence.
+  Do not promote local tests, CTK results or packaging into deployed proof.
+- Preserve every existing non-governance gap. `governance_health`,
+  `governance_probes` and `governance_gaps` supplement—not replace—`gaps`.
+  Saved collector JSON is payload-free evidence, **not remote attestation**.
+
+See [collector installation, inputs and limits](references/governance-probe.md)
+and the [actual producer contract](references/probe-fixture/README.md).
+
+The collector independently observes ARM/Foundry tenant/subscription/RG,
+version/image/principal and closed configuration before and after invocation.
+Pin the parent with `--subscription` and `--rg`; constrain tenant through the
+deployment manifest and independently checked account context. Never derive
+the expected parent from the probe configuration. Every deployment attempt
+needs fresh after-deployment proof, not current mtime or a reused nonce.
+Readiness rechecks the full signed envelope/key, bundle and current configuration
+against previously verified evidence. Changed signatures invalidate it.
+Required audit uses remote ACK; local overlay fsync is not hosted durability.
+
 ---
 
 ## Kratos-export mode (valid input without `specs/manifest.json`)
@@ -136,6 +166,7 @@ Optional flags:
 
 ```bash
 --rg <name>           # override AZURE_RESOURCE_GROUP env var (post-deploy)
+--subscription <id-or-name> # post-deploy account; defaults to current CLI account
 --manifest <path>     # override default specs/manifest.json
 --out <dir>           # override default tests/ output dir
 --quiet               # only print final OK / FAIL line + exit code
@@ -154,11 +185,9 @@ threadlight-safe-check/
     └── test_safe_check.py         (integration_binding_gaps + example parity)
 ```
 
-The CLI is **one file** (~250 LOC) intentionally — copy it into the pilot
-repo as `tests/safe_check.py` (or symlink / install as a package) and
-invoke. No external dependencies beyond stdlib + `azure-identity` (for
-`AzureCliCredential`-honored `az` calls already required by everything
-else in the toolchain).
+The legacy CLI remains a copyable file. Selected governance additionally
+requires the portable `threadlight-governance-safe-check` package; copying
+only the CLI never silently skips a selected governance gate.
 
 Run the shipped tests standalone (no pytest required):
 
@@ -790,8 +819,12 @@ isn't set in the shell that launches `python3 tests/safe_check.py`,
 `azure-tenant-isolation`: set both `AZURE_CONFIG_DIR` and
 `AZD_CONFIG_DIR` in the shell before invoking this gate.
 
-The CLI itself logs the active tenant + subscription as its first line
-of output, so any cross-tenant slip is immediately visible.
+The CLI resolves and logs the selected account's canonical tenant + subscription,
+then pins all parent resource reads to that subscription without changing the
+global account. Missing/invalid account context is a gap (exit `1`), not a
+fallback to collector declarations. Governance registration/invocation requires
+the independently observed target to match the full parent tenant/subscription/RG.
+See [the exact scope contract](references/governance-probe.md#exact-target-and-configuration-contract).
 
 ---
 

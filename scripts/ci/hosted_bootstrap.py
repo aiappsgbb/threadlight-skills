@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""Explicit operator lifecycle. Never deploy a second version to activate a binding."""
+from __future__ import annotations
+
+import argparse
+import asyncio
+from contextlib import AsyncExitStack
+import json
+from pathlib import Path
+import sys
+from uuid import UUID
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def validate_credential_options(mode, client_id):
+    if mode == "managed-identity":
+        try:
+            identifier = UUID(client_id) if isinstance(client_id, str) else None
+        except ValueError:
+            identifier = None
+        if identifier is None or identifier.int == 0 or str(identifier) != client_id:
+            raise ValueError("managed-identity requires a canonical nonzero --managed-identity-client-id")
+    elif mode != "azure-cli" or client_id is not None:
+        raise ValueError("managed identity arguments require --credential-mode managed-identity")
+
+
+def make_credential(args, tenant_id, *, asynchronous=False):
+    mode = getattr(args, "credential_mode", "azure-cli")
+    client_id = getattr(args, "managed_identity_client_id", None)
+    validate_credential_options(mode, client_id)
+    if asynchronous:
+        from azure.identity.aio import AzureCliCredential, ManagedIdentityCredential
+    else:
+        from azure.identity import AzureCliCredential, ManagedIdentityCredential
+    if mode == "managed-identity":
+        return ManagedIdentityCredential(
+            client_id=client_id, connection_timeout=5, read_timeout=5, retry_total=0)
+    return AzureCliCredential(tenant_id=tenant_id)
+
+
+def read(path):
+    from govern_control_plane.models import strict_json
+    path = Path(path)
+    if path.is_symlink() or any(p.is_symlink() for p in path.parents):
+        raise ValueError("protected_input_symlink")
+    with path.open("rb") as source:
+        raw = source.read(65537)
+    if len(raw) > 65536:
+        raise ValueError("protected_input_too_large")
+    return strict_json(raw)
+
+
+def observe_parent(config, credential):
+    """Authenticated ARM read establishes actual parent before any mutation."""
+    import requests
+    token = credential.get_token("https://management.azure.com/.default")
+    with requests.Session() as session:
+        session.trust_env = False
+        response = session.get(
+            "https://management.azure.com" + config["project_id"] + "?api-version=2025-06-01",
+            headers={"Authorization": "Bearer " + token.token}, timeout=30, allow_redirects=False)
+        if response.status_code != 200 or len(response.content) > 65536:
+            raise ValueError("project_parent_observation_unavailable")
+        document = response.json()
+    endpoints = document.get("properties", {}).get("endpoints", {})
+    if (document.get("id", "").lower() != config["project_id"].lower()
+            or config["project_endpoint"] not in endpoints.values()):
+        raise ValueError("observed_project_parent_or_endpoint_mismatch")
+    return document["id"]
+
+
+async def publish(config, args, observed):
+    from azure.storage.blob.aio import BlobServiceClient
+    from azure.keyvault.keys.aio import KeyClient
+    from azure.keyvault.keys.crypto.aio import CryptographyClient
+    from govern_control_plane.app import AzureConfiguration, ControlPlane
+    from govern_control_plane.models import SignedBundle, canonical, parse
+    from govern_control_plane.storage import AzureStore, KeyVaultSigner
+    from govern_control_plane.hosted_lifecycle import binding_from_observation, persist, publish_or_recover, bounded_lifetime
+    from govern_control_plane.bootstrap_assets import read_directory
+    frozen = read(args.frozen_config)
+    final = parse(SignedBundle, canonical(read(args.policy_envelope)))
+    publisher = parse(AzureConfiguration, canonical(read(args.publisher_config)))
+    if publisher.tenant_id != config["tenant_id"] or publisher.key_id != frozen["key_id"]:
+        raise ValueError("publisher_scope_mismatch")
+    assets = read_directory(args.native_probe_assets) if args.native_probe_assets else None
+    async with AsyncExitStack() as stack:
+        credential = await stack.enter_async_context(make_credential(args, config["tenant_id"], asynchronous=True))
+        blobs = await stack.enter_async_context(BlobServiceClient(
+            publisher.blob_url, credential=credential, retry_total=0))
+        crypto = await stack.enter_async_context(CryptographyClient(
+            publisher.key_id, credential=credential, retry_total=0))
+        keys = await stack.enter_async_context(KeyClient(
+            publisher.key_id.split("/keys/")[0], credential=credential, retry_total=0))
+        service = ControlPlane(publisher, AzureStore(blobs.get_container_client(publisher.blob_container), None),
+                               KeyVaultSigner(crypto, key_client=keys))
+        final = await service.authenticate_bundle(canonical(final))
+        native_digest = frozen["remote_bootstrap"]["native_policy_digest"]
+        native = await service.authenticate_bundle(await service.store.blob_read(service.digest_name(native_digest)))
+        if native.envelope.content_digest != native_digest:
+            raise ValueError("native_policy_index_mismatch")
+        expiries = [final.envelope.expires_at, native.envelope.expires_at]
+        if assets is not None:
+            association = await service.authenticate_bundle(assets["envelope.json"])
+            expiries.append(association.envelope.expires_at)
+        binding = binding_from_observation(
+            config, frozen, observed, policy_digest=final.envelope.content_digest,
+            policy_version=final.envelope.version,
+            lifetime_seconds=bounded_lifetime(args.lifetime_seconds, expiries), assets=assets)
+        signed = await publish_or_recover(service, binding, assets=assets)
+        if args.binding_output.exists():
+            if canonical(read(args.binding_output)) != canonical(signed):
+                raise ValueError("protected_binding_output_conflict")
+        else:
+            persist(args.binding_output, json.loads(canonical(signed)), exclusive=True)
+
+
+async def wait_ready(config, args, observed):
+    import httpx
+    from azure.keyvault.keys.aio import KeyClient
+    from azure.keyvault.keys.crypto.aio import CryptographyClient
+    from govern_control_plane.bootstrap import SignedBootstrap, verify, read_host_binding, BootstrapNotReady
+    from govern_control_plane.bootstrap_assets import digest
+    from govern_control_plane.models import canonical, parse
+    from govern_control_plane.storage import KeyVaultSigner
+    signed = parse(SignedBootstrap, canonical(read(args.binding_output)))
+    frozen = read(args.frozen_config)
+    if (signed.binding.key_id != frozen["key_id"]
+            or signed.binding.reference != frozen["remote_bootstrap"]["reference"]
+            or signed.binding.config_digest != digest(canonical(frozen))):
+        raise ValueError("frozen_bootstrap_configuration_mismatch")
+    if any(getattr(signed.binding, key) != value for key, value in observed.items()):
+        raise ValueError("published_binding_observation_mismatch")
+    async with AsyncExitStack() as stack:
+        credential = await stack.enter_async_context(make_credential(args, config["tenant_id"], asynchronous=True))
+        crypto = await stack.enter_async_context(CryptographyClient(
+            frozen["key_id"], credential=credential, retry_total=0))
+        keys = await stack.enter_async_context(KeyClient(
+            frozen["key_id"].split("/keys/")[0], credential=credential, retry_total=0))
+        signer = KeyVaultSigner(crypto, key_client=keys)
+        http = await stack.enter_async_context(httpx.AsyncClient(
+            timeout=10, follow_redirects=False, trust_env=False))
+        async with asyncio.timeout(args.wait_seconds):
+            while True:
+                await verify(signed, signer, tenant_id=config["tenant_id"], key_id=frozen["key_id"])
+                try:
+                    await read_host_binding({**observed, "protocol": config["protocol"]}, signed,
+                                            credential=credential, http=http)
+                    return
+                except BootstrapNotReady:
+                    await asyncio.sleep(2)
+
+
+def argument_parser():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("create", "observe", "configure-endpoint", "publish", "wait"))
+    parser.add_argument("--creation", required=True, type=Path)
+    parser.add_argument("--attempt", required=True, type=Path)
+    parser.add_argument("--credential-mode", choices=("azure-cli", "managed-identity"), action="append",
+                        help="azure-cli (default) or one explicit managed identity; never a fallback chain")
+    parser.add_argument("--managed-identity-client-id", action="append",
+                        help="Required canonical client ID for managed-identity mode")
+    parser.add_argument("--frozen-config", type=Path)
+    parser.add_argument("--policy-envelope", type=Path)
+    parser.add_argument("--publisher-config", type=Path)
+    parser.add_argument("--binding-output", type=Path)
+    parser.add_argument("--native-probe-assets", type=Path)
+    parser.add_argument("--observation-output", type=Path)
+    parser.add_argument("--expected-observation", type=Path)
+    parser.add_argument("--lifetime-seconds", type=int, default=3600)
+    parser.add_argument("--wait-seconds", type=int, default=300)
+    return parser
+
+
+def parse_args(argv=None, *, parser=None):
+    parser = parser or argument_parser()
+    args = parser.parse_args(argv)
+    if len(args.credential_mode or []) > 1 or len(args.managed_identity_client_id or []) > 1:
+        parser.error("credential mode and managed identity client ID may each be specified only once")
+    args.credential_mode = args.credential_mode[0] if args.credential_mode else "azure-cli"
+    args.managed_identity_client_id = args.managed_identity_client_id[0] if args.managed_identity_client_id else None
+    try:
+        validate_credential_options(args.credential_mode, args.managed_identity_client_id)
+    except ValueError as error:
+        parser.error(str(error))
+    if args.command == "configure-endpoint" and args.expected_observation is None:
+        parser.error("configure-endpoint requires the protected --expected-observation from observe")
+    return args
+
+
+def main(argv=None):
+    parser = argument_parser()
+    args = parse_args(argv, parser=parser)
+    from azure.ai.projects import AIProjectClient
+    from govern_control_plane.hosted_lifecycle import (
+        create_once, observe, validate, record_observation, configure_endpoint, observe_endpoint,
+    )
+    from govern_control_plane.app import configure_logging
+    configure_logging()
+    config = validate(read(args.creation))
+    if args.command == "publish" and not all((
+            args.frozen_config, args.policy_envelope, args.publisher_config, args.binding_output)):
+        parser.error("publish requires --frozen-config, --policy-envelope, --publisher-config, --binding-output")
+    if args.command == "wait" and (
+            not args.binding_output or not args.frozen_config or not 1 <= args.wait_seconds <= 3600):
+        parser.error("wait requires --binding-output, --frozen-config and bounded --wait-seconds")
+    with make_credential(args, config["tenant_id"]) as credential:
+        observe_parent(config, credential)
+        with AIProjectClient(endpoint=config["project_endpoint"], credential=credential,
+                             api_version="v1", retry_total=0, connection_timeout=5, read_timeout=30) as client:
+            if args.command == "create":
+                state = create_once(client, config, args.attempt)
+                print(json.dumps({"status": "created-pending-binding", "version": state["version"]}))
+                return
+            observed = observe(client, config, args.attempt)
+            if args.expected_observation and observed != read(args.expected_observation):
+                raise ValueError("independently_observed_binding_changed")
+            if args.observation_output:
+                record_observation(args.observation_output, observed)
+            if args.command == "configure-endpoint":
+                configure_endpoint(client, config, args.attempt, read(args.expected_observation))
+            elif args.command == "publish":
+                asyncio.run(publish(config, args, observed))
+            elif args.command == "wait":
+                observe_endpoint(client, config, args.attempt, observed)
+                asyncio.run(wait_ready(config, args, observed))
+            print(json.dumps({"status": args.command + "-complete-not-live-proof", "observation": observed}))
+
+
+if __name__ == "__main__":
+    main()

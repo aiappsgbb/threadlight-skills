@@ -1,0 +1,7 @@
+{
+  "scope": "worktree",
+  "root": "../..",
+  "project": "examples/returns-triage-governed",
+  "workflows": [".github/workflows/python-pytest.yml"],
+  "purpose": "Task13 local pre-deploy validation only; deployed change plane requires its own live proof"
+}

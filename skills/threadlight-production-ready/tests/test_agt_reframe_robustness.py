@@ -98,13 +98,13 @@ def test_agt001_rejects_cross_file_schema_anchors() -> None:
         "policy.prod.yaml": 'rules:\n  - name: x\n    action: deny\n',  # rules only
     })
     f = _by_id(pr._check_agt_static(ctx, "auto"))
-    assert f["AGT-001"].status == "must-fix", f["AGT-001"].detail
+    assert f["AGT-001"].status == "not-verified", f["AGT-001"].detail
 
 
-def test_agt001_single_canonical_valid_policy_passes() -> None:
+def test_agt001_single_canonical_valid_policy_is_not_live_proof() -> None:
     ctx = _ctx_with_files({"policy.yaml": _VALID_POLICY})
     f = _by_id(pr._check_agt_static(ctx, "auto"))
-    assert f["AGT-001"].status == "pass", f["AGT-001"].detail
+    assert f["AGT-001"].status == "not-verified", f["AGT-001"].detail
 
 
 def test_agt004_pin_scoped_to_canonical_policy() -> None:
@@ -185,10 +185,10 @@ def test_rai002_policy_with_deny_rule_passes() -> None:
 
 # --- N2: govern baseline templates keep an adopting pilot on v3_7 -------------
 
-def test_govern_default_template_keeps_pilot_v3_7() -> None:
-    tmpl = (GOVERN_DIR / "references" / "policy-templates" / "default.policy.yaml").read_text(encoding="utf-8")
+def test_govern_native_template_alone_does_not_prove_enforcement() -> None:
+    tmpl = (GOVERN_DIR / "references" / "policy-templates" / "manifest.yaml").read_text(encoding="utf-8")
     ctx = _ctx_with_files({"policy.yaml": tmpl}, src={"app.py": "import agent_compliance\n"})
-    assert pr._detect_agt_profile(ctx, "auto") == "v3_7"
+    assert _by_id(pr._check_agt_static(ctx, "auto"))["AGT-001"].status == "not-verified"
 
 
 def test_govern_policy_templates_have_no_v4_only_key() -> None:

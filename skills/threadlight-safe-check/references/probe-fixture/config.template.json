@@ -1,0 +1,49 @@
+{
+  "enabled": false,
+  "producer": "fixture",
+  "tenant_id": "11111111-1111-1111-1111-111111111111",
+  "audience": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "key_id": "https://example.vault.azure.net/keys/policy/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "service_client_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "workloads": {
+    "33333333-3333-3333-3333-333333333333": {
+      "client_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "agent_id": "probe-agent",
+      "policies": ["safe"]
+    }
+  },
+  "fixture_callers": {
+    "33333333-3333-3333-3333-333333333333": "cccccccc-cccc-cccc-cccc-cccccccccccc"
+  },
+  "human_clients": ["dddddddd-dddd-dddd-dddd-dddddddddddd"],
+  "approver_subjects": ["44444444-4444-4444-4444-444444444444"],
+  "approver_roles": ["Approver"],
+  "probe_controllers": {
+    "55555555-5555-5555-5555-555555555555": {
+      "client_id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+      "subjects": ["22222222-2222-2222-2222-222222222222"],
+      "actions": ["governance_probe_noop"]
+    }
+  },
+  "cosmos_url": "https://example.documents.azure.com:443/",
+  "cosmos_database": "governance",
+  "cosmos_container": "probe-fixture",
+  "bundle_path": "/config/policy",
+  "signed_envelope_path": "/config/envelope.json",
+  "policy_id": "safe",
+  "policy_version": "1",
+  "policy_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "gateway_url": "https://gateway.example/mcp",
+  "allowed_endpoints": [
+    "https://fixture.example/governance/noop",
+    "https://fixture.example/governance/outcomes"
+  ],
+  "expected_deployment": {
+    "agent_id": "probe-agent",
+    "agent_version": "1",
+    "image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "environment": "preproduction",
+    "subscription": "11111111-1111-1111-1111-111111111111",
+    "resource_group": "probe-staging"
+  }
+}

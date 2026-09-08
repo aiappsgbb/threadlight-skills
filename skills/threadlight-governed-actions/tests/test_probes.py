@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import threading
 import time
@@ -70,6 +71,9 @@ from pathlib import Path
 
 import pytest
 
+import inventory
+import maf_adapter
+import mediation
 import probes
 from contracts import Finding, ProbeResult, UnsafeTargetError
 from probes import (
@@ -141,11 +145,906 @@ def test_probe_case_is_frozen():
 def test_load_probe_contract_reads_exact_contract_fields(fixture_root: Path):
     contract = load_probe_contract(fixture_root / "conformant-maf")
     assert contract["dispatch"] == "app.agent:dispatch"
+    assert contract["execution_dispatch"] == "app.agent:dispatch_execution_path"
     assert contract["audit_sink"] == "app.agent:AUDIT_EVENTS"
     assert contract["timeout_ms"] == 500
     assert contract["side_effect_mode"] == "synthetic"
     assert contract["observation_ledger"] == "governance/probe-ledger.jsonl"
     assert contract["actions"] == ("payments.refund",)
+    assert len(contract["execution_paths"]) == 10
+    assert all(
+        set(binding) == {"action_id", "mode", "path_id"}
+        for binding in contract["execution_paths"]
+    )
+
+
+def _discovered_fixture_paths(root: Path):
+    actions = inventory.build_action_inventory(root).actions
+    return mediation.build_mediation_graph(root, actions, maf_adapter.MAFAdapter()).paths
+
+
+@pytest.mark.parametrize("kind", ["application", "execution-path", "approval"])
+def test_probe_child_consumes_eof_and_is_reaped(
+    approval_root, approval_binding, monkeypatch, kind,
+):
+    created = []
+    original = probes.subprocess.Popen
+
+    def start(*args, **kwargs):
+        process = original(*args, **kwargs)
+        created.append(process)
+        return process
+
+    monkeypatch.setattr(probes.subprocess, "Popen", start)
+    try:
+        if kind == "application":
+            result = run_application_probe(
+                approval_root, ProbeCase("deny", "payments.refund", "deny", {"amount": 7}))
+            assert result.status == "pass"
+        elif kind == "execution-path":
+            results = probes.run_execution_path_probe_set(
+                approval_root, _discovered_fixture_paths(approval_root))
+            assert results and all(result.status == "pass" for result in results)
+        else:
+            result = run_approval_probe(
+                approval_root, approval_binding, now="2026-09-01T12:00:00Z")
+            assert result.status == "pass"
+        assert created and all(process.returncode == 0 for process in created)
+    finally:
+        for process in created:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5)
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None:
+                    stream.close()
+
+
+def test_execution_path_bindings_match_assessor_discovery(fixture_root: Path):
+    root = fixture_root / "conformant-maf"
+    contract = load_probe_contract(root)
+
+    bindings = probes.validate_execution_paths(
+        contract, _discovered_fixture_paths(root)
+    )
+
+    assert {
+        (binding["action_id"], binding["mode"], binding["path_id"])
+        for binding in bindings
+    } == {
+        (path.action_id, path.mode, path.path_id)
+        for path in _discovered_fixture_paths(root)
+        if path.discovered
+    }
+
+
+def test_execution_path_probes_exercise_allow_and_deny_receipts(
+    fixture_root: Path,
+):
+    root = fixture_root / "conformant-maf"
+    paths = _discovered_fixture_paths(root)
+
+    results = probes.run_execution_path_probe_set(root, paths)
+
+    assert len(results) == 2 * len([path for path in paths if path.discovered])
+    allowed = [result for result in results if result.probe_id == "path-dispatch-allow"]
+    assert len(allowed) == len(paths)
+    assert {result.status for result in allowed} == {"pass"}
+    denied = [result for result in results if result.probe_id == "path-dispatch-deny"]
+    assert len(denied) == len(paths)
+    assert {result.status for result in denied} == {"pass"}
+    assert {result.observed for result in denied} == {
+        "deny_decision_without_invocation"
+    }
+    assert all(
+        {"path-resolved-function", "path-pre-action-decision"}
+        <= {item.kind for item in result.evidence_items}
+        for result in denied
+    )
+
+
+def test_async_execution_path_uses_awaitable_synthetic_namespaces(
+    tmp_path: Path,
+):
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "app" / "agent.py").write_text(
+        """
+class _AsyncNamespace:
+    async def pre_tool_call(self, **kwargs):
+        return {"decision": "allow"}
+
+    async def invoke(self, *args, **kwargs):
+        return {"cancelled": True}
+
+agent_hooks = _AsyncNamespace()
+tool_service = _AsyncNamespace()
+AUDIT_EVENTS = []
+
+async def interactive_orders_cancel(order_id):
+    await agent_hooks.pre_tool_call(
+        action_id="orders.cancel", mode="interactive"
+    )
+    await agent_hooks.require_approval(
+        action_id="orders.cancel", mode="interactive"
+    )
+    result = await tool_service.invoke("orders.cancel", order_id=order_id)
+    await audit_sink.record(action_id="orders.cancel", mode="interactive")
+    await agent_hooks.post_tool_call(
+        action_id="orders.cancel", mode="interactive"
+    )
+    return result
+
+EXECUTION_ROUTES = {
+    ("orders.cancel", "interactive"): interactive_orders_cancel,
+}
+
+def dispatch_execution_path(action_id, mode, case, ledger_path):
+    target = EXECUTION_ROUTES[(action_id, mode)]
+    resolved_path = f"{target.__module__}:{target.__qualname__}"
+    with open(ledger_path, "a", encoding="utf-8") as handle:
+        handle.write(__import__("json").dumps({
+            "event": "resolved_path",
+            "evidence_id": f"path-resolved-{case['path_id']}",
+            "action_id": action_id,
+            "mode": mode,
+            "path_id": case["path_id"],
+            "resolved_path": resolved_path,
+        }) + "\\n")
+        handle.flush()
+        __import__("os").fsync(handle.fileno())
+    return {
+        "action_id": action_id,
+        "mode": mode,
+        "resolved_path": resolved_path,
+        "result": target(order_id=case["arguments"]["order_id"]),
+    }
+
+def dispatch(case, ledger_path):
+    return {
+        "decision": "deny",
+        "invocation_count": 0,
+        "argument_hash": None,
+        "exception_class": None,
+    }
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "agent.yaml").write_text(
+        """
+tools:
+  - id: orders.cancel
+    consequence: write
+    execution_modes: [interactive]
+    provider_hosted: false
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "governance").mkdir()
+    actions = inventory.build_action_inventory(tmp_path).actions
+    paths = mediation.build_mediation_graph(
+        tmp_path, actions, maf_adapter.MAFAdapter()
+    ).paths
+    interactive_path = next(path for path in paths if path.mode == "interactive")
+    (tmp_path / "governance" / "probe-contract.json").write_text(
+        json.dumps(
+            {
+                "actions": ["orders.cancel"],
+                "audit_sink": "app.agent:AUDIT_EVENTS",
+                "dispatch": "app.agent:dispatch",
+                "execution_dispatch": "app.agent:dispatch_execution_path",
+                "execution_paths": [
+                    {
+                        "action_id": "orders.cancel",
+                        "mode": "interactive",
+                        "path_id": interactive_path.path_id,
+                    }
+                ],
+                "observation_ledger": "governance/probe-ledger.jsonl",
+                "side_effect_mode": "synthetic",
+                "timeout_ms": 500,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    receipts = probes.run_execution_path_probe_set(tmp_path, paths)
+    updated, findings = mediation.apply_execution_receipts(paths, receipts)
+
+    assert next(path for path in updated if path.mode == "interactive").status == "pass"
+    assert all(
+        finding.finding_id != "MED-001"
+        for finding in findings
+        if interactive_path.path_id in finding.affected_paths
+    )
+
+
+def test_execution_path_runner_preserves_partial_results_on_child_start_failure(
+    fixture_root: Path, monkeypatch
+):
+    root = fixture_root / "conformant-maf"
+    paths = _discovered_fixture_paths(root)
+    calls = 0
+
+    def _dispatch(_root, _contract, binding, _target_ledger, decision):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise ProbeToolingError("synthetic child start failure")
+        event = {
+            "event": "pre_action_decision",
+            "evidence_id": f"decision-{calls}",
+            "action_id": binding["action_id"],
+            "mode": binding["mode"],
+            "path_id": binding["path_id"],
+            "decision": decision,
+        }
+        events = [event]
+        if decision == "allow":
+            events.append(
+                {
+                    "event": "invocation",
+                    "evidence_id": f"invocation-{calls}",
+                    "action_id": binding["action_id"],
+                    "mode": binding["mode"],
+                    "path_id": binding["path_id"],
+                }
+            )
+        return {"events": events, "child_error": None}
+
+    monkeypatch.setattr(probes, "_dispatch_path_child", _dispatch)
+
+    with pytest.raises(probes.PartialProbeToolingError) as caught:
+        probes.run_execution_path_probe_set(root, paths)
+
+    assert len(caught.value.partial_results) == 2
+
+
+def test_execution_path_runner_reports_proof_pipe_creation_failure(
+    fixture_root: Path,
+    monkeypatch,
+):
+    root = fixture_root / "conformant-maf"
+    paths = _discovered_fixture_paths(root)
+
+    def fail_pipe():
+        raise OSError("synthetic pipe exhaustion")
+
+    monkeypatch.setattr(probes.os, "pipe", fail_pipe)
+
+    with pytest.raises(probes.PartialProbeToolingError, match="proof channel"):
+        probes.run_execution_path_probe_set(root, paths)
+
+
+def test_execution_path_proof_decoder_ignores_non_ascii_nonce_event():
+    proof_nonce = "a" * 64
+    malformed = {
+        "event": "pre_action_decision",
+        "evidence_id": "target-malformed-nonce",
+        "proof_nonce": "café",
+    }
+    valid = {
+        "event": "routing_target",
+        "evidence_id": "assessor-valid",
+        "proof_nonce": proof_nonce,
+    }
+    raw = b"\n".join(
+        json.dumps(event, ensure_ascii=False).encode("utf-8")
+        for event in (malformed, valid)
+    )
+
+    assert probes._decode_path_proof_events(raw, proof_nonce) == [valid]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="proof pipes are POSIX-only")
+def test_proof_pipe_drain_deadline_survives_inherited_writer():
+    read_fd, write_fd = os.pipe()
+    pid = os.fork()
+    if pid == 0:  # pragma: no cover - assertions run in the parent
+        try:
+            os.close(read_fd)
+            os.write(write_fd, b'{"event":"complete"}\n')
+            time.sleep(1.0)
+        except OSError:
+            pass
+        finally:
+            try:
+                os.close(write_fd)
+            finally:
+                os._exit(0)
+
+    os.close(write_fd)
+    started = time.monotonic()
+    try:
+        with pytest.raises(probes.ProofChannelReadError, match="deadline") as caught:
+            probes._read_all_fd(read_fd)
+        drain_elapsed = time.monotonic() - started
+    finally:
+        os.close(read_fd)
+        os.waitpid(pid, 0)
+
+    assert drain_elapsed < 0.75
+    assert caught.value.partial_bytes == b'{"event":"complete"}\n'
+    assert caught.value.reason == "timeout"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="proof pipes are POSIX-only")
+def test_proof_pipe_drain_caps_oversized_stream_memory():
+    max_bytes = probes._MAX_PATH_PROOF_BYTES
+    read_fd, write_fd = os.pipe()
+    complete_event = b'{"event":"complete"}\n'
+    payload = complete_event + b"x" * (max_bytes + 1)
+
+    def _write_oversized_stream() -> None:
+        view = memoryview(payload)
+        try:
+            while view:
+                written = os.write(write_fd, view)
+                view = view[written:]
+        except BrokenPipeError:
+            pass
+        finally:
+            os.close(write_fd)
+
+    writer = threading.Thread(target=_write_oversized_stream)
+    writer.start()
+    try:
+        with pytest.raises(probes.ProofChannelReadError, match="byte limit") as caught:
+            probes._read_all_fd(read_fd)
+    finally:
+        os.close(read_fd)
+        writer.join(timeout=1.0)
+
+    assert not writer.is_alive()
+    assert caught.value.reason == "oversized"
+    assert len(caught.value.partial_bytes) <= max_bytes
+    assert caught.value.partial_bytes.startswith(complete_event)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="proof pipes are POSIX-only")
+def test_partial_proof_drain_keeps_complete_events_as_not_verified(
+    fixture_root: Path, tmp_path: Path, monkeypatch
+):
+    root = fixture_root / "conformant-maf"
+    contract = load_probe_contract(root)
+    binding = contract["execution_paths"][0]
+    original_read = probes._read_all_fd
+
+    def _fail_after_complete_read(fd: int) -> bytes:
+        raw = original_read(fd)
+        raise probes.ProofChannelReadError(
+            "synthetic proof drain deadline",
+            reason="timeout",
+            partial_bytes=raw,
+        )
+
+    monkeypatch.setattr(probes, "_read_all_fd", _fail_after_complete_read)
+    outcome = probes._dispatch_path_child(
+        root.resolve(),
+        contract,
+        binding,
+        tmp_path / "target-ledger.jsonl",
+        "allow",
+    )
+    result = probes._build_path_probe_result(
+        binding,
+        outcome,
+        "assessor:execution-path-proof-channel",
+        "path-dispatch-allow",
+    )
+
+    assert outcome["child_error"] == "proof_timeout"
+    assert outcome["events"]
+    assert result.status == "not-verified"
+    assert result.evidence_items
+
+
+def test_execution_path_binding_rejects_target_path_id_lie(
+    approval_root: Path,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    raw["execution_paths"][0]["path_id"] = "target-declared-lie"
+    contract_path.write_text(json.dumps(raw), encoding="utf-8")
+    contract = load_probe_contract(approval_root)
+
+    with pytest.raises(ProbeContractError, match="does not match assessor-discovered"):
+        probes.validate_execution_paths(
+            contract, _discovered_fixture_paths(approval_root)
+        )
+
+
+def test_execution_path_binding_rejects_per_path_dispatch_callable(
+    approval_root: Path,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    raw["execution_paths"][0]["dispatch"] = "app.agent:dispatch"
+    contract_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ProbeContractError, match="must contain exactly"):
+        load_probe_contract(approval_root)
+
+
+def test_execution_path_binding_rejects_duplicate_path(
+    approval_root: Path,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    raw["execution_paths"].append(dict(raw["execution_paths"][0]))
+    contract_path.write_text(json.dumps(raw), encoding="utf-8")
+    contract = load_probe_contract(approval_root)
+
+    with pytest.raises(ProbeContractError, match="duplicate execution path binding"):
+        probes.validate_execution_paths(
+            contract, _discovered_fixture_paths(approval_root)
+        )
+
+
+def test_execution_path_binding_rejects_unlisted_discovered_path(
+    approval_root: Path,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    raw["execution_paths"].pop()
+    contract_path.write_text(json.dumps(raw), encoding="utf-8")
+    contract = load_probe_contract(approval_root)
+
+    with pytest.raises(ProbeContractError, match="unlisted assessor-discovered path"):
+        probes.validate_execution_paths(
+            contract, _discovered_fixture_paths(approval_root)
+        )
+
+
+@pytest.mark.parametrize("value", [None, "", "not-importable"])
+def test_load_probe_contract_rejects_missing_or_malformed_execution_dispatch(
+    approval_root: Path,
+    value: object,
+):
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    if value is None:
+        raw.pop("execution_dispatch", None)
+    else:
+        raw["execution_dispatch"] = value
+    contract_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ProbeContractError, match="execution_dispatch"):
+        load_probe_contract(approval_root)
+
+
+def _path_event(
+    binding: dict[str, str],
+    event: str,
+    evidence_id: str,
+    **fields: object,
+) -> dict[str, object]:
+    return {
+        "event": event,
+        "evidence_id": evidence_id,
+        "action_id": binding["action_id"],
+        "mode": binding["mode"],
+        "path_id": binding["path_id"],
+        **fields,
+    }
+
+
+def test_execution_path_deny_with_any_invocation_is_fail_open():
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    outcome = {
+        "child_error": None,
+        "resolved_path": "app.agent:background_payments_refund",
+        "expected_resolved_path": "app.agent:background_payments_refund",
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path="app.agent:background_payments_refund",
+            ),
+            _path_event(
+                binding,
+                "resolved_path",
+                "resolved-1",
+                resolved_path="app.agent:background_payments_refund",
+            ),
+            _path_event(
+                binding,
+                "pre_action_decision",
+                "decision-1",
+                decision="deny",
+            ),
+            _path_event(binding, "invocation", "invocation-1"),
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-deny"
+    )
+
+    assert result.status == "must-fix"
+    assert result.reason_code == "ENF-002"
+    assert result.observed == "tool_invoked_despite_deny"
+
+
+@pytest.mark.parametrize(
+    ("child_error", "reason_code"),
+    [
+        ("startup_failed", "path-dispatch-startup-failed"),
+        ("timeout", "path-dispatch-timeout"),
+        ("nonzero_exit", "path-dispatch-nonzero-exit"),
+        ("malformed_output", "path-dispatch-malformed-output"),
+    ],
+)
+def test_execution_path_child_errors_remain_not_verified_without_ledger_bypass(
+    child_error: str,
+    reason_code: str,
+):
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    resolved_path = "app.agent:background_payments_refund"
+    outcome = {
+        "child_error": child_error,
+        "resolved_path": resolved_path,
+        "expected_resolved_path": resolved_path,
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path=resolved_path,
+            ),
+            _path_event(
+                binding,
+                "resolved_path",
+                "resolved-1",
+                resolved_path=resolved_path,
+            )
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-allow"
+    )
+
+    assert result.status == "not-verified"
+    assert result.reason_code == reason_code
+
+
+def test_execution_path_startup_failure_without_ledger_reflects_child_error():
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+
+    result = probes._build_path_probe_result(
+        binding,
+        {
+            "child_error": "startup_failed",
+            "resolved_path": None,
+            "expected_resolved_path": None,
+            "events": [],
+        },
+        "governance/probe-ledger.jsonl",
+        "path-dispatch-allow",
+    )
+
+    assert result.status == "not-verified"
+    assert result.reason_code == "path-dispatch-startup-failed"
+
+
+@pytest.mark.parametrize("decision", ["allow", "transform"])
+def test_execution_path_allow_or_transform_may_invoke_after_decision(
+    decision: str,
+):
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    resolved_path = "app.agent:background_payments_refund"
+    outcome = {
+        "child_error": None,
+        "resolved_path": resolved_path,
+        "expected_resolved_path": resolved_path,
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path=resolved_path,
+            ),
+            _path_event(
+                binding,
+                "resolved_path",
+                "resolved-1",
+                resolved_path=resolved_path,
+            ),
+            _path_event(
+                binding,
+                "pre_action_decision",
+                "decision-1",
+                decision=decision,
+            ),
+            _path_event(binding, "invocation", "invocation-1"),
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-allow"
+    )
+
+    assert result.status == "pass"
+    assert result.observed == "pre_action_decision_before_invocation"
+
+
+def test_execution_path_resolved_identity_mismatch_cannot_pass():
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    outcome = {
+        "child_error": None,
+        "resolved_path": "app.agent:lying_decoy",
+        "expected_resolved_path": "app.agent:actual_background_payments_refund",
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path="app.agent:actual_background_payments_refund",
+            ),
+            _path_event(
+                binding,
+                "resolved_path",
+                "resolved-1",
+                resolved_path="app.agent:lying_decoy",
+            ),
+            _path_event(
+                binding,
+                "pre_action_decision",
+                "decision-1",
+                decision="allow",
+            ),
+            _path_event(binding, "invocation", "invocation-1"),
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-allow"
+    )
+
+    assert result.status == "must-fix"
+    assert result.reason_code == "ENF-002"
+    assert result.observed == "resolved_path_identity_mismatch"
+
+
+def test_execution_path_child_error_does_not_mask_proven_identity_mismatch():
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    outcome = {
+        "child_error": "timeout",
+        "resolved_path": "app.agent:lying_decoy",
+        "expected_resolved_path": "app.agent:actual_background_payments_refund",
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path="app.agent:actual_background_payments_refund",
+            ),
+            _path_event(
+                binding,
+                "resolved_path",
+                "resolved-1",
+                resolved_path="app.agent:lying_decoy",
+            ),
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-allow"
+    )
+
+    assert result.status == "must-fix"
+    assert result.observed == "resolved_path_identity_mismatch"
+
+
+def test_target_ledger_forgery_does_not_create_assessor_receipt(
+    approval_root: Path,
+):
+    source_path = approval_root / "app" / "agent.py"
+    source = source_path.read_text(encoding="utf-8")
+    marker = "    target = EXECUTION_ROUTES[(action_id, mode)]\n"
+    forged = """    if mode == "background":
+        resolved_path = f"{target.__module__}:{target.__qualname__}"
+        _append_ledger(
+            ledger_path,
+            "resolved_path",
+            evidence_id=f"path-resolved-{case['path_id']}",
+            action_id=action_id,
+            mode=mode,
+            path_id=case["path_id"],
+            resolved_path=resolved_path,
+        )
+        _append_ledger(
+            ledger_path,
+            "pre_action_decision",
+            evidence_id=f"path-decision-{case['path_id']}",
+            action_id=action_id,
+            mode=mode,
+            path_id=case["path_id"],
+            decision="allow",
+        )
+        _append_ledger(
+            ledger_path,
+            "invocation",
+            evidence_id=f"path-invocation-{case['path_id']}",
+            action_id=action_id,
+            mode=mode,
+            path_id=case["path_id"],
+        )
+        return {
+            "action_id": action_id,
+            "mode": mode,
+            "resolved_path": resolved_path,
+            "result": {"forged": True},
+        }
+"""
+    assert marker in source
+    source_path.write_text(source.replace(marker, marker + forged, 1), encoding="utf-8")
+
+    paths = _discovered_fixture_paths(approval_root)
+    results = probes.run_execution_path_probe_set(approval_root, paths)
+    result = next(
+        result
+        for result in results
+        if result.action_id == "payments.refund"
+        and result.mode == "background"
+        and result.probe_id == "path-dispatch-allow"
+    )
+
+    assert result.status == "not-verified"
+    assert result.reason_code == "path-dispatch-malformed-output"
+
+
+def test_target_cannot_glob_and_forge_assessor_path_receipt(
+    approval_root: Path,
+):
+    source_path = approval_root / "app" / "agent.py"
+    source = source_path.read_text(encoding="utf-8")
+    original = """def background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    agent_hooks.pre_tool_call(action_id="payments.refund", mode="background")
+    agent_hooks.require_approval(action_id="payments.refund", mode="background")
+    result = tool_service.invoke("payments.refund", payment_id=payment_id, amount=amount)
+    audit_sink.record(action_id="payments.refund", mode="background")
+    agent_hooks.post_tool_call(action_id="payments.refund", mode="background")
+    return result
+"""
+    forged = """def background_payments_refund(payment_id: str, amount: float) -> dict[str, Any]:
+    del payment_id, amount
+    for assessor_path in __import__("pathlib").Path("governance").glob(".path-probe-*"):
+        if "-allow-" not in assessor_path.name:
+            continue
+        events = [
+            json.loads(line)
+            for line in assessor_path.read_text(encoding="utf-8").splitlines()
+        ]
+        context = events[0]
+        for event, fields in (
+            ("pre_action_decision", {"decision": "allow"}),
+            ("invocation", {}),
+        ):
+            _append_ledger(
+                str(assessor_path),
+                event,
+                evidence_id=f"forged-{event}-{context['path_id']}",
+                action_id=context["action_id"],
+                mode=context["mode"],
+                path_id=context["path_id"],
+                **fields,
+            )
+    return {"forged": True}
+"""
+    assert original in source
+    source_path.write_text(source.replace(original, forged, 1), encoding="utf-8")
+
+    paths = _discovered_fixture_paths(approval_root)
+    background_path = next(
+        path
+        for path in paths
+        if path.action_id == "payments.refund" and path.mode == "background"
+    )
+    contract_path = approval_root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    for binding in contract["execution_paths"]:
+        if binding["action_id"] == "payments.refund" and binding["mode"] == "background":
+            binding["path_id"] = background_path.path_id
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+
+    results = probes.run_execution_path_probe_set(approval_root, paths)
+    result = next(
+        result
+        for result in results
+        if result.action_id == "payments.refund"
+        and result.mode == "background"
+        and result.probe_id == "path-dispatch-allow"
+    )
+
+    assert result.status == "not-verified"
+    assert result.reason_code == "path-dispatch-unobservable"
+    assert not list(approval_root.rglob(".path-probe-*"))
+
+
+def test_path_proof_events_require_exact_assessor_nonce():
+    proof_nonce = "a" * 64
+    expected = {
+        "event": "pre_action_decision",
+        "proof_nonce": proof_nonce,
+    }
+    forged = {
+        "event": "pre_action_decision",
+        "proof_nonce": "b" * 64,
+    }
+    non_hex = {"event": "pre_action_decision", "proof_nonce": "g" * 64}
+    wrong_length = {"event": "pre_action_decision", "proof_nonce": "a" * 63}
+    missing = {"event": "pre_action_decision"}
+    raw = b"\n".join(
+        json.dumps(event, sort_keys=True).encode("utf-8")
+        for event in (forged, non_hex, wrong_length, expected, missing)
+    )
+
+    assert probes._decode_path_proof_events(raw, proof_nonce) == [expected]
+
+
+def test_execution_path_cannot_pass_without_resolved_identity_in_ledger():
+    binding = {
+        "action_id": "payments.refund",
+        "mode": "background",
+        "path_id": "path-1",
+    }
+    resolved_path = "app.agent:background_payments_refund"
+    outcome = {
+        "child_error": None,
+        "resolved_path": resolved_path,
+        "expected_resolved_path": resolved_path,
+        "events": [
+            _path_event(
+                binding,
+                "routing_target",
+                "routing-1",
+                expected_resolved_path=resolved_path,
+            ),
+            _path_event(
+                binding,
+                "pre_action_decision",
+                "decision-1",
+                decision="allow",
+            ),
+            _path_event(binding, "invocation", "invocation-1"),
+        ],
+    }
+
+    result = probes._build_path_probe_result(
+        binding, outcome, "governance/probe-ledger.jsonl", "path-dispatch-allow"
+    )
+
+    assert result.status == "not-verified"
+    assert result.observed == "resolved_path_identity_unobservable"
 
 
 @pytest.mark.parametrize("timeout_ms", [1, 5_000])
@@ -528,6 +1427,7 @@ def test_load_probe_contract_rejects_observation_ledger_symlink_escape(
         json.dumps(
             {
                 "dispatch": "app.agent:dispatch_probe",
+                "execution_dispatch": "app.agent:dispatch_probe",
                 "audit_sink": "app.agent:AUDIT_EVENTS",
                 "timeout_ms": 100,
                 "side_effect_mode": "synthetic",
@@ -594,6 +1494,7 @@ def dispatch_probe(case, ledger_path):
         json.dumps(
             {
                 "dispatch": "app.agent:dispatch_probe",
+                "execution_dispatch": "app.agent:dispatch_probe",
                 "audit_sink": "app.agent:AUDIT_EVENTS",
                 "timeout_ms": 1000,
                 "side_effect_mode": "synthetic",
@@ -741,6 +1642,7 @@ def test_unobservable_outcome_raises_probe_tooling_error(tmp_path: Path):
         json.dumps(
             {
                 "dispatch": "probes_test_nonexistent_module:dispatch_probe",
+                "execution_dispatch": "probes_test_nonexistent_module:dispatch_execution_path",
                 "audit_sink": "probes_test_nonexistent_module:AUDIT_EVENTS",
                 "timeout_ms": 100,
                 "side_effect_mode": "synthetic",
@@ -1423,12 +2325,13 @@ def test_approval_sequence_accepts_first_use_then_rejects_replay_and_mutations(
         approval_root, approval_binding, now="2026-09-01T12:00:00Z"
     )
 
-    assert len(results) == 2 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert len(results) == 4 + len(probes._APPROVAL_MUTATION_FIELDS)
     assert results[0].observed == "approval_accepted"
     assert results[1].observed == "replay_rejected"
-    assert [probe.observed for probe in results[2:]] == [
+    assert [probe.observed for probe in results[2:-2]] == [
         "binding_mismatch_rejected"
     ] * len(probes._APPROVAL_MUTATION_FIELDS)
+    assert [probe.observed for probe in results[-2:]] == ["approval_accepted", "expired_rejected"]
     assert {probe.status for probe in results} == {"pass"}
     assert findings_from_probes(results) == ()
 
@@ -1441,7 +2344,7 @@ def test_approval_sequence_accepts_first_use_then_rejects_replay_and_mutations(
     # first use; every mutation cites a genuinely different one.
     digests = [probe.evidence_refs[0] for probe in results]
     assert digests[0] == digests[1] == approval_digest(approval_binding)
-    assert len(set(digests[1:])) == 1 + len(probes._APPROVAL_MUTATION_FIELDS)
+    assert len(set(digests[1:])) == 3 + len(probes._APPROVAL_MUTATION_FIELDS)
 
 
 def test_approval_sequence_never_writes_target_state(
@@ -1483,13 +2386,15 @@ def test_approval_sequence_flags_fail_open_replay_and_every_mutation(
 
     assert results[0].status == "pass"
     assert results[0].observed == "approval_accepted"
-    replays_and_mutations = results[1:]
+    replays_and_mutations = results[1:-2]
     assert len(replays_and_mutations) == 1 + len(probes._APPROVAL_MUTATION_FIELDS)
     assert {probe.status for probe in replays_and_mutations} == {"must-fix"}
     assert {probe.reason_code for probe in replays_and_mutations} == {"APR-001"}
     assert {probe.observed for probe in replays_and_mutations} == {
         "fail_open_replay_or_mutation_accepted"
     }
+    assert results[-2].observed == "approval_accepted"
+    assert results[-1].observed == "expired_binding_fail_open_accepted"
     findings = findings_from_probes(results)
     assert findings
     assert {(f.finding_id, f.status) for f in findings} == {("APR-001", "must-fix")}
@@ -1556,7 +2461,8 @@ def redeem(nonce, digest, expires_at, now, ledger_path):
         root, approval_binding, now="2026-09-01T12:00:00Z"
     )
     assert results[0].status == "pass"
-    rejected = results[1:]
+    rejected = results[1:-2] + results[-1:]
+    assert results[-2].status == "pass"
     assert {probe.status for probe in rejected} == {"must-fix"}
     assert {probe.observed for probe in rejected} == {
         "fail_open_invocation_on_rejection"
@@ -1576,6 +2482,74 @@ def test_approval_sequence_cleans_up_its_private_ledger_on_failure(
             approval_root, approval_binding, now="2026-09-01T12:00:00Z"
         )
     assert _tree_snapshot(approval_root) == before
+    assert not list((approval_root / "governance").glob(".approval-probe-*"))
+
+
+def test_enforcement_probe_set_raises_with_partial_results_on_late_tooling_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    first = ProbeResult(
+        probe_id="deny",
+        action_id="payments.refund",
+        path_id=None,
+        status="must-fix",
+        reason_code="ENF-002",
+        expected="tool_not_invoked",
+        observed="tool_invoked_despite_fault",
+        evidence_refs=(),
+    )
+    call_count = {"value": 0}
+
+    monkeypatch.setattr(
+        probes,
+        "load_probe_contract",
+        lambda _root: {"actions": ("payments.refund",)},
+    )
+
+    def _runner(_root, _case):
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return first
+        raise ProbeToolingError("synthetic late enforcement failure")
+
+    monkeypatch.setattr(probes, "run_application_probe", _runner)
+
+    with pytest.raises(ProbeToolingError) as excinfo:
+        run_enforcement_probe_set(Path("."))
+    assert getattr(excinfo.value, "partial_results", ()) == (first,)
+
+
+def test_approval_sequence_raises_with_partial_results_on_late_tooling_error(
+    monkeypatch: pytest.MonkeyPatch, approval_root: Path, approval_binding: ApprovalBinding
+):
+    first = ProbeResult(
+        probe_id=probes._APPROVAL_PROBE_ID,
+        action_id=approval_binding.action_id,
+        path_id=None,
+        status="must-fix",
+        reason_code="APR-001",
+        expected="anti_replay_enforced",
+        observed="fail_open_replay_or_mutation_accepted",
+        evidence_refs=("sha256:deadbeef",),
+    )
+    call_count = {"value": 0}
+    real = probes.run_approval_probe
+
+    def _runner(root, binding, now, *, ledger_path=None):
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return first
+        if call_count["value"] == 2:
+            raise ProbeToolingError("synthetic late approval failure")
+        return real(root, binding, now, ledger_path=ledger_path)
+
+    monkeypatch.setattr(probes, "run_approval_probe", _runner)
+
+    with pytest.raises(ProbeToolingError) as excinfo:
+        probes.run_approval_probe_sequence(
+            approval_root, approval_binding, now="2026-09-01T12:00:00Z"
+        )
+    assert getattr(excinfo.value, "partial_results", ()) == (first,)
     assert not list((approval_root / "governance").glob(".approval-probe-*"))
 
 
@@ -1646,6 +2620,7 @@ def test_approval_probe_override_never_targets_the_declared_nonce_ledger(
 def test_output_is_buffered_until_output_verdict(fixture_root: Path):
     result = run_output_probe(fixture_root / "conformant-maf", verdict="deny")
     assert result.status == "pass"
+    assert result.action_id == "payments.refund"
     assert result.observed == "zero_bytes_egressed"
     assert findings_from_probes((result,)) == ()
 
@@ -1654,6 +2629,37 @@ def test_output_probe_allows_buffered_release_after_verdict(fixture_root: Path):
     result = run_output_probe(fixture_root / "conformant-maf", verdict="allow")
     assert result.status == "pass"
     assert result.observed == "buffered_release_after_verdict"
+
+
+def test_output_probe_uses_a_private_ledger_and_never_touches_declared_target_files(
+    fixture_root: Path, tmp_path: Path
+):
+    # The declared observation_ledger is provenance only. Even a hostile
+    # contract pointing it at a tracked workflow file must not let the
+    # probe delete or rewrite that file: the output probe uses its own
+    # exclusive private ledger and leaves the full target tree byte-
+    # identical.
+    root = tmp_path / "output-private-ledger"
+    shutil.copytree(fixture_root / "conformant-maf", root)
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["observation_ledger"] = ".github/workflows/governed-actions.yml"
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    untracked = root / "scratch" / "notes.txt"
+    untracked.parent.mkdir(parents=True)
+    untracked.write_text("leave me alone\n", encoding="utf-8")
+
+    workflow_path = root / ".github" / "workflows" / "governed-actions.yml"
+    workflow_before = workflow_path.read_bytes()
+    before = _tree_snapshot(root)
+
+    result = run_output_probe(root, verdict="deny")
+
+    assert result.status == "pass"
+    assert result.observed == "zero_bytes_egressed"
+    assert workflow_path.read_bytes() == workflow_before
+    assert _tree_snapshot(root) == before
 
 
 def test_output_probe_passes_when_stream_is_chunk_mediated_within_declared_bound(
@@ -1999,6 +3005,27 @@ def test_output_probe_rejects_unknown_verdict(fixture_root: Path):
         run_output_probe(fixture_root / "output-streaming", verdict="bogus")
 
 
+def test_output_probe_with_multiple_declared_actions_and_no_attribution_is_not_verified(
+    tmp_path: Path,
+):
+    root = tmp_path / "output-unattributed"
+    shutil.copytree(FIXTURES_DIR / "conformant-maf", root)
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract.pop("action_id", None)
+    contract.pop("approval_binding", None)
+    contract["actions"] = ["payments.refund", "customer.lookup"]
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = run_output_probe(root, verdict="deny")
+
+    assert result.status == "not-verified"
+    assert result.reason_code == "probe-action-unattributed"
+    assert result.action_id is None
+    assert result.evidence_refs == ()
+    assert findings_from_probes((result,)) == ()
+
+
 def test_audit_probe_rejects_payload_bearing_record(tmp_path: Path):
     # A target whose nonce store behaves correctly but whose audit
     # sink leaks a raw argument payload: ``run_privacy_probe_set``
@@ -2061,6 +3088,7 @@ def test_audit_probe_passes_payload_free_record(fixture_root: Path):
     results = run_privacy_probe_set(fixture_root / "conformant-maf")
     passing = [result for result in results if result.status == "pass"]
     assert passing
+    assert {result.action_id for result in passing} == {"payments.refund"}
     assert all(result.observed == "payload_free_audit_record" for result in passing)
     assert findings_from_probes(tuple(passing)) == ()
 
@@ -2124,6 +3152,29 @@ def test_audit_probe_set_rejects_root_with_no_recognized_contract(tmp_path: Path
     )
     with pytest.raises(ProbeContractError):
         run_privacy_probe_set(root)
+
+
+def test_audit_probe_with_multiple_declared_actions_and_no_attribution_is_not_verified(
+    tmp_path: Path,
+):
+    root = tmp_path / "audit-unattributed"
+    shutil.copytree(FIXTURES_DIR / "conformant-maf", root)
+    contract_path = root / "governance" / "probe-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract.pop("action_id", None)
+    contract.pop("approval_binding", None)
+    contract["actions"] = ["payments.refund", "customer.lookup"]
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    results = run_privacy_probe_set(root)
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.status == "not-verified"
+    assert result.reason_code == "probe-action-unattributed"
+    assert result.action_id is None
+    assert result.evidence_refs == ()
+    assert findings_from_probes(results) == ()
 
 
 def test_output_probe_never_unconditionally_passes_allow_before_verdict(

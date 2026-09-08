@@ -1,11 +1,11 @@
 # Upstream pin: Agent Hooks / Agent Framework / CTK / ACS
 
 **Status: `alpha-experimental`.** This document and the paired
-[`upstream-pin.json`](./upstream-pin.json) record the *only* upstream
-dependency/specification tuple this skill's MAF-first adapter and
-conformance claim have been tested against. Any deviation from that exact
-tuple — anywhere in it — is drift, reported as `PIN-001`, and must be
-treated as `must-fix` until the tuple is re-verified.
+[`upstream-pin.json`](./upstream-pin.json) retain the historical upstream
+spec/CTK reference claim and the legacy adapter's exact comparison tuple.
+The **native local** runtime source of truth is the shared pin described below;
+fresh installed-wheel and application-path evidence is mandatory. Neither
+reference metadata nor a declared version substitutes for that execution.
 
 ## What this pin does and does not claim
 
@@ -22,14 +22,13 @@ treated as `must-fix` until the tuple is re-verified.
   This is a stated Microsoft/Agent Framework project status, not a defect
   particular to this skill, but it means the integration surface itself
   may change incompatibly between releases without prior notice.
-- **The conformance report attests exactly one distribution/version pair:
+- **The historical conformance report records exactly one distribution/version pair:
   `agent-framework-core==1.13.0`, resolved from source commit
   `4b1afd90520310547cb0e9cdc70f644d80161e82`.** No other version of
   `agent-framework-core` — older or newer — is covered by this claim.
   **A newer released version of `agent-framework-core` does not inherit
-  this claim.** If a target resolves any other version, the assessor must
-  treat the MAF tuple as unverified drift (`PIN-001`) rather than assume
-  forward- or backward-compatibility with the pinned behavior.
+  this claim.** MAF 1.14.0 is qualified by the separate exact-pin native runner,
+  not by relabeling this MAF 1.13.0 report or assuming compatibility.
 - **Conformance is not certification.** The referenced report
   (`conformance/claims/maf/REPORT.md`, blob
   `e4a97194e7091a15555afbc541da637765d819bf`, claim `section-13.1`) is a
@@ -80,3 +79,19 @@ tuple may be treated as verified:
 Until all five steps are complete, `compare_upstream_tuple` reports the
 observed tuple as drift (`PIN-001`, `must-fix`, "rerun CTK and all
 application-path probes") rather than silently accepting it.
+## Native local observation scope
+
+The authoritative native runtime versions and official Linux wheel hashes are
+`skills/_shared/governance-upstream-pin.json`: MAF core 1.14.0, ACS 0.3.1b0,
+Agent Hooks 0.1.0a5, and **agent-governance-toolkit-core** 5.0.0 (not the umbrella
+distribution). The native-local protocol observes imported installed packages,
+checks their execution bytes against those exact wheels, and verifies OPA bytes
+on every assessment. The MAF wheel hash is artifact provenance; an unknown
+release source commit is not invented.
+
+The older six-key adapter remains available for fixture/protocol compatibility.
+The spec/SDK source/CTK/conformance-report entries above describe upstream
+historical reference claims, not evidence that the current application image
+contains those packages or that its runtime is certified. In native-local mode,
+fresh executed wheel observations replace that legacy installed-JSON mechanism.
+All local results remain independent of live Task15 business-binding proof.

@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -40,12 +41,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 # -----------------------------------------------------------------------------
 # Stage definitions — lockstep with SKILL.md § Resumption table
 # -----------------------------------------------------------------------------
 
 STAGES = ["preflight", "design", "deploy", "safe_check", "cost_projection", "invoke", "evals", "redteam", "govern"]
+GOVERNANCE_STAGES = ["preflight", "design", "govern", "governed_actions_gate", "deploy",
+                     "governance_probe", "safe_check", "cost_projection", "invoke", "evals", "redteam"]
 
 DEFAULT_STATE_PATH = ".threadlight/auto-state.json"
 DEFAULT_NEXT_PATH = ".threadlight/auto-next.json"
@@ -98,22 +102,9 @@ LEG_CONTRACTS = {
         "forbid_extra_fields": True,
     },
     "govern": {
-        "manifest": "specs/govern-manifest.json",
+        "manifest": "specs/governance-manifest.json",
         "skill": "threadlight-govern",
-        "schema": "threadlight-govern-manifest/v2",
-        "known_verdicts": frozenset({"governed", "partial", "ungoverned"}),
-        "required_capabilities": frozenset({
-            "policy_artefact_present",
-            "policy_schema_valid",
-            "policy_versioned",
-            "policy_default_deny",
-            "sensitive_action_rules_present",
-            "policy_tests_present",
-            "ci_gate_present",
-            "attestation_present",
-            "attestation_fresh",
-            "asi_reference_present",
-        }),
+        "schema": "threadlight-governance-manifest/v1",
     },
 }
 
@@ -158,17 +149,14 @@ try:  # pragma: no cover - import wiring
     from evidence_gate import (  # noqa: E402
         EvidenceGateError as _EvidenceGateError,
         _validate_evals_manifest as _validate_evals_manifest_contract,
-        _validate_govern_manifest as _validate_govern_manifest_contract,
         _validate_redteam_manifest as _validate_redteam_manifest_contract,
     )
 except Exception:  # pragma: no cover - standalone fallback
     _EvidenceGateError = ValueError
-    _validate_govern_manifest_contract = None
     _validate_evals_manifest_contract = None
     _validate_redteam_manifest_contract = None
 
 _ASSURANCE_MANIFEST_VALIDATORS = {
-    "govern": _validate_govern_manifest_contract,
     "evals": _validate_evals_manifest_contract,
     "redteam": _validate_redteam_manifest_contract,
 }
@@ -416,6 +404,65 @@ def summarize_governed_actions_manifest(
         return _governed_actions_untrusted(
             f"the manifest schema is not {_GOVERNED_ACTIONS_SCHEMA}"
         )
+    if manifest.get("evidence_contract") != "governance-ledger/v2":
+        return _governed_actions_untrusted("unsupported governance evidence contract")
+    evidence = manifest.get("evidence")
+    conformance = manifest.get("conformance")
+    if not isinstance(evidence, list) or not isinstance(conformance, dict):
+        return _governed_actions_untrusted("missing governance evidence")
+    probes = conformance.get("application_probes")
+    if not isinstance(probes, list):
+        return _governed_actions_untrusted("missing governance probes")
+    by_id = {}
+    for entry in evidence:
+        if (not isinstance(entry, dict) or not isinstance(entry.get("evidence_id"), str)
+                or not isinstance(entry.get("kind"), str)):
+            return _governed_actions_untrusted("malformed governance evidence")
+        if entry["evidence_id"] in by_id:
+            return _governed_actions_untrusted("duplicate governance evidence")
+        by_id[entry["evidence_id"]] = entry
+    required_kinds = {
+        "approval-anti-replay": {"approval-ledger-records", "approval-binding-digest"},
+        "output-mediation": {"output-ledger-records"},
+        "payload-free-audit": {"audit-ledger-records", "probe-audit-record"},
+    }
+    try:
+        from skills._shared.native_local_evidence import validated_controls
+        native_controls = validated_controls(
+            manifest.get("native_local"), probes, evidence, source=manifest.get("source"),
+            phase=manifest.get("phase"), captured_at=manifest.get("captured_at"),
+            policy_hashes=manifest.get("policy_hashes"), assessor=manifest.get("assessor"),
+            root=path.parent.parent)
+    except (ValueError, TypeError, KeyError, OSError, RecursionError):
+        return _governed_actions_untrusted("native local evidence is malformed, incomplete, or mismatched")
+    for probe in probes:
+        if not isinstance(probe, dict) or not isinstance(probe.get("probe_id"), str):
+            return _governed_actions_untrusted("malformed governance probe")
+        if (probe.get("status") not in ("pass", "must-fix", "should-fix", "not-verified", "not-applicable")
+                or "action_id" not in probe
+                or not isinstance(probe["action_id"], (str, type(None)))):
+            return _governed_actions_untrusted("malformed governance probe status or identity")
+        kinds = required_kinds.get(probe["probe_id"])
+        if (not kinds or probe.get("status") != "pass"
+                or (probe["action_id"], probe["probe_id"]) in native_controls):
+            continue
+        refs = probe.get("evidence_refs")
+        if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
+            return _governed_actions_untrusted("malformed governance probe references")
+        cited = [by_id[ref] for ref in refs if ref in by_id]
+        if not kinds <= {entry.get("kind") for entry in cited}:
+            return _governed_actions_untrusted("passing probe lacks persisted ledger evidence")
+        for entry in cited:
+            if entry.get("kind") in kinds and entry["kind"].endswith("-ledger-records"):
+                digest = entry.get("sha256")
+                if (
+                    not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+                    or entry["evidence_id"] != f"{entry['kind']}-{digest[7:]}"
+                    or not isinstance(entry.get("source"), str)
+                    or not entry["source"].endswith("#assessment-isolated")
+                    or entry.get("live_verified") is not False
+                ):
+                    return _governed_actions_untrusted("invalid persisted ledger evidence")
 
     phase = manifest.get("phase")
     if not isinstance(phase, str) or phase not in _GOVERNED_ACTIONS_PHASE_KEYS:
@@ -479,6 +526,44 @@ def summarize_governed_actions_manifest(
                 "a finding carries an unknown id or status", phase
             )
         observed[status].append(finding_id)
+
+    precedence = ("must-fix", "not-verified", "should-fix", "pass", "not-applicable")
+    for probe_id, finding_id in (
+        ("approval-anti-replay", "APR-001"), ("output-mediation", "OUT-001"),
+        ("payload-free-audit", "AUD-001"),
+    ):
+        family = [p for p in probes if p["probe_id"] == probe_id]
+        statuses = [f["status"] for f in findings if f["finding_id"] == finding_id]
+        if not family and not any(status != "pass" for status in statuses):
+            return _governed_actions_untrusted("governance control evidence is missing", phase)
+        if any(p["status"] != "pass" for p in family) and (
+            not statuses or min(precedence.index(status) for status in statuses)
+            > min(precedence.index(p["status"]) for p in family)
+        ):
+            return _governed_actions_untrusted("governance probe outcome is missing from findings", phase)
+        if probe_id == "approval-anti-replay":
+            digest = lambda value: "sha256:" + hashlib.sha256(value.encode()).hexdigest()
+            for action_id in {p["action_id"] for p in family}:
+                if (action_id, probe_id) in native_controls:
+                    continue
+                sequence = [p for p in family if p["action_id"] == action_id]
+                if not all(p["status"] == "pass" for p in sequence):
+                    continue
+                sequence_observations = [p.get("observed_sha256") for p in sequence]
+                ledger_ids = {
+                    ref for p in sequence for ref in p["evidence_refs"]
+                    if ref in by_id and by_id[ref]["kind"] == "approval-ledger-records"
+                }
+                rejections = {digest("replay_rejected"), digest("binding_mismatch_rejected"),
+                              digest("reused_nonce_rejected")}
+                if (
+                    len(sequence) != 14 or len(ledger_ids) != 14
+                    or sequence_observations.count(digest("approval_accepted")) != 2
+                    or sequence_observations.count(digest("expired_rejected")) != 1
+                    or sum(isinstance(value, str) and value in rejections
+                           for value in sequence_observations) != 11
+                ):
+                    return _governed_actions_untrusted("approval sequence evidence is incomplete", phase)
 
     summary = manifest.get("summary")
     expected_summary_keys = {"verdict"} | {key for key, _status in _GOVERNED_ACTIONS_SUMMARY_BUCKETS}
@@ -666,12 +751,15 @@ def _check_design(workspace: Path, state: dict[str, Any]) -> StageDecision:
 
 
 def _parse_env_assignment(value: str) -> str:
-    if value.strip().startswith("#"):
+    candidate = value.strip()
+    if candidate.startswith(("'", '"')):
+        quoted = re.fullmatch(r"""("(?:\\.|[^"\\])*"|'[^']*')\s*(?:#.*)?""", candidate)
+        if quoted is None:
+            raise ValueError("invalid-azd-environment")
+        return quoted.group(1)[1:-1]
+    if candidate.startswith("#"):
         return ""
-    candidate = re.split(r"\s+#", value, maxsplit=1)[0].strip()
-    if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in {"'", '"'}:
-        candidate = candidate[1:-1].strip()
-    return candidate
+    return re.split(r"\s+#", candidate, maxsplit=1)[0].strip()
 
 
 def _deployment_manifest_binding_matches(workspace: Path, manifest_data: dict[str, Any]) -> bool:
@@ -688,6 +776,8 @@ def _deployment_manifest_binding_matches(workspace: Path, manifest_data: dict[st
 
 
 def _check_deploy(workspace: Path, _: dict[str, Any]) -> StageDecision:
+    if _deploy_retry_required(workspace):
+        return StageDecision("deploy", "run", "Previous deployment did not complete; retry before any live probe.")
     main_bicep = workspace / "infra" / "main.bicep"
     azure_yaml = workspace / "azure.yaml"
     missing = []
@@ -757,9 +847,13 @@ def _check_deploy(workspace: Path, _: dict[str, Any]) -> StageDecision:
                 if line.lstrip().startswith("#"):
                     continue
                 match = re.match(r"^\s*AGENT_FQDN\s*=\s*(.*)$", line)
-                if match and _parse_env_assignment(match.group(1)):
-                    has_fqdn = True
-                    break
+                if match:
+                    try:
+                        has_fqdn = bool(_parse_env_assignment(match.group(1)).strip())
+                    except ValueError:
+                        continue
+                    if has_fqdn:
+                        break
             if has_fqdn:
                 break
         if has_fqdn:
@@ -1079,6 +1173,8 @@ def _check_leg_manifest(workspace: Path, stage: str) -> StageDecision:
     non-passing verdicts still skip: threadlight-auto plans which executed legs
     to resume, it does not reinterpret advisory readiness outcomes.
     """
+    if stage == "govern":
+        return _check_govern(workspace, {})
     contract = LEG_CONTRACTS[stage]
     manifest_rel = contract["manifest"]
     skill = contract["skill"]
@@ -1203,10 +1299,429 @@ def _check_redteam(workspace: Path, _: dict[str, Any]) -> StageDecision:
 
 
 # Protect leg — agent-runtime governance (AGT). Runs threadlight-govern; emits
-# the verifier report + specs/govern-manifest.json consumed by production-ready
-# pillar 2 (AGT-001..005) and pillar 7 (RAI-002/003).
+# the binding inventory + specs/governance-manifest.json, not whole-agent proof.
 def _check_govern(workspace: Path, _: dict[str, Any]) -> StageDecision:
-    return _check_leg_manifest(workspace, "govern")
+    try:
+        from skills._shared.governance_readiness import load_contract, read_json, inventory_matches
+        from skills._shared.governance_selection import source_digest
+        document = load_contract(workspace)
+        manifest = read_json(workspace / LEG_CONTRACTS["govern"]["manifest"])
+        inventory_matches(manifest, document)
+        if "offline_evidence" in manifest:
+            for evidence in manifest["offline_evidence"]:
+                source = evidence["source"]
+                if source in {"specs/governance-contract.json", "specs/SPEC.md", "specs/manifest.json"}:
+                    if evidence["sha256"] != source_digest(workspace, source):
+                        raise ValueError("inventory-source-changed")
+                elif source:
+                    from govern_bundle.policy_bundle import verify_bundle
+                    verify_bundle(workspace / source, expected_digest=evidence["sha256"])
+                else:
+                    raise ValueError("inventory-source-missing")
+        return StageDecision("govern", "skip", "Current binding inventory; not live enforcement.")
+    except (OSError, ValueError, TypeError, KeyError, ImportError):
+        return StageDecision("govern", "run",
+                             "Binding inventory missing, invalid or changed; legacy capabilities are not evidence.")
+
+
+# Only outputs consumed by deploy/cost_projection or emitted by Task10's
+# compose_infra / agent_environment / agent_image contracts. No prefix exclusions:
+# scopes, secrets, network posture and explicit expected-image/policy pins are inputs.
+AZD_DEPLOYMENT_OUTPUTS = frozenset({
+    "AGENT_FQDN", "AZURE_LAST_DEPLOY_AT", "GOV_CONTROL_PLANE_URL", "GOVERNED_TOOL_GATEWAY_URL",
+    "TL_GOV_FOUNDATION", "TL_GOV_AGENT_IMAGE", "TL_GOV_IMAGE_DIGEST",
+})
+
+
+def _gate_source_path(workspace, relative, *, outside="governance-input-outside-workspace"):
+    """Canonicalize only after checking every lexical parent, without following links."""
+    relative = Path(relative)
+    if relative.is_absolute():
+        try:
+            relative = relative.relative_to(workspace)
+        except ValueError:
+            raise ValueError(outside) from None
+    parts = []
+    if workspace.is_symlink():
+        raise ValueError("governance-source-symlink")
+    for part in relative.parts:
+        if part == "..":
+            if not parts:
+                raise ValueError(outside)
+            if not workspace.joinpath(*parts).is_dir():
+                raise ValueError("governance-source-parent-missing")
+            parts.pop()
+        else:
+            parts.append(part)
+            if workspace.joinpath(*parts).is_symlink():
+                raise ValueError("governance-source-symlink")
+    return workspace.joinpath(*parts)
+
+
+def _gate_source_files(workspace, directory, *, prune_caches=True):
+    """Traverse contained files, pruning caches only for application source."""
+    base = _gate_source_path(workspace, directory)
+    for current, children, names in os.walk(base):
+        children[:] = sorted(name for name in children
+                             if not prune_caches or (
+                                 name not in {".git", ".pytest_cache", "__pycache__", "build", "dist"}
+                                 and not name.endswith(".egg-info")
+                                 and not (Path(current) == workspace and name == ".azure")))
+        if any((Path(current) / name).is_symlink() for name in children):
+            raise ValueError("governance-source-symlink")
+        for name in sorted(names):
+            if prune_caches and name == ".git":  # Worktrees use a pointer file rather than a directory.
+                continue
+            path = Path(current) / name
+            if path.is_symlink():
+                raise ValueError("governance-source-symlink")
+            if path.is_file():
+                yield path
+
+
+def _azd_fingerprint_projection(workspace, *, outputs=False):
+    """Separate generated azd observations from canonical, unexpanded input values."""
+    from skills._shared.governance_selection import read_json
+    base = _gate_source_path(workspace, ".azure")
+    environments, configuration = {}, {}
+    if base.exists():
+        if not base.is_dir():
+            raise ValueError("invalid-azd-environment")
+        for entry in sorted(base.iterdir()):
+            entry = _gate_source_path(workspace, entry)
+            if entry.is_dir():
+                environments[entry.name] = {}
+    for path in _gate_source_files(workspace, ".azure", prune_caches=False):
+        relative = path.relative_to(base)
+        if len(relative.parts) == 2 and relative.name == ".env":
+            values = {}
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not line.strip() or line.lstrip().startswith("#"):
+                    continue
+                match = re.fullmatch(r"\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)", line)
+                if match is None or match[1] in values:
+                    raise ValueError("invalid-azd-environment")
+                values[match[1]] = _parse_env_assignment(match[2])
+            selected = {
+                key: value for key, value in values.items()
+                if (key in AZD_DEPLOYMENT_OUTPUTS) == outputs
+            }
+            # The selected environment is an input even before its .env exists.
+            # Creating an output-only .env does not change that input projection.
+            environments[relative.parts[0]] = selected
+        elif not outputs:
+            configuration[relative.as_posix()] = read_json(path) if path.suffix == ".json" else _sha256(path)
+    return {"environments": environments, "configuration": configuration}
+
+
+def _gate_fingerprint(workspace):
+    """Freeze declared inputs and effect-bearing source, not deployment outputs."""
+    from skills._shared.governance_selection import load_contract, read_json
+    from skills._shared.governance_readiness import MANIFEST, COLLECTION
+    from skills._shared.governance import validate_governance_contract
+    document = load_contract(workspace, required=False)
+    payload = {"contract": validate_governance_contract(document, deployment_target="demo-sandbox")
+               if document is not None else None}
+    payload["azd_inputs"] = _azd_fingerprint_projection(workspace)
+    paths = ["specs/SPEC.md", ".threadlight/governance-package.json", GOVERNED_ACTIONS_MANIFEST,
+             "tool-registry.json", "pyproject.toml", "requirements.txt", "Dockerfile",
+             ".threadlight/governance-probe.json", ".threadlight/fixture.json"]
+    payload.update({path: _sha256(_gate_source_path(workspace, path)) for path in paths})
+    parent = _gate_source_path(workspace, "specs/manifest.json")
+    if parent.exists():
+        value = read_json(parent)
+        deployment = value.get("deployment_manifest", {})
+        if not isinstance(deployment, dict):
+            raise ValueError("invalid-deployment-manifest")
+        value["deployment_manifest"] = {k: v for k, v in deployment.items()
+                                       if k not in {"agent_fqdn", "runtime_fqdn", "agent_version", "image_digest"}}
+        payload["parent"] = value
+    # Task10 agent_image writes only image/digest into hosted definitions.
+    # The spool directory, tools, scopes, mounts and all other wiring remain inputs.
+    import yaml
+    directories = {"src", "policies", "infra", "config"}
+    definitions = {"azure.yaml", "agent.yaml"}
+    for path in _gate_source_files(workspace, "src"):
+        if path.match("agent*.yaml"):
+            definitions.add(path.relative_to(workspace).as_posix())
+    for name in sorted(definitions):
+        path = _gate_source_path(workspace, name)
+        if path.exists():
+            try:
+                value = yaml.safe_load(path.read_text())
+            except yaml.YAMLError:
+                raise ValueError("invalid-host-definition") from None
+            if isinstance(value, dict):
+                services = value.get("services", {"agent": value})
+                if not isinstance(services, dict):
+                    raise ValueError("invalid-host-services")
+                for service in services.values():
+                    if isinstance(service, dict):
+                        project = service.get("project")
+                        if name == "azure.yaml" and isinstance(project, str):
+                            project_path = _gate_source_path(
+                                workspace, project, outside="host-project-outside-workspace")
+                            directories.add(project_path.relative_to(workspace).as_posix())
+                        service.pop("image", None)
+                        for field in ("env", "environmentVariables", "environment_variables"):
+                            env = service.get(field)
+                            if isinstance(env, dict):
+                                env.pop("TL_GOV_IMAGE_DIGEST", None)
+                            elif isinstance(env, list):
+                                if any(not isinstance(e, dict) or not isinstance(e.get("name"), str) for e in env):
+                                    raise ValueError("invalid-host-environment")
+                                service[field] = [e for e in env if e.get("name") != "TL_GOV_IMAGE_DIGEST"]
+                            if service.get(field) in ({}, []):
+                                service.pop(field)
+            payload[name] = value
+    files = set()
+    options = workspace / ".threadlight/governance-probe.json"
+    if options.exists():
+        value = read_json(options)
+        for field in ("bundle_path", "signed_envelope_path", "fixture_configuration_file"):
+            if field in value:
+                path = _gate_source_path(workspace, value[field])
+                relative = path.relative_to(workspace).as_posix()
+                if path.is_dir():
+                    directories.add(relative)
+                else:
+                    files.add(relative)
+    # Exact workspace outputs only: their validators/attempt bindings still apply.
+    # In particular, specs/manifest.json is already projected above; hashing its
+    # raw bytes again would turn deployment outputs back into gate inputs.
+    excluded = definitions | {
+        "specs/manifest.json", MANIFEST, COLLECTION,
+        GOVERNANCE_GATE_STATE, GOVERNANCE_EXECUTION_STATE,
+        DEFAULT_STATE_PATH, DEFAULT_NEXT_PATH, PREFLIGHT_MARKER,
+        ".threadlight/governance-deployment.json", "docs/agt-governance-report.md",
+    }
+    for directory in sorted(directories):
+        for path in _gate_source_files(workspace, directory):
+            relative = path.relative_to(workspace).as_posix()
+            files.add(relative)
+    payload["source_files"] = {
+        relative: _sha256(workspace / relative) for relative in sorted(files)
+        if relative not in excluded and not Path(relative).is_relative_to(".azure")
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _deployment_fingerprint(workspace):
+    payload = {"inputs": _gate_fingerprint(workspace),
+               "azd_outputs": _azd_fingerprint_projection(workspace, outputs=True)}
+    for name in ("specs/manifest.json", ".threadlight/governance-deployment.json", "azure.yaml", "agent.yaml"):
+        payload[name] = _sha256(workspace / name)
+    for path in _gate_source_files(workspace, "src"):
+        if path.match("agent*.yaml"):
+            payload[path.relative_to(workspace).as_posix()] = _sha256(path)
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+GOVERNANCE_GATE_STATE = ".threadlight/governance-gate-state.json"
+GOVERNANCE_EXECUTION_STATE = ".threadlight/governance-execution-state.json"
+
+
+def _deploy_retry_required(workspace):
+    from skills._shared.governance_selection import read_json
+    path = workspace / GOVERNANCE_EXECUTION_STATE
+    if not path.exists():
+        return False
+    try:
+        if "governance_probe" not in _stages_for(workspace):
+            return False
+        state = read_json(path)
+        attempt = state["deploy"]
+        start, finish = (_parse_rfc3339(attempt[k]) for k in ("started_at", "finished_at"))
+        return not (state["schema"] == "threadlight-governance-execution/v1"
+                    and attempt["status"] == "succeeded" and start and finish
+                    and start <= finish <= datetime.now(timezone.utc)
+                    and attempt["authorized_fingerprint"] == _gate_fingerprint(workspace)
+                    and attempt["fingerprint"] == _deployment_fingerprint(workspace))
+    except (OSError, ValueError, TypeError, KeyError):
+        return True
+
+
+def _write_execution_state(workspace, state):
+    path = workspace / GOVERNANCE_EXECUTION_STATE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2) + "\n")
+
+
+def record_deploy_started(workspace):
+    """Invalidate prior proof before a worker runs, including interrupted attempts."""
+    try:
+        selected = "governance_probe" in _stages_for(workspace)
+        authorized = (not selected or _check_governed_actions_gate(workspace, {}).decision == "skip")
+        fingerprint = _gate_fingerprint(workspace) if authorized else None
+    except (OSError, ValueError, TypeError, KeyError, ImportError):
+        fingerprint = None
+    _write_execution_state(workspace, {
+        "schema": "threadlight-governance-execution/v1",
+        "deploy": {"attempt_id": str(uuid4()), "status": "started",
+                   "started_at": datetime.now(timezone.utc).isoformat(), "finished_at": None,
+                   "authorized_fingerprint": fingerprint,
+                   "fingerprint": None,
+                   "prior_collection_sha256": _sha256(workspace / ".threadlight/governance-live.json")},
+        "probe": None,
+    })
+    return fingerprint is not None
+
+
+def record_deploy_completed(workspace):
+    from skills._shared.governance_readiness import read_json
+    try:
+        state = read_json(workspace / GOVERNANCE_EXECUTION_STATE)
+        if state["schema"] != "threadlight-governance-execution/v1" or state["deploy"]["status"] != "started":
+            return False
+        if state["deploy"]["authorized_fingerprint"] != _gate_fingerprint(workspace):
+            return False
+        state["deploy"].update(status="succeeded", finished_at=datetime.now(timezone.utc).isoformat(),
+                               fingerprint=_deployment_fingerprint(workspace))
+        _write_execution_state(workspace, state)
+        return True
+    except (OSError, ValueError, TypeError, KeyError):
+        return False
+
+
+def _deployment_proof(workspace, *, recording=False):
+    """Match collection chronology and bytes to the exact successful worker attempt."""
+    from skills._shared.governance_readiness import read_json
+    path = workspace / GOVERNANCE_EXECUTION_STATE
+    if not path.exists():
+        return None
+    state = read_json(path)
+    attempt = state["deploy"]
+    started = _parse_rfc3339(attempt["started_at"])
+    finished = _parse_rfc3339(attempt["finished_at"])
+    collection = read_json(workspace / ".threadlight/governance-live.json")
+    evidence = collection["governance_manifest"]["collection_evidence"]
+    probe_started = _parse_rfc3339(evidence["started_at"])
+    probe_finished = _parse_rfc3339(evidence["finished_at"])
+    digest = _sha256(workspace / ".threadlight/governance-live.json")
+    fingerprint = _deployment_fingerprint(workspace)
+    if (state["schema"] != "threadlight-governance-execution/v1"
+            or attempt["status"] != "succeeded"
+            or not all((started, finished, probe_started, probe_finished))
+            or not started <= finished < probe_started <= probe_finished <= datetime.now(timezone.utc)
+            or attempt["fingerprint"] != fingerprint
+            or attempt["authorized_fingerprint"] != _gate_fingerprint(workspace)
+            or attempt["prior_collection_sha256"] == digest):
+        raise ValueError("post-deployment-attempt-proof-required")
+    checkpoint = {"attempt_id": attempt["attempt_id"], "fingerprint": fingerprint,
+                  "collection_sha256": digest}
+    if not recording and state["probe"] != checkpoint:
+        raise ValueError("deployment-attempt-probe-not-recorded")
+    return {**state, "probe": checkpoint}
+
+
+def record_governance_probe(workspace):
+    from skills._shared.governance_readiness import publish_collection
+    try:
+        state = _deployment_proof(workspace, recording=True)
+        if not publish_collection(workspace):
+            return False
+        if state is not None:
+            _write_execution_state(workspace, state)
+        return True
+    except (OSError, ValueError, TypeError, KeyError):
+        return False
+
+
+def _check_governed_actions_gate(workspace: Path, _: dict[str, Any], *, recording=False) -> StageDecision:
+    """Reuse Task5's entire strict ledger validator, not Auto's advisory summary."""
+    try:
+        fingerprint = _gate_fingerprint(workspace)
+        import production_ready as readiness
+        manifest = readiness.load_governed_actions_manifest(workspace)
+        if manifest is None or manifest.get("phase") != "pre-deploy":
+            raise ValueError("current-pre-deploy-assessment-required")
+        invalid = readiness._validate_governed_actions_manifest(
+            manifest, readiness._governed_actions_head_commit(workspace), datetime.now(timezone.utc))
+        if invalid is not None:
+            raise ValueError(invalid)
+        if any(f["status"] not in {"pass", "not-applicable"} for f in manifest["findings"]):
+            raise ValueError("pre-deploy-governed-actions-not-passing")
+        from skills._shared.governance_readiness import load_contract, read_json
+        from skills._shared.governance import validate_governance_contract
+        contract = validate_governance_contract(load_contract(workspace), deployment_target="production-bound")
+        consequential = {t["id"] for t in contract["tools"] if t["consequence"] != "read"}
+        if not consequential <= {a["action_id"] for a in manifest["action_inventory"]}:
+            raise ValueError("selected-consequential-actions-missing-from-gate")
+        if not recording:
+            checkpoint = read_json(workspace / GOVERNANCE_GATE_STATE)
+            if checkpoint != {"schema": "threadlight-governance-gate/v1", "fingerprint": fingerprint}:
+                raise ValueError("pre-deploy-inputs-changed")
+            execution = workspace / GOVERNANCE_EXECUTION_STATE
+            if execution.exists():
+                attempt = read_json(execution)["deploy"]
+                if (attempt["status"] == "succeeded"
+                        and attempt.get("authorized_fingerprint") == checkpoint["fingerprint"]
+                        and attempt["fingerprint"] != _deployment_fingerprint(workspace)):
+                    raise ValueError("completed-deployment-changed")
+        return StageDecision("governed_actions_gate", "skip", "Strict current governance-ledger/v2 gate passed.")
+    except (OSError, ValueError, TypeError, KeyError, ImportError) as error:
+        gap = str(error) if str(error) in {
+            "host-project-outside-workspace", "governance-input-outside-workspace",
+            "governance-source-symlink", "governance-source-parent-missing",
+            "invalid-azd-environment",
+        } else None
+        return StageDecision("governed_actions_gate", "run",
+                             "Mandatory pre-deploy governed-actions gate unverified; deployment blocked until validated."
+                             + (f" Gap: {gap}." if gap else ""))
+
+
+def record_governed_actions_gate(workspace):
+    decision = _check_governed_actions_gate(workspace, {}, recording=True)
+    if decision.decision != "skip":
+        return False
+    from skills._shared.governance_selection import read_json
+    execution = workspace / GOVERNANCE_EXECUTION_STATE
+    if execution.exists():
+        try:
+            state = read_json(execution)
+            if (state["deploy"]["status"] == "succeeded"
+                    and state["deploy"]["fingerprint"] != _deployment_fingerprint(workspace)):
+                state["deploy"]["status"] = "superseded"
+                state["probe"] = None
+                _write_execution_state(workspace, state)
+        except (OSError, ValueError, TypeError, KeyError):
+            return False
+    path = workspace / GOVERNANCE_GATE_STATE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema": "threadlight-governance-gate/v1",
+                                "fingerprint": _gate_fingerprint(workspace)}, indent=2) + "\n")
+    return True
+
+
+def _check_governance_probe(workspace: Path, _: dict[str, Any]) -> StageDecision:
+    try:
+        from skills._shared.governance_readiness import assess
+        _deployment_proof(workspace)
+        result = assess(workspace)
+        if result["status"] == "pass" and result["live"]:
+            return StageDecision("governance_probe", "skip", result["reason"])
+    except (ImportError, OSError, ValueError, TypeError, KeyError):
+        pass
+    return StageDecision("governance_probe", "run",
+                         "Mandatory current exact live binding proof required; only explicit staging noop may run.")
+
+
+GOVERNANCE_PROBES = {
+    "governed_actions_gate": _check_governed_actions_gate,
+    "governance_probe": _check_governance_probe,
+}
+
+
+def _stages_for(workspace):
+    from skills._shared.governance_readiness import load_contract, selected
+    document = load_contract(workspace, required=False)
+    if document is None:
+        if (workspace / ".threadlight/governance-package.json").exists():
+            raise ValueError("packaged-governance-contract-missing")
+        return list(STAGES)
+    if not selected(document):
+        return [s for s in STAGES if s != "govern"]
+    return list(GOVERNANCE_STAGES)
 
 
 STAGE_PROBES = {
@@ -1266,21 +1781,35 @@ def _read_state(state_path: Path) -> dict[str, Any]:
 def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
     state = _read_state(state_path) if state_path else {}
     decisions: list[StageDecision] = []
-    for stage in STAGES:
-        probe = STAGE_PROBES[stage]
-        decisions.append(probe(workspace, state))
+    invalid_configuration = False
+    try:
+        stages = _stages_for(workspace)
+    except (ImportError, OSError, ValueError, TypeError, KeyError):
+        stages = list(GOVERNANCE_STAGES)
+        invalid_configuration = True
+    for stage in stages:
+        probe = {**STAGE_PROBES, **GOVERNANCE_PROBES}[stage]
+        if stage == "govern" and invalid_configuration:
+            decisions.append(StageDecision(
+                "govern", "hard_stop", "Governance configuration invalid or unresolved; not verified. Deployment blocked.",
+                hard_stop_signature="invalid-governance-configuration"))
+        else:
+            decisions.append(probe(workspace, state))
     decisions = _cascade_invalidations(decisions)
 
     hard_stop = next((d for d in decisions if d.decision == "hard_stop"), None)
     governed_handoff, governed_manifest = _governed_actions_projection(workspace)
+    if "governed_actions_gate" in stages:
+        governed_handoff = {**GOVERNED_ACTIONS_HANDOFF, "execution": "mandatory-selected-bindings"}
 
     return {
         "workspace": str(workspace),
         "state_file": str(state_path) if state_path else None,
-        "stages": list(STAGES),
+        "stages": stages,
+        "dependencies": {stage: [stages[index - 1]] if index else []
+                         for index, stage in enumerate(stages)},
         "manual_handoffs": _manual_handoffs(workspace),
-        # Recommendation only: `threadlight-governed-actions` is never a stage
-        # and is never dispatched from here.
+        # Advisory for legacy pilots; selected bindings require the gate stage.
         "governed_actions": governed_handoff,
         "governed_actions_manifest": governed_manifest,
         "decisions": [
@@ -1310,6 +1839,57 @@ def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
         ),
         "decided_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str, Any]:
+    """Drive the same DAG with a worker; a zero exit is not gate evidence."""
+    executed = []
+    while True:
+        # Design can introduce selections; subsequent workers can change scope.
+        report = decide(workspace, state_path)
+        if report["next_action"]["type"] == "hard_stop":
+            return {"status": "blocked", "stage": report["next_action"]["stage"], "executed": executed}
+        pending = [s for s in report["next_action"]["stages_to_run"] if s not in executed]
+        if not pending:
+            if "governance_probe" in report["stages"]:
+                for guard in ("govern", "governed_actions_gate", "governance_probe"):
+                    if {**STAGE_PROBES, **GOVERNANCE_PROBES}[guard](workspace, {}).decision != "skip":
+                        return {"status": "blocked", "stage": guard, "executed": executed}
+            return {"status": "complete", "executed": executed}
+        stage = pending[0]
+        governed = "governance_probe" in report["stages"]
+        if governed:
+            guards = (["govern", "governed_actions_gate"] if stage == "deploy" else
+                      ["governance_probe"] if stage in ("safe_check", "cost_projection", "invoke", "evals", "redteam") else [])
+            for guard in guards:
+                if {**STAGE_PROBES, **GOVERNANCE_PROBES}[guard](workspace, {}).decision != "skip":
+                    return {"status": "blocked", "stage": guard, "executed": executed}
+            if stage == "governance_probe" and _deploy_retry_required(workspace):
+                return {"status": "blocked", "stage": "deploy", "executed": executed}
+        prior_collection = _sha256(workspace / ".threadlight/governance-live.json") if stage == "governance_probe" else None
+        if stage == "deploy" and governed and not record_deploy_started(workspace):
+            return {"status": "blocked", "stage": stage, "executed": executed}
+        code = worker(stage)
+        executed.append(stage)
+        if code != 0:
+            if stage == "deploy" and governed:
+                from skills._shared.governance_selection import read_json
+                state = read_json(workspace / GOVERNANCE_EXECUTION_STATE)
+                state["deploy"]["status"] = "failed"
+                _write_execution_state(workspace, state)
+            return {"status": "blocked", "stage": stage, "executed": executed}
+        if stage == "deploy" and governed and not record_deploy_completed(workspace):
+            return {"status": "blocked", "stage": stage, "executed": executed}
+        if stage == "governed_actions_gate" and not record_governed_actions_gate(workspace):
+            return {"status": "blocked", "stage": stage, "executed": executed}
+        if stage == "governance_probe":
+            if (prior_collection == _sha256(workspace / ".threadlight/governance-live.json")
+                    or not record_governance_probe(workspace)):
+                return {"status": "blocked", "stage": stage, "executed": executed}
+        if stage in GOVERNANCE_PROBES or (stage == "govern" and "governance_probe" in report["stages"]):
+            probe = {**STAGE_PROBES, **GOVERNANCE_PROBES}[stage]
+            if probe(workspace, {}).decision != "skip":
+                return {"status": "blocked", "stage": stage, "executed": executed}
 
 
 def _print_human(report: dict[str, Any]) -> None:
@@ -1356,6 +1936,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--dry-run", action="store_true", help="Print the decision tree only")
     p.add_argument("--commit", action="store_true", help="Write auto-next.json to drive the agent's next step")
+    stage_action = p.add_mutually_exclusive_group()
+    stage_action.add_argument("--start-stage", choices=["deploy"],
+                              help="Record an actual deployment attempt before starting its worker")
+    stage_action.add_argument("--complete-stage", choices=["deploy", "governed_actions_gate", "governance_probe"],
+                              help="Record deployment success or validate a mandatory gate artifact")
     p.add_argument("--output", choices=["human", "json"], default="human", help="Output format")
     args = p.parse_args(argv)
 
@@ -1365,6 +1950,23 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     state_path = workspace / args.state_file
+    if args.start_stage or args.complete_stage:
+        if args.dry_run:
+            p.error("stage execution records cannot be combined with --dry-run")
+    if args.start_stage:
+        if not record_deploy_started(workspace):
+            print(json.dumps({"status": "blocked", "stage": "deploy"}))
+            return 1
+    if args.complete_stage:
+        if args.complete_stage == "governance_probe":
+            complete = record_governance_probe(workspace)
+        elif args.complete_stage == "deploy":
+            complete = record_deploy_completed(workspace)
+        else:
+            complete = record_governed_actions_gate(workspace)
+        if not complete:
+            print(json.dumps({"status": "blocked", "stage": args.complete_stage}))
+            return 1
     report = decide(workspace, state_path)
 
     if args.output == "json":

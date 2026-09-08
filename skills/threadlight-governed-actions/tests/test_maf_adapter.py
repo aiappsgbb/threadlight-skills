@@ -466,7 +466,7 @@ def test_load_upstream_pin_returns_the_complete_tested_tuple():
     assert pin["pin_schema_version"] == "1.0.0"
     assert pin["status"] == "alpha-experimental"
     assert pin["agent_hooks"]["spec_version"] == "0.1.0-alpha"
-    assert pin["maf"]["version"] == "1.13.0"
+    assert pin["maf"]["version"] == "1.14.0"
     assert pin["drift_policy"] == "exact-tuple-rerun-ctk-and-application-probes"
 
 
@@ -570,11 +570,11 @@ def test_maf_adapter_accepts_only_complete_tested_tuple(fixture_root):
             "4ae452b0a1d51540a1b74b0005b0a51f75fd4b80e9aca1a7403dece4dd6f9e46"
         ),
         "agent-framework-core": (
-            "1.13.0@4b1afd90520310547cb0e9cdc70f644d80161e82"
+            "1.14.0@sha256:0d161490bb26bde185dd325fcdbb3b109d85e91076ef6ed5df118c4e5f715cba"
         ),
         "ctk-vectors": "4f7af786c2757e26711b141e69144b6a336f403b",
         "conformance-python": "3.12.3",
-        "acs-policy-schema": "not-applicable",
+        "acs-policy-schema": "0.3.1-beta",
     }
     assert compare_upstream_tuple(observed, pin).status == "pass"
 
