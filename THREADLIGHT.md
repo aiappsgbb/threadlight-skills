@@ -9,6 +9,37 @@
 >
 > SPEC § 14 is the value-model contract: baseline, target, owner, timeframe, measurement source, and maturity policy. The public value arc is forecast → settled Azure actuals → reconciliation → cost per successful interaction.
 
+## Foundational architecture: construction is not business execution
+
+Start with [Skill-based agents: construction, runtime and evidence](docs/skill-based-agents.md)
+for the **L400/L500 foundation**, including source-backed loading contracts,
+artifact producers/consumers, offline commands and failure recovery. This
+briefing remains the exhaustive per-skill technical reference.
+
+The construction agent consumes this catalog's `skills/threadlight-*/SKILL.md`.
+The generated business agent consumes a separate domain library under
+`src/agent/skills/*/SKILL.md`, host instructions, registered tools and its SDK
+runtime. A skill is an instruction package with optional companion code—not a
+model, executable tool registration, permission or enforcement mechanism.
+Orchestration belongs in `AGENTS.md`/derived `copilot-instructions.md`, runtime
+code or a deterministic workflow; there is no domain orchestrator skill.
+
+The architecture is conditional, not universally skill-routed: policy →
+`specs/foundation.md` → consistent SPEC capability signals → generated files.
+The default is GHCP SDK / agent / Invocations; supported MAF agent / Responses
+and workflow / Responses routes have explicit selection conditions. A workflow
+adds `WORKFLOW.md` executor/phase definitions and needs executable workflow
+wiring, not just Markdown. See [runtime loading](docs/skill-based-agents.md#runtime-loading)
+for the distinct GHCP/MAF APIs and the local MAF provider-fallback caveat.
+
+The public learning path is [Home](https://aiappsgbb.github.io/threadlight-skills/index.html) /
+[Basics](https://aiappsgbb.github.io/threadlight-skills/basics.html) /
+[Build](https://aiappsgbb.github.io/threadlight-skills/funnel.html) /
+[Case study](https://aiappsgbb.github.io/threadlight-skills/case-study.html) /
+[Production](https://aiappsgbb.github.io/threadlight-skills/production.html).
+Qualify and Design support bounded non-coding
+entry; deployment still requires an authorized engineering environment.
+
 The paid live workflow has two evidence meanings. **Live smoke** proves the
 design, deployment, invocation, and assurance producers executed; it does not
 assert production readiness. **Readiness proof** additionally requires current
@@ -19,6 +50,16 @@ can pass with aggregate status `partial`; it is not hosted or production proof.
 Absent current business-binding live proof blocks production readiness; reserved
 noop proof cannot be borrowed to certify business tools. Whole-agent verdict
 labels are not an acceptance criterion.
+
+For the **L400/L500** command, artifact and recovery path, read
+[Runtime governance and AgentOps](docs/agent-operations.md).
+The guide separates runtime enforcement from **opt-in AgentOps evidence
+(merged PR #128)**, with immutable source links and explicit preview-maturity
+boundaries. Local evidence conformance is not Azure
+attestation, a quality pass or whole-agent governance.
+The **L200/L300**
+[Pages walkthrough](https://aiappsgbb.github.io/threadlight-skills/governance.html)
+explains the same boundaries visually; it is not the operator runbook.
 
 > **Runtime-policy authority.**
 > [`skills/threadlight-design/references/runtime-policy.json`](skills/threadlight-design/references/runtime-policy.json)
@@ -100,16 +141,22 @@ skill sounds most exciting.
 | SPEC § 8b declares a workspace UI | `threadlight-workspace-ui` | (paired with deploy) |
 | SPEC § 10 declares scheduled / event-driven triggers | `threadlight-event-triggers` | (paired with deploy) |
 
-> **Rule of thumb.** Every other skill in the chain assumes
-> `specs/SPEC.md` exists and is well-formed. If it doesn't, start with
-> `threadlight-design` — every other skill reads SPEC sections as its
-> input contract.
+> **Input-contract rule.** Most designed-project generation skills consume
+> `specs/SPEC.md`; use `threadlight-design` when that project contract is missing.
+> This is not a universal prerequisite: Qualify works before a repo exists,
+> Design begins from a brief, Upgrade accepts normalized project inputs, and
+> Router-bench reads finished-run evidence. Kratos adaptations have their own
+> explicit inputs. Read the selected skill contract rather than inventing a SPEC
+> dependency for every capability.
 
 ---
 
 ## The chain
 
-Per-skill summary in canonical flow order. Authoritative source for each
+Per-skill summary in a reading order, not a universal execution DAG. Selected
+bindings require govern and governed-actions gating before deployment and
+fresh governance probing afterward; see [Auto sequencing](docs/skill-based-agents.md#auto-is-construction-lifecycle-orchestration).
+Authoritative source for each
 skill is the linked `SKILL.md`; this section is a stable surface map and
 should not duplicate skill internals.
 
@@ -156,8 +203,11 @@ manifest `partial` rather than summing an unknown as zero.
   § 8b workspace UX, § 10/10b triggers, § 11c tech-stack selectors,
   § 11d demo-data realism, § 9 eval scenarios.
 - `specs/manifest.json` — machine-readable selector contract
-  (`deployment_manifest{}`), the input contract for every downstream skill.
+  (`deployment_manifest{}`), consumed by downstream project generation and
+  completeness checks; non-project/manual legs have their own input contracts.
 - `AGENTS.md` + `src/agent/skills/<skill>/SKILL.md` — per-process skills.
+- `WORKFLOW.md` — executor/phase definitions alongside `AGENTS.md` when the
+  selected runtime shape is workflow, rather than a universal agent/tool design.
 - `specs/demo-deck.html` — self-contained dark-themed seller pitch page.
 - `specs/sample-data/*.json` — initial mock data shells (full generation
   is `threadlight-demo-data-factory`'s job).
@@ -169,8 +219,12 @@ scenarios only**). The skill runs a complexity triage first and steers
 regulated, consequential-action, case-based, or multi-phase briefs to Full
 mode so the triage round can improve the outcome.
 
-**Persona note.** This is the only skill that runs cleanly inside
-Microsoft Copilot Cowork. Everything below this line needs a real shell.
+**Persona note.** Design and Qualify have curated Cowork packages. Design can
+support discovery, SPEC and presentation work; Qualify runs declared-input,
+pure-Python sizing with vendored code. Format compatibility does not imply
+shell, identity, network or deployment support. See the
+[host capability matrix](docs/skill-based-agents.md#non-coding-use-and-host-capabilities)
+and current product upload guidance before choosing a host.
 
 ---
 
@@ -341,9 +395,11 @@ exchange. Consumed by `production-ready` (INT-001..004).
 
 ### 9. `threadlight-deploy` ([SKILL.md](skills/threadlight-deploy/SKILL.md))
 
-**Purpose.** Take a designed project and generate everything needed to
-deploy as a Microsoft Foundry Hosted Agent. **One command —
-`azd up` — does the rest.**
+**Purpose.** Take a designed project and generate the artifacts needed to
+deploy as a Microsoft Foundry Hosted Agent. Ordinary deployment uses `azd`;
+selected signed governance additionally requires ordered bootstrap, registered
+services and operator prerequisites. Generation is not authorization to deploy,
+and one successful command is not complete runtime evidence.
 
 **Inputs.** `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`,
 `specs/manifest.json` (the § 11c selector contract). Reads `foundry-hosted-agents`
@@ -366,10 +422,15 @@ for RBAC + identity, `foundry-mcp-aca` for MCP deploy, and
 - `copilot-instructions.md` — system prompt derived from `AGENTS.md`.
 - `deploy-notes.md` — full deployment guide including mock-system warnings.
 
-Both runtimes support **`SkillsProvider`** progressive skill loading
-(`context_providers=[skills_provider]`) — see
-`foundry-hosted-agents` § Skill Loading for the canonical defensive
-`_build_skills_provider()` helper.
+**Skill loading is runtime-specific.** The concrete GHCP governance adapter
+passes `skill_directories=[str(base / "skills")]`, `system_message` and
+`mcp_servers` to `CopilotClient.create_session`. MAF `build_host()` uses
+`SkillsProvider.from_paths`, `context_providers`, explicit tools/instructions
+and a `ResponsesHostServer` subclass. The copied deployment directory is
+`skills/` beside the host, corresponding to project `src/agent/skills/`.
+The local MAF quickstart can warn and continue without a provider; startup
+does not prove skill consumption or parity with the selected hosted route.
+See the [source-backed loading walkthrough](docs/skill-based-agents.md#runtime-loading).
 
 **Depends on.** `threadlight-design`, and `threadlight-demo-data-factory`
 if mock systems are present. Outputs are validated by
@@ -473,7 +534,9 @@ reporting an attack-success-rate per risk category.
 results map to `production-ready` pillar 7 findings SAFE-101..106, so an
 un-scanned agent reads as `not-verified` rather than silently green.
 
-**Depends on.** `threadlight-deploy` + invoke. Advisory — never blocks.
+**Depends on.** `threadlight-deploy` + invoke for live scan evidence.
+Assessment is advisory by default; `redteam_check.py --gate` returns exit 2
+when a must-fix capability remains. Missing execution evidence is not a pass.
 
 ---
 
@@ -484,14 +547,19 @@ selected host/gateway/service generation. Required signed policy, authenticated
 one-use approval, trusted backend facts and central audit ACK precede effects.
 Offline/local evidence never implies deployed enforcement.
 
-**Inputs.** The deployed container/agent project + the declared policy
-(SPEC § governance, when present).
+**Inputs.** The designed/implemented agent project, selected framework and
+`specs/governance-contract.json`, plus the declared business invariants.
+Selected-binding preparation happens before deployment; later assessment also
+consumes current runtime evidence.
 
 **Outputs.** offline report + `specs/governance-manifest.json`. Current readiness
 consumers validate per-binding evidence. The live collector only proves reserved
 `governance_probe_noop`, not business bindings or whole-agent governance.
 
-**Depends on.** `threadlight-deploy`. Idempotent + gracefully degrading.
+**Depends on.** The selected application contract and the shared Deploy
+generator for runtime/service implementation—not a completed deployment before
+policy preparation. Auto requires this leg and the governed-actions gate before
+deploy for selected bindings. Invalid selected configuration blocks that path.
 
 ---
 
@@ -513,11 +581,13 @@ protection, required checks, deployment identity) when the caller supplies it.
 taxonomy — `ACT-001/002`, `MED-001..003`, `ENF-001/002`, `APR-001`,
 `OUT-001`, `AUD-001`, `PIN-001`, `GHCP-001..006`, `OPS-001` — plus
 `docs/governance/evidence-pack.md`. `--gate` turns the verdict into an exit
-code (`0` pass, `1` must-fix, `2` usage error, `3` internal error). The MAF
+code (`0` selected-phase requirements met, `1` must-fix or selected-phase required `not-verified`,
+`2` invalid input/usage, `3` tooling/artifact-write failure). Without `--gate`,
+a completed assessment returns 0 regardless of findings. The MAF
 interceptor scaffold is a bounded, double-opt-in write
 (`--scaffold maf --confirm-scaffold`).
 
-**Lifecycle.** `--phase` is explicit and required: `design`
+**Lifecycle.** For assessment, `--phase` is explicit and required: `design`
 (pre-implementation), `pre-deploy` (the main pre-ship assessment), and
 `post-deploy`, which is **staging-only** and requires an explicit
 `--staging-resource-group`.
@@ -578,15 +648,22 @@ actual target from `SPEC § 12 → SPEC § 11b → deployed evidence →
 default standard-ai-gateway` and adapts its checks — it does not
 shoehorn Citadel where it isn't wanted.
 
+Set and verify `CATALOG` and `PROJECT` using the
+[pinned complete-catalog setup](docs/production-readiness.md#pinned-catalog-invocation)
+first. `PROJECT` is the pilot, not the catalog; live reads require separate
+identity/scope approval.
+
 ```bash
 # default — all 13 pillars, live + static, both outputs
-python skills/threadlight-production-ready/scripts/production_ready.py
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT"
 
-# static only (no Azure auth required)
-python skills/threadlight-production-ready/scripts/production_ready.py --static
+# static only; valid safe-check input and Bicep prerequisites still apply
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --static --no-rights-probe
 
 # explicit target override
-python skills/threadlight-production-ready/scripts/production_ready.py --target citadel-spoke
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --target citadel-spoke
 ```
 
 **Inputs.** `specs/SPEC.md` (including the new `§ 12 Production
@@ -787,7 +864,19 @@ coding agent invokes that stage skill
 new evidence is read before the next decision
 ```
 
-The planner does not execute stages. `--commit` writes `.threadlight/auto-next.json`; the agent-owned run updates `.threadlight/auto-state.json`.
+The `decide()` planner does not execute stages. `--commit` writes
+`.threadlight/auto-next.json`; the agent-owned run updates
+`.threadlight/auto-state.json`. The separate `execute(workspace, worker, ...)`
+driver delegates actual work to a caller-supplied worker callback, rather than
+implementing a universal worker or the generated business agent.
+
+`_stages_for()` chooses `STAGES` or `GOVERNANCE_STAGES` from the selected binding
+configuration. Selected bindings require `govern` and `governed_actions_gate`
+**before** `deploy`, then `governance_probe` **after** it. The legacy advisory
+governed-actions recommendation projection is separate; selected gating is
+mandatory. A zero worker exit is not accepted as gate evidence. Invalid selected
+configuration blocks deployment, and a fresh deployment attempt needs fresh
+collector evidence. See the [exact source sequence](docs/skill-based-agents.md#auto-is-construction-lifecycle-orchestration).
 
 It is not a tenth pillar — it's a different shape (a planner). Use it when:
 

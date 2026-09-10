@@ -1,5 +1,17 @@
 # Complete Approach Discoverability Implementation Plan
 
+> **Historical approval record - scope update 2026-09-10.** Retained as the
+> August implementation plan, not a command sequence to replay against the
+> current site. Later approved work added Basics, grouped navigation and
+> limited Home structure changes while preserving the demo. Consult
+> [site-map.js](../../assets/site-map.js), the
+> [demo baseline](../../../tests/blueprint/fixtures/home-demo-baseline.json), and
+> the [engineering guide](../../skill-based-agents.md) for the current contracts.
+> Original counts, task checkboxes and scores are not fresh acceptance evidence.
+> Delivery was subsequently approved as one ordinary PR after alignment with
+> current main. Merge and live publication still require separate approval;
+> the original two-PR sequence below is historical.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the complete public Threadlight approach discoverable by turning `docs/funnel.html` into the canonical “How it works” page, wiring that page into the shared nav and contextual link graph, and proving 9/10 discoverability/consistency/responsive quality without touching the homepage demo content.

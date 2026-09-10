@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Governance &amp; AgentOps — control the action, verify the evidence.</title>
+<meta name="description" content="Understand runtime controls before an agent acts, the evidence each claim needs, and the opt-in AgentOps preview. A visual guide to scoped governance, not whole-agent certification.">
+<meta name="theme-color" content="#4f6dff">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Governance &amp; AgentOps — control the action, verify the evidence.">
+<meta property="og:description" content="Understand runtime controls before an agent acts, the evidence each claim needs, and the opt-in AgentOps preview. A visual guide to scoped governance, not whole-agent certification.">
+<meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/governance.html">
+<meta property="og:site_name" content="Threadlight">
+<meta property="og:image" content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Governance &amp; AgentOps — control the action, verify the evidence.">
+<meta name="twitter:description" content="Understand runtime controls before an agent acts, the evidence each claim needs, and the opt-in AgentOps preview. A visual guide to scoped governance, not whole-agent certification.">
+<meta name="twitter:image" content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
+<link rel="canonical" href="https://aiappsgbb.github.io/threadlight-skills/governance.html">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<link rel="stylesheet" href="assets/governance.css?v=70fd49f5">
+<link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
+<link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
+</head>
+<body class="chapter-page chapter-governance chapter-experience">
+<a class="governance-skip btn btn-primary" href="#chapter-top">Skip to content</a>
+<div class="atmosphere" aria-hidden="true"></div>
+<header class="masthead">
+  <div class="brand">
+    <a href="./index.html" class="brand-name" style="text-decoration:none;color:inherit;">
+      <span class="brand-mark" aria-hidden="true" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span>Threadlight<span>by Microsoft GBB · AI Apps</span>
+    </a>
+  </div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 11l8-7 8 7M6 10v9h12v-9"/></svg>Home</a>
+    <a href="./basics.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>Basics</a>
+    <a href="./funnel.html">Build</a>
+    <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
+    <a href="./production.html" aria-current="location"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6zM9 12l2 2 4-4"/></svg>Production</a>
+  </nav>
+</header>
+<aside class="floating-toc" aria-label="Governance chapter">
+  <nav class="cx-chapter-links" aria-label="Governance overview">
+    <a href="#chapter-top">The action</a><a href="#evidence">Evidence</a><a href="#agentops">AgentOps</a><a href="#read-deeper">Go deeper</a>
+  </nav>
+  <details class="cx-chapter-index"><summary>All sections</summary><ol>
+    <li><a href="#chapter-top">Start</a></li>
+    <li><a href="#before-action">Action</a></li>
+    <li><a href="#evidence">Evidence</a></li>
+    <li><a href="#agentops">AgentOps</a></li>
+    <li><a href="#read-deeper">Explore</a></li>
+  </ol></details>
+</aside>
+<main>
+  <section class="governance-hero" id="chapter-top" tabindex="-1" data-toc-id="chapter-top" data-toc-label="Start">
+    <div class="wrap">
+      <div class="cx-journey">
+        <nav aria-label="Breadcrumb"><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Governance &amp; AgentOps</span></nav>
+        <a class="cx-journey-next" href="./customize.html">Next: Customize <span aria-hidden="true">→</span></a>
+      </div>
+      <div class="governance-hero-grid">
+        <div>
+          <p class="eyebrow"><span class="dot"></span>Runtime governance / try the boundary</p>
+          <h1>Wrong action?<br><em>Stop it here.</em></h1>
+          <p class="lede" data-chapter-intro>A returns agent wants to record a decision.
+            Change the approval state: the request stays the same, but its permitted outcome changes.</p>
+        </div>
+        <div class="request-stage" data-visual-anchor data-state="allowed">
+          <div class="request-bar"><span>RETURNS / RECORD DECISION</span><span>Illustration only</span></div>
+          <div class="request-intent"><span>01 / The agent requests</span><strong>Record this returns decision.</strong></div>
+          <div class="request-control">
+            <label for="approval-state">02 / Change the control state</label>
+            <select id="approval-state" data-hero-decision disabled>
+              <option value="idle" disabled>Choose a scenario</option>
+              <option value="allowed">All required controls hold</option>
+              <option value="missing">Required approval is missing</option>
+              <option value="drift">Deployment changed after proof</option>
+            </select>
+          </div>
+          <div class="cx-schematic request-schematic" role="img" aria-label="Selected action boundary">
+            <div class="cx-schematic-node"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 35 11v18L20 37 5 29V11zM5 11l15 9 15-9M20 20v17"/></svg><strong>Request</strong><span>The agent proposes</span></div>
+            <div class="cx-schematic-node" data-boundary><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 34 9v10c0 8-7 14-14 18C13 33 6 27 6 19V9zM13 20l5 5 10-12"/></svg><strong data-hero-gate>Controls</strong><span data-hero-gate-detail>Required checks hold</span></div>
+            <div class="cx-schematic-node"><svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="20" cy="9" rx="14" ry="6"/><path d="M6 9v22c0 4 6 6 14 6s14-2 14-6V9M6 20c0 4 6 6 14 6s14-2 14-6"/></svg><strong data-hero-effect>Decision</strong><span data-hero-effect-detail>May be recorded</span></div>
+          </div>
+          <div class="request-outcome" aria-live="polite" aria-atomic="true"><span>03 / Illustrated outcome</span><strong data-hero-outcome>Proceed on this path.</strong><p data-hero-detail>All required controls hold. Reauthorize at actual dispatch.</p></div>
+          <p class="request-footnote">Evidence per selected binding, not a blanket badge. Illustration of a decision and audit, not payment settlement.</p>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#evidence">What proves it? <span aria-hidden="true">&darr;</span></a>
+        <a class="btn btn-ghost" href="#agentops">Keep evidence current <span class="inline-preview">AgentOps</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section action-section" id="before-action" tabindex="-1" data-toc-id="before-action" data-toc-label="Action">
+    <div class="wrap">
+      <p class="eyebrow"><span class="act-number">01</span>Control the action</p>
+      <h2>Same request.<br><em>Different decision.</em></h2>
+      <p class="governance-intro">A binding connects one tool, intervention point and execution path to its controls.
+        Open a case to see why that specific action can proceed, must stop, or needs new evidence.</p>
+      <p class="illustration-label"><span class="illustration-dot" aria-hidden="true"></span><strong>Illustration only.</strong> Choose a scenario. Watch the boundary change. No live policy engine or collected proof.</p>
+      <div class="decision-workbench">
+       <div class="decision-cases">
+        <details class="decision-case" id="case-allowed" open>
+          <summary><span class="case-number">CASE 01</span>All required controls hold</summary>
+          <div class="decision-body">
+            <p>The request names the approved target and action. The runtime uses trusted backend facts,
+              not the model's assertion that the action is safe.</p>
+            <p>Signed, fresh policy; authenticated, scoped, one-use approval;
+              trusted backend facts; and central audit acknowledgement must all hold before the effect.</p>
+            <div class="decision-result"><b>Proceed on this path.</b><span>Reauthorize after waits, at terminal dispatch.</span></div>
+          </div>
+        </details>
+        <details class="decision-case" id="case-missing">
+          <summary><span class="case-number">CASE 02</span>The required approval is missing</summary>
+          <div class="decision-body">
+            <p>A convincing explanation is not approval. A reused approval, the wrong role or a different
+              action scope cannot satisfy the selected policy either.</p>
+            <div class="decision-result"><b>Stop before the effect.</b><span>Obtain valid approval; do not reinterpret a denial as success.</span></div>
+          </div>
+        </details>
+        <details class="decision-case" id="case-drift">
+          <summary><span class="case-number">CASE 03</span>The deployment changed after the proof</summary>
+          <div class="decision-body">
+            <p>A previous allow/deny result belongs to its original environment, version, identity and
+              signed policy. It cannot certify a different deployment.</p>
+            <div class="decision-result"><b>Collect new evidence.</b><span>Yesterday's green is not today's readiness.</span></div>
+          </div>
+        </details>
+       </div>
+       <div class="decision-monitor" data-state="allowed" role="group" aria-label="Illustrated decision state" hidden>
+         <div class="monitor-topline"><span>RETURNS / RECORD DECISION</span><span class="monitor-signal">Illustration</span></div>
+         <div class="monitor-path" aria-hidden="true"><span class="path-source">REQUEST</span><i></i><span class="path-gate">CHECKS</span><i></i><span class="path-effect">PERMITTED</span></div>
+         <div class="monitor-verdict" aria-live="polite" aria-atomic="true">
+           <span class="monitor-caption">Illustrated outcome</span>
+           <h3 data-monitor-title>Proceed on this path.</h3>
+           <p data-monitor-detail>All required controls hold. Reauthorize at actual dispatch.</p>
+         </div>
+         <dl class="monitor-checks">
+           <div><dt>Policy</dt><dd data-check="policy">Signed &amp; fresh</dd></div>
+           <div><dt>Approval</dt><dd data-check="approval">Scoped &amp; one-use</dd></div>
+           <div><dt>Trusted facts</dt><dd data-check="facts">Backend checked</dd></div>
+           <div><dt>Audit</dt><dd data-check="audit">Acknowledged</dd></div>
+         </dl>
+       </div>
+      </div>
+      <p class="governance-note">The repository's returns example records a Cosmos decision and audit, <strong>not payment settlement</strong>.
+        Unbound reads remain usable without the policy engine.
+        Consequential unbound actions require explicit, current, scoped risk acceptance for readiness.
+        Invalid selected configuration is not an &ldquo;off&rdquo; switch.</p>
+      <details class="governance-glossary">
+        <summary>The architecture names, in plain English</summary>
+        <dl>
+          <dt>SAFE</dt><dd>The method for defining the business invariants that must hold.</dd>
+          <dt>ACS / Rego</dt><dd>The policy decision point (PDP): evaluates the policy through OPA.</dd>
+          <dt>Host / gateway</dt><dd>The policy enforcement point (PEP): applies the decision before the selected effect.</dd>
+          <dt>Agent Hooks</dt><dd>The host/interceptor contract SDK, not an automatic whole-agent shield.</dd>
+          <dt>AGT / ASSERT</dt><dd>The governance toolkit and assurance, respectively. Neither label alone proves enforcement.</dd>
+        </dl>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter-section evidence-section" id="evidence" tabindex="-1" data-toc-id="evidence" data-toc-label="Evidence">
+    <div class="wrap">
+      <p class="eyebrow"><span class="act-number">02</span>Earn the claim</p>
+      <h2>Three levels of evidence.<br><em>Three different claims.</em></h2>
+      <p class="governance-intro">The useful question is not &ldquo;is it green?&rdquo; It is
+        &ldquo;what ran, on which path, and what does that let us conclude?&rdquo;</p>
+      <ol class="evidence-ladder">
+        <li><span class="evidence-stamp">Inventory / not enforcement</span>
+          <div class="evidence-mechanism" role="img" aria-label="Tool, intervention point and execution path identify a selected binding">
+            <svg viewBox="0 0 240 120" aria-hidden="true"><path d="M35 36v24h170V36M120 60v20"/><rect x="5" y="8" width="60" height="28"/><rect x="85" y="8" width="70" height="28"/><rect x="175" y="8" width="60" height="28"/><rect x="65" y="80" width="110" height="32"/><text x="35" y="26">tool</text><text x="120" y="26">hook</text><text x="205" y="26">path</text><text x="120" y="101">binding</text></svg>
+          </div><h3>Declared</h3><p>Inventory the selected bindings and author the policy.</p>
+          <p class="evidence-limit">Configuration names the boundary.<br>It does not prove enforcement.</p></li>
+        <li><span class="evidence-stamp">Execution / local only</span>
+          <div class="evidence-mechanism" role="img" aria-label="LOCAL-14 scenarios and exact native conformance paths produce distinct local evidence">
+            <svg viewBox="0 0 240 120" aria-hidden="true"><rect x="5" y="8" width="100" height="34"/><rect x="135" y="8" width="100" height="34"/><path d="M55 42v22h130V42M120 64v18"/><rect x="40" y="82" width="160" height="30"/><text x="55" y="30">LOCAL-14</text><text x="185" y="30">native / CTK</text><text x="120" y="102">local evidence</text></svg>
+          </div><h3>Executed locally</h3><p>Exercise LOCAL-14 and the exact native runtime / conformance paths.</p>
+          <p class="evidence-limit">Separate executed results.<br>Not hosted proof or certification.</p></li>
+        <li><span class="evidence-stamp">Hosted / scope-bound</span>
+          <div class="evidence-mechanism" role="img" aria-label="A hosted invocation and independent observations must match the same deployment">
+            <svg viewBox="0 0 240 120" aria-hidden="true"><rect x="5" y="8" width="100" height="34"/><rect x="135" y="8" width="100" height="34"/><path d="M105 25h30M55 42v22h130V42M120 64v18"/><rect x="40" y="82" width="160" height="30"/><text x="55" y="30">invocation</text><text x="185" y="30">observer</text><text x="120" y="102">same deployment</text></svg>
+          </div><h3>Observed after deployment</h3><p>Collect fresh, deployment-bound invocation evidence and independent observations.</p>
+          <p class="evidence-limit">Collector scope: <code>governance_probe_noop</code>.<br>Not business writes.</p></li>
+      </ol>
+      <details class="governance-glossary" id="evidence-artifacts">
+        <summary>Open the three evidence artifact contracts</summary>
+        <dl>
+          <dt>Declared</dt><dd><code>specs/governance-manifest.json</code> inventories the selected bindings.</dd>
+          <dt>Local</dt><dd><code>tests/governed-actions-manifest.json</code> records local execution; native conformance has its own results.</dd>
+          <dt>Hosted</dt><dd><code>.threadlight/governance-live.json</code> must match the deployment and observed parent scope.</dd>
+        </dl>
+      </details>
+      <div class="governance-note"><strong>Scoped proof, not whole-agent governance.</strong>
+        The returns business action remains live-unverified. Unsupported paths remain unsupported.
+        Readiness consumes the current evidence; running remediation never guarantees a green result.</div>
+      <details class="governance-glossary evidence-details"><summary>Where the runtime and release boundaries sit</summary><div class="governance-split">
+        <div><h3>Know the runtime boundary.</h3><p>Native MAF supports selected tool/lifecycle and
+          buffered-output controls. GHCP effect closure is limited to registered gateway action paths.
+          Neither implies arbitrary tool or full-output coverage.</p></div>
+        <div><h3>Know the release boundary.</h3><p>The governance implementation is merged in
+          <a href="https://github.com/aiappsgbb/threadlight-skills/pull/127">PR #127</a>.
+          Some integrations use preview/alpha dependencies. This is not a GA guarantee;
+          dated hosted evidence is historical, not a reusable readiness certificate.</p></div>
+      </div>
+      <p><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#runtime-governance-lifecycle">Read the exact supported paths and evidence requirements &rarr;</a></p>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter-section agentops-band" id="agentops" tabindex="-1" data-toc-id="agentops" data-toc-label="AgentOps">
+    <div class="wrap">
+      <p class="eyebrow"><span class="act-number">03</span>Beyond the action</p>
+      <span class="governance-tag" data-release="preview">Preview maturity · PR #128 merged · opt-in</span>
+      <h2>Yesterday's result.<br><em>Today's deployment?</em></h2>
+      <p class="governance-intro">Bind the result to this agent, source and environment before reusing it.</p>
+      <figure class="agentops-flow" aria-labelledby="agentops-flow-caption">
+        <div class="ops-source"><span class="flow-index">01 / Select</span><svg class="flow-icon" aria-hidden="true"><use href="assets/lucide-sprite.svg#icon-layers"/></svg><strong>Your agent.</strong><code>agentops.yaml</code><span>No opt-in, no penalty.</span></div>
+        <div class="ops-binding"><span class="flow-index">02 / Bind</span><svg class="flow-icon" aria-hidden="true"><use href="assets/lucide-sprite.svg#icon-shield-check"/></svg><strong>The same run?</strong><div class="binding-keys"><span>Source</span><span>Target</span><span>Environment</span><span>Freshness</span></div></div>
+        <div class="ops-consumers"><span class="flow-index">03 / Reuse</span><svg class="flow-icon" aria-hidden="true"><use href="assets/lucide-sprite.svg#icon-file-text"/></svg><strong>Existing gates.</strong><span>Evals / quality</span><span>Red-team / safety</span><span>Readiness / residual gaps</span></div>
+        <figcaption id="agentops-flow-caption">Lifecycle evidence flows into existing gates. <strong>It does not replace runtime enforcement.</strong></figcaption>
+      </figure>
+      <figure class="evidence-state-map" data-evidence-visual="agentops-states" aria-labelledby="states-caption">
+        <figcaption id="states-caption">What can the evidence actually tell you?</figcaption>
+        <div class="state-fork"><strong>Agent opted in?</strong><span class="fork-answer">NO → <code>not-applicable</code><small>No penalty</small></span><span class="fork-answer">YES ↓ <small>Validate the evidence</small></span></div>
+        <dl class="evidence-outcomes">
+          <div><dt>partial</dt><dd>Missing or stale<span>Not a pass</span></dd></div>
+          <div><dt>blocked</dt><dd>Must-fix evidence finding<span>Resolve the blocker</span></dd></div>
+          <div><dt>operational</dt><dd>Evidence conforms<span>A verified quality failure still fails</span></dd></div>
+        </dl>
+      </figure>
+      <p class="governance-note">Receipts establish <strong>local process provenance, not Azure attestation</strong>.
+        Default assessment is local; native eval or Doctor requires separate approval.</p>
+      <details class="governance-glossary" id="agentops-technical"><summary>Artifact validation, execution boundaries and readiness findings</summary>
+      <div class="governance-split">
+        <div>
+          <h3>What you gain</h3>
+          <p>An <code>agentops.yaml</code> marker selects the agent. The adapter checks provenance,
+            artifact hashes, freshness and native result/history consistency, then emits
+            <code>specs/agentops-manifest.json</code>.</p>
+          <p>Existing eval and red-team consumers retain quality ownership.
+            Production-ready reports residual <code>AOPS-001</code> findings without duplicating matching canonical evidence.</p>
+        </div>
+        <div>
+          <h3>What it does not do</h3>
+          <p>The default assessment is bounded and local. It does not run paid evaluations,
+            invoke Doctor, authenticate to Azure or provision resources.
+            Native operations need separate, explicit approval through the existing CI/CD owner.</p>
+          <p>Receipts establish <strong>local process provenance, not Azure attestation</strong>.
+            They do not replace binding-scoped runtime governance proof.</p>
+        </div>
+      </div>
+      <p class="governance-note"><strong>Integrated in main; preview is a maturity label.</strong>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/pull/128">PR #128 is merged</a>.
+        Its integration evidence is local/offline, not a new live deployment or production certification.</p>
+      </details>
+      <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/4f59f7584a5f5d614c3625aa45f92f6a692c2194/skills/threadlight-agentops/SKILL.md">Read the pinned preview contract <span aria-hidden="true">&nearr;</span></a>
+    </div>
+  </section>
+
+  <section class="chapter-section explore-section" id="read-deeper" tabindex="-1" data-toc-id="read-deeper" data-toc-label="Explore">
+    <div class="wrap">
+      <p class="eyebrow"><span class="act-number">04</span>Choose your depth</p>
+      <h2>The story here.<br><em>The contracts in the repo.</em></h2>
+      <p class="governance-intro">Use this chapter to understand the approach. Use the technical guide
+        when you need prerequisites, ownership, artifact paths and the limits of each result.</p>
+      <div class="governance-links">
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md">Implementation &amp; evidence guide &nearr;<span>Available governance, pinned AgentOps preview, operational boundaries.</span></a>
+        <a href="./production.html">Production-ready &rarr;<span>Architecture and the broader readiness scorecard.</span></a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-govern/SKILL.md">Governance skill &nearr;<span>Policy authoring and per-binding inventory.</span></a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-governed-actions/SKILL.md">Governed actions skill &nearr;<span>Selected runtime generation and local evidence.</span></a>
+        <a href="./self-improving.html">Improve from finished runs &rarr;<span>Diagnostics and deliberate upgrades, not automatic self-modification.</span></a>
+        <a href="./workbook.html">The hands-on path &rarr;<span>Start with a pilot, then follow explicit production handoffs.</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>Threadlight · open guidance, opinionated tools · <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
+<script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/governance.js?v=46eddf5f"></script>
+<script src="assets/site-map.js?v=5b04768e"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
+</body>
+</html>

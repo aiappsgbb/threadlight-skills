@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Basics — skills, two agents, one business process.</title>
+<meta name="description" content="Understand what a skill is, how Threadlight helps a construction agent build a process agent, and where skills can run. Clear runtime and host boundaries, before the production deep dive.">
+<meta name="theme-color" content="#0a0d14">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Basics — skills, two agents, one business process.">
+<meta property="og:description" content="Understand what a skill is, how Threadlight helps a construction agent build a process agent, and where skills can run. Clear runtime and host boundaries, before the production deep dive.">
+<meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/basics.html">
+<meta property="og:site_name" content="Threadlight">
+<meta property="og:image" content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Basics — skills, two agents, one business process.">
+<meta name="twitter:description" content="Understand what a skill is, how Threadlight helps a construction agent build a process agent, and where skills can run. Clear runtime and host boundaries, before the production deep dive.">
+<meta name="twitter:image" content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
+<link rel="canonical" href="https://aiappsgbb.github.io/threadlight-skills/basics.html">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%23a8ff60' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
+<link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
+<link rel="stylesheet" href="assets/basics-visuals.css?v=f5cbb77d">
+</head>
+<body class="chapter-page chapter-basics chapter-experience">
+<a class="basics-skip" href="#chapter-top">Skip to content</a>
+<div class="atmosphere" aria-hidden="true"></div>
+<header class="masthead">
+  <div class="brand"><a class="brand-name" href="./index.html"><span class="brand-mark" aria-hidden="true"></span>Threadlight<span>by Microsoft GBB · AI Apps</span></a></div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html">Home</a>
+    <a href="./basics.html" aria-current="page">Basics</a>
+    <a href="./funnel.html">Build</a>
+    <a href="./case-study.html">Case study</a>
+    <a href="./production.html">Production</a>
+  </nav>
+</header>
+<aside class="floating-toc is-ready" aria-label="Basics chapter">
+  <nav class="cx-chapter-links" aria-label="Basics overview">
+    <a href="#skills">A skill</a><a href="#two-agents">Two agents</a><a href="#where-skills-run">Where it runs</a><a href="#next-step">Next step</a>
+  </nav>
+  <details class="cx-chapter-index"><summary>All sections</summary><ol>
+    <li><a href="#chapter-top">The idea</a></li><li><a href="#skills">What a skill contains</a></li><li><a href="#two-agents">Construction and runtime</a></li><li><a href="#where-skills-run">Host capabilities</a></li><li><a href="#next-step">Build, example, production</a></li>
+  </ol></details>
+</aside>
+<main>
+  <section class="chapter-hero basics-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="The idea">
+    <div class="wrap wrap-wide">
+      <p class="breadcrumb"><a href="./index.html">Home</a> / <span aria-current="page">Basics</span></p>
+      <div class="basics-opening">
+        <div><p class="eyebrow"><span class="dot"></span>Understand / before the build</p>
+          <h1>Skills build agents.<br><em>Agents do the work.</em></h1>
+          <p class="lede" data-chapter-intro>A construction agent uses Threadlight skills to turn a business brief into a reviewed project. The resulting process agent handles business cases with its own skills and tools. Building it and running it are different jobs.</p>
+          <a class="basics-text-link" href="#skills">Start with the building block <span aria-hidden="true">↓</span></a>
+        </div>
+        <figure class="basics-two-worlds" data-visual-anchor aria-labelledby="two-worlds-caption">
+          <figcaption id="two-worlds-caption">Same pattern. Different jobs.</figcaption>
+          <div class="basics-world" data-actor="builder"><span class="basics-label">BUILD TIME</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m14 10-10 10 10 10M26 10l10 10-10 10M23 6l-6 28"/></svg><strong>Construction agent</strong><p>Uses Threadlight skills<br>to build and assess the project.</p></div>
+          <div class="basics-transfer"><span aria-hidden="true">↓</span><strong>Reviewed specification + project</strong><small>Not the same skill library</small></div>
+          <div class="basics-world" data-actor="process"><span class="basics-label">RUN TIME</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 8h20v24H10zM15 14h10M15 20h10M15 26h6M4 16h6M30 24h6"/></svg><strong>Process agent</strong><p>Uses domain skills and registered tools<br>to handle the business case.</p></div>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="skills" data-toc-id="skills" data-toc-label="A skill">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow"><span class="dot"></span>01 / A reusable unit of know-how</p>
+      <h2>A skill is a playbook.<br><em>Not another agent.</em></h2>
+      <p class="basics-intro">It tells an agent when and how to tackle a task. Supporting code and references can make the work repeatable. The host still supplies the model, tools and permissions.</p>
+      <figure class="basics-package" aria-labelledby="package-caption">
+        <div class="basics-package-files"><span class="basics-label">SKILL PACKAGE</span><strong><code>SKILL.md</code></strong><span>Trigger · procedure · inputs · outputs</span><div><code>scripts/</code><code>references/</code><code>assets/</code></div><small>Companion files are optional.</small></div>
+        <div class="basics-package-execution"><span class="basics-label">THE HOST DOES THE WORK</span><ol><li><b>Read</b><span>Load the relevant instructions.</span></li><li><b>Act</b><span>Use available tools within permission.</span></li><li><b>Inspect</b><span>Check the resulting artifacts.</span></li></ol></div>
+        <figcaption id="package-caption">More than a one-off prompt: a versionable package, explicit contracts and reusable validation. An instruction is not a permission grant.</figcaption>
+      </figure>
+      <div class="basics-example"><span class="basics-label">EXAMPLE / QUALIFY</span><strong>Declared workload → sizing package → design input</strong><p>Qualification turns an interview into sizing artifacts. It does not discover your environment or deploy an agent.</p><a href="./downloads/threadlight-qualify.zip">Get the Qualify bundle <span aria-hidden="true">↗</span></a></div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="two-agents" data-toc-id="two-agents" data-toc-label="Two agents">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow"><span class="dot"></span>02 / From engineering to business execution</p>
+      <h2>Build the process.<br><em>Then run the process.</em></h2>
+      <p class="basics-intro">Threadlight's construction skills are not copied wholesale into the business agent. The reviewed process determines that agent's own skills, tool contracts and runtime route.</p>
+      <figure class="basics-build-path" aria-labelledby="build-path-caption">
+        <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h16l8 8v24H8zM24 4v8h8M14 19h12M14 26h8"/></svg><span class="basics-label">DEFINE</span><strong>The reviewed process</strong><code>specs/SPEC.md</code><code>specs/foundation.md</code></div>
+        <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m20 4 16 9-16 9L4 13zM4 21l16 9 16-9M4 29l16 9 16-9"/></svg><span class="basics-label">DERIVE</span><strong>The agent's contract</strong><code>AGENTS.md</code><code>src/agent/skills/</code></div>
+        <div><svg viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="4" width="30" height="12" rx="2"/><rect x="5" y="24" width="30" height="12" rx="2"/><path d="M12 10h1M12 30h1M20 16v8"/></svg><span class="basics-label">WIRE</span><strong>A working runtime</strong><span>Model + tools + identity</span><span>Host + channels + evidence</span></div>
+        <figcaption id="build-path-caption">The construction agent performs this work using Threadlight and its companion skills. Review and real-environment prerequisites remain explicit.</figcaption>
+      </figure>
+      <figure class="basics-request" aria-labelledby="request-caption"><figcaption id="request-caption">Once built: a business request follows a different path</figcaption><ol><li><b>Request</b><span>Chat or event receiver</span></li><li><b>Process agent</b><span>Domain instructions + skills</span></li><li><b>Tool call</b><span>Read data or request an action</span></li><li><b>Outcome</b><span>Result or human-review route</span></li></ol><p>For consequential actions, a written approval rule is not enough: the runtime must enforce the selected boundary. <a href="./governance.html">See how governance works →</a></p></figure>
+      <details class="basics-reference" id="runtime-detail"><summary>What actually loads the skills?</summary>
+        <dl><dt>Copilot SDK route</dt><dd>The shipped adapter supplies <code>skill_directories</code> when it creates a session, alongside host instructions and tool configuration.</dd><dt>MAF agent route</dt><dd>The shipped adapter supplies <code>SkillsProvider.from_paths</code> as a context provider, alongside instructions and native tools.</dd><dt>Workflow route</dt><dd>Some processes require an explicit workflow with executors and stages. The foundation policy selects the supported runtime route; do not infer one universal implementation from the skill format.</dd></dl>
+        <p><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/skill-based-agents.md#runtime-loading">Inspect the source-backed runtime contract →</a></p>
+      </details>
+      <aside class="basics-planner" aria-labelledby="planner-h"><span class="basics-label">WHERE AUTO FITS</span><h3 id="planner-h">The lifecycle planner is not the process agent.</h3><p><code>threadlight-auto</code> reads project evidence and decides run, skip or stop. A coding agent or supplied worker performs the stage. Manual, live and cost-bearing handoffs stay explicit; selected governance also changes the required stage order.</p><a href="./funnel.html">Follow the construction lifecycle →</a></aside>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="where-skills-run" data-toc-id="where-skills-run" data-toc-label="Where skills run">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow"><span class="dot"></span>03 / Beyond the coding agent</p>
+      <h2>The format travels.<br><em>The host determines the reach.</em></h2>
+      <p class="basics-intro">A compatible host can use a skill outside a coding session. Its available tools, dependencies, credentials and network access determine what can actually execute.</p>
+      <div class="basics-hosts">
+        <section data-host="coding"><span class="basics-label">CONSTRUCT</span><h3>Coding-agent host</h3><p>Build and assess the project with repository access and the required engineering tools.</p><strong>Boundary</strong><p>A thin authoring environment is not a deployment environment. Cloud operations need their own tooling and authorization.</p><a href="./workbook.html">Take the hands-on path →</a></section>
+        <section data-host="cowork"><span class="basics-label">QUALIFY &amp; DESIGN</span><h3>Compatible Cowork host</h3><p>The repo ships curated Qualify and Design bundles for sizing, discovery and design work.</p><strong>Boundary</strong><p>The host must support the bundle's document or code tools. Installing the ZIP does not install Azure tooling or grant deployment access.</p><a href="./downloads/threadlight-design.zip">Get the Design bundle ↗</a></section>
+        <section data-host="runtime"><span class="basics-label">OPERATE THE PROCESS</span><h3>Generated agent runtime</h3><p>The business agent loads its domain skills through the chosen SDK and uses its registered tools.</p><strong>Boundary</strong><p>Runtime wiring, identities, tool access and enforced controls are separate from the Markdown skill files.</p><a href="./production.html">Read the production boundary →</a></section>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section basics-next" id="next-step" data-toc-id="next-step" data-toc-label="Next step">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow"><span class="dot"></span>Choose your next question</p>
+      <h2>The concepts are clear.<br><em>Now follow the work.</em></h2>
+      <nav aria-label="Continue from Basics"><a href="./funnel.html"><span>BUILD</span><strong>How does a brief become a pilot?</strong><small>The six-phase path, its artifacts and human decisions.</small></a><a href="./case-study.html"><span>CASE STUDY</span><strong>What did a captured run produce?</strong><small>A concrete example, with historical evidence and limits.</small></a><a href="./production.html"><span>PRODUCTION</span><strong>What must hold before go-live?</strong><small>Readiness, runtime governance and operating evidence.</small></a></nav>
+      <p class="basics-deeper">Implementing this? <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/skill-based-agents.md">Read the L400/L500 engineering guide</a> for inputs, generated files, SDK loading and operational boundaries.</p>
+    </div>
+  </section>
+</main>
+<footer><div class="left">Threadlight · open guidance, opinionated tools</div><div class="right"><a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></div></footer>
+<script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=5b04768e"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
+</body>
+</html>

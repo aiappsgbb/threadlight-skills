@@ -6,6 +6,18 @@
 - **Delivery shape:** two ordinary sequential pull requests from `main`
 - **Scope boundary:** public repository content only; no private roles, private discussions, fiscal labels, stakeholder names, or non-public workflow framing
 
+> **Historical approval record - scope update 2026-09-10.** This document
+> preserves the August approval. Later approved work added Basics, grouped
+> Home / Basics / Build / Case study / Production navigation, and limited Home
+> structure changes while preserving the demo. Current navigation lives in
+> [site-map.js](../../assets/site-map.js); the protected demo boundary is in the
+> [baseline fixture](../../../tests/blueprint/fixtures/home-demo-baseline.json).
+> Use the [engineering guide](../../skill-based-agents.md) for current contracts.
+> Original counts, implementation recipes and scores are not fresh acceptance evidence.
+> Delivery was subsequently approved as one ordinary PR after alignment with
+> current main. Merge and live publication still require separate approval;
+> the original two-PR sequence below is historical.
+
 ## 1. As-is evidence and problem statement
 
 The current public site already carries a strong visual system and should be

@@ -115,9 +115,41 @@
     .doc .diagram-card .diagram-frame svg { min-width: 660px; }
     .doc .diagram-card .diagram-caption { text-align: left; }
   }
+  .doc h1 { max-width: 21ch; font-size: clamp(2.2rem, 5vw, 4rem); }
+  .handoff-map { margin: 24px 0; border: 1px solid var(--line-2); background: var(--bg-1); }
+  .handoff-map figcaption { padding: 14px 20px; font: 12px var(--mono); color: var(--ink-2); border-bottom: 1px solid var(--line); }
+  .handoff-lane { display: grid; grid-template-columns: 175px 1fr 1fr; border-bottom: 1px solid var(--line); }
+  .handoff-lane:last-child { border-bottom: 0; background: var(--chapter-accent-soft); }
+  .handoff-lane > * { min-width: 0; padding: 20px; }
+  .handoff-lane h2 { font-size: 1.25rem; margin: 0; border-right: 1px solid var(--line); }
+  .handoff-lane h2 span { display: block; font: 11px var(--mono); color: var(--ink-2); margin-bottom: 10px; }
+  .handoff-lane p { margin: 0; font-size: .92rem; line-height: 1.55; }
+  .handoff-lane code { overflow-wrap: anywhere; }
+  .doc details { border-block: 1px solid var(--line); margin: 24px 0; padding-bottom: 12px; }
+  .doc summary { cursor: pointer; min-height: 44px; padding: 16px 4px; color: var(--ink-0); font-weight: 600; }
+  .doc details > :not(summary) { margin-inline: 4px; }
+  .boundary-checks { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 22px 0; }
+  .boundary-checks li { border-top: 2px solid var(--chapter-accent); padding-top: 14px; }
+  .boundary-checks strong { display: block; margin-bottom: 8px; }
+  @media (prefers-color-scheme: light) {
+    .doc a, .doc code { color: var(--ink-0); }
+    .doc a { text-decoration: underline; }
+    .doc h1 em { background: none; -webkit-text-fill-color: currentColor; color: var(--ink-0); }
+  }
+  @media (max-width: 680px) {
+    .handoff-lane { grid-template-columns: 1fr; }
+    .handoff-lane > * { padding: 12px 20px; }
+    .handoff-lane h2 { border: 0; padding-top: 18px; }
+    .handoff-lane h2 span { display: inline; margin-right: 10px; }
+    .boundary-checks { grid-template-columns: 1fr; }
+    .doc h1 { font-size: 2.4rem; }
+  }
 </style>
+<link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
+<link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
+<link rel="stylesheet" href="assets/customize-visuals.css?v=62258f19">
 </head>
-<body class="chapter-page chapter-customize">
+<body class="chapter-page chapter-customize chapter-experience">
 
 <header class="masthead">
   <div class="brand">
@@ -127,56 +159,69 @@
   </div>
   <nav class="nav" aria-label="Site chapters">
     <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
-    <a href="./blueprint.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Blueprint</a>
+    <a href="./basics.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Basics</a>
+    <a href="./funnel.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16l-6 7v7l-4 2v-9z"/></svg>Build</a>
     <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
-    <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production-ready</a>
-    <a href="./customize.html" aria-current="page"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.3"/><circle cx="16" cy="16" r="2.3"/></svg>Customize</a>
+    <a href="./production.html" aria-current="location"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
   </nav>
 </header>
 
 <aside class="floating-toc" aria-label="Customize chapter">
-  <p class="toc-title">Chapter</p>
+  <nav class="cx-chapter-links" aria-label="Customization overview">
+    <a href="#customer-boundary">The boundary</a><a href="#why">What changes</a><a href="#how">The overlay</a><a href="#how-to">Handoff</a>
+  </nav>
+  <details class="cx-chapter-index"><summary>All sections</summary><ol>
+    <li><a href="#customer-boundary">The boundary</a></li><li><a href="#why">What changes</a></li><li><a href="#how">The overlay</a></li><li><a href="#how-to">Handoff</a></li>
+  </ol></details>
 </aside>
 
 <main>
   <article class="doc">
-    <p class="crumb"><a href="./index.html">Threadlight</a> / Customize</p>
-    <h1>From a working pilot to <em>their</em> production</h1>
-    <p class="lede">
-      <strong>threadlight-customize</strong> is the engagement runbook that takes a
-      Threadlight pilot and fits it to <strong>one customer&rsquo;s real production
-      environment</strong> &mdash; by forking the skills, capturing their landing
-      zone, identity, network and governance in an <strong>overlay</strong>, and
-      onboarding without ever editing a skill file.
+    <div class="cx-journey">
+      <nav aria-label="Breadcrumb"><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Customize</span></nav>
+      <a class="cx-journey-next" href="./self-improving.html">Next: Improve <span aria-hidden="true">→</span></a>
+    </div>
+    <h1>Keep the skills.<br><em>Fit their boundary.</em></h1>
+    <p class="lede" data-chapter-intro>
+      <strong>threadlight-customize</strong> is a manual production-handoff runbook.
+      Keep skills untouched, put customer inputs in an overlay, then verify identity,
+      network and release boundaries with their platform team.
     </p>
 
-    <div class="why-grid">
-      <article class="why-card">
-        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9z"/><path d="M9 12h6M9 16h4"/></svg></span>
-        <p class="why-kicker">Intake</p>
-        <h3>Structured intake.</h3>
-        <p>A <code>customer-profile.md</code> captures their environment, requirements
-          and mandated templates &mdash; so nothing about production is guessed.</p>
-      </article>
-      <article class="why-card">
-        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span>
-        <p class="why-kicker">Compose</p>
-        <h3>Overlay, not fork-edit.</h3>
-        <p>Every customer value lives in <code>overlay/</code> beside the untouched
-          skills, so <code>git merge upstream/main</code> keeps pulling our fixes.</p>
-      </article>
-      <article class="why-card">
-        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
-        <p class="why-kicker">Boundary</p>
-        <h3>A signed-off boundary.</h3>
-        <p>A <code>non-coverage.md</code> states what Threadlight deliberately
-          doesn&rsquo;t automate &mdash; and the architecture review approves it.</p>
-      </article>
-    </div>
+    <figure class="handoff-map" id="customer-boundary" data-toc-id="customer-boundary" data-toc-label="The boundary" data-visual-anchor aria-labelledby="handoff-cap">
+      <figcaption id="handoff-cap">Production handoff map · what changes / what stays yours</figcaption>
+      <div class="cx-schematic" role="img" aria-label="Upstream and customer overlay composition">
+        <div class="cx-schematic-node"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m20 3 16 8-16 8-16-8zM4 20l16 8 16-8M4 29l16 8 16-8"/></svg><strong>Pinned skills</strong><span>Keep the upstream code</span></div>
+        <div class="cx-schematic-node"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M5 10h30M5 20h30M5 30h30"/><circle cx="13" cy="10" r="4"/><circle cx="27" cy="20" r="4"/><circle cx="17" cy="30" r="4"/></svg><strong>Customer overlay</strong><span>Supply identity, network, release choices</span></div>
+        <div class="cx-schematic-node" data-boundary><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 34 9v10c0 8-7 14-14 18C13 33 6 27 6 19V9zM12 20l6 6 10-13"/></svg><strong>Accepted scope</strong><span>Verify in the customer environment</span></div>
+      </div>
+      <details class="handoff-technical" id="handoff-technical"><summary>Output files and responsibilities for each boundary</summary>
+      <div class="handoff-lane">
+        <h2><span>01 / Unmodified</span>Keep upstream</h2>
+        <p><code>threadlight-skills/</code><br>Skills stay untouched. Record the exact SHA in <code>overlay/upstream-pin.md</code>.</p>
+        <p><strong>You retain the fork.</strong><br>Review upstream changes, merge, re-pin and re-test.</p>
+      </div>
+      <div class="handoff-lane">
+        <h2><span>02 / Customer inputs</span>Configure customer</h2>
+        <p><code>customer-profile.md</code> → <code>overlay/</code><br>Deploy target, identity, runners, selectors and <code>customer-overrides.yaml</code>.</p>
+        <p><strong>Your platform choices.</strong><br>Landing zone, private DNS, OIDC / WIF and policy baseline.</p>
+      </div>
+      <div class="handoff-lane">
+        <h2><span>03 / Human gate</span>Verify boundary</h2>
+        <p>Private-VNet pre-flight → deploy / validation loop → <code>non-coverage.md</code>.</p>
+        <p><strong>Your architecture review.</strong><br>Approve what is covered, what is not, and whether to release.</p>
+      </div>
+      </details>
+    </figure>
+    <p class="note"><strong>No automatic onboarding or production approval.</strong>
+      The overlay supplies inputs; it does not prove that customer controls work.
+      <a href="#how-to">Open the handoff runbook ↓</a></p>
 
+    <details>
+    <summary>L300 · Overlay composition and the environment decisions it changes</summary>
     <figure class="diagram-card" aria-labelledby="overlay-cap">
       <div class="diagram-frame">
-        <svg viewBox="0 0 1080 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The overlay model: the upstream threadlight-skills repository stays untouched and keeps merging its fixes, while every customer-specific value — profile, identity, network, governance — is captured once in an overlay directory beside the skills; the two compose into the customer's production environment, and because no skill file is ever edited, git merge upstream/main never conflicts.">
+        <svg viewBox="0 0 1080 300" xmlns="http://www.w3.org/2000/svg" role="img"         aria-label="Manual overlay composition: keep skills untouched, capture customer inputs beside them, then review and verify the resulting environment. Upstream updates still need review and re-testing.">
           <defs>
             <style>
               .cz-node { font-family: var(--mono); font-size: 13px; letter-spacing: .04em; fill: currentColor; font-weight: 600; }
@@ -190,7 +235,7 @@
           <rect x="24" y="44" width="290" height="96" rx="12" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".5" stroke-width="1.4"/>
           <text x="42" y="70" class="cz-tag">UPSTREAM</text>
           <text x="42" y="98" class="cz-node">threadlight-skills</text>
-          <text x="42" y="118" class="cz-sub">23 skills &middot; never edited</text>
+          <text x="42" y="118" class="cz-sub">          skills &middot; left unmodified</text>
 
           <!-- overlay: the customer's values -->
           <rect x="24" y="164" width="290" height="96" rx="12" fill="currentColor" fill-opacity=".05" stroke="var(--lime)" stroke-opacity=".75" stroke-width="1.6"/>
@@ -212,17 +257,17 @@
           <text x="372" y="84"  text-anchor="middle" class="cz-flow">keeps merging</text>
           <text x="372" y="234" text-anchor="middle" class="cz-flow">captured once</text>
           <text x="573" y="142" text-anchor="middle" class="cz-flow">no fork-edit</text>
-          <text x="573" y="170" text-anchor="middle" class="cz-sub"><tspan style="opacity:.9">git merge upstream/main</tspan> never conflicts</text>
+          <text x="573" y="170" text-anchor="middle" class="cz-sub">          <tspan style="opacity:.9">git merge upstream/main</tspan> + review</text>
 
           <!-- their production -->
           <rect x="724" y="92" width="332" height="120" rx="12" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".5" stroke-width="1.4"/>
           <text x="744" y="118" class="cz-tag">WHAT SHIPS</text>
-          <text x="744" y="146" class="cz-node">THEIR PRODUCTION</text>
+          <text x="744" y="146" class="cz-node">          HANDOFF FOR REVIEW</text>
           <text x="744" y="167" class="cz-sub">the pilot, fitted to their landing zone</text>
           <text x="744" y="190" class="cz-sub" style="opacity:.8">Foundry &middot; Entra &middot; private network &middot; signed boundary</text>
         </svg>
       </div>
-      <figcaption id="overlay-cap" class="diagram-caption">untouched skills + your overlay &rarr; their production &middot; upstream keeps flowing</figcaption>
+      <figcaption id="overlay-cap" class="diagram-caption">      untouched skills + your overlay &rarr; reviewed handoff &middot; re-test upstream updates</figcaption>
     </figure>
 
     <p class="kicker">What you actually get</p>
@@ -260,80 +305,48 @@
       <div class="outcome-result">
         <span class="oc-dim">Result</span>
         <span class="oc-cell">a pilot you can demo</span>
-        <span class="oc-cell oc-on">live in the customer&rsquo;s production</span>
+        <span class="oc-cell oc-on">customer-specific inputs, pending verification and release approval</span>
       </div>
     </div>
     <p class="note">Same skills, same code &mdash; only the inputs change. That is the whole point.</p>
+    </details>
 
     <section id="why" data-toc-id="why" data-toc-label="Why">
-      <h2><span class="n">01</span>Why</h2>
+      <h2><span class="n">01</span>A public pilot cannot prove a private estate.</h2>
 
       <p>
-        Every Threadlight skill except this one is <strong>opinionated and
-        deterministic</strong>: bounded inputs, one right answer. A specific
-        customer&rsquo;s production estate is not bounded &mdash; their landing
-        zone, identity model, regions, private network and governance are
-        <strong>theirs</strong>, and no two customers are alike. Customizing is how
-        you reconcile our opinions with their environment: keep what fits, override
-        what doesn&rsquo;t, and be explicit about what we deliberately don&rsquo;t
-        automate.
+        Defaults are a starting position, not a mandate. Keep what fits;
+        override inputs where customer policy differs. This is
+        <strong>instructions, not a generator</strong> &mdash; customer-specific
+        branching does not belong in the skills.
       </p>
-      <p>
-        Our defaults are a <strong>starting position, not a mandate</strong>. A
-        customer may be <strong>stricter</strong> than us (extra controls) or simply
-        <strong>different</strong> (their identity model, their pipelines). Either
-        way the skills don&rsquo;t change &mdash; you change the inputs.
-      </p>
-      <p>
-        This is deliberately <strong>instructions, not a generator</strong>.
-        Branching on a customer&rsquo;s environment <em>in code</em> is the
-        anti-pattern: it would fork the skills on every engagement and rot. The
-        skills stay parameterised; you feed the customer&rsquo;s values as inputs.
-      </p>
-
-      <h3>Where customization actually bites</h3>
-      <div class="card-grid">
-        <div class="detail-card">
-          <h3>CI/CD pipelines</h3>
-          <p>Their identity model (OIDC&nbsp;/&nbsp;WIF), RBAC scoped to the spoke RG,
-            runner topology. <code>threadlight-cicd</code> generates the pipeline;
-            you feed it these constraints.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Isolated / private-VNet</h3>
-          <p>Fully-private estates with no public egress. The deploy and validation
-            loop has to run from <em>inside</em> the perimeter &mdash; a public pilot
-            doesn&rsquo;t prove it.</p>
-        </div>
-        <div class="detail-card">
-          <h3>Dev machines</h3>
-          <p>An SE laptop can&rsquo;t reach the customer&rsquo;s private endpoints.
-            You need a dev box inside the VNet (or a sanctioned tunnel) to run the
-            loop the way the workload will.</p>
-        </div>
-      </div>
+      <ul class="boundary-checks">
+        <li><strong>Identity → scoped pipeline</strong>Customer OIDC / WIF, spoke-RG RBAC and approved runners go into <code>overlay/cicd/</code>.</li>
+        <li><strong>Network → reachable endpoints</strong>Resolve private DNS and reach port <code>443</code> from inside the perimeter before deployment.</li>
+        <li><strong>Ownership → signed boundary</strong>Record exclusions in <code>non-coverage.md</code>. An architecture review, not a generated score, accepts the handoff.</li>
+      </ul>
     </section>
 
     <section id="how" data-toc-id="how" data-toc-label="How">
-      <h2><span class="n">02</span>How</h2>
+      <h2><span class="n">02</span>Four seams. No edited skills.</h2>
 
-      <p>
-        One mechanism makes this safe and repeatable: a <strong>pinned fork plus an
-        overlay</strong>. You never edit skill files.
-      </p>
-      <ul>
-        <li><strong>Fork &amp; pin.</strong> Fork <code>threadlight-skills</code>
-          into the customer&nbsp;/&nbsp;engagement org and record the exact upstream
-          commit (SHA) in <code>overlay/upstream-pin.md</code>.</li>
-        <li><strong>Overlay, don&rsquo;t edit.</strong> Every customer input &mdash;
-          selectors, <code>azd env</code>, <code>customer-overrides.yaml</code>,
-          CI/CD constraints &mdash; lives in an <code>overlay/</code> directory
-          beside the untouched fork.</li>
-        <li><strong>Clean merge.</strong> Because the skill files stay byte-for-byte
-          upstream, <code>git merge upstream/main</code> is a clean merge. If a merge
-          ever conflicts, an override leaked out of the overlay.</li>
-      </ul>
+      <p>Capture keep-vs-override decisions with the platform owner. Every customer input stays beside the pinned fork.</p>
+      <figure class="phase-diagram seams-map" data-secondary-visual="customer-seams" aria-labelledby="seams-map-caption">
+        <figcaption id="seams-map-caption">Four input seams · the overlay configures, the customer verifies</figcaption>
+        <div class="seams-layout">
+          <div class="seams-kept"><svg class="flow-icon" aria-hidden="true"><use href="assets/lucide-sprite.svg#icon-layers"/></svg><span class="map-tag">KEEP</span><strong>Unmodified skills</strong><span>Exact upstream SHA<br><code>overlay/upstream-pin.md</code></span></div>
+          <div class="seams-decisions">
+            <div data-customer-seam><div><span class="map-tag">deploy</span><strong>Landing zone + region</strong><span>Target · private network · IaC</span></div><span class="map-arrow" aria-hidden="true">→</span><div><span class="map-tag">VERIFY</span><strong>Reachable target</strong></div></div>
+            <div data-customer-seam><div><span class="map-tag">cicd</span><strong>Identity + runners</strong><span>OIDC / WIF · spoke-RG RBAC</span></div><span class="map-arrow" aria-hidden="true">→</span><div><span class="map-tag">VERIFY</span><strong>Scoped pipeline</strong></div></div>
+            <div data-customer-seam><div><span class="map-tag">safe-check</span><strong>Selectors + names</strong><span>Customer resource conventions</span></div><span class="map-arrow" aria-hidden="true">→</span><div><span class="map-tag">VERIFY</span><strong>Correct resources</strong></div></div>
+            <div data-customer-seam><div><span class="map-tag">production-ready</span><strong>Policy baseline</strong><span><code>customer-overrides.yaml</code></span></div><span class="map-arrow" aria-hidden="true">→</span><div><span class="map-tag">REVIEW</span><strong>Allowed overrides</strong></div></div>
+          </div>
+        </div>
+        <div class="map-output"><span>UPSTREAM CHANGES</span><strong>Review compatibility → re-test the overlay → re-pin. An untouched fork still needs review.</strong></div>
+      </figure>
 
+      <details>
+      <summary>L300 · Exact overlay layout and the four production-onboarding overrides</summary>
       <pre class="code-callout" tabindex="0" aria-label="The engagement repository layout">engagement-repo/
 ├── <span class="cmd">threadlight-skills/</span>          <span class="cmt"># pinned upstream fork — left UNMODIFIED</span>
 ├── <span class="cmd">overlay/</span>                     <span class="cmt"># customer inputs the skills already consume</span>
@@ -380,12 +393,15 @@
       </div>
       <p class="note">Keep <code>threadlight-auto</code> too, but <strong>never point it at production</strong>.</p>
 
+      </details>
       <h3>Testing inside their boundary</h3>
       <p>
         A private-VNet target needs a dev box inside the perimeter. Three patterns,
         one gate.
       </p>
 
+      <details>
+      <summary>L300 · Compare in-VNet development, Codespaces and cloud sandboxes</summary>
       <div class="cost-table-wrap">
         <table class="cost-table">
           <thead>
@@ -408,16 +424,30 @@
         an afternoon; the checklist catches it first.
         <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/private-env-test/private-vnet-checklist.md" target="_blank" rel="noopener">Pre-flight checklist&nbsp;&nearr;</a>
       </p>
+      </details>
     </section>
 
     <section id="how-to" data-toc-id="how-to" data-toc-label="How to">
-      <h2><span class="n">03</span>How to</h2>
+      <h2><span class="n">03</span>Take the handoff to review.</h2>
 
-      <p>
-        Intake is the long pole &mdash; start it during the pilot. Everything after
-        it is mechanical. The fork and scaffold are three commands:
-      </p>
+      <p>Start intake during the pilot. Missing customer inputs block the handoff; a generated score cannot accept the boundary.</p>
+      <figure class="phase-diagram acceptance-map" data-secondary-visual="handoff-acceptance" aria-labelledby="acceptance-map-caption">
+        <figcaption id="acceptance-map-caption">Handoff acceptance · a review path, not a completed sign-off</figcaption>
+        <div class="acceptance-evidence">
+          <div><span class="map-tag">CUSTOMER INPUTS</span><strong>Profile + decision map</strong><span>Name the owner. Resolve every blank.</span></div>
+          <span class="map-arrow" aria-hidden="true">→</span>
+          <div><span class="map-tag">BOUNDARY CHECKS</span><strong>Pre-flight + validation</strong><span>Inside the perimeter, against the target.</span></div>
+        </div>
+        <div class="acceptance-fork">
+          <div><span class="map-tag">must-fix</span><strong>Cannot override</strong><span>Remediate and re-check.<br>The scorecard exits non-zero.</span></div>
+          <div><span class="map-tag">should-fix</span><strong>Written reason required</strong><span>Only a <code>pass ↔ fail</code> status flip.<br>Keep the audit trail in the overlay.</span></div>
+        </div>
+        <div class="acceptance-gate" data-human-gate><svg class="flow-icon" aria-hidden="true"><use href="assets/lucide-sprite.svg#icon-shield-check"/></svg><div><span class="map-tag">HUMAN DECISION</span><strong>Architecture review</strong><span>Review results + <code>non-coverage.md</code>. Accept the scope and release decision, or return for work.</span></div></div>
+        <div class="map-output"><span>RUNBOOK</span><strong><a href="#handoff-steps">Fork, pin, test and record an override ↓</a></strong></div>
+      </figure>
 
+      <details id="handoff-steps">
+      <summary>L300 · Fork commands, handoff steps and one real override</summary>
       <pre class="code-callout" tabindex="0" aria-label="Fork, pin and scaffold the overlay"><span class="cmt"># 1 · fork into the customer org and clone (gh wires origin + upstream)</span>
 <span class="prompt">&gt;</span> <span class="cmd">gh</span> <span class="arg">repo fork aiappsgbb/threadlight-skills</span> <span class="flag">--org</span> <span class="arg">&lt;customer-org&gt;</span> <span class="flag">--clone --remote</span>
 <span class="prompt">&gt;</span> <span class="cmd">cd</span> <span class="arg">threadlight-skills</span>
@@ -436,7 +466,7 @@
         <li><strong>Drop real overrides.</strong> Put the customer&rsquo;s values in <code>overlay/</code> &mdash; for example the <code>customer-overrides.yaml</code> below. Never edit a skill file.</li>
         <li><strong>Test inside the boundary.</strong> Pre-flight green, then run the <code>local-test</code>&nbsp;/&nbsp;<code>deploy</code> loop on the in-VNet box.</li>
         <li><strong>Name the boundary.</strong> Record what you customized and what Threadlight deliberately doesn&rsquo;t automate in <code>non-coverage.md</code> &mdash; the architecture review signs off on this.</li>
-        <li><strong>Pull upstream later.</strong> <code>git merge upstream/main</code> stays clean because the overlay held the diff; then re-pin the new SHA. <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/fork-runbook.md" target="_blank" rel="noopener">Full runbook&nbsp;&nearr;</a></li>
+        <li><strong>Pull upstream later.</strong> Review <code>git merge upstream/main</code>, re-test the overlay and re-pin the new SHA. <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-customize/references/fork-runbook.md" target="_blank" rel="noopener">Full runbook&nbsp;&nearr;</a></li>
       </ol>
 
       <h3>One real override</h3>
@@ -456,6 +486,7 @@ overrides:
         &mdash; the scorecard exits non-zero and names it. The decision lives in the
         overlay, never in an edited skill.
       </p>
+      </details>
 
       <p>
         <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-customize" target="_blank" rel="noopener">Browse the skill&nbsp;&nearr;</a> &middot;
@@ -472,5 +503,7 @@ overrides:
 </footer>
 
 <script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=5b04768e"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
 </body>
 </html>

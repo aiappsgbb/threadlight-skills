@@ -157,20 +157,31 @@ and writes deterministic templates only — it does not emit remediation patches
 
 ## How to invoke
 
+First set and verify `CATALOG` and `PROJECT` using the [CLI setup](#cli).
+Run these examples from the pilot working directory: onboarding/scaffolding
+resolve relative framing, apply-plan and scaffold paths from that directory.
+Live reads still require approved identity and target scope.
+
+```bash
+: "${CATALOG:?Set and verify CATALOG using CLI setup}"
+: "${PROJECT:?Set PROJECT to the existing pilot root}"
+cd "$PROJECT" || exit 1
+```
+
 ### Quick assess (no changes)
 ```
-python3 scripts/production_ready.py \
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
   --target-sub <SUB> --target-rg <RG>
 ```
 
 ### Full onboarding (interactive framing wizard)
 ```
-python3 scripts/production_ready.py --onboard
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" --onboard
 ```
 
 ### Headless / CI-friendly
 ```
-python3 scripts/production_ready.py --onboard \
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" --onboard \
   --framing-file framing.json \
   --apply-plan-out apply-plan.json \
   --no-rights-probe
@@ -178,7 +189,7 @@ python3 scripts/production_ready.py --onboard \
 
 ### Phase 3 scaffold only
 ```
-python3 scripts/production_ready.py \
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
   --framing-file framing.json \
   --scaffold-cicd \
   --repo-full-name owner/repo
@@ -215,11 +226,11 @@ skills threadlight delegates to.
 
 | You are at… | Run | Get |
 |---|---|---|
-| `safe-check --phase post-deploy` returned green and the customer wants to talk about production | `python tests/production_ready.py` | Markdown report + JSON manifest |
-| Customer architecture review in 3 days | `python tests/production_ready.py --target citadel-spoke` (or other posture) | Same as above, scored against the declared target |
-| Pilot has been parked for weeks; someone asks "could we ship this?" | `python tests/production_ready.py --static` (no live Azure auth needed) | Pure static scorecard from repo + safe-check manifests |
+| `safe-check --phase post-deploy` returned green and the customer wants to talk about production | Pinned complete-catalog CLI below, live reads only after approval | Markdown report + JSON manifest |
+| Customer architecture review in 3 days | Add `--target citadel-spoke` (or other posture) to that CLI | Same as above, scored against the declared target |
+| Pilot has been parked for weeks; someone asks "could we ship this?" | Use `--static --no-rights-probe`; retain valid fresh safe-check prerequisites | Static scorecard from repo + safe-check manifests |
 | You inherited a pilot whose SPEC has no § 12 | Skill still runs — posture falls back to `standard-ai-gateway`, an `RDY-002` warning surfaces "SPEC § 12 missing — add it from `references/spec-section-12-template.md`" | Author § 12, re-run for full scorecard |
-| Historical AGT v4 compatibility inspection | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | Legacy diagnostics only; never substitutes for current v1 runtime-binding readiness |
+| Historical AGT v4 compatibility inspection | Add `--pillar agent-governance --agt-profile v4_preview` | Legacy diagnostics only; never substitutes for current v1 runtime-binding readiness |
 | Customer accepted some `must-fix` findings as risk | Author `tests/production-readiness-waivers.json`, re-run | Report shows `score_with_waivers` and `would_fail_hard_gate` flags |
 
 > **Rule of thumb.** This skill runs at most twice per pilot
@@ -252,14 +263,18 @@ about findings, not just emit them.
 
 **Per-finding status taxonomy:**
 
-| Status | Meaning | Counts toward raw score? |
+| Status | Meaning | Scoring contribution |
 |---|---|---|
-| `pass` | Check ran and the pillar requirement is met | ✅ |
-| `should-fix` | Gap exists; not a hard blocker but should be addressed before go-live | ❌ |
-| `must-fix` | Hard blocker for production go-live; would fail a v2 hard-gate | ❌ |
-| `not-applicable` | Check correctly skipped (e.g., Citadel scoring against an AGT-target deployment) | ✅ (counts as pass for raw, with justification) |
-| `not-verified` | Check could not run (no Azure auth, insufficient RBAC, static-only mode) | ⚪ (excluded from raw score; surfaced in `not_verified[]`) |
-| `waived` | Customer explicitly accepted the gap with documented compensating control | ✅ in `score_with_waivers`, ❌ in `raw_score` |
+| `pass` | Checked requirement met | 4/4 |
+| `should-fix` | Nonblocking gap | 1/4 partial credit |
+| `must-fix` | Blocking finding | 0/4 |
+| `not-applicable` | Requirement does not apply | excluded from numerator and denominator |
+| `not-verified` | Verification debt | 0/4; remains in denominator |
+| `waived` | Accepted risk with valid compensating control | 3/4 with waivers; raw findings unchanged |
+
+Experimental findings are excluded from scoring unless `--include-experimental`
+is selected; this does not filter the raw hard-gate boolean. See the
+[normative scoring and gate explanation](../../docs/production-readiness.md#5-status-taxonomy).
 
 ### Cost evidence — forecast always, reconciled actuals opt-in
 
@@ -370,66 +385,62 @@ an engineering aid, not legal advice. See `references/eu-ai-act-mapping.md`.
 
 ## CLI
 
-The CLI lives at `skills/threadlight-production-ready/scripts/production_ready.py`.
-Pilot repos either:
+Run the CLI from a **complete pinned catalog**, with `--root` selecting the
+pilot. Do not copy the file alone: it resolves `skills/_shared` and sibling
+helpers/references relative to its source path. Missing shared governance
+validation can degrade to `not-verified`; a copied script is not an equivalent
+installation. There is no supported production-ready package-wrapper recipe here.
 
-1. **Install as a package wrapper** (matches `threadlight-safe-check`):
-   create `threadlight/__init__.py` and drop `production_ready.py` as
-   `scripts/production_ready.py` (copy into `tests/production_ready.py` in pilot repos, same pattern as `safe_check.py`). Invoke as `python tests/production_ready.py`.
-2. **Copy as a tests script:** copy to `tests/production_ready.py`. Invoke
-   as `python tests/production_ready.py`.
+Use an existing isolated Python 3.12+ environment. Core scorecard code uses the
+standard library; selected signed-governance validation additionally requires
+the [control-plane package and its pinned dependencies](../threadlight-govern/references/control-plane/pyproject.toml).
+The protected configuration-validation environment also uses `pyyaml` and
+`jsonschema[format]==4.26.0`. Native/collector requirements are in the
+[collector installation contract](../threadlight-safe-check/references/governance-probe.md#install).
+No dependencies are installed by assessment.
 
-Both invocations are supported. The `-m` form is canonical (matches
-`safe-check`); the file-path form is the no-packaging fallback.
+Even `--static` needs the current deployment manifest and a completed, valid,
+fresh, matching postdeploy manifest with empty gaps. When Bicep entrypoints are
+present it also needs Azure CLI + Bicep and locally available modules; compilation
+is not skipped. Pre-cache modules for offline work rather than assuming
+`--static` forbids module-restoration network access.
 
 ```bash
-# Default — all 13 pillars, live + static, both outputs
-python tests/production_ready.py
-
-# Subset of pillars
-python tests/production_ready.py --pillar network-posture,observability
-
-# Static only (no Azure auth required; live checks all → not-verified)
-python tests/production_ready.py --static
-
-# Quick smoke (subset of checks per pillar; for iteration)
-python tests/production_ready.py --quick
-
-# Explicit posture override (overrides SPEC § 12 resolution)
-python tests/production_ready.py \
-  --target citadel-spoke|agt|standard-ai-gateway|hybrid
-
-# AGT profile (capability-based, version-agnostic)
-python tests/production_ready.py --agt-profile auto|v3_7|v4_preview|none
-
-# Explicit waiver file path
-python tests/production_ready.py \
-  --waivers tests/production-readiness-waivers.json
-
-# Allow stale safe-check manifest (default rejects >24h or RG/sub/hash mismatch)
-python tests/production_ready.py --accept-stale-safe-check
-
-# Override output paths
-python tests/production_ready.py \
+CATALOG=/absolute/path/to/reviewed/threadlight-skills
+CATALOG_REVISION=8153bc2e0a677d99b8414053d7a00cfdab495444
+PROJECT=/absolute/path/to/pilot
+test "$(git -C "$CATALOG" rev-parse HEAD)" = "$CATALOG_REVISION" || exit 1
+git -C "$CATALOG" diff --exit-code HEAD -- skills scripts || exit 1
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --static --no-rights-probe \
   --out tests/production-readiness-manifest.json \
   --report docs/production-readiness-report.md
 
-# Quiet output for CI / hooks
-python tests/production_ready.py --quiet
+# Explicit findings gate; reports are still emitted before a gate failure.
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --static --no-rights-probe --gate-preview
 ```
+
+See the [CLI cheatsheet](../../docs/production-readiness.md#9-cli-cheatsheet)
+for live-read approval, target/pillar/profile options and output paths.
+`--accept-stale-safe-check` only tolerates age with a warning, not scope/hash
+drift, invalid timestamps or gaps. Recollect rather than using it as live proof.
+The default trend CSV is another written output under the pilot's `tests/`.
 
 Exit codes:
 
 | Code | Meaning |
 |---|---|
-| `0` | Checks ran and report was written. Per-finding statuses (including `must-fix` and `not-verified`) live inside the report. **The skill never returns non-zero for findings in v1 — it is soft-advisory.** |
-| `2` | Missing prerequisite: no `specs/manifest.json`, no `tests/postdeploy-manifest.json`, safe-check manifest stale (use `--accept-stale-safe-check` to override) or scope-mismatched (different subscription/RG), or unknown `--pillar` id. **Missing SPEC § 12 does NOT exit 2** — the skill emits an `RDY-002` warning, falls back to `standard-ai-gateway` posture, and still produces the report. |
-| `3` | I/O failure: cannot read inputs, cannot write outputs, `az` not on PATH at all. |
+| `0` | Assessment and report completed; advisory findings may remain. |
+| `2` | Invalid arguments or prerequisites (including safe-check freshness/scope/hash, missing required Bicep tooling/build, unknown pillar); also explicit `--gate-preview` failure after report output. Missing SPEC § 12 emits an `RDY-002` warning instead. |
+| `3` | Caught output I/O failure; invalid/missing input manifests are prerequisite exit `2`. |
 
 > Missing Azure auth or insufficient permissions for specific live
-> probes ⇒ those checks are marked `not-verified` in the report;
-> exit code stays `0`. The skill *never* turns into a deployment
-> blocker by accident.
+> probes generally yields `not-verified`. `--gate-preview` exits `2` when
+> `would_fail_hard_gate` is true: **any raw `must-fix`**, including waived or
+> experimental findings. It is not filtered by the displayed with-waivers score.
+> See the [normative scoring table](../../docs/production-readiness.md#5-status-taxonomy)
+> for partial credit, verification debt and experimental exclusions.
 
 ## Files in this skill
 
@@ -437,7 +448,7 @@ Exit codes:
 threadlight-production-ready/
 ├── SKILL.md                              (this file)
 ├── scripts/
-│   └── production_ready.py               (single-file CLI; stdlib + az subprocess)
+│   └── production_ready.py               (catalog CLI; shared validators + sibling helpers)
 └── references/
     ├── spec-section-12-template.md       (how to author SPEC § 12)
     ├── report-template.md                (markdown report skeleton)
@@ -463,17 +474,17 @@ threadlight-production-ready/
         └── sample-pilot/                 (mocked SPEC + manifest + az responses)
 ```
 
-The CLI is **one file** (~600-800 LOC) intentionally — same posture as
-`safe-check`. **Dependencies: stdlib + `az` CLI subprocess only.** No
-`azure-mgmt-*` SDK packages, no `azure-identity` direct use. `az` carries
-the `AzureCliCredential` for free.
+The CLI depends on the complete catalog's shared validators and sibling
+helpers. Follow [CLI prerequisites](#cli), including the control-plane package
+for selected signed-governance validation; stdlib plus Azure CLI alone is not
+the full dependency contract. Assessment does not install missing tooling.
 
 ## Inputs
 
 | Source | Used for | Required? |
 |---|---|---|
 | `specs/SPEC.md` § 12 | Target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner | **Assessment modes:** no — absent § 12 yields an `RDY-002` warning and the assessment keeps going via framing/evidence fallback. **Target-specific follow-up modes:** yes, unless equivalent framing/flags supply the declared production target. |
-| `specs/manifest.json` `deployment_manifest{}` | Selector-to-resource map; consumed by pillar 1 (network), 5 (observability) | Yes — in Kratos-export mode, derived from the export's `infra/` + `azure.yaml` |
+| `specs/manifest.json` `deployment_manifest{}` | Selector-to-resource map; consumed by pillar 1 (network), 5 (observability) | Yes — for Kratos, explicitly authored/reviewed by the coding agent from the export; not automatic CLI inference |
 | `tests/postdeploy-manifest.json` | Latest `safe-check --phase post-deploy` output; **pre-flight checks freshness, RG/sub match, hash** | Yes |
 | `infra/**/*.bicep`, `azure.yaml`, `src/**/Dockerfile` | Static analysis (pillars 4, 9, 10, 11, 13) | Yes |
 | `tests/production-readiness-waivers.json` | Customer-accepted findings | Optional |
@@ -832,15 +843,16 @@ go back and elevate before the customer review.
 
 ## Industrialization recipes
 
-The skill is single-file Python on purpose so it slots into existing
-delivery surfaces without dragging in a runtime. Two patterns ship with
-the skill — both are **opt-in** and **soft-advisory** so they never
-break a demo.
+Delivery must retain the complete pinned catalog and its prerequisites from
+[CLI](#cli). The following are opt-in integration patterns, not permission to
+deploy or evidence that copying a standalone script works.
 
 ### Recipe A — CI publishes the scorecard on every PR
 
-Copy `references/ci-github-actions.yml` to `.github/workflows/production-ready.yml`
-in the pilot repo. The workflow:
+Treat `references/ci-github-actions.yml` as a **legacy integration sketch**, not a
+drop-in current installation. The CI owner must replace its standalone-script
+assumption with the pinned catalog invocation above and supply fresh safe-check
+inputs, dependencies and approved identity/target. The intended workflow:
 
 - Runs in **static mode** on every PR (no Azure auth required) and posts
   the markdown report as a sticky PR comment
@@ -848,8 +860,8 @@ in the pilot repo. The workflow:
   is present
 - Uploads `docs/production-readiness-report.md` +
   `tests/production-readiness-manifest.json` as 90-day artifacts
-- Never fails the build — the skill always exits 0; CI is for visibility,
-  not gating
+- Publishes advisory findings by default; prerequisite/I/O failures still fail.
+  Opting into `--gate-preview` also fails on raw must-fix findings.
 
 This is the right pattern when "merge to main" is the natural review
 checkpoint and the team wants the scorecard visible in PR review.
@@ -871,7 +883,8 @@ hooks:
       run: |
         if [ "${THREADLIGHT_PRODUCTION_READY:-0}" = "1" ]; then
           echo "→ Threadlight production-readiness scorecard (opt-in)"
-          python tests/production_ready.py --quiet \
+          # CATALOG/PROJECT must be supplied and the revision verified as in CLI.
+          python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" --quiet \
             --out tests/production-readiness-manifest.json \
             --report docs/production-readiness-report.md
           echo "  report:   docs/production-readiness-report.md"
@@ -895,10 +908,10 @@ azd env set THREADLIGHT_PRODUCTION_READY 1
 azd up
 ```
 
-`continueOnError: true` guarantees the hook can never turn a successful
-deploy into a red `azd up`. `tests/production_ready.py` must already be
-in the pilot repo (copied from this skill's `scripts/` directory) — the
-hook does not auto-fetch it.
+`continueOnError: true` makes this hook advisory; it does not make failures into
+valid evidence. The complete reviewed catalog and its dependencies must already
+be available via `CATALOG`, and `PROJECT` must identify the pilot. The hook does
+not fetch tooling, approve live reads or create a missing safe-check manifest.
 
 This is the right pattern when the team runs `azd up` against named
 customer environments (`dev` → `prod`) and wants the scorecard generated
@@ -1060,9 +1073,10 @@ For pilots where the customer's policy posture intentionally diverges from
 threadlight's defaults, pass `--customer-overrides PATH` to flip individual
 finding statuses without authoring a waiver.
 
+Use the verified `CATALOG` and pilot `PROJECT` from [CLI setup](#cli).
+
 ```bash
-python3 scripts/production_ready.py \
-    --root /path/to/customer-repo \
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
     --customer-overrides /path/to/customer-overrides.yaml \
     --in-postdeploy tests/postdeploy-manifest.json \
     --out tests/production-readiness-manifest.json \

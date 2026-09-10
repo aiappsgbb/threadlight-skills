@@ -15,6 +15,9 @@ current READMEs before editing; archived captures are historical evidence only.
 - Hosted collector: `skills/threadlight-safe-check/references/governance-probe.md`.
 - Business example: `examples/returns-triage-governed/README.md`.
 - Public lifecycle/CI input contract: `docs/production-readiness.md`.
+- L400/L500 operative spine: `docs/agent-operations.md`; Pages is the L200/L300
+  visual explanation. Preserve pinned explanatory snapshots and distinguish
+  remote merge status from local checkout availability.
 
 ## Evidence and implementation rules
 
@@ -42,6 +45,9 @@ key, environment, image/version, identities and observed parent scope.
 ## Editing and verification
 
 Write regression tests and observe **RED** before behavior or wording changes.
+For technical guidance changes, run
+`node --test tests/blueprint/technical-guidance.test.js` offline. This checks
+documentation contracts, not native/runtime or live readiness.
 Do not add Azure resources, run paid probes, broaden RBAC, push or release without
 authorization. Never put credentials or personal deployment targets in examples.
 Update plugin and marketplace versions together. Generated process-library

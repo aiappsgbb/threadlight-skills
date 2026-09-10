@@ -1,0 +1,277 @@
+/* Non-Home chapter composition. Home never loads this stylesheet. */
+.chapter-experience {
+  --cx-accent: var(--chapter-accent, var(--accent-1));
+  --cx-header-height: 80px;
+  --cx-index-height: 56px;
+}
+.chapter-experience .masthead { gap: 12px 24px; flex-wrap: wrap; }
+.chapter-experience .masthead { container-type: inline-size; }
+.chapter-experience .masthead .brand { flex-shrink: 0; max-width: 100%; }
+.chapter-experience .masthead .nav { flex-wrap: wrap; gap: 4px 18px; }
+.chapter-experience .masthead .nav a,
+.chapter-experience .mobile-nav-toggle { min-height: 44px; }
+.chapter-experience .masthead .nav a[aria-current] { color: var(--ink-0); border-bottom: 2px solid var(--cx-accent); }
+.chapter-experience main [id] { scroll-margin-top: calc(var(--cx-header-height) + var(--cx-index-height) + 18px); }
+.chapter-experience .floating-toc,
+.chapter-experience .floating-toc.is-ready {
+  position: sticky; inset: auto; top: var(--cx-header-height); display: block; transform: none; opacity: 1;
+  width: auto; max-width: 1360px; margin: 0 auto; padding: 8px 32px;
+  border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+  background: var(--bg-0); box-shadow: none; z-index: 45;
+  pointer-events: auto;
+}
+html:not(.js) .chapter-experience .masthead,
+html:not(.js) .chapter-experience .floating-toc { position: relative; top: auto; }
+html:not(.js) .chapter-experience main [id] { scroll-margin-top: 16px; }
+.chapter-experience .floating-toc .toc-title { display: none; }
+.chapter-experience .floating-toc ol {
+  display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none;
+}
+.chapter-experience .floating-toc li { margin: 0; }
+.chapter-experience .floating-toc a {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px;
+  padding: 8px 10px; font: 12px/1.5 var(--mono); color: var(--ink-2);
+  border: 1px solid transparent; border-radius: 5px;
+}
+.chapter-experience .floating-toc a::before { content: none; }
+.chapter-experience .floating-toc a.is-active,
+.chapter-experience .floating-toc a:hover { background: var(--accent-soft); color: var(--ink-0); border-color: var(--line-2); }
+.chapter-experience .chapter-hero { padding: 40px 0 48px; }
+.chapter-experience .chapter-hero h1 { margin: 18px auto; font-size: clamp(42px, 5.6vw, 80px); }
+.chapter-experience .chapter-hero .lede { max-width: 60ch; }
+.chapter-experience section.scene { min-height: auto; padding: 64px 0; }
+.chapter-experience .chapter-section { padding: 64px 0; }
+.chapter-experience [data-chapter-intro] { line-height: 1.6; color: var(--ink-1); }
+.chapter-experience .eyebrow { color: var(--ink-2); }
+.chapter-experience .btn,
+.chapter-experience main summary { min-height: 44px; }
+.chapter-experience :focus-visible { outline: 2px solid var(--cx-accent); outline-offset: 4px; }
+.chapter-experience code { overflow-wrap: anywhere; }
+.chapter-experience .cx-directory { position: relative; margin-left: auto; }
+.cx-directory summary {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; min-height: 44px;
+  padding: 9px 14px; border: 1px solid var(--line-2); border-radius: 6px;
+  font: 12px var(--mono); color: var(--ink-0); list-style: none;
+}
+.cx-directory summary::-webkit-details-marker { display: none; }
+.cx-directory summary::after { content: "+"; font-size: 18px; }
+.cx-directory[open] summary::after { content: "\2212"; }
+.cx-directory-panel {
+  position: absolute; right: 0; top: calc(100% + 12px); z-index: 70;
+  width: min(960px, calc(100cqw - 24px)); padding: 16px;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;
+  background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 12px;
+  box-shadow: var(--e-2); max-height: 70vh; overflow-y: auto;
+}
+.cx-directory-group { min-width: 0; }
+.chapter-experience .cx-directory-group h2 {
+  margin: 0 0 4px; padding: 8px 12px; border-bottom: 1px solid var(--line);
+  color: var(--ink-2); font: 11px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .08em;
+}
+.cx-directory-group[data-current-group] h2 { border-bottom-color: var(--cx-accent); color: var(--ink-0); }
+.cx-directory-panel a { display: block; padding: 14px 12px; border: 1px solid transparent; border-radius: 6px; min-width: 0; }
+.cx-directory-panel a:hover,
+.cx-directory-panel a[aria-current] { background: var(--accent-soft); border-color: var(--line-2); }
+.cx-directory-panel strong { display: block; color: var(--ink-0); font: 500 19px var(--serif); }
+.cx-directory-panel span { display: block; color: var(--ink-2); font: 12px/1.5 var(--sans); margin-top: 8px; }
+.chapter-experience .cx-journey {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 0 20px; margin: 0 0 4px; min-width: 0; grid-column: 1 / -1;
+  color: var(--ink-2); font: 12px/1.5 var(--sans); text-align: left;
+}
+.cx-journey nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; min-width: 0; }
+.chapter-experience .cx-journey a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-2); }
+.chapter-experience .cx-journey a:hover { color: var(--ink-0); }
+.cx-journey [aria-current] { color: var(--ink-1); }
+.cx-journey-next { margin-left: auto; gap: 6px; }
+.chapter-experience[data-cx-compact] .masthead { padding: 10px 20px; gap: 8px; }
+.chapter-experience[data-cx-compact] .masthead .brand { min-width: 0; flex: 1 1 auto; }
+.chapter-experience[data-cx-compact] .masthead .brand-name > span { display: none !important; }
+.chapter-experience[data-cx-compact] .masthead.mobile-nav-enhanced .mobile-nav-toggle { display: inline-flex; align-items: center; justify-content: center; margin-left: auto; }
+.chapter-experience[data-cx-compact] .masthead.mobile-nav-enhanced .nav {
+  display: none; position: absolute; left: 0; right: 0; top: 100%;
+  flex-direction: column; align-items: stretch; padding: 12px 20px;
+  background: var(--bg-1); border-bottom: 1px solid var(--line-2); z-index: 71;
+}
+.chapter-experience[data-cx-compact] .masthead.mobile-nav-enhanced .nav[data-mobile-open] { display: flex; }
+.chapter-experience[data-cx-compact] .masthead .nav a { padding: 10px 12px; }
+.chapter-experience[data-cx-compact] .cx-directory { position: static; margin-left: 0; }
+.chapter-experience[data-cx-compact] .cx-directory-panel { right: 12px; top: 100%; grid-template-columns: 1fr; }
+.chapter-experience[data-cx-compact] .floating-toc ol { flex-wrap: nowrap; overflow-x: auto; }
+.chapter-experience[data-cx-compact] .floating-toc li { flex-shrink: 0; }
+
+/* The approved Production balance: neutral surfaces, lime only at meaningful boundaries. */
+.chapter-experience:not(.chapter-production) {
+  --cx-accent: var(--lime);
+  --cx-diagram-accent: var(--lime);
+}
+.chapter-experience:not(.chapter-production) main h1 em {
+  background: linear-gradient(115deg, var(--lime-1), var(--lime));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: var(--lime);
+}
+.chapter-experience:not(.chapter-production) main h2 em {
+  background: none; -webkit-text-fill-color: var(--ink-0); color: var(--ink-0);
+}
+.chapter-experience:not(.chapter-production) .btn-primary {
+  background: var(--bg-2); border: 1px solid var(--line-2); color: var(--ink-0); box-shadow: none;
+}
+.chapter-experience:not(.chapter-production) .btn-primary:hover,
+.chapter-experience:not(.chapter-production) .btn-primary:focus-visible { border-color: var(--cx-diagram-accent); }
+.chapter-experience .floating-toc:has(.cx-chapter-index) {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px 24px; flex-wrap: wrap;
+}
+.cx-chapter-links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.chapter-experience .cx-chapter-links a { font: 12px/1.5 var(--sans); padding: 8px 10px; min-height: 44px; color: var(--ink-1); }
+.cx-chapter-index { margin-left: auto; }
+.cx-chapter-index summary {
+  display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 12px;
+  cursor: pointer; color: var(--ink-2); font: 12px var(--sans); list-style: none;
+}
+.cx-chapter-index summary::-webkit-details-marker { display: none; }
+.cx-chapter-index summary::after { content: "+"; }
+.cx-chapter-index[open] summary::after { content: "\2212"; }
+.chapter-experience .cx-chapter-index ol,
+.chapter-experience[data-cx-compact] .cx-chapter-index ol {
+  position: absolute; top: 100%; right: 16px; left: 16px;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 16px; gap: 4px;
+  overflow-x: visible; overflow-y: auto; max-height: 60vh;
+  border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg-1); box-shadow: var(--e-1);
+}
+.chapter-experience .cx-chapter-index li { min-width: 0; }
+.chapter-experience .cx-chapter-index a { justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; }
+.chapter-experience [data-toc-id]:focus { outline: none; }
+.cx-schematic {
+  position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px; align-items: start; margin: 0; padding: 26px 20px;
+  background: var(--bg-0); border-block: 1px solid var(--line-2);
+}
+.cx-schematic::before {
+  content: ""; position: absolute; left: 18%; right: 18%; top: 54px; height: 1px; background: var(--line-2);
+}
+.cx-schematic-node { position: relative; min-width: 0; text-align: center; z-index: 1; }
+.cx-schematic-node svg {
+  display: block; width: 56px; height: 56px; padding: 10px; margin: 0 auto 14px;
+  color: var(--ink-1); background: var(--bg-0); fill: none; stroke: currentColor;
+  stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+}
+.cx-schematic-node[data-boundary] svg { color: var(--cx-diagram-accent); border: 1px solid var(--cx-diagram-accent); border-radius: 6px; }
+.cx-schematic-node strong { display: block; color: var(--ink-0); font: 500 22px/1.2 var(--serif); }
+.cx-schematic-node span { display: block; margin-top: 8px; color: var(--ink-2); font: 12px/1.5 var(--sans); }
+.cx-schematic-node + .cx-schematic-node::before {
+  content: ""; position: absolute; top: 25px; left: -15px;
+  width: 6px; height: 6px; transform: rotate(45deg); border-top: 1px solid var(--cx-diagram-accent); border-right: 1px solid var(--cx-diagram-accent);
+}
+.cx-schematic-note { margin: 0; padding: 14px 20px; font: 12px/1.6 var(--sans); color: var(--ink-2); background: var(--bg-1); border-bottom: 1px solid var(--line); }
+.chapter-experience .journey-console,
+.chapter-experience .diagnostic-desk,
+.chapter-experience .handoff-map { box-shadow: var(--e-1); border-radius: 10px; overflow: clip; }
+.chapter-experience .diagnostic-flow > div:last-child,
+.chapter-experience .handoff-lane:last-child { background: var(--bg-1); }
+.chapter-experience .journey-console .console-body { padding: 20px 24px; }
+.chapter-experience .journey-console blockquote { font-size: 22px; }
+.chapter-experience .journey-console { background: var(--bg-1); }
+.chapter-experience .journey-console .console-label { color: var(--ink-2); }
+.chapter-experience .bp-custom { border-top-color: var(--cx-diagram-accent); }
+.chapter-experience .bp-rail, .chapter-experience .bp-controls { border-color: var(--line-2); }
+.chapter-experience .bp-workbench > .bp-rail { grid-column: 1 / -1; margin-top: 0; }
+.chapter-experience .request-control select { border-color: var(--line-2); }
+.chapter-experience .request-control select:focus-visible { border-color: var(--cx-diagram-accent); }
+.chapter-experience .request-outcome { border-left-color: var(--cx-diagram-accent); }
+.chapter-experience .evidence-ladder li { border-top-color: var(--cx-diagram-accent); box-shadow: none; }
+.chapter-experience .evidence-ladder li::before { color: var(--cx-diagram-accent); }
+.chapter-experience .agentops-flow > .ops-binding { background: var(--bg-1); border-top: 2px solid var(--cx-diagram-accent); }
+.chapter-experience .agentops-band { background: var(--bg-1); }
+.chapter-experience .session-map { box-shadow: var(--e-1); }
+.chapter-experience .session-map-head { background: var(--bg-1); }
+.ind-filter-panel { border-bottom: 1px solid var(--line-2); }
+.ind-filter-panel > summary { display: flex; align-items: center; gap: 8px; padding: 12px 0; min-height: 48px; cursor: pointer; color: var(--ink-1); font: 13px var(--sans); list-style: none; }
+.ind-filter-panel > summary::-webkit-details-marker { display: none; }
+.ind-filter-panel > summary::after { content: "+"; margin-left: auto; padding: 0 12px; color: var(--cx-diagram-accent); }
+.ind-filter-panel[open] > summary::after { content: "\2212"; }
+.chapter-experience .ind-filter-panel .ind-pills { flex-wrap: wrap; overflow: visible; padding: 8px 0 16px; }
+.chapter-experience .diagnostic-desk .cx-schematic + .diagnostic-flow { border-top: 0; }
+.chapter-experience .request-schematic { border-top: 0; }
+.chapter-experience .request-stage[data-state="missing"] .request-schematic,
+.chapter-experience .request-stage[data-state="drift"] .request-schematic { --cx-diagram-accent: var(--warn); }
+.chapter-experience .handoff-lane { grid-template-columns: 145px 1fr 1fr; }
+.chapter-customize .doc .handoff-technical { margin: 0; padding: 0; border-bottom: 0; }
+.chapter-customize .handoff-technical > summary { padding: 16px 22px; font: 13px/1.5 var(--sans); color: var(--ink-2); }
+.chapter-experience .diagram-card { box-shadow: var(--e-1); }
+.wb-proof-boundaries {
+  display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 14px; align-items: center;
+  padding: 20px; border-top: 1px solid var(--line-2); background: var(--bg-0);
+}
+.wb-proof-boundaries span { display: block; color: var(--ink-2); font: 12px/1.5 var(--sans); }
+.wb-proof-boundaries b { display: block; margin-bottom: 6px; color: var(--ink-0); font: 500 19px var(--serif); }
+.wb-proof-boundaries i { color: var(--cx-diagram-accent); font-style: normal; }
+.cs-captured-route {
+  display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 12px;
+  padding: 20px; border-block: 1px solid var(--line-2); background: var(--bg-0);
+}
+.cs-captured-route > div { min-width: 0; }
+.cs-captured-route span { display: block; color: var(--ink-2); font: 9px/1.6 var(--mono); letter-spacing: .04em; }
+.cs-captured-route strong { display: block; color: var(--ink-0); font: 500 19px/1.3 var(--serif); margin-top: 8px; }
+.cs-captured-route i { font-style: normal; color: var(--cx-diagram-accent); }
+.cs-captured-boundary { border: 1px solid var(--cx-diagram-accent); padding: 12px; border-radius: 4px; text-align: center; }
+/* Two inputs compose a customer-owned result rather than implying automatic onboarding. */
+.chapter-customize .cx-schematic { grid-template-columns: 1fr 1fr; gap: 22px 32px; padding-bottom: 20px; }
+.chapter-customize .cx-schematic::before { left: 26%; right: 26%; top: 54px; background: none; height: 90px; border: 1px solid var(--line-2); border-top: 0; }
+.chapter-customize .cx-schematic-node + .cx-schematic-node::before { content: none; }
+.chapter-customize .cx-schematic-node[data-boundary] { grid-column: 1 / -1; }
+.chapter-customize .cx-schematic-node[data-boundary] svg { position: relative; }
+@media (prefers-color-scheme: light) {
+  .chapter-experience:not(.chapter-production) {
+    --cx-accent: color-mix(in srgb, var(--lime) 20%, var(--ink-0));
+    --cx-diagram-accent: var(--cx-accent);
+  }
+  .chapter-experience:not(.chapter-production) main h1 em {
+    background: none; -webkit-text-fill-color: var(--cx-diagram-accent); color: var(--cx-diagram-accent);
+  }
+}
+@media (prefers-color-scheme: light) {
+  .chapter-experience { --cx-accent: var(--accent); }
+}
+@media (max-width: 1000px) {
+  .chapter-experience .masthead { padding: 10px 20px; }
+  .chapter-experience .masthead .nav { gap: 4px 12px; }
+}
+@media (max-width: 720px) {
+  .chapter-experience .masthead { gap: 8px; }
+  .chapter-experience .cx-directory { margin-left: 0; position: static; }
+  .cx-directory summary { padding: 8px 10px; font-size: 11px; }
+  .cx-directory-panel { right: 12px; top: 100%; width: calc(100% - 24px); grid-template-columns: 1fr; gap: 12px; }
+  .chapter-experience .floating-toc, .chapter-experience .floating-toc.is-ready { padding: 6px 20px; }
+  .chapter-experience .floating-toc ol { flex-wrap: nowrap; overflow-x: auto; }
+  .chapter-experience .floating-toc li { flex-shrink: 0; }
+  .chapter-experience .chapter-hero { padding: 28px 0 32px; }
+  .chapter-experience section.scene, .chapter-experience .chapter-section { padding: 40px 0; }
+  .chapter-experience .masthead.mobile-nav-enhanced .nav { z-index: 71; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html:has(.chapter-experience) { scroll-behavior: auto; }
+  .chapter-experience .reveal, .chapter-experience .hero-stage * { animation: none !important; transition: none !important; }
+}
+@media (max-width: 720px) {
+  .chapter-experience .floating-toc:has(.cx-chapter-index) { gap: 0; padding: 4px 16px; }
+  .cx-chapter-links { justify-content: space-between; width: 100%; gap: 0; }
+  .chapter-experience .cx-chapter-links a { padding-inline: 6px; }
+  .cx-chapter-index { margin-left: 0; }
+  .chapter-blueprint .cx-chapter-links { width: auto; }
+  .chapter-blueprint .cx-chapter-index { margin-left: auto; }
+  .chapter-experience .cx-chapter-index ol,
+  .chapter-experience[data-cx-compact] .cx-chapter-index ol { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px; }
+  .cx-schematic { gap: 12px; padding: 20px 12px; }
+  .cx-schematic::before { top: 44px; }
+  .cx-schematic-node svg { width: 48px; height: 48px; padding: 8px; }
+  .cx-schematic-node strong { font-size: 19px; }
+  .cx-schematic-node span { font-size: 11px; }
+  .cx-schematic-node + .cx-schematic-node::before { top: 21px; left: -9px; }
+  .chapter-experience .handoff-lane { grid-template-columns: 1fr; }
+  .wb-proof-boundaries { grid-template-columns: 1fr; gap: 10px; padding: 16px 20px; }
+  .wb-proof-boundaries i { transform: rotate(90deg); justify-self: start; }
+  .cs-captured-route { padding: 14px; gap: 6px; }
+  .cs-captured-route strong { font-size: 16px; overflow-wrap: anywhere; }
+  .cs-captured-boundary { padding: 8px; }
+  .chapter-customize .cx-schematic::before { top: 44px; }
+}

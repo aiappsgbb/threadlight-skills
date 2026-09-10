@@ -123,9 +123,41 @@
     .doc .diagram-card .diagram-frame svg { min-width: 640px; }
     .doc .diagram-card .diagram-caption { text-align: left; }
   }
+  .doc h1 { max-width: 22ch; font-size: clamp(2.2rem, 5vw, 4rem); }
+  .diagnostic-desk { margin: 24px 0; border: 1px solid var(--line-2); background: var(--bg-1); }
+  .diagnostic-desk figcaption { padding: 14px 20px; border-bottom: 1px solid var(--line); font: 12px var(--mono); color: var(--ink-2); }
+  .diagnostic-flow { display: grid; grid-template-columns: 1fr 1.2fr 1fr; }
+  .diagnostic-flow > div { min-width: 0; padding: 22px; border-right: 1px solid var(--line); }
+  .diagnostic-flow > div:last-child { border: 0; background: var(--chapter-accent-soft); }
+  .diagnostic-flow .step-label { font: 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); }
+  .diagnostic-flow h2 { margin: 14px 0; font-size: 1.45rem; }
+  .diagnostic-flow p { font-size: .9rem; margin-bottom: 8px; line-height: 1.5; }
+  .diagnostic-flow .readout { font: 2.4rem var(--serif); color: var(--ink-0); }
+  .diagnostic-flow code { overflow-wrap: anywhere; }
+  .doc details { border-block: 1px solid var(--line); margin: 24px 0; padding: 0 0 12px; }
+  .doc summary { cursor: pointer; padding: 16px 4px; min-height: 44px; color: var(--ink-0); font-weight: 600; }
+  .doc details > :not(summary) { margin-inline: 4px; }
+  .mode-rail { display: grid; grid-template-columns: 105px 1fr; margin: 20px 0; }
+  .mode-rail dt, .mode-rail dd { margin: 0; padding: 16px 0; border-top: 1px solid var(--line); }
+  .mode-rail dt { font-family: var(--mono); color: var(--ink-0); }
+  .mode-rail dd { color: var(--ink-1); line-height: 1.55; }
+  @media (prefers-color-scheme: light) {
+    .doc a, .doc code { color: var(--ink-0); }
+    .doc a { text-decoration: underline; }
+    .doc h1 em { background: none; -webkit-text-fill-color: currentColor; color: var(--ink-0); }
+  }
+  @media (max-width: 680px) {
+    .diagnostic-flow { grid-template-columns: 1fr; }
+    .diagnostic-flow > div { padding: 16px 20px; border-right: 0; border-bottom: 1px solid var(--line); }
+    .diagnostic-flow h2 { margin: 8px 0; }
+    .doc h1 { font-size: 2.4rem; }
+  }
 </style>
+<link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
+<link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
+<link rel="stylesheet" href="assets/self-improving-visuals.css?v=081bf484">
 </head>
-<body class="chapter-page chapter-self-improving">
+<body class="chapter-page chapter-self-improving chapter-experience">
 
 <header class="masthead">
   <div class="brand">
@@ -135,59 +167,95 @@
   </div>
   <nav class="nav" aria-label="Site chapters">
     <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
-    <a href="./blueprint.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Blueprint</a>
+    <a href="./basics.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Basics</a>
+    <a href="./funnel.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16l-6 7v7l-4 2v-9z"/></svg>Build</a>
     <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
-    <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production-ready</a>
-    <a href="./customize.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.3"/><circle cx="16" cy="16" r="2.3"/></svg>Customize</a>
+    <a href="./production.html" aria-current="location"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
   </nav>
 </header>
 
 <aside class="floating-toc" aria-label="Self-improving chapter">
-  <p class="toc-title">Chapter</p>
+  <nav class="cx-chapter-links" aria-label="Improvement overview">
+    <a href="#diagnostics">Diagnostics</a><a href="#modes">Choose a tool</a><a href="#maintain">Upgrade</a><a href="#agentops-preview">AgentOps</a>
+  </nav>
+  <details class="cx-chapter-index"><summary>All sections</summary><ol>
+    <li><a href="#diagnostics">Diagnostics</a></li><li><a href="#modes">Choose a tool</a></li><li><a href="#how">The method</a></li>
+    <li><a href="#caught">Documented fixes</a></li><li><a href="#found">Router comparison</a></li><li><a href="#maintain">Upgrade</a></li><li><a href="#agentops-preview">AgentOps</a></li>
+  </ol></details>
 </aside>
 
 <main>
   <article class="doc">
-    <p class="crumb"><a href="./index.html">Threadlight</a> / Self-improving</p>
-    <h1>The pipeline that turns every run into a ranked backlog</h1>
-    <p class="lede">
-      Every threadlight CI run &mdash; <strong>green or red</strong> &mdash; carries
-      learnings, but rereading raw logs by hand is slow and noisy. So a deterministic
-      cold-path called <code>learn</code> harvests <strong>one</strong> GitHub Actions
-      run, <strong>no matched-pair baseline</strong>, and turns it into grounded
-      diagnostics and a ranked backlog &mdash; each item mapped back to the evidence
-      that justifies it. Maintainers may review candidate signatures and explicitly
-      add rules/tests; only those reviewed updates improve later classification.
+    <div class="cx-journey">
+      <nav aria-label="Breadcrumb"><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Improve</span></nav>
+      <a class="cx-journey-next" href="./production.html">Recheck: Production <span aria-hidden="true">→</span></a>
+    </div>
+    <h1>One finished run.<br><em>A sharper next step.</em></h1>
+    <p class="lede" data-chapter-intro>
+      Turn a green or red CI run into evidence-linked, ranked fixes.
+      <code>learn</code> needs one run, not a baseline. It diagnoses;
+      <strong>a maintainer reviews and changes the rules</strong>. Nothing auto-applies.
     </p>
 
-    <div class="why-grid">
-      <article class="why-card">
-        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
-        <p class="why-kicker">One run in</p>
-        <h3>One run, no baseline.</h3>
-        <p><code>learn&nbsp;&lt;run_id&gt;</code> reads <strong>a single run</strong> &mdash;
-          pass or fail. No paired A/B, no re-dispatching jobs just to learn something.
-          A retro is <strong>one command</strong>.</p>
-      </article>
-      <article class="why-card">
-        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><path d="M12 7.2V21"/><path d="M6 14a6 6 0 0 0 12 0"/><path d="M3.5 14H7M17 14h3.5"/></svg></span>
-        <p class="why-kicker">Grounded</p>
-        <h3>Grounded, not guessed.</h3>
-        <p>A deterministic harvest builds phase parity and a failure taxonomy
-          <strong>before any model runs</strong>. The one LLM step reads the
-          <strong>digest, never the raw logs</strong>, and maps every fix to a finding
-          id.</p>
-      </article>
-      <article class="why-card">
-        <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 4 8-8"/><path d="M16 4h5v5"/><path d="M3 21h18"/></svg></span>
-        <p class="why-kicker">And review compounds</p>
-        <h3>Reviewed updates compound over runs.</h3>
-        <p>New failure signatures are only folded into the taxonomy when maintainers
-          review them and add rules/tests, so later runs are classified more sharply.
-          It doesn&rsquo;t teach itself; reviewed updates are what make the next run
-          clearer.</p>
-      </article>
-    </div>
+    <figure class="diagnostic-desk" id="diagnostics" data-toc-id="diagnostics" data-toc-label="Diagnostics" data-visual-anchor aria-labelledby="diagnostic-cap">
+      <figcaption id="diagnostic-cap">Diagnostic workbench · historical example · <time datetime="2026-06-30">2026-06-30</time></figcaption>
+      <div class="cx-schematic" role="img" aria-label="From run evidence to reviewed change">
+        <div class="cx-schematic-node"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h24v32H8zM13 12h14M13 20h14M13 28h8"/></svg><strong>One run</strong><span>Traceable source evidence</span></div>
+        <div class="cx-schematic-node"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M4 8h32L24 22v11l-8 4V22z"/></svg><strong>Scoped findings</strong><span>Classify, deduplicate, rank</span></div>
+        <div class="cx-schematic-node" data-boundary><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M6 20l8 8 20-20M6 35h28"/></svg><strong>Reviewed change</strong><span>A human edits rules and tests</span></div>
+      </div>
+      <div class="diagnostic-flow diagnostic-readout" data-evidence-visual="diagnostics">
+        <div>
+          <span class="step-label">BEFORE / FULL-LOG SCAN</span>
+          <strong class="diagnostic-number">10/10</strong>
+          <span>False positives: echoed source, not failures.</span>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/actions/runs/28437323962">Source run 28437323962 ↗</a>
+        </div>
+        <div>
+          <span class="step-label">CHANGE / SCOPE THE INPUT</span>
+          <dl class="diagnostic-routes"><dt>Green run</dt><dd>Warnings only</dd><dt>Failed run</dt><dd><code>--log-failed</code></dd></dl>
+        </div>
+        <div>
+          <span class="step-label">Human-reviewed change</span>
+          <svg class="flow-icon" aria-hidden="true"><use href="assets/lucide-sprite.svg#icon-shield-check"/></svg>
+          <strong>Rules + tests</strong><span>Nothing auto-applies.</span>
+          <a href="#caught">Documented fixes ↓</a>
+        </div>
+      </div>
+    </figure>
+    <p class="note">This is a log-scoping example, not a benchmark or runtime-governance receipt.
+      <a href="./ci/self-improving-loop.md">Inspect the method and source runs ↗</a></p>
+
+    <section id="modes" data-toc-id="modes" data-toc-label="Choose the question">
+      <h2>Three questions. Different evidence.</h2>
+      <figure class="phase-diagram mode-map" data-secondary-visual="mode-evidence" aria-labelledby="mode-map-caption">
+        <figcaption id="mode-map-caption">Choose by input and question · these are separate tools, not successive stages</figcaption>
+        <div class="mode-lanes">
+          <div data-mode="learn">
+            <div class="mode-question"><span class="map-tag">learn</span><strong>What should we fix?</strong></div>
+            <div class="mode-input"><svg class="flow-icon" aria-hidden="true"><use href="assets/lucide-sprite.svg#icon-file-text"/></svg><strong>One finished run</strong><span>Green or red · no baseline</span></div>
+            <span class="map-arrow" aria-hidden="true">→</span>
+            <div class="mode-result"><strong>Ranked backlog</strong><span>Diagnostics linked to findings</span></div>
+          </div>
+          <div data-mode="bench">
+            <div class="mode-question"><span class="map-tag">bench</span><strong>Did it improve?</strong></div>
+            <div class="mode-input"><svg class="flow-icon" viewBox="0 0 40 40" aria-hidden="true"><path d="M3 5h13v23H3zM24 5h13v23H24zM7 12h5M28 12h5M9 28v7h22v-7"/></svg><strong>Paired runs</strong><span>Candidate + baseline</span></div>
+            <span class="map-arrow" aria-hidden="true">→</span>
+            <div class="mode-result"><strong>Comparison scorecard</strong><span><code>validate</code>: separate three-arm matrix</span></div>
+          </div>
+          <div data-mode="upgrade">
+            <div class="mode-question"><span class="map-tag">upgrade</span><strong>What is drifting?</strong></div>
+            <div class="mode-input"><svg class="flow-icon" viewBox="0 0 40 40" aria-hidden="true"><path d="M5 5h30v30H5zM5 15h30M15 5v30M25 5v30M5 25h30"/></svg><strong>Dated matrix + project</strong><span>Compatibility, not a live scan</span></div>
+            <span class="map-arrow" aria-hidden="true">→</span>
+            <div class="mode-result"><strong>Migration plan</strong><span>Plan-only · no project edits</span></div>
+          </div>
+        </div>
+        <div class="map-output"><span>CHANGE GATE</span><strong>Read the evidence. A human decides what to change; nothing auto-applies.</strong></div>
+      </figure>
+    </section>
+
+    <details>
+      <summary>L300 · Harvest, classification and the reviewed feedback loop</summary>
 
     <figure class="diagram-card" aria-labelledby="loop-cap">
       <div class="diagram-frame" tabindex="0">
@@ -263,7 +331,7 @@
       <div class="outcome-row">
         <span class="oc-dim">Precision</span>
         <span class="oc-cell">a green run reads as 10/10 false alarms</span>
-        <span class="oc-cell oc-on">100% precision &middot; failing-step scope only</span>
+        <span class="oc-cell oc-on">100% precision on two documented failure runs</span>
       </div>
       <div class="outcome-row">
         <span class="oc-dim">What you need</span>
@@ -291,10 +359,12 @@
       <code>28437323962</code> produced <strong>10/10 false positives</strong> &mdash;
       echoed shell source, prompt text, the workflow&rsquo;s own error-detectors.
       Scoping failures to <code>--log-failed</code> gave <strong>100% precision</strong>
-      &mdash; every flagged line a true positive. That one rule is the difference between
+      on failures <code>28435017341</code> and <code>28389162228</code>
+      &mdash; every flagged line a true positive in those samples. That one rule is the difference between
       a loop you trust and one you mute.
     </p>
 
+    </details>
     <section id="how" data-toc-id="how" data-toc-label="How the loop works">
       <h2><span class="n">01</span>How the loop works</h2>
 
@@ -308,6 +378,8 @@
         rule/test updates improve later classification.
       </p>
 
+      <details>
+      <summary>L300 · Log scope, taxonomy precedence and the single model step</summary>
       <h3>1 &middot; Deterministic harvest (no LLM)</h3>
       <p>
         It reads the run with <code>gh</code> and derives structure first: the run
@@ -356,14 +428,14 @@
         If the run is green with zero findings, it says so &mdash; it is
         <strong>forbidden from inventing issues that aren&rsquo;t in the digest</strong>.
       </p>
+      </details>
     </section>
 
     <section id="caught" data-toc-id="caught" data-toc-label="What it caught">
       <h2><span class="n">02</span>What it caught &mdash; and what maintainers reviewed</h2>
 
       <p>
-        The loop earned its keep on this very exercise. Pointed at the failing runs, it
-        turned logs into fixes with <strong>no guesswork and no re-running pairs</strong>:
+        In the historical exercise documented in the method, two failure classes led to maintainer-reviewed fixes:
       </p>
       <ul>
         <li><strong>A missing skill dependency</strong> (a <code>skill_loader</code>
@@ -372,11 +444,7 @@
         <li><strong>A wire-protocol mismatch</strong> (a <code>wire_protocol</code>
           finding) surfaced by a Phase-4 protocol probe added to the workload pack.</li>
       </ul>
-      <p>
-        Both fixes shipped straight from those digests. Maintainers then reviewed the
-        candidate signatures and landed the durable updates, so the taxonomy itself got
-        <strong>sharper</strong>.
-      </p>
+      <p>Maintainers reviewed the candidate signatures and landed these durable updates:</p>
       <ul>
         <li>Added a <code>protocol_contract</code> rule so wire-contract mismatches are
           caught <strong>by category, not by chance</strong>.</li>
@@ -396,18 +464,12 @@
     <section id="found" data-toc-id="found" data-toc-label="One thing it found">
       <h2><span class="n">03</span>One thing the loop found: routing can right-size cost</h2>
 
-      <p>
-        Because we could learn from <strong>any</strong> run, we could afford to ask a
-        bigger, optional question: is a <strong>model-router</strong> actually more
-        efficient than a fixed cheap model? The heavier <code>bench</code> and
-        <code>validate</code> paths are built to answer it &mdash; a controlled matrix
-        through the same <a href="./ci/threadlight-e2e.md"><code>threadlight-e2e</code> pipeline</a>:
-        a cheap baseline (<code>gpt-5.4-mini</code>), the router constrained to
-        <code>{gpt-5.4, gpt-5.4-mini}</code>, and a quality ceiling
-        (<code>gpt-5.4</code>), across a simple and a hard workload, sketched on rounds
-        and <strong>modeled Azure spend</strong>.
-      </p>
+      <p>Diagnosis is not efficiency proof. The optional <code>bench</code> and
+        <code>validate</code> paths compare a cheap baseline, constrained router and quality ceiling.
+        The early figures below are <strong>illustrative, not a completed benchmark</strong>.</p>
 
+      <details>
+      <summary>Historical comparison · early workload rounds, modeled spend and caveats</summary>
       <div class="cost-table-wrap" tabindex="0" role="group" aria-label="Cost comparison table (scroll to view)">
         <table class="cost-table">
           <thead>
@@ -437,6 +499,7 @@
         companion&nbsp;&nearr;</a>.
       </p>
 
+      </details>
       <h3>Run the loop yourself</h3>
       <ol class="steps">
         <li><strong>Pick any run.</strong> Green or red, one run id. No pair, no
@@ -463,22 +526,45 @@
     <section id="maintain" data-toc-id="maintain" data-toc-label="Lifecycle maintenance">
       <h2><span class="n">04</span>Keeping a shipped pilot current: plan-only upgrades</h2>
 
+      <p><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-upgrade"><code>threadlight-upgrade</code></a>
+        inspects a shipped pilot between runs. Its recommendations stop at a human decision.</p>
+      <figure class="phase-diagram upgrade-map" data-secondary-visual="upgrade-boundary" aria-labelledby="upgrade-map-caption">
+        <figcaption id="upgrade-map-caption">Offline compatibility check · plan-only, not an upgrade receipt</figcaption>
+        <div class="upgrade-inputs">
+          <div><span class="map-tag">PROJECT</span><strong>What is pinned?</strong><span>Dependencies · runtime policy<br>Governance profile · model families</span></div>
+          <span class="map-arrow" aria-hidden="true">+</span>
+          <div><span class="map-tag">DATED REFERENCE</span><strong>What is compatible?</strong><span><code>compatibility-matrix.json</code></span></div>
+        </div>
+        <div class="map-connector" aria-hidden="true"><span>↓</span></div>
+        <div class="upgrade-plan"><span class="map-tag">OUTPUT</span><strong>One ordered migration plan</strong><span>Drift findings → ranked recommendations</span></div>
+        <div class="upgrade-stop" data-human-gate><svg class="flow-icon" aria-hidden="true"><use href="assets/lucide-sprite.svg#icon-shield-check"/></svg><div><span class="map-tag">STOP BEFORE CHANGING</span><strong>Human chooses the next step</strong><span>No network calls · no <code>--apply</code> · no project edits</span></div></div>
+        <div class="map-output"><span>INSPECT</span><strong><a href="#upgrade-files">Manifest and finding identifiers ↓</a></strong></div>
+      </figure>
+      <details id="upgrade-files">
+        <summary>L300 · Upgrade output files</summary>
+        <p>The dated <code>compatibility-matrix.json</code> informs <code>specs/upgrade-manifest.json</code>
+          (<code>UPG-001..003</code>) and the ordered migration plan. Preview drift or a deprecated model family is a
+          recommendation to review, not a change already made.</p>
+      </details>
+    </section>
+    <section id="agentops-preview" data-toc-id="agentops-preview" data-toc-label="AgentOps preview">
+      <p class="kicker">Preview maturity · merged #128 · opt-in per agent</p>
+      <h2><span class="n">05</span>Learn from a run. Know whether its evidence still applies.</h2>
       <p>
-        The loop learns from runs; <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-upgrade"><code>threadlight-upgrade</code></a>
-        keeps an already-<strong>shipped</strong> pilot current between them. It scans
-        <strong>dependency pins</strong>, <strong>runtime policy</strong>, the
-        <strong>governance profile</strong> and <strong>model families</strong> against a
-        <strong>dated <code>compatibility-matrix.json</code></strong> and emits
-        <code>specs/upgrade-manifest.json</code> (<code>UPG-001..003</code>) plus one
-        <strong>ordered migration plan</strong>.
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-router-bench/SKILL.md"><code>threadlight-router-bench</code></a>
+        owns finished-run diagnostics. The AgentOps adapter, merged in
+        <a href="https://github.com/aiappsgbb/threadlight-skills/commit/19610ca8"><code>19610ca8</code></a>,
+        is available on main with preview maturity. It has a different job:
+        bind lifecycle evidence to an opted-in agent's source, target and environment, then check
+        freshness and artifact integrity before existing eval, red-team and readiness consumers use it.
       </p>
-      <p class="note">
-        It is <strong>plan-only</strong> &mdash; no network calls, no <code>--apply</code>,
-        and it never edits the project. Acting on the plan is a deliberate, human step, so a
-        preview-drift or a deprecated model family surfaces as a ranked recommendation you
-        choose to take &mdash; the same &ldquo;evidence first, change second&rdquo; discipline
-        the learn loop is built on.
+      <p>
+        No <code>agentops.yaml</code>, no penalty. Valid evidence can still contain a quality failure.
+        Local provenance is not Azure attestation and cannot substitute for runtime governance.
+        Native operations require separate approval; default assessment does not run paid evals or Doctor.
       </p>
+      <p><a href="./governance.html#agentops">See the visual AgentOps preview &rarr;</a> &middot;
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md#agentops-preview-explicit-opt-in-bounded-assessment">Read the evidence contract &nearr;</a></p>
     </section>
   </article>
 </main>
@@ -489,5 +575,7 @@
 </footer>
 
 <script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=5b04768e"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
 </body>
 </html>

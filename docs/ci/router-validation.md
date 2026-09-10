@@ -21,7 +21,7 @@ slide:
 1. **Is it actually better than a standard `gpt-5.4-mini`?** Fewer rounds, fewer
    stalls, lower cost-to-quality — and does a router **recover quality when the
    workload gets hard**?
-2. **Can we measure quality *and* real cost**, against a fixed cheap baseline and a
+2. **Can we measure quality *and* estimated token cost**, against a fixed cheap baseline and a
    fixed quality ceiling — in the same CI that ships the product, not a benchmark
    harness?
 
@@ -35,8 +35,8 @@ proof (`bench`/`validate`).
 
 Three model arms × two workloads, each dispatched end-to-end through
 `threadlight-e2e-foundry.yml` (`mode=full`, `teardown=true`), in **two serialized
-waves** so Azure Monitor token attribution (keyed only by `ModelDeploymentName`) stays
-clean.
+waves** to reduce overlapping Azure Monitor token attribution (keyed only by
+`ModelDeploymentName`). Serialization does not exclude unrelated traffic.
 
 | arm | deployment | wire API | intent |
 |-----|------------|----------|--------|
@@ -52,21 +52,24 @@ Two deliberate constraints:
 - The router is pinned to **`{gpt-5.4, gpt-5.4-mini}`** and **excludes the premium
   `gpt-5.5` tier**. The point is efficiency, not maximalism — show a disciplined
   two-model ladder gets the job done.
-- The shared `model-router` deployment is pinned for the run window and
-  **restored to the full pool on exit via a trap** (verified live every run), so the
-  experiment never leaves the shared account mutated.
+- The router is pinned for the run window. Restoration is a **separate operator
+  step**, not guaranteed cleanup: `router-subset.sh` has **no automatic trap**.
+  Neither `router_bench.py` nor `matrix.py` owns rollback. Use the recovery
+  sequence below on success, failure, interruption or cancellation.
 
 **Scored on three axes a customer cares about:**
 
 - **Did it finish?** — the pipeline's own quality gates (design conforms → deploys →
   live agent answers).
 - **How much work?** — number of agent rounds.
-- **What did it cost?** — **real billed Azure spend**, read back from the Cognitive
-  Services account after the run (`ModelDeploymentName`-scoped).
+- **What did the tokens cost, approximately?** — **estimated token cost**:
+  Azure Monitor token counts multiplied by the catalog's seed prices, scoped
+  by `ModelDeploymentName` and run window. This is not a billing export.
 
 > ⚠️ **n=1 per cell.** One CI run per cell. Every number is **directional**, not
 > statistically significant. Cells near a threshold are inconclusive by construction.
-> We run the matrix repeatedly and fix what it surfaces between runs.
+> Historical dollar figures below are retained as **estimates**, not invoiced
+> spend. Run approval and fresh evidence are required before another matrix.
 
 ## The three-matrix arc
 
@@ -105,7 +108,7 @@ The failure surface moved a long way downstream — from Phase 1/3 all the way t
 **Phase 4 (invoke)** — and **the design gate went GREEN for every arm** (mini
 included). Deploy's 429 wall is gone.
 
-| arm | workload | last phase OK | died at | rounds | cost (USD) |
+| arm | workload | last phase OK | died at | rounds | estimated cost (USD) |
 |-----|----------|---------------|---------|-------:|-----------:|
 | mini | returns-triage | pattern/deploy | **invoke** (timeout, no clean invoke) | 273 | $2.21 |
 | router | returns-triage | **deploy** | **invoke** (protocol 400) | **142** | $12.05 |
@@ -169,7 +172,7 @@ cost *shape* stayed consistent with matrix 2 (router ≈ strong-tier spend, both
 above mini). The verdict therefore remains **directional (matrix 2)**; a clean green
 needs a run window when the shared account isn't throttling.
 
-| workload | arm | phases | rounds | rubric | cost (USD) |
+| workload | arm | phases | rounds | rubric | estimated cost (USD) |
 |---|---|---|---|---|---|
 | returns-triage | mini | FAIL | 204 | 0.00 | $2.47 |
 | returns-triage | router | FAIL | 137 | 0.00 | $17.01 |
@@ -222,24 +225,61 @@ already fails it.
 
 ## Reproduce
 
-```bash
-# 1. infra + pin (restores the shared router on exit via trap)
-bash scripts/ci/foundry-strong-arm.sh                       # gpt-5.4 cap >=250
-bash scripts/ci/router-subset.sh record && bash scripts/ci/router-subset.sh set
+**Approval first.** Dispatch, capacity changes and router mutation are paid/live
+operations. Obtain approval for the exact subscription/account/deployment, model
+pool, capacity, run window, budget and restoration owner. The catalog
+[`router-subset.sh`](../../scripts/ci/router-subset.sh) and
+[`foundry-strong-arm.sh`](../../scripts/ci/foundry-strong-arm.sh) have **hardcoded
+targets**, not target-selection flags. Do not run them against their embedded
+account or assume environment variables override it. An operator must prepare
+and review target-specific copies for the approved target. The commands below
+use that reviewed helper, not the catalog's embedded target.
 
-# 2. dispatch the 6-cell matrix (2 serialized waves, ~1.5-2h)
+1. Serialize all writers, including other pipelines/operators. Review the helper's
+   model version, SKU and capacity constants: `record` saves only routing, not the
+   entire deployment. Any strong-arm capacity uplift is separately approved and
+   has its own recovery plan; router restore cannot undo it.
+2. Run `record` **before** `set`, inspect and preserve
+   `/tmp/model-router-routing.snapshot.json` privately outside volatile `/tmp`.
+   Record the full before-state separately. Do not overwrite the snapshot with
+   another `record` after mutation. Only continue to `set` after record succeeds.
+3. Dispatch and wait for all cells to finish. After `set` allow propagation (up
+   to about five minutes) and independently read back the approved pool.
+4. Run `restore` as a **separate recovery action** after all outcomes, including
+   cancellation/timeout. Do not rely on the last line of a shell recipe running.
+
+```bash
+ROUTER_HELPER=/absolute/path/to/operator-reviewed/router-subset.sh
+bash "$ROUTER_HELPER" record
+# STOP unless the record succeeded and the approved before-state was retained.
+bash "$ROUTER_HELPER" set
+
+# Approved paid dispatch; replace the placeholders before use.
 python3 skills/threadlight-router-bench/scripts/router_bench.py validate \
   --dispatch --workloads returns-triage fsi-kyc-aml \
   --ref <branch> --repo aiappsgbb/threadlight-skills --out <outdir>
-bash scripts/ci/router-subset.sh restore                    # always
 
-# 3. score (reads real Azure billing) + cold-path on any run
-RID="/subscriptions/<sub>/resourceGroups/rg-shared-gbb-ci/providers/Microsoft.CognitiveServices/accounts/aif-shared-gbb-ci"
+# Separate operator recovery, even if dispatch failed or was interrupted:
+bash "$ROUTER_HELPER" restore
+
+# Ingest Azure Monitor tokens and estimate their cost; not billing.
+RID="/subscriptions/<approved-subscription>/resourceGroups/<approved-rg>/providers/Microsoft.CognitiveServices/accounts/<approved-account>"
 python3 skills/threadlight-router-bench/scripts/router_bench.py validate \
   --ingest <outdir>/matrix-manifest.json --resource "$RID" --out <outdir>
 python3 skills/threadlight-router-bench/scripts/router_bench.py learn <run_id> \
   --repo aiappsgbb/threadlight-skills --deployment <deployment> --out <outdir>/learn-<arm>
 ```
+
+**Recovery verification:** the helper rejects unsuccessful HTTP calls and reads
+back routing, but checks routing-block **presence or absence, not full equality**
+with a non-null snapshot. The operator must compare all routing fields and
+model/SKU/capacity against the saved before-state. There is no ETag protection;
+concurrent writers can be overwritten. A missing snapshot makes the helper warn
+and assume no routing block/full pool—it cannot reconstruct the prior state.
+Stop and reconcile with the owner before using that fallback. If credentials
+expire, restore fails, the runner is lost or `/tmp` disappears, retain the failure,
+recover the approved snapshot under the authorized identity, and verify the live
+state explicitly. Do not report cleanup complete just because dispatch ended.
 
 ## Run IDs
 
@@ -254,8 +294,18 @@ python3 skills/threadlight-router-bench/scripts/router_bench.py learn <run_id> \
 - **n=1 per cell** — directional only; we keep re-running.
 - Matrices 1–2 never ran fully green, so there is **no rubric-scored quality verdict
   yet** — the evidence is phase depth + rounds/cost + `learn`, not the auto-scorecard.
-- Cost is **billed Azure spend** attributed by `ModelDeploymentName` on a shared
-  account; serialized waves keep attribution clean but it is not a per-request meter.
+- `_score_cell` uses Azure Monitor token metrics × `load_prices(None)`, hence
+  [`SEED_PRICES`](../../skills/threadlight-router-bench/scripts/prices.py),
+  not Azure Cost Management or invoice data. The current seed has no independent
+  version: retain the **catalog commit**, price-table bytes, metric window, model
+  dimensions and run IDs with each estimate. The path reviewed for this guide is
+  catalog `8153bc2e0a677d99b8414053d7a00cfdab495444`; it is not asserted to be the
+  price-table provenance of every historical run above.
+- Serialization reduces overlap but cannot exclude **unrelated traffic** using
+  the same deployment. Metric delay, model attribution and seed-rate differences
+  limit precision. These figures omit resource charges, negotiated discounts and
+  other billing adjustments. The `validate` path does not use a custom price
+  file; do not assume another subcommand's `--prices` option changes it.
 - The router's cost *downside* is real: when the agent goes off-path, escalation to
   `gpt-5.4` makes a *failure* more expensive than the cheap arm's failure (matrix 1's
   $34 storm). The anti-hunt + protocol fixes exist partly to keep the agent on-path.

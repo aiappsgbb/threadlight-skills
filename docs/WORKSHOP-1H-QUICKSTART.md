@@ -28,10 +28,13 @@ fly past; you don't type shell commands.
 
 This hour walks the **engineering chain** end-to-end:
 `threadlight-design` → `SPEC.md` → Pattern 0 local boot → `threadlight-deploy`
-→ `azd up` → governed Foundry agent. You'll spec a retail returns-triage
+→ `azd up` → deployed, smoke-tested pilot (after deployment completes).
+This is **not automatically a governed Foundry agent**. You'll spec a retail returns-triage
 process from scratch with Copilot CLI, watch that markdown specification
 become an MCP-backed agent answering live triage prompts on `localhost:8501`,
 and leave with a one-prompt recipe to stand the same agent up in Azure.
+Model-backed local demos and cloud smoke tests require approved identity,
+target and spend; neither proves production readiness or selected-action enforcement.
 
 A heads-up: the skills carry a few labels from the team that authored them —
 **GBB**, **seller** / **SE**, **pilot** / **pre-pilot**, **prep guide**.
@@ -78,10 +81,11 @@ If anything's red, fix it now — don't try to fix it inside the runbook.
 | **15–30** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` stream to disk. Read them together as they land. *If it's still in demo-deck / sales-kit generation past ~minute 25, interrupt with "skip demo and sales kit, move on" to protect the budget.* | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. Deployment artifacts (Dockerfile, `azure.yaml`, `infra/main.bicep`) come later from `threadlight-deploy` — §6. |
 | **30–40** | Pattern 0 bootstrap | Prompt §4.3 with your AOAI endpoint + deployment. | Two clean exits (`--info`, `--check`). The `--info` table shows the auto-discovered entities and CRUD tools. |
 | **40–55** | Live demo on `localhost:8501` | Prompt §4.4, then paste each killer prompt from `tests/killer-prompts.md` (§4.5) into the browser in order. Watch the trace: SPEC-derived `list_*` / `get_*` / `update_*` tools fire without anyone writing them. | Streamlit chat. One answer per killer prompt — same agent, different signals in, different outcomes per branch. |
-| **55–60** | Kick off `threadlight-deploy` + `azd up` + Q&A | Run §6 — `threadlight-deploy` then `azd up`. This is the longest single step but still fits the hour. While it runs, keep the **Azure Portal resource group view** visible alongside the Copilot CLI: the resource group fills in (Foundry account + project, Container App for MCP, hosted-agent container build, Cosmos) as `azd` provisions. Point at `threadlight-safe-check`, `threadlight-production-ready`, `threadlight-auto`, `citadel-spoke-onboarding` for the production path. | Resource group populating live; "OK, one prompt stands all of that up. Got it." |
+| **55–60** | Kick off approved `threadlight-deploy` + `azd up` + Q&A | Run §6 after scope/budget approval. Keep the **Azure Portal resource group view** alongside Copilot CLI. Point to the separate governance/readiness follow-up, not a governed-by-deployment claim. | Deployment progress; smoke testing may finish after the hour. |
 
 `threadlight-deploy` + `azd up` is the **longest single step** (15–25 min
-depending on region and remote-build cache state) but still fits the hour.
+depending on region and remote-build cache state); only its kickoff is budgeted
+inside this hour. Completion and cloud smoke testing may extend beyond minute 60.
 The Copilot CLI shows tool calls; the **Azure Portal resource group view**
 shows provisioning progress in real time — keep both visible. The agent
 is reachable for cloud-side smoke tests (§6.4) once the hosted-agent
@@ -188,6 +192,9 @@ fill in live while `azd` runs.
 - Azure CLI + Azure Developer CLI installed
 - `az login` and `azd auth login` completed for the target tenant
 - An AOAI-capable region picked (`eastus2`, `swedencentral`, etc.)
+- Explicit approval for the selected tenant/subscription/resource group,
+  identity, model costs, resource creation and cleanup owner. Stop on missing
+  quota or permissions; do not broaden scope or grant roles as a workshop fix.
 
 ### 6.2 Configure the azd environment
 
@@ -209,23 +216,38 @@ actually starts. That's the safety gate, not a hang.
 
 > run the killer prompts from ~/Repos/workshop/returns-triage/tests/killer-prompts.md against the deployed returns-triage agent — same prompts, now hitting the cloud agent over the Invocations protocol
 
-### 6.5 Production-grade follow-ups
+### 6.5 Selected-binding governance and production follow-ups
 
-When you're ready to harden:
+The deployed/smoke-tested pilot is the workshop endpoint, not a governance pass.
+Use the [L400/L500 operative guide](agent-operations.md) for the separate
+**selected-binding governance** track:
+
+1. Configure an explicit current governance contract and signed/fresh policy,
+   trusted backend facts, required approval and central audit services.
+2. Generate the selected native host/gateway with the
+   [current generator](../skills/threadlight-deploy/references/governance/README.md)
+   and [published pins](../skills/_shared/governance-upstream-pin.json).
+   Dependency/import detection alone does not establish enforcement.
+3. Validate executed **LOCAL-14** and exact native/CTK contracts locally.
+   Local success is not hosted evidence or authorization to deploy.
+4. Obtain separate deployment/collector approval and satisfy registered
+   fixture, identity, network, immutable image and signed-bootstrap prerequisites.
+   Collect fresh deployment-bound evidence; `governance_probe_noop` proves only
+   its reserved noop. Business bindings remain live-unverified until separately
+   proved. Do not use another `azd up` after binding as a readiness shortcut.
+
+Then review the broader readiness work:
 
 - **Production-readiness hand-off** — `threadlight-production-ready` is the
   bridge between a green `threadlight-safe-check --phase post-deploy` and a
   customer architecture / CISO review. Walks the pilot across 13 pillars
-  (network, AGT, IAM, secrets, observability, evals, RAI, HITL, supply chain,
-  cost, reliability, SRE handover, model lifecycle), defaulting to AI Citadel
-  spoke posture, and produces an advisory scorecard + uplift plan +
-  customer-facing hand-off package. Soft-gate — never fails the deploy.
-  - **AGT v4 detection is automatic** (`--agt-profile auto`): if the pilot
-    declares `agent-governance-toolkit-{core,runtime,sre,cli}` deps or uses
-    the v4 ACS `intervention_points:` policy schema, six v4-specific deep
-    checks fire (distribution names, ACS schema, dynamic policy conditions,
-    `toolkit-version:` Action pin, audit-field shape). v3.7-shape pilots
-    keep the version-agnostic check set — no false-fails.
+  (network, governance, IAM, secrets, observability, evals, RAI, HITL, supply chain,
+  cost, reliability, SRE handover, model lifecycle), resolves posture from the
+  declared target, and produces an advisory scorecard. Missing SPEC §12 falls
+  back to `standard-ai-gateway` with `RDY-002`, not an implicit Citadel pass.
+  Use the [pinned complete-catalog invocation](production-readiness.md#9-cli-cheatsheet).
+  Prerequisite failures are nonzero; `--gate-preview` also exits `2` on raw
+  must-fix findings. Legacy `--agt-profile` diagnostics are not current v1 proof.
   - **Per-evidence freshness** is stamped on every live probe and surfaced
     in the executive summary when the oldest evidence is older than
     `--freshness-hours` (default 24h). Run the skill again before the

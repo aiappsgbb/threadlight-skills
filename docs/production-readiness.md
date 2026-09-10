@@ -1,5 +1,11 @@
 # Production-readiness, the threadlight way
 
+Start with the [visual governance walkthrough](https://aiappsgbb.github.io/threadlight-skills/governance.html)
+for the action-to-evidence story, or the
+[implementation and evidence guide](agent-operations.md) for artifact ownership
+and the separately labeled **AgentOps preview (PR #128)**. Preview lifecycle
+evidence does not relax the runtime-governance requirements below.
+
 ## Runtime governance lifecycle
 
 **SAFE is the method**, **ACS/Rego is the PDP** (native OPA policy decisions),
@@ -348,12 +354,15 @@ publication/rollback. It never overwrites operator CI or imports prior proof.
 
 The local stages run bundle build/native validation → `generate.py foundation`
 and `generate` → exported CTK/native preparation and
-`governed_actions.py --phase pre-deploy --emit --gate`. The previously documented
-`bind` → `azd deploy` readiness path is disabled, not replaced by a simulated
-activation. The existing post-deploy collector/current-readiness/scorecard gates
-are retained but cannot be reached by a successful protected deployment until the
-blocker is resolved. No reused version, noop invocation or old deployment receipt
-can stand in for that missing lifecycle.
+`governed_actions.py --phase pre-deploy --emit --gate`. The legacy
+`bind` → `azd deploy` readiness path remains disabled. Separately, the implemented
+`resume-signed-bootstrap/v1` path can continue from operator-prepared creation and
+services through publication, endpoint configuration and wait to `postdeploy`:
+fresh collection → current-readiness validation → scorecard → evidence gate.
+These stages are reachable in the supported resume contract, not guaranteed to
+pass. External prerequisites and the live-unverified native/business boundaries
+above still apply. An old deployment receipt or noop result cannot close a
+missing business-binding requirement.
 
 Artifacts are `governance-local-contract-<run_id>-<attempt>` and
 `governance-readiness-<run_id>-<attempt>`. Both upload **only** a new, automatically
@@ -457,12 +466,14 @@ Without that artefact, every pilot grows a tribal-knowledge answer that takes we
 
 ## 2. What "production-ready" means here
 
-This skill is **the artefact, not the gate.** It does not stop a deploy. It does not enforce a hard policy. It produces two outputs you can put in front of decision-makers:
+This skill produces an **advisory artefact by default**, not runtime enforcement.
+Prerequisites can fail, and the explicit `--gate-preview` option can fail on raw
+must-fix findings. It produces two primary outputs for decision-makers:
 
 | Output | Audience | Purpose |
 |---|---|---|
 | `docs/production-readiness-report.md` | Customer architecture review · CISO sign-off pack · pilot-to-prod handover deck | Human-readable scorecard, per-pillar findings with severity, evidence register (with `captured_at` timestamps), waiver register, residual-risk list, go-live recommendation |
-| `tests/production-readiness-manifest.json` | CI · change advisory board · automated dashboards | Machine-readable manifest with `raw_score`, `score_with_waivers`, `would_fail_hard_gate`, `evidence_freshness`, full per-finding detail |
+| `tests/production-readiness-manifest.json` | CI · change advisory board · automated dashboards | Machine-readable manifest with `score.raw_percent`, `score.with_waivers_percent`, `would_fail_hard_gate`, `evidence_freshness`, full per-finding detail |
 
 The report is **the conversation starter** with the customer's production team. It replaces the four-week scramble to assemble "is this pilot ready?" with a one-command answer that can be reviewed, waived, and iterated.
 
@@ -529,7 +540,10 @@ Every pillar has its own [reference doc under `references/pillars/`](https://git
 | 12 | [`sre-handover`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/12-sre-handover.md) | **Evidence-based:** incident owner + escalation path; runbook links; alert destinations; SRE Agent resource/recipe if selected; handoff acceptance signed | `azure-sre-agent` |
 | 13 | [`model-lifecycle`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/13-model-lifecycle.md) | Model deployment **names + versions pinned** (no `latest`); fallback model declared; retirement-notice owner; A/B or rollback strategy; region/capacity documented | `paygo-ptu-cost-analyzer`, `foundry-hosted-agents` |
 
-> **Pillars are version-agnostic where the underlying surface evolves.** Pillar 2 detects AGT v3.7 *or* v4-preview by **capability**, not version pin. AGT v4-preview deep checks (5 static + 1 live) gate on `--agt-profile v4_preview` (or `auto` resolving to v4 when v4 artefacts are present in the repo).
+> **Current governance authority:** selected-binding v1 evidence is evaluated by
+> the shared validator. `--agt-profile` retains legacy capability diagnostics;
+> detecting v3.7/v4 markers is not proof of current runtime enforcement. Use the
+> [operative governance guide](agent-operations.md) and published runtime pins.
 
 ---
 
@@ -537,16 +551,29 @@ Every pillar has its own [reference doc under `references/pillars/`](https://git
 
 Findings aren't just pass/fail — they encode **what the operator can actually do** about them.
 
-| Status | Meaning | Counts toward raw score? |
+| Status | Meaning | Scoring contribution |
 |---|---|---|
-| `pass` | Check ran and the pillar requirement is met | ✅ |
-| `should-fix` | Gap exists; not a hard blocker but should be addressed before go-live | ❌ |
-| `must-fix` | Hard blocker for production go-live; would fail a v2 hard-gate | ❌ |
-| `not-applicable` | Check correctly skipped (e.g., Citadel scoring against an AGT-target deployment) | ✅ (counts as pass for raw, with justification) |
-| `not-verified` | Check could not run (no Azure auth, insufficient RBAC, static-only mode) | ⚪ (excluded from raw score; surfaced in `not_verified[]` with `verification_coverage`) |
-| `waived` | Customer explicitly accepted the gap with a documented compensating control | ✅ in `score_with_waivers`, ❌ in `raw_score` |
+| `pass` | Checked requirement met | 4/4 |
+| `should-fix` | Nonblocking gap to address | 1/4 partial credit |
+| `must-fix` | Blocking finding | 0/4 |
+| `not-applicable` | Requirement does not apply | excluded from numerator and denominator |
+| `not-verified` | Missing/insufficient verification | 0/4; remains in denominator and adds verification debt |
+| `waived` | Accepted risk with a valid compensating control | 3/4 in the with-waivers view; raw findings remain unchanged |
 
-The manifest reports **both** `raw_score` and `score_with_waivers`, plus a `would_fail_hard_gate` boolean that flips true if any `must-fix` finding lacks a waiver. The report's executive summary calls this out so reviewers see the unfiltered posture **and** the customer-accepted posture side-by-side.
+Legacy `fail` earns 0/4 and marks the pillar amber. Experimental findings are
+excluded from scoring by default; `--include-experimental` opts them in.
+Pillar percentages are floored, then combined using pillar weights, excluding
+non-applicable pillars. The actual manifest fields are `score.raw_percent`,
+`score.with_waivers_percent`, and each pillar's `score_raw` /
+`score_with_waivers`. Verification coverage is a separate metric, not pass rate.
+
+**Gate reasons:** `would_fail_hard_gate` is true if **any raw `must-fix`** exists.
+The current implementation does not filter that boolean by waivers or the
+experimental scoring opt-in. Consequently an accepted waiver can improve the
+displayed score/recommendation without clearing `--gate-preview`. That flag
+exits `2` after writing the report when the boolean is true. The default
+assessment is advisory; neither exit `0` nor a high percentage establishes
+production readiness. Review findings, verification debt and fresh binding proof.
 
 ### Evidence freshness
 
@@ -565,11 +592,11 @@ Every live probe stamps a `captured_at` timestamp (ISO 8601 UTC, second precisio
 
 | You are at… | Run | Get |
 |---|---|---|
-| `safe-check --phase post-deploy` returned green and the customer wants to talk about production | `python tests/production_ready.py` | Markdown report + JSON manifest, all 13 pillars, live + static |
-| Customer architecture review in 3 days, posture is known | `python tests/production_ready.py --target citadel-spoke` | Same, scored against the declared target |
-| Pilot has been parked for weeks; someone asks "could we ship this?" | `python tests/production_ready.py --static` | Pure static scorecard from repo + safe-check manifests (no Azure auth needed) |
+| `safe-check --phase post-deploy` returned green and the customer wants to talk about production | Pinned catalog invocation below, without `--static` after approving live reads | Markdown report + JSON manifest, all 13 pillars, live + static |
+| Customer architecture review in 3 days, posture is known | Same invocation with `--target citadel-spoke` | Same, scored against the declared target |
+| Pilot has been parked for weeks; someone asks "could we ship this?" | Same invocation with `--static --no-rights-probe` | Static scorecard; still requires valid, fresh, matching safe-check input |
 | Inherited a pilot whose SPEC has no § 12 | Skill still runs — falls back to `standard-ai-gateway`; `RDY-002` surfaces "author § 12" | Author § 12 from the [template](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/spec-section-12-template.md), re-run for full scorecard |
-| Historical AGT v4 inspection | `python tests/production_ready.py --pillar agent-governance --agt-profile v4_preview` | Legacy compatibility diagnostics only, never current v1 runtime readiness |
+| Historical AGT v4 inspection | Add `--pillar agent-governance --agt-profile v4_preview` | Legacy compatibility diagnostics only, never current v1 runtime readiness |
 | Customer accepted some `must-fix` findings as risk | Author `tests/production-readiness-waivers.json`, re-run | Report shows `score_with_waivers` + `would_fail_hard_gate` flags |
 
 ---
@@ -606,60 +633,99 @@ tests/production-readiness-manifest.json    # machine-readable manifest (CI / da
 
 The report has a stable structure: executive summary (posture, raw score, waivered score, would-fail-hard-gate, oldest evidence) → per-pillar findings (status, evidence, remediation skill, effort estimate) → evidence register (every live probe with `captured_at`) → waiver register → residual-risk list → go-live recommendation.
 
-The manifest is `schema_version: "1.0"` (additive evolution; no breaking changes since GA). Tool version follows semver under `VERSION` (currently `0.2.0` after the per-evidence freshness ship).
+The manifest declares `schema_version: "1.0"`; inspect its `tool_version` and the
+pinned source when interpreting scoring. The schema label alone is not a promise
+that historical scoring semantics still apply.
 
 ---
 
 ## 9. CLI cheatsheet
 
+### Pinned catalog invocation
+
+Keep the **complete catalog** at the reviewed revision; do not copy only
+`production_ready.py` into a pilot. It resolves `skills/_shared` and sibling
+helpers/references relative to its own location. A copied file can silently
+degrade shared governance validation to `not-verified`.
+
+Use an existing isolated Python 3.12+ environment. Core scorecard logic is
+stdlib-based; selected signed-governance validation also needs the catalog's
+[`control-plane` package](../skills/threadlight-govern/references/control-plane/pyproject.toml)
+and its pinned dependencies. The protected validation environment additionally
+uses `pyyaml` and `jsonschema[format]==4.26.0`; native/collector validation needs
+the [full pinned runtime environment](../skills/threadlight-safe-check/references/governance-probe.md#install).
+These are prerequisites, not packages automatically installed by the assessor.
+No standalone production-ready package wrapper is documented as supported.
+
+`--root` is the target pilot, **not** the catalog. It must have a valid
+`specs/manifest.json` and `tests/postdeploy-manifest.json` with `phase: post-deploy`,
+empty `gaps`, a valid non-future timestamp within the freshness window and an
+identical deployment-manifest snapshot. This also applies in static mode.
+If `main.bicep` exists, Azure CLI and Bicep are required even with `--static`;
+pre-cache modules for offline compilation (module restoration can need network).
+`--static --no-rights-probe` skips live checks/rights probing, not Bicep compilation.
+
 ```bash
-# Default — all 13 pillars, live + static, both outputs
-python tests/production_ready.py
+CATALOG=/absolute/path/to/reviewed/threadlight-skills
+CATALOG_REVISION=8153bc2e0a677d99b8414053d7a00cfdab495444
+PROJECT=/absolute/path/to/pilot
+test "$(git -C "$CATALOG" rev-parse HEAD)" = "$CATALOG_REVISION" || exit 1
+# Check that executable sources are unmodified; retain the catalog revision in CI.
+git -C "$CATALOG" diff --exit-code HEAD -- skills scripts || exit 1
+
+# Static assessment; writes report, manifest and default trend CSV in the pilot.
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --static --no-rights-probe
+
+# Opt-in hard gate on raw must-fix findings, after producing the same reports.
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --static --no-rights-probe --gate-preview
 
 # Subset of pillars
-python tests/production_ready.py --pillar network-posture,observability
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --static --no-rights-probe --pillar network-posture,observability
 
-# Static only (no Azure auth required; live checks all → not-verified)
-python tests/production_ready.py --static
+# Live checks require separately approved identity, scope and read access.
+# --quick only reduces the set of checks; it is not an offline flag.
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" --quick
 
-# Quick smoke (subset of checks per pillar; for iteration)
-python tests/production_ready.py --quick
+# Explicit posture override (choose one real value, not a shell pipe)
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --static --no-rights-probe --target citadel-spoke
 
-# Explicit posture override (overrides SPEC § 12 resolution)
-python tests/production_ready.py \
-  --target citadel-spoke|agt|standard-ai-gateway|hybrid
-
-# AGT profile (capability-based, version-agnostic)
-python tests/production_ready.py --agt-profile auto|v3_7|v4_preview|none
+# Historical profile diagnostics only; not current runtime proof
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --static --no-rights-probe --agt-profile v4_preview
 
 # Explicit waiver file path
-python tests/production_ready.py \
-  --waivers tests/production-readiness-waivers.json
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --static --no-rights-probe --waivers tests/production-readiness-waivers.json
 
-# Allow stale safe-check manifest (default rejects >24h or RG/sub/hash mismatch)
-python tests/production_ready.py --accept-stale-safe-check
-
-# Override the freshness window for the evidence-staleness banner
-python tests/production_ready.py --freshness-hours 48
-
-# Override output paths
-python tests/production_ready.py \
+# Override output paths (relative to PROJECT) and suppress non-error stdout
+python3 "$CATALOG/skills/threadlight-production-ready/scripts/production_ready.py" --root "$PROJECT" \
+  --static --no-rights-probe --quiet \
   --out tests/production-readiness-manifest.json \
   --report docs/production-readiness-report.md
-
-# Quiet output for CI / hooks
-python tests/production_ready.py --quiet
 ```
+
+`--accept-stale-safe-check` allows age-only staleness with a warning; it does not
+override invalid timestamps, gaps, subscription/RG or manifest-hash mismatch.
+`--freshness-hours` changes the assessment window (default 24h), not the underlying
+runtime evidence contract. Neither flag repairs missing current live proof.
 
 **Exit codes:**
 
 | Code | Meaning |
 |---|---|
-| `0` | Checks ran and report was written. Per-finding statuses (including `must-fix` and `not-verified`) live inside the report. **The skill never returns non-zero for findings in v1 — it is soft-advisory.** |
-| `2` | Missing prerequisite: no `specs/manifest.json`, no `tests/postdeploy-manifest.json`, safe-check manifest stale (use `--accept-stale-safe-check` to override) or scope-mismatched (different subscription/RG), or unknown `--pillar` id. **Missing SPEC § 12 does NOT exit 2** — the skill emits `RDY-002` and falls back. |
-| `3` | I/O failure: cannot read inputs, cannot write outputs, `az` not on PATH at all. |
+| `0` | Assessment/report completed; default advisory findings may still block go-live. With `--gate-preview`, no raw `must-fix` triggered the gate. |
+| `2` | Invalid arguments, missing/invalid prerequisite, stale or mismatched safe-check, unknown pillar, required Bicep tooling/build failure; also `--gate-preview` with `would_fail_hard_gate: true` **after** report output. Missing SPEC § 12 instead emits `RDY-002` and falls back. |
+| `3` | Caught output I/O failure. Missing/invalid input manifests are prerequisite exit `2`, not `3`. |
 
-Missing Azure auth or insufficient permissions for specific live probes ⇒ those checks are marked `not-verified` in the report; exit code stays `0`. **The skill never turns into a deployment blocker by accident.**
+Missing Azure auth or insufficient probe permissions generally yields
+`not-verified`; absent `az` without a Bicep compilation requirement degrades live
+checks rather than necessarily exiting. Distinguish prerequisite errors from
+an emitted report that fails the optional hard gate. Stop on either; resolve the
+specific prerequisite/finding and rescore rather than suppressing the exit code.
 
 ---
 
@@ -682,7 +748,10 @@ threadlight-design        →  threadlight-local-test  →  threadlight-deploy  
                                                           change advisory board · pilot-to-prod handover
 ```
 
-**Soft-advisory by design.** The skill before it (`safe-check`) is the structural gate. The skills after it are conversations with humans. This skill is the **bridge** — the artefact that turns "we built something that works" into "here is the evidence the customer's production team needs."
+**Soft-advisory by default; explicit gate available.** Safe-check is the preceding
+structural/evidence gate; production-ready supports `--gate-preview` and human
+review. This skill is the **bridge** from a working pilot to an evidence-based
+production decision, not permission to skip unresolved findings.
 
 **Then the pilot ships through a pipeline, not a laptop.** Once the scorecard is green, [`threadlight-cicd`](https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd) generates the production deploy pipeline (GitHub Actions / Azure DevOps) and the env-setup runbooks the platform team runs — OIDC/WIF identity, least-privilege RBAC scoped to the spoke RG, and private-VNet runners — because in a real customer tenant the agent rarely has rights to run `azd up` itself. It is a deliberate **manual handoff** (not part of the auto chain), and it stays a **separate repo/pipeline** from the central platform: it never touches the Citadel hub, shared APIM, or platform networking — those remain `citadel-hub-deploy`.
 

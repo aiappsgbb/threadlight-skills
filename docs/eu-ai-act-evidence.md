@@ -1,18 +1,16 @@
 # EU AI Act evidence pack — the threadlight way
 
-> **What it is.** A regulator-facing evidence pack, built from the artifacts your
-> pilot *already produced*. Threadlight maps them, article by article, onto the
-> EU AI Act — so the deploy that just went green also carries its own compliance
-> file. Tenant-local, offline, deterministic. It never calls Azure, and it never
-> invents coverage.
+> **What it is.** An engineering evidence inventory for human review, built from
+> artifacts your pilot already produced. It maps selected artifacts to EU AI Act
+> topics. Tenant-local and offline; it evaluates evidence at the current time
+> and never calls Azure.
+> `covered` is an inventory result, **not certification** or legal compliance.
 
-The EU AI Act's high-risk obligations land in 2026. Most teams treat that as a
-second project — a spreadsheet, a consultant, a scramble. It isn't. By the time
-`threadlight-production-ready` returns green, you have already generated the
-evidence: a production-readiness scorecard, an MCP SBOM, an agent-identity
-AI-BOM, a governance manifest, and eval / red-team manifests. The evidence pack
-is the last, small step that **maps what you have onto what the regulation
-asks** — and tells you, honestly, where the gaps are.
+The pack brings a production-readiness scorecard, MCP SBOM, agent-identity
+AI-BOM, governance manifest and eval / red-team manifests into one article map.
+It does not generate those upstream artifacts or establish that a green deploy
+satisfies an obligation. A qualified reviewer must determine applicable
+obligations, dates, risk classification and the adequacy of the underlying evidence.
 
 ## One prompt — Copilot does the rest
 
@@ -26,11 +24,11 @@ Three files land under `docs/compliance/`:
 
 | File | What it is |
 | --- | --- |
-| `ai-act-evidence.json` | The machine-readable article map + a coverage summary, with a SHA-256 for every source. |
+| `ai-act-evidence.json` | The machine-readable article map + a coverage summary, with a SHA-256 of each present source's normalized text. |
 | `annex-iv-technical-file.md` | The Article 11 / Annex IV technical documentation — every gap flagged in plain sight. |
 | `fria-scaffold.md` | An Article 27 fundamental-rights-impact template for a human to complete. |
 
-## The map — evidence you already have → the article it satisfies
+## The map — existing evidence → article for review
 
 | Article | Obligation | Evidence Threadlight already produced |
 | --- | --- | --- |
@@ -42,24 +40,50 @@ Three files land under `docs/compliance/`:
 | **Art 26** — Deployer obligations | A named, responsible owner | Agent-identity AI-BOM (owner coverage) |
 | **Art 27** — FRIA | A fundamental-rights impact assessment | Human-authored scaffold |
 
-## Honest coverage — never a green wash
+## Coverage semantics and limits
 
-Every article is graded one of five states — `covered`, `partial`, `gap`,
-`scaffold`, or `not-applicable` — and the pack **cannot fabricate a `covered`**:
+The states are `covered`, `partial`, `gap`, `scaffold`, and `not-applicable`.
+They reflect article-specific predicates, not a universal all-signals-green gate:
 
-- An empty repo produces zero `covered` articles — all honest gaps.
-- A missing or malformed source degrades to `gap` / `partial` with a remediation
-  pointer at the skill that produces it. It is never silently counted as evidence.
-- Every source that *is* present carries a SHA-256 fingerprint, so the file is
-  traceable to the exact artifact it came from.
-- The same repo always produces byte-identical output — safe to commit, diff, and
-  gate in CI.
+- **Art 11:** a scorecard and MCP SBOM that are non-empty JSON objects or lists
+  are enough for `covered`.
+- **Art 15:** non-empty JSON objects or lists for evals and red-team are enough;
+  their quality/safety verdicts are not checked by this predicate. The linked SBOM
+  is included in the map but is not required by this coverage predicate.
+- **Art 9:** the shared binding evaluator must return `pass` with `live: true`.
+  This remains binding-scoped evidence, not satisfaction of the entire article.
+- **Art 12 / 14:** observability plus non-empty identity content / HITL pillar
+  status are checked; pillar lookup prefers the with-waivers status. **Art 26**
+  checks positive subject count and equal owned count. **Art 27** is a scaffold.
 
-Ask Copilot to *check* rather than generate, and it fails the run (non-zero exit)
+Missing, unreadable or syntactically invalid JSON is not a present source.
+Empty `{}` / `[]` cannot satisfy the non-empty predicates. However, parseable,
+non-empty **schema-invalid** content can satisfy Art 11 or Art 15: the aggregator
+does not generally validate source schemas, freshness or successful eval outcomes.
+Run the owning validators and inspect their results separately.
+
+Present sources carry **normalized-text SHA-256 fingerprints**, not exact
+source-byte digests. The producer reads UTF-8 text with newline normalization
+(including CRLF → LF), then re-encodes it as UTF-8 before hashing. A CRLF file's
+ordinary on-disk SHA-256 therefore differs from the emitted fingerprint. These
+hashes establish neither authenticity nor quality.
+
+Output is deterministic only for the same artifacts, implementation/dependencies
+and evaluation time. The CLI records current wall-clock time in `generated_at`,
+so reruns over unchanged files need not be byte-identical. Article 9 also
+reevaluates policy expiry and evidence freshness: unchanged artifacts can lose
+coverage as time passes. Do not freeze time to preserve an old coverage result.
+Review content and privacy before committing a pack. An empty repo produces no
+`covered` articles.
+
+Ask Copilot to *check* rather than generate, and it fails the run (exit `3`)
 when a load-bearing article — the technical file (Art 11), record-keeping
 (Art 12), or accuracy & robustness (Art 15) — is a gap:
 
 > `"Use threadlight-production-ready to check the EU AI Act evidence pack and fail if a load-bearing article is missing."`
+
+`--check` permits `partial`; exit `0` is not a compliance pass. An unusable root
+or unwritable output exits `2`.
 
 ## What this is — and isn't
 

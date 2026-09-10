@@ -17,14 +17,16 @@ test.describe('gap-closure release surfaces — five new skills', () => {
     await page.goto('/funnel.html');
     await expect(page).toHaveTitle(/.+/);
 
-    // The no-repo entry card runs before Design.
-    const card = page.locator('.skill-card[data-skill="threadlight-qualify"]');
+    // Qualification is the explicit entry phase, before Build.
+    const card = page.locator('#scene-show');
     await expect(card).toHaveCount(1);
     await card.scrollIntoViewIfNeeded();
     await expect(card).toContainText(/threadlight/i);
     await expect(card).toContainText(/qualify/i);
 
-    // Links to the repository skill folder AND offers the Cowork zip.
+    await expect(card.locator('.phase-reference')).not.toHaveAttribute('open', '');
+    await card.locator('.phase-reference > summary').click();
+    // The public contract remains one explicit disclosure away; the download is always visible.
     await expect(page.locator('a[href*="skills/threadlight-qualify"]').first()).toBeVisible();
     const zip = page.locator('a[href*="downloads/threadlight-qualify.zip"]');
     await expect(zip).toHaveCount(1);
@@ -33,6 +35,8 @@ test.describe('gap-closure release surfaces — five new skills', () => {
 
   test('production.html shows the connect / ground / loadtest evidence progression', async ({ page }) => {
     await page.goto('/production.html');
+    await expect(page.locator('#remediation-skills')).not.toHaveAttribute('open', '');
+    await page.locator('#remediation-skills > summary').click();
     for (const skill of ['threadlight-connect', 'threadlight-ground', 'threadlight-loadtest']) {
       const link = page.locator(`a[href*="skills/${skill}"]`).first();
       await link.scrollIntoViewIfNeeded();
