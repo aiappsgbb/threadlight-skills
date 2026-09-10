@@ -8,7 +8,7 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('Basics leads with skill-based agents and two libraries rather than a general AI introduction', () => {
   const html = read('docs/basics.html');
-  assert.match(html, /<details[^>]*id="building-blocks"/);
+  assert.match(html, /<section[^>]*id="building-blocks"/);
   for (const term of ['model', 'agent', 'tool', 'skill']) {
     assert.ok(html.includes(`data-basic-term="${term}"`), `define ${term}`);
   }

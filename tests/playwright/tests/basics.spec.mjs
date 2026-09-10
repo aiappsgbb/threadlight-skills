@@ -1,6 +1,22 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
+test('skill anatomy and agent relationships are visible diagrams rather than collapsed definitions', async ({ page }) => {
+  await page.goto('/basics.html#skill-files');
+  for (const id of ['skill-files', 'building-blocks']) {
+    const panel = page.locator(`#${id}`);
+    await expect(panel).toBeVisible();
+    expect(await panel.evaluate(node => node.tagName === 'DETAILS' || Boolean(node.closest('details')))).toBe(false);
+    await expect(panel.locator('h3')).toBeVisible();
+  }
+  await expect(page.locator('#skill-files [data-companion]')).toHaveCount(3);
+  await expect(page.locator('#skill-files')).toContainText('Name + description');
+  await expect(page.locator('#skill-files')).toContainText('Optional supporting files');
+  await expect(page.locator('#building-blocks [data-basic-term]')).toHaveCount(4);
+  await expect(page.locator('#building-blocks svg')).toHaveCount(4);
+  await expect(page.locator('#building-blocks')).toContainText('The skill guides. The tool performs.');
+});
+
 test('paired skill examples make the reusable format and different outputs visible', async ({ page }, testInfo) => {
   await page.goto('/basics.html#skills');
   for (const width of [1440, 390]) {
@@ -44,7 +60,7 @@ test('Basics distinguishes construction, runtime and host capability', async ({ 
   await expect(page.locator('[data-actor="process"]')).toContainText('Process agent');
   await expect(page.locator('[data-visual-anchor]')).toContainText(/engineering skills/i);
   await expect(page.locator('[data-visual-anchor]')).toContainText(/business skills/i);
-  await expect(page.locator('#building-blocks')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#building-blocks [data-basic-term="skill"]')).toBeVisible();
   await expect(page.locator('[data-basic-term]')).toHaveCount(4);
   await expect(page.locator('[data-host]')).toHaveCount(3);
   await expect(page.locator('#where-skills-run')).toContainText('not a deployment');

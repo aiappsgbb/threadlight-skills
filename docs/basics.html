@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
 <link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
-<link rel="stylesheet" href="assets/basics-visuals.css?v=666f4322">
+<link rel="stylesheet" href="assets/basics-visuals.css?v=9767b981">
 </head>
 <body class="chapter-page chapter-basics chapter-experience">
 <a class="basics-skip" href="#chapter-top">Skip to content</a>
@@ -99,15 +99,35 @@
         <div class="basics-skill-reuse"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M7 12a15 15 0 0 1 25-4l3 4M35 3v9h-9M33 28A15 15 0 0 1 8 32l-3-4M5 37v-9h9"/></svg><p><strong>The flexible part is the pattern, not identical content.</strong> Change the procedure, inputs and connected tools to support a different task. Reuse each skill across relevant briefs or cases; compatible host capabilities and permissions still matter.</p></div>
         <p class="basics-purpose-note">The agent coordinates: choose → read → act through tools → inspect. Skills guide behavior; they do not themselves grant access or guarantee a correct result.</p>
       </figure>
-      <details class="basics-reference" id="skill-files"><summary>What is actually inside a skill package?</summary><p><code>SKILL.md</code> is a Markdown file: a plain-text document describing when and how to use the skill. Optional <code>scripts/</code>, <code>references/</code> and <code>assets/</code> can supply code, reference material and templates. The application needs suitable tools to use them.</p></details>
-      <details class="basics-reference" id="building-blocks"><summary>Quick terminology: agent, model, tool and skill</summary>
-        <dl>
-          <dt data-basic-term="agent">Agent</dt><dd>The application that uses a model, instructions and tools to work toward a goal.</dd>
-          <dt data-basic-term="model">Model</dt><dd>The AI component that interprets context and proposes text or actions; it can be wrong.</dd>
-          <dt data-basic-term="tool">Tool</dt><dd>Callable code that reads a system or performs a permitted operation.</dd>
-          <dt data-basic-term="skill">Skill</dt><dd>A reusable procedure with a purpose, inputs, outputs and rules for when to use it.</dd>
-        </dl>
-      </details>
+      <div class="basics-explainers">
+        <section class="basics-explainer" id="skill-files" aria-labelledby="skill-files-title">
+          <header><span class="basics-label">INSIDE THE PACKAGE</span><h3 id="skill-files-title">A document the agent can use.<br><em>With support when needed.</em></h3></header>
+          <div class="basics-file-sheet">
+            <div class="basics-file-tab"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h16l8 8v24H8zM24 4v8h8M14 19h12M14 26h8"/></svg><strong>SKILL.md</strong><span>Plain-text Markdown</span></div>
+            <dl>
+              <div><dt>Name + description</dt><dd>Identify the skill and when it is relevant, so the agent can select it for the task.</dd></div>
+              <div><dt>Procedure + boundaries</dt><dd>Explain the steps, expected inputs and outputs, required tools, and when to stop or hand off.</dd></div>
+            </dl>
+          </div>
+          <div class="basics-file-companions"><span class="basics-label">Optional supporting files</span><ul>
+            <li data-companion="scripts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 6-6 6 6 6M16 6l6 6-6 6M14 3l-4 18"/></svg><code>scripts/</code><span>Code for repeatable work or validation.</span></li>
+            <li data-companion="references"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7a2 2 0 0 1 2 2 2 2 0 0 1 2-2h7v17h-7a2 2 0 0 0-2 2 2 2 0 0 0-2-2H3zM12 5v17"/></svg><code>references/</code><span>Rules, schemas and deeper guidance.</span></li>
+            <li data-companion="assets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM3 9h18M9 9v11"/></svg><code>assets/</code><span>Templates and materials to reuse.</span></li>
+          </ul></div>
+          <p class="basics-explainer-note">Readable instructions plus optional supporting files—not a standalone executable. The host must provide the tools needed to use the package.</p>
+        </section>
+        <section class="basics-explainer" id="building-blocks" aria-labelledby="building-blocks-title">
+          <header><span class="basics-label">INSIDE THE RUNNING APPLICATION</span><h3 id="building-blocks-title">The agent coordinates.<br><em>The parts have different jobs.</em></h3></header>
+          <div class="basics-role-hub" data-basic-term="agent"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 8h20v24H10zM15 14h10M15 20h10M15 26h6M4 16h6M30 24h6"/></svg><div><strong>Agent</strong><p>The application that uses instructions, a model and tools to work toward a goal. It examines results and continues or asks for help.</p></div></div>
+          <div class="basics-role-branches" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="basics-role-parts">
+            <div data-basic-term="model"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="6"/><circle cx="7" cy="7" r="3"/><circle cx="33" cy="7" r="3"/><circle cx="7" cy="33" r="3"/><circle cx="33" cy="33" r="3"/><path d="m9 9 7 7M24 16l7-7M9 31l7-7M24 24l7 7"/></svg><strong>Model</strong><span class="basics-label">INTERPRET</span><p>Interprets context and proposes responses or actions. It can be wrong.</p></div>
+            <div data-basic-term="skill"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h24v32H8zM14 12h12M14 20h12M14 28h7"/></svg><strong>Skill</strong><span class="basics-label">GUIDE</span><p>Supplies the reusable procedure: what to check, how to proceed and when to escalate.</p></div>
+            <div data-basic-term="tool"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m14 8-11 12 11 12M26 8l11 12-11 12M23 4l-6 32"/></svg><strong>Tool</strong><span class="basics-label">PERFORM</span><p>Callable code that reads data or performs a permitted operation in a system.</p></div>
+          </div>
+          <p class="basics-explainer-note"><strong>The skill guides. The tool performs.</strong> A return-policy skill tells the agent what to assess; an order tool retrieves the facts. Backend controls decide which operations are allowed.</p>
+        </section>
+      </div>
     </div>
   </section>
 
