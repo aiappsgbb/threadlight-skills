@@ -8,6 +8,10 @@ for (const slug of ['funnel', 'workbook', 'blueprint', 'case-study']) {
       content: 'body { --serif: "Times New Roman", serif; --sans: Arial, sans-serif; --mono: "Courier New", monospace; }',
     });
     const visual = page.locator('[data-visual-anchor]').first();
+    if (slug === 'funnel') {
+      await expect(page.locator('[data-chapter-intro]')).toHaveCSS('margin-top', '0px');
+      await expect(page.locator('[data-chapter-intro]')).toHaveCSS('line-height', '22.5px');
+    }
     await expect(visual).toBeVisible();
     const box = await visual.boundingBox();
     expect(box.y).toBeLessThan(600);
