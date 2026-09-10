@@ -12,7 +12,7 @@
       {
         id: 'basics', title: 'Basics', entry: 'basics',
         pages: [
-          { slug: 'basics', title: 'Basics', description: 'Skills, construction agents and process agents' },
+          { slug: 'basics', title: 'Basics', description: 'Understand AI agents, tools and reusable skills' },
         ],
       },
       {

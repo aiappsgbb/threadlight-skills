@@ -6,6 +6,23 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '../..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
+test('Basics teaches an everyday task and the four concepts before the two-agent architecture', () => {
+  const html = read('docs/basics.html');
+  const concepts = html.indexOf('id="building-blocks"');
+  assert.ok(concepts >= 0 && concepts < html.indexOf('id="two-agents"'));
+  for (const term of ['model', 'agent', 'tool', 'skill']) {
+    assert.ok(html.includes(`data-basic-term="${term}"`), `define ${term}`);
+  }
+  const opening = html.match(/<section\b[^>]*\sid="chapter-top"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  assert.ok(opening, 'the introductory section must exist');
+  assert.match(opening, /return an order/i);
+  assert.doesNotMatch(opening, /construction agent|runtime route|registered tools|SDK/);
+  assert.match(html, /data-visual-anchor[\s\S]*?Read the order/);
+  assert.match(html, /prompt.*one request/i);
+  assert.match(html, /orchestration.*coordinat/i);
+  assert.doesNotMatch(html, /The concepts are clear/);
+});
+
 test('Basics introduces skills, two agents, host limits and a next step', () => {
   const html = read('docs/basics.html');
   for (const id of ['chapter-top', 'skills', 'two-agents', 'where-skills-run', 'next-step']) {
