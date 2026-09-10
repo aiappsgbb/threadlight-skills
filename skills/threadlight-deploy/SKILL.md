@@ -17,7 +17,7 @@ description: >-
   ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
-  version: "1.7.0"
+  version: "1.8.0"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -64,8 +64,11 @@ python <threadlight-skills>/skills/threadlight-deploy/references/governance/gene
   are rejected. OBO is not provided by this app-only path. Human decisions
   remain separate delegated approval-service calls, not SDK auto-approval.
   Generation and local native integration do not establish Azure deployment
-  or business-binding live proof. Long-lived human resume remains a separate
-  unsupported capability; the existing bounded approval timeout is unchanged.
+  or business-binding live proof. An explicitly signed deferred approval mode
+  returns `pending_approval` without keeping HTTP open. Resume the same action
+  with its `governance_operation_id`; policy, arguments, trusted facts, identity,
+  expiry and one-use approval are rechecked before the effect. This does not
+  add OBO or automatically deploy a review frontend.
 - GHCP uses `CopilotClient` + Invocations, **not** invented local hooks. Only
   bound MCP tools go through the authenticated gateway; mixed servers retain
   their explicit unbound tool filters, original URL and auth. The pinned pre-MCP

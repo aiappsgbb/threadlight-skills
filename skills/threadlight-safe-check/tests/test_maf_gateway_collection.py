@@ -98,6 +98,21 @@ def test_gateway_static_rejects_leftover_native_probe_permissions(tmp_path):
     assert result["gaps"] == ["governance: gateway-native-probe-binding"], result
 
 
+def test_gateway_static_rejects_changed_approval_service_window(tmp_path):
+    project, document, _, _, _ = staged_gateway_project(
+        tmp_path, framework="microsoft-agent-framework")
+    path = project / ".threadlight/governance-deployment.json"
+    deployment = json.loads(path.read_text())
+    deployment["bindings"]["control_config"]["approval_max_seconds"] = 60
+    path.write_text(json.dumps(deployment))
+    path = project / "infra/main.parameters.json"
+    parameters = json.loads(path.read_text())
+    parameters["parameters"]["governanceBindings"]["value"] = deployment["bindings"]
+    path.write_text(json.dumps(parameters))
+    result = reference("governance_static").check(project, document)
+    assert result["gaps"] == ["governance: service-auth-or-role-binding-mismatch"], result
+
+
 def test_maf_gateway_bootstrap_responses_checks_gateway_not_native_policy():
     from test_remote_bootstrap import binding, harness
     from test_governance_observation import ARMFoundry, selection

@@ -189,7 +189,15 @@ def test_governance_dependencies_match_shared_pins():
         assert f"{pins[key]['distribution']}=={pins[key]['version']}" in deps
     for name, version in pins["maf"].items():
         assert f"{name}=={version}" in deps
-    assert "threadlight-govern-control-plane==0.1.0" in deps
+    assert "threadlight-govern-control-plane==0.2.0" in deps
+
+
+def test_returns_reference_service_pin_matches_generated_runtime():
+    template = tomllib.loads((REFERENCES / "pyproject-maf.toml").read_text())["project"]["dependencies"]
+    example = tomllib.loads(
+        (ROOT / "examples/returns-triage-governed/src/agent/pyproject.toml").read_text())["project"]["dependencies"]
+    expected = next(dep for dep in template if dep.startswith("threadlight-govern-control-plane=="))
+    assert expected in example
 
 
 def test_reference_cli_is_executable_without_catalog_import_path():
@@ -230,7 +238,7 @@ def test_native_source_packaging_preserves_existing_hub_and_has_no_gateway_servi
     assert not (project / "src/govern-gateway").exists()
     assert not (source / "governance-config.json").exists()
     assert not (source / "policy-envelope.json").exists()
-    assert "threadlight-govern-control-plane==0.1.0" in (source / "pyproject.toml").read_text()
+    assert "threadlight-govern-control-plane==0.2.0" in (source / "pyproject.toml").read_text()
 
 
 def test_ghcp_no_direct_bound_alias_on_another_server():

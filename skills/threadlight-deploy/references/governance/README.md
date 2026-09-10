@@ -9,6 +9,15 @@ templates.
 
 ## Order and required inputs
 
+For deferred approval on the MAF gateway-only path, use signed registry
+`approval_mode: deferred` and choose `approval_requirement: always` or `policy`.
+Set the same `approval_max_seconds` in package and infrastructure configuration
+when changing the 300-second default (maximum 3600, additionally capped by policy
+expiry). The generated host returns a pending operation instead of blocking for
+human input; use the [operator review and exact resume protocol](../../../threadlight-govern/references/gateway/README.md#deferred-human-decisions-explicit-signed-opt-in).
+No review UI, Entra client or grant is created implicitly. GHCP deferred mode
+is rejected until its client can resume the operation; inline mode is unchanged.
+
 For the explicitly selected remote path, use the create-once operator contract
 below instead of the legacy register/bind/azd ordering. Do not run a second agent
 deployment after publishing its binding.

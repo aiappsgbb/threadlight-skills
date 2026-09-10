@@ -180,6 +180,89 @@ still requires the actual durable receipt ACK and exact approval consumption.
 
 ## Exact dispatch and durable unknown outcomes
 
+### Deferred human decisions (explicit signed opt-in)
+
+The default remains `approval_mode: inline`, `approval_requirement: always`:
+nonempty `approval_roles` require the existing bounded synchronous approval.
+For a generated MAF gateway client, an action can instead declare in its signed
+registry:
+
+```json
+{
+  "approval_mode": "deferred",
+  "approval_requirement": "policy",
+  "approval_timeout_seconds": 900,
+  "approval_roles": ["Approver"]
+}
+```
+
+These are additional fields on a complete registered action, not a standalone
+registry. `policy` leaves an ACS `allow` autonomous and requests approval only
+when ACS escalates. `always` still requests approval even for an allow.
+A contract explicitly requiring approval cannot be weakened to `policy`.
+Deferred mode requires roles and is forbidden for the reserved noop.
+
+The package and infrastructure must both declare `approval_max_seconds` when
+changing the default 300-second service limit. The supported ceiling is 3600
+seconds and every request is additionally capped by the signed policy expiry.
+The generator checks the registry window against the service limit, configures
+both real services, and rejects a changed limit at bind time.
+
+The gateway conditionally creates an `awaiting_approval` operation, persists its
+immutable intent and action/input/trusted-fact hashes, then uses the existing
+Task8 `request` protocol once. It returns `pending_approval` immediately instead
+of keeping HTTP open. **No effect has occurred.** The operation survives process
+restart through the existing durable store; business arguments are not stored
+in the operation ledger or audit. The response includes the actual proposed
+arguments and hash-bound context for the authorized review client.
+
+The MAF adapter exposes an optional `governance_operation_id` parameter only
+for deferred tools. It is an operation selector, **not consent**, and is removed
+before the original business arguments reach MCP/downstream. Resume with the
+same operation ID and original `resume_arguments`. Different arguments, identity,
+tenant, policy, trusted facts or expired intent fail closed. The server re-evaluates
+policy and consumes a genuine Task8 human grant once before moving to the existing
+`pending` execution reservation. Competing resumes have a single CAS/consume winner.
+Rejected operations remain rejected. A lost acknowledgement or crash after
+consumption never reopens a pending execution automatically.
+
+Trusted facts are checked again after credential/transport waits before dispatch;
+backend transactions/CAS remain necessary for changes after transmission.
+A new policy or changed facts require a new operation and approval, not extension
+of the old lease. `outcome_unknown` requires reconciliation; do not retry with
+a fresh operation ID to bypass it.
+
+This is **not OBO**, not a Teams/browser frontend deployment, and not a payment
+connector. GHCP generation rejects deferred mode until its own resume adapter
+exists; its inline approval path is unchanged.
+
+#### Execute an operator review
+
+Install the portable control-plane package, which does not depend on MAF/ACS.
+Its `threadlight-review-action` command consumes the structured pending tool
+result saved privately as `pending.json`:
+
+```bash
+threadlight-review-action --pending pending.json \
+  --control-plane-url https://control.example \
+  --scope api://CONTROL_API_ID/.default \
+  --tenant TENANT_ID --client-id REVIEW_UI_CLIENT_ID \
+  --role Approver --decision approve
+```
+
+Use real existing IDs: the public review client must be allowlisted by Task8,
+have the proper localhost interactive redirect and delegated `Governance.Approve`
+permission, and the human must have the required role and tenant membership.
+The command creates no app, consent grant or role assignment. It verifies that
+the displayed arguments match the stored intent's action hash, requires explicit
+terminal confirmation, and obtains a separate delegated token with the native
+interactive browser credential. It never uses the agent's app-only credential,
+persists tokens, consumes the grant or executes the action. `--decision reject`
+records rejection. The agent's later resume independently verifies/consumes the
+recorded decision. TTY confirmation is an operator UX guard; the actual security
+authority is the authenticated Task8 decision, not a claim of hardware-attested
+human presence.
+
 1. Authenticate workload; validate tenant, workload/action/application scope and schema.
 2. Canonical action hash; verify binding and current bundle.
 3. Evaluate native local ACS with host SAFE facts.

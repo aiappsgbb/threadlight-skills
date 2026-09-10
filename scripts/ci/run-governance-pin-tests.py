@@ -54,6 +54,28 @@ MCP_REQUIRED_CASES = {
     "test_collector_maf_gateway_real_responses_noop_allow_deny[receipt]",
     "test_collector_maf_gateway_real_responses_noop_allow_deny[business-binding]",
 }
+DEFERRED_REQUIRED_CASES = {
+    "test_deferred_approval_survives_dispatcher_restart_and_consumes_once[True]",
+    "test_deferred_approval_survives_dispatcher_restart_and_consumes_once[False]",
+    "test_deferred_changed_arguments_or_trusted_facts_cannot_reuse_approval",
+    "test_deferred_concurrent_resume_has_one_effect",
+    "test_deferred_expiry_does_not_extend_on_resume",
+    "test_policy_controlled_approval_keeps_low_risk_calls_autonomous",
+    "test_deferred_mcp_client_returns_pending_and_resumes_with_the_same_operation",
+    "test_deferred_health_requires_nonblocking_approval_protocol",
+    "test_operator_review_uses_authenticated_human_protocol_not_workload_token[True]",
+    "test_operator_review_uses_authenticated_human_protocol_not_workload_token[False]",
+    "test_operator_review_rejects_changed_display_before_authentication",
+    "test_operator_cli_refuses_unattended_approval_before_opening_inputs",
+    "test_deferred_facts_are_rechecked_before_send_not_after_the_effect[True]",
+    "test_deferred_facts_are_rechecked_before_send_not_after_the_effect[False]",
+    "test_deferred_approval_expiring_after_dispatch_does_not_lose_completed_effect",
+    "test_deferred_window_reaches_both_real_service_configurations",
+    "test_deferred_window_above_service_limit_rejects_before_writes",
+    "test_policy_condition_cannot_weaken_an_always_required_approval",
+    "test_bind_cannot_change_the_frozen_review_window",
+    "test_ghcp_cannot_select_deferred_mode_without_a_resume_adapter",
+}
 
 
 def requirements(pins):
@@ -68,16 +90,24 @@ def run(args, **kwargs):
     subprocess.run([str(arg) for arg in args], cwd=ROOT, check=True, **kwargs)
 
 
-def verify_mcp_junit(path):
+def verify_named_junit(path, required, label):
     cases = ET.parse(path).findall(".//testcase")
     if (not cases or any(case.find(tag) is not None for case in cases
                          for tag in ("skipped", "failure", "error"))
-            or not MCP_REQUIRED_CASES <= {case.attrib.get("name") for case in cases}):
-        raise RuntimeError("Required native MCP controls missing, skipped, failed, or errored")
+            or not required <= {case.attrib.get("name") for case in cases}):
+        raise RuntimeError(f"Required native {label} controls missing, skipped, failed, or errored")
     return len(cases)
 
 
-def mcp_prepared():
+def verify_mcp_junit(path):
+    return verify_named_junit(path, MCP_REQUIRED_CASES, "MCP")
+
+
+def verify_deferred_junit(path):
+    return verify_named_junit(path, DEFERRED_REQUIRED_CASES, "deferred approval")
+
+
+def mcp_prepared(*, deferred=False):
     """Bounded inner loop in an already prepared Linux runtime; never installs or deploys."""
     from skills._shared.native_validation import observe
     pins = json.loads(PIN_FILE.read_text())
@@ -89,22 +119,28 @@ def mcp_prepared():
     if sys.prefix == sys.base_prefix:
         raise RuntimeError("MCP validation requires an isolated Python environment")
     observe(pins, wheelhouse, root=ROOT)
-    report = SCRATCH / "mcp-client-tests.xml"
+    report = SCRATCH / ("deferred-approval-tests.xml" if deferred else "mcp-client-tests.xml")
     report.unlink(missing_ok=True)
     env = {**os.environ, "THREADLIGHT_GOVERNANCE_RUNTIME": "1",
            "ACS_OPA_PATH": str(SCRATCH / "opa-linux-amd64"), "OTEL_SDK_DISABLED": "true"}
     env.pop("PYTEST_ADDOPTS", None)
-    run([sys.executable, "-m", "pytest",
-         "skills/threadlight-deploy/tests/test_maf_gateway_client.py",
-         "skills/threadlight-deploy/tests/test_maf_gateway_generation.py",
-         "skills/threadlight-safe-check/tests/test_maf_gateway_collection.py",
+    tests = ([
+        "skills/threadlight-govern/tests/test_deferred_gateway_approval.py",
+        "skills/threadlight-deploy/tests/test_deferred_gateway_generation.py",
+    ] if deferred else [
+        "skills/threadlight-deploy/tests/test_maf_gateway_client.py",
+        "skills/threadlight-deploy/tests/test_maf_gateway_generation.py",
+        "skills/threadlight-safe-check/tests/test_maf_gateway_collection.py",
+    ])
+    run([sys.executable, "-m", "pytest", *tests,
          "-p", "no:agent_hooks_ctk", "-q", "--tb=short",
          "-o", "markers=governance_runtime: exact published native runtime",
          "-o", f"cache_dir={SCRATCH / 'pytest-cache'}", f"--junitxml={report}"],
         env=env, timeout=120)
-    count = verify_mcp_junit(report)
+    count = verify_deferred_junit(report) if deferred else verify_mcp_junit(report)
     observe(pins, wheelhouse, root=ROOT)
-    print(f"MCP native client/host/generation controls: {count} passed; "
+    label = "Deferred approval" if deferred else "MCP client/host/generation"
+    print(f"{label} native controls: {count} passed; "
           "local proof only, not Azure, full CTK or business deployment acceptance.")
 
 
@@ -474,6 +510,8 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_governance_wiring.py",
              "skills/threadlight-deploy/tests/test_maf_gateway_client.py",
              "skills/threadlight-deploy/tests/test_maf_gateway_generation.py",
+             "skills/threadlight-deploy/tests/test_deferred_gateway_generation.py",
+             "skills/threadlight-govern/tests/test_deferred_gateway_approval.py",
              "skills/threadlight-deploy/tests/test_maf_gateway_bicep.py",
              "skills/threadlight-deploy/tests/test_governance_quality.py",
              "skills/threadlight-deploy/tests/test_azd_cli_contract.py",
@@ -635,6 +673,7 @@ for name, record in {sdk_wheels!r}.items():
             "test_noop_proof_cannot_certify_business_or_lifecycle_bindings",
         }
         required_cases.update(MCP_REQUIRED_CASES)
+        required_cases.update(DEFERRED_REQUIRED_CASES)
         required_cases.add("test_native_probe_permissions_require_an_actual_native_binding")
         if not required_cases <= {case.attrib["name"] for case in cases}:
             raise RuntimeError("required native generation probes did not run")
@@ -830,9 +869,9 @@ def runtime(pins):
 
 def main():
     SCRATCH.mkdir(exist_ok=True)
-    if sys.argv[1:] == ["--mcp-prepared"]:
+    if sys.argv[1:] in (["--mcp-prepared"], ["--deferred-prepared"]):
         sys.path.insert(0, str(ROOT))
-        mcp_prepared()
+        mcp_prepared(deferred=sys.argv[1] == "--deferred-prepared")
         return
     (SCRATCH / "runtime-proof.json").unlink(missing_ok=True)
     for child in ("tmp", "pip-cache", "runtime-home"):

@@ -292,6 +292,16 @@ def validate_environment(config):
     return config["environment"]
 
 
+def approval_window(config):
+    from govern_control_plane.auth import Settings
+    from govern_control_plane.models import canonical, parse
+    field = Settings.model_fields["approval_max_seconds"]
+    value = config.get("approval_max_seconds", field.default)
+    if type(value) is not int:
+        raise ValueError("invalid_approval_max_seconds")
+    return parse(field.rebuild_annotation(), canonical(value))
+
+
 def validate_probe_observability(config):
     if "probe_observability" not in config:
         return None
@@ -352,6 +362,7 @@ def validate_bundle_contract(bundle, document, config, registry=None):
     document = validate_contract(document)
     environment = validate_environment(config)
     roles = parse(list[Identifier], canonical(config["approver_roles"]))
+    approval_max_seconds = approval_window(config)
     if len(roles) != len(set(roles)) or len(roles) > 16:
         raise ValueError("invalid_approval_roles")
 
@@ -409,14 +420,19 @@ def validate_bundle_contract(bundle, document, config, registry=None):
     actions = {action.name: action for action in registry.actions}
     for tool in selected:
         action = actions[tool["id"]]
+        if document["framework"] == "github-copilot-sdk" and action.approval_mode == "deferred":
+            raise ValueError("ghcp_deferred_approval_resume_unsupported")
         post = tool["policy_binding"] if "post_tool_call" in tool["intervention_points"] else None
         if action.policy_binding != tool["policy_binding"] or action.post_policy_binding != post:
             raise ValueError("signed_registry_contract_binding_mismatch")
         # Nonempty Task9 roles mandate approval even when Rego says allow.
         # Each action retains its own narrower roles; a union is not an intent.
-        if ((set(tool["requires"]) & {"approval", "human-approval-record"} and not action.approval_roles)
+        if ((set(tool["requires"]) & {"approval", "human-approval-record"}
+                and (not action.approval_roles or action.approval_requirement != "always"))
                 or not set(action.approval_roles) <= set(roles)):
             raise ValueError("signed_registry_contract_approval_mismatch")
+        if action.approval_mode == "deferred" and action.approval_timeout_seconds > approval_max_seconds:
+            raise ValueError("signed_registry_approval_timeout_mismatch")
 
 
 def frozen_configuration(project, package):
@@ -977,11 +993,13 @@ def bind(project, document, *, configuration=None):
         raise ValueError("frozen_deployment_environment_mismatch")
     if (bindings["policy_id"] != frozen["policy_id"]
             or bindings["policy_version"] != frozen["policy_version"]
-            or infrastructure["approver_roles"] != frozen["approver_roles"]):
+            or infrastructure["approver_roles"] != frozen["approver_roles"]
+            or approval_window(infrastructure) != approval_window(frozen)):
         raise ValueError("frozen_policy_or_approval_configuration_mismatch")
     common = {key: infrastructure[key] for key in (
         "tenant_id", "human_clients", "approver_subjects", "auditor_subjects", "approver_roles")}
     common["key_id"] = bindings["key_id"]
+    common["approval_max_seconds"] = approval_window(infrastructure)
     settings = {}
     for service in ("control_plane", "gateway"):
         settings[service] = parse(Settings, canonical({
@@ -1154,6 +1172,7 @@ def native_probe_binding(config, bindings, packaged, images, document):
 
 def validate_infrastructure(config):
     validate_environment(config)
+    approval_window(config)
     validate_probe_observability(config)
     validate_network(config["network"], environment=config["environment"])
     for key in ("tenant_id", "control_plane_app_id", "gateway_app_id"):

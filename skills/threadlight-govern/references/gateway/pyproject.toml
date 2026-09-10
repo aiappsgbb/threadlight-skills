@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threadlight-govern-gateway"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.12"
 description = "Signed-registry MCP PEP with local native ACS and durable idempotency"
 dependencies = [
-  "threadlight-govern-control-plane==0.1.0",
+  "threadlight-govern-control-plane==0.2.0",
   "agent-governance-toolkit-core==5.0.0",
   "agent-control-specification==0.3.1b0",
   "agent-hooks-sdk==0.1.0a5",

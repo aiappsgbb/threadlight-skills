@@ -20,7 +20,8 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import McpError
 
-from govern_control_plane.models import canonical, strict_json
+from govern_control_plane.models import Identifier, canonical, parse, strict_json
+from govern_control_plane.review import validate_pending_review
 from skills._shared.governance import validate_governance_contract
 
 
@@ -198,8 +199,21 @@ class GovernedMCPTools:
         ]
 
     def _function(self, name, descriptor):
+        deferred = (descriptor.get("_meta") or {}).get("threadlight.approval_mode") == "deferred"
+        schema = deepcopy(descriptor["inputSchema"])
+        if deferred:
+            if "governance_operation_id" in schema.get("properties", {}):
+                raise GatewayToolError("threadlight:gateway_reserved_field")
+            schema.setdefault("properties", {})["governance_operation_id"] = {
+                "type": "string", "minLength": 1, "maxLength": 128,
+                "description": "Resume an existing pending operation; this reference is not approval.",
+            }
+
         async def invoke(**arguments):
-            call = {"name": name, "arguments": canonical(arguments), "key": uuid.uuid4().hex}
+            operation = arguments.pop("governance_operation_id", None) if deferred else None
+            if operation is not None:
+                operation = parse(Identifier, canonical(operation))
+            call = {"name": name, "arguments": canonical(arguments), "key": operation or uuid.uuid4().hex}
             async with self._session(call=call) as session:
                 if await self._inventory(session) != self._descriptors:
                     raise GatewayToolError("threadlight:gateway_inventory_changed")
@@ -207,6 +221,10 @@ class GovernedMCPTools:
             body = reply.structuredContent
             if not isinstance(body, dict):
                 raise GatewayToolError("threadlight:gateway_invalid_result")
+            if body.get("status") == "pending_approval":
+                if not deferred or reply.isError:
+                    raise GatewayToolError("threadlight:gateway_invalid_pending_result")
+                return self._pending_result(body, call, arguments)
             if body.get("reason_code") == "outcome_unknown":
                 raise GatewayToolError("threadlight:gateway_outcome_unknown")
             if body.get("reason_code") == "output_denied":
@@ -220,8 +238,17 @@ class GovernedMCPTools:
             return body["result"]
 
         return FunctionTool(name=name, description=descriptor.get("description") or f"Governed action: {name}",
-                            input_model=deepcopy(descriptor["inputSchema"]), func=invoke,
+                            input_model=schema, func=invoke,
                             result_parser=SKIP_PARSING)
+
+    def _pending_result(self, body, call, arguments):
+        try:
+            validate_pending_review(body)
+            if body["operation_id"] != call["key"] or body["review_context"]["action"] != call["name"]:
+                raise ValueError("pending_action_mismatch")
+        except (ValueError, TypeError, KeyError):
+            raise GatewayToolError("threadlight:gateway_invalid_pending_result") from None
+        return {**deepcopy(body), "resume_arguments": deepcopy(arguments)}
 
 
 async def create_gateway_agent(*, config, client, local_tools, instructions, credential,

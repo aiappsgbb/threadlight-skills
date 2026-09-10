@@ -21,6 +21,13 @@ field.
 
 ### Added
 
+- Signed deferred gateway approvals with durable pending operations and exact
+  resume, policy-controlled escalation, and an authenticated operator review
+  command. Approval does not execute the action; changed arguments/facts,
+  expired grants and competing/replayed consumption cannot dispatch it.
+- Deploy 1.8.0, govern 2.1.0, safe-check 1.4.0, control-plane/gateway 0.2.0,
+  portable collector 0.3.0 and plugin/marketplace candidate 2.4.0.
+  OBO and real Azure business-path validation remain separate; no release.
 - Executable MAF gateway-only action client and native Responses host. Selected
   functions use official MCP transport with host-generated idempotency keys,
   signed policy authority, terminal HTTP/1 authorization checks, and the existing

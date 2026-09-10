@@ -248,14 +248,16 @@ def check(project, document, *, manifest_path=None):
                     or deployment["images"]["agent"] != image):
                 raise ValueError("deployment-binding-disagrees-with-package")
             if not native and (infra["agent_id"] != config["agent_id"]
-                               or infra["approver_roles"] != config["approver_roles"]):
+                               or infra["approver_roles"] != config["approver_roles"]
+                               or gen.approval_window(infra) != gen.approval_window(config)):
                 raise ValueError("deployment-binding-disagrees-with-package")
             for service in ("control", "gateway"):
                 settings = b[service + "_config"]
                 scope = config["control_plane_scope" if service == "control" else "gateway_scope"]
                 if (settings["tenant_id"] != config["tenant_id"] or settings["key_id"] != config["key_id"]
                         or scope != f"api://{settings['audience']}/.default"
-                        or settings["approver_roles"] != config["approver_roles"]):
+                        or settings["approver_roles"] != config["approver_roles"]
+                        or gen.approval_window(settings) != gen.approval_window(config)):
                     raise ValueError("service-auth-or-role-binding-mismatch")
             if b["gateway_config"]["control_plane_url"] != config["control_plane_url"]:
                 raise ValueError("service-endpoint-binding-mismatch")

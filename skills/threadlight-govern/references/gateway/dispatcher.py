@@ -127,6 +127,12 @@ class Action(StrictModel):
     workloads: Annotated[list[ObjectId], Field(min_length=1, max_length=128)]
     scope: Identifier
     approval_roles: Annotated[list[Identifier], Field(max_length=16)]
+    approval_mode: Literal["inline", "deferred"] = Field(
+        default="inline", exclude_if=lambda value: value == "inline")
+    approval_requirement: Literal["always", "policy"] = Field(
+        default="always", exclude_if=lambda value: value == "always")
+    approval_timeout_seconds: Annotated[int, Field(gt=0, le=3600)] = Field(
+        default=300, exclude_if=lambda value: value == 300)
     endpoint: str
     outcome_endpoint: str
     credential_scope: Annotated[str, Field(pattern=r"^api://[A-Za-z0-9._/-]+/\.default$")]
@@ -137,12 +143,17 @@ class Action(StrictModel):
 
     @model_validator(mode="after")
     def validate_action(self):
+        if ((self.approval_mode == "deferred" or self.approval_requirement == "policy")
+                and not self.approval_roles):
+            raise ValueError("approval_roles_required")
+        if self.approval_mode != "deferred" and self.approval_timeout_seconds != 300:
+            raise ValueError("deferred_approval_timeout_required")
         if not self.probe_safe and self.probe_contract is not None:
             raise ValueError("probe_contract_requires_opt_in")
         if self.probe_safe and (
                 self.probe_contract is None or self.name != "governance_probe_noop"
                 or self.scope != "governance-probe" or self.approval_roles
-                or self.post_policy_binding is not None
+                or self.post_policy_binding is not None or self.approval_mode != "inline"
                 or self.input_schema != PROBE_INPUT or self.output_schema != PROBE_OUTPUT
                 or urlsplit(self.endpoint).path != "/governance/noop"
                 or urlsplit(self.outcome_endpoint).path != "/governance/outcomes"
@@ -154,6 +165,8 @@ class Action(StrictModel):
             if schema.get("type") != "object":
                 raise ValueError("object_schema_required")
             check_schema(schema)
+        if self.approval_mode == "deferred" and "governance_operation_id" in self.input_schema.get("properties", {}):
+            raise ValueError("reserved_approval_operation_field")
         if len(set(self.workloads)) != len(self.workloads):
             raise ValueError("duplicate_workload")
         if len(set(self.approval_roles)) != len(self.approval_roles):
@@ -318,6 +331,10 @@ class AuthorizedTransport(httpx.AsyncBaseTransport):
             guarded = ticket["guard"]()
             if inspect.isawaitable(guarded):
                 await guarded
+            if ticket.get("effect_check") is not None:
+                checked = ticket["effect_check"]()
+                if inspect.isawaitable(checked):
+                    await checked
             if (request.method != ticket["method"] or request.url != httpx.URL(ticket["endpoint"])
                     or type(request.stream) is not httpx.ByteStream
                     or b"".join(request.stream) != ticket["body"]
@@ -352,7 +369,7 @@ class DownstreamClient:
         await self.http.aclose()
 
     async def request(self, *, action, arguments, key, action_hash, provenance, facts, guard,
-                      retrieve=False, on_dispatch=None):
+                      retrieve=False, on_dispatch=None, effect_check=None):
         async with asyncio.timeout(self.timeout):
             token = await self.credential.get_token(action.credential_scope)
             content = canonical(validated(arguments, action.input_schema)) if not retrieve else None
@@ -381,7 +398,7 @@ class DownstreamClient:
             marker = _transport_ticket.set({
                 "method": method, "endpoint": endpoint, "body": content or b"",
                 "headers": dict(headers), "guard": final_check, "sent": False,
-                "on_dispatch": on_dispatch})
+                "on_dispatch": on_dispatch, "effect_check": effect_check})
             try:
                 async with self.http.stream(method, endpoint, content=content, headers=headers,
                         follow_redirects=False) as response:
@@ -456,8 +473,9 @@ class GovernedDispatcher:
                 # Read-only completed-cache exception: no new evaluation/approval consumption
                 # for an effect already durably completed under these exact authenticated facts.
                 existing = None
+                existing_etag = None
                 try:
-                    existing, _ = await self.store.read(scope, key)
+                    existing, existing_etag = await self.store.read(scope, key)
                 except Missing:
                     pass
                 def guard():
@@ -467,8 +485,13 @@ class GovernedDispatcher:
                 if existing is not None:
                     if existing["input_hash"] != input_hash or existing["facts_hash"] != digest(facts):
                         raise GateError("idempotency_conflict", "blocked")
-                    if existing["state"] != "completed":
+                    if existing["state"] == "rejected":
+                        return {"status": "blocked", "reason_code": "approval_denied"}
+                    if existing["state"] not in ("completed", "awaiting_approval"):
                         raise GateError("outcome_unknown")
+                    if existing["state"] == "awaiting_approval" and selected.approval_mode != "deferred":
+                        raise GateError("outcome_unknown")
+                if existing is not None and existing["state"] == "completed":
                     # Reconstruct transformed arguments without storing payloads. A completed
                     # approval is not consumed twice, but changed host evidence still closes output.
                     safe = self.safe_provider(deepcopy(facts))
@@ -504,18 +527,62 @@ class GovernedDispatcher:
                 enforced = validated(enforced, selected.input_schema)
                 action_hash = digest({"facts": facts, "arguments": enforced})
                 approval_expiry = None
-                if decision == "escalate" or selected.approval_roles:
+                deferred = False
+                if (decision == "escalate"
+                        or selected.approval_roles and selected.approval_requirement == "always"
+                        or existing is not None and existing["state"] == "awaiting_approval"):
                     if self.approvals is None or not selected.approval_roles:
                         raise GateError("approval_unavailable")
+                    deferred = selected.approval_mode == "deferred"
                     expiry = min(self.policy.expires_at, datetime.now(timezone.utc)
-                                 + timedelta(seconds=self.timeout))
+                                 + timedelta(seconds=selected.approval_timeout_seconds if deferred else self.timeout))
                     intent = ApprovalRequest(
                         **self.approval_context(selected, tenant=identity.tenant).model_dump(),
                         action_hash=action_hash, policy_hash=self.policy.digest,
                         session_id=key,
                         context_identity=digest(facts), nonce=uuid.uuid4().hex,
                         expires_at=expiry, policy_expires_at=self.policy.expires_at)
-                    grant = await self.approvals.resolve(intent)
+                    if deferred:
+                        if not callable(getattr(self.approvals, "request_pending", None)):
+                            raise GateError("deferred_approval_unavailable")
+                        safe_hash = digest(safe)
+                        if existing is None:
+                            pending = {
+                                "state": "awaiting_approval", "input_hash": input_hash, "action_hash": action_hash,
+                                "facts_hash": digest(facts), "safe_hash": safe_hash,
+                                "approval_intent": intent.model_dump(mode="json"),
+                                "receipt_id": None, "outcome_reference": None,
+                            }
+                            try:
+                                await self.store.create(scope, key, pending)
+                            except Conflict:
+                                raise GateError("outcome_unknown") from None
+                            existing, existing_etag = await self.store.read(scope, key)
+                            if existing != pending:
+                                raise GateError("outcome_unknown")
+                        intent = parse(ApprovalRequest, canonical(existing["approval_intent"]))
+                        if (existing["safe_hash"] != safe_hash or existing["action_hash"] != action_hash
+                                or intent.action_hash != action_hash or intent.policy_hash != self.policy.digest
+                                or intent.policy_expires_at != self.policy.expires_at
+                                or intent.context_identity != digest(facts)
+                                or intent.session_id != key
+                                or intent.principal != self.approval_principal
+                                or intent.agent_id != self.approval_agent_id or intent.tenant != identity.tenant
+                                or intent.allowed_roles != tuple(selected.approval_roles)):
+                            raise GateError("approval_context_changed", "blocked")
+                        expiry = intent.expires_at
+                        if expiry <= datetime.now(timezone.utc):
+                            raise GateError("approval_expired", "blocked")
+                        grant = await self.approvals.request_pending(intent)
+                        guard()
+                        if grant is None:
+                            return {
+                                "status": "pending_approval", "operation_id": idempotency_key,
+                                "approval_intent": intent.model_dump(mode="json"),
+                                "review_context": facts, "proposed_arguments": enforced,
+                            }
+                    else:
+                        grant = await self.approvals.resolve(intent)
                     guard()
                     if (grant.intent != intent or grant.approver_tenant != identity.tenant
                             or grant.approver_role not in selected.approval_roles
@@ -525,13 +592,18 @@ class GovernedDispatcher:
                     guard()
                     if not grant.approved:
                         await self.audit(selected, action_hash, key, "deny", "approval_denied")
+                        if deferred:
+                            await self.store.replace(scope, key, {**existing, "state": "rejected"}, existing_etag)
                         return {"status": "blocked", "reason_code": "approval_denied"}
                     approval_expiry = expiry
                 guard()
                 record = {"state": "pending", "input_hash": input_hash, "action_hash": action_hash,
                           "facts_hash": digest(facts), "receipt_id": None, "outcome_reference": None}
                 try:
-                    await self.store.create(scope, key, record)
+                    if deferred:
+                        await self.store.replace(scope, key, record, existing_etag)
+                    else:
+                        await self.store.create(scope, key, record)
                 except Conflict:
                     raise GateError("outcome_unknown") from None
                 guard()
@@ -551,11 +623,16 @@ class GovernedDispatcher:
                     guard()
                     if approval_expiry and datetime.now(timezone.utc) >= approval_expiry:
                         raise GateError("approval_expired")
+                def effect_check():
+                    effect_guard()
+                    if digest(self.safe_provider(deepcopy(facts))) != safe_hash:
+                        raise GateError("approval_context_changed", "blocked")
                 attempted = True
                 reply = await self.downstream.request(
                     action=selected, arguments=enforced, key=key, action_hash=action_hash,
-                    provenance=receipt_id, facts=facts, guard=effect_guard,
-                    **({"on_dispatch": lambda: self.probes.dispatch(probe)} if probe else {}))
+                    provenance=receipt_id, facts=facts, guard=guard if deferred else effect_guard,
+                    **({"on_dispatch": lambda: self.probes.dispatch(probe)} if probe else {}),
+                    **({"effect_check": effect_check} if deferred else {}))
                 guard()
                 current, etag = await self.store.read(scope, key)
                 if current != record:

@@ -153,6 +153,15 @@ to impersonate a human. Task7's configured approval timeout still applies: absen
 a timely decision, the current operation is denied. A later operation needs a
 new intent/nonce and a new human decision.
 
+The portable package also exposes `threadlight-review-action`, a concrete
+operator client for deferred gateway operations. It validates the proposed
+arguments against the exact intent hash, requires interactive confirmation, and
+uses a dedicated native browser-based delegated credential to call `decide`.
+It does not execute actions, consume grants or create Entra configuration.
+See the [gateway's deferred flow](../gateway/README.md#deferred-human-decisions-explicit-signed-opt-in).
+The same `review.decide` function can be used by a separately trusted review
+frontend with its authenticated human credential; never register it as an agent tool.
+
 ## Immutable bundles and signing
 
 Task6 integrity-covered files and unsigned `bundle.json` remain **unchanged**.

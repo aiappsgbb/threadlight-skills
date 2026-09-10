@@ -72,15 +72,15 @@ def test_maf_gateway_dependency_and_skill_contract():
     project = tomllib.loads(REFERENCE.with_name("pyproject-maf.toml").read_text())
     assert "httpcore==1.0.9" in project["project"]["dependencies"]
     skill = (ROOT / "skills/threadlight-deploy/SKILL.md").read_text()
-    assert 'version: "1.7.0"' in skill
+    assert 'version: "1.8.0"' in skill
     assert "maf-gateway-container.py" in skill
     assert "OBO is not provided by this app-only path" in skill
     assert "no mixed local/gateway bindings" in skill
     collector = ROOT / "skills/threadlight-safe-check"
     package = tomllib.loads((collector / "pyproject.toml").read_text())
-    assert package["project"]["version"] == "0.2.0"
+    assert package["project"]["version"] == "0.3.0"
     assert {"*.yaml", "*.yml"} <= set(package["tool"]["setuptools"]["package-data"]["govern_deployment"])
-    assert 'version: "1.3.0"' in (collector / "SKILL.md").read_text()
+    assert 'version: "1.4.0"' in (collector / "SKILL.md").read_text()
     assert "MAF Responses can use the gateway producer" in (collector / "SKILL.md").read_text()
 
 

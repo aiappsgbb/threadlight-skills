@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threadlight-govern-control-plane"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.12"
 description = "Independent authenticated governance reference service"
 dependencies = [
@@ -24,6 +24,9 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest==9.0.3"]
+
+[project.scripts]
+threadlight-review-action = "govern_control_plane.review:main"
 
 [tool.setuptools]
 packages = ["govern_control_plane"]

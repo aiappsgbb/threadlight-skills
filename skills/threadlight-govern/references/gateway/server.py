@@ -42,7 +42,7 @@ HEALTH_TIMEOUT = 5.0
 def tool_result(body):
     return CallToolResult(
         content=[TextContent(type="text", text=canonical(body).decode())],
-        structuredContent=body, isError=body["status"] != "completed",
+        structuredContent=body, isError=body["status"] not in ("completed", "pending_approval"),
         **({"_meta": {"threadlight.probe.receipt_id": body["receipt_id"]}} if "receipt_id" in body else {}))
 
 
@@ -142,7 +142,8 @@ def create_app(dispatcher):
         base = Tool.from_function(empty, name=action.name)
         tools.append(RegisteredTool(
             fn=registered(action.name), name=action.name, description=f"Governed action: {action.name}",
-            parameters=action.input_schema, fn_metadata=base.fn_metadata, is_async=True))
+            parameters=action.input_schema, fn_metadata=base.fn_metadata, is_async=True,
+            meta={"threadlight.approval_mode": "deferred"} if action.approval_mode == "deferred" else None))
     url = urlsplit(dispatcher.policy.registry.gateway_url)
     mcp = GatewayMCP(
         "Threadlight governed actions", tools=tools, stateless_http=True, json_response=True,
@@ -171,6 +172,8 @@ def create_app(dispatcher):
             context = dispatcher.approval_context(action, tenant=dispatcher.policy.registry.tenant_id)
             if (not callable(dispatcher.approvals.resolve)
                     or not callable(dispatcher.approvals.verify)
+                    or action.approval_mode == "deferred"
+                    and not callable(getattr(dispatcher.approvals, "request_pending", None))
                     or await dispatcher.approvals.health(approval_context=context) is not True):
                 raise ValueError()
 

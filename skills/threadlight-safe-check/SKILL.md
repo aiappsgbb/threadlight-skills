@@ -7,7 +7,7 @@ description: >
   governance requiring deployed enforcement evidence. Not for deployment
   orchestration (threadlight-deploy) or general agent evaluations (foundry-evals).
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # Threadlight Safe Check — three lifecycle gates, one CLI

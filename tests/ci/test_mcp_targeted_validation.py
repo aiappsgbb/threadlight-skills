@@ -37,6 +37,20 @@ def test_mcp_gate_requires_generated_project_closure():
     } <= runner.MCP_REQUIRED_CASES
 
 
+def test_deferred_gate_requires_actual_human_resume_and_negative_cases(tmp_path):
+    assert hasattr(runner, "DEFERRED_REQUIRED_CASES")
+    required = runner.DEFERRED_REQUIRED_CASES
+    assert "test_deferred_mcp_client_returns_pending_and_resumes_with_the_same_operation" in required
+    assert "test_deferred_concurrent_resume_has_one_effect" in required
+    assert "test_operator_review_uses_authenticated_human_protocol_not_workload_token[False]" in required
+    path = tmp_path / "deferred.xml"
+    report(path, sorted(required))
+    assert runner.verify_deferred_junit(path) == len(required)
+    report(path, sorted(required), "skipped")
+    with pytest.raises(RuntimeError, match="deferred"):
+        runner.verify_deferred_junit(path)
+
+
 @pytest.mark.parametrize("fault", ["missing", "empty", "skipped", "failure", "error"])
 def test_mcp_runner_rejects_incomplete_or_failed_execution(tmp_path, fault):
     assert hasattr(runner, "MCP_REQUIRED_CASES"), "Targeted MCP native runner is missing"
