@@ -1,6 +1,23 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
+test('skill-family diagram distinguishes the pipeline from its product', async ({ page }) => {
+  await page.goto('/basics.html#two-agents');
+  const diagram = page.locator('[data-pipeline-product]');
+  await expect(diagram).toBeVisible();
+  await expect(diagram.locator('[data-skill-family="engineering"] li')).toHaveCount(4);
+  await expect(diagram.locator('[data-skill-family="business"] li')).toHaveCount(4);
+  await expect(diagram.locator('[data-flow-output="pipeline"]')).toContainText('Working pilot');
+  await expect(diagram.locator('[data-flow-output="business"]')).toContainText('Case outcome');
+  await expect(diagram).toContainText('Output of the first flow');
+  await expect(diagram).toContainText('not an automatic execution guarantee');
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await diagram.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+});
+
 test('Basics distinguishes construction, runtime and host capability', async ({ page }) => {
   await page.goto('/basics.html');
   await expect(page.locator('h1')).toContainText('Agents use skills');

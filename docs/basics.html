@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
 <link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
-<link rel="stylesheet" href="assets/basics-visuals.css?v=913baaff">
+<link rel="stylesheet" href="assets/basics-visuals.css?v=d6e673d8">
 </head>
 <body class="chapter-page chapter-basics chapter-experience">
 <a class="basics-skip" href="#chapter-top">Skip to content</a>
@@ -93,14 +93,54 @@
       <p class="eyebrow"><span class="dot"></span>02 / Two skill sets, different responsibilities</p>
       <h2>One assistant builds it.<br><em>Another runs your process.</em></h2>
       <p class="basics-intro">A coding assistant such as GitHub Copilot uses Threadlight's engineering skills to turn your brief into a project. The resulting process agent gets its own business skills and connected tools, not a copy of the engineering playbooks.</p>
-      <div class="basics-hosts basics-skill-examples">
-        <section><span class="basics-label">IN THE THREADLIGHT CATALOG</span><h3>Engineering skills</h3><p><code>threadlight-design</code> guides specification and agent design. <code>threadlight-deploy</code> guides packaging and approved deployment.</p><p>Their job is to create and assess the application, not to handle a customer's return.</p></section>
-        <section><span class="basics-label">IN THE GENERATED PROJECT</span><h3>Business skills</h3><p>In the returns example, <code>policy-eligibility</code> guides the policy assessment and <code>disposition-decision</code> guides the final recommendation or action.</p><p>These procedures come from the reviewed business process. Their tools and controls still need implementation.</p></section>
-      </div>
+      <figure class="basics-pipeline-product" data-pipeline-product aria-labelledby="pipeline-product-caption">
+        <figcaption id="pipeline-product-caption">Two flows. Different inputs, skills and outputs.</figcaption>
+        <section class="basics-purpose-lane">
+          <header><span class="basics-label">01 / THE THREADLIGHT PIPELINE</span><h3>An agent that builds.</h3></header>
+          <div class="basics-purpose-flow">
+            <div class="basics-flow-end"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h16l8 8v24H8zM24 4v8h8M14 19h12M14 26h8"/></svg><div><span class="basics-label">INPUT</span><strong>Business brief</strong><small>What to build or change</small></div></div>
+            <span class="basics-flow-arrow" aria-hidden="true">→</span>
+            <div class="basics-flow-agent">
+              <div class="basics-flow-actor"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m14 10-10 10 10 10M26 10l10 10-10 10M23 6l-6 28"/></svg><strong>Coding agent</strong></div>
+              <p class="basics-label">ENGINEERING SKILL RESPONSIBILITIES</p>
+              <ul data-skill-family="engineering">
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h4"/></svg><div><b>Design</b><small>Specify the process</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 6-6 6 6 6M16 6l6 6-6 6M14 3l-4 18"/></svg><div><b>Generate</b><small>Create skills and code</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 8 4v6c0 5-8 10-8 10S4 17 4 12V6zM8 12l3 3 5-6"/></svg><div><b>Assure</b><small>Test and gather evidence</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 10 5v10l-10 5-10-5V7zM2 7l10 5 10-5M12 12v10"/></svg><div><b>Deliver</b><small>Package; deploy if approved</small></div></li>
+              </ul>
+            </div>
+            <span class="basics-flow-arrow" aria-hidden="true">→</span>
+            <div class="basics-flow-end basics-flow-output" data-flow-output="pipeline"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m20 3 16 9v17l-16 9-16-9V12zM4 12l16 9 16-9M20 21v17"/></svg><div><span class="basics-label">OUTPUT</span><strong>Working pilot</strong><small>Agent project, business skills, tools and evidence</small></div></div>
+          </div>
+        </section>
+        <div class="basics-product-bridge"><span aria-hidden="true">↓</span><div><strong>Output of the first flow. Starting point for the second.</strong><p>The pilot contains the business agent. Production use still needs the required integrations, approvals and operating controls.</p></div></div>
+        <section class="basics-purpose-lane">
+          <header><span class="basics-label">02 / THE APPLICATION IT PRODUCES</span><h3>An agent that operates.</h3></header>
+          <div class="basics-purpose-flow">
+            <div class="basics-flow-end"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M6 6h28v22H18L8 36v-8H6zM12 13h16M12 20h10"/></svg><div><span class="basics-label">INPUT</span><strong>Business case</strong><small>Each new order, claim or request</small></div></div>
+            <span class="basics-flow-arrow" aria-hidden="true">→</span>
+            <div class="basics-flow-agent">
+              <div class="basics-flow-actor"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 8h20v24H10zM15 14h10M15 20h10M15 26h6M4 16h6M30 24h6"/></svg><strong>Process agent</strong></div>
+              <p class="basics-label">BUSINESS SKILL RESPONSIBILITIES</p>
+              <ul data-skill-family="business">
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15 15 7 7M7 10h6"/></svg><div><b>Understand</b><small>Collect and interpret the case</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4zM8 8l2 2 5-5M8 15h8"/></svg><div><b>Apply</b><small>Follow domain procedures</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h11l5 5v13H4zM15 3v5h5M8 13h8M8 17h5"/></svg><div><b>Prepare</b><small>Produce a case outcome</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M2 22v-4c0-5 14-5 14 0v4M16 7h7M20 3v8"/></svg><div><b>Escalate</b><small>Involve a person when needed</small></div></li>
+              </ul>
+            </div>
+            <span class="basics-flow-arrow" aria-hidden="true">→</span>
+            <div class="basics-flow-end basics-flow-output" data-flow-output="business"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M7 5h26v30H7zM13 17l5 5 10-12M13 29h14"/></svg><div><span class="basics-label">OUTPUT</span><strong>Case outcome</strong><small>A decision, document, permitted action or human review</small></div></div>
+          </div>
+        </section>
+        <p class="basics-purpose-note">These are types of skill responsibility, not an automatic execution guarantee or a fixed stage list. The pipeline builds and verifies the capability; the business agent applies it to individual cases.</p>
+      </figure>
       <p class="basics-intro basics-value">The value is a connected path from an agreed specification to runnable code and evidence you can inspect, rather than just a generated answer. A specification is the written agreement about what the process must do and what stays human.</p>
       <aside class="basics-planner" aria-labelledby="planner-h"><span class="basics-label">WHERE AUTO FITS</span><h3 id="planner-h">Who coordinates the building steps?</h3><p>This orchestration—the coordination of what happens next—is supported by <code>threadlight-auto</code>. It is a planner: it inspects existing project files and chooses run, skip or stop. The coding assistant or an assigned worker performs the work. It is not the returns assistant, and it does not silently approve deployment or paid operations.</p><a href="./funnel.html">Follow the building steps →</a></aside>
       <figure class="basics-request" aria-labelledby="request-caption"><figcaption id="request-caption">Knowing a rule is not the same as enforcing it</figcaption><ol><li><b>The skill says</b><span>“Ask for approval before recording this decision.”</span></li><li><b>The controls check</b><span>Is valid approval present for this action?</span></li><li><b>The system acts</b><span>Proceed only when the required checks hold.</span></li></ol><p>This illustrates a required control, not a proven deployment. Enforcement must be implemented and evidenced on the relevant action paths; one checked action does not certify the whole agent. <a href="./governance.html">Explore governance when you are ready →</a></p></figure>
       <details class="basics-reference" id="runtime-detail"><summary>Technical detail: generated files and how the running application loads them</summary>
+        <p>Concrete examples: <code>threadlight-design</code> and <code>threadlight-deploy</code> guide engineering work. In the generated returns example, <code>policy-eligibility</code> and <code>disposition-decision</code> guide business work. They are separate skill libraries.</p>
         <figure class="basics-build-path" aria-labelledby="build-path-caption">
           <div><span class="basics-label">DEFINE</span><strong>The reviewed process</strong><code>specs/SPEC.md</code><code>specs/foundation.md</code></div>
           <div><span class="basics-label">DERIVE</span><strong>The agent's contract</strong><code>AGENTS.md</code><code>src/agent/skills/</code></div>
