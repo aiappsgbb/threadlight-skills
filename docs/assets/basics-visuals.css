@@ -13,22 +13,6 @@
 .basics-text-link { display: inline-flex; align-items: center; gap: 20px; min-height: 48px; margin-top: 24px; color: var(--ink-1); font: 13px var(--mono); }
 .basics-text-link span { color: var(--basics-accent); font-size: 24px; }
 .basics-label { display: block; color: var(--ink-2); font: 10px/1.6 var(--mono); letter-spacing: .09em; }
-.basics-return { margin: 0; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-1); text-align: left; overflow: clip; }
-.basics-return figcaption { padding: 14px 24px; border-bottom: 1px solid var(--line); color: var(--ink-2); font: 11px/1.6 var(--mono); }
-.basics-return blockquote { margin: 24px; padding: 0; border: 0; color: var(--ink-0); font: 400 30px/1.2 var(--serif); }
-.basics-return ol { list-style: none; padding: 0 24px; margin: 0; }
-.basics-return li { position: relative; display: grid; grid-template-columns: 40px 1fr; gap: 18px; align-items: center; padding: 18px 0; }
-.basics-return li + li { border-top: 1px solid var(--line); }
-.basics-return svg { width: 40px; height: 40px; fill: none; stroke: var(--basics-accent); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.basics-return strong { display: block; color: var(--ink-0); font: 500 25px/1.2 var(--serif); }
-.basics-return li span { display: block; margin-top: 6px; color: var(--ink-1); font: 13px/1.6 var(--sans); }
-.basics-return > p { padding: 18px 24px; margin: 8px 0 0; border-top: 1px solid var(--line-2); color: var(--ink-2); font: 12px/1.6 var(--sans); }
-.basics-terms { margin: 30px 0 0; border-top: 1px solid var(--line-2); }
-.basics-terms > div { display: grid; grid-template-columns: 190px 1fr; gap: 36px; padding: 24px 0; border-bottom: 1px solid var(--line-2); }
-.basics-terms dt { color: var(--ink-0); font: 500 34px/1.2 var(--serif); }
-.basics-terms dt span { display: block; margin-bottom: 8px; font: 10px/1.5 var(--mono); letter-spacing: .08em; color: var(--basics-accent); }
-.basics-terms dd { margin: 0; max-width: 76ch; color: var(--ink-1); font: 16px/1.7 var(--sans); }
-.basics-terms small { display: block; margin-top: 10px; color: var(--ink-2); font: 13px/1.6 var(--sans); }
 .basics-two-worlds { margin: 0; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 10px; overflow: clip; }
 .basics-two-worlds figcaption { border-bottom: 1px solid var(--line); padding: 14px 24px; color: var(--ink-2); font: 11px/1.6 var(--mono); }
 .basics-world { display: grid; grid-template-columns: 48px 1fr; gap: 8px 22px; padding: 24px; align-items: center; }
@@ -42,14 +26,8 @@
 .basics-transfer small { font: 10px/1.6 var(--mono); color: var(--ink-2); }
 .basics-world[data-actor="process"] { border-left: 3px solid var(--basics-accent); }
 .basics-world[data-actor="process"] svg { stroke: var(--basics-accent); }
-.basics-role-map { display: grid; grid-template-columns: 1fr .65fr 1fr; margin: 32px 0; }
-.basics-role-map figcaption { grid-column: 1 / -1; }
-.basics-role-map .basics-transfer { display: flex; flex-direction: column; justify-content: center; gap: 10px; border-block: 0; border-inline: 1px solid var(--line-2); text-align: center; }
-.basics-role-map .basics-world { grid-template-columns: 1fr; gap: 12px; }
-.basics-role-map .basics-world .basics-label,
-.basics-role-map .basics-world p { grid-column: auto; }
-.basics-role-map .basics-world svg { grid-row: auto; }
 .basics-value { margin-top: 28px; }
+.basics-skill-examples code { color: var(--ink-1); font-size: 13px; }
 .basics-intro { max-width: 78ch; color: var(--ink-1); font: 17px/1.7 var(--sans); margin-bottom: 30px; }
 .basics-package { display: grid; grid-template-columns: 1fr 1fr; margin: 32px 0; border: 1px solid var(--line-2); background: var(--bg-1); }
 .basics-package-files { padding: 30px; border-right: 1px solid var(--line-2); }
@@ -130,14 +108,4 @@
   .basics-package-files, .basics-package-execution { padding: 24px 18px; }
   .basics-package figcaption { padding: 18px; }
   .basics-request { padding: 20px 18px; }
-  .basics-return figcaption, .basics-return > p { padding-inline: 18px; }
-  .basics-return blockquote { margin-inline: 18px; font-size: 28px; }
-  .basics-return ol { padding-inline: 18px; }
-  .basics-return strong { font-size: 24px; }
-  .basics-terms > div { grid-template-columns: 84px minmax(0, 1fr); gap: 20px; }
-  .basics-terms dt { font-size: 27px; }
-  .basics-terms dd { font-size: 15px; }
-  .basics-role-map { grid-template-columns: 1fr; }
-  .basics-role-map .basics-transfer { border-inline: 0; border-block: 1px solid var(--line-2); }
-  .basics-role-map .basics-transfer > span { transform: rotate(90deg); }
 }

@@ -3,25 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Basics — understand AI agents, tools and skills.</title>
-<meta name="description" content="Start with a familiar return request. Learn what an AI agent, model, tool and skill do, how Threadlight helps build the application, and what still needs human control.">
+<title>Basics — skill-based agents, from building to business.</title>
+<meta name="description" content="Understand how an agent uses reusable skills, and how Threadlight separates engineering skills for coding agents from business skills in the generated application.">
 <meta name="theme-color" content="#0a0d14">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Basics — understand AI agents, tools and skills.">
-<meta property="og:description" content="Start with a familiar return request. Learn what an AI agent, model, tool and skill do, how Threadlight helps build the application, and what still needs human control.">
+<meta property="og:title" content="Basics — skill-based agents, from building to business.">
+<meta property="og:description" content="Understand how an agent uses reusable skills, and how Threadlight separates engineering skills for coding agents from business skills in the generated application.">
 <meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/basics.html">
 <meta property="og:site_name" content="Threadlight">
 <meta property="og:image" content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Basics — understand AI agents, tools and skills.">
-<meta name="twitter:description" content="Start with a familiar return request. Learn what an AI agent, model, tool and skill do, how Threadlight helps build the application, and what still needs human control.">
+<meta name="twitter:title" content="Basics — skill-based agents, from building to business.">
+<meta name="twitter:description" content="Understand how an agent uses reusable skills, and how Threadlight separates engineering skills for coding agents from business skills in the generated application.">
 <meta name="twitter:image" content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 <link rel="canonical" href="https://aiappsgbb.github.io/threadlight-skills/basics.html">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%23a8ff60' stroke-width='3'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
 <link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
-<link rel="stylesheet" href="assets/basics-visuals.css?v=2f889b54">
+<link rel="stylesheet" href="assets/basics-visuals.css?v=913baaff">
 </head>
 <body class="chapter-page chapter-basics chapter-experience">
 <a class="basics-skip" href="#chapter-top">Skip to content</a>
@@ -38,10 +38,10 @@
 </header>
 <aside class="floating-toc is-ready" aria-label="Basics chapter">
   <nav class="cx-chapter-links" aria-label="Basics overview">
-    <a href="#chapter-top">An agent</a><a href="#skills">Skills</a><a href="#two-agents">Threadlight</a><a href="#where-skills-run">Where to start</a>
+    <a href="#chapter-top">The pattern</a><a href="#skills">Skills</a><a href="#two-agents">Two uses</a><a href="#where-skills-run">Beyond coding</a>
   </nav>
   <details class="cx-chapter-index"><summary>All sections</summary><ol>
-    <li><a href="#chapter-top">An everyday example</a></li><li><a href="#building-blocks">Model, agent, tool, skill</a></li><li><a href="#skills">Reusable know-how</a></li><li><a href="#two-agents">What Threadlight builds</a></li><li><a href="#where-skills-run">Where you can use skills</a></li><li><a href="#next-step">Choose your next step</a></li>
+    <li><a href="#chapter-top">The skill-based pattern</a></li><li><a href="#skills">How an agent uses skills</a></li><li><a href="#two-agents">Engineering versus business skills</a></li><li><a href="#where-skills-run">Where you can use skills</a></li><li><a href="#next-step">Choose your next step</a></li>
   </ol></details>
 </aside>
 <main>
@@ -49,64 +49,54 @@
     <div class="wrap wrap-wide">
       <p class="breadcrumb"><a href="./index.html">Home</a> / <span aria-current="page">Basics</span></p>
       <div class="basics-opening">
-        <div><p class="eyebrow"><span class="dot"></span>Start here / no technical background needed</p>
-          <h1>First, what is<br><em>an AI agent?</em></h1>
-          <p class="lede" data-chapter-intro>An AI agent is an application that can use AI and connected tools to work through a task. Start with a familiar example: a customer wants to return an order.</p>
-          <a class="basics-text-link" href="#building-blocks">See what makes those steps possible <span aria-hidden="true">↓</span></a>
+        <div><p class="eyebrow"><span class="dot"></span>Skill-based agents / the Threadlight pattern</p>
+          <h1>Agents use skills.<br><em>To build. To operate.</em></h1>
+          <p class="lede" data-chapter-intro>Skills give an agent reusable procedures. Threadlight's engineering skills help a coding agent create the project. The resulting process agent uses a separate set of business skills to carry out the work.</p>
+          <a class="basics-text-link" href="#skills">See how an agent uses skills <span aria-hidden="true">↓</span></a>
         </div>
-        <figure class="basics-return" data-visual-anchor aria-labelledby="return-caption">
-          <figcaption id="return-caption">Illustration / handling a return, not a live run</figcaption>
-          <blockquote>“I'd like to return my order.”</blockquote>
-          <ol>
-            <li><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h24v32H8zM14 12h12M14 20h12M14 28h7"/></svg><div><strong>Read the order</strong><span>Look up the items and purchase date.</span></div></li>
-            <li><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 5h24v30H8zM13 14l3 3 6-7M13 26h14"/></svg><div><strong>Check the procedure</strong><span>Use the return policy and identify exceptions.</span></div></li>
-            <li><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="11" r="7"/><path d="M6 36v-6c0-8 28-8 28 0v6M30 10h7M34 6v8"/></svg><div><strong>Prepare a decision</strong><span>Draft an outcome, or route the case to a person.</span></div></li>
-          </ol>
-          <p>Drafting a decision is not issuing a refund. Changes to business data need their own authorized controls.</p>
+        <figure class="basics-two-worlds" data-visual-anchor aria-labelledby="two-worlds-caption">
+          <figcaption id="two-worlds-caption">One pattern. Two different skill libraries.</figcaption>
+          <div class="basics-world" data-actor="builder"><span class="basics-label">ENGINEERING SKILLS</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m14 10-10 10 10 10M26 10l10 10-10 10M23 6l-6 28"/></svg><strong>Coding agent</strong><p>For example, GitHub Copilot.<br>Uses Threadlight to design, build and assess.</p></div>
+          <div class="basics-transfer"><span aria-hidden="true">↓</span><strong>Produces a reviewed project</strong><small>Not the same skill library</small></div>
+          <div class="basics-world" data-actor="process"><span class="basics-label">BUSINESS SKILLS</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 8h20v24H10zM15 14h10M15 20h10M15 26h6M4 16h6M30 24h6"/></svg><strong>Process agent</strong><p>For example, your returns assistant.<br>Uses business procedures and registered tools.</p></div>
         </figure>
       </div>
     </div>
   </section>
 
-  <section class="chapter-section" id="building-blocks" data-toc-id="building-blocks" data-toc-label="Four building blocks">
-    <div class="wrap wrap-wide">
-      <p class="eyebrow"><span class="dot"></span>01 / Four words you will see</p>
-      <h2>Different pieces.<br><em>Different responsibilities.</em></h2>
-      <dl class="basics-terms">
-        <div data-basic-term="model"><dt><span>INTERPRETS</span>Model</dt><dd>The AI component that interprets the request and proposes text or actions. It can be wrong.<small>In our example: understand what the customer is asking.</small></dd></div>
-        <div data-basic-term="agent"><dt><span>COORDINATES</span>Agent</dt><dd>The application that uses the model, instructions and tools to take steps, examine results and continue or ask for help.<small>In our example: move the return request toward a decision.</small></dd></div>
-        <div data-basic-term="tool"><dt><span>ACCESSES</span>Tool</dt><dd>Callable code that reads a system or performs a permitted operation. Mentioning a tool does not connect it or grant access.<small>In our example: retrieve the order from the order system.</small></dd></div>
-        <div data-basic-term="skill"><dt><span>GUIDES</span>Skill</dt><dd>Reusable instructions for a task: when to use a procedure, what to check and when to escalate.<small>In our example: follow the returns procedure and request the right checks.</small></dd></div>
-      </dl>
-    </div>
-  </section>
-
   <section class="chapter-section" id="skills" data-toc-id="skills" data-toc-label="A skill">
     <div class="wrap wrap-wide">
-      <p class="eyebrow"><span class="dot"></span>02 / Reuse the procedure, not just the wording</p>
-      <h2>A skill is reusable<br><em>know-how for the agent.</em></h2>
+      <p class="eyebrow"><span class="dot"></span>01 / The skill-based agent</p>
+      <h2>A library of procedures.<br><em>An agent to coordinate them.</em></h2>
+      <p class="basics-intro">A skill-based agent combines a model and tools with a library of focused procedures. Its instructions coordinate which skills to use; executable tools perform the actual system operations.</p>
       <p class="basics-intro">A prompt gives one request: “Check this return.” A skill supplies the procedure to reuse across requests. It is not another agent, and it does not replace the tools that access your systems.</p>
       <figure class="basics-package" aria-labelledby="package-caption">
         <div class="basics-package-files"><span class="basics-label">EXAMPLE / RETURNS SKILL</span><h3>A procedure worth repeating.</h3><ul class="basics-procedure"><li>Ask for missing order details.</li><li>Request the relevant policy checks.</li><li>Explain the rule behind the recommendation.</li><li>Escalate exceptions instead of guessing.</li></ul></div>
-        <div class="basics-package-execution"><span class="basics-label">THE APPLICATION STILL HAS TO</span><ol><li><b>Read</b><span>Load the relevant instructions.</span></li><li><b>Act</b><span>Call connected tools within permission.</span></li><li><b>Inspect</b><span>Check results before continuing.</span></li></ol></div>
+        <div class="basics-package-execution"><span class="basics-label">THE AGENT COORDINATES</span><ol><li><b>Choose</b><span>Identify the relevant skill for this request.</span></li><li><b>Read</b><span>Load its procedure and supporting context.</span></li><li><b>Act</b><span>Call connected tools within permission.</span></li><li><b>Inspect</b><span>Check results before continuing or escalating.</span></li></ol></div>
         <figcaption id="package-caption">A skill makes know-how reusable and reviewable. It does not make every answer correct or grant permission to change data.</figcaption>
       </figure>
       <details class="basics-reference" id="skill-files"><summary>What is actually inside a skill package?</summary><p><code>SKILL.md</code> is a Markdown file: a plain-text document describing when and how to use the skill. Optional <code>scripts/</code>, <code>references/</code> and <code>assets/</code> can supply code, reference material and templates. The application needs suitable tools to use them.</p></details>
+      <details class="basics-reference" id="building-blocks"><summary>Quick terminology: agent, model, tool and skill</summary>
+        <dl>
+          <dt data-basic-term="agent">Agent</dt><dd>The application that uses a model, instructions and tools to work toward a goal.</dd>
+          <dt data-basic-term="model">Model</dt><dd>The AI component that interprets context and proposes text or actions; it can be wrong.</dd>
+          <dt data-basic-term="tool">Tool</dt><dd>Callable code that reads a system or performs a permitted operation.</dd>
+          <dt data-basic-term="skill">Skill</dt><dd>A reusable procedure with a purpose, inputs, outputs and rules for when to use it.</dd>
+        </dl>
+      </details>
       <div class="basics-example"><span class="basics-label">A THREADLIGHT EXAMPLE / QUALIFY</span><strong>Estimate the work before building.</strong><p>Describe expected usage. Qualify produces sizing and cost estimates from those inputs, rather than inspecting your environment or deploying anything.</p><a href="./downloads/threadlight-qualify.zip">Get the Qualify bundle <span aria-hidden="true">↗</span></a></div>
     </div>
   </section>
 
   <section class="chapter-section" id="two-agents" data-toc-id="two-agents" data-toc-label="Two agents">
     <div class="wrap wrap-wide">
-      <p class="eyebrow"><span class="dot"></span>03 / What Threadlight adds</p>
+      <p class="eyebrow"><span class="dot"></span>02 / Two skill sets, different responsibilities</p>
       <h2>One assistant builds it.<br><em>Another runs your process.</em></h2>
       <p class="basics-intro">A coding assistant such as GitHub Copilot uses Threadlight's engineering skills to turn your brief into a project. The resulting process agent gets its own business skills and connected tools, not a copy of the engineering playbooks.</p>
-      <figure class="basics-two-worlds basics-role-map" aria-labelledby="two-worlds-caption">
-        <figcaption id="two-worlds-caption">Same skill idea. Different jobs.</figcaption>
-        <div class="basics-world" data-actor="builder"><span class="basics-label">BUILDS THE APPLICATION</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m14 10-10 10 10 10M26 10l10 10-10 10M23 6l-6 28"/></svg><strong>Construction agent</strong><p>For example, GitHub Copilot.<br>Uses Threadlight to design, build and check.</p></div>
-        <div class="basics-transfer"><span aria-hidden="true">→</span><strong>Reviewed plan + project</strong><small>Not the same skill library</small></div>
-        <div class="basics-world" data-actor="process"><span class="basics-label">HANDLES BUSINESS CASES</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 8h20v24H10zM15 14h10M15 20h10M15 26h6M4 16h6M30 24h6"/></svg><strong>Process agent</strong><p>For example, your returns assistant.<br>Uses business skills and registered tools.</p></div>
-      </figure>
+      <div class="basics-hosts basics-skill-examples">
+        <section><span class="basics-label">IN THE THREADLIGHT CATALOG</span><h3>Engineering skills</h3><p><code>threadlight-design</code> guides specification and agent design. <code>threadlight-deploy</code> guides packaging and approved deployment.</p><p>Their job is to create and assess the application, not to handle a customer's return.</p></section>
+        <section><span class="basics-label">IN THE GENERATED PROJECT</span><h3>Business skills</h3><p>In the returns example, <code>policy-eligibility</code> guides the policy assessment and <code>disposition-decision</code> guides the final recommendation or action.</p><p>These procedures come from the reviewed business process. Their tools and controls still need implementation.</p></section>
+      </div>
       <p class="basics-intro basics-value">The value is a connected path from an agreed specification to runnable code and evidence you can inspect, rather than just a generated answer. A specification is the written agreement about what the process must do and what stays human.</p>
       <aside class="basics-planner" aria-labelledby="planner-h"><span class="basics-label">WHERE AUTO FITS</span><h3 id="planner-h">Who coordinates the building steps?</h3><p>This orchestration—the coordination of what happens next—is supported by <code>threadlight-auto</code>. It is a planner: it inspects existing project files and chooses run, skip or stop. The coding assistant or an assigned worker performs the work. It is not the returns assistant, and it does not silently approve deployment or paid operations.</p><a href="./funnel.html">Follow the building steps →</a></aside>
       <figure class="basics-request" aria-labelledby="request-caption"><figcaption id="request-caption">Knowing a rule is not the same as enforcing it</figcaption><ol><li><b>The skill says</b><span>“Ask for approval before recording this decision.”</span></li><li><b>The controls check</b><span>Is valid approval present for this action?</span></li><li><b>The system acts</b><span>Proceed only when the required checks hold.</span></li></ol><p>This illustrates a required control, not a proven deployment. Enforcement must be implemented and evidenced on the relevant action paths; one checked action does not certify the whole agent. <a href="./governance.html">Explore governance when you are ready →</a></p></figure>
@@ -125,7 +115,7 @@
 
   <section class="chapter-section" id="where-skills-run" data-toc-id="where-skills-run" data-toc-label="Where skills run">
     <div class="wrap wrap-wide">
-      <p class="eyebrow"><span class="dot"></span>04 / Do I need to be a developer?</p>
+      <p class="eyebrow"><span class="dot"></span>03 / Skills beyond coding sessions</p>
       <h2>Not to shape the idea.<br><em>Engineering comes when you build.</em></h2>
       <p class="basics-intro">You can describe the process, estimate usage and review the plan without writing code. A host is the app or service that runs an agent and supplies its tools. What you can do depends on that host's capabilities and your access.</p>
       <div class="basics-hosts">
@@ -147,7 +137,7 @@
 </main>
 <footer><div class="left">Threadlight · open guidance, opinionated tools</div><div class="right"><a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></div></footer>
 <script src="assets/site.js?v=e4d413b7"></script>
-<script src="assets/site-map.js?v=128b1f61"></script>
+<script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
 </body>
 </html>

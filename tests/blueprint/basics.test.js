@@ -6,18 +6,19 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '../..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('Basics teaches an everyday task and the four concepts before the two-agent architecture', () => {
+test('Basics leads with skill-based agents and two libraries rather than a general AI introduction', () => {
   const html = read('docs/basics.html');
-  const concepts = html.indexOf('id="building-blocks"');
-  assert.ok(concepts >= 0 && concepts < html.indexOf('id="two-agents"'));
+  assert.match(html, /<details[^>]*id="building-blocks"/);
   for (const term of ['model', 'agent', 'tool', 'skill']) {
     assert.ok(html.includes(`data-basic-term="${term}"`), `define ${term}`);
   }
   const opening = html.match(/<section\b[^>]*\sid="chapter-top"[^>]*>([\s\S]*?)<\/section>/)?.[1];
   assert.ok(opening, 'the introductory section must exist');
-  assert.match(opening, /return an order/i);
-  assert.doesNotMatch(opening, /construction agent|runtime route|registered tools|SDK/);
-  assert.match(html, /data-visual-anchor[\s\S]*?Read the order/);
+  assert.match(opening, /engineering skills/i);
+  assert.match(opening, /business skills/i);
+  assert.match(opening, /data-actor="builder"/);
+  assert.match(opening, /data-actor="process"/);
+  assert.match(html, /skill-based agent[\s\S]*?library of focused procedures/i);
   assert.match(html, /prompt.*one request/i);
   assert.match(html, /orchestration.*coordinat/i);
   assert.doesNotMatch(html, /The concepts are clear/);

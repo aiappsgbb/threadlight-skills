@@ -3,10 +3,12 @@ import AxeBuilder from '@axe-core/playwright';
 
 test('Basics distinguishes construction, runtime and host capability', async ({ page }) => {
   await page.goto('/basics.html');
-  await expect(page.locator('h1')).toContainText('an AI agent');
-  await expect(page.locator('[data-actor="builder"]')).toContainText('Construction agent');
+  await expect(page.locator('h1')).toContainText('Agents use skills');
+  await expect(page.locator('[data-actor="builder"]')).toContainText('Coding agent');
   await expect(page.locator('[data-actor="process"]')).toContainText('Process agent');
-  await expect(page.locator('[data-visual-anchor]')).toContainText('Read the order');
+  await expect(page.locator('[data-visual-anchor]')).toContainText(/engineering skills/i);
+  await expect(page.locator('[data-visual-anchor]')).toContainText(/business skills/i);
+  await expect(page.locator('#building-blocks')).not.toHaveAttribute('open', '');
   await expect(page.locator('[data-basic-term]')).toHaveCount(4);
   await expect(page.locator('[data-host]')).toHaveCount(3);
   await expect(page.locator('#where-skills-run')).toContainText('not a deployment');
