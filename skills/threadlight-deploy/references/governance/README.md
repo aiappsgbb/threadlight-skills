@@ -17,7 +17,8 @@ deployment after publishing its binding.
 
 This is implemented local code, **not live acceptance**. `package.json` can include `remote_bootstrap` with `reference`,
 `project_endpoint`, `subscription`, `resource_group`, `native_policy_digest`;
-GHCP additionally requires `final_policy_version`, distinct from the original
+Gateway execution (GHCP or gateway-only MAF) additionally requires
+`final_policy_version`, distinct from the original
 bootstrap policy version. All values are frozen before the agent image is built.
 The real generated MAF/GHCP entrypoints gate requests before application startup.
 Their portable control-plane dependency exports the bootstrap modules.
@@ -249,13 +250,29 @@ production or used to bypass the existing restricted/private requirements.
    | `network` | Same topology used by foundation |
    | GHCP: `mcp_servers`, `mcp_bindings`, `gateway_url` | Original server dictionary; mapping `tool-id → {"server": original-name, "tool": tool-id}`; foundation URL |
 
-   MAF additionally requires `src/agent/governance_application.py` exporting
+   Local-hooks MAF requires `src/agent/governance_application.py` exporting
    `tools`, `middleware` and a callable `safe_evidence(identity)`. Implement it
    using host-authenticated facts; an empty dictionary is rejected, not promoted
    to SAFE evidence. The generator does not invent domain tools or credentials.
    Existing skill directories retain progressive `SkillsProvider` loading.
-   Local hooks cannot claim mediation of provider-hosted execution. Unsupported
-   MAF gateway combinations are rejected rather than silently replaced by GHCP.
+   Local hooks cannot claim mediation of provider-hosted execution.
+
+   **Gateway-only MAF** keeps the native MAF Responses host and selects
+   `maf-gateway-container.py` with its `maf_gateway.py` client. Every selected
+   tool must use `governed-tool-gateway`; mixed local-hooks selection and lifecycle
+   bindings are explicitly unsupported. The application exports only declared
+   unbound read FunctionTools and an empty `middleware` list; selected tools are
+   discovered through the authenticated gateway, not supplied by the application.
+   Nonempty application middleware is unsupported in this host.
+   Unbound consequential or unknown tools are rejected even with an acceptance
+   record; that exception is not executable in the gateway-only MAF host.
+   GHCP-only `mcp_servers`/`mcp_bindings` and local `safe_evidence` are not required.
+   Policy and the image-bound registry stay in the separate gateway context.
+   The agent vendors the control plane, not the gateway service package.
+   Without remote bootstrap, startup verifies the current signed control-plane
+   policy under the configured identity/key; no new credential format is used.
+   This generation path is local implementation, not live acceptance or
+   automatic compatibility with every existing collector/static consumer.
 
    The generator creates complete agent and **two independent** ACA Docker
    contexts. Each vendors its own required sibling packages. It merges
@@ -290,13 +307,13 @@ production or used to bypass the existing restricted/private requirements.
 
    This JSON contains `agent_image` (complete digest-pinned reference) and
    `spool_directory` (absolute, host-owned local retry directory; **not** a
-   persistence claim). MAF generation selects `audit_delivery: "remote-ack"`.
+   persistence claim). Local-hooks MAF selects `audit_delivery: "remote-ack"`.
    Register that exact
    definition, observe its version and instance identity, and then assign its
    service app roles. Until services/roles are ready, the real agent is unhealthy;
    no placeholder revision is used.
 
-   GHCP has an additional ordered step: build the **agent image first**, produce
+   Gateway execution has an additional ordered step: build the **agent image first**, produce
    the final Task9 registry binding that agent's real image/version/identity,
    publish/sign that bundle, then run:
 
@@ -315,14 +332,14 @@ production or used to bypass the existing restricted/private requirements.
    roles remain its own subset of the configured roles, never a global union.
    Output requirements require a post-policy binding. Audit, receipt, idempotency,
    signed-bundle and authorization aliases retain Task9's mandatory controls.
-   `operator-review`, non-tool lifecycle semantics, and evaluate-only GHCP
-   environments are unsupported, not silently certified. GHCP currently binds
-   only `preproduction`/`production`; MAF retains the four-environment matrix.
-   MAF does not provide the gateway's durable transaction/idempotency guarantee
+   `operator-review`, non-tool lifecycle semantics, and evaluate-only gateway
+   environments are unsupported, not silently certified. Gateway execution binds
+   only `preproduction`/`production`; local-hooks MAF retains the four-environment matrix.
+   Local-hooks MAF does not provide the gateway's durable transaction/idempotency guarantee
    and rejects those requirements. Requirement spelling is normalized in the
    portable contract without dropping requirements or changing caller input.
-   **Do not bake the final agent image digest into that same image.** GHCP's
-   registry/policy digest is deployment-supplied; MAF's local bundle must not
+   **Do not bake the final agent image digest into that same image.** A gateway's
+   registry/policy digest is deployment-supplied; local-hooks MAF's bundle must not
    contain `gateway-registry.json`. Runtime image/version values are trusted
    deployment inputs outside the source image.
 
@@ -335,12 +352,12 @@ production or used to bypass the existing restricted/private requirements.
    stage/bind. After binding, `bindings.policy_digest` must also equal the final
    envelope digest and `bindings.gateway_config.policy_digest`, with exact
    agent/version, workload identities, service scopes, endpoints and approval-role
-   associations. GHCP must not carry a native-runtime policy association.
+   associations. Gateway execution must not carry a native-runtime policy association.
 
-   The frozen GHCP package retains its bootstrap digest; its agent configuration
+   The frozen gateway package retains its bootstrap digest; its agent configuration
    omits that digest rather than embedding the final gateway digest and creating
    an image hash cycle. The gateway's final service configuration supplies the
-   final digest. MAF instead always verifies its embedded bundle against the
+   final digest. Local-hooks MAF instead verifies its embedded bundle against the
    immutable package digest and envelope.
 
    These static sources are declarations, **not signing authorities**. Static
@@ -379,7 +396,7 @@ production or used to bypass the existing restricted/private requirements.
      configured VNet ID. Missing links prevent binding.
    - `spool_directory` is fixed in the agent-image step. It is local retry safety
      storage, not an operator assertion of a persistent hosted-agent mount.
-   - GHCP also requires `gateway_bundle` and `gateway_source_digest` from step 4.
+   - Gateway execution also requires `gateway_bundle` and `gateway_source_digest` from step 4.
 
    The binder loads the real Task8 `AzureConfiguration` and Task9 `Configuration`
    models before emitting serialized service configuration. Bicep passes these

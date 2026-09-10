@@ -258,13 +258,32 @@ def validate_network(network, *, environment=None):
     return deepcopy(network)
 
 
+def uses_gateway(document):
+    """Select the execution path without substituting the model framework."""
+    return document["framework"] == "github-copilot-sdk" or any(
+        tool["policy_binding"] not in (None, "none")
+        and tool["enforcement_path"] == "governed-tool-gateway"
+        for tool in document["tools"])
+
+
 def validate_contract(document):
     # The generator runs in the catalog; generated consumers get this same package.
     if str(CATALOG) not in sys.path:
         sys.path.insert(0, str(CATALOG))
     from skills._shared.governance import validate_governance_contract
-    return validate_governance_contract(
+    normalized = validate_governance_contract(
         document, deployment_target="customer-pilot", runtime=document["framework"])
+    if (normalized["governance"]["mode"] != "off"
+            and normalized["framework"] == "microsoft-agent-framework" and uses_gateway(normalized)):
+        if any(tool["policy_binding"] is not None
+               and tool["enforcement_path"] != "governed-tool-gateway" for tool in normalized["tools"]):
+            raise ValueError("maf_gateway_mixed_enforcement_unsupported")
+        if normalized["governance"]["lifecycle_bindings"]:
+            raise ValueError("maf_gateway_lifecycle_unsupported")
+        if any(tool["policy_binding"] is None and tool["consequence"] != "read"
+               for tool in normalized["tools"]):
+            raise ValueError("maf_gateway_unbound_consequential_unsupported")
+    return normalized
 
 
 def validate_environment(config):
@@ -299,7 +318,7 @@ def portable_configuration(config, contract, framework):
         reference = parse(BootstrapReference, canonical(config["remote_bootstrap"]))
         if reference.native_policy_digest != config["policy_digest"]:
             raise ValueError("frozen_bootstrap_policy_mismatch")
-        if framework == "github-copilot-sdk" and (
+        if uses_gateway(normalized) and (
                 reference.final_policy_version is None or reference.final_policy_version == config["policy_version"]):
             raise ValueError("distinct_final_gateway_policy_version_required")
     for source, target in zip(normalized["tools"], portable["contract"]["tools"], strict=True):
@@ -307,7 +326,7 @@ def portable_configuration(config, contract, framework):
     for source, target in zip(normalized["governance"]["lifecycle_bindings"],
                               portable["contract"]["governance"]["lifecycle_bindings"], strict=True):
         target["requires"] = source["requires"]
-    if framework == "microsoft-agent-framework":
+    if not uses_gateway(normalized):
         portable["audit_delivery"] = "remote-ack"
     else:
         portable.pop("policy_digest", None)
@@ -350,9 +369,10 @@ def validate_bundle_contract(bundle, document, config, registry=None):
     declared = declarations(bundle.manifest_path)
     selected = [tool for tool in document["tools"] if tool["policy_binding"] is not None]
     lifecycle = document["governance"]["lifecycle_bindings"]
-    ghcp = document["framework"] == "github-copilot-sdk"
-    if ghcp and (lifecycle or document["governance"]["environment_modes"][environment] != "enforce"):
-        raise ValueError("ghcp_contract_environment_or_lifecycle_unsupported")
+    gateway = uses_gateway(document)
+    gateway_label = "ghcp" if document["framework"] == "github-copilot-sdk" else "maf_gateway"
+    if gateway and (lifecycle or document["governance"]["environment_modes"][environment] != "enforce"):
+        raise ValueError(f"{gateway_label}_contract_environment_or_lifecycle_unsupported")
     targets = {
         "pre_tool_call": "$.tool_call.args", "post_tool_call": "$.tool_result",
         "input": "$.input", "output": "$.output", "pre_model_call": "$.messages",
@@ -363,11 +383,11 @@ def validate_bundle_contract(bundle, document, config, registry=None):
         requirements = set(binding["requires"])
         if "operator-review" in requirements:
             raise ValueError("operator_review_contract_unsupported")
-        if not ghcp and requirements & {"idempotency", "idempotency-or-transaction"}:
+        if not gateway and requirements & {"idempotency", "idempotency-or-transaction"}:
             raise ValueError("maf_transaction_contract_unsupported")
-        if ghcp and (not set(points) <= {"pre_tool_call", "post_tool_call"}
+        if gateway and (not set(points) <= {"pre_tool_call", "post_tool_call"}
                      or "pre_tool_call" not in points):
-            raise ValueError("ghcp_intervention_contract_unsupported")
+            raise ValueError(f"{gateway_label}_intervention_contract_unsupported")
         if requirements & {"approval", "human-approval-record"} and not roles:
             raise ValueError("contract_approval_roles_required")
         if requirements & {"output", "output-mediation"} and not set(points) & {
@@ -499,6 +519,7 @@ def generate(project, document, *, configuration=None):
         return {"status": "off"}
     if configuration is None:
         raise ValueError("configuration_required")
+    gateway = uses_gateway(document)
     import yaml
     from govern_control_plane.models import SignedBundle, parse
     from govern_control_plane.client import ServiceTransport
@@ -531,7 +552,7 @@ def generate(project, document, *, configuration=None):
     signed = parse(SignedBundle, signed_raw)
     validate_policy(bundle, signed, config)
     registry = None
-    if document["framework"] == "github-copilot-sdk" and (bundle.root / "gateway-registry.json").exists():
+    if gateway and (bundle.root / "gateway-registry.json").exists():
         from govern_gateway.dispatcher import Registry
         registry = parse(Registry, (bundle.root / "gateway-registry.json").read_bytes())
     validate_bundle_contract(bundle, source_contract, config, registry)
@@ -547,9 +568,7 @@ def generate(project, document, *, configuration=None):
     if document["framework"] == "microsoft-agent-framework":
         if not (agent / "governance_application.py").is_file():
             raise ValueError("host_owned_governance_application_required")
-        if any(t["enforcement_path"] == "governed-tool-gateway" for t in document["tools"]):
-            raise ValueError("maf_gateway_adapter_not_selected_use_local_hooks_or_explicit_ghcp")
-        template = "maf-container.py"
+        template = "maf-gateway-container.py" if gateway else "maf-container.py"
     else:
         template = "ghcp-container.py"
         if document["governance"]["lifecycle_bindings"]:
@@ -571,7 +590,8 @@ def generate(project, document, *, configuration=None):
         copy_sources(target)
         configure_entrypoint(agent, target, template)
         if document["framework"] == "microsoft-agent-framework":
-            shutil.copyfile(REFERENCE / "audit_delivery.py", target / "audit_delivery.py")
+            helper = "maf_gateway.py" if gateway else "audit_delivery.py"
+            shutil.copyfile(REFERENCE / helper, target / helper)
         pyproject = (REFERENCE / "pyproject-maf.toml").read_text()
         if document["framework"] == "github-copilot-sdk":
             pyproject = pyproject.replace('  "agent-framework-core==1.14.0",', '  "github-copilot-sdk==1.0.1",')
@@ -580,7 +600,7 @@ def generate(project, document, *, configuration=None):
         if (agent / "pyproject.toml").exists():
             pyproject = merge_dependencies((agent / "pyproject.toml").read_text(), pyproject)
         (target / "pyproject.toml").write_text(pyproject)
-        if document["framework"] == "microsoft-agent-framework":
+        if not gateway:
             if (bundle.root / "gateway-registry.json").exists():
                 raise ValueError("local_agent_bundle_must_not_embed_its_own_image_digest")
             shutil.copytree(bundle.root, target / "policy")
@@ -588,10 +608,10 @@ def generate(project, document, *, configuration=None):
         portable = portable_configuration(config, source_contract, document["framework"])
         (target / "governance-config.json").write_text(json.dumps(portable, indent=2) + "\n")
         vendor_control_plane(target)
-        if probe_option and document["framework"] == "microsoft-agent-framework":
+        if probe_option and not gateway:
             vendor_gateway(target)
         write_dockerfile(target, agent=True,
-                         gateway=bool(probe_option and document["framework"] == "microsoft-agent-framework"))
+                         gateway=bool(probe_option and not gateway))
         for name in ("govern-control-plane", "govern-gateway"):
             service_target = staging / name
             service_target.mkdir()
@@ -885,7 +905,7 @@ def stage_gateway(project, document, *, configuration=None):
     config = configuration or {}
     project = Path(project)
     package = json.loads((project / ".threadlight/governance-package.json").read_text())
-    if package["contract"] != document or package["framework"] != "github-copilot-sdk":
+    if package["contract"] != document or not uses_gateway(document):
         raise ValueError("selected_gateway_contract_required")
     bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
     bundle = bundle_api.verify_bundle(Path(config["gateway_bundle"]), expected_digest=config["policy_digest"])
@@ -916,9 +936,14 @@ def bind(project, document, *, configuration=None):
     package = json.loads((project / ".threadlight/governance-package.json").read_text())
     if document != package["contract"]:
         raise ValueError("packaged_contract_changed")
+    gateway_path = uses_gateway(document)
     infrastructure = config["infrastructure"]
+    if gateway_path and infrastructure.get("enable_gateway") is not True:
+        raise ValueError("selected_gateway_service_required")
     validate_infrastructure(infrastructure)
     bindings = deepcopy(config["bindings"])
+    if gateway_path and "native_probe_config" in bindings:
+        raise ValueError("gateway_must_not_have_native_probe_binding")
     from govern_control_plane.auth import Settings
     from govern_control_plane.models import Digest, Identifier, ObjectId, canonical, parse
     for key in ("agent_principal", "agent_client_id", "gateway_principal", "gateway_client",
@@ -946,7 +971,7 @@ def bind(project, document, *, configuration=None):
             or infrastructure["network"] != packaged["network"]):
         raise ValueError("deployment_trust_changed")
     agent, frozen = frozen_configuration(project, package)
-    if package["framework"] == "github-copilot-sdk":
+    if gateway_path:
         frozen = gateway_policy_selection(frozen)
     if infrastructure["environment"] != frozen["environment"]:
         raise ValueError("frozen_deployment_environment_mismatch")
@@ -997,13 +1022,13 @@ def bind(project, document, *, configuration=None):
     if probe_option:
         controllers = bindings["probe_controllers"]
         control["probe_controllers"] = controllers
-        if package["framework"] == "github-copilot-sdk":
+        if gateway_path:
             gateway.update(probe_enabled=True, probe_container="probe-gateway", probe_controllers=controllers)
     bindings["control_config"] = parse(AzureConfiguration, canonical(control)).model_dump(mode="json")
     bindings["gateway_config"] = parse(Configuration, canonical(gateway)).model_dump(mode="json")
     from govern_control_plane.models import SignedBundle
     bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
-    if package["framework"] == "microsoft-agent-framework":
+    if not gateway_path:
         if probe_option and not all(config.get(key) for key in (
                 "probe_runtime_configuration", "probe_bundle", "probe_signed_envelope")):
             raise ValueError("native_probe_binding_required")
@@ -1038,7 +1063,7 @@ def bind(project, document, *, configuration=None):
         deployment["network_evidence"] = deepcopy(frozen["network_evidence"])
     if probe_option:
         deployment["probe_observability"] = (
-            probe_declaration if package["framework"] == "microsoft-agent-framework" else {
+            probe_declaration if not gateway_path else {
                 "status": "declared-unverified", "registry_digest": bundle.bundle_digest,
                 "policy_digest": bindings["policy_digest"], "fixture_installed": False})
     parameters = project / "infra/main.parameters.json"

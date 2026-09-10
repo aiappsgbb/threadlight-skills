@@ -198,7 +198,7 @@ resource fixtureProbeDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAss
     scope: '${cosmos.id}/dbs/governance/colls/probe-fixture'
   }
 }
-resource nativeProbeDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled && phase == 'services' && config.runtime == 'microsoft-agent-framework') {
+resource nativeProbeDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled && phase == 'services' && config.runtime == 'microsoft-agent-framework' && contains(bindings, 'native_probe_config')) {
   parent: cosmos
   name: guid(cosmos.id, 'probe-native')
   properties: {
@@ -236,7 +236,7 @@ resource fixtureProbeMetadata 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssi
     scope: cosmos.id
   }
 }
-resource nativeProbeMetadata 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled && phase == 'services' && config.runtime == 'microsoft-agent-framework') {
+resource nativeProbeMetadata 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled && phase == 'services' && config.runtime == 'microsoft-agent-framework' && contains(bindings, 'native_probe_config')) {
   parent: cosmos
   name: guid(cosmos.id, 'probe-native', 'metadata-only')
   properties: {

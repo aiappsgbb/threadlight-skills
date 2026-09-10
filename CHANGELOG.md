@@ -21,6 +21,19 @@ field.
 
 ### Added
 
+- Executable MAF gateway-only action client and native Responses host. Selected
+  functions use official MCP transport with host-generated idempotency keys,
+  signed policy authority, terminal HTTP/1 authorization checks, and the existing
+  ACS/approval/audit gateway. Local unbound reads remain explicit; unsupported
+  tool, middleware and provider overrides fail closed.
+- Bounded `--mcp-prepared` native validation mode with published-wheel byte
+  verification and mandatory no-skip client/host cases. No complete pipeline
+  rerun or Azure deployment is required for this local inner loop.
+- Deploy skill 1.7.0 and plugin/marketplace candidate 2.3.0. This path is app-only;
+  no OBO, long-lived HITL resume, live business-write or release claim is made.
+- Safe-check 1.3.0 / portable collector 0.2.0 separates MAF Responses protocol
+  from gateway enforcement. Remote resume follows the selected path; native
+  probe database grants require an actual native-probe binding, not just MAF.
 - Presentation-only enterprise handoff in the readiness report: DevOps, runtime
   governance and operations, with baseline requirements and explicitly optional
   modules. Reuses emitted findings without new scores, manifests, gates or

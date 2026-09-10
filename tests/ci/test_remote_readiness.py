@@ -123,7 +123,8 @@ def test_native_deployment_uses_matching_bicep_cli_syntax(monkeypatch, tmp_path,
                       "--outfile", str(tmp_path / "deployment-bicep.json")]]
 
 
-def test_protected_input_loader_accepts_only_pinned_acknowledged_resume(tmp_path):
+@pytest.mark.parametrize("framework", ["github-copilot-sdk", "microsoft-agent-framework"])
+def test_protected_input_loader_accepts_only_pinned_acknowledged_resume(tmp_path, framework):
     from test_runtime_readiness import input_fixture, helper
     from test_hosted_bootstrap_lifecycle import inputs
     from govern_control_plane.models import canonical
@@ -131,7 +132,12 @@ def test_protected_input_loader_accepts_only_pinned_acknowledged_resume(tmp_path
     import importlib
     generator = importlib.import_module("skills.threadlight-deploy.references.governance.generate")
     path, config = input_fixture(tmp_path)
+    contract_path = tmp_path / "source/specs/governance-contract.json"
+    document = json.loads(contract_path.read_text())
+    document["framework"] = framework
+    contract_path.write_text(json.dumps(document))
     creation = inputs()
+    creation["protocol"] = "responses" if framework == "microsoft-agent-framework" else "invocations"
     target = config["expected_target"]
     creation.update(tenant_id=target["tenant"], subscription=target["subscription"], resource_group=target["resource_group"],
                     project_id=f"/subscriptions/{target['subscription']}/resourceGroups/{target['resource_group']}"
@@ -140,7 +146,7 @@ def test_protected_input_loader_accepts_only_pinned_acknowledged_resume(tmp_path
     config["package"].update(agent_id=creation["agent_name"], key_id=key, remote_bootstrap={
         "reference": creation["reference"], "project_endpoint": creation["project_endpoint"]})
     config["deployment"]["images"]["agent"] = creation["image"]
-    config["deployment"]["infrastructure"]["runtime"] = "github-copilot-sdk"
+    config["deployment"]["infrastructure"]["runtime"] = framework
     config["probe_input"]["selection"]["project_resource_id"] = creation["project_id"]
     publisher = {
         "tenant_id": target["tenant"], "key_id": key, "audience": "api://test",

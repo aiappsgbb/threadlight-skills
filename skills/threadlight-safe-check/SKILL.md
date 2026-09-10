@@ -7,7 +7,7 @@ description: >
   governance requiring deployed enforcement evidence. Not for deployment
   orchestration (threadlight-deploy) or general agent evaluations (foundry-evals).
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # Threadlight Safe Check — three lifecycle gates, one CLI
@@ -70,6 +70,14 @@ and re-readable later (CI, demo prep, postmortem):
 All three manifests have a top-level `"gaps": []`. **Empty array = pass.**
 
 ## Selected runtime governance
+
+The host protocol and enforcement producer are separate selections.
+MAF Responses can use the gateway producer for an explicitly generated
+gateway-only contract; it must not be treated as a local Agent Hooks producer.
+Static checks retain the actual MAF host/helper and staged signed gateway
+association. No native-probe assets or native database permissions are inferred
+from the framework name. This changes routing, not the proof boundary:
+`governance_probe_noop` never proves a business write, OBO or long-lived approval.
 
 When the SPEC selects governance, resource presence alone is insufficient.
 Explicit `off` and unselected legacy projects add no governance network calls.

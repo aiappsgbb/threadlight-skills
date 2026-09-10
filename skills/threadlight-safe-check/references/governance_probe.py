@@ -25,7 +25,6 @@ except ImportError:
     import governance_observation as observation
     import governance_static as static
 
-from skills._shared.governance import validate_governance_contract
 from skills._shared.probe_evidence import (
     ProbeEvidenceError, require, state, fresh, advance, evaluate_pair,
     require_target, require_selected_target,
@@ -102,8 +101,11 @@ def preflight(config):
             and not config.get("local_only"), "live-collector-configuration-required")
     require(isinstance(config.get("selection"), dict)
             and not set(config["selection"]) - observation.SELECTORS, "invalid-selection")
-    contract = validate_governance_contract(config["contract"], deployment_target="customer-pilot")
+    gen = static.generator()
+    contract = gen.validate_contract(config["contract"])
     require(contract["governance"]["mode"] != "off", "governance-off")
+    require(config.get("producer") == ("gateway" if gen.uses_gateway(contract) else "native"),
+            "runtime-producer-path-mismatch")
     bundle = verify_bundle(Path(config["policy"]["bundle_path"]), expected_digest=config["policy"]["policy_digest"])
     registry = parse(Registry, (bundle.root / "gateway-registry.json").read_bytes())
     actions = [a for a in registry.actions if a.probe_safe is True and a.name == "governance_probe_noop"]
@@ -224,7 +226,7 @@ async def verify_host_bootstrap(config, target, credential, http, signer):
     from govern_control_plane.models import canonical, parse
     signed = parse(SignedBootstrap, canonical(config["bootstrap"]))
     binding = await verify(signed, signer, tenant_id=config["tenant_id"], key_id=config["policy"]["key_id"])
-    selected_policy = config["native_policy"] if target["protocol"] == "responses" else config["policy"]
+    selected_policy = config["native_policy"] if config.get("producer") == "native" else config["policy"]
     require(binding.tenant_id == target["tenant"] and binding.principal == target["subject"]
             and binding.policy_digest == selected_policy["policy_digest"]
             and binding.environment == expected_target(config)["environment"]
@@ -289,7 +291,8 @@ async def collect(config, *, credential, signer, run=observation.run_command, ht
         require_target(target, expected, deployment)
         require(target["configuration_digests"] == declared_configuration["agent"],
                 "observed-host-configuration-mismatch")
-        require(target["protocol"] == ("responses" if config["producer"] == "native" else "invocations"),
+        require(target["protocol"] == {
+            "microsoft-agent-framework": "responses", "github-copilot-sdk": "invocations"}[contract["framework"]],
                 "runtime-invocation-path-mismatch")
         services = {name: await asyncio.to_thread(observation.observe_service, value,
             target["subscription"], target["resource_group"], run) for name, value in config["services"].items()}
@@ -465,8 +468,11 @@ def load_configuration(project, configuration):
     deployment = static.read(static.contained(project, ".threadlight/governance-deployment.json"))
     require(deployment["schema"] == "threadlight-governance-deployment/v1", "bound-deployment-required")
     binding, packaged = deployment["bindings"], package["configuration"]
-    agent, frozen = static.generator().frozen_configuration(project, package)
-    native = package["framework"] == "microsoft-agent-framework"
+    gen = static.generator()
+    contract = gen.validate_contract(package["contract"])
+    require(package["framework"] == contract["framework"], "packaged-contract-runtime-mismatch")
+    agent, frozen = gen.frozen_configuration(project, package)
+    native = not gen.uses_gateway(contract)
     producer = parse(ProbeConfiguration if native else Configuration,
                      canonical(binding["native_probe_config" if native else "gateway_config"]))
     control = parse(AzureConfiguration, canonical(binding["control_config"]))
