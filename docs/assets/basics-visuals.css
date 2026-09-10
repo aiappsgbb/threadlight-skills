@@ -27,6 +27,44 @@
 .basics-world[data-actor="process"] { border-left: 3px solid var(--basics-accent); }
 .basics-world[data-actor="process"] svg { stroke: var(--basics-accent); }
 .basics-value { margin-top: 28px; }
+.basics-skill-pair { container-type: inline-size; margin: 32px 0; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-1); }
+.basics-skill-pair > figcaption { padding: 16px 24px; border-bottom: 1px solid var(--line); color: var(--ink-2); font: 11px/1.6 var(--mono); }
+.basics-skill-pair-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.basics-skill-pair article { min-width: 0; padding: 28px; display: flex; flex-direction: column; }
+.basics-skill-pair article + article { border-left: 1px solid var(--line-2); }
+.basics-example-heading { display: flex; align-items: center; gap: 18px; }
+.basics-example-heading svg, .basics-skill-reuse svg { flex: none; width: 40px; height: 40px; fill: none; stroke: var(--basics-accent); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.basics-example-heading h3 { color: var(--ink-0); font: 500 30px/1.15 var(--serif); margin: 10px 0 0; }
+.basics-example-file { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 16px; margin: 24px 0 10px; border: 1px solid var(--line-2); background: var(--bg-0); font: 12px/1.6 var(--mono); }
+.basics-example-file > span { color: var(--ink-2); border-right: 1px solid var(--line-2); padding-right: 16px; }
+.basics-example-file code { color: var(--ink-0); }
+.basics-skill-pair dl { flex: 1; margin: 0 0 12px; }
+.basics-skill-pair dl > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.basics-skill-pair dt { color: var(--ink-2); font: 11px/1.7 var(--mono); text-transform: uppercase; letter-spacing: .07em; }
+.basics-skill-pair dd { color: var(--ink-1); font: 15px/1.65 var(--sans); margin: 0; }
+.basics-skill-pair dd small { display: block; margin-top: 6px; font: 13px/1.6 var(--sans); color: var(--ink-2); }
+.basics-skill-pair .basics-example-output { border-left: 2px solid var(--basics-accent); border-bottom: 0; padding-left: 16px; margin-top: 16px; }
+.basics-example-output strong { display: block; font: 500 25px/1.15 var(--serif); color: var(--ink-0); margin-bottom: 12px; }
+.basics-example-output code, .basics-example-output dd > span { color: var(--ink-1); font: 12px/1.6 var(--mono); }
+.basics-skill-pair article > a { display: inline-flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; font: 13px/1.6 var(--sans); }
+.basics-skill-pair article > a span { color: var(--basics-accent); }
+.basics-skill-reuse { display: flex; align-items: center; gap: 24px; padding: 22px 28px; border-top: 1px dashed var(--line-2); }
+.basics-skill-reuse p { margin: 0; color: var(--ink-2); font: 14px/1.7 var(--sans); }
+.basics-skill-reuse strong { display: block; color: var(--ink-0); font-weight: 500; margin-bottom: 6px; }
+.basics-skill-pair > .basics-purpose-note { color: var(--ink-2); font: 12px/1.7 var(--sans); padding: 16px 28px; margin: 0; border-top: 1px solid var(--line-2); }
+@container (max-width: 740px) {
+  .basics-skill-pair-grid { grid-template-columns: 1fr; }
+  .basics-skill-pair article { padding: 24px 18px; }
+  .basics-skill-pair article + article { border-left: 0; border-top: 1px solid var(--line-2); }
+  .basics-skill-pair dl > div { grid-template-columns: 66px minmax(0, 1fr); gap: 14px; }
+  .basics-example-heading { gap: 14px; }
+  .basics-example-heading h3 { font-size: 27px; }
+  .basics-example-heading .basics-label { font-size: 9px; letter-spacing: .04em; }
+  .basics-skill-pair .basics-example-output { padding-left: 12px; }
+  .basics-skill-reuse { align-items: start; padding: 20px 18px; gap: 16px; }
+  .basics-skill-reuse svg { width: 28px; height: 28px; }
+  .basics-skill-pair > .basics-purpose-note { padding: 16px 18px; }
+}
 .basics-pipeline-product { container-type: inline-size; margin: 32px 0; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-1); }
 .basics-pipeline-product > figcaption { padding: 16px 24px; border-bottom: 1px solid var(--line); color: var(--ink-2); font: 11px/1.6 var(--mono); }
 .basics-purpose-lane { padding: 28px; }

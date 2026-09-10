@@ -36,6 +36,20 @@ test('Basics introduces skills, two agents, host limits and a next step', () => 
   assert.doesNotMatch(html, /every host|automatically production.ready|guaranteed green|always skill.based|Agentic Loop/i);
 });
 
+test('real skill examples share a contract but produce different kinds of result', () => {
+  const html = read('docs/basics.html');
+  for (const name of ['threadlight-design', 'policy-eligibility']) {
+    const example = html.match(new RegExp(`<article[^>]*data-skill-example="${name}"[^>]*>([\\s\\S]*?)</article>`))?.[1];
+    assert.ok(example, `missing real example ${name}`);
+    for (const field of ['When', 'Input', 'Procedure', 'Output']) assert.match(example, new RegExp(`<dt>${field}</dt>`));
+    assert.match(example, /SKILL\.md/);
+  }
+  assert.match(html, /same format[\s\S]{0,100}different procedures and outputs/i);
+  assert.match(html, /not the final decision or a refund/i);
+  assert.match(read('examples/returns-triage-governed/src/agent/skills/policy-eligibility/SKILL.md'), /approve_candidate \| deny_candidate/);
+  assert.match(read('skills/threadlight-design/SKILL.md'), /### Step 4: Checkpoint/);
+});
+
 test('Basics metadata and portable downloads have real targets', () => {
   const html = read('docs/basics.html');
   const title = html.match(/<title>([^<]+)<\/title>/)[1];

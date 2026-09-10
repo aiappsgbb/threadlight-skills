@@ -1,6 +1,25 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
+test('paired skill examples make the reusable format and different outputs visible', async ({ page }, testInfo) => {
+  await page.goto('/basics.html#skills');
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const examples = page.locator('[data-skill-example]');
+    await expect(examples).toHaveCount(2);
+    for (const example of await examples.all()) {
+      await expect(example).toBeVisible();
+      await expect(example.locator('dt')).toHaveText(['When', 'Input', 'Procedure', 'Output']);
+      await expect(example.locator('a[href$="/SKILL.md"]')).toBeVisible();
+      expect(await example.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    }
+    await expect(examples.nth(0)).toContainText('Specification');
+    await expect(examples.nth(1)).toContainText('Eligibility');
+    await expect(examples.nth(1)).toContainText('not the final decision or a refund');
+    await page.locator('.basics-skill-pair').screenshot({ path: testInfo.outputPath(`skill-pair-${width}.png`) });
+  }
+});
+
 test('skill-family diagram distinguishes the pipeline from its product', async ({ page }) => {
   await page.goto('/basics.html#two-agents');
   const diagram = page.locator('[data-pipeline-product]');

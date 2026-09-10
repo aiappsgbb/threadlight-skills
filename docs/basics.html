@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
 <link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
-<link rel="stylesheet" href="assets/basics-visuals.css?v=d6e673d8">
+<link rel="stylesheet" href="assets/basics-visuals.css?v=666f4322">
 </head>
 <body class="chapter-page chapter-basics chapter-experience">
 <a class="basics-skip" href="#chapter-top">Skip to content</a>
@@ -68,12 +68,36 @@
     <div class="wrap wrap-wide">
       <p class="eyebrow"><span class="dot"></span>01 / The skill-based agent</p>
       <h2>A library of procedures.<br><em>An agent to coordinate them.</em></h2>
-      <p class="basics-intro">A skill-based agent combines a model and tools with a library of focused procedures. Its instructions coordinate which skills to use; executable tools perform the actual system operations.</p>
-      <p class="basics-intro">A prompt gives one request: “Check this return.” A skill supplies the procedure to reuse across requests. It is not another agent, and it does not replace the tools that access your systems.</p>
-      <figure class="basics-package" aria-labelledby="package-caption">
-        <div class="basics-package-files"><span class="basics-label">EXAMPLE / RETURNS SKILL</span><h3>A procedure worth repeating.</h3><ul class="basics-procedure"><li>Ask for missing order details.</li><li>Request the relevant policy checks.</li><li>Explain the rule behind the recommendation.</li><li>Escalate exceptions instead of guessing.</li></ul></div>
-        <div class="basics-package-execution"><span class="basics-label">THE AGENT COORDINATES</span><ol><li><b>Choose</b><span>Identify the relevant skill for this request.</span></li><li><b>Read</b><span>Load its procedure and supporting context.</span></li><li><b>Act</b><span>Call connected tools within permission.</span></li><li><b>Inspect</b><span>Check results before continuing or escalating.</span></li></ol></div>
-        <figcaption id="package-caption">A skill makes know-how reusable and reviewable. It does not make every answer correct or grant permission to change data.</figcaption>
+      <p class="basics-intro">A <strong>skill is a reusable instruction package</strong>: when to use it, what it needs, the procedure to follow and the result to produce. Its entry document is <code>SKILL.md</code>; supporting code, references and templates are optional.</p>
+      <p class="basics-intro">A prompt gives one request. A skill-based agent uses a library of focused procedures to handle many requests. The same format supports different procedures and outputs—whether the agent is building software or working on a business case.</p>
+      <figure class="basics-skill-pair" aria-labelledby="skill-pair-caption">
+        <figcaption id="skill-pair-caption">Two real skills, summarized side by side. Same structure; different jobs.</figcaption>
+        <div class="basics-skill-pair-grid">
+          <article data-skill-example="threadlight-design" aria-labelledby="design-example-title">
+            <header class="basics-example-heading"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m14 10-10 10 10 10M26 10l10 10-10 10M23 6l-6 28"/></svg><div><span class="basics-label">FACTORY / ENGINEERING SKILL</span><h3 id="design-example-title">Design the application.</h3></div></header>
+            <div class="basics-example-file"><span>SKILL.md</span><code>threadlight-design</code></div>
+            <dl>
+              <div><dt>When</dt><dd>A brief needs to become a project design.</dd></div>
+              <div><dt>Input</dt><dd>“Build a returns assistant.”<small>Plus the business rules and technical constraints.</small></dd></div>
+              <div><dt>Procedure</dt><dd>Clarify the process, write the specification, pause for review in Full mode.</dd></div>
+              <div class="basics-example-output"><dt>Output</dt><dd><strong>Specification for the application</strong><code>specs/SPEC.md</code><small>After review, continue to derive agent instructions and business skills. Not a processed return.</small></dd></div>
+            </dl>
+            <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md">Read this engineering skill <span aria-hidden="true">↗</span></a>
+          </article>
+          <article data-skill-example="policy-eligibility" aria-labelledby="policy-example-title">
+            <header class="basics-example-heading"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h24v32H8zM13 15l4 4 10-11M13 27h14"/></svg><div><span class="basics-label">PRODUCT / BUSINESS SKILL</span><h3 id="policy-example-title">Assess a return.</h3></div></header>
+            <div class="basics-example-file"><span>SKILL.md</span><code>policy-eligibility</code></div>
+            <dl>
+              <div><dt>When</dt><dd>An individual return needs a policy assessment.</dd></div>
+              <div><dt>Input</dt><dd>“Is this return eligible?”<small>The case details from intake and the applicable policy.</small></dd></div>
+              <div><dt>Procedure</dt><dd>Check the return window, final-sale rules and item condition; cite the clause. Escalate if policy is unavailable.</dd></div>
+              <div class="basics-example-output"><dt>Output</dt><dd><strong>Eligibility recommendation for the case</strong><span>Candidate verdict + policy citation</span><small>Passed to the next skill for risk review—not the final decision or a refund.</small></dd></div>
+            </dl>
+            <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/examples/returns-triage-governed/src/agent/skills/policy-eligibility/SKILL.md">Read this business skill <span aria-hidden="true">↗</span></a>
+          </article>
+        </div>
+        <div class="basics-skill-reuse"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M7 12a15 15 0 0 1 25-4l3 4M35 3v9h-9M33 28A15 15 0 0 1 8 32l-3-4M5 37v-9h9"/></svg><p><strong>The flexible part is the pattern, not identical content.</strong> Change the procedure, inputs and connected tools to support a different task. Reuse each skill across relevant briefs or cases; compatible host capabilities and permissions still matter.</p></div>
+        <p class="basics-purpose-note">The agent coordinates: choose → read → act through tools → inspect. Skills guide behavior; they do not themselves grant access or guarantee a correct result.</p>
       </figure>
       <details class="basics-reference" id="skill-files"><summary>What is actually inside a skill package?</summary><p><code>SKILL.md</code> is a Markdown file: a plain-text document describing when and how to use the skill. Optional <code>scripts/</code>, <code>references/</code> and <code>assets/</code> can supply code, reference material and templates. The application needs suitable tools to use them.</p></details>
       <details class="basics-reference" id="building-blocks"><summary>Quick terminology: agent, model, tool and skill</summary>
@@ -84,7 +108,6 @@
           <dt data-basic-term="skill">Skill</dt><dd>A reusable procedure with a purpose, inputs, outputs and rules for when to use it.</dd>
         </dl>
       </details>
-      <div class="basics-example"><span class="basics-label">A THREADLIGHT EXAMPLE / QUALIFY</span><strong>Estimate the work before building.</strong><p>Describe expected usage. Qualify produces sizing and cost estimates from those inputs, rather than inspecting your environment or deploying anything.</p><a href="./downloads/threadlight-qualify.zip">Get the Qualify bundle <span aria-hidden="true">↗</span></a></div>
     </div>
   </section>
 
@@ -159,7 +182,7 @@
       <h2>Not to shape the idea.<br><em>Engineering comes when you build.</em></h2>
       <p class="basics-intro">You can describe the process, estimate usage and review the plan without writing code. A host is the app or service that runs an agent and supplies its tools. What you can do depends on that host's capabilities and your access.</p>
       <div class="basics-hosts">
-        <section data-host="cowork"><span class="basics-label">PLAN WITHOUT CODING</span><h3>Copilot Cowork</h3><p>Where custom skills are supported, the Qualify and Design bundles help with sizing, discovery and a reviewable design.</p><strong>What it needs</strong><p>The host must support the skill's document or code tools. Uploading a ZIP does not connect your systems or grant deployment access.</p><a href="./downloads/threadlight-design.zip">Get the Design bundle ↗</a></section>
+        <section data-host="cowork"><span class="basics-label">PLAN WITHOUT CODING</span><h3>Copilot Cowork</h3><p>Where custom skills are supported, the Qualify and Design bundles help with sizing, discovery and a reviewable design.</p><strong>What it needs</strong><p>The host must support the skill's document or code tools. Uploading a ZIP does not connect your systems or grant deployment access.</p><a href="./downloads/threadlight-design.zip">Get the Design bundle ↗</a><br><a href="./downloads/threadlight-qualify.zip">Get the Qualify bundle ↗</a></section>
         <section data-host="coding"><span class="basics-label">BUILD THE APPLICATION</span><h3>A coding assistant</h3><p>Use the engineering skills with project-file access and the tools needed to build and assess the application.</p><strong>What it needs</strong><p>An editor alone is not a deployment environment. Connecting systems and deploying need the right tools, credentials and approval.</p><a href="./workbook.html">Take the hands-on path →</a></section>
         <section data-host="runtime"><span class="basics-label">HANDLE BUSINESS REQUESTS</span><h3>Your process application</h3><p>The built agent handles cases using its business instructions, skills and connected tools.</p><strong>What it needs</strong><p>Identity, system access and enforced controls must be implemented separately. They do not come from the skill's text.</p><a href="./production.html">Understand the production requirements →</a></section>
       </div>
