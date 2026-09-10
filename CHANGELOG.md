@@ -9,6 +9,9 @@ field.
 
 ### Fixed
 
+- Readiness report wording no longer treats absent findings as complete proof,
+  prescribes Citadel for every target, or presents teardown/purge as rollback.
+  The hard-gate preview reflects the existing raw flag even after waivers.
 - Production-readiness apply plans preserve current `must-fix` and
   `should-fix` findings alongside `not-verified` and legacy `fail`/`warn`.
   Native manifest roundtrip, restricted handoff and source hashes are
@@ -18,6 +21,10 @@ field.
 
 ### Added
 
+- Presentation-only enterprise handoff in the readiness report: DevOps, runtime
+  governance and operations, with baseline requirements and explicitly optional
+  modules. Reuses emitted findings without new scores, manifests, gates or
+  prototype stages. Production-ready 0.14.0; plugin/marketplace candidate 2.2.0.
 - Optional `threadlight-agentops` per-agent evidence normalization and `AOPS-001`
   residual operational assessment. Native AgentOps adoption stays in awesome-gbb;
   existing eval, red-team, governance, CI/CD and Citadel ownership is preserved.
