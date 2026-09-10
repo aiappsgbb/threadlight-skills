@@ -26,13 +26,36 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import hashlib
+import importlib.util
 import json
 import os
+from pathlib import Path
 import re
 import sys
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 MANIFEST_SCHEMA = "threadlight-evals-manifest/v1"
+
+
+def _packaged_agentops():
+    path = Path(__file__).resolve().parents[2] / "_shared" / "agentops.py"
+    if not path.is_file():
+        return None
+    sys.path.insert(0, str(path.parent))
+    spec = importlib.util.spec_from_file_location("_threadlight_evals_agentops", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+agentops = _packaged_agentops()
+AGENTOPS_MANIFEST = "specs/agentops-manifest.json"
+SELECTIVE_CAPABILITIES = (
+    "run_history_present", "latest_eval_run_fresh", "thresholds_declared", "latest_pass_rate_ok",
+)
+STATUS_ORDER = {"must-fix": 0, "should-fix": 1, "not-verified": 2, "pass": 3}
 
 CAPABILITY_IDS = {
     "eval_scenarios_present": "EVAL-001",
@@ -54,7 +77,8 @@ TEXT_EXT = (
     ".toml", ".md", ".bicep", ".txt",
 )
 DATASET_EXT = (".json", ".jsonl", ".csv")
-SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", ".azure"}
+SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", ".azure",
+             ".agentops", ".threadlight"}
 MAX_BYTES = 512 * 1024
 GENERATED_FILES = {"docs/evals-report.md", "specs/evals-manifest.json"}
 
@@ -72,6 +96,8 @@ DATE_IN_NAME = re.compile(r"(20\d{2})[-_](\d{2})[-_](\d{2})")
 
 
 def _read(path: str) -> str:
+    if ".agentops" in Path(path).resolve().parts:
+        return ""
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as fh:
             return fh.read(MAX_BYTES)
@@ -86,7 +112,11 @@ def _walk(root: str):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for name in files:
             path = os.path.join(base, name)
+            if os.path.islink(path):
+                continue
             if _rel(root, path) in GENERATED_FILES:
+                continue
+            if name == "agentops.yaml" or name.startswith("agentops-"):
                 continue
             if name.endswith(TEXT_EXT):
                 yield path
@@ -341,6 +371,114 @@ def _pass_rate_from_run(path: str | None) -> float | None:
     return scan(data)
 
 
+def _agentops_evals(root: str, freshness_days: int) -> list[dict]:
+    if agentops is None:
+        return []
+    try:
+        selected = agentops.discover_opted_in_agents(Path(root))
+    except agentops.AgentOpsValidationError:
+        selected = [{"agent_key": "unresolved", "root": "."}]
+    if not selected:
+        return []
+    try:
+        document = agentops.load_manifest(Path(root))
+        source_digest = hashlib.sha256(json.dumps(
+            document, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+        agents = {item["agent_key"]: item for item in document["agents"]}
+    except agentops.AgentOpsValidationError:
+        agents = {}
+        source_digest = None
+    records = []
+    for selected_agent in selected:
+        key = selected_agent["agent_key"]
+        domain = agents.get(key, {}).get("domains", {}).get("evals")
+        record = {
+            "agent_key": key, "root": selected_agent["root"],
+            "service": selected_agent.get("service"),
+            "source": AGENTOPS_MANIFEST, "evidence_refs": [],
+            "source_manifest_sha256": source_digest,
+            "artifacts": {}, "receipt_sha256": None,
+            "domain_status": domain.get("status", "not-verified") if isinstance(domain, dict) else "not-verified",
+            "represented_blockers": [],
+            "execution_pass_rate": None, "aggregate_metrics": {}, "thresholds": [],
+            "comparison": None, "finished_at": None,
+            "capabilities": {name: "not-verified" for name in SELECTIVE_CAPABILITIES},
+        }
+        if isinstance(domain, dict) and domain.get("status") == "verified":
+            summary = domain.get("summary") or {}
+            thresholds = summary.get("thresholds") or []
+            metrics = summary.get("aggregate_metrics") or {}
+            finished = summary.get("finished_at")
+            record.update(
+                evidence_refs=sorted(agents[key].get("provenance", {}).get("artifacts", {})),
+                artifacts=agents[key].get("provenance", {}).get("artifacts", {}),
+                receipt_sha256=agents[key].get("provenance", {}).get("receipt_sha256"),
+                execution_pass_rate=summary.get("items_pass_rate"),
+                aggregate_metrics=metrics,
+                thresholds=[{"metric": item["metric"], "passed": item["passed"]}
+                            for item in thresholds],
+                finished_at=finished,
+            )
+            states = record["capabilities"]
+            if summary.get("items_total", 0) > 0:
+                states["run_history_present"] = "pass"
+                try:
+                    stamp = _dt.datetime.fromisoformat(finished.replace("Z", "+00:00"))
+                    age = (_dt.datetime.now(_dt.timezone.utc) - stamp).total_seconds()
+                    states["latest_eval_run_fresh"] = (
+                        "pass" if 0 <= age <= freshness_days * 86400 else "not-verified")
+                except (ValueError, TypeError, AttributeError):
+                    pass
+            if thresholds and metrics:
+                states["thresholds_declared"] = "pass"
+                quality_passed = (
+                    summary.get("overall_passed") is True
+                    and summary.get("items_passed_all") == summary.get("items_total")
+                    and all(item["passed"] is True for item in thresholds)
+                )
+                comparison = summary.get("comparison")
+                if isinstance(comparison, dict):
+                    record["comparison"] = {
+                        "status": comparison.get("status"),
+                        "regressions": comparison.get("regressions"),
+                    }
+                states["latest_pass_rate_ok"] = "pass" if quality_passed else "should-fix"
+                if domain.get("verdict") == "fail":
+                    states["latest_pass_rate_ok"] = "should-fix"
+                elif domain.get("verdict") != "pass":
+                    states["latest_pass_rate_ok"] = "not-verified"
+                if any(item.get("severity") == "must-fix" and item.get("code") == "AOPS-EVAL-QUALITY"
+                       for item in domain.get("blockers", [])):
+                    states["latest_pass_rate_ok"] = "must-fix"
+                    record["represented_blockers"] = ["AOPS-EVAL-QUALITY"]
+                if states["latest_pass_rate_ok"] == "pass" and states["latest_eval_run_fresh"] != "pass":
+                    states["latest_pass_rate_ok"] = "not-verified"
+        records.append(record)
+    return records
+
+
+def _merge_agentops(caps: dict, records: list[dict]) -> None:
+    for key in SELECTIVE_CAPABILITIES:
+        native = dict(caps[key])
+        statuses = [record["capabilities"][key] for record in records]
+        # Missing legacy evidence may be filled; an observed legacy failure may not.
+        if native["status"] == "pass" or (
+            native["status"] in ("must-fix", "should-fix") and native.get("evidence")
+        ):
+            statuses.append(native["status"])
+        status = min(statuses, key=lambda value: STATUS_ORDER[value])
+        _cap(caps, key, status, AGENTOPS_MANIFEST,
+             "worst validated per-agent result; continuous wiring is assessed separately")
+        caps[key]["sources"] = [{
+            "source": "threadlight-native", "status": native["status"],
+            "evidence": native.get("evidence"),
+        }] + [{
+            "source": AGENTOPS_MANIFEST, "agent_key": record["agent_key"],
+            "status": record["capabilities"][key], "evidence_refs": record["evidence_refs"],
+        } for record in records]
+    caps["run_history_present"]["agentops_agents"] = records
+
+
 # ── capability evaluation ────────────────────────────────────────────────
 def evaluate(root: str, freshness_days: int = 7) -> dict:
     root = os.path.abspath(root)
@@ -445,6 +583,9 @@ def evaluate(root: str, freshness_days: int = 7) -> dict:
         _cap(caps, "ab_comparison_present", "should-fix", None,
              "add champion/challenger comparison config or evals/ab/ gate before swaps")
 
+    records = _agentops_evals(root, freshness_days)
+    if records:
+        _merge_agentops(caps, records)
     return {key: caps[key] for key in CAPABILITY_ORDER}
 
 
@@ -469,7 +610,7 @@ def manifest(root: str, caps: dict, freshness_days: int = 7) -> dict:
         "latest_run": _rel(root, latest_path) if latest_path else None,
     }
 
-    return {
+    result = {
         "schema": MANIFEST_SCHEMA,
         "tool_version": VERSION,
         "captured_at": _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0).isoformat(),
@@ -481,6 +622,25 @@ def manifest(root: str, caps: dict, freshness_days: int = 7) -> dict:
         "metrics": metrics,
         "capabilities": {key: caps[key] for key in CAPABILITY_ORDER},
     }
+    records = caps["run_history_present"].get("agentops_agents")
+    if records:
+        result["agentops"] = {
+            "source": AGENTOPS_MANIFEST, "agents": records,
+            "source_manifest_sha256": records[0]["source_manifest_sha256"],
+        }
+        if metrics["latest_run"] is None and all(
+            record["capabilities"]["run_history_present"] == "pass" for record in records
+        ):
+            metrics["latest_run"] = AGENTOPS_MANIFEST
+        if any(record["capabilities"]["latest_pass_rate_ok"] != "pass" for record in records):
+            if (metrics["pass_rate"] is not None and metrics["threshold"] is not None
+                    and metrics["pass_rate"] >= metrics["threshold"]):
+                metrics["pass_rate"] = None
+        result["capabilities"] = {
+            key: {k: v for k, v in value.items() if k != "agentops_agents"}
+            for key, value in result["capabilities"].items()
+        }
+    return result
 
 
 def _clean_cell(value) -> str:
@@ -505,6 +665,17 @@ def render(man: dict) -> str:
         lines.append(
             f"| `{key}` | `{v.get('check_id', '')}` | {icon.get(v['status'], '?')} {v['status']} | {_clean_cell(detail)} |"
         )
+    if man.get("agentops"):
+        lines += ["", "## AgentOps batch evidence", "",
+                  "Execution pass rate is not a per-row quality pass rate.",
+                  "", "| Agent | Quality status | Execution pass rate | Source |",
+                  "|---|---|---:|---|"]
+        for agent in man["agentops"]["agents"]:
+            lines.append(
+                f"| `{_clean_cell(agent['agent_key'])}` | "
+                f"{agent['capabilities']['latest_pass_rate_ok']} | "
+                f"{agent['execution_pass_rate'] if agent['execution_pass_rate'] is not None else '—'} | "
+                f"`{AGENTOPS_MANIFEST}` |")
     lines += ["", "Consumed by `threadlight-production-ready` pillar 6 (`continuous-evals`).", ""]
     return "\n".join(lines)
 

@@ -43,6 +43,99 @@ function findSkill(model, id) {
   return undefined;
 }
 
+test("AgentOps absent opt-in does not penalize an existing pilot", async () => {
+  await withFixture("design-only", async ({ workspace: workspacePath }) => {
+    const model = await projectWorkspace(workspacePath, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-agentops").status, "not-applicable");
+  });
+});
+
+test("AgentOps cache alone is not opt-in", async () => {
+  await withFixture("design-only", async ({ workspace: workspacePath }) => {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(path.join(workspacePath, ".agentops"), { recursive: true });
+    await writeFile(path.join(workspacePath, ".agentops/agent.yaml"), "version: 1");
+    const model = await projectWorkspace(workspacePath, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-agentops").status, "not-applicable");
+  });
+});
+
+test("AgentOps unsafe opt-in is visible and never considered absent", async () => {
+  await withFixture("design-only", async ({ workspace: workspacePath }) => {
+    await symlink("specs/manifest.json", path.join(workspacePath, "agentops.yaml"));
+    const model = await projectWorkspace(workspacePath, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-agentops").status, "failed");
+    assert.ok(model.errors.some(({ code }) => code === "agentops-discovery-invalid"));
+  });
+});
+
+test("AgentOps arbitrary JSON cannot become completed operational evidence", async () => {
+  await withFixture("complete", async (fixture) => {
+    await fixture.writeString("agentops.yaml", "target: fixture:1");
+    await fixture.writeJson("specs/agentops-manifest.json", {
+      verdict: "operational", generated_at: NOW.toISOString(), private_payload: "DO_NOT_RENDER",
+    });
+    const model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-agentops").status, "failed");
+    assert.equal(JSON.stringify(model).includes("DO_NOT_RENDER"), false);
+  });
+});
+
+function agentOpsObservation() {
+  const capabilities = Object.fromEntries(
+    ["config", "pin", "binding", "integrity", "doctor_freshness", "release_consistency", "workflow"]
+      .map((name) => [name, { status: "not-verified" }]),
+  );
+  return {
+    schema: "threadlight-agentops-manifest/v1", tool_version: "0.1.0",
+    generated_at: NOW.toISOString(),
+    freshness: { valid_for_hours: 24, source_oldest_at: null },
+    status: "partial", findings: [],
+    repository: { remote: null, commit: null, dirty: true },
+    verdict: "partial", agents: [{ root: ".", verdict: "partial", capabilities }],
+    summary: { agents_total: 1, operational: 0, partial: 1, blocked: 0 },
+  };
+}
+
+test("AgentOps canvas observes metadata without claiming independent proof", async () => {
+  await withFixture("complete", async (fixture) => {
+    await fixture.writeString("agentops.yaml", "target: fixture:1");
+    await fixture.writeJson("specs/agentops-manifest.json", agentOpsObservation());
+    const model = await projectWorkspace(fixture.workspace, { now: NOW });
+    const projected = findSkill(model, "threadlight-agentops");
+    assert.equal(projected.status, "running");
+    assert.equal(projected.evidenceState, "manifest-observed");
+  });
+});
+
+test("AgentOps canvas observes explicit deployed roots otherwise excluded from fallback discovery", async () => {
+  await withFixture("complete", async (fixture) => {
+    await fixture.writeString("examples/deployed/agentops.yaml", "private config");
+    const manifest = agentOpsObservation();
+    manifest.agents[0].root = "examples/deployed";
+    await fixture.writeJson("specs/agentops-manifest.json", manifest);
+    const model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-agentops").status, "running");
+    assert.equal(findSkill(model, "threadlight-agentops").evidenceState, "manifest-observed");
+  });
+});
+
+test("AgentOps canvas rejects inconsistent counts and preserves stale evidence", async () => {
+  await withFixture("complete", async (fixture) => {
+    await fixture.writeString("agentops.yaml", "target: fixture:1");
+    const manifest = agentOpsObservation();
+    manifest.summary.partial = 0;
+    await fixture.writeJson("specs/agentops-manifest.json", manifest);
+    let model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-agentops").status, "failed");
+    manifest.summary.partial = 1;
+    manifest.generated_at = "2026-08-04T09:00:00Z";
+    await fixture.writeJson("specs/agentops-manifest.json", manifest);
+    model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-agentops").status, "stale");
+  });
+});
+
 function costActualsManifest(overrides = {}) {
   return {
     schema: "threadlight-cost-actuals/v1",

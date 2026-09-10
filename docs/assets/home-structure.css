@@ -20,6 +20,8 @@
   letter-spacing: -.025em;
 }
 .home-journey h2 em { color: var(--home-accent); }
+.home-journey .home-catalogue-note { max-width: 82ch; margin: 0 0 24px; font-size: 14px; }
+.home-journey .home-catalogue-note a { color: var(--ink-0); text-underline-offset: 4px; }
 .home-journey nav {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));

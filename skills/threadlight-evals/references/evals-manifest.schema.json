@@ -14,6 +14,59 @@
     "must_fix": {"type": "array", "items": {"type": "string"}},
     "should_fix": {"type": "array", "items": {"type": "string"}},
     "not_verified": {"type": "array", "items": {"type": "string"}},
+    "agentops": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "agents"],
+      "properties": {
+        "source": {"const": "specs/agentops-manifest.json"},
+        "source_manifest_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "agents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["agent_key", "root", "source", "capabilities", "execution_pass_rate"],
+            "properties": {
+              "agent_key": {"type": "string"},
+              "service": {"type": ["string", "null"]},
+              "root": {"type": "string"},
+              "source": {"const": "specs/agentops-manifest.json"},
+              "source_manifest_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+              "evidence_refs": {"type": "array", "items": {"type": "string"}},
+              "artifacts": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+              "receipt_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+              "domain_status": {"enum": ["verified", "not-verified", "stale", "invalid", "not-applicable"]},
+              "represented_blockers": {"type": "array", "items": {"const": "AOPS-EVAL-QUALITY"}},
+              "execution_pass_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+              "aggregate_metrics": {"type": "object", "additionalProperties": {"type": "number"}},
+              "thresholds": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["metric", "passed"],
+                  "properties": {"metric": {"type": "string"}, "passed": {"type": "boolean"}}
+                }
+              },
+              "comparison": {
+                "type": ["object", "null"],
+                "additionalProperties": false,
+                "properties": {
+                  "status": {"type": ["string", "null"]},
+                  "regressions": {"type": ["integer", "null"], "minimum": 0}
+                }
+              },
+              "finished_at": {"type": ["string", "null"], "format": "date-time"},
+              "capabilities": {
+                "type": "object",
+                "additionalProperties": {"enum": ["pass", "must-fix", "should-fix", "not-verified"]}
+              }
+            }
+          }
+        }
+      }
+    },
     "capabilities": {
       "type": "object",
       "additionalProperties": false,

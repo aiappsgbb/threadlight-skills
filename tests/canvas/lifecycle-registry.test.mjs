@@ -10,6 +10,7 @@ import {
 import { validateIntent } from "../../.github/extensions/threadlight-lifecycle/lib/intents.mjs";
 
 const NEW_ADVISORY_LEGS = new Set([
+  "threadlight-agentops",
   "threadlight-connect",
   "threadlight-ground",
   "threadlight-loadtest",
@@ -68,6 +69,7 @@ test("registry exposes the exact lifecycle skill ids", () => {
     "threadlight-loadtest",
     "threadlight-govern",
     "threadlight-router-bench",
+    "threadlight-agentops",
     "threadlight-upgrade",
     "threadlight-production-ready",
     "threadlight-cicd",
@@ -76,8 +78,8 @@ test("registry exposes the exact lifecycle skill ids", () => {
 
   const actualIds = SKILL_REGISTRY.map((skill) => skill.id);
 
-  assert.equal(actualIds.length, 22);
-  assert.equal(new Set(actualIds).size, 22);
+  assert.equal(actualIds.length, 23);
+  assert.equal(new Set(actualIds).size, 23);
   assert.deepEqual(new Set(actualIds), expectedIds);
 });
 
@@ -120,6 +122,7 @@ test("registry preserves the exact prerequisite contracts", () => {
     ["threadlight-loadtest", ["threadlight-safe-check"]],
     ["threadlight-govern", ["threadlight-safe-check"]],
     ["threadlight-router-bench", ["threadlight-evals"]],
+    ["threadlight-agentops", ["threadlight-safe-check"]],
     ["threadlight-upgrade", ["threadlight-safe-check"]],
     ["threadlight-production-ready", ["threadlight-safe-check"]],
     ["threadlight-cicd", ["threadlight-production-ready"]],
@@ -153,6 +156,7 @@ test("qualify is a no-repo Design entry that does not gate the phase", () => {
 test("new live legs are advisory manual handoffs in their phases", () => {
   const byId = new Map(SKILL_REGISTRY.map((s) => [s.id, s]));
   const expectedPhase = {
+    "threadlight-agentops": "improve",
     "threadlight-connect": "discover",
     "threadlight-ground": "discover",
     "threadlight-loadtest": "discover",
@@ -199,7 +203,6 @@ test("existing phase skills keep their resume_phase next intents unchanged", () 
   const named = new Set([...NEW_ADVISORY_LEGS, "threadlight-qualify"]);
   const existing = SKILL_REGISTRY.filter((skill) => !named.has(skill.id));
 
-  // 22 registry skills minus the 5 skill-named legs leaves 17 phase intents.
   assert.equal(existing.length, 17);
   for (const skill of existing) {
     assert.deepEqual(
@@ -213,6 +216,16 @@ test("existing phase skills keep their resume_phase next intents unchanged", () 
       skill.id,
     );
   }
+});
+
+test("AgentOps is per-agent opt-in and does not replace assurance owners", () => {
+  const definition = SKILL_REGISTRY.find(({ id }) => id === "threadlight-agentops");
+  assert.equal(definition.phase, "improve");
+  assert.equal(definition.applicability, "agentops-opt-in");
+  assert.deepEqual(definition.requiredArtifactGroups, [["specs/agentops-manifest.json"]]);
+  assert.equal(definition.freshnessHours, 24);
+  assert.equal(definition.affectsPhaseStatus, false);
+  assert.equal(definition.role, "advisory");
 });
 
 test("skills remain declarative and have no command handlers", () => {

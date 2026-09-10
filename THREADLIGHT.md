@@ -1,7 +1,7 @@
 # Threadlight — Technical Briefing
 
 > **Engineering reference for a working pilot with selected runtime governance and an evidence-backed path to production.**
-> Threadlight is a library of twenty-three `threadlight-*` skills (22 pipeline skills + the `threadlight-auto` lifecycle planner) that takes a customer engagement from a brief into a working pilot with selected runtime governance and auditable evidence. A working session produces the pilot and the evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
+> Threadlight is a library of twenty-four `threadlight-*` skills (23 pipeline skills + the `threadlight-auto` lifecycle planner) that takes a customer engagement from a brief into a working pilot with selected runtime governance and auditable evidence. A working session produces the pilot and the evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
 >
 > Governance evidence is per binding, not whole-agent. See the current
 > [runtime lifecycle](docs/production-readiness.md#runtime-governance-lifecycle);
@@ -80,10 +80,11 @@ explains the same boundaries visually; it is not the operator runbook.
 > to end.
 > Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
-The twenty-three skills (alphabetical, but the canonical flow order is given in
+The twenty-four skills (alphabetical, but the canonical flow order is given in
 the next section):
 
 ```
+threadlight-agentops
 threadlight-auto
 threadlight-cicd
 threadlight-connect
@@ -118,6 +119,7 @@ skill sounds most exciting.
 
 | You start with… | Entry skill | Then chain into… |
 |---|---|---|
+| An agent already opts into AgentOps with `agentops.yaml` and needs operational evidence checked | `threadlight-agentops` (read-only normalization into `specs/agentops-manifest.json`) | Canonical eval/red-team consumers and production-ready `AOPS-001`; `foundry-agentops` owns adoption/remediation, not another pipeline |
 | **Nothing but a discovery call / no repo yet** — you need to size the workload and check the cost/ROI before committing | `threadlight-qualify` (Cowork-safe; declared interview only — no Azure/`az`/`azd`/Bicep/Docker/credentials — writes `qualification/sizing.md` + `sizing-manifest.json` + `discovery.md` + optional `roi.md`) | `threadlight-design` (seeds SPEC § 12 `load_profile{}` from the sizing manifest). **Not a deployed runtime skill** |
 | Vague brief, no spec yet | `threadlight-design` | demo-data-factory → local-test → deploy |
 | A spec exists but no mock data / no Cosmos seed | `threadlight-demo-data-factory` | local-test → deploy |

@@ -1,0 +1,185 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://threadlight.dev/schemas/agentops-manifest-v1.json",
+  "title": "Threadlight AgentOps metadata-only evidence manifest",
+  "description": "Shape validation only. Acceptance also requires agentops.validate_manifest against current local signed evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tool_version", "generated_at", "freshness", "status", "findings", "repository", "verdict", "agents", "summary"],
+  "properties": {
+    "schema": {"const": "threadlight-agentops-manifest/v1"},
+    "tool_version": {"const": "0.1.0"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "freshness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["valid_for_hours", "source_oldest_at"],
+      "properties": {
+        "valid_for_hours": {"type": "integer", "minimum": 1, "maximum": 8760},
+        "source_oldest_at": {"$ref": "#/definitions/nullableTime"}
+      }
+    },
+    "status": {"enum": ["complete", "partial", "aborted"]},
+    "findings": {
+      "type": "array", "maxItems": 10000,
+      "items": {"allOf": [{"$ref": "#/definitions/finding"}, {"required": ["agent_key"]}]}
+    },
+    "repository": {
+      "type": "object", "additionalProperties": false, "required": ["remote", "commit", "dirty"],
+      "properties": {
+        "remote": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"}]},
+        "commit": {"$ref": "#/definitions/commit"},
+        "dirty": {"type": "boolean"}
+      }
+    },
+    "verdict": {"enum": ["operational", "partial", "blocked", "not-applicable"]},
+    "agents": {"type": "array", "maxItems": 20000, "items": {"$ref": "#/definitions/agent"}},
+    "summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["agents_total", "operational", "partial", "blocked"],
+      "properties": {
+        "agents_total": {"$ref": "#/definitions/count"},
+        "operational": {"$ref": "#/definitions/count"},
+        "partial": {"$ref": "#/definitions/count"},
+        "blocked": {"$ref": "#/definitions/count"}
+      }
+    }
+  },
+  "definitions": {
+    "count": {"type": "integer", "minimum": 0, "maximum": 10000000},
+    "rate": {"type": "number", "minimum": 0, "maximum": 1},
+    "nullableTime": {"anyOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]},
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableHash": {"anyOf": [{"type": "null"}, {"$ref": "#/definitions/hash"}]},
+    "commit": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9a-f]{40,64}$"}]},
+    "relativePath": {"type": "string", "maxLength": 512, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_. /-]+$"},
+    "status": {"enum": ["verified", "not-verified", "stale", "invalid", "not-applicable"]},
+    "capability": {
+      "type": "object", "additionalProperties": false, "required": ["status"],
+      "properties": {"status": {"$ref": "#/definitions/status"}}
+    },
+    "finding": {
+      "type": "object", "additionalProperties": false, "required": ["code", "owner", "severity"],
+      "properties": {
+        "code": {"enum": ["AOPS-PIN-UNVERIFIED", "AOPS-DOMAIN-UNVERIFIED", "AOPS-RELEASE-UNVERIFIED", "AOPS-BINDING-UNVERIFIED", "AOPS-CONFIG-UNVERIFIED", "AOPS-EVAL-QUALITY", "AOPS-COMPARISON-UNVERIFIED", "AOPS-DOCTOR-BLOCKED", "AOPS-DOCTOR-WARNING", "AOPS-REDTEAM-QUALITY", "AOPS-EVIDENCE-STALE", "AOPS-EVIDENCE-UNVERIFIED", "AOPS-INTEGRITY-INVALID"]},
+        "owner": {"enum": ["agentops", "evals", "redteam", "govern"]},
+        "severity": {"enum": ["must-fix", "should-fix"]},
+        "agent_key": {"type": "string", "pattern": "^agent-[0-9a-f]{20}$"}
+      }
+    },
+    "metric": {"enum": ["relevance", "coherence", "fluency", "groundedness", "similarity", "f1_score", "exact_match", "task_adherence", "intent_resolution", "tool_call_accuracy", "response_completeness", "hate_unfairness", "violence", "sexual", "self_harm", "protected_material", "indirect_attack", "bleu", "rouge", "meteor", "accuracy", "pass_rate", "quality"]},
+    "category": {"enum": ["hate_unfairness", "violence", "sexual", "self_harm", "protected_material", "indirect_attack", "code_vulnerability", "ungrounded_attributes", "prohibited_actions", "sensitive_data_leakage"]},
+    "strategy": {"enum": ["baseline", "easy", "moderate", "difficult", "jailbreak", "base64", "rot13", "morse", "unicode_confusable", "character_space", "flip", "suffix", "prefix", "tense", "leetspeak", "caesar", "ascii_art", "Base64", "ROT13", "UnicodeConfusable", "CharacterSpace", "Morse", "Flip", "Suffix", "Prefix", "Tense", "Leetspeak", "Caesar", "AsciiArt", "Url", "Atbash", "Text", "CharacterSwap"]},
+    "threshold": {
+      "type": "object", "additionalProperties": false, "required": ["metric", "criteria", "expected", "actual", "passed"],
+      "properties": {
+        "metric": {"$ref": "#/definitions/metric"},
+        "criteria": {"enum": [">=", "<=", ">", "<", "==", "true", "false"]},
+        "expected": {"type": "number"},
+        "actual": {"type": ["number", "null"]},
+        "passed": {"type": "boolean"}
+      }
+    },
+    "evalSummary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["finished_at", "items_total", "items_passed_all", "items_pass_rate", "thresholds_total", "thresholds_passed", "threshold_pass_rate", "overall_passed", "aggregate_metrics", "thresholds", "comparison"],
+      "properties": {
+        "finished_at": {"type": "string", "format": "date-time"},
+        "items_total": {"$ref": "#/definitions/count"},
+        "items_passed_all": {"$ref": "#/definitions/count"},
+        "items_pass_rate": {"$ref": "#/definitions/rate"},
+        "thresholds_total": {"$ref": "#/definitions/count"},
+        "thresholds_passed": {"$ref": "#/definitions/count"},
+        "threshold_pass_rate": {"$ref": "#/definitions/rate"},
+        "overall_passed": {"type": "boolean"},
+        "aggregate_metrics": {"type": "object", "maxProperties": 128, "propertyNames": {"$ref": "#/definitions/metric"}, "additionalProperties": {"type": "number"}},
+        "thresholds": {"type": "array", "maxItems": 128, "items": {"$ref": "#/definitions/threshold"}},
+        "comparison": {
+          "type": "object", "additionalProperties": false, "required": ["status", "regressions"],
+          "properties": {"status": {"enum": ["verified", "not-verified"]}, "regressions": {"$ref": "#/definitions/count"}}
+        }
+      }
+    },
+    "redteamSummary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["generated_at", "total_attempts", "successful_attacks", "attack_success_rate", "num_objectives", "risk_categories", "attack_strategies", "per_category", "core_category_coverage", "fail_threshold"],
+      "properties": {
+        "generated_at": {"type": "string", "format": "date-time"},
+        "total_attempts": {"$ref": "#/definitions/count"},
+        "successful_attacks": {"$ref": "#/definitions/count"},
+        "attack_success_rate": {"$ref": "#/definitions/rate"},
+        "num_objectives": {"type": "integer", "minimum": 1, "maximum": 10000000},
+        "risk_categories": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/category"}},
+        "attack_strategies": {"type": "array", "items": {"$ref": "#/definitions/strategy"}},
+        "per_category": {
+          "type": "object", "propertyNames": {"$ref": "#/definitions/category"},
+          "additionalProperties": {
+            "type": "object", "additionalProperties": false, "required": ["total", "successful", "attack_success_rate"],
+            "properties": {"total": {"$ref": "#/definitions/count"}, "successful": {"$ref": "#/definitions/count"}, "attack_success_rate": {"$ref": "#/definitions/rate"}}
+          }
+        },
+        "core_category_coverage": {"type": "boolean"},
+        "fail_threshold": {"$ref": "#/definitions/rate"}
+      }
+    },
+    "governSummary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["native_status", "runtime_verified", "policy_verified", "attestation_verified"],
+      "properties": {
+        "native_status": {"enum": ["ready", "ready_with_warnings", "blocked", "unknown"]},
+        "runtime_verified": {"const": false},
+        "policy_verified": {"const": false},
+        "attestation_verified": {"const": false}
+      }
+    },
+    "domain": {
+      "type": "object", "additionalProperties": false, "required": ["status", "verdict", "summary", "blockers"],
+      "properties": {
+        "status": {"$ref": "#/definitions/status"},
+        "verdict": {"enum": ["pass", "fail", "unknown", "supplementary"]},
+        "summary": {"oneOf": [{"type": "object", "maxProperties": 0}, {"$ref": "#/definitions/evalSummary"}, {"$ref": "#/definitions/redteamSummary"}, {"$ref": "#/definitions/governSummary"}]},
+        "blockers": {"type": "array", "items": {"$ref": "#/definitions/finding"}}
+      }
+    },
+    "agent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["agent_key", "root", "verdict", "provenance", "capabilities", "domains", "findings"],
+      "properties": {
+        "agent_key": {"type": "string", "pattern": "^agent-[0-9a-f]{20}$"},
+        "root": {"$ref": "#/definitions/relativePath"},
+        "service": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "verdict": {"enum": ["operational", "partial", "blocked"]},
+        "provenance": {
+          "type": "object", "additionalProperties": false,
+          "required": ["commit", "config_sha256", "target_sha256", "environment_sha256", "receipt_sha256", "source_oldest_at", "artifacts"],
+          "properties": {
+            "commit": {"$ref": "#/definitions/commit"},
+            "config_sha256": {"$ref": "#/definitions/nullableHash"},
+            "target_sha256": {"$ref": "#/definitions/nullableHash"},
+            "environment_sha256": {"$ref": "#/definitions/nullableHash"},
+            "receipt_sha256": {"$ref": "#/definitions/nullableHash"},
+            "source_oldest_at": {"$ref": "#/definitions/nullableTime"},
+            "artifacts": {"type": "object", "maxProperties": 20, "propertyNames": {"$ref": "#/definitions/relativePath"}, "additionalProperties": {"$ref": "#/definitions/hash"}}
+          }
+        },
+        "capabilities": {
+          "type": "object", "additionalProperties": false,
+          "required": ["config", "pin", "binding", "integrity", "doctor_freshness", "release_consistency", "workflow"],
+          "properties": {
+            "config": {"$ref": "#/definitions/capability"},
+            "pin": {"$ref": "#/definitions/capability"},
+            "binding": {"$ref": "#/definitions/capability"},
+            "integrity": {"$ref": "#/definitions/capability"},
+            "doctor_freshness": {"$ref": "#/definitions/capability"},
+            "release_consistency": {"$ref": "#/definitions/capability"},
+            "workflow": {"$ref": "#/definitions/capability"}
+          }
+        },
+        "domains": {
+          "type": "object", "additionalProperties": false, "required": ["evals", "redteam", "govern"],
+          "properties": {"evals": {"$ref": "#/definitions/domain"}, "redteam": {"$ref": "#/definitions/domain"}, "govern": {"$ref": "#/definitions/domain"}}
+        },
+        "findings": {"type": "array", "items": {"$ref": "#/definitions/finding"}}
+      }
+    }
+  }
+}

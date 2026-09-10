@@ -15,7 +15,7 @@ description: >
   DO NOT USE FOR: per-stage control (use threadlight-design / -deploy /
   -safe-check directly), production CI/CD, single-stage iteration.
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # `threadlight-auto` — Full-auto Threadlight driver
@@ -165,6 +165,22 @@ mediation paths when it folds the
 manifest into `AGT-007` / `HITL-008` / `SUP-014`. Auto's `summarized` status
 therefore means "this artefact is well-formed, current, and bound to this
 commit", never "this pilot is governed". Production rollout remains human-owned.
+
+## Optional AgentOps stage
+
+After invocation and before eval/red-team consumers, `agentops` invokes `threadlight-agentops` only for
+agent roots containing `agentops.yaml`. The stage is read-only: no native eval or Doctor
+is started by Auto, and no AgentOps installation/configuration is performed.
+It emits `specs/agentops-manifest.json` from existing artifacts. Missing opt-in
+always skips, including after an upstream cascade. Missing, malformed, expired
+or changed evidence requires normalization; a current valid `partial` or
+`blocked` manifest is reused without rerunning native operations to seek green.
+
+Selected governance bindings still require `governed_actions_gate` before deploy
+and current `governance_probe` before subsequent stages, including AgentOps.
+AgentOps evidence cannot satisfy either gate. New eval/Doctor execution is a
+separate explicit, scoped `foundry-agentops`/`threadlight-cicd` handoff, not
+automatic recovery. Production-ready remains the final advisory owner.
 
 ## Input parsing
 

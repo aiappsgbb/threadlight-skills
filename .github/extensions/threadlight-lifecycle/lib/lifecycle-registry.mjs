@@ -333,6 +333,20 @@ export const SKILL_REGISTRY = Object.freeze([
     },
   ),
   skill(
+    "threadlight-agentops",
+    "improve",
+    "Inspect per-agent operations",
+    [artifactGroup("specs/agentops-manifest.json")],
+    {
+      applicability: "agentops-opt-in",
+      role: "advisory",
+      affectsPhaseStatus: false,
+      freshnessHours: 24,
+      prerequisiteSkills: ["threadlight-safe-check"],
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-agentops", phase: "improve" },
+    },
+  ),
+  skill(
     "threadlight-router-bench",
     "improve",
     "Learn from completed runs",

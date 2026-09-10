@@ -46,7 +46,7 @@ function toLocalAssetPath(absUrl) {
 }
 
 test.describe('landing page — the scrubbable demo (index.html)', () => {
-  test('renders the demo hero, the Threadlight brand, and the 23-skill public count', async ({ page }) => {
+  test('renders the demo hero, the Threadlight brand, and the 24-skill public count', async ({ page }) => {
     await page.goto(LANDING);
     await expect(page).toHaveTitle(/working pilot/i);
     await expect(page.locator('header.masthead .brand-name')).toContainText(/Threadlight/);
@@ -54,8 +54,8 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
     await expect(hero).toBeVisible();
     await expect(hero).toContainText(/working pilot/i);
     await expect(hero).not.toContainText(/governed agent/i);
-    // The public library is exactly 23 skills — stated in the primer.
-    await expect(page.locator('#how-it-works')).toContainText(/23\s+skills/i);
+    // The public library is exactly 24 skills — stated in the primer.
+    await expect(page.locator('#how-it-works')).toContainText(/24\s+skills/i);
   });
 
   test('footer is public-safe (open guidance, no "internal use" leak)', async ({ page }) => {

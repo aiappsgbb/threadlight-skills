@@ -9,6 +9,7 @@ the invocation is expected to flip green.
 
 | Finding ID | Sibling skill (awesome-gbb) | Input contract | Notes |
 | --- | --- | --- | --- |
+| AOPS-001 | `foundry-agentops` | opted-in agent root, current binding and owner-approved runtime scope | Merged consumable-main pin `2db28d1f52bf288f2d0fd40b7c8beb913ceeee09`; native `0.14.0`. Re-run `threadlight-agentops` and canonical domains; not certification or a tagged-release claim. |
 | NET-501 | `citadel-spoke-onboarding` | `spoke_subscription_id`, `spoke_resource_group`, `hub_subscription_id`, `hub_apim_resource_id`, `access_contract_product` | Hub coordinates may need user confirmation if not in framing. |
 | NET-502 | `citadel-spoke-onboarding` | (same as NET-501) | Same skill handles reachability — single invocation closes both. |
 | IAM-101 | `foundry-rbac-audit` *(planned — awesome-gbb#268)* | `subscription_id`, `resource_group`, `target_principal_types` | Skill not yet released; until then this finding stays `kind: manual`. |

@@ -30,6 +30,14 @@ The pillar requires the artefacts that make the handover real.
 | `SRE-003` | Azure SRE Agent integration considered in SPEC § 12 (adopted / explicitly deferred — not silently skipped) | `should-fix` if unmentioned |
 | `SRE-004` | Severity matrix documented (`docs/severity.md` or in § 12: Sev1..Sev3 with response-time targets) | `should-fix` if absent |
 | `SRE-005` | Postmortem template referenced (`docs/postmortem-template.md` or link in § 12) | `should-fix` if absent |
+| `AOPS-001` | Strict normalized AgentOps operational evidence for every opted-in agent | `not-applicable` without opt-in; `not-verified` without valid evidence; otherwise worst operational status |
+
+AgentOps is optional. `AOPS-001` consumes only the shared validated
+`threadlight-agentops-manifest/v1` contract, not native artifacts. Canonical
+eval/red-team/governance blockers are excluded only with validated consumer
+proof of their exact source; unrepresented or unknown blockers remain.
+No whole-agent governance or deployment certification is implied. Follow
+[`AOPS-001`](../remediation-recipes/AOPS-001.md) for explicit remediation.
 
 ### Live (tier 1)
 

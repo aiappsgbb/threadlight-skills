@@ -25,8 +25,8 @@ specialized tools, assess artifacts or hand work to a human.
 
 The **generated business agent** is a different application. On the agent
 branch it consumes domain `src/agent/skills/<name>/SKILL.md`, host instructions,
-registered tools and an SDK runtime. It does not need the 23 construction
-skills in its runtime library. Copying the catalog into its skills directory
+registered tools and an SDK runtime. It does not need the construction
+catalog in its runtime library. Copying the catalog into its skills directory
 would confuse construction procedures with business responsibilities.
 
 **Markdown is instruction, not a model or a tool implementation.** It is not
@@ -240,7 +240,7 @@ contract with no selected bindings omits `govern`. Invalid or unresolved selecte
 configuration blocks deployment rather than being interpreted as “off”.
 The selected-binding sequence is:
 
-`preflight` → `design` → `govern` → `governed_actions_gate` → `deploy` → `governance_probe` → `safe_check` → `cost_projection` → `invoke` → `evals` → `redteam`
+`preflight` → `design` → `govern` → `governed_actions_gate` → `deploy` → `governance_probe` → `safe_check` → `cost_projection` → `invoke` → `agentops` → `evals` → `redteam`
 
 Thus policy and the governed-actions gate precede deployment; fresh hosted
 collection follows it. The legacy advisory recommendation projection for
@@ -248,6 +248,11 @@ governed actions is separate from this mandatory selected-binding gate.
 Design can introduce selections, so `execute()` reevaluates the stage set.
 Deployment attempts invalidate prior proof; collection must match the successful
 attempt, not merely leave an old manifest on disk.
+
+The `agentops` stage checks existing opt-in evidence. Without an `agentops.yaml`
+marker it skips with no penalty. It does not authorize native eval or Doctor
+execution; those remain separately approved operations owned by the existing
+CI/CD integration.
 
 Qualify, Connect, Ground, Loadtest, Upgrade, CI/CD, Customize and Router-bench
 remain explicit manual/offline handoffs. Local-test is available for iteration,
@@ -294,7 +299,8 @@ deployment and live evidence still need an authorized engineering environment.
 
 This map covers the 23-skill governance baseline at
 [`8153bc2e0a677d99b8414053d7a00cfdab495444`](https://github.com/aiappsgbb/threadlight-skills/tree/8153bc2e0a677d99b8414053d7a00cfdab495444).
-Inspect the installed revision before applying it to a newer catalog.
+The AgentOps extension below completes the current 24-skill catalog. Inspect
+the installed revision before applying either contract.
 
 These are **capability groups, not one universal execution DAG**. Read the
 linked skill contract before invoking a capability. “Instructions” means a
@@ -370,6 +376,12 @@ Its presence depends on the installed catalog revision, not on this guide's
 baseline count. Follow the existing [pinned AgentOps guide](agent-operations.md#agentops-preview-explicit-opt-in-bounded-assessment)
 for source, availability and preview boundaries. An adapter that
 normalizes evidence is not a second runtime policy enforcement engine.
+
+### Optional AgentOps extension
+
+| Skill | Purpose | Actual mechanism | Artifacts | Execution and evidence boundary |
+|---|---|---|---|---|
+| [`threadlight-agentops`](../skills/threadlight-agentops/SKILL.md) | Reuse per-agent operational evidence | Bounded `scripts/agentops_check.py` validates opt-in, provenance, scope and freshness; native refresh requires separate approval | `specs/agentops-manifest.json` | No opt-in is not-applicable; partial evidence is not a pass, and local provenance is not Azure attestation or production certification |
 
 ## Offline inspection and the skill contract validator
 

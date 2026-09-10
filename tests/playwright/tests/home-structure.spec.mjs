@@ -4,7 +4,9 @@ import AxeBuilder from '@axe-core/playwright';
 test('Home puts the unchanged demo before optional explanations', async ({ page }) => {
   await page.goto('/index.html');
   await expect(page.locator('.home-context')).not.toHaveAttribute('open', '');
-  await expect(page.locator('.home-journey a')).toHaveCount(3);
+  await expect(page.locator('.home-journey nav a')).toHaveCount(3);
+  await expect(page.locator('.home-catalogue-note')).toContainText('reviewed 23-skill snapshot');
+  await expect(page.locator('.home-catalogue-note')).toContainText('current 24-skill catalog');
   const order = await page.evaluate(() =>
     Boolean(document.querySelector('#reel').compareDocumentPosition(document.querySelector('#how-it-works')) & Node.DOCUMENT_POSITION_FOLLOWING),
   );
@@ -119,7 +121,7 @@ test('new Home navigation reflows and keeps the optional reference reachable', a
     await page.goto('/index.html');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.locator('.home-journey').scrollIntoViewIfNeeded();
-    for (const link of await page.locator('.home-journey a').all()) {
+    for (const link of await page.locator('.home-journey nav a').all()) {
       const box = await link.boundingBox();
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);

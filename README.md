@@ -2,7 +2,7 @@
 
 > **A business process becomes a working pilot with selected runtime governance and an evidence-backed path to production.**
 >
-> Twenty-two pipeline skills plus one agent-guided lifecycle planner (23 total) take a brief into a working pilot. Governance is evidenced per selected binding, not asserted for the whole agent. A working session produces the pilot and auditable evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
+> Twenty-three pipeline skills plus one agent-guided lifecycle planner (24 total) take a brief into a working pilot. Governance is evidenced per selected binding, not asserted for the whole agent. A working session produces the pilot and auditable evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
 >
 > SPEC § 14 is the value-model contract: baseline, target, owner, timeframe,
 > measurement source, and maturity policy. Its public arc is forecast →
@@ -45,7 +45,7 @@ parity, and a running host is not proof it consumed its skills.
 
 For the **L400/L500 engineering mental model**, read
 [Skill-based agents: construction, runtime and evidence](docs/skill-based-agents.md).
-It includes actual runtime loading, all 23 local capabilities, Cowork versus
+It includes actual runtime loading, all 24 local capabilities, Cowork versus
 engineering-host requirements and safe offline checks.
 [`THREADLIGHT.md`](THREADLIGHT.md) retains the exhaustive per-skill reference.
 The governance section below preserves the current control and evidence contract;
@@ -153,7 +153,20 @@ and [coding-agent guidance](AGENTS.md).
 | [`threadlight-customize`](skills/threadlight-customize/) | **NEW v0.1.0** — the **fork-and-customize final leg**. Instructions/runbooks (not automation) for forking the Threadlight pipeline and onboarding it into **one customer's environment** — landing zones, RBAC, pipelines, governance — with **production onboarding priority #1**. Four moves: intake gate (customer-profile workbook), customization map (fork-vs-keep), test-in-customer-env runbook (private-VNet via **Azure ML VS Code** / **GH Codespaces**), and an explicit non-coverage boundary. Ships a fork-runbook (`upstream-pin` + overlay). Manual handoff — `threadlight-auto` does **not** drive it. |
 | [`threadlight-router-bench`](skills/threadlight-router-bench/) | **NEW v0.1.0** — the **IMPROVE leg**. Offline self-improvement cold-path: `learn <run_id>` harvests ONE finished CI run (green *or* red) into a grounded learnings digest — phase parity, a reality-tuned failure taxonomy, and recommendations; optional `bench <candidate> <baseline>` is a paired model-router **cost/quality scorecard** from Azure Monitor token metrics. Offline — `threadlight-auto` does **not** drive it. |
 | [`threadlight-auto`](skills/threadlight-auto/) | **Agent-guided lifecycle planner** — `orchestrator.py` decides, coding agent executes; manual/live/cost-bearing/plan-only legs are handoffs. Reads evidence, chooses the next stage, resumes from `.threadlight/auto-state.json`, and smart-recovers quota/RBAC/ImagePull failures. Does **not** drive the manual legs (qualify, connect, ground, loadtest, upgrade, cicd, customize) or the offline router-bench. |
-| **Threadlight Lifecycle Canvas** | **GitHub Copilot App enhancement** - an outcome-oriented cockpit for all 23 skills. Starts a pilot from a brief, projects progress from canonical artifacts, and sends safe next-action intents back to chat. Optional; existing CLI/Cowork/Coding Agent flows are unchanged. |
+| [`threadlight-agentops`](skills/threadlight-agentops/) | Optional per-agent operations evidence. `agentops.yaml` opts each agent in; missing opt-in is not a gap. Validates native provenance and emits `specs/agentops-manifest.json`; canonical eval/red-team consumers reuse compatible evidence without rerunning it. Production-ready owns the residual `AOPS-001` aggregate; governance and Citadel authority are unchanged. |
+| **Threadlight Lifecycle Canvas** | **GitHub Copilot App enhancement** - an outcome-oriented cockpit for registered lifecycle steps, including optional AgentOps. Starts a pilot from a brief, projects progress from canonical artifacts, and sends safe next-action intents back to chat. Optional; existing CLI/Cowork/Coding Agent flows are unchanged. |
+
+### Optional AgentOps adoption
+
+Use [foundry-agentops in awesome-gbb](https://github.com/aiappsgbb/awesome-gbb/tree/2db28d1f52bf288f2d0fd40b7c8beb913ceeee09/skills/foundry-agentops)
+to install/configure the pinned native accelerator; use `threadlight-agentops`
+to normalize existing evidence. This integration does not install a second eval,
+red-team or governance engine. `threadlight-cicd` remains the workflow owner.
+An executed smoke, a quality threshold result and production readiness are
+different outcomes; native Doctor `ready` never replaces Threadlight's verdict.
+The optional Canvas entry is a non-gating `manifest-observed` view. It does not
+re-execute the Python binding validator or independently prove Azure state;
+production-ready consumes the strictly validated manifest.
 
 ### Canonical lifecycle classification
 
@@ -252,7 +265,7 @@ order — is in [`docs/KRATOS-BRIDGE.md`](docs/KRATOS-BRIDGE.md).
 ## Quickstart in GitHub Codespaces
 
 Want to try the skills without installing anything? Open this repo in a
-Codespace and you get **GitHub Copilot CLI with all 23 threadlight skills
+Codespace and you get **GitHub Copilot CLI with all 24 threadlight skills
 pre-wired** from the checkout.
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/aiappsgbb/threadlight-skills)

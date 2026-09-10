@@ -6,6 +6,28 @@ for the action-to-evidence story, or the
 and the separately labeled **AgentOps preview (PR #128)**. Preview lifecycle
 evidence does not relax the runtime-governance requirements below.
 
+## Optional AgentOps evidence
+
+`threadlight-agentops` is an opt-in evidence adapter, not a readiness engine.
+Only agent roots containing `agentops.yaml` participate; absence is
+`not-applicable` and does not lower a pilot's score. Its normalized
+`specs/agentops-manifest.json` records bound, fresh native evidence without
+copying prompts, responses, tool calls or arbitrary Doctor payloads.
+
+`threadlight-evals` owns quality, schedules and A/B evidence;
+`threadlight-redteam` owns adversarial coverage. They reuse compatible evidence
+without duplicating a batch or campaign. ASSERT/ACS observations are supplemental:
+they cannot satisfy the signed, current, deployment-bound runtime governance
+contract below. `threadlight-cicd` owns composed workflows; Safe Check and
+Citadel keep their existing authority.
+
+The `AOPS-001` finding in `sre-handover` reports residual operational gaps;
+domain findings already represented by their canonical owners are not counted
+again. Unknown, stale or unbound evidence cannot become a pass. A technically
+complete smoke can contain failing quality thresholds and a blocked native
+Doctor readiness result; neither a CLI exit nor native `ready` certifies
+production readiness.
+
 ## Runtime governance lifecycle
 
 **SAFE is the method**, **ACS/Rego is the PDP** (native OPA policy decisions),
