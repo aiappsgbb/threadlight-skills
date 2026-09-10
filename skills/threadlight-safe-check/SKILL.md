@@ -114,33 +114,35 @@ Required audit uses remote ACK; local overlay fsync is not hosted durability.
 
 ---
 
-## Kratos-export mode (valid input without `specs/manifest.json`)
+## Kratos-export adaptation (manifest still required)
 
 A **Kratos-exported project** (`src/hosted-agent/` + `use-cases/<x>/`, trimmed
-`infra/`) is a **valid input shape** even though it has no `specs/manifest.json`
-`deployment_manifest{}` block. Detect it the same way `threadlight-deploy` does
-(see [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md)) and adapt:
+`infra/`) can be adapted by the **coding agent**. The Python gate still requires
+a manifest; recognizing the directory shape does not bypass `_load_manifest`.
+See [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md#adapt-before-safe-check).
 
-- **Derive `expected_resource_types` from the export itself**, not from a SPEC
-  manifest: walk the export's `infra/` (compiled Bicep) + `azure.yaml` services.
-  Pass `--from-infra` (or point `--manifest` at a derived manifest) so the gate
-  checks against what Kratos actually shipped, not a `threadlight-design` SPEC
-  that does not exist here. This means **exit code 2 ("no `specs/manifest.json`")
-  is NOT raised** for a recognized Kratos export.
-- **Trimmed infra is intentional — do NOT flag as "missing module".** The Kratos
-  exporter deliberately drops **APIM / AI Gateway** and the **multi-tenant
-  frontend** module. Their absence is a **pass**, not a gap. Only treat APIM as
-  expected if `citadel-spoke-onboarding` has since been layered on. Likewise a
-  missing `workspace` ACA is only a gap once `threadlight-workspace-ui` has been
-  invoked.
-- **`required_aca_roles` collapses to `{"agent"}`** for a bare export — the
-  single hosted-agent service. `bot` / `workspace` roles are required only after
-  the corresponding Threadlight extension skill has been added.
+- **Author the deployment contract explicitly.** Inspect compiled Bicep,
+  `azure.yaml` and use-case sources. Use the
+  [`threadlight-design` manifest schema/example](../threadlight-design/SKILL.md#5-specsmanifestjson)
+  to create `specs/manifest.json` with a `deployment_manifest` object and reviewed
+  resource types, selectors, services/roles, integrations, jobs and channels.
+  Run `threadlight-safe-check --phase design --manifest specs/manifest.json`
+  from the export root after installing the supported package.
+- **There is no `--from-infra` flag.** Missing/invalid manifest or missing
+  `deployment_manifest` still means **exit code 2**. Do not fabricate empty
+  manifests or postdeploy proof.
+- **Trimmed infra is intentional, not automatically passing.** Do not add
+  APIM/frontend expectations merely because another template has them; retain
+  any actually selected customer network/governance requirement. Derive
+  `required_aca_roles` from deployed Container App resources, not from the
+  presence of a hosted-agent source directory.
 - **`evals/` absence is expected** pre-backfill (Kratos `_SKIP_DIRS`); it is not
   a deploy defect. `threadlight-deploy` Kratos-export mode backfills it.
 
-In short: recognize the export, check it against its own shipped infra, and treat
-the documented trims as informational — never as gate failures.
+After adaptation, run postdeploy with `--manifest specs/manifest.json`, explicit
+approved `--subscription` / `--rg`, and review `tests/postdeploy-manifest.json`.
+The gate still fails genuine contract gaps; omission from the export does not
+waive readiness obligations.
 
 ---
 

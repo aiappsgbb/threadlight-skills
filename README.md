@@ -8,6 +8,49 @@
 > measurement source, and maturity policy. Its public arc is forecast →
 > settled Azure actuals → reconciliation → cost per successful interaction.
 
+## What is a skill?
+
+A **skill is a reusable instruction package**: a `SKILL.md` describes when to
+use it, the procedure, inputs, outputs and boundaries; companion files can
+provide templates, scripts and references. Markdown is not a model, a tool
+implementation, permission or runtime enforcement.
+
+Threadlight has **two distinct libraries and agents**:
+
+- The **construction agent** reads this catalog's `skills/threadlight-*` to
+  qualify a brief, design a system, generate code, run available checks or hand
+  work to an operator.
+- The **generated business agent** uses its own domain
+  `src/agent/skills/*/SKILL.md`, host instructions, registered tools and SDK
+  runtime. For example, the public returns assistant has intake, eligibility,
+  fraud-escalation and disposition skills—not Design or Deploy skills.
+
+The reviewed SPEC connects the two: brief → foundation/SPEC checkpoint →
+`AGENTS.md` and domain skills → concrete tools/data/tests → local iteration →
+approved deployment → evidence. Orchestration belongs to instructions/runtime
+or an explicit deterministic workflow, not a new domain “orchestrator” skill.
+The local policy defaults to GHCP SDK / agent / Invocations, with conditional
+MAF agent or workflow / Responses routes. A local MAF quickstart is not hosted
+parity, and a running host is not proof it consumed its skills.
+
+## Choose your learning path
+
+| Public chapter | What you will learn |
+|---|---|
+| [Home](https://aiappsgbb.github.io/threadlight-skills/index.html) | What Threadlight offers and where its evidence stops |
+| [Basics](https://aiappsgbb.github.io/threadlight-skills/basics.html) | Skills, the two agents, tools and runtime responsibilities |
+| [Build](https://aiappsgbb.github.io/threadlight-skills/funnel.html) | Construction choices and the brief-to-pilot path |
+| [Case study](https://aiappsgbb.github.io/threadlight-skills/case-study.html) | A concrete process, decisions and implementation boundaries |
+| [Production](https://aiappsgbb.github.io/threadlight-skills/production.html) | Governance, readiness and operator-owned deployment |
+
+For the **L400/L500 engineering mental model**, read
+[Skill-based agents: construction, runtime and evidence](docs/skill-based-agents.md).
+It includes actual runtime loading, all 24 local capabilities, Cowork versus
+engineering-host requirements and safe offline checks.
+[`THREADLIGHT.md`](THREADLIGHT.md) retains the exhaustive per-skill reference.
+The governance section below preserves the current control and evidence contract;
+it is not a prerequisite for understanding what a skill is.
+
 The paid live workflow has two evidence meanings. **Live smoke** proves the
 design, deployment, invocation, and assurance producers executed; it does not
 assert production readiness. **Readiness proof** additionally requires a green
@@ -19,6 +62,15 @@ explicit preproduction probe opt-in and fresh hosted evidence; it does not
 substitute a noop result for an unverified business binding.
 
 ## Runtime governance: method, enforcement and evidence
+
+**Choose your depth:** the **L200/L300**
+[visual walkthrough: Governance & AgentOps](https://aiappsgbb.github.io/threadlight-skills/governance.html)
+explains action controls and evidence boundaries; the **L400/L500**
+[operative guide](docs/agent-operations.md) connects configure → generate →
+validate → approved deployment → collect → rescore, with prerequisites, artifacts
+and recovery. It also covers the **opt-in AgentOps integration (merged PR #128)**,
+with separate source and preview-maturity boundaries. Lifecycle evidence
+integration does not replace runtime enforcement, quality gates or readiness.
 
 **SAFE is the method** for defining business invariants. **ACS is the PDP**
 (policy decision point), evaluating native Rego through OPA locally.
@@ -121,23 +173,30 @@ production-ready consumes the strictly validated manifest.
 | Stage class | What runs | Evidence boundary |
 |---|---|---|
 | No-repo entry | qualify; declared evidence, no Azure | sizing only; no runtime artifacts |
-| Agent-guided pilot path | design, optional local test, deploy, safe-check, forecast, invoke, evals, red-team, govern, governed-actions; Auto plans, coding agent executes | pilot evidence and review artifacts |
+| Agent-guided pilot path | design, local iteration, deploy, safe-check, forecast, invoke, evals and red-team; selected bindings require govern + governed-actions gate before deploy and hosted probe after it | Auto plans; caller-owned work and actual gate artifacts provide pilot evidence |
 | Manual live evidence | connect, ground, load-test | live, customer, and cost-bearing evidence captured by handoff |
 | Optional handoff | production-ready, CI/CD, customize | advisory or deployment/runbook handoffs |
 | Later-pilot evidence | settled actuals and reconciliation | post-pilot value evidence and cost reconciliation |
 | Offline improvement | router-bench and upgrade | finished-run learning and compatibility scans |
 
-## Pipeline flow
+## Capability flow, not one universal execution order
+
+The catalog is a set of capabilities, not a universal execution DAG. In
+particular, **selected-binding governance is prepared and gated before deploy**,
+then probed after deploy. The current Auto sequence and manual handoffs are
+documented in the [engineering guide](docs/skill-based-agents.md#auto-is-construction-lifecycle-orchestration).
+The sketch below groups work; it does not authorize or automatically run it.
 
 ```
 threadlight-qualify (no-repo / Cowork sizing — before any repo exists) →
-threadlight-design → threadlight-local-test → threadlight-deploy →
+threadlight-design → threadlight-local-test →
+SELECTED BINDINGS: threadlight-govern + threadlight-governed-actions pre-deploy gate →
+threadlight-deploy → selected-binding governance probe →
 threadlight-safe-check (gate) → threadlight-consumption-iq (cost) →
 CONNECT: threadlight-connect (mock→real tool swap — manual, evidence-gated) →
 DISCOVER: threadlight-evals (offline + online CE) + threadlight-redteam (adversarial scan) +
           threadlight-ground (ACL / citation / refusal grounding — manual) →
-PROTECT: threadlight-govern (AGT runtime governance) +
-         threadlight-governed-actions (selected runtime generation + scoped evidence) →
+PROTECT: maintain selected runtime policy, bindings and fresh scoped evidence →
 foundry-observability →
 threadlight-loadtest (budget-capped, production-confirmed load evidence — manual) →
 threadlight-production-ready (advisory; verifies the legs ran) → customer architecture review →
@@ -168,8 +227,11 @@ pilot feeds the next.
 Cowork-safe qualification & sizing that runs before any repository exists and
 seeds SPEC § 12 for `threadlight-design`. It is **not a deployed runtime skill**.
 `threadlight-auto` is the **agent-guided lifecycle planner**. It reads the
-latest evidence, chooses the next stage, and hands execution to the coding
-agent. Manual / live / cost-bearing / plan-only legs are explicit handoffs, not
+latest evidence and chooses the next stage. `decide()` plans;
+`execute(workspace, worker, ...)` delegates actual work to a caller-supplied
+worker callback and rechecks selected gate evidence. A zero worker exit is not
+gate proof; the planner is not the generated business agent.
+Manual / live / cost-bearing / plan-only legs are explicit handoffs, not
 auto-run steps: **`threadlight-connect`** (mock→real tool swap),
 **`threadlight-ground`** (grounding evidence), **`threadlight-loadtest`**
 (budget-capped load evidence), **`threadlight-cicd`** (pipeline handoff), and
@@ -203,7 +265,7 @@ order — is in [`docs/KRATOS-BRIDGE.md`](docs/KRATOS-BRIDGE.md).
 ## Quickstart in GitHub Codespaces
 
 Want to try the skills without installing anything? Open this repo in a
-Codespace and you get **GitHub Copilot CLI with all 23 threadlight skills
+Codespace and you get **GitHub Copilot CLI with all 24 threadlight skills
 pre-wired** from the checkout.
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/aiappsgbb/threadlight-skills)

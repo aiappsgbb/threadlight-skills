@@ -1,8 +1,8 @@
 # `threadlight-e2e-foundry.yml` — operator runbook
 
 > Operator guide for the [`threadlight-e2e-foundry`](../../.github/workflows/threadlight-e2e-foundry.yml)
-> GitHub Actions workflow. **One-time setup** lives in
-> [`threadlight-e2e-setup.md`](./threadlight-e2e-setup.md) — do that first.
+> GitHub Actions workflow. Complete the
+> [one-time prerequisites](#one-time-prerequisites) before dispatch.
 >
 > The retry-on-429 wrapper + git-suppress prompt are the load-bearing
 > reliability pieces here — they're what keeps a ~51-minute, 16-step run
@@ -20,6 +20,56 @@ The collector proves only `governance_probe_noop`; unverified business bindings
 fail readiness. No live proof is claimed by this runbook.
 
 Drives the full threadlight pipeline — `threadlight-design` → `threadlight-deploy` (incl. `azd up`) → `threadlight-safe-check phase=post-deploy` → live agent invoke → **control-plane legs** (`threadlight-govern` + `threadlight-evals` + `threadlight-redteam` against the deployed pilot, then `threadlight-production-ready` rendering the outcome-KPI scorecard that joins them) — in a clean Actions runner, with model calls routed to a Foundry account via BYOK. The leg phase is workflow-owned + deterministic and report-only for verdicts (the workshop scenario legitimately surfaces governance/eval/safety gaps); its hard gate is that each leg executable runs end-to-end and emits its `specs/*-manifest.json`. The offline counterpart that asserts a *fully green + joined* control plane is [`test_e2e_control_plane.py`](../../skills/threadlight-auto/tests/test_e2e_control_plane.py). Deployed Azure resources land in a per-run RG (`rg-threadlight-e2e-<run_id>`) and are torn down via `azd down --force --purge` in an `if: always()` step.
+
+## One-time prerequisites
+
+This is a **manual owner/platform-team checklist**, not a provisioning script.
+The [workflow source](../../.github/workflows/threadlight-e2e-foundry.yml) is
+authoritative for its current secrets, environment and runner configuration.
+The old `*-setup.md` reference in its header is stale; this section replaces that
+missing runbook for operators.
+
+1. Obtain explicit approval for the repository/ref, Azure tenant/subscription,
+   model deployment, mode, maximum spend, resource creation and cleanup owner.
+   Even design-only invokes a model. This documentation change authorizes no run.
+2. Configure the existing **`e2e-ci`** GitHub Environment, with required reviewers
+   and an appropriate deployment-branch policy. The smoke job uses
+   `id-token: write` and `contents: read`. Its existing Azure deployment identity
+   needs an OIDC federated credential with issuer
+   `https://token.actions.githubusercontent.com`, audience
+   `api://AzureADTokenExchange`, and exact subject
+   `repo:aiappsgbb/threadlight-skills:environment:e2e-ci`.
+   A branch-only subject does not match this environment-scoped job.
+3. Supply the secrets visible to that environment/job:
+
+   | Secret | Required value |
+   |---|---|
+   | `AZURE_CLIENT_ID` | Approved UAMI client ID (not principal/object ID) |
+   | `AZURE_TENANT_ID` | Tenant containing that identity |
+   | `AZURE_SUBSCRIPTION_ID` | Approved subscription for the per-run resources |
+   | `AZURE_AI_ENDPOINT` | Existing Foundry account base URL for BYOK model calls |
+
+4. The selected model deployment must already exist on that account, with
+   adequate quota/reachability and matching `wire_api`. The smoke workflow's
+   documented identity contract uses Cognitive Services OpenAI User on that
+   account and Contributor plus User Access Administrator at subscription scope
+   for creation/RBAC. **Those are broad prerequisites to review, not permission
+   to grant them here.** If the owner cannot approve them, stop or have the
+   platform team design a separately reviewed constrained workflow.
+5. Check hosted `ubuntu-latest` runner availability, outbound access for pinned
+   tooling/model calls, and workflow-installed Node/Python/azd/Bicep dependencies.
+   Confirm that `rg-threadlight-e2e-<run_id>` is disposable and that someone will
+   verify deletion after teardown failures; cancellation is not cleanup proof.
+6. **Readiness-proof is separate:** do not reuse the smoke identity, secrets or
+   runner as a shortcut. Follow the
+   [protected input and resume contract](../production-readiness.md#protected-readiness-proof-ci-inputs)
+   for `governance-preproduction`, private runner reachability, collector UAMI,
+   config digest, existing registered services/images and safe-noop approval.
+
+Stop before dispatch if any identity, scope, quota, budget or cleanup ownership is
+unknown. For auth recovery, compare the job's actual environment subject with the
+approved FIC and ask the platform owner to correct it; do not broaden RBAC or
+switch targets simply to make a run green.
 
 ## When to fire it
 
@@ -136,9 +186,9 @@ Most useful when triaging:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `AADSTS70016` / `AADSTS500011` / `AADSTS50020` at `azure/login` step | Federated credential missing for this repo/branch | Re-run [`threadlight-e2e-setup.md`](./threadlight-e2e-setup.md) federated-credential commands |
+| `AADSTS70016` / `AADSTS500011` / `AADSTS50020` at `azure/login` step | Tenant/identity/FIC mismatch | Platform owner checks the exact environment-scoped subject in [one-time prerequisites](#one-time-prerequisites); no automatic credential/RBAC expansion |
 | `401` from Foundry on first model call | `AZURE_AI_ENDPOINT` secret wrong or UAMI lacks `Cognitive Services OpenAI User` on the Foundry account | `az role assignment list --assignee <UAMI-principal-id> --scope <foundry-account-id>`; re-grant if missing |
-| `Authorization failed for ... Microsoft.Authorization/roleAssignments` during Bicep | UAMI missing `User Access Administrator` at sub scope | Grant at sub scope (Bicep RBAC blocks need it) |
+| `Authorization failed for ... Microsoft.Authorization/roleAssignments` during Bicep | Approved identity lacks the workflow's required role-assignment rights | Stop and ask the platform owner to review the broad permission contract above; do not auto-grant subscription permissions |
 | `InsufficientQuota for "gpt-5.4-mini"` across all probed regions | Real exhaustion across westus3 + eastus2 + northcentralus | Request quota increase, or wait for other CI runs to drain |
 | Copilot CLI session ends quickly with `CAPIError: Too Many Requests` | Foundry deployment is 429-throttled (transient) | The retry wrapper handles up to 3 attempts automatically; if all 3 fail, refire with `-f region=eastus2` or wait 30 min |
 | `azd down` fails with "resources still referenced" | Foundry capability host / private endpoint not fully detached | Fallback `az group delete --no-wait` step kicks in; check the next morning that the RG actually deleted |

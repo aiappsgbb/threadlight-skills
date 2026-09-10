@@ -493,6 +493,30 @@
     .cs-proof-grid { grid-template-columns: 1fr; }
   }
 
+  .cs-evidence-map { margin: 24px 0; text-align: left; background: var(--bg-0); border: 1px solid var(--line-2); border-radius: 8px; }
+  .cs-evidence-map figcaption { padding: 16px 22px; border-bottom: 1px solid var(--line); font: 12px/1.6 var(--mono); color: var(--ink-2); }
+  .cs-evidence-lane { display: grid; grid-template-columns: 1fr 20px 1fr 20px 1fr; gap: 16px; align-items: center; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+  .cs-evidence-lane > div { min-width: 0; }
+  .cs-evidence-lane small { display: block; color: var(--ink-2); font: 10px/1.6 var(--mono); letter-spacing: .06em; margin-bottom: 8px; }
+  .cs-evidence-lane strong, .cs-evidence-lane a { display: block; color: var(--ink-0); font: 500 21px/1.25 var(--serif); }
+  .cs-evidence-lane a { text-underline-offset: 4px; }
+  .cs-evidence-lane a:focus-visible, .cs-verdict-details summary:focus-visible { outline: 2px solid var(--lime); outline-offset: 4px; }
+  .cs-evidence-arrow { color: var(--ink-2); font: 20px var(--mono); text-align: center; }
+  .cs-evidence-limit { border-left: 2px solid var(--lime); padding-left: 16px; }
+  .cs-evidence-limit strong { font: 14px/1.6 var(--sans); }
+  .cs-evidence-map .cs-evidence-note { margin: 0; max-width: none; padding: 16px 22px; color: var(--ink-1); font: 13px/1.6 var(--sans); }
+  .cs-verdict-details { text-align: left; margin: 0 0 24px; border-block: 1px solid var(--line); }
+  .cs-verdict-details summary { padding: 14px 0; min-height: 44px; cursor: pointer; color: var(--ink-1); font: 12px/1.6 var(--mono); }
+  .cs-verdict-details .cs-digest { margin-top: 12px; }
+  @media (max-width: 600px) {
+    .cs-evidence-map figcaption { padding: 14px 16px; font-size: 11px; }
+    .cs-evidence-lane { grid-template-columns: 1fr; gap: 10px; padding: 20px 16px; }
+    .cs-evidence-arrow { text-align: left; line-height: 1; transform: rotate(90deg); width: 20px; }
+    .cs-evidence-arrow:nth-of-type(2) { transform: none; }
+    .cs-evidence-lane small { margin-bottom: 4px; }
+    .cs-evidence-map .cs-evidence-note { padding: 16px; }
+  }
+
   /* — run stages: sticky rail + full timeline (wizard scroll-spy) —— */
   .cs-run { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 34px; align-items: start; margin-top: 8px; }
 
@@ -659,9 +683,44 @@
     .cs-wiz-label { display: none; }
     .cs-wiz-nav button { padding: 11px 15px; font-size: .85rem; }
   }
+  #chapter-top .hero-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 44px; text-align: left; width: calc(100% - 48px); max-width: 1240px; margin-inline: auto; padding: 0; }
+  #chapter-top .hero-inner .eyebrow { justify-content: flex-start; }
+  #chapter-top .breadcrumb, #chapter-top .eyebrow { grid-column: 1 / -1; margin: 0; }
+  #chapter-top .hero-headline { font-size: clamp(2.4rem, 4.7vw, 4.6rem); margin: 0 0 20px; max-width: 13ch; }
+  #chapter-top .hero-sub { font-size: 1.04rem; margin: 0; max-width: 49ch; }
+  #chapter-top .hero-cta-row { justify-content: flex-start; margin-top: 20px; gap: 8px; }
+  #chapter-top .hero-tag { grid-column: 1 / -1; margin: 0; font-size: .76rem; }
+  .cs-opening-proof { margin: 0; border: 1px solid var(--line-2); background: var(--bg-1); min-width: 0; align-self: start; }
+  .cs-opening-proof figcaption { padding: 16px 20px; font: .73rem var(--mono); letter-spacing: .06em; color: var(--ink-2); border-bottom: 1px solid var(--line); }
+  .cs-opening-ledger { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; padding: 18px 20px; gap: 12px; }
+  .cs-opening-ledger div { display: flex; flex-direction: column-reverse; }
+  .cs-opening-ledger dt { font: .7rem var(--mono); color: var(--ink-2); margin-top: 8px; }
+  .cs-opening-ledger dd { margin: 0; font: 1.8rem var(--serif); color: var(--ink-0); }
+  .cs-opening-proof .cs-matrix { margin: 0; font-size: .83rem; }
+  .cs-opening-proof caption { text-align: left; padding: 8px 20px; font: .7rem var(--mono); color: var(--ink-2); }
+  .cs-opening-proof .cs-matrix th, .cs-opening-proof .cs-matrix td { padding: 10px 20px; }
+  .cs-opening-proof .cs-matrix .st { color: var(--ink-0); }
+  .cs-opening-proof .cs-matrix tr:last-child { background: var(--chapter-accent-soft); }
+  .cs-opening-proof .scope { padding: 15px 20px; margin: 0; font-size: .85rem; line-height: 1.5; color: var(--ink-1); }
+  .cs-opening-proof .scope a { color: var(--ink-0); text-decoration: underline; }
+  .cs-wiz main > section.scene .hero-inner { margin-block: 0; }
+  .cs-wiz-menu-btn, .cs-wiz-jump { min-height: 44px; }
+  @media (max-width: 760px) {
+    #chapter-top .hero-inner { grid-template-columns: 1fr; gap: 8px; }
+    #chapter-top .hero-headline { font-size: 2.5rem; max-width: 17ch; margin-bottom: 4px; }
+    #chapter-top .hero-sub { font-size: .94rem; line-height: 1.55; }
+    #chapter-top .hero-cta-row { margin-top: 8px; }
+    #chapter-top .hero-cta-row .btn { font-size: .8rem; padding: 10px 12px; }
+    .cs-opening-ledger { padding: 14px 16px; gap: 6px; }
+    .cs-opening-ledger dd { font-size: 1.2rem; white-space: nowrap; }
+    .cs-opening-ledger dt { font-size: .64rem; }
+    .cs-opening-proof figcaption, .cs-opening-proof .scope { padding: 12px 16px; }
+    .cs-opening-proof .cs-matrix th, .cs-opening-proof .cs-matrix td { padding: 9px 16px; }
+  }
 </style>
+<link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
 </head>
-<body class="chapter-page chapter-casestudy">
+<body class="chapter-page chapter-casestudy chapter-experience">
 
 <header class="masthead">
   <div class="brand">
@@ -671,10 +730,10 @@
   </div>
   <nav class="nav" aria-label="Site chapters">
     <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
-    <a href="./blueprint.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Blueprint</a>
+    <a href="./basics.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Basics</a>
+    <a href="./funnel.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16l-6 7v7l-4 2v-9z"/></svg>Build</a>
     <a href="./case-study.html" aria-current="page"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
-    <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production-ready</a>
-    <a href="./customize.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.3"/><circle cx="16" cy="16" r="2.3"/></svg>Customize</a>
+    <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
   </nav>
 </header>
 
@@ -693,38 +752,59 @@
     </div>
 
     <div class="wrap wrap-wide hero-inner">
-      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Case study</p>
-      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>A real, unscripted run &middot; captured as it happened &middot; nothing mocked</p>
+      <div class="cx-journey">
+        <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><span aria-current="page">Case study</span></nav>
+        <a class="cx-journey-next" href="./production.html">Next: Production <span aria-hidden="true">→</span></a>
+      </div>
+      <p class="eyebrow"><span class="dot"></span>Historical run / credit-memo pilot</p>
 
+      <div class="cs-opening-story">
       <h1 class="hero-headline" id="cs-headline">
-        <span class="word">From</span>
-        <span class="word">a</span>
-        <span class="word">brief</span>
-        <span class="word">&rarr;</span>
-        <br>
-        <span class="word"><em>governed</em></span>
-        <span class="word"><em>working pilot.</em></span>
+        A working pilot.<br><em>With receipts.</em>
       </h1>
 
-      <p class="hero-sub reveal" data-delay="2">
-        A bank&rsquo;s SMB lending team wanted to compress <strong>credit-memo</strong>
-        preparation. We handed Threadlight one paragraph and ran the whole pipeline for
-        real &mdash; idea &rarr; <em>live MVP</em> &rarr; a <em>governed working pilot</em>
-        on Azure, every model call routed through a Citadel AI gateway, with an
-        <strong>evidence-backed path to production</strong> rather than an overclaim. Fourteen stages, on a live
-        subscription, every artifact independently reviewed.
+      <p class="hero-sub" data-chapter-intro>
+        One paragraph became a credit-memo pilot on Azure through a Citadel gateway.
+        Fourteen stages, independently reviewed. <strong>One onboarding/safe-check gate stayed conditional.</strong>
+        Explore what ran, what passed, and what still belonged to a human.
       </p>
-
-      <p class="hero-tag reveal" data-delay="3" aria-label="Run context">
-        <span class="pip"></span>
-        <span>SMB loan credit-memo &middot; Meridian Commercial Bank <em>(fictional)</em> &middot; inner build agent on Claude Opus 4.8 &middot; governed by a Citadel AI gateway</span>
-      </p>
-
-      <div class="hero-cta-row reveal" data-delay="4">
+      <div class="hero-cta-row">
         <a class="btn btn-primary" href="#run">Walk the 14 stages <span class="arrow">&darr;</span></a>
-        <a class="btn btn-ghost" href="#proof">Jump to the proof <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="#verdict">The verdict <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="#proof">Inspect the proof <span class="arrow">&rarr;</span></a>
       </div>
+      </div>
+
+      <figure class="cs-opening-proof" data-visual-anchor aria-labelledby="opening-proof-cap">
+        <figcaption id="opening-proof-cap">Run evidence / 14 stages / 2,306 OTel records</figcaption>
+        <dl class="cs-opening-ledger">
+          <div><dt>stage verdicts</dt><dd>13 PASS</dd></div>
+          <div><dt>onboarding gate</dt><dd>1 conditional</dd></div>
+          <div><dt>evals passed</dt><dd>14 / 15</dd></div>
+        </dl>
+        <div class="cs-captured-route" role="img" aria-label="Captured request trace">
+          <div><span>HISTORICAL REQUEST</span><strong>gpt-4.1</strong></div>
+          <i aria-hidden="true">&rarr;</i>
+          <div class="cs-captured-boundary"><span>MODEL ALLOW-LIST</span><strong>Gateway</strong></div>
+          <i aria-hidden="true">&rarr;</i>
+          <div><span>CAPTURED RESULT</span><strong>403 BLOCKED</strong></div>
+        </div>
+        <table class="cs-matrix">
+          <caption class="sr-only">Historical gateway smoke results</caption>
+          <thead><tr><th scope="col">Model requested</th><th scope="col">Gateway result</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">gpt-5.4-mini</td><td class="st">200 OK</td></tr>
+            <tr><td class="mono">gpt-5.4</td><td class="st">200 OK</td></tr>
+            <tr><td class="mono">gpt-4.1</td><td class="st">403 BLOCKED</td></tr>
+          </tbody>
+        </table>
+        <p class="scope"><strong>Pilot evidence, not current business-live proof.</strong>
+          These historical receipts do not certify a new deployment.
+          <a href="#limits">Read the boundaries →</a></p>
+      </figure>
+      <p class="hero-tag" aria-label="Run context">
+        <span class="pip"></span>
+        <span>Meridian Commercial Bank <em>(fictional)</em> · inner build agent: Claude Opus 4.8 · memos drafted, never auto-approved.</span>
+      </p>
     </div>
 
     <div class="scroll-cue" aria-hidden="true">Scroll</div>
@@ -1029,7 +1109,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         <div class="cs-timeline reveal" data-delay="1">
 
         <!-- 1 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-01">
           <div class="cs-marker">1</div>
           <div class="cs-card">
             <p class="cs-cat">Design</p>
@@ -1047,7 +1127,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 2 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-02">
           <div class="cs-marker">2</div>
           <div class="cs-card">
             <p class="cs-cat">Local test</p>
@@ -1063,7 +1143,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 3 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-03">
           <div class="cs-marker">3</div>
           <div class="cs-card">
             <p class="cs-cat">Deploy &middot; MVP</p>
@@ -1080,7 +1160,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 4 -->
-        <article class="cs-stage is-cond">
+        <article class="cs-stage is-cond" id="stage-04">
           <div class="cs-marker">4</div>
           <div class="cs-card">
             <p class="cs-cat">Safety gate</p>
@@ -1097,7 +1177,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 5 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-05">
           <div class="cs-marker">5</div>
           <div class="cs-card">
             <p class="cs-cat">Cost</p>
@@ -1114,7 +1194,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 6 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-06">
           <div class="cs-marker">6</div>
           <div class="cs-card">
             <p class="cs-cat">Evaluate</p>
@@ -1131,7 +1211,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 7 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-07">
           <div class="cs-marker">7</div>
           <div class="cs-card">
             <p class="cs-cat">Observe</p>
@@ -1148,7 +1228,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 8 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-08">
           <div class="cs-marker">8</div>
           <div class="cs-card">
             <p class="cs-cat">Live demo</p>
@@ -1165,7 +1245,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 9 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-09">
           <div class="cs-marker">9</div>
           <div class="cs-card">
             <p class="cs-cat">Readiness</p>
@@ -1181,7 +1261,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 10 -->
-        <article class="cs-stage is-op">
+        <article class="cs-stage is-op" id="stage-10">
           <div class="cs-marker">10</div>
           <div class="cs-card">
             <p class="cs-cat">Architecture</p>
@@ -1198,7 +1278,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 11 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-11">
           <div class="cs-marker">11</div>
           <div class="cs-card">
             <p class="cs-cat">Govern &middot; spoke</p>
@@ -1216,7 +1296,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 12 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-12">
           <div class="cs-marker">12</div>
           <div class="cs-card">
             <p class="cs-cat">Ship &middot; prod</p>
@@ -1234,7 +1314,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 13 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-13">
           <div class="cs-marker">13</div>
           <div class="cs-card">
             <p class="cs-cat">CI / CD</p>
@@ -1252,7 +1332,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </article>
 
         <!-- 14 -->
-        <article class="cs-stage is-pass">
+        <article class="cs-stage is-pass" id="stage-14">
           <div class="cs-marker">14</div>
           <div class="cs-card">
             <p class="cs-cat">Handoff</p>
@@ -1895,6 +1975,34 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           safe-check gate remained conditional. <strong>No huge issues.</strong>
         </p>
 
+        <figure class="cs-evidence-map" data-evidence-map aria-labelledby="cs-evidence-caption">
+          <figcaption id="cs-evidence-caption">Illustrative evidence map / historical run / not a fresh receipt</figcaption>
+          <div class="cs-evidence-lane" data-evidence-lane>
+            <div><small>PROOF / GATEWAY SMOKE</small><a href="#proof">Approved 200 · banned 403</a></div>
+            <span class="cs-evidence-arrow" aria-hidden="true">→</span>
+            <div><small>CLAIM / OBSERVED BOUNDARY</small><strong>Model allow-list enforced</strong></div>
+            <span class="cs-evidence-arrow" aria-hidden="true">≠</span>
+            <div class="cs-evidence-limit"><small>NOT PROVED</small><strong>Whole-agent governance or business-write authorization.</strong></div>
+          </div>
+          <div class="cs-evidence-lane" data-evidence-lane>
+            <div><small>PROOF / CAPTURED EVALS</small><a href="#stage-06">14 / 15 scenarios passed</a></div>
+            <span class="cs-evidence-arrow" aria-hidden="true">→</span>
+            <div><small>CLAIM / SEEDED CASES</small><strong>Memos drafted, never self-finalized</strong></div>
+            <span class="cs-evidence-arrow" aria-hidden="true">≠</span>
+            <div class="cs-evidence-limit"><small>NOT PROVED</small><strong>Every borrower or policy case. One test-data gap remained.</strong></div>
+          </div>
+          <div class="cs-evidence-lane" data-evidence-lane>
+            <div><small>PROOF / STAGE LEDGER</small><a href="#stage-11">13 PASS · 1 conditional</a></div>
+            <span class="cs-evidence-arrow" aria-hidden="true">→</span>
+            <div><small>CLAIM / THIS RUN</small><strong>A governed working pilot</strong></div>
+            <span class="cs-evidence-arrow" aria-hidden="true">≠</span>
+            <div class="cs-evidence-limit"><small>NOT PROVED</small><strong>Unconditional readiness. The onboarding/safe-check gate stayed conditional.</strong></div>
+          </div>
+          <p class="cs-evidence-note">These historical receipts do not certify a new deployment. Follow the evidence links for the original scope, findings and limitations.</p>
+        </figure>
+
+        <details class="cs-verdict-details">
+          <summary>Historical run digest / timings, costs and findings</summary>
         <div class="cs-digest">
           <div class="cs-dig">
             <p class="h">What ran</p>
@@ -1921,6 +2029,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
             </ul>
           </div>
         </div>
+        </details>
 
         <div class="cs-quote" style="text-align:left;margin:0 auto 30px;max-width:760px;">
           <blockquote>
@@ -2063,6 +2172,13 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
     var h = mast ? Math.round(mast.getBoundingClientRect().height) : 64;
     doc.style.setProperty('--wiz-mast', h + 'px');
   }
+  // site.js collapses mobile navigation after this script boots; fonts and
+  // chapter chrome can resize it again without a window resize.
+  var masthead = document.querySelector('.masthead');
+  if (masthead && 'ResizeObserver' in window) {
+    new ResizeObserver(measure).observe(masthead, { box: 'border-box' });
+  }
+  document.addEventListener('DOMContentLoaded', measure);
 
   /* ---- state + render ----------------------------------------------- */
   var cur = 0;
@@ -2233,5 +2349,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
 })();
 </script>
 <script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=cc056191"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
 </body>
 </html>

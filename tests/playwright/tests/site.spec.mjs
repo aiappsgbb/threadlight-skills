@@ -2,8 +2,8 @@
 //
 // This suite tracks the CURRENT site contract, after a large restructure:
 //   - docs/index.html          — the scrubbable DEMO landing page.
-//   - docs/funnel.html         — the five-stage funnel narrative (the old
-//                                landing "scenes" moved here).
+//   - docs/basics.html         — skills, construction agent and process agent.
+//   - docs/funnel.html         — Build: the six-phase lifecycle narrative.
 //   - docs/production.html     — the 13-pillar production-ready chapter.
 //   - docs/industries.html     — the process library (89 processes / 15 industries).
 //   - docs/self-improving.html — the learning-CI chapter.
@@ -23,6 +23,7 @@ const LANDING = '/index.html';
 // Every page that carries the shared masthead + chapter nav.
 const CHAPTER_PAGES = [
   '/index.html',
+  '/basics.html',
   '/funnel.html',
   '/production.html',
   '/industries.html',
@@ -31,11 +32,12 @@ const CHAPTER_PAGES = [
   '/case-study.html',
   '/customize.html',
   '/workbook.html',
+  '/governance.html',
 ];
 
 // The top nav is chapter pages only — these five, in this shape.
-const NAV_TARGET_RE = /^(\.\/)?(index|blueprint|case-study|production|customize)\.html$/;
-const NAV_LABELS = ['Home', 'Blueprint', 'Case study', 'Production-ready', 'Customize'];
+const NAV_TARGET_RE = /^(\.\/)?(index|basics|funnel|case-study|production)\.html$/;
+const NAV_LABELS = ['Home', 'Basics', 'Build', 'Case study', 'Production'];
 
 // Turn an absolute production OG url into a path the local static server can
 // serve (docs/ is the web root; production serves under a /threadlight-skills base).
@@ -99,6 +101,8 @@ test.describe('landing page — the scrubbable demo (index.html)', () => {
 
   test('puts value contract and evidence wording boundaries on the primary pages journey', async ({ page }) => {
     await page.goto(LANDING);
+    await expect(page.locator('.home-context')).not.toHaveAttribute('open', '');
+    await page.locator('.home-context > summary').click();
     await expect(page.locator('#how-it-works')).toContainText(/working pilot with selected runtime governance/i);
     await expect(page.locator('.demo-sub')).toContainText(/curated demo path|evidence-backed recreation/i);
     await expect(page.locator('main')).not.toContainText(/one continuous run/i);
@@ -173,6 +177,7 @@ test.describe('primary navigation — shared across every chapter page', () => {
       for (const want of NAV_LABELS) {
         expect(labels, `${url} nav labels include ${want}`).toContain(want);
       }
+      await expect(nav.locator('a[href="./funnel.html"]')).toHaveText('Build');
     });
   }
 
@@ -218,8 +223,8 @@ test.describe('primary navigation — shared across every chapter page', () => {
       await expect(links).toHaveCount(5);
       await expect(links.first()).toBeVisible();
 
-      await links.filter({ hasText: 'Blueprint' }).click();
-      await expect(page).toHaveURL(/blueprint\.html$/);
+      await links.filter({ hasText: 'Build' }).click();
+      await expect(page).toHaveURL(/funnel\.html$/);
     } finally {
       await context.close();
     }
@@ -238,34 +243,20 @@ test.describe('public-safety audit — no internal-only phrasing leaks', () => {
   }
 });
 
-test.describe('funnel chapter — the five-stage narrative (funnel.html)', () => {
-  test('hero: Threadlight title, the process → agent headline, and the technical-briefing CTA', async ({ page }) => {
+test.describe('Build chapter (funnel.html)', () => {
+  test('hero leads with a bounded pilot example and aligned metadata', async ({ page }) => {
     await page.goto('/funnel.html');
-    await expect(page).toHaveTitle(/governed working pilot funnel/i);
-    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
-      'content',
-      /governed working pilot.*evidence-backed path to production.*24-skill library/i,
-    );
-    await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
-      'content',
-      /governed working pilot.*evidence-backed path to production.*24-skill library/i,
-    );
-    await expect(page.locator('meta[name="twitter:description"]')).toHaveAttribute(
-      'content',
-      /governed working pilot.*evidence-backed path to production.*24-skill library/i,
-    );
-    const headline = page.locator('#scene-hero .hero-headline');
-    await expect(headline).toContainText(/Business\s+process/i);
-    await expect(headline).toContainText(/working\s+agent/i);
-    await expect(
-      page.locator('#scene-hero .hero-cta-row a.btn-primary').first(),
-    ).toContainText(/Open the technical briefing/i);
+    await expect(page).toHaveTitle(/^Build —/);
+    for (const selector of ['meta[name="description"]', 'meta[property="og:description"]', 'meta[name="twitter:description"]']) {
+      await expect(page.locator(selector)).toHaveAttribute('content', /working pilot.*evidence.*handoff/);
+    }
+    await expect(page.locator('[data-visual-anchor]')).toContainText('not a run receipt');
+    await expect(page.locator('[data-execution-boundary]')).toContainText('Auto plans; the coding agent executes.');
   });
 
-  test('the scenes appear in the intended order', async ({ page }) => {
+  test('existing chapter anchors remain valid', async ({ page }) => {
     await page.goto('/funnel.html');
-    const ids = await page.locator('main section.scene').evaluateAll((els) => els.map((e) => e.id));
-    expect(ids).toEqual([
+    for (const id of [
       'scene-hero',
       'scene-show',
       'scene-funnel',
@@ -275,68 +266,18 @@ test.describe('funnel chapter — the five-stage narrative (funnel.html)', () =>
       'scene-industries',
       'scene-kratos',
       'scene-cta',
-    ]);
+    ]) await expect(page.locator(`#${id}`)).toHaveCount(1);
   });
 
-  test('the evolution band renders five waves with Skills marked active', async ({ page }) => {
+  test('six named phases lead to their own content', async ({ page }) => {
     await page.goto('/funnel.html');
-    const chips = page.locator('.evolution-band .evo-chip');
-    await expect(chips).toHaveCount(5);
-    const text = (await chips.allTextContents()).join(' | ');
-    for (const w of ['LLMs', 'RAG', 'Multi-agent', 'MCP', 'Skills']) {
-      expect(text, `evolution band should include ${w}`).toContain(w);
-    }
-    await expect(chips.nth(4)).toHaveClass(/is-now/);
-  });
-
-  test('the funnel flow lists five named stages, each leading to the production chapter', async ({ page }) => {
-    await page.goto('/funnel.html');
-    const steps = page.locator('#scene-funnel .funnel-step');
-    await expect(steps).toHaveCount(5);
-    const all = (await steps.allTextContents()).join(' | ');
-    for (const token of ['01', 'Conversation', '02', 'Co-design', '03', 'Deploy', '04', 'Safe-check', '05', 'Production']) {
-      expect(all, `funnel flow should name ${token}`).toContain(token);
-    }
-    const hrefs = await steps.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
-    for (const h of hrefs) {
-      expect(h, 'each funnel stage links to the production chapter').toMatch(/production\.html$/);
+    await expect(page.locator('#scene-funnel [data-phase-name]')).toHaveText(['Enter', 'Build', 'Integrate', 'Assure', 'Ship', 'Improve']);
+    for (const href of await page.locator('#scene-funnel a').evaluateAll(els => els.map(e => e.getAttribute('href')))) {
+      await expect(page.locator(href)).toHaveCount(1);
     }
   });
 
-  test('the skills chain shows the primary cards, supporting chips, and the 24-skill library note', async ({ page }) => {
-    await page.goto('/funnel.html');
-    const rail = page.locator('#scene-chain .chain-rail');
-    await expect(rail).toHaveCount(1);
-    // Four primary skill cards: the qualify no-repo entry + design / deploy / production-ready.
-    const cards = rail.locator('.skill-card');
-    await expect(cards).toHaveCount(4);
-    const names = (await cards.locator('.skill-name').allTextContents()).join(' | ').toLowerCase();
-    for (const s of ['threadlight-design', 'threadlight-deploy', 'threadlight-production-ready']) {
-      expect(names, `chain should name primary skill ${s}`).toContain(s);
-    }
-    // Eight supporting chips, each a real threadlight-* skill.
-    const chips = rail.locator('.aux-chip');
-    await expect(chips).toHaveCount(8);
-    const chipNames = (await chips.locator('.aux-name').allTextContents()).join(' | ').toLowerCase();
-    for (const s of ['demo-data-factory', 'local-test', 'safe-check', 'hitl-patterns', 'workspace-ui', 'event-triggers', 'cicd', 'customize']) {
-      expect(chipNames, `chain should name supporting skill ${s}`).toContain(s);
-    }
-    await expect(page.locator('#scene-chain')).toContainText(/24-skill library/i);
-  });
-
-  test('the industries strip shows six sectors, each linking to the industries chapter', async ({ page }) => {
-    await page.goto('/funnel.html');
-    const tiles = page.locator('#scene-industries .industry-tile');
-    await expect(tiles).toHaveCount(6);
-    const sectors = (await tiles.locator('.it-sector').allTextContents()).join(' | ').toLowerCase();
-    for (const s of ['financial services', 'retail', 'telco', 'manufacturing', 'healthcare', 'energy']) {
-      expect(sectors, `industries strip should name ${s}`).toContain(s);
-    }
-    const hrefs = await tiles.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
-    for (const h of hrefs) expect(h, 'industry tile links to the industries chapter').toMatch(/industries\.html/);
-  });
-
-  test('the Kratos no-code alt links out to the live demo and its GitHub repo', async ({ page }) => {
+  test('adjacent paths retain their real destinations', async ({ page }) => {
     await page.goto('/funnel.html');
     const ch = page.locator('#scene-kratos');
     const live = ch.locator('a[href="https://aka.ms/kratos"]');
@@ -344,35 +285,22 @@ test.describe('funnel chapter — the five-stage narrative (funnel.html)', () =>
     await expect(live).toHaveAttribute('target', '_blank');
     await expect(live).toHaveAttribute('rel', /noopener/);
     await expect(ch.locator('a[href="https://github.com/kmavrodis/kratos-agent"]')).toBeVisible();
-    const shot = ch.locator('img.kc-shot');
-    await expect(shot).toHaveAttribute('src', /raw\.githubusercontent\.com\/kmavrodis\/kratos-agent/);
-    await expect(shot).toHaveAttribute('alt', /kratos/i);
-  });
-
-  test('the skill eyebrow frames skills as .md files a coding agent runs — not commands', async ({ page }) => {
-    await page.goto('/funnel.html');
-    const eyebrow = page.locator('.skill-eyebrow');
-    await expect(eyebrow).toHaveCount(1);
-    const text = (await eyebrow.textContent()) || '';
-    expect(text, 'skills are .md files').toMatch(/\.md/);
-    expect(text, 'skills are read by a coding agent').toMatch(/coding agent/i);
-    expect(text, 'names a coding-agent host').toMatch(/copilot/i);
-    expect(text, 'skills are not our own commands').toMatch(/not commands/i);
+    await expect(page.locator('#scene-industries a[href*="industries.html"]')).toBeVisible();
   });
 });
 
 test.describe('production chapter (production.html)', () => {
-  test('hero: production-ready title, the ship headline, and the 13-pillar stat strip', async ({ page }) => {
+  test('hero: production-ready leads with scoped evidence and unresolved gaps', async ({ page }) => {
     await page.goto('/production.html');
     await expect(page).toHaveTitle(/Production-ready/i);
     await expect(page.locator('#chapter-top h1')).toContainText(/prove it can ship/i);
     await expect(page.locator('#chapter-top')).toContainText(/uplift\/handoff plan/i);
-    await expect(page.locator('#chapter-top')).toContainText(/move the pilot toward ship/i);
     await expect(page.locator('#chapter-top')).not.toContainText(/so the pilot ships/i);
     await expect(page.locator('#chapter-top')).not.toContainText(/Amber turns green/i);
-    const stats = page.locator('#chapter-top .stat-strip .stat');
-    await expect(stats).toHaveCount(3);
-    await expect(page.locator('#chapter-top .stat-strip')).toContainText('13');
+    await expect(page.locator('#chapter-top .pr-hero-facts')).toContainText('13');
+    await expect(page.locator('[data-visual-anchor]')).toContainText('BEFORE THE EFFECT');
+    await expect(page.locator('[data-visual-anchor]')).toContainText('not a live assessment');
+    await expect(page.locator('.pr-evidence-console')).toContainText('NOT VERIFIED');
   });
 
   test('the chapter sections are all present and name the thirteen pillars', async ({ page }) => {
@@ -416,17 +344,17 @@ test.describe('production chapter (production.html)', () => {
 });
 
 test.describe('industries chapter (industries.html)', () => {
-  test('hero, sections, the 89/15 library counts, and the stat strip', async ({ page }) => {
+  test('hero, sections and the 89/15 catalogue remain discoverable', async ({ page }) => {
     await page.goto('/industries.html');
     await expect(page).toHaveTitle(/industries/i);
-    await expect(page.locator('#chapter-top h1')).toContainText(/any business process|any industry/i);
+    await expect(page.locator('#chapter-top h1')).toContainText(/Loans.*Claims.*Operations/i);
     for (const id of ['chapter-top', 'library', 'ind-spec', 'industry-recap']) {
       await expect(page.locator('#' + id), `industries section #${id}`).toHaveCount(1);
     }
     const body = (await page.locator('main').textContent()) || '';
     expect(body, 'names the 89-process library').toMatch(/89\s+(shaped\s+)?(business\s+)?process/i);
     expect(body, 'names the 15-industry spread').toMatch(/15\s+industr/i);
-    await expect(page.locator('.chapter-hero .stat-strip .stat')).toHaveCount(3);
+    await expect(page.locator('[data-visual-anchor] #ind-search')).toBeVisible();
   });
 });
 
@@ -435,7 +363,7 @@ test.describe('self-improving chapter (self-improving.html)', () => {
     await page.goto('/self-improving.html');
     await expect(page).toHaveTitle(/Self-improving/i);
     await expect(page.locator('h1')).toContainText(
-      /The pipeline that turns every run into a ranked backlog/i,
+      /One finished run.*A sharper next step/i,
     );
     for (const id of ['how', 'caught', 'found', 'maintain']) {
       await expect(page.locator('#' + id), `self-improving section #${id}`).toHaveCount(1);
@@ -447,18 +375,11 @@ test.describe('self-improving chapter (self-improving.html)', () => {
     const how = page.locator('#how');
     const lede = (await page.locator('.lede').textContent()) || '';
     await expect(how).toContainText(/diagnostics-to-backlog/i);
-    expect(lede).toContain('Every threadlight CI run');
     expect(lede).toContain('green or red');
-    expect(lede).toContain('carries');
-    expect(lede).toContain('learnings');
-    expect(lede).toContain('rereading raw logs by hand is slow and noisy');
-    expect(lede).toContain('deterministic');
-    expect(lede).toContain('cold-path called learn harvests one GitHub Actions');
-    expect(lede).toContain('no matched-pair baseline');
-    expect(lede).toContain('grounded');
-    expect(lede).toContain('diagnostics and a ranked backlog');
-    expect(lede).toContain('mapped back to the evidence');
-    expect(lede).toContain('that justifies it');
+    expect(lede).toMatch(/one run, not a baseline/);
+    expect(lede).toContain('ranked fixes');
+    expect(lede).toMatch(/maintainer reviews/);
+    expect(lede).toContain('Nothing auto-applies');
     await expect(how).toContainText(
       /maintainers\s+may review candidate signatures and explicitly add rules\/tests/i,
     );
@@ -484,7 +405,8 @@ test.describe('case study chapter (case-study.html)', () => {
   test('framing stays a governed working pilot with a conditional production gate', async ({ page }) => {
     await page.goto('/case-study.html');
     await expect(page).toHaveTitle(/governed working pilot/i);
-    await expect(page.locator('#chapter-top')).toContainText(/evidence-backed path to production/i);
+    await expect(page.locator('#chapter-top')).toContainText(/One onboarding\/safe-check gate stayed conditional/i);
+    await expect(page.locator('#chapter-top')).toContainText(/not current business-live proof/i);
     await expect(page.locator('#glance')).toContainText(/onboarding\/safe-check gate remained conditional/i);
     await expect(page.locator('#shipped')).not.toContainText(/This is the finish line/i);
     await expect(page.locator('#verdict')).toContainText(/governed working pilot/i);
@@ -493,6 +415,7 @@ test.describe('case study chapter (case-study.html)', () => {
 
 test.describe('chapter chrome — floating ToC, stat strips, design tokens', () => {
   const TOC_PAGES = [
+    { url: '/governance.html', min: 5 },
     { url: '/funnel.html', min: 6 },
     { url: '/production.html', min: 6 },
     { url: '/industries.html', min: 4 },
@@ -516,11 +439,10 @@ test.describe('chapter chrome — floating ToC, stat strips, design tokens', () 
     });
   }
 
-  test('stat strips render on the chapters that advertise them', async ({ page }) => {
+  test('process and readiness chapters lead with a useful visual', async ({ page }) => {
     for (const url of ['/production.html', '/industries.html', '/blueprint.html']) {
       await page.goto(url);
-      const stats = page.locator('.chapter-hero .stat-strip .stat');
-      expect(await stats.count(), `${url} stat count`).toBeGreaterThanOrEqual(3);
+      await expect(page.locator('[data-visual-anchor]').first()).toBeVisible();
     }
   });
 
@@ -553,7 +475,7 @@ test.describe('reveal animation — never strands content for real visitors', ()
         const reveals = [...document.querySelectorAll('.reveal')];
         return { total: reveals.length, notIn: reveals.filter((el) => !el.classList.contains('in')).length };
       });
-      expect(result.total, `${url} should have reveal elements`).toBeGreaterThan(0);
+      await expect(page.locator('main h1')).toBeVisible();
       expect(result.notIn, `${url} left ${result.notIn}/${result.total} reveals hidden`).toBe(0);
     });
   }
@@ -563,6 +485,7 @@ test.describe('Open Graph & social assets', () => {
   // Each page's og:image must resolve to an asset that actually ships in the
   // repo, and og:image must equal twitter:image.
   const OG_PAGES = [
+    { url: '/governance.html', asset: '/assets/og/og-production.png' },
     { url: '/index.html', asset: '/assets/og/og-home.png' },
     { url: '/funnel.html', asset: '/assets/og/og-home.png' },
     { url: '/production.html', asset: '/assets/og/og-production.png' },

@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Threadlight industries — 89 processes, 15 industries, one pattern.</title>
-<meta name="description" content="Browse 89 shaped business processes across 15 industries. Pick one and the Blueprint composer hands you the exact skill sequence and a copy-paste Copilot prompt that ships to Azure through CI/CD — no commands to run. Same chain runs every one.">
+<title>Threadlight industries — 89 process starters to explore.</title>
+<meta name="description" content="Search 89 process starters across 15 industries, from loan origination to claims triage. Open a scenario in Blueprint for a skill sequence and Copilot prompt, not production proof.">
 <meta name="theme-color" content="#4f6dff">
 
 <meta property="og:type"        content="article">
-<meta property="og:title"       content="Threadlight industries — 89 processes, 15 industries, one pattern.">
-<meta property="og:description" content="89 shaped processes across 15 industries. Pick one to open the Blueprint composer pre-loaded; or describe your own and the chain handles it the same way.">
+<meta property="og:title"       content="Threadlight industries — 89 process starters to explore.">
+<meta property="og:description" content="Search 89 process starters across 15 industries, from loan origination to claims triage. Open a scenario in Blueprint for a skill sequence and Copilot prompt, not production proof.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/industries.html">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-industries.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
-<meta name="twitter:title"       content="Threadlight industries — 89 processes, 15 industries.">
-<meta name="twitter:description" content="Pick from 89 shaped processes; the composer builds the prompt. The chain handles any process you can describe.">
+<meta name="twitter:title"       content="Threadlight industries — 89 process starters to explore.">
+<meta name="twitter:description" content="Search 89 process starters across 15 industries, from loan origination to claims triage. Open a scenario in Blueprint for a skill sequence and Copilot prompt, not production proof.">
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-industries.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
@@ -111,10 +111,81 @@
     font: 500 14px/1.5 var(--sans);
   }
   @media (max-width: 560px) { .ind-search { flex-basis: 100%; } }
+
+  /* An indexed process catalogue: search, scan, open the actual brief. */
+  .chapter-industries.chapter-experience .chapter-hero { padding: 12px 0; text-align: left; }
+  .chapter-industries.chapter-experience .chapter-hero h1 { margin: 12px 0; font-size: clamp(44px, 5.8vw, 82px); line-height: 1.03; letter-spacing: -.045em; }
+  .chapter-industries .chapter-hero .lede { margin: 0; max-width: 76ch; font-size: 17px; }
+  .ind-topline { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; }
+  .ind-topline .eyebrow { margin: 0; }
+  .ind-topline a { min-height: 44px; display: inline-flex; align-items: center; font: 12px/1.5 var(--mono); color: var(--ink-1); }
+  .chapter-industries.chapter-experience #library { padding: 8px 0 40px; }
+  .ind-controls { display: block; padding: 0; border: 0; border-radius: 0; background: transparent; }
+  .ind-searchbar { display: flex; align-items: center; gap: 20px; padding: 14px 18px; border: 1px solid var(--line); border-top: 3px solid var(--chapter-accent); background: var(--bg-1); }
+  .ind-searchbar label { flex-shrink: 0; font: 12px/1.5 var(--mono); color: var(--ink-2); }
+  .ind-searchbar h2 { flex-shrink: 0; margin: 0; font: inherit; }
+  .ind-search { min-width: 0; width: 100%; flex: 1 1 auto; min-height: 48px; border-radius: 0; font-size: 17px; }
+  .ind-pills { flex-wrap: nowrap; overflow-x: auto; padding: 14px 0; gap: 8px; scrollbar-width: thin; }
+  .ind-pill { flex-shrink: 0; min-height: 44px; border-radius: 2px; font-size: 13px; padding: 10px 14px; }
+  .ind-pill.is-active { background: var(--ink-0); color: var(--bg-0); border-color: var(--ink-0); }
+  .ind-count { margin: 4px 0 12px; }
+  .ind-grid { display: block; counter-reset: process; border-top: 1px solid var(--line); }
+  .ind-card { position: relative; display: grid; grid-template-columns: 1fr 1.2fr .9fr; align-items: center; gap: 24px; padding: 24px 12px 24px 48px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; counter-increment: process; }
+  .ind-card::before { content: counter(process, decimal-leading-zero); position: absolute; top: 29px; left: 4px; font: 12px/1 var(--mono); color: var(--chapter-accent); }
+  .ind-card:hover { transform: none; box-shadow: none; background: var(--accent-soft); }
+  .ind-card h3 { font-size: clamp(22px, 2vw, 29px); line-height: 1.15; }
+  .ind-card p { font-size: 14px; line-height: 1.55; display: block; overflow: visible; }
+  .ind-foot { margin: 0; padding: 0; gap: 8px; }
+  .ind-chip { border-radius: 0; border: 0; padding: 3px 0; line-height: 1.4; }
+  .ind-chip.dom { flex-basis: 100%; }
+  .ind-go { display: inline-flex; align-items: center; min-height: 44px; font: 12px var(--mono); }
+  .ind-empty { border-radius: 0; }
+  .ind-handoff { margin-top: 24px; display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 15px; }
+  .ind-handoff a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-0); }
+  .chapter-industries #ind-count b, .chapter-industries .ind-go, .chapter-industries .ind-chip { color: var(--ink-1); }
+  .chapter-industries.chapter-experience #ind-spec { padding: 20px 0 48px; }
+  .ind-technical { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 12px 0; }
+  .ind-technical summary { display: flex; align-items: center; cursor: pointer; font: 14px/1.5 var(--mono); color: var(--ink-0); }
+  .ind-technical summary::before { content: "+"; color: var(--chapter-accent); margin-right: 12px; }
+  .ind-technical[open] summary::before { content: "−"; }
+  .ind-technical > p { max-width: 75ch; color: var(--ink-2); font-size: 15px; }
+  .ind-boundary { padding: 16px 20px; border-left: 3px solid var(--lime); background: var(--bg-1); color: var(--ink-1); font-size: 15px; line-height: 1.6; }
+  .ind-spec-flow { display: grid; grid-template-columns: .9fr 20px 1.2fr 20px .9fr; align-items: center; gap: 20px; padding: 28px 22px; }
+  .ind-spec-flow [data-spec-step] { min-width: 0; }
+  .ind-spec-flow .map-tag { margin-bottom: 12px; }
+  .ind-spec-flow strong { display: block; color: var(--ink-0); font: 500 25px/1.2 var(--serif); }
+  .ind-spec-flow .flow-icon { margin-bottom: 14px; }
+  .ind-spec-flow p { color: var(--ink-2); font: 13px/1.6 var(--sans); margin: 12px 0 0; }
+  .ind-spec-draft { border: 1px solid var(--line-2); background: var(--bg-0); padding: 22px; }
+  .ind-spec-draft dl { margin: 18px 0 0; display: grid; gap: 8px 16px; grid-template-columns: auto 1fr; font: 12px/1.5 var(--mono); }
+  .ind-spec-draft dt { color: var(--ink-0); }
+  .ind-spec-draft dd { margin: 0; color: var(--ink-2); font-family: var(--sans); }
+  .ind-spec-flow [data-spec-step="later"] { border-left: 2px solid var(--cx-diagram-accent); padding-left: 20px; }
+  .ind-spec-map .ind-boundary { margin: 0; border-top: 1px solid var(--line); border-left: 0; }
+  .ind-spec-map .ind-boundary a { color: var(--ink-0); }
+  .ind-spec-map + .ind-technical { margin-top: 20px; }
+  @media (max-width: 760px) {
+    .ind-card { grid-template-columns: 1fr; gap: 10px; padding: 20px 8px 20px 36px; }
+    .ind-card::before { top: 26px; }
+    .ind-foot { gap: 6px 16px; }
+    .ind-chip.dom { flex-basis: auto; }
+    .ind-searchbar { display: block; padding: 12px; }
+    .ind-searchbar label { display: block; margin-bottom: 8px; }
+    .chapter-industries .chapter-hero .lede { font-size: 16px; }
+    .ind-topline a { display: none; }
+  }
+  @media (max-width: 600px) {
+    .ind-spec-flow { grid-template-columns: 1fr; padding: 22px 16px; gap: 16px; }
+    .ind-spec-flow .map-arrow { transform: rotate(90deg); }
+    .ind-spec-flow [data-spec-step="brief"] .flow-icon { float: right; margin-left: 16px; }
+    .ind-spec-flow [data-spec-step="later"] .flow-icon { display: none; }
+  }
 </style>
+<link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
+<link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
 
 </head>
-<body class="chapter-page chapter-industries">
+<body class="chapter-page chapter-industries chapter-experience">
 
 <header class="masthead">
   <div class="brand">
@@ -124,108 +195,106 @@
   </div>
   <nav class="nav" aria-label="Site chapters">
     <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
-    <a href="./blueprint.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Blueprint</a>
+    <a href="./basics.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Basics</a>
+    <a href="./funnel.html" aria-current="location">Build</a>
     <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
-    <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production-ready</a>
-    <a href="./customize.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.3"/><circle cx="16" cy="16" r="2.3"/></svg>Customize</a>
+    <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
   </nav>
 </header>
 
 <aside class="floating-toc" aria-label="Industries">
-  <p class="toc-title">Industries</p>
+  <nav class="cx-chapter-links" aria-label="Industry catalogue overview">
+    <a href="#chapter-top">Overview</a><a href="#library">Find a process</a><a href="#ind-spec">The brief</a><a href="#industry-recap">Next step</a>
+  </nav>
+  <details class="cx-chapter-index"><summary>All sections</summary><ol>
+    <li><a href="#chapter-top">Overview</a></li><li><a href="#library">Find a process</a></li><li><a href="#ind-spec">The brief</a></li><li><a href="#industry-recap">Next step</a></li>
+  </ol></details>
 </aside>
 
 <main>
 
   <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
     <div class="wrap wrap-wide">
-      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Industries</p>
-      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Fifteen industries · one pattern · open to any</p>
-      <h1 class="reveal" data-delay="2">Any business process. <em>Any industry.</em></h1>
-      <p class="lede reveal" data-delay="3">
-        The threadlight chain doesn&rsquo;t know what industry it&rsquo;s in
-        &mdash; the <strong>SPEC</strong> carries that. The chain reads a
-        plain-language brief and spins up a governed agent the same way for
-        a claims-triage process in FSI or a shift-handover briefing on a
-        manufacturing line. <strong>Threadlight applies to every process
-        you can describe in a paragraph.</strong>
-      </p>
-      <p class="lede reveal" data-delay="3" style="margin-top:14px; font-size:.98rem; color:var(--ink-2);">
-        Below is the live <strong>process library</strong> &mdash; 89 real
-        processes we&rsquo;ve already shaped, across 15 industries. Filter it,
-        pick one, and it opens the <a href="./blueprint.html">Blueprint composer</a>
-        with a starter skill/evidence plan &mdash; production delivery stays
-        through CI/CD. Not in the list? Describe yours in a paragraph; the
-        chain shapes it the same way.
-      </p>
-
-      <div class="stat-strip reveal" data-delay="4" role="list" aria-label="Library at a glance">
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>89</em></span>
-          <span class="stat-label">shaped processes</span>
-        </div>
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>15</em></span>
-          <span class="stat-label">industries</span>
-        </div>
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>1</em></span>
-          <span class="stat-label">chain, every one</span>
-        </div>
+      <div class="cx-journey">
+        <nav aria-label="Breadcrumb"><a href="./funnel.html">Build</a><span aria-hidden="true">/</span><span aria-current="page">Industries</span></nav>
+        <a class="cx-journey-next" href="./blueprint.html">Next: Blueprint <span aria-hidden="true">→</span></a>
       </div>
-
+      <div class="ind-topline">
+        <p class="eyebrow"><span class="dot"></span>Process index / 89 starters / 15 industries</p>
+        <a href="./blueprint.html#bp-custom">Write your own brief &rarr;</a>
+      </div>
+      <h1>Loans. Claims. <em>Operations.</em></h1>
+      <p class="lede" data-chapter-intro>
+        Start with Commercial Loan Origination, Insurance Claims Processing, or another process below.
+        Search the library and open a scenario in Blueprint for a deterministic starter lifecycle
+        and Copilot prompt. These are process briefs, not evidence of deployed agents.
+      </p>
     </div>
   </section>
 
   <section class="chapter-section" id="library" data-toc-id="library" data-toc-label="Process library">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>The process library</p>
-        <h2>Browse <em>89 shaped processes.</em> Pick one to build.</h2>
-        <p class="section-lede">
-          Filter by industry or search by name. Every card opens the
-          <a href="./blueprint.html">Blueprint composer</a> pre-loaded with that
-          process &mdash; the exact skill sequence, a copy-paste Copilot prompt,
-          and a starter skill/evidence plan. Production delivery stays through
-          CI/CD; the process only changes what the SPEC carries.
-        </p>
-      </div>
-
-      <div class="ind-shell">
+    <div class="wrap wrap-wide">
+      <div class="ind-shell" data-visual-anchor>
         <div class="ind-controls" role="region" aria-label="Filter the process library">
-          <div class="ind-pills" id="ind-pills" role="group" aria-label="Filter by industry"></div>
-          <input id="ind-search" class="ind-search" type="search" placeholder="Search processes&hellip;" aria-label="Search processes by name">
+          <div class="ind-searchbar">
+            <h2><label for="ind-search">FIND A PROCESS</label></h2>
+            <input id="ind-search" class="ind-search" type="search" placeholder="Search claims, loans, onboarding&hellip;" aria-label="Search processes by name">
+          </div>
+          <details class="ind-filter-panel"><summary>Industry: <span data-selected-industry>All industries</span></summary>
+            <div class="ind-pills" id="ind-pills" role="group" aria-label="Filter by industry"></div>
+          </details>
         </div>
         <p class="ind-count" id="ind-count" aria-live="polite"></p>
-        <div class="ind-grid" id="ind-grid" role="list"></div>
+        <div class="ind-grid" id="ind-grid" role="list" aria-label="Process starters"></div>
       </div>
-
-      <p class="industries-footer reveal" style="margin-top:28px;">
-        <em>Don&rsquo;t see your process?</em> The chain doesn&rsquo;t care &mdash;
-        <strong>describe it in a paragraph</strong> in the
-        <a href="./blueprint.html#bp-custom">composer</a> and
-        <code>threadlight-design</code> shapes the SPEC from there.
-      </p>
+      <noscript><p>Search and filters need JavaScript. Read the <a href="./assets/process-library.json">published process library (JSON)</a> instead.</p></noscript>
+      <div class="ind-handoff" id="industry-recap" data-toc-id="industry-recap" data-toc-label="Next step">
+        <span>Not in the index? Describe the trigger, decision, and approver.</span>
+        <a href="./blueprint.html#bp-custom">Write your process brief &rarr;</a>
+      </div>
     </div>
   </section>
 
   <section class="chapter-section" id="ind-spec" data-toc-id="ind-spec" data-toc-label="What a SPEC looks like">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>What a SPEC looks like</p>
-        <h2>Every pilot starts with a <em>SPEC.md.</em></h2>
-        <p class="section-lede">
-          The library ships one of these per process &mdash; the document
-          that comes out of stage one. Same shape every time; the
-          customer&rsquo;s rules, data, and regulator fill it in. Below
-          is the universal shape, not a specific example.
-        </p>
-      </div>
+    <div class="wrap wrap-wide">
+      <figure class="phase-diagram ind-spec-map" data-spec-map aria-labelledby="ind-spec-caption">
+        <figcaption id="ind-spec-caption">Illustrative SPEC handoff / not a generated SPEC or run receipt</figcaption>
+        <div class="ind-spec-flow">
+          <div data-spec-step="brief">
+            <svg class="flow-icon" aria-hidden="true"><use href="assets/lucide-sprite.svg#icon-file-text"/></svg>
+            <span class="map-tag">START HERE / LIBRARY</span>
+            <strong>89 process briefs</strong>
+            <p>Open one in Blueprint.<br>Get a starter lifecycle + Copilot prompt.</p>
+          </div>
+          <span class="map-arrow" aria-hidden="true">→</span>
+          <div class="ind-spec-draft" data-spec-step="review">
+            <span class="map-tag">NEXT / WITH COPILOT</span>
+            <strong>Draft → review SPEC</strong>
+            <dl><dt>Rules</dt><dd>Testable decisions</dd><dt>Owners</dt><dd>Human approval points</dd><dt>Systems</dt><dd>Data + tool contracts</dd></dl>
+            <p>Your team validates the assumptions.</p>
+          </div>
+          <span class="map-arrow" aria-hidden="true">→</span>
+          <div data-spec-step="later">
+            <svg class="flow-icon" aria-hidden="true"><use href="assets/lucide-sprite.svg#icon-shield-check"/></svg>
+            <span class="map-tag">LATER / EXPLICIT GATES</span>
+            <strong>Build, then prove</strong>
+            <p>Manual checks, real integrations and fresh live evidence. Release only after acceptance.</p>
+          </div>
+        </div>
+      <p class="ind-boundary"><strong>A reviewed brief is not production evidence.</strong> Review the SPEC against your rules and systems.
+        Manual checks, real integrations, and fresh live evidence remain separate handoffs before production delivery through CI/CD.
+        <a href="./production-readiness.md">Read the readiness contract &rarr;</a>
+      </p>
+      </figure>
+      <details class="ind-technical">
+        <summary>Technical details / what a process SPEC contains</summary>
+        <p>The starter describes the work; your team supplies the actual rules, owners, integrations, and acceptance criteria.
+          This outline summarizes selected SPEC sections, not an executed deployment.</p>
 
       <article class="spec-shape reveal" aria-label="Shape of a Threadlight SPEC.md (universal sections)">
         <header class="ss-bar">
           <span class="ss-name">SPEC.md</span>
-          <span class="ss-meta">14 numbered sections &middot; explicit value model &middot; SpecKit shape</span>
+          <span class="ss-meta">Selected sections &middot; explicit value model &middot; SpecKit shape</span>
         </header>
 
         <div class="ss-grid">
@@ -298,7 +367,7 @@
 
         <footer class="ss-foot">
           <p class="ss-foot-line">
-            <strong>The chain reads this file, not your prompt.</strong>
+            <strong>The reviewed SPEC guides downstream skills.</strong>
             <code>threadlight-design</code> writes it; <code>threadlight-deploy</code>,
             <code>threadlight-safe-check</code> and <code>threadlight-production-ready</code>
             all read it.
@@ -310,57 +379,10 @@
         <span class="rd-label">Want the full SpecKit method?</span>
         <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md" target="_blank" rel="noopener">Open THREADLIGHT.md &rarr;</a>
       </div>
+      </details>
     </div>
   </section>
 
-
-  <section class="chapter-section" id="industry-recap" data-toc-id="industry-recap" data-toc-label="Recap">
-    <div class="wrap" style="text-align:center;">
-      <div class="section-head" style="margin: 0 auto 24px;">
-        <h2>Same chain. <em>Different SPEC. Any process.</em></h2>
-        <p class="section-lede" style="margin: 0 auto;">
-          The library gives us a head-start for the 89 processes above &mdash;
-          but the chain doesn&rsquo;t care. Bring a process the library
-          doesn&rsquo;t cover yet and <code>threadlight-design</code> shapes
-          the SPEC from a paragraph. The skills don&rsquo;t change.
-        </p>
-      </div>
-
-      <div class="chapter-recap-block">
-        <p class="recap-scorecard reveal" data-delay="1">
-          <span>Across</span>
-          <span><em>15</em> industries</span><span class="sep">·</span>
-          <span><em>89</em> processes</span><span class="sep">·</span>
-          <span><em>1</em> chain</span><span class="sep">·</span>
-          <span><em>0</em> bespoke skills</span>
-        </p>
-
-        <div class="recap-metrics">
-          <article class="metric-card reveal" data-delay="2">
-            <span class="metric-num"><em>1</em></span>
-            <span class="metric-label">Chain, every sector</span>
-            <span class="metric-caption">Same five-stage walk every time. The SPEC carries the difference, not the toolchain.</span>
-          </article>
-          <article class="metric-card reveal" data-delay="3">
-            <span class="metric-num"><em>0</em></span>
-            <span class="metric-label">Bespoke skills</span>
-            <span class="metric-caption">No sector-only forks. Every pilot ships on the same opinionated library you can read in the repo.</span>
-          </article>
-          <article class="metric-card reveal" data-delay="4">
-            <span class="metric-num"><em>&infin;</em></span>
-            <span class="metric-label">Processes possible</span>
-            <span class="metric-caption">89 in the library today. Your process not covered? Start with one paragraph &mdash; the chain shapes the rest.</span>
-          </article>
-        </div>
-
-        <div class="recap-cta">
-          <a class="btn btn-primary" href="./blueprint.html">Start with one prompt <span class="arrow">→</span></a>
-          <a class="btn btn-ghost" href="./case-study.html">See it proven <span class="arrow">→</span></a>
-          <a class="btn btn-ghost" href="./production.html">See production-ready <span class="arrow">→</span></a>
-        </div>
-      </div>
-    </div>
-  </section>
 
 </main>
 
@@ -376,8 +398,10 @@
   </div>
 </footer>
 
-<script src="assets/blueprint-logic.js?v=52d7562c"></script>
+<script src="assets/blueprint-logic.js?v=ea33f5b5"></script>
 <script src="assets/industries.js?v=c384879a"></script>
 <script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=cc056191"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
 </body>
 </html>

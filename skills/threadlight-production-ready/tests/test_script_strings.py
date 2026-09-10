@@ -15,7 +15,7 @@ REPO = ROOT.parents[1]
 
 @pytest.mark.parametrize("surface", [
     "README.md", "docs/production-readiness.md",
-    "docs/IDEA-TO-PRODUCTION-WORKBOOK.md", "docs/index.html", "docs/production.html",
+    "docs/IDEA-TO-PRODUCTION-WORKBOOK.md", "docs/agent-operations.md", "docs/governance.html",
 ])
 def test_public_runtime_ontology_and_scope(surface):
     text = (REPO / surface).read_text()
@@ -26,6 +26,16 @@ def test_public_runtime_ontology_and_scope(surface):
     for overclaim in ("governed-ready agent", "become a governed agent",
                       "governed/comprehensive/hardened", "AGT in-process middleware"):
         assert overclaim not in text, f"{surface}: stale whole-agent claim"
+
+def test_pages_link_deep_governance_instead_of_repeating_the_operator_reference():
+    production = (REPO / "docs/production.html").read_text()
+    assert 'href="./governance.html"' in production
+    assert "docs/agent-operations.md" in production
+    assert "selected bindings" in production
+    assert "not a live assessment" in production
+    home = (REPO / "docs/index.html").read_text()
+    assert re.search(r'<section class="scene demo-intro(?: [^"]+)?" aria-labelledby="demo-h">', home)
+    assert 'aria-label="Runtime governance evidence boundary"' not in home
 
 
 @pytest.mark.parametrize("skill,required", [

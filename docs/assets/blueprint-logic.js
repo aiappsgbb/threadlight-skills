@@ -101,8 +101,8 @@
     p = p || {};
     var skills = deriveSkills(p);
     var lines = [];
-    lines.push('Use threadlight-auto to take "' + (p.name || 'this process') +
-      '" from idea to a production-ready Microsoft Foundry agent.');
+    lines.push('Use threadlight-auto as the planner for "' + (p.name || 'this process') +
+      '": derive a starter lifecycle for a working pilot on Microsoft Foundry.');
     lines.push('');
     if (p.summary) lines.push('What it does: ' + p.summary);
     lines.push('Domain: ' + prettyIndustry(p.industry) + ' · Complexity: ' + (p.complexity || 'medium'));
@@ -115,41 +115,38 @@
     if (ks.length) lines.push('Ground it on: ' + ks.join(', ') + '.');
 
     lines.push('');
-    lines.push('Run the Threadlight arc in order: ' + skills.join(' → ') + '.');
+    lines.push('Start from this Threadlight lifecycle: ' + skills.join(' → ') + '.');
+    lines.push('The coding agent executes eligible steps. Keep manual, live, cost-bearing and production handoffs explicit; do not infer readiness from a generated plan.');
     lines.push('Follow each skill\'s SKILL.md, keep the platform (Foundry) as the runtime, ' +
       'and produce the committed artefacts each leg leaves behind.');
-    lines.push('Deploy through CI/CD (GitHub Actions + OIDC) — provision and ship from the ' +
-      'pipeline, not my laptop.');
+    lines.push('Prepare production delivery through CI/CD (GitHub Actions + OIDC), not my laptop. ' +
+      'Execution requires explicit approval, environment setup and current evidence.');
     return lines.join('\n');
   }
 
-  // What Copilot does once the prompt is pasted — DERIVED from the same process
-  // signals as the arc, so it always matches. The whole point: the human runs no
-  // commands. Deploy is a CI/CD outcome, never a laptop `azd up`. Each entry is
-  // { text, accent? } — accent marks the deploy line for emphasis on the page.
+  // Proposed work is derived from the starter signals, not proof that it ran.
   function buildAutomation(p) {
     p = p || {};
     var skills = deriveSkills(p);
     function has(s) { return skills.indexOf(s) !== -1; }
     var steps = [];
-    steps.push({ text: 'Designs the agent on Microsoft Foundry and proves it locally on real cases.' });
+    steps.push({ text: 'Drafts the Microsoft Foundry pilot design and a local validation plan.' });
     if (has('threadlight-demo-data-factory'))
-      steps.push({ text: 'Wires your integrations behind a realistic demo-data harness.' });
+      steps.push({ text: 'Scaffolds integration mocks; real endpoints require separate evidence and approval.' });
     if (has('threadlight-hitl-patterns'))
-      steps.push({ text: 'Adds the human-approval gates you named — it stops and waits at each.' });
+      steps.push({ text: 'Plans the human-approval gates you named; their implementation and enforcement need evidence.' });
     if (has('threadlight-event-triggers'))
-      steps.push({ text: 'Stands up your event & schedule triggers.' });
-    var safe = 'Safe-checks every change';
-    if (has('threadlight-redteam')) safe += ', red-teams it';
-    if (has('threadlight-govern')) safe += ' and governs it at runtime';
+      steps.push({ text: 'Plans event and schedule triggers for the selected deployment path.' });
+    var safe = 'Requests structural checks';
+    if (has('threadlight-redteam')) safe += ' and red-team evidence';
+    if (has('threadlight-govern')) safe += '; selected runtime governance requires binding-scoped proof';
     steps.push({ text: safe + '.' });
     steps.push({
-      text: 'Ships to Azure through your CI/CD pipeline (GitHub Actions + OIDC) — ' +
-        'you never run a deploy command.',
+      text: 'Prepares CI/CD delivery (GitHub Actions + OIDC), with explicit approval and environment setup before execution.',
       accent: true,
     });
-    var score = 'Scores it with evals';
-    if (has('threadlight-consumption-iq')) score += ' and prices every run';
+    var score = 'Plans quality evals';
+    if (has('threadlight-consumption-iq')) score += ' and a cost forecast; measured actuals need later reconciliation';
     steps.push({ text: score + '.' });
     return steps;
   }

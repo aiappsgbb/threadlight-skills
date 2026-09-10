@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Basics — skill-based agents, from building to business.</title>
+<meta name="description" content="Understand how an agent uses reusable skills, and how Threadlight separates engineering skills for coding agents from business skills in the generated application.">
+<meta name="theme-color" content="#0a0d14">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Basics — skill-based agents, from building to business.">
+<meta property="og:description" content="Understand how an agent uses reusable skills, and how Threadlight separates engineering skills for coding agents from business skills in the generated application.">
+<meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/basics.html">
+<meta property="og:site_name" content="Threadlight">
+<meta property="og:image" content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Basics — skill-based agents, from building to business.">
+<meta name="twitter:description" content="Understand how an agent uses reusable skills, and how Threadlight separates engineering skills for coding agents from business skills in the generated application.">
+<meta name="twitter:image" content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
+<link rel="canonical" href="https://aiappsgbb.github.io/threadlight-skills/basics.html">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%23a8ff60' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
+<link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
+<link rel="stylesheet" href="assets/basics-visuals.css?v=9767b981">
+</head>
+<body class="chapter-page chapter-basics chapter-experience">
+<a class="basics-skip" href="#chapter-top">Skip to content</a>
+<div class="atmosphere" aria-hidden="true"></div>
+<header class="masthead">
+  <div class="brand"><a class="brand-name" href="./index.html"><span class="brand-mark" aria-hidden="true"></span>Threadlight<span>by Microsoft GBB · AI Apps</span></a></div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html">Home</a>
+    <a href="./basics.html" aria-current="page">Basics</a>
+    <a href="./funnel.html">Build</a>
+    <a href="./case-study.html">Case study</a>
+    <a href="./production.html">Production</a>
+  </nav>
+</header>
+<aside class="floating-toc is-ready" aria-label="Basics chapter">
+  <nav class="cx-chapter-links" aria-label="Basics overview">
+    <a href="#chapter-top">The pattern</a><a href="#skills">Skills</a><a href="#two-agents">Two uses</a><a href="#where-skills-run">Beyond coding</a>
+  </nav>
+  <details class="cx-chapter-index"><summary>All sections</summary><ol>
+    <li><a href="#chapter-top">The skill-based pattern</a></li><li><a href="#skills">How an agent uses skills</a></li><li><a href="#two-agents">Engineering versus business skills</a></li><li><a href="#where-skills-run">Where you can use skills</a></li><li><a href="#next-step">Choose your next step</a></li>
+  </ol></details>
+</aside>
+<main>
+  <section class="chapter-hero basics-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="The idea">
+    <div class="wrap wrap-wide">
+      <p class="breadcrumb"><a href="./index.html">Home</a> / <span aria-current="page">Basics</span></p>
+      <div class="basics-opening">
+        <div><p class="eyebrow"><span class="dot"></span>Skill-based agents / the Threadlight pattern</p>
+          <h1>Agents use skills.<br><em>To build. To operate.</em></h1>
+          <p class="lede" data-chapter-intro>Skills give an agent reusable procedures. Threadlight's engineering skills help a coding agent create the project. The resulting process agent uses a separate set of business skills to carry out the work.</p>
+          <a class="basics-text-link" href="#skills">See how an agent uses skills <span aria-hidden="true">↓</span></a>
+        </div>
+        <figure class="basics-two-worlds" data-visual-anchor aria-labelledby="two-worlds-caption">
+          <figcaption id="two-worlds-caption">One pattern. Two different skill libraries.</figcaption>
+          <div class="basics-world" data-actor="builder"><span class="basics-label">ENGINEERING SKILLS</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m14 10-10 10 10 10M26 10l10 10-10 10M23 6l-6 28"/></svg><strong>Coding agent</strong><p>For example, GitHub Copilot.<br>Uses Threadlight to design, build and assess.</p></div>
+          <div class="basics-transfer"><span aria-hidden="true">↓</span><strong>Produces a reviewed project</strong><small>Not the same skill library</small></div>
+          <div class="basics-world" data-actor="process"><span class="basics-label">BUSINESS SKILLS</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 8h20v24H10zM15 14h10M15 20h10M15 26h6M4 16h6M30 24h6"/></svg><strong>Process agent</strong><p>For example, your returns assistant.<br>Uses business procedures and registered tools.</p></div>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="skills" data-toc-id="skills" data-toc-label="A skill">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow"><span class="dot"></span>01 / The skill-based agent</p>
+      <h2>A library of procedures.<br><em>An agent to coordinate them.</em></h2>
+      <p class="basics-intro">A <strong>skill is a reusable instruction package</strong>: when to use it, what it needs, the procedure to follow and the result to produce. Its entry document is <code>SKILL.md</code>; supporting code, references and templates are optional.</p>
+      <p class="basics-intro">A prompt gives one request. A skill-based agent uses a library of focused procedures to handle many requests. The same format supports different procedures and outputs—whether the agent is building software or working on a business case.</p>
+      <figure class="basics-skill-pair" aria-labelledby="skill-pair-caption">
+        <figcaption id="skill-pair-caption">Two real skills, summarized side by side. Same structure; different jobs.</figcaption>
+        <div class="basics-skill-pair-grid">
+          <article data-skill-example="threadlight-design" aria-labelledby="design-example-title">
+            <header class="basics-example-heading"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m14 10-10 10 10 10M26 10l10 10-10 10M23 6l-6 28"/></svg><div><span class="basics-label">FACTORY / ENGINEERING SKILL</span><h3 id="design-example-title">Design the application.</h3></div></header>
+            <div class="basics-example-file"><span>SKILL.md</span><code>threadlight-design</code></div>
+            <dl>
+              <div><dt>When</dt><dd>A brief needs to become a project design.</dd></div>
+              <div><dt>Input</dt><dd>“Build a returns assistant.”<small>Plus the business rules and technical constraints.</small></dd></div>
+              <div><dt>Procedure</dt><dd>Clarify the process, write the specification, pause for review in Full mode.</dd></div>
+              <div class="basics-example-output"><dt>Output</dt><dd><strong>Specification for the application</strong><code>specs/SPEC.md</code><small>After review, continue to derive agent instructions and business skills. Not a processed return.</small></dd></div>
+            </dl>
+            <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/SKILL.md">Read this engineering skill <span aria-hidden="true">↗</span></a>
+          </article>
+          <article data-skill-example="policy-eligibility" aria-labelledby="policy-example-title">
+            <header class="basics-example-heading"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h24v32H8zM13 15l4 4 10-11M13 27h14"/></svg><div><span class="basics-label">PRODUCT / BUSINESS SKILL</span><h3 id="policy-example-title">Assess a return.</h3></div></header>
+            <div class="basics-example-file"><span>SKILL.md</span><code>policy-eligibility</code></div>
+            <dl>
+              <div><dt>When</dt><dd>An individual return needs a policy assessment.</dd></div>
+              <div><dt>Input</dt><dd>“Is this return eligible?”<small>The case details from intake and the applicable policy.</small></dd></div>
+              <div><dt>Procedure</dt><dd>Check the return window, final-sale rules and item condition; cite the clause. Escalate if policy is unavailable.</dd></div>
+              <div class="basics-example-output"><dt>Output</dt><dd><strong>Eligibility recommendation for the case</strong><span>Candidate verdict + policy citation</span><small>Passed to the next skill for risk review—not the final decision or a refund.</small></dd></div>
+            </dl>
+            <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/examples/returns-triage-governed/src/agent/skills/policy-eligibility/SKILL.md">Read this business skill <span aria-hidden="true">↗</span></a>
+          </article>
+        </div>
+        <div class="basics-skill-reuse"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M7 12a15 15 0 0 1 25-4l3 4M35 3v9h-9M33 28A15 15 0 0 1 8 32l-3-4M5 37v-9h9"/></svg><p><strong>The flexible part is the pattern, not identical content.</strong> Change the procedure, inputs and connected tools to support a different task. Reuse each skill across relevant briefs or cases; compatible host capabilities and permissions still matter.</p></div>
+        <p class="basics-purpose-note">The agent coordinates: choose → read → act through tools → inspect. Skills guide behavior; they do not themselves grant access or guarantee a correct result.</p>
+      </figure>
+      <div class="basics-explainers">
+        <section class="basics-explainer" id="skill-files" aria-labelledby="skill-files-title">
+          <header><span class="basics-label">INSIDE THE PACKAGE</span><h3 id="skill-files-title">A document the agent can use.<br><em>With support when needed.</em></h3></header>
+          <div class="basics-file-sheet">
+            <div class="basics-file-tab"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h16l8 8v24H8zM24 4v8h8M14 19h12M14 26h8"/></svg><strong>SKILL.md</strong><span>Plain-text Markdown</span></div>
+            <dl>
+              <div><dt>Name + description</dt><dd>Identify the skill and when it is relevant, so the agent can select it for the task.</dd></div>
+              <div><dt>Procedure + boundaries</dt><dd>Explain the steps, expected inputs and outputs, required tools, and when to stop or hand off.</dd></div>
+            </dl>
+          </div>
+          <div class="basics-file-companions"><span class="basics-label">Optional supporting files</span><ul>
+            <li data-companion="scripts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 6-6 6 6 6M16 6l6 6-6 6M14 3l-4 18"/></svg><code>scripts/</code><span>Code for repeatable work or validation.</span></li>
+            <li data-companion="references"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7a2 2 0 0 1 2 2 2 2 0 0 1 2-2h7v17h-7a2 2 0 0 0-2 2 2 2 0 0 0-2-2H3zM12 5v17"/></svg><code>references/</code><span>Rules, schemas and deeper guidance.</span></li>
+            <li data-companion="assets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM3 9h18M9 9v11"/></svg><code>assets/</code><span>Templates and materials to reuse.</span></li>
+          </ul></div>
+          <p class="basics-explainer-note">Readable instructions plus optional supporting files—not a standalone executable. The host must provide the tools needed to use the package.</p>
+        </section>
+        <section class="basics-explainer" id="building-blocks" aria-labelledby="building-blocks-title">
+          <header><span class="basics-label">INSIDE THE RUNNING APPLICATION</span><h3 id="building-blocks-title">The agent coordinates.<br><em>The parts have different jobs.</em></h3></header>
+          <div class="basics-role-hub" data-basic-term="agent"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 8h20v24H10zM15 14h10M15 20h10M15 26h6M4 16h6M30 24h6"/></svg><div><strong>Agent</strong><p>The application that uses instructions, a model and tools to work toward a goal. It examines results and continues or asks for help.</p></div></div>
+          <div class="basics-role-branches" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="basics-role-parts">
+            <div data-basic-term="model"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="6"/><circle cx="7" cy="7" r="3"/><circle cx="33" cy="7" r="3"/><circle cx="7" cy="33" r="3"/><circle cx="33" cy="33" r="3"/><path d="m9 9 7 7M24 16l7-7M9 31l7-7M24 24l7 7"/></svg><strong>Model</strong><span class="basics-label">INTERPRET</span><p>Interprets context and proposes responses or actions. It can be wrong.</p></div>
+            <div data-basic-term="skill"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h24v32H8zM14 12h12M14 20h12M14 28h7"/></svg><strong>Skill</strong><span class="basics-label">GUIDE</span><p>Supplies the reusable procedure: what to check, how to proceed and when to escalate.</p></div>
+            <div data-basic-term="tool"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m14 8-11 12 11 12M26 8l11 12-11 12M23 4l-6 32"/></svg><strong>Tool</strong><span class="basics-label">PERFORM</span><p>Callable code that reads data or performs a permitted operation in a system.</p></div>
+          </div>
+          <p class="basics-explainer-note"><strong>The skill guides. The tool performs.</strong> A return-policy skill tells the agent what to assess; an order tool retrieves the facts. Backend controls decide which operations are allowed.</p>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="two-agents" data-toc-id="two-agents" data-toc-label="Two agents">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow"><span class="dot"></span>02 / Two skill sets, different responsibilities</p>
+      <h2>One assistant builds it.<br><em>Another runs your process.</em></h2>
+      <p class="basics-intro">A coding assistant such as GitHub Copilot uses Threadlight's engineering skills to turn your brief into a project. The resulting process agent gets its own business skills and connected tools, not a copy of the engineering playbooks.</p>
+      <figure class="basics-pipeline-product" data-pipeline-product aria-labelledby="pipeline-product-caption">
+        <figcaption id="pipeline-product-caption">Two flows. Different inputs, skills and outputs.</figcaption>
+        <section class="basics-purpose-lane">
+          <header><span class="basics-label">01 / THE THREADLIGHT PIPELINE</span><h3>An agent that builds.</h3></header>
+          <div class="basics-purpose-flow">
+            <div class="basics-flow-end"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4h16l8 8v24H8zM24 4v8h8M14 19h12M14 26h8"/></svg><div><span class="basics-label">INPUT</span><strong>Business brief</strong><small>What to build or change</small></div></div>
+            <span class="basics-flow-arrow" aria-hidden="true">→</span>
+            <div class="basics-flow-agent">
+              <div class="basics-flow-actor"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m14 10-10 10 10 10M26 10l10 10-10 10M23 6l-6 28"/></svg><strong>Coding agent</strong></div>
+              <p class="basics-label">ENGINEERING SKILL RESPONSIBILITIES</p>
+              <ul data-skill-family="engineering">
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h4"/></svg><div><b>Design</b><small>Specify the process</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 6-6 6 6 6M16 6l6 6-6 6M14 3l-4 18"/></svg><div><b>Generate</b><small>Create skills and code</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 8 4v6c0 5-8 10-8 10S4 17 4 12V6zM8 12l3 3 5-6"/></svg><div><b>Assure</b><small>Test and gather evidence</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 10 5v10l-10 5-10-5V7zM2 7l10 5 10-5M12 12v10"/></svg><div><b>Deliver</b><small>Package; deploy if approved</small></div></li>
+              </ul>
+            </div>
+            <span class="basics-flow-arrow" aria-hidden="true">→</span>
+            <div class="basics-flow-end basics-flow-output" data-flow-output="pipeline"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="m20 3 16 9v17l-16 9-16-9V12zM4 12l16 9 16-9M20 21v17"/></svg><div><span class="basics-label">OUTPUT</span><strong>Working pilot</strong><small>Agent project, business skills, tools and evidence</small></div></div>
+          </div>
+        </section>
+        <div class="basics-product-bridge"><span aria-hidden="true">↓</span><div><strong>Output of the first flow. Starting point for the second.</strong><p>The pilot contains the business agent. Production use still needs the required integrations, approvals and operating controls.</p></div></div>
+        <section class="basics-purpose-lane">
+          <header><span class="basics-label">02 / THE APPLICATION IT PRODUCES</span><h3>An agent that operates.</h3></header>
+          <div class="basics-purpose-flow">
+            <div class="basics-flow-end"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M6 6h28v22H18L8 36v-8H6zM12 13h16M12 20h10"/></svg><div><span class="basics-label">INPUT</span><strong>Business case</strong><small>Each new order, claim or request</small></div></div>
+            <span class="basics-flow-arrow" aria-hidden="true">→</span>
+            <div class="basics-flow-agent">
+              <div class="basics-flow-actor"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 8h20v24H10zM15 14h10M15 20h10M15 26h6M4 16h6M30 24h6"/></svg><strong>Process agent</strong></div>
+              <p class="basics-label">BUSINESS SKILL RESPONSIBILITIES</p>
+              <ul data-skill-family="business">
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15 15 7 7M7 10h6"/></svg><div><b>Understand</b><small>Collect and interpret the case</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4zM8 8l2 2 5-5M8 15h8"/></svg><div><b>Apply</b><small>Follow domain procedures</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h11l5 5v13H4zM15 3v5h5M8 13h8M8 17h5"/></svg><div><b>Prepare</b><small>Produce a case outcome</small></div></li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M2 22v-4c0-5 14-5 14 0v4M16 7h7M20 3v8"/></svg><div><b>Escalate</b><small>Involve a person when needed</small></div></li>
+              </ul>
+            </div>
+            <span class="basics-flow-arrow" aria-hidden="true">→</span>
+            <div class="basics-flow-end basics-flow-output" data-flow-output="business"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M7 5h26v30H7zM13 17l5 5 10-12M13 29h14"/></svg><div><span class="basics-label">OUTPUT</span><strong>Case outcome</strong><small>A decision, document, permitted action or human review</small></div></div>
+          </div>
+        </section>
+        <p class="basics-purpose-note">These are types of skill responsibility, not an automatic execution guarantee or a fixed stage list. The pipeline builds and verifies the capability; the business agent applies it to individual cases.</p>
+      </figure>
+      <p class="basics-intro basics-value">The value is a connected path from an agreed specification to runnable code and evidence you can inspect, rather than just a generated answer. A specification is the written agreement about what the process must do and what stays human.</p>
+      <aside class="basics-planner" aria-labelledby="planner-h"><span class="basics-label">WHERE AUTO FITS</span><h3 id="planner-h">Who coordinates the building steps?</h3><p>This orchestration—the coordination of what happens next—is supported by <code>threadlight-auto</code>. It is a planner: it inspects existing project files and chooses run, skip or stop. The coding assistant or an assigned worker performs the work. It is not the returns assistant, and it does not silently approve deployment or paid operations.</p><a href="./funnel.html">Follow the building steps →</a></aside>
+      <figure class="basics-request" aria-labelledby="request-caption"><figcaption id="request-caption">Knowing a rule is not the same as enforcing it</figcaption><ol><li><b>The skill says</b><span>“Ask for approval before recording this decision.”</span></li><li><b>The controls check</b><span>Is valid approval present for this action?</span></li><li><b>The system acts</b><span>Proceed only when the required checks hold.</span></li></ol><p>This illustrates a required control, not a proven deployment. Enforcement must be implemented and evidenced on the relevant action paths; one checked action does not certify the whole agent. <a href="./governance.html">Explore governance when you are ready →</a></p></figure>
+      <details class="basics-reference" id="runtime-detail"><summary>Technical detail: generated files and how the running application loads them</summary>
+        <p>Concrete examples: <code>threadlight-design</code> and <code>threadlight-deploy</code> guide engineering work. In the generated returns example, <code>policy-eligibility</code> and <code>disposition-decision</code> guide business work. They are separate skill libraries.</p>
+        <figure class="basics-build-path" aria-labelledby="build-path-caption">
+          <div><span class="basics-label">DEFINE</span><strong>The reviewed process</strong><code>specs/SPEC.md</code><code>specs/foundation.md</code></div>
+          <div><span class="basics-label">DERIVE</span><strong>The agent's contract</strong><code>AGENTS.md</code><code>src/agent/skills/</code></div>
+          <div><span class="basics-label">WIRE</span><strong>A working runtime</strong><span>Model + tools + identity</span><span>Host + channels + evidence</span></div>
+          <figcaption id="build-path-caption">Runtime means the running application. The SDK (software development kit) supplies the interfaces used to connect these parts.</figcaption>
+        </figure>
+        <dl><dt>Copilot SDK route</dt><dd>The shipped adapter supplies <code>skill_directories</code> when it creates a session, alongside host instructions and tool configuration.</dd><dt>Microsoft Agent Framework (MAF)</dt><dd>The shipped adapter supplies <code>SkillsProvider.from_paths</code> as a context provider, alongside instructions and native tools.</dd><dt>Workflow route</dt><dd>Some processes require a fixed workflow with coded stages. The foundation policy selects the supported runtime route; not all processes use the same implementation.</dd></dl>
+        <p><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/skill-based-agents.md#runtime-loading">Inspect the source-backed runtime contract →</a></p>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="where-skills-run" data-toc-id="where-skills-run" data-toc-label="Where skills run">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow"><span class="dot"></span>03 / Skills beyond coding sessions</p>
+      <h2>Not to shape the idea.<br><em>Engineering comes when you build.</em></h2>
+      <p class="basics-intro">You can describe the process, estimate usage and review the plan without writing code. A host is the app or service that runs an agent and supplies its tools. What you can do depends on that host's capabilities and your access.</p>
+      <div class="basics-hosts">
+        <section data-host="cowork"><span class="basics-label">PLAN WITHOUT CODING</span><h3>Copilot Cowork</h3><p>Where custom skills are supported, the Qualify and Design bundles help with sizing, discovery and a reviewable design.</p><strong>What it needs</strong><p>The host must support the skill's document or code tools. Uploading a ZIP does not connect your systems or grant deployment access.</p><a href="./downloads/threadlight-design.zip">Get the Design bundle ↗</a><br><a href="./downloads/threadlight-qualify.zip">Get the Qualify bundle ↗</a></section>
+        <section data-host="coding"><span class="basics-label">BUILD THE APPLICATION</span><h3>A coding assistant</h3><p>Use the engineering skills with project-file access and the tools needed to build and assess the application.</p><strong>What it needs</strong><p>An editor alone is not a deployment environment. Connecting systems and deploying need the right tools, credentials and approval.</p><a href="./workbook.html">Take the hands-on path →</a></section>
+        <section data-host="runtime"><span class="basics-label">HANDLE BUSINESS REQUESTS</span><h3>Your process application</h3><p>The built agent handles cases using its business instructions, skills and connected tools.</p><strong>What it needs</strong><p>Identity, system access and enforced controls must be implemented separately. They do not come from the skill's text.</p><a href="./production.html">Understand the production requirements →</a></section>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section basics-next" id="next-step" data-toc-id="next-step" data-toc-label="Next step">
+    <div class="wrap wrap-wide">
+      <p class="eyebrow"><span class="dot"></span>Choose your next question</p>
+      <h2>Choose the next question<br><em>you want answered.</em></h2>
+      <nav aria-label="Continue from Basics"><a href="./funnel.html"><span>BUILD</span><strong>How does a brief become a pilot?</strong><small>The six-phase path, its artifacts and human decisions.</small></a><a href="./case-study.html"><span>CASE STUDY</span><strong>What did a captured run produce?</strong><small>A concrete example, with historical evidence and limits.</small></a><a href="./production.html"><span>PRODUCTION</span><strong>What must hold before go-live?</strong><small>Readiness, runtime governance and operating evidence.</small></a></nav>
+      <p class="basics-deeper">Implementing this? <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/skill-based-agents.md">Read the L400/L500 engineering guide</a> for inputs, generated files, SDK loading and operational boundaries.</p>
+    </div>
+  </section>
+</main>
+<footer><div class="left">Threadlight · open guidance, opinionated tools</div><div class="right"><a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></div></footer>
+<script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=cc056191"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
+</body>
+</html>

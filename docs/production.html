@@ -3,27 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Production-ready — three postures, thirteen pillars, one scorecard.</title>
-<meta name="description" content="Threadlight's production-ready chapter: green safe-check isn't go-live. Three postures (Gateway-fronted / Foundry-native / Customer-owned edge) and thirteen cross-cutting pillars, grouped into four themes you can walk through with the customer's architecture team.">
-<meta name="theme-color" content="#4f6dff">
+<title>Production-ready — evidence before go-live.</title>
+<meta name="description" content="Read the evidence before go-live: what passed, what remains unverified, and who owns the next step. Thirteen pillars and three deployment postures, without turning a working pilot into a production claim.">
+<meta name="theme-color" content="#a8ff60">
 
 <meta property="og:type"        content="article">
-<meta property="og:title"       content="Production-ready — three postures, thirteen pillars, one scorecard.">
-<meta property="og:description" content="Three postures. Thirteen pillars across network/identity, governance/HITL, ops/cost, and lifecycle/supply-chain. Soft-advisory, graceful degradation, one Markdown skill the coding agent runs for you.">
+<meta property="og:title"       content="Production-ready — evidence before go-live.">
+<meta property="og:description" content="Read the evidence before go-live: what passed, what remains unverified, and who owns the next step. Thirteen pillars and three deployment postures, without turning a working pilot into a production claim.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/production.html">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
-<meta name="twitter:title"       content="Production-ready — postures + pillars.">
-<meta name="twitter:description" content="Green safe-check isn't go-live. Here's what we check before you walk into the customer architecture review.">
+<meta name="twitter:title"       content="Production-ready — evidence before go-live.">
+<meta name="twitter:description" content="Read the evidence before go-live: what passed, what remains unverified, and who owns the next step. Thirteen pillars and three deployment postures, without turning a working pilot into a production claim.">
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<link rel="stylesheet" href="assets/chapter-experience.css?v=652c028c">
+<link rel="stylesheet" href="assets/production-experience.css?v=c21534e1">
 </head>
-<body class="chapter-page chapter-production">
+<body class="chapter-page chapter-production chapter-experience">
 
 <header class="masthead">
   <div class="brand">
@@ -33,75 +35,142 @@
   </div>
   <nav class="nav" aria-label="Site chapters">
     <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
-    <a href="./blueprint.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Blueprint</a>
+    <a href="./basics.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Basics</a>
+    <a href="./funnel.html">Build</a>
     <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
-    <a href="./production.html" aria-current="page"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production-ready</a>
-    <a href="./customize.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.3"/><circle cx="16" cy="16" r="2.3"/></svg>Customize</a>
+    <a href="./production.html" aria-current="page"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
   </nav>
 </header>
 
 <aside class="floating-toc" aria-label="Production-ready chapter">
-  <p class="toc-title">Chapter</p>
+  <nav class="pr-chapter-links" aria-label="Production overview">
+    <a href="#chapter-top">Architecture</a>
+    <a href="#runtime-controls">Controls</a>
+    <a href="#proof">Evidence</a>
+    <a href="#ship">Delivery</a>
+  </nav>
+  <details class="pr-chapter-index">
+    <summary>All sections</summary>
+    <ol>
+      <li><a href="#chapter-top">Architecture</a></li>
+      <li><a href="#runtime-controls">Runtime controls</a></li>
+      <li><a href="#why">Why it matters</a></li>
+      <li><a href="#checks">What it checks</a></li>
+      <li><a href="#legs">Close the gaps</a></li>
+      <li><a href="#proof">Evidence</a></li>
+      <li><a href="#target">Target architecture</a></li>
+      <li><a href="#ship">Delivery</a></li>
+      <li><a href="#start">Getting started</a></li>
+      <li><a href="#chapter-recap">Recap</a></li>
+    </ol>
+  </details>
 </aside>
 
 <main>
-  <section class="wrap" aria-label="Selected runtime governance">
-    <h2>Runtime evidence is scoped to selected bindings</h2>
-    <p>SAFE is the method; ACS/Rego is the PDP; Agent Hooks is the host/interceptor
-      contract SDK; native host/gateway is the PEP; AGT is the toolkit; ASSERT is
-      assurance. Report enforced, observed, unbound, unverified, unsupported or
-      bypassable per tool, point and path, not a whole-agent governed verdict.</p>
-    <p>Signed fresh policy, authenticated role-bound one-use approval, trusted
-      target/schema/backend facts and central audit ACK precede effects.
-      Local fsync is not hosted durability. Preview native/CTK tests are local
-      proof; only fresh observed deployment and hosted invocation provide live
-      evidence. The registered governance_probe_noop cannot certify business
-      bindings. Legacy v2 green cannot pass governance-manifest/v1 readiness.</p>
-    <p><a href="production-readiness.md#runtime-governance-lifecycle">Implementation,
-      native/GHCP limits, required live inputs and migration</a></p>
-  </section>
-
   <!-- ==================== HERO ==================== -->
-  <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
+  <section class="chapter-hero pr-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Read the evidence">
     <div class="wrap wrap-wide">
-      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Production-ready</p>
-      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Production-ready</p>
-      <h1 class="reveal" data-delay="2">Your pilot works. Now <em>prove it can ship.</em></h1>
-      <p class="lede reveal" data-delay="3">
-        <code>threadlight-production-ready</code> assembles the evidence-backed scorecard
-        a customer&rsquo;s review board reads, identifies the gaps, and leaves you with an
-        <strong>uplift/handoff plan</strong>.
-      </p>
-      <p class="lede reveal" data-delay="4" style="margin-top:12px;">
-        It scores the agent across <strong>13 production pillars</strong>, names the skill or
-        owner for each gap, and gives remediation + delivery the evidence they need to
-        <strong>move the pilot toward ship</strong> &mdash; not skip the hardening work.
-      </p>
-      <div class="stat-strip reveal" data-delay="5" role="list" aria-label="Production-ready at a glance">
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>1</em></span>
-          <span class="stat-label">prompt to run</span>
-        </div>
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>13</em></span>
-          <span class="stat-label">pillars scored</span>
-        </div>
-        <div class="stat" role="listitem">
-          <span class="stat-num"><em>1</em></span>
-          <span class="stat-label">scorecard to sign</span>
-        </div>
+      <div class="cx-journey">
+        <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><span aria-current="page">Production</span></nav>
+        <a class="cx-journey-next" href="./governance.html">Next: Governance &amp; AgentOps <span aria-hidden="true">→</span></a>
       </div>
-
-      <div class="cost-cta-row reveal" data-delay="7" style="margin-top:26px;">
-        <a class="btn btn-primary" href="#start">Get started <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="#proof">See a real scorecard <span class="arrow">&rarr;</span></a>
+      <div class="pr-hero-grid">
+       <div>
+        <p class="eyebrow"><span class="dot"></span>From working pilot to accountable system</p>
+        <h1>Your pilot works.<br><em>Prove it<br> can ship.</em></h1>
+        <p class="lede" data-chapter-intro>Choose where your agent runs.
+          Follow the model request, the controls before a business action, and the evidence
+          your customer needs before accepting the handoff.</p>
+        <a class="pr-story-link" href="#runtime-controls">Follow the control boundary <span aria-hidden="true">&searr;</span></a>
+       </div>
+       <div class="pr-architecture-explorer" data-visual-anchor>
+        <div class="pr-posture-picker" role="group" aria-label="Choose deployment posture" hidden>
+          <button type="button" data-posture="gateway" aria-pressed="true"><span>01</span>Gateway-fronted</button>
+          <button type="button" data-posture="native" aria-pressed="false"><span>02</span>Foundry-native</button>
+          <button type="button" data-posture="customer" aria-pressed="false"><span>03</span>Customer-owned</button>
+        </div>
+        <figure class="pr-architecture" data-posture="gateway" aria-labelledby="pr-architecture-caption">
+          <div class="pr-map-heading"><span>THE ARCHITECTURE</span><span data-posture-label>01 / Gateway-fronted</span></div>
+          <div class="pr-model-lane">
+            <span class="pr-lane-label">MODEL ACCESS</span>
+            <div class="pr-model-path"><span>Agent</span><i aria-hidden="true"></i><strong data-model-route>Shared AI gateway</strong><i aria-hidden="true"></i><span>Model</span></div>
+          </div>
+          <div class="pr-action-lane">
+            <span class="pr-lane-label">SELECTED BUSINESS ACTION</span>
+            <div class="pr-action-path">
+              <div class="pr-system-node pr-agent-node">
+                <svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><path d="M32 4 56 18v28L32 60 8 46V18Z"/><path d="M8 18 32 32 56 18M32 32v28"/><circle cx="32" cy="23" r="6"/></svg>
+                <strong>The agent</strong><span>Proposes a tool call</span>
+              </div>
+              <div class="pr-effect-boundary">
+                <span class="pr-boundary-label">BEFORE THE EFFECT</span>
+                <strong>Enforce<br>the rules.</strong>
+                <ul><li><span>01</span>Policy</li><li><span>02</span>Approval</li><li><span>03</span>Trusted facts</li><li><span>04</span>Audit</li></ul>
+                <span class="pr-boundary-owner">Selected runtime host / tool gateway</span>
+              </div>
+              <div class="pr-system-node pr-business-node">
+                <svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><ellipse cx="32" cy="14" rx="22" ry="9"/><path d="M10 14v35c0 5 10 9 22 9s22-4 22-9V14M10 31c0 5 10 9 22 9s22-4 22-9"/></svg>
+                <strong>Your system</strong><span>Receives the authorized action</span>
+              </div>
+            </div>
+          </div>
+          <figcaption id="pr-architecture-caption">Model access and action governance are different boundaries. Architecture illustration, not a live assessment.</figcaption>
+        </figure>
+        <div class="pr-posture-story" aria-live="polite" aria-atomic="true">
+          <span>WHAT CHANGES</span>
+          <p data-posture-description>Model requests pass through a shared AI gateway. Business actions still need their own runtime controls: gateway visibility alone does not govern every tool.</p>
+        </div>
+        <noscript><p><a href="#posture-trio-caption">Compare all three deployment postures below &darr;</a></p></noscript>
+       </div>
       </div>
+      <ul class="pr-hero-facts"><li>13 production pillars</li><li>3 deployment postures</li><li>An explicit uplift/handoff plan</li></ul>
+      <nav class="pr-evidence-journey" aria-label="From architecture to handoff">
+        <a href="#checks"><span>01 / SELECT</span><strong>The architecture</strong><small>Where it runs. Who can act.</small></a>
+        <a href="#proof"><span>02 / COLLECT</span><strong>The evidence</strong><small>What actually ran. What remains open.</small></a>
+        <a href="#ship"><span>03 / HAND OFF</span><strong>The ownership</strong><small>Who accepts the risk. Who operates it.</small></a>
+      </nav>
     </div>
   </section>
 
   <!-- ==================== 1 · WHY IT MATTERS ==================== -->
+  <section class="chapter-section" id="runtime-controls" data-toc-id="runtime-controls" data-toc-label="Runtime controls">
+    <div class="wrap">
+     <div class="pr-controls-composition">
+      <div>
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Control first. Evidence next.</p>
+        <h2>What stops an agent <em>before it acts?</em></h2>
+        <p class="section-lede">Runtime evidence is scoped to selected bindings: a tool, an intervention
+          point and an execution path. Required policy, approval, trusted backend facts and central audit
+          acknowledgement precede effects. One proved path does not make the whole agent governed.</p>
+      </div>
+      <div class="read-deeper">
+        <a href="./governance.html">Follow an action through its controls &rarr;</a>
+        <a href="./governance.html#agentops">Explore the opt-in AgentOps preview (PR #128) &rarr;</a>
+      </div>
+      <p class="section-lede">Local proof is not live proof. The registered <code>governance_probe_noop</code>
+        cannot certify business bindings; legacy v2 green cannot pass <code>governance-manifest/v1</code>
+        readiness. The <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md">technical guide</a>
+        explains the supported paths, current evidence and preview boundary.</p>
+      </div>
+      <figure class="pr-evidence-console">
+        <figcaption>Reading the scorecard / illustrative, not a live assessment</figcaption>
+        <dl>
+          <div><dt>Deployment checks<span>Are the expected resources present?</span></dt><dd>STRUCTURAL</dd></div>
+          <div><dt>Policy and local scenarios<span>What ran on the selected path?</span></dt><dd>LOCAL PROOF</dd></div>
+          <div><dt>Hosted noop<span>One reserved action, not business writes</span></dt><dd>SCOPED PROOF</dd></div>
+          <div class="pr-open"><dt>Business action live evidence<span>Still missing in this illustration</span></dt><dd>NOT VERIFIED</dd></div>
+        </dl>
+        <div class="pr-evidence-verdict"><strong>A gap stays a gap.</strong><p>Remediate, collect fresh evidence, re-score. No skill invocation guarantees a green result.</p></div>
+      </figure>
+     </div>
+    </div>
+  </section>
+
   <section class="chapter-section" id="why" data-toc-id="why" data-toc-label="Why it matters">
     <div class="wrap wrap-xl">
+      <details class="pr-detail" id="readiness-context">
+      <summary>Why a working demo still needs a readiness review</summary>
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Why it matters</p>
         <h2>A demo isn&rsquo;t a <em>production system.</em></h2>
@@ -127,6 +196,7 @@
           <p>Each finding names the skill or owner that can close it &mdash; threadlight or awesome-gbb. Run the remediation, re-score, then hand the uplift plan to delivery.</p>
         </article>
       </div>
+      </details>
     </div>
   </section>
 
@@ -139,6 +209,8 @@
         <p class="section-lede">Thirteen pillars define what &ldquo;ready&rdquo; means. Three postures define how it fits your architecture &mdash; detected before the first question.</p>
       </div>
 
+      <details class="pr-detail" id="pillar-details">
+      <summary>Explore the thirteen pillars and compare all three postures</summary>
       <!-- agent-governance vs platform boundary + the deliverable -->
       <div class="reveal" data-delay="1" style="max-width:880px; margin: var(--s-5) auto 0; border:1px solid var(--line); border-left:3px solid var(--lime); border-radius:12px; background:var(--bg-2); padding:20px 24px;">
         <p style="font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 9px;">Agent governance &mdash; not platform governance</p>
@@ -384,6 +456,7 @@
           Same agent, three architectures. The skill detects which one is live before it asks a single governance question &mdash; gateway-fronted, Foundry-native, or a customer-owned edge.
         </figcaption>
       </figure>
+      </details>
     </div>
   </section>
 
@@ -392,15 +465,27 @@
     <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Close the gaps</p>
-        <h2>Every gap has a skill that <em>closes it.</em></h2>
-        <p class="section-lede">The scorecard names the gap. One prompt runs the skill that closes it &mdash; threadlight or awesome-gbb &mdash; and amber turns green. Each wields a platform capability you already own, so you adopt it in a prompt instead of a project.</p>
+        <h2>A gap is a signal. <em>Closure needs evidence.</em></h2>
+        <p class="section-lede">The scorecard names the gap and the skill or owner that can address it.
+          Remediation is work, not proof: collect fresh evidence and re-score before treating the gap as closed.</p>
       </div>
 
+      <figure class="pr-recheck" data-evidence-visual="recheck" aria-labelledby="recheck-caption">
+        <ol>
+          <li><span>01 / FIND</span><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="17" cy="17" r="11"/><path d="m25 25 11 11M17 11v8M17 23h.01"/></svg><strong>Name the gap</strong><small>A finding, not a vague score.</small></li>
+          <li><span>02 / ADDRESS</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 5h24v30H8zM14 13h12M14 20h12M14 27h6"/></svg><strong>Do the work</strong><small>A skill or accountable owner.</small></li>
+          <li><span>03 / RE-COLLECT</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M6 13h28v21H6zM10 7h20M14 2h12M13 24l5 5 10-12"/></svg><strong>Fresh evidence</strong><small>The current target and scope.</small></li>
+          <li><span>04 / RE-SCORE</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3v12M6 35V24h28v11M20 15v20"/><circle cx="20" cy="7" r="4"/></svg><strong>Read the result</strong><small>Never assume the colour.</small></li>
+        </ol>
+        <div class="pr-recheck-outcomes"><span>Still open</span><span>Explicit waiver</span><span>Closed by evidence</span></div>
+        <figcaption id="recheck-caption">Each finding has its own resolution. A waiver is an explicit acceptance, not a passed check. The aggregate go-live decision stays with the readiness report.</figcaption>
+      </figure>
+      <details class="pr-detail" id="remediation-skills">
+      <summary>Choose the skill for the finding: nine practical paths</summary>
       <div class="gap-grid">
         <article class="gap-card reveal" data-delay="1">
           <div class="gap-head">
             <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9.5 4V2.8h5V4"/><path d="M8.8 12.6l2 2 4-4"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
           </div>
           <h3>Know what every agent is allowed to do.</h3>
           <p class="gap-skill"><code>threadlight-govern</code> &middot; pillars 02 &middot; 07</p>
@@ -410,7 +495,6 @@
         <article class="gap-card reveal" data-delay="2">
           <div class="gap-head">
             <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.4 2.4 5-5"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
           </div>
           <h3>Prove quality didn&rsquo;t regress before you ship.</h3>
           <p class="gap-skill"><code>threadlight-evals</code> &middot; pillar 06</p>
@@ -420,7 +504,6 @@
         <article class="gap-card reveal" data-delay="3">
           <div class="gap-head">
             <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
           </div>
           <h3>Find the jailbreak before an attacker does.</h3>
           <p class="gap-skill"><code>threadlight-redteam</code> &middot; pillar 07</p>
@@ -430,7 +513,6 @@
         <article class="gap-card reveal" data-delay="1">
           <div class="gap-head">
             <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l8 4.4v9.6L12 21.2 4 16.8V7.2z"/><path d="M4 7.2l8 4.4 8-4.4M12 11.6v9.6"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
           </div>
           <h3>Catch a poisoned tool swap.</h3>
           <p class="gap-skill"><code>threadlight-production-ready</code> &middot; pillar 09</p>
@@ -440,7 +522,6 @@
         <article class="gap-card reveal" data-delay="2">
           <div class="gap-head">
             <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M14.4 9.4a2.6 2.6 0 0 0-2.4-1.3c-1.5 0-2.7.9-2.7 2 0 2.5 5.4 1.3 5.4 3.7 0 1.15-1.25 2-2.7 2a2.8 2.8 0 0 1-2.5-1.35"/><path d="M12 6.6v10.8"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
           </div>
           <h3>Forecast the bill before finance sees it.</h3>
           <p class="gap-skill"><code>threadlight-consumption-iq</code> &middot; pillar 10</p>
@@ -450,7 +531,6 @@
         <article class="gap-card reveal" data-delay="3">
           <div class="gap-head">
             <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6" r="2.4"/><circle cx="7" cy="18" r="2.4"/><circle cx="17" cy="10" r="2.4"/><path d="M7 8.4v7.2"/><path d="M7 12.5h4.2a3 3 0 0 0 3-3v-.1"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
           </div>
           <h3>Make every check a merge gate.</h3>
           <p class="gap-skill"><code>threadlight-cicd</code> &middot; gates the deploy</p>
@@ -460,7 +540,6 @@
         <article class="gap-card reveal" data-delay="1">
           <div class="gap-head">
             <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l8 4.4v9.6L12 21.2 4 16.8V7.2z"/><path d="M4 7.2l8 4.4 8-4.4M12 11.6v9.6"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
           </div>
           <h3>Prove the real endpoint before you trust it.</h3>
           <p class="gap-skill"><code>threadlight-connect</code> &middot; manual, evidence-gated mock&rarr;real swap</p>
@@ -470,7 +549,6 @@
         <article class="gap-card reveal" data-delay="2">
           <div class="gap-head">
             <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.4 2.4 5-5"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
           </div>
           <h3>Prove the retrieval is safe, not just plausible.</h3>
           <p class="gap-skill"><code>threadlight-ground</code> &middot; manual ACL / citation / refusal evidence</p>
@@ -480,7 +558,6 @@
         <article class="gap-card reveal" data-delay="3">
           <div class="gap-head">
             <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
           </div>
           <h3>Prove it holds up &mdash; under a hard budget cap.</h3>
           <p class="gap-skill"><code>threadlight-loadtest</code> &middot; manual, budget-capped, production-confirmed load evidence</p>
@@ -488,6 +565,7 @@
         </article>
       </div>
 
+      </details>
       <div class="read-deeper">
         <span class="rd-label">The scorecard itself:</span>
         <span><code>docs/production-readiness-report.md</code> + <code>tests/production-readiness-manifest.json</code> &mdash; per-pillar findings, evidence register, waivers, the go-live call.</span>
@@ -585,8 +663,8 @@
         <article class="outcome-stat reveal" data-delay="2">
           <span class="os-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.5 9.3a2.7 2.7 0 0 0-2.5-1.3c-1.6 0-2.8.9-2.8 2.1 0 2.6 5.6 1.3 5.6 3.8 0 1.2-1.3 2.1-2.8 2.1a2.9 2.9 0 0 1-2.6-1.4"/><path d="M12 6.4v11.2"/></svg></span>
           <span class="os-num">$<em>0.0123</em></span>
-          <span class="os-label">Cost / interaction</span>
-          <span class="os-cap">From <code>cost-manifest.json</code> at 800 rpm.</span>
+          <span class="os-label">Forecast cost / interaction</span>
+          <span class="os-cap">Projection from <code>cost-manifest.json</code> at 800 rpm, not settled actuals.</span>
         </article>
         <article class="outcome-stat reveal" data-delay="3">
           <span class="os-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
@@ -840,6 +918,8 @@
         <p class="section-lede">You need your pilot in a repo and <strong>GitHub Copilot</strong> with the Threadlight skills. Azure read-access is optional &mdash; without it the cloud pillars resolve to <code>not-verified</code>, nothing fails.</p>
       </div>
 
+      <details class="pr-detail" id="operator-prompts">
+      <summary>Open the four-step operator walkthrough and prompts</summary>
       <div class="stepper">
         <div class="step reveal" data-delay="1">
           <div class="step-rail"><span class="step-num">1</span><span class="step-line"></span></div>
@@ -892,6 +972,7 @@
         <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-production-ready" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
         <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Read the 13-pillar reference <span class="arrow">↗</span></a>
       </div>
+      </details>
     </div>
   </section>
 
@@ -942,5 +1023,8 @@
 </footer>
 
 <script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=cc056191"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
+<script src="assets/production-experience.js?v=e595ade5"></script>
 </body>
 </html>

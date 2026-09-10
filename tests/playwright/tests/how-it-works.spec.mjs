@@ -9,6 +9,7 @@ const LANDING = '/index.html';
 test.describe('home — "how it works" primer band', () => {
   test('renders the three-role stack: Copilot builds, Foundry runs, Foundry governs', async ({ page }) => {
     await page.goto(LANDING);
+    await page.locator('.home-context > summary').click();
     const band = page.locator('#how-it-works');
     await band.scrollIntoViewIfNeeded();
     await expect(band).toBeVisible();
@@ -32,6 +33,7 @@ test.describe('home — "how it works" primer band', () => {
 
   test('teaches the four building blocks in plain English', async ({ page }) => {
     await page.goto(LANDING);
+    await page.locator('.home-context > summary').click();
     const band = page.locator('#how-it-works');
     await band.scrollIntoViewIfNeeded();
 
@@ -49,7 +51,7 @@ test.describe('home — "how it works" primer band', () => {
     }
   });
 
-  test('primer sits between the hero and the reel', async ({ page }) => {
+  test('the optional primer follows the hero and the reel', async ({ page }) => {
     await page.goto(LANDING);
     const order = await page.evaluate(() => {
       const intro = document.querySelector('.demo-intro');
@@ -60,11 +62,11 @@ test.describe('home — "how it works" primer band', () => {
         a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
       return {
         bandAfterIntro: Boolean(pos(intro, band)),
-        reelAfterBand: Boolean(pos(band, reel))
+        bandAfterReel: Boolean(pos(reel, band))
       };
     });
     expect(order).not.toBeNull();
     expect(order.bandAfterIntro).toBe(true);
-    expect(order.reelAfterBand).toBe(true);
+    expect(order.bandAfterReel).toBe(true);
   });
 });
