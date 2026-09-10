@@ -7,6 +7,15 @@ field.
 
 ## [Unreleased]
 
+### Fixed
+
+- Production-readiness apply plans preserve current `must-fix` and
+  `should-fix` findings alongside `not-verified` and legacy `fail`/`warn`.
+  Native manifest roundtrip, restricted handoff and source hashes are
+  preserved. No generator, scoring, runtime or deployment behavior changes.
+- Plugin/marketplace candidate version 2.1.1 and production-ready 0.13.1;
+  no release, new live proof or production-readiness claim.
+
 ### Added
 
 - Optional `threadlight-agentops` per-agent evidence normalization and `AOPS-001`

@@ -6,7 +6,7 @@ description: >-
   remediation ownership or an explicit CI readiness gate. Not for deployment,
   runtime implementation, model evaluation or hub provisioning.
 metadata:
-  version: "0.13.0"
+  version: "0.13.1"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -173,6 +173,19 @@ agent as apply-plan tasks. The single documented exception is `--scaffold-cicd`,
 `docs/threadlight-cicd/central-team-uami-readme.md`) into the customer repo so
 the production-onboarding pipeline can run. That exception is bounded, opt-in,
 and writes deterministic templates only — it does not emit remediation patches.
+
+## Assessment-to-plan handoff
+
+Current `must-fix`, `should-fix`, and `not-verified` findings are preserved
+in the apply-plan from native pillar output or a flat findings list.
+Legacy `fail` and `warn` remain supported. `pass`, `not-applicable`, and
+`waived` findings are not proposed for remediation.
+
+The plan retains source order and the full source-manifest hash.
+Restricted environments retain the existing manual-handoff behavior.
+A plan is a proposal, not approval to edit, provision or deploy.
+This status compatibility fix does not change the onboarding CLI's input
+contract, readiness scoring, governance selection, or prototype workflow.
 
 ## How to invoke
 

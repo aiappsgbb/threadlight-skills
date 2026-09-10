@@ -53,16 +53,17 @@ APPLY_PLAN_SCHEMA_VERSION = 1
 
 def build_apply_plan(*, manifest: dict, recipes: dict, framing: dict,
                      framing_path: str | None = None) -> dict:
-    """Build an apply-plan from an assessor manifest + loaded recipe catalog.
+    """Build an apply-plan from an assessor manifest and recipe catalog.
 
     Walks `manifest["findings"]` if present, otherwise flattens
-    `manifest["pillars"][].findings[]` (the v0.3.0 OUTPUT shape). For every
-    finding whose status is `fail`, `warn`, or `not-verified`, emits an
-    entry that either points at the registered recipe or falls back to a
-    `kind: manual` placeholder. Pins `manifest_sha256` so the agent can
-    detect a stale plan in Phase 2.
+    `manifest["pillars"][].findings[]` from the native assessor output.
+    Current `must-fix`, `should-fix`, and `not-verified` findings are
+    actionable; legacy `fail` and `warn` remain supported. Each item
+    points at its registered recipe or a manual handoff when absent.
+    Pins `manifest_sha256` so a later consumer can detect a stale plan.
+    Emitting the plan does not authorize remediation or deployment.
 
-    Raises SystemExit if any recipe declares an unknown `kind`.
+    Raises SystemExit if any selected recipe declares an unknown kind.
     """
     sha = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     findings = manifest.get("findings")
@@ -73,7 +74,9 @@ def build_apply_plan(*, manifest: dict, recipes: dict, framing: dict,
         ]
     items: list[dict] = []
     for f in findings:
-        if f.get("status") not in {"fail", "warn", "not-verified"}:
+        if f.get("status") not in {
+            "must-fix", "should-fix", "not-verified", "fail", "warn"
+        }:
             continue
         rid = f.get("id")
         if not rid:
@@ -509,7 +512,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.13.0"
+VERSION = "0.13.1"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
