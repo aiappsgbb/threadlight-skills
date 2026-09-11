@@ -147,3 +147,39 @@ def test_demo_package_copies_real_sources_and_refuses_overwrite(tmp_path):
     assert "Do not delete" in guide
     skill = PATH.parents[2] / "SKILL.md"
     assert "returns-mcp-demo.md" in skill.read_text()
+
+
+def test_unbound_read_uses_injected_host_credential_without_policy():
+    import asyncio
+    from contextlib import AsyncExitStack
+    from azure.core.credentials import AccessToken
+    import httpx
+    path = PATH.with_name("returns_mcp_agent.py")
+    spec = importlib.util.spec_from_file_location("returns_mcp_agent", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    scopes, requests = [], []
+
+    class Credential:
+        async def get_token(self, scope):
+            scopes.append(scope)
+            return AccessToken("test-only-token", 4102444800)
+
+    def receive(request):
+        requests.append(request)
+        return httpx.Response(200, json={"id": "RMA-READ", "_etag": '"revision-1"'})
+
+    async def check():
+        async with AsyncExitStack() as stack:
+            http = await stack.enter_async_context(httpx.AsyncClient(transport=httpx.MockTransport(receive)))
+            tools = await module.build_read_tools({
+                "cases": ["RMA-READ"], "business_scope": "api://business/.default",
+                "business_url": "https://business.example",
+            }, Credential(), stack, http=http)
+            assert [tool.name for tool in tools] == ["returns_get_case"]
+            result = await tools[0].invoke(arguments={"case_id": "RMA-READ"}, skip_parsing=True)
+            assert result == {"id": "RMA-READ", "_etag": '"revision-1"'}
+    asyncio.run(check())
+    assert scopes == ["api://business/.default"]
+    assert len(requests) == 1 and str(requests[0].url) == "https://business.example/cases/RMA-READ"
+    assert requests[0].headers["authorization"] == "Bearer test-only-token"

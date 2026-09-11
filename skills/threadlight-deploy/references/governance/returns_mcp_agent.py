@@ -73,7 +73,6 @@ def model_client(config, credential):
 
 
 async def build_agent(config, stack):
-    from agent_framework import FunctionTool, SKIP_PARSING
     from agent_framework.openai import OpenAIChatClient
     from azure.identity.aio import ManagedIdentityCredential
     from azure.keyvault.keys.aio import KeyClient
@@ -99,6 +98,21 @@ async def build_agent(config, stack):
     authority = module.GatewayAuthority(
         config, credential=credential, signer=KeyVaultSigner(crypto, key_client=keys), http=http)
     await authority.health()
+    reads = await build_read_tools(config, credential, stack, http=http)
+    model = await stack.enter_async_context(model_client(config, credential))
+    client = OpenAIChatClient(model=config["model_deployment"], async_client=model)
+    return await create_gateway_agent(
+        config=config, client=client, local_tools=reads, instructions=INSTRUCTIONS,
+        credential=credential, authorize=authority.authorize)
+
+
+async def build_read_tools(config, credential, stack, *, http=None):
+    """Use the credential supplied by the host; reads have no ACS dependency."""
+    from agent_framework import FunctionTool, SKIP_PARSING
+    import httpx
+    if http is None:
+        http = await stack.enter_async_context(httpx.AsyncClient(
+            timeout=10, trust_env=False, follow_redirects=False))
 
     async def read_case(case_id: str):
         if case_id not in config["cases"]:
@@ -115,19 +129,14 @@ async def build_agent(config, stack):
             raise ValueError("business_read_case_mismatch")
         return result
 
-    read = FunctionTool(
+    return [FunctionTool(
         name="returns_get_case", description="Read the authoritative synthetic return case and revision.",
         input_model={
             "type": "object", "additionalProperties": False,
             "properties": {"case_id": {"type": "string", "enum": config["cases"]}},
             "required": ["case_id"],
         },
-        func=read_case, result_parser=SKIP_PARSING)
-    model = await stack.enter_async_context(model_client(config, credential))
-    client = OpenAIChatClient(model=config["model_deployment"], async_client=model)
-    return await create_gateway_agent(
-        config=config, client=client, local_tools=[read], instructions=INSTRUCTIONS,
-        credential=credential, authorize=authority.authorize)
+        func=read_case, result_parser=SKIP_PARSING)]
 
 
 def configure_state(config):
