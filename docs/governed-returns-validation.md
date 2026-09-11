@@ -636,6 +636,86 @@ observation and signed association; the existing binding is not overwritten or
 reused as if it covered that version. Neither a prompt agent nor a VM is silently
 substituted for S2.
 
+### Comparison with the user's working hosted deployment
+
+The user identified a separately tested Hosted/Toolbox deployment in
+`aiappsgbb/awesome-gbb`. Its current source at comparison time was commit
+`06400fd7`; its maintained validation record reports fresh successful Hosted
+identity output on September 11. That repository/worktree and its Azure
+environment were inspected read-only, not modified.
+
+The comparison exposed two distinct omissions rather than proving that private
+hosted agents are unsupported:
+
+| Difference / comparison | Evidence and action |
+|---|---|
+| Basic project capability host | The working private setup explicitly added an `Agents` Basic project host with platform-managed stores. Our S2 project returned `capabilityHosts: []`. |
+| Conflicting guidance | The generic `foundry-hosted-agents` warning against manually creating Capability Hosts was applied without reconciling it with `foundry-vnet-deploy`'s Basic **project** host module. This was an operator interpretation/preflight error as well as an instruction conflict. |
+| Minimal setup correction | Deployed the exact working `add-project-capability-host.bicep` module against S2 only. The missing-host check failed before creation and passed after the host reported `Agents`/`Succeeded`. No existing host, account or store was recreated. |
+| Result of that correction alone | Version 1 remained failed. A controlled version 2 using unchanged application/runtime code and SDKs, with a fresh binding reference and policy version 3, also failed with the same `ProvisioningError`. The missing project host was therefore not established as the sole provisioning cause. |
+| Protocol/image shape | The working service readback also contains `container_protocol_versions: []`, typed `protocol_versions` with Responses `2.0.0`, and nested `container_configuration.image`. Those fields were not changed speculatively. |
+| Container identity | The working image uses the default container identity. The generated S2 image likewise has no fixed non-root UID; the other session's historical UID permission failure is a different signature. |
+| SDK cohort | The working deployment uses a different tested runtime cohort. S2's existing exact runtime pins were retained while investigating the creation contract; no blanket SDK upgrade/downgrade was performed. |
+| Registration metadata | The working deployed version has `metadata.enableVnextExperience: "true"`; both of our failed versions were created without it. |
+
+The other session did **not** retain an outbound azd HTTP request body. Its
+YAML is a creation input and its saved JSON is service readback, not proof of
+every field azd sent. The missing metadata was independently traced to the
+public azd implementation:
+[`service_target_agent.go`](https://github.com/Azure/azure-dev/blob/main/cli/azd/extensions/azure.ai.agents/internal/project/service_target_agent.go)
+unconditionally calls `applyAgentMetadata(request)`, whose comment identifies
+`enableVnextExperience` as a **server-side API contract**, then sets its value
+to the string `"true"`. The call is not conditional on a Toolbox.
+
+The direct SDK operator did not match that contract. Its actual SDK
+serialization regression first failed because the outgoing JSON had no
+`metadata` object. The helper now supplies the same metadata through the
+SDK's supported `create_version` argument, and independent observation rejects
+missing, false or non-string values. It does not patch the installed SDK,
+loosen the endpoint validator or mark a failed version active.
+
+Seven targeted RED failures covered emission, lost-ACK behavior, missing/changed
+metadata and the declared operator SDK extra. After correction, the complete
+two-file lifecycle/credential selection ran **97 passing tests** with the real
+pinned SDK and explicit external HTTP fixtures. These are local contract checks,
+not a successful hosted business run.
+
+The corrected enrollment created actual version `3`, with
+`metadata.enableVnextExperience: "true"` independently read back. Its image was
+`sha256:65698a5c959915ccd3de6e9a32ff6bab131a3f3b9abbf34ee91a71d6097740d1`;
+the new reference was `returns-hosted-s2-native-20260911`, and its final policy
+version `4` had digest
+`sha256:b88353e1c02f2912bfb2937ba5dc8dcf516f3a23b8bcadabf3634326fc2d05b9`.
+The old images, versions and bindings were retained.
+
+**This did not establish a working hosted runtime.** A direct version GET
+transitioned from `creating` to `failed` at `16:03:23.823606` UTC with the same
+generic `ProvisioningError`. The missing creation metadata was a confirmed
+contract divergence, but its correction was not sufficient to resolve the
+observed failure.
+
+A further diagnostic found a material service-read discrepancy: three raw
+authenticated LIST `/versions` responses at 16:11:54, 16:11:59 and 16:12:04
+reported all versions `active`, while the raw authenticated GET of version 3
+still returned `failed` with `ProvisioningError`. These were response-body
+values, not SDK defaults. The native CLI polls the direct version GET and
+requires repeated terminal observations. LIST is not accepted as readiness
+evidence here. Instrumenting every endpoint guard showed that all configuration
+checks passed except the direct version status; that guard was not bypassed.
+
+The actual generated version-3 image was also started in a network-disabled
+local container, using the observed configuration values solely as test inputs.
+It served `/liveness` with `alive` and correctly returned 503 for readiness with
+no reachable authority. This excludes an immediate import/listen failure in
+that local setup; it does not reproduce platform credential injection, image
+pulling or hosted activation, and is not identity or business proof.
+
+The remaining comparison includes the actual private image-pull route, image
+reference handling and the difference between an ordinary protocol host and
+this externally authorized bootstrap gate. Those are hypotheses to investigate,
+not grounds to relax authentication, expose the registry, swap SDK cohorts or
+declare provisioning successful.
+
 ## S3: Prompt-agent applicability
 
 **Assessment only:** a prompt agent is not a drop-in replacement for this MAF
