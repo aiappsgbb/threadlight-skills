@@ -13,10 +13,10 @@ The separate delegated-token workstream is outside this record.
 
 ## Scenario status
 
-| ID | Scenario | Status at the first execution boundary | Meaning |
+| ID | Scenario | Last recorded status | Meaning |
 |---|---|---|---|
 | S1 | Native MAF in a Docker container on an operator VM; real private model, governed MCP, separate business API and Cosmos | Executed, with the bounded evidence below | Working functional baseline; not a Foundry hosted deployment |
-| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | Next reference scenario; no successful hosted execution credited yet | Must have its own image/version/identity binding and fresh business evidence |
+| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: version 1 registered, then provisioning failed | Its signed association exists; no hosted business execution is credited |
 | S3 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1 |
 
 **Reference direction:** S2 is the intended hosted reference. S1 is a useful
@@ -493,9 +493,148 @@ identifiers. The signed operation URL is private operational data, not included
 here. Its status was `Creating` at 12:56:28 UTC. Following that exact operation,
 rather than inferring readiness from an unrelated GET, is part of this attempt.
 
-This is **account provisioning in progress**, not a created or running hosted
-agent. Project, model, private endpoint, hosted image/version/identity and fresh
-business execution still require their own successful observations.
+At that point this was **account provisioning in progress**, not a created or
+running hosted agent. The subsequent observations below are additional evidence;
+they do not turn the initial `Creating` response into execution proof.
+
+### S2 version 1: registration recovered, provisioning failed
+
+**Status: S2-REGISTERED-NOT-RUNNING.** The separate account operation reached
+`Succeeded` at `12:59:55.980852` UTC. Its project and model were then successfully
+created, and its private endpoint/DNS configuration completed. This overcame
+the original account's project/model blocker without deleting or changing it.
+
+S2 uses separate control, gateway, downstream and business UAMIs, separate ACA
+service names, and separate `s2-governance-records`, `s2-gateway-idempotency` and
+`s2-returns-cases` containers. It reuses the dedicated VNet, registry and signing
+authority. The original S1 services, configurations, cases and receipts were not
+replaced. Three new synthetic cases (`S2-RMA-ALLOW`, `S2-RMA-DENY`,
+`S2-RMA-SUPERVISOR`) were seeded create-only and their actual ETags captured.
+
+#### Build, create and recovery sequence
+
+The existing `generate.py generate` path produced the real
+`maf-gateway-container.py` factory, portable dependencies, frozen remote-bootstrap
+configuration and service source contexts. An extracted `build_read_tools`
+helper uses the credential supplied by that host; it does not select the VM
+UAMI. Its added local regression uses an HTTP fixture to verify credential
+threading and the absence of a policy dependency on the unbound read. That test
+is not hosted token proof.
+
+The self-contained agent image was built and pushed before registration. The
+create input fixed its source/image, CPU `1`, memory `2Gi`, Responses protocol
+`2.0.0` and allowed environment values. No reserved `FOUNDRY_*` variable or
+invented hosted identity was supplied.
+
+| Step | Actual observation / action |
+|---|---|
+| First native SDK create | HTTP 403, `Traffic is not from an approved private endpoint`; protected attempt retained |
+| Private-path diagnosis | VM and explicit SSH proxy resolved/reached the private project; a subsequent authenticated native agent inventory was empty |
+| Reconciliation before retry | Authenticated GET of the selected agent returned 404; retained a reconciliation record and left the failed attempt intact |
+| Second create with unchanged frozen input | SDK read timeout at 30 seconds; the timeout was not treated as cancellation or proof of absence |
+| Independent recovery | SDK `list_versions` returned exactly one actual version, `returns-hosted-reference:1`, initially `active`, with instance identity and the expected image |
+| Protected state reconciliation | Compared actual version/image/environment/CPU/memory with the frozen input; preserved the pre-reconciliation attempt and recorded the returned version/identity; no additional create was issued |
+| Identity check | Microsoft Graph independently returned `@odata.type=#microsoft.graph.agentIdentity`, `servicePrincipalType=ServiceIdentity`; in this observation its app ID equaled its object ID |
+| Scoped external permissions | Assigned the observed identity the control/gateway/business application roles and key verification; no Cosmos role assigned to it |
+| Final policy and bootstrap | Signed new case snapshots and registry against that actual image/version/identity; staged and built the gateway; the separate publisher UAMI published the real hosted bootstrap binding |
+| Endpoint configuration gate | Refused with `observed_hosted_definition_mismatch`; a fresh version read showed `status=failed` |
+
+The first network rejection's underlying timing/registration cause was not
+conclusively established. The successful authenticated reads do not retroactively
+make that first request successful. Likewise, the second create's lost ACK did
+not justify blindly creating another version.
+
+Graph and RBAC assignments demonstrate configuration of the actual Agent
+Identity, but **container token use was not observed**. They must not be reported
+as a successful hosted call to a custom API or Key Vault.
+
+#### Final associations and the runtime failure
+
+| Artifact | Recorded value |
+|---|---|
+| Shared-reader source commit | `081762a2147ec21840112f3af56dc46775a230af` |
+| Actual agent source-tree digest | `sha256:f13de22da6c7119380f1c6f9bcf33c8b3ddfa96ca7a6ff60164dcae756b8d42f` |
+| Hosted agent version | `returns-hosted-reference:1` |
+| Actual hosted image digest | `sha256:b5affd8ee4deaa1971fdbb129057e9d80bb899d7ca5ddcf6a0bdc41e42044e78` |
+| Bootstrap policy | `returns-hosted-v1`, version `1`; digest `sha256:7b021ac19246ff8e44dc69f88257e0f85452e4c7bad67affdedfc9fd4636084d` |
+| Final gateway policy | `returns-hosted-v1`, version `2`; digest `sha256:32d5c44d43d4bb1d89ec347aa56ac1e743ea4a65fcc33f67f02383a271b24994` |
+| Staged gateway source digest | `sha256:b29235f3652c547694423aa631e3685bd185492cf1ade21d260c0fadbaa28222` |
+| Actual gateway image digest | `sha256:4489b09ed56e2311129e5cd44ff7919a034a3054ef7a25e659e7431e8338ff67` |
+| Signed hosted reference | `returns-hosted-s2-20260911` |
+| Signed hosted binding expiry | `2026-09-12T13:06:05.433720+00:00` |
+
+The later native version response contained:
+
+```json
+{
+  "status": "failed",
+  "error": {
+    "code": "ProvisioningError",
+    "message": "Agent version provisioning failed. Please retry. For troubleshooting, see https://aka.ms/hostedagents/tsg/provisioning"
+  }
+}
+```
+
+The endpoint validator was not weakened to accept a failed version. Image,
+environment, CPU/memory and the typed `protocol_versions` still matched; the
+version's failed status was sufficient to block configuration. The response
+also retained an unmodeled `container_protocol_versions: []` beside the typed
+protocol declaration. This observation was retained, but was **not** established
+as the provisioning cause and did not justify patching the SDK or changing the
+protocol contract speculatively.
+
+All three S2 service health endpoints subsequently returned 200, including
+gateway per-binding readiness for the final digest and its real receipt/approval
+dependencies. S2 control had initially returned 503; it recovered after the
+observed hosted workload was added and its configured initialization/request
+window increased from 5 to 15 seconds. Those changes were not isolated in a
+controlled experiment, so the original startup cause is not claimed as proven.
+
+These healthy services and the signed binding do **not** prove that the failed
+hosted container started, loaded the binding, minted credentials or invoked a
+tool. No S2 business invocation is credited.
+
+#### Bounded diagnostics and evidence of non-execution
+
+The operator checked the concrete prerequisites named by the platform's
+[provisioning troubleshooting link](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent#troubleshooting):
+
+| Check | Observation / limit |
+|---|---|
+| Private-registry eligibility | The current first-party page says projects created after June 25, 2026 support private registries; this project was created September 11. The older blanket restriction in a cached companion reference was not treated as current evidence. |
+| Registry permission mode | `LegacyRegistryPermissions`; project managed identity has registry-scoped `AcrPull` |
+| ARM-token authentication | Dedicated `az acr config authentication-as-arm show` returned `enabled` |
+| Registry network setting | Public access remained disabled; it was not opened to work around an unproven diagnosis |
+| Native session diagnostics | Authenticated GET of the documented `.../endpoint/sessions` API returned `data=[]`, `has_more=false`; no session ID existed from which to fetch container session logs |
+| Diagnostic CLI | Installed/used the agents extension in an isolated azd configuration. Its session command required a separate azd login; this diagnostic-tool authentication failure was not treated as the cause of the hosted failure. Existing authenticated SDK credentials successfully performed the session read. |
+| Current version | Repeated authenticated reads still reported `failed`; no endpoint-check or business-run success was substituted |
+
+At `2026-09-11T13:42:24.681282+00:00`, independent Cosmos queries found:
+
+| S2 store / query | Count |
+|---|---:|
+| `s2-governance-records` documents | 0 |
+| `s2-gateway-idempotency` documents | 0 |
+| `s2-returns-cases` documents with `kind=decision-audit` | 0 |
+
+The last row counts business audits, **not the three seeded cases**. This is
+consistent with registration and policy publication but no hosted business
+execution. No approval, noop or S1 receipt is borrowed to fill the gap.
+
+| Private retained artifact | SHA-256 |
+|---|---|
+| `s2-reconciled-versions.json` | `ea35caf962cc5db4aa2b0c018a9f055c855ce6f106ba51f8e1e826459637c278` |
+| `s2-signed-hosted-binding.json` | `d9fab81ee482fd894b84ad211aa9c8d1fe57fc9639ee63c11ded64a20bbd2c3f` |
+| `s2-final-signed-policy.json` | `a92123e24987c2491aa87ef36cd63edff07f2fe3f7af84f21c1d836f252594b0` |
+| `s2-failed-version.json` | `f933161f7d2f2e3c7e3ac34853998a14316da7d50a9bdaed40073c6eb28729cc` |
+| `s2-store-observation.json` | `b234c8211892f043d901b90cb6f139d4ff3839fb7f549c6975ab97b068cf1c68` |
+
+The provisioning root cause remains unresolved. A further attempt must preserve
+version 1, both create-attempt records, all roles/resources and this failed
+association. If a new version/image/reference is used, it requires a new exact
+observation and signed association; the existing binding is not overwritten or
+reused as if it covered that version. Neither a prompt agent nor a VM is silently
+substituted for S2.
 
 ## S3: Prompt-agent applicability
 

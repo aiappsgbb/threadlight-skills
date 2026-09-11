@@ -46,3 +46,15 @@ def test_report_preserves_evidence_references_without_private_targets():
     for target in re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", text):
         if "://" not in target:
             assert (REPORT.parent / target).exists(), target
+
+
+def test_hosted_registration_is_not_reported_as_business_execution():
+    text = " ".join(REPORT.read_text().split())
+    for marker in (
+        "S2-REGISTERED-NOT-RUNNING",
+        "ProvisioningError",
+        "No S2 business invocation is credited",
+        "container token use was not observed",
+        "32d5c44d43d4bb1d89ec347aa56ac1e743ea4a65fcc33f67f02383a271b24994",
+    ):
+        assert marker in text
