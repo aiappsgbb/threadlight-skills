@@ -41,6 +41,11 @@ unbound; never remove it to make an assessment pass.
 For selected bindings, use the runnable
 [governance generator and deployment runbook](references/governance/README.md):
 
+For the bounded real-business VM-first vertical, use the
+[returns/MCP source package and demo runbook](references/governance/returns-mcp-demo.md).
+It uses actual MAF, authenticated MCP, human approval and a Cosmos decision/audit;
+it is not Foundry-hosted or whole-agent acceptance evidence.
+
 ```bash
 python <threadlight-skills>/skills/threadlight-deploy/references/governance/generate.py \
   generate --project <pilot> --contract <contract.json> --configuration <package.json>
