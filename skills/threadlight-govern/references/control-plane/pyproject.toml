@@ -24,6 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest==9.0.3"]
+hosted-operator = ["azure-ai-projects==2.3.0"]
 
 [project.scripts]
 threadlight-review-action = "govern_control_plane.review:main"

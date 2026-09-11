@@ -32,6 +32,16 @@ bootstrap policy version. All values are frozen before the agent image is built.
 The real generated MAF/GHCP entrypoints gate requests before application startup.
 Their portable control-plane dependency exports the bootstrap modules.
 
+The direct SDK operator matches azd's server-side hosted creation contract:
+`create_version` supplies metadata `enableVnextExperience: "true"`, and version
+observation requires that exact value. The SDK does not add it automatically.
+This is separate from endpoint store-publication metadata and never constitutes
+live readiness. An older attempt missing it cannot be promoted by relaxing
+verification or silently changing an existing version. Install the portable
+control plane with its `hosted-operator` extra for the exact operator SDK.
+The source of this contract is azd's
+[`applyAgentMetadata`](https://github.com/Azure/azure-dev/blob/main/cli/azd/extensions/azure.ai.agents/internal/project/service_target_agent.go).
+
 1. Generate/build the immutable agent image and publish its original signed
    policy through the existing Task8 operator backend. Do not embed the image's
    own digest in its bytes. Independently retain image/source provenance.
