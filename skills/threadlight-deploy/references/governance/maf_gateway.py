@@ -19,6 +19,9 @@ import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import McpError
+from mcp.types import Tool as MCPTool
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 from govern_control_plane.models import Identifier, canonical, parse, strict_json
 from govern_control_plane.review import validate_pending_review
@@ -49,6 +52,31 @@ class AuthorizedTransport(httpx.AsyncBaseTransport):
     def __init__(self, inner, guard):
         self.inner, self.guard = inner, guard
 
+    @staticmethod
+    def same_headers(expected, actual):
+        if actual == expected:
+            return True
+        tracing = {b"traceparent", b"tracestate", b"baggage"}
+        if (tuple((key, value) for key, value in actual if key.lower() not in tracing)
+                != tuple((key, value) for key, value in expected if key.lower() not in tracing)):
+            return False
+        # Native HTTPX instrumentation injects its active span after this wrapper.
+        # Accept only that exact W3C context, never arbitrary header mutations.
+        current = {}
+        TraceContextTextMapPropagator().inject(current)
+        W3CBaggagePropagator().inject(current)
+        observed = {}
+        for key, value in actual:
+            if key.lower() in tracing:
+                try:
+                    name, text = key.lower().decode("ascii"), value.decode("ascii")
+                except UnicodeDecodeError:
+                    return False
+                if name in observed:
+                    return False
+                observed[name] = text
+        return bool(current.get("traceparent")) and observed == current
+
     async def handle_async_request(self, request):
         method, url, headers = request.method, request.url, tuple(request.headers.raw)
         if type(request.stream) is not httpx.ByteStream:
@@ -63,13 +91,28 @@ class AuthorizedTransport(httpx.AsyncBaseTransport):
             if event in ("http11.send_request_headers.started", "http11.send_request_body.started"):
                 await self.guard()
                 core = info.get("request")
-                if (type(core) is not httpcore.Request or core.method != method.encode("ascii")
-                        or (core.url.scheme, core.url.host, core.url.port, core.url.target)
-                        != (url.raw_scheme, url.raw_host, url.port, url.raw_path)
-                        or tuple(core.headers) != headers
-                        or type(core.stream) is not httpx.ByteStream
-                        or b"".join(core.stream) != body):
-                    raise GatewayToolError("threadlight:gateway_wire_changed")
+                changed = []
+                if type(core) is not httpcore.Request:
+                    changed.append("request_type")
+                else:
+                    if core.method != method.encode("ascii"):
+                        changed.append("method")
+                    if ((core.url.scheme, core.url.host, core.url.port, core.url.target)
+                            != (url.raw_scheme, url.raw_host, url.port, url.raw_path)):
+                        changed.append("target")
+                    if not self.same_headers(headers, tuple(core.headers)):
+                        before = {key.lower(): value for key, value in headers}
+                        after = {key.lower(): value for key, value in core.headers}
+                        names = {key for key in before.keys() | after.keys() if before.get(key) != after.get(key)}
+                        known = {b"authorization", b"idempotency-key", b"host", b"content-type",
+                                 b"content-length", b"traceparent", b"tracestate", b"baggage"}
+                        changed.append("headers:" + ",".join(sorted(name.decode() for name in names & known)))
+                        if names - known:
+                            changed.append("other_headers")
+                    if type(core.stream) is not httpx.ByteStream or b"".join(core.stream) != body:
+                        changed.append("body")
+                if changed:
+                    raise GatewayToolError("threadlight:gateway_wire_changed:" + ";".join(changed))
 
         await self.guard()
         request.extensions["trace"] = trace
@@ -107,6 +150,8 @@ class GovernedMCPTools:
         self.transport_factory = transport_factory
         self._functions = None
         self._descriptors = {}
+        self._deferred_descriptors = None
+        self._connect_lock = asyncio.Lock()
 
     @property
     def functions(self):
@@ -198,7 +243,28 @@ class GovernedMCPTools:
             self._function(name, descriptor) for name, descriptor in descriptors.items()
         ]
 
-    def _function(self, name, descriptor):
+    def deferred_functions(self, descriptors):
+        """Expose a frozen inventory without requiring authority at host startup."""
+        if self._functions is not None or self._deferred_descriptors is not None:
+            raise GatewayToolError("threadlight:gateway_already_connected")
+        if not isinstance(descriptors, Mapping) or set(descriptors) != set(self.selected):
+            raise ValueError("exact_deferred_gateway_inventory_required")
+        normalized = {}
+        for name in self.selected:
+            descriptor = MCPTool.model_validate(descriptors[name])
+            if descriptor.name != name:
+                raise ValueError("deferred_gateway_tool_name_mismatch")
+            normalized[name] = descriptor.model_dump(mode="json", by_alias=True)
+        if len(canonical(normalized)) > 65536:
+            raise GatewayToolError("threadlight:gateway_inventory_limit")
+        functions = [
+            self._function(name, descriptor, deferred_connect=True)
+            for name, descriptor in normalized.items()
+        ]
+        self._deferred_descriptors = normalized
+        return functions
+
+    def _function(self, name, descriptor, *, deferred_connect=False):
         deferred = (descriptor.get("_meta") or {}).get("threadlight.approval_mode") == "deferred"
         schema = deepcopy(descriptor["inputSchema"])
         if deferred:
@@ -210,6 +276,12 @@ class GovernedMCPTools:
             }
 
         async def invoke(**arguments):
+            if deferred_connect:
+                async with self._connect_lock:
+                    if self._functions is None:
+                        await self.connect()
+                    if self._descriptors != self._deferred_descriptors:
+                        raise GatewayToolError("threadlight:gateway_inventory_changed")
             operation = arguments.pop("governance_operation_id", None) if deferred else None
             if operation is not None:
                 operation = parse(Identifier, canonical(operation))
@@ -252,7 +324,8 @@ class GovernedMCPTools:
 
 
 async def create_gateway_agent(*, config, client, local_tools, instructions, credential,
-                               authorize, transport_factory=None, context_providers=()):
+                               authorize, transport_factory=None, context_providers=(),
+                               deferred_descriptors=None):
     document = validate_governance_contract(
         config["contract"], deployment_target="customer-pilot", runtime="microsoft-agent-framework")
     selected = [tool for tool in document["tools"] if tool["policy_binding"] is not None]
@@ -271,7 +344,11 @@ async def create_gateway_agent(*, config, client, local_tools, instructions, cre
         url=config["gateway_url"], scope=config["gateway_scope"], credential=credential,
         authorize=authorize, selected_tools=[tool["id"] for tool in selected],
         transport_factory=transport_factory)
-    await remote.connect()
+    if deferred_descriptors is None:
+        await remote.connect()
+        functions = remote.functions
+    else:
+        functions = remote.deferred_functions(deferred_descriptors)
 
     class GatewayAgent(Agent):
         def run(self, messages=None, **kwargs):
@@ -290,5 +367,5 @@ async def create_gateway_agent(*, config, client, local_tools, instructions, cre
 
     return GatewayAgent(
         client=client, id=config["agent_id"], name=config["agent_id"],
-        instructions=instructions, tools=[*local_tools, *remote.functions],
+        instructions=instructions, tools=[*local_tools, *functions],
         context_providers=list(context_providers), default_options={"store": False})

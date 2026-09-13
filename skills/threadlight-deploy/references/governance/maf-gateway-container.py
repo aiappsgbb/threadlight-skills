@@ -83,8 +83,39 @@ class GatewayAuthority:
         return {"status": "ready", "scope": "selected-gateway-dependencies", "tools": selected}
 
 
+class DeferredBootstrapAuthority:
+    """Resolve the existing signed binding on first use, never during readiness."""
+    def __init__(self, config, *, credential, signer, http, env):
+        from govern_control_plane.bootstrap import runtime_gate
+
+        async def initialize(binding, stack):
+            resolved = {**config, "policy_digest": binding.policy_digest,
+                        "policy_version": binding.policy_version,
+                        **{key: getattr(binding, key) for key in (
+                            "principal", "agent_version", "image_digest", "subscription", "resource_group")}}
+            return GatewayAuthority(
+                resolved, credential=credential, signer=signer, http=http, bootstrap_gate=self.gate)
+
+        self.gate = runtime_gate(
+            config, env=env, credential=credential, signer=signer,
+            initialize=initialize, http=http)
+
+    async def authorize(self):
+        if not self.gate.active:
+            await self.gate.activate()
+        return await self.gate.app.authorize()
+
+    async def health(self):
+        await self.authorize()
+        return await self.gate.app.health()
+
+    async def aclose(self):
+        await self.gate.aclose()
+
+
 async def build_host(config, *, credential, signer, stack, bootstrap_gate=None,
-                     application=None, client=None, http=None, transport_factory=None, **host_options):
+                     application=None, client=None, http=None, transport_factory=None,
+                     deferred_descriptors=None, authority=None, **host_options):
     if application is None:
         import governance_application as application
     if getattr(application, "middleware", []):
@@ -92,9 +123,15 @@ async def build_host(config, *, credential, signer, stack, bootstrap_gate=None,
     if http is None:
         http = await stack.enter_async_context(httpx.AsyncClient(
             timeout=5, trust_env=False, follow_redirects=False))
-    authority = GatewayAuthority(
-        config, credential=credential, signer=signer, http=http, bootstrap_gate=bootstrap_gate)
-    await authority.health()
+    if deferred_descriptors is not None and (
+            config.get("bootstrap_scope") != "selected-tools"
+            or config.get("environment") not in ("staging", "preproduction")):
+        raise ValueError("explicit_nonproduction_tool_bootstrap_required")
+    if authority is None:
+        authority = GatewayAuthority(
+            config, credential=credential, signer=signer, http=http, bootstrap_gate=bootstrap_gate)
+    if deferred_descriptors is None:
+        await authority.health()
     if callable(getattr(application, "initialize", None)):
         await application.initialize(config, credential, stack)
     if client is None:
@@ -110,7 +147,8 @@ async def build_host(config, *, credential, signer, stack, bootstrap_gate=None,
         config=config, client=client, local_tools=application.tools,
         instructions=(BASE / "copilot-instructions.md").read_text(),
         credential=credential, authorize=authority.authorize,
-        transport_factory=transport_factory, context_providers=contexts)
+        transport_factory=transport_factory, context_providers=contexts,
+        deferred_descriptors=deferred_descriptors)
 
     class GatewayHost(ResponsesHostServer):
         async def _readiness_endpoint(self, request):
@@ -121,7 +159,8 @@ async def build_host(config, *, credential, signer, stack, bootstrap_gate=None,
                 return JSONResponse({"status": "unavailable"}, status_code=503)
 
     os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "false"
-    return GatewayHost(agent, **host_options)
+    host_type = ResponsesHostServer if deferred_descriptors is not None else GatewayHost
+    return host_type(agent, **host_options)
 
 
 def remote_host(config, *, credential, signer, http=None, env=None, **host_options):
@@ -150,7 +189,11 @@ async def main():
     from azure.keyvault.keys.aio import KeyClient
     from azure.keyvault.keys.crypto.aio import CryptographyClient
     config = json.loads((BASE / "governance-config.json").read_text())
-    if "remote_bootstrap" in config:
+    scope = config.get("bootstrap_scope", "host")
+    if scope not in ("host", "selected-tools") or (
+            scope == "selected-tools" and "remote_bootstrap" not in config):
+        raise ValueError("invalid_bootstrap_scope")
+    if "remote_bootstrap" in config and scope == "host":
         await serve_remote(config, remote_host)
         return
     async with AsyncExitStack() as stack:
@@ -162,8 +205,17 @@ async def main():
         crypto = await stack.enter_async_context(CryptographyClient(config["key_id"], credential, retry_total=0))
         keys = await stack.enter_async_context(KeyClient(
             config["key_id"].split("/keys/")[0], credential, retry_total=0))
-        host = await build_host(config, credential=credential,
-                                signer=KeyVaultSigner(crypto, key_client=keys), stack=stack)
+        signer = KeyVaultSigner(crypto, key_client=keys)
+        options = {}
+        if scope == "selected-tools":
+            http = await stack.enter_async_context(httpx.AsyncClient(
+                timeout=5, trust_env=False, follow_redirects=False))
+            authority = DeferredBootstrapAuthority(
+                config, credential=credential, signer=signer, http=http, env=os.environ)
+            stack.push_async_callback(authority.aclose)
+            options = {"authority": authority, "http": http,
+                       "deferred_descriptors": config["gateway_descriptors"]}
+        host = await build_host(config, credential=credential, signer=signer, stack=stack, **options)
         await host.run_async(host=listen_host(os.environ))
 
 

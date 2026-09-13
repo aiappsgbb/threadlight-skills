@@ -193,7 +193,14 @@ infrastructure configuration:
 ```
 
 Missing/nonboolean opt-ins, production/development, `allowed_ips`, and unrelated
-network fields are rejected. The existing public IP allowlist and private-network
+network fields are rejected. For an explicitly preserved demonstration, replace
+`"cleanup_required": true` with `"cleanup_required": false, "preserve_resources": true`
+in both configurations. These are mutually exclusive retention choices; false
+or missing cleanup consent alone does not enable public proof networking.
+The preserved choice is carried unchanged into collected network evidence and
+does not authorize deletion, resource shutdown, or expiry-based cleanup. Policy
+and approval expiry still revoke authority without deleting resources.
+The existing public IP allowlist and private-network
 contracts are unchanged. This mode deliberately opens HTTPS network reachability:
 ACA ingress restrictions are empty, Storage/Key Vault network default action is
 Allow, and Cosmos has public access with no IP filter. **Authentication is not
@@ -203,6 +210,35 @@ anonymous blob access stay disabled; Cosmos local auth stays disabled; Key Vault
 uses RBAC; HTTPS/TLS settings remain enforced. Anonymous protected/data operations
 are not introduced. Existing payload-free health/liveness routes are not proof
 of authorization or enforcement.
+
+The MCP client also supports explicit `deferred_descriptors` in
+`create_gateway_agent`: caller-supplied frozen native MCP tool descriptors are
+exposed without connecting during construction. The first call obtains fresh
+authority, authenticates real discovery and requires the entire selected
+inventory to match before any tool dispatch. Later calls retain inventory and
+transport-time authorization checks. Default eager connection is unchanged.
+This primitive separates native process startup from effect authorization;
+it is not by itself a hosted bootstrap, signing or execution receipt.
+
+For a staging/preproduction gateway host, `bootstrap_scope: selected-tools`
+with frozen `gateway_descriptors` opts into native readiness before binding
+publication. The existing signed bootstrap is activated at the first selected
+tool call, with the same identity/configuration/image/version and live key/policy
+checks. Unbound reads remain independent of ACS. The default whole-host gate is
+unchanged; native readiness in this mode must never be credited as business
+authorization.
+
+The transport preserves method, target, body and authorization/idempotency
+headers through the actual HTTP send. Native OpenTelemetry may inject
+`traceparent`/`tracestate` and `baggage` after the outer transport captures the request.
+Only an exact match to the active SDK W3C trace and baggage context is accepted; unrelated,
+duplicated or arbitrary changed headers still fail closed. Tracing is not disabled.
+
+`agent-image` freezes native `docker.imagePassthrough: true` and disables remote
+rebuilding for that service. This requires the validated azd 1.34.0-or-newer
+path; a bare `image` field can still trigger packaging and rebuild the wrong
+input. Ordinary `azd deploy` then uses the preserved digest without
+`--from-package` or an SDK creation wrapper.
 
 `TL_GOV_SERVICE_INGRESS` exposes the generated HTTPS ingress object for the
 operator-installed fixture to use consistently; normal generation still does

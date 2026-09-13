@@ -13,7 +13,7 @@ param location string = resourceGroup().location
 var privateRequired = config.network.posture == 'private-required'
 // This is public access with Entra authorization, never restricted-network evidence.
 var publicAuthenticatedProof = config.network.posture == 'public-authenticated-proof'
-  ? (contains(['staging', 'preproduction'], config.environment) && config.network.proof_only == true && config.network.cleanup_required == true)
+  ? (contains(['staging', 'preproduction'], config.environment) && config.network.proof_only == true && (contains(config.network, 'preserve_resources') ? (config.network.preserve_resources == true && config.network.cleanup_required == false) : config.network.cleanup_required == true))
   : false
 var prefix = config.prefix
 var probesEnabled = contains(config, 'probe_observability')

@@ -246,9 +246,12 @@ def validate_network(network, *, environment=None):
                              or ipaddress.ip_address("0.0.0.0") in ip for ip in parsed):
             raise ValueError("explicit_restricted_ip_allowlist_required")
     elif network.get("posture") == "public-authenticated-proof":
+        keys = {"posture", "environment_id", "proof_only", "cleanup_required"}
+        retention = (network.get("cleanup_required") is True and set(network) == keys) or (
+            network.get("cleanup_required") is False and network.get("preserve_resources") is True
+            and set(network) == keys | {"preserve_resources"})
         if (environment not in ("staging", "preproduction")
-                or network.get("proof_only") is not True or network.get("cleanup_required") is not True
-                or set(network) != {"posture", "environment_id", "proof_only", "cleanup_required"}):
+                or network.get("proof_only") is not True or not retention):
             raise ValueError("explicit_nonproduction_public_authenticated_proof_required")
     else:
         raise ValueError("explicit_network_posture_required")
@@ -320,7 +323,8 @@ def portable_configuration(config, contract, framework):
     if config.get("network", {}).get("posture") == "public-authenticated-proof":
         validate_network(config["network"], environment=config.get("environment"))
         from skills._shared.governance_configuration import public_proof_network_evidence
-        portable["network_evidence"] = public_proof_network_evidence()
+        portable["network_evidence"] = public_proof_network_evidence(
+            preserve_resources=config["network"].get("preserve_resources", False))
     normalized = validate_contract(contract)
     if "remote_bootstrap" in config:
         from govern_control_plane.bootstrap import BootstrapReference
@@ -900,6 +904,16 @@ def agent_image(project, document, *, configuration=None):
     azure = yaml.safe_load(path.read_text())
     service = azure["services"][package["configuration"]["agent_service"]]
     service["image"] = image
+    docker = service.setdefault("docker", {})
+    if not isinstance(docker, dict):
+        raise ValueError("docker_configuration_invalid")
+    docker.update(imagePassthrough=True, remoteBuild=False)
+    versions = azure.setdefault("requiredVersions", {})
+    version = re.fullmatch(r">=(\d+)\.(\d+)\.(\d+)", versions.get("azd", ">=0.0.0"))
+    if version is None:
+        raise ValueError("explicit_azd_minimum_required_for_image_passthrough")
+    if tuple(map(int, version.groups())) < (1, 34, 0):
+        versions["azd"] = ">=1.34.0"
     values = {"TL_GOV_IMAGE_DIGEST": image.split("@")[1], "TL_GOV_SPOOL_DIR": directory}
     update_environment(service, "environmentVariables" if "environmentVariables" in service else "env", values)
     path.write_text(yaml.safe_dump(azure, sort_keys=False))

@@ -140,6 +140,60 @@ def test_maf_function_calls_actual_governed_mcp(tmp_path, decision, effects):
 
 
 @pytest.mark.governance_runtime
+@pytest.mark.parametrize("changed_inventory", [False, True])
+def test_deferred_gateway_connect_is_offline_until_call_and_checks_frozen_inventory(tmp_path, changed_inventory):
+    async def run():
+        import httpx
+        from agent_framework import FunctionTool
+        module = client_module()
+        h = await GatewayHarness().initialize(tmp_path)
+        app = gateway("server").create_app(h.dispatcher)
+        available = True
+        authorizations = []
+
+        async def authorize():
+            authorizations.append(True)
+            if not available:
+                raise RuntimeError("authority_not_published")
+
+        def client():
+            return module.GovernedMCPTools(
+                url="https://gateway.example/mcp", scope="api://gateway/.default",
+                credential=Credential(h.cp.token()), authorize=authorize,
+                selected_tools=["refund"], transport_factory=lambda: httpx.ASGITransport(app=app))
+
+        try:
+            async with app.router.lifespan_context(app):
+                inventory_reader = client()
+                await inventory_reader.connect()
+                descriptors = deepcopy(inventory_reader._descriptors)
+                if changed_inventory:
+                    descriptors["refund"]["description"] += " changed"
+                authorizations.clear()
+                available = False
+                deferred = client()
+                functions = deferred.deferred_functions(descriptors)
+                assert len(functions) == 1 and isinstance(functions[0], FunctionTool)
+                assert not authorizations and not h.calls
+                with pytest.raises(module.GatewayToolError):
+                    await functions[0].invoke(arguments={"amount": 5}, skip_parsing=True)
+                assert not h.calls
+                available = True
+                if changed_inventory:
+                    for _ in range(2):
+                        with pytest.raises(module.GatewayToolError, match="gateway_inventory_changed"):
+                            await functions[0].invoke(arguments={"amount": 5}, skip_parsing=True)
+                    assert not h.calls
+                else:
+                    assert await functions[0].invoke(
+                        arguments={"amount": 5}, skip_parsing=True) == {"status": "refunded"}
+                    assert len(h.calls) == 1
+        finally:
+            await h.close()
+    asyncio.run(run())
+
+
+@pytest.mark.governance_runtime
 def test_maf_gateway_rechecks_after_credentials_and_preserves_unselected_tools(tmp_path):
     async def run():
         import httpx
@@ -318,7 +372,8 @@ def test_real_maf_agent_dispatches_only_selected_gateway_actions(tmp_path, decis
 
 
 @pytest.mark.governance_runtime
-def test_native_responses_host_uses_signed_authority_and_mcp(tmp_path, monkeypatch):
+@pytest.mark.parametrize("deferred", [False, True])
+def test_native_responses_host_uses_signed_authority_and_mcp(tmp_path, monkeypatch, deferred):
     async def run():
         import httpx
         from test_runtime_provider import native_model_client, tool_responses
@@ -359,11 +414,32 @@ def test_native_responses_host_uses_signed_authority_and_mcp(tmp_path, monkeypat
         try:
             async with app.router.lifespan_context(app), AsyncExitStack() as stack:
                 http = await stack.enter_async_context(httpx.AsyncClient(transport=Router()))
+                descriptors = None
+                original_health = h.cp.signer.health
+                if deferred:
+                    async def authorize_inventory():
+                        h.policy.fresh()
+                    inventory = client_module().GovernedMCPTools(
+                        url=config["gateway_url"], scope=config["gateway_scope"],
+                        credential=Credential(h.cp.token()), authorize=authorize_inventory,
+                        selected_tools=["refund"], transport_factory=lambda: httpx.ASGITransport(app=app))
+                    await inventory.connect()
+                    descriptors = deepcopy(inventory._descriptors)
+                    config["bootstrap_scope"] = "selected-tools"
+
+                    async def not_published_yet():
+                        raise RuntimeError("authority_not_published_at_startup")
+                    monkeypatch.setattr(h.cp.signer, "health", not_published_yet)
                 host = await module.build_host(
                     config, credential=Credential(h.cp.token()), signer=h.cp.signer,
                     stack=stack, client=model, http=http,
                     application=SimpleNamespace(tools=[], middleware=[]),
+                    deferred_descriptors=descriptors,
                     transport_factory=lambda: httpx.ASGITransport(app=app))
+                if deferred:
+                    assert (await host._readiness_endpoint(None)).status_code == 200
+                    assert not h.calls
+                    monkeypatch.setattr(h.cp.signer, "health", original_health)
                 async with host.router.lifespan_context(host):
                     async with httpx.AsyncClient(
                             transport=httpx.ASGITransport(app=host), base_url="http://local-agent") as local:
@@ -377,7 +453,7 @@ def test_native_responses_host_uses_signed_authority_and_mcp(tmp_path, monkeypat
                             raise RuntimeError("signing key unavailable")
 
                         monkeypatch.setattr(h.cp.signer, "health", unavailable_key)
-                        assert (await host._readiness_endpoint(None)).status_code == 503
+                        assert (await host._readiness_endpoint(None)).status_code == (200 if deferred else 503)
         finally:
             await model.client.close()
             await h.close()
@@ -532,3 +608,211 @@ def test_maf_mcp_actual_tls_send_rechecks_authority(tmp_path, revoke):
             await server.wait_closed()
             socket_path.unlink(missing_ok=True)
     asyncio.run(run())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("tamper", [None, "authorization", "idempotency-key"])
+def test_native_trace_context_does_not_relax_authorization_or_request_integrity(tmp_path, tamper):
+    async def run():
+        import httpx
+        from opentelemetry import trace
+        from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+        from test_bootstrap_transport import tls_contexts
+        module = client_module()
+        server_ssl, client_ssl = tls_contexts(tmp_path)
+        path = ROOT / ".governance-validation" / f"trace-{uuid.uuid4().hex}.sock"
+        received = []
+        finished = asyncio.Event()
+
+        async def handle(reader, writer):
+            try:
+                with suppress(ConnectionResetError):
+                    data = await reader.read(4096)
+                    if data:
+                        received.append(data)
+                        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                        await writer.drain()
+            finally:
+                writer.close()
+                with suppress(ConnectionResetError):
+                    await writer.wait_closed()
+                finished.set()
+
+        context = trace.SpanContext(
+            trace_id=1, span_id=2, is_remote=False,
+            trace_flags=trace.TraceFlags.SAMPLED, trace_state=trace.TraceState([("test", "native")]))
+        inner = httpx.AsyncHTTPTransport(uds=str(path), verify=client_ssl, http2=False)
+
+        class NativeTraceInjection(httpx.AsyncBaseTransport):
+            async def handle_async_request(self, request):
+                with trace.use_span(trace.NonRecordingSpan(context)):
+                    TraceContextTextMapPropagator().inject(request.headers)
+                    if tamper:
+                        request.headers[tamper] = "changed"
+                    return await inner.handle_async_request(request)
+
+            async def aclose(self):
+                await inner.aclose()
+
+        checks = []
+        async def guard():
+            checks.append(True)
+
+        server = await asyncio.start_unix_server(handle, path=str(path), ssl=server_ssl)
+        try:
+            transport = module.AuthorizedTransport(NativeTraceInjection(), guard)
+            async with httpx.AsyncClient(transport=transport, timeout=3) as http:
+                headers = {"Authorization": "Bearer test-only", "Idempotency-Key": "fixed-operation"}
+                if tamper:
+                    with pytest.raises(module.GatewayToolError, match="gateway_wire_changed"):
+                        await http.post("https://localhost/mcp", headers=headers, json={"method": "ping"})
+                else:
+                    assert (await http.post(
+                        "https://localhost/mcp", headers=headers, json={"method": "ping"})).status_code == 200
+            await asyncio.wait_for(finished.wait(), 3)
+            assert bool(received) is (tamper is None)
+            assert checks
+            if received:
+                assert b"authorization: bearer test-only" in received[0].lower()
+                assert b"traceparent:" in received[0].lower()
+        finally:
+            server.close()
+            await server.wait_closed()
+            path.unlink(missing_ok=True)
+    asyncio.run(run())
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("instrumented,tamper,baggage_value", [
+    (False, None, None), (True, None, None), (True, None, "native-correlation"),
+    (True, "authorization", None), (True, "idempotency-key", None),
+    (True, "host", None), (True, "url", None), (True, "method", None), (True, "body", None),
+])
+def test_real_otel_transport_keeps_the_authorized_wire_frozen(
+        tmp_path, monkeypatch, instrumented, tamper, baggage_value):
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+
+    async def run():
+        import httpx
+        from opentelemetry import baggage, context
+        from opentelemetry.instrumentation.httpx import AsyncOpenTelemetryTransport
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+        from test_bootstrap_transport import tls_contexts
+        module = client_module()
+        server_ssl, client_ssl = tls_contexts(tmp_path)
+        path = ROOT / ".governance-validation" / f"otel-{uuid.uuid4().hex}.sock"
+        received, changes = [], []
+        finished = asyncio.Event()
+
+        async def handle(reader, writer):
+            try:
+                with suppress(ConnectionResetError, asyncio.IncompleteReadError):
+                    headers = await reader.readuntil(b"\r\n\r\n")
+                    length = next(int(line.split(b":", 1)[1]) for line in headers.split(b"\r\n")
+                                  if line.lower().startswith(b"content-length:"))
+                    body = await reader.readexactly(length)
+                    received.append((headers, body))
+                    writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                    await writer.drain()
+            finally:
+                writer.close()
+                with suppress(ConnectionResetError):
+                    await writer.wait_closed()
+                finished.set()
+
+        inner = httpx.AsyncHTTPTransport(uds=str(path), verify=client_ssl, http2=False)
+        provider = TracerProvider()
+        exported = InMemorySpanExporter()
+        provider.add_span_processor(SimpleSpanProcessor(exported))
+
+        class SelectedMutation(httpx.AsyncBaseTransport):
+            async def handle_async_request(self, request):
+                if tamper == "body":
+                    request.stream = httpx.ByteStream(b"changed")
+                elif tamper == "method":
+                    request.method = "PUT"
+                elif tamper == "url":
+                    request.url = httpx.URL("https://localhost/elsewhere")
+                elif tamper:
+                    request.headers[tamper] = "changed"
+                return await inner.handle_async_request(request)
+
+            async def aclose(self):
+                await inner.aclose()
+
+        class ObservedGuard(module.AuthorizedTransport):
+            @staticmethod
+            def same_headers(expected, actual):
+                before, after = dict(expected), dict(actual)
+                changes.append({key.lower() for key in before.keys() | after.keys()
+                                if before.get(key) != after.get(key)})
+                return module.AuthorizedTransport.same_headers(expected, actual)
+
+        async def guard():
+            return None
+
+        server = await asyncio.start_unix_server(handle, path=str(path), ssl=server_ssl)
+        token = context.attach(baggage.set_baggage("test", baggage_value)) if baggage_value else None
+        try:
+            transport = SelectedMutation()
+            if instrumented:
+                transport = AsyncOpenTelemetryTransport(transport, tracer_provider=provider)
+            async with httpx.AsyncClient(transport=ObservedGuard(transport, guard), timeout=3) as http:
+                headers = {"Authorization": "Bearer test-only", "Idempotency-Key": "fixed-operation"}
+                if tamper:
+                    with pytest.raises(module.GatewayToolError, match="gateway_wire_changed"):
+                        await http.post("https://localhost/mcp", headers=headers, json={"method": "ping"})
+                else:
+                    assert (await http.post(
+                        "https://localhost/mcp", headers=headers, json={"method": "ping"})).status_code == 200
+            await asyncio.wait_for(finished.wait(), 3)
+            assert bool(received) is (tamper is None)
+            if not tamper:
+                assert received[0][1] == b'{"method":"ping"}'
+                assert b"authorization: bearer test-only" in received[0][0].lower()
+                assert b"idempotency-key: fixed-operation" in received[0][0].lower()
+                expected_changes = {b"traceparent"} if instrumented else set()
+                if baggage_value:
+                    expected_changes.add(b"baggage")
+                assert set().union(*changes) == expected_changes
+            if instrumented:
+                assert exported.get_finished_spans(), "real SDK telemetry was not active"
+        finally:
+            server.close()
+            await server.wait_closed()
+            path.unlink(missing_ok=True)
+            provider.shutdown()
+            if token is not None:
+                context.detach(token)
+    asyncio.run(run())
+
+
+@pytest.mark.governance_runtime
+def test_wire_guard_rejects_untrusted_duplicate_or_unrelated_trace_headers():
+    from opentelemetry import baggage, context as otel_context, trace
+    from opentelemetry.baggage.propagation import W3CBaggagePropagator
+    from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+    module = client_module()
+    expected = ((b"authorization", b"Bearer test-only"), (b"idempotency-key", b"fixed"))
+    context = trace.SpanContext(trace_id=1, span_id=2, is_remote=False,
+                                trace_flags=trace.TraceFlags.SAMPLED)
+    with trace.use_span(trace.NonRecordingSpan(context)):
+        injected = {}
+        TraceContextTextMapPropagator().inject(injected)
+        trusted = tuple((key.encode(), value.encode()) for key, value in injected.items())
+        assert module.AuthorizedTransport.same_headers(expected, expected + trusted)
+        assert not module.AuthorizedTransport.same_headers(expected, expected + ((b"traceparent", b"changed"),))
+        assert not module.AuthorizedTransport.same_headers(expected, expected + trusted + trusted)
+        assert not module.AuthorizedTransport.same_headers(
+            expected, expected + trusted + ((b"baggage", b"unapproved=value"),))
+        token = otel_context.attach(baggage.set_baggage("test", "native"))
+        try:
+            W3CBaggagePropagator().inject(injected)
+            with_baggage = tuple((key.encode(), value.encode()) for key, value in injected.items())
+            assert module.AuthorizedTransport.same_headers(expected, expected + with_baggage)
+            assert not module.AuthorizedTransport.same_headers(
+                expected, expected + trusted + ((b"baggage", b"test=changed"),))
+        finally:
+            otel_context.detach(token)
