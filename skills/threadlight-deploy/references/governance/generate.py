@@ -316,9 +316,47 @@ def validate_probe_observability(config):
     return option.model_dump(mode="json")
 
 
+def hosted_cohort(config, framework):
+    if "hosted_cohort" not in config:
+        return None
+    if framework != "microsoft-agent-framework" or config.get("environment") not in ("staging", "preproduction"):
+        raise ValueError("hosted_cohort_requires_explicit_nonproduction_maf")
+    option = config["hosted_cohort"]
+    if (not isinstance(option, dict) or set(option) != {"file", "sha256"}
+            or not isinstance(option["file"], str) or not isinstance(option["sha256"], str)):
+        raise ValueError("hash_pinned_hosted_cohort_required")
+    source = Path(option["file"])
+    if source.is_symlink() or not source.is_file():
+        raise ValueError("hosted_cohort_source_required")
+    with source.open("rb") as stream:
+        raw = stream.read(32769)
+    import hashlib
+    if len(raw) > 32768 or option["sha256"] != "sha256:" + hashlib.sha256(raw).hexdigest():
+        raise ValueError("hosted_cohort_source_digest_mismatch")
+    dependencies = tomllib.loads(raw.decode())["project"]["dependencies"]
+    if not isinstance(dependencies, list) or any(not isinstance(dep, str) for dep in dependencies):
+        raise ValueError("hosted_cohort_dependencies_required")
+    native = json.loads((CATALOG / "skills/_shared/governance-upstream-pin.json").read_text())
+    for name, version in {**native["maf"], "azure-ai-projects": "2.3.0"}.items():
+        matches = [dep for dep in dependencies if re.split(r"[<>=!~;\[]", dep)[0] == name]
+        if len(matches) != 1 or matches[0] not in (name + "==" + version, name + "~=" + version):
+            raise ValueError("hosted_cohort_framework_mismatch")
+    pins = {}
+    for name in ("azure-ai-agentserver-core", "azure-ai-agentserver-responses", "azure-ai-agentserver-invocations"):
+        matches = [re.fullmatch(re.escape(name) + r"==([0-9][0-9A-Za-z.+]*)", dep) for dep in dependencies]
+        matches = [match for match in matches if match is not None]
+        if len(matches) != 1:
+            raise ValueError("complete_exact_hosted_cohort_required")
+        pins[name] = matches[0].group(1)
+    return {"sha256": option["sha256"], "pins": pins}
+
+
 def portable_configuration(config, contract, framework):
     portable = {k: v for k, v in config.items() if k not in (
-        "bundle_path", "signed_envelope", "network", "agent_service")}
+        "bundle_path", "signed_envelope", "network", "agent_service", "hosted_cohort")}
+    cohort = hosted_cohort(config, framework)
+    if cohort is not None:
+        portable["hosted_cohort"] = cohort
     portable["contract"] = deepcopy(contract)
     if config.get("network", {}).get("posture") == "public-authenticated-proof":
         validate_network(config["network"], environment=config.get("environment"))
@@ -613,6 +651,12 @@ def generate(project, document, *, configuration=None):
             helper = "maf_gateway.py" if gateway else "audit_delivery.py"
             shutil.copyfile(REFERENCE / helper, target / helper)
         pyproject = (REFERENCE / "pyproject-maf.toml").read_text()
+        cohort = hosted_cohort(config, document["framework"])
+        if cohort is not None:
+            for name, version in cohort["pins"].items():
+                pyproject, count = re.subn(re.escape(name) + r'==[^"\s]+', name + "==" + version, pyproject)
+                if count != 1:
+                    raise ValueError("hosted_cohort_template_mismatch")
         if document["framework"] == "github-copilot-sdk":
             pyproject = pyproject.replace('  "agent-framework-core==1.14.0",', '  "github-copilot-sdk==1.0.1",')
             pyproject = "\n".join(line for line in pyproject.splitlines()

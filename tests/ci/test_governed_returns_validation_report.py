@@ -18,7 +18,8 @@ def test_report_separates_observed_scenarios_from_hosting_targets():
         "### Evidence chain",
         "### Failures encountered and corrections",
         "## S2: Foundry hosted agent",
-        "## S3: Prompt-agent applicability",
+        "## S3: Public authenticated Foundry hosted execution",
+        "## S4: Prompt-agent applicability",
     ):
         assert heading in text
     for marker in (
@@ -89,5 +90,36 @@ def test_instrumented_control_distinguishes_platform_acquisition_from_snapshot_s
         "per-caller blob completion",
         "canonical-instrumented-attempt-0913/registry-events-final.json",
         "missing organization-managed Log Analytics workspace",
+    ):
+        assert marker in text
+
+
+def test_public_hosted_record_preserves_exact_business_and_human_boundaries():
+    text = " ".join(REPORT.read_text().split())
+    for marker in (
+        "S3-HOSTED-ALLOW", "S3-HOSTED-DENY", "S3-PENDING-APPROVAL",
+        "S3-EXPIRED-RESUME", "S3-AUDITED-READ", "SecurityControl=Ignore",
+        "3e46f91052d3f22bcaa1897c394075caed767f54585be57725fa93b13096c69d",
+        "decision-24b13a1968a7cbc1a0d4105b30c968bb3a52b437d51f56411aba13c7b3ae1cda",
+        "53c7b11c83a4436b94732ad1517d8ebe",
+        "live-expired-resume-proof.json", "reconciliation.json",
+        "backend-acknowledged-before-return", "post-run",
+        "Human approve/reject and successful hosted resume remain unproved",
+        "Office 365 consent is missing", "not financial settlement",
+        "headers:baggage,traceparent", "imagePassthrough",
+    ):
+        assert marker in text
+
+
+def test_reproduction_documents_operator_supplied_cohort_and_audit_limits():
+    references = ROOT / "skills/threadlight-deploy/references/governance"
+    text = " ".join((references / "returns-mcp-demo.md").read_text().split())
+    for marker in (
+        "hosted_cohort", "read_audit_container", "returns_reconcile.py",
+        "review-notification.bicep", "imagePassthrough", "selected-tools",
+        "1.34.0", "azure-tenant-isolation", "RETURNS_CONFIG_VERSION",
+        "Office 365 consent", "not a grant",
+        "Edit API connection", "APPROVE <nonce>", "Governance.Approve",
+        "omit `governance_operation_id`", "new-pending.json",
     ):
         assert marker in text

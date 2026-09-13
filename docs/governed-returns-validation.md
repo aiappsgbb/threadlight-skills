@@ -17,9 +17,11 @@ The separate delegated-token workstream is outside this record.
 |---|---|---|---|
 | S1 | Native MAF in a Docker container on an operator VM; real private model, governed MCP, separate business API and Cosmos | Executed, with the bounded evidence below | Working functional baseline; not a Foundry hosted deployment |
 | S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: governed versions 1-3 failed; September 13 canonical startup-control versions 1-3 also failed | Project-identity registry access is now observed; registration, image acquisition and signed associations are not hosted business execution |
-| S3 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1 |
+| S3 | Separate public-authenticated Foundry hosted MAF with governed MCP and real Cosmos business writer | Hosted v5 allow, deny, pending approval, expired attempt and durable read/reconciliation executed | Real hosted business proof, not private-network proof; genuine human completion remains blocked |
+| S4 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1/S3 |
 
-**Reference direction:** S2 is the intended hosted reference. S1 is a useful
+**Reference direction:** S3 is the working hosted vertical. S2 remains a preserved
+private-network investigation, not a prerequisite to crediting S3. S1 is a useful
 functional and diagnostic baseline, not the final hosting architecture.
 
 ## S1: VM-hosted native MAF and governed MCP
@@ -848,10 +850,222 @@ contains the canonical source, compared configuration, timestamps, request IDs
 and original evidence. It contains no CLI caches, registry tokens or SSH keys.
 No support request or public issue was submitted. The remaining blocker is
 the unexposed internal provisioning/snapshot error: **backend involvement is
-suspected with evidence, not a proven backend defect**. No additional
-unchanged registration, public-access exception or business execution followed.
+suspected with evidence, not a proven backend defect**. No additional unchanged private registration or private business execution
+followed. The separately authorized public S3 below did not change S2 resources.
 
-## S3: Prompt-agent applicability
+## S3: Public authenticated Foundry hosted execution
+
+**Executed September 13, 2026.** The user authorized a separate public,
+authenticated vertical after S2's instrumented private provisioning failure.
+This run reached a real **Foundry hosted agent -> native MAF model/tool call ->
+governed MCP -> separately authenticated business API -> Cosmos transaction**.
+It is a return decision/audit, **not financial settlement**, and is still the
+bounded synthetic-case use case, not the full canonical returns application.
+
+### Setup and actual identity
+
+The complete four-file hosted baseline and paired tenant-isolation contract
+came from `aiappsgbb/awesome-gbb` commit
+`2ef44f6b47803a0166956cc668e5f429c1c1f8cb`. Native azd provisioning created a
+separate Sweden Central resource group, public/keyless Foundry account/project,
+public authenticated ACR with admin access off, and the same small
+`gpt-4.1-mini` model deployment. No VNet injection or private endpoint was
+created for S3. Hosted v1 returned `billing` from the canonical model example
+with two direct active GETs and a real active session. That was baseline
+host/model proof, not business proof.
+
+The generated governance foundation added an ACA environment and three
+externally reachable HTTPS services, separate control/gateway/downstream/business
+identities, Blob signed catalog, Key Vault and Cosmos. Authentication remained
+mandatory: three separate Entra API audiences, exact app-role and subject/client
+checks, no agent database authority, no shared-key Cosmos/Blob fallback.
+The actual Foundry **Agent Identity**, not the operator VM identity, called the
+model, control/gateway and business read route. The gateway's distinct downstream
+identity authorized the business POST; only the separate business writer owned
+the decision transaction. The operator published policy using a real versioned,
+non-exportable RSA-3072 Key Vault key. Actual sign/verify and tampered-digest
+rejection were observed; no local/demo signer was implemented.
+
+Organization policy synchronously changed newly declared public KV/Blob/Cosmos
+resources to PNA Disabled. Activity Logs identified the three network Modify
+rules under `MCAPSGovDeployPolicies`. After explicit user authorization, only
+the **new S3 resource group** received `SecurityControl=Ignore`; the operator
+then restored PNA on those three resources. The policy definitions supported
+that tag exclusion; reading the management-group assignment itself returned
+403 and is not claimed as verified. Cosmos converged after several minutes,
+without a repeated forcing loop. Entra/RBAC, keyless data access and HTTPS
+settings remained unchanged. The tag is not a catalog default, a general
+production recommendation or evidence of private isolation.
+
+`preserve=true`, `cleanup=disabled` and a `CanNotDelete` lock preserve the demo.
+Old/private resources, failed hosted versions, images, grants and keys remain.
+No hybrid network or scheduled cleanup was created.
+
+### Frozen runtime and corrections actually needed
+
+| Association | Observed value |
+|---|---|
+| Hosted agent / version | `governed-returns-public` / `5` |
+| Agent image digest | `sha256:3e46f91052d3f22bcaa1897c394075caed767f54585be57725fa93b13096c69d` |
+| Final policy | `returns-public-v1`, version `5` |
+| Final policy digest | `sha256:c44746f2cafb96065cd9f18727e51f9774e469860c61bf08f196bc9359dafafb` |
+| Signed bootstrap reference | `returns-public-s3-wire5-20260913` |
+| Control image digest | `sha256:f6ac63620bf4ddd67129067d119f6d8848f3091f8116ed3a35ef394c198d282f` |
+| Gateway image digest | `sha256:d2bec104be33824036f523b0098cfb3baca12076330904f21651d27f8277af1f` |
+| Corrected read-audit business image | `sha256:986370c2c0eb52d5d6ce3edbb2cdbf419f8508b194db6c1cca52fdfdd96615ff` |
+
+The MAF/core/foundry/hosting versions remained `1.14.0` / `1.11.0` /
+`1.0.0b260813`; the canonical hosted cohort used Agent Server core/responses
+`2.1.0b1` and invocations `1.1.0b1`, Projects `2.3.0`, MCP `1.29.1`,
+HTTPcore `1.0.9`, AGT `5.0.0`, ACS `0.3.1b0`, Hooks `0.1.0a5`, OPA `1.18.2`.
+The Agent Server trio was explicitly restored during S3 packaging, not changed
+globally. The later hash-checked `hosted_cohort` generator option packages that
+selection; it was not retroactively used to generate the already-running v5.
+
+| Observed failure | Correction / evidence boundary |
+|---|---|
+| Guided init overlapped source and destination | Native init stopped locally; documented greenfield YAML plus ejected infrastructure used instead |
+| Operator agents/read 403 before first registration | Verified project-scoped operator roles, added canonical project manager and account Foundry User to the operator only, then verified authenticated empty inventory. Role propagation versus each addition was not isolated |
+| Bare `image:` still caused rebuild and missing `PYTHON_IMAGE` | Native `docker.imagePassthrough: true`, `remoteBuild: false`, verified session-local azd `1.34.0`; ordinary deploy registered the frozen image |
+| Selected authority unavailable before platform identity/binding exists | Explicit nonproduction `selected-tools` bootstrap starts native readiness first; selected dispatch still activates signed authority and authenticated exact tool discovery |
+| Backend lacked `runtime` import | Packaged full governed source closure, not control-plane-only image |
+| Duplicate names for identical existing key-verify grant | Private deployment source adopted the existing grant name; no grant removed |
+| Mounted configuration loaded only at startup | Nonsecret configuration version marker forces a new ACA revision; not called a cryptographic hash |
+| MCP transport rejected SDK-added headers | Native console isolated `headers:baggage,traceparent`. v5 accepts only exact active SDK W3C trace/baggage values; authorization, idempotency, body/target and post-wait checks remain strict |
+| First read-audit implementation used a two-operation adapter for one create | Real execution caught the unpack error. Separate create-only `append_audit` added; original business replace/create path unchanged |
+
+No installed SDK was patched and live telemetry was not disabled. Earlier v2-v4
+images, bindings and failures remain preserved; each new version received a new
+observed, signed association. Local generation/readiness alone was not promoted
+to business success.
+
+### Executed cases and independent observations
+
+| ID | Actual native execution | Independent result |
+|---|---|---|
+| S3-HOSTED-ALLOW | Model read `S3-RMA-ALLOW`, then called `returns_apply_decision` | Case closed; one real decision-audit; completed gateway operation; central allow receipt |
+| S3-HOSTED-DENY | Model attempted ineligible `approve_refund` with the exact quoted Cosmos ETag | Central `policy_deny`, case unchanged, no business audit for that case |
+| S3-PENDING-APPROVAL | Model requested `escalate_to_supervisor` for the high-value/risk case | Durable gateway `awaiting_approval` and central pending intent; no grant or second write |
+| S3-AUDITED-READ | Model called the unbound read with audit enabled | Cosmos `case-read` persisted before data returned; `read_audit_id` independently matched |
+| S3-EXPIRED-RESUME | Original hosted session attempted exact original args and operation selector after expiry | Generic `Error: Function failed.`; unchanged expired intent, grant null, only the original business audit |
+
+The successful allow is response
+`caresp_0cea8b0368866d9000tAtCuaJxDaI4Jk1c38d9LmI3u2LR4lVn`,
+write call `call_0ZFgn4cJEsACJnEqCvmCsxA0`, central receipt
+`23d32ac944364eb89ff502a5e86a1b6b` at `12:07:33.589815` UTC, and business audit
+`decision-24b13a1968a7cbc1a0d4105b30c968bb3a52b437d51f56411aba13c7b3ae1cda`.
+Independent reads matched exact arguments/result and completed gateway
+correlation `22f86900074410db850c7970d905cd83f201f41d54d602b638f5cbd24abdf135`.
+
+The clean domain-denial response is
+`caresp_09249b81651d818300CPswXOk1xr7qiQNS3ROmdwFXjhQj1bTq`,
+write call `call_5BZPMqg6lEBZ0T1KWt1eQTgD`, receipt
+`53c7b11c83a4436b94732ad1517d8ebe`. Two earlier attempts are **distinct**:
+the first model altered the ETag and retried (two denials), then another stripped
+the quote characters (one denial). Those are invalid-revision evidence, not
+isolated eligibility proof. Explicit escaped JSON finally preserved the real
+ETag and produced the clean ineligible-case denial. Model compliance is not
+assumed merely from instructions.
+
+The pending response is
+`caresp_0ed0f5b7175de32e00z0j3ztdD8slhUxWBXEoZZZhRu77G3l3D`,
+call `call_mCwVgzARxGyQohl4G6XB2Y6G`. Its operation
+`eb17031249d54551b4d258ca1e3b870b` and nonce
+`7c7344acc8d94610ad497729a66760eb` expired at
+`2026-09-13T13:10:42.782214+00:00`. The later response
+`caresp_05147fdd1da9feb300NWAHoLTIa5wV99DUXzRgoHuedQpzQkhZ`
+used the original session and exact arguments plus that operation selector.
+Gateway source raises `approval_expired` on an unchanged expired intent, but
+the native output exposed only a generic FunctionTool failure: the **particular
+guard that caused that returned failure is not independently proven**.
+No new central receipt was emitted. Pending/awaiting states are retained expired
+tombstones, not renewed authority or a human rejection.
+
+The audited read response is
+`caresp_05147fdd1da9feb3001Lqmcsq7QfL0zgoeLQQnl5f7go0DPVai`,
+call `call_4RwAqklcaShPLNvEc1TsJq8e`,
+audit `read-c6926d0a9cc04a3a9944f6a0d04ff0a3`.
+It is `backend-acknowledged-before-return`, remains unbound to ACS, and records
+actor/client, case revision, deployment and result hash without a raw case body.
+
+### Durable reconciliation and human boundary
+
+The reusable authenticated collector retrieved **8 native responses / 14 tool
+calls**, verified the expected signed binding and native identity/image, joined
+independent stores, and created/read back **14/14** minimized call records.
+The original 13 records were unchanged when the expired attempt was added.
+This is **post-run** reconciliation of that selected response set, not universal
+agent attestation or proof that every possible model/provider operation is
+intercepted. Historical reads without inline audit are labeled post-run, not
+retroactively credited with backend ACK. Identical earlier retry calls can share
+an action-hash/time-window receipt set; no exact one-to-one receipt is invented.
+
+**Human approve/reject and successful hosted resume remain unproved.**
+The reviewer was unavailable; no token, confirmation or grant was simulated.
+S1's human approval is not transferred to S3. A future positive test requires
+a fresh request, real delegated login/decision and exact resume; it must not
+silently renew this expired operation. Successful post-approval replay in S3 is
+also unproved.
+
+The native Office 365 connection and notification-only Logic App exist.
+The workflow is **Disabled**, SAS authentication **Disabled**, and exact
+Entra issuer/audience/operator OID policies were independently read back.
+**Office 365 consent is missing**: the connection's Enabled flag coexists with
+Error/Unauthenticated/token and an empty authenticated user. No workflow was
+invoked and no email was sent. Email/reply/click cannot issue a grant; only the
+existing delegated Task8 review protocol can record the human decision.
+No Graph application mail permission, OBO or Teams workflow is claimed.
+
+### Retained evidence and reproducibility
+
+Private evidence is under `public-governance-wire5-0913/`; paths below are relative
+to it. These hashes identify retained captures, not deployable authority for a
+different environment.
+
+| Artifact | SHA-256 |
+|---|---|
+| `signed-hosted-binding.json` | `266c032c6f9a38254837c6ac10f0819d5002fb2e9c48d4255492fab34201987a` |
+| `final-signed-policy.json` | `3055a4a226ec3c67a5d6523ad96c60c7c9c501e8e27bf4468f6ed9c96a518fa7` |
+| `evidence/live-allow-proof.json` | `49e8f8d101dac9d1b7554b84c066ab009b8adadb56dafc9d81315e36f9d71f50` |
+| `evidence/deny-quoted-response.json` | `e393c0462b83df8c56aeef484ac570a5afa28b220dbf0c74dd850e2cdeb8bee8` |
+| `evidence/live-deny-pending-proof.json` | `1b0c9a03c045c73b85f4977ac83aa570991af1a8f20dc608aaf215d05ec6f35e` |
+| `evidence/live-expired-resume-proof.json` | `d08f3d70df096fdc326d252a5a5e8beef8e26c1a1bed7987a79b577b9fa2faac` |
+| `evidence/reconciliation-expiry-verified/reconciliation.json` | `967ca2b3103d84980a08a1ec319b2549457daab08392adb1c98eb7943a04215a` |
+| `evidence/notification-observed.json` | `e7ada9b4a223340d9be409c2c48b60461494cd24d6d39d2bbf0295fff1d8b184` |
+| `evidence/office365-connection-observed.json` | `780e2222477fc477d3ef6101f126b967361afdb50034b69fe87abd4744e5ba79` |
+
+The [returns MCP runbook](../skills/threadlight-deploy/references/governance/returns-mcp-demo.md)
+packages source materialization, canonical hosted cohort selection, native image
+passthrough, selected-tool startup, read audit, collector and disabled notification
+module. Commit `2cbd77e` contains the public preservation/native transport startup
+delta; the read-audit/collector/cohort/report delta follows it locally.
+No release or Threadlight PR is implied by this record.
+
+Still operator-owned: concrete infrastructure composition, Entra apps/consent and
+scoped roles, case seeding, real key/policy publication, immutable image/version
+observation, signed association, deployment parameters and actual human login.
+Existing private operator scripts record those steps but are not a general
+single-command product. S3's manually adopted existing key-grant name and
+organization-specific tag are not portable defaults.
+
+Targeted checks exercised the actual native telemetry/transport boundary
+(36 passing Linux amd64 cases), preservation/passthrough (30 passing selected
+cases, one native generation case deselected), and corrected read-audit/Cosmos
+boundary (19 passing native cases, three unrelated deselected). Earlier native
+skips without the required runtime flag are not counted as passed. The collector
+also executed against live stores as described above. These checks do not
+replace CTK/LOCAL-14/Task15 or establish production readiness.
+
+The final packaging delta additionally passed 30 selected local tests
+(one native test deliberately excluded) and that one create-only Cosmos test
+separately in the retained Linux amd64 runtime. Local RED runs first exposed
+the missing expiry association, cross-partition audit/operation joins, report
+claims and native-runner wiring; those were corrected. The final scoped collector
+reproduced all 14 retained live records byte-for-byte offline without another
+model invocation or Azure write. The full deployment runner is wired to the
+new native case but was not rerun wholesale.
+
+## S4: Prompt-agent applicability
 
 **Assessment only:** a prompt agent is not a drop-in replacement for this MAF
 container. It does not execute this repository's Python `GovernedMCPTools`,
@@ -873,4 +1087,4 @@ the complete **same contract** is realizable must be demonstrated separately:
 These are integration/evidence requirements, **not a claim that prompt agents
 can never support governed external actions**. No prompt agent was created and
 no prompt-agent enforcement, approval or identity behavior was tested here.
-S3 must not delay or dilute the chosen S2 hosted reference.
+S4 must not delay or dilute the working S3 hosted reference.

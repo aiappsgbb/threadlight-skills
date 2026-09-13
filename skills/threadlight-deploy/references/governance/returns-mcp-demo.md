@@ -20,6 +20,204 @@ No private deployment identifiers or captured receipts are distributed here.
 These source files and their package manifest are **not live proof for another
 deployment**, whole-agent governance, OBO or production readiness.
 
+## Public authenticated hosted path (September 13)
+
+The subsequent **Foundry hosted v5** run demonstrated model-driven allow, a
+real Cosmos decision/audit, policy denial, durable pending approval and an
+audited unbound read. This is not the failed private hosted attempt: it used a
+separate, explicitly authorized public-authenticated environment. Human
+approve/reject and successful hosted resume remain unproved there; an expired
+resume was observed without a second business write. See the
+[scenario-specific execution record](../../../../docs/governed-returns-validation.md#s3-public-authenticated-foundry-hosted-execution).
+
+Use the complete `foundry-hosted-agents` baseline from the reviewed
+`aiappsgbb/awesome-gbb` commit `2ef44f6b47803a0166956cc668e5f429c1c1f8cb`:
+`references/python/main.py`, `references/python/pyproject.toml`,
+`references/docker/Dockerfile`, and `references/yaml/azure.yaml`.
+Apply **azure-tenant-isolation** first: derive both CLI configuration directories
+from the personal index, verify the selected tenant and allowed subscription,
+and assert the exact intended subscription immediately before each operation.
+Setting only `AZURE_CONFIG_DIR` is not that contract. Do not copy login caches.
+
+1. Establish native hosted/model operation before adding governance. Use the
+   canonical guided initialization or its documented greenfield YAML adaptation
+   and native `azd ai agent init --infra` / `azd provision`. Keep platform-injected
+   runtime variables out of the agent environment block. Observe two direct
+   version GETs and an actual endpoint response/session, not just LIST status.
+2. Generate the separate governance services using the
+   [public-authenticated-proof opt-in](README.md#explicit-public-authenticated-proof-networking).
+   For a preserved demo use `preserve_resources: true, cleanup_required: false`
+   in both configurations; no cleanup or shutdown is authorized by policy expiry.
+   This proves authenticated runtime behavior, **not private network isolation**.
+   Organization policy may override declared PNA. Observe actual resources and
+   policy operations; stop for an authorized decision rather than silently
+   changing policy. The S3 operator-authorized `SecurityControl=Ignore` tag was
+   local to that new resource group, not a generator default or general recipe.
+3. Materialize the source closure below. For the generated MAF agent, optionally
+   select the retained canonical dependency file in `package.json`:
+
+   ```json
+   {
+     "environment": "preproduction",
+     "hosted_cohort": {
+       "file": "/operator/retained/canonical/pyproject.toml",
+       "sha256": "sha256:<actual-64-hex-file-digest>"
+     }
+   }
+   ```
+
+   This bounded, hash-checked option replaces only the three exact Agent Server
+   pins and validates the MAF/Projects family against the supported cohort.
+   It is MAF staging/preproduction only, not an independent SDK upgrade or a
+   production-support claim. The frozen configuration records the hash and pins,
+   not the operator file path. Global pins stay unchanged. The live S3 image
+   used these three pins by an explicit packaging adjustment; this new generator
+   option makes that adjustment reproducible, but was not used to rebuild v5.
+4. Select `bootstrap_scope: selected-tools` and frozen `gateway_descriptors`
+   before building the gateway-only MAF image. The host can answer native
+   readiness before registration has supplied its identity and signed binding.
+   First selected dispatch activates the original signed bootstrap and performs
+   authenticated discovery; descriptors must match exactly. Readiness is not
+   authorization. The default whole-host gate remains unchanged.
+5. Build once and record the actual registry digest. Run `generate.py agent-image`
+   with that digest. Generated native `docker.imagePassthrough: true` with
+   `remoteBuild: false` requires validated **azd 1.34.0** or newer; ordinary
+   `azd deploy` then registers the frozen image without rebuilding it.
+   Reconcile uncertain acknowledgements before any retry. Observe the actual
+   agent identity/version/image before granting narrow external app roles and
+   publishing a new matching policy/bootstrap binding. Never redeploy the
+   agent after signing just to change its own embedded identity/digest.
+6. Deploy control/gateway/business as separate identities and images. The business
+   image needs the packaged `runtime` and `cosmos_effect.py`, not only the control
+   plane wheel. If configuration is mounted as a secret file and loaded once,
+   set a nonsecret `RETURNS_CONFIG_VERSION` revision marker from its public
+   configuration (for example Bicep `uniqueString(string(publicBusinessConfig))`).
+   This forces a new ACA revision on configuration change; it is not a
+   cryptographic configuration digest. Verify actual policy/version readiness
+   after routing propagation. Preserve prior revisions and failed images.
+
+These are operator steps, not a single automatic deployment. The retained
+foundation outputs, versioned Key Vault signing key, app-role assignments, exact
+registry, policy publication and observed binding still require real authorized
+inputs. Do not create a local demo signer or give the agent Cosmos/sign rights.
+Private hosted networking remains a separate first-account-creation contract.
+
+### Durable unbound read audit and response reconciliation
+
+Set the optional backend `read_audit_container` to a dedicated `/scope` Cosmos
+container without TTL. Give the **business writer**, not the agent, its narrow
+metadata/item-create permissions. The backend appends a payload-minimized
+`case-read` record and waits for the real Cosmos ACK before returning case data
+with `read_audit_id`. Failed persistence fails the read. Its create-only
+`CosmosEffectTransport.append_audit` does not broaden the existing two-operation
+case-replace/decision-audit transaction. The read remains unbound to ACS; setting
+this option does not turn it into a selected policy action.
+
+For the two exposed tools, use `returns_reconcile.py` under an independently
+authorized operator. Supply protected JSON with:
+
+| Field | Required value |
+|---|---|
+| `expected_binding` | Independently pinned `tenant_id`, full versioned `key_id`, `agent_id`, `agent_version`, `image_digest`, `policy_digest`, `config_digest`, `project_endpoint` |
+| `binding_file` | Original signed bootstrap envelope; never a fabricated local receipt |
+| `gateway_principal` | Observed gateway subject, not the agent subject |
+| `cosmos_url`, `cosmos_database` | Actual matching stores with independent read permissions |
+| `responses` | Explicit array of `{ "id": "<native-response-id>", "session_id": "<native-session-id>" }` |
+
+```sh
+python skills/threadlight-deploy/references/governance/returns_reconcile.py \
+  --configuration /operator/protected/reconciliation.json \
+  --output /operator/evidence/new-reconciliation --persist
+```
+
+The collector verifies the signed binding and native version identity/image,
+retrieves each response through the authenticated native API, then independently
+reads the four demo containers (`governance-records`, `gateway-idempotency`,
+`returns-cases`, `runner-activity`). `--persist` needs narrow create/read
+authority on `runner-activity`; it creates deterministic call records and reads
+them back. Existing mismatches stop execution, never overwrite prior evidence.
+It makes no model call, grants no role and executes no business action.
+The caller must perform the full paired tenant/subscription assertions above;
+the collector's environment-presence check is not a replacement for them.
+
+This is **post-run reconciliation of an explicit response set**, not universal
+agent attestation. Historical reads lacking backend ACK are labeled post-run;
+later reads with matching independent audit are
+`backend-acknowledged-before-return`. Denials without a returned receipt use the
+action hash and native response time window; repeated identical calls can match
+the same receipt set, not an invented one-to-one mapping. An expired-selector
+observation preserves generic failure status and correlates the exact operation
+hash, unchanged intent and absent grant; it does not invent a timeout receipt
+or prove which guard caused a generic FunctionTool failure.
+
+### Optional native email notification
+
+`review-notification.bicep` creates an Office 365 connection and **Disabled**
+Logic App with SAS authentication disabled, exact Entra issuer/audience/operator
+OID policies, a fixed recipient and bounded request fields. It is not wired to
+automatically poll/resolve approvals. **Office 365 consent** must be completed
+by the real mailbox user before the operator explicitly enables and tests it.
+`connectionState: Enabled` alone is not consent: inspect authentication status.
+The S3 connection remained unauthenticated; no email was sent.
+
+An email is **not a grant**. The workflow cannot resolve an approval or execute
+the business write. Review still uses the genuine delegated Task8 client, then
+the original hosted session resumes with unchanged arguments and operation ID.
+For native CLI resume pass `--session-id` without `--version` (mutually exclusive);
+verify the response's actual session/version. Expired intents remain preserved:
+a future positive demonstration needs a new explicitly requested operation and
+real human decision, never silent renewal. Keep the workflow disabled until
+consent and an actual notification test are authorized.
+
+### Human continuation after an expired request
+
+First, in Azure Portal open the **specific demo resource group -> API connections
+-> configured Office 365 connection -> Edit API connection -> Authorize**.
+The actual mailbox user signs in and saves. Verify the connection no longer
+reports `Unauthenticated`; an Enabled flag alone is insufficient. Keep the
+notification workflow disabled until the operator explicitly enables it for a
+real test. That enablement does not automatically send a notification: a separate
+operator-authenticated request with the new operation/case/action hash is still
+required. Do not enable SAS or weaken the trigger's Entra policy.
+
+When the reviewer is present, the operator verifies current signed bootstrap
+and policy freshness, unchanged deployed version/image/identity, and the
+supervisor case's current revision. If any authority has expired or changed,
+stop: use the existing fresh publication/binding lifecycle first, preserving the
+old association. Do not edit timestamps or re-sign an old reference in place.
+
+Start a new native hosted session on the observed version and ask for the
+supervisor handoff. This is a **new business request**: omit
+`governance_operation_id`, so trusted client code creates a new operation.
+Preserve the actual `pending_approval` tool output (not the whole native response)
+as a new protected `new-pending.json`; check that its operation and nonce differ
+from the expired ones, that it is unexpired, and that its proposed arguments
+match the intended case/revision. Do not fabricate this file or reuse an expired
+capture. Record the new native session ID for resume.
+
+From a real interactive terminal with the portable control-plane package
+installed, the human runs:
+
+```sh
+threadlight-review-action --pending /operator/protected/new-pending.json \
+  --control-plane-url https://<actual-control-service> \
+  --scope api://<actual-control-api-client-id>/Governance.Approve \
+  --tenant <actual-tenant-id> --client-id <actual-review-public-client-id> \
+  --role Approver --decision approve
+```
+
+The client displays the exact proposal/hash/expiry and asks the human to type
+`APPROVE <nonce>` (or `REJECT <nonce>` with `--decision reject`), then opens
+the genuine Entra browser login. Use the already allowlisted reviewer account
+with the Approver role and delegated consent; no agent credential or unattended
+confirmation is accepted. Successful review reports `execution: not-started`.
+
+Only afterwards resume in that **new request's original hosted session** with
+its exact `resume_arguments` and new operation ID. Verify the consumed grant,
+central receipt and real business audit independently. A successful positive
+resume and a subsequent identical replay remain separate demonstrations; neither
+can be claimed from a pending record, notification, CLI exit code or assistant text.
+
 ## Materialize the executable sources
 
 From the catalog:
@@ -57,7 +255,7 @@ Use the current [foundation/service runbook](README.md), existing
 and [gateway `Configuration`/registry](../../../threadlight-govern/references/gateway/README.md).
 Do not run a blanket redeployment over preserved resources.
 
-Required: private service reachability/DNS, ACR, a versioned Key Vault RSA key,
+Required: service reachability/DNS in the explicitly selected posture, ACR, a versioned Key Vault RSA key,
 immutable signed-policy Blob storage, single-write-region Cosmos, and distinct
 control, gateway, downstream, business-writer, agent and operator identities.
 The gateway uses its service identity for governance and a different downstream
@@ -68,7 +266,7 @@ write authorization. App roles are Entra grants, not ARM role assignments.
 For a VM-first demo, a separate private **inference-only** OpenAI account may
 serve the model while hosted Foundry provisioning is blocked. Preserve the
 original Foundry account. Do not call that fallback Foundry Agent Identity or
-hosted-agent evidence. For eventual hosted deployment, network injection must be
+hosted-agent evidence. For private hosted deployment, network injection must be
 declared at the Foundry account's first creation; follow the existing create-once
 operator contract rather than creating versions after signing a binding.
 
@@ -121,8 +319,8 @@ retry, pool and TLS waits. No signing/approval/audit policy is delegated to the 
 
 ## Start the four actual services
 
-Use the same portable image with separate managed identities and read-only
-configuration. Terminate HTTPS at private ACA ingress for the three services:
+For the VM-first variant, use the same portable image with separate managed
+identities and read-only configuration. Terminate HTTPS at private ACA ingress:
 
 | Process | Entrypoint / configuration |
 |---|---|
@@ -174,6 +372,7 @@ Do not delete resources, identities, grants, keys, images, cases, receipts,
 pending operations or source packages to reset the demo. Preserve failed attempts.
 When cases change or policy expires, create new synthetic cases and a new signed
 policy version with fresh observed revisions; never overwrite an old envelope
-or borrow old receipts. Provisioning automation, authentic hosted identity,
+or borrow old receipts. Public S3 establishes authentic hosted identity use for
+this selected action, not the private S2 deployment. Full provisioning automation,
 Citadel model routing, OBO, dynamic ERP facts, full output governance and the
 broader Task15 acceptance gate remain separate work.

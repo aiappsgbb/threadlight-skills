@@ -10,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Annotated, Literal
+import uuid
 
 from azure.core.exceptions import AzureError
 from azure.cosmos.exceptions import CosmosResourceNotFoundError
@@ -39,6 +40,32 @@ class Decision(StrictModel):
 
 def digest(value):
     return "sha256:" + hashlib.sha256(canonical(value)).hexdigest()
+
+
+CASE_FIELDS = ("id", "_etag", "status", "amount", "eligible", "high_risk")
+
+
+def read_audit_record(case, identity, *, tenant, deployment):
+    return {
+        "id": "read-" + uuid.uuid4().hex,
+        "scope": tenant + ":" + identity.subject,
+        "body": {
+            "kind": "case-read", "action_id": "returns_get_case", "policy_binding": "none",
+            "subject": identity.subject, "client": identity.client,
+            "case_id": case["id"], "case_revision": case["_etag"],
+            "deployment": deepcopy(deployment),
+            "result_digest": digest({key: case[key] for key in CASE_FIELDS}),
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
+
+
+async def append_read_audit(transport, container, document, authorize):
+    operations = [("create", (document,), {})]
+    with transport.append_audit(authorize, container, document["scope"], document):
+        await authorize()
+        await container.execute_item_batch(batch_operations=operations, partition_key=document["scope"])
+    return document["id"]
 
 
 def decision_batch(case, arguments, *, operation_id, provenance):
@@ -92,6 +119,7 @@ class Configuration(Settings):
     cases: Annotated[list[Identifier], Field(min_length=1, max_length=16)]
     policy_digest: Digest
     deployment: dict
+    read_audit_container: Identifier | None = None
 
 
 def create_app():
@@ -129,6 +157,15 @@ def create_app():
             auth = EntraAuth(config, http)
             await auth.health()
             state.update(container=container, auth=auth, transport=transport)
+            if config.read_audit_container is not None:
+                audit_transport = CosmosEffectTransport(endpoint=config.cosmos_url)
+                audit = await audit_transport.connect(
+                    stack=stack, credential=credential, database=config.cosmos_database,
+                    container=config.read_audit_container)
+                properties = await audit.read()
+                if properties.get("partitionKey", {}).get("paths") != ["/scope"] or "defaultTtl" in properties:
+                    raise ValueError("persistent_read_audit_partition_required")
+                state.update(read_audit=audit, read_audit_transport=audit_transport)
             yield
             state.clear()
 
@@ -193,16 +230,25 @@ def create_app():
         async with asyncio.timeout(5):
             await state["auth"].health()
             await state["container"].read()
+            if config.read_audit_container is not None:
+                await state["read_audit"].read()
         return {"status": "ready", "effect": "cosmos-return-decision-not-settlement"}
 
     @app.get("/cases/{case_id}")
     async def read_case(case_id: str, request: Request):
-        await authenticated(request)
+        identity = await authenticated(request)
         if case_id not in config.cases:
             raise BusinessConflict()
         record = await state["container"].read_item(case_id, partition_key=case_id)
-        return {key: record[key] for key in (
-            "id", "_etag", "status", "amount", "eligible", "high_risk")}
+        result = {key: record[key] for key in CASE_FIELDS}
+        if config.read_audit_container is not None:
+            async def reauthorize():
+                await authenticated(request)
+            document = read_audit_record(
+                record, identity, tenant=config.tenant_id, deployment=config.deployment)
+            result["read_audit_id"] = await append_read_audit(
+                state["read_audit_transport"], state["read_audit"], document, reauthorize)
+        return result
 
     @app.get("/outcomes")
     async def outcome(request: Request):
