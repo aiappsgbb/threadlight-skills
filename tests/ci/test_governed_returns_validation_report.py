@@ -76,3 +76,18 @@ def test_canonical_private_control_does_not_credit_unobserved_platform_execution
         "public access enabled",
     ):
         assert marker in text
+
+
+def test_instrumented_control_distinguishes_platform_acquisition_from_snapshot_success():
+    text = " ".join(REPORT.read_text().split())
+    for marker in (
+        "### Instrumented retry: project-identity registry access observed",
+        "Buildah/1.42.1",
+        "MDCContainersSecurity/1.0",
+        "aa794464706678e9b2d477a30886bedb",
+        "not proof of successful layer unpacking",
+        "per-caller blob completion",
+        "canonical-instrumented-attempt-0913/registry-events-final.json",
+        "missing organization-managed Log Analytics workspace",
+    ):
+        assert marker in text

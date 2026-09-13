@@ -16,7 +16,7 @@ The separate delegated-token workstream is outside this record.
 | ID | Scenario | Last recorded status | Meaning |
 |---|---|---|---|
 | S1 | Native MAF in a Docker container on an operator VM; real private model, governed MCP, separate business API and Cosmos | Executed, with the bounded evidence below | Working functional baseline; not a Foundry hosted deployment |
-| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: governed versions 1-3 failed; September 13 canonical startup-control versions 1-2 also failed | Registration and signed associations are not hosted business execution; the separate startup control has no business tools |
+| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: governed versions 1-3 failed; September 13 canonical startup-control versions 1-3 also failed | Project-identity registry access is now observed; registration, image acquisition and signed associations are not hosted business execution |
 | S3 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1 |
 
 **Reference direction:** S2 is the intended hosted reference. S1 is a useful
@@ -798,6 +798,58 @@ manual work is private operational evidence collection and the unresolved hosted
 provisioning diagnosis, followed by a fresh exact business binding and real
 hosted invocation. Repeated registration without a justified delta is not a
 reproduction procedure.
+
+### Instrumented retry: project-identity registry access observed
+
+After registry diagnostic ingestion was verified with real operator events,
+the user authorized **one instrumentation-only repeat**, not a proposed fix.
+The prior failed version was reconciled first. Ordinary azd deployment ran from
+`2026-09-13T08:38:38Z` to `08:41:44Z`, registering control version `3`.
+The image digest, application, dependencies, model, identity, network and roles
+were unchanged. The direct GET again returned `failed`/`ProvisioningError`;
+native request ID: `aa794464706678e9b2d477a30886bedb`.
+
+Actual registry events now separate three callers:
+
+| Caller | Independently observed registry activity |
+|---|---|
+| Operator publisher | VM-addressed Docker `Push` HTTP 201 at `08:38:47.293482`, with the new native tag and the same frozen digest |
+| Container security scanner | A different identity with `MDCContainersSecurity/1.0` performed HTTP 200 pulls; these are explicitly excluded from Foundry acquisition proof |
+| Foundry project managed identity | At least six paired `Login`/`Pull` HTTP 200 events, `08:39:16.298236` through `08:41:15.581495`, for the exact native tag/repository/digest; caller identity matches the ARM project's managed identity, UserAgent is `Buildah/1.42.1`, and each source address belongs to the selected injected subnet |
+
+This is an attributed service-side registry observation, unlike the previous
+aggregate metrics or VM publication. It demonstrates that the project's actual
+acquisition component reaches and authenticates to the private registry and
+obtains the registered image manifest. It is **not proof of successful layer
+unpacking**, complete image preparation, snapshot creation or application startup.
+The same-window metrics include successful `GetManifest` and `GetBlob`
+operations, but do not provide **per-caller blob completion**. No stronger claim
+is inferred by joining aggregate counters to a single identity.
+
+Remote manifest bytes matched the frozen digest. The separately downloaded
+config blob also matched its descriptor hash and declared Linux/amd64, `/app`
+working directory and the canonical CMD. There was no image index, and the
+referrer-list response was empty; no unobserved provenance/attestation artifact
+is assumed. A successful local Docker start remains different from the
+platform's Buildah acquisition/preparation path.
+
+A native post-attempt session list was empty. The only observed ARM failure
+in the window was a separate diagnostics-policy deployment targeting a
+**missing organization-managed Log Analytics workspace**. Its exact deployment
+error was retained; it is not established as the hosted provisioning cause,
+and neither that external scope nor the organization policy was changed.
+
+The new private evidence is under
+`canonical-instrumented-attempt-0913/registry-events-final.json`,
+`direct-version.json`, `registration-summary.json`, `remote-config.json`,
+`remote-manifest-before.json`, `acr-transactions.json` and
+`diagnostic-policy-deployment-error.json`. A private minimal reproduction pack
+contains the canonical source, compared configuration, timestamps, request IDs
+and original evidence. It contains no CLI caches, registry tokens or SSH keys.
+No support request or public issue was submitted. The remaining blocker is
+the unexposed internal provisioning/snapshot error: **backend involvement is
+suspected with evidence, not a proven backend defect**. No additional
+unchanged registration, public-access exception or business execution followed.
 
 ## S3: Prompt-agent applicability
 
