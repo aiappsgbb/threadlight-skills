@@ -16,7 +16,7 @@ The separate delegated-token workstream is outside this record.
 | ID | Scenario | Last recorded status | Meaning |
 |---|---|---|---|
 | S1 | Native MAF in a Docker container on an operator VM; real private model, governed MCP, separate business API and Cosmos | Executed, with the bounded evidence below | Working functional baseline; not a Foundry hosted deployment |
-| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: version 1 registered, then provisioning failed | Its signed association exists; no hosted business execution is credited |
+| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: governed versions 1-3 failed; September 13 canonical startup-control versions 1-2 also failed | Registration and signed associations are not hosted business execution; the separate startup control has no business tools |
 | S3 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1 |
 
 **Reference direction:** S2 is the intended hosted reference. S1 is a useful
@@ -715,6 +715,89 @@ reference handling and the difference between an ordinary protocol host and
 this externally authorized bootstrap gate. Those are hypotheses to investigate,
 not grounds to relax authentication, expose the registry, swap SDK cohorts or
 declare provisioning successful.
+
+### September 13: complete canonical private startup control
+
+The published canonical baseline is awesome-gbb commit
+`2ef44f6b47803a0166956cc668e5f429c1c1f8cb`
+([aiappsgbb/awesome-gbb#489](https://github.com/aiappsgbb/awesome-gbb/pull/489)).
+Its preflight/publication checks did not certify this private environment.
+The separate reviewed bootstrap-deferral candidate `067d7e` is unpublished;
+it was not needed for this control, which has **no governance bootstrap and
+no remote/business tools**.
+
+The complete canonical `Dockerfile`, `container.py`, `pyproject.toml` and
+`azure.yaml` were used, not just a replacement entrypoint on the governed image.
+The only manifest adaptations were the diagnostic agent's name and the documented
+private build transport: `docker.remoteBuild: false`, `platform: linux/amd64`.
+Ordinary native `azd deploy` built through the preserved VM's Docker daemon over
+an owner-only, strictly verified SSH Unix socket and pushed to the private ACR.
+No public Docker listener, shared Docker context change or SDK create override
+was used. The earlier `--from-package` attempt with an image digest failed during
+local Docker tagging, before registration; that failure is not a Foundry verdict
+on digest references. A local keychain-helper stall was also resolved before the
+complete native deployment.
+
+Actual image inspection, imports and network-disabled native startup confirmed
+the canonical Agent Server cohort `2.1.0b1 / 2.1.0b1 / 1.1.0b1`, alongside
+MAF core `1.14.0`, Foundry `1.11.0` and hosting `1.0.0b260813`.
+The local `/readiness` response was 200. This is a local-candidate observation,
+not a hosted session or its mounted home. Global Threadlight pins were unchanged.
+The final tags emitted by both ordinary azd deployments independently resolved
+to the same image:
+`sha256:53e02ab62b0be348717de32f4df755aef919f1eb90019374cbd1e23602a7cd5d`.
+
+| Controlled observation | Actual result and limit |
+|---|---|
+| Canonical startup control, version 1 | Native azd registered the version with `enableVnextExperience: "true"`, then failed after 2m55 with `ProvisioningError`; request `48d5f42c591742f4aaa99f159f08cbd6`. Direct version GET confirmed failure. |
+| Exact Basic-private account difference | The canonical `ai-account-identity.bicep` sets `networkAcls.bypass=AzureServices`; this account had `None`. A conditional PATCH changed only that field. GET subsequently confirmed `Succeeded`, with public network access still disabled, local authentication still disabled, and the same account identity and injection subnet. |
+| Meaning of the network change | This enables the template's trusted-Azure-services network exception on the Foundry account, not data-plane permission. Neither the account nor ACR had public access enabled. ACR already had its separate trusted-service exception. No role, caller allowlist or registry access mode changed. |
+| Same-image control, version 2 | After fresh setup observations and the actual account change, ordinary azd registered version 2 with the same image content and agent identity. It failed after 2m54; request `22916e9c9d55fd30d5bf313d9c8dd891`. Thus this alignment was **not sufficient to resolve provisioning**. |
+| Pull versus publication | ACR metrics during 08:26-08:29 showed successful token exchanges, manifest reads and 67 successful `GetBlob` operations. These registry metrics do not identify the caller; they are not yet an independently attributed project-MI platform-pull receipt. Publishing from the VM is also not such a receipt. |
+| Session versus registration | A diagnostic native invocation of failed control version 1 returned HTTP 409 `agent_version_failed` during session creation, request `6ae2b83c0ffb14e0066aa79c36a44e76`. The successful session-list response was empty. No model response or runtime log was fabricated from this failure. |
+| Native diagnostic limitation | The failed deployment did not persist the agent name into azd's local environment: `show`/`monitor` reported name-resolution failure, and `doctor` called the registered agent undeployed. Direct authenticated version GET, not that local cache or LIST `active`, supplies the recorded terminal state. Native monitor additionally requires a real session ID; none was created. |
+| Retained infrastructure diagnostics | Enabled only registry login/repository diagnostics into the existing Log Analytics workspace. No historical events can be inferred from newly enabled logs, and no event is credited until actually retrieved. |
+
+The working Hosted/Toolbox comparator was also clarified: its Foundry account
+and authenticated ACR had public network access enabled, while its agent
+injection and MCP path were private. It is therefore **not an equivalent
+fully private account/image-pull experiment**. Its build used native ACR remote
+build; no retained image manifest established a Docker-versus-OCI difference.
+The control here has an OCI manifest with gzip layers; format alone is not a
+demonstrated failure cause.
+
+Both index-derived CLI state directories and the exact tenant/subscription
+assertions were used for this experiment. A diagnostic azd command outside the
+project initially selected a home-tenant token despite the isolated cache.
+Running it in the complete project's context corrected that diagnostic 403;
+no login cache was copied and no role was granted to the wrong principal.
+The actual deployments already used the complete project context. This
+diagnostic correction does not explain their provisioning failure.
+
+The result rules out the claim that our governance bootstrap or our different
+Agent Server cohort is the sole explanation: the complete canonical control
+fails without either. It does not yet distinguish platform snapshot preparation
+from another private provisioning dependency. The supported session diagnostic
+cannot expose runtime logs before a session exists.
+**No hosted business result or native session-home success is claimed.**
+S1's earlier authority has expired; its preserved successful receipts remain
+historical proof, not a current authorization lease.
+
+| Private retained artifact | SHA-256 |
+|---|---|
+| `canonical-full-startup-control/native-direct-readback.json` | `a3240dd1d086825e91e518ba22fc6f2f8465ae40f00d9cc35320260ce06ba034` |
+| `canonical-bypass-attempt-0913/direct-version-2.json` | `318b349171df38f040abfca1237d8c6a8d4e9e83f8883c3f9a86f979343b119b` |
+| `canonical-bypass-attempt-0913/acr-transactions.json` | `fb95ab856bd2e5ed3397a3ea18ab62c39ab788bce0cfeb70a272f43bb1751b99` |
+| `canonical-pull-diagnostics-0913/account-alignment-poll.json` | `6e73e95de0030064310fec4e5f2790d8bf2c072fbf4f25fc6eff0398a6a893e4` |
+
+The private capture also retains both native deploy logs, fresh preflight inputs
+and results, registry manifests, the actual account PATCH and its before/after
+states, and the failed diagnostic request. No old artifact, failed version,
+signed association, image, identity or resource was removed. The remaining
+manual work is private operational evidence collection and the unresolved hosted
+provisioning diagnosis, followed by a fresh exact business binding and real
+hosted invocation. Repeated registration without a justified delta is not a
+reproduction procedure.
 
 ## S3: Prompt-agent applicability
 

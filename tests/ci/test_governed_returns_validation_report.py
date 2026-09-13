@@ -58,3 +58,21 @@ def test_hosted_registration_is_not_reported_as_business_execution():
         "32d5c44d43d4bb1d89ec347aa56ac1e743ea4a65fcc33f67f02383a271b24994",
     ):
         assert marker in text
+
+
+def test_canonical_private_control_does_not_credit_unobserved_platform_execution():
+    text = " ".join(REPORT.read_text().split())
+    for marker in (
+        "### September 13: complete canonical private startup control",
+        "2ef44f6b47803a0166956cc668e5f429c1c1f8cb",
+        "53e02ab62b0be348717de32f4df755aef919f1eb90019374cbd1e23602a7cd5d",
+        "no governance bootstrap and no remote/business tools",
+        "networkAcls.bypass",
+        "not sufficient to resolve provisioning",
+        "agent_version_failed",
+        "registry metrics do not identify the caller",
+        "No hosted business result or native session-home success",
+        "canonical-bypass-attempt-0913/direct-version-2.json",
+        "public access enabled",
+    ):
+        assert marker in text
