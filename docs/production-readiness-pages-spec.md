@@ -316,6 +316,7 @@ Presentation labels cannot override the source manifests.
 |---|---|---|
 | S1, September 11 | Historical VM model allow; direct native deny and genuine human resume/replay | [S1](governed-returns-validation.md#s1-vm-hosted-native-maf-and-governed-mcp); not hosted, not an S3 grant |
 | S2, September 13 and recorded September 14 update | Private pre-session failure despite attributed project-MI registry Login/Pull 200; sole unchanged canonical version-4 retry again returned `ProvisioningError`, with no native sessions and no overnight recovery observed | [September 14 diagnostic](governed-returns-validation.md#september-14-one-unchanged-private-transient-control-retry); same frozen image/scopes, not complete per-caller blob/unpack/snapshot/root-cause proof. Operator Push and scanner Pull are not project-MI acquisition evidence |
+| S2, separate September 14 authorization at 10:55 Italy | Egress inspection found no attached customer NSG/UDR restriction to relax; shared NAT/PIP already existed. There was no customer network change. The separately authorized frozen private-control version 5 also failed before any native session | [Scoped egress observation](governed-returns-validation.md#september-14-scoped-egress-inspection-with-no-network-change); not an A/B relaxation test. Six project-MI registry pulls from the actual hosted subnet and shared NAT counters are not hosted Internet egress proof. Managed effective routes/source VM were not exposed |
 | S3, September 13 | Hosted v5 selected allow/one decision-audit, exact-ETag domain deny, pending no execution; expired ungranted same-session generic failure | [S3](governed-returns-validation.md#s3-public-authenticated-foundry-hosted-execution); causal expiry guard not independently isolated; not private isolation |
 | S3 evidence planes | Inline read audit ACK before response; separate post-run 14 calls / 8 responses | Not continuous attestation; explicit two-tool inventory |
 
@@ -482,7 +483,10 @@ resources as a side effect of that copy work.
 Concrete infrastructure, immutable tag/image observation, role assignments,
 mailbox/API consents, synthetic case seeding, signing and final binding are
 operator-owned; source closure is not an end-to-end one-command deployment.
-The completed September 14 private diagnostic belongs to its parent/operator
-record. **No second attempt** is authorized absent a **new observed difference
-or justified correction**. This specification is ready for review, not an
-assertion that a new Pages experience is live.
+The `08:12` September 14 private transient-control diagnostic belongs to its
+parent/operator record. **No second attempt was made under that earlier
+authorization**. The separate **10:55 Italy** egress authorization and private
+version-5 observation must retain their own no-network-change scope; they do not
+replace the morning history. Further attempts need a **new observed difference
+or justified correction** and applicable authority. This specification is ready
+for review, not an assertion that a new Pages experience is live.

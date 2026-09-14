@@ -16,7 +16,7 @@ The separate delegated-token workstream is outside this record.
 | ID | Scenario | Last recorded status | Meaning |
 |---|---|---|---|
 | S1 | Native MAF in a Docker container on an operator VM; real private model, governed MCP, separate business API and Cosmos | Executed, with the bounded evidence below | Working functional baseline; not a Foundry hosted deployment |
-| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: governed versions 1-3 failed; canonical startup-control versions 1-3 failed September 13 and unchanged version 4 failed September 14 | Project-identity registry access is observed on both days; registration, image acquisition and signed associations are not hosted business execution |
+| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: governed versions 1-3 failed; canonical startup-control versions 1-3 failed September 13, version 4 failed in the September 14 morning control, and version 5 failed after a separately authorized egress inspection | Customer egress had no attached restriction to relax; project-identity registry access is observed, not complete hosted egress, unpacking or business execution |
 | S3 | Separate public-authenticated Foundry hosted MAF with governed MCP and real Cosmos business writer | Hosted v5 allow, deny, pending approval, expired attempt and durable read/reconciliation executed | Real hosted business proof, not private-network proof; genuine human completion remains blocked |
 | S4 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1/S3 |
 
@@ -925,6 +925,84 @@ timeline. It contains operational targets and is **not committed as raw logs**.
 | `private-morning-0914/after/version.json` | `cec9f5409f4cb6088c4b8695d8c6329e230c79ddc695eaa376661332046d46de` |
 | `private-morning-0914/registry-events-final.json` | `e9b32c9a134e6d787dff2dba1fd8f2e19fa7fb78168d93aee1c8ef4c006cb980` |
 | `private-morning-0914/remote-created-manifest.json` | `b10fca642766de3db669ca5c07a0fb4220bc42dcd19d58953c1d41f83c72a3ef` |
+
+### September 14: scoped egress inspection with no network change
+
+**Separate authorization:** at **10:55 Italy (08:55 UTC)** the user authorized
+opening outbound traffic on the private S2 hosted-agent path, if restricted,
+while preserving private ingress, account/ACR PNA Disabled, identities and data.
+This was not a continuation or retrospective rewrite of the earlier
+`08:12:19` version-4 transient-control experiment.
+
+Timestamped customer ARM snapshots began at `09:00:58` UTC, before any new
+registration. The selected **hosted-agent subnet**, not the operations VM's
+subnet, was inspected. The observed customer-managed path already had **no NSG**
+and **no UDR** attached. Adding an allow rule would have changed nothing useful.
+There was **no customer network change**: no redundant rule, new route, NAT
+reassociation, firewall expansion, tag exception or rollback was applied.
+
+| Surface inspected | Observation and scope |
+|---|---|
+| Exact hosted-agent subnet | `Microsoft.App/environments` delegation; Succeeded; no attached NSG or route table; existing NAT; private-endpoint policies unchanged |
+| Customer VNet routing configuration | No peerings, no custom DNS override and no route tables in the dedicated group; no applicable customer route through a firewall/NVA was found |
+| NSGs | The only group NSG applies to the operations subnet, not the hosted subnet. Its rules were not changed or credited as hosted-path proof |
+| NAT and PIP | Existing Standard NAT and static Standard regional PIP both Succeeded; the **shared NAT** also serves another private agent subnet, so it was not modified |
+| Source NIC visibility | No NIC on the selected hosted subnet was exposed by the customer subscription's NIC inventory, including case-insensitive subnet-ID matching |
+| Managed attachment | The subnet exposes a `legionservicelink` association to `Microsoft.App/environments`, not an actionable hosted VM/NIC ARM ID |
+| Effective routing/NSG diagnostics | No effective NIC route/NSG table was obtained: no source VM or NIC for the managed workload was exposed. Missing visibility is not a table full of allow rules |
+| Network Watcher connectivity | The installed supported command requires a VM source. The operations VM would test a different subnet, so it was **not** used as a substitute |
+
+At the customer configuration layer no NSG/UDR restriction was available to
+relax. Default Internet routing with the existing NAT is the configured path,
+not an independently observed effective route table for the managed workload.
+Any additional managed-service routing/filtering is outside the exposed
+customer controls here. A hidden restriction is **not** asserted to exist just
+because provisioning failed.
+
+The existing canonical setup gate was re-evaluated with fresh observations;
+its operator-side model availability and network-disabled local startup checks
+remained prerequisites only, **not hosted Internet egress proof**. The hosted
+source observation is the platform's own attributable registry traffic below.
+The frozen source/cohort/image, native azd `1.27.0` path, model and functional
+definition were unchanged.
+
+| Separately authorized native observation | Result |
+|---|---|
+| Window | `09:06:22` to `09:09:10` UTC; one registration only |
+| Actual private diagnostic version | version 5; all prior versions retained |
+| Native request ID | `f7a05c43279c67934fc8216b8399e9d6` |
+| Direct GET at `09:09:48.680680` UTC | HTTP 200, body `failed` / generic `ProvisioningError`; native inventory contains five versions and zero sessions |
+| Remote raw manifest | Still SHA-256 `53e02ab62b0be348717de32f4df755aef919f1eb90019374cbd1e23602a7cd5d`, independently checked from the new tag's actual manifest bytes |
+| Actual project-MI acquisition | Six Login and six Pull 200 events with `Buildah/1.42.1`, exact new tag/digest; all six caller addresses lie inside the selected hosted-agent subnet |
+| NAT metric samples, `09:06`–`09:08` UTC | Aggregate DatapathAvailability 100%, PacketDropCount 0; SNAT connection totals 18, 20 and 17. Metrics lack source-IP/subnet dimensions and cover the shared NAT |
+| Preservation check | Raw subnet snapshots before/after are byte-equivalent JSON with identical SHA-256; NAT configuration is also unchanged. No business invocation or public S3 change |
+
+The platform pulls were observed from `09:07:01.335803` to
+`09:08:51.132533` UTC and were separated from operator/scanner activity.
+They prove successful registry acquisition on that observed path, not successful
+access to every hosted dependency, per-caller completion of every blob, unpacking,
+snapshot creation or session startup. Shared NAT health and connection counters
+are **not hosted Internet egress proof** and cannot identify the failed phase.
+
+**This was not an A/B relaxation test:** no customer restriction changed.
+It shows the private control still fails despite the observed already-unrestricted
+customer egress configuration. It neither proves that full managed egress works
+nor identifies a backend defect, DNS failure or remaining firewall rule.
+Further diagnosis requires an actual managed-source route/connectivity observation
+or the internal provisioning error, not a guessed rule or another unchanged retry.
+No unsupported source was passed to Network Watcher; no external support request,
+resource teardown, automatic rollback or further registration followed.
+
+Private evidence is retained separately from the earlier morning capture:
+
+| Retained artifact | SHA-256 |
+|---|---|
+| `private-egress-0914/outcome.json` | `eb211156d171e842c02af0abc34b60ce93b7acbb5ba04d0103e712d8faf9cd5c` |
+| `private-egress-0914/subnet-before.json` and `subnet-after.json` | `d388d61c8b68995b8f0481c5ffe0b8310b26a10d30ec9a92ffe22794220d494c` |
+| `private-egress-0914/nat-metrics-attempt.json` | `a2b654e3933bb437eac089d5d7021604ea38e3126409eefd5da1fb4dbba863d2` |
+| `private-egress-0914/after/version.json` | `7aa1a25b4e3309a37d2f0046b2cfbb9bb93805ac485b978bf982091eb053ec0f` |
+| `private-egress-0914/registry-events-final.json` | `1329157ae43ba4bee87a257bb989f6e1b7a0d0c99b52abb53767939d0a0cc26c` |
+| `private-egress-0914/remote-created-manifest.json` | `badca2ffb6c473f4f082bc4e731a45e2e08da0e18035c89936d50e4fcbbbaf7a` |
 
 ## S3: Public authenticated Foundry hosted execution
 

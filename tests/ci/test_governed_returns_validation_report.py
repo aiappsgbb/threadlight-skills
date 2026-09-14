@@ -155,3 +155,18 @@ def test_public_receipts_do_not_renew_distinct_bootstrap_and_policy_leases():
         "the earlier bootstrap expiry",
     ):
         assert marker in text
+
+
+def test_egress_inspection_does_not_invent_a_relaxation_or_hosted_connectivity_proof():
+    text = " ".join(REPORT.read_text().split())
+    for marker in (
+        "### September 14: scoped egress inspection with no network change",
+        "10:55", "version 5", "09:06:22", "09:09:10",
+        "f7a05c43279c67934fc8216b8399e9d6",
+        "no customer network change", "not an A/B relaxation test",
+        "no NSG", "no UDR", "shared NAT", "Network Watcher",
+        "no source VM", "not hosted Internet egress proof",
+        "private-egress-0914/outcome.json",
+        "eb211156d171e842c02af0abc34b60ce93b7acbb5ba04d0103e712d8faf9cd5c",
+    ):
+        assert marker in text

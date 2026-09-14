@@ -180,6 +180,17 @@ def test_september14_diagnostic_is_recorded_not_pending_or_authority_to_retry(do
     assert "TBD" not in text, "The September 14 diagnostic now has an observed result"
 
 
+@pytest.mark.parametrize("document", [DEEP, SPEC], ids=["deep-dive", "pages-spec"])
+def test_later_egress_authorization_is_separate_from_the_morning_control(document):
+    require(plain(document), (
+        "10:55", "version 5", "no customer network change",
+        "not an A/B relaxation test", "shared NAT",
+        "not hosted Internet egress proof",
+        "governed-returns-validation.md#september-14-scoped-egress-inspection-with-no-network-change",
+        "No second attempt was made under that earlier authorization",
+    ))
+
+
 def test_evidence_expiry_human_and_reproduction_limits_are_explicit():
     require(plain(DEEP), (
         "2026-09-14T10:26:48", "no automatic renewal",
