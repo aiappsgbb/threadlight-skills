@@ -123,3 +123,16 @@ def test_reproduction_documents_operator_supplied_cohort_and_audit_limits():
         "omit `governance_operation_id`", "new-pending.json",
     ):
         assert marker in text
+
+
+def test_september14_private_retry_is_not_presented_as_transient_resolution():
+    text = " ".join(REPORT.read_text().split())
+    for marker in (
+        "### September 14: one unchanged private transient-control retry",
+        "08:12:19", "08:15:13", "08:15:38", "version 4",
+        "3ccff821812154762ffa14ad7270f9a0",
+        "six Login and six Pull", "private-morning-0914/registry-events-final.json",
+        "no overnight recovery was observed", "does not prove a backend defect",
+        "no new business invocation", "same raw manifest",
+    ):
+        assert marker in text

@@ -16,7 +16,7 @@ The separate delegated-token workstream is outside this record.
 | ID | Scenario | Last recorded status | Meaning |
 |---|---|---|---|
 | S1 | Native MAF in a Docker container on an operator VM; real private model, governed MCP, separate business API and Cosmos | Executed, with the bounded evidence below | Working functional baseline; not a Foundry hosted deployment |
-| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: governed versions 1-3 failed; September 13 canonical startup-control versions 1-3 also failed | Project-identity registry access is now observed; registration, image acquisition and signed associations are not hosted business execution |
+| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: governed versions 1-3 failed; canonical startup-control versions 1-3 failed September 13 and unchanged version 4 failed September 14 | Project-identity registry access is observed on both days; registration, image acquisition and signed associations are not hosted business execution |
 | S3 | Separate public-authenticated Foundry hosted MAF with governed MCP and real Cosmos business writer | Hosted v5 allow, deny, pending approval, expired attempt and durable read/reconciliation executed | Real hosted business proof, not private-network proof; genuine human completion remains blocked |
 | S4 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1/S3 |
 
@@ -850,8 +850,81 @@ contains the canonical source, compared configuration, timestamps, request IDs
 and original evidence. It contains no CLI caches, registry tokens or SSH keys.
 No support request or public issue was submitted. The remaining blocker is
 the unexposed internal provisioning/snapshot error: **backend involvement is
-suspected with evidence, not a proven backend defect**. No additional unchanged private registration or private business execution
-followed. The separately authorized public S3 below did not change S2 resources.
+suspected with evidence, not a proven backend defect**. No additional unchanged
+private registration or private business execution followed on September 13.
+The separately authorized public S3 below did not change S2 resources.
+
+### September 14: one unchanged private transient-control retry
+
+The user authorized **one** fresh morning diagnostic to test whether the
+pre-session failure had cleared overnight. This used the existing canonical
+startup control, with no business tools, new account or parallel environment.
+Paired tenant isolation and explicit private subscription/resource-group/account/
+project/model/registry assertions preceded native deployment. Public S3 was not
+modified, and no expired business binding was reused.
+
+Fresh account, project, model and direct capability-host reads matched the
+previous selected configuration: private/keyless Foundry account, original
+injection/subnet, existing successful Basic project host, private ACR, existing
+project-MI pull permission and enabled registry diagnostics. The existing
+account `networkAcls.bypass=AzureServices` remained unchanged. No new roles,
+network opening or `SecurityControl=Ignore` tag was applied to the private group.
+The bounded pre-attempt Activity Log read exposed no intervening relevant
+configuration write; that is not proof of complete internal platform history.
+
+The byte-exact canonical preflight helper from `2ef44f6b` returned
+`READY_FOR_REGISTRATION` / `NOT_TESTED`, using freshly collected private-route
+operator/model observations and a network-disabled local native startup check.
+Those operator/local checks are **not hosted identity or session-home proof**.
+The same canonical source, azd `1.27.0`, Docker engine and cached build produced
+the same immutable candidate; no SDK or application change was introduced.
+
+| Observation | September 14 result (UTC) |
+|---|---|
+| Single native deployment window | `08:12:19` to `08:15:13`; native exit 1 |
+| Actual created version | version 4; original three versions preserved |
+| Native deployment request ID | `3ccff821812154762ffa14ad7270f9a0` |
+| Independent direct GET | `08:15:38.338868`; HTTP 200 with body `status=failed`, `ProvisioningError`; no deeper cause exposed |
+| Actual native session inventory | Empty; no container-session logs or successful invocation available |
+| Frozen definition comparison | Same CPU, memory, model environment, protocols, experience metadata and instance identity; only normal publication tag/version/time changed |
+| Remote image bytes | New tag resolves to the **same raw manifest**, independently SHA-256 checked as `53e02ab62b0be348717de32f4df755aef919f1eb90019374cbd1e23602a7cd5d` |
+| Registry acquisition | Project MI emitted **six Login and six Pull** events with `Buildah/1.42.1`, all 200, for the new tag and exact digest |
+| Current attempt Activity Logs | No events returned in the bounded attempt window; no actionable native provisioning detail was exposed there |
+
+The operator's image Push 201 at `08:12:32.284465` and the security scanner's
+`MDCContainersSecurity/1.0` pulls were separated from the actual project-MI
+platform pulls (`08:13:05.676538` through `08:14:56.843329`). Initial ingestion
+showed only four pulls; the retained final query contains all six with distinct
+correlations. Aggregate success or scanner activity was not used as a
+substitute for caller attribution.
+
+The actual remote descriptor is a single OCI image manifest for Linux/amd64,
+not an image index. Its config digest remains
+`sha256:69d18068699407b21972cb601c92ae8c7746837de1bd98d1359d3682271f0c80`.
+The OCI manifest contains the same OCI and Docker gzip layer media types;
+that observation is not established as the failure cause. Successful manifest
+acquisition still does not establish per-caller blob completion, layer unpacking,
+snapshot creation or startup of the hosted runtime.
+
+**Result: no overnight recovery was observed for this frozen configuration.**
+The repeat narrows the transient explanation but **does not prove a backend
+defect**, nor exclude a persistent, still-unidentified configuration interaction.
+There was no new business invocation, no second registration attempt and no
+public/private configuration repair. Further attempts require a new observed
+difference or a justified correction, not another unchanged retry. No external
+support request was submitted.
+
+The private reproduction directory `private-morning-0914/` retains the approved
+experiment, canonical helper hash, fresh setup inputs/results, unchanged source
+hashes, original native deploy log, direct version/session responses and registry
+timeline. It contains operational targets and is **not committed as raw logs**.
+
+| Retained artifact | SHA-256 |
+|---|---|
+| `private-morning-0914/outcome.json` | `5da4d0d6f7ee98659a33ebd252064f1a8bbf9f31d8817bbe7cb1cac9ed56ff4a` |
+| `private-morning-0914/after/version.json` | `cec9f5409f4cb6088c4b8695d8c6329e230c79ddc695eaa376661332046d46de` |
+| `private-morning-0914/registry-events-final.json` | `e9b32c9a134e6d787dff2dba1fd8f2e19fa7fb78168d93aee1c8ef4c006cb980` |
+| `private-morning-0914/remote-created-manifest.json` | `b10fca642766de3db669ca5c07a0fb4220bc42dcd19d58953c1d41f83c72a3ef` |
 
 ## S3: Public authenticated Foundry hosted execution
 
