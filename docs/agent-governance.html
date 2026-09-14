@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent governance — authority at the effect boundary.</title>
+<meta name="description" content="The model proposes; trusted components authorize effects. Inspect Threadlight's private hosted allow/deny evidence, separate audit guarantees, and the human and production work still outstanding.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Agent governance — authority at the effect boundary.">
+<meta property="og:description" content="A real selected business path, not a universal AI guarantee. Private hosted allow/deny, durable evidence, and explicit remaining limits.">
+<meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/agent-governance.html">
+<meta property="og:site_name" content="Threadlight">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<style>
+  .governance-page .brand-name span,
+  .governance-page .breadcrumb { color: var(--ink-2); }
+  .governance-page .brand-name { text-decoration: none; color: inherit; }
+  .governance-page .brand-mark { display: inline-block; vertical-align: middle; margin-right: 8px; }
+  .governance-page .skip-link { position: fixed; top: 8px; left: 8px; z-index: 2000; padding: 12px 20px; background: var(--bg-1); color: var(--ink-0); transform: translateY(-160%); }
+  .governance-page .skip-link:focus { transform: translateY(0); }
+  .governance-page a:focus-visible,
+  .governance-page summary:focus-visible { outline: 3px solid var(--accent-1); outline-offset: 4px; }
+  .governance-page .gov-note { max-width: 76ch; color: var(--ink-1); line-height: 1.7; }
+  .governance-page .gov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 20px; }
+  .governance-page .gov-card { padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-1); min-width: 0; }
+  .governance-page .gov-card h3 { margin: 10px 0 14px; }
+  .governance-page .gov-card p { color: var(--ink-1); line-height: 1.65; }
+  .governance-page .gov-label { display: inline-block; padding: 5px 9px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--ink-0); font: 12px var(--mono); letter-spacing: .035em; }
+  .governance-page .gov-flow { list-style: none; counter-reset: step; padding: 0; margin: 28px 0; }
+  .governance-page .gov-flow li { counter-increment: step; border-top: 3px solid var(--accent-1); }
+  .governance-page .gov-flow li::before { content: "0" counter(step); color: var(--ink-2); font: 16px var(--mono); }
+  .governance-page .gov-callout { padding: 24px; margin-top: 24px; border-left: 4px solid var(--accent-1); background: var(--bg-2); color: var(--ink-1); line-height: 1.7; }
+  .governance-page .gov-callout strong { color: var(--ink-0); }
+  .governance-page .gov-facts { margin: 18px 0 0; padding-left: 20px; color: var(--ink-1); }
+  .governance-page .gov-facts li { margin: 10px 0; line-height: 1.65; }
+  .governance-page .gov-date { display: block; margin-top: 12px; color: var(--ink-2); font: 12px/1.6 var(--mono); overflow-wrap: anywhere; }
+  .governance-page .gov-lease { overflow-wrap: anywhere; font-family: var(--mono); font-size: 13px; color: var(--ink-0); }
+  .governance-page .gov-links { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 26px; }
+  .governance-page details { margin-top: 20px; padding: 20px; border: 1px solid var(--line); border-radius: 10px; }
+  .governance-page summary { cursor: pointer; font-weight: 650; color: var(--ink-0); }
+  .governance-page footer { padding: 40px 24px; border-top: 1px solid var(--line); text-align: center; color: var(--ink-2); }
+  .governance-page footer a { color: var(--ink-1); }
+  @media (max-width: 600px) {
+    .governance-page .gov-card, .governance-page .gov-callout { padding: 20px; }
+    .governance-page .gov-links .btn { width: 100%; justify-content: center; text-align: center; }
+  }
+</style>
+</head>
+<body class="chapter-page chapter-production governance-page">
+<a class="skip-link" href="#main">Skip to governance evidence</a>
+<header class="masthead">
+  <div class="brand">
+    <a href="./index.html" class="brand-name"><span class="brand-mark" aria-hidden="true"></span>Threadlight<span>by Microsoft GBB · AI Apps</span></a>
+  </div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html">Home</a>
+    <a href="./blueprint.html">Blueprint</a>
+    <a href="./production.html">Production-ready</a>
+    <a href="./agent-governance.html" aria-current="page">Agent governance</a>
+    <a href="./customize.html">Customize</a>
+  </nav>
+</header>
+<aside class="floating-toc" aria-label="Agent governance chapter"><p class="toc-title">Chapter</p></aside>
+
+<main id="main">
+  <section class="chapter-hero" id="overview" data-toc-id="overview" data-toc-label="Overview">
+    <div class="wrap wrap-wide">
+      <p class="breadcrumb"><a href="./index.html">Threadlight</a> / Agent governance</p>
+      <p class="eyebrow"><span class="dot"></span>Authority at the effect boundary</p>
+      <h1>The model proposes.<br><em>The system authorizes.</em></h1>
+      <p class="lede">A convincing answer is not permission to write. Trusted components decide which
+        actions may produce effects, using identity, signed policy, business facts,
+        required approval and durable evidence.</p>
+      <p class="gov-note">Keep the prototype fast. Opt into governance for selected consequential
+        tools <strong>before enabling their effects</strong>. This is not a new mandatory
+        all-tools layer and not a promise to control every aspect of an AI system.</p>
+      <div class="stat-strip" role="list" aria-label="Scope of the private demonstration">
+        <div class="stat" role="listitem"><span class="stat-num">2</span><span class="stat-label">exposed tools</span></div>
+        <div class="stat" role="listitem"><span class="stat-num">1</span><span class="stat-label">selected write boundary</span></div>
+        <div class="stat" role="listitem"><span class="stat-num">4</span><span class="stat-label">post-run call records</span></div>
+      </div>
+      <div class="gov-links">
+        <a class="btn btn-primary" href="#evidence">Inspect the evidence <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="#effect-authority">Follow an action <span class="arrow">&rarr;</span></a>
+      </div>
+      <span class="gov-date">Evidence snapshot: 14 September 2026. Scoped execution, not continuous attestation.</span>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="effect-authority" data-toc-id="effect-authority" data-toc-label="Effect boundary">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Who can authorize a write?</p>
+        <h2>Not the model. <em>The trusted execution path.</em></h2>
+        <p class="section-lede">The actual private path is Foundry hosted MAF &rarr; FunctionTool/MCP
+          &rarr; governed gateway &rarr; separately authenticated backend &rarr; Cosmos.</p>
+      </div>
+      <ol class="gov-grid gov-flow" aria-label="Selected write authorization sequence">
+        <li class="gov-card"><h3>Proposal</h3><p>The model selects a declared tool and supplies arguments.
+          Text, retrieved instructions and an operation ID are not credentials or consent.</p></li>
+        <li class="gov-card"><h3>Identity and scope</h3><p>The host and MCP gateway authenticate the caller.
+          Fixed targets and strict schemas prevent the model from choosing an arbitrary HTTP destination.</p></li>
+        <li class="gov-card"><h3>Policy and facts</h3><p>ACS evaluates Rego through OPA. Signed fresh policy,
+          observed deployment and trusted business facts bind the exact proposal and ETag.</p></li>
+        <li class="gov-card"><h3>Approval and receipt</h3><p>When required, an authenticated human decides.
+          A one-use grant and central durable audit ACK must exist before the effect. Denial stops here.</p></li>
+        <li class="gov-card"><h3>Independent writer</h3><p>A different identity calls the backend. It checks
+          current state again and atomically replaces the case plus creates its decision audit.</p></li>
+        <li class="gov-card"><h3>Bounded result</h3><p>Return the actual outcome. Reconcile native calls
+          against independent records. A post-effect failure cannot be described as a rolled-back write.</p></li>
+      </ol>
+      <div class="gov-callout"><strong>Checks must survive waiting.</strong> Credentials, retries, connection
+        pools and TLS can delay a send. The owned transports recheck authorization at the send boundary.
+        Native trace/baggage propagation is accepted only when it matches the exact active SDK context;
+        authorization, target, body and idempotency checks remain strict.</div>
+      <p class="gov-note">The read tool takes a separate authenticated route and remains unbound to ACS.
+        Optional read-audit persistence is disclosure accounting, not permission to mutate.</p>
+      <details>
+        <summary>Separate responsibilities, not interchangeable security labels</summary>
+        <ul class="gov-facts">
+          <li><strong>SAFE</strong> is the method; <strong>ACS/Rego</strong> is the policy decision point.</li>
+          <li><strong>Agent Hooks</strong> is the host/interceptor contract. The selected host or gateway is the enforcement point; <strong>AGT</strong> is the toolkit; <strong>ASSERT</strong> is assurance.</li>
+          <li>Agent Identity, reviewer, control plane, gateway, downstream caller, database writer and publisher have distinct responsibilities. The agent has no database-write or signing role.</li>
+          <li>Private networks restrict reachability; output guardrails constrain supported returned content. Neither replaces authorization of the exact business effect.</li>
+        </ul>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="evidence" data-toc-id="evidence" data-toc-label="Observed evidence">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Executed, with visible limits</p>
+        <h2>One real effect. <em>One real refusal.</em></h2>
+        <p class="section-lede">These are observations of the selected two-tool demonstration,
+          not a scorecard or a whole-agent verdict.</p>
+      </div>
+      <div class="gov-grid">
+        <article class="gov-card">
+          <span class="gov-label">PRIVATE · SCOPED EXECUTION</span>
+          <h3>Private governed runner</h3>
+          <p><strong>Version 4: ALLOW and exact domain DENY.</strong> A real hosted model read a synthetic
+            case and recorded one Cosmos decision/audit through the governed MCP path.</p>
+          <ul class="gov-facts">
+            <li>Allowed case closed; central allow receipt and completed gateway operation independently matched.</li>
+            <li>Ineligible approval attempted once with the exact quoted ETag; central denial, unchanged case and no additional business write.</li>
+            <li>This is a recommendation record, <strong>not financial settlement</strong>.</li>
+          </ul>
+          <span class="gov-date">14 September 2026 · 11:46–11:51 UTC · fresh private authority</span>
+        </article>
+        <article class="gov-card">
+          <span class="gov-label">BEFORE RETURN ≠ AFTER EXECUTION</span>
+          <h3>Two audit guarantees</h3>
+          <p><strong>Inline read ACK:</strong> each of the two reads persisted its own audit before returning
+            case data. This is separate from the pre-write policy receipt.</p>
+          <p><strong>Post-run ledger:</strong> Four call records from two responses were created and read back,
+            joining authenticated native responses to independent private stores.</p>
+          <p>The ledger is a selected snapshot, <strong>not whole-agent attestation</strong> or continuous
+            interception of future calls.</p>
+        </article>
+        <article class="gov-card">
+          <span class="gov-label">HUMAN STEP · NOT PROVED</span>
+          <h3>Human approval remains open</h3>
+          <p>The reviewer was unavailable. <strong>No new private pending intent</strong> was created to
+            expire while waiting for a person.</p>
+          <p>Private pending/no-effect, authenticated approval, exact resume, one-use completed replay and
+            email delivery are not yet demonstrated.</p>
+          <p><strong>Office 365 consent</strong> requires the real mailbox user. Notification, email, a click
+            or a model's agreement is not a grant.</p>
+        </article>
+      </div>
+      <div class="gov-grid" style="margin-top:20px;">
+        <article class="gov-card">
+          <span class="gov-label">HISTORICAL · PUBLIC S3</span>
+          <h3>Public governed runner</h3>
+          <p>Historical September 13 proof: hosted v5 allow/deny, durable pending approval, an expired
+            ungranted attempt, and a separate post-run ledger of 14 calls / 8 responses.</p>
+          <p>Its authority leases are expired. Those receipts do not authorize the private run or establish
+            a private human decision.</p>
+        </article>
+        <article class="gov-card">
+          <span class="gov-label">PRIVATE · MODEL SMOKE ONLY</span>
+          <h3>Private BASIC</h3>
+          <p>Version 7 produced <strong>Billing Issue</strong> with two active observations and independent
+            native session/response readback. No MCP or governance action was exercised.</p>
+          <p>The scaffold has an unused placeholder tool, not a strict zero-tool guarantee. Registry-connection
+            correction alone failed; a verified byte-identical image copy then ran. This does not isolate
+            manifest format as the sole cause.</p>
+        </article>
+        <article class="gov-card">
+          <span class="gov-label">HISTORICAL · VM S1</span>
+          <h3>Do not borrow a human grant</h3>
+          <p>The earlier VM scenario demonstrated a genuine delegated human decision and native resume/replay.
+            It was not Foundry hosted and its grant cannot fill the private hosted evidence gap.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="freshness" data-toc-id="freshness" data-toc-label="Authority leases">
+    <div class="wrap wrap-xl">
+      <div class="section-head"><h2>Retained proof is <em>not renewed permission.</em></h2></div>
+      <div class="gov-grid">
+        <article class="gov-card">
+          <h3>Private governed association</h3>
+          <p>Bootstrap expiry</p><time class="gov-lease" datetime="2026-09-15T11:12:28.719119+00:00">2026-09-15T11:12:28.719119+00:00</time>
+          <p>Policy expiry</p><time class="gov-lease" datetime="2026-09-15T11:32:54.753384+00:00">2026-09-15T11:32:54.753384+00:00</time>
+        </article>
+        <article class="gov-card">
+          <h3>Public S3 association · expired</h3>
+          <p>Bootstrap expiry</p><time class="gov-lease" datetime="2026-09-14T10:26:48.991423+00:00">2026-09-14T10:26:48.991423+00:00</time>
+          <p>Policy expiry</p><time class="gov-lease" datetime="2026-09-14T12:03:41.859581+00:00">2026-09-14T12:03:41.859581+00:00</time>
+        </article>
+      </div>
+      <div class="gov-callout">The earlier bootstrap lease cannot be extended by a later policy expiry.
+        Fresh identity, signature, configuration, facts and required approval/audit checks remain necessary
+        <strong>even before expiry</strong>. Resource retention never renews authority; no old reference,
+        grant or timestamp was extended to obtain these observations.</div>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="limits" data-toc-id="limits" data-toc-label="Remaining limits">
+    <div class="wrap">
+      <div class="section-head"><h2>Scoped end to end.<br><em>Not controlled in every respect.</em></h2></div>
+      <ul class="gov-facts">
+        <li><strong>Trusted computing base:</strong> reviewed code, the trusted host, identity injection,
+          publisher, verifier, clocks, stores and independent backend. This is not a defense against a
+          malicious administrator replacing those components.</li>
+        <li><strong>Limited inventory:</strong> two exposed tools, one selected write. No arbitrary shell
+          or HTTP tools are offered. No claim of chain-of-thought control, all-framework support, complete
+          provider-tool interception or exhaustive bypass resistance.</li>
+        <li><strong>Production is a separate decision:</strong> recovery drills, load/SLO behavior, privacy,
+          organizational compliance and accountable risk owners need additional evidence. Public lab
+          exceptions are not production defaults.</li>
+        <li><strong>CI is not all green:</strong> three native dependency tests are in the unit lane and
+          remain a separate wiring blocker. Documentation tests and one successful binding do not erase it.</li>
+        <li><strong>No scope transfer:</strong> OBO A-to-B, private human completion and email automation
+          remain unproved. Prototype speed and an advisory scorecard are not go-live authorization.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="chapter-section" id="next" data-toc-id="next" data-toc-label="Inspect & build">
+    <div class="wrap">
+      <div class="section-head"><h2>Inspect the boundary.<br><em>Keep building deliberately.</em></h2>
+        <p class="section-lede">Source-linked engineering and dated evidence, not an unqualified security badge.</p></div>
+      <div class="gov-links">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/agent-governance-deep-dive.md">Engineering deep dive <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/governed-returns-validation.md">Dated execution record <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="./production.html">Production-readiness chapter <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="./funnel.html#scene-cta">Start a pilot <span class="arrow">&rarr;</span></a>
+      </div>
+      <p class="gov-date">Documentation snapshot: checkpoint 20b1cca. This page does not deploy resources or authorize a business action.</p>
+    </div>
+  </section>
+</main>
+<footer>Threadlight · selected authority, visible evidence · <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
+<script src="assets/site.js?v=e4d413b7"></script>
+</body>
+</html>

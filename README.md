@@ -76,7 +76,10 @@ file mtime, a prior empty gaps array or a changed signing envelope cannot renew 
 See [production guidance and CI inputs](docs/production-readiness.md#runtime-governance-lifecycle)
 and [coding-agent guidance](AGENTS.md).
 
-**The model proposes; trusted components authorize effects.** For the actual
+**The model proposes; trusted components authorize effects.** The implemented
+[Agent governance page](docs/agent-governance.html) shows the scoped execution
+path, dated private/public evidence and remaining human/production limits.
+For the actual
 identity, policy, approval, transport and durable-audit boundaries, read the
 [engineering deep dive](docs/agent-governance-deep-dive.md). The separate
 [dated execution record](docs/governed-returns-validation.md) distinguishes the
