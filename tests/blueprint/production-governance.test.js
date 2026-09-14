@@ -123,7 +123,11 @@ test('remaining captions preserve conditional enforcement, private leases and wo
 test('legacy implementation status and no-JavaScript test routing are explicit', () => {
   const specification = read('production-readiness-pages-spec.md');
   assert.ok(specification.includes('Legacy page copy implemented'));
-  assert.ok(specification.includes('formal Playwright/axe runner remains unexecuted'));
+  for (const evidence of ['16 targeted Playwright cases passed', '8 passed / 2 failed',
+    'light and dark', 'zero violations', 'not full WCAG']) {
+    assert.ok(specification.includes(evidence), evidence);
+  }
+  assert.ok(!specification.includes('formal Playwright/axe runner remains unexecuted'));
   const browserTest = fs.readFileSync(path.join(docs, '../tests/playwright/tests/production-governance.spec.mjs'), 'utf8');
   assert.ok(browserTest.includes('baseURL: testInfo.project.use.baseURL'));
 });

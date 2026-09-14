@@ -21,9 +21,19 @@ landmark, link and privacy validation. This is a local/PR preview,
 and evidence sections, and a link to the dedicated page. The writer released
 ownership before integration; no concurrent editor or shared-theme rewrite was
 used. Targeted Node/link checks and desktop/mobile browser observations passed.
-The formal Playwright/axe runner remains unexecuted in the implementation
-session because its test dependency was absent; this is not full WCAG or
-production-deployment proof.
+The implementation session initially lacked the formal test dependency.
+On September 14 the publisher restored the existing manifest dependencies and
+completed formal validation: **16 targeted Playwright cases passed** across
+desktop/mobile (10 new governance cases and six modified existing cases).
+The first new-spec run was **8 passed / 2 failed**: axe found insufficient
+contrast in page-local eyebrows, source labels and a narrative link. The scoped
+`--ink-1` correction preserved underlines/focus without changing shared tokens,
+excluding axe findings or weakening thresholds; all 10 new cases then passed.
+Separate axe checks of both new sections in **light and dark** reported
+**zero violations**. Eleven focused Node/link checks and asset-cache checks
+also passed. These are bounded section/browser observations, **not full WCAG**
+or whole-site certification, a green result for unrelated CI, or production
+Pages deployment.
 
 The source inventory and proposed-copy tables below retain the pre-implementation
 review contract. The accepted branch HTML owns its final text; the acceptance
@@ -446,9 +456,9 @@ reinterpret the canonical validator.
 
 Current scope: **no full site rebuild**, no process-library regeneration, no
 browser installation, no workflow run and no production workflow modification.
-The only executed tests for this document change are its focused offline
-contracts. Listed broader tests are acceptance owners for later implementation,
-not claimed passes from this task.
+Executed validation is limited to the focused contracts and publisher results
+recorded in the implementation status above. Other listed checks remain
+acceptance owners, not additional claimed passes from this task.
 
 ## Acceptance criteria
 
