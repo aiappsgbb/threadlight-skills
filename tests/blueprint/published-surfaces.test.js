@@ -187,21 +187,21 @@ test('GitHub Pages link every new skill to its repository skill folder', () => {
   assert.ok(selfImproving.includes('skills/threadlight-upgrade'), 'self-improving must link threadlight-upgrade');
 });
 
-test('funnel metadata reflects the governed working pilot framing', () => {
+test('funnel metadata reflects fast pilots and explicit selected governance', () => {
   const funnel = read('docs/funnel.html');
 
-  assert.match(funnel, /<title>Threadlight — governed working pilot funnel\.<\/title>/);
+  assert.match(funnel, /<title>Threadlight — working pilot funnel\.<\/title>/);
   assert.match(
     funnel,
-    new RegExp(`<meta name="description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*">`),
+    new RegExp(`<meta name="description" content="[^"]*working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*explicit opt-in[^"]*">`),
   );
   assert.match(
     funnel,
-    new RegExp(`<meta property="og:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*">`),
+    new RegExp(`<meta property="og:description" content="[^"]*working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*explicit opt-in[^"]*">`),
   );
   assert.match(
     funnel,
-    new RegExp(`<meta name="twitter:description" content="[^"]*governed working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*">`),
+    new RegExp(`<meta name="twitter:description" content="[^"]*working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*explicit opt-in[^"]*">`),
   );
   assert.doesNotMatch(funnel, /eleven-skill|deployed agent in one session/i);
 });

@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Production-ready — three postures, thirteen pillars, one scorecard.</title>
-<meta name="description" content="Threadlight's production-ready chapter: green safe-check isn't go-live. Three postures (Gateway-fronted / Foundry-native / Customer-owned edge) and thirteen cross-cutting pillars, grouped into four themes you can walk through with the customer's architecture team.">
+<meta name="description" content="Fast prototypes, explicit authority before selected effects, and a thirteen-pillar readiness review. The model proposes; trusted components authorize effects. Dated evidence is scoped, not production certification.">
 <meta name="theme-color" content="#4f6dff">
 
 <meta property="og:type"        content="article">
 <meta property="og:title"       content="Production-ready — three postures, thirteen pillars, one scorecard.">
-<meta property="og:description" content="Three postures. Thirteen pillars across network/identity, governance/HITL, ops/cost, and lifecycle/supply-chain. Soft-advisory, graceful degradation, one Markdown skill the coding agent runs for you.">
+<meta property="og:description" content="The model proposes; trusted components authorize selected effects. Explore the identity, policy, human and pre-effect audit boundary, dated evidence and separate thirteen-pillar production review.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/production.html">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
@@ -17,11 +17,20 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
 <meta name="twitter:title"       content="Production-ready — postures + pillars.">
-<meta name="twitter:description" content="Green safe-check isn't go-live. Here's what we check before you walk into the customer architecture review.">
+<meta name="twitter:description" content="Green safe-check isn't go-live. Explicit effect authority, dated scoped evidence and accountable reviewers — not automatic production certification.">
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<style>
+  /* Page-local layout only; retain the shared Threadlight theme and navigation. */
+  .governance-section .why-grid { padding: 0; list-style: none; }
+  .governance-section .why-card { min-width: 0; overflow-wrap: anywhere; }
+  .governance-section .why-card p { color: var(--ink-1); }
+  .governance-section time, .governance-section code { overflow-wrap: anywhere; }
+  .governance-section .read-deeper { flex-wrap: wrap; align-items: flex-start; }
+  .governance-section figure { margin: 0; }
+</style>
 </head>
 <body class="chapter-page chapter-production">
 
@@ -77,6 +86,12 @@
         owner for each gap, and gives remediation + delivery the evidence they need to
         <strong>move the pilot toward ship</strong> &mdash; not skip the hardening work.
       </p>
+      <p class="lede reveal" data-delay="4" style="margin-top:12px;">
+        A working response starts the evidence; it is not the go-live decision.
+        The prototype path remains unchanged. Governance is explicit opt-in
+        <strong>before selected effects</strong>; production review adds quality,
+        reliability, privacy, recovery and operational evidence.
+      </p>
       <div class="stat-strip reveal" data-delay="5" role="list" aria-label="Production-ready at a glance">
         <div class="stat" role="listitem">
           <span class="stat-num"><em>1</em></span>
@@ -88,13 +103,14 @@
         </div>
         <div class="stat" role="listitem">
           <span class="stat-num"><em>1</em></span>
-          <span class="stat-label">scorecard to sign</span>
+          <span class="stat-label">scorecard to review</span>
         </div>
       </div>
 
       <div class="cost-cta-row reveal" data-delay="7" style="margin-top:26px;">
         <a class="btn btn-primary" href="#start">Get started <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="#proof">See a real scorecard <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="#evidence-boundaries">Inspect dated evidence <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="#effect-authority">Understand effect authority <span class="arrow">&rarr;</span></a>
       </div>
     </div>
   </section>
@@ -117,15 +133,115 @@
         <article class="why-card reveal" data-delay="2">
           <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4.5h6a1 1 0 0 1 1 1V6H8v-.5a1 1 0 0 1 1-1z"/><path d="M8 6H6.2a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h11.6a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H16"/><path d="M8.8 13l2.1 2.1 4.3-4.3"/></svg></span>
           <p class="why-kicker">What you get</p>
-          <h3>The scorecard that signs.</h3>
-          <p>13 pillars scored: the posture, every gap with severity and a named owner, and the go-live call &mdash; evidence attached.</p>
+          <h3>Evidence for the people who sign.</h3>
+          <p>The scorecard organizes findings and evidence across 13 pillars; accountable reviewers authorize the go-live decision.</p>
         </article>
         <article class="why-card reveal" data-delay="3">
           <span class="why-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.8 6.5a3.9 3.9 0 0 1-5 5L5.5 15.8a1.8 1.8 0 0 0 2.6 2.6l4.3-4.3a3.9 3.9 0 0 1 5-5l-2.6 2.6-2-.5-.5-2z"/></svg></span>
-          <p class="why-kicker">And it closes them</p>
-          <h3>Every gap names its fix.</h3>
-          <p>Each finding names the skill or owner that can close it &mdash; threadlight or awesome-gbb. Run the remediation, re-score, then hand the uplift plan to delivery.</p>
+          <p class="why-kicker">Owners and verification</p>
+          <h3>Every gap needs a next step.</h3>
+          <p>Skills support remediation and evidence collection. A named owner and fresh verification establish closure; external permissions and consent may remain blocked.</p>
         </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Selected authority: semantic sequence is also the diagram's text equivalent. -->
+  <section class="chapter-section governance-section" id="effect-authority" data-toc-id="effect-authority" data-toc-label="Effect authority" aria-labelledby="effect-authority-heading">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Explicit opt-in &middot; before the effect</p>
+        <h2 id="effect-authority-heading">The model proposes. <em>Trusted components authorize effects.</em></h2>
+        <p class="section-lede">The trusted system decides which actions may produce effects.
+          Select the tool, intervention point and path before enabling a consequential write.
+          Invalid selected configuration fails closed; it does not silently become off.</p>
+      </div>
+      <figure aria-labelledby="effect-sequence-caption">
+        <ol class="why-grid" aria-label="Selected effect authorization sequence">
+          <li class="why-card">
+            <p class="why-kicker">01 &middot; Proposal, not permission</p>
+            <h3>Native agent and fixed tools</h3>
+            <p>The Agent Identity calls the model and the declared MAF FunctionTools.
+              It can propose arguments, not mint consent, signing authority or database credentials.
+              The selected write goes through MCP; the agent is not the Cosmos writer.</p>
+          </li>
+          <li class="why-card">
+            <p class="why-kicker">02 &middot; Trusted policy authority</p>
+            <h3>Signed policy, local decisions</h3>
+            <p>A separate publisher signs the exact bundle, registry and bootstrap association.
+              The control plane verifies and serves it. ACS evaluates Rego through local OPA;
+              the host or gateway PEP enforces the selected decision.</p>
+          </li>
+          <li class="why-card">
+            <p class="why-kicker">03 &middot; Exact action scope</p>
+            <h3>Identity, target and business facts</h3>
+            <p>Validate caller, tenant, policy, deployment, fixed endpoint and strict schema.
+              Trusted backend facts and the exact quoted ETag constrain the proposal;
+              a model-supplied eligibility flag is not evidence.</p>
+          </li>
+          <li class="why-card">
+            <p class="why-kicker">04 &middot; When approval is required</p>
+            <h3>A real human decision</h3>
+            <p>An authenticated human reviewer decides the exact scoped intent with the required
+              role. The control plane consumes a one-use grant by CAS.
+              Pending approval is not a grant; an operation selector or email cannot authorize execution.</p>
+          </li>
+          <li class="why-card">
+            <p class="why-kicker">05 &middot; Durable proof before dispatch</p>
+            <h3>Audit ACK, then a different credential</h3>
+            <p>The gateway identity requires a central audit ACK before effects and persists its linkage.
+              A distinct downstream identity authorizes the business POST.
+              Authorization is rechecked after credential, retry, pool and TLS waits.</p>
+          </li>
+          <li class="why-card">
+            <p class="why-kicker">06 &middot; Independent business boundary</p>
+            <h3>Conditional transaction</h3>
+            <p>The separate business writer authenticates the downstream caller, checks current
+              facts and commits a Cosmos case replacement plus audit creation using ETag CAS.
+              This records a recommendation, not financial settlement. Unknown outcomes require reconciliation, not blind retry.</p>
+          </li>
+        </ol>
+        <figcaption id="effect-sequence-caption" class="section-lede" style="margin-top:20px;">
+          Read left to right, then next row: proposal &rarr; trusted policy &rarr; exact facts
+          &rarr; required human decision &rarr; durable audit ACK &rarr; independent transaction.
+          An autonomous policy allow may skip human review only when the signed contract permits it.
+          A denied or pending action never enters the effect path.
+        </figcaption>
+      </figure>
+      <div class="why-grid">
+        <article class="why-card">
+          <p class="why-kicker">Read accounting is separate</p>
+          <h3>Unbound does not mean unauthenticated</h3>
+          <p>An unbound read remains usable without ACS. Optional backend read auditing waits
+            for a durable create ACK before returning data with <code>read_audit_id</code>.
+            Later response reconciliation cannot retroactively create that before-return guarantee.</p>
+        </article>
+        <article class="why-card">
+          <p class="why-kicker">Different controls, different evidence</p>
+          <h3>Reachability is not effect authority</h3>
+          <p>Prompts guide behavior; output guardrails constrain supported returned content;
+            network isolation restricts reachability. None replaces authorization of the exact
+            effect. A post-tool filter cannot undo a committed write.</p>
+        </article>
+        <article class="why-card">
+          <p class="why-kicker">Trusted host assumptions</p>
+          <h3>Scoped, not universal protection</h3>
+          <p>This assumes trusted host, gateway, publisher and backend code. It does not control
+            chain-of-thought, defend against arbitrary malicious trusted code or cover every framework,
+            provider tool or bypass path. Agent Hooks is the host/interceptor contract; AGT is the toolkit;
+            ASSERT is assurance.</p>
+        </article>
+      </div>
+      <div class="cost-cta-row" style="margin-top:26px;">
+        <a class="btn btn-primary" href="./agent-governance.html">Open the scoped governance evidence page <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="#evidence-boundaries">Inspect the evidence boundaries</a>
+      </div>
+      <div class="read-deeper">
+        <span class="rd-label">Actual source:</span>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/skills/threadlight-govern/references/gateway/dispatcher.py">Gateway dispatcher</a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/skills/threadlight-govern/references/control-plane/app.py">Approval and receipt authority</a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/agent-governance-deep-dive.md">Engineering deep dive</a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/skills/threadlight-deploy/references/governance/returns_mcp_backend.py">Independent returns backend</a>
       </div>
     </div>
   </section>
@@ -136,7 +252,13 @@
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>What it checks</p>
         <h2>13 pillars, three architectures, <em>one detected posture.</em></h2>
-        <p class="section-lede">Thirteen pillars define what &ldquo;ready&rdquo; means. Three postures define how it fits your architecture &mdash; detected before the first question.</p>
+        <p class="section-lede">A scorecard is evidence for a decision, not the decision itself.
+          Review the raw and waiver-adjusted scores, verification coverage and dates together.
+          Missing permissions or unexecuted checks remain not-verified; a waiver is accepted risk, not technical enforcement.</p>
+        <p class="section-lede" style="margin-top:12px;"><code>raw_score</code>,
+          <code>score_with_waivers</code>, <code>would_fail_hard_gate</code>, verification coverage
+          and <code>captured_at</code> belong beside stale evidence and outstanding <code>must-fix</code> findings.
+          The scorecard is advisory; protected evidence gates and human go-live approval remain separate.</p>
       </div>
 
       <!-- agent-governance vs platform boundary + the deliverable -->
@@ -392,8 +514,10 @@
     <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Close the gaps</p>
-        <h2>Every gap has a skill that <em>closes it.</em></h2>
-        <p class="section-lede">The scorecard names the gap. One prompt runs the skill that closes it &mdash; threadlight or awesome-gbb &mdash; and amber turns green. Each wields a platform capability you already own, so you adopt it in a prompt instead of a project.</p>
+        <h2>Every gap needs an owner <em>and verified closure.</em></h2>
+        <p class="section-lede">The scorecard names the gap and its owner. Skills support remediation;
+          fresh scoped verification establishes closure. A completed prompt or command is not a pass,
+          and external consent, permissions or customer decisions may still be outstanding.</p>
       </div>
 
       <div class="gap-grid">
@@ -490,18 +614,22 @@
 
       <div class="read-deeper">
         <span class="rd-label">The scorecard itself:</span>
-        <span><code>docs/production-readiness-report.md</code> + <code>tests/production-readiness-manifest.json</code> &mdash; per-pillar findings, evidence register, waivers, the go-live call.</span>
+        <span><code>docs/production-readiness-report.md</code> + <code>tests/production-readiness-manifest.json</code> &mdash; per-pillar findings, evidence register and waivers for an accountable go-live review.</span>
       </div>
     </div>
   </section>
 
   <!-- ==================== 4 · PROOF ==================== -->
-  <section class="chapter-section" id="proof" data-toc-id="proof" data-toc-label="Proof &middot; it works">
+  <section class="chapter-section" id="proof" data-toc-id="proof" data-toc-label="Scorecard example">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Proof &middot; it works</p>
-        <h2>The evidence a board <em>actually signs.</em></h2>
-        <p class="section-lede">Not a story &mdash; the real scorecard a review board reads, the eval, cost and safety baseline behind the go-live call, and the evidence pack a regulator reads.</p>
+        <p class="eyebrow"><span class="dot"></span>Illustrative scorecard &middot; not current readiness</p>
+        <h2>Evidence for an <em>accountable review.</em></h2>
+        <p class="section-lede">The scorecard and sample metrics below illustrate the handoff structure,
+          not a measured result for every pilot or a signed go-live decision.
+          A real decision requires dated, deployment-bound evidence, verification coverage,
+          named owners and explicit waiver scope and conditions.
+          <a href="#evidence-boundaries">See the separate dated runtime observations.</a></p>
         <p class="section-lede" style="margin-top:12px;">
           Forecast before deployment tells you what to budget. Later-pilot, read-only <strong>Azure actuals</strong>
           tell you what settled in the target subscription and resource group. <strong>Reconciliation</strong> binds
@@ -511,9 +639,9 @@
       </div>
 
       <!-- the scorecard PDF -->
-      <article class="scorecard-preview reveal" style="margin-top: var(--s-6);">
+      <article class="scorecard-preview reveal" aria-label="Illustrative scorecard, not an actual go-live approval" style="margin-top: var(--s-6);">
         <header class="sc-header">
-          <p class="sc-title">scorecard.pdf</p>
+          <p class="sc-title">Illustrative scorecard layout</p>
           <p class="sc-headline">Customer &middot; Claims-triage agent &middot; v1.2</p>
           <p class="sc-posture">Posture &mdash; <strong>Gateway-fronted</strong> (Citadel spoke)</p>
         </header>
@@ -540,7 +668,7 @@
             <span class="sc-dot is-amber"></span> waiver with owner &middot;
             <span class="sc-dot is-grey"></span> not-verified (couldn&rsquo;t observe)
           </p>
-          <p class="sc-take">ARB take: <strong>ship with 2 waivers</strong> (cost cap, SBOM lag); model-lifecycle marked <em>not-verified</em>, owner named on page 2.</p>
+          <p class="sc-take"><strong>Illustrative review scenario &mdash; no go-live approval evidenced here.</strong> Example waiver and not-verified statuses do not authorize deployment.</p>
         </footer>
       </article>
 
@@ -552,8 +680,8 @@
         </header>
         <div style="padding: 20px 28px 24px;">
           <p style="margin:0 0 18px; color:var(--ink-1); font-size:.98rem; line-height:1.6;">
-            The same committed artifacts that turn the scorecard green map, article by article, onto the
-            EU AI Act &mdash; so the deploy carries its own compliance file. Tenant-local, offline, deterministic,
+            Committed artifacts can be mapped, article by article, into an
+            EU AI Act evidence pack for qualified human review, not automatic compliance. Tenant-local, offline, deterministic,
             and it <strong>never invents coverage</strong>: a missing source is an honest gap, not a green wash.
           </p>
           <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:10px; margin-bottom:20px;">
@@ -575,7 +703,7 @@
       </article>
 
       <!-- outcome KPIs -->
-      <div class="outcome-band">
+      <div class="outcome-band" role="group" aria-label="Illustrative metrics, not current measured pilot results">
         <article class="outcome-stat reveal" data-delay="1">
           <span class="os-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-8"/><path d="M17 7h4v4"/></svg></span>
           <span class="os-num"><em>91</em>%</span>
@@ -596,9 +724,108 @@
         </article>
       </div>
       <p class="section-lede" style="text-align:center; margin: 18px auto 0;">
-        Quality, unit-cost and safety on one baseline &mdash; a regression on any one
-        trips the gate before the next deploy. <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">See the line-by-line cost forecast &rarr;</a>
+        Illustrative metrics only. A published number needs its dated source, workload, measurement
+        window and threshold; a release gate must be explicitly configured and verified.
+        <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">See the line-by-line cost forecast &rarr;</a>
       </p>
+    </div>
+  </section>
+
+  <section class="chapter-section governance-section" id="evidence-boundaries" data-toc-id="evidence-boundaries" data-toc-label="Evidence limits" aria-labelledby="evidence-boundaries-heading">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Dated observations &middot; selected scope</p>
+        <h2 id="evidence-boundaries-heading">Real execution. <em>Visible limits.</em></h2>
+        <p class="section-lede">Publication snapshot: September 14, 2026. Historical public business proof,
+          private BASIC model smoke and subsequent private governed allow/deny are separate milestones.
+          Labels below describe only the supplied observations,
+          not every tool or current executable authority.
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/governed-returns-validation.md">Read the dated execution record at this evidence checkpoint.</a></p>
+      </div>
+      <div class="why-grid">
+        <article class="why-card" id="s3-business-evidence" data-evidence-status="historical" aria-labelledby="s3-evidence-heading">
+          <p class="why-kicker">LIVE-EXECUTED &middot; HISTORICAL business snapshot</p>
+          <h3 id="s3-evidence-heading">S3 public hosted v5</h3>
+          <p><time datetime="2026-09-13">September 13, 2026</time>: actual model &rarr; native MAF
+            &rarr; governed MCP/ACS &rarr; separate backend &rarr; one Cosmos decision/audit.
+            Exact-ETag domain deny left the case unchanged; pending approval had no execution.</p>
+          <p>Two exposed tools: <code>returns_get_case</code> and <code>returns_apply_decision</code>.
+            Inline read audit ACK occurred <strong>before the read response</strong>.
+            The separate <strong>post-run</strong> collector joined <strong>14 tool calls</strong>
+            from <strong>8 native responses</strong>; this is not whole-agent attestation.</p>
+          <p>The expired ungranted same-session resume exposed a generic Function failed error
+            and no additional write. Its causal expiry guard was not independently isolated.
+            No financial settlement or private-network proof.</p>
+        </article>
+        <article class="why-card" id="s2-basic-evidence" data-evidence-status="live-executed-model-only" aria-labelledby="s2-evidence-heading">
+          <p class="why-kicker">LIVE-EXECUTED &middot; model only</p>
+          <h3 id="s2-evidence-heading">S2 private BASIC v7</h3>
+          <p><time datetime="2026-09-14T10:00:39Z">September 14, 2026, 10:00:39</time>&ndash;<time datetime="2026-09-14T10:00:42Z">10:00:42 UTC</time>:
+            the model returned <strong>Billing Issue</strong>. The record includes two active
+            direct version GETs, an active native session and independent response readback.</p>
+          <p>This is model smoke with <strong>no MCP or governance execution</strong>,
+            not private governed business proof. The BASIC source includes unused
+            <code>my_tool</code> and a <code>SkillsProvider</code> path; it is not a strict zero-tool control.</p>
+          <p>Earlier private provisioning failures remain historical evidence. A working model response
+            does not establish an authenticated business write or a complete causal diagnosis of those failures.</p>
+        </article>
+        <article class="why-card" id="private-governed-evidence" data-evidence-status="private-selected-allow-deny-verified" aria-labelledby="private-allow-evidence-heading">
+          <p class="why-kicker">PRIVATE SELECTED ALLOW + EXACT DENY VERIFIED &middot; September 14</p>
+          <h3 id="private-allow-evidence-heading">Private governed hosted v4</h3>
+          <p><time datetime="2026-09-14">September 14, 2026</time>: <code>returns-hosted-reference</code> v4
+            executed native MAF <code>returns_get_case</code> and <code>returns_apply_decision</code>.
+            Independent Cosmos reads confirmed a closed case with one decision/audit,
+            a completed gateway operation and a central allow receipt.</p>
+          <p>An independently verified exact-ETag domain deny used one native read and one attempted
+            write: central deny receipt, unchanged case and revision; business audit count stayed one.</p>
+          <p>Each backend inline read audit ACK occurred <strong>before the read response</strong>
+            (two inline read ACKs verified).
+            Fresh private policy and the exact agent image and identity were observed.
+            This credits two tools: the selected write and inline-audited unbound read.</p>
+          <p>Authenticated native GETs retrieved <strong>2 native responses / 4 tool calls</strong>.
+            Reconciliation used the verified private Key Vault binding and independent private Cosmos stores:
+            <strong>4/4</strong> minimized ledger records were <strong>created and read back</strong>.
+            This is <strong>post-run reconciliation</strong>, separate from the before-return read ACKs,
+            not continuous or whole-agent attestation.</p>
+          <p>No new pending intent was created because the reviewer was unavailable.
+            Private pending approval, authenticated human-approved resume,
+            positive replay and email delivery remain <strong>NOT PROVED</strong>.
+            Verified execution is not perpetual authority; future effects still require fresh checks.</p>
+          <p>Pending is not a grant. Do not borrow S1 human approval, OBO A-to-B authority,
+            or a result from another deployment. The Office 365 notification snapshot was
+            unauthenticated and the workflow Disabled; consent and delivery require real verification.</p>
+          <p>Trusted-host assumptions and two exposed tools do not establish full lifecycle/output
+            coverage, restoration, load/SLOs, privacy readiness or production certification.</p>
+          <p>Private bootstrap expires
+            <time datetime="2026-09-15T11:12:28.719119+00:00">2026-09-15T11:12:28.719119+00:00</time>;
+            private policy expires
+            <time datetime="2026-09-15T11:32:54.753384+00:00">2026-09-15T11:32:54.753384+00:00</time>.
+            Fresh checks remain required even before expiry; these leases do not renew S3.</p>
+          <p>CI remains separately blocked by three native dependency tests in the unit lane.
+            This demonstration and the page checks are not an all-green release verdict.</p>
+        </article>
+      </div>
+      <aside class="why-card" aria-labelledby="public-authority-expiry-heading" style="margin-top:24px;">
+        <p class="why-kicker">EXPIRED &middot; public S3 authority only</p>
+        <h3 id="public-authority-expiry-heading">Retained receipts are not current executable authority</h3>
+        <p>Signed bootstrap expired <time datetime="2026-09-14T10:26:48.991423+00:00">2026-09-14T10:26:48.991423+00:00</time>
+          (12:26 Italy). Final policy expired <time datetime="2026-09-14T12:03:41.859581+00:00">2026-09-14T12:03:41.859581+00:00</time>
+          (14:03 Italy). Italy labels are minute-level, UTC+02:00; the UTC timestamps retain exact precision.</p>
+        <p>The earlier bootstrap lease limits execution. Historical success required fresh checks even before expiry;
+          there is <strong>no automatic renewal</strong>. Neither expiry nor resource retention renews grants or
+          signed authority. Preserve resources, pending records and evidence; do not reset them to retry.</p>
+      </aside>
+      <div class="read-deeper">
+        <span class="rd-label">Public lab, not production compliance:</span>
+        <span>S3 used an explicitly authorized resource-group <code>SecurityControl=Ignore</code> exception,
+          not a production default or a recommendation for global policy bypass.
+          No private targets, identities, emails, credentials or raw logs are published here.</span>
+      </div>
+      <div class="cost-cta-row" style="margin-top:26px;">
+        <a class="btn btn-primary" href="./agent-governance.html">Inspect scoped governance evidence <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/governed-returns-validation.md">Read the dated execution record</a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/agent-governance-deep-dive.md">Inspect implementation and evidence joins</a>
+      </div>
     </div>
   </section>
 
@@ -608,7 +835,10 @@
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Target architecture</p>
         <h2>What <em>production</em> looks like.</h2>
-        <p class="section-lede">The scorecard drives toward one recommended posture: every model call fronted by your APIM hub, the pilot Foundry project onboarded as a private, keyless spoke. Two layers, one audit chain &mdash; built on the platform you already own.</p>
+        <p class="section-lede">A proposed customer target, not the S3 lab topology:
+          model traffic can use an APIM hub and the Foundry project a private, keyless spoke.
+          Model access and selected effect authority are separate boundaries; correlate their
+          evidence rather than assuming one audit chain from topology alone.</p>
       </div>
 
       <figure class="target-arch-fig reveal" data-delay="1" aria-labelledby="ta-cap" tabindex="0">
@@ -706,7 +936,10 @@
           <text x="611" y="423" text-anchor="middle" class="ta-edge">TELEMETRY TAP &rarr; APP INSIGHTS &middot; OPENTELEMETRY &middot; IMMUTABLE LEDGER</text>
         </svg>
         <figcaption id="ta-cap" class="ta-cap">
-          <strong>Two layers, one audit chain.</strong> Every model call passes the APIM hub; every tool call passes AGT in-process &mdash; keyless, on your network, logged once. Not a posture we invented: it is <strong>your</strong> Foundry project, hardened. Other detected postures (Foundry-native, customer-owned edge) are supported the same way.
+          <strong>Proposed layers, independently verified boundaries.</strong> When selected, an APIM hub
+          mediates the configured model route; the native host or gateway mediates explicitly bound effects.
+          Correlate their separate evidence rather than assuming every call shares one audit chain.
+          Foundry-native and customer-owned-edge postures need their own scoped validation.
         </figcaption>
       </figure>
     </div>
@@ -718,7 +951,9 @@
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Ship it &middot; the pipeline</p>
         <h2>Deploy through CI/CD &mdash; <em>not your laptop.</em></h2>
-        <p class="section-lede">One prompt generates the pipeline <em>and</em> the runbooks the platform team runs: federated identity, scoped RBAC, no secret in the repo. Every check becomes a gate &mdash; and every gate is a knob you set.</p>
+        <p class="section-lede">Generate the pipeline <em>and</em> runbooks for the platform team:
+          federated identity, scoped RBAC and no secret in the repo.
+          Select and verify the required gates explicitly; generation is not approval to deploy.</p>
       </div>
 
       <figure class="pipe-fig reveal" data-delay="1" aria-labelledby="pipe-cap" tabindex="0">
@@ -795,7 +1030,9 @@
           <text x="784" y="252" text-anchor="middle" class="pp-note">all gates green &rarr; ships &nbsp;&middot;&nbsp; any red &rarr; blocks (hard) or warns (soft)</text>
         </svg>
         <figcaption id="pipe-cap" class="pipe-cap">
-          The same amber&rarr;green checks, now enforced on merge. Nothing reaches the spoke unverified &mdash; and no client secret ever touches the repo.
+          The selected gates run in the approved workflow. Their results, missing evidence and
+          configured hard/soft behavior remain visible; no blanket all-resources verification is implied.
+          Keep client secrets out of the repository.
         </figcaption>
       </figure>
 
@@ -849,7 +1086,9 @@
             <p>One prompt resolves the posture and walks all thirteen pillars.</p>
             <pre class="code-callout" tabindex="0" aria-label="Invoke threadlight-production-ready"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-production-ready on this pilot. Detect the posture; production load is 800 rpm."</span>
 <span class="out">&mdash; reads <code>skills/threadlight-production-ready/SKILL.md</code>, resolves posture, walks 13 pillars,
-  writes <code>docs/production-readiness-report.md</code> &middot; ready in ~7m</span></pre>
+  writes <code>docs/production-readiness-report.md</code></span></pre>
+            <p>Report generation time varies; completion is not readiness. A duration claim needs
+              a dated capture, workload and measurement definition &mdash; it is not a time-to-production promise.</p>
           </div>
         </div>
 
@@ -857,8 +1096,9 @@
           <div class="step-rail"><span class="step-num">2</span><span class="step-line"></span></div>
           <div class="step-body">
             <p class="kicker">Close the amber gaps</p>
-            <h3>Run the skill that closes each gap.</h3>
-            <p>Each amber pillar has a skill that turns it green &mdash; and commits the proof behind it.</p>
+            <h3>Assign an owner, remediate and verify.</h3>
+            <p>Skills support the work; fresh checks establish closure. Consent, external permissions
+              and customer decisions may remain blocked. A waiver records accepted risk, not a technical pass.</p>
             <pre class="code-callout" tabindex="0" aria-label="Invoke the evidence legs"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-govern to scaffold and validate the agent policy artefact."</span>
 <span class="prompt">&gt;</span> <span class="arg">"Use threadlight-evals to wire continuous evaluation and an A/B release gate."</span>
 <span class="prompt">&gt;</span> <span class="arg">"Use threadlight-redteam to score the AI Red Teaming Agent scan into a verdict."</span>
@@ -880,14 +1120,18 @@
         <div class="step reveal" data-delay="2">
           <div class="step-rail"><span class="step-num">4</span><span class="step-line"></span></div>
           <div class="step-body">
-            <p class="kicker">Read it &amp; ship</p>
-            <h3>Sign the waivers, hand it over.</h3>
-            <p>Open <code>docs/production-readiness-report.md</code>, sign each amber waiver with its owner, hand the pipeline to the platform team. Everything the board needs is committed &mdash; nothing in a console tab to screenshot.</p>
+            <p class="kicker">Review before go-live</p>
+            <h3>Decide with accountable reviewers.</h3>
+            <p>Open <code>docs/production-readiness-report.md</code>; review current evidence,
+              coverage and remaining findings. A ship-with-waivers decision requires an authenticated
+              human decision record, named owners, scope, compensating controls and expiry/review conditions.
+              Pipeline generation is a separate handoff, not deployment approval.</p>
           </div>
         </div>
       </div>
 
       <div class="cost-cta-row reveal" data-delay="2" style="margin-top: var(--s-5);">
+        <a class="btn btn-ghost" href="./funnel.html#scene-cta">Start a pilot <span class="arrow">&rarr;</span></a>
         <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills" target="_blank" rel="noopener">Open the repo <span class="arrow">↗</span></a>
         <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-production-ready" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
         <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md" target="_blank" rel="noopener">Read the 13-pillar reference <span class="arrow">↗</span></a>
@@ -900,8 +1144,10 @@
     <div class="wrap">
       <div class="section-head" style="text-align:center; margin: 0 auto 24px;">
         <p class="eyebrow"><span class="dot"></span>Recap</p>
-        <h2>One scorecard &mdash; <em>three colours.</em></h2>
-        <p class="section-lede" style="margin: 0 auto;">The whole engagement reduces to one committed artifact with three honest states &mdash; and no fourth.</p>
+        <h2>Fast prototypes. <em>Reviewable production evidence.</em></h2>
+        <p class="section-lede" style="margin: 0 auto;">Explicit effect authority is one part of readiness.
+          Color is a summary, not the contract: pass, should-fix, must-fix, not-applicable,
+          not-verified and waived remain distinct findings.</p>
       </div>
 
       <div class="legend-3 reveal" data-delay="1">
@@ -913,16 +1159,21 @@
         <div class="lg amber">
           <span class="swatch" aria-hidden="true"></span>
           <h4>Amber</h4>
-          <p>A gap with a named owner and a signed waiver &mdash; visible, dated, on the clock to green.</p>
+          <p>A gap needs an owner and remediation. Any accepted waiver needs explicit scope,
+            conditions and a review date; it is not evidence of technical closure.</p>
         </div>
         <div class="lg grey">
           <span class="swatch" aria-hidden="true"></span>
           <h4>Not-verified</h4>
-          <p>Couldn&rsquo;t observe it &mdash; no read access. It never fails the build; it just stays honest.</p>
+          <p>Could not verify it &mdash; for example, missing access or unexecuted checks.
+            Advisory reporting and explicit strict readiness gates have different exit behavior;
+            unverified evidence is not a pass.</p>
         </div>
       </div>
 
-      <p class="recap-close reveal" data-delay="2">There&rsquo;s <strong>no red</strong>. The scorecard surfaces a posture, not a build failure &mdash; so the conversation with the board is about evidence, not blame.</p>
+      <p class="recap-close reveal" data-delay="2">A selected path can be enforced while another remains
+        unbound or unverified. The advisory scorecard does not hide must-fix findings;
+        production requires current evidence and accountable owners beyond the demonstration.</p>
 
       <div class="chapter-recap-block">
         <div class="recap-cta">

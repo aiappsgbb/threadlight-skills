@@ -1,13 +1,13 @@
 // Home "How it works" primer band (docs/index.html).
 // Closes two onboarding gaps: (1) a plain-English teach of the four building
 // blocks, and (2) a one-glance "who does what" stack — Copilot builds, Foundry
-// runs, Foundry governs.
+// runs, trusted components authorize selected effects.
 import { test, expect } from '@playwright/test';
 
 const LANDING = '/index.html';
 
 test.describe('home — "how it works" primer band', () => {
-  test('renders the three-role stack: Copilot builds, Foundry runs, Foundry governs', async ({ page }) => {
+  test('renders the three-role stack: Copilot builds, Foundry runs, trusted components authorize', async ({ page }) => {
     await page.goto(LANDING);
     const band = page.locator('#how-it-works');
     await band.scrollIntoViewIfNeeded();
@@ -22,9 +22,10 @@ test.describe('home — "how it works" primer band', () => {
     // Role 2 — Foundry runs
     await expect(roles.nth(1)).toContainText(/Foundry/i);
     await expect(roles.nth(1).locator('.hiw-verb')).toHaveText(/runs/i);
-    // Role 3 — Foundry governs
-    await expect(roles.nth(2)).toContainText(/Foundry/i);
-    await expect(roles.nth(2).locator('.hiw-verb')).toHaveText(/govern/i);
+    // Role 3 — distinct effect authority, not hosting or evals alone.
+    await expect(roles.nth(2)).toContainText(/Trusted host & gateway/i);
+    await expect(roles.nth(2).locator('.hiw-verb')).toHaveText(/authorize/i);
+    await expect(band).toContainText(/explicit opt-in/i);
 
     // The run stage names the Foundry Hosted Agent — the production runtime.
     await expect(roles.nth(1)).toContainText(/Hosted Agent/i);

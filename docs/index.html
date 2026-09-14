@@ -887,7 +887,7 @@
   <section class="scene how-it-works" id="how-it-works" aria-labelledby="hiw-h">
     <div class="wrap">
       <p class="eyebrow reveal"><span class="dot"></span>Before you press play · how it actually works</p>
-      <h2 id="hiw-h" class="display reveal" data-delay="1">You describe it. <em>Copilot builds it. Foundry runs &amp; governs it.</em></h2>
+      <h2 id="hiw-h" class="display reveal" data-delay="1">You describe it. <em>Copilot builds it. Foundry runs it.</em></h2>
       <p class="sub reveal" data-delay="2">
         Threadlight is 24 <strong>skills</strong> — Markdown playbooks GitHub&nbsp;Copilot follows in your
         repo to <strong>drive Microsoft Foundry, not replace it</strong>. They span a
@@ -895,6 +895,10 @@
         gates, to on-demand <strong>evidence &amp; lifecycle legs</strong>. Here&rsquo;s the whole stack behind the
         <strong>working pilot with selected runtime governance</strong> — and the four words you&rsquo;ll see in the reel — in one glance.
       </p>
+      <p class="sub reveal" data-delay="2">The <strong>prototype path remains unchanged</strong>.
+        Governance is an <strong>explicit opt-in before selected effects</strong>, not automatic all-tools protection.
+        The model proposes; trusted components authorize effects.
+        <a href="./production.html#effect-authority">Understand the effect boundary &rarr;</a></p>
 
       <div class="hiw-stack reveal" data-delay="2" role="list" aria-label="Who does what across the stack">
         <div class="hiw-role is-build" role="listitem">
@@ -913,9 +917,9 @@
         <span class="hiw-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span>
         <div class="hiw-role is-govern" role="listitem">
           <span class="hiw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
-          <b>Foundry models &amp; evals</b>
-          <span class="hiw-verb">govern</span>
-          <span class="hiw-say">Policy, evals and a red-team scan score every pass before it&rsquo;s allowed to ship.</span>
+          <b>Trusted host &amp; gateway</b>
+          <span class="hiw-verb">authorize</span>
+          <span class="hiw-say">Selected effects require identity, policy, facts and durable audit checks. Evals and red-teaming provide separate evidence; people decide go-live.</span>
         </div>
       </div>
 
@@ -1153,19 +1157,19 @@
             </article>
 
             <!-- ── BEAT 6 · production-ready scorecard ──────────── -->
-            <article class="beat" data-beat="6" aria-label="Beat 6 — production-ready scorecard">
+            <article class="beat" data-beat="6" aria-label="Beat 6 — illustrative production-readiness scorecard, not go-live approval">
               <div class="beat-head">
                 <span class="beat-step"><b>06</b> / 06</span>
                 <h2 class="beat-title">Scored for <em>production.</em></h2>
               </div>
-              <p class="beat-caption">A deployed MVP isn’t the finish line. <span class="skill">threadlight-production-ready</span> scores the agent across thirteen pillars — network, governance, identity, evals, responsible AI, reliability — then writes the customer hand-off package: 92/100, ship with two waivers. The prototype becomes something an ARB can sign off and an SRE can run.</p>
-              <article class="scorecard-preview" aria-label="Production-readiness scorecard">
+              <p class="beat-caption"><strong>Illustrative scorecard — review findings, coverage and dates.</strong> <span class="skill">threadlight-production-ready</span> records raw and waiver-adjusted scores, outstanding findings and owners. Accountable reviewers make the go-live decision; this recreation is not a score promise or a signed approval.</p>
+              <article class="scorecard-preview" aria-label="Illustrative scorecard with example finding statuses, not current readiness">
                 <header class="sc-header">
                   <div>
                     <p class="sc-title">› Use <span class="skill">threadlight-production-ready</span> to score this for production and write the customer hand-off.</p>
-                    <p class="sc-headline">Credit-memo agent &middot; <em>13-pillar scorecard</em></p>
+                    <p class="sc-headline">Illustrative credit-memo agent &middot; <em>13-pillar scorecard</em></p>
                   </div>
-                  <p class="sc-posture"><span class="sc-score" data-reel-counter data-to="92">0<span class="den">/100</span></span><br><span style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-2);">Citadel-spoke posture</span></p>
+                  <p class="sc-posture"><strong>Review evidence</strong><br><span style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-2);">Illustrative Citadel-spoke posture</span></p>
                 </header>
                 <div class="sc-grid">
                   <div class="sc-pillar is-green"><span class="sc-dot"></span><span class="sc-num">01</span><span class="sc-name">Network posture</span></div>
@@ -1184,11 +1188,11 @@
                 </div>
                 <footer class="sc-footer">
                   <p class="sc-legend">
-                    <span><i class="lg-green"></i>verified</span>
-                    <span><i class="lg-amber"></i>waiver</span>
-                    <span><i class="lg-grey"></i>not-verified</span>
+                    <span><i class="lg-green"></i>example pass</span>
+                    <span><i class="lg-amber"></i>example waiver</span>
+                    <span><i class="lg-grey"></i>example not-verified</span>
                   </p>
-                  <p class="sc-take">ARB take: <strong>ship with 2 waivers</strong> · customer hand-off package written</p>
+                  <p class="sc-take"><strong>Illustrative review scenario — no go-live approval evidenced here.</strong></p>
                 </footer>
               </article>
               <p class="kit-note">
@@ -1210,14 +1214,14 @@
               </div>
               <p class="beat-caption">And that&rsquo;s the whole arc. This evidence-backed recreation walks a curated demo path through the 24-skill library: one paragraph becomes a working agent — with the live-run proof captured in the case study, plus the customer talk-deck and prep-guide to walk in with.</p>
               <div class="close-stats">
-                <div class="cs"><b>92/100</b><span>Production-ready score · ship with 2 waivers</span></div>
-                <div class="cs"><b>13 pillars</b><span>Verified for ARB sign-off &amp; SRE hand-off</span></div>
-                <div class="cs"><b class="cs-accent">captured proof</b><span>Governed agent backed by the case study run</span></div>
+                <div class="cs"><b>Review evidence</b><span>Illustrative scorecard — review findings, coverage and dates.</span></div>
+                <div class="cs"><b>13 pillars</b><span>Evidence for ARB review &amp; SRE hand-off, not a signed decision</span></div>
+                <div class="cs"><b class="cs-accent">captured proof</b><span>Scoped historical observations in the linked case study</span></div>
                 <div class="cs"><b>sales kit</b><span>Customer talk-deck + seller prep-guide</span></div>
               </div>
               <p class="close-payoff">
                 Idea &rarr; production, through a <em>curated demo path.</em>
-                <span class="close-sub">Grounded in captured live-run proof · everything past the PoC handled — govern, evals, red-team, scorecard, hand-off.</span>
+                <span class="close-sub">Grounded in captured live-run proof · governance, evals, red-team, scorecard and hand-off each need their own evidence.</span>
               </p>
             </article>
 
@@ -1313,14 +1317,14 @@
         <li class="rf-step"><span class="rf-n">02</span><b>Design</b><span>spec, code &amp; sales kit</span></li>
         <li class="rf-step"><span class="rf-n">03</span><b>Local</b><span>answers live, tools traced</span></li>
         <li class="rf-step"><span class="rf-n">04</span><b>Deploy</b><span>azd up into your Azure</span></li>
-        <li class="rf-step"><span class="rf-n">05</span><b>Govern</b><span>policy · evals · red-team</span></li>
-        <li class="rf-step"><span class="rf-n">06</span><b>Score</b><span>13-pillar production gate</span></li>
+        <li class="rf-step"><span class="rf-n">05</span><b>Govern</b><span>selected effect controls · separate assurance</span></li>
+        <li class="rf-step"><span class="rf-n">06</span><b>Score</b><span>13-pillar readiness review</span></li>
       </ol>
 
       <div class="recap-outcomes reveal" data-delay="3">
         <div class="oc"><b>Your subscription</b><span>Foundry, hosted agent, Cosmos &amp; App Insights — in your own tenant, on your data.</span></div>
-        <div class="oc"><b>Safe by default</b><span>AGT policy, evals and red-team gates run on every single pass.</span></div>
-        <div class="oc"><b class="oc-stat">92–100</b><span>The 13-pillar production-ready scorecard — earned, not asserted.</span></div>
+        <div class="oc"><b>Explicit effect authority</b><span>Opt in before selected effects. Policy, evals and red-teaming prove different things.</span></div>
+        <div class="oc"><b>Evidence, not a score promise</b><span>Illustrative scorecard example — not a promised score range.</span></div>
         <div class="oc"><b>A walk-in kit</b><span>A brand-matched talk deck and seller prep-guide, from the same run.</span></div>
       </div>
 

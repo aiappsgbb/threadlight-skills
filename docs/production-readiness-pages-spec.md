@@ -16,11 +16,19 @@ navigation, with desktop/mobile dark/light rendered checks and focused keyboard,
 landmark, link and privacy validation. This is a local/PR preview,
 **not a production Pages deployment** or a whole-site accessibility certificate.
 
-The existing `index.html`, `funnel.html` and `production.html` copy changes below
-remain a separately owned implementation/review surface until their scoped
-handoff is accepted. Their work does not block the dedicated page preview.
-No shared theme, process-library generator or production workflow was changed
-for the dedicated page.
+**Legacy page copy implemented:** `index.html`, `funnel.html` and
+`production.html` now include the reviewed claim corrections, effect-authority
+and evidence sections, and a link to the dedicated page. The writer released
+ownership before integration; no concurrent editor or shared-theme rewrite was
+used. Targeted Node/link checks and desktop/mobile browser observations passed.
+The formal Playwright/axe runner remains unexecuted in the implementation
+session because its test dependency was absent; this is not full WCAG or
+production-deployment proof.
+
+The source inventory and proposed-copy tables below retain the pre-implementation
+review contract. The accepted branch HTML owns its final text; the acceptance
+criteria are not a declaration that every future publication check has passed.
+No shared theme, process-library generator or production workflow was changed.
 
 The engineering companion is [Agent governance at the effect boundary](agent-governance-deep-dive.md).
 The [scenario execution record](governed-returns-validation.md) owns dated
@@ -256,8 +264,9 @@ Do not invent a one-click deployment or automatically trigger a live probe.
 
 ### I. Publisher claim-by-claim corrections
 
-These phrases are present in the current HTML source; the following changes
-are **PROPOSED ONLY**. No source HTML has been edited for this specification.
+These phrases were present in the HTML source reviewed for this specification;
+the table records the proposed corrections now implemented in the branch.
+The HTML is not yet a production Pages deployment.
 Use these exact replacements unless the stricter retention condition in the
 last column is independently met and reviewed. This is a copy correction, not
 authority to collect new live evidence or change a production workflow.
@@ -497,9 +506,9 @@ not claimed passes from this task.
 
 ## Handoff and explicit non-goals
 
-The next implementer can make a small patch to `docs/index.html`,
-`docs/funnel.html` and `docs/production.html`, plus narrowly corresponding
-publication/link tests, under separate ownership. Do not redesign navigation,
+The implemented patch covers `docs/index.html`, `docs/funnel.html` and
+`docs/production.html`, plus narrowly corresponding publication/link tests.
+Future refinements require explicit scope and current evidence. Do not redesign navigation,
 change themes, regenerate the library, edit production workflows or deploy
 resources as a side effect of that copy work.
 

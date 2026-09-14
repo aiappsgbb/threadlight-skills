@@ -241,18 +241,18 @@ test.describe('public-safety audit — no internal-only phrasing leaks', () => {
 test.describe('funnel chapter — the five-stage narrative (funnel.html)', () => {
   test('hero: Threadlight title, the process → agent headline, and the technical-briefing CTA', async ({ page }) => {
     await page.goto('/funnel.html');
-    await expect(page).toHaveTitle(/governed working pilot funnel/i);
+    await expect(page).toHaveTitle(/working pilot funnel/i);
     await expect(page.locator('meta[name="description"]')).toHaveAttribute(
       'content',
-      /governed working pilot.*evidence-backed path to production.*24-skill library/i,
+      /working pilot.*evidence-backed path to production.*24-skill library.*explicit opt-in/i,
     );
     await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
       'content',
-      /governed working pilot.*evidence-backed path to production.*24-skill library/i,
+      /working pilot.*evidence-backed path to production.*24-skill library.*explicit opt-in/i,
     );
     await expect(page.locator('meta[name="twitter:description"]')).toHaveAttribute(
       'content',
-      /governed working pilot.*evidence-backed path to production.*24-skill library/i,
+      /working pilot.*evidence-backed path to production.*24-skill library.*explicit opt-in/i,
     );
     const headline = page.locator('#scene-hero .hero-headline');
     await expect(headline).toContainText(/Business\s+process/i);
@@ -294,7 +294,7 @@ test.describe('funnel chapter — the five-stage narrative (funnel.html)', () =>
     const steps = page.locator('#scene-funnel .funnel-step');
     await expect(steps).toHaveCount(5);
     const all = (await steps.allTextContents()).join(' | ');
-    for (const token of ['01', 'Conversation', '02', 'Co-design', '03', 'Deploy', '04', 'Safe-check', '05', 'Production']) {
+    for (const token of ['01', 'Prototype', '02', 'Select effects', '03', 'Implement controls', '04', 'Prove the selected path', '05', 'Review production readiness']) {
       expect(all, `funnel flow should name ${token}`).toContain(token);
     }
     const hrefs = await steps.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
