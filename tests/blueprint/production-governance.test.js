@@ -127,3 +127,16 @@ test('legacy implementation status and no-JavaScript test routing are explicit',
   const browserTest = fs.readFileSync(path.join(docs, '../tests/playwright/tests/production-governance.spec.mjs'), 'utf8');
   assert.ok(browserTest.includes('baseURL: testInfo.project.use.baseURL'));
 });
+
+test('new governance contrast fixes are page-local and keep links distinguishable', () => {
+  const style = read('production.html').match(/<style>([\s\S]*?)<\/style>/)[1];
+  const rules = [...style.matchAll(/([^{}]+)\{([^}]+)\}/g)];
+  for (const selector of ['.governance-section .eyebrow', '.governance-section .rd-label',
+    '.governance-section .section-lede a']) {
+    assert.ok(rules.some(([, selectors, declarations]) => selectors.split(',').some((s) => s.trim() === selector)
+      && /color:\s*var\(--ink-1\)/.test(declarations)), selector);
+  }
+  assert.ok(rules.some(([, selectors, declarations]) => selectors.trim() === '.governance-section .section-lede a'
+    && /text-decoration:\s*underline/.test(declarations)));
+  assert.doesNotMatch(style, /outline:\s*(?:none|0)(?:[;}])/);
+});
