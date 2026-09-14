@@ -37,6 +37,17 @@ def test_mcp_gate_requires_generated_project_closure():
     } <= runner.MCP_REQUIRED_CASES
 
 
+@pytest.mark.parametrize("deferred", [False, True])
+def test_mcp_gate_requires_both_parameterized_native_host_modes(tmp_path, deferred):
+    name = f"test_native_responses_host_uses_signed_authority_and_mcp[{deferred}]"
+    assert name in runner.MCP_REQUIRED_CASES
+    assert "test_native_responses_host_uses_signed_authority_and_mcp" not in runner.MCP_REQUIRED_CASES
+    path = tmp_path / "missing-host.xml"
+    report(path, sorted(runner.MCP_REQUIRED_CASES - {name}))
+    with pytest.raises(RuntimeError, match="MCP"):
+        runner.verify_mcp_junit(path)
+
+
 def test_deferred_gate_requires_actual_human_resume_and_negative_cases(tmp_path):
     assert hasattr(runner, "DEFERRED_REQUIRED_CASES")
     required = runner.DEFERRED_REQUIRED_CASES

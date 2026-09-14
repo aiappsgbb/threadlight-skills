@@ -136,3 +136,22 @@ def test_september14_private_retry_is_not_presented_as_transient_resolution():
         "no new business invocation", "same raw manifest",
     ):
         assert marker in text
+
+
+def test_readme_exposes_implementation_evidence_and_proposed_pages_separately():
+    text = " ".join((ROOT / "README.md").read_text().split())
+    for target in ("docs/agent-governance-deep-dive.md", "docs/governed-returns-validation.md",
+                   "docs/production-readiness-pages-spec.md"):
+        assert f"]({target})" in text
+    assert "proposed, not a published site change" in text
+
+
+def test_public_receipts_do_not_renew_distinct_bootstrap_and_policy_leases():
+    text = " ".join(REPORT.read_text().split())
+    for marker in (
+        "2026-09-14T10:26:48.991423+00:00",
+        "2026-09-14T12:03:41.859581+00:00",
+        "Historical successful receipts are not current executable authorization",
+        "the earlier bootstrap expiry",
+    ):
+        assert marker in text

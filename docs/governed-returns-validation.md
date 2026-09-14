@@ -983,9 +983,18 @@ No hybrid network or scheduled cleanup was created.
 | Final policy | `returns-public-v1`, version `5` |
 | Final policy digest | `sha256:c44746f2cafb96065cd9f18727e51f9774e469860c61bf08f196bc9359dafafb` |
 | Signed bootstrap reference | `returns-public-s3-wire5-20260913` |
+| Signed bootstrap expiry | `2026-09-14T10:26:48.991423+00:00` (12:26 Italy) |
+| Final signed policy expiry | `2026-09-14T12:03:41.859581+00:00` (14:03 Italy) |
 | Control image digest | `sha256:f6ac63620bf4ddd67129067d119f6d8848f3091f8116ed3a35ef394c198d282f` |
 | Gateway image digest | `sha256:d2bec104be33824036f523b0098cfb3baca12076330904f21651d27f8277af1f` |
 | Corrected read-audit business image | `sha256:986370c2c0eb52d5d6ce3edbb2cdbf419f8508b194db6c1cca52fdfdd96615ff` |
+
+**Historical successful receipts are not current executable authorization.**
+These are separate leases: the earlier bootstrap expiry cannot be extended by
+the later policy expiry. Fresh signature, binding, identity, policy and action
+checks remain necessary even before either timestamp. No lease, old reference
+or human intent was renewed by retaining this evidence. Expiry revokes
+authority, not the instruction to preserve the resources.
 
 The MAF/core/foundry/hosting versions remained `1.14.0` / `1.11.0` /
 `1.0.0b260813`; the canonical hosted cohort used Agent Server core/responses
