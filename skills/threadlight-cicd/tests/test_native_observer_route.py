@@ -284,6 +284,30 @@ def _approve_baseline(fixture, observer, wrong=None):
     return path
 
 
+def test_runtime_baseline_fixture_tracks_current_clock(native_execution):
+    from datetime import datetime, timedelta, timezone
+    fixture, observer, _ = native_execution
+    age = datetime.now(timezone.utc) - observer.contract._timestamp(fixture.fixture.native["finished_at"])
+    assert timedelta(minutes=59) <= age < timedelta(minutes=61)
+
+
+@pytest.mark.parametrize("age_hours", [25, -1], ids=["expired", "future"])
+def test_bound_baseline_freshness_still_rejects_before_native_execution(native_execution, age_hours):
+    from datetime import datetime, timedelta, timezone
+    fixture, observer, commands = native_execution
+    finished = datetime.now(timezone.utc) - timedelta(hours=age_hours)
+    fixture.fixture.native.update(
+        started_at=(finished - timedelta(minutes=5)).isoformat(), finished_at=finished.isoformat())
+    path = _approve_baseline(fixture, observer)
+    before = observer.contract.read_bytes(fixture.repo, path)
+    identity = observer.contract.discover_opted_in_agents(fixture.repo)[0]
+    error = "future-evidence" if age_hours < 0 else "fresh-bound-baseline-required"
+    with pytest.raises(observer.contract.AgentOpsValidationError, match=error):
+        observer._preflight(fixture.repo, identity, "eval", None)
+    assert commands == []
+    assert observer.contract.read_bytes(fixture.repo, path) == before
+
+
 @pytest.mark.parametrize("wrong", ["baseline_dataset_sha256", "baseline_target_sha256"])
 def test_baseline_must_be_independently_bound_before_native_execution(native_execution, wrong):
     fixture, observer, commands = native_execution

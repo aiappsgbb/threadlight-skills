@@ -13,13 +13,19 @@ SERVICE_ENVIRONMENT = frozenset({
 DECLARED_FILES = frozenset({"host", "fixture", "native_probe"})
 
 
-def public_proof_network_evidence():
-    return {"posture": "public-authenticated-proof", "scope": "runtime-governance-proof-only",
-            "network_isolation": "not-established", "cleanup_required": True}
+def public_proof_network_evidence(*, preserve_resources=False):
+    if type(preserve_resources) is not bool:
+        raise ValueError("public-proof-retention-invalid")
+    evidence = {"posture": "public-authenticated-proof", "scope": "runtime-governance-proof-only",
+                "network_isolation": "not-established", "cleanup_required": not preserve_resources}
+    if preserve_resources:
+        evidence["preserve_resources"] = True
+    return evidence
 
 
 def validate_network_evidence(value):
-    expected = public_proof_network_evidence()
+    expected = public_proof_network_evidence(
+        preserve_resources=isinstance(value, dict) and value.get("preserve_resources") is True)
     if (not isinstance(value, dict) or set(value) != set(expected)
             or any(type(value[key]) is not type(item) or value[key] != item for key, item in expected.items())):
         raise ValueError("public-proof-network-disclosure-invalid")

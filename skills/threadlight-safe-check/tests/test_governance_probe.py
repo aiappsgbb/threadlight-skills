@@ -408,9 +408,19 @@ async def packaged_gateway_project(path, h, config):
                                       "tools": ["governance_probe_noop", "read"]}},
         "mcp_bindings": {"governance_probe_noop": {"server": "original", "tool": "governance_probe_noop"}},
     }
+    if config["contract"]["framework"] == "microsoft-agent-framework":
+        packaged.pop("mcp_servers")
+        packaged.pop("mcp_bindings")
+        (agent / "governance_application.py").write_text(
+            "from agent_framework import tool\nmiddleware = []\n"
+            "@tool\n"
+            "def read() -> str:\n"
+            "    '''Read without policy selection.'''\n"
+            "    return 'read'\n"
+            "tools = [read]\n")
     deployment = deployment_fixture(packaged)
     infra, b, obs = deployment["infrastructure"], deployment["bindings"], deployment["observations"]
-    infra.update(runtime="github-copilot-sdk", enable_gateway=True, agent_id="agent-1",
+    infra.update(runtime=config["contract"]["framework"], enable_gateway=True, agent_id="agent-1",
                  probe_observability=packaged["probe_observability"])
     for key in ("human_clients", "approver_subjects", "auditor_subjects", "approver_roles"):
         infra[key] = config["auth"]["control_plane"][key]

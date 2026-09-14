@@ -6,10 +6,33 @@ description: >-
   remediation ownership or an explicit CI readiness gate. Not for deployment,
   runtime implementation, model evaluation or hub provisioning.
 metadata:
-  version: "0.13.0"
+  version: "0.14.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
+
+## Enterprise handoff: three areas
+
+The report opens with a presentation-only view of existing findings:
+
+| Area | Enterprise baseline to assess | Optional / conditional modules |
+|---|---|---|
+| DevOps | Private network boundary, dedicated workload identity, least privilege, protected secrets, reproducible release and rollback | Citadel when selected, landing-zone integration, private-runner provisioning, multi-region |
+| Runtime governance | Explicit tools, input validation, ordinary backend authorization and code execution disabled by default in the proposed configuration | SAFE/ACS/Agent Hooks for selected tools, authenticated HITL/resume, OBO where required, grounding/quality/authority assurance |
+| Operations | Owner/escalation, health/telemetry, delivered alerts, runbook/recovery, cost/budget ownership, restore where state requires it | Azure SRE Agent, continuous eval, recurring red-team, advanced load tests, PTU optimization, dashboards and upgrade automation |
+
+These are requirements to assess, not controls installed by rendering a report.
+Explicit opt-in selects advanced modules; a domain, template or finding is not
+consent. A module required by the selected business process remains mandatory.
+Rapid prototyping stays unchanged. No new score, gate, manifest or prototype stage
+is introduced, and existing selected-binding gates are not relaxed.
+
+The view groups the current manifest's emitted findings exactly once, preserving
+their statuses and experimental selection. Missing/N/A findings and a lack of
+open findings never establish baseline acceptance. Detailed pillar, evidence,
+waiver and KPI sections remain available; legacy scores are advisory, not proof
+that the enterprise baseline is complete. Implementation and deployment still
+require an approved specification and explicit action.
 
 ## Optional AgentOps operations evidence
 
@@ -173,6 +196,19 @@ agent as apply-plan tasks. The single documented exception is `--scaffold-cicd`,
 `docs/threadlight-cicd/central-team-uami-readme.md`) into the customer repo so
 the production-onboarding pipeline can run. That exception is bounded, opt-in,
 and writes deterministic templates only — it does not emit remediation patches.
+
+## Assessment-to-plan handoff
+
+Current `must-fix`, `should-fix`, and `not-verified` findings are preserved
+in the apply-plan from native pillar output or a flat findings list.
+Legacy `fail` and `warn` remain supported. `pass`, `not-applicable`, and
+`waived` findings are not proposed for remediation.
+
+The plan retains source order and the full source-manifest hash.
+Restricted environments retain the existing manual-handoff behavior.
+A plan is a proposal, not approval to edit, provision or deploy.
+This status compatibility fix does not change the onboarding CLI's input
+contract, readiness scoring, governance selection, or prototype workflow.
 
 ## How to invoke
 

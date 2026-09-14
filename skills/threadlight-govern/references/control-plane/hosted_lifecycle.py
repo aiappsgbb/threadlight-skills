@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from importlib.metadata import version
 import json
@@ -18,6 +19,7 @@ ENVIRONMENT = frozenset({
     "AZURE_AI_MODEL_DEPLOYMENT_NAME", "TL_GOV_SPOOL_DIR",
     "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT",
 })
+HOSTED_METADATA = {"enableVnextExperience": "true"}
 
 
 def validate(config):
@@ -128,8 +130,10 @@ def create_once(client, config, attempt):
         environment_variables=config["environment_variables"],
     )
     persist(attempt, state, exclusive=True)
-    created = client.agents.create_version(agent_name=config["agent_name"], definition=definition,
-                                           retry_total=0)
+    # Match azd's applyAgentMetadata server-side contract; the SDK does not add it.
+    created = client.agents.create_version(
+        agent_name=config["agent_name"], definition=definition,
+        metadata=dict(HOSTED_METADATA), retry_total=0)
     assigned = parse(Identifier, canonical(created.version))
     if created.name != config["agent_name"]:
         raise ValueError("created_agent_mismatch")
@@ -150,6 +154,9 @@ def _observe_version(client, config, state):
     actual = client.agents.get_version(
         agent_name=config["agent_name"], agent_version=state["version"],
         retry_total=0, connection_timeout=5, read_timeout=30)
+    if (not isinstance(actual.metadata, Mapping)
+            or any(actual.metadata.get(key) != value for key, value in HOSTED_METADATA.items())):
+        raise ValueError("observed_hosted_experience_mismatch")
     if (actual.name != config["agent_name"] or actual.version != state["version"]
             or actual.id != state["version_id"] or actual.instance_identity is None
             or actual.definition.container_configuration.image != config["image"]

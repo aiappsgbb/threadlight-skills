@@ -107,6 +107,26 @@ class CosmosEffectTransport(AsyncHttpTransport):
              "ifMatch": replace[2]["if_match_etag"]},
             {"operationType": "Create", "resourceBody": create[1][0]},
         ]
+        with self._guarded_batch(check, container, partition_key, expected):
+            yield
+
+    @contextmanager
+    def append_audit(self, check, container, partition_key, document):
+        if (not isinstance(document, dict) or set(document) != {"id", "scope", "body"}
+                or not isinstance(document["id"], str) or not document["id"].startswith("read-")
+                or document["scope"] != partition_key or not isinstance(document["body"], dict)
+                or document["body"].get("kind") != "case-read"
+                or document["body"].get("action_id") != "returns_get_case"
+                or document["body"].get("policy_binding") != "none"):
+            reject_effect()
+        with self._guarded_batch(
+                check, container, partition_key, [{"operationType": "Create", "resourceBody": document}]):
+            yield
+
+    @contextmanager
+    def _guarded_batch(self, check, container, partition_key, expected):
+        if not any(container is owned for owned in self._containers):
+            reject_effect()
         state = {"check": check, "body": digest(expected), "partition": digest([partition_key]),
                  "path": "/" + container.container_link.strip("/") + "/docs", "active": True}
         token = self._batch.set(state)
