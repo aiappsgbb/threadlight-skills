@@ -62,9 +62,10 @@ and [govern skill](../skills/threadlight-govern/SKILL.md).
 | Durable receipts and reconciliation | Evidence of scoped decisions and observed effects | Continuous remote attestation of the entire agent |
 
 The public S3 and private S2 outcomes make the distinction concrete: public
-authenticated infrastructure executed the selected business control; a private
-startup control never reached a session. Neither outcome reverses the other's
-network or authority evidence.
+authenticated infrastructure executed the selected business control. Earlier
+private startup controls failed before sessions; private BASIC version 7 later
+produced a real model response. That private hosting success still does not
+establish selected business authority or complete network-isolation assurance.
 
 ## Threat model and trusted computing base
 
@@ -722,6 +723,7 @@ implementation from scenario execution.
 | **S2 · private pre-session failure · 2026-09-13** | Canonical control without governance/bootstrap/business tools also failed. The project managed identity had attributed registry `Login`/`Pull` HTTP 200 with `Buildah/1.42.1` on the exact image; operator Push and security-scanner pulls were separated | No native session/business call. No per-caller blob completion, layer unpacking, snapshot creation or startup proof; root cause not established. Aggregate GetBlob metrics cannot fill that gap |
 | **S2 · recorded update · 2026-09-14** | [Sole unchanged canonical diagnostic](governed-returns-validation.md#september-14-one-unchanged-private-transient-control-retry): native azd `1.27.0` registered version 4; direct GET again reported `ProvisioningError`, with no native sessions. Same frozen manifest and observed account/project/model/network/host scopes; fresh project-MI Login/Pull 200 remained distinct from operator/scanner activity | No overnight recovery observed. `READY_FOR_REGISTRATION` / `NOT_TESTED` setup is not hosted runtime proof. No per-caller blob completion, unpacking, snapshot or root-cause proof. This parent-owned diagnostic was not run by the documentation task; unchanged failure does not prove a backend defect |
 | **S2 · separate egress authorization · 2026-09-14, 10:55 Italy** | [Scoped egress inspection](governed-returns-validation.md#september-14-scoped-egress-inspection-with-no-network-change): hosted subnet had no NSG/UDR, no applicable customer firewall route and existing shared NAT/PIP. There was no customer network change. One frozen private-control version 5 again failed with zero sessions, despite six project-MI Login/Pull 200 events from that hosted subnet | This was not an A/B relaxation test. Shared NAT metrics are not hosted Internet egress proof; no managed source VM/NIC was exposed for effective routing or Network Watcher. Registry acquisition does not establish all blobs/unpacking/snapshot or a backend cause |
+| **S2 · registry correction and BASIC success · 2026-09-14** | [Private BASIC model smoke](governed-returns-validation.md#september-14-private-basic-model-smoke-after-registry-binding-and-image-comparison): the missing project ContainerRegistry connection was added using the native ManagedIdentity module; version 6 still failed with the old image. A digest-preserving copy of public BASIC v1, not public governed v5, produced private version 7: two active GETs, a real `Billing Issue` model response, active native session and independent response readback | Private governed returns remains unproved; governed versions 1-3 and startup versions 1-6 remain historical failures. No MCP/governance/business action was exercised. The source tag was mutable, then the experiment pinned the verified digest. The whole artifact changed: **not a format-only causal proof** of Docker versus OCI; propagation/backend timing was not isolated |
 | **S3-HOSTED-ALLOW · 2026-09-13** | Separate public-authenticated real hosted v5, model → native MAF → MCP/ACS → independent API → one Cosmos decision/audit, completed operation and central allow receipt | Synthetic ordinary case, no financial settlement, not private-network proof |
 | **S3-HOSTED-DENY · 2026-09-13** | Actual attempted ineligible refund with exact quoted ETag; `policy_deny`, unchanged case and zero business audit for that case | Earlier altered/stripped-quote ETags are revision failures, not clean eligibility proof |
 | **S3-PENDING-APPROVAL · 2026-09-13** | Durable `awaiting_approval` and central pending intent, no grant and **no execution** of the proposed handoff | Pending is not human consent, a successful resume or a second business write |
@@ -857,7 +859,12 @@ The `08:12` September 14 transient-control diagnostic and its detailed timings
 remain in the parent-owned scenario record. **No second attempt was made under
 that earlier authorization**. The later **10:55 Italy** authorization separately
 covered egress inspection and the private version-5 observation above; it did not
-turn an unchanged network into a relaxation experiment. Further diagnostics need
+turn an unchanged network into a relaxation experiment. The subsequent reviewed
+registry-connection correction and image comparison produced BASIC version 7,
+not private governed returns. The copied scaffold includes an unused placeholder
+local tool/SkillsProvider path, not the separate strict zero-tool sample.
+Future builds must verify `.dockerignore` exclusions; no new context was sent
+by the prebuilt experiment. Further diagnostics need
 a **new observed difference or justified correction** and applicable authority.
 This document neither schedules nor runs another private attempt.
 Reproduction in another environment requires new authenticated evidence, not

@@ -102,6 +102,53 @@ registry, policy publication and observed binding still require real authorized
 inputs. Do not create a local demo signer or give the agent Cosmos/sign rights.
 Private hosted networking remains a separate first-account-creation contract.
 
+### Private BASIC startup prerequisite and image comparison
+
+The [September 14 private BASIC result](../../../../docs/governed-returns-validation.md#september-14-private-basic-model-smoke-after-registry-binding-and-image-comparison)
+establishes private hosted/model operation, **not private governed returns**.
+It did not use the generated governance image or reuse a signed business binding.
+The first gate was the official
+[container deployment precheck](https://github.com/microsoft/GitHub-Copilot-for-Azure/blob/91b451609306a490e84854c7c2c1fd79c62398a4/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/references/container-deploy.md):
+an existing ACR needs a **project-scoped ContainerRegistry connection**.
+**AcrPull alone** or a matching login-server environment variable is insufficient.
+Read the project connection inventory and exact resource without credentials;
+verify category, target, `metadata.ResourceId` and supported authentication.
+The Basic no-BYO-store contract does not exclude this registry connection.
+
+If absent, use the native azd-ejected connection module and the native ACR
+module's `ManagedIdentity` mapping for the observed project principal and
+registry resource ID. Preview only the connection resource and preserve the
+existing registry, network, keyless settings and role assignments. Do not
+invent an SDK `connections.create` call, create keys, deploy the whole ACR
+module over an existing registry, or grant unrelated roles.
+The active azd environment's `AZURE_CONTAINER_REGISTRY_NAME`,
+`AZURE_CONTAINER_REGISTRY_ENDPOINT`, `AZURE_CONTAINER_REGISTRY_RESOURCE_ID`
+and `AZURE_AI_PROJECT_ACR_CONNECTION_NAME` must identify those actual resources.
+
+The correction alone did not make the original private image run. A subsequent
+controlled comparison used native ACR import to copy the identified working
+public **BASIC v1** image into private ACR without rebuild, force overwrite,
+source writes/grants or PNA changes. Compare **source and destination** raw
+manifest bytes/digest and referenced config/layer descriptors before registration.
+A mutable source tag is not provenance: retain its observed metadata and use
+the resolved digest. Preserve the failed image and attempt.
+
+Use service-level `image: <private-registry>/<repository>@sha256:<digest>` with
+native `docker.imagePassthrough: true`, `remoteBuild: false`, and the verified
+azd 1.34.0-or-newer binary. Confirm package output and actual version readback,
+not only YAML acceptance. Hold connection/network/model/runtime settings fixed;
+require two direct active GETs and a real native model response/session.
+This is an image-level comparison, not proof that manifest media type alone
+caused a previous failure.
+
+For any future local or remote build, inspect the actual context and require
+`.dockerignore` exclusions for `.env`/credentials, `.azure`, virtual environments
+and caches without excluding needed application files. The inspected historical
+contexts lacked that file; their full uploaded archives were not retained.
+Matching Dockerfiles do not prove image identity or safe context exclusion.
+The prebuilt comparison sent no new build context and did not retrofit an ignore
+file by silently rebuilding either frozen image.
+
 ### Durable unbound read audit and response reconciliation
 
 Set the optional backend `read_audit_container` to a dedicated `/scope` Cosmos

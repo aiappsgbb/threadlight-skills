@@ -16,13 +16,13 @@ The separate delegated-token workstream is outside this record.
 | ID | Scenario | Last recorded status | Meaning |
 |---|---|---|---|
 | S1 | Native MAF in a Docker container on an operator VM; real private model, governed MCP, separate business API and Cosmos | Executed, with the bounded evidence below | Working functional baseline; not a Foundry hosted deployment |
-| S2 | The same business boundary called by a real Foundry hosted agent and its observed platform identity | S2-REGISTERED-NOT-RUNNING: governed versions 1-3 failed; canonical startup-control versions 1-3 failed September 13, version 4 failed in the September 14 morning control, and version 5 failed after a separately authorized egress inspection | Customer egress had no attached restriction to relax; project-identity registry access is observed, not complete hosted egress, unpacking or business execution |
+| S2 | Private Foundry environment: governed target plus a separate BASIC diagnostic | S2-BASIC-MODEL-VERIFIED: BASIC version 7 is active with a real model response; governed versions 1-3 and startup-control versions 1-6 remain failed historical attempts | BASIC proves private hosted/model operation, not private governed returns, business effects or complete egress assurance |
 | S3 | Separate public-authenticated Foundry hosted MAF with governed MCP and real Cosmos business writer | Hosted v5 allow, deny, pending approval, expired attempt and durable read/reconciliation executed | Real hosted business proof, not private-network proof; genuine human completion remains blocked |
 | S4 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1/S3 |
 
-**Reference direction:** S3 is the working hosted vertical. S2 remains a preserved
-private-network investigation, not a prerequisite to crediting S3. S1 is a useful
-functional and diagnostic baseline, not the final hosting architecture.
+**Reference direction:** S3 is the working governed business vertical. S2 now has
+a private BASIC hosted/model baseline; private governed returns remains unproved.
+S1 is a useful historical functional baseline, not the final hosting architecture.
 
 ## S1: VM-hosted native MAF and governed MCP
 
@@ -990,8 +990,10 @@ customer egress configuration. It neither proves that full managed egress works
 nor identifies a backend defect, DNS failure or remaining firewall rule.
 Further diagnosis requires an actual managed-source route/connectivity observation
 or the internal provisioning error, not a guessed rule or another unchanged retry.
-No unsupported source was passed to Network Watcher; no external support request,
-resource teardown, automatic rollback or further registration followed.
+No unsupported source was passed to Network Watcher; that egress-only experiment
+ended without an external support request, resource teardown, automatic rollback
+or another registration. The later, separately authorized registry/image
+comparison is recorded below.
 
 Private evidence is retained separately from the earlier morning capture:
 
@@ -1003,6 +1005,139 @@ Private evidence is retained separately from the earlier morning capture:
 | `private-egress-0914/after/version.json` | `7aa1a25b4e3309a37d2f0046b2cfbb9bb93805ac485b978bf982091eb053ec0f` |
 | `private-egress-0914/registry-events-final.json` | `1329157ae43ba4bee87a257bb989f6e1b7a0d0c99b52abb53767939d0a0cc26c` |
 | `private-egress-0914/remote-created-manifest.json` | `badca2ffb6c473f4f082bc4e731a45e2e08da0e18035c89936d50e4fcbbbaf7a` |
+
+### September 14: private BASIC model smoke after registry binding and image comparison
+
+**Status: S2-BASIC-MODEL-VERIFIED.** A real BASIC container now runs on the
+existing private Foundry project. The separate governed agent versions were not
+re-executed: **private governed returns remains unproved**. This section
+supersedes the current-status interpretation of the earlier startup failures,
+not their retained evidence.
+
+#### Missing project registry connection: corrected, but insufficient by itself
+
+The reviewed official
+[container precheck](https://github.com/microsoft/GitHub-Copilot-for-Azure/blob/91b451609306a490e84854c7c2c1fd79c62398a4/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/references/container-deploy.md)
+requires an existing ACR to have a **project-scoped ContainerRegistry connection**.
+This is separate from `AcrPull`, an environment hostname or Basic host storage
+connections. Credential-free ARM inventory returned no private project
+connections; the working public project had a matching `ContainerRegistry`
+connection with `ManagedIdentity`, the correct target and `metadata.ResourceId`.
+
+At `09:44:22` UTC the operator began creation of only the missing private
+connection, using the byte-exact native azd-ejected `connections.bicep` module.
+The existing native ACR module supplied the supported identity mapping:
+`credentials.clientId` is the project principal and `credentials.resourceId`
+is the registry ID. These are managed-identity configuration identifiers, not
+an API key or copied user token. No connection credentials were retrieved.
+What-if showed one connection Create and no registry, account, network or role
+change. Credential-free GET subsequently matched category/target/resource ID/
+auth type. No new public or private role grant was added.
+
+The original private image was then tested without rebuilding it:
+
+| Connection-corrected control | Observation |
+|---|---|
+| Image | Existing private digest `sha256:53e02ab62b0be348717de32f4df755aef919f1eb90019374cbd1e23602a7cd5d` |
+| Native deploy window | `09:48:41` to `09:51:31` UTC |
+| Actual version / result | version 6, `failed` / `ProvisioningError`; zero native sessions |
+| Native request ID | `7ef4074b69a1a286fe81c30153401da2` |
+| Independent direct GET | `09:52:18.552966` UTC, still failed |
+| Packaging | Verified azd `1.34.0`, service-level digest `image`, `docker.imagePassthrough: true`, `remoteBuild: false`; package output and version readback select the frozen digest, no build |
+
+Thus the missing connection was a demonstrated prerequisite/configuration gap,
+but its correction did not suffice to make this image run in that attempt.
+The operator packaging path also changed from the earlier local-build path to
+supported prebuilt passthrough; that difference is explicit, not hidden.
+
+#### Cross-image comparison: actual public BASIC v1 bytes, not the governed image
+
+The successful **public BASIC version 1** was identified by its retained tag,
+two September 13 active observations and model response. It is not the public
+governed version 5. A fresh source-registry read resolved that tag to
+`sha256:8ce8505c36b53fb193e2e22142d7220b7a2122ff0c98f1f81fcf5e285c3b95fa`.
+Source manifest creation and last-update times both remained
+`2026-09-13T08:58:36.8458821Z`, preceding the retained public success.
+The tag is **mutable**, not a locked provenance guarantee; the new experiment
+therefore used the independently resolved digest, not the tag.
+
+Native ACR import ran from `09:55:05` to `09:55:19` UTC into a new repository
+in the existing private ACR. It used existing authorization, no source write/
+grant, no force overwrite, no PNA opening and no rebuild. Source/destination raw
+manifest bytes were independently compared and hashed: identical digest, config
+descriptor and layer descriptors. The source tag metadata remained unchanged.
+
+The four relevant retained source files (`container.py`, `pyproject.toml`,
+`Dockerfile`, `copilot-instructions.md`) were byte-identical across the public
+and private BASIC build contexts. **That is not image identity.** The original
+private artifact is an OCI manifest; the copied public artifact is Docker
+distribution manifest v2, both Linux/amd64. Actual build output differs despite
+matching source/declared dependencies.
+
+Neither retained context had a `.dockerignore`. Their Dockerfiles copy explicit
+application files, but the complete historical build-upload archive was not
+retained, so context exclusion is unverified; no credential leak is inferred.
+Both new attempts used prebuilt passthrough and sent no new build context.
+Future local/remote builds must apply the official exclusion precheck.
+Also, matching network/host modules is not equality of every template parameter:
+the official Basic account template uses API `2025-04-01-preview` and
+`disableLocalAuth: false`; the lab account deployment used `2026-07-01` and
+keyless true. Neither account choice was changed to obtain this success.
+
+#### Private version 7: actual activation, model response and independent readback
+
+For version 7, only the image changed relative to the version-6 native project.
+Private project, corrected connection, network, roles, model, CPU/memory,
+protocol, runtime variables and azd `1.34.0` passthrough remained selected.
+
+| Evidence | Observed result (UTC) |
+|---|---|
+| Native deployment | `09:58:12` to `09:59:21`, successful; actual version 7 references the imported private ACR digest |
+| First direct version GET | `09:59:47.502470`, `active`, no error |
+| Second direct version GET | `09:59:58.613312`, `active`, no error |
+| Actual native invocation | New private session; model response from `10:00:39` to `10:00:42`, `completed`, error null |
+| Exact response text | `Billing Issue` |
+| Native response ID | `caresp_05dd439fbfad842700382LI6uzcCnASJc9xKQ6p1g0vLlt3wIP` |
+| Native session ID | `07ac002d08698c5c00uE78MPB2MC4ew4vKMA6OPGL3VkoXQ1YT` |
+| Post-invocation observation | Version still active at `10:01:52.984817`; independently listed session active and bound to version 7 |
+| Independent response retrieval | Authenticated native GET matched response/session/version and stable message ID, role, completion and text |
+| Private guards | Foundry and ACR PNA still Disabled, account keyless true, registry admin off, original private injection retained |
+
+The private registry also recorded project-MI acquisition of the imported digest
+at `09:58:52.431723` UTC. Unlike the earlier Pull-only observations, this
+experiment additionally has actual activation and model/session execution.
+No business transaction, MCP connection or selected governance policy was
+exercised. The copied canonical container has an **unused placeholder**
+`my_tool` and a SkillsProvider fallback path; no tool call was present in the
+observed response. It is not the separate strict zero-tool `responses/01-basic`
+sample. Model usage counters/token claims, restoration and production readiness
+are not independently established by this smoke.
+
+The first local text check wrongly required exactly `billing`; the real model
+returned `Billing Issue`. The invocation was not repeated to satisfy that
+oracle. A later dictionary-equality check encountered the SDK's additional
+`phase: null` message field; retained native readback matches the stable semantic
+fields. Those were local evidence-check failures, not Azure runtime failures or
+permission to synthesize a response.
+
+**Discriminant:** the copied BASIC artifact runs in the private environment
+where the previous artifact failed after the connection correction. This
+supports investigation of artifact/build compatibility, but is **not a
+format-only causal proof**: whole image bytes differ, and opaque propagation/
+backend timing was not independently eliminated. No conversion-only test,
+reverse rollout or further negative deployment was performed after success.
+The original governed versions and their expired bindings remain untouched.
+
+| Retained private evidence | SHA-256 |
+|---|---|
+| `private-acr-connection-0914/private-connections-before.json` | `770aefb919d08ca5ca14e904a373b7d68699759dab77320b5d40bc68d421ae6e` |
+| `private-acr-connection-0914/private-connection-after.json` | `992acce5922dbe294182843a441c48eed15ad61e9437deb92d42de1b17c6edad` |
+| `private-acr-connection-0914/after/version.json` | `1a961beba3a532c51ad6afd1a7e44e0b969c97bca0025ce5d387b15ebf38fb81` |
+| `private-cross-image-0914/private-basic-proof.json` | `305d28edd6ebe84be3e6dca73a69f5fdabf944109f834f3be53a184d486803e2` |
+| `private-cross-image-0914/active-first/version.json` | `89cbaf46f1635698e35dd3d36b0a1dff7bb044707505f26c70e6a5d9706a0a6f` |
+| `private-cross-image-0914/active-second/version.json` | `ec6957fbf7529f116c5b85f44ead48f9240a417c26c8eee8da1ca60b66563a94` |
+| `private-cross-image-0914/native-model-response.log` | `6a9c1a875c5b7867c8e6abb1ec6c4775ab74fce73402bff1752c23def67800eb` |
+| `private-cross-image-0914/native-response-readback.json` | `682fbeeab7459a3a4f6c46ded6f06339b2684cdc0236380ac6f00d1f45804e6c` |
 
 ## S3: Public authenticated Foundry hosted execution
 

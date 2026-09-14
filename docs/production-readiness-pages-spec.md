@@ -278,8 +278,9 @@ approval and a customer's production go-live authorization.
    The unbound read takes its own authenticated path, with optional read audit.
 3. **Network versus authority:** two independent axes, “reachability restricted”
    and “selected effect authorized/evidenced.” S3 is public-authenticated
-   live-scoped business evidence; S2 is private but failed pre-session.
-   Neither belongs in a universal “more secure” ranking.
+   live-scoped business evidence. S2's earlier controls failed pre-session;
+   private BASIC version 7 later produced a model response, but private governed
+   returns remains unproved. Neither belongs in a universal “more secure” ranking.
 4. **Evidence timeline:** native response/calls, inline read ACK before disclosure,
    central write authorization ACK before effect, transaction ACK, post-run
    reconciliation. Explicitly label 14 calls / 8 responses as a selected snapshot,
@@ -301,7 +302,7 @@ Do not infer label value from a green screenshot or JSON file presence.
 | **LOCAL** | Actual scoped local/native tests executed | Native conformance is not Azure/business proof; skipped cases are not passes |
 | **LIVE-SCOPED** | Authenticated deployment/invocation plus independently joined evidence for the stated binding | S3 selected two-tool vertical, public-authenticated, September 13 snapshot |
 | **HISTORICAL** | Retained execution whose authority or deployment is no longer current | S1 VM results; signed authority expiry does not erase history |
-| **NOT PROVED** | Required evidence absent, ambiguous, expired for current use or blocked | S3 human resume/replay/email; S2 runtime startup |
+| **NOT PROVED** | Required evidence absent, ambiguous, expired for current use or blocked | S3 human resume/replay/email; S2 private governed returns (not its now-demonstrated BASIC model smoke) |
 | **PROPOSED** | Design/copy/target not implemented or deployed | This specification; customer target architecture diagram |
 
 Preserve actual binding taxonomy: `enforced`, `observed`, `unbound`,
@@ -317,6 +318,7 @@ Presentation labels cannot override the source manifests.
 | S1, September 11 | Historical VM model allow; direct native deny and genuine human resume/replay | [S1](governed-returns-validation.md#s1-vm-hosted-native-maf-and-governed-mcp); not hosted, not an S3 grant |
 | S2, September 13 and recorded September 14 update | Private pre-session failure despite attributed project-MI registry Login/Pull 200; sole unchanged canonical version-4 retry again returned `ProvisioningError`, with no native sessions and no overnight recovery observed | [September 14 diagnostic](governed-returns-validation.md#september-14-one-unchanged-private-transient-control-retry); same frozen image/scopes, not complete per-caller blob/unpack/snapshot/root-cause proof. Operator Push and scanner Pull are not project-MI acquisition evidence |
 | S2, separate September 14 authorization at 10:55 Italy | Egress inspection found no attached customer NSG/UDR restriction to relax; shared NAT/PIP already existed. There was no customer network change. The separately authorized frozen private-control version 5 also failed before any native session | [Scoped egress observation](governed-returns-validation.md#september-14-scoped-egress-inspection-with-no-network-change); not an A/B relaxation test. Six project-MI registry pulls from the actual hosted subnet and shared NAT counters are not hosted Internet egress proof. Managed effective routes/source VM were not exposed |
+| S2, later September 14 BASIC model smoke | Missing project ContainerRegistry connection corrected using native ManagedIdentity configuration; old-image version 6 still failed. The verified digest copy of the public BASIC v1 image produced private version 7, two active GETs and the real model response `Billing Issue`, independently retrieved in its active native session | [Private BASIC result](governed-returns-validation.md#september-14-private-basic-model-smoke-after-registry-binding-and-image-comparison); private governed returns remains unproved. The mutable source tag was resolved and the experiment pinned/compared exact digest bytes. This is not a format-only causal proof; do not claim that OCI is universally broken or that connection correction alone solved startup |
 | S3, September 13 | Hosted v5 selected allow/one decision-audit, exact-ETag domain deny, pending no execution; expired ungranted same-session generic failure | [S3](governed-returns-validation.md#s3-public-authenticated-foundry-hosted-execution); causal expiry guard not independently isolated; not private isolation |
 | S3 evidence planes | Inline read audit ACK before response; separate post-run 14 calls / 8 responses | Not continuous attestation; explicit two-tool inventory |
 
@@ -487,6 +489,9 @@ The `08:12` September 14 private transient-control diagnostic belongs to its
 parent/operator record. **No second attempt was made under that earlier
 authorization**. The separate **10:55 Italy** egress authorization and private
 version-5 observation must retain their own no-network-change scope; they do not
-replace the morning history. Further attempts need a **new observed difference
+replace the morning history. The later registry-connection/image comparison
+adds private BASIC hosting/model evidence, not private business governance.
+Its unused placeholder local tool does not make it the strict zero-tool sample.
+Further attempts need a **new observed difference
 or justified correction** and applicable authority. This specification is ready
 for review, not an assertion that a new Pages experience is live.

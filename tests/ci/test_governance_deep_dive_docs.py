@@ -191,6 +191,16 @@ def test_later_egress_authorization_is_separate_from_the_morning_control(documen
     ))
 
 
+@pytest.mark.parametrize("document", [DEEP, SPEC], ids=["deep-dive", "pages-spec"])
+def test_private_basic_v7_is_model_proof_not_private_business_authority(document):
+    require(plain(document), (
+        "version 6", "version 7", "Billing Issue", "ContainerRegistry",
+        "ManagedIdentity", "private governed returns remains unproved",
+        "not a format-only causal proof", "mutable",
+        "governed-returns-validation.md#september-14-private-basic-model-smoke-after-registry-binding-and-image-comparison",
+    ))
+
+
 def test_evidence_expiry_human_and_reproduction_limits_are_explicit():
     require(plain(DEEP), (
         "2026-09-14T10:26:48", "no automatic renewal",

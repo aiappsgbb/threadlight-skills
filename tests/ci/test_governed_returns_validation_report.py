@@ -170,3 +170,28 @@ def test_egress_inspection_does_not_invent_a_relaxation_or_hosted_connectivity_p
         "eb211156d171e842c02af0abc34b60ce93b7acbb5ba04d0103e712d8faf9cd5c",
     ):
         assert marker in text
+
+
+def test_private_basic_success_does_not_promote_the_private_governed_agent():
+    text = " ".join(REPORT.read_text().split())
+    for marker in (
+        "### September 14: private BASIC model smoke after registry binding and image comparison",
+        "S2-BASIC-MODEL-VERIFIED", "ContainerRegistry", "ManagedIdentity",
+        "09:48:41", "09:51:31", "09:59:47", "09:59:58", "10:00:39", "10:00:42",
+        "7ef4074b69a1a286fe81c30153401da2",
+        "8ce8505c36b53fb193e2e22142d7220b7a2122ff0c98f1f81fcf5e285c3b95fa",
+        "caresp_05dd439fbfad842700382LI6uzcCnASJc9xKQ6p1g0vLlt3wIP",
+        "Billing Issue", "private governed returns remains unproved",
+        "not a format-only causal proof", "mutable", "unused placeholder",
+        "private-cross-image-0914/private-basic-proof.json",
+        "305d28edd6ebe84be3e6dca73a69f5fdabf944109f834f3be53a184d486803e2",
+    ):
+        assert marker in text
+    assert "private BASIC model smoke" in " ".join((ROOT / "README.md").read_text().split())
+
+
+def test_runbook_distinguishes_registry_binding_from_pull_role_and_build_context():
+    text = " ".join((ROOT / "skills/threadlight-deploy/references/governance/returns-mcp-demo.md").read_text().split())
+    for marker in ("ContainerRegistry", "project-scoped", "ManagedIdentity", ".dockerignore",
+                   "AcrPull alone", "source and destination", "not private governed returns"):
+        assert marker in text
