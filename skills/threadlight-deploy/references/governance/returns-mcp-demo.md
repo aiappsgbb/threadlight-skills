@@ -170,6 +170,7 @@ authorized operator. Supply protected JSON with:
 | `gateway_principal` | Observed gateway subject, not the agent subject |
 | `cosmos_url`, `cosmos_database` | Actual matching stores with independent read permissions |
 | `responses` | Explicit array of `{ "id": "<native-response-id>", "session_id": "<native-session-id>" }` |
+| Optional `containers` | Complete role-to-name mapping for `governance-records`, `gateway-idempotency`, `returns-cases`, `runner-activity`; all four names must be valid and distinct |
 
 ```sh
 python skills/threadlight-deploy/references/governance/returns_reconcile.py \
@@ -186,6 +187,23 @@ them back. Existing mismatches stop execution, never overwrite prior evidence.
 It makes no model call, grants no role and executes no business action.
 The caller must perform the full paired tenant/subscription assertions above;
 the collector's environment-presence check is not a replacement for them.
+
+For a private deployment with prefixed stores, select all four explicitly,
+for example `s2-governance-records`, `s2-gateway-idempotency`, `s2-returns-cases`
+and `s2-runner-activity`. Omitting `containers` preserves the original default
+names; **missing is not the same as invalid**. Null, partial, duplicate or
+unsafe mappings are rejected before cloud access/output creation. The selected
+names drive both independent reads and ledger persistence; evidence retains the
+mapping. Never silently read S1 stores while claiming S2 proof.
+
+The September 14 private operator path obtained native response readbacks under
+the existing operator context, then used the existing **operator managed identity**
+to verify the private signed binding and independently read/write the scoped
+Cosmos ledger through the same reconciliation/store helpers. This is distinct
+from the generic CLI's Azure-CLI credential mode; it does not copy CLI caches
+into the private VM, bypass signature/freshness checks or manufacture responses.
+It verified private allow/deny and four call records; unavailable human review
+left private pending/resume/replay/email unproved.
 
 This is **post-run reconciliation of an explicit response set**, not universal
 agent attestation. Historical reads lacking backend ACK are labeled post-run;

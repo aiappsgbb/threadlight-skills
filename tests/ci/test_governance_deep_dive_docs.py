@@ -195,9 +195,19 @@ def test_later_egress_authorization_is_separate_from_the_morning_control(documen
 def test_private_basic_v7_is_model_proof_not_private_business_authority(document):
     require(plain(document), (
         "version 6", "version 7", "Billing Issue", "ContainerRegistry",
-        "ManagedIdentity", "private governed returns remains unproved",
+        "ManagedIdentity", "BASIC is not private governed business proof",
         "not a format-only causal proof", "mutable",
         "governed-returns-validation.md#september-14-private-basic-model-smoke-after-registry-binding-and-image-comparison",
+    ))
+
+
+@pytest.mark.parametrize("document", [DEEP, SPEC], ids=["deep-dive", "pages-spec"])
+def test_private_governed_allow_deny_are_scoped_and_do_not_claim_human_completion(document):
+    require(plain(document), (
+        "private governed", "version 4", "allow and exact deny",
+        "four calls", "two responses", "user was unavailable",
+        "no new private pending intent", "not fully governed in every respect",
+        "governed-returns-validation.md#september-14-private-governed-allow-and-exact-deny-with-fresh-authority",
     ))
 
 

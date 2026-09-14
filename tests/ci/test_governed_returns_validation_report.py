@@ -181,7 +181,7 @@ def test_private_basic_success_does_not_promote_the_private_governed_agent():
         "7ef4074b69a1a286fe81c30153401da2",
         "8ce8505c36b53fb193e2e22142d7220b7a2122ff0c98f1f81fcf5e285c3b95fa",
         "caresp_05dd439fbfad842700382LI6uzcCnASJc9xKQ6p1g0vLlt3wIP",
-        "Billing Issue", "private governed returns remains unproved",
+        "Billing Issue", "BASIC is not private governed business proof",
         "not a format-only causal proof", "mutable", "unused placeholder",
         "private-cross-image-0914/private-basic-proof.json",
         "305d28edd6ebe84be3e6dca73a69f5fdabf944109f834f3be53a184d486803e2",
@@ -194,4 +194,27 @@ def test_runbook_distinguishes_registry_binding_from_pull_role_and_build_context
     text = " ".join((ROOT / "skills/threadlight-deploy/references/governance/returns-mcp-demo.md").read_text().split())
     for marker in ("ContainerRegistry", "project-scoped", "ManagedIdentity", ".dockerignore",
                    "AcrPull alone", "source and destination", "not private governed returns"):
+        assert marker in text
+
+
+def test_private_governed_effect_proof_keeps_human_and_whole_agent_limits():
+    text = " ".join(REPORT.read_text().split())
+    for marker in (
+        "### September 14: private governed allow and exact deny with fresh authority",
+        "S2-PRIVATE-ALLOW-DENY-VERIFIED", "11:46:33", "11:51:30",
+        "c14ac2a4fd1775cf4717ffb935aef23563ecea0ed0416032d2437067426ea615",
+        "6c67e4cd33ee409bb5d32bf85c1bd7deca02022e7152b6fba3e818ee54de9d07",
+        "decision-f8d8936f4660b724b35902200197b2061af56830a52cf599216f45450a6e8230",
+        "faa5f3e3b3824c9b9df0287e0639e313", "9d555842b82149dbb756d30e64fdeee8",
+        "4/4", "two responses", "no new private pending intent",
+        "2026-09-15T11:12:28.719119+00:00", "2026-09-15T11:32:54.753384+00:00",
+        "not fully governed in every respect", "user was unavailable",
+    ):
+        assert marker in text
+
+
+def test_reconciliation_runbook_requires_explicit_complete_private_container_selection():
+    text = " ".join((ROOT / "skills/threadlight-deploy/references/governance/returns-mcp-demo.md").read_text().split())
+    for marker in ("`containers`", "complete", "distinct", "s2-runner-activity",
+                   "missing is not the same as invalid", "operator managed identity"):
         assert marker in text

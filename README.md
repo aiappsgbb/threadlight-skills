@@ -80,8 +80,9 @@ and [coding-agent guidance](AGENTS.md).
 identity, policy, approval, transport and durable-audit boundaries, read the
 [engineering deep dive](docs/agent-governance-deep-dive.md). The separate
 [dated execution record](docs/governed-returns-validation.md) distinguishes the
-working public hosted two-tool vertical, the private BASIC model smoke, and the
-still-unproved private governed returns and hosted human-resume/email paths. These do not change the
+historical public hosted two-tool vertical, the private BASIC model smoke,
+subsequent private governed allow/deny evidence, and the still-unproved private
+human-resume/email paths. These do not change the
 canonical example's evidence status above. The
 [Pages/readiness specification](docs/production-readiness-pages-spec.md) is
 proposed, not a published site change; rapid prototyping remains unchanged and

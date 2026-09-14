@@ -1,4 +1,5 @@
 import importlib.util
+import asyncio
 import json
 from pathlib import Path
 
@@ -220,3 +221,55 @@ def test_pending_requires_exact_selector_and_scoped_gateway_record():
     operation["scope"] = "foreign"
     with pytest.raises(ValueError, match="pending_operation"):
         reconcile()
+
+
+def test_container_selection_preserves_defaults_and_requires_complete_distinct_mapping():
+    m = module()
+    roles = ("governance-records", "gateway-idempotency", "returns-cases", "runner-activity")
+    assert m.selected_containers({}) == {name: name for name in roles}
+    selected = {name: "s2-" + name for name in roles}
+    assert m.selected_containers({"containers": selected}) == selected
+
+
+@pytest.mark.parametrize("invalid", [None, {}, {"runner-activity": "s2-audit"},
+                                    {"unknown": "container"}, False])
+def test_invalid_selected_containers_fail_before_cloud_access_or_output_creation(tmp_path, invalid):
+    m = module()
+    destination = tmp_path / "not-created"
+    with pytest.raises(ValueError, match="container_selection"):
+        asyncio.run(m.collect({"containers": invalid}, destination))
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("value", ["same", "../outside", "", True])
+def test_container_names_cannot_alias_or_escape_selected_stores(value):
+    m = module()
+    names = {name: "same" if value == "same" else name
+             for name in ("governance-records", "gateway-idempotency", "returns-cases", "runner-activity")}
+    names["runner-activity"] = value
+    with pytest.raises(ValueError):
+        m.selected_containers({"containers": names})
+
+
+def test_snapshot_reads_use_selected_containers_but_reconciliation_keeps_canonical_roles():
+    m = module()
+    roles = ("governance-records", "gateway-idempotency", "returns-cases", "runner-activity")
+    selected = {name: "s2-" + name for name in roles}
+    accessed = []
+
+    class Container:
+        def __init__(self, name):
+            self.name = name
+
+        async def query_items(self, query):
+            assert query == "SELECT * FROM c"
+            yield {"id": self.name}
+
+    class Database:
+        def get_container_client(self, name):
+            accessed.append(name)
+            return Container(name)
+
+    result = asyncio.run(m.read_stores(Database(), selected))
+    assert accessed == list(selected.values())
+    assert result == {role: [{"id": selected[role]}] for role in roles}

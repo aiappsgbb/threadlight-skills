@@ -16,13 +16,14 @@ The separate delegated-token workstream is outside this record.
 | ID | Scenario | Last recorded status | Meaning |
 |---|---|---|---|
 | S1 | Native MAF in a Docker container on an operator VM; real private model, governed MCP, separate business API and Cosmos | Executed, with the bounded evidence below | Working functional baseline; not a Foundry hosted deployment |
-| S2 | Private Foundry environment: governed target plus a separate BASIC diagnostic | S2-BASIC-MODEL-VERIFIED: BASIC version 7 is active with a real model response; governed versions 1-3 and startup-control versions 1-6 remain failed historical attempts | BASIC proves private hosted/model operation, not private governed returns, business effects or complete egress assurance |
+| S2 | Private Foundry environment: separate BASIC diagnostic and governed business runner | S2-PRIVATE-ALLOW-DENY-VERIFIED: governed version 4 performed a real Cosmos decision/audit and exact policy denial; BASIC version 7 remains a separate model smoke | Two-tool scope, two inline read ACKs and four post-run call records; private pending/human/resume/replay/email not yet proved |
 | S3 | Separate public-authenticated Foundry hosted MAF with governed MCP and real Cosmos business writer | Hosted v5 allow, deny, pending approval, expired attempt and durable read/reconciliation executed | Real hosted business proof, not private-network proof; genuine human completion remains blocked |
 | S4 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1/S3 |
 
-**Reference direction:** S3 is the working governed business vertical. S2 now has
-a private BASIC hosted/model baseline; private governed returns remains unproved.
-S1 is a useful historical functional baseline, not the final hosting architecture.
+**Reference direction:** S2 now has fresh private governed allow/deny evidence,
+separate from its earlier BASIC baseline. S3's governed business proof remains
+historical: its September 14 bootstrap lease has expired. S1 is a historical
+functional baseline, not the final hosting architecture.
 
 ## S1: VM-hosted native MAF and governed MCP
 
@@ -1008,9 +1009,9 @@ Private evidence is retained separately from the earlier morning capture:
 
 ### September 14: private BASIC model smoke after registry binding and image comparison
 
-**Status: S2-BASIC-MODEL-VERIFIED.** A real BASIC container now runs on the
-existing private Foundry project. The separate governed agent versions were not
-re-executed: **private governed returns remains unproved**. This section
+**Status at this milestone: S2-BASIC-MODEL-VERIFIED.** A real BASIC container ran
+on the existing private Foundry project. The separate governed agent versions
+were not re-executed in that experiment: **BASIC is not private governed business proof**. This section
 supersedes the current-status interpretation of the earlier startup failures,
 not their retained evidence.
 
@@ -1138,6 +1139,110 @@ The original governed versions and their expired bindings remain untouched.
 | `private-cross-image-0914/active-second/version.json` | `ec6957fbf7529f116c5b85f44ead48f9240a417c26c8eee8da1ca60b66563a94` |
 | `private-cross-image-0914/native-model-response.log` | `6a9c1a875c5b7867c8e6abb1ec6c4775ab74fce73402bff1752c23def67800eb` |
 | `private-cross-image-0914/native-response-readback.json` | `682fbeeab7459a3a4f6c46ded6f06339b2684cdc0236380ac6f00d1f45804e6c` |
+
+### September 14: private governed allow and exact deny with fresh authority
+
+**S2-PRIVATE-ALLOW-DENY-VERIFIED.** This is a subsequent experiment under the
+user's explicit private-governance authorization, not a promotion of BASIC
+version 7 or a reuse of public S3 signatures. The generated private runner
+`returns-hosted-reference` version **4** ran on actual Foundry hosted compute.
+It exposed exactly `returns_get_case` and `returns_apply_decision`.
+
+The user separately authorized **new repository/tags** in the existing
+authenticated public build registry, then digest-preserving private import.
+Existing public images, service configuration, policy, keys, RBAC and PNA were
+not changed. Minimized generated contexts had explicit `.dockerignore` rules
+and checks for credential/cache directories, private keys and signed URLs before
+upload. Remote builds produced Docker manifest v2 images; imported agent bytes
+matched. No installed SDK patch, legacy failing image reuse or private PNA
+opening was used.
+
+| New private association | Value |
+|---|---|
+| Actual governed agent / version | `returns-hosted-reference` / `4`, independently observed active twice before binding |
+| Agent image | `sha256:c14ac2a4fd1775cf4717ffb935aef23563ecea0ed0416032d2437067426ea615` |
+| Policy / version | `returns-private-20260914-a` / `2` |
+| Policy digest | `sha256:6c67e4cd33ee409bb5d32bf85c1bd7deca02022e7152b6fba3e818ee54de9d07` |
+| Bootstrap reference | `returns-private-governed-20260914-a` |
+| Bootstrap expiry | `2026-09-15T11:12:28.719119+00:00` |
+| Final policy expiry | `2026-09-15T11:32:54.753384+00:00` |
+
+The existing private publisher managed identity performed real versioned Key
+Vault signing and create-only Blob publication. An initial operator-user key
+read was RBAC-denied; the already-authorized publisher was used instead of
+granting the human broad key authority. The actual private Agent Identity was
+observed separately from the BASIC identity. Existing control/gateway/business
+app roles and key-verification scope were checked; no agent database-write or
+signing rights were added.
+
+Four new synthetic cases were seeded create-only in the existing private case
+container. A separate private `/scope` read-audit/ledger container was added
+without TTL. Only the business writer and evidence operator received its
+create/read data role, with no replace/delete permission in that added role.
+Existing control/gateway/writer identities remained distinct.
+
+The three private services received new images/configuration. The first PATCH
+attempts were rejected **before update** with HTTP 400 because an unmodified
+readback-only ingress field was unsupported by that write API. Minimal updates
+then changed only the intended template/configuration, preserving identity,
+environment, ingress, registry authentication, resources and scale on readback.
+Gateway readiness confirmed the exact new digest and real receipt/approval
+dependencies; business readiness checked both actual containers. Readiness
+alone was not counted as a business result.
+
+| Actual hosted execution | Independent result |
+|---|---|
+| Allow, `11:46:33`–`11:46:58` UTC | The model read the new eligible low-value case, preserved its quoted ETag and invoked the governed write. Case closed, one business audit, completed gateway operation and matching central allow receipt |
+| Exact domain deny, `11:51:30`–`11:51:56` UTC | The model read the ineligible case and attempted exactly one `approve_refund` with the correct quoted ETag. Central `policy_deny`, unchanged case/revision and no additional business audit |
+| Both reads | Separate real read-audit ACKs before the returned data; reads remain unbound to ACS |
+| Post-run accounting | Authenticated native GET of **two responses** and independent private store reads; **4/4** call records created and read back without overwriting prior records |
+
+Allow response `caresp_0a468a0f9e878eb700D9zdPXS9kKoIMBNYp1ymtcGmRI1IagSI`
+contained write call `call_Fgg0sz43bICN2E61i84EGoLs` and returned
+`decision-f8d8936f4660b724b35902200197b2061af56830a52cf599216f45450a6e8230`.
+Independent Cosmos reads matched that audit, exact arguments/result, completed
+operation and central receipt `faa5f3e3b3824c9b9df0287e0639e313`.
+The read audit was `read-602b89058c3e4c68b7aff3d8e3cda27a`.
+
+Deny response `caresp_0a468a0f9e878eb700F2Z75MdEfN2fiWCrUnYiy0gCD05qLbCE`
+contained write call `call_oGzRPBWqVug1vSguSZdRsVrs`. The native output was
+generic `Error: Function failed.`, but the independent action-hash/response-window
+join found central deny receipt `9d555842b82149dbb756d30e64fdeee8`.
+Its expected ETag exactly matched the preceding read and unchanged stored
+revision. The new read audit was `read-acc98a10bbca4e859cc4bd7f6d46f940`.
+Total private business audits remained one.
+
+The private collector used native response readback under the existing operator
+context, then the existing operator managed identity for private Key Vault
+signature verification and Cosmos reads/create-only ledger writes. Explicit
+container mapping prevented accidental reads from the separate S1 stores.
+This two-step operator path is recorded, not presented as a new remote
+attestation protocol. Inline read ACK and post-run reconciliation remain
+different timing guarantees.
+
+**Human boundary:** the user was unavailable when asked for real login/review.
+Therefore **no new private pending intent** was created to age before a reviewer
+could act. Private pending/no-effect, authenticated approval, exact resume,
+one-use completed replay and email delivery remain unproved. The prepared
+review frontend uses the existing delegated Task8 protocol, real browser
+identity and a TTY confirmation; it has not recorded a decision for this run.
+The unconsented Office 365 notification path is not an automated end-to-end
+approval workflow. No old S1/S3 grant or expired reference was renewed.
+
+This is a real private **selected business effect path**, **not fully governed
+in every respect**: no universal host/model/tool coverage, arbitrary-code
+resistance, OBO, financial settlement, restoration or production certification.
+Future use still requires fresh authority and unchanged scoped facts even
+before the dates above. Preserved resources are not renewed authorization.
+
+| Retained private artifact under `private-governed-0914/` | SHA-256 |
+|---|---|
+| `signed-hosted-binding.json` | `e6ffea0ffcf8ed8ed57c2246466505a5cf73cee8c799c3f7fd4adee41555d7ae` |
+| `final-signed-policy.json` | `04f42dba9dda18d5e488356d10c05138b787c14aeb9ad9b37482c813dad55ab5` |
+| `allow-verified.json` | `c5d08b6ee0eea30fa709d6e4761228c56977c9f9c2ca40894b47645805f25e7b` |
+| `deny-verified.json` | `d988158a87ef06c22724536bf3967dc880042b3771af53c1881853940ae66de2` |
+| `native-readbacks.json` | `1d9feff65dcd60d9a105c33f9cbc6d348d60040662414d04dceba5bcb958dd56` |
+| `reconciliation-allow-deny.json` | `0bfa9d6714d8a9333b02f3adb723a104a63cbd4861ed201017fa0013b75848fa` |
 
 ## S3: Public authenticated Foundry hosted execution
 

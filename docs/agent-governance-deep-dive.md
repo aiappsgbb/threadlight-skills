@@ -64,8 +64,9 @@ and [govern skill](../skills/threadlight-govern/SKILL.md).
 The public S3 and private S2 outcomes make the distinction concrete: public
 authenticated infrastructure executed the selected business control. Earlier
 private startup controls failed before sessions; private BASIC version 7 later
-produced a real model response. That private hosting success still does not
-establish selected business authority or complete network-isolation assurance.
+produced a real model response. A subsequent freshly bound private governed
+version 4 demonstrated selected allow and exact deny. These are separate proof
+steps, not complete network-isolation assurance or universal agent authority.
 
 ## Threat model and trusted computing base
 
@@ -723,7 +724,8 @@ implementation from scenario execution.
 | **S2 · private pre-session failure · 2026-09-13** | Canonical control without governance/bootstrap/business tools also failed. The project managed identity had attributed registry `Login`/`Pull` HTTP 200 with `Buildah/1.42.1` on the exact image; operator Push and security-scanner pulls were separated | No native session/business call. No per-caller blob completion, layer unpacking, snapshot creation or startup proof; root cause not established. Aggregate GetBlob metrics cannot fill that gap |
 | **S2 · recorded update · 2026-09-14** | [Sole unchanged canonical diagnostic](governed-returns-validation.md#september-14-one-unchanged-private-transient-control-retry): native azd `1.27.0` registered version 4; direct GET again reported `ProvisioningError`, with no native sessions. Same frozen manifest and observed account/project/model/network/host scopes; fresh project-MI Login/Pull 200 remained distinct from operator/scanner activity | No overnight recovery observed. `READY_FOR_REGISTRATION` / `NOT_TESTED` setup is not hosted runtime proof. No per-caller blob completion, unpacking, snapshot or root-cause proof. This parent-owned diagnostic was not run by the documentation task; unchanged failure does not prove a backend defect |
 | **S2 · separate egress authorization · 2026-09-14, 10:55 Italy** | [Scoped egress inspection](governed-returns-validation.md#september-14-scoped-egress-inspection-with-no-network-change): hosted subnet had no NSG/UDR, no applicable customer firewall route and existing shared NAT/PIP. There was no customer network change. One frozen private-control version 5 again failed with zero sessions, despite six project-MI Login/Pull 200 events from that hosted subnet | This was not an A/B relaxation test. Shared NAT metrics are not hosted Internet egress proof; no managed source VM/NIC was exposed for effective routing or Network Watcher. Registry acquisition does not establish all blobs/unpacking/snapshot or a backend cause |
-| **S2 · registry correction and BASIC success · 2026-09-14** | [Private BASIC model smoke](governed-returns-validation.md#september-14-private-basic-model-smoke-after-registry-binding-and-image-comparison): the missing project ContainerRegistry connection was added using the native ManagedIdentity module; version 6 still failed with the old image. A digest-preserving copy of public BASIC v1, not public governed v5, produced private version 7: two active GETs, a real `Billing Issue` model response, active native session and independent response readback | Private governed returns remains unproved; governed versions 1-3 and startup versions 1-6 remain historical failures. No MCP/governance/business action was exercised. The source tag was mutable, then the experiment pinned the verified digest. The whole artifact changed: **not a format-only causal proof** of Docker versus OCI; propagation/backend timing was not isolated |
+| **S2 · registry correction and BASIC success · 2026-09-14** | [Private BASIC model smoke](governed-returns-validation.md#september-14-private-basic-model-smoke-after-registry-binding-and-image-comparison): the missing project ContainerRegistry connection was added using the native ManagedIdentity module; version 6 still failed with the old image. A digest-preserving copy of public BASIC v1, not public governed v5, produced private version 7: two active GETs, a real `Billing Issue` model response, active native session and independent response readback | BASIC is not private governed business proof; governed versions 1-3 and startup versions 1-6 remain historical failures. No MCP/governance/business action was exercised by BASIC. The source tag was mutable, then the experiment pinned the verified digest. The whole artifact changed: **not a format-only causal proof** of Docker versus OCI; propagation/backend timing was not isolated |
+| **S2 · private governed effect · 2026-09-14** | [Fresh private governed version 4](governed-returns-validation.md#september-14-private-governed-allow-and-exact-deny-with-fresh-authority): real model/MAF/MCP allow and exact deny, one independently joined Cosmos decision/audit, central allow/deny receipts and two inline read ACKs. Four calls from two responses were independently reread and persisted/read back as four scoped ledger records | New private image/policy/binding, not S3 reuse. The user was unavailable, so no new private pending intent was created. Private pending, human approval/resume/replay and email remain unproved. This path is **not fully governed in every respect**, not whole-agent attestation or production certification |
 | **S3-HOSTED-ALLOW · 2026-09-13** | Separate public-authenticated real hosted v5, model → native MAF → MCP/ACS → independent API → one Cosmos decision/audit, completed operation and central allow receipt | Synthetic ordinary case, no financial settlement, not private-network proof |
 | **S3-HOSTED-DENY · 2026-09-13** | Actual attempted ineligible refund with exact quoted ETag; `policy_deny`, unchanged case and zero business audit for that case | Earlier altered/stripped-quote ETags are revision failures, not clean eligibility proof |
 | **S3-PENDING-APPROVAL · 2026-09-13** | Durable `awaiting_approval` and central pending intent, no grant and **no execution** of the proposed handoff | Pending is not human consent, a successful resume or a second business write |
@@ -869,3 +871,13 @@ a **new observed difference or justified correction** and applicable authority.
 This document neither schedules nor runs another private attempt.
 Reproduction in another environment requires new authenticated evidence, not
 reuse of the S3 image label, old approvals or a public digest table.
+
+The subsequent private governed proof uses bootstrap expiry
+`2026-09-15T11:12:28.719119+00:00` and policy expiry
+`2026-09-15T11:32:54.753384+00:00`; these do not renew S3's expired leases.
+The private operator collected authenticated native responses and used its
+existing managed identity for independent private Key Vault/Cosmos verification.
+Optional complete `containers` mapping in `returns_reconcile.py` selects private
+stores without silently mixing S1 defaults; duplicate/invalid selections fail
+before access. The generic CLI's Azure-CLI credential path and this two-step
+private operator path must not be conflated.

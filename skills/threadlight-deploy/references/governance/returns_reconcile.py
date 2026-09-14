@@ -8,10 +8,28 @@ from datetime import datetime, timezone
 import hashlib
 import json
 
-from govern_control_plane.models import canonical, strict_json
+from govern_control_plane.models import Identifier, canonical, parse, strict_json
 
 TOOLS = {"returns_get_case": "none", "returns_apply_decision": "returns-safe"}
 CASE_FIELDS = ("id", "_etag", "status", "amount", "eligible", "high_risk")
+STORE_ROLES = ("governance-records", "gateway-idempotency", "returns-cases", "runner-activity")
+
+
+def selected_containers(configuration):
+    if "containers" not in configuration:
+        return {name: name for name in STORE_ROLES}
+    selected = configuration["containers"]
+    if not isinstance(selected, dict) or set(selected) != set(STORE_ROLES):
+        raise ValueError("container_selection_requires_complete_role_mapping")
+    names = {role: parse(Identifier, canonical(selected[role])) for role in STORE_ROLES}
+    if len(set(names.values())) != len(STORE_ROLES):
+        raise ValueError("container_selection_requires_distinct_stores")
+    return names
+
+
+async def read_stores(database, selected):
+    return {role: [row async for row in database.get_container_client(selected[role]).query_items(
+        "SELECT * FROM c")] for role in STORE_ROLES}
 
 
 def digest(value):
@@ -184,6 +202,7 @@ def reconcile_response(response, *, binding, gateway_principal, central, operati
 
 async def collect(configuration, output, *, persist=False):
     """Collect through authenticated native APIs; never grant roles or authorize an action."""
+    containers = selected_containers(configuration)
     import logging
     import os
     from contextlib import AsyncExitStack
@@ -239,9 +258,7 @@ async def collect(configuration, output, *, persist=False):
         cosmos = await stack.enter_async_context(CosmosClient(
             configuration["cosmos_url"], credential, retry_total=0))
         database = cosmos.get_database_client(configuration["cosmos_database"])
-        snapshots = {}
-        for name in ("governance-records", "gateway-idempotency", "returns-cases", "runner-activity"):
-            snapshots[name] = [row async for row in database.get_container_client(name).query_items("SELECT * FROM c")]
+        snapshots = await read_stores(database, containers)
         rows = []
         for response in responses:
             rows.extend(reconcile_response(
@@ -253,7 +270,7 @@ async def collect(configuration, output, *, persist=False):
         if len(rows) != expected_count:
             raise ValueError("tool_call_coverage_mismatch")
         if persist:
-            store = AzureStore(None, database.get_container_client("runner-activity"),
+            store = AzureStore(None, database.get_container_client(containers["runner-activity"]),
                                account_reader=cosmos._get_database_account)
             for row in rows:
                 try:
@@ -272,6 +289,7 @@ async def collect(configuration, output, *, persist=False):
             "tool_inventory": TOOLS, "responses": len(responses), "tool_calls": len(rows),
             "persisted_and_read_back": len(rows) if persist else 0,
             "response_ids": sorted(seen), "records": rows,
+            **({"container_selection": containers} if "containers" in configuration else {}),
         }
         (destination / "reconciliation.json").write_bytes(canonical(summary))
         return summary
