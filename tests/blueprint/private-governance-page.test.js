@@ -54,3 +54,10 @@ test('all dedicated page local links resolve and README exposes the implemented 
   }
   assert.ok(fs.readFileSync(path.join(root, 'README.md'), 'utf8').includes('](docs/agent-governance.html)'));
 });
+
+test('Pages specification distinguishes the implemented dedicated page from legacy copy work', () => {
+  const spec = fs.readFileSync(path.join(root, 'docs/production-readiness-pages-spec.md'), 'utf8');
+  assert.ok(spec.includes('](agent-governance.html)'));
+  assert.ok(spec.includes('Dedicated page implemented'));
+  assert.ok(spec.includes('not a production Pages deployment'));
+});

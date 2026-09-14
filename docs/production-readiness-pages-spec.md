@@ -6,6 +6,22 @@ It does not redesign the site, generate HTML, run a full site rebuild, change a
 production workflow or publish anything. Existing source below is observed in
 this checkout; proposed text below is **not** presented as current deployed copy.
 
+## Implementation status
+
+**Dedicated page implemented:** [Agent governance](agent-governance.html) now
+provides the actual trust-boundary narrative, dated private allow/deny and
+four-call ledger evidence, historical public/BASIC distinctions, authority
+leases and unresolved human/CI limits. It reuses the existing site assets and
+navigation, with desktop/mobile dark/light rendered checks and focused keyboard,
+landmark, link and privacy validation. This is a local/PR preview,
+**not a production Pages deployment** or a whole-site accessibility certificate.
+
+The existing `index.html`, `funnel.html` and `production.html` copy changes below
+remain a separately owned implementation/review surface until their scoped
+handoff is accepted. Their work does not block the dedicated page preview.
+No shared theme, process-library generator or production workflow was changed
+for the dedicated page.
+
 The engineering companion is [Agent governance at the effect boundary](agent-governance-deep-dive.md).
 The [scenario execution record](governed-returns-validation.md) owns dated
 observations. The [production-readiness reference](production-readiness.md)
