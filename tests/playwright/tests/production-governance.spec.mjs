@@ -41,16 +41,11 @@ test('authority and evidence are named, readable without a diagram runtime and k
   const evidence = page.locator('#evidence-boundaries');
   await expect(authority.getByRole('heading', { level: 2 })).toContainText('The model proposes');
   await expect(authority.getByRole('list', { name: 'Selected effect authorization sequence' }).locator(':scope > li')).toHaveCount(6);
-  await expect(evidence.locator('#s3-business-evidence')).toContainText('HISTORICAL');
-  await expect(evidence.locator('#s2-basic-evidence')).toContainText('Billing Issue');
-  const privateEvidence = evidence.locator('#private-governed-evidence');
-  await expect(privateEvidence).toContainText('PRIVATE SELECTED ALLOW + EXACT DENY VERIFIED');
-  await expect(privateEvidence).toContainText('No new pending intent was created');
-  await expect(privateEvidence).toContainText('NOT PROVED');
-  await expect(privateEvidence).toContainText('4/4');
-  await expect(privateEvidence).toContainText('created and read back');
-  await expect(privateEvidence).toContainText('separate from the before-return read ACKs');
-  await expect(evidence).toContainText('EXPIRED');
+  await expect(evidence.locator('#workflow-design-value')).toContainText('Make autonomy useful');
+  await expect(evidence.locator('#human-decision-value')).toContainText('Human judgement, connected');
+  await expect(evidence.locator('#operating-evidence-value')).toContainText('Connect actions to outcomes');
+  await expect(evidence).not.toContainText(/HISTORICAL|NOT PROVED|EXPIRED|4\/4|2026-09-/);
+  await expect(evidence.locator('a[href*="governed-returns-validation.md"]')).toBeVisible();
   for (const section of [authority, evidence]) {
     await section.scrollIntoViewIfNeeded();
     await expect(section).toBeVisible();

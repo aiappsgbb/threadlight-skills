@@ -248,7 +248,7 @@ test(`index + customize render the accurate ${expectedSkillCount} count`, () => 
   assert.match(index, new RegExp(`Threadlight is ${expectedSkillCount}`));
   assert.strictEqual(
     twitterDescription[1],
-    'An evidence-backed reel of the Threadlight pipeline: one paragraph types in, the agent is specced, validated on your PC, and shown through captured deployment proof — play, pause, scrub, replay, then read the real case study.',
+    'Build useful autonomy around your business process, with identity, policy, controlled execution, human decisions and evidence.',
   );
   assert.doesNotMatch(twitterDescription[1], /self-driving/i);
   // The customize overlay diagram labels the whole upstream `threadlight-skills`

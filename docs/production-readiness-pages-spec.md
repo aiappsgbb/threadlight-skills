@@ -8,10 +8,26 @@ this checkout; proposed text below is **not** presented as current deployed copy
 
 ## Implementation status
 
+### Commercial editorial direction
+
+The latest user direction makes `index.html`, `funnel.html`, `production.html`
+and `agent-governance.html` commercial product/architecture pages: useful
+autonomy, identity, policy, governance of selected tools and action paths,
+human decisions, controlled execution, audit, business outcomes and clear CTAs.
+They describe configurable capabilities, not a claim that every customer
+deployment or notification/approval integration has already been validated.
+
+Lab versions, pass/fail matrices, call counts, lease timestamps and instance
+blockers belong in the linked Level-500 deep dive and execution record.
+Those technical facts remain unchanged. The older evidence-card proposals and
+validation history below are retained design history, **not the commercial page contract**.
+The current commercial copy requires its own focused UI checks; prior browser
+passes are not silently reassigned to changed content.
+
 **Dedicated page implemented:** [Agent governance](agent-governance.html) now
-provides the actual trust-boundary narrative, dated private allow/deny and
-four-call ledger evidence, historical public/BASIC distinctions, authority
-leases and unresolved human/CI limits. It reuses the existing site assets and
+provides the integrated architecture, business benefits, use case and adoption
+journey. Its engineering links retain the exact validation and implementation
+boundaries outside the commercial cards. It reuses the existing site assets and
 navigation, with desktop/mobile dark/light rendered checks and focused keyboard,
 landmark, link and privacy validation. This is a local/PR preview,
 **not a production Pages deployment** or a whole-site accessibility certificate.

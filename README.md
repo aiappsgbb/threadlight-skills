@@ -77,8 +77,9 @@ See [production guidance and CI inputs](docs/production-readiness.md#runtime-gov
 and [coding-agent guidance](AGENTS.md).
 
 **The model proposes; trusted components authorize effects.** The implemented
-[Agent governance page](docs/agent-governance.html) shows the scoped execution
-path, dated private/public evidence and remaining human/production limits.
+[Agent governance page](docs/agent-governance.html) presents the product vision,
+integrated controls, business value and adoption path. Detailed validation
+facts and implementation limits remain in the engineering references.
 For the actual
 identity, policy, approval, transport and durable-audit boundaries, read the
 [engineering deep dive](docs/agent-governance-deep-dive.md). The separate

@@ -24,20 +24,19 @@ test('dedicated governance page uses existing site assets and accessible landmar
   assert.doesNotMatch(html, /react|unpkg\.com|cdn\.jsdelivr/i);
 });
 
-test('governance page distinguishes actual private effect proof from historical and blocked paths', () => {
+test('commercial page links to preserved technical evidence instead of showing lab status', () => {
   const html = read();
   for (const value of [
-    'The model proposes.', 'The system authorizes.', 'ACS', 'OPA',
-    'before the effect', 'different identity', 'ETag', 'two responses',
-    'Four call records', 'Private governed runner', '14 September 2026',
-    'ALLOW', 'DENY', 'Inline read ACK', 'Post-run ledger',
-    'Public governed runner', 'Historical', 'Private BASIC', 'Billing Issue',
-    'No new private pending intent', 'not whole-agent attestation',
-    '2026-09-15T11:12:28.719119+00:00', '2026-09-15T11:32:54.753384+00:00',
-    '2026-09-14T10:26:48.991423+00:00', '2026-09-14T12:03:41.859581+00:00',
-    'Human approval', 'Office 365 consent', 'CI is not all green',
-    'trusted host', 'not financial settlement',
+    'Autonomy for agents.', 'Not unlimited power.', 'Identity', 'Policy',
+    'Human decisions', 'Controlled execution', 'Evidence', 'Returns triage',
+    'agent-governance-deep-dive.md', 'governed-returns-validation.md',
   ]) assert.ok(html.includes(value), value);
+  assert.doesNotMatch(html, /4\/4|NOT PROVED|EXPIRED|2026-09-|CI is not all green/);
+  const record = fs.readFileSync(path.join(root, 'docs/governed-returns-validation.md'), 'utf8');
+  for (const fact of ['S2-PRIVATE-ALLOW-DENY-VERIFIED', '4/4',
+    '2026-09-15T11:12:28.719119+00:00', 'no new private pending intent']) {
+    assert.ok(record.includes(fact), fact);
+  }
   assert.doesNotMatch(html, /\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/i);
   assert.doesNotMatch(html, /\/Users\/|\/home\/[^/\s]+\/\.azure/);
   assert.doesNotMatch(html, /https:\/\/[a-z0-9-]+\.(?:azurecr\.io|vault\.azure\.net|documents\.azure\.com|blob\.core\.windows\.net|azurecontainerapps\.io|services\.ai\.azure\.com)/i);

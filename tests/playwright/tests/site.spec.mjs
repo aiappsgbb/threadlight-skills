@@ -46,11 +46,11 @@ function toLocalAssetPath(absUrl) {
 test.describe('landing page — the scrubbable demo (index.html)', () => {
   test('renders the demo hero, the Threadlight brand, and the 24-skill public count', async ({ page }) => {
     await page.goto(LANDING);
-    await expect(page).toHaveTitle(/working pilot/i);
+    await expect(page).toHaveTitle(/agents that move business forward/i);
     await expect(page.locator('header.masthead .brand-name')).toContainText(/Threadlight/);
     const hero = page.locator('#demo-h');
     await expect(hero).toBeVisible();
-    await expect(hero).toContainText(/working pilot/i);
+    await expect(hero).toContainText(/agents that move business forward/i);
     await expect(hero).not.toContainText(/governed agent/i);
     // The public library is exactly 24 skills — stated in the primer.
     await expect(page.locator('#how-it-works')).toContainText(/24\s+skills/i);
@@ -365,8 +365,8 @@ test.describe('production chapter (production.html)', () => {
   test('hero: production-ready title, the ship headline, and the 13-pillar stat strip', async ({ page }) => {
     await page.goto('/production.html');
     await expect(page).toHaveTitle(/Production-ready/i);
-    await expect(page.locator('#chapter-top h1')).toContainText(/prove it can ship/i);
-    await expect(page.locator('#chapter-top')).toContainText(/uplift\/handoff plan/i);
+    await expect(page.locator('#chapter-top h1')).toContainText(/operational confidence/i);
+    await expect(page.locator('#chapter-top')).toContainText(/business owners, engineering and operations/i);
     await expect(page.locator('#chapter-top')).toContainText(/move the pilot toward ship/i);
     await expect(page.locator('#chapter-top')).not.toContainText(/so the pilot ships/i);
     await expect(page.locator('#chapter-top')).not.toContainText(/Amber turns green/i);
