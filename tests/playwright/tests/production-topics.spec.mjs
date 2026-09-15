@@ -4,6 +4,44 @@ import AxeBuilder from '@axe-core/playwright';
 const topics = ['platform-controls', 'model-controls', 'effect-authority',
   'quality-controls', 'information-controls', 'operating-controls'];
 
+test('the returns walkthrough links concrete incidents to all six control topics', async ({ page }) => {
+  await page.goto('/production.html');
+  const walkthrough = page.locator('#returns-walkthrough');
+  await expect(walkthrough).toContainText('Can I return this order');
+  const steps = page.locator('[data-journey-step]');
+  await expect(steps).toHaveCount(6);
+  for (const step of await steps.all()) {
+    await step.click();
+    const panel = page.locator(`#${await step.getAttribute('data-journey-step')}`);
+    await expect(panel).toBeVisible();
+    await expect(panel.locator('[data-case-context]')).toBeVisible();
+    await expect(panel.locator('[data-visual]')).toBeVisible();
+    await expect(panel.locator('[data-journey-next]')).toBeVisible();
+    await expect(page.getByRole('tabpanel')).toHaveCount(1);
+    const next = panel.locator('[data-journey-next]');
+    const target = page.locator(await next.getAttribute('href'));
+    await next.click();
+    await expect(target).toBeVisible();
+  }
+});
+
+test('failure catalogs reveal controls on demand without breaking the topic layout', async ({ page }) => {
+  await page.goto('/production.html');
+  for (const id of topics) {
+    await page.locator(`[data-topic-tab][href="#${id}"]`).click();
+    const catalog = page.locator(`#${id} [data-risk-catalog]`);
+    await expect(catalog).not.toHaveAttribute('open', '');
+    await catalog.locator('summary').click();
+    for (const risk of await catalog.locator('[data-risk]').all()) await expect(risk).toBeVisible();
+    expect(await catalog.locator('[data-risk]').count()).toBeGreaterThanOrEqual(4);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
+    const violations = (await new AxeBuilder({ page }).include(`#${id}`)
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
+    expect(violations, id).toEqual([]);
+    await catalog.locator('summary').click();
+  }
+});
+
 test('production presents a visual map and only one structured topic at a time', async ({ page }) => {
   await page.goto('/production.html');
   await expect(page.locator('.production-map')).toBeVisible();

@@ -126,3 +126,34 @@ test('new governance contrast fixes are page-local and keep links distinguishabl
     && /text-decoration:\s*underline/.test(declarations)));
   assert.doesNotMatch(style, /outline:\s*(?:none|0)(?:[;}])/);
 });
+
+test('production explains a return through six concrete failure points, not an abstract category list', () => {
+  const overview = section(read('production.html'), 'production-domains');
+  assert.match(overview, /id="returns-walkthrough"/);
+  assert.match(text(overview), /Can I return this order/);
+  const steps = [...overview.matchAll(/data-journey-step="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(steps, ['platform-controls', 'information-controls', 'model-controls',
+    'effect-authority', 'operating-controls', 'quality-controls']);
+  assert.match(text(overview), /not a payment/);
+  assert.match(text(overview), /before release/);
+});
+
+test('each production topic teaches its own mechanism and concrete failure controls', () => {
+  const source = read('production.html');
+  const visuals = {
+    'platform-controls': 'access-topology', 'model-controls': 'model-passport',
+    'effect-authority': 'effect-sequence', 'quality-controls': 'evaluation-matrix',
+    'information-controls': 'data-lineage', 'operating-controls': 'recovery-timeline',
+  };
+  for (const [id, visual] of Object.entries(visuals)) {
+    const body = section(source, id);
+    assert.match(body, /data-case-context/, `${id}: return-specific incident`);
+    assert.match(body, new RegExp(`data-visual="${visual}"`), `${id}: distinct visual explanation`);
+    assert.match(body, /<details[^>]*data-risk-catalog/, `${id}: optional failure detail`);
+    assert.ok([...body.matchAll(/data-risk="/g)].length >= 4, `${id}: concrete failure families`);
+    assert.match(body, /data-journey-next/, `${id}: continue the same case`);
+  }
+  assert.match(section(source, 'quality-controls'), /<table/);
+  assert.match(section(source, 'information-controls'), /not a retrieval engine/);
+  assert.match(section(source, 'operating-controls'), /Unknown outcome/);
+});

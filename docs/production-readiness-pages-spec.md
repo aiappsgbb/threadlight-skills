@@ -26,6 +26,28 @@ passes are not silently reassigned to changed content.
 
 ### Architecture reader and Production-ready visual
 
+**Scenario-led revision:** the user found the selectable-topic page easier to
+navigate but too abstract and visually repetitive. Keep that navigation and the
+accepted Markdown; use one illustrative return as the public reading path.
+Connect, read, reason, decide, record and improve lead into the six complementary
+responsibilities. This is an explanatory order, not six sequential runtime
+gates: evaluation starts before release, and privacy/operations apply throughout.
+The scenario records a recommendation or supervisor handoff, not a payment.
+
+Each topic now opens with a different incident in that same case. Visual
+explanations are content-specific: an access topology with distinct routes and
+an excluded direct-write path; a model-use contract beside its change gate; the
+existing action-authorization schematic; an acceptance-criteria matrix; a
+source/context/disclosure diagram; and a lost-response recovery timeline with
+two reconciliation outcomes. Concrete failure/control catalogs expand on
+demand. They cover exposure and privilege, model drift, source access and memory,
+injection and disclosure, authority and freshness, evaluation coverage,
+capacity/cost, observability, supply chain, recovery and sign-off.
+Existing detailed architecture and assessment diagrams remain available.
+Illustrative criteria are not measured results, and proposed boundaries are not
+claims of automatic installation or complete deployed enforcement. The
+grounding workflow assesses supplied evidence; it is not a retrieval engine.
+
 **Current navigation decision:** the user accepted the improved architecture
 Markdown and selected a single Production page with one topic visible at a time.
 The Markdown is unchanged by this revision. A compact connected map introduces
