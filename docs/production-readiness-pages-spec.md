@@ -48,6 +48,10 @@ commit, native human authority and recovery. Code fragments are integration
 seams, not complete deployable applications or additional execution evidence.
 Rendered checks do not establish editorial acceptance.
 
+The chapter's anchor offset follows the actual masthead and wrapping contents
+bar heights. This page-local adjustment keeps section introductions visible
+after keyboard navigation and viewport changes without changing shared assets.
+
 The deep dive now leads with a navigable contents map, complementary production
 responsibilities, the action-governance problem and two explicit integration
 profiles. Implementation contracts follow that explanation. Historical execution

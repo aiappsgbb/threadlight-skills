@@ -69,7 +69,8 @@ test('authority and evidence are named, readable without a diagram runtime and k
   // Existing shared smooth-scroll deliberately preserves the URL fragment.
   await expect.poll(() => evidence.evaluate((element) => {
     const top = element.getBoundingClientRect().top;
-    return top >= 0 && top < 150;
+    const offset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
+    return Math.abs(top - offset) < 2;
   })).toBe(true);
   await capture(authority, 'effect-authority', testInfo);
   await capture(evidence, 'evidence-boundaries', testInfo);
@@ -122,4 +123,20 @@ test('production responsibilities are distinct, navigable and accessible before 
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
   expect(violations).toEqual([]);
   await capture(domains, 'production-responsibilities', testInfo);
+});
+
+test('chapter navigation does not cover section introductions when it wraps or resizes', async ({ page }) => {
+  await page.goto('/production.html');
+  for (const width of [1440, 768, 600, 412]) {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const id of ['production-domains', 'effect-authority', 'evidence-boundaries']) {
+      await page.locator(`#${id}`).evaluate(el => el.scrollIntoView({ block: 'start', behavior: 'instant' }));
+      await expect.poll(() => page.locator(`#${id} .eyebrow`).first().evaluate(element => {
+        const rect = element.getBoundingClientRect();
+        const bars = ['.masthead', '.floating-toc'].map(selector => document.querySelector(selector))
+          .filter(bar => getComputedStyle(bar).display !== 'none' && getComputedStyle(bar).opacity !== '0');
+        return rect.top >= Math.max(...bars.map(bar => bar.getBoundingClientRect().bottom)) + 8;
+      }), { timeout: 1000 }).toBe(true);
+    }
+  }
 });
