@@ -26,8 +26,30 @@ passes are not silently reassigned to changed content.
 
 ### Architecture reader and Production-ready visual
 
-The deep dive now leads with the problem, a navigable contents map, existing
-controls versus selected action governance, and two explicit integration
+**Editorial correction: complementary production domains.** The prior visual
+revision was not accepted as a sufficient explanation. Production is not an
+agent-governance landing page. Its introduction now distinguishes platform and
+network controls, model governance, agent behavior governance, quality and
+evaluation, information protection, and operations/lifecycle. Each responsibility
+has its own question, controls, owner, review focus and reading path. These are
+editorial groupings, not new scoring pillars or a priority order.
+
+The action-governance subsection must explain its gap before showing mechanics:
+a valid identity, approved model and private connection can still carry an
+ineligible, stale or repeated business instruction. Explain what stays in the
+business API, what the agent-facing boundary adds, and the value of routine
+automation, scoped human exceptions and attributable outcomes. Preserve the
+existing site's visual system; do not promote this subsection above the chapter.
+
+The technical companion follows those same responsibilities, then deepens the
+action story with source-backed factory wiring, selected signed action fields,
+strict proposal and resume JSON, independent business validation, conditional
+commit, native human authority and recovery. Code fragments are integration
+seams, not complete deployable applications or additional execution evidence.
+Rendered checks do not establish editorial acceptance.
+
+The deep dive now leads with a navigable contents map, complementary production
+responsibilities, the action-governance problem and two explicit integration
 profiles. Implementation contracts follow that explanation. Historical execution
 facts remain in `governed-returns-validation.md`; they are not duplicated as the
 architecture's introduction or required as its headings.
@@ -80,7 +102,7 @@ review contract. The accepted branch HTML owns its final text; the acceptance
 criteria are not a declaration that every future publication check has passed.
 No shared theme, process-library generator or production workflow was changed.
 
-The engineering companion is [Agent governance at the effect boundary](agent-governance-deep-dive.md).
+The engineering companion is [Agent behavior governance: from access to action authority](agent-governance-deep-dive.md).
 The [scenario execution record](governed-returns-validation.md) owns dated
 observations. The [production-readiness reference](production-readiness.md)
 owns the lifecycle, scorecard and evidence-input contract. These documents have

@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Production-ready — three postures, thirteen pillars, one scorecard.</title>
-<meta name="description" content="Turn agent potential into operational confidence. Connect identity, policy, controlled actions, human decisions and audit with a practical path from prototype to production operations.">
+<meta name="description" content="Plan production across platform and network controls, model governance, agent behavior, quality, information protection and operations. Distinct responsibilities, one accountable go-live decision.">
 <meta name="theme-color" content="#4f6dff">
 
 <meta property="og:type"        content="article">
 <meta property="og:title"       content="Production-ready — three postures, thirteen pillars, one scorecard.">
-<meta property="og:description" content="Build an operating model around your agents: identity, business policy, controlled execution, human judgement and evidence for the teams accountable for outcomes.">
+<meta property="og:description" content="Understand the complementary controls behind production AI: platform, models, agent actions, quality, data and operations. Explore the architecture and the responsibilities behind each.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/production.html">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
@@ -52,7 +52,26 @@
   .authority-steps p, .authority-scope { font-size: 15px; color: var(--ink-1); margin: 0; }
   .authority-scope { padding: 18px 22px; border-left: 3px solid var(--chapter-accent); background: var(--bg-2); }
   .authority-caption { margin: 16px 0 0; color: var(--ink-1); font-size: 14px; }
+  .production-domains { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 32px; }
+  .production-domain { padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-1); scroll-margin-top: 150px; }
+  .production-domain h3 { margin: 0 0 12px; font-family: var(--serif); font-size: 26px; }
+  .production-domain p { color: var(--ink-1); font-size: 15px; margin: 12px 0; }
+  .production-domain .domain-question { font-weight: 650; color: var(--ink-0); }
+  .production-domain a { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; }
+  #production-domains .eyebrow, #production-domains .section-lede a { color: var(--ink-1); }
+  #production-domains .section-lede a { text-decoration: underline; text-underline-offset: .2em; }
+  .domain-navigation { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 24px 0; padding: 0; list-style: none; }
+  .domain-navigation a { color: var(--ink-1); text-decoration: underline; text-underline-offset: .2em; font-size: 14px; }
+  .action-value { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 28px 0; }
+  .action-value article { border-top: 2px solid var(--chapter-accent); padding-top: 14px; }
+  .action-value h3 { font-size: 18px; margin: 0 0 8px; }
+  .action-value p { font-size: 15px; color: var(--ink-1); margin: 0; }
+  .action-example { margin: 28px 0; padding: 24px 28px; border: 1px solid var(--line-2); border-radius: 16px; background: var(--bg-2); }
+  .action-example h3 { margin: 0 0 12px; font-size: 22px; }
+  .action-example p { color: var(--ink-1); margin: 12px 0 0; }
   @media (max-width: 680px) {
+    .production-domains, .action-value { grid-template-columns: 1fr; }
+    .production-domain, .action-example { padding: 22px; }
     .authority-map { display: none; }
     .authority-mobile { display: grid; gap: 30px; list-style: none; padding: 0; margin: 0; }
     .authority-mobile li { position: relative; padding: 22px; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 12px; }
@@ -87,13 +106,6 @@
 </aside>
 
 <main>
-  <section class="wrap" aria-label="Selected runtime governance">
-    <h2>Autonomy for agents. An operating model for your organization.</h2>
-    <p>Connect identity, policy, controlled execution, human decisions and evidence
-      around the business outcomes your agent is designed to deliver.</p>
-    <p><a href="./agent-governance.html">Explore the integrated governance architecture &rarr;</a></p>
-  </section>
-
   <!-- ==================== HERO ==================== -->
   <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
     <div class="wrap wrap-wide">
@@ -111,9 +123,9 @@
         <strong>move the pilot toward ship</strong> &mdash; not skip the hardening work.
       </p>
       <p class="lede reveal" data-delay="4" style="margin-top:12px;">
-        Start with the use case. Choose the governance profile for its consequential
-        actions, then align quality, reliability, privacy and recovery with the way
-        your organization plans to operate it.
+        Start with the use case and its risks. Platform security, model governance,
+        agent behavior, quality, data protection and operations need distinct controls
+        and accountable owners. None replaces the others.
       </p>
       <div class="stat-strip reveal" data-delay="5" role="list" aria-label="Production-ready at a glance">
         <div class="stat" role="listitem">
@@ -133,7 +145,7 @@
       <div class="cost-cta-row reveal" data-delay="7" style="margin-top:26px;">
         <a class="btn btn-primary" href="#start">Get started <span class="arrow">&rarr;</span></a>
         <a class="btn btn-ghost" href="#evidence-boundaries">Explore business value <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="#effect-authority">Understand effect authority <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="#production-domains">Explore production responsibilities <span class="arrow">&rarr;</span></a>
       </div>
     </div>
   </section>
@@ -169,19 +181,114 @@
     </div>
   </section>
 
-  <!-- Static schematic with a mobile flow and an ordered text equivalent. -->
-  <section class="chapter-section governance-section" id="effect-authority" data-toc-id="effect-authority" data-toc-label="Effect authority" aria-labelledby="effect-authority-heading">
+  <section class="chapter-section" id="production-domains" data-toc-id="production-domains" data-toc-label="Production responsibilities" aria-labelledby="production-domains-heading">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>From conversation to controlled action</p>
-        <h2 id="effect-authority-heading">The model proposes. <em>Trusted components authorize effects.</em></h2>
-        <p class="section-lede">A good answer is not permission to change a business record.
-          Connect each consequential action to the rules, facts and people that can authorize it
-          &mdash; before the business system executes.</p>
+        <p class="eyebrow"><span class="dot"></span>Complementary responsibilities</p>
+        <h2 id="production-domains-heading">Production readiness is not <em>a single control.</em></h2>
+        <p class="section-lede">A private network does not establish answer quality. A safe model response does not authorize a business transaction.
+          A correctly authorized transaction does not establish service reliability.
+          Review these responsibilities together, with the <a href="#checks">thirteen-pillar assessment</a> supplying the underlying checks.</p>
+      </div>
+      <nav aria-label="Production responsibilities">
+        <ul class="domain-navigation">
+          <li><a href="#platform-controls">Platform &amp; network</a></li>
+          <li><a href="#model-controls">Models</a></li>
+          <li><a href="#effect-authority">Agent behavior</a></li>
+          <li><a href="#quality-controls">Quality</a></li>
+          <li><a href="#information-controls">Information protection</a></li>
+          <li><a href="#operating-controls">Operations &amp; lifecycle</a></li>
+        </ul>
+      </nav>
+      <div class="production-domains">
+        <article class="production-domain" id="platform-controls">
+          <h3>Platform and network controls</h3>
+          <p class="domain-question">Where can the system run, connect and authenticate?</p>
+          <p>Landing zones, private ingress and egress, workload identity, IAM and secret management constrain exposure and service access.
+            The platform and security teams own these boundaries; Threadlight must integrate with them, not replace them.</p>
+          <p><strong>Review:</strong> permitted routes and identities, least privilege and the absence of unintended direct access.
+            A permitted connection still does not approve every action sent over it.</p>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#3-the-three-postures" target="_blank" rel="noopener">Architecture and network postures &rarr;</a>
+        </article>
+        <article class="production-domain" id="model-controls">
+          <h3>Model governance</h3>
+          <p class="domain-question">Which models may be used, under which constraints?</p>
+          <p>Approved models and endpoints, content safety, model-facing gateway policies, quotas and lifecycle decisions control consumption and supported safety risks.
+            The AI platform and responsible-AI owners define the policy; model changes also require quality review.</p>
+          <p><strong>Review:</strong> approved access, configured safety controls, usage limits and model-change criteria.
+            A model gateway does not govern downstream business tools unless those actions are explicitly routed and controlled.</p>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/13-model-lifecycle.md" target="_blank" rel="noopener">Model lifecycle responsibilities &rarr;</a>
+        </article>
+        <article class="production-domain">
+          <h3>Agent behavior governance</h3>
+          <p class="domain-question">May this agent perform this particular business action now?</p>
+          <p>An agent can use an approved model and identity yet propose an ineligible decision or act on stale information.
+            The business owner specifies action rules and required human review; engineering places enforcement before the selected tool can change data.</p>
+          <p><strong>Review:</strong> exact action scope, trusted facts, human authority when required and the resulting transaction.
+            This framework covers selected action paths, not every internal model behavior.</p>
+          <a href="#effect-authority">The gap, the mechanism and the business value &rarr;</a>
+        </article>
+        <article class="production-domain" id="quality-controls">
+          <h3>Quality and evaluation</h3>
+          <p class="domain-question">Does the agent solve the intended problem reliably?</p>
+          <p>Business acceptance cases, retrieval and citation checks, regression evaluations and adversarial tests assess usefulness and failure behavior.
+            Product and engineering owners set thresholds and representative test data rather than accepting a convincing demo.</p>
+          <p><strong>Review:</strong> task success, safety failures and changes against a baseline.
+            Evaluation informs a release decision; it is not a substitute for authorization during each selected action.</p>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-evals" target="_blank" rel="noopener">Evaluation workflow &rarr;</a>
+        </article>
+        <article class="production-domain" id="information-controls">
+          <h3>Information protection</h3>
+          <p class="domain-question">Whose data may be retrieved, disclosed and retained?</p>
+          <p>Source permissions, retrieval access controls, data minimization and retention rules apply to prompts, responses, memory and audit.
+            Data and privacy owners determine the allowed scope. A shared service identity must not erase the caller&rsquo;s access boundaries.</p>
+          <p><strong>Review:</strong> denied-access cases, disclosure paths and sensitive logging.
+            Recording an authorization decision does not make its business payload safe to expose or retain indefinitely.</p>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-ground" target="_blank" rel="noopener">Grounding and retrieval access checks &rarr;</a>
+        </article>
+        <article class="production-domain" id="operating-controls">
+          <h3>Operations and lifecycle</h3>
+          <p class="domain-question">Can the organization run, afford, change and recover this service?</p>
+          <p>SLOs, telemetry, capacity tests, cost per successful interaction, incident ownership and rollback plans make the workload operable.
+            SRE, FinOps and delivery owners also manage dependency provenance and evidence gates for changes.</p>
+          <p><strong>Review:</strong> tested recovery, budget limits, accountable on-call ownership and release criteria.
+            Rolling back agent code does not undo a completed business transaction; that needs its own recovery procedure.</p>
+          <a href="#legs">Owners, remediation and delivery &rarr;</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Static schematic with a mobile flow and an ordered text equivalent. -->
+  <section class="chapter-section governance-section" id="effect-authority" data-toc-id="effect-authority" data-toc-label="Agent behavior" aria-labelledby="effect-authority-heading">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Inside one domain: agent behavior governance</p>
+        <h2 id="effect-authority-heading">Access to a system is not <em>authority for every action.</em></h2>
+        <p class="section-lede">An authenticated agent on a private network can still propose an ineligible return,
+          use an outdated case or repeat a decision after a timeout.
+          The missing question is not &ldquo;can it call this API?&rdquo; but
+          &ldquo;may it perform this exact action, with these facts, now?&rdquo;</p>
       </div>
       <div class="authority-context" aria-label="Complementary controls">
         <strong>Builds on your existing controls</strong>
         <span>Identity &amp; access</span><span>Content safety &amp; model gateways</span><span>Network isolation</span>
+      </div>
+      <div class="action-example">
+        <h3>Example: a returns assistant, not a payment authority.</h3>
+        <p><strong>Ordinary eligible case:</strong> record the recommendation automatically when policy permits.
+          <strong>High-value case:</strong> pause for an authorized reviewer to approve or reject a supervisor handoff.
+          <strong>Changed case:</strong> stop rather than apply a decision to an obsolete revision.
+          <strong>Repeated completed request:</strong> retrieve the recorded outcome, not another write.</p>
+        <p>The existing business API keeps its eligibility and transaction rules.
+          Threadlight adds a consistent agent-facing contract: bind the exact proposal to policy, trusted facts,
+          any required human decision and an authorization record before dispatch.
+          The reference records a case decision and its audit; it does not move money.</p>
+      </div>
+      <div class="action-value" aria-label="Value of selected action governance">
+        <article><h3>Routine work</h3><p>Keep permitted cases automatic within explicit business rules instead of requiring manual approval for every tool call.</p></article>
+        <article><h3>Exceptions</h3><p>Let the right person decide a specific proposal in Outlook, without granting the agent general authority to override the rules.</p></article>
+        <article><h3>Accountability</h3><p>Connect the policy and human decision to the actual business outcome, so an operator can explain and reconcile what happened.</p></article>
       </div>
       <figure aria-labelledby="effect-sequence-caption">
         <svg class="authority-map" viewBox="0 0 1080 510" role="img" aria-labelledby="authority-map-title authority-map-desc">
@@ -208,7 +315,7 @@
           <text class="am-title" x="410" y="224">Authorize</text>
           <text class="am-text" x="410" y="257">Identity &middot; Policy &middot; Trusted facts</text>
           <text class="am-text" x="410" y="284">Required decision verified</text>
-          <text class="am-text" x="410" y="320" style="font-size:14px;">Durable audit ACK before dispatch</text>
+          <text class="am-text" x="410" y="320" style="font-size:14px;">Authorization recorded before dispatch</text>
           <path class="am-line" d="M698 250H803" marker-end="url(#authority-arrow)"/>
           <text class="am-label" x="716" y="222">only if</text><text class="am-label" x="716" y="238">authorized</text>
           <rect class="am-panel" x="806" y="177" width="240" height="147" rx="14"/>
@@ -227,7 +334,7 @@
         </svg>
         <ol class="authority-mobile" aria-label="Controlled action path">
           <li><h3>01 / Propose</h3><p>The agent supplies arguments through declared tools, not business authority.</p></li>
-          <li class="authority-decision"><h3>02 / Authorize</h3><p>Trusted code checks identity, policy and current facts. A durable audit ACK precedes dispatch.</p>
+          <li class="authority-decision"><h3>02 / Authorize</h3><p>Trusted code checks identity, policy and current facts. Authorization is durably recorded before dispatch.</p>
             <span class="authority-human">Human decision when required: native Outlook approval, independently verified and consumed once.</span></li>
           <li><h3>03 / Execute</h3><p>The independent business API checks current state and commits the update with its audit.</p></li>
         </ol>
@@ -249,7 +356,7 @@
         An unbound read remains usable without ACS, under its normal access rules, with optional audit before return.
         Other tools, quality, resilience and network isolation need their own controls.</p>
       <div class="cost-cta-row" style="margin-top:26px;">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c4cfb09926531869b787ad8e1a0e3a67188cad49/docs/agent-governance-deep-dive.md">Read the architecture <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/772074123506c285eed2395c40ded4eaad229cc6/docs/agent-governance-deep-dive.md">Read the architecture <span class="arrow">&rarr;</span></a>
         <a class="btn btn-ghost" href="#evidence-boundaries">Inspect the evidence boundaries</a>
       </div>
       <div class="read-deeper">
@@ -276,11 +383,12 @@
 
       <!-- agent-governance vs platform boundary + the deliverable -->
       <div class="reveal" data-delay="1" style="max-width:880px; margin: var(--s-5) auto 0; border:1px solid var(--line); border-left:3px solid var(--lime); border-radius:12px; background:var(--bg-2); padding:20px 24px;">
-        <p style="font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 9px;">Agent governance &mdash; not platform governance</p>
+        <p style="font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 9px;">Different owners, complementary controls</p>
         <p style="margin:0; color:var(--ink-1); font-size:.98rem; line-height:1.62;">
-          <strong>Citadel and the platform team secure the landing zone</strong> &mdash; the hub, the shared AI gateway, network and policy.
-          <strong>Threadlight proves the agent you run in it</strong>: these 13 pillars, plus a committed supply-chain SBOM, an agent-identity AI-BOM and an EU AI Act evidence pack.
-          The governance team&rsquo;s deliverable isn&rsquo;t a meeting &mdash; it&rsquo;s that record, in the repo, versioned with the code and gating every deploy.
+          <strong>The platform team owns the landing zone</strong> &mdash; including its network, identities and any shared AI gateway.
+          <strong>Threadlight organizes the workload&rsquo;s readiness review</strong> across these 13 pillars, with scoped evidence and named owners.
+          Runtime action controls, evaluations, a supply-chain SBOM, an agent-identity AI-BOM and regulatory evidence serve different purposes.
+          None alone proves the whole agent is production-ready or establishes legal compliance.
         </p>
       </div>
 
@@ -788,7 +896,7 @@
       <div class="cost-cta-row" style="margin-top:26px;">
         <a class="btn btn-primary" href="./agent-governance.html">Explore agent governance <span class="arrow">&rarr;</span></a>
         <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/governed-returns-validation.md">Read the dated execution record</a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/c4cfb09926531869b787ad8e1a0e3a67188cad49/docs/agent-governance-deep-dive.md">Inspect implementation and evidence joins</a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/772074123506c285eed2395c40ded4eaad229cc6/docs/agent-governance-deep-dive.md">Inspect implementation and evidence joins</a>
       </div>
     </div>
   </section>

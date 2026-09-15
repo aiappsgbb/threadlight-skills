@@ -39,7 +39,7 @@ test('authority and evidence are named, readable without a diagram runtime and k
   await page.goto('/production.html');
   const authority = page.locator('#effect-authority');
   const evidence = page.locator('#evidence-boundaries');
-  await expect(authority.getByRole('heading', { level: 2 })).toContainText('The model proposes');
+  await expect(authority.getByRole('heading', { level: 2 })).toContainText('Access to a system');
   await expect(authority.getByRole('list', { name: 'Selected effect authorization sequence' }).locator(':scope > li')).toHaveCount(6);
   if (page.viewportSize().width <= 680) {
     await expect(authority.locator('.authority-mobile')).toBeVisible();
@@ -83,10 +83,43 @@ test('new authority and evidence remain readable when JavaScript is disabled', a
   try {
     await page.goto('/production.html');
     await expect(page.locator('#effect-authority')).toBeVisible();
+    await expect(page.locator('#production-domains .production-domain')).toHaveCount(6);
     await expect(page.locator('#evidence-boundaries')).toBeVisible();
     await expect(page.getByRole('list', { name: 'Selected effect authorization sequence' }).locator(':scope > li')).toHaveCount(6);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   } finally {
     await context.close();
   }
+});
+
+test('production responsibilities are distinct, navigable and accessible before the action deep dive', async ({ page }, testInfo) => {
+  await page.goto('/production.html');
+  const domains = page.locator('#production-domains');
+  await expect(page.locator('main > section').first()).toHaveAttribute('id', 'chapter-top');
+  await expect(domains.locator('.production-domain')).toHaveCount(6);
+  const links = domains.getByRole('navigation', { name: 'Production responsibilities' }).getByRole('link');
+  await expect(links).toHaveCount(6);
+  for (const link of await links.all()) {
+    const target = page.locator(await link.getAttribute('href'));
+    await expect(target).toHaveCount(1);
+    const heading = target.getByRole('heading').first();
+    await link.focus();
+    await link.press('Enter');
+    await expect.poll(() => heading.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return hit !== null && element.contains(hit);
+    })).toBe(true);
+  }
+  const order = await page.evaluate(() => {
+    const domains = document.querySelector('#production-domains');
+    return Boolean(domains.compareDocumentPosition(document.querySelector('#effect-authority'))
+      & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(order).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
+  const violations = (await new AxeBuilder({ page }).include('#production-domains')
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
+  expect(violations).toEqual([]);
+  await capture(domains, 'production-responsibilities', testInfo);
 });

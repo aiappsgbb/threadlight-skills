@@ -48,3 +48,32 @@ test('production chapter explains the action boundary through a connected visual
   assert.doesNotMatch(section, /sha256:|2026-|S[123]-|ETag CAS|Idempotency-Key/);
   assert.doesNotMatch(page, /--cp-bg:\s*#f7f4ef|data-theme="dark"/, 'Do not replace the established site theme');
 });
+
+test('production presents complementary domains before the agent-action detail and explains its business gap', () => {
+  const page = read('docs/production.html');
+  const domains = ['platform-controls', 'model-controls', 'effect-authority',
+    'quality-controls', 'information-controls', 'operating-controls'];
+  for (const id of domains) {
+    assert.ok(page.includes(`id="${id}"`), id);
+    assert.ok(page.includes(`href="#${id}"`), id);
+  }
+  assert.ok(page.indexOf('id="production-domains"') < page.indexOf('id="effect-authority"'));
+  const action = page.match(/<section\b[^>]*id="effect-authority"[^>]*>([\s\S]*?)<\/section>/)[1];
+  for (const phrase of ['authenticated agent', 'outdated case', 'repeat a decision',
+    'Routine work', 'Exceptions', 'Accountability', 'existing business API']) {
+    assert.ok(action.includes(phrase), phrase);
+  }
+  assert.ok(action.indexOf('outdated case') < action.indexOf('class="authority-map"'));
+  assert.doesNotMatch(page, /Threadlight proves the agent you run in it|Agent governance &mdash; not platform governance/);
+});
+
+test('technical guide follows the public domains and expands the contracts with code and JSON', () => {
+  const report = read('docs/agent-governance-deep-dive.md');
+  for (const heading of ['Platform and network controls', 'Model governance',
+    'Agent behavior governance', 'Quality and evaluation', 'Information protection',
+    'Operations and lifecycle']) assert.ok(report.includes(heading), heading);
+  assert.ok(report.includes('<!-- contract: action-approval-fields -->'));
+  assert.ok(report.includes('<!-- contract: resumed-decision -->'));
+  assert.ok(report.includes('<!-- code: native-client-wiring -->'));
+  assert.ok(report.includes('<!-- code: conditional-business-effect -->'));
+});

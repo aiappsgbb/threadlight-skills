@@ -43,8 +43,8 @@ test('authority section is an accessible ordered contract with distinct identiti
   assert.match(source, /id="effect-authority"[^>]*aria-labelledby="effect-authority-heading"/);
   assert.match(body, /<ol[^>]*aria-label="Selected effect authorization sequence"/);
   assert.match(body, /class="authority-steps"/);
-  for (const phrase of ['The model proposes', 'Identity', 'Policy', 'Trusted facts', 'Human decision',
-    'Outlook', 'independent business API', 'audit ACK', 'unbound', 'without ACS',
+  for (const phrase of ['Access to a system', 'Identity', 'Policy', 'Trusted facts', 'Human decision',
+    'Outlook', 'independent business API', 'durable authorization record', 'unbound', 'without ACS',
     'integration profiles', 'network isolation']) assert.ok(text(body).includes(phrase), phrase);
   assert.match(body, /agent-governance-deep-dive\.md/);
   assert.match(read('agent-governance-deep-dive.md'), /references\/gateway\/dispatcher\.py/);
