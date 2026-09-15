@@ -562,6 +562,10 @@ verify the display arguments/context against the intent, then use a separately
 authenticated human credential. `threadlight-review-action` requires a real
 interactive confirmation such as `APPROVE <nonce>`. Successful review reports
 `execution: not-started`; it never consumes or calls the backend.
+The review-only transport supports the explicit delegated `Governance.Approve`
+scope without rewriting the credential request or relaxing workload transport
+validation. This was corrected in portable control-plane package 0.2.1 after
+the September 15 preflight reproduced 0.2.0's premature scope rejection.
 
 [`ApprovalClient.verify`](../skills/threadlight-govern/references/control-plane/client.py)
 always performs server-side `consume`, comparing the whole returned grant:
@@ -784,6 +788,14 @@ The [notification-only module](../skills/threadlight-deploy/references/governanc
 creates a Logic App in `Disabled` state with SAS authentication `Disabled` and
 explicit Entra trigger policy. Office 365 connection state `Enabled` did not
 mean mailbox consent: S3 was `Unauthenticated`, and no email was sent.
+The [September 15 recovery](governed-returns-validation.md#september-15-notification-readiness-and-delegated-review-client-recovery)
+subsequently observed the saved connection as `Connected` and created/enabled
+one separately authorized private-scenario notification companion with that
+existing connection, fixed recipient, exact Entra operator and SAS disabled.
+The public workflow stayed unchanged and disabled. This does not establish a
+private endpoint for the Consumption trigger. The reviewer was unavailable:
+no fresh private intent or notification was sent, and human/resume/replay
+remain unproved.
 `Review_notification_requested`/`Notify_operator` can notify a fixed authorized
 recipient after consent and explicit enablement; they do not resolve grants,
 consume approvals or execute decisions. An email/reply/click is not approval.

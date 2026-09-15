@@ -223,7 +223,14 @@ OID policies, a fixed recipient and bounded request fields. It is not wired to
 automatically poll/resolve approvals. **Office 365 consent** must be completed
 by the real mailbox user before the operator explicitly enables and tests it.
 `connectionState: Enabled` alone is not consent: inspect authentication status.
-The S3 connection remained unauthenticated; no email was sent.
+The September 13 S3 capture was unauthenticated. A fresh September 15 GET after
+the user's saved consent returned `Connected` with an authenticated user.
+The separately authorized private companion was then created using that
+existing connection and enabled, with the same fixed recipient and Entra
+operator policy, SAS disabled and unauthenticated requests denied. The public
+workflow remained unchanged and disabled. The reviewer was unavailable, so
+no notification email was sent and no private pending request was generated.
+This is infrastructure readiness, not delivery or human-resume proof.
 
 An email is **not a grant**. The workflow cannot resolve an approval or execute
 the business write. Review still uses the genuine delegated Task8 client, then
@@ -236,10 +243,13 @@ consent and an actual notification test are authorized.
 
 ### Human continuation after an expired request
 
-First, in Azure Portal open the **specific demo resource group -> API connections
--> configured Office 365 connection -> Edit API connection -> Authorize**.
-The actual mailbox user signs in and saves. Verify the connection no longer
-reports `Unauthenticated`; an Enabled flag alone is insufficient. Keep the
+**Read the current Office 365 connection first.** If the actual connection is
+`Connected` with its expected authenticated user, do not repeat consent based
+on an older `Unauthenticated` capture. Otherwise, in Azure Portal open the
+**specific demo resource group -> API connections -> configured Office 365
+connection -> Edit API connection -> Authorize**.
+The actual mailbox user signs in and saves; verify with a new GET.
+An Enabled flag alone is insufficient. Keep the
 notification workflow disabled until the operator explicitly enables it for a
 real test. That enablement does not automatically send a notification: a separate
 operator-authenticated request with the new operation/case/action hash is still
@@ -276,6 +286,11 @@ The client displays the exact proposal/hash/expiry and asks the human to type
 the genuine Entra browser login. Use the already allowlisted reviewer account
 with the Approver role and delegated consent; no agent credential or unattended
 confirmation is accepted. Successful review reports `execution: not-started`.
+Use portable control-plane package 0.2.1 or later: its review-only transport
+accepts the explicit `Governance.Approve` scope without relaxing workload
+`/.default` validation. Version 0.2.0 rejected that documented scope before
+authentication. The server still enforces the real delegated token and
+allowlisted human/client/role; changing the client is not an approval grant.
 
 Only afterwards resume in that **new request's original hosted session** with
 its exact `resume_arguments` and new operation ID. Verify the consumed grant,

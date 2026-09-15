@@ -16,7 +16,7 @@ The separate delegated-token workstream is outside this record.
 | ID | Scenario | Last recorded status | Meaning |
 |---|---|---|---|
 | S1 | Native MAF in a Docker container on an operator VM; real private model, governed MCP, separate business API and Cosmos | Executed, with the bounded evidence below | Working functional baseline; not a Foundry hosted deployment |
-| S2 | Private Foundry environment: separate BASIC diagnostic and governed business runner | S2-PRIVATE-ALLOW-DENY-VERIFIED: governed version 4 performed a real Cosmos decision/audit and exact policy denial; BASIC version 7 remains a separate model smoke | Two-tool scope, two inline read ACKs and four post-run call records; private pending/human/resume/replay/email not yet proved |
+| S2 | Private Foundry environment: separate BASIC diagnostic and governed business runner | S2-PRIVATE-ALLOW-DENY-VERIFIED: governed version 4 performed a real Cosmos decision/audit and exact policy denial; BASIC version 7 remains a separate model smoke. September 15: notification infrastructure ready | Two-tool scope, two inline read ACKs and four post-run call records; private pending/human/resume/replay/email not yet proved |
 | S3 | Separate public-authenticated Foundry hosted MAF with governed MCP and real Cosmos business writer | Hosted v5 allow, deny, pending approval, expired attempt and durable read/reconciliation executed | Real hosted business proof, not private-network proof; genuine human completion remains blocked |
 | S4 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1/S3 |
 
@@ -1226,8 +1226,10 @@ could act. Private pending/no-effect, authenticated approval, exact resume,
 one-use completed replay and email delivery remain unproved. The prepared
 review frontend uses the existing delegated Task8 protocol, real browser
 identity and a TTY confirmation; it has not recorded a decision for this run.
-The unconsented Office 365 notification path is not an automated end-to-end
-approval workflow. No old S1/S3 grant or expired reference was renewed.
+At that capture, the unconsented Office 365 notification path was not an
+automated end-to-end approval workflow. The September 15 recovery below records
+the later connection and workflow state. No old S1/S3 grant or expired reference
+was renewed.
 
 This is a real private **selected business effect path**, **not fully governed
 in every respect**: no universal host/model/tool coverage, arbitrary-code
@@ -1243,6 +1245,65 @@ before the dates above. Preserved resources are not renewed authorization.
 | `deny-verified.json` | `d988158a87ef06c22724536bf3967dc880042b3771af53c1881853940ae66de2` |
 | `native-readbacks.json` | `1d9feff65dcd60d9a105c33f9cbc6d348d60040662414d04dceba5bcb958dd56` |
 | `reconciliation-allow-deny.json` | `0bfa9d6714d8a9333b02f3adb723a104a63cbd4861ed201017fa0013b75848fa` |
+
+### September 15: notification readiness and delegated review client recovery
+
+**S2-NOTIFICATION-READY-HUMAN-NOT-RUN.** A fresh GET after the user had completed
+the real mailbox authorization returned Office 365 `Connected`, connection
+state `Enabled` and a populated authenticated user. The earlier unauthenticated
+capture was not reused as current status, and consent was not requested again.
+
+Fresh inventory showed the proposed private notification workflow did not
+exist. The approved incremental deployment created **one workflow and zero
+connections or role assignments**, reusing the authenticated Office 365
+connection across the existing resource groups. What-if showed only that
+workflow creation. Direct readback verified the exact fixed recipient,
+issuer/audience/operator-OID policy, bounded private case IDs and sole
+notification action. After explicit authorized enablement, the workflow was
+`Enabled`, SAS authentication was still `Disabled`, the callback contained no
+SAS parameters, and an unauthenticated trigger returned 401. The public workflow
+remained unchanged and disabled. This is a notification companion for the
+private scenario, not proof that the Consumption trigger itself is a private
+endpoint.
+
+Two fresh direct native GETs still reported governed version 4 active with the
+signed binding's exact image and instance principal/client. At **08:03:15 UTC**,
+the existing operator managed identity verified the actual versioned Key Vault
+signatures on the binding and policy, their freshness and matching frozen
+configuration digest. Independent private Cosmos reads found the supervisor
+case still `in_triage`, with the unchanged policy-bound ETag and amount 1200.
+No signing, lease extension, image replacement, role or network expansion was
+performed. The earlier **11:12:28 UTC bootstrap expiry** still bounds use;
+retained resources and a ready notification workflow do not renew authority.
+
+Preflight exposed a local client defect before any human request: the documented
+`Governance.Approve` delegated scope was rejected by the workload-only
+`/.default` transport validator. The corrected **review-only transport** accepts
+the explicit delegated scope without changing the scope sent to the credential;
+existing `/.default` callers remain supported. Workload validation and server
+human/client/role/token checks are unchanged. The portable review package is
+0.2.1; no hosted or control-plane service image was changed for this client fix.
+Offline regression first observed **5 failed / 8 passed**, then the focused
+review/control-plane suite reported **124 passed / 6 skipped**. The six native
+adapter cases were not executed or credited. These are local protocol tests,
+**not a live human decision**.
+
+The reviewer was unavailable when current availability was requested, so
+**no new private pending intent** was created and **no notification email was
+sent**. No human token/confirmation/grant was fabricated. Pending/no-effect,
+actual email delivery, delegated Approver decision, exact same-native-session
+resume, one business audit and identical replay with no additional effect
+remain unproved. Check current authority and reviewer availability **before
+generating a new intent**; if authority has expired, use the legitimate fresh
+publication/binding lifecycle rather than editing old timestamps.
+
+Retained private recovery artifacts include `office365-fresh.json`,
+`notification-what-if.json`, `notification-deployed.json`,
+`notification-enabled.json`, `notification-unauthenticated-denied.json`,
+`public-workflow-unchanged.json`, both `native-version-fresh-*.json` readbacks
+and `human-before-0915.json`. They contain operational identifiers and are not
+distributed with this catalog. The original failed attempts, grants, images,
+versions and suspended unrelated HTTP-401 edits remain preserved.
 
 ## S3: Public authenticated Foundry hosted execution
 
@@ -1410,9 +1471,11 @@ also unproved.
 The native Office 365 connection and notification-only Logic App exist.
 The workflow is **Disabled**, SAS authentication **Disabled**, and exact
 Entra issuer/audience/operator OID policies were independently read back.
-**Office 365 consent is missing**: the connection's Enabled flag coexists with
-Error/Unauthenticated/token and an empty authenticated user. No workflow was
-invoked and no email was sent. Email/reply/click cannot issue a grant; only the
+The September 13 observation was **Office 365 consent is missing**: the
+connection's Enabled flag coexisted with Error/Unauthenticated/token and an
+empty authenticated user. The September 15 recovery above supersedes that
+connection status, not the historical S3 evidence. No workflow was invoked
+and no email was sent in S3. Email/reply/click cannot issue a grant; only the
 existing delegated Task8 review protocol can record the human decision.
 No Graph application mail permission, OBO or Teams workflow is claimed.
 

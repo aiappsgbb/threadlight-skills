@@ -218,3 +218,25 @@ def test_reconciliation_runbook_requires_explicit_complete_private_container_sel
     for marker in ("`containers`", "complete", "distinct", "s2-runner-activity",
                    "missing is not the same as invalid", "operator managed identity"):
         assert marker in text
+
+
+def test_september15_notification_readiness_does_not_claim_human_execution():
+    text = " ".join(REPORT.read_text().split())
+    for marker in (
+        "### September 15: notification readiness and delegated review client recovery",
+        "S2-NOTIFICATION-READY-HUMAN-NOT-RUN",
+        "`Connected`", "one workflow and zero connections or role assignments",
+        "public workflow remained unchanged", "unauthenticated trigger returned 401",
+        "no new private pending intent", "no notification email was sent",
+        "Governance.Approve", "review-only transport", "5 failed", "124 passed",
+        "not a live human decision", "before generating a new intent",
+    ):
+        assert marker in text
+    runbook = " ".join((ROOT / "skills/threadlight-deploy/references/governance/returns-mcp-demo.md")
+                      .read_text().split())
+    for marker in (
+        "Read the current Office 365 connection first",
+        "do not repeat consent", "Connected", "review-only transport",
+        "no notification email was sent",
+    ):
+        assert marker in runbook

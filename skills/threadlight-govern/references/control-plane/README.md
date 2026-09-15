@@ -161,6 +161,11 @@ It does not execute actions, consume grants or create Entra configuration.
 See the [gateway's deferred flow](../gateway/README.md#deferred-human-decisions-explicit-signed-opt-in).
 The same `review.decide` function can be used by a separately trusted review
 frontend with its authenticated human credential; never register it as an agent tool.
+The review-only transport accepts the explicit delegated
+`api://<control-api-client-id>/Governance.Approve` scope and passes it unchanged
+to the credential. Existing resource `/.default` callers remain supported.
+Workload transports still require `/.default`; accepting a review scope does
+not bypass the server's delegated-token, human-client, subject or role checks.
 
 ## Immutable bundles and signing
 

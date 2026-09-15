@@ -17,6 +17,15 @@ from .client import ApprovalUnavailable, ServiceTransport
 from .models import ApprovalGrant, ApprovalRequest, Identifier, ObjectId, canonical, parse, strict_json
 
 
+class _ReviewTransport(ServiceTransport):
+    @staticmethod
+    def validate_configuration(base_url, scope, timeout):
+        validation_scope = scope
+        if scope.endswith("/Governance.Approve"):
+            validation_scope = scope.removesuffix("/Governance.Approve") + "/.default"
+        ServiceTransport.validate_configuration(base_url, validation_scope, timeout)
+
+
 def validate_pending_review(document):
     """Validate display binding; the service remains the decision authority."""
     try:
@@ -50,7 +59,7 @@ async def decide(pending, *, approved, role, base_url, scope, credential, http=N
     intent = validate_pending_review(pending)
     if type(approved) is not bool or role not in intent.allowed_roles:
         raise ValueError("review_decision_or_role_invalid")
-    async with ServiceTransport(base_url=base_url, scope=scope, credential=credential, http=http) as service:
+    async with _ReviewTransport(base_url=base_url, scope=scope, credential=credential, http=http) as service:
         status, body = await service.request("POST", "/approvals/resolve", {
             "operation": "decide", "intent": intent.model_dump(mode="json"),
             "approved": approved, "approving_role": role})
@@ -77,7 +86,7 @@ def main(argv=None):
         print("Interactive human terminal required; no unattended approval.", file=sys.stderr)
         return 2
     try:
-        ServiceTransport.validate_configuration(args.control_plane_url, args.scope, 5)
+        _ReviewTransport.validate_configuration(args.control_plane_url, args.scope, 5)
         parse(ObjectId, canonical(args.tenant))
         parse(ObjectId, canonical(args.client_id))
         with args.pending.open("rb") as source:
