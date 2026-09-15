@@ -26,11 +26,20 @@ passes are not silently reassigned to changed content.
 
 ### Architecture reader and Production-ready visual
 
+**Third-area framing:** name the area **AgentOps & lifecycle**, not Production
+readiness. Explain moving agent changes from development through test into
+production: versioned code/prompts/model choices/policy, evaluation, DevSecOps,
+authorized deployment, environment-specific configuration, fresh verification
+and ongoing operation. Readiness remains a decision/check within that lifecycle.
+This is editorial framing, not automatic adoption of the optional native
+AgentOps integration or a new promise of turnkey environment promotion.
+Existing fragment IDs, the other two areas and the accepted guide stay unchanged.
+
 **Current approved information architecture:** three main areas, each with direct
 subsection navigation. Platform/shared services contains the single primary
 architecture, Citadel/model-route policy and existing data-access/privacy
 responsibilities. Agent action governance retains the accepted returns example
-and authorization explanation. Production readiness/lifecycle brings evaluation,
+and authorization explanation. AgentOps/lifecycle brings evaluation,
 red-team and grounding checks before deployment/go-live, followed by fresh
 verification and ongoing operation. Checks repeat after relevant changes.
 

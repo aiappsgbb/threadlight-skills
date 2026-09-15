@@ -157,5 +157,20 @@ test('each production topic teaches its own mechanism and concrete failure contr
   }
   assert.match(section(source, 'quality-controls'), /<table/);
   assert.match(section(source, 'information-controls'), /not a retrieval engine/);
-  assert.match(section(source, 'operating-controls'), /Assess|Deploy|Operate/);
+  assert.match(section(source, 'operating-controls'), /DevSecOps/);
+});
+
+test('AgentOps frames the third area as controlled delivery rather than just readiness', () => {
+  const source = read('production.html');
+  const overview = section(source, 'production-domains');
+  assert.match(text(overview), /03 \/ AgentOps & lifecycle/);
+  assert.match(source, /id="tab-operations"[^>]*>AgentOps &amp; lifecycle/);
+  const introduction = text(section(source, 'operating-controls'));
+  for (const phrase of ['AgentOps', 'development to production', 'DevSecOps', 'prompts', 'policy']) {
+    assert.ok(introduction.includes(phrase), phrase);
+  }
+  const delivery = text(section(source, 'delivery-controls'));
+  for (const phrase of ['Development', 'Test', 'Production', 'Version & evaluate',
+    'Secure & deploy', 'Verify & operate']) assert.ok(delivery.includes(phrase), phrase);
+  assert.match(read('production-readiness-pages-spec.md'), /not automatic adoption of the optional.*AgentOps/s);
 });

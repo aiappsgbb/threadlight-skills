@@ -243,7 +243,7 @@
         <div class="map-foundations">
           <a href="#platform-controls"><b>01 / Platform &amp; shared services</b><span>Where it runs, what it can reach and which services it may use.</span><span>Architecture &middot; Citadel/model policies &middot; data access</span></a>
           <a href="#effect-authority"><b>02 / Agent action governance</b><span>Whether this exact business action is allowed now.</span><span>Returns example &middot; policy &middot; human authority &middot; audit</span></a>
-          <a href="#operating-controls"><b>03 / Production readiness</b><span>How it is evaluated, deployed, verified and operated.</span><span>Evaluation &middot; delivery &middot; go-live &middot; lifecycle</span></a>
+          <a href="#operating-controls"><b>03 / AgentOps &amp; lifecycle</b><span>How agent changes move from development into production, safely and repeatably.</span><span>Evaluation &middot; DevSecOps &middot; deployment &middot; operations</span></a>
         </div>
         <figcaption id="production-map-caption">A platform is not action authority; action authority is not proof of readiness.
           The thirteen-pillar assessment brings their evidence together without replacing their controls.</figcaption>
@@ -258,11 +258,11 @@
         <div class="topic-tabs">
           <a id="tab-platform" data-topic-tab href="#platform-controls">Platform &amp; shared services<span>Architecture, models and data</span></a>
           <a id="tab-actions" data-topic-tab href="#effect-authority">Agent action governance<span>Authority for business actions</span></a>
-          <a id="tab-operations" data-topic-tab href="#operating-controls">Production readiness<span>Evaluation, delivery and lifecycle</span></a>
+          <a id="tab-operations" data-topic-tab href="#operating-controls">AgentOps &amp; lifecycle<span>Evaluation, DevSecOps and deployment</span></a>
         </div>
         <nav class="area-navigation" data-area-navigation="platform-topic" aria-label="Platform subsections"><p>In this area</p><a href="#target">Architecture</a><a href="#model-controls">Citadel &amp; model policies</a><a href="#information-controls">Data access &amp; privacy</a></nav>
         <nav class="area-navigation" data-area-navigation="actions-topic" aria-label="Action governance subsections"><p>In this area</p><a href="#returns-walkthrough">Returns example</a><a href="#evidence-boundaries">Outcomes &amp; evidence</a></nav>
-        <nav class="area-navigation" data-area-navigation="readiness-topic" aria-label="Readiness subsections"><p>In this area</p><a href="#quality-controls">Evaluation</a><a href="#delivery-controls">Deployment &amp; operations</a><a href="#checks">Assessment</a><a href="#ship">Delivery pipeline</a></nav>
+        <nav class="area-navigation" data-area-navigation="readiness-topic" aria-label="AgentOps subsections"><p>In this area</p><a href="#quality-controls">Evaluation</a><a href="#delivery-controls">Deployment &amp; operations</a><a href="#checks">Readiness checks</a><a href="#ship">DevSecOps pipeline</a></nav>
       </nav>
       <div class="topic-reading">
   <div class="topic-panel" id="platform-topic" data-topic-panel>
@@ -315,7 +315,7 @@
       content safety, quotas and lifecycle decisions. These do not automatically govern downstream business tools.</p>
     <div class="topic-proposal" data-topic-part="proposal"><h4>A model-use contract, plus a change gate.</h4><p>Make selection, safety and usage limits explicit.
       Threadlight connects that configuration to lifecycle evidence; your AI platform enforces the model-facing policies.
-      Behavioral evaluation of a replacement model belongs to the readiness and release process below.</p></div>
+      Behavioral evaluation of a replacement model belongs to the AgentOps release process below.</p></div>
     <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="model-passport" aria-labelledby="model-passport-caption">
       <div class="visual-surface model-passport">
         <div><span class="visual-label">Runtime / what may be used</span>
@@ -508,15 +508,15 @@
 <div class="topic-panel" id="readiness-topic" data-topic-panel>
 <section class="chapter-section" id="operating-controls" aria-labelledby="operating-heading">
     <div class="section-head">
-      <p class="eyebrow">03 / Production readiness and lifecycle</p>
-      <h2 id="operating-heading">Verify before go-live. <em>Operate with evidence.</em></h2>
-      <p class="section-lede" data-topic-part="problem">Production requires repeatable deployment, defined service targets, sustainable cost and tested recovery.
-        Changes to code, models, policy or infrastructure must remain traceable and supported by current evidence.</p>
+      <p class="eyebrow">03 / AgentOps and lifecycle</p>
+      <h2 id="operating-heading">From development to production. <em>Keep changes controlled.</em></h2>
+      <p class="section-lede" data-topic-part="problem">An agent release includes code, prompts, model choices, tools and policy &mdash; not just an application image.
+        Moving it between environments requires repeatable deployment, explicit configuration, evaluation and a controlled way to operate or roll back each change.</p>
     </div>
-    <p class="topic-existing" data-topic-part="existing"><strong>Already owned by operations:</strong> SLOs, on-call, incident handling, budgets and release processes.
+    <p class="topic-existing" data-topic-part="existing"><strong>Engineering, security and operations own the lifecycle:</strong> build provenance, release processes, SLOs, on-call, incident handling and budgets.
       Agent policy does not replace those disciplines or reverse committed business changes.</p>
-    <div class="topic-proposal" data-topic-part="proposal"><h3>Assess, deploy and operate with evidence.</h3><p>Threadlight joins the thirteen-pillar readiness review
-      with scoped deployment gates, load and cost evidence, named owners and recovery procedures.
+    <div class="topic-proposal" data-topic-part="proposal"><h3>Connect evaluation, DevSecOps and deployment.</h3><p>Threadlight connects evaluation and security evidence
+      with deployment pipelines, environment-specific gates and operating checks. The readiness review is one decision point in that lifecycle, not the whole process.
       Evidence for the people who sign.</p></div>
   </section>
 
@@ -564,22 +564,22 @@
   </section>
 
 <section class="chapter-section topic-subsection" id="delivery-controls" aria-labelledby="delivery-heading">
-    <div class="section-head"><h3 id="delivery-heading">Deployment and ongoing operations</h3></div>
+    <div class="section-head"><h3 id="delivery-heading">DevSecOps, environment promotion and operations</h3></div>
     <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="deployment-lifecycle" aria-labelledby="deployment-caption">
       <div class="visual-surface">
-        <span class="visual-label">Readiness and delivery / repeat for each relevant change</span>
-        <ol class="lifecycle-stages" aria-label="Assessment, authorized deployment and fresh verification">
-          <li><b>01 / Assess</b><p>Detect posture, collect evidence and assign gaps to owners.</p></li>
-          <li><b>02 / Deploy</b><p>Use an authorized pipeline with the agreed target, identities and gates.</p></li>
-          <li><b>03 / Verify</b><p>Collect fresh evidence from the actual deployment, not a previous release.</p></li>
+        <span class="visual-label">Development &rarr; Test &rarr; Production / controlled environment promotion</span>
+        <ol class="lifecycle-stages" aria-label="Version and evaluate, secure and deploy, verify and operate">
+          <li><b>01 / Version &amp; evaluate</b><p>Track code, prompts, model choices and policy. Compare the candidate against the accepted baseline.</p></li>
+          <li><b>02 / Secure &amp; deploy</b><p>Review dependencies and build provenance. Use an authorized pipeline with environment-scoped configuration and identities.</p></li>
+          <li><b>03 / Verify &amp; operate</b><p>Verify the deployed version with fresh evidence. Monitor quality, service health and cost; exercise recovery.</p></li>
         </ol>
         <div class="release-outcomes" aria-label="Readiness review outcomes">
           <div><span class="visual-label">Required evidence available</span><p><b>Human go-live decision</b></p><p>Review service targets, operating ownership and residual risk. No automatic certification.</p></div>
           <div><span class="visual-label">Gaps or stale evidence</span><p><b>Remediate and verify again</b></p><p>Keep blockers visible. A waiver records accepted risk; it does not implement a missing control.</p></div>
         </div>
       </div>
-      <figcaption id="deployment-caption">The scorecard is advisory; it does not itself authorize deployment.
-        After go-live, operate against agreed SLOs, monitor cost and exercise recovery.</figcaption>
+      <figcaption id="deployment-caption">Each target environment needs its own authorized configuration and fresh evidence.
+        The scorecard is advisory; it does not itself promote a release or authorize deployment.</figcaption>
     </figure>
     <ul class="operating-signals" aria-label="Production operating signals">
       <li><b>Service health</b>Latency, failures, saturation and dependency availability</li>
