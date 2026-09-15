@@ -26,6 +26,23 @@ passes are not silently reassigned to changed content.
 
 ### Architecture reader and Production-ready visual
 
+**Current approved information architecture:** three main areas, each with direct
+subsection navigation. Platform/shared services contains the single primary
+architecture, Citadel/model-route policy and existing data-access/privacy
+responsibilities. Agent action governance retains the accepted returns example
+and authorization explanation. Production readiness/lifecycle brings evaluation,
+red-team and grounding checks before deployment/go-live, followed by fresh
+verification and ongoing operation. Checks repeat after relevant changes.
+
+The duplicated, collapsed platform architecture is removed from the current page;
+its `#target` fragment now reaches the one visible platform architecture. Existing
+model, information, quality and delivery fragments select their owning area.
+Data controls are explicitly not supplied by the new action-governance runtime:
+source/application owners enforce them, and readiness reviews their evidence.
+The accepted technical guide remains unchanged; its six responsibility domains
+are now grouped under three public navigation areas, not replaced or conflated.
+
+**Previous simplification (superseded navigation grouping):**
 **Current simplification for colleague review:** restore the general production
 overview and retain the six independently navigable subsections. Platform and
 network, model governance, quality, information protection, and operations/

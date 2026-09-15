@@ -145,9 +145,9 @@ test('production keeps the returns example inside agent governance, not the gene
 test('each production topic teaches its own mechanism and concrete failure controls', () => {
   const source = read('production.html');
   const visuals = {
-    'platform-controls': 'access-topology', 'model-controls': 'model-passport',
+    'platform-controls': 'platform-architecture', 'model-controls': 'model-passport',
     'effect-authority': 'effect-sequence', 'quality-controls': 'evaluation-matrix',
-    'information-controls': 'data-lineage', 'operating-controls': 'deployment-lifecycle',
+    'information-controls': 'data-lineage', 'delivery-controls': 'deployment-lifecycle',
   };
   for (const [id, visual] of Object.entries(visuals)) {
     const body = section(source, id);

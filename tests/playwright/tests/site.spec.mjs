@@ -362,7 +362,7 @@ test.describe('funnel chapter — the five-stage narrative (funnel.html)', () =>
 });
 
 test.describe('production chapter (production.html)', () => {
-  test('hero: production-ready title and a visual route into six topics', async ({ page }) => {
+  test('hero: production-ready title and a visual route into three areas', async ({ page }) => {
     await page.goto('/production.html');
     await expect(page).toHaveTitle(/Production-ready/i);
     await expect(page.locator('#chapter-top h1')).toContainText(/operational confidence/i);
@@ -371,7 +371,7 @@ test.describe('production chapter (production.html)', () => {
     await expect(page.locator('#chapter-top')).not.toContainText(/Amber turns green/i);
     await expect(page.locator('#chapter-top .stat-strip')).toHaveCount(0);
     await expect(page.locator('.production-map')).toBeVisible();
-    await expect(page.getByRole('tab')).toHaveCount(6);
+    await expect(page.getByRole('tab')).toHaveCount(3);
   });
 
   test('the chapter sections are all present and name the thirteen pillars', async ({ page }) => {

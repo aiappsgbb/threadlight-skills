@@ -5,8 +5,10 @@
   }
   const explorer = document.getElementById('topic-explorer');
   const tabs = [...explorer.querySelectorAll('[data-topic-tab]')];
+  const tabTargets = tabs.map(tab => document.getElementById(tab.getAttribute('href').slice(1)));
   const panels = [...explorer.querySelectorAll('[data-topic-panel]')];
   const references = [...explorer.querySelectorAll('[data-topic-reference]')];
+  const areaNavigation = [...explorer.querySelectorAll('[data-area-navigation]')];
   const tablist = explorer.querySelector('.topic-tabs');
   const compact = matchMedia('(max-width: 900px)');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -31,12 +33,13 @@
   function selectTopic(id) {
     for (const panel of panels) panel.hidden = panel.id !== id;
     for (const reference of references) reference.hidden = reference.dataset.topicReference !== id;
-    for (const tab of tabs) {
-      const selected = tab.getAttribute('href') === `#${id}`;
+    for (const navigation of areaNavigation) navigation.hidden = navigation.dataset.areaNavigation !== id;
+    for (const [index, tab] of tabs.entries()) {
+      const selected = ownerOf(tabTargets[index]) === id;
       tab.setAttribute('aria-selected', String(selected));
       tab.tabIndex = selected ? 0 : -1;
     }
-    revealSelectedTab();
+    updateOffset();
   }
 
   function showTarget(target, { scroll = true, instant = false } = {}) {
@@ -45,6 +48,10 @@
     selectTopic(owner);
     for (let parent = target; parent && parent !== explorer; parent = parent.parentElement) {
       if (parent instanceof HTMLDetailsElement) parent.open = true;
+    }
+    for (const link of explorer.querySelectorAll('[data-area-navigation] a')) {
+      if (link.getAttribute('href') === `#${target.id}`) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
     }
     if (scroll) {
       requestAnimationFrame(() => target.scrollIntoView({
@@ -65,7 +72,7 @@
   compact.addEventListener('change', orientTabs);
   orientTabs();
   for (const [index, tab] of tabs.entries()) {
-    const panel = panels[index];
+    const panel = document.getElementById(ownerOf(tabTargets[index]));
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-controls', panel.id);
     panel.setAttribute('role', 'tabpanel');
@@ -82,7 +89,7 @@
       else if (event.key === ' ') destination = index;
       else return;
       event.preventDefault();
-      navigate(panels[destination], { scroll: false });
+      navigate(tabTargets[destination], { scroll: false });
       tabs[destination].focus();
     });
   }

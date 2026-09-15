@@ -86,7 +86,7 @@ test('new authority and evidence remain readable when JavaScript is disabled', a
   try {
     await page.goto('/production.html');
     await expect(page.locator('#effect-authority')).toBeVisible();
-    await expect(page.locator('[data-topic-panel]')).toHaveCount(6);
+    await expect(page.locator('[data-topic-panel]')).toHaveCount(3);
     await page.locator('#action-reference > summary').click();
     await expect(page.locator('#evidence-boundaries')).toBeVisible();
     await expect(page.getByRole('list', { name: 'Selected effect authorization sequence' }).locator(':scope > li')).toHaveCount(6);
@@ -101,7 +101,7 @@ test('production responsibilities are distinct, navigable and accessible before 
   const domains = page.locator('#production-domains');
   await expect(page.locator('main > section').first()).toHaveAttribute('id', 'chapter-top');
   const links = domains.locator('.production-map').getByRole('link');
-  await expect(links).toHaveCount(6);
+  await expect(links).toHaveCount(3);
   for (const link of await links.all()) {
     const target = page.locator(await link.getAttribute('href'));
     await expect(target).toHaveCount(1);

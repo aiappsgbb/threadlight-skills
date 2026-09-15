@@ -66,20 +66,15 @@
   .return-brief blockquote { margin: 8px 0 0; font: clamp(24px, 3vw, 32px)/1.25 var(--serif); color: var(--ink-0); }
   .return-brief p { margin: 8px 0; color: var(--ink-1); font-size: 15px; }
   .visual-label { font: 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-1); }
-  .map-perimeter { border: 1px dashed var(--line-2); border-radius: 16px; padding: 24px; background: var(--bg-1); }
-  .map-boundary { display: flex; flex-wrap: wrap; gap: 8px 20px; width: fit-content; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: 8px; }
-  .map-workflow { display: grid; grid-template-columns: 1fr 40px 1fr 40px 1.6fr; align-items: center; gap: 16px; margin-top: 24px; }
-  .map-request, .map-agent, .map-endpoints a { padding: 20px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-2); }
-  .map-agent { border-color: var(--chapter-accent); background: var(--chapter-accent-soft); }
-  .map-endpoints { display: grid; gap: 12px; }
-  .map-endpoints a { display: block; }
-  .production-map .map-arrow { font-size: 28px; text-align: center; color: var(--ink-1); }
   .map-foundations { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding-top: 16px; }
-  .map-foundations a { padding: 16px 20px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-1); }
+  .map-foundations a { padding: 24px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-1); }
+  .map-foundations a b { font-size: 20px; margin-bottom: 12px; }
+  .map-foundations a span { display: block; margin-top: 12px; }
   .production-map figcaption, .topic-mechanism figcaption { margin-top: 16px; font-size: 14px; color: var(--ink-1); }
   #topic-explorer { padding-bottom: 64px; }
   .topic-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; align-items: start; }
-  .topic-navigation { position: sticky; top: var(--production-scroll-offset, 88px); padding-block: 24px; }
+  .topic-navigation { padding-block: 24px; }
+  .topics-enhanced .topic-navigation { position: sticky; top: var(--production-scroll-offset, 88px); }
   .topic-nav-label { font: 12px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--ink-1); margin: 0 0 16px; }
   .topic-tabs { display: grid; gap: 6px; }
   .topic-tabs a { display: block; border-left: 3px solid var(--line); padding: 14px 16px; color: var(--ink-0); font-size: 15px; font-weight: 600; text-decoration: none; }
@@ -87,9 +82,16 @@
   .topic-tabs a:hover { background: var(--bg-2); }
   .topic-tabs a[aria-selected="true"] { border-color: var(--chapter-accent); background: var(--chapter-accent-soft); border-radius: 0 10px 10px 0; }
   .topic-reading { min-width: 0; }
-  .topic-panel[hidden], .topic-reference[hidden] { display: none; }
+  .topic-panel[hidden], .topic-reference[hidden], .area-navigation[hidden] { display: none; }
+  .area-navigation { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line-2); }
+  .area-navigation p { color: var(--ink-1); font: 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+  .area-navigation a { display: block; padding: 8px 4px; color: var(--ink-0); font-size: 14px; text-decoration: underline; text-underline-offset: .2em; }
+  .area-navigation a[aria-current] { font-weight: 700; text-decoration-thickness: 2px; }
   .topic-reading .chapter-section { padding: 24px 0; background: transparent; border-top: 0; }
   .topic-reading .chapter-section > .wrap { width: 100%; padding-inline: 0; }
+  .topic-reading .topic-subsection { border-top: 1px solid var(--line-2); margin-top: 24px; padding-top: 32px; }
+  .topic-subsection .section-head h3 { font: 32px/1.2 var(--serif); color: var(--ink-0); margin: 0 0 20px; }
+  .topic-subsection .topic-proposal h4 { margin: 0 0 8px; font-size: 20px; }
   .topic-panel .section-head { max-width: 100%; }
   .topic-panel .eyebrow { color: var(--ink-1); }
   .topic-panel h2 { font-size: clamp(28px, 3vw, 40px); }
@@ -168,16 +170,13 @@
     .topic-tabs a { flex: 0 0 auto; white-space: nowrap; border-left: 0; border-bottom: 3px solid var(--line); }
     .topics-enhanced .topic-tabs a span { display: none; }
     .topic-tabs a[aria-selected="true"] { border-radius: 10px 10px 0 0; }
-    .map-workflow { grid-template-columns: 1fr 24px 1fr; }
-    .map-workflow > .map-arrow:nth-of-type(2) { display: none; }
-    .map-endpoints { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
+    .area-navigation { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; padding: 8px 6px 0; }
+    .area-navigation p { display: none; }
+    .area-navigation a { padding: 4px 0; }
   }
   @media (max-width: 680px) {
-    .return-brief, .model-passport, .access-topology, .data-lineage, .disclosure-split, .release-outcomes, .case-outcomes, .map-foundations, .map-endpoints { grid-template-columns: 1fr; }
+    .return-brief, .model-passport, .access-topology, .data-lineage, .disclosure-split, .release-outcomes, .case-outcomes, .map-foundations { grid-template-columns: 1fr; }
     .return-brief { padding: 20px; gap: 12px; }
-    .map-perimeter { padding: 16px; }
-    .map-workflow { gap: 8px; }
-    .map-request, .map-agent { padding: 14px; }
     .visual-surface { padding: 16px; }
     .topology-routes { padding-left: 18px; }
     .topology-route { grid-template-columns: 80px 1fr; padding: 12px; gap: 8px; }
@@ -236,31 +235,18 @@
     <div class="wrap wrap-xl">
       <div class="section-head" id="why">
         <p class="eyebrow"><span class="dot"></span>Complementary responsibilities</p>
-        <h2 id="production-domains-heading">Production is a system. <em>Not a single control.</em></h2>
-        <p class="section-lede">Platform and network, model governance, agent behavior, quality, data protection and operations
-          have different responsibilities. Explore each one, then bring the evidence together in the production-readiness review.</p>
+        <h2 id="production-domains-heading">Three areas. <em>One path to production.</em></h2>
+        <p class="section-lede">Build on the right platform, authorize consequential actions and verify the workload before go-live.
+          Each area has its own responsibilities and evidence, with direct navigation to the details.</p>
       </div>
       <figure class="production-map" aria-labelledby="production-map-caption">
-        <div class="map-perimeter">
-          <a class="map-boundary" href="#platform-controls"><b>01 / Platform &amp; network</b><span>Identity, isolation and permitted routes</span></a>
-          <div class="map-workflow">
-            <div class="map-request"><b>Application</b><span>Users and business requirements</span></div>
-            <span class="map-arrow" aria-hidden="true">&rarr;</span>
-            <div class="map-agent"><b>Agent workload</b><span>Configured tools and services</span></div>
-            <span class="map-arrow" aria-hidden="true">&rarr;</span>
-            <div class="map-endpoints">
-              <a href="#model-controls"><b>02 / Model governance</b><span>Approved use, safeguards and lifecycle</span></a>
-              <a href="#effect-authority"><b>03 / Agent behavior</b><span>Policy and authority for selected actions</span></a>
-            </div>
-          </div>
-        </div>
         <div class="map-foundations">
-          <a href="#quality-controls"><b>04 / Quality &amp; evaluation</b><span>Acceptance criteria and regression evidence</span></a>
-          <a href="#information-controls"><b>05 / Information protection</b><span>Source access, disclosure and retention</span></a>
-          <a href="#operating-controls"><b>06 / Operations &amp; lifecycle</b><span>Deployment, resilience, cost and change</span></a>
+          <a href="#platform-controls"><b>01 / Platform &amp; shared services</b><span>Where it runs, what it can reach and which services it may use.</span><span>Architecture &middot; Citadel/model policies &middot; data access</span></a>
+          <a href="#effect-authority"><b>02 / Agent action governance</b><span>Whether this exact business action is allowed now.</span><span>Returns example &middot; policy &middot; human authority &middot; audit</span></a>
+          <a href="#operating-controls"><b>03 / Production readiness</b><span>How it is evaluated, deployed, verified and operated.</span><span>Evaluation &middot; delivery &middot; go-live &middot; lifecycle</span></a>
         </div>
-        <figcaption id="production-map-caption">Complementary controls, not alternative architectures or a priority ranking.
-          The subsections explain the mechanisms, owners and review questions; the assessment covers thirteen production pillars.</figcaption>
+        <figcaption id="production-map-caption">A platform is not action authority; action authority is not proof of readiness.
+          The thirteen-pillar assessment brings their evidence together without replacing their controls.</figcaption>
       </figure>
     </div>
   </section>
@@ -268,20 +254,21 @@
   <div id="topic-explorer" class="wrap wrap-xl">
     <div class="topic-layout">
       <nav class="topic-navigation" aria-label="Production topics">
-        <p class="topic-nav-label">Explore a topic</p>
+        <p class="topic-nav-label">Explore an area</p>
         <div class="topic-tabs">
-          <a id="tab-platform" data-topic-tab href="#platform-controls">Platform &amp; network<span>Exposure and identity</span></a>
-          <a id="tab-model" data-topic-tab href="#model-controls">Model governance<span>Access and safety policy</span></a>
-          <a id="tab-actions" data-topic-tab href="#effect-authority">Agent behavior<span>Authority for business actions</span></a>
-          <a id="tab-quality" data-topic-tab href="#quality-controls">Quality &amp; evaluation<span>Business fitness</span></a>
-          <a id="tab-information" data-topic-tab href="#information-controls">Information protection<span>Access and disclosure</span></a>
-          <a id="tab-operations" data-topic-tab href="#operating-controls">Operations &amp; lifecycle<span>Run, assess and deliver</span></a>
+          <a id="tab-platform" data-topic-tab href="#platform-controls">Platform &amp; shared services<span>Architecture, models and data</span></a>
+          <a id="tab-actions" data-topic-tab href="#effect-authority">Agent action governance<span>Authority for business actions</span></a>
+          <a id="tab-operations" data-topic-tab href="#operating-controls">Production readiness<span>Evaluation, delivery and lifecycle</span></a>
         </div>
+        <nav class="area-navigation" data-area-navigation="platform-topic" aria-label="Platform subsections"><p>In this area</p><a href="#target">Architecture</a><a href="#model-controls">Citadel &amp; model policies</a><a href="#information-controls">Data access &amp; privacy</a></nav>
+        <nav class="area-navigation" data-area-navigation="actions-topic" aria-label="Action governance subsections"><p>In this area</p><a href="#returns-walkthrough">Returns example</a><a href="#evidence-boundaries">Outcomes &amp; evidence</a></nav>
+        <nav class="area-navigation" data-area-navigation="readiness-topic" aria-label="Readiness subsections"><p>In this area</p><a href="#quality-controls">Evaluation</a><a href="#delivery-controls">Deployment &amp; operations</a><a href="#checks">Assessment</a><a href="#ship">Delivery pipeline</a></nav>
       </nav>
       <div class="topic-reading">
-  <section class="chapter-section topic-panel" id="platform-controls" data-topic-panel aria-labelledby="platform-heading">
+  <div class="topic-panel" id="platform-topic" data-topic-panel>
+<section class="chapter-section" id="platform-controls" aria-labelledby="platform-heading">
     <div class="section-head">
-      <p class="eyebrow">01 / Platform and network controls</p>
+      <p class="eyebrow">01 / Platform and shared services</p>
       <h2 id="platform-heading">Reach the right services. <em>Close the unintended routes.</em></h2>
       <p class="section-lede" data-topic-part="problem">A working pilot may rely on public endpoints, broad permissions or developer credentials.
         Production needs an explicit access topology: approved ingress and egress, service identities, private routes where required and no unintended bypasses.</p>
@@ -290,18 +277,19 @@
       Threadlight conforms to that foundation; it does not replace it.</p>
     <div class="topic-proposal" data-topic-part="proposal"><h3>Separate the routes. Separate the identities.</h3><p>Threadlight detects the deployment posture
       and maps access gaps to owners. Close bypasses around the intended tool path; do not give the agent the business writer&rsquo;s credential.</p></div>
-    <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="access-topology" aria-labelledby="access-topology-caption">
+    <figure class="topic-mechanism" id="target" data-topic-part="mechanism" data-visual="platform-architecture" aria-labelledby="access-topology-caption">
       <div class="visual-surface access-topology">
         <div class="topology-agent"><span class="visual-label">Authenticated workload</span><p><b>Agent runtime</b></p><p>Its own service identity<br>Limited destinations</p></div>
         <div class="topology-routes" aria-label="Separate model, read and write paths">
-          <div class="topology-route"><b>Model route</b><div class="route-destination"><strong>Approved model endpoint</strong>Model access, not database access</div></div>
+          <div class="topology-route"><b>Model route</b><div class="route-destination"><strong>Citadel / shared AI gateway &rarr; models</strong>Configured access, safety and usage policies</div></div>
           <div class="topology-route"><b>Read route</b><div class="route-destination"><strong>Caller-scoped data API</strong>Source authorization still applies</div></div>
           <div class="topology-route"><b>Selected write</b><div class="route-destination"><strong>Trusted host / gateway &rarr; business API</strong>Separate downstream and writer identities</div></div>
         </div>
         <div class="blocked-route"><p><strong>&times; No direct agent-to-store write path.</strong> An unintended credential or route can bypass the action boundary.</p></div>
       </div>
-      <figcaption id="access-topology-caption">Intended access topology, to verify in the actual environment.
-        A private route establishes reachability, not permission for every business action.</figcaption>
+      <figcaption id="access-topology-caption">One architecture, separate boundaries: the platform owns network and identities;
+        Citadel mediates the model route when selected; source services enforce data access; the trusted host or tool gateway governs selected actions.
+        Existing-gateway and Foundry-native postures need their own scoped configuration and verification.</figcaption>
     </figure>
     <details class="risk-catalog" data-risk-catalog>
       <summary>Where access control breaks: exposure, privilege and bypasses</summary>
@@ -313,20 +301,21 @@
       </dl>
     </details>
     <p class="topic-owner"><strong>Accountable teams:</strong> platform engineering and security. <strong>Review:</strong> permitted routes, least privilege and unintended direct access.</p>
-    <div class="topic-deeper" data-topic-part="deeper"><a href="#target">See the integration architecture &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#3-the-three-postures">Read the deployment postures &rarr;</a></div>
+    <div class="topic-deeper" data-topic-part="deeper"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#3-the-three-postures">Read the deployment postures &rarr;</a></div>
   </section>
 
-  <section class="chapter-section topic-panel" id="model-controls" data-topic-panel aria-labelledby="model-heading">
+<section class="chapter-section topic-subsection" id="model-controls" aria-labelledby="model-heading">
     <div class="section-head">
-      <p class="eyebrow">02 / Model governance</p>
-      <h2 id="model-heading">Control model use. <em>Know what that control stops.</em></h2>
-      <p class="section-lede" data-topic-part="problem">Model selection, safety settings, usage limits and lifecycle decisions need a common policy.
-        A model or configuration change can alter behavior even when the application code stays the same.</p>
+      <p class="eyebrow">Platform / model services</p>
+      <h3 id="model-heading">Citadel and model-use policies</h3>
+      <p class="section-lede" data-topic-part="problem">In the Citadel posture, the shared APIM hub governs the configured model route:
+        access, usage limits and supported safety policies. These are platform services, not the new business-action authorization layer.</p>
     </div>
     <p class="topic-existing" data-topic-part="existing"><strong>Already owned by the AI platform:</strong> approved models, model-facing gateway policies,
       content safety, quotas and lifecycle decisions. These do not automatically govern downstream business tools.</p>
-    <div class="topic-proposal" data-topic-part="proposal"><h3>A model-use contract, plus a change gate.</h3><p>Make selection, safety and usage limits explicit.
-      Threadlight connects that configuration to lifecycle and evaluation evidence; your AI platform enforces the model-facing policies.</p></div>
+    <div class="topic-proposal" data-topic-part="proposal"><h4>A model-use contract, plus a change gate.</h4><p>Make selection, safety and usage limits explicit.
+      Threadlight connects that configuration to lifecycle evidence; your AI platform enforces the model-facing policies.
+      Behavioral evaluation of a replacement model belongs to the readiness and release process below.</p></div>
     <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="model-passport" aria-labelledby="model-passport-caption">
       <div class="visual-surface model-passport">
         <div><span class="visual-label">Runtime / what may be used</span>
@@ -358,11 +347,55 @@
     <div class="topic-deeper" data-topic-part="deeper"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/13-model-lifecycle.md">Read the model lifecycle checks &rarr;</a><a href="#quality-controls">Explore model-change evaluation &rarr;</a></div>
   </section>
 
-  <!-- Static schematic with a mobile flow and an ordered text equivalent. -->
-  <section class="chapter-section governance-section topic-panel" id="effect-authority" data-topic-panel data-toc-id="effect-authority" data-toc-label="Agent behavior" aria-labelledby="effect-authority-heading">
+<section class="chapter-section topic-subsection" id="information-controls" aria-labelledby="information-heading">
+    <div class="section-head">
+      <p class="eyebrow">Platform and application / data boundaries</p>
+      <h3 id="information-heading">Data access and privacy: existing responsibilities</h3>
+      <p class="section-lede" data-topic-part="problem"><strong>These controls are not supplied by the new action-governance runtime.</strong>
+        Source services and application owners enforce user/tenant access, memory isolation and retention.
+        Citadel or a private network does not grant permission to read every record.</p>
+    </div>
+    <p class="topic-existing" data-topic-part="existing"><strong>Already owned by data and privacy teams:</strong> source permissions, permitted uses,
+      minimization and retention rules. Encryption or a private endpoint does not decide which records this user may see.</p>
+    <div class="topic-proposal" data-topic-part="proposal"><h4>Filter before context. Minimize after.</h4><p>Keep caller authorization attached to retrieval.
+      Threadlight assesses supplied access, citation and refusal evidence; the application and data services enforce access.
+      Its grounding workflow is not a retrieval engine.</p></div>
+    <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="data-lineage" aria-labelledby="data-lineage-caption">
+      <div class="visual-surface data-lineage">
+        <div class="source-records" aria-label="Source checks before model context">
+          <div class="source-record"><span class="source-state">IN SCOPE</span><p><b>Permitted records</b></p><p>Only the fields needed for the task</p></div>
+          <div class="source-record blocked"><span class="source-state">EXCLUDE</span><p><b>Restricted records</b></p><p>Blocked by source authorization, before context</p></div>
+          <div class="source-record"><span class="source-state">EVIDENCE</span><p><b>Authoritative sources</b></p><p>Source and revision retained; embedded instructions are not authority</p></div>
+        </div>
+        <div class="lineage-arrow" aria-hidden="true">&rarr;</div>
+        <div class="context-envelope"><span class="visual-label">Caller-scoped context</span><p><b>Permitted facts + relevant evidence</b></p><p>Not everything the service identity can read. No memory shared across unauthorized scopes.</p></div>
+        <div class="disclosure-split">
+          <div><span class="visual-label">User answer</span><p>Necessary explanation and permitted citations.<br>No restricted information.</p></div>
+          <div><span class="visual-label">Memory, traces and audit</span><p>Scoped access, minimized payloads and defined retention.<br>An audit requirement is not permission to copy everything.</p></div>
+        </div>
+      </div>
+      <figcaption id="data-lineage-caption">Intended data boundaries to implement and probe.
+        Encryption protects transport; action approval does not expand the user&rsquo;s read permissions.</figcaption>
+    </figure>
+    <details class="risk-catalog" data-risk-catalog>
+      <summary>Where data escapes: retrieval, memory, instructions and logs</summary>
+      <dl>
+        <div data-risk="source-acl"><dt>Service-wide retrieval</dt><dd>A broad index or service account bypasses user permissions. <strong>Control:</strong> enforce caller/tenant scope before records enter context, and test cross-user and denied-access cases.</dd></div>
+        <div data-risk="memory"><dt>Shared memory</dt><dd>A later conversation receives facts outside its permitted scope. <strong>Control:</strong> isolate sessions, caches and persistent memory by the intended access boundary; test reuse and expiry.</dd></div>
+        <div data-risk="untrusted-content"><dt>Evidence becomes instruction</dt><dd>A retrieved document says to disclose details or ignore controls. <strong>Control:</strong> treat retrieved text as untrusted evidence, test adversarial disclosure, and keep source authorization and action authority outside the model.</dd></div>
+        <div data-risk="retention"><dt>Logs become a second leak</dt><dd>Prompts, traces or audit payloads retain personal data beyond their purpose. <strong>Control:</strong> minimize fields, restrict operator access, define deletion/retention and review locality and legal obligations. A scorecard does not establish compliance.</dd></div>
+      </dl>
+    </details>
+    <p class="topic-owner"><strong>Accountable teams:</strong> data owners and privacy. <strong>Review:</strong> denied-access cases, disclosure paths and sensitive logging.</p>
+    <div class="topic-deeper" data-topic-part="deeper"><a href="#quality-controls">Verify these boundaries before go-live &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-ground">Explore grounding and retrieval checks &rarr;</a></div>
+  </section>
+  </div>
+
+<div class="topic-panel" id="actions-topic" data-topic-panel>
+<section class="chapter-section governance-section" id="effect-authority" data-toc-id="effect-authority" data-toc-label="Agent behavior" aria-labelledby="effect-authority-heading">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow">03 / Agent behavior governance</p>
+        <p class="eyebrow">02 / Agent behavior governance</p>
         <h2 id="effect-authority-heading">Access to a system is not <em>authority for every action.</em></h2>
         <p class="section-lede" data-topic-part="problem" data-case-context>An authenticated agent on a private network can still propose an ineligible return,
           use an outdated case or repeat a decision after a timeout.
@@ -470,18 +503,35 @@
       </div>
     </div>
   </section>
+  </div>
 
-  <section class="chapter-section topic-panel" id="quality-controls" data-topic-panel aria-labelledby="quality-heading">
+<div class="topic-panel" id="readiness-topic" data-topic-panel>
+<section class="chapter-section" id="operating-controls" aria-labelledby="operating-heading">
     <div class="section-head">
-      <p class="eyebrow">04 / Quality and evaluation</p>
-      <h2 id="quality-heading">A convincing demo is not <em>a reliable business result.</em></h2>
-      <p class="section-lede" data-topic-part="problem">Fluent answers and successful API calls are not enough to establish task quality.
-        Evaluate correctness, grounding, safety and failure behavior on representative cases, and detect regressions before changing the workload.</p>
+      <p class="eyebrow">03 / Production readiness and lifecycle</p>
+      <h2 id="operating-heading">Verify before go-live. <em>Operate with evidence.</em></h2>
+      <p class="section-lede" data-topic-part="problem">Production requires repeatable deployment, defined service targets, sustainable cost and tested recovery.
+        Changes to code, models, policy or infrastructure must remain traceable and supported by current evidence.</p>
+    </div>
+    <p class="topic-existing" data-topic-part="existing"><strong>Already owned by operations:</strong> SLOs, on-call, incident handling, budgets and release processes.
+      Agent policy does not replace those disciplines or reverse committed business changes.</p>
+    <div class="topic-proposal" data-topic-part="proposal"><h3>Assess, deploy and operate with evidence.</h3><p>Threadlight joins the thirteen-pillar readiness review
+      with scoped deployment gates, load and cost evidence, named owners and recovery procedures.
+      Evidence for the people who sign.</p></div>
+  </section>
+
+<section class="chapter-section topic-subsection" id="quality-controls" aria-labelledby="quality-heading">
+    <div class="section-head">
+      <p class="eyebrow">Before go-live / repeat after changes</p>
+      <h3 id="quality-heading">Evaluation is part of the release decision</h3>
+      <p class="section-lede" data-topic-part="problem">Before go-live, verify task correctness, grounding, safety, denied-access behavior and critical failure cases.
+        Repeat the relevant checks after model, prompt, tool or infrastructure changes, and monitor behavior in operation.</p>
     </div>
     <p class="topic-existing" data-topic-part="existing"><strong>Already protected:</strong> access and safety policies constrain use.
       They do not measure whether the workflow solves the intended task for representative users.</p>
-    <div class="topic-proposal" data-topic-part="proposal"><h3>Test the decision, not the tone.</h3><p>Threadlight turns acceptance criteria into an evaluation workflow:
-      representative cases, baseline comparison and adversarial probes. Agree which failures block release, not just an average score.</p></div>
+    <div class="topic-proposal" data-topic-part="proposal"><h4>Turn acceptance criteria into release evidence.</h4><p>Threadlight connects evaluation,
+      red-team and grounding evidence to the readiness review. Agree which failures block release, not just an average score.
+      A passed test supports the decision; it does not replace runtime enforcement.</p></div>
     <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="evaluation-matrix" aria-labelledby="evaluation-caption">
       <div class="visual-surface">
         <table class="evaluation-matrix">
@@ -513,60 +563,8 @@
     <div class="topic-deeper" data-topic-part="deeper"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-evals">Explore the evaluation workflow &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-redteam">Explore adversarial testing &rarr;</a></div>
   </section>
 
-  <section class="chapter-section topic-panel" id="information-controls" data-topic-panel aria-labelledby="information-heading">
-    <div class="section-head">
-      <p class="eyebrow">05 / Information protection</p>
-      <h2 id="information-heading">A correct answer can still <em>disclose the wrong person&rsquo;s data.</em></h2>
-      <p class="section-lede" data-topic-part="problem">Retrieval, memory and logs can expose information beyond the requesting user&rsquo;s rights.
-        Protect source access before data enters model context, then govern what answers, traces and persistent memory may disclose or retain.</p>
-    </div>
-    <p class="topic-existing" data-topic-part="existing"><strong>Already owned by data and privacy teams:</strong> source permissions, permitted uses,
-      minimization and retention rules. Encryption or a private endpoint does not decide which records this user may see.</p>
-    <div class="topic-proposal" data-topic-part="proposal"><h3>Filter before context. Minimize after.</h3><p>Keep caller authorization attached to retrieval.
-      Threadlight assesses supplied access, citation and refusal evidence; the application and data services enforce access.
-      Its grounding workflow is not a retrieval engine.</p></div>
-    <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="data-lineage" aria-labelledby="data-lineage-caption">
-      <div class="visual-surface data-lineage">
-        <div class="source-records" aria-label="Source checks before model context">
-          <div class="source-record"><span class="source-state">IN SCOPE</span><p><b>Permitted records</b></p><p>Only the fields needed for the task</p></div>
-          <div class="source-record blocked"><span class="source-state">EXCLUDE</span><p><b>Restricted records</b></p><p>Blocked by source authorization, before context</p></div>
-          <div class="source-record"><span class="source-state">EVIDENCE</span><p><b>Authoritative sources</b></p><p>Source and revision retained; embedded instructions are not authority</p></div>
-        </div>
-        <div class="lineage-arrow" aria-hidden="true">&rarr;</div>
-        <div class="context-envelope"><span class="visual-label">Caller-scoped context</span><p><b>Permitted facts + relevant evidence</b></p><p>Not everything the service identity can read. No memory shared across unauthorized scopes.</p></div>
-        <div class="disclosure-split">
-          <div><span class="visual-label">User answer</span><p>Necessary explanation and permitted citations.<br>No restricted information.</p></div>
-          <div><span class="visual-label">Memory, traces and audit</span><p>Scoped access, minimized payloads and defined retention.<br>An audit requirement is not permission to copy everything.</p></div>
-        </div>
-      </div>
-      <figcaption id="data-lineage-caption">Intended data boundaries to implement and probe.
-        Encryption protects transport; action approval does not expand the user&rsquo;s read permissions.</figcaption>
-    </figure>
-    <details class="risk-catalog" data-risk-catalog>
-      <summary>Where data escapes: retrieval, memory, instructions and logs</summary>
-      <dl>
-        <div data-risk="source-acl"><dt>Service-wide retrieval</dt><dd>A broad index or service account bypasses user permissions. <strong>Control:</strong> enforce caller/tenant scope before records enter context, and test cross-user and denied-access cases.</dd></div>
-        <div data-risk="memory"><dt>Shared memory</dt><dd>A later conversation receives facts outside its permitted scope. <strong>Control:</strong> isolate sessions, caches and persistent memory by the intended access boundary; test reuse and expiry.</dd></div>
-        <div data-risk="untrusted-content"><dt>Evidence becomes instruction</dt><dd>A retrieved document says to disclose details or ignore controls. <strong>Control:</strong> treat retrieved text as untrusted evidence, test adversarial disclosure, and keep source authorization and action authority outside the model.</dd></div>
-        <div data-risk="retention"><dt>Logs become a second leak</dt><dd>Prompts, traces or audit payloads retain personal data beyond their purpose. <strong>Control:</strong> minimize fields, restrict operator access, define deletion/retention and review locality and legal obligations. A scorecard does not establish compliance.</dd></div>
-      </dl>
-    </details>
-    <p class="topic-owner"><strong>Accountable teams:</strong> data owners and privacy. <strong>Review:</strong> denied-access cases, disclosure paths and sensitive logging.</p>
-    <div class="topic-deeper" data-topic-part="deeper"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-ground">Explore grounding and retrieval checks &rarr;</a></div>
-  </section>
-
-  <section class="chapter-section topic-panel" id="operating-controls" data-topic-panel aria-labelledby="operating-heading">
-    <div class="section-head">
-      <p class="eyebrow">06 / Operations and lifecycle</p>
-      <h2 id="operating-heading">Ship a service your organization <em>can actually operate.</em></h2>
-      <p class="section-lede" data-topic-part="problem">Production requires repeatable deployment, defined service targets, sustainable cost and tested recovery.
-        Changes to code, models, policy or infrastructure must remain traceable and supported by current evidence.</p>
-    </div>
-    <p class="topic-existing" data-topic-part="existing"><strong>Already owned by operations:</strong> SLOs, on-call, incident handling, budgets and release processes.
-      Agent policy does not replace those disciplines or reverse committed business changes.</p>
-    <div class="topic-proposal" data-topic-part="proposal"><h3>Assess, deploy and operate with evidence.</h3><p>Threadlight joins the thirteen-pillar readiness review
-      with scoped deployment gates, load and cost evidence, named owners and recovery procedures.
-      Evidence for the people who sign.</p></div>
+<section class="chapter-section topic-subsection" id="delivery-controls" aria-labelledby="delivery-heading">
+    <div class="section-head"><h3 id="delivery-heading">Deployment and ongoing operations</h3></div>
     <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="deployment-lifecycle" aria-labelledby="deployment-caption">
       <div class="visual-surface">
         <span class="visual-label">Readiness and delivery / repeat for each relevant change</span>
@@ -603,8 +601,9 @@
       verification coverage and outstanding must-fix findings.</p>
     <div class="topic-deeper" data-topic-part="deeper"><a href="#checks">Explore the assessment &rarr;</a><a href="#start">Start the readiness review &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-loadtest">Capacity testing &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-connect">Real endpoint verification &rarr;</a></div>
   </section>
+  </div>
 
-  <details class="topic-reference" id="readiness-reference" data-topic-reference="operating-controls">
+  <details class="topic-reference" id="readiness-reference" data-topic-reference="readiness-topic">
     <summary>Assessment reference <span>Thirteen pillars, remediation owners and an illustrative scorecard</span></summary>
   <!-- ==================== 2 · WHAT IT CHECKS ==================== -->
   <section class="chapter-section" id="checks" data-toc-id="checks" data-toc-label="What it checks">
@@ -1093,7 +1092,7 @@
   </section>
 
   </details>
-  <details class="topic-reference" id="action-reference" data-topic-reference="effect-authority">
+  <details class="topic-reference" id="action-reference" data-topic-reference="actions-topic">
     <summary>Business outcomes and evidence <span>How authorization connects to an accountable result</span></summary>
   <section class="chapter-section governance-section" id="evidence-boundaries" data-toc-id="evidence-boundaries" data-toc-label="Business confidence" aria-labelledby="evidence-boundaries-heading">
     <div class="wrap wrap-xl">
@@ -1145,126 +1144,8 @@
   </section>
 
   </details>
-  <details class="topic-reference" id="platform-reference" data-topic-reference="platform-controls">
-    <summary>Integration architecture <span>How a workload can fit a shared AI platform</span></summary>
-  <!-- ==================== 5 · TARGET ARCHITECTURE ==================== -->
-  <section class="chapter-section" id="target" data-toc-id="target" data-toc-label="Target architecture">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Target architecture</p>
-        <h2>What <em>production</em> looks like.</h2>
-        <p class="section-lede">A proposed customer target, not the S3 lab topology:
-          model traffic can use an APIM hub and the Foundry project a private, keyless spoke.
-          Model access and selected effect authority are separate boundaries; correlate their
-          evidence rather than assuming one audit chain from topology alone.</p>
-      </div>
 
-      <figure class="target-arch-fig reveal" data-delay="1" aria-labelledby="ta-cap" tabindex="0">
-        <svg class="ta-svg" viewBox="0 0 1080 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Recommended production topology: a caller reaches an APIM Citadel hub applying JWT, rate limiting, content filtering, semantic cache and an immutable ledger, which forwards under an access contract to a private keyless Foundry spoke running the agent with AGT in-process, wired by private endpoints to managed identity, Key Vault, ACR and the model, with a telemetry tap into App Insights and OpenTelemetry.">
-          <defs>
-            <linearGradient id="ta-hub" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.10"/>
-              <stop offset="100%" stop-color="currentColor" stop-opacity="0.03"/>
-            </linearGradient>
-            <style>
-              .ta-tag      { font-family: var(--mono); font-size: 10px;   letter-spacing: .18em; fill: #8e95a8; }
-              .ta-edge     { font-family: var(--mono); font-size: 9.5px;  letter-spacing: .16em; fill: currentColor; opacity: .72; }
-              .ta-chip     { font-family: var(--mono); font-size: 11.5px; letter-spacing: .10em; fill: currentColor; }
-              .ta-node     { font-family: var(--mono); font-size: 11px;   letter-spacing: .08em; fill: currentColor; font-weight: 600; }
-              .ta-node-sub { font-family: var(--mono); font-size: 8.5px;  letter-spacing: .06em; fill: currentColor; opacity: .68; }
-              .ta-flow     { font-family: var(--mono); font-size: 9px;    letter-spacing: .12em; fill: currentColor; opacity: .8; }
-              @media (prefers-color-scheme: light) { .ta-tag { fill: #5f6680; } }
-            </style>
-          </defs>
-
-          <!-- Caller -->
-          <rect x="8" y="182" width="92" height="76" rx="10" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="54" y="216" text-anchor="middle" class="ta-node">CALLER</text>
-          <text x="54" y="233" text-anchor="middle" class="ta-node-sub">app &middot; user</text>
-          <line x1="100" y1="220" x2="146" y2="220" stroke="var(--lime)" stroke-width="1.7"/>
-          <path d="M141,215 L150,220 L141,225" fill="none" stroke="var(--lime)" stroke-width="1.7"/>
-
-          <!-- ===== Layer 1 · APIM Citadel hub ===== -->
-          <rect x="150" y="52" width="356" height="340" rx="16" fill="url(#ta-hub)" stroke="currentColor" stroke-opacity="0.8" stroke-width="1.8"/>
-          <rect x="166" y="38" width="176" height="26" rx="7" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.55" stroke-width="1"/>
-          <text x="254" y="55" text-anchor="middle" class="ta-tag">AI CITADEL HUB</text>
-          <text x="172" y="90" class="ta-edge">APIM GATEWAY &middot; POLICY PLANE</text>
-
-          <!-- policy chips -->
-          <g>
-            <rect x="172" y="100" width="312" height="40" rx="9" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.36" stroke-width="1"/>
-            <text x="328" y="125" text-anchor="middle" class="ta-chip">JWT AUTH</text>
-            <rect x="172" y="150" width="312" height="40" rx="9" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.36" stroke-width="1"/>
-            <text x="328" y="175" text-anchor="middle" class="ta-chip">RATE LIMIT + QUOTA</text>
-            <rect x="172" y="200" width="312" height="40" rx="9" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.36" stroke-width="1"/>
-            <text x="328" y="225" text-anchor="middle" class="ta-chip">CONTENT FILTER</text>
-            <rect x="172" y="250" width="312" height="40" rx="9" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.36" stroke-width="1"/>
-            <text x="328" y="275" text-anchor="middle" class="ta-chip">SEMANTIC CACHE</text>
-            <rect x="172" y="300" width="312" height="40" rx="9" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.36" stroke-width="1"/>
-            <rect x="172" y="300" width="4" height="40" rx="2" fill="var(--lime)"/>
-            <text x="330" y="325" text-anchor="middle" class="ta-chip">IMMUTABLE LEDGER</text>
-          </g>
-
-          <!-- contract arrow hub -> spoke -->
-          <text x="533" y="211" text-anchor="middle" class="ta-flow">contract</text>
-          <line x1="506" y1="220" x2="556" y2="220" stroke="var(--lime)" stroke-width="1.7"/>
-          <path d="M551,215 L560,220 L551,225" fill="none" stroke="var(--lime)" stroke-width="1.7"/>
-
-          <!-- ===== Layer 2 · Foundry spoke (private VNet) ===== -->
-          <rect x="560" y="52" width="512" height="340" rx="16" fill="none" stroke="currentColor" stroke-opacity="0.8" stroke-width="1.8" stroke-dasharray="7 5"/>
-          <rect x="578" y="38" width="214" height="26" rx="7" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.55" stroke-width="1" stroke-dasharray="4 3"/>
-          <text x="685" y="55" text-anchor="middle" class="ta-tag">FOUNDRY PILOT &middot; SPOKE</text>
-          <text x="582" y="90" class="ta-edge">PRIVATE VNET &middot; KEYLESS (UAMI)</text>
-
-          <!-- agent + AGT -->
-          <rect x="666" y="104" width="300" height="88" rx="12" fill="currentColor" fill-opacity="0.30" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.8"/>
-          <text x="816" y="138" text-anchor="middle" font-family="var(--mono)" font-size="14" font-weight="600" letter-spacing=".12em" fill="currentColor">FOUNDRY AGENT</text>
-          <text x="816" y="159" text-anchor="middle" font-family="var(--mono)" font-size="9.5" letter-spacing=".12em" fill="currentColor" opacity="0.8">+ selected native host enforcement</text>
-          <text x="816" y="178" text-anchor="middle" class="ta-node-sub">capability-gated &middot; hash-chained audit</text>
-          <circle cx="950" cy="118" r="4" fill="var(--lime)"/>
-
-          <!-- private-endpoint bus to keyless services -->
-          <line x1="816" y1="192" x2="816" y2="214" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/>
-          <line x1="632" y1="214" x2="1001" y2="214" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3 3"/>
-          <line x1="632" y1="214" x2="632" y2="236" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/>
-          <line x1="755" y1="214" x2="755" y2="236" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/>
-          <line x1="878" y1="214" x2="878" y2="236" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/>
-          <line x1="1001" y1="214" x2="1001" y2="236" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2"/>
-
-          <!-- keyless service nodes -->
-          <g>
-            <rect x="578" y="236" width="108" height="84" rx="10" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.1"/>
-            <text x="632" y="274" text-anchor="middle" class="ta-node">IDENTITY</text>
-            <text x="632" y="292" text-anchor="middle" class="ta-node-sub">UAMI &middot; keyless</text>
-            <rect x="701" y="236" width="108" height="84" rx="10" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.1"/>
-            <text x="755" y="274" text-anchor="middle" class="ta-node">KEY VAULT</text>
-            <text x="755" y="292" text-anchor="middle" class="ta-node-sub">purge-protected</text>
-            <rect x="824" y="236" width="108" height="84" rx="10" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.1"/>
-            <text x="878" y="274" text-anchor="middle" class="ta-node">ACR</text>
-            <text x="878" y="292" text-anchor="middle" class="ta-node-sub">digest + SBOM</text>
-            <rect x="947" y="236" width="108" height="84" rx="10" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.1"/>
-            <text x="1001" y="274" text-anchor="middle" class="ta-node">MODEL</text>
-            <text x="1001" y="292" text-anchor="middle" class="ta-node-sub">private endpoint</text>
-          </g>
-
-          <!-- telemetry tap band -->
-          <line x1="328" y1="392" x2="328" y2="404" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.1" stroke-dasharray="2 3"/>
-          <line x1="816" y1="392" x2="816" y2="404" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.1" stroke-dasharray="2 3"/>
-          <rect x="150" y="404" width="922" height="30" rx="8" fill="currentColor" fill-opacity="0.06" stroke="currentColor" stroke-opacity="0.3" stroke-width="1"/>
-          <text x="611" y="423" text-anchor="middle" class="ta-edge">TELEMETRY TAP &rarr; APP INSIGHTS &middot; OPENTELEMETRY &middot; IMMUTABLE LEDGER</text>
-        </svg>
-        <figcaption id="ta-cap" class="ta-cap">
-          <strong>Proposed layers, independently verified boundaries.</strong> When selected, an APIM hub
-          mediates the configured model route; the native host or gateway mediates explicitly bound effects.
-          Correlate their separate evidence rather than assuming every call shares one audit chain.
-          Foundry-native and customer-owned-edge postures need their own scoped validation.
-        </figcaption>
-      </figure>
-    </div>
-  </section>
-
-  </details>
-  <details class="topic-reference" id="delivery-reference" data-topic-reference="operating-controls">
+  <details class="topic-reference" id="delivery-reference" data-topic-reference="readiness-topic">
     <summary>Delivery and go-live <span>Pipeline options, starter prompts and review decisions</span></summary>
   <!-- ==================== 6 · SHIP IT ==================== -->
   <section class="chapter-section" id="ship" data-toc-id="ship" data-toc-label="Ship it &middot; the pipeline">

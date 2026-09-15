@@ -3,17 +3,57 @@ import AxeBuilder from '@axe-core/playwright';
 
 const topics = ['platform-controls', 'model-controls', 'effect-authority',
   'quality-controls', 'information-controls', 'operating-controls'];
+const areas = ['platform-controls', 'effect-authority', 'operating-controls'];
+const subsections = [...topics.filter(id => id !== 'operating-controls'), 'delivery-controls'];
+
+test('three areas own the correct subsections and expose one platform architecture', async ({ page }) => {
+  await page.goto('/production.html');
+  await expect(page.getByRole('tab')).toHaveCount(3);
+  for (const [id, owner] of [['model-controls', 'platform-topic'], ['information-controls', 'platform-topic'],
+    ['quality-controls', 'readiness-topic'], ['delivery-controls', 'readiness-topic'],
+    ['effect-authority', 'actions-topic']]) {
+    await page.goto(`/production.html#${id}`);
+    await expect(page.getByRole('tabpanel')).toHaveAttribute('id', owner);
+    await expect(page.locator(`#${id}`)).toBeVisible();
+  }
+  await page.goto('/production.html#platform-controls');
+  await expect(page.locator('#target')).toBeVisible();
+  await expect(page.locator('#platform-reference')).toHaveCount(0);
+  await expect(page.locator('[data-visual="platform-architecture"]')).toHaveCount(1);
+  await expect(page.locator('#model-controls')).toContainText('Citadel');
+  await expect(page.locator('#information-controls')).toContainText('not supplied by the new action-governance runtime');
+  expect(await page.locator('#quality-controls').evaluate(el =>
+    !!(el.compareDocumentPosition(document.getElementById('delivery-controls')) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+});
+
+test('subsection navigation preserves the selected area and keeps headings unobscured', async ({ page }) => {
+  for (const id of areas) {
+    await page.goto(`/production.html#${id}`);
+    const links = page.locator('[data-area-navigation]:not([hidden]) a');
+    expect(await links.count()).toBeGreaterThan(0);
+    for (const link of await links.all()) {
+      await link.click();
+      const target = page.locator(await link.getAttribute('href'));
+      await expect(target).toBeVisible();
+      await expect.poll(() => target.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        const offset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
+        return Math.abs(rect.top - offset) < 2;
+      })).toBe(true);
+    }
+  }
+});
 
 test('the general overview opens independent topics and keeps the return inside agent governance', async ({ page }) => {
   await page.goto('/production.html');
   const links = page.locator('.production-map a');
-  await expect(links).toHaveCount(6);
+  await expect(links).toHaveCount(3);
   await expect(page.locator('[data-journey-step], [data-journey-next]')).toHaveCount(0);
   for (const link of await links.all()) {
     await link.click();
     const panel = page.locator(await link.getAttribute('href'));
     await expect(panel).toBeVisible();
-    await expect(panel.locator('[data-visual]')).toBeVisible();
+    await expect(page.getByRole('tabpanel').locator('[data-visual]').first()).toBeVisible();
     await expect(page.getByRole('tabpanel')).toHaveCount(1);
     if (await panel.getAttribute('id') === 'effect-authority') {
       await expect(panel.locator('#returns-walkthrough')).toContainText('Can I return this order');
@@ -25,8 +65,8 @@ test('the general overview opens independent topics and keeps the return inside 
 
 test('failure catalogs reveal controls on demand without breaking the topic layout', async ({ page }) => {
   await page.goto('/production.html');
-  for (const id of topics) {
-    await page.locator(`[data-topic-tab][href="#${id}"]`).click();
+  for (const id of subsections) {
+    await page.goto(`/production.html#${id}`);
     const catalog = page.locator(`#${id} [data-risk-catalog]`);
     await expect(catalog).not.toHaveAttribute('open', '');
     await catalog.locator('summary').click();
@@ -44,15 +84,16 @@ test('production presents a visual map and only one structured topic at a time',
   await page.goto('/production.html');
   await expect(page.locator('.production-map')).toBeVisible();
   await expect(page.getByRole('tablist', { name: 'Production topics' })).toBeVisible();
-  await expect(page.getByRole('tab')).toHaveCount(6);
+  await expect(page.getByRole('tab')).toHaveCount(3);
   await expect(page.getByRole('tabpanel')).toHaveCount(1);
   await expect(page.locator('.topic-reference[open]')).toHaveCount(0);
-  for (const id of topics) {
-    await page.locator(`[data-topic-tab][href="#${id}"]`).click();
+  for (const id of subsections) {
+    await page.goto(`/production.html#${id}`);
     await expect(page.getByRole('tabpanel')).toHaveCount(1);
     const panel = page.locator(`#${id}`);
     await expect(panel).toBeVisible();
-    for (const part of ['problem', 'existing', 'proposal', 'mechanism', 'deeper']) {
+    const parts = id === 'delivery-controls' ? ['mechanism', 'deeper'] : ['problem', 'existing', 'proposal', 'mechanism', 'deeper'];
+    for (const part of parts) {
       await expect(panel.locator(`[data-topic-part="${part}"]`)).toBeVisible();
     }
     expect((await panel.innerText()).split(/\s+/).length).toBeLessThan(650);
@@ -67,12 +108,12 @@ test('tabs support keyboard selection and browser history without losing context
   const orientation = await page.getByRole('tablist').getAttribute('aria-orientation');
   await first.press(orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight');
   await expect(page.locator('[data-topic-tab]').nth(1)).toBeFocused();
-  await expect(page.locator('#model-controls')).toBeVisible();
-  await expect(page).toHaveURL(/#model-controls$/);
+  await expect(page.locator('#effect-authority')).toBeVisible();
+  await expect(page).toHaveURL(/#effect-authority$/);
   await page.goBack();
   await expect(page.locator('#platform-controls')).toBeVisible();
   await page.goForward();
-  await expect(page.locator('#model-controls')).toBeVisible();
+  await expect(page.locator('#effect-authority')).toBeVisible();
   await page.locator('[data-topic-tab]').nth(1).press('End');
   await expect(page.locator('#operating-controls')).toBeVisible();
 });
@@ -96,7 +137,7 @@ test('legacy deep links select the owning topic and open the necessary reference
 
 test('selected topics retain accessible names, focus and contrast', async ({ page }) => {
   await page.goto('/production.html');
-  for (const id of topics) {
+  for (const id of areas) {
     await page.locator(`[data-topic-tab][href="#${id}"]`).click();
     const violations = (await new AxeBuilder({ page }).include('#topic-explorer')
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
