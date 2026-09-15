@@ -4,24 +4,22 @@ import AxeBuilder from '@axe-core/playwright';
 const topics = ['platform-controls', 'model-controls', 'effect-authority',
   'quality-controls', 'information-controls', 'operating-controls'];
 
-test('the returns walkthrough links concrete incidents to all six control topics', async ({ page }) => {
+test('the general overview opens independent topics and keeps the return inside agent governance', async ({ page }) => {
   await page.goto('/production.html');
-  const walkthrough = page.locator('#returns-walkthrough');
-  await expect(walkthrough).toContainText('Can I return this order');
-  const steps = page.locator('[data-journey-step]');
-  await expect(steps).toHaveCount(6);
-  for (const step of await steps.all()) {
-    await step.click();
-    const panel = page.locator(`#${await step.getAttribute('data-journey-step')}`);
+  const links = page.locator('.production-map a');
+  await expect(links).toHaveCount(6);
+  await expect(page.locator('[data-journey-step], [data-journey-next]')).toHaveCount(0);
+  for (const link of await links.all()) {
+    await link.click();
+    const panel = page.locator(await link.getAttribute('href'));
     await expect(panel).toBeVisible();
-    await expect(panel.locator('[data-case-context]')).toBeVisible();
     await expect(panel.locator('[data-visual]')).toBeVisible();
-    await expect(panel.locator('[data-journey-next]')).toBeVisible();
     await expect(page.getByRole('tabpanel')).toHaveCount(1);
-    const next = panel.locator('[data-journey-next]');
-    const target = page.locator(await next.getAttribute('href'));
-    await next.click();
-    await expect(target).toBeVisible();
+    if (await panel.getAttribute('id') === 'effect-authority') {
+      await expect(panel.locator('#returns-walkthrough')).toContainText('Can I return this order');
+    } else {
+      await expect(panel.locator('[data-case-context]')).toHaveCount(0);
+    }
   }
 });
 
@@ -82,7 +80,8 @@ test('tabs support keyboard selection and browser history without losing context
 test('legacy deep links select the owning topic and open the necessary reference', async ({ page }) => {
   for (const [anchor, owner] of [['effect-authority', 'effect-authority'],
     ['target', 'platform-controls'], ['checks', 'operating-controls'],
-    ['start', 'operating-controls'], ['evidence-boundaries', 'effect-authority']]) {
+    ['start', 'operating-controls'], ['returns-walkthrough', 'effect-authority'],
+    ['evidence-boundaries', 'effect-authority']]) {
     await page.goto(`/production.html#${anchor}`);
     await expect(page.locator(`#${owner}`)).toBeVisible();
     await expect(page.getByRole('tabpanel')).toHaveCount(1);

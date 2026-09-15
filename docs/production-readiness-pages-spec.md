@@ -26,7 +26,19 @@ passes are not silently reassigned to changed content.
 
 ### Architecture reader and Production-ready visual
 
-**Scenario-led revision:** the user found the selectable-topic page easier to
+**Current simplification for colleague review:** restore the general production
+overview and retain the six independently navigable subsections. Platform and
+network, model governance, quality, information protection, and operations/
+deployment use their own domain explanations and diagrams. The return example
+belongs only in agent behavior governance: its request, routine/exception cases,
+authorization schematic and failure controls remain there. Remove the cross-page
+return journey and continuation links. Keep the accepted technical Markdown,
+original site design, detailed architecture/assessment references and no-JavaScript
+fallback unchanged. This is a bounded review draft, not production publication or
+an invitation to redesign the page again before colleague feedback.
+
+**Superseded scenario-led experiment (design history, not current scope):**
+the user found the selectable-topic page easier to
 navigate but too abstract and visually repetitive. Keep that navigation and the
 accepted Markdown; use one illustrative return as the public reading path.
 Connect, read, reason, decide, record and improve lead into the six complementary

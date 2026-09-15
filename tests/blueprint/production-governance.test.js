@@ -127,15 +127,19 @@ test('new governance contrast fixes are page-local and keep links distinguishabl
   assert.doesNotMatch(style, /outline:\s*(?:none|0)(?:[;}])/);
 });
 
-test('production explains a return through six concrete failure points, not an abstract category list', () => {
-  const overview = section(read('production.html'), 'production-domains');
-  assert.match(overview, /id="returns-walkthrough"/);
-  assert.match(text(overview), /Can I return this order/);
-  const steps = [...overview.matchAll(/data-journey-step="([^"]+)"/g)].map(match => match[1]);
-  assert.deepEqual(steps, ['platform-controls', 'information-controls', 'model-controls',
-    'effect-authority', 'operating-controls', 'quality-controls']);
-  assert.match(text(overview), /not a payment/);
-  assert.match(text(overview), /before release/);
+test('production keeps the returns example inside agent governance, not the general domains', () => {
+  const source = read('production.html');
+  const authority = section(source, 'effect-authority');
+  assert.match(authority, /id="returns-walkthrough"/);
+  assert.match(text(authority), /Can I return this order/);
+  assert.match(text(authority), /not a payment/);
+  for (const id of ['production-domains', 'platform-controls', 'model-controls',
+    'quality-controls', 'information-controls', 'operating-controls']) {
+    const body = section(source, id);
+    assert.doesNotMatch(body, /data-case-context|data-journey/, `${id}: independent production concern`);
+    assert.doesNotMatch(text(body), /\b(?:refund|supervisor|order)\b|\breturn(?:s)?\s+(?:policy|agent|record|decisions|history|acceptance|eligibility)/i, id);
+  }
+  assert.doesNotMatch(source, /data-journey-next|data-journey-step/);
 });
 
 test('each production topic teaches its own mechanism and concrete failure controls', () => {
@@ -143,17 +147,15 @@ test('each production topic teaches its own mechanism and concrete failure contr
   const visuals = {
     'platform-controls': 'access-topology', 'model-controls': 'model-passport',
     'effect-authority': 'effect-sequence', 'quality-controls': 'evaluation-matrix',
-    'information-controls': 'data-lineage', 'operating-controls': 'recovery-timeline',
+    'information-controls': 'data-lineage', 'operating-controls': 'deployment-lifecycle',
   };
   for (const [id, visual] of Object.entries(visuals)) {
     const body = section(source, id);
-    assert.match(body, /data-case-context/, `${id}: return-specific incident`);
     assert.match(body, new RegExp(`data-visual="${visual}"`), `${id}: distinct visual explanation`);
     assert.match(body, /<details[^>]*data-risk-catalog/, `${id}: optional failure detail`);
     assert.ok([...body.matchAll(/data-risk="/g)].length >= 4, `${id}: concrete failure families`);
-    assert.match(body, /data-journey-next/, `${id}: continue the same case`);
   }
   assert.match(section(source, 'quality-controls'), /<table/);
   assert.match(section(source, 'information-controls'), /not a retrieval engine/);
-  assert.match(section(source, 'operating-controls'), /Unknown outcome/);
+  assert.match(section(source, 'operating-controls'), /Assess|Deploy|Operate/);
 });

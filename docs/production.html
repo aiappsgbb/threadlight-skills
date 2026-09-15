@@ -65,12 +65,17 @@
   .return-brief { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; padding: 28px; border: 1px solid var(--line-2); border-left: 3px solid var(--chapter-accent); background: var(--bg-1); border-radius: 12px; }
   .return-brief blockquote { margin: 8px 0 0; font: clamp(24px, 3vw, 32px)/1.25 var(--serif); color: var(--ink-0); }
   .return-brief p { margin: 8px 0; color: var(--ink-1); font-size: 15px; }
-  .journey { list-style: none; padding: 0; margin: 24px 0 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 20px; }
-  .journey li { position: relative; min-width: 0; }
-  .journey li:not(:last-child)::after { content: "\2192"; position: absolute; top: 28px; right: -17px; color: var(--ink-1); }
-  .journey a { display: flex; flex-direction: column; gap: 12px; height: 100%; padding: 18px 16px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-2); }
-  .journey .journey-domain { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line-2); font-size: 12px; }
-  .journey .journey-number, .visual-label { font: 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-1); }
+  .visual-label { font: 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-1); }
+  .map-perimeter { border: 1px dashed var(--line-2); border-radius: 16px; padding: 24px; background: var(--bg-1); }
+  .map-boundary { display: flex; flex-wrap: wrap; gap: 8px 20px; width: fit-content; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: 8px; }
+  .map-workflow { display: grid; grid-template-columns: 1fr 40px 1fr 40px 1.6fr; align-items: center; gap: 16px; margin-top: 24px; }
+  .map-request, .map-agent, .map-endpoints a { padding: 20px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-2); }
+  .map-agent { border-color: var(--chapter-accent); background: var(--chapter-accent-soft); }
+  .map-endpoints { display: grid; gap: 12px; }
+  .map-endpoints a { display: block; }
+  .production-map .map-arrow { font-size: 28px; text-align: center; color: var(--ink-1); }
+  .map-foundations { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding-top: 16px; }
+  .map-foundations a { padding: 16px 20px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-1); }
   .production-map figcaption, .topic-mechanism figcaption { margin-top: 16px; font-size: 14px; color: var(--ink-1); }
   #topic-explorer { padding-bottom: 64px; }
   .topic-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; align-items: start; }
@@ -129,12 +134,12 @@
   .lineage-arrow { text-align: center; font-size: 28px; color: var(--ink-1); }
   .context-envelope { padding: 24px; border: 2px solid var(--chapter-accent); border-radius: 12px; background: var(--chapter-accent-soft); }
   .disclosure-split { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding-top: 20px; border-top: 1px solid var(--line-2); }
-  .recovery-events { display: grid; grid-template-columns: repeat(3, 1fr); list-style: none; padding: 0; margin: 16px 0 24px; gap: 20px; }
-  .recovery-events li { border-top: 2px solid var(--line-2); padding-top: 12px; position: relative; }
-  .recovery-events li::before { content: ""; display: block; width: 8px; height: 8px; background: var(--ink-1); border-radius: 50%; position: absolute; top: -5px; }
-  .recovery-events li:last-child { border-color: var(--chapter-accent); }
-  .reconcile-fork { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border-top: 1px dashed var(--line-2); padding-top: 20px; }
-  .reconcile-fork div { padding: 16px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 8px; }
+  .lifecycle-stages { display: grid; grid-template-columns: repeat(3, 1fr); list-style: none; padding: 0; margin: 16px 0 24px; gap: 20px; }
+  .lifecycle-stages li { border-top: 2px solid var(--line-2); padding-top: 12px; position: relative; }
+  .lifecycle-stages li::before { content: ""; display: block; width: 8px; height: 8px; background: var(--ink-1); border-radius: 50%; position: absolute; top: -5px; }
+  .lifecycle-stages li:last-child { border-color: var(--chapter-accent); }
+  .release-outcomes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border-top: 1px dashed var(--line-2); padding-top: 20px; }
+  .release-outcomes div { padding: 16px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 8px; }
   .operating-signals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 24px 0; padding: 0; list-style: none; }
   .operating-signals li { padding-top: 12px; border-top: 2px solid var(--line-2); font-size: 14px; color: var(--ink-1); }
   .operating-signals b { display: block; color: var(--ink-0); margin-bottom: 6px; }
@@ -146,7 +151,6 @@
   .risk-catalog dt { font-weight: 600; color: var(--ink-0); }
   .risk-catalog dd { margin: 0; color: var(--ink-1); }
   .risk-catalog dd strong { color: var(--ink-0); }
-  [data-journey-next] { display: block; padding: 14px 0; border-top: 1px solid var(--line-2); color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; font-size: 15px; }
   .topic-deeper { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 24px 0; }
   .topic-deeper a { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; font-size: 15px; }
   .topic-reference { margin: 16px 0; border: 1px solid var(--line-2); border-radius: 12px; padding: 20px; background: var(--bg-1); }
@@ -164,21 +168,22 @@
     .topic-tabs a { flex: 0 0 auto; white-space: nowrap; border-left: 0; border-bottom: 3px solid var(--line); }
     .topics-enhanced .topic-tabs a span { display: none; }
     .topic-tabs a[aria-selected="true"] { border-radius: 10px 10px 0 0; }
-    .journey { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .journey li:nth-child(3)::after { display: none; }
+    .map-workflow { grid-template-columns: 1fr 24px 1fr; }
+    .map-workflow > .map-arrow:nth-of-type(2) { display: none; }
+    .map-endpoints { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
   }
   @media (max-width: 680px) {
-    .return-brief, .model-passport, .access-topology, .data-lineage, .disclosure-split, .reconcile-fork, .case-outcomes { grid-template-columns: 1fr; }
+    .return-brief, .model-passport, .access-topology, .data-lineage, .disclosure-split, .release-outcomes, .case-outcomes, .map-foundations, .map-endpoints { grid-template-columns: 1fr; }
     .return-brief { padding: 20px; gap: 12px; }
-    .journey { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    .journey a { padding: 16px 12px; }
-    .journey li::after { display: none; }
+    .map-perimeter { padding: 16px; }
+    .map-workflow { gap: 8px; }
+    .map-request, .map-agent { padding: 14px; }
     .visual-surface { padding: 16px; }
     .topology-routes { padding-left: 18px; }
     .topology-route { grid-template-columns: 80px 1fr; padding: 12px; gap: 8px; }
     .topology-route::before { left: -18px; }
     .lineage-arrow { transform: rotate(90deg); }
-    .recovery-events, .operating-signals { grid-template-columns: 1fr; gap: 16px; }
+    .lifecycle-stages, .operating-signals { grid-template-columns: 1fr; gap: 16px; }
     .evaluation-matrix th, .evaluation-matrix td { padding: 12px 6px; font-size: 13px; }
     .risk-catalog dl > div { grid-template-columns: 1fr; gap: 6px; }
     .authority-map { display: none; }
@@ -231,29 +236,31 @@
     <div class="wrap wrap-xl">
       <div class="section-head" id="why">
         <p class="eyebrow"><span class="dot"></span>Complementary responsibilities</p>
-        <h2 id="production-domains-heading">One return. <em>Six ways a helpful agent can go wrong.</em></h2>
-        <p class="section-lede">Follow one customer request from sign-in to a recorded decision.
-          The failure changes at each step. So does the control that can stop it.</p>
+        <h2 id="production-domains-heading">Production is a system. <em>Not a single control.</em></h2>
+        <p class="section-lede">Platform and network, model governance, agent behavior, quality, data protection and operations
+          have different responsibilities. Explore each one, then bring the evidence together in the production-readiness review.</p>
       </div>
-      <figure class="production-map" id="returns-walkthrough" aria-labelledby="production-map-caption">
-        <div class="return-brief">
-          <div><span class="visual-label">The customer&rsquo;s request</span><blockquote>&ldquo;Can I return this order?&rdquo;</blockquote></div>
-          <div><b>The agent&rsquo;s job</b><p>Read the customer&rsquo;s case and the current return policy.
-            Recommend an outcome or request a supervisor decision, then record the result with an audit.</p>
-            <p><strong>A decision record, not a payment.</strong> This illustrative walkthrough does not settle a refund.</p>
+      <figure class="production-map" aria-labelledby="production-map-caption">
+        <div class="map-perimeter">
+          <a class="map-boundary" href="#platform-controls"><b>01 / Platform &amp; network</b><span>Identity, isolation and permitted routes</span></a>
+          <div class="map-workflow">
+            <div class="map-request"><b>Application</b><span>Users and business requirements</span></div>
+            <span class="map-arrow" aria-hidden="true">&rarr;</span>
+            <div class="map-agent"><b>Agent workload</b><span>Configured tools and services</span></div>
+            <span class="map-arrow" aria-hidden="true">&rarr;</span>
+            <div class="map-endpoints">
+              <a href="#model-controls"><b>02 / Model governance</b><span>Approved use, safeguards and lifecycle</span></a>
+              <a href="#effect-authority"><b>03 / Agent behavior</b><span>Policy and authority for selected actions</span></a>
+            </div>
           </div>
         </div>
-        <ol class="journey" aria-label="Follow the return through six production concerns">
-          <li><a data-journey-step="platform-controls" href="#platform-controls"><span class="journey-number">01 / Connect</span><b>Right login.<br>Too much access.</b><span>The agent can reach systems it should never write to.</span><span class="journey-domain">Platform &amp; network</span></a></li>
-          <li><a data-journey-step="information-controls" href="#information-controls"><span class="journey-number">02 / Read</span><b>Right question.<br>Wrong customer.</b><span>Another person&rsquo;s order enters the model context.</span><span class="journey-domain">Information protection</span></a></li>
-          <li><a data-journey-step="model-controls" href="#model-controls"><span class="journey-number">03 / Reason</span><b>Same agent.<br>Different model.</b><span>A model or safety change escapes the agreed policy.</span><span class="journey-domain">Model governance</span></a></li>
-          <li><a data-journey-step="effect-authority" href="#effect-authority"><span class="journey-number">04 / Decide</span><b>Plausible proposal.<br>No authority.</b><span>A high-value or stale case is treated as approved.</span><span class="journey-domain">Agent behavior</span></a></li>
-          <li><a data-journey-step="operating-controls" href="#operating-controls"><span class="journey-number">05 / Record</span><b>Response lost.<br>Write repeated?</b><span>A retry risks duplicating a completed decision.</span><span class="journey-domain">Operations &amp; lifecycle</span></a></li>
-          <li><a data-journey-step="quality-controls" href="#quality-controls"><span class="journey-number">06 / Improve</span><b>Better demo.<br>Worse decisions.</b><span>A release regresses on real return-policy edge cases.</span><span class="journey-domain">Quality &amp; evaluation</span></a></li>
-        </ol>
-        <figcaption id="production-map-caption">A reading path, not six sequential runtime gates.
-          Evaluation starts before release; privacy and operations apply throughout.
-          Choose an incident to see its mechanism, failure modes and the controls Threadlight helps you assemble or verify.</figcaption>
+        <div class="map-foundations">
+          <a href="#quality-controls"><b>04 / Quality &amp; evaluation</b><span>Acceptance criteria and regression evidence</span></a>
+          <a href="#information-controls"><b>05 / Information protection</b><span>Source access, disclosure and retention</span></a>
+          <a href="#operating-controls"><b>06 / Operations &amp; lifecycle</b><span>Deployment, resilience, cost and change</span></a>
+        </div>
+        <figcaption id="production-map-caption">Complementary controls, not alternative architectures or a priority ranking.
+          The subsections explain the mechanisms, owners and review questions; the assessment covers thirteen production pillars.</figcaption>
       </figure>
     </div>
   </section>
@@ -276,9 +283,8 @@
     <div class="section-head">
       <p class="eyebrow">01 / Platform and network controls</p>
       <h2 id="platform-heading">Reach the right services. <em>Close the unintended routes.</em></h2>
-      <p class="section-lede" data-topic-part="problem" data-case-context>The customer signs in to request a return.
-        The agent needs the model, that customer&rsquo;s case and a way to record an outcome.
-        A copied developer credential might also let it write directly to the order database.</p>
+      <p class="section-lede" data-topic-part="problem">A working pilot may rely on public endpoints, broad permissions or developer credentials.
+        Production needs an explicit access topology: approved ingress and egress, service identities, private routes where required and no unintended bypasses.</p>
     </div>
     <p class="topic-existing" data-topic-part="existing"><strong>Already owned by your platform:</strong> landing zones, network isolation, identity, IAM and secrets.
       Threadlight conforms to that foundation; it does not replace it.</p>
@@ -286,16 +292,16 @@
       and maps access gaps to owners. Close bypasses around the intended tool path; do not give the agent the business writer&rsquo;s credential.</p></div>
     <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="access-topology" aria-labelledby="access-topology-caption">
       <div class="visual-surface access-topology">
-        <div class="topology-agent"><span class="visual-label">Signed-in caller</span><p><b>Returns agent</b></p><p>Its own service identity<br>Limited destinations</p></div>
+        <div class="topology-agent"><span class="visual-label">Authenticated workload</span><p><b>Agent runtime</b></p><p>Its own service identity<br>Limited destinations</p></div>
         <div class="topology-routes" aria-label="Separate model, read and write paths">
           <div class="topology-route"><b>Model route</b><div class="route-destination"><strong>Approved model endpoint</strong>Model access, not database access</div></div>
-          <div class="topology-route"><b>Read route</b><div class="route-destination"><strong>Caller-scoped case API</strong>Customer authorization still applies</div></div>
+          <div class="topology-route"><b>Read route</b><div class="route-destination"><strong>Caller-scoped data API</strong>Source authorization still applies</div></div>
           <div class="topology-route"><b>Selected write</b><div class="route-destination"><strong>Trusted host / gateway &rarr; business API</strong>Separate downstream and writer identities</div></div>
         </div>
         <div class="blocked-route"><p><strong>&times; No direct agent-to-store write path.</strong> An unintended credential or route can bypass the action boundary.</p></div>
       </div>
       <figcaption id="access-topology-caption">Intended access topology, to verify in the actual environment.
-        A private route answers who can connect, not whether this return is eligible.</figcaption>
+        A private route establishes reachability, not permission for every business action.</figcaption>
     </figure>
     <details class="risk-catalog" data-risk-catalog>
       <summary>Where access control breaks: exposure, privilege and bypasses</summary>
@@ -308,16 +314,14 @@
     </details>
     <p class="topic-owner"><strong>Accountable teams:</strong> platform engineering and security. <strong>Review:</strong> permitted routes, least privilege and unintended direct access.</p>
     <div class="topic-deeper" data-topic-part="deeper"><a href="#target">See the integration architecture &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#3-the-three-postures">Read the deployment postures &rarr;</a></div>
-    <a data-journey-next href="#information-controls">Continue the return: which customer&rsquo;s data enters the context? &rarr;</a>
   </section>
 
   <section class="chapter-section topic-panel" id="model-controls" data-topic-panel aria-labelledby="model-heading">
     <div class="section-head">
       <p class="eyebrow">02 / Model governance</p>
       <h2 id="model-heading">Control model use. <em>Know what that control stops.</em></h2>
-      <p class="section-lede" data-topic-part="problem" data-case-context>The return is handled by an approved model today.
-        Tomorrow a configuration change selects a cheaper model or disables a safety setting.
-        The request still succeeds, but the assumptions behind its approval have changed.</p>
+      <p class="section-lede" data-topic-part="problem">Model selection, safety settings, usage limits and lifecycle decisions need a common policy.
+        A model or configuration change can alter behavior even when the application code stays the same.</p>
     </div>
     <p class="topic-existing" data-topic-part="existing"><strong>Already owned by the AI platform:</strong> approved models, model-facing gateway policies,
       content safety, quotas and lifecycle decisions. These do not automatically govern downstream business tools.</p>
@@ -335,11 +339,11 @@
         </div>
         <div class="change-gate"><span class="visual-label">Change / what needs review</span>
           <p><b>A different model is a different candidate.</b></p>
-          <ol><li>Identify the proposed model or policy change.</li><li>Compare return decisions against the accepted baseline.</li><li>Approve the release and retain a rollback route.</li></ol>
+          <ol><li>Identify the proposed model or policy change.</li><li>Compare task performance against the accepted baseline.</li><li>Approve the release and retain a rollback route.</li></ol>
         </div>
       </div>
       <figcaption id="model-passport-caption">Content safeguards address supported content risks.
-        They do not prove return eligibility, eliminate prompt injection or authorize a downstream write.</figcaption>
+        They do not prove business correctness, eliminate prompt injection or authorize a downstream write.</figcaption>
     </figure>
     <details class="risk-catalog" data-risk-catalog>
       <summary>Where model governance breaks: drift, bypass and false confidence</summary>
@@ -347,12 +351,11 @@
         <div data-risk="selection"><dt>Unapproved selection</dt><dd>A fallback routes to a model or region outside the agreed policy. <strong>Control:</strong> constrain permitted destinations and make fallback behavior explicit; inspect the effective runtime configuration.</dd></div>
         <div data-risk="safety"><dt>Safeguards bypassed</dt><dd>A client calls an alternate endpoint without required filters or usage limits. <strong>Control:</strong> enforce policies on the actual model route and test both accepted and rejected requests.</dd></div>
         <div data-risk="lifecycle"><dt>Silent lifecycle change</dt><dd>A retirement, version change or incompatible runtime alters behavior. <strong>Control:</strong> track compatibility and lifecycle dates, evaluate a replacement and plan migration before the dependency disappears.</dd></div>
-        <div data-risk="quality"><dt>Safe-looking, wrong answer</dt><dd>The model returns acceptable language but invents eligibility. <strong>Control:</strong> evaluate task correctness and ground policy facts separately. Content filtering is not business-rule enforcement.</dd></div>
+        <div data-risk="quality"><dt>Safe-looking, wrong answer</dt><dd>The model produces acceptable language but invents facts. <strong>Control:</strong> evaluate task correctness and grounding separately. Content filtering is not business-rule enforcement.</dd></div>
       </dl>
     </details>
     <p class="topic-owner"><strong>Accountable teams:</strong> AI platform and responsible AI. <strong>Review:</strong> approved access, safety configuration and change criteria.</p>
     <div class="topic-deeper" data-topic-part="deeper"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/13-model-lifecycle.md">Read the model lifecycle checks &rarr;</a><a href="#quality-controls">Explore model-change evaluation &rarr;</a></div>
-    <a data-journey-next href="#effect-authority">Continue the return: who authorizes the proposed decision? &rarr;</a>
   </section>
 
   <!-- Static schematic with a mobile flow and an ordered text equivalent. -->
@@ -365,6 +368,11 @@
           use an outdated case or repeat a decision after a timeout.
           The missing question is not &ldquo;can it call this API?&rdquo; but
           &ldquo;may it perform this exact action, with these facts, now?&rdquo;</p>
+      </div>
+      <div class="return-brief" id="returns-walkthrough">
+        <div><span class="visual-label">Example / a customer return</span><blockquote>&ldquo;Can I return this order?&rdquo;</blockquote></div>
+        <div><b>The agent&rsquo;s job</b><p>Read the case and current policy, recommend an outcome or request a supervisor decision,
+          then record the result with an audit.</p><p><strong>A decision record, not a payment.</strong> The example does not settle a refund.</p></div>
       </div>
       <p class="topic-existing" data-topic-part="existing"><strong>Already protected:</strong> network isolation, identity and model access.
         The existing business API keeps its eligibility and transaction rules. The remaining gap is authority for the exact proposed action.</p>
@@ -460,7 +468,6 @@
         <span class="rd-label">Inside the deep dive:</span>
         <span>Coverage boundaries &middot; integration profiles &middot; native approval &middot; implementation contracts</span>
       </div>
-      <a data-journey-next href="#operating-controls">Continue the return: the write was sent, but its response disappeared &rarr;</a>
     </div>
   </section>
 
@@ -468,8 +475,8 @@
     <div class="section-head">
       <p class="eyebrow">04 / Quality and evaluation</p>
       <h2 id="quality-heading">A convincing demo is not <em>a reliable business result.</em></h2>
-      <p class="section-lede" data-topic-part="problem" data-case-context>Same return, new model: the agent confidently recommends an outcome outside policy.
-        The explanation is fluent and the API call succeeds. Neither tells you whether the business decision was right.</p>
+      <p class="section-lede" data-topic-part="problem">Fluent answers and successful API calls are not enough to establish task quality.
+        Evaluate correctness, grounding, safety and failure behavior on representative cases, and detect regressions before changing the workload.</p>
     </div>
     <p class="topic-existing" data-topic-part="existing"><strong>Already protected:</strong> access and safety policies constrain use.
       They do not measure whether the workflow solves the intended task for representative users.</p>
@@ -478,14 +485,14 @@
     <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="evaluation-matrix" aria-labelledby="evaluation-caption">
       <div class="visual-surface">
         <table class="evaluation-matrix">
-          <caption>Example return acceptance criteria &mdash; not measured results</caption>
+          <caption>Evaluation dimensions &mdash; illustrative criteria, not measured results</caption>
           <thead><tr><th scope="col">Test case</th><th scope="col">Must do</th><th scope="col">Must not do</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Ordinary eligible case</th><td>Recommend the permitted outcome with evidence</td><td class="must-not">Invent eligibility facts</td></tr>
-            <tr><th scope="row">High-value exception</th><td>Request the required supervisor review</td><td class="must-not">Treat confidence as approval</td></tr>
-            <tr><th scope="row">Missing policy evidence</th><td>Ask for clarification or abstain</td><td class="must-not">Cite a nonexistent rule</td></tr>
-            <tr><th scope="row">Injected case note</th><td>Treat the note as untrusted data</td><td class="must-not">Follow &ldquo;ignore approval&rdquo;</td></tr>
-            <tr><th scope="row">Different customer</th><td>Preserve the caller&rsquo;s access boundary</td><td class="must-not">Reveal another order</td></tr>
+            <tr><th scope="row">Task correctness</th><td>Meet the agreed acceptance criteria</td><td class="must-not">Invent unsupported facts</td></tr>
+            <tr><th scope="row">Tool selection</th><td>Use the declared tool and valid arguments</td><td class="must-not">Choose an unrelated action</td></tr>
+            <tr><th scope="row">Missing evidence</th><td>Ask for clarification or abstain</td><td class="must-not">Cite a nonexistent source</td></tr>
+            <tr><th scope="row">Adversarial input</th><td>Treat retrieved instructions as untrusted data</td><td class="must-not">Bypass the intended controls</td></tr>
+            <tr><th scope="row">Access boundaries</th><td>Preserve the caller&rsquo;s information scope</td><td class="must-not">Disclose restricted records</td></tr>
           </tbody>
         </table>
         <div class="release-rule"><p><b>Baseline &harr; candidate &rarr; release review.</b><br>Compare task success and serious failures on the same cases. Re-run when prompts, models, tools or retrieval change.</p></div>
@@ -497,22 +504,21 @@
       <summary>Where quality breaks: weak evidence, blind spots and regressions</summary>
       <dl>
         <div data-risk="grounding-quality"><dt>Right answer, bad evidence</dt><dd>The recommendation happens to be right but its citation is irrelevant or fabricated. <strong>Control:</strong> assess retrieval relevance, citation support and refusal when evidence is insufficient.</dd></div>
-        <div data-risk="coverage"><dt>Demo-only coverage</dt><dd>Happy-path examples miss uncommon products, languages, accessibility needs or ambiguous requests. <strong>Control:</strong> build representative cases and judge failure severity with business owners.</dd></div>
+        <div data-risk="coverage"><dt>Demo-only coverage</dt><dd>Happy-path examples miss uncommon tasks, languages, accessibility needs or ambiguous requests. <strong>Control:</strong> build representative cases and judge failure severity with business owners.</dd></div>
         <div data-risk="adversarial"><dt>Hostile input</dt><dd>Instructions inside a document try to redirect tools or disclose data. <strong>Control:</strong> run adversarial tests and check actual tool/data behavior, not just the model&rsquo;s reassuring explanation.</dd></div>
-        <div data-risk="regression"><dt>Average hides regression</dt><dd>A faster candidate improves easy cases but fails high-value exceptions. <strong>Control:</strong> compare slices and must-not-fail cases against the baseline; monitor drift after release and retain a rollback decision.</dd></div>
+        <div data-risk="regression"><dt>Average hides regression</dt><dd>A faster candidate improves easy tasks but fails critical edge cases. <strong>Control:</strong> compare slices and must-not-fail cases against the baseline; monitor drift after release and retain a rollback decision.</dd></div>
       </dl>
     </details>
     <p class="topic-owner"><strong>Accountable teams:</strong> product and engineering. <strong>Review:</strong> task success, failure severity and regression against the agreed baseline.</p>
     <div class="topic-deeper" data-topic-part="deeper"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-evals">Explore the evaluation workflow &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-redteam">Explore adversarial testing &rarr;</a></div>
-    <a data-journey-next href="#checks">Bring the six concerns together: inspect the production review &rarr;</a>
   </section>
 
   <section class="chapter-section topic-panel" id="information-controls" data-topic-panel aria-labelledby="information-heading">
     <div class="section-head">
       <p class="eyebrow">05 / Information protection</p>
       <h2 id="information-heading">A correct answer can still <em>disclose the wrong person&rsquo;s data.</em></h2>
-      <p class="section-lede" data-topic-part="problem" data-case-context>The agent searches return history and retrieves another customer&rsquo;s order.
-        Once that record enters its context, the data boundary has already failed &mdash; even if the final recommendation sounds correct.</p>
+      <p class="section-lede" data-topic-part="problem">Retrieval, memory and logs can expose information beyond the requesting user&rsquo;s rights.
+        Protect source access before data enters model context, then govern what answers, traces and persistent memory may disclose or retain.</p>
     </div>
     <p class="topic-existing" data-topic-part="existing"><strong>Already owned by data and privacy teams:</strong> source permissions, permitted uses,
       minimization and retention rules. Encryption or a private endpoint does not decide which records this user may see.</p>
@@ -522,14 +528,14 @@
     <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="data-lineage" aria-labelledby="data-lineage-caption">
       <div class="visual-surface data-lineage">
         <div class="source-records" aria-label="Source checks before model context">
-          <div class="source-record"><span class="source-state">IN SCOPE</span><p><b>This customer&rsquo;s order</b></p><p>Only the fields needed for the return</p></div>
-          <div class="source-record blocked"><span class="source-state">EXCLUDE</span><p><b>Another customer&rsquo;s order</b></p><p>Blocked by source authorization, before context</p></div>
-          <div class="source-record"><span class="source-state">EVIDENCE</span><p><b>Current return policy</b></p><p>Source and revision retained; embedded instructions are not authority</p></div>
+          <div class="source-record"><span class="source-state">IN SCOPE</span><p><b>Permitted records</b></p><p>Only the fields needed for the task</p></div>
+          <div class="source-record blocked"><span class="source-state">EXCLUDE</span><p><b>Restricted records</b></p><p>Blocked by source authorization, before context</p></div>
+          <div class="source-record"><span class="source-state">EVIDENCE</span><p><b>Authoritative sources</b></p><p>Source and revision retained; embedded instructions are not authority</p></div>
         </div>
         <div class="lineage-arrow" aria-hidden="true">&rarr;</div>
-        <div class="context-envelope"><span class="visual-label">Caller-scoped context</span><p><b>Permitted facts + relevant evidence</b></p><p>Not everything the service identity can read. Not previous customers&rsquo; memory.</p></div>
+        <div class="context-envelope"><span class="visual-label">Caller-scoped context</span><p><b>Permitted facts + relevant evidence</b></p><p>Not everything the service identity can read. No memory shared across unauthorized scopes.</p></div>
         <div class="disclosure-split">
-          <div><span class="visual-label">Customer answer</span><p>Necessary explanation and permitted citations.<br>No other customer&rsquo;s details.</p></div>
+          <div><span class="visual-label">User answer</span><p>Necessary explanation and permitted citations.<br>No restricted information.</p></div>
           <div><span class="visual-label">Memory, traces and audit</span><p>Scoped access, minimized payloads and defined retention.<br>An audit requirement is not permission to copy everything.</p></div>
         </div>
       </div>
@@ -539,47 +545,45 @@
     <details class="risk-catalog" data-risk-catalog>
       <summary>Where data escapes: retrieval, memory, instructions and logs</summary>
       <dl>
-        <div data-risk="source-acl"><dt>Service-wide retrieval</dt><dd>A broad index or service account bypasses customer permissions. <strong>Control:</strong> enforce caller/tenant scope before records enter context, and test cross-user and denied-access cases.</dd></div>
-        <div data-risk="memory"><dt>Shared memory</dt><dd>A later conversation receives a previous customer&rsquo;s facts. <strong>Control:</strong> isolate sessions, caches and persistent memory by the intended access boundary; test reuse and expiry.</dd></div>
-        <div data-risk="untrusted-content"><dt>Evidence becomes instruction</dt><dd>A case note says to disclose details or ignore review. <strong>Control:</strong> treat retrieved text as untrusted evidence, test adversarial disclosure, and keep source authorization and action authority outside the model.</dd></div>
+        <div data-risk="source-acl"><dt>Service-wide retrieval</dt><dd>A broad index or service account bypasses user permissions. <strong>Control:</strong> enforce caller/tenant scope before records enter context, and test cross-user and denied-access cases.</dd></div>
+        <div data-risk="memory"><dt>Shared memory</dt><dd>A later conversation receives facts outside its permitted scope. <strong>Control:</strong> isolate sessions, caches and persistent memory by the intended access boundary; test reuse and expiry.</dd></div>
+        <div data-risk="untrusted-content"><dt>Evidence becomes instruction</dt><dd>A retrieved document says to disclose details or ignore controls. <strong>Control:</strong> treat retrieved text as untrusted evidence, test adversarial disclosure, and keep source authorization and action authority outside the model.</dd></div>
         <div data-risk="retention"><dt>Logs become a second leak</dt><dd>Prompts, traces or audit payloads retain personal data beyond their purpose. <strong>Control:</strong> minimize fields, restrict operator access, define deletion/retention and review locality and legal obligations. A scorecard does not establish compliance.</dd></div>
       </dl>
     </details>
     <p class="topic-owner"><strong>Accountable teams:</strong> data owners and privacy. <strong>Review:</strong> denied-access cases, disclosure paths and sensitive logging.</p>
     <div class="topic-deeper" data-topic-part="deeper"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-ground">Explore grounding and retrieval checks &rarr;</a></div>
-    <a data-journey-next href="#model-controls">Continue the return: which model and safeguards may process those facts? &rarr;</a>
   </section>
 
   <section class="chapter-section topic-panel" id="operating-controls" data-topic-panel aria-labelledby="operating-heading">
     <div class="section-head">
       <p class="eyebrow">06 / Operations and lifecycle</p>
       <h2 id="operating-heading">Ship a service your organization <em>can actually operate.</em></h2>
-      <p class="section-lede" data-topic-part="problem" data-case-context>The supervisor decision is sent to the business API, but its response disappears.
-        Did the return record change? A fresh retry could duplicate the outcome.
-        At scale, the same retry loop also consumes capacity and budget.</p>
+      <p class="section-lede" data-topic-part="problem">Production requires repeatable deployment, defined service targets, sustainable cost and tested recovery.
+        Changes to code, models, policy or infrastructure must remain traceable and supported by current evidence.</p>
     </div>
     <p class="topic-existing" data-topic-part="existing"><strong>Already owned by operations:</strong> SLOs, on-call, incident handling, budgets and release processes.
       Agent policy does not replace those disciplines or reverse committed business changes.</p>
-    <div class="topic-proposal" data-topic-part="proposal"><h3>Design for unknown outcomes, not just successful requests.</h3><p>Join operation identity, business receipts and recovery procedures.
-      Threadlight combines scoped control evidence with load, cost and delivery review.
+    <div class="topic-proposal" data-topic-part="proposal"><h3>Assess, deploy and operate with evidence.</h3><p>Threadlight joins the thirteen-pillar readiness review
+      with scoped deployment gates, load and cost evidence, named owners and recovery procedures.
       Evidence for the people who sign.</p></div>
-    <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="recovery-timeline" aria-labelledby="recovery-caption">
+    <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="deployment-lifecycle" aria-labelledby="deployment-caption">
       <div class="visual-surface">
-        <span class="visual-label">One operation / one identity across retries</span>
-        <ol class="recovery-events" aria-label="A lost response is not proof that the write failed">
-          <li><b>01 / Write sent</b><p>The authorized operation reaches the business API.</p></li>
-          <li><b>02 / Response lost</b><p>The client times out. The server may already have committed.</p></li>
-          <li><b>03 / Unknown outcome</b><p>Keep the reservation. Reconcile the original operation.</p></li>
+        <span class="visual-label">Readiness and delivery / repeat for each relevant change</span>
+        <ol class="lifecycle-stages" aria-label="Assessment, authorized deployment and fresh verification">
+          <li><b>01 / Assess</b><p>Detect posture, collect evidence and assign gaps to owners.</p></li>
+          <li><b>02 / Deploy</b><p>Use an authorized pipeline with the agreed target, identities and gates.</p></li>
+          <li><b>03 / Verify</b><p>Collect fresh evidence from the actual deployment, not a previous release.</p></li>
         </ol>
-        <div class="reconcile-fork" aria-label="Reconciliation outcomes">
-          <div><span class="visual-label">Commit confirmed</span><p><b>Return the existing result</b></p><p>Recheck authority; use the same business audit. Do not create another effect.</p></div>
-          <div><span class="visual-label">Still unresolved</span><p><b>Hold and investigate</b></p><p>No new operation disguised as a retry. Escalate with the original identifiers.</p></div>
+        <div class="release-outcomes" aria-label="Readiness review outcomes">
+          <div><span class="visual-label">Required evidence available</span><p><b>Human go-live decision</b></p><p>Review service targets, operating ownership and residual risk. No automatic certification.</p></div>
+          <div><span class="visual-label">Gaps or stale evidence</span><p><b>Remediate and verify again</b></p><p>Keep blockers visible. A waiver records accepted risk; it does not implement a missing control.</p></div>
         </div>
       </div>
-      <figcaption id="recovery-caption">This recovery contract belongs to the selected controlled path.
-        It is not distributed exactly-once delivery. Application rollback does not reverse a committed business decision.</figcaption>
+      <figcaption id="deployment-caption">The scorecard is advisory; it does not itself authorize deployment.
+        After go-live, operate against agreed SLOs, monitor cost and exercise recovery.</figcaption>
     </figure>
-    <ul class="operating-signals" aria-label="Signals needed beyond transaction recovery">
+    <ul class="operating-signals" aria-label="Production operating signals">
       <li><b>Service health</b>Latency, failures, saturation and dependency availability</li>
       <li><b>Unit economics</b>Cost per successful interaction, including retries</li>
       <li><b>Change trace</b>Model, code, policy and configuration behind the result</li>
@@ -598,7 +602,6 @@
     <p class="topic-owner"><strong>Accountable teams:</strong> SRE, FinOps and delivery. <strong>Review:</strong> recovery, cost per successful interaction,
       verification coverage and outstanding must-fix findings.</p>
     <div class="topic-deeper" data-topic-part="deeper"><a href="#checks">Explore the assessment &rarr;</a><a href="#start">Start the readiness review &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-loadtest">Capacity testing &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-connect">Real endpoint verification &rarr;</a></div>
-    <a data-journey-next href="#quality-controls">Continue the return: how do we know the next release behaves better? &rarr;</a>
   </section>
 
   <details class="topic-reference" id="readiness-reference" data-topic-reference="operating-controls">
