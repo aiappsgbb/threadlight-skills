@@ -7,7 +7,7 @@ from contextvars import ContextVar
 import logging
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -227,6 +227,7 @@ class Configuration(Settings):
     gateway_url: str
     control_plane_url: str
     control_plane_scope: str
+    approval_channel: Literal["delegated", "outlook"] = "delegated"
     service_client_id: ObjectId
     service_principal: ObjectId
     service_agent_id: Identifier
@@ -341,7 +342,8 @@ async def production():
                     producer="gateway", fresh=policy.fresh)
                 await probes.store.health()
             receipts = await stack.enter_async_context(ReceiptClient(**service))
-            approvals = await stack.enter_async_context(HTTPControlPlaneApprovalService(**service))
+            approvals = await stack.enter_async_context(HTTPControlPlaneApprovalService(
+                **service, review_enabled=config.approval_channel == "outlook"))
             downstream = DownstreamClient(credential=downstream_credential)
             stack.push_async_callback(downstream.aclose)
             await store.health()

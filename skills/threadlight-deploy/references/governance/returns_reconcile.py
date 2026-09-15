@@ -132,8 +132,29 @@ def reconcile_response(response, *, binding, gateway_principal, central, operati
                            and r.get("scope") == operation_scope]
                 if (output["review_context"] != facts or intent["action_hash"] != action_hash
                         or digest(output["operation_id"])[7:] != intent["session_id"]
-                        or len(matches) != 1 or matches[0]["body"].get("approval_intent") != intent):
+                        or len(matches) != 1):
                     raise ValueError("independent_pending_operation_required")
+                operation = matches[0]["body"]
+                if operation.get("approval_intent") != intent:
+                    approvals = [r["body"] for r in central
+                                 if r.get("scope") == binding["tenant_id"]
+                                 and r.get("id") == "approval:" + intent.get("nonce", "")]
+                    if (operation.get("state") != "completed"
+                            or operation.get("input_hash") != action_hash
+                            or operation.get("action_hash") != action_hash
+                            or operation.get("facts_hash") != digest(facts)
+                            or intent.get("context_identity") != digest(facts)
+                            or intent.get("tenant") != binding["tenant_id"]
+                            or intent.get("principal") != gateway_principal
+                            or intent.get("agent_id") != binding["agent_id"]
+                            or intent.get("policy_hash") != binding["policy_digest"]
+                            or len(approvals) != 1 or approvals[0].get("state") != "consumed"
+                            or approvals[0].get("intent") != intent
+                            or not isinstance(approvals[0].get("grant"), dict)
+                            or approvals[0]["grant"].get("intent") != intent
+                            or approvals[0]["grant"].get("approved") is not True):
+                        raise ValueError("independent_pending_operation_required")
+                    body["subsequent_operation_state"] = "completed"
                 body.update(status="pending", operation_id=output["operation_id"],
                             gateway_correlation_id=intent["session_id"], approval_expires_at=intent["expires_at"])
             elif isinstance(output, dict) and output.get("audit_id"):

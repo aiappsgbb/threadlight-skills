@@ -37,7 +37,7 @@ from govern_control_plane.models import (
 from govern_control_plane.probes import ProbeContract, PROBE_INPUT, PROBE_OUTPUT
 from govern_control_plane.storage import Conflict, Missing
 
-from .receipts import ApprovalService, ReceiptService
+from .receipts import ApprovalService, ApprovalUnavailable, ReceiptService
 
 MAX_BYTES = 16384
 _request_identity = ContextVar("gateway_request_identity", default=None)
@@ -573,7 +573,16 @@ class GovernedDispatcher:
                         expiry = intent.expires_at
                         if expiry <= datetime.now(timezone.utc):
                             raise GateError("approval_expired", "blocked")
-                        grant = await self.approvals.request_pending(intent)
+                        request_review = getattr(self.approvals, "request_review", None)
+                        if getattr(self.approvals, "review_enabled", False):
+                            if not callable(request_review):
+                                raise ApprovalUnavailable()
+                            grant = await request_review(intent, {
+                                "operation_id": idempotency_key,
+                                "review_context": facts, "proposed_arguments": enforced,
+                            })
+                        else:
+                            grant = await self.approvals.request_pending(intent)
                         guard()
                         if grant is None:
                             return {

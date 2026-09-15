@@ -92,6 +92,21 @@ Additional required fields:
 | `cosmos_url`, `cosmos_database`, `cosmos_container` | Existing idempotency container with `/scope`, no TTL, single writable region |
 | `bundle_path`, `policy_id`, `policy_version`, `policy_digest` | Read-only release and exact signed selection |
 | `allowed_endpoints` | Exact downstream POST and GET HTTPS URLs; no redirects/query/userinfo/non-443 port |
+| `approval_channel` | `delegated` by default; explicit `outlook` requires native control-plane selection and metadata capability |
+
+For native Outlook, the dispatcher sends exact host-owned `ReviewMetadata` only
+when `approval_channel: "outlook"` is selected. The control plane independently
+verifies the native connector witness and creates the one-use grant; the email
+workflow never executes the tool. The gateway requires
+`approval_review_required: true` in authenticated approval-context health.
+One-sided selection fails closed rather than falling back to delegated review.
+Ordinary delegated requests keep their existing bounded payload shape.
+
+Resume the same native session with the original arguments and operation
+selector. Native Outlook does not bypass fresh policy, trusted facts, consume,
+central audit ACK, the distinct downstream credential, or backend idempotency.
+See the [complete native approval architecture](../../../../docs/native-outlook-approval-architecture.md)
+and [dated private execution](../../../../docs/governed-returns-validation.md#september-15-native-outlook-human-approval-exact-resume-and-replay).
 
 All Task8 base fields are required as specified in its README, including pinned
 Key Vault `key_id`. Its human/auditor settings are reused for schema compatibility;

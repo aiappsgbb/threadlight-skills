@@ -24,6 +24,7 @@ from .models import (
     Identifier, Nonce, SignedBundle, canonical, envelope_digest, parse,
 )
 from .storage import AzureStore, BundleSigner, Conflict, KeyVaultSigner, Missing, Store
+from .outlook import NativeOutlook, OutlookConfiguration, OutlookUnavailable
 
 
 class Forbidden(Exception):
@@ -31,8 +32,10 @@ class Forbidden(Exception):
 
 
 class ControlPlane:
-    def __init__(self, settings: Settings, store: Store, signer: BundleSigner):
+    def __init__(self, settings: Settings, store: Store, signer: BundleSigner,
+                 *, outlook: NativeOutlook | None = None):
         self.settings, self.store, self.signer = settings, store, signer
+        self.outlook = outlook
 
     def now(self):
         return datetime.now(timezone.utc)
@@ -141,10 +144,11 @@ class ControlPlane:
     async def approval(self, identity, operation):
         intent = operation.intent
         scope = identity.tenant
+        native = self.outlook is not None and self.outlook.selected(intent)
         if scope != self.settings.tenant_id or intent.tenant != scope:
             raise Forbidden()
         if operation.operation == "decide":
-            if (identity.workload is not None or identity.subject == intent.principal
+            if (native or identity.workload is not None or identity.subject == intent.principal
                     or identity.subject not in self.settings.approver_subjects
                     or "Governance.Approve" not in identity.scopes
                     or operation.approving_role not in identity.roles
@@ -167,14 +171,25 @@ class ControlPlane:
             if operation.operation != "request":
                 raise Conflict() from None
             record = {"intent": wire, "state": "pending", "grant": None}
+            if native:
+                record["outlook"] = self.outlook.initial(self, intent, operation.review)
             try:
                 await self.store.create(scope, key, record)
                 self.fresh(intent)
-                return 202, {"status": "pending"}
+                record, etag = await self.store.read(scope, key)
             except Conflict:
                 record, etag = await self.store.read(scope, key)
         if record["intent"] != wire or record["state"] == "consumed":
             raise Conflict()
+        if native or "outlook" in record or "authority" in record:
+            if not native:
+                raise Conflict()
+            self.outlook.validate_record(self, intent, record, getattr(operation, "review", None))
+            if record["state"] == "pending":
+                if operation.operation not in ("request", "resolve"):
+                    raise Conflict()
+                return await self.outlook.resolve(self, intent, record, etag)
+            await self.outlook.validate_authority(self, intent, record)
         if operation.operation in ("request", "resolve"):
             self.fresh(intent)
             if record["state"] == "pending":
@@ -201,7 +216,7 @@ class ControlPlane:
                     or grant["approver_role"] not in self.settings.approver_roles
                     or grant["approver_role"] not in intent.allowed_roles):
                 raise Forbidden()
-            replacement = {"intent": wire, "state": "consumed", "grant": grant}
+            replacement = {**record, "state": "consumed", "grant": grant}
         self.fresh(intent)
         await self.store.replace(scope, key, replacement, etag)
         # If expiry raced a successful write, the nonce is burned, never permitted.
@@ -251,6 +266,8 @@ class AzureConfiguration(Settings):
     cosmos_url: Annotated[str, Field(pattern=r"^https://[a-z0-9-]+\.documents\.azure\.com:443/$")]
     cosmos_database: Identifier
     cosmos_container: Identifier
+    outlook_approval: OutlookConfiguration | None = Field(
+        default=None, exclude_if=lambda value: value is None)
 
 
 def configure_logging():
@@ -318,10 +335,14 @@ async def production():
                 # Pinned aio SDK exposes account metadata only through this internal method.
                 account_reader=cosmos._get_database_account)
             auth = EntraAuth(settings, http)
-            service = ControlPlane(settings, store, KeyVaultSigner(crypto, key_client=keys))
+            service = ControlPlane(settings, store, KeyVaultSigner(crypto, key_client=keys),
+                outlook=NativeOutlook(settings.outlook_approval, credential, http)
+                if settings.outlook_approval is not None else None)
             await store.health()
             await service.signer.health()
             await auth.health()
+            if service.outlook is not None:
+                service.outlook.authorize_configuration(service)
         yield service, auth
 
 
@@ -407,6 +428,10 @@ def create_app(*, service=None, auth=None):
             return JSONResponse({"error": "forbidden"}, 403)
         except Conflict:
             return JSONResponse({"error": "conflict"}, 409)
+        except OutlookUnavailable as error:
+            logging.getLogger(__name__).warning(
+                "native_outlook_approval_unavailable", extra={"reason_code": error.reason})
+            return JSONResponse({"error": "unavailable", "reason_code": error.reason}, 503)
         except Missing:
             return JSONResponse({"error": "not_found"}, 404)
         except (ValidationError, ValueError, RecursionError):
@@ -414,11 +439,13 @@ def create_app(*, service=None, auth=None):
         except Exception:
             return JSONResponse({"error": "unavailable"}, 503)
 
-    async def check_health(current, authority):
+    async def check_health(current, authority, *, native_review=False):
         try:
             await current.store.health()
             await current.signer.health()
             await authority.health()
+            if native_review:
+                await current.outlook.health(current)
         except Exception:
             # Missing infrastructure is unavailability, not a missing API resource.
             raise RuntimeError("readiness_unavailable") from None
@@ -429,13 +456,17 @@ def create_app(*, service=None, auth=None):
         if "authorization" in request.headers or contexts:
             async def action(current, identity):
                 current.workload(identity)
+                native_review = False
                 if contexts:
                     if len(contexts) != 1 or len(contexts[0]) > 4096:
                         raise ValueError("invalid_context")
-                    current.requester(identity, parse(ApprovalContext, contexts[0].encode()))
-                await check_health(current, app.state.auth)
+                    context = parse(ApprovalContext, contexts[0].encode())
+                    current.requester(identity, context)
+                    native_review = current.outlook is not None and current.outlook.selected(context)
+                await check_health(current, app.state.auth, native_review=native_review)
                 return {"status": "healthy", "authenticated": True,
-                        **({"approval_context_validated": True} if contexts else {})}
+                        **({"approval_context_validated": True} if contexts else {}),
+                        **({"approval_review_required": True} if native_review else {})}
             return await dispatch(request, action)
         try:
             current, authority = app.state.service, app.state.auth

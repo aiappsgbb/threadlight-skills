@@ -78,3 +78,54 @@ def test_ghcp_cannot_select_deferred_mode_without_a_resume_adapter(tmp_path):
     with pytest.raises(ValueError, match="ghcp_deferred_approval_resume_unsupported"):
         module("generate").generate(project, document, configuration=config)
     assert snapshot(project) == before
+
+
+def outlook_profile(deployment):
+    bindings = deployment["bindings"]
+    tenant = deployment["infrastructure"]["tenant_id"]
+    return {
+        "workflow_resource_id": f"/subscriptions/{tenant}/resourceGroups/fixture/providers/Microsoft.Logic/workflows/review",
+        "workflow_version": "1", "workflow_digest": "sha256:" + "d" * 64,
+        "trigger_url": "https://fixture.region.logic.azure.com/workflows/fixture/triggers/Review_notification_requested/paths/invoke?api-version=2016-10-01",
+        "sender_principal": bindings["control_principal"], "recipient": "reviewer@example.com",
+        "requesters": [bindings["gateway_principal"]], "actions": ["act"],
+        "responders": [{
+            "home_tenant": tenant, "home_subject": deployment["infrastructure"]["approver_subjects"][0],
+            "approver": deployment["infrastructure"]["approver_subjects"][0], "role": "Approver",
+        }],
+    }
+
+
+def test_bind_preserves_explicit_native_outlook_selection_in_both_services(tmp_path):
+    data = gateway_inputs(tmp_path)
+    project, document, _, deployment, _ = data
+    deployment["outlook_approval"] = outlook_profile(deployment)
+    generator = package(data)
+    stage(generator, data)
+    generator.bind(project, document, configuration=deployment)
+    bound = json.loads((project / ".threadlight/governance-deployment.json").read_text())["bindings"]
+    assert bound["control_config"]["outlook_approval"]["workflow_digest"] == "sha256:" + "d" * 64
+    assert bound["gateway_config"]["approval_channel"] == "outlook"
+    assert (project / "src/govern-control-plane/vendor/control-plane/outlook.py").is_file()
+
+
+@pytest.mark.parametrize("fault", ["null", "requester", "sender", "role"])
+def test_invalid_selected_outlook_configuration_never_falls_back_to_delegated(tmp_path, fault):
+    data = gateway_inputs(tmp_path)
+    project, document, _, deployment, _ = data
+    profile = outlook_profile(deployment)
+    if fault == "null":
+        profile = None
+    elif fault == "requester":
+        profile["requesters"] = [deployment["bindings"]["agent_principal"]]
+    elif fault == "sender":
+        profile["sender_principal"] = deployment["bindings"]["agent_principal"]
+    else:
+        profile["responders"][0]["role"] = "Unassigned"
+    deployment["outlook_approval"] = profile
+    generator = package(data)
+    stage(generator, data)
+    before = snapshot(project)
+    with pytest.raises(ValueError):
+        generator.bind(project, document, configuration=deployment)
+    assert snapshot(project) == before

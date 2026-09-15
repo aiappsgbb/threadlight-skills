@@ -223,6 +223,38 @@ def test_pending_requires_exact_selector_and_scoped_gateway_record():
         reconcile()
 
 
+@pytest.mark.parametrize("fault", [None, "foreign-approval", "different-intent", "unconsumed"])
+def test_historical_pending_can_join_a_completed_operation_only_through_its_consumed_intent(fault):
+    m = module()
+    value, operation, approval = expiry_inputs()
+    intent = operation["body"].pop("approval_intent")
+    operation["body"]["state"] = "completed"
+    approval["body"].update(state="consumed", grant={"intent": intent.copy(), "approved": True})
+    arguments = json.loads(value["output"][0]["arguments"])
+    facts = {"tenant": "tenant", "subject": "agent", "client": "client",
+             "action": "returns_apply_decision", "scope": "returns",
+             "policy": binding()["policy_digest"], "deployment": m.deployment(binding())}
+    value["output"][1]["output"] = json.dumps({
+        "status": "pending_approval", "operation_id": arguments["governance_operation_id"],
+        "approval_intent": intent, "review_context": facts})
+    if fault == "foreign-approval":
+        approval["scope"] = "foreign"
+    elif fault == "different-intent":
+        approval["body"]["grant"]["intent"]["nonce"] = "different"
+    elif fault == "unconsumed":
+        approval["body"]["state"] = "pending"
+    def reconcile():
+        return m.reconcile_response(value, binding=binding(), gateway_principal="gateway",
+                                    central=[approval], operations=[operation], audits=[], read_audits=[])
+    if fault:
+        with pytest.raises(ValueError, match="pending_operation"):
+            reconcile()
+    else:
+        body = reconcile()[0]["body"]
+        assert body["status"] == "pending"
+        assert body["subsequent_operation_state"] == "completed"
+
+
 def test_container_selection_preserves_defaults_and_requires_complete_distinct_mapping():
     m = module()
     roles = ("governance-records", "gateway-idempotency", "returns-cases", "runner-activity")

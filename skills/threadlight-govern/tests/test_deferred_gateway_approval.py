@@ -96,6 +96,51 @@ def test_deferred_concurrent_resume_has_one_effect(tmp_path):
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("approved", [True, False])
+def test_native_outlook_channel_through_real_gateway_resume_and_one_use_receipts(tmp_path, approved):
+    async def run():
+        from test_outlook_approval import NativeHarness
+        document = registry()
+        action = document["actions"][0]
+        action.update(approval_mode="deferred", approval_requirement="always",
+                      approval_timeout_seconds=300, approval_roles=["Approver"])
+        action["input_schema"]["properties"]["case_id"] = {
+            "type": "string", "minLength": 1, "maxLength": 64}
+        action["input_schema"]["required"].append("case_id")
+        h = await GatewayHarness().initialize(tmp_path, document=document)
+        n = await NativeHarness().initialize(control=h.cp, actions=("refund",))
+        h.approval = gateway("receipts").HTTPControlPlaneApprovalService(
+            base_url="https://control.example", scope="api://governance/.default",
+            credential=Credential(h.cp.token()), http=h.cp.client, review_enabled=True)
+        h.dispatcher = h.new_dispatcher()
+        try:
+            assert (await h.health()).status_code == 200
+            first = await h.call(arguments={"amount": 5, "case_id": "RMA-1"})
+            assert first["status"] == "pending_approval"
+            assert n.posts == 1 and not h.calls
+            assert n.payload["approval_intent"] == first["approval_intent"]
+            assert n.payload["review_context"] == first["review_context"]
+            assert n.payload["proposed_arguments"] == first["proposed_arguments"]
+            assert (await h.call(arguments=first["proposed_arguments"])) == first
+            assert n.posts == 1
+            n.state = "Succeeded"
+            n.mutation = lambda value: value["properties"]["outputs"]["outlook_decision"]["value"][
+                "response"].update(SelectedOption="Approve" if approved else "Reject")
+            resumed = await h.call(arguments=first["proposed_arguments"], dispatcher=h.new_dispatcher())
+            assert resumed["status"] == ("completed" if approved else "blocked")
+            assert len(h.calls) == int(approved)
+            assert (await h.call(arguments=first["proposed_arguments"])) == resumed
+            assert len(h.calls) == int(approved) and n.posts == 1
+            record, _ = await h.cp.store.read(
+                first["approval_intent"]["tenant"], "approval:" + first["approval_intent"]["nonce"])
+            assert record["state"] == "consumed"
+            assert record["authority"]["kind"] == "outlook-native/v1"
+        finally:
+            await n.http.aclose()
+            await h.close()
+    asyncio.run(run())
+
+
 def test_deferred_expiry_does_not_extend_on_resume(tmp_path):
     async def run():
         h = await harness(tmp_path, seconds=1)
@@ -322,17 +367,14 @@ def test_deferred_packaging_exposes_operator_review_without_an_agent_runtime():
     import tomllib
     root = Path(__file__).resolve().parents[3]
     control = tomllib.loads((root / "skills/threadlight-govern/references/control-plane/pyproject.toml").read_text())
-    assert control["project"]["version"] == "0.2.0"
     assert control["project"]["scripts"]["threadlight-review-action"] == "govern_control_plane.review:main"
     assert not any("agent-framework" in dep or "agent-control-specification" in dep
                    for dep in control["project"]["dependencies"])
     gw = tomllib.loads((root / "skills/threadlight-govern/references/gateway/pyproject.toml").read_text())
-    assert gw["project"]["version"] == "0.2.0"
-    assert "threadlight-govern-control-plane==0.2.0" in gw["project"]["dependencies"]
+    assert f"threadlight-govern-control-plane=={control['project']['version']}" in gw["project"]["dependencies"]
     fixture = tomllib.loads(
         (root / "skills/threadlight-safe-check/references/probe-fixture/pyproject.toml").read_text())
-    assert fixture["project"]["version"] == "0.2.0"
-    assert fixture["project"]["dependencies"] == ["threadlight-govern-gateway==0.2.0"]
+    assert fixture["project"]["dependencies"] == [f"threadlight-govern-gateway=={gw['project']['version']}"]
     readme = (root / "skills/threadlight-govern/references/gateway/README.md").read_text()
     assert "awaiting_approval" in readme and "governance_operation_id" in readme
     assert "not OBO" in readme

@@ -503,6 +503,19 @@ def gateway_policy_selection(config):
     return {**config, "policy_version": reference.final_policy_version}
 
 
+def validate_review_channel(control, gateway, bindings):
+    native = control.outlook_approval
+    selected = native is not None and gateway.service_principal in native.requesters
+    if (gateway.approval_channel == "outlook") != selected:
+        raise ValueError("approval_channel_binding_mismatch")
+    if native is not None and (
+            native.sender_principal != bindings.get("control_principal")
+            or not set(native.requesters).issubset(control.workloads)
+            or any(r.approver not in control.approver_subjects or r.role not in control.approver_roles
+                   or r.home_subject in control.workloads for r in native.responders)):
+        raise ValueError("outlook_authority_binding_mismatch")
+
+
 def validate_gateway_policy(bundle, signed, config, document, agent_image, bindings=None):
     """Shared stage/bind/static association checks; signature verification stays live."""
     from govern_control_plane.models import parse
@@ -537,6 +550,7 @@ def validate_gateway_policy(bundle, signed, config, document, agent_image, bindi
     from govern_gateway.server import Configuration
     control = parse(AzureConfiguration, canonical(bindings["control_config"]))
     gateway = parse(Configuration, canonical(bindings["gateway_config"]))
+    validate_review_channel(control, gateway, bindings)
     for service, settings in (("control_plane", control), ("gateway", gateway)):
         if (settings.tenant_id != config["tenant_id"] or settings.key_id != config["key_id"]
                 or settings.approver_roles != config["approver_roles"]
@@ -1100,8 +1114,20 @@ def bind(project, document, *, configuration=None):
         control["probe_controllers"] = controllers
         if gateway_path:
             gateway.update(probe_enabled=True, probe_container="probe-gateway", probe_controllers=controllers)
-    bindings["control_config"] = parse(AzureConfiguration, canonical(control)).model_dump(mode="json")
-    bindings["gateway_config"] = parse(Configuration, canonical(gateway)).model_dump(mode="json")
+    prior_native = bindings.get("control_config", {}).get("outlook_approval")
+    if "outlook_approval" in config or prior_native is not None:
+        native = config["outlook_approval"] if "outlook_approval" in config else prior_native
+        if not gateway_path or native is None:
+            raise ValueError("outlook_gateway_configuration_required")
+        control["outlook_approval"] = native
+        gateway["approval_channel"] = "outlook"
+    elif bindings.get("gateway_config", {}).get("approval_channel") == "outlook":
+        raise ValueError("outlook_gateway_configuration_required")
+    control_settings = parse(AzureConfiguration, canonical(control))
+    gateway_settings = parse(Configuration, canonical(gateway))
+    validate_review_channel(control_settings, gateway_settings, bindings)
+    bindings["control_config"] = control_settings.model_dump(mode="json")
+    bindings["gateway_config"] = gateway_settings.model_dump(mode="json")
     from govern_control_plane.models import SignedBundle
     bundle_api = importlib.import_module("skills.threadlight-govern.scripts.policy_bundle")
     if not gateway_path:

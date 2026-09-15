@@ -203,7 +203,9 @@ Cosmos ledger through the same reconciliation/store helpers. This is distinct
 from the generic CLI's Azure-CLI credential mode; it does not copy CLI caches
 into the private VM, bypass signature/freshness checks or manufacture responses.
 It verified private allow/deny and four call records; unavailable human review
-left private pending/resume/replay/email unproved.
+left private pending/resume/replay/email unproved at that September 14 capture.
+The separate [September 15 native Outlook execution](../../../../docs/governed-returns-validation.md#september-15-native-outlook-human-approval-exact-resume-and-replay)
+subsequently completed the private human flow and four additional call records.
 
 This is **post-run reconciliation of an explicit response set**, not universal
 agent attestation. Historical reads lacking backend ACK are labeled post-run;
@@ -215,7 +217,29 @@ observation preserves generic failure status and correlates the exact operation
 hash, unchanged intent and absent grant; it does not invent a timeout receipt
 or prove which guard caused a generic FunctionTool failure.
 
-### Optional native email notification
+### Native Outlook approval experience
+
+Use `review-approval.bicep` for actual native **Approve / Reject** email, not the
+notification-only module below. It references an existing authorized Office 365
+connection and defaults to Disabled. After explicitly deploying/enabling it,
+capture the real workflow version/digest and configure matching
+`outlook_approval` plus gateway `approval_channel: "outlook"`. The control identity
+invokes the SAS-free Entra trigger and independently verifies the native result
+through workflow-scoped Reader access.
+
+Confirm reviewer availability before generating a fresh pending operation. The
+native workflow waits at most 15 minutes for the real person's decision. Then
+resume the exact same native session and original arguments/selector; the server
+verifies the witness, creates/consumes the grant and retains native provenance.
+Do not hand a native-selected reviewer a CLI fallback or invent a delegated
+token. See the [full authority and recovery contract](../../../../docs/native-outlook-approval-architecture.md).
+
+The executed private capture used Italian labels before the repository's English
+correction. Preserve that capture and configure any retained localized workflow
+with explicit matching options; English defaults do not rename old choices or
+renew an intent. A new workflow pin needs its own fresh verification.
+
+### Optional notification-only email
 
 `review-notification.bicep` creates an Office 365 connection and **Disabled**
 Logic App with SAS authentication disabled, exact Entra issuer/audience/operator

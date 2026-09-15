@@ -16,13 +16,17 @@ access-token version and optional **`idtyp`** claim. Workloads require `idtyp=ap
 no delegated `scp`, `Governance.Workload`, and an exact configured `(oid, client)`
 binding. Each workload has one agent ID and an explicit policy-ID allowlist.
 
-Human decisions require a **delegated** token from a configured UI client, an
+Human decisions through the **`decide` route** require a **delegated** token from a configured UI client, an
 allowlisted human object ID, scope `Governance.Approve`, and an app role present
 in all three places: the human's signed token, `approver_roles`, and the immutable
 intent's `allowed_roles`. Self-approval is forbidden. App-only tokens cannot
 become humans by supplying approver fields. The service derives the approver
 object ID and tenant from validated claims. Auditors require an allowlisted human
 object ID, delegated `Governance.Read`, and `Governance.Auditor`.
+
+An explicitly selected native Outlook channel is a separate authority source,
+not an exception to these token checks. See [Native Outlook approval](#native-outlook-approval)
+and the [complete architecture](../../../../docs/native-outlook-approval-architecture.md).
 
 There is no API-key, connection-string, unsigned-claims, Easy Auth
 `x-ms-client-principal`, forwarded-header, or development authentication bypass.
@@ -41,6 +45,37 @@ share a container, but all document partition keys and blob prefixes are selecte
 from validated identity/configuration, not unverified request fields. Workload
 receipt reads require the owner object ID; authorized auditors can read within
 their own tenant. Workload bundle reads require the policy allowlist.
+
+## Native Outlook approval
+
+Optional `AzureConfiguration.outlook_approval` selects exact requester principals
+and a pinned Logic Apps workflow. Configure the actual workflow resource ID,
+version and digest, SAS-free trigger URL, control identity, fixed recipient,
+allowed actions and explicit `(home_tenant, home_subject) -> (approver, role)`
+mappings. The workflow is invoked with managed identity; Reader on that workflow
+permits independent authenticated ARM definition/run verification.
+
+`request` and `resolve` accept optional `review` metadata: `operation_id`,
+`review_context` and `proposed_arguments`. It is required for native-selected
+requesters and verified against their immutable intent. A single durable record
+contains the intent and `prepared`/`sending`/`sent` notification outbox. Ambiguous
+send recovery never blindly resends. Only a successful, exactly bound native
+response with the configured responder identity can create
+`authority.kind = "outlook-native/v1"`. Authority and outbox provenance survive
+one-use consumption. Pending consume does not poll or authorize.
+
+This channel does **not** construct a human `Identity`, delegate an app token, or
+query a fresh Graph role membership. Its local approver-role mapping is trusted
+configuration. Native-selected records cannot use `decide` as a fallback or
+upgrade a pre-channel record into new authority. Workflow changes, expiry and
+removed mappings block unused authority.
+
+Authenticated approval-context readiness advertises
+`approval_review_required: true` for selected requesters and checks the native
+dependency. Ordinary bundle/receipt health does not depend on Outlook being
+available. Gateway `approval_channel: "outlook"` must agree with this selection.
+Catalog decision defaults are English, `Approve` / `Reject`; a preserved localized
+workflow needs explicit matching options and its own observed pin.
 
 ## Exact Task7 contract and human state machine
 

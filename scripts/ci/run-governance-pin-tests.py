@@ -60,6 +60,8 @@ DEFERRED_REQUIRED_CASES = {
     "test_deferred_approval_survives_dispatcher_restart_and_consumes_once[False]",
     "test_deferred_changed_arguments_or_trusted_facts_cannot_reuse_approval",
     "test_deferred_concurrent_resume_has_one_effect",
+    "test_native_outlook_channel_through_real_gateway_resume_and_one_use_receipts[True]",
+    "test_native_outlook_channel_through_real_gateway_resume_and_one_use_receipts[False]",
     "test_deferred_expiry_does_not_extend_on_resume",
     "test_policy_controlled_approval_keeps_low_risk_calls_autonomous",
     "test_deferred_mcp_client_returns_pending_and_resumes_with_the_same_operation",

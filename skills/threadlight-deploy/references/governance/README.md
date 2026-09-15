@@ -30,6 +30,29 @@ human input; use the [operator review and exact resume protocol](../../../thread
 No review UI, Entra client or grant is created implicitly. GHCP deferred mode
 is rejected until its client can resume the operation; inline mode is unchanged.
 
+### Explicit native Outlook companion
+
+For the implemented returns email experience, deploy `review-approval.bicep`
+separately with an existing authorized Office 365 connection. It defaults to
+Disabled and uses English native **Approve / Reject** options, a fixed
+recipient, control-plane-only Entra trigger and SAS disabled. It does not create
+a connection, permission, grant or business effect.
+
+Supply `outlook_approval` in the bind configuration using the actual observed
+workflow ID/version/digest, SAS-free URL, sender principal, requester mappings
+and responder entitlements. The generator writes both
+`control_config.outlook_approval` and `gateway_config.approval_channel = "outlook"`.
+It preserves an existing selected profile on rebind and rejects null selection,
+wrong sender/requester/role or a gateway-only native flag before publishing files.
+Configuration validation is not live workflow verification.
+
+The control identity needs Reader scoped to that workflow for ARM readbacks.
+The [native authority architecture](../../../../docs/native-outlook-approval-architecture.md)
+describes exact payload binding, outbox recovery, locale migration, same-session
+resume, one-use consume and the limits of the independently executed private
+proof. `review-notification.bicep` remains a distinct notification-only option;
+its ordinary mail is not an approval.
+
 For the explicitly selected remote path, use the create-once operator contract
 below instead of the legacy register/bind/azd ordering. Do not run a second agent
 deployment after publishing its binding.

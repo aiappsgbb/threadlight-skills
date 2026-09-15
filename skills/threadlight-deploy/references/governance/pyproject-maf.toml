@@ -17,7 +17,7 @@ dependencies = [
   "azure-ai-agentserver-core==2.1.0",
   "azure-ai-agentserver-responses==2.2.0b1",
   "azure-ai-agentserver-invocations==1.2.0b1",
-  "threadlight-govern-control-plane==0.2.0",
+  "threadlight-govern-control-plane==0.3.0",
   "mcp==1.29.1",
   "httpcore==1.0.9",
   "PyYAML==6.0.3",

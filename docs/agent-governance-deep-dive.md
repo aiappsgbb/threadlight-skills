@@ -1,12 +1,18 @@
 # Agent governance at the effect boundary
 
-**Engineering deep dive · Level 500 · documentation review: 2026-09-14.**
+**Engineering deep dive · Level 500 · documentation review: 2026-09-15.**
 The public hosted execution snapshot is **2026-09-13**, not a new execution
 performed for this document. This is an implementation analysis, not another
 deployment log, a whole-agent attestation or a production certificate.
 The [dated scenario record](governed-returns-validation.md) owns observations and
 their updates; the [Pages specification](production-readiness-pages-spec.md)
 owns proposed public presentation, not runtime behavior.
+
+The [native Outlook authority architecture](native-outlook-approval-architecture.md)
+extends this reference with the implemented email decision channel, exact
+workflow/run verification, cross-tenant responder mapping, durable outbox,
+one-use resume and operating failure modes. Its private September 15 human
+execution is separate from the older public snapshot.
 
 **The model proposes; trusted components authorize effects.**
 Do not give a model authority to authorize its own effects. A plausible
@@ -138,7 +144,7 @@ flowchart LR
         Writer["Business writer / Cosmos conditional batch"]
         API --> Writer
     end
-    Human["Human reviewer: delegated decide only"]
+    Human["Human reviewer: delegated decide or verified native Outlook"]
     Publisher["Publisher: Key Vault sign / create-only Blob"]
     Model -->|"proposal, not permission"| Tools
     Tools -->|"selected write / app-only MCP"| Gateway
@@ -179,12 +185,19 @@ downstream caller) from `service_client_id` (its own Cosmos-writing identity)
 and `agent_subject` (read caller). Its `workloads` map contains exactly the
 agent and downstream subjects. These are not three aliases for the same token.
 
-Human approval requires the role in the signed human token, service
+Delegated human approval requires the role in the signed human token, service
 `approver_roles` and intent `allowed_roles`, plus the delegated scope and
 allowlisted client/subject. The service derives the approver from authenticated
 claims and forbids self-approval. It revalidates its configured role/subject
 constraints at consume time; this is not a claim of instantaneous directory-wide
 revocation of every already-issued token.
+
+Native Outlook is a separately selected authority source, `outlook-native/v1`.
+The service independently verifies its pinned workflow and exact native response,
+then maps the responder's home tenant/subject to a configured local approver and
+role. That role is a trusted configuration entitlement, not a fabricated
+delegated JWT or a fresh Graph membership check. The native-selected requester
+cannot fall back to `decide`. See the [full contract](native-outlook-approval-architecture.md).
 
 **OBO A-to-B is not proved in S3.** The separate **per-user native MCP
 authentication** workstream is not equivalent to this app-only host → gateway →
@@ -519,13 +532,15 @@ stateDiagram-v2
 
 All operations use **`POST /approvals/resolve`**, discriminated by `operation`:
 `request`, `resolve`, `decide`, `consume`. There is no `/resume` HTTP endpoint.
-An identical request returns pending or the stored decision; changed intent,
+An identical request returns pending or the stored decision; native-selected
+requests can additionally progress their registered notification/witness through
+the verified outbox protocol. Changed intent,
 duplicate decision or consumed nonce conflicts. A rejection is recorded through
 `decide` with `approved: false` and is also consumed once. Expired records keep
 their persisted state as tombstones; there is no automatic `expired` state
 transition or TTL deletion.
 
-This complete **shape example** shows the human decision request. Angle-bracket
+This complete **shape example** shows the delegated human decision request. Angle-bracket
 placeholders are not executable authority: supply the exact live pending intent,
 never reconstruct hashes, tenant, subject or times from model text. It intentionally
 contains no real principal IDs, resource endpoints, token or live nonce.
@@ -730,6 +745,7 @@ implementation from scenario execution.
 | **S2 · separate egress authorization · 2026-09-14, 10:55 Italy** | [Scoped egress inspection](governed-returns-validation.md#september-14-scoped-egress-inspection-with-no-network-change): hosted subnet had no NSG/UDR, no applicable customer firewall route and existing shared NAT/PIP. There was no customer network change. One frozen private-control version 5 again failed with zero sessions, despite six project-MI Login/Pull 200 events from that hosted subnet | This was not an A/B relaxation test. Shared NAT metrics are not hosted Internet egress proof; no managed source VM/NIC was exposed for effective routing or Network Watcher. Registry acquisition does not establish all blobs/unpacking/snapshot or a backend cause |
 | **S2 · registry correction and BASIC success · 2026-09-14** | [Private BASIC model smoke](governed-returns-validation.md#september-14-private-basic-model-smoke-after-registry-binding-and-image-comparison): the missing project ContainerRegistry connection was added using the native ManagedIdentity module; version 6 still failed with the old image. A digest-preserving copy of public BASIC v1, not public governed v5, produced private version 7: two active GETs, a real `Billing Issue` model response, active native session and independent response readback | BASIC is not private governed business proof; governed versions 1-3 and startup versions 1-6 remain historical failures. No MCP/governance/business action was exercised by BASIC. The source tag was mutable, then the experiment pinned the verified digest. The whole artifact changed: **not a format-only causal proof** of Docker versus OCI; propagation/backend timing was not isolated |
 | **S2 · private governed effect · 2026-09-14** | [Fresh private governed version 4](governed-returns-validation.md#september-14-private-governed-allow-and-exact-deny-with-fresh-authority): real model/MAF/MCP allow and exact deny, one independently joined Cosmos decision/audit, central allow/deny receipts and two inline read ACKs. Four calls from two responses were independently reread and persisted/read back as four scoped ledger records | New private image/policy/binding, not S3 reuse. The user was unavailable, so no new private pending intent was created. Private pending, human approval/resume/replay and email remain unproved. This path is **not fully governed in every respect**, not whole-agent attestation or production certification |
+| **S2 · native Outlook human flow · 2026-09-15** | [Actual native email and human decision](governed-returns-validation.md#september-15-native-outlook-human-approval-exact-resume-and-replay), consumed native grant, exact same-session resume, one business audit, unchanged completed replay, one inline read ACK and four independently persisted call records | New private intent, no old grant reuse. Italian live capture; later English defaults are source-tested, not an English live claim. Consumption trigger isolation, live native rejection and whole-agent assurance are not established |
 | **S3-HOSTED-ALLOW · 2026-09-13** | Separate public-authenticated real hosted v5, model → native MAF → MCP/ACS → independent API → one Cosmos decision/audit, completed operation and central allow receipt | Synthetic ordinary case, no financial settlement, not private-network proof |
 | **S3-HOSTED-DENY · 2026-09-13** | Actual attempted ineligible refund with exact quoted ETag; `policy_deny`, unchanged case and zero business audit for that case | Earlier altered/stripped-quote ETags are revision failures, not clean eligibility proof |
 | **S3-PENDING-APPROVAL · 2026-09-13** | Durable `awaiting_approval` and central pending intent, no grant and **no execution** of the proposed handoff | Pending is not human consent, a successful resume or a second business write |
@@ -793,9 +809,11 @@ subsequently observed the saved connection as `Connected` and created/enabled
 one separately authorized private-scenario notification companion with that
 existing connection, fixed recipient, exact Entra operator and SAS disabled.
 The public workflow stayed unchanged and disabled. This does not establish a
-private endpoint for the Consumption trigger. The reviewer was unavailable:
-no fresh private intent or notification was sent, and human/resume/replay
-remain unproved.
+private endpoint for the Consumption trigger. At that early recovery capture the reviewer was unavailable:
+no fresh private intent or notification was sent. The later
+[September 15 native Outlook exercise](governed-returns-validation.md#september-15-native-outlook-human-approval-exact-resume-and-replay)
+separately completed private email, real human decision, same-session resume and
+positive replay with one business audit. It does not complete the S3 public path.
 `Review_notification_requested`/`Notify_operator` can notify a fixed authorized
 recipient after consent and explicit enablement; they do not resolve grants,
 consume approvals or execute decisions. An email/reply/click is not approval.

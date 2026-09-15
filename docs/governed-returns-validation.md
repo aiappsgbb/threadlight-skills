@@ -16,7 +16,7 @@ The separate delegated-token workstream is outside this record.
 | ID | Scenario | Last recorded status | Meaning |
 |---|---|---|---|
 | S1 | Native MAF in a Docker container on an operator VM; real private model, governed MCP, separate business API and Cosmos | Executed, with the bounded evidence below | Working functional baseline; not a Foundry hosted deployment |
-| S2 | Private Foundry environment: separate BASIC diagnostic and governed business runner | S2-PRIVATE-ALLOW-DENY-VERIFIED: governed version 4 performed a real Cosmos decision/audit and exact policy denial; BASIC version 7 remains a separate model smoke. September 15: notification infrastructure ready | Two-tool scope, two inline read ACKs and four post-run call records; private pending/human/resume/replay/email not yet proved |
+| S2 | Private Foundry environment: separate BASIC diagnostic and governed business runner | S2-PRIVATE-ALLOW-DENY-VERIFIED; September 15 adds S2-NATIVE-OUTLOOK-HUMAN-RESUME-REPLAY | Governed version 4: native Outlook human decision, same-session resume, one supervisor decision/audit, unchanged replay and four additional independently persisted call records. Two-tool scope, not whole-agent assurance |
 | S3 | Separate public-authenticated Foundry hosted MAF with governed MCP and real Cosmos business writer | Hosted v5 allow, deny, pending approval, expired attempt and durable read/reconciliation executed | Real hosted business proof, not private-network proof; genuine human completion remains blocked |
 | S4 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1/S3 |
 
@@ -1314,6 +1314,136 @@ Retained private recovery artifacts include `office365-fresh.json`,
 and `human-before-0915.json`. They contain operational identifiers and are not
 distributed with this catalog. The original failed attempts, grants, images,
 versions and suspended unrelated HTTP-401 edits remain preserved.
+
+### September 15: native Outlook human approval, exact resume and replay
+
+**S2-NATIVE-OUTLOOK-HUMAN-RESUME-REPLAY.** This later execution supersedes the
+earlier private human-not-run status; it does not rewrite those captures or
+transfer private proof to S3. The
+[native authority architecture](native-outlook-approval-architecture.md)
+describes the implementation and its operating limits.
+
+The first ordinary notification was not actionable approval. A subsequent native
+Office 365 `SendApprovalMail` run captured a real human choice at 08:36 UTC, but
+was not yet connected to grant creation. Its intent later expired without a
+business effect. Both remain historical records; neither was reused.
+
+After explicit authorization, the existing private workflow was updated to the
+native webhook contract, its trigger was restricted to the control-plane managed
+identity, and that identity received **Reader on the workflow only**. The existing
+Office 365 connection and fixed recipient were reused. The public workflow
+remained disabled and unchanged; no new Container App, network expansion or
+business permission was introduced. Two new immutable images updated only the
+existing private control and gateway services. Their identity and network
+configuration remained unchanged.
+
+| Executed association | Value |
+|---|---|
+| Native hosted version | `4`, independently observed active with the original exact image/instance identity |
+| Native hosted image | `sha256:c14ac2a4fd1775cf4717ffb935aef23563ecea0ed0416032d2437067426ea615` |
+| Control image | `sha256:a9abb5555b54a8bee2f648e6bd45a8659ea19e4b417d267da025a08881409c03` |
+| Gateway image | `sha256:85d11a7598c085aa6f4ce0de0e2127e48fd3f57fefc95589a5dec15a2092facc` |
+| Signed policy digest | `sha256:6c67e4cd33ee409bb5d32bf85c1bd7deca02022e7152b6fba3e818ee54de9d07` |
+| Observed workflow version | `08584121419419819948` |
+| Workflow contract digest | `sha256:8e1e26cdff44130f4c080067aea8baef96fc11fbc00562f9f2cfc16134774458` |
+| Intent expiry | `2026-09-15T10:49:14.278214+00:00` |
+| Existing bootstrap / policy expiry | `11:12:28 UTC` / `11:32:54 UTC`; not renewed |
+
+The reviewer confirmed availability **before** a fresh native session and intent
+were created. The new request read the actual supervisor case and exact ETag,
+then returned pending. The control plane registered its own notification outbox,
+sent one native email and retained the real run ID with the nonce correlation.
+
+| Event | Actual UTC observation | Independent result |
+|---|---|---|
+| Case read | Before the pending response | Unbound read acknowledged in the business read-audit container before return |
+| Native mail run starts | `09:49:15` | Exact new nonce correlation; pinned workflow; not the old request |
+| Real human chooses approval | `09:50:18` | Native Office 365 result includes the expected home tenant/subject and fixed recipient |
+| Exact same-native-session resume | `09:51:33` | Control plane verifies ARM witness, creates native authority and consumes one approved grant |
+| Central authorization receipt | `09:51:33.118509` | Durable allow receipt joined by action hash, policy digest and gateway correlation |
+| Business decision audit | `09:51:33.937138` | One supervisor case replacement and one decision-audit, after the receipt |
+| Completed replay | Following resume, same session and original selector/arguments | Same business audit ID; every document unchanged in all four observed stores |
+
+The final approval record is `consumed` with `approved=true`,
+`approver_role=Approver` and `authority.kind=outlook-native/v1`. Its full intent,
+workflow version/digest/run, actual responder identity, local entitlement mapping
+and decision provenance are retained. This is a native connector-witnessed
+decision, **not a newly minted delegated token or OBO assertion**.
+
+Before/after/replay snapshots independently show:
+
+| Store | Before fresh request | After resume | After replay |
+|---|---:|---:|---:|
+| Governance records | 3 | 5 | 5 |
+| Gateway operations | 2 | 3 | 3 |
+| Business cases/audits | 8 | 9 | 9 |
+| Runner activity, before post-run collection | 7 | 8 | 8 |
+
+Counts are not the sole evidence: exact document comparisons preserve every
+pre-existing record except the intended case replacement, and compare every
+document unchanged across replay. The new audit's arguments match the pending
+proposal; its provenance joins the central receipt and completed operation.
+The case became `escalated`. No payment or settlement occurred.
+
+The three native responses were then independently retrieved using the actual
+native session header. Retrieval omitted optional null properties present in
+the immediate response; all remaining tool output data matched. The existing
+operator identity verified the signed binding and frozen configuration against
+the actual native version, then reconciled and persisted/read back **4/4** call
+records: `read-completed`, `pending`, `completed`, `completed`. The pending call
+retains that historical status and joins the now-completed operation through its
+retained consumed intent. These four later ledger writes are explicit post-run
+evidence collection, not replay or business effects.
+
+The live message labels were **Italian**. Repository defaults and messages were
+subsequently corrected to **English**, with explicit legacy-locale compatibility
+and escaped proposal text. Those are tested source changes, not a claim that an
+English email or a changed workflow pin was exercised by this original run.
+The deployed proof configuration was preserved rather than silently relabelled.
+
+Before deployment, the bounded Linux amd64 native gate passed 27 cases. After
+the configuration-generation and English-default changes, the same gate passed
+32 cases, including the new generation cases. A separate portable run passed
+47 authority/reconciliation cases; a secondary direct Linux invocation skipped
+10 runtime-marked generation cases, which are not credited from that invocation
+(the guarded native gate executed them). These are distinct from the actual
+human/cloud evidence, the complete CTK and broader Task15 acceptance.
+
+Final scoped source checks passed 161 protocol/workflow cases (6 native adapter
+cases skipped on the local host), 127 Blueprint/CI Node contracts, and 4 new
+native-page browser cases across desktop/mobile and light/dark. Another 10
+existing commercial navigation/accessibility cases passed. The new page's
+contrast checks initially failed and were corrected without changing shared site
+assets.
+
+The broader public lifecycle/CI contract command, using the real installed
+control-plane and gateway packages plus the pinned schema validator, passed
+238 cases, skipped 68 and failed **2 pre-existing ontology-string assertions**
+for the unchanged home and production pages. Those pages and their asserting
+test are unchanged from checkpoint `69a0735`. These failures remain explicit;
+this native-channel delta does not claim all-green CI or broader acceptance.
+No paid workflow was dispatched to resolve documentation assertions.
+
+Selected raw-capture hashes below identify private retained artifacts, not public
+download URLs or a machine-readable production verdict:
+
+| Private artifact | SHA-256 |
+|---|---|
+| `native-channel-human-result.json` | `d50e23321141a227365500ed504a7df8cb633bf9d8d3c4b7670912ce9241a6b3` |
+| `native-channel-resume-response.json` | `30aa68f2c58ef9b3216b4958e5f5c661252828da468412b9798bd874d6e3365f` |
+| `native-channel-replay-response.json` | `acf9c4b1ea9ef165d6c27e3824bf025afd0e000139e0bf5f114265311b34e831` |
+| `native-channel-after-resume-stores.json` | `fd021d558d23a23f636f52166d65c428abd49e24d82424d883efc256b4e7bf84` |
+| `native-channel-after-replay-stores.json` | `2199f1210f38fa19fd5a690a962e4c3b1c83ff826f807dde95dd99b3af521475` |
+| `native-channel-readbacks.json` | `34501cf38a94284f1819fb1852dd31f9ee6241a6cc2c2c05e0340b429181ca59` |
+| `native-channel-reconciliation.json` | `f5e6922faa984be1b0c906543eeb73091b4b9d770b86141586fad6bfe81e176e` |
+
+This completes the selected private native human/email/resume/replay path.
+It does not prove English live delivery, private isolation of the Consumption
+trigger, a live native reject branch, the richer canonical returns binding,
+arbitrary framework compatibility or whole-agent/production governance.
+All earlier resources, images, policies, bindings, grants and historical failures
+remain preserved. No public workflow, merge, release or production Pages
+publication is implied.
 
 ## S3: Public authenticated Foundry hosted execution
 
