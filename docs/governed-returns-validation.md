@@ -1288,6 +1288,16 @@ review/control-plane suite reported **124 passed / 6 skipped**. The six native
 adapter cases were not executed or credited. These are local protocol tests,
 **not a live human decision**.
 
+A subsequent GitHub workflow-start failure had no job logs. Its run page
+identified three invalid `runner.temp` expressions in job-level `env`. The
+readiness workflow now exports the same per-run/per-attempt project and paired
+CLI paths through `GITHUB_ENV` in its first step, where `RUNNER_TEMP` is
+available. The protected runner/environment and `workflow_dispatch`-only
+trigger are unchanged; no paid workflow was dispatched. Executable local
+regressions cover both attempt isolation and paths containing spaces. This
+syntax correction is not closure of the separate native/runtime acceptance
+gates.
+
 The reviewer was unavailable when current availability was requested, so
 **no new private pending intent** was created and **no notification email was
 sent**. No human token/confirmation/grant was fabricated. Pending/no-effect,

@@ -273,10 +273,14 @@ jobs:
       GOVERNANCE_SAFE_PROBE: ${{ inputs.governance_safe_probe }}
       GOVERNANCE_CI_CONFIG: ${{ vars.GOVERNANCE_CI_CONFIG }}
       GOVERNANCE_CI_CONFIG_SHA256: ${{ vars.GOVERNANCE_CI_CONFIG_SHA256 }}
-      GOV_PROJECT: ${{ runner.temp }}/governance-${{ github.run_id }}-${{ github.run_attempt }}
-      AZURE_CONFIG_DIR: ${{ runner.temp }}/azure-governance-${{ github.run_id }}-${{ github.run_attempt }}
-      AZD_CONFIG_DIR: ${{ runner.temp }}/azd-governance-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
+      - name: Set isolated readiness paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GOV_PROJECT=$RUNNER_TEMP/governance-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-governance-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          echo "AZD_CONFIG_DIR=$RUNNER_TEMP/azd-governance-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
