@@ -89,7 +89,7 @@ test('artifact names and local navigation remain source-backed', () => {
     assert.ok(source.includes(name), name);
   }
   for (const id of ['chapter-top', 'why', 'checks', 'legs', 'proof', 'target', 'ship', 'start', 'chapter-recap']) {
-    section(source, id);
+    assert.match(source, new RegExp(`id="${id}"`), `retained anchor ${id}`);
   }
   assert.match(source, /href="\.\/production\.html" aria-current="page"/);
 });

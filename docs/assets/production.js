@@ -1,0 +1,123 @@
+(function initializeProductionTopics() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeProductionTopics, { once: true });
+    return;
+  }
+  const explorer = document.getElementById('topic-explorer');
+  const tabs = [...explorer.querySelectorAll('[data-topic-tab]')];
+  const panels = [...explorer.querySelectorAll('[data-topic-panel]')];
+  const references = [...explorer.querySelectorAll('[data-topic-reference]')];
+  const tablist = explorer.querySelector('.topic-tabs');
+  const compact = matchMedia('(max-width: 900px)');
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+  function ownerOf(target) {
+    const owner = target?.closest('[data-topic-panel], [data-topic-reference]');
+    return owner?.dataset.topicReference || owner?.id;
+  }
+
+  function revealSelectedTab() {
+    if (!compact.matches) return;
+    const selected = tabs.find(tab => tab.getAttribute('aria-selected') === 'true');
+    if (!selected) return;
+    const rect = selected.getBoundingClientRect();
+    const rail = tablist.getBoundingClientRect();
+    tablist.scrollTo({
+      left: tablist.scrollLeft + rect.left - rail.left - (rail.width - rect.width) / 2,
+      behavior: 'instant',
+    });
+  }
+
+  function selectTopic(id) {
+    for (const panel of panels) panel.hidden = panel.id !== id;
+    for (const reference of references) reference.hidden = reference.dataset.topicReference !== id;
+    for (const tab of tabs) {
+      const selected = tab.getAttribute('href') === `#${id}`;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    }
+    revealSelectedTab();
+  }
+
+  function showTarget(target, { scroll = true, instant = false } = {}) {
+    const owner = ownerOf(target);
+    if (!owner) return false;
+    selectTopic(owner);
+    for (let parent = target; parent && parent !== explorer; parent = parent.parentElement) {
+      if (parent instanceof HTMLDetailsElement) parent.open = true;
+    }
+    if (scroll) {
+      requestAnimationFrame(() => target.scrollIntoView({
+        block: 'start', behavior: instant || reducedMotion.matches ? 'instant' : 'smooth',
+      }));
+    }
+    return true;
+  }
+
+  function navigate(target, options) {
+    if (location.hash !== `#${target.id}`) history.pushState(null, '', `#${target.id}`);
+    showTarget(target, options);
+  }
+
+  tablist.setAttribute('role', 'tablist');
+  tablist.setAttribute('aria-label', 'Production topics');
+  const orientTabs = () => tablist.setAttribute('aria-orientation', compact.matches ? 'horizontal' : 'vertical');
+  compact.addEventListener('change', orientTabs);
+  orientTabs();
+  for (const [index, tab] of tabs.entries()) {
+    const panel = panels[index];
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', panel.id);
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', tab.id);
+    panel.tabIndex = 0;
+    tab.addEventListener('keydown', event => {
+      const previous = compact.matches ? 'ArrowLeft' : 'ArrowUp';
+      const next = compact.matches ? 'ArrowRight' : 'ArrowDown';
+      let destination;
+      if (event.key === previous) destination = (index + tabs.length - 1) % tabs.length;
+      else if (event.key === next) destination = (index + 1) % tabs.length;
+      else if (event.key === 'Home') destination = 0;
+      else if (event.key === 'End') destination = tabs.length - 1;
+      else if (event.key === ' ') destination = index;
+      else return;
+      event.preventDefault();
+      navigate(panels[destination], { scroll: false });
+      tabs[destination].focus();
+    });
+  }
+
+  // Reveal a topic before the shared site's normal fragment scrolling can run.
+  document.addEventListener('click', event => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.target instanceof Element ? event.target.closest('a[href^="#"]') : null;
+    if (!link) return;
+    const target = document.getElementById(link.getAttribute('href').slice(1));
+    if (!ownerOf(target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    navigate(target);
+  }, true);
+
+  const masthead = document.querySelector('.masthead');
+  const navigation = explorer.querySelector('.topic-navigation');
+  const updateOffset = () => {
+    const headerHeight = masthead.getBoundingClientRect().height;
+    const navigationHeight = compact.matches ? navigation.getBoundingClientRect().height : 0;
+    document.documentElement.style.setProperty('--production-header-offset', `${headerHeight}px`);
+    document.documentElement.style.setProperty('--production-scroll-offset', `${headerHeight + navigationHeight + 16}px`);
+    revealSelectedTab();
+  };
+  const observer = new ResizeObserver(updateOffset);
+  observer.observe(masthead);
+  observer.observe(navigation);
+
+  const restoreFragment = () => {
+    const target = document.getElementById(location.hash.slice(1));
+    if (!showTarget(target, { instant: true })) selectTopic(panels[0].id);
+  };
+  window.addEventListener('hashchange', restoreFragment);
+  explorer.classList.add('topics-enhanced');
+  updateOffset();
+  restoreFragment();
+})();

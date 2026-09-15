@@ -36,7 +36,7 @@ for (const name of ['index', 'funnel', 'production']) {
 }
 
 test('authority and evidence are named, readable without a diagram runtime and keyboard-linked', async ({ page }, testInfo) => {
-  await page.goto('/production.html');
+  await page.goto('/production.html#effect-authority');
   const authority = page.locator('#effect-authority');
   const evidence = page.locator('#evidence-boundaries');
   await expect(authority.getByRole('heading', { level: 2 })).toContainText('Access to a system');
@@ -49,6 +49,7 @@ test('authority and evidence are named, readable without a diagram runtime and k
     await expect(authority.getByRole('img', { name: 'Propose, authorize, execute: the controlled action path' })).toBeVisible();
   }
   await expect(authority.getByRole('link', { name: /Read the architecture/ })).toHaveAttribute('href', /agent-governance-deep-dive\.md$/);
+  await page.locator('#action-reference > summary').click();
   await expect(evidence.locator('#workflow-design-value')).toContainText('Make autonomy useful');
   await expect(evidence.locator('#human-decision-value')).toContainText('Human judgement, connected');
   await expect(evidence.locator('#operating-evidence-value')).toContainText('Connect actions to outcomes');
@@ -57,16 +58,17 @@ test('authority and evidence are named, readable without a diagram runtime and k
   for (const section of [authority, evidence]) {
     await section.scrollIntoViewIfNeeded();
     await expect(section).toBeVisible();
-    await expect(page.locator('.floating-toc')).toHaveCSS('opacity', '1');
+    await expect(page.locator('[data-topic-tab][href="#effect-authority"]')).toHaveAttribute('aria-selected', 'true');
     const violations = (await new AxeBuilder({ page }).include(`#${await section.getAttribute('id')}`)
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
     expect(violations).toEqual([]);
   }
+  await page.locator('#action-reference > summary').click();
   const next = authority.getByRole('link', { name: 'Inspect the evidence boundaries' });
   await next.focus();
   await expect(next).toBeFocused();
   await next.press('Enter');
-  // Existing shared smooth-scroll deliberately preserves the URL fragment.
+  await expect(page).toHaveURL(/#evidence-boundaries$/);
   await expect.poll(() => evidence.evaluate((element) => {
     const top = element.getBoundingClientRect().top;
     const offset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
@@ -84,7 +86,8 @@ test('new authority and evidence remain readable when JavaScript is disabled', a
   try {
     await page.goto('/production.html');
     await expect(page.locator('#effect-authority')).toBeVisible();
-    await expect(page.locator('#production-domains .production-domain')).toHaveCount(6);
+    await expect(page.locator('[data-topic-panel]')).toHaveCount(6);
+    await page.locator('#action-reference > summary').click();
     await expect(page.locator('#evidence-boundaries')).toBeVisible();
     await expect(page.getByRole('list', { name: 'Selected effect authorization sequence' }).locator(':scope > li')).toHaveCount(6);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
@@ -97,8 +100,7 @@ test('production responsibilities are distinct, navigable and accessible before 
   await page.goto('/production.html');
   const domains = page.locator('#production-domains');
   await expect(page.locator('main > section').first()).toHaveAttribute('id', 'chapter-top');
-  await expect(domains.locator('.production-domain')).toHaveCount(6);
-  const links = domains.getByRole('navigation', { name: 'Production responsibilities' }).getByRole('link');
+  const links = domains.locator('.production-map').getByRole('link');
   await expect(links).toHaveCount(6);
   for (const link of await links.all()) {
     const target = page.locator(await link.getAttribute('href'));
@@ -125,16 +127,19 @@ test('production responsibilities are distinct, navigable and accessible before 
   await capture(domains, 'production-responsibilities', testInfo);
 });
 
-test('chapter navigation does not cover section introductions when it wraps or resizes', async ({ page }) => {
-  await page.goto('/production.html');
+test('topic navigation does not cover section introductions when it resizes', async ({ page }) => {
   for (const width of [1440, 768, 600, 412]) {
     await page.setViewportSize({ width, height: 1000 });
     for (const id of ['production-domains', 'effect-authority', 'evidence-boundaries']) {
-      await page.locator(`#${id}`).evaluate(el => el.scrollIntoView({ block: 'start', behavior: 'instant' }));
+      await page.goto(`/production.html#${id}`);
       await expect.poll(() => page.locator(`#${id} .eyebrow`).first().evaluate(element => {
         const rect = element.getBoundingClientRect();
-        const bars = ['.masthead', '.floating-toc'].map(selector => document.querySelector(selector))
-          .filter(bar => getComputedStyle(bar).display !== 'none' && getComputedStyle(bar).opacity !== '0');
+        const bars = ['.masthead', '.topic-navigation'].map(selector => document.querySelector(selector))
+          .filter(bar => {
+            const box = bar.getBoundingClientRect();
+            return getComputedStyle(bar).display !== 'none' && box.top < rect.bottom
+              && box.left < rect.right && box.right > rect.left;
+          });
         return rect.top >= Math.max(...bars.map(bar => bar.getBoundingClientRect().bottom)) + 8;
       }), { timeout: 1000 }).toBe(true);
     }

@@ -362,17 +362,16 @@ test.describe('funnel chapter — the five-stage narrative (funnel.html)', () =>
 });
 
 test.describe('production chapter (production.html)', () => {
-  test('hero: production-ready title, the ship headline, and the 13-pillar stat strip', async ({ page }) => {
+  test('hero: production-ready title and a visual route into six topics', async ({ page }) => {
     await page.goto('/production.html');
     await expect(page).toHaveTitle(/Production-ready/i);
     await expect(page.locator('#chapter-top h1')).toContainText(/operational confidence/i);
-    await expect(page.locator('#chapter-top')).toContainText(/business owners, engineering and operations/i);
-    await expect(page.locator('#chapter-top')).toContainText(/move the pilot toward ship/i);
+    await expect(page.locator('#chapter-top')).toContainText(/one topic at a time/i);
     await expect(page.locator('#chapter-top')).not.toContainText(/so the pilot ships/i);
     await expect(page.locator('#chapter-top')).not.toContainText(/Amber turns green/i);
-    const stats = page.locator('#chapter-top .stat-strip .stat');
-    await expect(stats).toHaveCount(3);
-    await expect(page.locator('#chapter-top .stat-strip')).toContainText('13');
+    await expect(page.locator('#chapter-top .stat-strip')).toHaveCount(0);
+    await expect(page.locator('.production-map')).toBeVisible();
+    await expect(page.getByRole('tab')).toHaveCount(6);
   });
 
   test('the chapter sections are all present and name the thirteen pillars', async ({ page }) => {
@@ -494,7 +493,6 @@ test.describe('case study chapter (case-study.html)', () => {
 test.describe('chapter chrome — floating ToC, stat strips, design tokens', () => {
   const TOC_PAGES = [
     { url: '/funnel.html', min: 6 },
-    { url: '/production.html', min: 6 },
     { url: '/industries.html', min: 4 },
     { url: '/self-improving.html', min: 4 },
     { url: '/customize.html', min: 3 },
@@ -517,7 +515,7 @@ test.describe('chapter chrome — floating ToC, stat strips, design tokens', () 
   }
 
   test('stat strips render on the chapters that advertise them', async ({ page }) => {
-    for (const url of ['/production.html', '/industries.html', '/blueprint.html']) {
+    for (const url of ['/industries.html', '/blueprint.html']) {
       await page.goto(url);
       const stats = page.locator('.chapter-hero .stat-strip .stat');
       expect(await stats.count(), `${url} stat count`).toBeGreaterThanOrEqual(3);

@@ -32,8 +32,9 @@ test.describe('gap-closure release surfaces — five new skills', () => {
   });
 
   test('production.html shows the connect / ground / loadtest evidence progression', async ({ page }) => {
-    await page.goto('/production.html');
-    for (const skill of ['threadlight-connect', 'threadlight-ground', 'threadlight-loadtest']) {
+    for (const [skill, topic] of [['threadlight-connect', 'operating-controls'],
+      ['threadlight-ground', 'information-controls'], ['threadlight-loadtest', 'operating-controls']]) {
+      await page.goto(`/production.html#${topic}`);
       const link = page.locator(`a[href*="skills/${skill}"]`).first();
       await link.scrollIntoViewIfNeeded();
       await expect(link, `production.html must link ${skill}`).toBeVisible();

@@ -26,6 +26,20 @@ passes are not silently reassigned to changed content.
 
 ### Architecture reader and Production-ready visual
 
+**Current navigation decision:** the user accepted the improved architecture
+Markdown and selected a single Production page with one topic visible at a time.
+The Markdown is unchanged by this revision. A compact connected map introduces
+the six responsibilities; the topic selector replaces the long chapter contents
+bar. Each topic uses the same reading structure: problem, existing controls,
+Threadlight proposal, mechanism and deeper reading.
+
+Assessment/scorecard, business-outcome evidence, platform topology and delivery
+material remain available as topic-owned disclosures, not consecutive chapters
+on the primary path. Existing fragment links activate their owning topic and
+open the required disclosure. Browser history and keyboard selection are
+supported. Without JavaScript, the six topics remain readable and native
+disclosures remain usable. No shared theme change or remote runtime is needed.
+
 **Editorial correction: complementary production domains.** The prior visual
 revision was not accepted as a sufficient explanation. Production is not an
 agent-governance landing page. Its introduction now distinguishes platform and
@@ -48,9 +62,10 @@ commit, native human authority and recovery. Code fragments are integration
 seams, not complete deployable applications or additional execution evidence.
 Rendered checks do not establish editorial acceptance.
 
-The chapter's anchor offset follows the actual masthead and wrapping contents
-bar heights. This page-local adjustment keeps section introductions visible
-after keyboard navigation and viewport changes without changing shared assets.
+The chapter's anchor offset follows the masthead and, on compact screens, the
+sticky horizontal topic selector. On desktop, navigation stays beside the
+reading area. This supersedes the prior wrapping-contents-bar offset while
+keeping introductions visible without changing shared assets.
 
 The deep dive now leads with a navigable contents map, complementary production
 responsibilities, the action-governance problem and two explicit integration
