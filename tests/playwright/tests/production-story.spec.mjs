@@ -7,8 +7,7 @@ test('the executive story moves from shared platform to release to runtime actio
   expect(await page.locator('.production-map a').evaluateAll(links => links.map(a => a.getAttribute('href')))).toEqual(sequence);
   expect(await page.locator('[data-topic-tab]').evaluateAll(links => links.map(a => a.getAttribute('href')))).toEqual(sequence);
   expect(await page.locator('.ciso-pentagon-svg').evaluate(svg => svg.closest('[data-topic-panel]')?.id ?? null)).toBeNull();
-  expect(await page.locator('.posture-trio-svg').evaluate(svg => svg.closest('[data-topic-panel]')?.id)).toBe('platform-topic');
-  expect(await page.locator('.scorecard-preview').first().evaluate(card => card.closest('[data-topic-panel]')?.id ?? null)).toBeNull();
+  await expect(page.locator('.posture-trio-svg, .scorecard-preview')).toHaveCount(0);
   await expect(page.locator('#readiness-topic .ciso-pentagon-svg, #readiness-topic .posture-trio-svg, #readiness-topic .scorecard-preview')).toHaveCount(0);
 });
 
@@ -19,13 +18,13 @@ test('Citadel has its own example and platform diagram, not Threadlight ownershi
   for (const word of ['FinOps', 'telemetry', 'model', 'use case', 'external']) {
     await expect(page.locator('#platform-controls')).toContainText(new RegExp(word, 'i'));
   }
-  await expect(page.locator('#platform-controls a[href*="Azure-Samples/ai-hub-gateway-solution-accelerator"]')).toBeVisible();
+  await expect(page.locator('#platform-controls .source-attribution a')).toBeVisible();
 });
 
 test('release routes keep the CI diagram central and keep action enforcement in its own area', async ({ page }) => {
   await page.goto('/production.html#operating-controls');
-  await expect(page.locator('#operating-controls [data-production-example]')).toBeVisible();
-  await expect(page.locator('[data-visual="release-paths"]')).toBeVisible();
+  await expect(page.locator('#operating-controls')).toContainText('GitHub Actions or Azure DevOps');
+  await expect(page.locator('[data-visual="release-paths"]')).toHaveCount(0);
   await expect(page.locator('.pipe-svg')).toBeVisible();
   await expect(page.locator('#readiness-topic')).toContainText('go-live');
   await expect(page.locator('#readiness-topic [data-visual="runtime-evidence"]')).toHaveCount(0);

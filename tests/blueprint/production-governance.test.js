@@ -20,9 +20,9 @@ test('primary pages remove universal authority, invented sign-off and readiness-
     assert.doesNotMatch(source, /data-to="92"/, 'a removed score must not return through animation');
   }
   const production = text(read('production.html'));
-  for (const phrase of ['Evidence for an accountable review.', 'Assign an owner, remediate and verify.',
-    'Report generation time varies; completion is not readiness.', 'Illustrative review scenario',
-    'verification coverage', 'must-fix']) assert.ok(production.includes(phrase), phrase);
+  assert.doesNotMatch(production, /Illustrative scorecard layout|91\s*%|\$0\.0123|EU AI Act evidence pack/);
+  for (const phrase of ['Selected actions, not blanket protection.', 'not automatic go-live approval',
+    'fresh evidence']) assert.ok(production.includes(phrase), phrase);
 });
 
 test('prototype remains available and selected governance is an explicit pre-effect choice', () => {
@@ -45,15 +45,15 @@ test('authority section is an accessible ordered contract with distinct identiti
   assert.match(body, /class="authority-steps"/);
   for (const phrase of ['Access to a system', 'Identity', 'Policy', 'Trusted facts', 'Human decision',
     'Outlook', 'independent business API', 'durable authorization record', 'unbound', 'without ACS',
-    'integration profiles', 'network isolation']) assert.ok(text(body).includes(phrase), phrase);
-  assert.match(body, /agent-governance-deep-dive\.md/);
+    'network isolation']) assert.ok(text(body).toLowerCase().includes(phrase.toLowerCase()), phrase);
+  assert.match(source, /agent-governance-deep-dive\.md/);
   assert.match(read('agent-governance-deep-dive.md'), /references\/gateway\/dispatcher\.py/);
 });
 
-test('commercial value cards link to technical evidence without exposing instance status', () => {
+test('concrete action outcomes link to technical evidence without exposing instance status', () => {
   const body = section(read('production.html'), 'evidence-boundaries');
-  for (const phrase of ['accountable outcomes', 'Make autonomy useful', 'Human judgement, connected',
-    'Connect actions to outcomes', 'Identity', 'policy', 'human decisions', 'audit']) {
+  for (const phrase of ['Eligible ordinary return', 'High-value case', 'Outdated case',
+    'Repeated completed request', 'Recheck authority', 'original outcome']) {
     assert.ok(text(body).includes(phrase), phrase);
   }
   assert.doesNotMatch(text(body), /4\/4|NOT PROVED|EXPIRED|S3|BASIC v7|version 4/i);
@@ -85,7 +85,7 @@ test('commercial pages retain private evidence and authority details only in lin
 test('artifact names and local navigation remain source-backed', () => {
   const source = read('production.html');
   for (const name of ['docs/production-readiness-report.md', 'tests/production-readiness-manifest.json']) {
-    assert.ok(source.includes(name), name);
+    assert.ok(read('production-readiness.md').includes(name), name);
   }
   for (const field of ['raw_score', 'score_with_waivers', 'would_fail_hard_gate', 'captured_at']) {
     assert.ok(read('production-readiness.md').includes(field), field);
@@ -99,7 +99,7 @@ test('artifact names and local navigation remain source-backed', () => {
 test('remaining captions preserve conditional enforcement, private leases and working proof links', () => {
   const source = read('production.html');
   assert.doesNotMatch(text(source), /amber turns green|every tool call passes AGT|Nothing reaches the spoke unverified|never fails the build|Every check becomes a gate/i);
-  assert.match(source, /href="\.\/agent-governance\.html"/);
+  assert.match(source, /href="https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[a-f0-9]+\/docs\/agent-governance-deep-dive\.md"/);
   assert.doesNotMatch(source, /blob\/main\/docs\/(?:agent-governance-deep-dive|governed-returns-validation)\.md/);
   assert.doesNotMatch(source, /blob\/main\/skills\/threadlight-deploy\/references\/governance\/returns_mcp_backend\.py/);
 });
@@ -135,8 +135,7 @@ test('production keeps the returns example inside agent governance, not the gene
   assert.match(authority, /id="returns-walkthrough"/);
   assert.match(text(authority), /Can I return this order/);
   assert.match(text(authority), /not a payment/);
-  for (const id of ['production-domains', 'platform-controls', 'model-controls',
-    'quality-controls', 'information-controls', 'operating-controls']) {
+  for (const id of ['production-domains', 'platform-controls', 'operating-controls', 'delivery-controls']) {
     const body = section(source, id);
     assert.doesNotMatch(body, /data-case-context|data-journey/, `${id}: independent production concern`);
     assert.doesNotMatch(text(body), /\b(?:refund|supervisor|order)\b|\breturn(?:s)?\s+(?:policy|agent|record|decisions|history|acceptance|eligibility)/i, id);
@@ -144,27 +143,24 @@ test('production keeps the returns example inside agent governance, not the gene
   assert.doesNotMatch(source, /data-journey-next|data-journey-step/);
 });
 
-test('each production topic teaches its own mechanism and concrete failure controls', () => {
+test('each concise topic keeps its core visual and delegates detail to references', () => {
   const source = read('production.html');
   const visuals = {
-    'platform-controls': 'platform-architecture', 'model-controls': 'model-passport',
-    'effect-authority': 'effect-sequence', 'quality-controls': 'evaluation-matrix',
-    'information-controls': 'data-lineage', 'delivery-controls': 'deployment-lifecycle',
+    'platform-controls': 'citadel-hub', 'effect-authority': 'effect-sequence',
+    'delivery-controls': 'deployment-lifecycle',
   };
   for (const [id, visual] of Object.entries(visuals)) {
     const body = section(source, id);
     assert.match(body, new RegExp(`data-visual="${visual}"`), `${id}: distinct visual explanation`);
-    if (id !== 'delivery-controls') {
-      assert.match(body, /data-risk-catalog/, `${id}: concrete failure detail`);
-      assert.ok([...body.matchAll(/data-risk="/g)].length >= 4, `${id}: concrete failure families`);
-    } else {
+    if (id === 'delivery-controls') {
       for (const boundary of ['after deployment', 'echo', 'partial', 'does not roll back']) {
         assert.ok(text(body).includes(boundary), boundary);
       }
     }
   }
-  assert.match(section(source, 'quality-controls'), /<table/);
-  assert.match(section(source, 'information-controls'), /not a retrieval engine/);
+  assert.doesNotMatch(source, /<(?:details|summary)\b/);
+  assert.match(source, /Application and data owners/);
+  assert.match(source, /not supplied by the new action-governance runtime/);
   assert.match(section(source, 'operating-controls'), /DevSecOps/);
 });
 
@@ -186,9 +182,10 @@ test('AgentOps frames the release area as controlled delivery rather than just r
 test('AgentOps visuals do not turn the base template into an automatic producer or rollout gate', () => {
   const source = read('production.html');
   assert.doesNotMatch(source, /id="(?:readiness-reference|delivery-reference)"/);
-  for (const visual of ['ciso-pentagon-svg', 'posture-trio-svg', 'pipe-svg', 'scorecard-preview']) {
+  for (const visual of ['ciso-pentagon-svg', 'pipe-svg', 'authority-map']) {
     assert.ok(source.includes(visual), visual);
   }
+  assert.doesNotMatch(source, /class="(?:scorecard-preview|posture-trio-svg)/);
   assert.doesNotMatch(text(source), /all gates green.*ships|hard-block the merge|nothing calls home/i);
   const templates = ['github-actions/azd-deploy-prod.yml.tmpl', 'azure-devops/azure-pipelines.yml.tmpl'];
   for (const template of templates) {

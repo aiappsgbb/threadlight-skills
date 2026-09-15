@@ -4,12 +4,12 @@ import AxeBuilder from '@axe-core/playwright';
 const topics = ['platform-controls', 'model-controls', 'effect-authority',
   'quality-controls', 'information-controls', 'operating-controls'];
 const areas = ['platform-controls', 'operating-controls', 'effect-authority'];
-const subsections = [...topics.filter(id => id !== 'operating-controls'), 'delivery-controls'];
+const subsections = [...topics.filter(id => id !== 'information-controls'), 'delivery-controls'];
 
 test('three areas own the correct subsections and expose one platform architecture', async ({ page }) => {
   await page.goto('/production.html');
   await expect(page.getByRole('tab')).toHaveCount(3);
-  for (const [id, owner] of [['model-controls', 'platform-topic'], ['information-controls', 'platform-topic'],
+  for (const [id, owner] of [['model-controls', 'platform-topic'],
     ['quality-controls', 'readiness-topic'], ['delivery-controls', 'readiness-topic'],
     ['effect-authority', 'actions-topic']]) {
     await page.goto(`/production.html#${id}`);
@@ -19,13 +19,11 @@ test('three areas own the correct subsections and expose one platform architectu
   await page.goto('/production.html#platform-controls');
   await expect(page.locator('#target')).toBeVisible();
   await expect(page.locator('#platform-reference')).toHaveCount(0);
-  await expect(page.locator('[data-visual="platform-architecture"]')).toHaveCount(1);
+  await expect(page.locator('[data-visual="citadel-hub"]')).toHaveCount(1);
   await expect(page.locator('#model-controls')).toContainText('Citadel');
   await expect(page.locator('#information-controls')).toContainText('not supplied by the new action-governance runtime');
-  expect(await page.locator('#quality-controls').evaluate(el =>
-    el.closest('[data-agentops-view]').dataset.agentopsView)).toBe('offline');
-  expect(await page.locator('#delivery-controls').evaluate(el =>
-    el.closest('[data-agentops-view]').dataset.agentopsView)).toBe('release');
+  expect(await page.locator('#information-controls').evaluate(el => el.closest('[data-topic-panel]'))).toBeNull();
+  await expect(page.locator('[data-agentops-view]')).toHaveCount(0);
 });
 
 test('subsection navigation preserves the selected area and keeps headings unobscured', async ({ page }) => {
@@ -40,7 +38,8 @@ test('subsection navigation preserves the selected area and keeps headings unobs
       await expect.poll(() => target.evaluate(el => {
         const rect = el.getBoundingClientRect();
         const offset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
-        return Math.abs(rect.top - offset) < 2;
+        const atEnd = scrollY + innerHeight >= document.documentElement.scrollHeight - 2;
+        return rect.top >= offset - 2 && (Math.abs(rect.top - offset) < 2 || atEnd);
       })).toBe(true);
     }
   }
@@ -65,24 +64,16 @@ test('the general overview opens independent topics and keeps the return inside 
   }
 });
 
-test('failure catalogs reveal controls on demand without breaking the topic layout', async ({ page }) => {
+test('concise controls remain directly readable without disclosures', async ({ page }) => {
   await page.goto('/production.html');
   for (const id of subsections) {
     await page.goto(`/production.html#${id}`);
-    if (id === 'delivery-controls') continue;
-    const catalog = page.locator(`#${id} [data-risk-catalog]`);
-    const disclosure = await catalog.evaluate(el => el.tagName === 'DETAILS');
-    if (disclosure) {
-      await expect(catalog).not.toHaveAttribute('open', '');
-      await catalog.locator('summary').click();
-    } else await expect(catalog).toBeVisible();
-    for (const risk of await catalog.locator('[data-risk]').all()) await expect(risk).toBeVisible();
-    expect(await catalog.locator('[data-risk]').count()).toBeGreaterThanOrEqual(4);
+    await expect(page.locator('main details, main summary')).toHaveCount(0);
+    await expect(page.locator(`#${id}`)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
     const violations = (await new AxeBuilder({ page }).include(`#${id}`)
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
     expect(violations, id).toEqual([]);
-    if (disclosure) await catalog.locator('summary').click();
   }
 });
 
@@ -98,11 +89,8 @@ test('production presents a visual map and only one structured topic at a time',
     await expect(page.getByRole('tabpanel')).toHaveCount(1);
     const panel = page.locator(`#${id}`);
     await expect(panel).toBeVisible();
-    const parts = id === 'delivery-controls' ? ['mechanism', 'deeper'] : ['problem', 'existing', 'proposal', 'mechanism', 'deeper'];
-    for (const part of parts) {
-      await expect(panel.locator(`[data-topic-part="${part}"]`)).toBeVisible();
-    }
-    expect((await panel.innerText()).split(/\s+/).length).toBeLessThan(650);
+    await expect(page.getByRole('tabpanel').locator('[data-visual]').first()).toBeVisible();
+    expect((await panel.innerText()).split(/\s+/).length).toBeLessThan(700);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   }
 });
@@ -124,7 +112,7 @@ test('tabs support keyboard selection and browser history without losing context
   await expect(page.locator('#effect-authority')).toBeVisible();
 });
 
-test('legacy deep links select the owning topic and open the necessary reference', async ({ page }) => {
+test('legacy deep links select the owning topic or a relevant common note', async ({ page }) => {
   for (const [anchor, owner] of [['effect-authority', 'effect-authority'],
     ['target', 'platform-controls'], ['checks', null],
     ['start', null], ['returns-walkthrough', 'effect-authority'],
@@ -172,7 +160,7 @@ test('initial mobile fragments align after the shared header is enhanced', async
   })).toBeLessThan(2);
 });
 
-test('without JavaScript all topic links and disclosure references remain usable', async ({ browser }, testInfo) => {
+test('without JavaScript all topic links and concise sections remain usable', async ({ browser }, testInfo) => {
   const context = await browser.newContext({
     javaScriptEnabled: false, viewport: testInfo.project.use.viewport,
     baseURL: testInfo.project.use.baseURL,

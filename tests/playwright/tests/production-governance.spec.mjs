@@ -48,11 +48,11 @@ test('authority and evidence are named, readable without a diagram runtime and k
   } else {
     await expect(authority.getByRole('img', { name: 'Propose, authorize, execute: the controlled action path' })).toBeVisible();
   }
-  await expect(authority.getByRole('link', { name: /Read the architecture/ })).toHaveAttribute('href', /agent-governance-deep-dive\.md$/);
-  await page.locator('#action-reference > summary').click();
-  await expect(evidence.locator('#workflow-design-value')).toContainText('Make autonomy useful');
-  await expect(evidence.locator('#human-decision-value')).toContainText('Human judgement, connected');
-  await expect(evidence.locator('#operating-evidence-value')).toContainText('Connect actions to outcomes');
+  await expect(evidence.getByRole('link', { name: /Read the architecture/ })).toHaveAttribute('href', /agent-governance-deep-dive\.md$/);
+  await expect(page.locator('main details')).toHaveCount(0);
+  await expect(evidence.locator('.action-outcomes > div')).toHaveCount(4);
+  await expect(evidence).toContainText('Outdated case');
+  await expect(evidence).toContainText('Repeated completed request');
   await expect(evidence).not.toContainText(/HISTORICAL|NOT PROVED|EXPIRED|4\/4|2026-09-/);
   await expect(evidence.locator('a[href*="governed-returns-validation.md"]')).toBeVisible();
   for (const section of [authority, evidence]) {
@@ -63,8 +63,7 @@ test('authority and evidence are named, readable without a diagram runtime and k
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
     expect(violations).toEqual([]);
   }
-  await page.locator('#action-reference > summary').click();
-  const next = authority.getByRole('link', { name: 'Inspect the evidence boundaries' });
+  const next = page.locator('[data-area-navigation="actions-topic"] a[href="#evidence-boundaries"]');
   await next.focus();
   await expect(next).toBeFocused();
   await next.press('Enter');
@@ -72,7 +71,8 @@ test('authority and evidence are named, readable without a diagram runtime and k
   await expect.poll(() => evidence.evaluate((element) => {
     const top = element.getBoundingClientRect().top;
     const offset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
-    return Math.abs(top - offset) < 2;
+    const atEnd = scrollY + innerHeight >= document.documentElement.scrollHeight - 2;
+    return top >= offset - 2 && (Math.abs(top - offset) < 2 || atEnd);
   })).toBe(true);
   await capture(authority, 'effect-authority', testInfo);
   await capture(evidence, 'evidence-boundaries', testInfo);
@@ -87,7 +87,7 @@ test('new authority and evidence remain readable when JavaScript is disabled', a
     await page.goto('/production.html');
     await expect(page.locator('#effect-authority')).toBeVisible();
     await expect(page.locator('[data-topic-panel]')).toHaveCount(3);
-    await page.locator('#action-reference > summary').click();
+    await expect(page.locator('main details')).toHaveCount(0);
     await expect(page.locator('#evidence-boundaries')).toBeVisible();
     await expect(page.getByRole('list', { name: 'Selected effect authorization sequence' }).locator(':scope > li')).toHaveCount(6);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);

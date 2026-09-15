@@ -7,9 +7,7 @@
   const tabs = [...explorer.querySelectorAll('[data-topic-tab]')];
   const tabTargets = tabs.map(tab => document.getElementById(tab.getAttribute('href').slice(1)));
   const panels = [...explorer.querySelectorAll('[data-topic-panel]')];
-  const references = [...explorer.querySelectorAll('[data-topic-reference]')];
   const areaNavigation = [...explorer.querySelectorAll('[data-area-navigation]')];
-  const agentOpsViews = [...explorer.querySelectorAll('[data-agentops-view]')];
   const tablist = explorer.querySelector('.topic-tabs');
   const compact = matchMedia('(max-width: 900px)');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -20,8 +18,7 @@
   }
 
   function ownerOf(target) {
-    const owner = target?.closest('[data-topic-panel], [data-topic-reference]');
-    return owner?.dataset.topicReference || owner?.id;
+    return target?.closest('[data-topic-panel]')?.id;
   }
 
   function revealSelectedTab() {
@@ -38,7 +35,6 @@
 
   function selectTopic(id) {
     for (const panel of panels) panel.hidden = panel.id !== id;
-    for (const reference of references) reference.hidden = reference.dataset.topicReference !== id;
     for (const navigation of areaNavigation) navigation.hidden = navigation.dataset.areaNavigation !== id;
     for (const [index, tab] of tabs.entries()) {
       const selected = ownerOf(tabTargets[index]) === id;
@@ -54,19 +50,14 @@
     sharedTargetSelected = !owner;
     if (owner) selectTopic(owner);
     else updateOffset();
-    const view = target.closest('[data-agentops-view]');
-    if (view) {
-      for (const candidate of agentOpsViews) candidate.hidden = candidate !== view;
-    }
-    for (let parent = target; parent && parent !== explorer; parent = parent.parentElement) {
-      if (parent instanceof HTMLDetailsElement) parent.open = true;
-    }
-    for (const link of explorer.querySelectorAll('[data-area-navigation] a')) {
+    const links = [...explorer.querySelectorAll('[data-area-navigation] a')];
+    const current = links.filter(link => {
       const destination = document.getElementById(link.getAttribute('href').slice(1));
-      const selected = view
-        ? destination?.closest('[data-agentops-view]') === view
-        : destination === target;
-      if (selected) link.setAttribute('aria-current', 'location');
+      return owner && ownerOf(destination) === owner && (destination === target
+        || Boolean(destination?.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING));
+    }).at(-1);
+    for (const link of links) {
+      if (link === current) link.setAttribute('aria-current', 'location');
       else link.removeAttribute('aria-current');
     }
     if (scroll) {
@@ -141,7 +132,6 @@
   };
   window.addEventListener('hashchange', restoreFragment);
   explorer.classList.add('topics-enhanced');
-  for (const [index, view] of agentOpsViews.entries()) view.hidden = index !== 0;
   selectTopic(panels[0].id);
   updateOffset();
   restoreFragment();

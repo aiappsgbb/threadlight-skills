@@ -26,7 +26,46 @@ passes are not silently reassigned to changed content.
 
 ### Architecture reader and Production-ready visual
 
-**Current reader journey (supersedes the regroupings below):** explain production
+**Current concise presentation (supersedes the expanded layout below):** keep
+the platform → release → active-governance story, but remove every expandable
+panel and reduce the content rather than opening the old detail dumps.
+The public HTML is not a skill catalog or a second technical report.
+
+- Platform keeps the Citadel hub diagram and shared-capacity example. Contracts
+  are a short explanation; simpler/alternative platforms are a note, not the
+  former three-posture comparison section.
+- Data access/privacy is a brief common responsibility note outside Citadel and
+  outside all three topic panels. It is not supplied by action governance.
+- AgentOps starts with a short introduction and the retained CI/CD diagram.
+  The large alternative-route cards and internal view switcher are removed.
+  Configuration controls and pre-go-live checks remain concise and visible.
+- Action governance explains the effect boundary using the accepted guide:
+  separate policy service, control plane, human reviewer, enforcement gateway
+  and independent business API. Six short steps connect the returns example
+  to four concrete outcomes. The approved Markdown itself remains unchanged.
+- The thirteen-pillar list, illustrative scorecard/metrics, compliance pack,
+  skill cards, invocation tutorial and color legend are removed from this page,
+  not from their technical references. The ending is a short three-part visual
+  summary and two links. Retained fragments reach relevant notes or links.
+
+Citadel attribution must be visible before its diagram, naming the external
+`Azure-Samples/ai-hub-gateway-solution-accelerator` repository and the integration
+relationship rather than implying Threadlight ownership. Page-local SVG symbols
+identify network, policy, telemetry, cost, deployment and runtime roles; product
+labels identify APIM, Foundry, GitHub Actions, Azure DevOps and Outlook. These are
+functional icons, not invented third-party logos. Each area has one prominent
+deep-dive link: upstream Citadel architecture, the source-backed
+`agentops-deep-dive.md`, and the unchanged approved governance guide.
+The three area headings share the same typography; governance diagram titles,
+body text and labels use 20/14/11px rather than the previous oversized treatment.
+
+Regression budgets keep each whole topic under 700 words, the whole main
+reading path under 2,400, the privacy/alternative notes under 100/80, and the
+closing under 120. Counts include diagram labels but exclude SVG styles and
+the duplicate mobile diagram text. Original CISO/CI diagrams and Threadlight
+branding remain. No new runtime/cloud evidence or production publication.
+
+**Previous expanded reader journey:** explain production
 to C-level readers as **shared platform → verified release → governed action**.
 Use concrete examples and diagrams as the primary explanation, not as hidden
 reference material. Preserve the shared Threadlight design and approved technical
