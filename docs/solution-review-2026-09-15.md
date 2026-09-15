@@ -46,7 +46,7 @@ Its expired policy/bootstrap remain historical evidence, not reusable authority.
 
 Recommendation: preserve the current public page and accepted governance guide.
 Do not restart a general redesign or rebuild working approval services.
-Prioritize findings F1-F3, make supported profiles explicit, then close the
+Prioritize dependency triage F9 and findings F1-F3, make supported profiles explicit, then close the
 customer-specific gaps for a deliberately bounded production candidate.
 
 ## What the offering actually is
@@ -138,6 +138,7 @@ optional capability.
 | F6 | P1 for promotion of this example | Portability and missing evidence | The canonical returns example needs customer adaptation and its own live proof. |
 | F7 | P2 | Contract accuracy; conditional implementation | Load-test budget admission is projection-based, not an enforced spending cap. |
 | F8 | P2 | Communication and ownership | Existing capabilities are obscured by stale claims and incomplete responsibility mapping. |
+| F9 | P1 | Dependency maintenance / applicability triage | GitHub reports open dependency alerts, and the reviewed source still pins affected package versions. |
 
 ### F1. Complete the release gate, not another scorecard
 
@@ -334,6 +335,44 @@ Sources: [README](../README.md),
 [ground](../skills/threadlight-ground/SKILL.md),
 [customer intake](../skills/threadlight-customize/SKILL.md).
 
+### F9. Triage and update flagged service/build dependencies
+
+During publication of the report, GitHub reported **27 open Dependabot alerts
+on the default branch: 5 high, 17 medium and 5 low**. A read-only API check
+confirmed that inventory. These are alert records, not 27 independently proven
+exploits in Threadlight, and the default branch is not this draft's deployed
+image inventory.
+
+The reviewed source nevertheless still declares affected versions:
+
+| Dependency | Current declaration | GitHub-reported patched version covering the listed alerts |
+|---|---|---|
+| `PyJWT[crypto]` | `2.12.1` in the control-plane package | `2.13.0` |
+| `cryptography` | `48.0.0` in the control-plane package | `50.0.0` |
+| `aiohttp` | `3.13.5` in the control-plane package | `3.14.3` |
+| `setuptools` | `80.9.0` in four build-system declarations | `83.0.0` |
+
+Those patched versions are **advisory planning inputs, not tested upgrade
+recommendations**. Applicability depends on the actual API/path and built wheel.
+For example, the control-plane verifier explicitly requires RSA/RS256 keys and
+tokens; a package advisory concerning mixed HMAC/asymmetric algorithm families
+does not by itself demonstrate a token-forgery path here. Conversely, that guard
+does not waive unrelated parser, cryptography or build-tool alerts.
+
+**Needed:** map alerts to built artifacts and reachable use, review available
+fixes, update source dependency declarations through the normal compatibility
+process, and verify the resulting service images. Keep published native SDKs
+unmodified and preserve the native pin/acceptance discipline. Do not mark alerts
+resolved from local functional tests alone. No package or deployed image was
+updated during this review.
+
+Sources: [GitHub alert inventory](https://github.com/aiappsgbb/threadlight-skills/security/dependabot),
+[control-plane dependencies](../skills/threadlight-govern/references/control-plane/pyproject.toml),
+[RSA-only verifier](../skills/threadlight-govern/references/control-plane/auth.py),
+[gateway build](../skills/threadlight-govern/references/gateway/pyproject.toml),
+[collector build](../skills/threadlight-safe-check/pyproject.toml),
+[probe fixture build](../skills/threadlight-safe-check/references/probe-fixture/pyproject.toml).
+
 ## Adversarial scenarios
 
 The review challenged the following failure cases. "Source" is a code/contract
@@ -355,6 +394,7 @@ silently promoted to a live result.
 | Retrieval leaks an unauthorized document or evidence omits a principal. | Grounding assessment detects supplied ACL-evidence failures/gaps. | Targeted local tests; actual source ACL enforcement still belongs to the application/backend. |
 | A default GHCP pilot requests long-lived human resume. | Deferred generation is rejected rather than silently claiming support. | Source; correct rejection, incomplete product profile if promised. |
 | A load profile understates actual request volume. | Projected-cost admission does not independently enforce that volume. | Local command-construction comparison; F7, no spend performed. |
+| Functional tests pass while dependencies have published advisories. | Exact dependency pins are reproducible but not automatically current or free of known issues. | Default-branch alert inventory plus current source declarations; F9 requires applicability and artifact-level triage, not an inferred exploit. |
 
 ## Recommended implementation sequence
 
@@ -363,6 +403,7 @@ chosen production candidate, with conditional features explicitly selected.
 
 | Order | Work package | Ownership / dependency | Acceptance criterion |
 |---|---|---|---|
+| 0 | Service/build dependency triage, F9 | Service and supply-chain owners | Each alert has artifact/path applicability and disposition; required dependency changes pass compatibility checks and rebuilt images are verified. |
 | 1 | Production release contract, F1-F2 | Delivery owner with runtime owner | Real required producers run against the intended artifact/target; malformed, stale, mis-bound or below-required-threshold evidence blocks production promotion. Supported signed-bootstrap path is explicit and independently verified. |
 | 2 | Outcome recovery, F3 | Gateway and business API owners | Lost ACK/crash scenarios resolve only from independent durable backend evidence; authorized transitions are audited; no duplicate effect or deletion-based retry. |
 | 3 | Runtime operating profile, F4-F5 | Runtime, identity and application owners | Supported framework/channel/resume duration and revocation objectives are declared before generation; unsupported combinations fail early; required stop/rotation behavior is demonstrated. |
@@ -443,6 +484,11 @@ production Pages.
   contains the association and limits. No fresh live run was made for this review.
 - **Previous presentation checks:** the preserved page had 176 browser cases
   and 15 Node contracts passing. They were not rerun as runtime proof.
+- **Dependency-alert snapshot:** read-only GitHub inventory during review;
+  27 default-branch alert records, compared with current source declarations.
+  The bounded metadata is retained privately as
+  `solution-review-dependency-alerts.json`. No exploit or deployed-image scan
+  was performed.
 
 | Focused run | Result |
 |---|---|
