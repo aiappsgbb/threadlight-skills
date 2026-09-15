@@ -20,7 +20,7 @@ test('primary pages remove universal authority, invented sign-off and readiness-
     assert.doesNotMatch(source, /data-to="92"/, 'a removed score must not return through animation');
   }
   const production = text(read('production.html'));
-  for (const phrase of ['Evidence for the people who sign.', 'Every gap needs an owner and verified closure.',
+  for (const phrase of ['Evidence for an accountable review.', 'Assign an owner, remediate and verify.',
     'Report generation time varies; completion is not readiness.', 'Illustrative review scenario',
     'verification coverage', 'must-fix']) assert.ok(production.includes(phrase), phrase);
 });
@@ -84,9 +84,11 @@ test('commercial pages retain private evidence and authority details only in lin
 
 test('artifact names and local navigation remain source-backed', () => {
   const source = read('production.html');
-  for (const name of ['docs/production-readiness-report.md', 'tests/production-readiness-manifest.json',
-    'raw_score', 'score_with_waivers', 'would_fail_hard_gate', 'captured_at']) {
+  for (const name of ['docs/production-readiness-report.md', 'tests/production-readiness-manifest.json']) {
     assert.ok(source.includes(name), name);
+  }
+  for (const field of ['raw_score', 'score_with_waivers', 'would_fail_hard_gate', 'captured_at']) {
+    assert.ok(read('production-readiness.md').includes(field), field);
   }
   for (const id of ['chapter-top', 'why', 'checks', 'legs', 'proof', 'target', 'ship', 'start', 'chapter-recap']) {
     assert.match(source, new RegExp(`id="${id}"`), `retained anchor ${id}`);
@@ -152,25 +154,48 @@ test('each production topic teaches its own mechanism and concrete failure contr
   for (const [id, visual] of Object.entries(visuals)) {
     const body = section(source, id);
     assert.match(body, new RegExp(`data-visual="${visual}"`), `${id}: distinct visual explanation`);
-    assert.match(body, /<details[^>]*data-risk-catalog/, `${id}: optional failure detail`);
-    assert.ok([...body.matchAll(/data-risk="/g)].length >= 4, `${id}: concrete failure families`);
+    if (id !== 'delivery-controls') {
+      assert.match(body, /data-risk-catalog/, `${id}: concrete failure detail`);
+      assert.ok([...body.matchAll(/data-risk="/g)].length >= 4, `${id}: concrete failure families`);
+    } else {
+      for (const boundary of ['after deployment', 'echo', 'partial', 'does not roll back']) {
+        assert.ok(text(body).includes(boundary), boundary);
+      }
+    }
   }
   assert.match(section(source, 'quality-controls'), /<table/);
   assert.match(section(source, 'information-controls'), /not a retrieval engine/);
   assert.match(section(source, 'operating-controls'), /DevSecOps/);
 });
 
-test('AgentOps frames the third area as controlled delivery rather than just readiness', () => {
+test('AgentOps frames the release area as controlled delivery rather than just readiness', () => {
   const source = read('production.html');
   const overview = section(source, 'production-domains');
-  assert.match(text(overview), /03 \/ AgentOps & lifecycle/);
-  assert.match(source, /id="tab-operations"[^>]*>AgentOps &amp; lifecycle/);
+  assert.match(text(overview), /02 \/ AgentOps & release/);
+  assert.match(source, /id="tab-operations"[^>]*>AgentOps &amp; release/);
   const introduction = text(section(source, 'operating-controls'));
-  for (const phrase of ['AgentOps', 'development to production', 'DevSecOps', 'prompts', 'policy']) {
-    assert.ok(introduction.includes(phrase), phrase);
+  for (const phrase of ['AgentOps', 'development to production', 'DevSecOps', 'prompt', 'policy']) {
+    assert.ok(introduction.toLowerCase().includes(phrase.toLowerCase()), phrase);
   }
   const delivery = text(section(source, 'delivery-controls'));
-  for (const phrase of ['Development', 'Test', 'Production', 'Version & evaluate',
-    'Secure & deploy', 'Verify & operate']) assert.ok(delivery.includes(phrase), phrase);
+  for (const phrase of ['Provision/deploy', 'after deployment', 'CI RESULT',
+    'echo', 'does not roll back', 'partial']) assert.ok(delivery.includes(phrase), phrase);
   assert.match(read('production-readiness-pages-spec.md'), /not automatic adoption of the optional.*AgentOps/s);
+});
+
+test('AgentOps visuals do not turn the base template into an automatic producer or rollout gate', () => {
+  const source = read('production.html');
+  assert.doesNotMatch(source, /id="(?:readiness-reference|delivery-reference)"/);
+  for (const visual of ['ciso-pentagon-svg', 'posture-trio-svg', 'pipe-svg', 'scorecard-preview']) {
+    assert.ok(source.includes(visual), visual);
+  }
+  assert.doesNotMatch(text(source), /all gates green.*ships|hard-block the merge|nothing calls home/i);
+  const templates = ['github-actions/azd-deploy-prod.yml.tmpl', 'azure-devops/azure-pipelines.yml.tmpl'];
+  for (const template of templates) {
+    const pipeline = read('../skills/threadlight-cicd/references/' + template);
+    assert.match(pipeline, /(?:needs|dependsOn): deploy/);
+    assert.match(pipeline, /echo "Run threadlight-evals/);
+    assert.match(pipeline, /comprehensive", "partial/);
+    assert.match(pipeline, /hardened", "partial/);
+  }
 });

@@ -382,11 +382,11 @@ test.describe('production chapter (production.html)', () => {
     await expect(page.locator('#checks')).toContainText(/13 pillars|thirteen pillars/i);
   });
 
-  test('the gap grid names nine gaps, each with a live repository skill link', async ({ page }) => {
+  test('the stage views preserve nine scoped skill links instead of one unstructured list', async ({ page }) => {
     await page.goto('/production.html');
-    const cards = page.locator('#legs .gap-card');
+    const cards = page.locator('main .gap-card');
     await expect(cards).toHaveCount(9);
-    const links = page.locator('#legs .gap-card a.gap-link');
+    const links = page.locator('main .gap-card a.gap-link');
     await expect(links).toHaveCount(9);
     const hrefs = await links.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
     for (const h of hrefs) {
@@ -396,7 +396,7 @@ test.describe('production chapter (production.html)', () => {
     }
     // The grid names the platform-capability skills. (connect / ground / loadtest
     // are covered by gap-closure.spec.mjs and are intentionally not re-asserted here.)
-    const gridText = ((await page.locator('#legs').textContent()) || '').toLowerCase();
+    const gridText = (await cards.allTextContents()).join(' ').toLowerCase();
     for (const s of ['threadlight-govern', 'threadlight-evals', 'threadlight-redteam', 'threadlight-consumption-iq', 'threadlight-cicd']) {
       expect(gridText, `gap grid should name ${s}`).toContain(s);
     }

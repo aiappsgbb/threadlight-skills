@@ -9,9 +9,15 @@
   const panels = [...explorer.querySelectorAll('[data-topic-panel]')];
   const references = [...explorer.querySelectorAll('[data-topic-reference]')];
   const areaNavigation = [...explorer.querySelectorAll('[data-area-navigation]')];
+  const agentOpsViews = [...explorer.querySelectorAll('[data-agentops-view]')];
   const tablist = explorer.querySelector('.topic-tabs');
   const compact = matchMedia('(max-width: 900px)');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  let sharedTargetSelected = false;
+
+  function isSharedTarget(target) {
+    return Boolean(target?.closest('#production-domains, #production-review, #chapter-top'));
+  }
 
   function ownerOf(target) {
     const owner = target?.closest('[data-topic-panel], [data-topic-reference]');
@@ -44,13 +50,23 @@
 
   function showTarget(target, { scroll = true, instant = false } = {}) {
     const owner = ownerOf(target);
-    if (!owner) return false;
-    selectTopic(owner);
+    if (!owner && !isSharedTarget(target)) return false;
+    sharedTargetSelected = !owner;
+    if (owner) selectTopic(owner);
+    else updateOffset();
+    const view = target.closest('[data-agentops-view]');
+    if (view) {
+      for (const candidate of agentOpsViews) candidate.hidden = candidate !== view;
+    }
     for (let parent = target; parent && parent !== explorer; parent = parent.parentElement) {
       if (parent instanceof HTMLDetailsElement) parent.open = true;
     }
     for (const link of explorer.querySelectorAll('[data-area-navigation] a')) {
-      if (link.getAttribute('href') === `#${target.id}`) link.setAttribute('aria-current', 'location');
+      const destination = document.getElementById(link.getAttribute('href').slice(1));
+      const selected = view
+        ? destination?.closest('[data-agentops-view]') === view
+        : destination === target;
+      if (selected) link.setAttribute('aria-current', 'location');
       else link.removeAttribute('aria-current');
     }
     if (scroll) {
@@ -100,7 +116,7 @@
     const link = event.target instanceof Element ? event.target.closest('a[href^="#"]') : null;
     if (!link) return;
     const target = document.getElementById(link.getAttribute('href').slice(1));
-    if (!ownerOf(target)) return;
+    if (!ownerOf(target) && !isSharedTarget(target)) return;
     event.preventDefault();
     event.stopPropagation();
     navigate(target);
@@ -110,7 +126,7 @@
   const navigation = explorer.querySelector('.topic-navigation');
   const updateOffset = () => {
     const headerHeight = masthead.getBoundingClientRect().height;
-    const navigationHeight = compact.matches ? navigation.getBoundingClientRect().height : 0;
+    const navigationHeight = compact.matches && !sharedTargetSelected ? navigation.getBoundingClientRect().height : 0;
     document.documentElement.style.setProperty('--production-header-offset', `${headerHeight}px`);
     document.documentElement.style.setProperty('--production-scroll-offset', `${headerHeight + navigationHeight + 16}px`);
     revealSelectedTab();
@@ -125,6 +141,8 @@
   };
   window.addEventListener('hashchange', restoreFragment);
   explorer.classList.add('topics-enhanced');
+  for (const [index, view] of agentOpsViews.entries()) view.hidden = index !== 0;
+  selectTopic(panels[0].id);
   updateOffset();
   restoreFragment();
 })();

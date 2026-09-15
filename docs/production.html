@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Production-ready — three postures, thirteen pillars, one scorecard.</title>
-<meta name="description" content="Plan production across platform and network controls, model governance, agent behavior, quality, information protection and operations. Distinct responsibilities, one accountable go-live decision.">
+<title>Production-ready — shared platform, verified releases, governed actions.</title>
+<meta name="description" content="Build on Citadel or your existing AI platform, validate agent releases, and govern selected business actions in production. Visual architecture, concrete examples and clear ownership.">
 <meta name="theme-color" content="#4f6dff">
 
 <meta property="og:type"        content="article">
-<meta property="og:title"       content="Production-ready — three postures, thirteen pillars, one scorecard.">
-<meta property="og:description" content="Understand the complementary controls behind production AI: platform, models, agent actions, quality, data and operations. Explore the architecture and the responsibilities behind each.">
+<meta property="og:title"       content="Production-ready — shared platform, verified releases, governed actions.">
+<meta property="og:description" content="A shared AI platform. A verified path to release. Active control over selected business actions. Explore how Citadel and Threadlight complement each other.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/production.html">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
@@ -83,6 +83,60 @@
   .topic-tabs a[aria-selected="true"] { border-color: var(--chapter-accent); background: var(--chapter-accent-soft); border-radius: 0 10px 10px 0; }
   .topic-reading { min-width: 0; }
   .topic-panel[hidden], .topic-reference[hidden], .area-navigation[hidden] { display: none; }
+  .agentops-view[hidden] { display: none; }
+  .agentops-view { padding-bottom: 48px; }
+  .agentops-view figure { margin-inline: 0; }
+  .agentops-view .section-head { margin-bottom: 24px; }
+  .agentops-view .chapter-section h2 { font-size: clamp(28px, 3vw, 40px); }
+  .agentops-view .eyebrow, .agentops-view .muted, .agentops-view .rd-label { color: var(--ink-1); }
+  .agentops-view a:not(.btn):not(.gap-link) { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; }
+  .agentops-view code { overflow-wrap: anywhere; }
+  .agentops-view .risk-catalog h4 { margin: 16px 4px; color: var(--ink-0); }
+  .agentops-view .gap-grid { margin-block: 24px; }
+  .agentops-view .gap-flip { display: none; }
+  .agentops-view .gap-card { min-width: 0; }
+  .agentops-view .gap-card h3 { font-size: 21px; }
+  .agentops-view .gap-skill, .agentops-view .sc-posture, .agentops-view .sc-legend,
+  .agentops-view .sc-num, .agentops-view .sc-take, .agentops-view .os-cap { color: var(--ink-1); }
+  .agentops-view .os-label, .agentops-view .sc-name, .agentops-view .sc-title { color: var(--ink-0); }
+  .production-example { padding: 20px 24px; border-left: 3px solid var(--chapter-accent); background: var(--bg-2); margin: 24px 0; }
+  .production-example blockquote { margin: 8px 0 14px; color: var(--ink-0); font: 24px/1.35 var(--serif); }
+  .production-example p { color: var(--ink-1); font-size: 15px; margin: 8px 0; }
+  .citadel-topology { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(240px, 2.5fr) minmax(120px, 1fr); gap: 28px; align-items: center; }
+  .citadel-consumers, .citadel-models { display: grid; gap: 12px; }
+  .citadel-consumers > .visual-label, .citadel-models > .visual-label { grid-column: 1 / -1; }
+  .citadel-consumers p, .citadel-models p { padding: 16px; border: 1px solid var(--line-2); background: var(--bg-2); border-radius: 8px; color: var(--ink-0); }
+  .citadel-core { position: relative; padding: 24px; border: 2px solid var(--chapter-accent); border-radius: 14px; background: var(--chapter-accent-soft); }
+  .citadel-core::before, .citadel-core::after { content: "\2192"; position: absolute; top: 45%; font-size: 24px; color: var(--ink-1); }
+  .citadel-core::before { left: -25px; }
+  .citadel-core::after { right: -25px; }
+  .citadel-core h3 { color: var(--ink-0); font: 28px/1.2 var(--serif); margin: 12px 0; }
+  .citadel-services { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+  .citadel-services div { padding-top: 10px; border-top: 1px solid var(--line-2); color: var(--ink-1); font-size: 14px; }
+  .citadel-services b { display: block; color: var(--ink-0); margin-bottom: 6px; }
+  .release-paths { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; list-style: none; padding: 0; }
+  .release-paths li { border: 1px solid var(--line-2); border-top: 3px solid var(--chapter-accent); border-radius: 10px; background: var(--bg-1); padding: 20px; min-width: 0; }
+  .release-paths b { display: block; color: var(--ink-0); font-size: 22px; margin: 12px 0; }
+  .release-paths p { color: var(--ink-1); font-size: 15px; }
+  .production-review { padding-block: 48px; border-top: 1px solid var(--line-2); }
+  .diagram-scroll { overflow-x: auto; border: 1px solid var(--line-2); border-radius: 12px; padding: 20px; background: var(--bg-1); }
+  .diagram-scroll svg { display: block; width: 100%; min-width: 880px; height: auto; color: var(--ink-0); }
+  .diagram-scroll figcaption { color: var(--ink-1); }
+  .diagram-scroll a, .topic-proposal a { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; }
+  .diagram-scroll:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 3px; }
+  .agentops-contract { border-left: 3px solid var(--chapter-accent); padding: 18px 22px; background: var(--bg-2); margin: 24px 0; }
+  .agentops-contract p { color: var(--ink-1); margin: 6px 0; font-size: 15px; }
+  .agentops-contract strong { color: var(--ink-0); }
+  .gate-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 24px 0; }
+  .gate-modes > div { border: 1px solid var(--line-2); border-radius: 10px; padding: 20px; background: var(--bg-1); }
+  .gate-modes p { color: var(--ink-1); margin: 8px 0 0; font-size: 15px; }
+  .gate-modes h3 { font-size: 20px; margin: 0; color: var(--ink-0); }
+  .runtime-proof { display: grid; grid-template-columns: 1fr 42px 1fr; gap: 16px; align-items: center; }
+  .runtime-proof article { border: 1px solid var(--line-2); border-radius: 12px; padding: 24px; background: var(--bg-1); }
+  .runtime-proof article:last-child { border: 2px solid var(--chapter-accent); background: var(--chapter-accent-soft); }
+  .runtime-proof h3 { color: var(--ink-0); font-size: 23px; margin: 10px 0; }
+  .runtime-proof p { color: var(--ink-1); font-size: 15px; }
+  .runtime-proof > span { font-size: 28px; text-align: center; color: var(--ink-1); }
   .area-navigation { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line-2); }
   .area-navigation p { color: var(--ink-1); font: 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
   .area-navigation a { display: block; padding: 8px 4px; color: var(--ink-0); font-size: 14px; text-decoration: underline; text-underline-offset: .2em; }
@@ -136,15 +190,6 @@
   .lineage-arrow { text-align: center; font-size: 28px; color: var(--ink-1); }
   .context-envelope { padding: 24px; border: 2px solid var(--chapter-accent); border-radius: 12px; background: var(--chapter-accent-soft); }
   .disclosure-split { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding-top: 20px; border-top: 1px solid var(--line-2); }
-  .lifecycle-stages { display: grid; grid-template-columns: repeat(3, 1fr); list-style: none; padding: 0; margin: 16px 0 24px; gap: 20px; }
-  .lifecycle-stages li { border-top: 2px solid var(--line-2); padding-top: 12px; position: relative; }
-  .lifecycle-stages li::before { content: ""; display: block; width: 8px; height: 8px; background: var(--ink-1); border-radius: 50%; position: absolute; top: -5px; }
-  .lifecycle-stages li:last-child { border-color: var(--chapter-accent); }
-  .release-outcomes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border-top: 1px dashed var(--line-2); padding-top: 20px; }
-  .release-outcomes div { padding: 16px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 8px; }
-  .operating-signals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 24px 0; padding: 0; list-style: none; }
-  .operating-signals li { padding-top: 12px; border-top: 2px solid var(--line-2); font-size: 14px; color: var(--ink-1); }
-  .operating-signals b { display: block; color: var(--ink-0); margin-bottom: 6px; }
   .risk-catalog { border-block: 1px solid var(--line-2); margin: 28px 0; }
   .risk-catalog summary { cursor: pointer; padding: 16px 4px; font-weight: 600; color: var(--ink-0); }
   .risk-catalog summary:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 4px; }
@@ -175,14 +220,20 @@
     .area-navigation a { padding: 4px 0; }
   }
   @media (max-width: 680px) {
-    .return-brief, .model-passport, .access-topology, .data-lineage, .disclosure-split, .release-outcomes, .case-outcomes, .map-foundations { grid-template-columns: 1fr; }
+    .citadel-topology, .release-paths { grid-template-columns: 1fr; }
+    .citadel-consumers, .citadel-models { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .citadel-consumers p, .citadel-models p { padding: 10px; font-size: 13px; overflow-wrap: anywhere; }
+    .citadel-core::before { top: -30px; left: 48%; transform: rotate(90deg); }
+    .citadel-core::after { top: 100%; right: 46%; transform: rotate(90deg); }
+    .gate-modes, .runtime-proof { grid-template-columns: 1fr; }
+    .runtime-proof > span { transform: rotate(90deg); }
+    .return-brief, .model-passport, .access-topology, .data-lineage, .disclosure-split, .case-outcomes, .map-foundations { grid-template-columns: 1fr; }
     .return-brief { padding: 20px; gap: 12px; }
     .visual-surface { padding: 16px; }
     .topology-routes { padding-left: 18px; }
     .topology-route { grid-template-columns: 80px 1fr; padding: 12px; gap: 8px; }
     .topology-route::before { left: -18px; }
     .lineage-arrow { transform: rotate(90deg); }
-    .lifecycle-stages, .operating-signals { grid-template-columns: 1fr; gap: 16px; }
     .evaluation-matrix th, .evaluation-matrix td { padding: 12px 6px; font-size: 13px; }
     .risk-catalog dl > div { grid-template-columns: 1fr; gap: 6px; }
     .authority-map { display: none; }
@@ -221,9 +272,9 @@
       <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Production-ready</p>
       <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Production-ready</p>
       <h1 class="reveal" data-delay="2">From agent potential <em>to operational confidence.</em></h1>
-      <p class="lede reveal" data-delay="3">A useful agent needs more than a good model.
-        Understand the different risks, see what each control contributes, and explore
-        Threadlight&rsquo;s proposal one topic at a time.</p>
+      <p class="lede reveal" data-delay="3">Share AI services without losing control.
+        Validate changes before go-live. Govern what an agent may actually do once it is running.
+        Explore the three complementary parts, one topic at a time.</p>
       <div class="cost-cta-row reveal" data-delay="4" style="margin-top:26px;">
         <a class="btn btn-primary" href="#platform-controls">Explore the topics <span class="arrow">&rarr;</span></a>
         <a class="btn btn-ghost" href="#start">Assess your pilot <span class="arrow">&rarr;</span></a>
@@ -235,18 +286,120 @@
     <div class="wrap wrap-xl">
       <div class="section-head" id="why">
         <p class="eyebrow"><span class="dot"></span>Complementary responsibilities</p>
-        <h2 id="production-domains-heading">Three areas. <em>One path to production.</em></h2>
-        <p class="section-lede">Build on the right platform, authorize consequential actions and verify the workload before go-live.
-          Each area has its own responsibilities and evidence, with direct navigation to the details.</p>
+        <h2 id="production-domains-heading">A shared platform. A verified release. <em>A governed action.</em></h2>
+        <p class="section-lede">A successful demo proves an agent can help. It does not yet answer who pays,
+          which changes are safe to release, or who authorizes a consequential action.
+          These are different problems &mdash; and they need complementary controls.</p>
       </div>
-      <figure class="production-map" aria-labelledby="production-map-caption">
+      <figure aria-labelledby="ciso-caption" class="diagram-scroll" tabindex="0">
+        <svg class="ciso-pentagon-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Six questions a CISO asks arranged as spokes around a central production-ready core">
+          <defs>
+            <radialGradient id="ciso-core-fill" cx="50%" cy="50%" r="50%">
+              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.28"/>
+              <stop offset="70%" stop-color="currentColor" stop-opacity="0.12"/>
+              <stop offset="100%" stop-color="currentColor" stop-opacity="0.04"/>
+            </radialGradient>
+            <style>
+              .ciso-num    { font-family: var(--mono); font-size: 11px; letter-spacing: .18em; fill: var(--ink-1); }
+              .ciso-q      { font-family: var(--serif); font-size: 17px; fill: var(--ink-0); }
+              .ciso-q-sub  { font-family: var(--mono); font-size: 11.5px; fill: currentColor; }
+              .ciso-core-h { font-family: var(--serif); font-size: 18px; fill: var(--ink-0); }
+              .ciso-core-s { font-family: var(--mono); font-size: 10.5px; letter-spacing: .18em; fill: currentColor; opacity: 0.85; }
+            </style>
+          </defs>
+
+          <!-- 5 spokes from core (540, 190) to each label -->
+          <g class="ciso-spokes" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.2" stroke-dasharray="4 4" fill="none">
+            <line x1="540" y1="190" x2="180" y2="90"/>
+            <line x1="540" y1="190" x2="900" y2="90"/>
+            <line x1="540" y1="190" x2="240" y2="310"/>
+            <line x1="540" y1="190" x2="840" y2="310"/>
+            <line x1="540" y1="190" x2="540" y2="50"/>
+            <line x1="540" y1="190" x2="540" y2="330"/>
+          </g>
+
+          <!-- Core: "Is this production-ready?" -->
+          <g transform="translate(540, 190)">
+            <circle r="90" fill="url(#ciso-core-fill)" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.6"/>
+            <circle r="56" fill="none" stroke="currentColor" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="2 4"/>
+            <text x="0" y="-12" text-anchor="middle" class="ciso-core-s">RELEASE REVIEW</text>
+            <text x="0" y="10" text-anchor="middle" class="ciso-core-h">Which controls</text>
+            <text x="0" y="32" text-anchor="middle" class="ciso-core-h"><tspan font-style="italic">need evidence?</tspan></text>
+          </g>
+
+          <!-- 01 Identity (top-left) -->
+          <g transform="translate(40, 50)">
+            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <circle cx="22" cy="40" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="22" cy="40" r="3.5" fill="currentColor"/>
+            <text x="44" y="28" class="ciso-num">01 &middot; IDENTITY</text>
+            <text x="44" y="50" class="ciso-q">Who is it acting as?</text>
+            <text x="44" y="68" class="ciso-q-sub">UAMI? Entra app? OBO?</text>
+          </g>
+
+          <!-- 02 Audit (top-right) -->
+          <g transform="translate(800, 50)">
+            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <rect x="14" y="30" width="16" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <line x1="18" y1="37" x2="26" y2="37" stroke="currentColor" stroke-width="1.4"/>
+            <line x1="18" y1="42" x2="26" y2="42" stroke="currentColor" stroke-width="1.4"/>
+            <line x1="18" y1="47" x2="22" y2="47" stroke="currentColor" stroke-width="1.4"/>
+            <text x="44" y="28" class="ciso-num">02 &middot; AUDIT</text>
+            <text x="44" y="50" class="ciso-q">What &mdash; when &mdash; for whom?</text>
+            <text x="44" y="68" class="ciso-q-sub">Append-only + OTel traces</text>
+          </g>
+
+          <!-- 03 RBAC (bottom-left) -->
+          <g transform="translate(100, 300)">
+            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <path d="M 22 32 L 32 28 L 32 44 Q 32 52 22 56 Q 12 52 12 44 L 12 28 Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <text x="44" y="28" class="ciso-num">03 &middot; RBAC</text>
+            <text x="44" y="50" class="ciso-q">Can it read this index?</text>
+            <text x="44" y="68" class="ciso-q-sub">Keyless RBAC, scoped to agent</text>
+          </g>
+
+          <!-- 04 Telemetry (bottom-right) -->
+          <g transform="translate(740, 300)">
+            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <polyline points="12,52 18,42 24,46 30,32 36,38" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <text x="44" y="28" class="ciso-num">04 &middot; TELEMETRY</text>
+            <text x="44" y="50" class="ciso-q">Is it running well?</text>
+            <text x="44" y="68" class="ciso-q-sub">Traces, metrics and alerts</text>
+          </g>
+
+          <!-- 05 Evals (top center) -->
+          <g transform="translate(420, 8)">
+            <rect width="240" height="60" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <circle cx="22" cy="30" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M 17 30 L 21 34 L 28 26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <text x="44" y="22" class="ciso-num">05 &middot; EVALS</text>
+            <text x="44" y="44" class="ciso-q">Did the next deploy regress?</text>
+          </g>
+
+          <!-- 06 Safety / red-team (bottom center) -->
+          <g transform="translate(420, 312)">
+            <rect width="240" height="60" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
+            <circle cx="22" cy="30" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M 16 24 L 28 36 M 28 24 L 16 36" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <text x="44" y="22" class="ciso-num">06 &middot; SAFETY</text>
+            <text x="44" y="44" class="ciso-q">Can it be jailbroken?</text>
+          </g>
+        </svg>
+        <figcaption id="ciso-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
+          Six review questions, different evidence sources. <a href="#quality-controls">Offline checks and evaluations</a>
+          do not establish <a href="#effect-authority">runtime action authority</a> or
+          <a href="#runtime-controls">live service health</a>.
+        </figcaption>
+      </figure>
+<figure class="production-map" aria-labelledby="production-map-caption">
         <div class="map-foundations">
-          <a href="#platform-controls"><b>01 / Platform &amp; shared services</b><span>Where it runs, what it can reach and which services it may use.</span><span>Architecture &middot; Citadel/model policies &middot; data access</span></a>
-          <a href="#effect-authority"><b>02 / Agent action governance</b><span>Whether this exact business action is allowed now.</span><span>Returns example &middot; policy &middot; human authority &middot; audit</span></a>
-          <a href="#operating-controls"><b>03 / AgentOps &amp; lifecycle</b><span>How agent changes move from development into production, safely and repeatably.</span><span>Evaluation &middot; DevSecOps &middot; deployment &middot; operations</span></a>
-        </div>
-        <figcaption id="production-map-caption">A platform is not action authority; action authority is not proof of readiness.
-          The thirteen-pillar assessment brings their evidence together without replacing their controls.</figcaption>
+<a href="#platform-controls"><b>01 / Platform &amp; Citadel</b><span>Give many use cases a shared, accountable AI foundation.</span><span>Network &middot; telemetry &middot; FinOps &middot; models &middot; use cases</span></a>
+<a href="#operating-controls"><b>02 / AgentOps &amp; release</b><span>Choose the delivery path and verify the candidate before go-live.</span><span>Release models &middot; evaluation &middot; red-team &middot; gates</span></a>
+<a href="#effect-authority"><b>03 / Agent action governance</b><span>Control consequential actions while the agent is in production.</span><span>Business policy &middot; human authority &middot; execution &middot; audit</span></a>
+</div>
+        <figcaption id="production-map-caption">Citadel supplies a shared platform, Threadlight supports delivery and assurance,
+          and the selected action-governance runtime adds active control before business effects.
+          The go-live review brings their evidence together.</figcaption>
       </figure>
     </div>
   </section>
@@ -256,27 +409,52 @@
       <nav class="topic-navigation" aria-label="Production topics">
         <p class="topic-nav-label">Explore an area</p>
         <div class="topic-tabs">
-          <a id="tab-platform" data-topic-tab href="#platform-controls">Platform &amp; shared services<span>Architecture, models and data</span></a>
-          <a id="tab-actions" data-topic-tab href="#effect-authority">Agent action governance<span>Authority for business actions</span></a>
-          <a id="tab-operations" data-topic-tab href="#operating-controls">AgentOps &amp; lifecycle<span>Evaluation, DevSecOps and deployment</span></a>
-        </div>
-        <nav class="area-navigation" data-area-navigation="platform-topic" aria-label="Platform subsections"><p>In this area</p><a href="#target">Architecture</a><a href="#model-controls">Citadel &amp; model policies</a><a href="#information-controls">Data access &amp; privacy</a></nav>
+<a id="tab-platform" data-topic-tab href="#platform-controls">Platform &amp; Citadel<span>Shared services and accountable use</span></a>
+<a id="tab-operations" data-topic-tab href="#operating-controls">AgentOps &amp; release<span>Delivery paths and pre-go-live assurance</span></a>
+<a id="tab-actions" data-topic-tab href="#effect-authority">Agent action governance<span>Authority for business actions</span></a>
+</div>
+        <nav class="area-navigation" data-area-navigation="platform-topic" aria-label="Platform subsections"><p>In this area</p><a href="#platform-controls">Citadel &amp; shared services</a><a href="#target">Integration boundaries</a><a href="#model-controls">Model &amp; use-case contracts</a><a href="#information-controls">Data access</a><a href="#platform-postures">Deployment postures</a></nav>
         <nav class="area-navigation" data-area-navigation="actions-topic" aria-label="Action governance subsections"><p>In this area</p><a href="#returns-walkthrough">Returns example</a><a href="#evidence-boundaries">Outcomes &amp; evidence</a></nav>
-        <nav class="area-navigation" data-area-navigation="readiness-topic" aria-label="AgentOps subsections"><p>In this area</p><a href="#quality-controls">Evaluation</a><a href="#delivery-controls">Deployment &amp; operations</a><a href="#checks">Readiness checks</a><a href="#ship">DevSecOps pipeline</a></nav>
+        <nav class="area-navigation" data-area-navigation="readiness-topic" aria-label="AgentOps subsections"><p>Before go-live</p><a href="#operating-controls">Release paths &amp; CI/CD</a><a href="#quality-controls">Evaluation &amp; red-team</a><a href="#runtime-controls">Verify the deployed candidate</a></nav>
       </nav>
       <div class="topic-reading">
-  <div class="topic-panel" id="platform-topic" data-topic-panel>
+<div class="topic-panel" id="platform-topic" data-topic-panel>
 <section class="chapter-section" id="platform-controls" aria-labelledby="platform-heading">
     <div class="section-head">
       <p class="eyebrow">01 / Platform and shared services</p>
-      <h2 id="platform-heading">Reach the right services. <em>Close the unintended routes.</em></h2>
-      <p class="section-lede" data-topic-part="problem">A working pilot may rely on public endpoints, broad permissions or developer credentials.
-        Production needs an explicit access topology: approved ingress and egress, service identities, private routes where required and no unintended bypasses.</p>
+      <h2 id="platform-heading">Many use cases. <em>One accountable AI platform.</em></h2>
+      <p class="section-lede" data-topic-part="problem">Citadel brings model access, network integration, telemetry and consumption governance into a shared hub.
+        Teams keep ownership of their agents without rebuilding that foundation for every project.</p>
     </div>
+    <div class="production-example" data-production-example>
+      <span class="visual-label">Example / shared AI capacity</span>
+      <blockquote>Three teams use the same model pool. An analytics batch consumes the capacity that customer support needs.</blockquote>
+      <p>Who owns the consumption, which use case should receive capacity, and which model policies apply?
+        Separate API credentials and three spreadsheets are not a shared operating model.</p>
+    </div>
+    <figure class="topic-mechanism" data-visual="citadel-hub" aria-labelledby="citadel-caption">
+      <div class="visual-surface citadel-topology">
+        <div class="citadel-consumers"><span class="visual-label">Registered consumers</span><p>Customer support</p><p>Analytics</p><p>Employee assistant</p></div>
+        <div class="citadel-core"><span class="visual-label">External solution accelerator</span><h3>Citadel Governance Hub</h3>
+          <p>Access Contracts connect each business unit, use case and environment to the shared AI gateway.</p>
+          <div class="citadel-services">
+            <div><b>Network integration</b>Approved routes and private connectivity, according to the chosen profile.</div>
+            <div><b>Model governance</b>Permitted models, identity checks, content policies and usage limits.</div>
+            <div><b>Telemetry</b>Central model-request and usage signals for investigation.</div>
+            <div><b>FinOps</b>Consumption attribution and usage data for allocation and capacity decisions.</div>
+          </div>
+          <p><b>Use-case inventory:</b> registered consumers and their contracts, not anonymous shared usage.</p>
+        </div>
+        <div class="citadel-models"><span class="visual-label">Approved backends</span><p>Foundry models</p><p>Configured providers</p><p>Controlled routing</p></div>
+      </div>
+      <figcaption id="citadel-caption">Citadel is maintained outside Threadlight. The hub governs configured model traffic;
+        onboarding, telemetry integration and network controls must be configured. It does not authorize every business action or discover every unregistered agent.</figcaption>
+    </figure>
+    <div class="topic-deeper"><a href="https://github.com/Azure-Samples/ai-hub-gateway-solution-accelerator/tree/citadel-v1">Explore Citadel Governance Hub &rarr;</a><a href="https://aka.ms/foundry-citadel">Read the Citadel blueprint &rarr;</a></div>
     <p class="topic-existing" data-topic-part="existing"><strong>Already owned by your platform:</strong> landing zones, network isolation, identity, IAM and secrets.
       Threadlight conforms to that foundation; it does not replace it.</p>
-    <div class="topic-proposal" data-topic-part="proposal"><h3>Separate the routes. Separate the identities.</h3><p>Threadlight detects the deployment posture
-      and maps access gaps to owners. Close bypasses around the intended tool path; do not give the agent the business writer&rsquo;s credential.</p></div>
+    <div class="topic-proposal" data-topic-part="proposal"><h3>Use the hub. Keep the boundaries.</h3><p>Threadlight supports the workload&rsquo;s integration and deployment posture;
+      the platform team owns the hub. Model access, source-data access and business writes remain separate paths.</p></div>
     <figure class="topic-mechanism" id="target" data-topic-part="mechanism" data-visual="platform-architecture" aria-labelledby="access-topology-caption">
       <div class="visual-surface access-topology">
         <div class="topology-agent"><span class="visual-label">Authenticated workload</span><p><b>Agent runtime</b></p><p>Its own service identity<br>Limited destinations</p></div>
@@ -307,15 +485,14 @@
 <section class="chapter-section topic-subsection" id="model-controls" aria-labelledby="model-heading">
     <div class="section-head">
       <p class="eyebrow">Platform / model services</p>
-      <h3 id="model-heading">Citadel and model-use policies</h3>
+      <h3 id="model-heading">Make the model route and its consumer explicit</h3>
       <p class="section-lede" data-topic-part="problem">In the Citadel posture, the shared APIM hub governs the configured model route:
         access, usage limits and supported safety policies. These are platform services, not the new business-action authorization layer.</p>
     </div>
     <p class="topic-existing" data-topic-part="existing"><strong>Already owned by the AI platform:</strong> approved models, model-facing gateway policies,
       content safety, quotas and lifecycle decisions. These do not automatically govern downstream business tools.</p>
-    <div class="topic-proposal" data-topic-part="proposal"><h4>A model-use contract, plus a change gate.</h4><p>Make selection, safety and usage limits explicit.
-      Threadlight connects that configuration to lifecycle evidence; your AI platform enforces the model-facing policies.
-      Behavioral evaluation of a replacement model belongs to the AgentOps release process below.</p></div>
+    <div class="topic-proposal" data-topic-part="proposal"><h4>A shared gateway, not a shared blank cheque.</h4><p>Make permitted models, safety and usage limits explicit for each consumer.
+      Evaluation of a replacement model belongs to the <a href="#quality-controls">release process</a>; this contract governs how the model service is consumed.</p></div>
     <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="model-passport" aria-labelledby="model-passport-caption">
       <div class="visual-surface model-passport">
         <div><span class="visual-label">Runtime / what may be used</span>
@@ -326,9 +503,9 @@
             <div><dt>Usage</dt><dd>Request, token and rate limits</dd></div>
           </dl>
         </div>
-        <div class="change-gate"><span class="visual-label">Change / what needs review</span>
-          <p><b>A different model is a different candidate.</b></p>
-          <ol><li>Identify the proposed model or policy change.</li><li>Compare task performance against the accepted baseline.</li><li>Approve the release and retain a rollback route.</li></ol>
+        <div class="change-gate"><span class="visual-label">Access Contract / who consumes it</span>
+          <p><b>A use case is an identifiable consumer.</b></p>
+          <ol><li>Register the business unit, use case and environment.</li><li>Attach permitted services and the required product policies.</li><li>Associate consumption with that contract for telemetry and allocation.</li></ol>
         </div>
       </div>
       <figcaption id="model-passport-caption">Content safeguards address supported content risks.
@@ -389,20 +566,450 @@
     <p class="topic-owner"><strong>Accountable teams:</strong> data owners and privacy. <strong>Review:</strong> denied-access cases, disclosure paths and sensitive logging.</p>
     <div class="topic-deeper" data-topic-part="deeper"><a href="#quality-controls">Verify these boundaries before go-live &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-ground">Explore grounding and retrieval checks &rarr;</a></div>
   </section>
-  </div>
+  <section class="chapter-section topic-subsection" id="platform-postures">
+      <div class="section-head"><p class="eyebrow">Fit the existing estate</p><h3>Use Citadel where it fits. <em>Respect the platform already in place.</em></h3>
+        <p class="section-lede">A shared hub is valuable across teams. A standalone workload or an estate with an existing gateway may use a different posture.
+          These are platform choices, not different guarantees of whole-agent governance.</p></div>
+<figure aria-labelledby="posture-trio-caption" class="diagram-scroll" tabindex="0" style="margin-top: var(--s-5);">
+        <svg class="posture-trio-svg" viewBox="0 0 1080 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three production postures shown as distinct architectural shapes: APIM perimeter plus agent core, agent core only, and a customer-owned network boundary around the agent">
+          <defs>
+            <linearGradient id="posture-card-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.08"/>
+              <stop offset="100%" stop-color="currentColor" stop-opacity="0.02"/>
+            </linearGradient>
+            <style>
+              .pt-tag    { font-family: var(--mono); font-size: 11px; letter-spacing: .16em; fill: var(--ink-1); }
+              .pt-name   { font-family: var(--serif); font-size: 19px; fill: var(--ink-0); }
+              .pt-name em{ font-style: italic; }
+              .pt-sub    { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; fill: currentColor; opacity: 0.78; }
+              .pt-edge   { font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; fill: currentColor; opacity: 0.75; }
+              .pt-pill   { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; fill: currentColor; }
+            </style>
+          </defs>
 
+          <!-- ===== Posture 01: Gateway-fronted (Citadel spoke) ===== -->
+          <g transform="translate(20, 16)">
+            <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
+            <text x="22" y="32" class="pt-tag">01 &middot; GATEWAY-FRONTED</text>
+            <text x="22" y="58" class="pt-name">Citadel <tspan font-style="italic">spoke</tspan>.</text>
+
+            <!-- Outer APIM ring -->
+            <rect x="40" y="92" width="260" height="160" rx="16" fill="none" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.8"/>
+            <rect x="56" y="74" width="84" height="20" rx="6" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.6" stroke-width="1"/>
+            <text x="98" y="88" text-anchor="middle" class="pt-edge">APIM GATEWAY</text>
+
+            <!-- Inner agent box -->
+            <rect x="110" y="140" width="120" height="64" rx="10" fill="currentColor" fill-opacity="0.28" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.6"/>
+            <text x="170" y="172" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="currentColor" letter-spacing=".14em" font-weight="600">AGENT</text>
+            <text x="170" y="190" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor">selected controls</text>
+
+            <!-- Flow arrows: into APIM, through to agent -->
+            <line x1="20" y1="172" x2="40" y2="172" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <path d="M36,168 L42,172 L36,176" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <line x1="60" y1="172" x2="110" y2="172" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3 3"/>
+
+            <text x="170" y="272" text-anchor="middle" class="pt-sub">MODEL ROUTE + SELECTED ACTIONS</text>
+          </g>
+
+          <!-- ===== Posture 02: Foundry-native (core only) ===== -->
+          <g transform="translate(370, 16)">
+            <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
+            <text x="22" y="32" class="pt-tag">02 &middot; FOUNDRY-NATIVE</text>
+            <text x="22" y="58" class="pt-name">Core <tspan font-style="italic">only</tspan>.</text>
+
+            <!-- Glowing standalone agent box -->
+            <circle cx="170" cy="172" r="98" fill="currentColor" fill-opacity="0.06" stroke="none"/>
+            <circle cx="170" cy="172" r="78" fill="currentColor" fill-opacity="0.10" stroke="none"/>
+            <rect x="100" y="140" width="140" height="72" rx="12" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.8"/>
+            <text x="170" y="172" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="currentColor" letter-spacing=".14em" font-weight="600">AGENT</text>
+            <text x="170" y="192" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor">selected controls</text>
+
+            <!-- Flow arrow direct -->
+            <line x1="20" y1="172" x2="98" y2="172" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <path d="M94,168 L100,172 L94,176" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+
+            <text x="170" y="272" text-anchor="middle" class="pt-sub">SELECTED HOST / GATEWAY</text>
+          </g>
+
+          <!-- ===== Posture 03: Customer-owned edge ===== -->
+          <g transform="translate(720, 16)">
+            <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
+            <text x="22" y="32" class="pt-tag">03 &middot; CUSTOMER-OWNED EDGE</text>
+            <text x="22" y="58" class="pt-name">Your gateway, <tspan font-style="italic">our agent</tspan>.</text>
+
+            <!-- Dashed customer-owned outer edge -->
+            <rect x="40" y="92" width="260" height="160" rx="16" fill="none" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.8" stroke-dasharray="6 4"/>
+            <rect x="48" y="74" width="160" height="20" rx="6" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.6" stroke-width="1" stroke-dasharray="4 3"/>
+            <text x="128" y="88" text-anchor="middle" class="pt-edge">CUSTOMER-OWNED EDGE</text>
+
+            <!-- Inner agent conforming -->
+            <rect x="110" y="140" width="120" height="64" rx="10" fill="currentColor" fill-opacity="0.22" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.6"/>
+            <text x="170" y="172" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="currentColor" letter-spacing=".14em" font-weight="600">AGENT</text>
+            <text x="170" y="190" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing=".14em" opacity="0.75">conforms, never prescribes</text>
+
+            <!-- Flow arrow into customer edge -->
+            <line x1="20" y1="172" x2="40" y2="172" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <path d="M36,168 L42,172 L36,176" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+
+            <text x="170" y="272" text-anchor="middle" class="pt-sub">1 LAYER &middot; VERIFY, DON'T REPLACE</text>
+          </g>
+        </svg>
+        <figcaption id="posture-trio-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
+          Three assessment profiles, not interchangeable evidence or a routing diagram.
+          The configured posture selects relevant checks; deployment observations must confirm it.
+          <a href="#platform-controls">See the platform architecture</a>.
+        </figcaption>
+      </figure>
+</section>
+</div>
+<div class="topic-panel" id="readiness-topic" data-topic-panel>
+<div class="agentops-view" data-agentops-view="release">
+<section class="chapter-section" id="operating-controls" aria-labelledby="operating-heading">
+    <div class="section-head">
+      <p class="eyebrow">02 / AgentOps and release</p>
+      <h2 id="operating-heading">Different estates. <em>A deliberate path to release.</em></h2>
+      <p class="section-lede" data-topic-part="problem">Moving from development to production means fitting the customer&rsquo;s deployment model,
+        not copying a developer&rsquo;s permissions. Threadlight provides deployment artifacts and CI/CD blueprints,
+        then connects the candidate to evaluation, red-team and explicit gate decisions.</p>
+    </div>
+
+
+    <div class="production-example" data-production-example>
+      <span class="visual-label">Example / the pilot works, but the delivery model changes</span>
+      <blockquote>The agent runs in the pilot subscription. Production permits deployment only through the customer&rsquo;s approved pipeline.</blockquote>
+      <p>Keep the workload design; change who deploys, the target configuration and the verification contract.
+        A model, prompt or tool change also needs fresh quality and safety evidence &mdash; even if the container still starts.</p>
+    </div>
+    <figure data-visual="release-paths" aria-labelledby="release-paths-caption">
+      <ul class="release-paths">
+        <li><span class="visual-label">A / Assisted pilot</span><b>Operator-led deployment</b><p>Generated <code>azd</code> project and an explicitly authorized operator.
+          Useful for the pilot; not a standing right to change production.</p></li>
+        <li><span class="visual-label">B / GitHub Actions</span><b>Environment-controlled CI</b><p>A generated workflow, OIDC identity, target-scoped permissions and configurable environment reviewers.</p></li>
+        <li><span class="visual-label">C / Azure DevOps</span><b>Customer delivery pipeline</b><p>A generated pipeline, federated service connection and customer-owned environment checks and runner pool.</p></li>
+      </ul>
+      <figcaption id="release-paths-caption">Alternative release paths, not three consecutive steps.
+        The chosen hosting/network posture and the authority to deploy it are separate decisions.</figcaption>
+    </figure>
+    <p class="topic-existing" data-topic-part="existing"><strong>DevSecOps owns release assurance:</strong> check configuration and policy offline,
+      execute the required evaluations, and verify the deployed candidate before the go-live decision.
+      Business-action authorization remains the <a href="#effect-authority">active runtime control</a>, not a pipeline verdict.</p>
+  </section>
+<section class="chapter-section" id="delivery-controls" data-toc-id="ship" data-toc-label="Ship it &middot; the pipeline">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+          <p class="eyebrow"><span class="dot"></span>02 / The generated deployment path</p>
+          <h2 id="delivery-heading">Deploy through CI/CD &mdash; <em>not your laptop.</em></h2>
+        <p class="section-lede">Generate the pipeline <em>and</em> runbooks for the platform team:
+          federated identity, scoped RBAC and no secret in the repo.
+          The deploy job changes the target environment. The verdict jobs below run <strong>after deployment</strong>;
+          they do not sit in front of it.</p>
+      </div>
+
+      <figure id="ship" class="pipe-fig diagram-scroll" data-visual="deployment-lifecycle" data-topic-part="mechanism" aria-labelledby="pipe-cap" tabindex="0">
+        <svg class="pipe-svg" viewBox="0 0 1080 272" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Generated base pipeline: a main-branch change or manual run uses configured environment checks, provision and deploy. Evaluation, red-team and MCP verdict readers then run in parallel. Their hard or soft results affect CI, not whether the already completed deployment happened.">
+          <defs>
+            <style>
+              .pp-tag  { font-family: var(--mono); font-size: 12px; letter-spacing: .03em; fill: currentColor; font-weight: 600; }
+              .pp-sub  { font-family: var(--mono); font-size: 10.5px; fill: currentColor; }
+              .pp-note { font-family: var(--mono); font-size: 11px; fill: currentColor; }
+            </style>
+          </defs>
+
+          <!-- spine -->
+          <rect x="6"   y="46" width="118" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="65"  y="76" text-anchor="middle" class="pp-tag">COMMIT</text>
+          <text x="65"  y="90" text-anchor="middle" class="pp-sub">main / manual</text>
+
+          <rect x="152" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="218" y="76" text-anchor="middle" class="pp-tag">ENV CHECKS</text>
+          <text x="218" y="90" text-anchor="middle" class="pp-sub">configure approval</text>
+
+          <rect x="312" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="378" y="76" text-anchor="middle" class="pp-tag">AZD PROVISION</text>
+          <text x="378" y="90" text-anchor="middle" class="pp-sub">OIDC &middot; WIF</text>
+
+          <rect x="472" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="538" y="76" text-anchor="middle" class="pp-tag">AZD DEPLOY</text>
+          <text x="538" y="90" text-anchor="middle" class="pp-sub">keyless</text>
+
+          <!-- forward arrows (lime) -->
+          <g fill="none" stroke="var(--lime)" stroke-width="1.7">
+            <line x1="124" y1="72" x2="150" y2="72"/><path d="M145,67 L154,72 L145,77"/>
+            <line x1="284" y1="72" x2="310" y2="72"/><path d="M305,67 L314,72 L305,77"/>
+            <line x1="444" y1="72" x2="470" y2="72"/><path d="M465,67 L474,72 L465,77"/>
+          </g>
+
+          <!-- fan into gates -->
+          <g fill="none" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.4">
+            <path d="M604,72 C 648,72 648,44 692,44"/>
+            <path d="M604,72 C 648,72 648,124 692,124"/>
+            <path d="M604,72 C 648,72 648,204 692,204"/>
+          </g>
+
+          <!-- three verification gates -->
+          <g>
+            <rect x="692" y="18" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
+            <rect x="692" y="18" width="4" height="52" rx="2" fill="var(--lime)"/>
+            <text x="784" y="40" text-anchor="middle" class="pp-tag">EVAL GATE</text>
+            <text x="784" y="56" text-anchor="middle" class="pp-sub">soft | hard</text>
+
+            <rect x="692" y="98" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
+            <rect x="692" y="98" width="4" height="52" rx="2" fill="var(--lime)"/>
+            <text x="784" y="120" text-anchor="middle" class="pp-tag">RED-TEAM GATE</text>
+            <text x="784" y="136" text-anchor="middle" class="pp-sub">attack-success</text>
+
+            <rect x="692" y="178" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
+            <rect x="692" y="178" width="4" height="52" rx="2" fill="var(--lime)"/>
+            <text x="784" y="200" text-anchor="middle" class="pp-tag">MCP GATE</text>
+            <text x="784" y="216" text-anchor="middle" class="pp-sub">soft | hard</text>
+          </g>
+
+          <!-- reconverge to spoke -->
+          <g fill="none" stroke="var(--lime)" stroke-width="1.7">
+            <path d="M868,44 C 906,44 906,124 944,124"/>
+            <line x1="868" y1="124" x2="944" y2="124"/><path d="M939,119 L948,124 L939,129"/>
+            <path d="M868,204 C 906,204 906,124 944,124"/>
+          </g>
+
+          <!-- CI result: the target was already deployed -->
+          <rect x="944" y="98" width="130" height="52" rx="10" fill="var(--lime)" fill-opacity="0.14" stroke="var(--lime)" stroke-opacity="0.85" stroke-width="1.7"/>
+          <text x="1009" y="120" text-anchor="middle" class="pp-tag">CI RESULT</text>
+          <text x="1009" y="136" text-anchor="middle" class="pp-sub">not a rollout gate</text>
+
+          <text x="784" y="252" text-anchor="middle" class="pp-note">VERDICT READERS AFTER DEPLOY &middot; hard fails / soft warns</text>
+        </svg>
+        <figcaption id="pipe-cap" class="pipe-cap">
+          <code>needs: deploy</code> / <code>dependsOn: deploy</code> is the actual ordering.
+          A failed post-deploy check does not roll back deployed resources, switch traffic or undo a business effect.
+        </figcaption>
+      </figure>
+
+      <div class="agentops-contract" data-producer-boundary>
+        <p><strong>Generated execution versus integration work.</strong> Provision/deploy commands and verdict readers are executable.
+          In the base templates, the evaluation, red-team and MCP evidence-producer steps are still <code>echo</code> instructions.
+          Connect actual producers and fresh artifact delivery before treating those readers as evidence of this deployment.</p>
+        <p>For explicitly opted-in agents, the optional AgentOps composition replaces the evaluation placeholder with a real bound batch and assessor.
+          It does not automatically wire the red-team or MCP producers.</p>
+      </div>
+      <div class="gate-modes">
+        <div><h3>Soft &mdash; the default</h3><p>A failing verdict step is allowed to continue. A successful workflow does not imply all controls passed.</p></div>
+        <div><h3>Hard &mdash; explicit selection</h3><p>The verdict step fails on a missing file or a rejected verdict. Evaluation accepts <code>comprehensive</code> or <code>partial</code>;
+          red-team accepts <code>hardened</code> or <code>partial</code>. MCP checks <code>summary.must_fix</code>, not an automatic live re-scan.
+          These base readers do not validate freshness or deployment binding.</p></div>
+      </div>
+      <div class="knob-head">
+        <h3>What the platform team configures</h3>
+        <span class="sub">Deployment authority is configured separately from evidence policy.</span>
+      </div>
+      <div class="knob-grid">
+        <article class="knob reveal" data-delay="1">
+          <div class="knob-flag"><code>--platform</code></div>
+          <span class="opt">github-actions &middot; azure-devops</span>
+          <p>GitHub Actions or Azure DevOps &mdash; the pipeline is emitted for your CI.</p>
+        </article>
+        <article class="knob reveal" data-delay="1">
+          <div class="knob-flag"><code>--eval-gate</code><span class="opt">soft &middot; hard</span></div>
+          <p>Sets both evaluation and red-team verdict handling after deploy. It is not a merge-protection setting.</p>
+        </article>
+        <article class="knob reveal" data-delay="2">
+          <div class="knob-flag"><code>--mcp-gate</code><span class="opt">soft &middot; hard</span></div>
+          <p>Sets handling of the MCP SBOM summary. Producing a current scan is a separate integration step.</p>
+        </article>
+        <article class="knob reveal" data-delay="2">
+          <div class="knob-flag"><code>--central-env-required</code></div>
+          <span class="opt">standalone &middot; existing hub &middot; separate hub deployment</span>
+          <p>Resolve the onboarding path and target-resource scope. This workload pipeline never deploys the shared Citadel hub.</p>
+        </article>
+        <article class="knob reveal" data-delay="3">
+          <div class="knob-flag"><code>--private-network</code></div>
+          <span class="opt">self-hosted &middot; managed pool</span>
+          <p>Select private-network runners. DNS, routes and permitted egress still need platform-team configuration and verification.</p>
+        </article>
+      </div>
+      <div class="topic-deeper" data-topic-part="deeper">
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/706332ee02433336dd8c476cd7cecee9a05e98b7/skills/threadlight-cicd/references/github-actions/azd-deploy-prod.yml.tmpl">Read the GitHub Actions template</a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/706332ee02433336dd8c476cd7cecee9a05e98b7/skills/threadlight-cicd/references/azure-devops/azure-pipelines.yml.tmpl">Read the Azure DevOps template</a>
+        <a href="#runtime-controls">What must be verified on the target &rarr;</a>
+      </div>
+    </div>
+  </section>
+<div class="gap-grid">
+<article class="gap-card reveal" data-delay="3">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6" r="2.4"/><circle cx="7" cy="18" r="2.4"/><circle cx="17" cy="10" r="2.4"/><path d="M7 8.4v7.2"/><path d="M7 12.5h4.2a3 3 0 0 0 3-3v-.1"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Generate the deploy path and verdict readers.</h3>
+          <p class="gap-skill"><code>threadlight-cicd</code> &middot; deploy + integration handoff</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+</div>
+
+</div>
+<div class="agentops-view" data-agentops-view="offline">
+
+<section class="chapter-section topic-subsection" id="quality-controls" aria-labelledby="quality-heading">
+    <div class="section-head">
+      <p class="eyebrow">01 / Candidate checks</p>
+      <h2 id="quality-heading">A valid configuration is not <em>a successful evaluation.</em></h2>
+      <p class="section-lede" data-topic-part="problem">A prompt or model change can pass unit tests and still choose the wrong tool or invent evidence.
+        Compare the candidate with the baseline on the same cases, with expected outcomes and explicit thresholds.</p>
+    </div>
+    <div class="gate-modes">
+      <div><h3>Inspect offline</h3><p>Check compiled infrastructure, policy/schema validity, tool inventory and declared evaluation assets.
+        Executed local conformance adds local behavior evidence &mdash; not cloud or business-write proof.</p></div>
+      <div><h3>Run the evaluation</h3><p>An evaluator must invoke and score the candidate. Keep datasets, thresholds and actual run results.
+        The manifest assessor reads that evidence; finding an evaluation script is not executing it.</p></div>
+    </div>
+    <p class="topic-existing" data-topic-part="existing"><strong>Separate checks:</strong> quality evaluation, adversarial testing and MCP supply-chain inspection answer different questions.
+      Content filtering does not replace any of them.</p>
+    <div class="topic-proposal" data-topic-part="proposal"><h3>Make the result consumable, not just visible.</h3><p><code>threadlight-evals</code> assesses scenarios,
+      datasets, run history, thresholds and freshness into <code>specs/evals-manifest.json</code>.
+      Its <code>--gate</code> exits 2 on a must-fix capability; continuous wiring, alerts and A/B evidence are assessed separately.
+      The optional opted-in AgentOps path can execute a bound batch; it does not supply every missing capability.</p></div>
+    <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="evaluation-matrix" aria-labelledby="evaluation-caption">
+      <div class="visual-surface">
+        <table class="evaluation-matrix">
+          <caption>Evaluation dimensions &mdash; illustrative criteria, not measured results</caption>
+          <thead><tr><th scope="col">Test case</th><th scope="col">Must do</th><th scope="col">Must not do</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Task correctness</th><td>Meet the agreed acceptance criteria</td><td class="must-not">Invent unsupported facts</td></tr>
+            <tr><th scope="row">Tool selection</th><td>Use the declared tool and valid arguments</td><td class="must-not">Choose an unrelated action</td></tr>
+            <tr><th scope="row">Missing evidence</th><td>Ask for clarification or abstain</td><td class="must-not">Cite a nonexistent source</td></tr>
+            <tr><th scope="row">Adversarial input</th><td>Treat retrieved instructions as untrusted data</td><td class="must-not">Bypass the intended controls</td></tr>
+            <tr><th scope="row">Access boundaries</th><td>Preserve the caller&rsquo;s information scope</td><td class="must-not">Disclose restricted records</td></tr>
+          </tbody>
+        </table>
+        <div class="release-rule"><p><b>Baseline &harr; candidate &rarr; release review.</b><br>Compare task success and serious failures on the same cases. Re-run when prompts, models, tools or retrieval change.</p></div>
+      </div>
+      <figcaption id="evaluation-caption">An evaluation checks observed behavior under test.
+        It neither guarantees every future answer nor grants runtime authority for a business action.</figcaption>
+    </figure>
+    <div class="risk-catalog" data-risk-catalog>
+      <h4>Where quality breaks: weak evidence, blind spots and regressions</h4>
+      <dl>
+        <div data-risk="grounding-quality"><dt>Right answer, bad evidence</dt><dd>The recommendation happens to be right but its citation is irrelevant or fabricated. <strong>Control:</strong> assess retrieval relevance, citation support and refusal when evidence is insufficient.</dd></div>
+        <div data-risk="coverage"><dt>Demo-only coverage</dt><dd>Happy-path examples miss uncommon tasks, languages, accessibility needs or ambiguous requests. <strong>Control:</strong> build representative cases and judge failure severity with business owners.</dd></div>
+        <div data-risk="adversarial"><dt>Hostile input</dt><dd>Instructions inside a document try to redirect tools or disclose data. <strong>Control:</strong> run adversarial tests and check actual tool/data behavior, not just the model&rsquo;s reassuring explanation.</dd></div>
+        <div data-risk="regression"><dt>Average hides regression</dt><dd>A faster candidate improves easy tasks but fails critical edge cases. <strong>Control:</strong> compare slices and must-not-fail cases against the baseline; monitor drift after release and retain a rollback decision.</dd></div>
+      </dl>
+    </div>
+    <p class="topic-owner"><strong>Accountable teams:</strong> product and engineering. <strong>Review:</strong> task success, failure severity and regression against the agreed baseline.</p>
+    <div class="topic-deeper" data-topic-part="deeper"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-evals">Explore the evaluation workflow &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-redteam">Explore adversarial testing &rarr;</a></div>
+  </section>
+<div class="gap-grid" id="legs">
+<article class="gap-card reveal" data-delay="2">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.4 2.4 5-5"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Prove quality didn&rsquo;t regress before you ship.</h3>
+          <p class="gap-skill"><code>threadlight-evals</code> &middot; pillar 06</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-evals" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+<article class="gap-card reveal" data-delay="3">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Find the jailbreak before an attacker does.</h3>
+          <p class="gap-skill"><code>threadlight-redteam</code> &middot; pillar 07</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-redteam" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+<article class="gap-card reveal" data-delay="1">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l8 4.4v9.6L12 21.2 4 16.8V7.2z"/><path d="M4 7.2l8 4.4 8-4.4M12 11.6v9.6"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Catch a poisoned tool swap.</h3>
+          <p class="gap-skill"><code>threadlight-production-ready</code> &middot; pillar 09</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/09-supply-chain.md" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+</div>
+
+</div>
+<div class="agentops-view" data-agentops-view="verification">
+
+<section class="chapter-section" id="runtime-controls" aria-labelledby="runtime-heading">
+  <div class="section-head">
+    <p class="eyebrow">Before go-live / on the deployed candidate</p>
+    <h2 id="runtime-heading">A deployment succeeded. <em>Does the intended workload work?</em></h2>
+    <p class="section-lede">An evaluation against a mock can pass while the real API denies the user or the deployed image uses the wrong identity.
+      Verify the intended environment and the actual paths before accepting the release.</p>
+  </div>
+  <figure data-visual="deployment-verification" aria-labelledby="runtime-caption">
+    <div class="runtime-proof">
+      <article><span class="visual-label">Observe the real target</span><h3>Correct version, identity and route</h3>
+        <p>Match deployment, configuration and endpoints. Exercise allowed and denied access, selected bindings and agreed load profiles.</p>
+        <p>Live probes require explicit scope, authorization and any applicable budget.</p></article>
+      <span aria-hidden="true">&rarr;</span>
+      <article><span class="visual-label">Record scoped evidence</span><h3>What passed, what was not verified</h3>
+        <p>Bind results to the environment and release. Keep missing access, stale observations and untested business paths visible.</p>
+        <p>Fresh evidence feeds the go-live review; an old receipt cannot approve a new deployment.</p></article>
+    </div>
+    <figcaption id="runtime-caption">Deployment is not the same event as go-live.
+      Choose and protect the validation environment explicitly; the base template does not create an automatic staging-to-production promotion.</figcaption>
+  </figure>
+  <div class="agentops-contract">
+    <p><strong>Coverage is specific.</strong> A noop probe is not business-write proof.
+      Verifying one selected binding does not verify every tool. Local conformance, live observations and business execution remain distinct evidence.</p>
+    <p><strong>The control continues after release.</strong> Once installed, the <a href="#effect-authority">action-governance runtime</a>
+      authorizes selected effects on each invocation. A pre-go-live test or a CI soft setting does not replace that enforcement.</p>
+  </div>
+  <p class="topic-owner"><strong>Separate, authorized probes:</strong> connect verifies a real endpoint;
+    ground assesses caller-provided ACL/citation/refusal evidence; loadtest requires an explicit budget and live-run authorization.
+    These are not automatically executed by the base deploy template.</p>
+  <div class="topic-deeper">
+    <a href="#proof">Bring the evidence to go-live review &rarr;</a>
+    <a href="#effect-authority">Next: govern actions in production &rarr;</a>
+    <a href="https://github.com/aiappsgbb/threadlight-skills/blob/706332ee02433336dd8c476cd7cecee9a05e98b7/docs/production-readiness.md#runtime-governance-lifecycle">Read the runtime evidence contract</a>
+  </div>
+</section>
+<div class="gap-grid">
+
+<article class="gap-card reveal" data-delay="1">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l8 4.4v9.6L12 21.2 4 16.8V7.2z"/><path d="M4 7.2l8 4.4 8-4.4M12 11.6v9.6"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Prove the real endpoint before you trust it.</h3>
+          <p class="gap-skill"><code>threadlight-connect</code> &middot; manual, evidence-gated mock&rarr;real swap</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-connect" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+<article class="gap-card reveal" data-delay="2">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.4 2.4 5-5"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Prove the retrieval is safe, not just plausible.</h3>
+          <p class="gap-skill"><code>threadlight-ground</code> &middot; manual ACL / citation / refusal evidence</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-ground" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+<article class="gap-card reveal" data-delay="3">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Prove it holds up &mdash; under a hard budget cap.</h3>
+          <p class="gap-skill"><code>threadlight-loadtest</code> &middot; manual, budget-capped, production-confirmed load evidence</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-loadtest" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+</div>
+
+</div>
+</div>
 <div class="topic-panel" id="actions-topic" data-topic-panel>
 <section class="chapter-section governance-section" id="effect-authority" data-toc-id="effect-authority" data-toc-label="Agent behavior" aria-labelledby="effect-authority-heading">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow">02 / Agent behavior governance</p>
+        <p class="eyebrow">03 / Active governance in production</p>
         <h2 id="effect-authority-heading">Access to a system is not <em>authority for every action.</em></h2>
         <p class="section-lede" data-topic-part="problem" data-case-context>An authenticated agent on a private network can still propose an ineligible return,
           use an outdated case or repeat a decision after a timeout.
           The missing question is not &ldquo;can it call this API?&rdquo; but
           &ldquo;may it perform this exact action, with these facts, now?&rdquo;</p>
       </div>
-      <div class="return-brief" id="returns-walkthrough">
+      <div class="return-brief" id="returns-walkthrough" data-production-example>
         <div><span class="visual-label">Example / a customer return</span><blockquote>&ldquo;Can I return this order?&rdquo;</blockquote></div>
         <div><b>The agent&rsquo;s job</b><p>Read the case and current policy, recommend an outcome or request a supervisor decision,
           then record the result with an audit.</p><p><strong>A decision record, not a payment.</strong> The example does not settle a refund.</p></div>
@@ -503,238 +1110,95 @@
       </div>
     </div>
   </section>
-  </div>
-
-<div class="topic-panel" id="readiness-topic" data-topic-panel>
-<section class="chapter-section" id="operating-controls" aria-labelledby="operating-heading">
-    <div class="section-head">
-      <p class="eyebrow">03 / AgentOps and lifecycle</p>
-      <h2 id="operating-heading">From development to production. <em>Keep changes controlled.</em></h2>
-      <p class="section-lede" data-topic-part="problem">An agent release includes code, prompts, model choices, tools and policy &mdash; not just an application image.
-        Moving it between environments requires repeatable deployment, explicit configuration, evaluation and a controlled way to operate or roll back each change.</p>
-    </div>
-    <p class="topic-existing" data-topic-part="existing"><strong>Engineering, security and operations own the lifecycle:</strong> build provenance, release processes, SLOs, on-call, incident handling and budgets.
-      Agent policy does not replace those disciplines or reverse committed business changes.</p>
-    <div class="topic-proposal" data-topic-part="proposal"><h3>Connect evaluation, DevSecOps and deployment.</h3><p>Threadlight connects evaluation and security evidence
-      with deployment pipelines, environment-specific gates and operating checks. The readiness review is one decision point in that lifecycle, not the whole process.
-      Evidence for the people who sign.</p></div>
-  </section>
-
-<section class="chapter-section topic-subsection" id="quality-controls" aria-labelledby="quality-heading">
-    <div class="section-head">
-      <p class="eyebrow">Before go-live / repeat after changes</p>
-      <h3 id="quality-heading">Evaluation is part of the release decision</h3>
-      <p class="section-lede" data-topic-part="problem">Before go-live, verify task correctness, grounding, safety, denied-access behavior and critical failure cases.
-        Repeat the relevant checks after model, prompt, tool or infrastructure changes, and monitor behavior in operation.</p>
-    </div>
-    <p class="topic-existing" data-topic-part="existing"><strong>Already protected:</strong> access and safety policies constrain use.
-      They do not measure whether the workflow solves the intended task for representative users.</p>
-    <div class="topic-proposal" data-topic-part="proposal"><h4>Turn acceptance criteria into release evidence.</h4><p>Threadlight connects evaluation,
-      red-team and grounding evidence to the readiness review. Agree which failures block release, not just an average score.
-      A passed test supports the decision; it does not replace runtime enforcement.</p></div>
-    <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="evaluation-matrix" aria-labelledby="evaluation-caption">
-      <div class="visual-surface">
-        <table class="evaluation-matrix">
-          <caption>Evaluation dimensions &mdash; illustrative criteria, not measured results</caption>
-          <thead><tr><th scope="col">Test case</th><th scope="col">Must do</th><th scope="col">Must not do</th></tr></thead>
-          <tbody>
-            <tr><th scope="row">Task correctness</th><td>Meet the agreed acceptance criteria</td><td class="must-not">Invent unsupported facts</td></tr>
-            <tr><th scope="row">Tool selection</th><td>Use the declared tool and valid arguments</td><td class="must-not">Choose an unrelated action</td></tr>
-            <tr><th scope="row">Missing evidence</th><td>Ask for clarification or abstain</td><td class="must-not">Cite a nonexistent source</td></tr>
-            <tr><th scope="row">Adversarial input</th><td>Treat retrieved instructions as untrusted data</td><td class="must-not">Bypass the intended controls</td></tr>
-            <tr><th scope="row">Access boundaries</th><td>Preserve the caller&rsquo;s information scope</td><td class="must-not">Disclose restricted records</td></tr>
-          </tbody>
-        </table>
-        <div class="release-rule"><p><b>Baseline &harr; candidate &rarr; release review.</b><br>Compare task success and serious failures on the same cases. Re-run when prompts, models, tools or retrieval change.</p></div>
+  <div class="gap-grid">
+<article class="gap-card reveal" data-delay="1">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9.5 4V2.8h5V4"/><path d="M8.8 12.6l2 2 4-4"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Define policy for selected actions.</h3>
+          <p class="gap-skill"><code>threadlight-govern</code> &middot; pillars 02 &middot; 07</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-govern" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
+        </article>
+</div>
+</div>
+<details class="topic-reference" id="action-reference" data-topic-reference="actions-topic">
+    <summary>Business outcomes and evidence <span>How authorization connects to an accountable result</span></summary>
+  <section class="chapter-section governance-section" id="evidence-boundaries" data-toc-id="evidence-boundaries" data-toc-label="Business confidence" aria-labelledby="evidence-boundaries-heading">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow"><span class="dot"></span>Confidence through a connected operating model</p>
+        <h2 id="evidence-boundaries-heading">From agent potential <em>to accountable outcomes.</em></h2>
+        <p class="section-lede">Bring business owners, engineering and operations around the same
+          workflow. Identity, policy, human decisions and audit create a practical path from
+          a promising prototype to an application your organization can operate.</p>
       </div>
-      <figcaption id="evaluation-caption">An evaluation checks observed behavior under test.
-        It neither guarantees every future answer nor grants runtime authority for a business action.</figcaption>
-    </figure>
-    <details class="risk-catalog" data-risk-catalog>
-      <summary>Where quality breaks: weak evidence, blind spots and regressions</summary>
-      <dl>
-        <div data-risk="grounding-quality"><dt>Right answer, bad evidence</dt><dd>The recommendation happens to be right but its citation is irrelevant or fabricated. <strong>Control:</strong> assess retrieval relevance, citation support and refusal when evidence is insufficient.</dd></div>
-        <div data-risk="coverage"><dt>Demo-only coverage</dt><dd>Happy-path examples miss uncommon tasks, languages, accessibility needs or ambiguous requests. <strong>Control:</strong> build representative cases and judge failure severity with business owners.</dd></div>
-        <div data-risk="adversarial"><dt>Hostile input</dt><dd>Instructions inside a document try to redirect tools or disclose data. <strong>Control:</strong> run adversarial tests and check actual tool/data behavior, not just the model&rsquo;s reassuring explanation.</dd></div>
-        <div data-risk="regression"><dt>Average hides regression</dt><dd>A faster candidate improves easy tasks but fails critical edge cases. <strong>Control:</strong> compare slices and must-not-fail cases against the baseline; monitor drift after release and retain a rollback decision.</dd></div>
-      </dl>
-    </details>
-    <p class="topic-owner"><strong>Accountable teams:</strong> product and engineering. <strong>Review:</strong> task success, failure severity and regression against the agreed baseline.</p>
-    <div class="topic-deeper" data-topic-part="deeper"><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-evals">Explore the evaluation workflow &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-redteam">Explore adversarial testing &rarr;</a></div>
-  </section>
-
-<section class="chapter-section topic-subsection" id="delivery-controls" aria-labelledby="delivery-heading">
-    <div class="section-head"><h3 id="delivery-heading">DevSecOps, environment promotion and operations</h3></div>
-    <figure class="topic-mechanism" data-topic-part="mechanism" data-visual="deployment-lifecycle" aria-labelledby="deployment-caption">
-      <div class="visual-surface">
-        <span class="visual-label">Development &rarr; Test &rarr; Production / controlled environment promotion</span>
-        <ol class="lifecycle-stages" aria-label="Version and evaluate, secure and deploy, verify and operate">
-          <li><b>01 / Version &amp; evaluate</b><p>Track code, prompts, model choices and policy. Compare the candidate against the accepted baseline.</p></li>
-          <li><b>02 / Secure &amp; deploy</b><p>Review dependencies and build provenance. Use an authorized pipeline with environment-scoped configuration and identities.</p></li>
-          <li><b>03 / Verify &amp; operate</b><p>Verify the deployed version with fresh evidence. Monitor quality, service health and cost; exercise recovery.</p></li>
-        </ol>
-        <div class="release-outcomes" aria-label="Readiness review outcomes">
-          <div><span class="visual-label">Required evidence available</span><p><b>Human go-live decision</b></p><p>Review service targets, operating ownership and residual risk. No automatic certification.</p></div>
-          <div><span class="visual-label">Gaps or stale evidence</span><p><b>Remediate and verify again</b></p><p>Keep blockers visible. A waiver records accepted risk; it does not implement a missing control.</p></div>
-        </div>
+      <div class="why-grid">
+        <article class="why-card" id="workflow-design-value" aria-labelledby="workflow-design-heading">
+          <p class="why-kicker">Design for the business</p>
+          <h3 id="workflow-design-heading">Make autonomy useful</h3>
+          <p>Start with the process, its decisions and the systems of record.
+            Give agents clear tasks and connect the actions that create value through explicit contracts.</p>
+          <p>Let routine work move forward inside your rules while keeping responsibility for
+            consequential outcomes with the right systems and people.</p>
+        </article>
+        <article class="why-card" id="human-decision-value" aria-labelledby="human-decision-heading">
+          <p class="why-kicker">Decide at the right level</p>
+          <h3 id="human-decision-heading">Human judgement, connected</h3>
+          <p>Define which exceptions require review and who can decide them.
+            Notification channels can guide reviewers to the right context; authenticated approval
+            records the decision that permits the workflow to continue.</p>
+          <p>The decision belongs to the reviewer. The execution belongs to a controlled
+            system path, with a clear relationship between the two.</p>
+        </article>
+        <article class="why-card" id="operating-evidence-value" aria-labelledby="operating-evidence-heading">
+          <p class="why-kicker">Operate with evidence</p>
+          <h3 id="operating-evidence-heading">Connect actions to outcomes</h3>
+          <p>Trace the request, the policy decision, human involvement and the result recorded
+            by the business system. Give operations and reviewers evidence they can use.</p>
+          <p>Bring this action-level view together with quality, reliability, privacy and cost
+            evidence to guide the next release and the next expansion of autonomy.</p>
+        </article>
       </div>
-      <figcaption id="deployment-caption">Each target environment needs its own authorized configuration and fresh evidence.
-        The scorecard is advisory; it does not itself promote a release or authorize deployment.</figcaption>
-    </figure>
-    <ul class="operating-signals" aria-label="Production operating signals">
-      <li><b>Service health</b>Latency, failures, saturation and dependency availability</li>
-      <li><b>Unit economics</b>Cost per successful interaction, including retries</li>
-      <li><b>Change trace</b>Model, code, policy and configuration behind the result</li>
-    </ul>
-    <details class="risk-catalog" data-risk-catalog>
-      <summary>Where operations break: capacity, cost, recovery and change</summary>
-      <dl>
-        <div data-risk="reliability"><dt>Capacity or dependency loss</dt><dd>Throttling, an outage or an unavailable approval/audit service leaves work incomplete. <strong>Control:</strong> load-test agreed profiles, define timeouts and bounded recovery, and fail closed where required authority is unavailable.</dd></div>
-        <div data-risk="cost"><dt>Retry-driven spend</dt><dd>A cheap model becomes an expensive workflow through long contexts and repeated tool calls. <strong>Control:</strong> set usage budgets, inspect retries and reconcile forecasts with settled actuals and cost per successful interaction.</dd></div>
-        <div data-risk="observability"><dt>Untraceable incident</dt><dd>Operators see a timeout but cannot connect it to the decision, approval or record. <strong>Control:</strong> correlate identifiers and durable receipts, alert on unresolved operations and exercise the recovery runbook.</dd></div>
-        <div data-risk="supply-chain"><dt>Unsafe change</dt><dd>A dependency, image, model or policy changes without compatible evidence. <strong>Control:</strong> review provenance and compatibility, carry gates into delivery and collect fresh evidence for the changed deployment. Old receipts do not approve a new release.</dd></div>
-        <div data-risk="recovery"><dt>Rollback mistaken for undo</dt><dd>Restoring application code is assumed to restore business state. <strong>Control:</strong> test backup/restore and reconciliation separately; any compensating business action needs its own authorization.</dd></div>
-        <div data-risk="signoff"><dt>Score mistaken for sign-off</dt><dd>A green score or waiver is treated as permission to go live. <strong>Control:</strong> retain raw findings, freshness, verification gaps and named risk owners. The advisory scorecard neither implements controls nor replaces human go-live approval.</dd></div>
-      </dl>
-    </details>
-    <p class="topic-owner"><strong>Accountable teams:</strong> SRE, FinOps and delivery. <strong>Review:</strong> recovery, cost per successful interaction,
-      verification coverage and outstanding must-fix findings.</p>
-    <div class="topic-deeper" data-topic-part="deeper"><a href="#checks">Explore the assessment &rarr;</a><a href="#start">Start the readiness review &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-loadtest">Capacity testing &rarr;</a><a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-connect">Real endpoint verification &rarr;</a></div>
+      <div class="read-deeper">
+        <span class="rd-label">Go deeper:</span>
+        <span>Explore implementation profiles, supported controls and the engineering validation
+          record when planning your own workflow.</span>
+      </div>
+      <div class="cost-cta-row" style="margin-top:26px;">
+        <a class="btn btn-primary" href="./agent-governance.html">Explore agent governance <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/governed-returns-validation.md">Read the dated execution record</a>
+        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/772074123506c285eed2395c40ded4eaad229cc6/docs/agent-governance-deep-dive.md">Inspect implementation and evidence joins</a>
+      </div>
+    </div>
   </section>
-  </div>
 
-  <details class="topic-reference" id="readiness-reference" data-topic-reference="readiness-topic">
-    <summary>Assessment reference <span>Thirteen pillars, remediation owners and an illustrative scorecard</span></summary>
-  <!-- ==================== 2 · WHAT IT CHECKS ==================== -->
-  <section class="chapter-section" id="checks" data-toc-id="checks" data-toc-label="What it checks">
+  </details>
+</div>
+    </div>
+  </div>
+<div id="production-review" class="wrap wrap-xl agentops-view production-review">
+<section class="chapter-section" id="checks" data-toc-id="checks" data-toc-label="What it checks">
     <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>What it checks</p>
-        <h2>13 pillars, three architectures, <em>one detected posture.</em></h2>
-        <p class="section-lede">A scorecard is evidence for a decision, not the decision itself.
-          Review the raw and waiver-adjusted scores, verification coverage and dates together.
-          Missing permissions or unexecuted checks remain not-verified; a waiver is accepted risk, not technical enforcement.</p>
-        <p class="section-lede" style="margin-top:12px;"><code>raw_score</code>,
-          <code>score_with_waivers</code>, <code>would_fail_hard_gate</code>, verification coverage
-          and <code>captured_at</code> belong beside stale evidence and outstanding <code>must-fix</code> findings.
-          The scorecard is advisory; protected evidence gates and human go-live approval remain separate.</p>
+        <h2>13 pillars. <em>Evidence across the whole system.</em></h2>
+        <p class="section-lede">The assessment organizes questions across platform, workload and delivery.
+          Each finding needs an owner and evidence at the appropriate stage: inspecting configuration is not testing a live endpoint.</p>
       </div>
 
       <!-- agent-governance vs platform boundary + the deliverable -->
-      <div class="reveal" data-delay="1" style="max-width:880px; margin: var(--s-5) auto 0; border:1px solid var(--line); border-left:3px solid var(--lime); border-radius:12px; background:var(--bg-2); padding:20px 24px;">
-        <p style="font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 9px;">Different owners, complementary controls</p>
+      <div class="agentops-contract">
+        <p style="font-family:var(--mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-1); margin:0 0 9px;">Different owners, complementary controls</p>
         <p style="margin:0; color:var(--ink-1); font-size:.98rem; line-height:1.62;">
           <strong>The platform team owns the landing zone</strong> &mdash; including its network, identities and any shared AI gateway.
           <strong>Threadlight organizes the workload&rsquo;s readiness review</strong> across these 13 pillars, with scoped evidence and named owners.
-          Runtime action controls, evaluations, a supply-chain SBOM, an agent-identity AI-BOM and regulatory evidence serve different purposes.
-          None alone proves the whole agent is production-ready or establishes legal compliance.
+          None of these checks alone proves whole-agent governance or legal compliance.
         </p>
       </div>
 
       <!-- 2a · six CISO questions -->
-      <figure aria-labelledby="ciso-caption" class="reveal" data-delay="1">
-        <svg class="ciso-pentagon-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Six questions a CISO asks arranged as spokes around a central production-ready core">
-          <defs>
-            <radialGradient id="ciso-core-fill" cx="50%" cy="50%" r="50%">
-              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.28"/>
-              <stop offset="70%" stop-color="currentColor" stop-opacity="0.12"/>
-              <stop offset="100%" stop-color="currentColor" stop-opacity="0.04"/>
-            </radialGradient>
-            <style>
-              .ciso-num    { font-family: var(--mono); font-size: 10px; letter-spacing: .22em; fill: #8e95a8; }
-              .ciso-q      { font-family: var(--serif); font-size: 17px; fill: #f5f5f7; }
-              .ciso-q-sub  { font-family: var(--mono); font-size: 10.5px; fill: currentColor; opacity: 0.75; }
-              .ciso-core-h { font-family: var(--serif); font-size: 18px; fill: #f5f5f7; }
-              .ciso-core-s { font-family: var(--mono); font-size: 10.5px; letter-spacing: .18em; fill: currentColor; opacity: 0.85; }
-              @media (prefers-color-scheme: light) {
-                .ciso-q      { fill: #0a0d14; }
-                .ciso-num    { fill: #5f6680; }
-                .ciso-core-h { fill: #0a0d14; }
-              }
-            </style>
-          </defs>
 
-          <!-- 5 spokes from core (540, 190) to each label -->
-          <g class="ciso-spokes" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.2" stroke-dasharray="4 4" fill="none">
-            <line x1="540" y1="190" x2="180" y2="90"/>
-            <line x1="540" y1="190" x2="900" y2="90"/>
-            <line x1="540" y1="190" x2="240" y2="310"/>
-            <line x1="540" y1="190" x2="840" y2="310"/>
-            <line x1="540" y1="190" x2="540" y2="50"/>
-            <line x1="540" y1="190" x2="540" y2="330"/>
-          </g>
-
-          <!-- Core: "Is this production-ready?" -->
-          <g transform="translate(540, 190)">
-            <circle r="90" fill="url(#ciso-core-fill)" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.6"/>
-            <circle r="56" fill="none" stroke="currentColor" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="2 4"/>
-            <text x="0" y="-12" text-anchor="middle" class="ciso-core-s">ANY ONE FIRES &rarr;</text>
-            <text x="0" y="10" text-anchor="middle" class="ciso-core-h">You've outgrown</text>
-            <text x="0" y="32" text-anchor="middle" class="ciso-core-h"><tspan font-style="italic">the laptop.</tspan></text>
-          </g>
-
-          <!-- 01 Identity (top-left) -->
-          <g transform="translate(40, 50)">
-            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <circle cx="22" cy="40" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <circle cx="22" cy="40" r="3.5" fill="currentColor"/>
-            <text x="44" y="28" class="ciso-num">01 &middot; IDENTITY</text>
-            <text x="44" y="50" class="ciso-q">Who is it acting as?</text>
-            <text x="44" y="68" class="ciso-q-sub">UAMI? Entra app? OBO?</text>
-          </g>
-
-          <!-- 02 Audit (top-right) -->
-          <g transform="translate(800, 50)">
-            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <rect x="14" y="30" width="16" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <line x1="18" y1="37" x2="26" y2="37" stroke="currentColor" stroke-width="1.4"/>
-            <line x1="18" y1="42" x2="26" y2="42" stroke="currentColor" stroke-width="1.4"/>
-            <line x1="18" y1="47" x2="22" y2="47" stroke="currentColor" stroke-width="1.4"/>
-            <text x="44" y="28" class="ciso-num">02 &middot; AUDIT</text>
-            <text x="44" y="50" class="ciso-q">What &mdash; when &mdash; for whom?</text>
-            <text x="44" y="68" class="ciso-q-sub">Append-only + OTel traces</text>
-          </g>
-
-          <!-- 03 RBAC (bottom-left) -->
-          <g transform="translate(100, 300)">
-            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <path d="M 22 32 L 32 28 L 32 44 Q 32 52 22 56 Q 12 52 12 44 L 12 28 Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <text x="44" y="28" class="ciso-num">03 &middot; RBAC</text>
-            <text x="44" y="50" class="ciso-q">Can it read this index?</text>
-            <text x="44" y="68" class="ciso-q-sub">Keyless RBAC, scoped to agent</text>
-          </g>
-
-          <!-- 04 Telemetry (bottom-right) -->
-          <g transform="translate(740, 300)">
-            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <polyline points="12,52 18,42 24,46 30,32 36,38" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <text x="44" y="28" class="ciso-num">04 &middot; TELEMETRY</text>
-            <text x="44" y="50" class="ciso-q">Is it running well?</text>
-            <text x="44" y="68" class="ciso-q-sub">App Insights from day-0</text>
-          </g>
-
-          <!-- 05 Evals (top center) -->
-          <g transform="translate(420, 8)">
-            <rect width="240" height="60" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <circle cx="22" cy="30" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M 17 30 L 21 34 L 28 26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <text x="44" y="22" class="ciso-num">05 &middot; EVALS</text>
-            <text x="44" y="44" class="ciso-q">Did the next deploy regress?</text>
-          </g>
-
-          <!-- 06 Safety / red-team (bottom center) -->
-          <g transform="translate(420, 312)">
-            <rect width="240" height="60" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <circle cx="22" cy="30" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M 16 24 L 28 36 M 28 24 L 16 36" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <text x="44" y="22" class="ciso-num">06 &middot; SAFETY</text>
-            <text x="44" y="44" class="ciso-q">Can it be jailbroken?</text>
-          </g>
-        </svg>
-        <figcaption id="ciso-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Six questions a CISO asks. Any one fires and the pilot has outgrown the laptop &mdash; governance, evals and safety are backed by <a href="#legs">skills that close them</a>.
-        </figcaption>
-      </figure>
 
       <!-- 2b · thirteen pillars / four themes -->
       <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: var(--s-6);">
@@ -742,21 +1206,21 @@
           <p class="eyebrow"><span class="dot"></span>Network &amp; identity</p>
           <h3>Where it runs, who it acts as.</h3>
           <p><strong>01</strong>&nbsp;Network posture &middot;
-             <strong>03</strong>&nbsp;Identity &amp; access <span class="pill">runs</span> &middot;
+             <strong>03</strong>&nbsp;Identity &amp; access &middot;
              <strong>04</strong>&nbsp;Secrets</p>
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>Governance &amp; HITL</p>
           <h3>What it&rsquo;s allowed to do.</h3>
-          <p><strong>02</strong>&nbsp;Agent governance <span class="pill">runs</span> &middot;
-             <strong>07</strong>&nbsp;Responsible AI <span class="pill">runs</span> &middot;
+          <p><strong>02</strong>&nbsp;Agent governance &middot;
+             <strong>07</strong>&nbsp;Responsible AI &middot;
              <strong>08</strong>&nbsp;HITL &amp; audit</p>
         </article>
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>Ops &amp; cost</p>
           <h3>Is it running &mdash; and paying off?</h3>
           <p><strong>05</strong>&nbsp;Observability &middot;
-             <strong>06</strong>&nbsp;Continuous evals <span class="pill">runs</span> &middot;
+             <strong>06</strong>&nbsp;Continuous evals &middot;
              <strong>10</strong>&nbsp;Cost &middot;
              <strong>11</strong>&nbsp;Reliability &middot;
              <strong>12</strong>&nbsp;SRE hand-over</p>
@@ -764,7 +1228,7 @@
         <article class="detail-card">
           <p class="eyebrow"><span class="dot"></span>Lifecycle &amp; supply-chain</p>
           <h3>What it&rsquo;s built from, where it&rsquo;s going.</h3>
-          <p><strong>09</strong>&nbsp;Supply chain <span class="pill">runs</span> &middot;
+          <p><strong>09</strong>&nbsp;Supply chain &middot;
              <strong>13</strong>&nbsp;Model lifecycle</p>
         </article>
       </div>
@@ -774,213 +1238,10 @@
       </div>
 
       <!-- 2c · three postures -->
-      <figure aria-labelledby="posture-trio-caption" class="reveal" data-delay="1" style="margin-top: var(--s-7);">
-        <svg class="posture-trio-svg" viewBox="0 0 1080 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three production postures shown as distinct architectural shapes: APIM perimeter plus agent core, agent core only, and a customer-owned network boundary around the agent">
-          <defs>
-            <linearGradient id="posture-card-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.08"/>
-              <stop offset="100%" stop-color="currentColor" stop-opacity="0.02"/>
-            </linearGradient>
-            <style>
-              .pt-tag    { font-family: var(--mono); font-size: 10px; letter-spacing: .22em; fill: #8e95a8; }
-              .pt-name   { font-family: var(--serif); font-size: 19px; fill: #f5f5f7; }
-              .pt-name em{ font-style: italic; }
-              .pt-sub    { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; fill: currentColor; opacity: 0.78; }
-              .pt-edge   { font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; fill: currentColor; opacity: 0.75; }
-              .pt-pill   { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; fill: currentColor; }
-              @media (prefers-color-scheme: light) {
-                .pt-name { fill: #0a0d14; }
-                .pt-tag  { fill: #5f6680; }
-              }
-            </style>
-          </defs>
 
-          <!-- ===== Posture 01: Gateway-fronted (Citadel spoke) ===== -->
-          <g transform="translate(20, 16)">
-            <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="22" y="32" class="pt-tag">01 &middot; GATEWAY-FRONTED</text>
-            <text x="22" y="58" class="pt-name">Citadel <tspan font-style="italic">spoke</tspan>.</text>
-
-            <!-- Outer APIM ring -->
-            <rect x="40" y="92" width="260" height="160" rx="16" fill="none" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.8"/>
-            <rect x="56" y="74" width="84" height="20" rx="6" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.6" stroke-width="1"/>
-            <text x="98" y="88" text-anchor="middle" class="pt-edge">APIM GATEWAY</text>
-
-            <!-- Inner agent box -->
-            <rect x="110" y="140" width="120" height="64" rx="10" fill="currentColor" fill-opacity="0.28" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.6"/>
-            <text x="170" y="172" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="currentColor" letter-spacing=".14em" font-weight="600">AGENT</text>
-            <text x="170" y="190" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing=".14em" opacity="0.75">+ AGT in-process</text>
-
-            <!-- Flow arrows: into APIM, through to agent -->
-            <line x1="20" y1="172" x2="40" y2="172" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
-            <path d="M36,168 L42,172 L36,176" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
-            <line x1="60" y1="172" x2="110" y2="172" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.2" stroke-dasharray="3 3"/>
-
-            <text x="170" y="272" text-anchor="middle" class="pt-sub">2 LAYERS &middot; JWT &middot; LEDGER</text>
-          </g>
-
-          <!-- ===== Posture 02: Foundry-native (core only) ===== -->
-          <g transform="translate(370, 16)">
-            <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="22" y="32" class="pt-tag">02 &middot; FOUNDRY-NATIVE</text>
-            <text x="22" y="58" class="pt-name">Core <tspan font-style="italic">only</tspan>.</text>
-
-            <!-- Glowing standalone agent box -->
-            <circle cx="170" cy="172" r="98" fill="currentColor" fill-opacity="0.06" stroke="none"/>
-            <circle cx="170" cy="172" r="78" fill="currentColor" fill-opacity="0.10" stroke="none"/>
-            <rect x="100" y="140" width="140" height="72" rx="12" fill="currentColor" fill-opacity="0.32" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.8"/>
-            <text x="170" y="172" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="currentColor" letter-spacing=".14em" font-weight="600">AGENT</text>
-            <text x="170" y="192" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing=".14em" opacity="0.75">+ AGT in-process</text>
-
-            <!-- Flow arrow direct -->
-            <line x1="20" y1="172" x2="98" y2="172" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
-            <path d="M94,168 L100,172 L94,176" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
-
-            <text x="170" y="272" text-anchor="middle" class="pt-sub">1 LAYER &middot; HASH-CHAIN AUDIT</text>
-          </g>
-
-          <!-- ===== Posture 03: Customer-owned edge ===== -->
-          <g transform="translate(720, 16)">
-            <rect width="340" height="288" rx="14" fill="url(#posture-card-fill)" stroke="currentColor" stroke-opacity="0.35" stroke-width="1"/>
-            <text x="22" y="32" class="pt-tag">03 &middot; CUSTOMER-OWNED EDGE</text>
-            <text x="22" y="58" class="pt-name">Your gateway, <tspan font-style="italic">our agent</tspan>.</text>
-
-            <!-- Dashed customer-owned outer edge -->
-            <rect x="40" y="92" width="260" height="160" rx="16" fill="none" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.8" stroke-dasharray="6 4"/>
-            <rect x="48" y="74" width="160" height="20" rx="6" fill="var(--bg, #fff)" stroke="currentColor" stroke-opacity="0.6" stroke-width="1" stroke-dasharray="4 3"/>
-            <text x="128" y="88" text-anchor="middle" class="pt-edge">CUSTOMER-OWNED EDGE</text>
-
-            <!-- Inner agent conforming -->
-            <rect x="110" y="140" width="120" height="64" rx="10" fill="currentColor" fill-opacity="0.22" stroke="currentColor" stroke-opacity="0.85" stroke-width="1.6"/>
-            <text x="170" y="172" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="currentColor" letter-spacing=".14em" font-weight="600">AGENT</text>
-            <text x="170" y="190" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="currentColor" letter-spacing=".14em" opacity="0.75">conforms, never prescribes</text>
-
-            <!-- Flow arrow into customer edge -->
-            <line x1="20" y1="172" x2="40" y2="172" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
-            <path d="M36,168 L42,172 L36,176" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
-
-            <text x="170" y="272" text-anchor="middle" class="pt-sub">1 LAYER &middot; VERIFY, DON'T REPLACE</text>
-          </g>
-        </svg>
-        <figcaption id="posture-trio-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Same agent, three architectures. The skill detects which one is live before it asks a single governance question &mdash; gateway-fronted, Foundry-native, or a customer-owned edge.
-        </figcaption>
-      </figure>
     </div>
   </section>
-
-  <!-- ==================== 3 · WHAT RUNS -> WHAT YOU GET ==================== -->
-  <section class="chapter-section" id="legs" data-toc-id="legs" data-toc-label="Close the gaps">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Close the gaps</p>
-        <h2>Every gap needs an owner <em>and verified closure.</em></h2>
-        <p class="section-lede">The scorecard names the gap and its owner. Skills support remediation;
-          fresh scoped verification establishes closure. A completed prompt or command is not a pass,
-          and external consent, permissions or customer decisions may still be outstanding.</p>
-      </div>
-
-      <div class="gap-grid">
-        <article class="gap-card reveal" data-delay="1">
-          <div class="gap-head">
-            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9.5 4V2.8h5V4"/><path d="M8.8 12.6l2 2 4-4"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
-          </div>
-          <h3>Know what every agent is allowed to do.</h3>
-          <p class="gap-skill"><code>threadlight-govern</code> &middot; pillars 02 &middot; 07</p>
-          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-govern" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
-        </article>
-
-        <article class="gap-card reveal" data-delay="2">
-          <div class="gap-head">
-            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.4 2.4 5-5"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
-          </div>
-          <h3>Prove quality didn&rsquo;t regress before you ship.</h3>
-          <p class="gap-skill"><code>threadlight-evals</code> &middot; pillar 06</p>
-          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-evals" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
-        </article>
-
-        <article class="gap-card reveal" data-delay="3">
-          <div class="gap-head">
-            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
-          </div>
-          <h3>Find the jailbreak before an attacker does.</h3>
-          <p class="gap-skill"><code>threadlight-redteam</code> &middot; pillar 07</p>
-          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-redteam" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
-        </article>
-
-        <article class="gap-card reveal" data-delay="1">
-          <div class="gap-head">
-            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l8 4.4v9.6L12 21.2 4 16.8V7.2z"/><path d="M4 7.2l8 4.4 8-4.4M12 11.6v9.6"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
-          </div>
-          <h3>Catch a poisoned tool swap.</h3>
-          <p class="gap-skill"><code>threadlight-production-ready</code> &middot; pillar 09</p>
-          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/09-supply-chain.md" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
-        </article>
-
-        <article class="gap-card reveal" data-delay="2">
-          <div class="gap-head">
-            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M14.4 9.4a2.6 2.6 0 0 0-2.4-1.3c-1.5 0-2.7.9-2.7 2 0 2.5 5.4 1.3 5.4 3.7 0 1.15-1.25 2-2.7 2a2.8 2.8 0 0 1-2.5-1.35"/><path d="M12 6.6v10.8"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
-          </div>
-          <h3>Forecast the bill before finance sees it.</h3>
-          <p class="gap-skill"><code>threadlight-consumption-iq</code> &middot; pillar 10</p>
-          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
-        </article>
-
-        <article class="gap-card reveal" data-delay="3">
-          <div class="gap-head">
-            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6" r="2.4"/><circle cx="7" cy="18" r="2.4"/><circle cx="17" cy="10" r="2.4"/><path d="M7 8.4v7.2"/><path d="M7 12.5h4.2a3 3 0 0 0 3-3v-.1"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
-          </div>
-          <h3>Make every check a merge gate.</h3>
-          <p class="gap-skill"><code>threadlight-cicd</code> &middot; gates the deploy</p>
-          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
-        </article>
-
-        <article class="gap-card reveal" data-delay="1">
-          <div class="gap-head">
-            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l8 4.4v9.6L12 21.2 4 16.8V7.2z"/><path d="M4 7.2l8 4.4 8-4.4M12 11.6v9.6"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
-          </div>
-          <h3>Prove the real endpoint before you trust it.</h3>
-          <p class="gap-skill"><code>threadlight-connect</code> &middot; manual, evidence-gated mock&rarr;real swap</p>
-          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-connect" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
-        </article>
-
-        <article class="gap-card reveal" data-delay="2">
-          <div class="gap-head">
-            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.4 2.4 5-5"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
-          </div>
-          <h3>Prove the retrieval is safe, not just plausible.</h3>
-          <p class="gap-skill"><code>threadlight-ground</code> &middot; manual ACL / citation / refusal evidence</p>
-          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-ground" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
-        </article>
-
-        <article class="gap-card reveal" data-delay="3">
-          <div class="gap-head">
-            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
-            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
-          </div>
-          <h3>Prove it holds up &mdash; under a hard budget cap.</h3>
-          <p class="gap-skill"><code>threadlight-loadtest</code> &middot; manual, budget-capped, production-confirmed load evidence</p>
-          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-loadtest" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
-        </article>
-      </div>
-
-      <div class="read-deeper">
-        <span class="rd-label">The scorecard itself:</span>
-        <span><code>docs/production-readiness-report.md</code> + <code>tests/production-readiness-manifest.json</code> &mdash; per-pillar findings, evidence register and waivers for an accountable go-live review.</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== 4 · PROOF ==================== -->
-  <section class="chapter-section" id="proof" data-toc-id="proof" data-toc-label="Scorecard example">
+<section class="chapter-section" id="proof" data-toc-id="proof" data-toc-label="Scorecard example">
     <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Illustrative scorecard &middot; not current readiness</p>
@@ -989,7 +1250,7 @@
           not a measured result for every pilot or a signed go-live decision.
           A real decision requires dated, deployment-bound evidence, verification coverage,
           named owners and explicit waiver scope and conditions.
-          <a href="#evidence-boundaries">See the separate dated runtime observations.</a></p>
+          <a href="#effect-authority">See the active runtime-control architecture.</a></p>
         <p class="section-lede" style="margin-top:12px;">
           Forecast before deployment tells you what to budget. Later-pilot, read-only <strong>Azure actuals</strong>
           tell you what settled in the target subscription and resource group. <strong>Reconciliation</strong> binds
@@ -1090,193 +1351,24 @@
       </p>
     </div>
   </section>
-
-  </details>
-  <details class="topic-reference" id="action-reference" data-topic-reference="actions-topic">
-    <summary>Business outcomes and evidence <span>How authorization connects to an accountable result</span></summary>
-  <section class="chapter-section governance-section" id="evidence-boundaries" data-toc-id="evidence-boundaries" data-toc-label="Business confidence" aria-labelledby="evidence-boundaries-heading">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Confidence through a connected operating model</p>
-        <h2 id="evidence-boundaries-heading">From agent potential <em>to accountable outcomes.</em></h2>
-        <p class="section-lede">Bring business owners, engineering and operations around the same
-          workflow. Identity, policy, human decisions and audit create a practical path from
-          a promising prototype to an application your organization can operate.</p>
-      </div>
-      <div class="why-grid">
-        <article class="why-card" id="workflow-design-value" aria-labelledby="workflow-design-heading">
-          <p class="why-kicker">Design for the business</p>
-          <h3 id="workflow-design-heading">Make autonomy useful</h3>
-          <p>Start with the process, its decisions and the systems of record.
-            Give agents clear tasks and connect the actions that create value through explicit contracts.</p>
-          <p>Let routine work move forward inside your rules while keeping responsibility for
-            consequential outcomes with the right systems and people.</p>
+<div class="gap-grid">
+<article class="gap-card reveal" data-delay="2">
+          <div class="gap-head">
+            <span class="gap-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M14.4 9.4a2.6 2.6 0 0 0-2.4-1.3c-1.5 0-2.7.9-2.7 2 0 2.5 5.4 1.3 5.4 3.7 0 1.15-1.25 2-2.7 2a2.8 2.8 0 0 1-2.5-1.35"/><path d="M12 6.6v10.8"/></svg></span>
+            <span class="gap-flip" aria-hidden="true"><i class="amber"></i><span class="arw">&rarr;</span><i class="green"></i></span>
+          </div>
+          <h3>Forecast the bill before finance sees it.</h3>
+          <p class="gap-skill"><code>threadlight-consumption-iq</code> &middot; pillar 10</p>
+          <a class="gap-link" href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-consumption-iq" target="_blank" rel="noopener">Browse the skill <span class="arrow">↗</span></a>
         </article>
-        <article class="why-card" id="human-decision-value" aria-labelledby="human-decision-heading">
-          <p class="why-kicker">Decide at the right level</p>
-          <h3 id="human-decision-heading">Human judgement, connected</h3>
-          <p>Define which exceptions require review and who can decide them.
-            Notification channels can guide reviewers to the right context; authenticated approval
-            records the decision that permits the workflow to continue.</p>
-          <p>The decision belongs to the reviewer. The execution belongs to a controlled
-            system path, with a clear relationship between the two.</p>
-        </article>
-        <article class="why-card" id="operating-evidence-value" aria-labelledby="operating-evidence-heading">
-          <p class="why-kicker">Operate with evidence</p>
-          <h3 id="operating-evidence-heading">Connect actions to outcomes</h3>
-          <p>Trace the request, the policy decision, human involvement and the result recorded
-            by the business system. Give operations and reviewers evidence they can use.</p>
-          <p>Bring this action-level view together with quality, reliability, privacy and cost
-            evidence to guide the next release and the next expansion of autonomy.</p>
-        </article>
-      </div>
-      <div class="read-deeper">
-        <span class="rd-label">Go deeper:</span>
-        <span>Explore implementation profiles, supported controls and the engineering validation
-          record when planning your own workflow.</span>
-      </div>
-      <div class="cost-cta-row" style="margin-top:26px;">
-        <a class="btn btn-primary" href="./agent-governance.html">Explore agent governance <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/governed-returns-validation.md">Read the dated execution record</a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/772074123506c285eed2395c40ded4eaad229cc6/docs/agent-governance-deep-dive.md">Inspect implementation and evidence joins</a>
-      </div>
-    </div>
-  </section>
-
-  </details>
-
-  <details class="topic-reference" id="delivery-reference" data-topic-reference="readiness-topic">
-    <summary>Delivery and go-live <span>Pipeline options, starter prompts and review decisions</span></summary>
-  <!-- ==================== 6 · SHIP IT ==================== -->
-  <section class="chapter-section" id="ship" data-toc-id="ship" data-toc-label="Ship it &middot; the pipeline">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Ship it &middot; the pipeline</p>
-        <h2>Deploy through CI/CD &mdash; <em>not your laptop.</em></h2>
-        <p class="section-lede">Generate the pipeline <em>and</em> runbooks for the platform team:
-          federated identity, scoped RBAC and no secret in the repo.
-          Select and verify the required gates explicitly; generation is not approval to deploy.</p>
-      </div>
-
-      <figure class="pipe-fig reveal" data-delay="1" aria-labelledby="pipe-cap" tabindex="0">
-        <svg class="pipe-svg" viewBox="0 0 1080 272" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The generated pipeline: a commit passes an environment approval, then azd provision and azd deploy over OIDC, then three verification gates run in parallel — evaluation, red-team and MCP supply-chain — and only when all pass does the release reach the production spoke.">
-          <defs>
-            <style>
-              .pp-tag  { font-family: var(--mono); font-size: 11px;  letter-spacing: .09em; fill: currentColor; font-weight: 600; }
-              .pp-sub  { font-family: var(--mono); font-size: 8.5px; letter-spacing: .07em; fill: currentColor; opacity: .68; }
-              .pp-note { font-family: var(--mono); font-size: 9.5px; letter-spacing: .10em; fill: currentColor; opacity: .72; }
-            </style>
-          </defs>
-
-          <!-- spine -->
-          <rect x="6"   y="46" width="118" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="65"  y="76" text-anchor="middle" class="pp-tag">COMMIT</text>
-          <text x="65"  y="90" text-anchor="middle" class="pp-sub">git push / PR</text>
-
-          <rect x="152" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="218" y="76" text-anchor="middle" class="pp-tag">ENV APPROVAL</text>
-          <text x="218" y="90" text-anchor="middle" class="pp-sub">manual gate</text>
-
-          <rect x="312" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="378" y="76" text-anchor="middle" class="pp-tag">AZD PROVISION</text>
-          <text x="378" y="90" text-anchor="middle" class="pp-sub">OIDC &middot; WIF</text>
-
-          <rect x="472" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="538" y="76" text-anchor="middle" class="pp-tag">AZD DEPLOY</text>
-          <text x="538" y="90" text-anchor="middle" class="pp-sub">keyless</text>
-
-          <!-- forward arrows (lime) -->
-          <g fill="none" stroke="var(--lime)" stroke-width="1.7">
-            <line x1="124" y1="72" x2="150" y2="72"/><path d="M145,67 L154,72 L145,77"/>
-            <line x1="284" y1="72" x2="310" y2="72"/><path d="M305,67 L314,72 L305,77"/>
-            <line x1="444" y1="72" x2="470" y2="72"/><path d="M465,67 L474,72 L465,77"/>
-          </g>
-
-          <!-- fan into gates -->
-          <g fill="none" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.4">
-            <path d="M604,72 C 648,72 648,44 692,44"/>
-            <path d="M604,72 C 648,72 648,124 692,124"/>
-            <path d="M604,72 C 648,72 648,204 692,204"/>
-          </g>
-
-          <!-- three verification gates -->
-          <g>
-            <rect x="692" y="18" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
-            <rect x="692" y="18" width="4" height="52" rx="2" fill="var(--lime)"/>
-            <text x="784" y="40" text-anchor="middle" class="pp-tag">EVAL GATE</text>
-            <text x="784" y="56" text-anchor="middle" class="pp-sub">soft | hard</text>
-
-            <rect x="692" y="98" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
-            <rect x="692" y="98" width="4" height="52" rx="2" fill="var(--lime)"/>
-            <text x="784" y="120" text-anchor="middle" class="pp-tag">RED-TEAM GATE</text>
-            <text x="784" y="136" text-anchor="middle" class="pp-sub">attack-success</text>
-
-            <rect x="692" y="178" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
-            <rect x="692" y="178" width="4" height="52" rx="2" fill="var(--lime)"/>
-            <text x="784" y="200" text-anchor="middle" class="pp-tag">MCP GATE</text>
-            <text x="784" y="216" text-anchor="middle" class="pp-sub">soft | hard</text>
-          </g>
-
-          <!-- reconverge to spoke -->
-          <g fill="none" stroke="var(--lime)" stroke-width="1.7">
-            <path d="M868,44 C 906,44 906,124 944,124"/>
-            <line x1="868" y1="124" x2="944" y2="124"/><path d="M939,119 L948,124 L939,129"/>
-            <path d="M868,204 C 906,204 906,124 944,124"/>
-          </g>
-
-          <!-- production spoke -->
-          <rect x="944" y="98" width="130" height="52" rx="10" fill="var(--lime)" fill-opacity="0.14" stroke="var(--lime)" stroke-opacity="0.85" stroke-width="1.7"/>
-          <text x="1009" y="120" text-anchor="middle" class="pp-tag">SPOKE</text>
-          <text x="1009" y="136" text-anchor="middle" class="pp-sub">production</text>
-
-          <text x="784" y="252" text-anchor="middle" class="pp-note">all gates green &rarr; ships &nbsp;&middot;&nbsp; any red &rarr; blocks (hard) or warns (soft)</text>
-        </svg>
-        <figcaption id="pipe-cap" class="pipe-cap">
-          The selected gates run in the approved workflow. Their results, missing evidence and
-          configured hard/soft behavior remain visible; no blanket all-resources verification is implied.
-          Keep client secrets out of the repository.
-        </figcaption>
-      </figure>
-
-      <div class="knob-head">
-        <h3>Customize the whole pipeline</h3>
-        <span class="sub">One skill, one prompt &mdash; these knobs, your call.</span>
-      </div>
-      <div class="knob-grid">
-        <article class="knob reveal" data-delay="1">
-          <div class="knob-flag"><code>--platform</code></div>
-          <span class="opt">github-actions &middot; azure-devops</span>
-          <p>GitHub Actions or Azure DevOps &mdash; the pipeline is emitted for your CI.</p>
-        </article>
-        <article class="knob reveal" data-delay="1">
-          <div class="knob-flag"><code>--eval-gate</code><span class="opt">soft &middot; hard</span></div>
-          <p>Warn-only while you tune, or hard-block the merge on a failed quality verdict.</p>
-        </article>
-        <article class="knob reveal" data-delay="2">
-          <div class="knob-flag"><code>--mcp-gate</code><span class="opt">soft &middot; hard</span></div>
-          <p>Warn-only, or hard-block on an unapproved MCP tool swap against the lockfile.</p>
-        </article>
-        <article class="knob reveal" data-delay="2">
-          <div class="knob-flag"><code>--target</code></div>
-          <span class="opt">citadel-spoke &middot; agt &middot; vnet &middot; standard &middot; hybrid</span>
-          <p>Emit the pipeline for the posture you detected &mdash; spoke, in-process, or your own VNet.</p>
-        </article>
-        <article class="knob reveal" data-delay="3">
-          <div class="knob-flag"><code>--private-network</code></div>
-          <span class="opt">self-hosted &middot; managed pool</span>
-          <p>Run every gate on runners inside your network &mdash; nothing calls home over the public internet.</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== 6 · GETTING STARTED ==================== -->
-  <section class="chapter-section" id="start" data-toc-id="start" data-toc-label="Getting started">
+</div>
+<section class="chapter-section" id="start" data-toc-id="start" data-toc-label="Getting started">
     <div class="wrap wrap-xl">
       <div class="section-head">
         <p class="eyebrow"><span class="dot"></span>Run it on your pilot today</p>
-        <h2>Getting started &mdash; <em>four prompts, one scorecard.</em></h2>
-        <p class="section-lede">You need your pilot in a repo and <strong>GitHub Copilot</strong> with the Threadlight skills. Azure read-access is optional &mdash; without it the cloud pillars resolve to <code>not-verified</code>, nothing fails.</p>
+        <h2>Put the checks to work. <em>Keep each handoff explicit.</em></h2>
+        <p class="section-lede">Start with a pilot repository and the Threadlight skills.
+          Offline review needs no Azure access; unavailable cloud evidence remains <code>not-verified</code>, not a pass.</p>
       </div>
 
       <div class="stepper">
@@ -1313,9 +1405,10 @@
           <div class="step-body">
             <p class="kicker">Gate the pipeline</p>
             <h3>Generate the secret-free deploy.</h3>
-            <p>An OIDC pipeline with eval, red-team and MCP gates &mdash; ready for the platform team.</p>
+            <p>Generate the OIDC pipeline and runbooks, then configure environment approvals, connect the evidence producers
+              and select hard/soft handling. Generation alone does not complete those integrations.</p>
             <pre class="code-callout" tabindex="0" aria-label="Invoke threadlight-cicd"><span class="prompt">&gt;</span> <span class="arg">"Use threadlight-cicd to generate the OIDC deploy pipeline with eval, red-team and MCP gates."</span>
-<span class="out">&mdash; writes <code>azd-deploy-prod.yml</code> (or <code>azure-pipelines.yml</code>) + env-setup runbooks &middot; no secret in the repo</span></pre>
+<span class="out">&mdash; writes <code>azd-deploy-prod.yml</code> (or <code>azure-pipelines.yml</code>) + env-setup runbooks &middot; producer wiring remains explicit</span></pre>
           </div>
         </div>
 
@@ -1324,7 +1417,7 @@
           <div class="step-body">
             <p class="kicker">Review before go-live</p>
             <h3>Decide with accountable reviewers.</h3>
-            <p>Open <code>docs/production-readiness-report.md</code>; review current evidence,
+            <p>Open <code>docs/production-readiness-report.md</code> and <code>tests/production-readiness-manifest.json</code>; review current evidence,
               coverage and remaining findings. A ship-with-waivers decision requires an authenticated
               human decision record, named owners, scope, compensating controls and expiry/review conditions.
               Pipeline generation is a separate handoff, not deployment approval.</p>
@@ -1340,9 +1433,7 @@
       </div>
     </div>
   </section>
-
-  <!-- ==================== 7 · RECAP ==================== -->
-  <section class="chapter-section" id="chapter-recap" data-toc-id="chapter-recap" data-toc-label="Recap">
+<section class="chapter-section" id="chapter-recap" data-toc-id="chapter-recap" data-toc-label="Recap">
     <div class="wrap">
       <div class="section-head" style="text-align:center; margin: 0 auto 24px;">
         <p class="eyebrow"><span class="dot"></span>Recap</p>
@@ -1387,10 +1478,7 @@
     </div>
   </section>
 
-  </details>
-      </div>
-    </div>
-  </div>
+</div>
 </main>
 
 <footer style="padding:48px 32px 64px; border-top:1px solid var(--line); text-align:center; color:var(--ink-3); font-size:13px;">

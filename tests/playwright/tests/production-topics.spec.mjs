@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 
 const topics = ['platform-controls', 'model-controls', 'effect-authority',
   'quality-controls', 'information-controls', 'operating-controls'];
-const areas = ['platform-controls', 'effect-authority', 'operating-controls'];
+const areas = ['platform-controls', 'operating-controls', 'effect-authority'];
 const subsections = [...topics.filter(id => id !== 'operating-controls'), 'delivery-controls'];
 
 test('three areas own the correct subsections and expose one platform architecture', async ({ page }) => {
@@ -23,7 +23,9 @@ test('three areas own the correct subsections and expose one platform architectu
   await expect(page.locator('#model-controls')).toContainText('Citadel');
   await expect(page.locator('#information-controls')).toContainText('not supplied by the new action-governance runtime');
   expect(await page.locator('#quality-controls').evaluate(el =>
-    !!(el.compareDocumentPosition(document.getElementById('delivery-controls')) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+    el.closest('[data-agentops-view]').dataset.agentopsView)).toBe('offline');
+  expect(await page.locator('#delivery-controls').evaluate(el =>
+    el.closest('[data-agentops-view]').dataset.agentopsView)).toBe('release');
 });
 
 test('subsection navigation preserves the selected area and keeps headings unobscured', async ({ page }) => {
@@ -67,16 +69,20 @@ test('failure catalogs reveal controls on demand without breaking the topic layo
   await page.goto('/production.html');
   for (const id of subsections) {
     await page.goto(`/production.html#${id}`);
+    if (id === 'delivery-controls') continue;
     const catalog = page.locator(`#${id} [data-risk-catalog]`);
-    await expect(catalog).not.toHaveAttribute('open', '');
-    await catalog.locator('summary').click();
+    const disclosure = await catalog.evaluate(el => el.tagName === 'DETAILS');
+    if (disclosure) {
+      await expect(catalog).not.toHaveAttribute('open', '');
+      await catalog.locator('summary').click();
+    } else await expect(catalog).toBeVisible();
     for (const risk of await catalog.locator('[data-risk]').all()) await expect(risk).toBeVisible();
     expect(await catalog.locator('[data-risk]').count()).toBeGreaterThanOrEqual(4);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
     const violations = (await new AxeBuilder({ page }).include(`#${id}`)
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
     expect(violations, id).toEqual([]);
-    await catalog.locator('summary').click();
+    if (disclosure) await catalog.locator('summary').click();
   }
 });
 
@@ -108,23 +114,23 @@ test('tabs support keyboard selection and browser history without losing context
   const orientation = await page.getByRole('tablist').getAttribute('aria-orientation');
   await first.press(orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight');
   await expect(page.locator('[data-topic-tab]').nth(1)).toBeFocused();
-  await expect(page.locator('#effect-authority')).toBeVisible();
-  await expect(page).toHaveURL(/#effect-authority$/);
+  await expect(page.locator('#operating-controls')).toBeVisible();
+  await expect(page).toHaveURL(/#operating-controls$/);
   await page.goBack();
   await expect(page.locator('#platform-controls')).toBeVisible();
   await page.goForward();
-  await expect(page.locator('#effect-authority')).toBeVisible();
-  await page.locator('[data-topic-tab]').nth(1).press('End');
   await expect(page.locator('#operating-controls')).toBeVisible();
+  await page.locator('[data-topic-tab]').nth(1).press('End');
+  await expect(page.locator('#effect-authority')).toBeVisible();
 });
 
 test('legacy deep links select the owning topic and open the necessary reference', async ({ page }) => {
   for (const [anchor, owner] of [['effect-authority', 'effect-authority'],
-    ['target', 'platform-controls'], ['checks', 'operating-controls'],
-    ['start', 'operating-controls'], ['returns-walkthrough', 'effect-authority'],
+    ['target', 'platform-controls'], ['checks', null],
+    ['start', null], ['returns-walkthrough', 'effect-authority'],
     ['evidence-boundaries', 'effect-authority']]) {
     await page.goto(`/production.html#${anchor}`);
-    await expect(page.locator(`#${owner}`)).toBeVisible();
+    if (owner) await expect(page.locator(`#${owner}`)).toBeVisible();
     await expect(page.getByRole('tabpanel')).toHaveCount(1);
     const target = page.locator(`#${anchor}`);
     await expect(target).toBeVisible();
@@ -176,8 +182,8 @@ test('without JavaScript all topic links and disclosure references remain usable
     await page.goto('/production.html');
     for (const id of topics) await expect(page.locator(`#${id}`)).toBeVisible();
     await expect(page.getByRole('tab')).toHaveCount(0);
-    await page.locator('#readiness-reference > summary').click();
     await expect(page.locator('#checks')).toBeVisible();
+    await expect(page.locator('#readiness-topic details')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   } finally {
     await context.close();

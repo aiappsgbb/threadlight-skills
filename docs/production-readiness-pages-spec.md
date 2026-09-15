@@ -26,6 +26,51 @@ passes are not silently reassigned to changed content.
 
 ### Architecture reader and Production-ready visual
 
+**Current reader journey (supersedes the regroupings below):** explain production
+to C-level readers as **shared platform → verified release → governed action**.
+Use concrete examples and diagrams as the primary explanation, not as hidden
+reference material. Preserve the shared Threadlight design and approved technical
+guide. No production Pages publication accompanies this draft.
+
+- **Common introduction:** the original six-question CISO diagram explains the
+  cross-cutting problem, before the three area selectors. It is not AgentOps.
+- **Platform & Citadel:** emphasize the external Citadel accelerator and its
+  configured networking, telemetry, consumption attribution/FinOps, model
+  policies and use-case Access Contracts. A three-team shared-capacity example
+  explains the need. The original posture comparison belongs here, alongside
+  the integration boundaries; it must never be appended to AgentOps.
+- **AgentOps & release:** show the real release choices (assisted pilot, GitHub
+  Actions, Azure DevOps), the original CI/CD diagram, evaluation/red-team evidence
+  and verification of the deployed candidate before go-live. Three focused views
+  separate release paths, evaluation and target verification. Deployment and
+  go-live are not synonyms. No generic operations/improvement program is added.
+- **Agent action governance:** the third and culminating area explains active
+  enforcement during operation. Preserve the accepted returns example and
+  authorization diagram; do not repeat that mechanism inside AgentOps.
+- **Common review:** the thirteen-pillar coverage, illustrative scorecard and
+  go-live handoff follow the areas. Their evidence spans all three; they are not
+  an AgentOps subpage. Preserve working shared fragment navigation.
+
+**Source reconciliation:** the GitHub Actions and Azure DevOps base templates
+under `skills/threadlight-cicd/references/` provision/deploy before their verdict
+readers (`needs: deploy` / `dependsOn: deploy`). The producer steps for quality,
+red-team and MCP evidence are still `echo` instructions in those base templates.
+The optional opted-in AgentOps composition executes its bound eval batch and
+assessor; it does not wire every other producer. Defaults are soft. Hard readers
+accept comprehensive/partial for evaluation, hardened/partial for red-team, and
+inspect the MCP `summary.must_fix`; they do not validate deployment binding or
+freshness, automatically roll back, protect a merge, or promote traffic. Required
+producer wiring, environment reviewers and validation-target selection must be
+explicit. This editorial change does not implement or execute those integrations.
+
+Citadel ownership/capabilities were checked against the upstream `citadel-v1`
+[README](https://github.com/Azure-Samples/ai-hub-gateway-solution-accelerator/tree/citadel-v1)
+and the installed specialist's Access Contract guidance. Registered consumers
+are not an inventory of all undiscovered agents. Neither Citadel nor the
+Threadlight delivery templates alone authorize downstream business actions.
+No new cloud or runtime proof is claimed.
+
+**Previous third-area framing (superseded by the reader journey above):**
 **Third-area framing:** name the area **AgentOps & lifecycle**, not Production
 readiness. Explain moving agent changes from development through test into
 production: versioned code/prompts/model choices/policy, evaluation, DevSecOps,
@@ -35,7 +80,7 @@ This is editorial framing, not automatic adoption of the optional native
 AgentOps integration or a new promise of turnkey environment promotion.
 Existing fragment IDs, the other two areas and the accepted guide stay unchanged.
 
-**Current approved information architecture:** three main areas, each with direct
+**Previous approved grouping (superseded ordering and ownership):** three main areas, each with direct
 subsection navigation. Platform/shared services contains the single primary
 architecture, Citadel/model-route policy and existing data-access/privacy
 responsibilities. Agent action governance retains the accepted returns example
