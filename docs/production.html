@@ -34,6 +34,35 @@
   .governance-section time, .governance-section code { overflow-wrap: anywhere; }
   .governance-section .read-deeper { flex-wrap: wrap; align-items: flex-start; }
   .governance-section figure { margin: 0; }
+  .authority-context { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 0 0 24px; padding: 14px 0; border-block: 1px solid var(--line); color: var(--ink-1); font-size: 14px; }
+  .authority-context strong { color: var(--ink-0); }
+  .authority-map { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-1); }
+  .authority-map .am-panel { fill: var(--bg-2); stroke: var(--line-2); stroke-width: 1.5; }
+  .authority-map .am-focus { fill: var(--chapter-accent-soft); stroke: var(--chapter-accent); stroke-width: 2; }
+  .authority-map .am-title { fill: var(--ink-0); font-family: var(--sans); font-size: 25px; font-weight: 650; }
+  .authority-map .am-text { fill: var(--ink-1); font-family: var(--sans); font-size: 16px; }
+  .authority-map .am-label { fill: var(--ink-1); font-family: var(--mono); font-size: 13px; }
+  .authority-map .am-line { fill: none; stroke: var(--ink-2); stroke-width: 1.8; }
+  .authority-map .am-arrow { fill: var(--ink-2); }
+  .authority-mobile { display: none; }
+  .authority-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px 32px; list-style: none; padding: 0; margin: 32px 0 24px; counter-reset: authority; }
+  .authority-steps li { min-width: 0; border-top: 1px solid var(--line); padding-top: 14px; counter-increment: authority; }
+  .authority-steps h3 { margin: 0 0 8px; font-size: 18px; }
+  .authority-steps h3::before { content: "0" counter(authority) " / "; font-family: var(--mono); color: var(--ink-2); font-size: 13px; }
+  .authority-steps p, .authority-scope { font-size: 15px; color: var(--ink-1); margin: 0; }
+  .authority-scope { padding: 18px 22px; border-left: 3px solid var(--chapter-accent); background: var(--bg-2); }
+  .authority-caption { margin: 16px 0 0; color: var(--ink-1); font-size: 14px; }
+  @media (max-width: 680px) {
+    .authority-map { display: none; }
+    .authority-mobile { display: grid; gap: 30px; list-style: none; padding: 0; margin: 0; }
+    .authority-mobile li { position: relative; padding: 22px; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 12px; }
+    .authority-mobile li:not(:last-child)::after { content: "\2193"; position: absolute; top: 100%; left: calc(50% - 7px); color: var(--ink-1); font-size: 22px; }
+    .authority-mobile .authority-decision { border-color: var(--chapter-accent); background: var(--chapter-accent-soft); }
+    .authority-mobile h3 { margin: 0 0 6px; font-size: 22px; }
+    .authority-mobile p { margin: 0; color: var(--ink-1); font-size: 15px; }
+    .authority-human { display: block; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-2); font-size: 14px; color: var(--ink-0); }
+    .authority-steps { grid-template-columns: 1fr; gap: 18px; }
+  }
 </style>
 </head>
 <body class="chapter-page chapter-production">
@@ -140,101 +169,92 @@
     </div>
   </section>
 
-  <!-- Selected authority: semantic sequence is also the diagram's text equivalent. -->
+  <!-- Static schematic with a mobile flow and an ordered text equivalent. -->
   <section class="chapter-section governance-section" id="effect-authority" data-toc-id="effect-authority" data-toc-label="Effect authority" aria-labelledby="effect-authority-heading">
     <div class="wrap wrap-xl">
       <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Explicit opt-in &middot; before the effect</p>
+        <p class="eyebrow"><span class="dot"></span>From conversation to controlled action</p>
         <h2 id="effect-authority-heading">The model proposes. <em>Trusted components authorize effects.</em></h2>
-        <p class="section-lede">The trusted system decides which actions may produce effects.
-          Select the tool, intervention point and path before enabling a consequential write.
-          Invalid selected configuration fails closed; it does not silently become off.</p>
+        <p class="section-lede">A good answer is not permission to change a business record.
+          Connect each consequential action to the rules, facts and people that can authorize it
+          &mdash; before the business system executes.</p>
+      </div>
+      <div class="authority-context" aria-label="Complementary controls">
+        <strong>Builds on your existing controls</strong>
+        <span>Identity &amp; access</span><span>Content safety &amp; model gateways</span><span>Network isolation</span>
       </div>
       <figure aria-labelledby="effect-sequence-caption">
-        <ol class="why-grid" aria-label="Selected effect authorization sequence">
-          <li class="why-card">
-            <p class="why-kicker">01 &middot; Proposal, not permission</p>
-            <h3>Native agent and fixed tools</h3>
-            <p>The Agent Identity calls the model and the declared MAF FunctionTools.
-              It can propose arguments, not mint consent, signing authority or database credentials.
-              The selected write goes through MCP; the agent is not the Cosmos writer.</p>
-          </li>
-          <li class="why-card">
-            <p class="why-kicker">02 &middot; Trusted policy authority</p>
-            <h3>Signed policy, local decisions</h3>
-            <p>A separate publisher signs the exact bundle, registry and bootstrap association.
-              The control plane verifies and serves it. ACS evaluates Rego through local OPA;
-              the host or gateway PEP enforces the selected decision.</p>
-          </li>
-          <li class="why-card">
-            <p class="why-kicker">03 &middot; Exact action scope</p>
-            <h3>Identity, target and business facts</h3>
-            <p>Validate caller, tenant, policy, deployment, fixed endpoint and strict schema.
-              Trusted backend facts and the exact quoted ETag constrain the proposal;
-              a model-supplied eligibility flag is not evidence.</p>
-          </li>
-          <li class="why-card">
-            <p class="why-kicker">04 &middot; When approval is required</p>
-            <h3>A real human decision</h3>
-            <p>An authenticated human reviewer decides the exact scoped intent with the required
-              role. The control plane consumes a one-use grant by CAS.
-              Pending approval is not a grant; an operation selector or email cannot authorize execution.</p>
-          </li>
-          <li class="why-card">
-            <p class="why-kicker">05 &middot; Durable proof before dispatch</p>
-            <h3>Audit ACK, then a different credential</h3>
-            <p>The gateway identity requires a central audit ACK before effects and persists its linkage.
-              A distinct downstream identity authorizes the business POST.
-              Authorization is rechecked after credential, retry, pool and TLS waits.</p>
-          </li>
-          <li class="why-card">
-            <p class="why-kicker">06 &middot; Independent business boundary</p>
-            <h3>Conditional transaction</h3>
-            <p>The separate business writer authenticates the downstream caller, checks current
-              facts and commits a Cosmos case replacement plus audit creation using ETag CAS.
-              This records a recommendation, not financial settlement. Unknown outcomes require reconciliation, not blind retry.</p>
-          </li>
+        <svg class="authority-map" viewBox="0 0 1080 510" role="img" aria-labelledby="authority-map-title authority-map-desc">
+          <title id="authority-map-title">Propose, authorize, execute: the controlled action path</title>
+          <desc id="authority-map-desc">The agent proposes a selected action. A trusted host or gateway checks identity, policy and business facts.
+            When required, a verified human decision in Outlook supplies one-use approval. A durable authorization audit acknowledgement
+            precedes dispatch. The independent business API checks current state and commits its update with a business audit.
+            Authenticated reads follow their own access controls. A denied or pending proposal does not execute.</desc>
+          <defs><marker id="authority-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="am-arrow" d="M0 0L10 5L0 10Z"/></marker></defs>
+          <text class="am-label" x="34" y="46">THE CONTROLLED ACTION PATH</text>
+          <rect class="am-panel" x="386" y="34" width="312" height="83" rx="12"/>
+          <text class="am-title" x="410" y="68" style="font-size:21px;">Human decision</text>
+          <text class="am-text" x="410" y="94">Native Outlook &middot; when required</text>
+          <path class="am-line" d="M542 117V155" marker-end="url(#authority-arrow)"/>
+          <rect class="am-panel" x="34" y="177" width="242" height="147" rx="14"/>
+          <text class="am-label" x="58" y="206">01 / AGENT</text>
+          <text class="am-title" x="58" y="241">Propose</text>
+          <text class="am-text" x="58" y="274">Agent + declared tools</text>
+          <text class="am-text" x="58" y="299">Arguments, not authority</text>
+          <path class="am-line" d="M276 250H383" marker-end="url(#authority-arrow)"/>
+          <text class="am-label" x="294" y="222">exact</text><text class="am-label" x="294" y="238">proposal</text>
+          <rect class="am-focus" x="386" y="157" width="312" height="187" rx="14"/>
+          <text class="am-label" x="410" y="189">02 / TRUSTED HOST OR GATEWAY</text>
+          <text class="am-title" x="410" y="224">Authorize</text>
+          <text class="am-text" x="410" y="257">Identity &middot; Policy &middot; Trusted facts</text>
+          <text class="am-text" x="410" y="284">Required decision verified</text>
+          <text class="am-text" x="410" y="320" style="font-size:14px;">Durable audit ACK before dispatch</text>
+          <path class="am-line" d="M698 250H803" marker-end="url(#authority-arrow)"/>
+          <text class="am-label" x="716" y="222">only if</text><text class="am-label" x="716" y="238">authorized</text>
+          <rect class="am-panel" x="806" y="177" width="240" height="147" rx="14"/>
+          <text class="am-label" x="830" y="206">03 / BUSINESS SYSTEM</text>
+          <text class="am-title" x="830" y="241">Execute</text>
+          <text class="am-text" x="830" y="274">Business API checks state</text>
+          <text class="am-text" x="830" y="299">Update + business audit</text>
+          <path class="am-line" d="M155 324V395" stroke-dasharray="5 5" marker-end="url(#authority-arrow)"/>
+          <rect class="am-panel" x="34" y="397" width="242" height="80" rx="12"/>
+          <text class="am-text" x="58" y="428" style="font-weight:650;">Authenticated reads</text>
+          <text class="am-text" x="58" y="455" style="font-size:14px;">Their own access rules</text>
+          <path class="am-line" d="M542 344V395M926 324V395" stroke-dasharray="5 5"/>
+          <rect class="am-panel" x="386" y="397" width="660" height="80" rx="12"/>
+          <text class="am-text" x="410" y="428" style="font-weight:650;">Audit connects authorization to outcome</text>
+          <text class="am-text" x="410" y="455">Policy decision &middot; one-use approval &middot; business transaction</text>
+        </svg>
+        <ol class="authority-mobile" aria-label="Controlled action path">
+          <li><h3>01 / Propose</h3><p>The agent supplies arguments through declared tools, not business authority.</p></li>
+          <li class="authority-decision"><h3>02 / Authorize</h3><p>Trusted code checks identity, policy and current facts. A durable audit ACK precedes dispatch.</p>
+            <span class="authority-human">Human decision when required: native Outlook approval, independently verified and consumed once.</span></li>
+          <li><h3>03 / Execute</h3><p>The independent business API checks current state and commits the update with its audit.</p></li>
         </ol>
-        <figcaption id="effect-sequence-caption" class="section-lede" style="margin-top:20px;">
-          Read left to right, then next row: proposal &rarr; trusted policy &rarr; exact facts
-          &rarr; required human decision &rarr; durable audit ACK &rarr; independent transaction.
-          An autonomous policy allow may skip human review only when the signed contract permits it.
-          A denied or pending action never enters the effect path.
+        <figcaption id="effect-sequence-caption" class="authority-caption">
+          Denied or pending? No business execution. Autonomous actions proceed only when policy allows them.
+          Human approval never bypasses the business system&rsquo;s own checks.
         </figcaption>
       </figure>
-      <div class="why-grid">
-        <article class="why-card">
-          <p class="why-kicker">Read accounting is separate</p>
-          <h3>Unbound does not mean unauthenticated</h3>
-          <p>An unbound read remains usable without ACS. Optional backend read auditing waits
-            for a durable create ACK before returning data with <code>read_audit_id</code>.
-            Later response reconciliation cannot retroactively create that before-return guarantee.</p>
-        </article>
-        <article class="why-card">
-          <p class="why-kicker">Different controls, different evidence</p>
-          <h3>Reachability is not effect authority</h3>
-          <p>Prompts guide behavior; output guardrails constrain supported returned content;
-            network isolation restricts reachability. None replaces authorization of the exact
-            effect. A post-tool filter cannot undo a committed write.</p>
-        </article>
-        <article class="why-card">
-          <p class="why-kicker">Implementation profiles</p>
-          <h3>Choose the right operating model</h3>
-          <p>Align the trusted host, gateway, publisher and backend with your deployment and
-            business requirements. Explore the engineering reference for supported profiles,
-            integration contracts and assurance methods.</p>
-        </article>
-      </div>
+      <ol class="authority-steps" aria-label="Selected effect authorization sequence">
+        <li><h3>Proposals stay proposals</h3><p>The agent cannot grant itself permission, choose a writer credential or change the approved target.</p></li>
+        <li><h3>Rules meet real facts</h3><p>Signed policy and trusted business evidence constrain the exact action, not just its explanation.</p></li>
+        <li><h3>People decide in Outlook</h3><p>When review is required, the human approves or rejects that proposal. Pending is not permission.</p></li>
+        <li><h3>Authority precedes action</h3><p>Any required one-use approval and the durable authorization record must be acknowledged before the selected write.</p></li>
+        <li><h3>The business system checks again</h3><p>A separate identity and conditional transaction protect the current record. Unknown outcomes are reconciled, not blindly retried.</p></li>
+        <li><h3>Replay is not another effect</h3><p>A completed operation returns its verified outcome. It does not create a second business change.</p></li>
+      </ol>
+      <p class="authority-scope"><strong>A selected boundary, not a blanket claim.</strong>
+        Explicit opt-in covers configured actions; invalid selected configuration fails closed.
+        An unbound read remains usable without ACS, under its normal access rules, with optional audit before return.
+        Other tools, quality, resilience and network isolation need their own controls.</p>
       <div class="cost-cta-row" style="margin-top:26px;">
-        <a class="btn btn-primary" href="./agent-governance.html">Open the scoped governance evidence page <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/agent-governance-deep-dive.md">Read the architecture <span class="arrow">&rarr;</span></a>
         <a class="btn btn-ghost" href="#evidence-boundaries">Inspect the evidence boundaries</a>
       </div>
       <div class="read-deeper">
-        <span class="rd-label">Actual source:</span>
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/skills/threadlight-govern/references/gateway/dispatcher.py">Gateway dispatcher</a>
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/skills/threadlight-govern/references/control-plane/app.py">Approval and receipt authority</a>
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/docs/agent-governance-deep-dive.md">Engineering deep dive</a>
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/20b1cca172f87f8b88fbc5d4578091dc0a5a6b4f/skills/threadlight-deploy/references/governance/returns_mcp_backend.py">Independent returns backend</a>
+        <span class="rd-label">Inside the deep dive:</span>
+        <span>Coverage boundaries &middot; integration profiles &middot; native approval &middot; implementation contracts</span>
       </div>
     </div>
   </section>

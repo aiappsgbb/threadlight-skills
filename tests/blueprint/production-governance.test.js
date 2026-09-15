@@ -42,13 +42,12 @@ test('authority section is an accessible ordered contract with distinct identiti
   assert.match(source, /id="effect-authority"[^>]*data-toc-id="effect-authority"/);
   assert.match(source, /id="effect-authority"[^>]*aria-labelledby="effect-authority-heading"/);
   assert.match(body, /<ol[^>]*aria-label="Selected effect authorization sequence"/);
-  assert.equal((body.match(/<li class="why-card"/g) || []).length, 6);
-  for (const phrase of ['The model proposes', 'Agent Identity', 'publisher', 'human reviewer',
-    'gateway identity', 'downstream identity', 'business writer', 'ACS', 'OPA',
-    'central audit ACK', 'ETag', 'unbound', 'without ACS', 'trusted host',
-    'Implementation profiles', 'network isolation']) assert.ok(text(body).includes(phrase), phrase);
+  assert.match(body, /class="authority-steps"/);
+  for (const phrase of ['The model proposes', 'Identity', 'Policy', 'Trusted facts', 'Human decision',
+    'Outlook', 'independent business API', 'audit ACK', 'unbound', 'without ACS',
+    'integration profiles', 'network isolation']) assert.ok(text(body).includes(phrase), phrase);
   assert.match(body, /agent-governance-deep-dive\.md/);
-  assert.match(body, /references\/gateway\/dispatcher\.py/);
+  assert.match(read('agent-governance-deep-dive.md'), /references\/gateway\/dispatcher\.py/);
 });
 
 test('commercial value cards link to technical evidence without exposing instance status', () => {

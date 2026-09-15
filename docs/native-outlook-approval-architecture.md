@@ -37,8 +37,14 @@ English-mail execution.
 
 ## 2. Responsibilities and trust boundaries
 
+![The agent proposes through a gateway; a separate control plane verifies a native Outlook response before an independent business API can execute.](assets/governance/outlook-boundaries.svg)
+
+<details>
+<summary>Diagram source</summary>
+
+<!-- diagram: outlook-boundaries -->
 ```mermaid
-flowchart LR
+flowchart TB
     Agent["Native hosted agent<br/>proposes, does not approve"]
     Gateway["Governed MCP gateway<br/>PEP, ACS/Rego, operation ledger"]
     Control["Control plane<br/>intent, witness verification, one-use grant"]
@@ -56,6 +62,7 @@ flowchart LR
     Control -->|"consume acknowledgement and receipt acknowledgement"| Gateway
     Gateway -->|"distinct downstream credential"| Backend
 ```
+</details>
 
 | Component | Authority it owns | Authority it does not acquire |
 |---|---|---|
@@ -89,6 +96,36 @@ configured UI client, allowlisted human object ID, `Governance.Approve` scope,
 and the relevant role in the signed token, service configuration and intent.
 That channel remains available for workloads that have not selected native
 Outlook. The review client cannot consume a grant or call the business API.
+
+<details>
+<summary>Delegated decision request schema example</summary>
+
+This complete shape uses placeholders, not executable authority. The caller
+must supply the exact registered live intent and a real delegated credential;
+it must not reconstruct the values from model text.
+
+<!-- contract: approval-decision -->
+```json
+{
+  "operation": "decide",
+  "intent": {
+    "principal": "<gateway-object-id>",
+    "agent_id": "returns-example",
+    "tenant": "<tenant-id>",
+    "allowed_roles": ["Approver"],
+    "action_hash": "sha256:<64-hex-action-hash>",
+    "policy_hash": "sha256:<64-hex-policy-digest>",
+    "session_id": "<gateway-operation-key>",
+    "context_identity": "sha256:<64-hex-facts-hash>",
+    "nonce": "<32-lowercase-hex-nonce>",
+    "expires_at": "<exact-UTC-intent-expiry>",
+    "policy_expires_at": "<exact-UTC-policy-expiry>"
+  },
+  "approved": true,
+  "approving_role": "Approver"
+}
+```
+</details>
 
 ### Native Outlook witness
 
@@ -200,6 +237,12 @@ The notification outbox lives **inside the same persisted approval record** as
 the immutable intent. There is no independent queue write whose loss can leave
 an email detached from its authority.
 
+![The notification is reserved before sending; ambiguous send outcomes require operator recovery rather than another email.](assets/governance/outlook-outbox.svg)
+
+<details>
+<summary>Diagram source</summary>
+
+<!-- diagram: outlook-outbox -->
 ```mermaid
 stateDiagram-v2
     [*] --> prepared: create pending intent and exact review payload
@@ -211,6 +254,7 @@ stateDiagram-v2
     sent --> decided: exact successful witnessed decision and ETag CAS
     decided --> consumed: authorized one-use consume
 ```
+</details>
 
 The control plane attaches `x-ms-client-tracking-id` equal to the intent nonce.
 The native run ID returned by the trigger is persisted before the caller is told
@@ -241,6 +285,12 @@ turning native Outlook on.
 
 ## 7. Resume, authorization ACK and effect
 
+![The same session resumes the unchanged operation, consumes the verified decision once, obtains an authorization ACK and receives one business outcome.](assets/governance/outlook-execution.svg)
+
+<details>
+<summary>Diagram source</summary>
+
+<!-- diagram: outlook-execution -->
 ```mermaid
 sequenceDiagram
     participant N as Same native session
@@ -252,7 +302,7 @@ sequenceDiagram
     G->>G: Rejoin immutable operation, facts and current policy
     G->>C: Authenticated resolve
     C->>A: Independently verify the exact workflow and run
-    C->>C: Decision CAS; provenance retained
+    C->>C: Decision CAS with provenance retained
     C-->>G: Server-owned exact grant
     G->>C: One-use consume
     C-->>G: Durable consume ACK
@@ -264,6 +314,7 @@ sequenceDiagram
     G->>G: Persist completed outcome reference
     G-->>N: Actual business result
 ```
+</details>
 
 Resume must use the **same native session**, exact original business arguments,
 and original `governance_operation_id`. `previous_response_id` separately

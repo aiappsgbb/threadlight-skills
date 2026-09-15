@@ -38,8 +38,9 @@ test('editorial contract keeps technical evidence intact and routes it outside c
   const deepDive = read('agent-governance-deep-dive.md');
   assert.ok(record.includes('S2-PRIVATE-ALLOW-DENY-VERIFIED'));
   assert.ok(record.includes('no new private pending intent'));
-  assert.ok(deepDive.toLowerCase().includes('four calls'));
-  assert.ok(deepDive.includes('user was unavailable'));
+  assert.ok(read('governed-returns-validation.md').includes('**4/4** call records'));
+  assert.ok(read('governed-returns-validation.md').includes('user was unavailable'));
+  assert.ok(deepDive.includes('## Contents'));
 });
 
 test('commercial page eyebrow contrast uses the readable Clawpilot token locally', () => {

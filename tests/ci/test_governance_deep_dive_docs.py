@@ -11,6 +11,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 DEEP = ROOT / "docs/agent-governance-deep-dive.md"
 SPEC = ROOT / "docs/production-readiness-pages-spec.md"
+NATIVE = ROOT / "docs/native-outlook-approval-architecture.md"
+RECORD = ROOT / "docs/governed-returns-validation.md"
 CONTROL = ROOT / "skills/threadlight-govern/references/control-plane"
 GATEWAY = ROOT / "skills/threadlight-govern/references/gateway"
 DEPLOY = ROOT / "skills/threadlight-deploy/references/governance"
@@ -60,12 +62,12 @@ def test_deep_dive_defines_authority_and_trusted_computing_base():
 
 
 def test_deep_dive_links_actual_implementation_and_regression_sources():
-    text = read(DEEP)
+    text = read(DEEP) + read(NATIVE)
     paths = (
         DEPLOY / "generate.py", DEPLOY / "maf_gateway.py",
         DEPLOY / "maf-gateway-container.py", DEPLOY / "returns_mcp_backend.py",
         DEPLOY / "returns_reconcile.py", DEPLOY / "returns-mcp-demo.md",
-        DEPLOY / "review-notification.bicep",
+        DEPLOY / "review-approval.bicep",
         GATEWAY / "dispatcher.py", GATEWAY / "receipts.py", GATEWAY / "server.py",
         CONTROL / "models.py", CONTROL / "app.py", CONTROL / "client.py",
         CONTROL / "review.py", CONTROL / "bootstrap.py", CONTROL / "hosted_lifecycle.py",
@@ -108,7 +110,7 @@ def test_sanitized_json_examples_follow_real_field_names():
     assert set(decision) == fields(DEPLOY / "returns_mcp_backend.py", "Decision")
     assert decision["decision"] == "approve_refund"
     assert decision["expected_etag"].startswith('"') and decision["expected_etag"].endswith('"')
-    request = example(DEEP, "approval-decision")
+    request = example(NATIVE, "approval-decision")
     assert set(request) == fields(CONTROL / "models.py", "DecideOperation")
     assert request["operation"] == "decide" and request["approved"] is True
     assert request["approving_role"] == "Approver"
@@ -117,59 +119,53 @@ def test_sanitized_json_examples_follow_real_field_names():
         | fields(CONTROL / "models.py", "ApprovalContext")
     )
     require(plain(DEEP), (
-        "placeholders are not executable authority", "additionalProperties",
+        "placeholders are not executable authority", "additional properties",
         "expected_etag", "if_match_etag", "X-Governance-Provenance",
-        "config_digest", "native_policy_digest", "RS256", "RSA-3072",
+        "config_digest", "native_policy_digest", "versioned signing key",
         "no exported private key", "no demo signer",
     ))
 
 
 def test_transport_and_telemetry_contract_is_not_a_blanket_header_exception():
     require(plain(DEEP), (
-        "AuthorizedTransport.same_headers", "traceparent", "tracestate", "baggage",
-        "TraceContextTextMapPropagator", "W3CBaggagePropagator",
+        "owned transports", "traceparent", "tracestate", "baggage",
         "exact active", "duplicate", "Authorization", "Idempotency-Key",
-        "http11.send_request_headers.started", "http11.send_request_body.started",
-        "credential", "retry", "pool", "TLS", "time.monotonic",
+        "credential", "retry", "pool", "TLS", "after",
         "no SDK patches", "telemetry remains enabled",
     ))
 
 
 def test_read_ack_native_traces_and_post_run_reconciliation_are_not_conflated():
     require(plain(DEEP), (
-        "read_audit_container", "read_audit_id", "append_audit",
+        "read_audit_id",
         "backend-acknowledged-before-return", "post-run-not-attestation",
-        "case-read", "native-tool-call", "arguments_digest", "output_digest",
-        "result_digest", "runner-activity", "owner", "/scope", "/case_id",
-        "create-only", "no-overwrite", "14 tool calls", "8 native responses",
-        "two-tool inventory", "unbound read", "without ACS",
+        "conditional transaction", "native traces", "reconciliation",
+        "unbound read", "without ACS",
         "not continuous attestation", "central audit ACK before",
     ))
 
 
 def test_dated_matrix_keeps_scenarios_and_live_claims_separate():
-    text = plain(DEEP)
+    text = plain(RECORD)
     require(text, (
         "2026-09-14", "2026-09-13", "S1", "S2", "S3",
         "S1-MODEL-ALLOW", "S1-MCP-DENY", "S1-HUMAN-RESUME", "S1-COMPLETED-REPLAY",
-        "not hosted", "pre-session", "project managed identity", "Login", "Pull",
-        "per-caller blob completion", "unpacking", "snapshot", "root cause",
+        "project managed identity", "Login", "Pull", "unpacking",
         "S3-HOSTED-ALLOW", "S3-HOSTED-DENY", "S3-PENDING-APPROVAL",
         "S3-EXPIRED-RESUME", "Error: Function failed.",
-        "causal expiry guard was not independently isolated",
-        "parent-owned", "governed-returns-validation.md",
+        "guard that caused that returned failure is not independently proven",
+        "native Outlook", "one business audit", "same-session resume",
     ))
     # These are already-public artifact hashes, never new environment identity claims.
-    scenario = read(ROOT / "docs/governed-returns-validation.md")
     for digest in (
         "3e46f91052d3f22bcaa1897c394075caed767f54585be57725fa93b13096c69d",
         "c44746f2cafb96065cd9f18727e51f9774e469860c61bf08f196bc9359dafafb",
         "967ca2b3103d84980a08a1ec319b2549457daab08392adb1c98eb7943a04215a",
     ):
-        assert digest in text and digest in scenario
+        assert digest in text
 
 
-@pytest.mark.parametrize("document", [DEEP, SPEC], ids=["deep-dive", "pages-spec"])
+@pytest.mark.parametrize("document", [SPEC], ids=["historical-pages-spec"])
 def test_september14_diagnostic_is_recorded_not_pending_or_authority_to_retry(document):
     text = plain(document)
     require(text, (
@@ -180,7 +176,7 @@ def test_september14_diagnostic_is_recorded_not_pending_or_authority_to_retry(do
     assert "TBD" not in text, "The September 14 diagnostic now has an observed result"
 
 
-@pytest.mark.parametrize("document", [DEEP, SPEC], ids=["deep-dive", "pages-spec"])
+@pytest.mark.parametrize("document", [SPEC], ids=["historical-pages-spec"])
 def test_later_egress_authorization_is_separate_from_the_morning_control(document):
     require(plain(document), (
         "10:55", "version 5", "no customer network change",
@@ -191,7 +187,7 @@ def test_later_egress_authorization_is_separate_from_the_morning_control(documen
     ))
 
 
-@pytest.mark.parametrize("document", [DEEP, SPEC], ids=["deep-dive", "pages-spec"])
+@pytest.mark.parametrize("document", [SPEC], ids=["historical-pages-spec"])
 def test_private_basic_v7_is_model_proof_not_private_business_authority(document):
     require(plain(document), (
         "version 6", "version 7", "Billing Issue", "ContainerRegistry",
@@ -201,7 +197,7 @@ def test_private_basic_v7_is_model_proof_not_private_business_authority(document
     ))
 
 
-@pytest.mark.parametrize("document", [DEEP, SPEC], ids=["deep-dive", "pages-spec"])
+@pytest.mark.parametrize("document", [SPEC], ids=["historical-pages-spec"])
 def test_private_governed_allow_deny_are_scoped_and_do_not_claim_human_completion(document):
     require(plain(document), (
         "private governed", "version 4", "allow and exact deny",
@@ -213,19 +209,14 @@ def test_private_governed_allow_deny_are_scoped_and_do_not_claim_human_completio
 
 def test_evidence_expiry_human_and_reproduction_limits_are_explicit():
     require(plain(DEEP), (
-        "2026-09-14T10:26:48", "no automatic renewal",
-        "resource retention", "authority expiry",
-        "HUMAN APPROVED-RESUME", "positive replay", "EMAIL", "not proved",
-        "Office 365", "Unauthenticated", "Disabled", "S1's grant",
-        "OBO A-to-B", "per-user native MCP authentication",
-        "SecurityControl=Ignore", "not a production compliance",
-        "operator-owned", "not single-command", "no financial settlement",
-        "offline", "LOCAL-14", "restoration", "reproducibility",
-        "47 declared", "four undeclared", "governance_probe_noop",
+        "no automatic renewal", "expired authority", "same native session",
+        "Office 365", "not OBO", "no financial settlement", "offline",
+        "historical receipts never confer current authorization",
+        "governance_probe_noop", "live-unverified", "no blind retry",
     ))
 
 
-@pytest.mark.parametrize("document", [DEEP, SPEC], ids=["deep-dive", "pages-spec"])
+@pytest.mark.parametrize("document", [SPEC], ids=["historical-pages-spec"])
 def test_distinct_signed_leases_require_fresh_checks_even_before_expiry(document):
     require(plain(document), (
         "2026-09-14T10:26:48.991423+00:00", "12:26 Italy",

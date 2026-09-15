@@ -41,6 +41,14 @@ test('authority and evidence are named, readable without a diagram runtime and k
   const evidence = page.locator('#evidence-boundaries');
   await expect(authority.getByRole('heading', { level: 2 })).toContainText('The model proposes');
   await expect(authority.getByRole('list', { name: 'Selected effect authorization sequence' }).locator(':scope > li')).toHaveCount(6);
+  if (page.viewportSize().width <= 680) {
+    await expect(authority.locator('.authority-mobile')).toBeVisible();
+    await expect(authority.locator('.authority-mobile')).toContainText('Outlook');
+    await expect(authority.locator('.authority-map')).toBeHidden();
+  } else {
+    await expect(authority.getByRole('img', { name: 'Propose, authorize, execute: the controlled action path' })).toBeVisible();
+  }
+  await expect(authority.getByRole('link', { name: /Read the architecture/ })).toHaveAttribute('href', /agent-governance-deep-dive\.md$/);
   await expect(evidence.locator('#workflow-design-value')).toContainText('Make autonomy useful');
   await expect(evidence.locator('#human-decision-value')).toContainText('Human judgement, connected');
   await expect(evidence.locator('#operating-evidence-value')).toContainText('Connect actions to outcomes');
@@ -49,6 +57,7 @@ test('authority and evidence are named, readable without a diagram runtime and k
   for (const section of [authority, evidence]) {
     await section.scrollIntoViewIfNeeded();
     await expect(section).toBeVisible();
+    await expect(page.locator('.floating-toc')).toHaveCSS('opacity', '1');
     const violations = (await new AxeBuilder({ page }).include(`#${await section.getAttribute('id')}`)
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
     expect(violations).toEqual([]);
@@ -75,7 +84,7 @@ test('new authority and evidence remain readable when JavaScript is disabled', a
     await page.goto('/production.html');
     await expect(page.locator('#effect-authority')).toBeVisible();
     await expect(page.locator('#evidence-boundaries')).toBeVisible();
-    await expect(page.locator('#effect-authority ol > li')).toHaveCount(6);
+    await expect(page.getByRole('list', { name: 'Selected effect authorization sequence' }).locator(':scope > li')).toHaveCount(6);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   } finally {
     await context.close();

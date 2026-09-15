@@ -18,11 +18,35 @@ They describe configurable capabilities, not a claim that every customer
 deployment or notification/approval integration has already been validated.
 
 Lab versions, pass/fail matrices, call counts, lease timestamps and instance
-blockers belong in the linked Level-500 deep dive and execution record.
+blockers belong in the linked execution record, not the architecture reading path.
 Those technical facts remain unchanged. The older evidence-card proposals and
 validation history below are retained design history, **not the commercial page contract**.
 The current commercial copy requires its own focused UI checks; prior browser
 passes are not silently reassigned to changed content.
+
+### Architecture reader and Production-ready visual
+
+The deep dive now leads with the problem, a navigable contents map, existing
+controls versus selected action governance, and two explicit integration
+profiles. Implementation contracts follow that explanation. Historical execution
+facts remain in `governed-returns-validation.md`; they are not duplicated as the
+architecture's introduction or required as its headings.
+
+The `production.html#effect-authority` section uses a connected static schematic:
+propose, authorize, execute, with a separate native Outlook human-decision lane
+and distinct audit and read boundaries. A vertical mobile flow and ordered text
+equivalent remain readable without JavaScript. Shared Threadlight colors, fonts,
+navigation and existing anchors are retained. The primary CTA opens the
+architecture report, not a lab-status page.
+
+Report diagrams are committed SVG images with descriptive alternative text and
+collapsed Mermaid sources. Two sequence diagrams contained unescaped semicolons
+that Mermaid interpreted as statement separators; those descriptions were
+corrected. Regenerate images with `node scripts/render-governance-diagrams.mjs`;
+use `--check` to detect stale images. The renderer uses the pinned Mermaid and
+existing Playwright dependencies in `tests/playwright`; no remote rendering
+service or client-side Mermaid dependency is required to read the documents.
+This remains draft source and a local preview, not production Pages publication.
 
 **Dedicated page implemented:** [Agent governance](agent-governance.html) now
 provides the integrated architecture, business benefits, use case and adoption
