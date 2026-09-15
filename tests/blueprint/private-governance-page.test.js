@@ -60,3 +60,20 @@ test('Pages specification distinguishes the implemented dedicated page from lega
   assert.ok(spec.includes('Dedicated page implemented'));
   assert.ok(spec.includes('not a production Pages deployment'));
 });
+
+test('human workflow explains native Outlook and keeps exact dated proof in engineering records', () => {
+  const html = read();
+  assert.match(html, /\/blob\/[a-f0-9]{40}\/docs\/native-outlook-approval-architecture\.md/);
+  for (const term of ['id="human-decisions"', 'Outlook', 'Approve or Reject', 'one-use', 'CIO', 'CISO']) {
+    assert.ok(html.includes(term), term);
+  }
+  const record = fs.readFileSync(path.join(root, 'docs/governed-returns-validation.md'), 'utf8');
+  assert.ok(record.includes('S2-NATIVE-OUTLOOK-HUMAN-RESUME-REPLAY'));
+  assert.ok(record.includes('09:50:18'));
+  assert.ok(record.includes('09:51:33'));
+  const deep = fs.readFileSync(path.join(root, 'docs/native-outlook-approval-architecture.md'), 'utf8');
+  for (const term of ['outlook-native/v1', 'approval_review_required', 'prepared', 'sending', 'sent',
+    'home tenant', 'not OBO', 'English', 'Italian', 'Reader', 'ambiguous', 'same native session']) {
+    assert.ok(deep.includes(term), term);
+  }
+});
