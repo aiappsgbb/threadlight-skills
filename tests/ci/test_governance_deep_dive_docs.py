@@ -135,6 +135,45 @@ def test_transport_and_telemetry_contract_is_not_a_blanket_header_exception():
     ))
 
 
+def test_action_configuration_and_resume_examples_match_the_source_contract():
+    configuration = example(DEEP, "action-approval-fields")
+    assert set(configuration) <= fields(GATEWAY / "dispatcher.py", "Action")
+    assert configuration == {
+        "name": "returns_apply_decision",
+        "approval_mode": "deferred",
+        "approval_requirement": "policy",
+        "approval_roles": ["Approver"],
+        "approval_timeout_seconds": 300,
+    }
+    resumed = example(DEEP, "resumed-decision")
+    assert isinstance(resumed.pop("governance_operation_id"), str)
+    assert resumed == example(DEEP, "returns-decision")
+
+
+@pytest.mark.parametrize("name,source,function", [
+    ("native-client-wiring", "maf_gateway.py", "create_gateway_agent"),
+    ("conditional-business-effect", "returns_mcp_backend.py", "decision_batch"),
+])
+def test_documented_python_wiring_uses_actual_function_parameters(name, source, function):
+    match = re.search(
+        rf"<!-- code: {name} -->\s*```python\n(.*?)\n```", read(DEEP), re.S
+    )
+    assert match, f"Missing named Python example: {name}"
+    compile(match[1], f"<documentation:{name}>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
+    call = next(node for node in ast.walk(ast.parse(match[1]))
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == function)
+    definition = next(node for node in ast.parse(read(DEPLOY / source)).body
+                      if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                      and node.name == function)
+    parameters = {arg.arg for arg in definition.args.args + definition.args.kwonlyargs}
+    assert {keyword.arg for keyword in call.keywords} <= parameters
+    required = {arg.arg for arg, default in zip(
+        definition.args.kwonlyargs, definition.args.kw_defaults, strict=True
+    ) if default is None}
+    assert required <= {keyword.arg for keyword in call.keywords}
+
+
 def test_read_ack_native_traces_and_post_run_reconciliation_are_not_conflated():
     require(plain(DEEP), (
         "read_audit_id",

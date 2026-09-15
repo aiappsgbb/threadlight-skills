@@ -1,20 +1,21 @@
-# Agent governance at the effect boundary
+# Agent behavior governance: from access to action authority
 
-**An architecture and implementation guide.** For engineers designing agents that
-can change business data, and architects deciding where those agents get their
-authority.
+**The technical companion to the [Production-ready chapter](production.html#production-domains).**
+The public page explains complementary production responsibilities. This guide
+locates action governance among them, explains its business purpose, then opens
+the implementation: components, configuration, tool arguments, human decisions
+and transaction recovery.
 
-An agent that can explain a return should not automatically be allowed to approve
-it. A tool call is a **proposal**, not permission. This framework connects selected
-actions to business policy, trusted facts, required human decisions and an
-independently authorizing business system.
+An authenticated agent using an approved model over a private connection may
+still propose the wrong business action. This framework governs **selected action
+paths**, not the entire agent's reasoning or all of production readiness.
 
 **The model proposes; trusted components authorize effects.**
 
 ## Contents
 
-1. [The problem this framework solves](#1-the-problem-this-framework-solves)
-2. [What is covered elsewhere](#2-what-is-covered-elsewhere)
+1. [What is covered elsewhere](#1-what-is-covered-elsewhere)
+2. [The problem this framework solves](#2-the-problem-this-framework-solves)
 3. [What is covered here](#3-what-is-covered-here)
 4. [Architecture and trust boundaries](#4-architecture-and-trust-boundaries)
 5. [From proposal to execution](#5-from-proposal-to-execution)
@@ -23,7 +24,26 @@ independently authorizing business system.
 8. [Implementation map](#8-implementation-map)
 9. [Limits and adoption](#9-limits-and-adoption)
 
-## 1. The problem this framework solves
+## 1. What is covered elsewhere
+
+The same six responsibilities introduced on the public page remain separate.
+They are complementary, not alternative architectures or a ranking of importance.
+
+| Production responsibility | Controls and owners | Relation to this guide |
+|---|---|---|
+| Platform and network controls | Platform/security teams: landing zone, network isolation, private routes, Entra identity, IAM and secrets | Establish reachability and service access. They do not authorize every business instruction carried by a valid connection. |
+| Model governance | AI platform/responsible-AI teams: approved models, content safety, output guardrails, model gateway policies, quotas and lifecycle | Govern model access and supported safety risks. Downstream business actions require their own deliberately configured control path. |
+| Agent behavior governance | Business owners define permitted actions and exceptions; engineering enforces them | **This guide:** bind selected tool calls to policy, trusted facts, human authority and a recorded outcome. |
+| Quality and evaluation | Product/engineering: task acceptance, retrieval quality, regression evaluations and red-teaming | Measure usefulness and failure behavior. A successful evaluation is not authorization for a later transaction. |
+| Information protection | Data/privacy owners: source permissions, disclosure, minimization and retention | Continue to govern reads, prompts, memory and audit payloads. An audit trail is not a privacy exemption. |
+| Operations and lifecycle | SRE/FinOps/delivery: SLOs, monitoring, cost, dependency provenance, release gates and recovery | Operate and change the system. Application rollback does not reverse a committed business effect. |
+
+The [production-readiness reference](production-readiness.md) owns the wider
+thirteen-pillar assessment. An existing business API keeps its own domain rules.
+The added agent-facing control binds proposal, policy, human authority and audit
+to that API; it does not move business integrity into the model.
+
+## 2. The problem this framework solves
 
 Consider an agent helping a customer with a return. It can retrieve a case and
 recommend an outcome. Before recording that outcome, a different question must
@@ -44,23 +64,18 @@ The running example records a return recommendation or supervisor handoff with
 an audit record. There is **no financial settlement**: recording
 `approve_refund` does not issue a payment.
 
-## 2. What is covered elsewhere
+### Routine work, exceptions and accountability
 
-These controls remain necessary. Action governance complements them rather than
-replacing or claiming their coverage.
-
-| Existing control | Its responsibility | The separate question at the effect boundary |
+| Business situation | Intended control behavior | Why it matters |
 |---|---|---|
-| Prompts, content safety and output guardrails | Shape behavior; detect or filter supported unsafe content | Is this specific business action authorized before it happens? |
-| Entra identity and IAM | Authenticate workloads and people; grant access to services | Does the authenticated caller have authority for these arguments and current business facts? |
-| A model gateway, such as APIM | Govern model access, traffic, quotas and model-facing policies | Are downstream business tools also routed through an enforcing boundary? |
-| Network isolation and private endpoints | Restrict reachability and alternative routes | What may a reachable, authenticated caller actually do? |
-| Evaluations and red-teaming | Assess quality, safety and failure behavior | Is a runtime control enforcing the selected action in this execution? |
-| Traces, monitoring and production readiness | Support diagnosis, operations and go-live review | Was authorization durably acknowledged before this effect, and what committed? |
+| Ordinary eligible return | Execute automatically when the selected policy permits it | Routine work need not wait for a human on every tool call. |
+| High-value return | Require a reviewer decision for the supervisor handoff | Human judgment authorizes one scoped proposal, not a general override or payment. |
+| Outdated case | Reject changed facts or a conflicting revision | A convincing explanation cannot authorize an obsolete transaction. |
+| Repeated completed request | Recheck authority and retrieve the original outcome | A retry does not silently become a second business change. |
 
-An existing business API may already enforce some domain rules. Keep those rules
-there. The added agent-facing control binds the proposal, policy, human authority
-and audit to that API; it does not move business integrity into the model.
+These are configurable control semantics, not measured savings or a claim that
+every deployment implements them. The architecture below explains how to compose
+them and where the business system remains responsible.
 
 ## 3. What is covered here
 
@@ -167,6 +182,33 @@ Concrete signing parameters and dependency pins belong in the
 [deployment reference](../skills/threadlight-deploy/references/governance/README.md),
 not the architecture's reading path.
 
+### Configuration decides where human review applies
+
+These are **selected fields**, not a complete deployable registry, from the
+gateway's actual `Action` model:
+
+<!-- contract: action-approval-fields -->
+```json
+{
+  "name": "returns_apply_decision",
+  "approval_mode": "deferred",
+  "approval_requirement": "policy",
+  "approval_roles": ["Approver"],
+  "approval_timeout_seconds": 300
+}
+```
+
+`deferred` returns a pending operation rather than holding an HTTP request open.
+`policy` makes the policy decision select human review; `always` instead requires
+it for every invocation of this action. `Approver` is configured authority, not
+a model-supplied role. The timeout is also capped by policy expiry.
+
+The full signed action additionally fixes `policy_binding`, allowed `workloads`,
+`scope`, `endpoint`, `outcome_endpoint`, `credential_scope`, `input_schema` and
+`output_schema`. The [registry reference](../skills/threadlight-govern/references/gateway/README.md#signed-registry-and-bundle-creation)
+defines the complete shape. The host selects the native Outlook channel
+separately; adding these five fields alone does not create a workflow or grant.
+
 ## 5. From proposal to execution
 
 The two-tool gateway example uses `returns_get_case` for an authenticated read
@@ -186,6 +228,30 @@ deliberately small:
 The quoted ETag must survive serialization. Model-supplied amount, eligibility,
 approval or writer credentials are not accepted fields. The examples contain
 no private deployment data; placeholders are not executable authority.
+
+### Connect declared tools, not a generic remote executor
+
+The generated native host uses the real `create_gateway_agent` factory from
+[`maf_gateway.py`](../skills/threadlight-deploy/references/governance/maf_gateway.py).
+This wiring fragment assumes an already verified configuration, a native model
+client, an authenticated read `FunctionTool`, and the host's fresh-binding check:
+
+<!-- code: native-client-wiring -->
+```python
+agent = await create_gateway_agent(
+    config=verified_config,
+    client=native_model_client,
+    local_tools=[get_case_tool],
+    instructions=agent_instructions,
+    credential=workload_credential,
+    authorize=authorize_current_binding,
+)
+```
+
+The factory validates the selected gateway-only contract and exact local-read
+inventory, then exposes the selected remote functions. Request options cannot
+inject extra tools, middleware or arbitrary provider options. The workload
+credential calls the gateway; it is not the business writer's credential.
 
 ![Policy allow reaches the business API only after a durable authorization receipt; deny and pending approval return without executing.](assets/governance/action-execution.svg)
 
@@ -235,6 +301,33 @@ authorized path only after the resume checks in the next section.
 The backend's `if_match_etag` protects the revision. `X-Governance-Provenance`
 links the call to governance but is not itself a credential. The business audit
 contains business arguments and needs its own privacy and retention controls.
+
+### Keep domain integrity in the business service
+
+The actual `decision_batch` function in
+[`returns_mcp_backend.py`](../skills/threadlight-deploy/references/governance/returns_mcp_backend.py)
+validates the strict arguments against the freshly read case:
+
+<!-- code: conditional-business-effect -->
+```python
+operations, result = decision_batch(
+    case=current_case,
+    arguments=proposed_arguments,
+    operation_id=business_audit_id,
+    provenance=verified_provenance,
+)
+```
+
+It rejects a mismatched case/revision, a case no longer in triage, invalid facts
+or a decision incompatible with eligibility and risk. In this example's domain
+rule, an amount above 500 or a high-risk flag permits only
+`escalate_to_supervisor`; human approval cannot turn it into a refund.
+
+The function **prepares**, but does not execute, two batch operations: conditional
+case `replace` with `if_match_etag`, and audit `create` in the same case partition.
+The business service executes that batch through its owned, authorization-aware
+Cosmos transport. The gateway receipt is a separate earlier record, not part of
+that database transaction.
 
 ## 6. Human approval and safe resume
 
@@ -290,6 +383,25 @@ business idempotency. **They are different identifiers.**
 code removes it from business arguments and restores the original MCP operation
 header. Resume must use the exact original arguments, not a new case revision
 or a model's paraphrase.
+
+For a pending operation whose original proposal was the ordinary-return example
+above, the tool-level resume shape is:
+
+<!-- contract: resumed-decision -->
+```json
+{
+  "case_id": "RMA-EXAMPLE",
+  "expected_etag": "\"revision-from-read\"",
+  "decision": "approve_refund",
+  "reason": "Eligible ordinary return; record the recommendation.",
+  "governance_operation_id": "original-operation-id"
+}
+```
+
+The real selector must be copied from that pending operation, with the same
+session and unchanged arguments. This illustrative string cannot select a real
+grant. There is intentionally no `approved`, approver identity or fresh case
+revision in the tool payload: the control plane supplies verified human authority.
 
 The control plane uses `POST /approvals/resolve` with `operation` equal to
 `request`, `resolve`, `decide` or `consume`; there is no invented `/resume`
