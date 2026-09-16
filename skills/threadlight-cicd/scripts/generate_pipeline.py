@@ -29,7 +29,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 REF = Path(__file__).resolve().parent.parent / "references"
 
@@ -191,19 +191,22 @@ def build_context(framing: dict, resolved: dict) -> dict:
 
     next_actions_md = "\n".join(f"- {a}" for a in resolved.get("next_actions", []))
 
-    # CI/CD eval + red-team gate mode (CAF: standardized evaluation + AI red
-    # teaming integrated into CI/CD). soft = warn-only; hard = block on a
-    # non-pass verdict. Soft is the default so a first onboarding doesn't wedge
-    # the pipeline before the legs have a baseline manifest.
-    eval_gate_mode = str(framing.get("eval_gate", "soft")).lower()
-    if eval_gate_mode not in ("soft", "hard"):
-        eval_gate_mode = "soft"
-    eval_gate_soft = "true" if eval_gate_mode == "soft" else "false"
-
-    mcp_gate_mode = str(framing.get("mcp_gate", "soft")).lower()
-    if mcp_gate_mode not in ("soft", "hard"):
-        mcp_gate_mode = "soft"
-    mcp_gate_soft = "true" if mcp_gate_mode == "soft" else "false"
+    for name in ("eval_gate", "mcp_gate"):
+        if framing.get(name, "hard") != "hard":
+            raise ValueError(f"{name} must be hard; verified release cannot downgrade required domains")
+    validation_env = framing.get("validation_env_name", "validation")
+    validation_sub = framing.get("validation_subscription_id", "REPLACE_WITH_VALIDATION_SUBSCRIPTION_ID")
+    validation_rg = framing.get("validation_resource_group", "REPLACE_WITH_VALIDATION_RESOURCE_GROUP")
+    if (validation_env == env_name or
+            (validation_sub == sub and validation_rg.lower() == rg.lower())):
+        raise ValueError("validation and production require distinct environments and RG-scoped targets")
+    release_policy = framing.get("release_policy", "specs/release-policy.json")
+    if (not isinstance(release_policy, str) or not re.fullmatch(r"[A-Za-z0-9_./-]+", release_policy)
+            or Path(release_policy).is_absolute() or ".." in Path(release_policy).parts):
+        raise ValueError("release_policy must be a safe project-relative JSON path")
+    for name, value in (("env_name", env_name), ("validation_env_name", validation_env)):
+        if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", value):
+            raise ValueError(f"{name} must be a simple CI environment name")
 
     return {
         "GENERATOR_VERSION": VERSION,
@@ -244,10 +247,17 @@ def build_context(framing: dict, resolved: dict) -> dict:
         "FED_SUBJECT_MAIN": f"repo:{repo}:ref:refs/heads/main",
         "FED_SUBJECT_ADO": f"sc://{ado_org}/{ado_project}/{ado_sc}",
         "NEXT_ACTIONS": next_actions_md,
-        "EVAL_GATE_MODE": eval_gate_mode,
-        "EVAL_GATE_SOFT": eval_gate_soft,
-        "MCP_GATE_MODE": mcp_gate_mode,
-        "MCP_GATE_SOFT": mcp_gate_soft,
+        "EVAL_GATE_MODE": "hard",
+        "EVAL_GATE_SOFT": "false",
+        "MCP_GATE_MODE": "hard",
+        "MCP_GATE_SOFT": "false",
+        "RELEASE_POLICY": release_policy,
+        "VALIDATION_ENV_NAME": validation_env,
+        "VALIDATION_TENANT_ID": framing.get("validation_tenant_id", tenant or "REPLACE_WITH_TENANT_ID"),
+        "VALIDATION_SUBSCRIPTION_ID": validation_sub,
+        "VALIDATION_RESOURCE_GROUP": validation_rg,
+        "VALIDATION_CLIENT_ID": framing.get("validation_client_id", "REPLACE_WITH_VALIDATION_CLIENT_ID"),
+        "VALIDATION_SERVICE_CONNECTION": framing.get("validation_service_connection", "REPLACE_WITH_VALIDATION_SERVICE_CONNECTION"),
     }
 
 # endregion
@@ -312,44 +322,49 @@ def _agentops_command(platform: str, refresh: bool) -> str:
               "fi",
               'if [ "$native_doctor_status" -ne 0 ]; then exit "$native_doctor_status"; fi',
               'if [ "$native_eval_status" -eq 2 ]; then',
-              '  echo "Native threshold gate returned 2; preserved in observed evidence and enforced by the canonical eval gate."',
+              '  echo "Native threshold gate returned 2; negative evidence was preserved and consumed."',
+              '  exit 2',
               "fi"]
     return "\n".join(lines)
 
 
 def _compose_agentops(text: str, platform: str, ctx: dict,
                       refresh: bool, schedule: str | None) -> str:
-    command = _agentops_command(platform, refresh)
+    command = _agentops_command(platform, False)
+    doctor = (
+        "set -euo pipefail\nset +x\nunset GITHUB_STEP_SUMMARY\numask 077\n"
+        "python3 .threadlight/skills/threadlight-cicd/scripts/agentops_runtime.py --repo . --refresh-doctor"
+    )
     if platform == "github-actions":
         events = "  pull_request:\n    branches: [ main ]\n"
         if schedule:
             events += f"  schedule:\n    - cron: '{schedule}'\n"
         text = text.replace("on:\n", "on:\n" + events, 1)
-        text = text.replace("  deploy:\n", "  deploy:\n"
-                            "    if: github.event_name != 'pull_request' && github.event_name != 'schedule'\n", 1)
-        text = text.replace("  eval-gate:\n    needs: deploy\n",
-                            "  eval-gate:\n    needs: deploy\n"
-                            "    if: >-\n"
-                            "      always() && !cancelled() &&\n"
-                            "      (needs.deploy.result == 'success' ||\n"
-                            "       (github.event_name == 'pull_request' &&\n"
-                            "        github.event.pull_request.head.repo.full_name == github.repository) ||\n"
-                            "       github.event_name == 'schedule')\n", 1)
-        replacement = (
-            "      - name: AgentOps bound eval / approved Doctor (existing application scope)\n"
-            "        shell: bash\n"
-            "        run: |\n" +
-            "\n".join("          " + line for line in command.splitlines()) + "\n\n"
+        def job(name, condition, body, validation, needs=None):
+            env = ctx["VALIDATION_ENV_NAME" if validation else "ENV_NAME"]
+            client = ctx["VALIDATION_CLIENT_ID" if validation else "AZURE_CLIENT_ID"]
+            tenant = ctx["VALIDATION_TENANT_ID" if validation else "TENANT_ID"]
+            subscription = ctx["VALIDATION_SUBSCRIPTION_ID" if validation else "TARGET_SUBSCRIPTION_ID"]
+            return (
+                f"\n  {name}:\n" + (f"    needs: {needs}\n" if needs else "")
+                + f"    if: {condition}\n    runs-on: {ctx['RUNNER_RUNS_ON']}\n"
+                + f"    environment: {env}\n    env:\n      AZURE_TOKEN_CREDENTIALS: AzureCliCredential\n"
+                + "    steps:\n      - uses: actions/checkout@v4\n"
+                + "      - uses: azure/login@v2\n        with:\n"
+                + f"          client-id: {client}\n          tenant-id: {tenant}\n"
+                + f"          subscription-id: {subscription}\n"
+                + "      - name: AgentOps approved native operation\n        shell: bash\n        run: |\n"
+                + "\n".join("          " + line for line in body.splitlines()) + "\n"
+            )
+        text += job(
+            "agentops-review",
+            "github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository",
+            command, True,
         )
-        text, count = re.subn(
-            r"      - name: Run quality evals \(threadlight-evals Discover leg\)\n.*?(?=      - name: Enforce eval verdict)",
-            lambda _: replacement, text, count=1, flags=re.S,
-        )
-        text = text.replace(
-            "      - name: Enforce eval verdict (mode=",
-            "      - if: github.event_name != 'schedule'\n"
-            "        name: Enforce eval verdict (mode=", 1,
-        )
+        if refresh:
+            text += job("agentops-doctor",
+                        "always() && !cancelled() && (needs.promotion.result == 'success' || github.event_name == 'schedule')",
+                        doctor, False, "promotion")
     else:
         events = "pr:\n  branches:\n    include: [ main ]\n\n"
         if schedule:
@@ -357,48 +372,29 @@ def _compose_agentops(text: str, platform: str, ctx: dict,
                        "    displayName: Owner-approved AgentOps Doctor\n"
                        "    branches:\n      include: [ main ]\n    always: true\n\n")
         text = text.replace("pool:\n", events + "pool:\n", 1)
-        text = text.replace("  - stage: deploy\n", "  - stage: deploy\n"
-                            "    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), "
-                            "ne(variables['Build.Reason'], 'Schedule'))\n", 1)
-        text = text.replace("  - stage: eval_gate\n", "  - stage: eval_gate\n"
-                            "    condition: and(not(canceled()), or(eq(dependencies.deploy.result, 'Succeeded'), "
-                            "eq(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.Reason'], 'Schedule')))\n", 1)
-        # Deployment jobs, unlike ordinary jobs, honor the existing environment's
-        # approval checks before the federated task can invoke application APIs.
-        text = text.replace("      - job: quality_evals\n        steps:\n",
-                            f"      - deployment: quality_evals\n        environment: {ctx['ENV_NAME']}\n"
-                            "        strategy:\n          runOnce:\n            deploy:\n              steps:\n", 1)
-        start = text.index("      - deployment: quality_evals")
-        end = text.index("\n  - stage: red_team_gate", start)
-        section = text[start:end]
-        lines = section.splitlines()
-        steps_index = next(i for i, line in enumerate(lines) if line.strip() == "steps:")
-        lines[steps_index + 1:] = ["      " + line if line else line for line in lines[steps_index + 1:]]
-        section = "\n".join(lines) + "\n"
-        replacement = (
-            "                - task: AzureCLI@2\n"
-            "                  displayName: AgentOps bound eval / approved Doctor (existing application scope)\n"
-            "                  inputs:\n"
-            f"                    azureSubscription: {ctx['ADO_SERVICE_CONNECTION']}\n"
-            "                    scriptType: bash\n"
-            "                    scriptLocation: inlineScript\n"
-            "                    visibleAzLogin: false\n"
-            "                    inlineScript: |\n" +
-            "\n".join("                      " + line for line in command.splitlines()) + "\n"
+        def stage(name, condition, body, validation, needs="[]"):
+            env = ctx["VALIDATION_ENV_NAME" if validation else "ENV_NAME"]
+            connection = ctx["VALIDATION_SERVICE_CONNECTION" if validation else "ADO_SERVICE_CONNECTION"]
+            return (
+                f"\n  - stage: {name}\n    dependsOn: {needs}\n    condition: {condition}\n"
+                + f"    jobs:\n      - deployment: {name}\n        environment: {env}\n"
+                + "        strategy:\n          runOnce:\n            deploy:\n              steps:\n"
+                + "                - checkout: self\n                - task: AzureCLI@2\n"
+                + "                  displayName: AgentOps approved native operation\n"
+                + "                  env:\n                    AZURE_TOKEN_CREDENTIALS: AzureCliCredential\n"
+                + f"                  inputs:\n                    azureSubscription: {connection}\n"
+                + "                    scriptType: bash\n                    scriptLocation: inlineScript\n"
+                + "                    visibleAzLogin: false\n                    inlineScript: |\n"
+                + "\n".join("                      " + line for line in body.splitlines()) + "\n"
+            )
+        text += stage(
+            "agentops_review", "and(not(canceled()), eq(variables['Build.Reason'], 'PullRequest'))",
+            command, True,
         )
-        section, count = re.subn(
-            r"                - task: AzureCLI@2\n                  displayName: Run quality evals.*?"
-            r"(?=                - task: AzureCLI@2\n                  displayName: Enforce eval verdict)",
-            lambda _: replacement, section, count=1, flags=re.S,
-        )
-        section = section.replace(
-            "                  displayName: Enforce eval verdict (mode=",
-            "                  condition: and(succeeded(), ne(variables['Build.Reason'], 'Schedule'))\n"
-            "                  displayName: Enforce eval verdict (mode=", 1,
-        )
-        text = text[:start] + section + text[end:]
-    if count != 1:
-        raise ValueError("AgentOps composition requires the existing canonical eval gate")
+        if refresh:
+            text += stage("agentops_doctor",
+                          "and(not(canceled()), or(eq(dependencies.promotion.result, 'Succeeded'), eq(variables['Build.Reason'], 'Schedule')))",
+                          doctor, False, "promotion")
     return text
 
 
@@ -411,6 +407,7 @@ def _agentops_tooling() -> dict[Path, str]:
         skills / "threadlight-agentops/scripts/agentops_check.py",
         skills / "threadlight-agentops/scripts/native_observer.py",
         skills / "threadlight-cicd/scripts/agentops_runtime.py",
+        skills / "threadlight-cicd/scripts/release_agentops.py",
         skills / "threadlight-evals/scripts/evals_check.py",
     ]
     result = {}
@@ -423,6 +420,81 @@ def _agentops_tooling() -> dict[Path, str]:
     return result
 
 
+def _release_tooling() -> dict[Path, str]:
+    skills = Path(__file__).resolve().parents[2]
+    paths = ("threadlight-cicd/scripts/release_runner.py",
+             "threadlight-production-ready/scripts/evidence_gate.py",
+             "threadlight-production-ready/scripts/mcp_sbom.py")
+    return {Path(".threadlight/skills") / path: (skills / path).read_text(encoding="utf-8")
+            for path in paths}
+
+
+def _release_policy_example(ctx: dict, agentops: bool = False) -> dict:
+    def target(prefix, action):
+        return {
+            "environment": ctx["VALIDATION_ENV_NAME" if prefix else "ENV_NAME"],
+            "tenant_id": ctx["VALIDATION_TENANT_ID" if prefix else "TENANT_ID"] or "REPLACE_WITH_TENANT_ID",
+            "subscription_id": ctx["VALIDATION_SUBSCRIPTION_ID" if prefix else "TARGET_SUBSCRIPTION_ID"] or "REPLACE_WITH_SUBSCRIPTION_ID",
+            "resource_group": ctx["VALIDATION_RESOURCE_GROUP" if prefix else "TARGET_RESOURCE_GROUP"] or "REPLACE_WITH_RESOURCE_GROUP",
+            "target_id": "REPLACE_WITH_CANONICAL_DEPLOYMENT_RESOURCE_ID",
+            action: ["python3", f".ci/{action}.py"],
+            "observe": ["python3", ".ci/observe.py"],
+        }
+    result = {
+        "schema": "threadlight-release-policy/v1",
+        "max_age_seconds": 3600, "timeout_seconds": 3600,
+        "inputs": ["REPLACE_WITH_REVIEWED_DATASET_AND_CONFIG_PATHS"],
+        "validation": target(True, "prepare"),
+        "production": target(False, "promote"),
+        "evals": {
+            "producer": ["python3", ".ci/run-evaluation.py"],
+            "outputs": ["specs/evals-manifest.json", "evals/runs/release.json"],
+            "acceptance": {"min_pass_rate": 0.95},
+        },
+        "redteam": {
+            "producer": ["python3", ".ci/run-redteam.py"],
+            "outputs": ["specs/redteam-manifest.json", "redteam/runs/release.json"],
+            "acceptance": {"max_asr": 0.1, "min_attacks": 100},
+        },
+    }
+    if agentops:
+        result["evals"]["producer"] = [
+            "python3", ".threadlight/skills/threadlight-cicd/scripts/release_agentops.py"]
+        result["evals"]["outputs"] = [
+            "specs/evals-manifest.json", "evals/runs/release-agentops.json", "specs/agentops-manifest.json"]
+    return result
+
+
+def _write_setup(directory: Path, platform: str, ctx: dict) -> list[Path]:
+    sources = {
+        "01-uami-federated-credentials.md": f"01-uami-federated-credentials.{platform}.md.tmpl",
+        "01-uami-federated-credentials.sh": f"01-uami-federated-credentials.{platform}.sh.tmpl",
+        "README.md": "README.md.tmpl",
+    }
+    for stem in ("02-rbac-role-assignments", "03-runners-private-vnet"):
+        for suffix in ("md", "sh"):
+            sources[f"{stem}.{suffix}"] = f"{stem}.{suffix}.tmpl"
+    return [_write(directory / name, _render_file(REF / "env-setup" / source, ctx))
+            for name, source in sources.items()]
+
+
+def _validation_setup_context(framing: dict, ctx: dict) -> dict:
+    env, sub, rg = (ctx["VALIDATION_ENV_NAME"], ctx["VALIDATION_SUBSCRIPTION_ID"],
+                    ctx["VALIDATION_RESOURCE_GROUP"])
+    slug = ctx["REPO_SLUG"] or "-".join(
+        item for item in (ctx["ADO_ORG"], ctx["ADO_PROJECT"]) if item) or "pilot"
+    connection = ctx["VALIDATION_SERVICE_CONNECTION"]
+    return dict(ctx, ENV_NAME=env, TARGET_SUBSCRIPTION_ID=sub, TARGET_RESOURCE_GROUP=rg,
+                TENANT_ID=ctx["VALIDATION_TENANT_ID"], AZURE_CLIENT_ID=ctx["VALIDATION_CLIENT_ID"],
+                UAMI_NAME=framing.get("validation_uami_name", f"uami-{slug}-{env}-deploy").lower(),
+                UAMI_RESOURCE_GROUP=framing.get("validation_uami_resource_group", rg),
+                UAMI_SUBSCRIPTION_ID=framing.get("validation_uami_subscription_id", sub),
+                RBAC_SCOPE_ID=f"/subscriptions/{sub}/resourceGroups/{rg}",
+                ADO_SERVICE_CONNECTION=connection,
+                FED_SUBJECT_ENV=f"repo:{ctx['REPO_FULL_NAME']}:environment:{env}",
+                FED_SUBJECT_ADO=f"sc://{ctx['ADO_ORG']}/{ctx['ADO_PROJECT']}/{connection}")
+
+
 def generate(framing: dict, out_root) -> list:
     """Render the pipeline + env-setup runbooks into out_root. Returns paths."""
     out_root = Path(out_root)
@@ -433,7 +505,9 @@ def generate(framing: dict, out_root) -> list:
     resolved = resolve_onboarding_path(framing)
     ctx = build_context(framing, resolved)
     agentops, refresh_doctor, doctor_schedule = _agentops_options(framing, out_root)
-    tooling = _agentops_tooling() if agentops else {}
+    tooling = _release_tooling()
+    if agentops:
+        tooling.update(_agentops_tooling())
     env_dir = out_root / "docs" / "threadlight-cicd" / "env-setup"
     written: list[Path] = []
 
@@ -453,23 +527,9 @@ def generate(framing: dict, out_root) -> list:
             pipeline,
         ))
 
-    # 2. Env-setup step 1 — UAMI + federated credentials (platform-specific)
-    written.append(_write(
-        env_dir / "01-uami-federated-credentials.md",
-        _render_file(REF / "env-setup" / f"01-uami-federated-credentials.{platform}.md.tmpl", ctx),
-    ))
-    written.append(_write(
-        env_dir / "01-uami-federated-credentials.sh",
-        _render_file(REF / "env-setup" / f"01-uami-federated-credentials.{platform}.sh.tmpl", ctx),
-    ))
-
-    # 3. Env-setup steps 2 + 3 — RBAC + runners (shared)
-    for stem in ("02-rbac-role-assignments", "03-runners-private-vnet"):
-        written.append(_write(env_dir / f"{stem}.md", _render_file(REF / "env-setup" / f"{stem}.md.tmpl", ctx)))
-        written.append(_write(env_dir / f"{stem}.sh", _render_file(REF / "env-setup" / f"{stem}.sh.tmpl", ctx)))
-
-    # 4. Env-setup README (index of what to hand to whom)
-    written.append(_write(env_dir / "README.md", _render_file(REF / "env-setup" / "README.md.tmpl", ctx)))
+    written.extend(_write_setup(env_dir, platform, ctx))
+    written.extend(_write_setup(out_root / "docs/threadlight-cicd/validation-env-setup",
+                                platform, _validation_setup_context(framing, ctx)))
 
     # 5. Central-platform boundary (the must-tell)
     written.append(_write(
@@ -488,6 +548,14 @@ def generate(framing: dict, out_root) -> list:
 
     for relative, content in tooling.items():
         written.append(_write(out_root / relative, content))
+    written.append(_write(
+        out_root / "specs/release-policy.example.json",
+        json.dumps(_release_policy_example(ctx, agentops), indent=2) + "\n",
+    ))
+    written.append(_write(
+        out_root / "docs/threadlight-cicd/release-contract.md",
+        (REF / "release-contract.md").read_text(encoding="utf-8"),
+    ))
     if agentops:
         written.append(_write(
             out_root / "docs/threadlight-cicd/agentops-runtime.md",
@@ -599,13 +667,17 @@ def _parse_args(argv):
     p.add_argument("--ado-pool-name", dest="ado_pool_name",
                    help="Managed DevOps Pool / self-hosted pool name for private-network runs.")
     p.add_argument("--env-name", default="prod")
-    p.add_argument("--eval-gate", choices=["soft", "hard"], default=None,
-                   help="CI/CD eval + red-team gate mode: soft (warn-only, default) "
-                        "or hard (block the pipeline on a non-pass verdict).")
-    p.add_argument("--mcp-gate", choices=["soft", "hard"], default=None,
-                   help="CI/CD MCP supply-chain gate mode: soft (warn-only, "
-                        "default) or hard (block the pipeline on any must-fix "
-                        "MCP finding).")
+    p.add_argument("--eval-gate", choices=["hard"], default=None,
+                   help="Required release domains are always blocking; configure thresholds in the release policy.")
+    p.add_argument("--mcp-gate", choices=["hard"], default=None,
+                   help="MCP release acceptance is always blocking.")
+    p.add_argument("--release-policy", default=None)
+    p.add_argument("--validation-env-name", default=None)
+    p.add_argument("--validation-tenant-id", default=None)
+    p.add_argument("--validation-sub", dest="validation_subscription_id", default=None)
+    p.add_argument("--validation-rg", dest="validation_resource_group", default=None)
+    p.add_argument("--validation-client-id", default=None)
+    p.add_argument("--validation-service-connection", default=None)
     p.add_argument("--agentops", choices=["auto", "off"], default=None,
                    help="Compose AgentOps for discovered opt-in roots (auto, default), or leave pipelines unchanged (off).")
     p.add_argument("--agentops-refresh-doctor", action="store_true", default=None,
@@ -638,6 +710,13 @@ def _framing_from_args(args) -> dict:
         "env_name": args.env_name,
         "eval_gate": args.eval_gate,
         "mcp_gate": args.mcp_gate,
+        "release_policy": args.release_policy,
+        "validation_env_name": args.validation_env_name,
+        "validation_tenant_id": args.validation_tenant_id,
+        "validation_subscription_id": args.validation_subscription_id,
+        "validation_resource_group": args.validation_resource_group,
+        "validation_client_id": args.validation_client_id,
+        "validation_service_connection": args.validation_service_connection,
         "agentops": args.agentops,
         "agentops_refresh_doctor": args.agentops_refresh_doctor,
         "agentops_doctor_schedule": args.agentops_doctor_schedule,

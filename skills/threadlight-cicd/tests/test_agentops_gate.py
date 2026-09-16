@@ -99,7 +99,8 @@ def test_opt_out_does_not_generate_tooling_even_when_opted_in(tmp_path):
     (tmp_path / "agentops.yaml").write_text("version: 1\nagent: support:1\n")
     text, paths = render(tmp_path, "github-actions", agentops="off")
     assert "agentops" not in text.lower()
-    assert not (tmp_path / ".threadlight").exists()
+    assert not (tmp_path / ".threadlight/skills/threadlight-agentops").exists()
+    assert (tmp_path / ".threadlight/skills/threadlight-cicd/scripts/release_runner.py").exists()
 
 
 def test_generated_runtime_is_portable_and_cli_is_real(tmp_path):
@@ -145,23 +146,27 @@ def test_composed_yaml_keeps_the_canonical_eval_gate_and_approvals(platform):
                                 platform, ctx, True, "0 6 * * *")
     parsed = yaml.safe_load(text)
     if platform == "github-actions":
-        assert set(parsed["jobs"]) == {"deploy", "eval-gate", "red-team-gate", "mcp-supply-chain-gate"}
-        quality = parsed["jobs"]["eval-gate"]
-        assert quality["environment"] == "prod"
-        assert quality["needs"] == "deploy"
+        assert set(parsed["jobs"]) == {"validation", "promotion", "agentops-review", "agentops-doctor"}
+        quality = parsed["jobs"]["agentops-review"]
+        assert quality["environment"] == "validation"
+        assert "needs" not in quality
         assert any("--run-eval" in step.get("run", "") for step in quality["steps"])
+        doctor = parsed["jobs"]["agentops-doctor"]
+        assert doctor["needs"] == "promotion"
+        assert not any("--run-eval" in step.get("run", "") for step in doctor["steps"])
     else:
         stages = {stage["stage"]: stage for stage in parsed["stages"]}
-        assert set(stages) == {"deploy", "eval_gate", "red_team_gate", "mcp_supply_chain_gate"}
-        quality = stages["eval_gate"]["jobs"][0]
-        assert quality["deployment"] == "quality_evals"
-        assert quality["environment"] == "prod"
+        assert set(stages) == {"validation", "promotion", "agentops_review", "agentops_doctor"}
+        quality = stages["agentops_review"]["jobs"][0]
+        assert quality["deployment"] == "agentops_review"
+        assert quality["environment"] == "validation"
         steps = quality["strategy"]["runOnce"]["deploy"]["steps"]
         assert any("--run-eval" in step.get("inputs", {}).get("inlineScript", "") for step in steps)
+        assert stages["agentops_doctor"]["dependsOn"] == "promotion"
 
 
 @pytest.mark.parametrize("eval_exit,doctor_exit,refresh,expected,consumed", [
-    (2, 0, False, 0, True),
+    (2, 0, False, 2, True),
     (1, 0, False, 1, False),
     (0, 2, True, 2, True),
 ])

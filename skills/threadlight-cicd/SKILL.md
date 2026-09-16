@@ -15,15 +15,17 @@ description: >-
   hub (use citadel-spoke-onboarding); the first-run sandbox deploy (use
   threadlight-deploy).
 metadata:
-  version: "0.4.0"
+  version: "0.5.0"
 ---
 
-# Threadlight CI/CD — prod-deploy pipeline + env-setup runbooks
+# Threadlight CI/CD — verified release + environment setup
 
 > The skill that answers "**how does this pilot actually deploy to production
 > when the agent can't run `azd up` and has no standing rights?**" — by
-> generating a federated-identity CI/CD pipeline plus the runbooks the
-> customer's platform team runs to stand up the identity, permissions, and
+> validating a separate preproduction candidate, then promoting its immutable
+> image through a protected production job. The federated-identity pipeline and
+> runbooks define the separation. The customer's platform team configures the
+> identity, permissions, and
 > runners. Secret-free by construction; parallel-track-safe by design.
 
 ## When to use
@@ -108,8 +110,9 @@ flowchart LR
 | GitHub Actions, standalone (public) | `python scripts/generate_pipeline.py --platform github-actions --central-env-required no --repo-full-name owner/repo --target-sub <sub> --target-rg <rg> --tenant-id <tid>` |
 | Azure DevOps, spoke onto existing hub | `python scripts/generate_pipeline.py --platform azure-devops --central-env-required yes --central-env-exists yes --ado-org <org> --ado-project <proj> --ado-service-connection <sc> --target-sub <sub> --target-rg <rg> --tenant-id <tid> --hub-sub <hsub> --hub-apim-id <apim-id> --access-contract-product <product>` |
 | Private-VNet target (self-hosted / managed pool) | add `--private-network` (and `--ado-pool-name <pool>` for ADO) |
-| Eval + red-team CI/CD gate mode | add `--eval-gate soft` (default, warn-only) or `--eval-gate hard` (block on a non-pass verdict) |
-| MCP supply-chain CI/CD gate mode | add `--mcp-gate soft` (default, warn-only) or `--mcp-gate hard` (block on any must-fix MCP finding) |
+| Validation target | add `--validation-env-name`, `--validation-sub`, `--validation-rg` and `--validation-client-id` or `--validation-service-connection` |
+| Required release checks | Always blocking; legacy `--eval-gate hard` / `--mcp-gate hard` remain accepted, but soft or invalid modes fail |
+| Approved producer/promotion contract | `--release-policy specs/release-policy.json`; see [release contract](references/release-contract.md) |
 | Optional AgentOps integration | `--agentops auto` (default; no opt-in means no pipeline change) or `--agentops off` |
 | Explicit post-deploy Doctor opt-in | add `--agentops-refresh-doctor`; runtime owner approval and existing application telemetry scope are still required |
 | Doctor-only schedule | add `--agentops-refresh-doctor --agentops-doctor-schedule "0 6 * * *"`; never schedules deployment |
@@ -129,24 +132,22 @@ the hub).
 
 Rendered deterministically (offline, no Azure calls, no secrets) into the pilot repo:
 
-- **Pipeline** — `.github/workflows/azd-deploy-prod.yml` (GitHub, OIDC, `environment:`
-  approval gate, seeds the azd env, then **separate** `azd provision` / `azd deploy`
-  steps) **or** `azure-pipelines.yml` (Azure DevOps, WIF service connection, three
-  `AzureCLI@2` tasks — install azd, provision, deploy — environment approvals, pool ref).
-- **Eval + red-team CI/CD gate** — after the deploy stage, two gates run the
-  threadlight Discover legs against the freshly deployed agent and enforce their
-  verdict (CAF: standardized evaluation **and** dedicated AI red teaming,
-  integrated into CI/CD):
-  - GitHub: `eval-gate` + `red-team-gate` jobs (`needs: deploy`, OIDC login),
-    each invoking `threadlight-evals` / `threadlight-redteam` then checking the
-    leg manifest verdict.
-  - Azure DevOps: `eval_gate` + `red_team_gate` stages (`dependsOn: deploy`).
-  - Mode via `--eval-gate`: **soft** (default) is warn-only
-    (`continue-on-error: true` / `continueOnError: true`); **hard** blocks the
-    pipeline on a missing or non-pass `specs/{evals,redteam}-manifest.json`
-    verdict. Soft is the default so a first onboarding isn't wedged before the
-    legs have a baseline manifest.
-- **Env-setup runbooks** — `docs/threadlight-cicd/env-setup/`:
+- **Pipeline** — `.github/workflows/azd-deploy-prod.yml` or `azure-pipelines.yml`.
+  `validation` prepares an isolated candidate, executes configured real
+  producers and the supplied MCP checker, then enforces required domains.
+  `promotion` depends on that success and uses a different protected
+  environment and deployment identity. It verifies the receipt SHA-256 supplied
+  separately by the validation job, source/run/attempt, policy and input hashes.
+- **Executable release tooling** — `release_runner.py`, the shared strict
+  canonical evidence consumer and actual MCP producer. The runner invokes the
+  reviewed application's deployment/evaluation/scanner adapters, not `echo`
+  instructions. Missing adapters, authority or current evidence are blockers.
+  The metadata receipt is not a business-write proof or readiness certificate.
+- **Policy example** — `specs/release-policy.example.json`, deliberately separate
+  from the executable policy. Configure and commit its real target, producer,
+  observer, input and threshold contract before enabling the workflow.
+- **Env-setup runbooks** — `docs/threadlight-cicd/env-setup/` for production and
+  `docs/threadlight-cicd/validation-env-setup/` for validation:
   - `01-uami-federated-credentials.md` + `.sh` (UAMI + GH OIDC or ADO WIF — no secrets)
   - `02-rbac-role-assignments.md` + `.sh` (target-RG-scoped: deploy role **plus**
     *Role Based Access Control Administrator* so keyless `azd provision` can assign
@@ -159,14 +160,20 @@ Rendered deterministically (offline, no Azure calls, no secrets) into the pilot 
 Public targets default to hosted runners (`ubuntu-latest` / ADO `vmImage`); private
 targets switch to `self-hosted` labels / a named ADO pool.
 
-### `--mcp-gate soft|hard`
+### Required-domain acceptance
 
-Adds an **MCP supply-chain gate** to the generated production pipeline, after
-deploy, alongside the eval and red-team gates. It enforces the `mcp-sbom.json`
-that `threadlight-production-ready` writes (`tests/mcp-sbom.json`): `soft`
-(default) warns only and keeps the pipeline green; `hard` blocks the pipeline on
-any must-fix MCP finding (an unpinned server, undocumented lock drift, or an
-inline credential). OIDC / WIF only — no secret.
+Quality checks compare actual metrics with approved thresholds. Red teaming
+requires fresh, sufficiently sized evidence for every required attack category.
+MCP checks execute `mcp_sbom.py` and reject missing or contradictory counts,
+unresolved findings and lock drift. Neither an empty object nor an aggregate
+`partial` verdict grants release acceptance. Optional evaluation capabilities
+can be scoped explicitly in reviewed policy; core execution, dataset, freshness
+and threshold checks cannot be disabled.
+
+All producer evidence is bound to the current source, observed candidate,
+inputs and CI attempt. A failed gate never starts the production job. A failed
+promotion is not rollback: the deployment adapter owns immutable-image use,
+durable idempotency, business-routing closure and reconciliation.
 
 ### `--agentops auto|off`
 
@@ -175,22 +182,24 @@ AgentOps discovery contract. The only opt-in is each agent's `agentops.yaml`;
 there is no second agent registry. `auto` without opt-in and `off` preserve
 the existing workflows and do not emit AgentOps tooling.
 
-With opt-in, compose into the existing `eval-gate` job / `eval_gate` stage:
+With opt-in, retain native operations in the same generated workflow:
 
 - PRs run the bound AgentOps eval once, including an explicitly bound baseline
   comparison when a baseline exists. They never deploy or promote a baseline.
-  Untrusted fork PRs do not receive the GitHub federated execution context.
+  The PR job uses the validation environment, never the production deploy
+  identity. Untrusted fork PRs do not receive the GitHub execution context.
 - Canonical `evals_check.py --target . --emit` consumes the existing validated
-  batch; it does not execute a second evaluation. Existing quality verdict gates
-  retain their soft/hard policy. Runtime approval/binding failures fail closed,
-  independently of that advisory quality policy.
+  batch; it does not execute a second evaluation. A native negative exit is
+  preserved after consumption and fails the PR check rather than being
+  silently downgraded.
 - Post-deploy Doctor is **off by default**. Enabling it requires both the
   generator option and explicit current runtime owner approval for the existing
-  application's identity, target, environment and telemetry scope.
+  application's identity, target, environment and telemetry scope. It runs
+  after successful promotion, not as a second release evaluation.
 - An optional Doctor-only schedule skips provisioning, deployment and paid
   eval. It uses the same approved environment, private runner selection and
-  OIDC/WIF context. ADO quality execution is an environment-bound deployment job
-  so environment approval checks still apply.
+  OIDC/WIF context. ADO native operations are environment-bound deployment jobs
+  so configured environment approval checks still apply.
 
 The generator vendors the minimal tooling under `.threadlight/skills/`
 to make the emitted commands executable in the application repository. Review
@@ -212,8 +221,9 @@ authorize the requested native operation.
 **Native-output privacy:** unset `GITHUB_STEP_SUMMARY`, disable shell tracing,
 use bounded private capture and clean raw outputs. Never upload native `.agentops`
 artifacts, raw eval/Doctor logs, or public step summaries. Only the normalized
-allowlisted manifest may be published; this generator publishes nothing by
-default. Raw retention needs separate explicit owner-approved location,
+allowlisted manifest may be published; the default release artifact contains
+only candidate metadata and hashes, not native outputs. Raw retention needs
+separate explicit owner-approved location,
 permissions and retention scope—not invented secrets or infrastructure.
 
 ## Relationship to threadlight-production-ready

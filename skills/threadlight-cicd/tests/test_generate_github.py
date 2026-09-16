@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import pathlib
+import re
 import sys
 import tempfile
 
@@ -54,7 +55,7 @@ def test_github_workflow_is_oidc_and_has_no_secrets():
     assert "client-secret" not in wf
     assert "clientSecret" not in wf
     # all tokens substituted
-    assert "{{" not in wf
+    assert re.search(r"(?<!\$)\{\{[A-Z_]+\}\}", wf) is None
 
 
 def test_github_uami_runbook_uses_environment_federated_subject():
@@ -89,10 +90,11 @@ def test_onboarding_path_json_is_valid_and_records_decision():
     assert "generator_version" in data
 
 
-def test_github_workflow_seeds_azd_environment_before_provision():
-    # azd provision on a clean CI checkout has no .azure env -> seed it first.
+def test_github_workflow_validates_before_authorized_promotion():
     tmp = pathlib.Path(tempfile.mkdtemp())
     mod.generate(_gh_framing(), out_root=tmp)
     wf = (tmp / ".github/workflows/azd-deploy-prod.yml").read_text()
-    assert "azd env new" in wf
-    assert wf.index("azd env new") < wf.index("azd provision")
+    assert wf.index("release_runner.py preflight") < wf.index("azure/login@")
+    assert wf.index("release_runner.py validate") < wf.index("  promotion:")
+    assert "needs: validation" in wf
+    assert "azd provision" not in wf
