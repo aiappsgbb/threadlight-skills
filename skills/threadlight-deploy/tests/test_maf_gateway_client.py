@@ -78,7 +78,7 @@ def test_maf_gateway_dependency_and_skill_contract():
     assert "no mixed local/gateway bindings" in skill
     collector = ROOT / "skills/threadlight-safe-check"
     package = tomllib.loads((collector / "pyproject.toml").read_text())
-    assert package["project"]["version"] == "0.3.0"
+    assert package["project"]["version"] == "0.3.1"
     assert {"*.yaml", "*.yml"} <= set(package["tool"]["setuptools"]["package-data"]["govern_deployment"])
     assert 'version: "1.4.0"' in (collector / "SKILL.md").read_text()
     assert "MAF Responses can use the gateway producer" in (collector / "SKILL.md").read_text()

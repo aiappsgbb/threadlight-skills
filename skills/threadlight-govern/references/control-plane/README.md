@@ -6,6 +6,24 @@ in-memory fallback. No resources, app registrations, human invitations or cloud
 deployments are created. Task 9 gateway interception, Task 10 infrastructure and
 Task 11 live proof remain separate.
 
+## Dependency maintenance
+
+The compatible update uses PyJWT 2.13.0, cryptography 49.0.0,
+aiohttp 3.14.3 and setuptools 83.0.0. Portable services and generated builds
+use the same patched declarations; published AGT/ACS/Hooks/MAF pins are unchanged.
+**[GHSA-g6cj-pr64-35w5](https://github.com/advisories/GHSA-g6cj-pr64-35w5)
+remains open:** its cryptography 50.0.0 fix conflicts with AGT 5.0.0's
+published `cryptography<50.0` requirement. No compatible newer AGT release was
+available when checked on 2026-09-16. The advisory concerns PKCS#7 EnvelopedData
+decryption, not this service's RSA/RS256 signature verification; that distinction
+is not a blanket exemption for a downstream application's image. Do not force
+installation, patch SDK metadata or treat this update as full F9 closure.
+
+Updating source packages **does not update running images** or resolve alerts
+against an unchanged default branch. The deployment owner must rebuild, inspect
+the resulting image inventory and authorize a deployment with fresh acceptance
+evidence. Do not reuse an older image's receipts for a rebuilt service.
+
 ## Trust boundary
 
 The API validates RSA/RS256 Entra signatures against a bounded, cached JWKS fetched

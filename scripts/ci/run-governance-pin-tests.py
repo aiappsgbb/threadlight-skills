@@ -252,9 +252,10 @@ def verify_gateway_junit(path):
 
 
 def gateway_requirements():
-    result = {"pytest==9.0.3", "setuptools==80.9.0"}
+    result = {"pytest==9.0.3"}
     for directory in (GATEWAY, CONTROL_PLANE):
         project = tomllib.loads((directory / "pyproject.toml").read_text())
+        result.update(project["build-system"]["requires"])
         result.update(item for item in project["project"]["dependencies"]
                       if not item.startswith("threadlight-govern-"))
     return sorted(result)

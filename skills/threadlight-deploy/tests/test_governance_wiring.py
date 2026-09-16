@@ -179,6 +179,12 @@ def test_ghcp_wildcard_mixed_server_is_not_silently_exposed():
             "https://gateway.example/mcp")
 
 
+def control_plane_requirement():
+    project = tomllib.loads(
+        (ROOT / "skills/threadlight-govern/references/control-plane/pyproject.toml").read_text())
+    return f"threadlight-govern-control-plane=={project['project']['version']}"
+
+
 def test_governance_dependencies_match_shared_pins():
     path = REFERENCES / "pyproject-maf.toml"
     assert path.is_file(), "missing exact dependency template"
@@ -189,7 +195,7 @@ def test_governance_dependencies_match_shared_pins():
         assert f"{pins[key]['distribution']}=={pins[key]['version']}" in deps
     for name, version in pins["maf"].items():
         assert f"{name}=={version}" in deps
-    assert "threadlight-govern-control-plane==0.2.0" in deps
+    assert control_plane_requirement() in deps
 
 
 def test_returns_reference_service_pin_matches_generated_runtime():
@@ -238,7 +244,7 @@ def test_native_source_packaging_preserves_existing_hub_and_has_no_gateway_servi
     assert not (project / "src/govern-gateway").exists()
     assert not (source / "governance-config.json").exists()
     assert not (source / "policy-envelope.json").exists()
-    assert "threadlight-govern-control-plane==0.2.0" in (source / "pyproject.toml").read_text()
+    assert control_plane_requirement() in (source / "pyproject.toml").read_text()
 
 
 def test_ghcp_no_direct_bound_alias_on_another_server():
