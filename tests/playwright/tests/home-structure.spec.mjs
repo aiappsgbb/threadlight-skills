@@ -5,8 +5,10 @@ test('Home puts the unchanged demo before optional explanations', async ({ page 
   await page.goto('/index.html');
   await expect(page.locator('.home-context')).not.toHaveAttribute('open', '');
   await expect(page.locator('.home-journey nav a')).toHaveCount(3);
-  await expect(page.locator('.home-catalogue-note')).toContainText('reviewed 23-skill snapshot');
-  await expect(page.locator('.home-catalogue-note')).toContainText('current 24-skill catalog');
+  const catalogue = page.locator('.home-catalogue-note').filter({ hasText: 'reviewed 23-skill snapshot' });
+  await expect(catalogue).toContainText('current 24-skill catalog');
+  await expect(page.locator('.home-catalogue-note').filter({ hasText: 'Historical demo captions' }))
+    .toContainText('not current guarantees');
   const order = await page.evaluate(() =>
     Boolean(document.querySelector('#reel').compareDocumentPosition(document.querySelector('#how-it-works')) & Node.DOCUMENT_POSITION_FOLLOWING),
   );

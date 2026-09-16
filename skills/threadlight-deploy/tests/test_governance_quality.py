@@ -79,7 +79,8 @@ def inputs(path, *, framework="microsoft-agent-framework", environment="producti
         },
     }
     deployment = deployment_fixture(configuration)
-    deployment["infrastructure"].update(environment=environment, runtime=framework)
+    deployment["infrastructure"].update(
+        environment=environment, runtime=framework, enable_gateway=framework == "github-copilot-sdk")
     if framework == "github-copilot-sdk":
         configuration.update(
             mcp_servers={"mixed": {"type": "http", "url": "https://original.example/mcp",

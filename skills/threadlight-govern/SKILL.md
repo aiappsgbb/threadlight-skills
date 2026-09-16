@@ -10,7 +10,7 @@ description: >-
   audit and attestation acceptance.
   Not for model content filtering, red-team scans or quality evaluations.
 metadata:
-  version: "2.0.1"
+  version: "2.1.0"
 ---
 
 # Threadlight Govern — policy into selected runtime enforcement
@@ -55,6 +55,16 @@ Declared bindings remain `unverified`; unbound tools remain `unbound`.
 `--gate` exits 2: offline inventory cannot pass a runtime gate.
 
 ## Boundaries under pressure
+
+Selected gateway actions may use signed `approval_mode: deferred` and
+`approval_requirement: policy` instead of holding HTTP open or requesting
+approval for every permitted call. Existing defaults stay inline/always.
+Deferred operations persist only intent and hashes, not business arguments.
+The `threadlight-review-action` operator command verifies the displayed
+proposal's action hash, requires an interactive decision and uses a separate
+delegated human credential. It records consent only; the agent must resume
+the exact operation and pass policy/fact/expiry checks before execution.
+See the gateway's executable approval flow; no model-provided approval is trusted.
 
 | Temptation | Required behavior |
 |---|---|

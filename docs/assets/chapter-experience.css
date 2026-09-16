@@ -11,7 +11,8 @@
 .chapter-experience .masthead .nav a,
 .chapter-experience .mobile-nav-toggle { min-height: 44px; }
 .chapter-experience .masthead .nav a[aria-current] { color: var(--ink-0); border-bottom: 2px solid var(--cx-accent); }
-.chapter-experience main [id] { scroll-margin-top: calc(var(--cx-header-height) + var(--cx-index-height) + 18px); }
+/* Production owns its offsets and layout; :where preserves other chapter overrides. */
+.chapter-experience:where(:not(.chapter-production)) main [id] { scroll-margin-top: calc(var(--cx-header-height) + var(--cx-index-height) + 18px); }
 .chapter-experience .floating-toc,
 .chapter-experience .floating-toc.is-ready {
   position: sticky; inset: auto; top: var(--cx-header-height); display: block; transform: none; opacity: 1;
@@ -22,7 +23,7 @@
 }
 html:not(.js) .chapter-experience .masthead,
 html:not(.js) .chapter-experience .floating-toc { position: relative; top: auto; }
-html:not(.js) .chapter-experience main [id] { scroll-margin-top: 16px; }
+html:not(.js) .chapter-experience:where(:not(.chapter-production)) main [id] { scroll-margin-top: 16px; }
 .chapter-experience .floating-toc .toc-title { display: none; }
 .chapter-experience .floating-toc ol {
   display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none;
@@ -36,11 +37,11 @@ html:not(.js) .chapter-experience main [id] { scroll-margin-top: 16px; }
 .chapter-experience .floating-toc a::before { content: none; }
 .chapter-experience .floating-toc a.is-active,
 .chapter-experience .floating-toc a:hover { background: var(--accent-soft); color: var(--ink-0); border-color: var(--line-2); }
-.chapter-experience .chapter-hero { padding: 40px 0 48px; }
-.chapter-experience .chapter-hero h1 { margin: 18px auto; font-size: clamp(42px, 5.6vw, 80px); }
-.chapter-experience .chapter-hero .lede { max-width: 60ch; }
+.chapter-experience:where(:not(.chapter-production)) .chapter-hero { padding: 40px 0 48px; }
+.chapter-experience:where(:not(.chapter-production)) .chapter-hero h1 { margin: 18px auto; font-size: clamp(42px, 5.6vw, 80px); }
+.chapter-experience:where(:not(.chapter-production)) .chapter-hero .lede { max-width: 60ch; }
 .chapter-experience section.scene { min-height: auto; padding: 64px 0; }
-.chapter-experience .chapter-section { padding: 64px 0; }
+.chapter-experience:where(:not(.chapter-production)) .chapter-section { padding: 64px 0; }
 .chapter-experience [data-chapter-intro] { line-height: 1.6; color: var(--ink-1); }
 .chapter-experience .eyebrow { color: var(--ink-2); }
 .chapter-experience .btn,
@@ -244,8 +245,8 @@ html:not(.js) .chapter-experience main [id] { scroll-margin-top: 16px; }
   .chapter-experience .floating-toc, .chapter-experience .floating-toc.is-ready { padding: 6px 20px; }
   .chapter-experience .floating-toc ol { flex-wrap: nowrap; overflow-x: auto; }
   .chapter-experience .floating-toc li { flex-shrink: 0; }
-  .chapter-experience .chapter-hero { padding: 28px 0 32px; }
-  .chapter-experience section.scene, .chapter-experience .chapter-section { padding: 40px 0; }
+  .chapter-experience:where(:not(.chapter-production)) .chapter-hero { padding: 28px 0 32px; }
+  .chapter-experience section.scene, .chapter-experience:where(:not(.chapter-production)) .chapter-section { padding: 40px 0; }
   .chapter-experience .masthead.mobile-nav-enhanced .nav { z-index: 71; }
 }
 @media (prefers-reduced-motion: reduce) {

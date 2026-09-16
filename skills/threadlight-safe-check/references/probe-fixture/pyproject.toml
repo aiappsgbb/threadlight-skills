@@ -1,12 +1,12 @@
 [build-system]
-requires = ["setuptools==80.9.0"]
+requires = ["setuptools==83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "threadlight-govern-probe-fixture"
-version = "0.1.0"
+version = "0.3.1"
 requires-python = ">=3.12,<3.13"
-dependencies = ["threadlight-govern-gateway==0.1.0"]
+dependencies = ["threadlight-govern-gateway==0.3.1"]
 
 [project.scripts]
 threadlight-govern-probe-fixture = "govern_probe_fixture.app:main"

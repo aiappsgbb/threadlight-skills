@@ -17,7 +17,7 @@ description: >-
   ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
-  version: "1.6.4"
+  version: "1.8.0"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -41,6 +41,11 @@ unbound; never remove it to make an assessment pass.
 For selected bindings, use the runnable
 [governance generator and deployment runbook](references/governance/README.md):
 
+For the bounded real-business VM-first vertical, use the
+[returns/MCP source package and demo runbook](references/governance/returns-mcp-demo.md).
+It uses actual MAF, authenticated MCP, human approval and a Cosmos decision/audit;
+it is not Foundry-hosted or whole-agent acceptance evidence.
+
 ```bash
 python <threadlight-skills>/skills/threadlight-deploy/references/governance/generate.py \
   generate --project <pilot> --contract <contract.json> --configuration <package.json>
@@ -55,6 +60,20 @@ python <threadlight-skills>/skills/threadlight-deploy/references/governance/gene
   Required audit uses remote receipt ACK **before effects**, with bounded worker
   replay and shutdown; the local retry spool is not persistent hosted storage.
   CP outage or local spool failure is unhealthy and blocks required effects.
+- MAF can also use the explicit **gateway-only** action path through
+  `maf-gateway-container.py`: real native MAF functions call the authenticated
+  MCP gateway, which runs ACS and the existing approval/audit protocol before
+  the downstream action. This path has no mixed local/gateway bindings or
+  lifecycle bindings; application-local tools must be exactly the declared
+  unbound reads. Arbitrary request-level tool/middleware/provider overrides
+  are rejected. OBO is not provided by this app-only path. Human decisions
+  remain separate delegated approval-service calls, not SDK auto-approval.
+  Generation and local native integration do not establish Azure deployment
+  or business-binding live proof. An explicitly signed deferred approval mode
+  returns `pending_approval` without keeping HTTP open. Resume the same action
+  with its `governance_operation_id`; policy, arguments, trusted facts, identity,
+  expiry and one-use approval are rechecked before the effect. This does not
+  add OBO or automatically deploy a review frontend.
 - GHCP uses `CopilotClient` + Invocations, **not** invented local hooks. Only
   bound MCP tools go through the authenticated gateway; mixed servers retain
   their explicit unbound tool filters, original URL and auth. The pinned pre-MCP
@@ -78,6 +97,12 @@ python <threadlight-skills>/skills/threadlight-deploy/references/governance/gene
   hello-world placeholder images. Packaging, assessments and health are not
   live runtime/effect-closure proof. GHCP is only action-governed after the
   Task9/11 effect-closure probes pass; never claim full output gating.
+
+For a prepared exact-pin Linux environment, the bounded inner loop is
+`python scripts/ci/run-governance-pin-tests.py --mcp-prepared`. It verifies
+published runtime bytes and runs only the MAF/MCP client, host and generation cases with a
+120-second ceiling. Missing/skipped cases fail. It never installs packages,
+deploys, runs the whole pipeline or replaces the full native/CTK acceptance gate.
 
 **Canonical runtime policy:**
 `../threadlight-design/references/runtime-policy.json`. The locked default

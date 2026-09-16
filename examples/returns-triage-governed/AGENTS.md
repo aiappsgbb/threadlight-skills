@@ -64,9 +64,10 @@ The agent orchestrates skills in order — there is no "orchestrator" skill:
 
 ## Governance
 
-Model traffic routes through the **Citadel governance hub**
-(`https://apim-citadel-hub.azure-api.net`) via the pre-provisioned
-`tl-returns-triage` access contract (SPEC § 11b).
+Model traffic routes through the **existing Citadel governance hub** selected
+by the host-owned `citadel_apim_host` and exact `citadel_project_endpoint`
+configuration. The platform team must approve and provision the application's
+Access Contract (SPEC § 11b); a model or caller cannot select another host.
 
 The native served agent uses the shared AGT 5 / ACS / Agent Hooks runtime. Only
 `returns_apply_decision` is bound to `returns-write-v1` at `pre_tool_call`; read

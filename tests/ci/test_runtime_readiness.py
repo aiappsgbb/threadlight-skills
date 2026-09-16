@@ -24,6 +24,31 @@ def workflow():
     return yaml.safe_load(WORKFLOW.read_text())
 
 
+@pytest.mark.parametrize("attempt", ["1", "2"])
+def test_readiness_isolated_paths_are_initialized_before_other_steps(tmp_path, attempt):
+    document = workflow()
+    assert set(document.get("on", document.get(True))) == {"workflow_dispatch"}
+    job = document["jobs"]["readiness-proof"]
+    assert "runner." not in json.dumps(job.get("env", {}))
+    first = job["steps"][0]
+    assert first["name"] == "Set isolated readiness paths"
+    output = tmp_path / "github-env"
+    runner_temp = tmp_path / "runner temp"
+    environment = {
+        **os.environ, "RUNNER_TEMP": str(runner_temp),
+        "GITHUB_RUN_ID": "12345", "GITHUB_RUN_ATTEMPT": attempt,
+        "GITHUB_ENV": str(output),
+    }
+    subprocess.run(["bash", "-c", first["run"]], env=environment, check=True)
+    actual = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    assert actual == {
+        name: str(runner_temp / f"{prefix}-12345-{attempt}")
+        for name, prefix in (
+            ("GOV_PROJECT", "governance"), ("AZURE_CONFIG_DIR", "azure-governance"),
+            ("AZD_CONFIG_DIR", "azd-governance"))
+    }
+
+
 def helper():
     assert SCRIPT.exists(), "Missing executable readiness workflow producer"
     spec = importlib.util.spec_from_file_location("runtime_readiness", SCRIPT)

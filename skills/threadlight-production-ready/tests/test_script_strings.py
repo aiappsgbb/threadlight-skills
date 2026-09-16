@@ -31,8 +31,8 @@ def test_pages_link_deep_governance_instead_of_repeating_the_operator_reference(
     production = (REPO / "docs/production.html").read_text()
     assert 'href="./governance.html"' in production
     assert "docs/agent-operations.md" in production
-    assert "selected bindings" in production
-    assert "not a live assessment" in production
+    assert "Opt-in bindings define coverage" in production
+    assert "not automatic go-live approval" in production
     home = (REPO / "docs/index.html").read_text()
     assert re.search(r'<section class="scene demo-intro(?: [^"]+)?" aria-labelledby="demo-h">', home)
     assert 'aria-label="Runtime governance evidence boundary"' not in home

@@ -1,4 +1,5 @@
 """Required existing-environment inputs; no fallback tenant, signature, or image."""
+import re
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -20,6 +21,8 @@ class DeploymentConfiguration(BaseModel):
     cosmos_url: str = Field(pattern=r"^https://[^/]+\.documents\.azure\.com:443/?$|^https://[^/]+\.documents\.azure\.com/?$")
     cosmos_database: str = Field(min_length=1)
     cosmos_container: str = Field(min_length=1)
+    citadel_apim_host: str = Field(
+        pattern=r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.azure-api\.net$")
     citadel_project_endpoint: str
     signed_envelope: str = Field(min_length=1)
     policy_id: Literal["returns-write-v1"]
@@ -34,9 +37,8 @@ class DeploymentConfiguration(BaseModel):
         if (control.scheme != "https" or not control.hostname or control.path not in ("", "/")
                 or control.username or control.query or control.fragment):
             raise ValueError("authenticated_control_plane_endpoint_required")
-        if (citadel.scheme != "https" or citadel.hostname != "apim-citadel-hub.azure-api.net"
-                or not citadel.path.startswith("/api/projects/") or citadel.username
-                or citadel.query or citadel.fragment):
+        if (self.citadel_project_endpoint != f"https://{self.citadel_apim_host}{citadel.path}"
+                or not re.fullmatch(r"/api/projects/[A-Za-z0-9][A-Za-z0-9._-]{0,127}", citadel.path)):
             raise ValueError("existing_citadel_project_proxy_required")
         if any(not role.strip() for role in self.approver_roles):
             raise ValueError("explicit_supervisor_roles_required")

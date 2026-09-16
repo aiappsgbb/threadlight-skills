@@ -13,7 +13,7 @@ param location string = resourceGroup().location
 var privateRequired = config.network.posture == 'private-required'
 // This is public access with Entra authorization, never restricted-network evidence.
 var publicAuthenticatedProof = config.network.posture == 'public-authenticated-proof'
-  ? (contains(['staging', 'preproduction'], config.environment) && config.network.proof_only == true && config.network.cleanup_required == true)
+  ? (contains(['staging', 'preproduction'], config.environment) && config.network.proof_only == true && (contains(config.network, 'preserve_resources') ? (config.network.preserve_resources == true && config.network.cleanup_required == false) : config.network.cleanup_required == true))
   : false
 var prefix = config.prefix
 var probesEnabled = contains(config, 'probe_observability')
@@ -198,7 +198,7 @@ resource fixtureProbeDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAss
     scope: '${cosmos.id}/dbs/governance/colls/probe-fixture'
   }
 }
-resource nativeProbeDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled && phase == 'services' && config.runtime == 'microsoft-agent-framework') {
+resource nativeProbeDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled && phase == 'services' && config.runtime == 'microsoft-agent-framework' && contains(bindings, 'native_probe_config')) {
   parent: cosmos
   name: guid(cosmos.id, 'probe-native')
   properties: {
@@ -236,7 +236,7 @@ resource fixtureProbeMetadata 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssi
     scope: cosmos.id
   }
 }
-resource nativeProbeMetadata 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled && phase == 'services' && config.runtime == 'microsoft-agent-framework') {
+resource nativeProbeMetadata 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (probesEnabled && phase == 'services' && config.runtime == 'microsoft-agent-framework' && contains(bindings, 'native_probe_config')) {
   parent: cosmos
   name: guid(cosmos.id, 'probe-native', 'metadata-only')
   properties: {

@@ -6,6 +6,10 @@ This **L400/L500** operative guide connects implementation contracts, commands,
 artifacts and failure recovery. It does not authorize deployment or replace the
 linked deep source contracts.
 
+For the action architecture, exact AGT/ACS/Hooks ownership and native human
+approval/resume, use the [agent governance deep dive](agent-governance-deep-dive.md).
+Its explanation complements the version-scoped operative commands below.
+
 **Foundation first:** [Skill-based agents: construction, runtime and evidence](skill-based-agents.md)
 separates the construction catalog from generated business skills, explains
 [runtime loading](skill-based-agents.md#runtime-loading), and traces the reviewed

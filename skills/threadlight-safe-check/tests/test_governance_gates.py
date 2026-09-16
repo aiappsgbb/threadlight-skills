@@ -70,7 +70,7 @@ def test_intentionally_unbound_read_tool_is_not_gap(tmp_path):
     assert safe_check.phase_predeploy(project, path, project / "predeploy.json") == 0
 
 
-def staged_gateway_project(tmp_path, *, phase="bound"):
+def staged_gateway_project(tmp_path, *, phase="bound", framework="github-copilot-sdk"):
     """Build bootstrap first; add the signed registry only after freezing the agent image."""
     import asyncio
     import base64
@@ -82,11 +82,21 @@ def staged_gateway_project(tmp_path, *, phase="bound"):
     from govern_control_plane.models import BundleEnvelope, SignedBundle, canonical, envelope_digest
 
     project, document, config, deployment, signer = inputs(tmp_path, environment="preproduction")
-    document["framework"] = "github-copilot-sdk"
+    document["framework"] = framework
     document["tools"][0]["enforcement_path"] = "governed-tool-gateway"
     config.update(
         mcp_servers={"original": {"type": "http", "url": "https://original.example/mcp", "tools": ["act", "read"]}},
         mcp_bindings={"act": {"server": "original", "tool": "act"}})
+    if framework == "microsoft-agent-framework":
+        config.pop("mcp_servers")
+        config.pop("mcp_bindings")
+        (project / "src/agent/governance_application.py").write_text(
+            "from agent_framework import tool\nmiddleware = []\n"
+            "@tool\n"
+            "def read() -> str:\n"
+            "    '''Read without policy selection.'''\n"
+            "    return 'read'\n"
+            "tools = [read]\n")
     deployment["infrastructure"].update(runtime=document["framework"], enable_gateway=True)
     gen = module("generate")
     gen.foundation(project, document, configuration=deployment["infrastructure"])

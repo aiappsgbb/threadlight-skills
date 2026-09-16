@@ -140,7 +140,8 @@ def check(project, document, *, manifest_path=None):
             elif actual.read_bytes() != expected.read_bytes():
                 gaps.append(f"selected runtime adapter changed: {label}")
 
-        native = contract["framework"] == "microsoft-agent-framework"
+        maf = contract["framework"] == "microsoft-agent-framework"
+        native = maf and not gen.uses_gateway(contract)
         pins = read(PIN_FILE)
         entrypoint = contained(project, (agent / "container.py").relative_to(project))
         wrapper = gen.REFERENCE / "maf-entrypoint.py"
@@ -148,11 +149,14 @@ def check(project, document, *, manifest_path=None):
             same(agent / "container.py", wrapper, "container.py")
             same(agent / "governance_host.py", gen.REFERENCE / "maf-container.py", "governance_host.py")
         else:
-            same(agent / "container.py", gen.REFERENCE / ("maf-container.py" if native else "ghcp-container.py"),
-                 "container.py")
-        runtime_spec = importlib.util.find_spec("govern_native")
-        runtime = Path(runtime_spec.origin).parent if runtime_spec else gen.GOVERN / "references/runtime"
+            template = "maf-container.py" if native else (
+                "maf-gateway-container.py" if maf else "ghcp-container.py")
+            same(agent / "container.py", gen.REFERENCE / template, "container.py")
+        if maf and not native:
+            same(agent / "maf_gateway.py", gen.REFERENCE / "maf_gateway.py", "maf_gateway.py")
         if native:
+            runtime_spec = importlib.util.find_spec("govern_native")
+            runtime = Path(runtime_spec.origin).parent if runtime_spec else gen.GOVERN / "references/runtime"
             for expected in runtime.glob("*.py"):
                 same(agent / "runtime" / expected.name, expected, "runtime/" + expected.name)
             same(agent / "audit_delivery.py", gen.REFERENCE / "audit_delivery.py", "audit_delivery.py")
@@ -194,7 +198,7 @@ def check(project, document, *, manifest_path=None):
         envelope_path = contained(project, ("src/govern-gateway/policy-envelope.json" if not native
                                            else (agent / "policy-envelope.json").relative_to(project)))
         final_gateway = not native and (envelope_path.exists() or deployment is not None)
-        # The GHCP package records bootstrap input, not the later image-bound registry.
+        # Gateway packages record bootstrap input, not the later image-bound registry.
         # These are offline declarations: none is an authority to verify its own signature.
         signed = parse(SignedBundle, (envelope_path.read_bytes() if native or final_gateway
                                      else json.dumps(package["signed_policy"]).encode()))
@@ -235,19 +239,25 @@ def check(project, document, *, manifest_path=None):
             result["unverified"].append("image-not-built")
         if deployment is not None:
             b, infra = deployment["bindings"], deployment["infrastructure"]
+            if not native and infra.get("enable_gateway") is not True:
+                raise ValueError("gateway-service-not-enabled")
+            if not native and "native_probe_config" in b:
+                raise ValueError("gateway-native-probe-binding")
             if (infra["runtime"] != contract["framework"] or infra["tenant_id"] != config["tenant_id"]
                     or infra["environment"] != config["environment"] or b["policy_digest"] != bundle.bundle_digest
                     or deployment["images"]["agent"] != image):
                 raise ValueError("deployment-binding-disagrees-with-package")
             if not native and (infra["agent_id"] != config["agent_id"]
-                               or infra["approver_roles"] != config["approver_roles"]):
+                               or infra["approver_roles"] != config["approver_roles"]
+                               or gen.approval_window(infra) != gen.approval_window(config)):
                 raise ValueError("deployment-binding-disagrees-with-package")
             for service in ("control", "gateway"):
                 settings = b[service + "_config"]
                 scope = config["control_plane_scope" if service == "control" else "gateway_scope"]
                 if (settings["tenant_id"] != config["tenant_id"] or settings["key_id"] != config["key_id"]
                         or scope != f"api://{settings['audience']}/.default"
-                        or settings["approver_roles"] != config["approver_roles"]):
+                        or settings["approver_roles"] != config["approver_roles"]
+                        or gen.approval_window(settings) != gen.approval_window(config)):
                     raise ValueError("service-auth-or-role-binding-mismatch")
             if b["gateway_config"]["control_plane_url"] != config["control_plane_url"]:
                 raise ValueError("service-endpoint-binding-mismatch")

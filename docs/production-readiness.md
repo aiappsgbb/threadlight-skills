@@ -237,6 +237,8 @@ are pinned in `remote_bootstrap.native_probe` before building the image. The
 Responses bootstrap check uses the actual pinned SDK and an empty-input metadata
 control exchange, not a model call.
 
+### Supported protected deployment route
+
 The protected workflow now accepts **only** explicit
 `remote_bootstrap.mode: resume-signed-bootstrap/v1`. It resumes an acknowledged
 prior SDK creation and operator-prepared service deployment; it does not create
@@ -249,6 +251,22 @@ project. Fresh SDK identity observations must match the supplied service binding
 before publication. Publication, native protocol check and fresh collection remain
 separate gates. Existing service images, app roles and registered fixture are
 operator prerequisites, not resources silently provisioned by this resume mode.
+
+```text
+Approved source + image -> prior SDK-created version
+  -> observe actual project, version, image and identities
+  -> stage exact configuration and bind
+  -> publish signed bootstrap -> configure endpoint -> native wait
+  -> fresh collection for this CI run/attempt -> current-readiness decision
+```
+
+The implementation is
+[`runtime_readiness_remote.py`](../scripts/ci/runtime_readiness_remote.py),
+selected by [`runtime_readiness.py`](../scripts/ci/runtime_readiness.py).
+This is the supported route to the existing post-deployment gates, not a
+workaround that disables them. The acknowledgement of SDK creation, protected
+input hashes, observed identities and current signed envelope are prerequisites.
+Missing business-binding evidence still blocks that application's acceptance.
 
 **Limits:** no live Azure proof is supplied by these local tests.
 **hosted-native-probe remains unverified as live assurance** until the actual
@@ -296,17 +314,14 @@ gateway-bundle phase, but that alone does not supply register-without-activation
 No local protocol test alone authorizes the legacy all-in-one lifecycle. Select
 the concrete SDK-resume contract, not an invented start/mount operation.
 
-**Target/application staging is also unresolved, not fixed by this blocker.**
+**Legacy azd target staging remains unsupported.**
 The same beta.10 implementation reads `AZURE_AI_PROJECT_ID` and
 `FOUNDRY_PROJECT_ENDPOINT` from the **azd environment**, not just runner process
-variables; the generated governance Bicep outputs neither. A future supported
-driver must first observe the Task11-selected project ARM resource and endpoint,
-match the independent tenant/subscription/RG, then stage a strictly allowlisted,
-credential-free target/application configuration before provisioning. It must
-resolve all required application substitutions (including Cosmos and Citadel
-model/identity settings), reject missing configuration before mutation, avoid
-secret CLI arguments/logs, and qualify explicit registered-version retry handles
-against actual server identity and image. None of this is claimed implemented.
+variables; the generated governance Bicep outputs neither. Do not re-enable that
+legacy provision/deploy sequence. The SDK-resume route above instead validates
+the operator-prepared application's exact source/configuration, observes the
+existing selected project/version/identity and checks image association before
+binding. It does not provision missing Cosmos, Citadel, role or network inputs.
 
 `.github/workflows/threadlight-e2e-foundry.yml` separates:
 
@@ -385,6 +400,8 @@ These stages are reachable in the supported resume contract, not guaranteed to
 pass. External prerequisites and the live-unverified native/business boundaries
 above still apply. An old deployment receipt or noop result cannot close a
 missing business-binding requirement.
+A pre-created version is an explicit input, not proof of its current activation;
+the fresh same-attempt observation, binding and activation checks still apply.
 
 Artifacts are `governance-local-contract-<run_id>-<attempt>` and
 `governance-readiness-<run_id>-<attempt>`. Both upload **only** a new, automatically
@@ -781,6 +798,7 @@ production decision, not permission to skip unresolved findings.
 
 ## Read next
 
+- **Real endpoint, retrieval and load evidence:** [Connect](../skills/threadlight-connect/SKILL.md), [Ground](../skills/threadlight-ground/SKILL.md) and [Load test](../skills/threadlight-loadtest/SKILL.md) remain separately selected workflows with their own prerequisites and evidence.
 - **Full skill metadata + invocation patterns:** [`skills/threadlight-production-ready/SKILL.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md)
 - **Author SPEC § 12 from scratch:** [`references/spec-section-12-template.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/spec-section-12-template.md)
 - **Pre-go-live handoff checklist:** [`references/handoff-checklist.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/handoff-checklist.md)

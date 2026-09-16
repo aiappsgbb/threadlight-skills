@@ -170,7 +170,8 @@ def test_production_initializer_uses_existing_cosmos_and_citadel(monkeypatch, fa
         "key_id": "https://example.vault.azure.net/keys/policy/" + "a"*32,
         "approver_roles": ["returns-supervisor"], "cosmos_url": "https://example.documents.azure.com",
         "cosmos_database": "returns", "cosmos_container": "cases",
-        "citadel_project_endpoint": "https://apim-citadel-hub.azure-api.net/api/projects/returns",
+        "citadel_apim_host": "customer-citadel.azure-api.net",
+        "citadel_project_endpoint": "https://customer-citadel.azure-api.net/api/projects/returns",
         "signed_envelope": "policy-envelope.json", "policy_id": "returns-write-v1", "policy_version": "1",
         "policy_digest": "sha256:" + "a"*64,
     }

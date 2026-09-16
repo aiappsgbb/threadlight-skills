@@ -7,8 +7,44 @@ field.
 
 ## [Unreleased]
 
+### Fixed
+
+- Readiness report wording no longer treats absent findings as complete proof,
+  prescribes Citadel for every target, or presents teardown/purge as rollback.
+  The hard-gate preview reflects the existing raw flag even after waivers.
+- Production-readiness apply plans preserve current `must-fix` and
+  `should-fix` findings alongside `not-verified` and legacy `fail`/`warn`.
+  Native manifest roundtrip, restricted handoff and source hashes are
+  preserved. No generator, scoring, runtime or deployment behavior changes.
+- Plugin/marketplace candidate version 2.1.1 and production-ready 0.13.1;
+  no release, new live proof or production-readiness claim.
+
 ### Added
 
+- Signed deferred gateway approvals with durable pending operations and exact
+  resume, policy-controlled escalation, and an authenticated operator review
+  command. Approval does not execute the action; changed arguments/facts,
+  expired grants and competing/replayed consumption cannot dispatch it.
+- Deploy 1.8.0, govern 2.1.0, safe-check 1.4.0, control-plane/gateway 0.2.0,
+  portable collector 0.3.0 and plugin/marketplace candidate 2.4.0.
+  OBO and real Azure business-path validation remain separate; no release.
+- Executable MAF gateway-only action client and native Responses host. Selected
+  functions use official MCP transport with host-generated idempotency keys,
+  signed policy authority, terminal HTTP/1 authorization checks, and the existing
+  ACS/approval/audit gateway. Local unbound reads remain explicit; unsupported
+  tool, middleware and provider overrides fail closed.
+- Bounded `--mcp-prepared` native validation mode with published-wheel byte
+  verification and mandatory no-skip client/host cases. No complete pipeline
+  rerun or Azure deployment is required for this local inner loop.
+- Deploy skill 1.7.0 and plugin/marketplace candidate 2.3.0. This path is app-only;
+  no OBO, long-lived HITL resume, live business-write or release claim is made.
+- Safe-check 1.3.0 / portable collector 0.2.0 separates MAF Responses protocol
+  from gateway enforcement. Remote resume follows the selected path; native
+  probe database grants require an actual native-probe binding, not just MAF.
+- Presentation-only enterprise handoff in the readiness report: DevOps, runtime
+  governance and operations, with baseline requirements and explicitly optional
+  modules. Reuses emitted findings without new scores, manifests, gates or
+  prototype stages. Production-ready 0.14.0; plugin/marketplace candidate 2.2.0.
 - Optional `threadlight-agentops` per-agent evidence normalization and `AOPS-001`
   residual operational assessment. Native AgentOps adoption stays in awesome-gbb;
   existing eval, red-team, governance, CI/CD and Citadel ownership is preserved.

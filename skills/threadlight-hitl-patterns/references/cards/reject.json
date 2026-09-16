@@ -1,0 +1,18 @@
+{
+  "$schema": "https://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {"type": "TextBlock", "text": "${title}", "size": "large", "weight": "bolder", "wrap": true},
+    {"type": "TextBlock", "text": "${summary}", "wrap": true},
+    {"type": "Input.ChoiceSet", "id": "reason", "label": "Reason", "isRequired": true, "errorMessage": "Select a reason.", "choices": [
+      {"title": "Policy requirement not met", "value": "policy"},
+      {"title": "Evidence is insufficient", "value": "evidence"},
+      {"title": "Proposal is incorrect", "value": "incorrect"}
+    ]},
+    {"type": "Input.Text", "id": "rationale", "label": "Explanation", "isMultiline": true, "maxLength": 1024, "isRequired": true, "errorMessage": "Explain the rejection."}
+  ],
+  "actions": [
+    {"type": "Action.Submit", "title": "Reject", "style": "destructive", "data": {"gate": "reject", "decision": "declined", "case_id": "${caseId}", "review_id": "${reviewId}"}}
+  ]
+}

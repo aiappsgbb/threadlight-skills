@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools==80.9.0"]
+requires = ["setuptools==83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "threadlight-governance-safe-check"
-version = "0.1.0"
+version = "0.3.1"
 requires-python = ">=3.12"
 description = "Explicit signed-noop hosted governance collector and static gates"
 dependencies = [
-  "threadlight-govern-gateway==0.1.0",
+  "threadlight-govern-gateway==0.3.1",
   "azure-ai-projects==2.3.0",
   "azure-identity==1.25.3",
   "httpx==0.28.1",
@@ -25,4 +25,4 @@ package-dir = {threadlight_safe_check = "scripts", governance_references = "refe
 
 [tool.setuptools.package-data]
 "skills._shared" = ["*.json"]
-govern_deployment = ["*.toml", "*.bicep"]
+govern_deployment = ["*.toml", "*.bicep", "*.yaml", "*.yml"]

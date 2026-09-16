@@ -1,0 +1,16 @@
+{
+  "$schema": "https://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {"type": "TextBlock", "text": "${title}", "size": "large", "weight": "bolder", "wrap": true},
+    {"type": "TextBlock", "text": "${summary}", "wrap": true},
+    {"type": "FactSet", "facts": [
+      {"title": "Case", "value": "${caseId}"},
+      {"title": "Decision", "value": "${decision}"},
+      {"title": "Audit reference", "value": "${auditReference}"},
+      {"title": "Recorded at", "value": "${recordedAt}"}
+    ]},
+    {"type": "TextBlock", "text": "Read-only. Access must be authorized by the audit service.", "isSubtle": true, "wrap": true}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {"type": "TextBlock", "text": "${title}", "size": "large", "weight": "bolder", "wrap": true},
+    {"type": "TextBlock", "text": "${summary}", "wrap": true},
+    {"type": "FactSet", "facts": [{"title": "Recipient", "value": "${recipientDisplay}"}]},
+    {"type": "Input.Text", "id": "subject", "label": "Subject", "value": "${messageSubject}", "maxLength": 200, "isRequired": true, "errorMessage": "Enter a subject."},
+    {"type": "Input.Text", "id": "message", "label": "Requested information", "value": "${messageBody}", "isMultiline": true, "maxLength": 2048, "isRequired": true, "errorMessage": "Describe the information needed."},
+    {"type": "TextBlock", "text": "The recipient and permitted content are checked before a message is sent.", "isSubtle": true, "wrap": true}
+  ],
+  "actions": [
+    {"type": "Action.Submit", "title": "Submit information request", "data": {"gate": "request-info", "decision": "information_requested", "case_id": "${caseId}", "review_id": "${reviewId}"}},
+    {"type": "Action.Submit", "title": "Cancel", "associatedInputs": "none", "data": {"gate": "request-info", "decision": "cancelled", "case_id": "${caseId}", "review_id": "${reviewId}"}}
+  ]
+}

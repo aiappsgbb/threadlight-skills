@@ -73,7 +73,11 @@ def load(config, base):
     publisher = parse(AzureConfiguration, canonical(driver.read(result["publisher"])))
     if publisher.tenant_id != config["expected_target"]["tenant"] or publisher.key_id != config["package"]["key_id"]:
         raise ValueError("remote_publisher_scope_mismatch")
-    native = creation["protocol"] == "responses"
+    from skills._shared.governance_selection import load_contract
+    contract = generator.validate_contract(load_contract(config["source_project"]))
+    if contract["framework"] != config["deployment"]["infrastructure"]["runtime"]:
+        raise ValueError("remote_contract_runtime_mismatch")
+    native = not generator.uses_gateway(contract)
     if native != ("native_assets" in result):
         raise ValueError("remote_native_probe_assets_required")
     if native:
@@ -120,7 +124,7 @@ def deploy(project, config):
     signed = parse(SignedBundle, canonical(driver.read(remote["policy_envelope"])))
     driver.generate("agent-image", project, config, config["agent_image"])
     deployment = dict(config["deployment"])
-    if creation["protocol"] == "invocations":
+    if generator.uses_gateway(package["contract"]):
         stage = {"gateway_bundle": str(remote["policy_bundle"]), "signed_envelope": str(remote["policy_envelope"]),
                  "policy_digest": signed.envelope.content_digest, "agent_image": creation["image"]}
         driver.generate("stage-gateway", project, config, stage)

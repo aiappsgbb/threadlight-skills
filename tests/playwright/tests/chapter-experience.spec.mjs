@@ -5,7 +5,7 @@ const chapters = ['funnel', 'blueprint', 'industries', 'case-study', 'production
 const siteMap = createRequire(import.meta.url)('../../../docs/assets/site-map.js');
 
 for (const name of chapters) {
-  test(`${name}: start with a concrete visual and a short introduction`, async ({ page }) => {
+  test(`${name}: provide a concrete visual and a short introduction`, async ({ page }) => {
     await page.goto(`/${name}.html`);
     await expect(page.locator('body')).toHaveClass(/chapter-experience/);
     const intro = page.locator('[data-chapter-intro]').first();
@@ -13,7 +13,13 @@ for (const name of chapters) {
     expect((await intro.innerText()).trim().split(/\s+/).length).toBeLessThanOrEqual(60);
     const visual = page.locator('[data-visual-anchor]').first();
     await expect(visual).toBeVisible();
-    expect((await visual.boundingBox()).y).toBeLessThan(page.viewportSize().width <= 600 ? 600 : 760);
+    if (name === 'production') {
+      // Production keeps its reviewed overview before the topic-specific diagrams.
+      await visual.scrollIntoViewIfNeeded();
+      await expect(visual).toBeInViewport();
+    } else {
+      expect((await visual.boundingBox()).y).toBeLessThan(page.viewportSize().width <= 600 ? 600 : 760);
+    }
     await expect(page.locator('header nav.nav a[href="./funnel.html"]')).toHaveText('Build');
     await page.locator('.cx-directory summary').click();
     await expect(page.locator('.cx-directory a')).toHaveCount(siteMap.groups.flatMap(group => group.pages).length);

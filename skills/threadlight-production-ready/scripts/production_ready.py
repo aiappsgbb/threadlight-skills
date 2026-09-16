@@ -33,6 +33,7 @@ import os
 import re
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -53,16 +54,17 @@ APPLY_PLAN_SCHEMA_VERSION = 1
 
 def build_apply_plan(*, manifest: dict, recipes: dict, framing: dict,
                      framing_path: str | None = None) -> dict:
-    """Build an apply-plan from an assessor manifest + loaded recipe catalog.
+    """Build an apply-plan from an assessor manifest and recipe catalog.
 
     Walks `manifest["findings"]` if present, otherwise flattens
-    `manifest["pillars"][].findings[]` (the v0.3.0 OUTPUT shape). For every
-    finding whose status is `fail`, `warn`, or `not-verified`, emits an
-    entry that either points at the registered recipe or falls back to a
-    `kind: manual` placeholder. Pins `manifest_sha256` so the agent can
-    detect a stale plan in Phase 2.
+    `manifest["pillars"][].findings[]` from the native assessor output.
+    Current `must-fix`, `should-fix`, and `not-verified` findings are
+    actionable; legacy `fail` and `warn` remain supported. Each item
+    points at its registered recipe or a manual handoff when absent.
+    Pins `manifest_sha256` so a later consumer can detect a stale plan.
+    Emitting the plan does not authorize remediation or deployment.
 
-    Raises SystemExit if any recipe declares an unknown `kind`.
+    Raises SystemExit if any selected recipe declares an unknown kind.
     """
     sha = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     findings = manifest.get("findings")
@@ -73,7 +75,9 @@ def build_apply_plan(*, manifest: dict, recipes: dict, framing: dict,
         ]
     items: list[dict] = []
     for f in findings:
-        if f.get("status") not in {"fail", "warn", "not-verified"}:
+        if f.get("status") not in {
+            "must-fix", "should-fix", "not-verified", "fail", "warn"
+        }:
             continue
         rid = f.get("id")
         if not rid:
@@ -509,7 +513,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -7352,6 +7356,96 @@ STATUS_ICON = {
     "waived": "🛡️",
 }
 
+ENTERPRISE_AREAS = (
+    {
+        "title": "DevOps",
+        "pillars": ("network-posture", "identity-access", "secrets", "supply-chain"),
+        "baseline": (
+            "Private networking and explicit ingress/egress; dedicated workload identity "
+            "(Agent Identity where supported, otherwise an explicitly designed managed identity); "
+            "least privilege, protected secrets, reproducible configuration/images, "
+            "approved release with functional checks and rollback."
+        ),
+        "modules": (
+            "Citadel onboarding when selected; customer landing-zone integration; "
+            "private-runner provisioning; multi-region and advanced rollout."
+        ),
+    },
+    {
+        "title": "Runtime governance",
+        "pillars": ("agent-governance", "continuous-evals", "responsible-ai", "hitl-audit"),
+        "baseline": (
+            "Explicit tools, validated inputs, ordinary backend authorization and "
+            "code execution disabled by default in the proposed enterprise configuration."
+        ),
+        "modules": (
+            "SAFE/ACS tool governance and Agent Hooks for selected sensitive actions; "
+            "authenticated human approval/resume; OBO where user-scoped access is required; "
+            "grounding, quality and prompt-injection authority assurance."
+        ),
+    },
+    {
+        "title": "Operations",
+        "pillars": ("observability", "cost", "reliability", "sre-handover", "model-lifecycle"),
+        "baseline": (
+            "Owner and escalation, health/telemetry, delivered alerts, runbook and recovery, "
+            "cost visibility and budget ownership; backup/restore when durable state requires it."
+        ),
+        "modules": (
+            "Azure SRE Agent, continuous evaluation and recurring red-team campaigns, "
+            "advanced load testing, PAYG/PTU optimization, dedicated dashboards and upgrade automation."
+        ),
+    },
+)
+
+
+def _render_enterprise_handoff(manifest: dict) -> list[str]:
+    """Project emitted findings into three areas without scoring or selecting controls."""
+    out = [
+        "## Enterprise handoff",
+        "",
+        "Rapid prototyping remains the default. This is a presentation-only guide for an "
+        "explicit enterprise handoff, not proof that the enterprise baseline is satisfied.",
+        "Baseline items below are requirements to assess, not controls installed by this report. "
+        "Modules require explicit opt-in, not inferred from a domain, template or finding. "
+        "A selected business requirement remains mandatory; optional does not mean waived.",
+        "The existing findings, scores and gates are unchanged. Counts describe the emitted "
+        "assessment scope, not evidence strength or acceptance of an entire area.",
+        "",
+    ]
+    for area in ENTERPRISE_AREAS:
+        findings = [
+            finding
+            for pillar in manifest["pillars"] if pillar["pillar"] in area["pillars"]
+            for finding in pillar["findings"]
+        ]
+        counts = Counter(finding["status"] for finding in findings)
+        open_ids = [
+            f"`{finding['id']}`" for finding in findings
+            if finding["status"] in {"must-fix", "should-fix", "not-verified", "fail", "warn"}
+        ]
+        out.extend([
+            f"### {area['title']}",
+            "",
+            f"**Enterprise baseline:** {area['baseline']}",
+            "",
+            f"**Optional / conditional modules:** {area['modules']}",
+            "",
+            "**Existing findings:** " + (
+                "; ".join(f"{status}: {count}" for status, count in sorted(counts.items()))
+                if counts else "none in the current assessment scope"
+            ) + ".",
+            "",
+        ])
+        if not findings or all(finding["status"] == "not-applicable" for finding in findings):
+            out.append("No applicable findings in this view; baseline acceptance is not established.")
+        elif open_ids:
+            out.append("**Open finding references:** " + ", ".join(open_ids) + ". See the pillar detail below.")
+        else:
+            out.append("No open finding references in this view; baseline acceptance is not established.")
+        out.append("")
+    return out
+
 
 def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[str, list[Finding]],
                    evidence: list[EvidenceEntry], waivers: dict[str, dict], warnings: list[str]) -> str:
@@ -7360,8 +7454,12 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("")
     out.append(f"*Generated by `threadlight-production-ready` v{VERSION} at {manifest['checked_at']}*")
     out.append("")
+    out.extend(_render_enterprise_handoff(manifest))
     # 1. Executive summary
     out.append("## 1. Executive summary")
+    out.append("")
+    out.append("The legacy advisory scorecard follows. Its recommendation and count-based "
+               "confidence label are not enterprise-baseline acceptance or runtime certification.")
     out.append("")
     rec = manifest["go_live_recommendation"]
     rec_label = {
@@ -7394,7 +7492,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
             f"`not-verified` no longer earns partial score credit in v0.3.0."
         )
     else:
-        out.append("- **Verification debt:** 0 (all checks executed)")
+        out.append("- **Verification debt:** 0 in the current scored scope; not proof that every required control was executed.")
     # Per-evidence freshness banner (issue #22). Only added when the run's
     # oldest evidence is older than `freshness_hours` before `checked_at`.
     ef = manifest.get("evidence_freshness") or {}
@@ -7415,9 +7513,9 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         )
     if posture["resolved"] != POSTURE_CITADEL:
         out.append("")
-        out.append(f"> ℹ️  **Recommended enterprise posture: Citadel-spoke.** "
-                   f"Current target is `{posture['resolved']}`. Citadel-specific findings were scored `not-applicable`. "
-                   f"To opt in, set `target_posture: citadel-spoke` in SPEC § 12 or pass `--target citadel-spoke`.")
+        out.append(f"> **Optional Citadel integration.** Current target is `{posture['resolved']}`. "
+                   "Reuse the approved platform boundary; this report does not select or provision a hub. "
+                   "Choose Citadel explicitly only when it is part of the intended architecture.")
     out.append("")
     # Top 5 gaps
     all_gaps = [f for pid in PILLAR_IDS for f in pillar_results_waived.get(pid, []) if f.status in ("must-fix", "should-fix")]
@@ -7456,11 +7554,14 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("## 3. Hard-gate preview")
     out.append("")
     musts = [f for pid in PILLAR_IDS for f in pillar_results_waived.get(pid, []) if f.status == "must-fix"]
-    if not musts:
-        out.append("✅ No must-fix findings — would pass a hard gate today.")
+    if not manifest["would_fail_hard_gate"]:
+        out.append("No raw must-fix flag in this assessment; this does not establish enterprise baseline acceptance.")
     else:
-        out.append(f"❌ **Would fail a hard gate.** {len(musts)} must-fix finding(s):")
+        out.append("❌ **Would fail a hard gate.** Existing raw blockers remain; "
+                   "waivers or overrides do not clear this raw flag.")
+    if musts:
         out.append("")
+        out.append("Must-fix findings in the current detailed view:")
         for f in musts:
             out.append(f"- `{f.id}` ({f.pillar}): {f.title}")
     out.append("")
@@ -7520,7 +7621,8 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         out.append(f"{step}. **{f.id}** — {f.title}. See: {uplift_links.get(f.pillar, '(see pillar reference)')}")
         step += 1
     if step == 1:
-        out.append("_No remediation steps. Pilot is production-ready._")
+        out.append("_No must-fix or should-fix steps in this view. Review unverified evidence, "
+                   "applicability and owner acceptance before release._")
     out.append("")
     # 7. Cost projection
     out.append("## 7. Cost projection")
@@ -7655,7 +7757,9 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("1. **Rollout window:** _e.g. T0+0 → T0+2h business hours, low-traffic._")
     out.append("2. **Pre-cutover smoke:** rerun `safe-check --phase post-deploy`; rerun this skill `--quick`.")
     out.append("3. **Rollback trigger:** `must-fix` finding regression OR eval pass-rate drop > X%.")
-    out.append("4. **Rollback steps:** `azd down --force --purge` on new RG OR DNS swap back to pilot RG.")
+    out.append("4. **Rollback steps:** restore the previously accepted immutable version using the "
+               "approved route/revision procedure; verify service health and data compatibility. "
+               "This template is not permission to change deployment or traffic.")
     out.append("5. **Comms:** owner notifies `#agent-prod` channel at T-1h, T0, T0+2h.")
     out.append("")
     # 10. Appendix
@@ -7681,7 +7785,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         for f in nv:
             out.append(f"| `{f.id}` | {f.pillar} | T{f.tier} | {f.detail} |")
     else:
-        out.append("_Everything was checked._")
+        out.append("_No not-verified findings in the supplied view; omitted or non-applicable controls are not execution proof._")
     out.append("")
     out.append("### Warnings during this run")
     out.append("")

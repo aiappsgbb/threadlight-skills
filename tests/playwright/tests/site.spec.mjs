@@ -290,56 +290,41 @@ test.describe('Build chapter (funnel.html)', () => {
 });
 
 test.describe('production chapter (production.html)', () => {
-  test('hero: production-ready leads with scoped evidence and unresolved gaps', async ({ page }) => {
+  test('hero: production-ready title and a visual route into three areas', async ({ page }) => {
     await page.goto('/production.html');
     await expect(page).toHaveTitle(/Production-ready/i);
-    await expect(page.locator('#chapter-top h1')).toContainText(/prove it can ship/i);
-    await expect(page.locator('#chapter-top')).toContainText(/uplift\/handoff plan/i);
+    await expect(page.locator('#chapter-top h1')).toContainText(/operational confidence/i);
+    await expect(page.locator('#chapter-top')).toContainText(/one topic at a time/i);
     await expect(page.locator('#chapter-top')).not.toContainText(/so the pilot ships/i);
     await expect(page.locator('#chapter-top')).not.toContainText(/Amber turns green/i);
-    await expect(page.locator('#chapter-top .pr-hero-facts')).toContainText('13');
-    await expect(page.locator('[data-visual-anchor]')).toContainText('BEFORE THE EFFECT');
-    await expect(page.locator('[data-visual-anchor]')).toContainText('not a live assessment');
-    await expect(page.locator('.pr-evidence-console')).toContainText('NOT VERIFIED');
+    await expect(page.locator('#chapter-top .stat-strip')).toHaveCount(0);
+    await expect(page.locator('.production-map')).toBeVisible();
+    await expect(page.getByRole('tab')).toHaveCount(3);
   });
 
-  test('the chapter sections are all present and name the thirteen pillars', async ({ page }) => {
+  test('the chapter retains navigation anchors without the old assessment appendix', async ({ page }) => {
     await page.goto('/production.html');
     for (const id of ['chapter-top', 'why', 'checks', 'legs', 'proof', 'target', 'ship', 'start', 'chapter-recap']) {
       await expect(page.locator('#' + id), `production section #${id}`).toHaveCount(1);
     }
-    await expect(page.locator('#checks')).toContainText(/13 pillars|thirteen pillars/i);
+    await expect(page.locator('#checks')).toContainText('Verified release');
+    await expect(page.locator('.scorecard-preview, .outcome-band')).toHaveCount(0);
   });
 
-  test('the gap grid names nine gaps, each with a live repository skill link', async ({ page }) => {
+  test('the concise areas link to their technical references instead of a skill-card catalog', async ({ page }) => {
     await page.goto('/production.html');
-    const cards = page.locator('#legs .gap-card');
-    await expect(cards).toHaveCount(9);
-    const links = page.locator('#legs .gap-card a.gap-link');
-    await expect(links).toHaveCount(9);
-    const hrefs = await links.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
-    for (const h of hrefs) {
-      expect(h, `gap link ${h} points at a real aiappsgbb skill`).toMatch(
-        /github\.com\/aiappsgbb\/(threadlight-skills|awesome-gbb)\//,
-      );
-    }
-    // The grid names the platform-capability skills. (connect / ground / loadtest
-    // are covered by gap-closure.spec.mjs and are intentionally not re-asserted here.)
-    const gridText = ((await page.locator('#legs').textContent()) || '').toLowerCase();
-    for (const s of ['threadlight-govern', 'threadlight-evals', 'threadlight-redteam', 'threadlight-consumption-iq', 'threadlight-cicd']) {
-      expect(gridText, `gap grid should name ${s}`).toContain(s);
-    }
+    await expect(page.locator('main .gap-card')).toHaveCount(0);
+    await expect(page.locator('#platform-topic .source-attribution a[href*="Azure-Samples/ai-hub-gateway-solution-accelerator"]')).toHaveCount(1);
+    await expect(page.locator('#readiness-topic a[href$="/docs/production-readiness.md"]')).toHaveCount(1);
+    await expect(page.locator('#actions-topic a[href$="/docs/agent-governance-deep-dive.md"]')).toHaveCount(1);
   });
 
-  test('evidence wording: the proof section separates forecast, settled Azure actuals, and reconciliation', async ({ page }) => {
+  test('the closing links to the technical guide without illustrative metrics or another tutorial', async ({ page }) => {
     await page.goto('/production.html');
     const proof = page.locator('#proof');
-    await expect(proof).toContainText(/forecast/i);
-    await expect(proof).toContainText(/Azure actuals/i);
-    await expect(proof).toContainText(/reconcil/i);
-    await expect(proof).toContainText(/target subscription/i);
-    await expect(proof).toContainText(/resource group/i);
-    await expect(proof).toContainText(/not-verified/i);
+    await expect(proof).toHaveAttribute('href', /agent-governance-deep-dive\.md$/);
+    await expect(page.locator('#production-review a')).toHaveCount(2);
+    await expect(page.locator('#production-review')).not.toContainText(/91%|0\.0123|EU AI Act|13 pillars/i);
   });
 });
 
@@ -417,7 +402,6 @@ test.describe('chapter chrome — floating ToC, stat strips, design tokens', () 
   const TOC_PAGES = [
     { url: '/governance.html', min: 5 },
     { url: '/funnel.html', min: 6 },
-    { url: '/production.html', min: 6 },
     { url: '/industries.html', min: 4 },
     { url: '/self-improving.html', min: 4 },
     { url: '/customize.html', min: 3 },

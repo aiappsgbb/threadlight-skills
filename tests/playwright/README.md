@@ -48,6 +48,32 @@ npx playwright test
 The Playwright config auto-starts `python3 -m http.server 4173` rooted
 at `../../docs` and tears it down when the suite ends.
 
+## Governance report diagrams
+
+The Mermaid dependency is a local authoring tool, not a production browser
+dependency. From the repository root:
+
+```bash
+node scripts/render-governance-diagrams.mjs
+node scripts/render-governance-diagrams.mjs --check
+node --test tests/blueprint/architecture-reader.test.js
+```
+
+The script parses and renders both governance references through Chromium,
+rejects script/HTML-bearing SVG output, and writes named images to
+`docs/assets/governance/`. Images have an opaque light background so their
+lines remain readable in dark Markdown viewers. Editable Mermaid sources stay
+collapsed beside each image. `--check` compares current rendered output with
+the committed images; use the same browser/font environment when regenerating.
+`--validate` renders without writing images.
+
+The Production-ready schematic is independent static SVG/HTML using the site's
+existing theme, with a vertical mobile flow. Its focused checks are:
+
+```bash
+npx playwright test tests/production-governance.spec.mjs --grep authority
+```
+
 ## Visual review
 
 ```bash
@@ -66,4 +92,3 @@ Writes screenshots for the new deck-spine scenes × {desktop dark / light
   these tests will fail to surface the drift — that's intentional.
 - Visual regression. Screenshots are not asserted byte-for-byte; the
   designer pass uses them manually.
-

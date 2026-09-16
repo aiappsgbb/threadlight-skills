@@ -56,7 +56,8 @@ class ServiceTransport:
                 or not 0 < timeout <= 30):
             raise ValueError("invalid_client_configuration")
 
-    async def health(self, *, approval_context: ApprovalContext | dict | None = None) -> bool:
+    async def health(self, *, approval_context: ApprovalContext | dict | None = None,
+                     require_review_metadata: bool = False) -> bool:
         """Authenticated, read-only readiness; never create or consume governance records."""
         try:
             self.validate_configuration(self.url, self.scope, self.timeout)
@@ -65,6 +66,10 @@ class ServiceTransport:
                     return False
                 path = "/health"
                 expected = {"status", "authenticated"}
+                if require_review_metadata:
+                    if approval_context is None:
+                        return False
+                    expected.add("approval_review_required")
                 if approval_context is not None:
                     context = parse(ApprovalContext, canonical(approval_context))
                     path += "?" + urlencode({"approval_context": canonical(context).decode()})
@@ -72,6 +77,7 @@ class ServiceTransport:
                 status, result = await self.request("GET", path)
                 return (status == 200 and set(result) == expected
                         and result["status"] == "healthy" and result["authenticated"] is True
+                        and (not require_review_metadata or result["approval_review_required"] is True)
                         and (approval_context is None or result["approval_context_validated"] is True))
         except Exception:
             return False

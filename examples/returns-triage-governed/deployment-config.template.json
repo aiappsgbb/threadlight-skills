@@ -10,6 +10,7 @@
   "cosmos_url": "${RETURNS_COSMOS_URL}",
   "cosmos_database": "${RETURNS_COSMOS_DATABASE}",
   "cosmos_container": "${RETURNS_COSMOS_CONTAINER}",
+  "citadel_apim_host": "${APPROVED_CITADEL_APIM_HOST}",
   "citadel_project_endpoint": "${CITADEL_PROJECT_ENDPOINT}",
   "signed_envelope": "${SIGNED_POLICY_ENVELOPE_FILE}",
   "policy_id": "returns-write-v1",

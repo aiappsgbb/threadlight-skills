@@ -27,7 +27,7 @@ class RuntimeIntegrationTests(unittest.TestCase):
         self.fixture = fixtures.AgentOpsTests()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
-        self.fixture.fixture(signed=False)
+        self.fixture.fixture(signed=False, now=datetime.now(timezone.utc))
         self.repo = self.fixture.repo
         self.fixture.write(".agentops/agent.yaml", "sources:\n  foundry:\n    enabled: true\n")
         self.fixture.policy["artifact_paths"] = {

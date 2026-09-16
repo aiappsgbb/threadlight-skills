@@ -12,7 +12,7 @@ description: >
   UI (use threadlight-workspace-ui), agent runtime logic (use
   threadlight-deploy).
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Threadlight HITL Patterns
@@ -25,6 +25,11 @@ action gates declared in `specs/SPEC.md` § 8 Human Interaction Points.
 > messaging extension routing). This skill handles the **gate UX** — the
 > Adaptive Card content, the Action.Submit handlers, the audit-trail wiring.
 > One bot, many gates; the bot doesn't know what the gates mean.
+
+Before generation, select framework, enforcement path, channel and review window
+against the [runtime support matrix](../../docs/runtime-support.md). A Teams UI
+does not supply native resume or delegated authority. Do not choose a deferred
+GitHub Copilot SDK flow and discover its unsupported resume seam only at deploy.
 
 ## When to Use
 
@@ -97,8 +102,8 @@ Aligned with the action-gate taxonomy in `threadlight-design` SPEC § 8.
     {"type": "TextBlock", "text": "Linked rules: ${linkedRules}", "isSubtle": true, "size": "small"}
   ],
   "actions": [
-    {"type": "Action.Submit", "title": "Approve", "data": {"gate": "approve", "decision": "approved", "case_id": "${caseId}"}, "style": "positive"},
-    {"type": "Action.Submit", "title": "Decline", "data": {"gate": "approve", "decision": "declined", "case_id": "${caseId}"}, "style": "destructive"}
+    {"type": "Action.Submit", "title": "Approve", "data": {"gate": "approve", "decision": "approved", "case_id": "${caseId}", "review_id": "${reviewId}"}, "style": "positive"},
+    {"type": "Action.Submit", "title": "Decline", "data": {"gate": "approve", "decision": "declined", "case_id": "${caseId}", "review_id": "${reviewId}"}, "style": "destructive"}
   ]
 }
 ```
@@ -111,8 +116,9 @@ Aligned with the action-gate taxonomy in `threadlight-design` SPEC § 8.
 **When**: agent's proposal is mostly right but the human may want to tweak
 fields before committing.
 
-**Card shape**: editable Input fields prefilled with agent's proposal +
-`Approve as edited` and `Cancel`.
+**Card shape**: editable Input fields prefilled with the proposal +
+`Review amended proposal` and `Cancel`. Changed arguments require a new intent
+and a fresh decision; the original grant must never authorize the edit.
 
 ```jsonc
 {
@@ -125,8 +131,8 @@ fields before committing.
     {"type": "Input.Text", "id": "rationale", "label": "Why edit?", "isMultiline": true}
   ],
   "actions": [
-    {"type": "Action.Submit", "title": "Approve as edited", "data": {"gate": "edit-and-approve", "case_id": "${caseId}"}, "style": "positive"},
-    {"type": "Action.Submit", "title": "Cancel", "data": {"gate": "edit-and-approve", "decision": "cancelled", "case_id": "${caseId}"}}
+    {"type": "Action.Submit", "title": "Review amended proposal", "data": {"gate": "edit-and-approve", "decision": "review_edits", "case_id": "${caseId}", "review_id": "${reviewId}"}, "style": "positive"},
+    {"type": "Action.Submit", "title": "Cancel", "associatedInputs": "none", "data": {"gate": "edit-and-approve", "decision": "cancelled", "case_id": "${caseId}", "review_id": "${reviewId}"}}
   ]
 }
 ```
@@ -190,46 +196,40 @@ sla = interaction["timeout_sla"]
 ### Step 2: Generate the card template
 
 - Pick the canonical card shape from this skill's `references/cards/{gate}.json`
-- Substitute `${title}`, `${summaryFacts}`, `${linkedRules}`, etc. with spec data
+- Substitute `${title}`, `${summary}`, `${linkedRules}`, etc. with server-owned review data
+- Bind `reviewId` to the exact pending intent nonce and `caseId` to its authoritative case
 - For `edit-and-approve`: generate Input fields from the entity schema in spec § 4
 - For `escalate`: derive the role list from the AGENTS.md skill actor table
 
-### Step 3: Generate the handler
+### Step 3: Bind the handler to actual authority
 
-Generate `src/bot/cards/{gate}_handler.py` with the **canonical handler
-contract** (matches what `card_router.route()` invokes — see Step 4).
+For governed approve/reject actions, copy the executable
+[`control_plane_review.py`](references/handlers/control_plane_review.py) bridge
+and use the packaged `govern_control_plane.review` client. The bridge reloads a
+server-owned pending review, checks case/nonce/freshness, and calls the actual
+delegated decision protocol. It **never writes the business case** or starts a
+new agent session. A successful result says `execution: not-started`.
 
-```python
-# {gate}_handler.py
-from botbuilder.core import TurnContext
-from botbuilder.schema import Activity
+The bot integration supplies `load_review(review_id) -> (case_id, pending)` from
+its protected review store and a real delegated `AsyncTokenCredential`. The
+configured control-plane URL, scope and approving role are server-owned inputs.
+Do not derive authority from `activity.from`, Easy Auth headers, card fields or
+the bot's app-only credential. Verified Teams SSO/OBO, bot delivery and consent
+remain application/platform integration requirements; missing integration is a
+blocker, not a reason to invent a token or grant.
 
-async def handle(turn_context: TurnContext,
-                 activity: Activity,
-                 value: dict) -> Activity | None:
-    """Handle Action.Submit for the {gate} gate.
+Generate the bot's `handle(turn_context, activity, value)` wrapper to call
+`decide_submission(value, ...)` with those trusted dependencies, then render the
+recorded decision. Resume only the original operation through the supported
+native host adapter; the authority is consumed there, once, before its effect.
+Surface a rejected/expired/replayed decision or unavailable service explicitly.
 
-    Args:
-        turn_context: Bot Framework turn context (for replying / continuing).
-        activity:     Original Action.Submit activity (for actor / channel data).
-        value:        activity.value parsed dict (gate, case_id, decision, edits, ...).
-
-    Returns:
-        Activity to send back as the card update, or None if no update needed
-        (e.g. handler queued an async escalation and will reply later).
-    """
-    case_id = value["case_id"]            # spec § 8 mandates case_id round-trip
-    actor = _actor_from(turn_context)     # Easy Auth / Bot Framework identity
-    # 1. Load the case from Cosmos (via MCP tool call or direct SDK with UAMI)
-    # 2. Apply the gate decision (write back to Cosmos, fire downstream action)
-    # 3. Write audit trail (gate, decision, actor, timestamp, linked_rules, ...)
-    # 4. Return updated card (success or error message)
-    raise NotImplementedError
-```
-
-> The handler signature is **stable** across all gates (`approve`,
-> `edit-and-approve`, `reject`, `escalate`, `signoff`, `audit-view`,
-> `request-info`) so the router stays simple.
+Other gates need different handlers. Edits create a **new intent** and fresh
+review; escalation validates the destination; signoff records acknowledgement;
+audit-view requires audit access; request-info needs a separately authorized
+message action. The bridge rejects these gates rather than mapping them all to
+`approved=true`. The common bot routing signature does not make their business
+semantics interchangeable.
 
 ### Step 4: Wire into the bot
 
@@ -270,8 +270,12 @@ button — define it once in `src/bot/cards/_error.py` and import.
 
 ### Step 5: Generate the audit-trail writer
 
-`src/bot/cards/audit_trail.py` writes every gate outcome to Cosmos with
-this schema:
+`src/bot/cards/audit_trail.py` records UI interactions under the application's
+data-retention policy. This is not the immutable governance receipt or the
+business decision audit, and must not be used as proof that an effect occurred.
+Record the authority's decision reference and authenticated subject rather than
+treating display names as identity. The UI record has this application-specific
+shape:
 
 ```json
 {

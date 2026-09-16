@@ -63,11 +63,13 @@ def test_real_sdk_version17_created_once_and_lost_reply_never_retries(tmp_path, 
             calls.append(request.method)
             if request.method == "POST":
                 assert calls == ["POST"]
-                definition = json.loads(request.body)["definition"]
+                payload = json.loads(request.body)
+                assert payload.get("metadata") == {"enableVnextExperience": "true"}
+                definition = payload["definition"]
                 assert definition["protocol_versions"] == [{"protocol": "invocations", "version": "2.0.0"}]
                 assert not any(key.startswith("FOUNDRY_") for key in definition["environment_variables"])
                 record = dict(id="fixture-id", object="agent.version", name="fixture", version="17",
-                              created_at=int(time.time()), metadata={}, status="active",
+                              created_at=int(time.time()), metadata=payload["metadata"], status="active",
                               definition=definition, instance_identity={
                                   "principal_id": "22222222-2222-2222-2222-222222222222",
                                   "client_id": "33333333-3333-3333-3333-333333333333"})
@@ -164,6 +166,13 @@ def test_operator_cli_exposes_create_observe_publish_wait_without_azd():
     assert "--observation-output" in result.stdout and "--expected-observation" in result.stdout
 
 
+def test_hosted_operator_extra_pins_the_actual_lifecycle_sdk():
+    import tomllib
+    package = tomllib.loads(
+        (ROOT / "skills/threadlight-govern/references/control-plane/pyproject.toml").read_text())
+    assert package["project"]["optional-dependencies"]["hosted-operator"] == ["azure-ai-projects==2.3.0"]
+
+
 def test_public_docs_distinguish_signed_bootstrap_from_live_acceptance():
     text = (ROOT / "docs/production-readiness.md").read_text()
     assert "threadlight-hosted-bootstrap/v1" in text
@@ -226,7 +235,8 @@ def endpoint_fixture(tmp_path, *, protocol="invocations", etag=True, sdk_endpoin
             protocol_versions=[ProtocolVersionRecord(protocol=protocol, version="2.0.0")],
         ).as_dict()
         version_record = dict(id=state["version_id"], object="agent.version", name=config["agent_name"],
-                              version="17", created_at=int(time.time()), metadata={}, status="active",
+                              version="17", created_at=int(time.time()),
+                              metadata={"enableVnextExperience": "true"}, status="active",
                               definition=deepcopy(definition), instance_identity=identity)
         details = dict(id="fixture-agent-id", object="agent", name=config["agent_name"], state="enabled",
                        versions={"latest": deepcopy(version_record)}, instance_identity=deepcopy(identity),
@@ -306,6 +316,17 @@ def endpoint_fixture(tmp_path, *, protocol="invocations", etag=True, sdk_endpoin
                                      session=session, session_owner=False)) as client:
                 yield lib, client, config, attempt, expected, wire
     return opened()
+
+
+@pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")
+@pytest.mark.parametrize("metadata", [None, {}, {"enableVnextExperience": "false"},
+                                     {"enableVnextExperience": True}])
+def test_real_sdk_rejects_missing_or_changed_hosted_experience(tmp_path, metadata):
+    with endpoint_fixture(tmp_path) as (lib, client, config, attempt, expected, wire):
+        wire["version"]["metadata"] = metadata
+        with pytest.raises(ValueError, match="hosted_experience"):
+            lib.observe(client, config, attempt)
+        assert all(call["method"] == "GET" for call in wire["calls"])
 
 
 @pytest.mark.skipif(os.environ.get("THREADLIGHT_READINESS_SDK") != "1", reason="pinned SDK job")

@@ -128,6 +128,23 @@ file mtime, a prior empty gaps array or a changed signing envelope cannot renew 
 See [production guidance and CI inputs](docs/production-readiness.md#runtime-governance-lifecycle)
 and [coding-agent guidance](AGENTS.md).
 
+**The model proposes; trusted components authorize effects.** The implemented
+[Agent governance page](docs/agent-governance.html) presents the product vision,
+integrated controls, business value and adoption path. Detailed validation
+facts and implementation limits remain in the engineering references.
+For the actual
+identity, policy, approval, transport and durable-audit boundaries, read the
+[engineering deep dive](docs/agent-governance-deep-dive.md). The separate
+[dated execution record](docs/governed-returns-validation.md) distinguishes the
+historical public hosted two-tool vertical, the private BASIC model smoke,
+subsequent private governed allow/deny evidence, and the verified private native Outlook approval
+with same-session resume and replay without a second business effect. This is
+historical reference evidence, not current authority or live acceptance of the
+canonical example above. The
+[Pages/readiness specification](docs/production-readiness-pages-spec.md) records
+the presentation and evidence boundaries; rapid prototyping remains unchanged and
+additional governance is explicit opt-in.
+
 | Skill | What it does |
 |-------|-------------|
 | [`threadlight-qualify`](skills/threadlight-qualify/) | **No-repo / Cowork qualification & sizing entry — *before* Design.** Turns a declared interview (no Azure, `az`, `azd`, Bicep, Docker, or customer credentials) into a deterministic sizing package — `qualification/sizing.md`, `sizing-manifest.json`, `discovery.md`, optional `roi.md` — and seeds SPEC § 12 `load_profile{}`. **Not a deployed runtime skill.** |

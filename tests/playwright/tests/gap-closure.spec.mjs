@@ -2,7 +2,7 @@
 //
 // Browser-level assertions for the five NEW skills' public site presence:
 //   - funnel.html          — threadlight-qualify no-repo entry + Cowork download
-//   - production.html      — connect / ground / loadtest evidence progression
+//   - production.html      — concise target checks linking to the full reference
 //   - self-improving.html  — threadlight-upgrade plan-only lifecycle scan
 //
 // These focused release checks complement tests/site.spec.mjs: that suite
@@ -33,18 +33,12 @@ test.describe('gap-closure release surfaces — five new skills', () => {
     await expect(zip.first()).toBeVisible();
   });
 
-  test('production.html shows the connect / ground / loadtest evidence progression', async ({ page }) => {
-    await page.goto('/production.html');
-    await expect(page.locator('#remediation-skills')).not.toHaveAttribute('open', '');
-    await page.locator('#remediation-skills > summary').click();
-    for (const skill of ['threadlight-connect', 'threadlight-ground', 'threadlight-loadtest']) {
-      const link = page.locator(`a[href*="skills/${skill}"]`).first();
-      await link.scrollIntoViewIfNeeded();
-      await expect(link, `production.html must link ${skill}`).toBeVisible();
-      const href = await link.getAttribute('href');
-      expect(href).toContain(`${REPO}`.split('/')[1]); // repo name present
-      expect(href).toContain(`skills/${skill}`);
-    }
+  test('production.html retains scoped live-evidence boundaries and a route to the complete reference', async ({ page }) => {
+    await page.goto('/production.html#runtime-controls');
+    await expect(page.locator('#runtime-controls')).toContainText('authorized probes');
+    await expect(page.locator('#runtime-controls')).toContainText('fresh evidence');
+    await expect(page.locator('#runtime-controls')).toContainText('noop is not business-write proof');
+    await expect(page.locator('#readiness-topic a[href$="/docs/production-readiness.md"]')).toBeVisible();
   });
 
   test('self-improving.html adds the plan-only threadlight-upgrade lifecycle scan', async ({ page }) => {
@@ -60,7 +54,6 @@ test.describe('gap-closure release surfaces — five new skills', () => {
   test('every new-skill link points at a real repository skill folder (no dead hrefs)', async ({ page }) => {
     const pages = {
       '/funnel.html': ['threadlight-qualify'],
-      '/production.html': ['threadlight-connect', 'threadlight-ground', 'threadlight-loadtest'],
       '/self-improving.html': ['threadlight-upgrade'],
     };
     for (const [url, skills] of Object.entries(pages)) {

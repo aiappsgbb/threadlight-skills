@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { homeHistory } = require('./helpers/home-history');
 
 const repoRoot = path.join(__dirname, '../..');
 const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
@@ -38,7 +39,7 @@ function extractProducerSectionHeading(text, number) {
 // The single release contract these publication assertions are built from.
 // expectedPipelineSkillCount counts every skill except the threadlight-auto
 // planner, so expectedSkillCount is always expectedPipelineSkillCount + 1.
-const expectedVersion = '2.1.0';
+const expectedVersion = '2.5.1';
 const expectedSkillCount = 24;
 const expectedPipelineSkillCount = 23;
 
@@ -178,9 +179,11 @@ test('GitHub Pages link every new skill to its repository skill folder', () => {
   assert.ok(funnel.includes('skills/threadlight-qualify'), 'funnel must link threadlight-qualify');
   assert.ok(funnel.includes('downloads/threadlight-qualify.zip'), 'funnel must offer the Cowork zip');
 
-  // production = the connect/ground/load evidence progression.
+  // The concise production page links to the complete evidence reference.
+  assert.ok(production.includes('/docs/production-readiness.md'));
+  const readiness = read('docs/production-readiness.md');
   for (const skill of ['threadlight-connect', 'threadlight-ground', 'threadlight-loadtest']) {
-    assert.ok(production.includes(`skills/${skill}`), `production must link ${skill}`);
+    assert.ok(readiness.includes(`skills/${skill}`), `readiness reference must link ${skill}`);
   }
 
   // self-improving = the plan-only upgrade lifecycle scan.
@@ -247,15 +250,14 @@ test('no active product surface carries a stale skill-count claim', () => {
     let text = read(surface);
     if (surface === 'docs/index.html') {
       // Keep the reviewed reel snapshot; its bytes/assets have a separate immutable guard.
-      const historical = /<section\b[^>]*(?:class="scene demo-intro home-intro"|aria-label="Threadlight pipeline demo reel"|class="scene recap home-recap")[^>]*>[\s\S]*?<\/section>/g;
-      const snapshots = [...text.matchAll(historical)];
+      const { snapshots, current } = homeHistory(text);
       assert.strictEqual(snapshots.length, 3, 'exactly the hero, reel and historical recap are exempt');
-      for (const [snapshot] of snapshots) {
+      for (const snapshot of snapshots) {
         assert.match(snapshot, /23-skill library/);
         assert.match(snapshot, /recreation|recreated|curated/i);
       }
       assert.match(text, /reviewed 23-skill snapshot\. The current 24-skill catalog/);
-      text = text.replace(historical, '');
+      text = current;
     }
     const m = STALE_COUNT.exec(text);
     assert.strictEqual(m, null, `${surface} still has a stale skill-count claim: ${m && m[0]}`);

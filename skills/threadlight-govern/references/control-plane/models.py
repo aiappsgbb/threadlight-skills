@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import (
     AfterValidator, BaseModel, ConfigDict, Field, PlainSerializer, StringConstraints, TypeAdapter,
-    model_validator,
+    JsonValue, model_validator,
 )
 
 Identifier = Annotated[str, StringConstraints(
@@ -68,9 +68,22 @@ class ApprovalGrant(StrictModel):
     provenance: Nonce
 
 
+class ReviewMetadata(StrictModel):
+    operation_id: Identifier
+    review_context: Annotated[dict[str, JsonValue], Field(min_length=1, max_length=16)]
+    proposed_arguments: Annotated[dict[str, JsonValue], Field(min_length=1, max_length=32)]
+
+    @model_validator(mode="after")
+    def bounded(self):
+        if len(canonical(self)) > 8192:
+            raise ValueError("review_metadata_too_large")
+        return self
+
+
 class RequestOperation(StrictModel):
     operation: Literal["request", "resolve"]
     intent: ApprovalRequest
+    review: ReviewMetadata | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class DecideOperation(StrictModel):
