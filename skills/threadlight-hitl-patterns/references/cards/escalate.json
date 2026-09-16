@@ -1,0 +1,15 @@
+{
+  "$schema": "https://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {"type": "TextBlock", "text": "${title}", "size": "large", "weight": "bolder", "wrap": true},
+    {"type": "TextBlock", "text": "${summary}", "wrap": true},
+    {"type": "FactSet", "facts": [{"title": "Review queue", "value": "${escalationRole}"}]},
+    {"type": "Input.Text", "id": "rationale", "label": "Why is escalation required?", "isMultiline": true, "maxLength": 1024, "isRequired": true, "errorMessage": "Explain the escalation."},
+    {"type": "TextBlock", "text": "The server verifies the destination and its authorized reviewers.", "isSubtle": true, "wrap": true}
+  ],
+  "actions": [
+    {"type": "Action.Submit", "title": "Request escalation", "data": {"gate": "escalate", "decision": "escalation_requested", "case_id": "${caseId}", "review_id": "${reviewId}"}}
+  ]
+}

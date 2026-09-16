@@ -1,0 +1,17 @@
+{
+  "$schema": "https://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {"type": "TextBlock", "text": "${title}", "size": "large", "weight": "bolder", "wrap": true},
+    {"type": "TextBlock", "text": "${summary}", "wrap": true},
+    {"type": "FactSet", "facts": [
+      {"title": "Case", "value": "${caseId}"},
+      {"title": "Reviewed content", "value": "${contentDigest}"}
+    ]},
+    {"type": "TextBlock", "text": "Acknowledgement records review; it does not authorize a business action.", "isSubtle": true, "wrap": true}
+  ],
+  "actions": [
+    {"type": "Action.Submit", "title": "I have reviewed and acknowledge", "data": {"gate": "signoff", "decision": "acknowledged", "case_id": "${caseId}", "review_id": "${reviewId}"}}
+  ]
+}

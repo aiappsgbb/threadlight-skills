@@ -1,0 +1,16 @@
+{
+  "$schema": "https://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {"type": "TextBlock", "text": "${title}", "size": "large", "weight": "bolder", "wrap": true},
+    {"type": "TextBlock", "text": "${summary}", "wrap": true},
+    {"type": "Input.Text", "id": "proposed_value", "label": "${fieldLabel}", "value": "${proposedValue}", "maxLength": 1024, "isRequired": true, "errorMessage": "Enter the proposed value."},
+    {"type": "Input.Text", "id": "rationale", "label": "Reason for the change", "isMultiline": true, "maxLength": 1024, "isRequired": true, "errorMessage": "Explain the change."},
+    {"type": "TextBlock", "text": "Edits create a new intent. The previous approval cannot authorize changed arguments.", "isSubtle": true, "wrap": true}
+  ],
+  "actions": [
+    {"type": "Action.Submit", "title": "Review amended proposal", "style": "positive", "data": {"gate": "edit-and-approve", "decision": "review_edits", "case_id": "${caseId}", "review_id": "${reviewId}"}},
+    {"type": "Action.Submit", "title": "Cancel", "associatedInputs": "none", "data": {"gate": "edit-and-approve", "decision": "cancelled", "case_id": "${caseId}", "review_id": "${reviewId}"}}
+  ]
+}

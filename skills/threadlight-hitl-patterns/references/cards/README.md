@@ -1,29 +1,40 @@
-# Adaptive Card templates — placeholder index
+# Adaptive Card templates
 
-The seven canonical action gates each get an Adaptive Card 1.5 template
-under this directory:
+Seven copyable Adaptive Card 1.5 templates are supplied here. Bind their
+`${...}` values from a server-owned review projection, not a model's authority
+claims. The card is a user interface, **not an approval grant**.
 
-| Gate | File | Status |
-|------|------|--------|
-| `approve` | `approve.json` | 📋 Placeholder — full template inlined in SKILL.md |
-| `edit-and-approve` | `edit-and-approve.json` | 📋 Placeholder |
-| `reject` | `reject.json` | 📋 Placeholder |
-| `escalate` | `escalate.json` | 📋 Placeholder |
-| `signoff` | `signoff.json` | 📋 Placeholder |
-| `audit-view` | `audit-view.json` | 📋 Placeholder |
-| `request-info` | `request-info.json` | 📋 Placeholder |
+| Gate | File | Submitted intent |
+|------|------|------------------|
+| Approve | [approve.json](approve.json) | Approve or decline the current review |
+| Edit and approve | [edit-and-approve.json](edit-and-approve.json) | Propose changed fields for a **new intent** |
+| Reject | [reject.json](reject.json) | Decline with a reason |
+| Escalate | [escalate.json](escalate.json) | Request server-validated routing |
+| Signoff | [signoff.json](signoff.json) | Acknowledge review, not business execution |
+| Audit view | [audit-view.json](audit-view.json) | None: no action buttons |
+| Request information | [request-info.json](request-info.json) | Request a separately authorized message |
 
-The SKILL.md inlines the canonical `approve` shape; the others follow the
-same structure with gate-specific Input fields and Action buttons.
+Common bindings are `title`, `summary`, `caseId` and, for submissions, `reviewId`.
+Additional display/input bindings are explicit in each JSON file. Replace the
+editable field with the application's typed entity fields; keep server-side
+validation independent of card input validation. Cancel buttons bypass input
+validation but confer no permission.
 
-## Canonization order (during pilots)
+The server must reload the exact review, verify the authenticated human and
+current entitlement, and reject expired, changed or already consumed authority.
+Changing arguments requires a new intent and fresh decision; copying the old
+grant onto edited values is forbidden. Recipient/queue controls belong to the
+server. Rendering an audit card does not prove that a human read it.
 
-1. **KYC pilot** — canonize `approve`, `edit-and-approve`, `escalate`
-   (the three gates KYC analyst needs)
-2. **Future operations pilot** — canonize `escalate`, `signoff`, `audit-view`
-   (NOC operator gates)
-3. **Supplier risk pilot** — canonize `request-info` (supplier outreach)
-4. **PIM pilot** — canonize `reject` with reason picker (brand violation)
+These files do not provision a bot, exchange a Teams identity for a delegated
+control-plane token, or resume a native session. See the
+[runtime/channel support matrix](../../../../docs/runtime-support.md) before
+choosing a handler. Native Outlook approval and ordinary Teams card submission
+are different authority paths.
 
-The card JSON should validate against Adaptive Cards 1.5 schema:
-https://adaptivecards.io/explorer/
+The [delegated decision bridge](../handlers/control_plane_review.py) implements
+approve/reject against the existing control-plane protocol. It requires a
+server-owned review loader and a real delegated credential supplied by the bot's
+verified identity integration. It records a decision, never the business effect.
+
+Format reference: [official Adaptive Cards input/submit example](https://learn.microsoft.com/adaptive-cards/samples/input-form-with-right-to-left#input-form-with-rtl-sample).
