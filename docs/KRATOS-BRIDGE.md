@@ -87,11 +87,12 @@ travels with the same bundle Kratos exported.
 
 ---
 
-## 4. What is intentionally trimmed (do NOT flag as findings)
+## 4. Intentional trims and required manifest adaptation
 
-The Kratos exporter ships a **trimmed `infra/`** on purpose. `threadlight-safe-check`
-and `threadlight-production-ready` recognize the Kratos-export shape and treat the
-following as **intentional**, not as "missing module" / "missing posture" findings:
+The Kratos exporter ships a **trimmed `infra/`** on purpose. The coding-agent
+workflow must represent these choices explicitly in the deployment contract;
+the Python safe-check CLI does not automatically recognize the export and
+waive prerequisites or findings:
 
 - **No APIM / AI Gateway** in the export's Bicep. (Add it later via
   `citadel-spoke-onboarding` only if the customer needs a governance hub.)
@@ -101,22 +102,57 @@ following as **intentional**, not as "missing module" / "missing posture" findin
 - **`evals/` absent** from `use-cases/<x>/` — excluded by the Kratos exporter's
   `_SKIP_DIRS`. Backfill it (see § 6); do not report it as a deploy defect.
 
-These are informational notes in the scorecard, not gate failures.
+They are reasons to scope expected resources correctly, not automatic passes.
+Missing evaluations can still be readiness gaps even if export omission is
+intentional. Network/governance requirements selected by the customer remain
+requirements regardless of what the export omitted.
+
+### Adapt before safe-check
+
+Ask the coding agent to inspect the actual `infra/`, `azure.yaml` services and
+use-case sources, then author/review `specs/manifest.json` with a
+`deployment_manifest` object using the
+[design manifest schema/example](../skills/threadlight-design/SKILL.md#5-specsmanifestjson).
+Derive selectors, expected resource types, services/roles, integrations, jobs
+and channels from that evidence. Do not blindly infer a Container App role from
+a hosted-agent directory name. Record unknown target values as blockers for
+operator resolution, not guessed defaults. Keep the exported runtime intact.
+
+From the export root, with the
+[supported safe-check package installed](../skills/threadlight-safe-check/references/governance-probe.md#install):
+
+```bash
+threadlight-safe-check --phase design --manifest specs/manifest.json
+# Live reads only after approval and independent scope confirmation:
+threadlight-safe-check --phase post-deploy --manifest specs/manifest.json \
+  --subscription <approved-subscription> --rg <approved-resource-group> --out tests
+```
+
+There is no `--from-infra` CLI flag. Missing/invalid JSON or a missing
+`deployment_manifest` block still yields **exit code 2**, including on a
+recognized export. Design findings exit `1`; a successful gate exits `0`.
+Fix the adapted contract and rerun; never create an empty postdeploy result to
+unblock the production-ready assessor. Postdeploy output is
+`tests/postdeploy-manifest.json`; live tooling/auth failures are separate from
+contract gaps.
 
 ---
 
 ## 5. Recommended Threadlight-skill invocation order
 
-After `azd up` succeeds on the export, layer Threadlight skills in this order:
+After `azd up` succeeds on the export, adapt the manifest above, then layer
+Threadlight skills in this order. Skill prompts are coding-agent instructions,
+not additional Python CLI flags:
 
 ```
 azd up (Kratos export)
    │
-   ├─ threadlight-safe-check        # post-deploy gate — validates selectors, accepts trimmed infra
+   ├─ coding-agent manifest adaptation  # explicit contract from shipped infra + selected requirements
+   ├─ threadlight-safe-check        # real --manifest; validates the adapted contract
    ├─ threadlight-deploy            # Kratos-export mode: enrich/validate only, backfill evals/
    ├─ foundry-evals                 # run the backfilled eval scenarios
    ├─ threadlight-consumption-iq    # cost projection off the exported Bicep + azd env
-   ├─ threadlight-production-ready  # 13-pillar advisory scorecard (trimmed infra = informational)
+   ├─ threadlight-production-ready  # pinned catalog --root; prerequisites and gaps still apply
    │
    └─ on-demand extensions (any order, all write to the resolved skills root):
         threadlight-hitl-patterns       # Teams Adaptive Card approval gates

@@ -1,0 +1,38 @@
+.chapter-customize .seams-map,
+.chapter-customize .acceptance-map { margin: 22px 0; }
+.seams-layout { display: grid; grid-template-columns: .65fr 2fr; }
+.seams-kept { display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 24px; border-right: 1px solid var(--line-2); min-width: 0; }
+.seams-map strong, .acceptance-map strong { display: block; color: var(--ink-0); font: 500 23px/1.25 var(--serif); }
+.seams-kept > span:last-child, .seams-decisions div > span:last-child:not(.map-arrow), .acceptance-evidence div > span:last-child, .acceptance-fork div > span:last-child, .acceptance-gate div > span:last-child { color: var(--ink-2); font: 12px/1.6 var(--sans); display: block; margin-top: 8px; }
+.seams-decisions { padding: 0 22px; min-width: 0; }
+.seams-decisions > div { display: grid; grid-template-columns: 1.2fr 20px 1fr; gap: 16px; align-items: center; padding: 20px 0; }
+.seams-decisions > div + div { border-top: 1px solid var(--line); }
+.seams-decisions strong { margin-top: 8px; }
+.acceptance-evidence { display: grid; grid-template-columns: 1fr 24px 1fr; gap: 20px; padding: 26px 24px; align-items: center; }
+.acceptance-evidence strong, .acceptance-fork strong, .acceptance-gate strong { margin-top: 8px; }
+.acceptance-fork { display: grid; grid-template-columns: 1fr 1fr; border-block: 1px solid var(--line-2); }
+.acceptance-fork > div { padding: 22px 24px; }
+.acceptance-fork > div + div { border-left: 1px solid var(--line-2); }
+.acceptance-fork > div:first-child { border-left: 3px solid var(--cx-diagram-accent); }
+.acceptance-gate { display: flex; align-items: center; gap: 20px; padding: 24px; border-left: 3px solid var(--cx-diagram-accent); }
+.acceptance-gate .flow-icon { color: var(--cx-diagram-accent); }
+.chapter-customize [data-secondary-visual] .map-output strong { color: var(--ink-1); font: 400 13px/1.6 var(--sans); }
+.chapter-customize [data-secondary-visual] code { overflow-wrap: anywhere; }
+.chapter-customize [data-secondary-visual] code,
+.chapter-customize [data-secondary-visual] a { color: var(--ink-1); }
+@media (max-width: 600px) {
+  .seams-layout { grid-template-columns: 1fr; }
+  .seams-kept { display: grid; grid-template-columns: 40px 1fr; padding: 20px 16px; gap: 6px 12px; border-right: 0; border-bottom: 1px solid var(--line-2); }
+  .seams-kept .flow-icon { grid-row: span 3; }
+  .seams-kept > span:last-child { margin: 0; }
+  .seams-decisions { padding: 0 16px; }
+  .seams-decisions > div { gap: 8px; grid-template-columns: 1.2fr 16px 1fr; }
+  .seams-decisions strong { font-size: 21px; }
+  .seams-decisions .map-tag { font-size: 9px; letter-spacing: 0; }
+  .acceptance-evidence { grid-template-columns: 1fr; gap: 14px; padding: 22px 16px; }
+  .acceptance-evidence .map-arrow { transform: rotate(90deg); }
+  .acceptance-fork { grid-template-columns: 1fr; }
+  .acceptance-fork > div { padding: 20px 16px; }
+  .acceptance-fork > div + div { border-left: 0; border-top: 1px solid var(--line); }
+  .acceptance-gate { padding: 22px 16px; align-items: start; gap: 12px; }
+}

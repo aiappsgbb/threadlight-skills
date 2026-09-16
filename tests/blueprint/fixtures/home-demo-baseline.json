@@ -1,0 +1,27 @@
+{
+  "approvedBoundary": "2026-09-10: page structure may change; demo markup, scripts, inline styles and media remain unchanged.",
+  "slices": {
+    "inlineStyles": "8c273835ea9733c314aeb8b4cfe39061421003c6610b3fc053af82b479c65f3b",
+    "scripts": "1bd870f97b19f2ee88572e146b66fe65564893213ed5f96f764e5cf75b1cc056",
+    "reel": "0cfa5f3e1195aeb79a25d8e49e7c1a297a41e7f63e9415889c0ccaefb943410c",
+    "lightbox": "59eecda522ec936303da09b9c95a0fbf2d0836909c490a956c552157470545d1",
+    "introContent": "b16b08644f9ab51f6d81ad2551b43e49edc3b398ab7725596688f10a4168b583"
+  },
+  "files": {
+    "docs/assets/audio/beat-1.mp3": "292e131e64a8a5915326b6a360f8118996a698749b03334b85160f963f6858b3",
+    "docs/assets/audio/beat-2.mp3": "e0a3941334b508766cde862d7e904e31c3a52eb6cdb683080d927d2660df0c53",
+    "docs/assets/audio/beat-3.mp3": "0b9efdc8f975efa941c77dcab29fa6b53dbc8af31024429142fb3997f0e3abfa",
+    "docs/assets/audio/beat-4.mp3": "3b802fc03fd4039975a6f5abfc10b1d12715b5fd8d35d261d3510ee3c49cdab3",
+    "docs/assets/audio/beat-5.mp3": "a733475087bb87fc23300b81a0b92a989a4a5ce18a42ef0b2af8131495412cf3",
+    "docs/assets/audio/beat-6.mp3": "1403035757ff75cf9b8c02279f840c05fe59fcde835f219dadc9c61e726eaa1e",
+    "docs/assets/audio/beat-7.mp3": "55d090bb4cb973422739599baa9772c1781eedd194a3c94718f02c372b50cbb8",
+    "docs/assets/audio/intro.mp3": "95c5df7c60fcd3752318e81847291880dc78b9570410c046377645d8be61759e",
+    "docs/assets/demo-reel.js": "ff32dd6e1b19dc4baf266c0d223bcf8eee5801f1c3065a75ddab07224abbeb6e",
+    "docs/assets/shots/deploy-teams.png": "7fb374dda8fe4cd73184a8e75fb5053ace308a94b464fce306dedd7807e4ba21",
+    "docs/assets/shots/deploy-workspace.png": "eda88260d1cf8f672c188155314faec291cce419c31970215aa645063632a17c",
+    "docs/assets/shots/sales-kit-deck.png": "acdd4e41cda609a970e4362971d9146348d9ccea88c213ce2213d0d66edcb7d9",
+    "docs/assets/shots/sales-kit-prep-guide.png": "880ff7ecbfe7a4332b13df0b0116aac714c554ff03ccffd55c9c7fe5e1c3aaed",
+    "docs/assets/site.css": "3eb89a7689c1609d00df5193485fd5d32ca69f65a9d12d230a222afd8a0b426b",
+    "docs/assets/site.js": "e4d413b740d2794931d5ad1107649d864c4dd64440b0ea6f8815d5540b0ac3db"
+  }
+}

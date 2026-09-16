@@ -39,6 +39,64 @@ async function tap(page, selector) {
 }
 
 test.describe('case study wizard (case-study.html)', () => {
+  test('opens on historical evidence, with the conditional gate visible', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(CS);
+    await ready(page);
+    const intro = page.locator('[data-chapter-intro]');
+    expect((await intro.innerText()).trim().split(/\s+/).length).toBeLessThanOrEqual(60);
+    const proof = page.locator('#chapter-top [data-visual-anchor]');
+    await expect(proof).toContainText('13 PASS');
+    await expect(proof).toContainText('1 conditional');
+    await expect(proof).toContainText('2,306');
+    const box = await proof.boundingBox();
+    expect(box.y).toBeLessThanOrEqual(600);
+    const bottomNav = await page.locator('.cs-wiz-nav').boundingBox();
+    expect(Math.min(box.height, bottomNav.y - box.y)).toBeGreaterThanOrEqual(200);
+    await expect(page.locator('#chapter-top')).toContainText(/not current business-live proof/i);
+  });
+
+  test('tracks the actual masthead after mobile navigation and later layout changes', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(CS);
+    await ready(page);
+    const gap = () => page.evaluate(() => Math.abs(
+      parseFloat(document.documentElement.style.getPropertyValue('--wiz-mast'))
+      - document.querySelector('.masthead').getBoundingClientRect().height));
+    await expect.poll(gap).toBeLessThanOrEqual(1);
+    await page.locator('.masthead').evaluate(el => { el.style.paddingBottom = '39px'; });
+    await expect.poll(gap).toBeLessThanOrEqual(1);
+    await page.getByRole('button', { name: 'Next chapter', exact: true }).click();
+    await expect(page.locator('#glance')).toHaveClass(/is-current/);
+  });
+
+  test('maps historical receipts to scoped claims and unproved boundaries', async ({ page }) => {
+    const mobile = page.viewportSize().width <= 600;
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(CS + '#verdict');
+    await ready(page);
+    const map = page.locator('figure[data-evidence-map]');
+    await expect(map).toBeVisible();
+    await expect(map.locator('figcaption')).toContainText(/illustrative.*historical.*not.*fresh receipt/i);
+    await expect(map.locator('[data-evidence-lane]')).toHaveCount(3);
+    await expect(map).toContainText('13 PASS');
+    await expect(map).toContainText('1 conditional');
+    await expect(map).toContainText('14 / 15');
+    await expect(map).toContainText(/not proved.*whole-agent/is);
+    await expect(map).toContainText(/not.*new deployment/i);
+    expect(await map.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    expect(await page.locator('main > section').evaluateAll(els => els.map(el => el.id))).toEqual(STEPS);
+    const accessibility = await new AxeBuilder({ page }).include('[data-evidence-map]').analyze();
+    expect(accessibility.violations).toEqual([]);
+    await page.locator('.cs-verdict-details summary').click();
+    await expect(page.locator('.cs-digest')).toBeVisible();
+    await expect(page.locator('.cs-digest')).toContainText('~58 findings');
+    await expect(page.locator('.cs-digest')).toContainText('41 / 41');
+    await map.locator('a[href="#stage-06"]').click();
+    await expect(page.locator('#run')).toHaveClass(/is-current/);
+    await expect(page.locator('.cs-rail-item[data-target="stage-06"]')).toHaveClass(/is-active/);
+  });
+
   test('renders + title intact', async ({ page }) => {
     await page.goto(CS);
     await expect(page).toHaveTitle(/Case study/);
@@ -227,6 +285,11 @@ test.describe('case study wizard (case-study.html)', () => {
 
 test.describe('case study fallback (no JS)', () => {
   test.use({ javaScriptEnabled: false });
+  test('stage evidence has stable fragment targets without JavaScript', async ({ page }) => {
+    await page.goto(CS + '#stage-07');
+    await expect(page.locator('#stage-07')).toHaveCount(1);
+    await expect(page.locator('#stage-07')).toBeInViewport();
+  });
   test('degrades to a plain scrollable page with all content shown', async ({ page }) => {
     await page.goto(CS);
     await expect(page.locator('html')).not.toHaveClass(/cs-wiz/);
@@ -234,5 +297,8 @@ test.describe('case study fallback (no JS)', () => {
     await expect(page.locator('#verdict')).toBeVisible();
     // all 14 build stages render (nothing hidden behind the wizard)
     await expect(page.locator('#run .cs-stage')).toHaveCount(14);
+    await expect(page.locator('figure[data-evidence-map]')).toBeVisible();
+    await page.locator('.cs-verdict-details summary').click();
+    await expect(page.locator('.cs-digest')).toBeVisible();
   });
 });

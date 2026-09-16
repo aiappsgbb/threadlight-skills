@@ -84,6 +84,9 @@ test('buildPrompt embeds name, summary + threadlight-auto', () => {
   assert.ok(p.includes('X'));
   assert.match(p, /Microsoft Foundry/);
   assert.doesNotMatch(p, /Azure AI Foundry/);
+  assert.match(p, /starter lifecycle/);
+  assert.match(p, /planner/i);
+  assert.doesNotMatch(p, /from idea to a production-ready/);
 });
 
 test('buildPrompt lists integrations + approvals when present', () => {
@@ -92,15 +95,15 @@ test('buildPrompt lists integrations + approvals when present', () => {
   assert.ok(p.includes('legal sign-off'));
 });
 
-test('buildAutomation describes a hands-off CI/CD deploy with no laptop commands', () => {
+test('buildAutomation describes explicit CI/CD handoff without a hands-off promise', () => {
   const steps = L.buildAutomation(base);
   assert.ok(Array.isArray(steps) && steps.length >= 3);
   const text = steps.map(s => s.text).join('\n');
   assert.match(text, /Microsoft Foundry/);
   assert.doesNotMatch(text, /Azure AI Foundry/);
-  // The whole point: Copilot deploys through CI/CD — the user runs nothing.
   assert.ok(/CI\/CD/.test(text), 'must state the deploy goes through CI/CD');
-  assert.ok(/never run a deploy command/i.test(text), 'must say the user runs no deploy command');
+  assert.match(text, /explicit approval/);
+  assert.doesNotMatch(text, /never run a deploy command/);
   // The old manual-command anti-pattern must be gone.
   assert.ok(!/azd up|azd auth|azd init/.test(text), 'must not tell the user to run azd');
   // The deploy line is flagged for emphasis.
@@ -114,8 +117,9 @@ test('buildAutomation scales with the process (approvals, red-team, pricing)', (
   });
   const text = rich.map(s => s.text).join('\n');
   assert.ok(/human-approval gates/.test(text), 'names the approval gates');
-  assert.ok(/red-teams it/.test(text), 'high complexity red-teams');
-  assert.ok(/prices every run/.test(text), 'regulated adds cost pricing');
+  assert.ok(/red-team evidence/.test(text), 'high complexity requests safety evidence');
+  assert.ok(/cost forecast/.test(text), 'regulated adds cost forecast');
+  assert.doesNotMatch(text, /governs it at runtime|prices every run/);
 });
 
 test('buildPrompt tells Copilot to deploy through CI/CD, not the laptop', () => {

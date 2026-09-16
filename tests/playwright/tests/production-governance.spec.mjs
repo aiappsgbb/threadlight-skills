@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { homeHistory } from '../../blueprint/helpers/home-history.js';
 
 async function capture(locator, name, testInfo) {
   const directory = process.env.THREADLIGHT_SCREENSHOT_DIR;
@@ -26,9 +27,16 @@ for (const name of ['index', 'funnel', 'production']) {
     }
     await page.locator('header nav.nav a[href="./production.html"]').click();
     await expect(page).toHaveURL(/production\.html$/);
-    await expect(page.locator('header nav.nav a[aria-current="page"]')).toContainText('Production-ready');
+    await expect(page.locator('header nav.nav a[aria-current="page"]')).toHaveText('Production');
     await page.goto(`/${name}.html`);
-    await expect(page.locator('main')).not.toContainText(/Foundry runs & governs it|ship with (?:two|2) waivers|ready in ~7m|92[–/]100/);
+    const html = await page.locator('main').innerHTML();
+    const history = name === 'index' ? homeHistory(html) : { current: html };
+    if (name === 'index') {
+      expect(history.snapshots).toHaveLength(3);
+      expect(history.current).toContain('Historical demo captions are not current guarantees');
+    }
+    const currentCopy = history.current.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&');
+    expect(currentCopy).not.toMatch(/Foundry runs & governs it|ship with (?:two|2) waivers|ready in ~7m|92[–/]100/);
     const overflowing = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     expect(overflowing, `${name} horizontal overflow`).toBe(false);
     await capture(page.locator('body'), name, testInfo);

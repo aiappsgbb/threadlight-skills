@@ -25,7 +25,7 @@ test('commercial chapter copy separates the product architecture from instance v
   }
   const production = read('production.html');
   assert.match(production, /id="effect-authority"/);
-  assert.match(production, /href="\.\/agent-governance\.html"/);
+  assert.match(production, /href="\.\/governance\.html"/);
   assert.match(production, /agent-governance-deep-dive\.md/);
   assert.match(production, /governed-returns-validation\.md/);
 });

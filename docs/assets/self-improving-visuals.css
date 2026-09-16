@@ -1,0 +1,35 @@
+.chapter-self-improving .mode-map,
+.chapter-self-improving .upgrade-map { margin: 22px 0; }
+.mode-lanes { padding: 0 22px; }
+.mode-lanes > div { display: grid; grid-template-columns: .9fr 1.1fr 24px 1fr; gap: 20px; align-items: center; padding: 24px 0; }
+.mode-lanes > div + div { border-top: 1px solid var(--line); }
+.mode-lanes strong, .upgrade-map strong { display: block; color: var(--ink-0); font: 500 23px/1.25 var(--serif); }
+.mode-lanes .map-tag { margin-bottom: 8px; }
+.mode-input { display: grid; grid-template-columns: 40px 1fr; gap: 5px 12px; align-items: center; }
+.mode-input .flow-icon { grid-row: span 2; }
+.mode-input > span, .mode-result > span, .upgrade-inputs div > span:last-child, .upgrade-plan > span:last-child, .upgrade-stop div > span:last-child { display: block; color: var(--ink-2); font: 12px/1.6 var(--sans); }
+.mode-result > span { margin-top: 8px; }
+.mode-result { padding-left: 15px; border-left: 1px solid var(--cx-diagram-accent); }
+.upgrade-inputs { display: grid; grid-template-columns: 1fr 24px 1fr; align-items: center; gap: 20px; padding: 28px 24px 0; text-align: center; }
+.upgrade-inputs > div { min-width: 0; }
+.upgrade-inputs strong, .upgrade-plan strong, .upgrade-stop strong { margin: 8px 0; }
+.upgrade-plan { margin: 24px; text-align: center; }
+.upgrade-stop { display: flex; gap: 20px; align-items: center; padding: 22px; border-top: 1px dashed var(--line-2); border-left: 3px solid var(--cx-diagram-accent); }
+.upgrade-stop .flow-icon { color: var(--cx-diagram-accent); }
+.chapter-self-improving [data-secondary-visual] .map-output strong { color: var(--ink-1); font: 400 13px/1.6 var(--sans); }
+.chapter-self-improving [data-secondary-visual] code { overflow-wrap: anywhere; }
+.chapter-self-improving [data-secondary-visual] code,
+.chapter-self-improving [data-secondary-visual] a { color: var(--ink-1); }
+@media (max-width: 600px) {
+  .mode-lanes { padding: 0 16px; }
+  .mode-lanes > div { grid-template-columns: 1fr 18px 1fr; gap: 12px; }
+  .mode-question { grid-column: 1 / -1; padding-bottom: 8px; }
+  .mode-question .map-tag { display: inline; margin-right: 12px; }
+  .mode-question strong { display: inline; }
+  .mode-input { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+  .mode-input strong, .mode-result strong { font-size: 21px; }
+  .mode-result { padding-left: 10px; }
+  .upgrade-inputs { grid-template-columns: 1fr; padding: 22px 16px 0; gap: 12px; }
+  .upgrade-map .map-connector { height: 22px; }
+  .upgrade-stop { padding: 18px 16px; gap: 12px; align-items: start; }
+}

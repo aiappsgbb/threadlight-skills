@@ -3,7 +3,8 @@
 `scripts/ai_act_evidence.py` is a **terminal aggregator**. It does not run any
 new check — it maps the artifacts this skill and its siblings *already produce*
 onto EU AI Act articles and emits a tenant-local evidence pack. It is offline,
-deterministic, and read-only. It never calls Azure and never fabricates coverage.
+deterministic, and read-only with respect to source artifacts (it writes the pack).
+It never calls Azure. Its labels describe inventory, **not certification**.
 
 > This is an engineering aid, **not legal advice**, and does not by itself
 > constitute an EU AI Act conformity assessment. Article scope and risk
@@ -15,15 +16,33 @@ Each article resolves to one state:
 
 | State | Meaning |
 | --- | --- |
-| `covered` | Every required source is present and its signal is green. |
+| `covered` | The article-specific inventory predicate below is met; not a universal green verdict. |
 | `partial` | Some evidence is present but incomplete (a pillar is amber, or one of two sources is missing). |
 | `gap` | The required evidence is absent. Run the mapped skill, then re-run. |
 | `scaffold` | Template only — a human must complete the assessment (Art 27). |
 | `not-applicable` | The obligation does not apply to this system. |
 
-A **missing or malformed** source is treated as absent (never as evidence), so a
-sparse repo produces honest gaps rather than a green wash. Every present source
-is fingerprinted with a SHA-256 recorded in `ai-act-evidence.json`.
+Missing, unreadable or syntactically invalid JSON is treated as absent. Parseable
+JSON is present for provenance; this does **not** imply schema validation.
+Every present source is fingerprinted with a SHA-256 in `ai-act-evidence.json`.
+
+Actual predicates in [`ai_act_evidence.py`](../scripts/ai_act_evidence.py):
+
+- **Art 11:** scorecard and MCP SBOM must be non-empty JSON objects or lists.
+- **Art 15:** eval and red-team sources must be non-empty JSON objects or lists.
+  Their verdicts and the mapped SBOM do not gate this predicate.
+- **Art 9:** the shared governance evaluator must return `pass` and `live: true`;
+  its binding scope must still be respected.
+- **Art 12:** observability pillar `green` plus non-empty identity content.
+  **Art 14:** HITL pillar `green` (`amber` gives `partial`). Pillar lookup prefers
+  `status_with_waivers` over `status_raw`.
+- **Art 26:** positive integer `summary.subject_count`, with integer
+  `summary.owned` equal to it. **Art 27:** human-authored scaffold.
+
+Empty objects/lists cannot satisfy `_has_content`, but non-empty **schema-invalid**
+sources can satisfy Art 11 / Art 15. Those predicates do not check freshness,
+eval success or safety thresholds. Validate upstream artifacts with their owners;
+do not interpret this pack as a quality gate or conformity assessment.
 
 ## The map
 
@@ -48,7 +67,7 @@ Art 15 — is a `gap`; otherwise exit `0`. An unusable `--root` or unwritable
 | `tests/production-readiness-manifest.json` | `production_ready.py` (the scorecard) | `tests/` or next to the report under `docs/` |
 | `mcp-sbom.json` | `mcp_sbom.py` (Epic A) | repo root or `docs/` |
 | `agent-identity.json` | `agent_identity.py` (Epic B) | repo root or `docs/` |
-| `govern-manifest.json` | `threadlight-govern` | repo root or `specs/` |
+| `specs/governance-manifest.json` | `threadlight-govern` / deployed collector | Current v1 evidence; legacy `govern-manifest.json` discovery is not current proof |
 | `specs/evals-manifest.json` | `threadlight-evals` | `specs/` |
 | `specs/redteam-manifest.json` | `threadlight-redteam` | `specs/` |
 

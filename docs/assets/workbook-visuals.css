@@ -1,0 +1,33 @@
+.chapter-workbook .pilot-check-map,
+.chapter-workbook .cloud-boundary-map { margin: 22px 0; }
+.pilot-case-lanes { padding: 0 24px; }
+.pilot-case-lanes > div { display: grid; grid-template-columns: 1fr 24px 1fr; gap: 24px; padding: 24px 0; align-items: center; }
+.pilot-case-lanes > div + div { border-top: 1px solid var(--line); }
+.pilot-case-lanes strong, .pilot-check-gate strong, .cloud-boundary-flow strong { display: block; color: var(--ink-0); font: 500 26px/1.2 var(--serif); margin: 10px 0; }
+.pilot-case-lanes div > span:last-child, .pilot-check-gate div > span:last-child, .cloud-boundary-flow div > span:last-child { display: block; color: var(--ink-2); font: 13px/1.6 var(--sans); }
+.pilot-case-result { padding-left: 20px; border-left: 1px solid var(--cx-diagram-accent); }
+.pilot-check-gate { display: flex; gap: 20px; align-items: center; padding: 22px 24px; border-top: 1px solid var(--line-2); border-left: 3px solid var(--cx-diagram-accent); }
+.pilot-check-gate .flow-icon { color: var(--cx-diagram-accent); }
+.cloud-boundary-flow { display: grid; grid-template-columns: 1fr 20px 1.1fr 20px 1fr; gap: 16px; padding: 28px 24px; align-items: center; text-align: center; }
+.cloud-boundary-flow > div { min-width: 0; }
+.cloud-boundary-flow .flow-icon { display: block; margin: 14px auto; }
+.cloud-boundary-flow [data-human-gate] { border: 1px solid var(--cx-diagram-accent); border-radius: 6px; padding: 18px 12px; }
+.cloud-boundary-flow [data-human-gate] .flow-icon { color: var(--cx-diagram-accent); }
+.chapter-workbook [data-secondary-visual] code { overflow-wrap: anywhere; }
+.chapter-workbook [data-secondary-visual] code,
+.chapter-workbook [data-secondary-visual] a { color: var(--ink-1); }
+@media (max-width: 600px) {
+  .pilot-case-lanes { padding: 0 16px; }
+  .pilot-case-lanes > div { gap: 12px; grid-template-columns: 1fr 18px 1fr; }
+  .pilot-case-lanes strong { font-size: 23px; }
+  .pilot-case-lanes .map-tag { font-size: 9px; letter-spacing: .02em; }
+  .pilot-case-result { padding-left: 10px; }
+  .pilot-case-result code { font-size: 11px; }
+  .pilot-check-gate { padding: 20px 16px; align-items: start; gap: 12px; }
+  .cloud-boundary-flow { grid-template-columns: 1fr; padding: 22px 16px; gap: 14px; }
+  .cloud-boundary-flow > .map-arrow { transform: rotate(90deg); }
+  .cloud-boundary-flow > div { display: grid; grid-template-columns: 40px 1fr; gap: 6px 12px; align-items: center; text-align: left; }
+  .cloud-boundary-flow .flow-icon { grid-row: 1 / 4; margin: 0; }
+  .cloud-boundary-flow .map-tag, .cloud-boundary-flow strong, .cloud-boundary-flow div > span:last-child { grid-column: 2; margin: 0; }
+  .cloud-boundary-flow strong { font-size: 24px; }
+}

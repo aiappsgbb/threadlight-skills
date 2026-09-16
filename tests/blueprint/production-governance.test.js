@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { homeHistory } = require('./helpers/home-history');
 
 const docs = path.join(__dirname, '../../docs');
 const read = (name) => fs.readFileSync(path.join(docs, name), 'utf8');
@@ -15,7 +16,12 @@ const section = (html, id) => {
 
 test('primary pages remove universal authority, invented sign-off and readiness-speed claims', () => {
   for (const name of ['index.html', 'funnel.html', 'production.html']) {
-    const source = read(name);
+    const original = read(name);
+    const source = name === 'index.html' ? homeHistory(original).current : original;
+    if (name === 'index.html') {
+      assert.equal(homeHistory(original).snapshots.length, 3);
+      assert.match(source, /Historical demo captions are not current guarantees/);
+    }
     assert.doesNotMatch(text(source), /Foundry runs & governs it|The scorecard that signs|Every gap has a skill that closes it|ready in ~7m|ship with (?:2|two) waivers|92[–—/]100|Safe by default/i, name);
     assert.doesNotMatch(source, /data-to="92"/, 'a removed score must not return through animation');
   }
@@ -87,7 +93,7 @@ test('artifact names and local navigation remain source-backed', () => {
   for (const name of ['docs/production-readiness-report.md', 'tests/production-readiness-manifest.json']) {
     assert.ok(read('production-readiness.md').includes(name), name);
   }
-  for (const field of ['raw_score', 'score_with_waivers', 'would_fail_hard_gate', 'captured_at']) {
+  for (const field of ['score.raw_percent', 'score.with_waivers_percent', 'would_fail_hard_gate', 'captured_at']) {
     assert.ok(read('production-readiness.md').includes(field), field);
   }
   for (const id of ['chapter-top', 'why', 'checks', 'legs', 'proof', 'target', 'ship', 'start', 'chapter-recap']) {

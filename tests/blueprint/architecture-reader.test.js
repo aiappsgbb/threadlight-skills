@@ -114,3 +114,11 @@ test('production feedback links resolve to the clarified governance guide snapsh
   assert.equal(links.length, 3, 'Privacy boundary, detailed reading and closing CTA');
   for (const [, target] of links) assert.equal(target, expected);
 });
+
+test('root guidance records the completed private human reference without extending its proof', () => {
+  const readme = read('README.md');
+  assert.match(readme, /verified private native Outlook approval/);
+  assert.match(readme, /same-session resume/);
+  assert.match(readme, /not current authority/);
+  assert.doesNotMatch(readme, /still-unproved private\s+human-resume\/email/);
+});

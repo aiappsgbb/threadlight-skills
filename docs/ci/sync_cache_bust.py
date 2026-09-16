@@ -35,6 +35,19 @@ from pathlib import Path
 
 DOCS = Path(__file__).resolve().parent.parent
 ASSETS = {
+    "site-map.js": DOCS / "assets" / "site-map.js",
+    "basics-visuals.css": DOCS / "assets" / "basics-visuals.css",
+    "self-improving-visuals.css": DOCS / "assets" / "self-improving-visuals.css",
+    "customize-visuals.css": DOCS / "assets" / "customize-visuals.css",
+    "workbook-visuals.css": DOCS / "assets" / "workbook-visuals.css",
+    "home-structure.css": DOCS / "assets" / "home-structure.css",
+    "lifecycle-visuals.css": DOCS / "assets" / "lifecycle-visuals.css",
+    "production-experience.css": DOCS / "assets" / "production-experience.css",
+    "production-experience.js": DOCS / "assets" / "production-experience.js",
+    "chapter-experience.css": DOCS / "assets" / "chapter-experience.css",
+    "chapter-experience.js": DOCS / "assets" / "chapter-experience.js",
+    "governance.css": DOCS / "assets" / "governance.css",
+    "governance.js": DOCS / "assets" / "governance.js",
     "site.css": DOCS / "assets" / "site.css",
     "site.js": DOCS / "assets" / "site.js",
     "blueprint-logic.js": DOCS / "assets" / "blueprint-logic.js",

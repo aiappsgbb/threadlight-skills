@@ -22,6 +22,7 @@
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
 <style>
   /* Page-local layout and contrast; retain the shared Threadlight tokens and navigation. */
   html { scroll-padding-top: var(--production-scroll-offset, 72px); }
@@ -269,7 +270,7 @@
   }
 </style>
 </head>
-<body class="chapter-page chapter-production">
+<body class="chapter-page chapter-production chapter-experience">
 <svg class="production-icons" width="0" height="0" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <symbol id="production-icon-network" viewBox="0 0 24 24">
@@ -313,10 +314,10 @@
   </div>
   <nav class="nav" aria-label="Site chapters">
     <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
-    <a href="./blueprint.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Blueprint</a>
+    <a href="./basics.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Basics</a>
+    <a href="./funnel.html">Build</a>
     <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
-    <a href="./production.html" aria-current="page"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production-ready</a>
-    <a href="./customize.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.3"/><circle cx="16" cy="16" r="2.3"/></svg>Customize</a>
+    <a href="./production.html" aria-current="page"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
   </nav>
 </header>
 
@@ -324,10 +325,13 @@
   <!-- ==================== HERO ==================== -->
   <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
     <div class="wrap wrap-wide">
-      <p class="breadcrumb reveal"><a href="./index.html">Threadlight</a> &nbsp;/&nbsp; Production-ready</p>
+      <div class="cx-journey">
+        <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><span aria-current="page">Production</span></nav>
+        <a class="cx-journey-next" href="./governance.html">Next: Governance &amp; AgentOps <span aria-hidden="true">&rarr;</span></a>
+      </div>
       <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Production-ready</p>
       <h1 class="reveal" data-delay="2">From agent potential <em>to operational confidence.</em></h1>
-      <p class="lede reveal" data-delay="3">Share AI services without losing control.
+      <p class="lede reveal" data-delay="3" data-chapter-intro>Share AI services without losing control.
         Validate changes before go-live. Govern what an agent may actually do once it is running.
         Explore the three complementary parts, one topic at a time.</p>
       <div class="cost-cta-row reveal" data-delay="4" style="margin-top:26px;">
@@ -346,7 +350,7 @@
           which changes are safe to release, or who authorizes a consequential action.
           These are different problems &mdash; and they need complementary controls.</p>
       </div>
-      <figure aria-labelledby="ciso-caption" class="diagram-scroll" tabindex="0">
+      <figure aria-labelledby="ciso-caption" class="diagram-scroll" tabindex="0" data-visual-anchor>
         <svg class="ciso-pentagon-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Six questions a CISO asks arranged as spokes around a central production-ready core">
           <defs>
             <radialGradient id="ciso-core-fill" cx="50%" cy="50%" r="50%">
@@ -664,6 +668,7 @@
       <a href="https://github.com/aiappsgbb/threadlight-skills/blob/706332ee02433336dd8c476cd7cecee9a05e98b7/skills/threadlight-cicd/references/github-actions/azd-deploy-prod.yml.tmpl">GitHub Actions template</a>
       <a href="https://github.com/aiappsgbb/threadlight-skills/blob/706332ee02433336dd8c476cd7cecee9a05e98b7/skills/threadlight-cicd/references/azure-devops/azure-pipelines.yml.tmpl">Azure DevOps template</a>
       <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md">Assessment and go-live reference</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md">Implementation and evidence commands</a>
     </div>
   </section>
 </div>
@@ -814,6 +819,8 @@
 </footer>
 
 <script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=cc056191"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
 <script src="assets/production.js"></script>
 </body>
 </html>

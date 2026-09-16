@@ -359,6 +359,7 @@ def test_document_relative_links_and_fragments_resolve(document):
         elif resolved.suffix == ".md":
             headings = re.findall(r"^#{1,6} (.+)$", body, re.M)
             slugs = {re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-") for heading in headings}
+            slugs.update(re.findall(r"""<a\b[^>]*\bid=["']([^"']+)["']""", body))
             assert unquote(parsed.fragment) in slugs, target
         else:
             pytest.fail(f"Unvalidated source fragment: {target}")

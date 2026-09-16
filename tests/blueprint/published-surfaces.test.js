@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { homeHistory } = require('./helpers/home-history');
 
 const repoRoot = path.join(__dirname, '../..');
 const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
@@ -38,7 +39,7 @@ function extractProducerSectionHeading(text, number) {
 // The single release contract these publication assertions are built from.
 // expectedPipelineSkillCount counts every skill except the threadlight-auto
 // planner, so expectedSkillCount is always expectedPipelineSkillCount + 1.
-const expectedVersion = '2.5.0';
+const expectedVersion = '2.5.1';
 const expectedSkillCount = 24;
 const expectedPipelineSkillCount = 23;
 
@@ -178,57 +179,46 @@ test('GitHub Pages link every new skill to its repository skill folder', () => {
   assert.ok(funnel.includes('skills/threadlight-qualify'), 'funnel must link threadlight-qualify');
   assert.ok(funnel.includes('downloads/threadlight-qualify.zip'), 'funnel must offer the Cowork zip');
 
-  // production = the connect/ground/load evidence progression.
+  // The concise production page links to the complete evidence reference.
+  assert.ok(production.includes('/docs/production-readiness.md'));
+  const readiness = read('docs/production-readiness.md');
   for (const skill of ['threadlight-connect', 'threadlight-ground', 'threadlight-loadtest']) {
-    assert.ok(production.includes(`skills/${skill}`), `production must link ${skill}`);
+    assert.ok(readiness.includes(`skills/${skill}`), `readiness reference must link ${skill}`);
   }
 
   // self-improving = the plan-only upgrade lifecycle scan.
   assert.ok(selfImproving.includes('skills/threadlight-upgrade'), 'self-improving must link threadlight-upgrade');
 });
 
-test('funnel metadata reflects fast pilots and explicit selected governance', () => {
+test('Build metadata distinguishes the pilot from production', () => {
   const funnel = read('docs/funnel.html');
 
-  assert.match(funnel, /<title>Threadlight — working pilot funnel\.<\/title>/);
-  assert.match(
-    funnel,
-    new RegExp(`<meta name="description" content="[^"]*working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*explicit opt-in[^"]*">`),
-  );
-  assert.match(
-    funnel,
-    new RegExp(`<meta property="og:description" content="[^"]*working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*explicit opt-in[^"]*">`),
-  );
-  assert.match(
-    funnel,
-    new RegExp(`<meta name="twitter:description" content="[^"]*working pilot[^"]*evidence-backed path to production[^"]*${expectedSkillCount}-skill library[^"]*explicit opt-in[^"]*">`),
-  );
+  assert.match(funnel, /<title>Build — Threadlight<\/title>/);
+  for (const key of ['description', 'og:description', 'twitter:description']) {
+    const content = funnel.match(new RegExp(`<meta (?:name|property)="${key}"\\s+content="([^"]+)"`));
+    assert.ok(content, `${key} must exist`);
+    assert.match(content[1], /pilot/i);
+    assert.match(content[1], /evidence|handoff|hand-off/i);
+  }
   assert.doesNotMatch(funnel, /eleven-skill|deployed agent in one session/i);
 });
 
-test('funnel chain enumeration counts governed-actions and adds up to the published totals', () => {
+test('How it works preserves advanced skill discovery without obsolete count arithmetic', () => {
   const funnel = read('docs/funnel.html');
 
-  // 3 named gates + 6 supporting skills + the entry/evidence/lifecycle legs
-  // must equal expectedPipelineSkillCount, and threadlight-auto takes the
-  // library to expectedSkillCount. Publishing governed-actions without
-  // adding it to this enumeration leaves the arithmetic one leg short.
-  assert.match(funnel, /fourteen entry, evidence, and lifecycle legs/i);
-  assert.match(funnel, /<code>agentops<\/code>/);
-  assert.match(funnel, /<code>governed-actions<\/code>/, 'the leg list must name governed-actions');
-  assert.match(
-    funnel,
-    new RegExp(`3 \\+ 6 \\+ 14 = <strong>${expectedPipelineSkillCount} pipeline skills</strong>`),
-  );
-  assert.match(funnel, new RegExp(`<strong>${expectedSkillCount}-skill library</strong>`));
+  assert.match(funnel, /threadlight-governed-actions/, 'retain the action evidence leg');
+  assert.match(funnel, /threadlight-auto/);
+  assert.match(funnel, /planner/i);
+  assert.doesNotMatch(funnel, /threadlight-auto<\/code> is the orchestrator|Auto runs only/i);
   assert.doesNotMatch(funnel, /3 \+ 6 \+ 12|twelve entry, evidence, and lifecycle legs/i);
 });
 
 test('industries copy stays CI/CD-only and never reintroduces a laptop deploy command', () => {
   const industries = read('docs/industries.html');
 
-  assert.match(industries, /starter skill\/evidence plan/i);
-  assert.match(industries, /production delivery stays\s+through CI\/CD/i);
+  assert.match(industries, /deterministic starter lifecycle/i);
+  assert.match(industries, /production delivery through CI\/CD/i);
+  assert.match(industries, /Manual checks.*real integrations.*fresh live evidence/s);
   assert.doesNotMatch(industries, /azd&nbsp;up/i, 'industries copy must not promise a laptop deploy command');
 });
 
@@ -239,7 +229,7 @@ test('grab-shots targets the process library section, not the deprecated sector 
   assert.doesNotMatch(grabShots, /#sector-grid/);
 });
 
-test(`index + customize render the accurate ${expectedSkillCount} count`, () => {
+test(`Home retains its approved ${expectedSkillCount} count and Customize preserves manual boundaries`, () => {
   const index = read('docs/index.html');
   const twitterDescription = index.match(
     /<meta name="twitter:description"\s+content="([^"]+)">/,
@@ -248,18 +238,27 @@ test(`index + customize render the accurate ${expectedSkillCount} count`, () => 
   assert.match(index, new RegExp(`Threadlight is ${expectedSkillCount}`));
   assert.strictEqual(
     twitterDescription[1],
-    'Build useful autonomy around your business process, with identity, policy, controlled execution, human decisions and evidence.',
+    'An evidence-backed reel of the Threadlight pipeline: one paragraph types in, the agent is specced, validated on your PC, and shown through captured deployment proof — play, pause, scrub, replay, then read the real case study.',
   );
   assert.doesNotMatch(twitterDescription[1], /self-driving/i);
-  // The customize overlay diagram labels the whole upstream `threadlight-skills`
-  // repo ("N skills · never edited"), not the pipeline subset, so it tracks
-  // expectedSkillCount.
-  assert.match(read('docs/customize.html'), new RegExp(`${expectedSkillCount} skills &middot; never edited`));
+  assert.match(read('docs/customize.html'), /Skills stay untouched/);
+  assert.match(read('docs/customize.html'), /manual production-handoff runbook/);
 });
 
 test('no active product surface carries a stale skill-count claim', () => {
   for (const surface of ACTIVE_SURFACES) {
-    const text = read(surface);
+    let text = read(surface);
+    if (surface === 'docs/index.html') {
+      // Keep the reviewed reel snapshot; its bytes/assets have a separate immutable guard.
+      const { snapshots, current } = homeHistory(text);
+      assert.strictEqual(snapshots.length, 3, 'exactly the hero, reel and historical recap are exempt');
+      for (const snapshot of snapshots) {
+        assert.match(snapshot, /23-skill library/);
+        assert.match(snapshot, /recreation|recreated|curated/i);
+      }
+      assert.match(text, /reviewed 23-skill snapshot\. The current 24-skill catalog/);
+      text = current;
+    }
     const m = STALE_COUNT.exec(text);
     assert.strictEqual(m, null, `${surface} still has a stale skill-count claim: ${m && m[0]}`);
   }
@@ -665,8 +664,8 @@ test('active Pages use current counts, product naming, and bounded Blueprint cla
     'docs/case-study.html',
   ].map(read).join('\n');
 
-  assert.match(pages, /fifteen industries/i);
-  assert.match(pages, /eighty-nine curated scenarios/i);
+  assert.match(pages, /15 industries|fifteen industries/i);
+  assert.match(pages, /89 scenarios|eighty-nine curated scenarios/i);
   assert.match(pages, /Microsoft Foundry/);
   assert.doesNotMatch(pages, /Azure(?:&nbsp;|\s+)AI(?:&nbsp;|\s+)Foundry/);
   assert.doesNotMatch(read('docs/blueprint.html'), /exact (?:arc|lifecycle)/i);
