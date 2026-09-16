@@ -106,3 +106,11 @@ test('dated upstream assessment distinguishes current activity, migration and pr
     'imran-siddique/agent-governance', 'Public Preview', 'does not establish an SLA',
     'First-feedback boundary']) assert.ok(report.includes(phrase), phrase);
 });
+
+test('production feedback links resolve to the clarified governance guide snapshot', () => {
+  const page = read('docs/production.html');
+  const links = [...page.matchAll(/href="(https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[^/"]+\/docs\/agent-governance-deep-dive\.md)(?:#[^"]*)?"/g)];
+  const expected = 'https://github.com/aiappsgbb/threadlight-skills/blob/af45bbb88cea9931082da3f20c289fa4feb73399/docs/agent-governance-deep-dive.md';
+  assert.equal(links.length, 3, 'Privacy boundary, detailed reading and closing CTA');
+  for (const [, target] of links) assert.equal(target, expected);
+});
