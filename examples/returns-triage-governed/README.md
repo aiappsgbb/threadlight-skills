@@ -89,9 +89,14 @@ The unmaterialized Dockerfile deliberately refuses to build.
    strings are invalid configuration. Provide existing tenant/UAMI IDs, Task8
    audience and endpoint, supervisor app roles, Cosmos account/database/container,
    signed envelope path, and the existing Citadel Foundry project proxy route.
-   The proxy must already serve `/api/projects/...` under
-   `https://apim-citadel-hub.azure-api.net` / `tl-returns-triage`. A direct model
-   endpoint is rejected; this example does not create or change that route.
+   Set `citadel_apim_host` to the platform-approved existing APIM service host
+   (`<service>.azure-api.net`). The proxy must already serve the exact
+   `/api/projects/<project>` route through the application's Access Contract;
+   configuration validation is not proof of that route or permission to create
+   it. The endpoint must match that authority exactly: direct model endpoints,
+   alternate hosts/ports, credentials, redirects, encoded/traversing paths and
+   fragments are rejected. Custom domains require a separately validated proxy
+   contract and are not automatically accepted by this example.
 3. Materialize a **new** directory with `--configuration <filled-json>`.
    Envelope identity/digest/expiry are checked during packaging; the running
    host verifies the signature with the configured Key Vault authority.
