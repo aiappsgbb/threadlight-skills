@@ -6,6 +6,10 @@ previous or historical retain the earlier proposals and their evidence, not
 current implementation guidance. GitHub Pages build status determines what is
 published; this document alone is not publication or live-deployment proof.
 
+**Historical scope (2026-09-14):** the original proposal was
+**SPECIFICATION ONLY - proposed, not deployed**. That label describes the
+initial proposal retained below, not the current page or its publication status.
+
 ## Implementation status
 
 ### Commercial editorial direction
