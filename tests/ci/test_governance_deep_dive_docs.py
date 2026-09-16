@@ -266,7 +266,14 @@ def test_distinct_signed_leases_require_fresh_checks_even_before_expiry(document
     ))
 
 
-def test_pages_spec_is_proposed_and_preserves_actual_entrypoints():
+def test_pages_spec_separates_current_contract_from_proposal_history_and_preserves_entrypoints():
+    require(plain(SPEC), (
+        "Presentation contract and retained design history",
+        "Current verified-release explanation (F1)",
+        "not publication or live-deployment proof",
+        "Historical scope (2026-09-14)",
+        "not the implementation authority for the current page",
+    ))
     require(plain(SPEC), (
         "SPECIFICATION ONLY", "not deployed", "prototype path remains unchanged",
         "explicit opt-in", "before the effect boundary", "network isolation",

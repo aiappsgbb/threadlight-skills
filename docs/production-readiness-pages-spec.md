@@ -1,10 +1,14 @@
 # Pages and production-readiness narrative specification
 
-**SPECIFICATION ONLY · 2026-09-14 · proposed, not deployed.**
-This Markdown document specifies a bounded copy/navigation change for review.
-It does not redesign the site, generate HTML, run a full site rebuild, change a
-production workflow or publish anything. Existing source below is observed in
-this checkout; proposed text below is **not** presented as current deployed copy.
+**Presentation contract and retained design history.**
+The current requirements below describe the checked-in page. Sections labeled
+previous or historical retain the earlier proposals and their evidence, not
+current implementation guidance. GitHub Pages build status determines what is
+published; this document alone is not publication or live-deployment proof.
+
+**Historical scope (2026-09-14):** the original proposal was
+**SPECIFICATION ONLY - proposed, not deployed**. That label describes the
+initial proposal retained below, not the current page or its publication status.
 
 ## Implementation status
 
@@ -63,7 +67,35 @@ Regression budgets keep each whole topic under 700 words, the whole main
 reading path under 2,400, the privacy/alternative notes under 100/80, and the
 closing under 120. Counts include diagram labels but exclude SVG styles and
 the duplicate mobile diagram text. Original CISO/CI diagrams and Threadlight
-branding remain. No new runtime/cloud evidence or production publication.
+branding remain. Presentation changes do not establish new runtime/cloud evidence.
+
+### Current verified-release explanation (F1)
+
+The AgentOps area now explains validation before production promotion, retaining
+the accepted layout, topic navigation and static SVG. The diagram groups the
+three required evidence domains by purpose; it does not claim parallel execution.
+Its visible labels, accessible description and caption describe the same flow:
+reviewed input → preflight → isolated candidate → observation → required checks →
+production approval and current-authority recheck → same-image promotion.
+Production observation follows; a failure is not automatic rollback.
+
+Keep three levels distinct:
+
+- **Public page:** concise concepts, ownership and coverage boundaries. A release
+  decision is neither runtime-action authority nor business go-live acceptance.
+- **Repository guide:** terms, concrete sequence, responsibility table and
+  explicit local-versus-live evidence in `agentops-deep-dive.md`.
+- **Operator contract:** exact adapters, policy, receipt transport, native
+  prerequisites and recovery in `threadlight-cicd/references/release-contract.md`.
+
+The public guide and template links pin the F1 explanatory snapshot
+`04331ba8c4764b41ad90722d1022914b239bae2a`. Previously linked guide
+`73991ccfaaa99945879937a5177535baec23a59e` and templates
+`706332ee02433336dd8c476cd7cecee9a05e98b7` remain historical pre-F1 sources,
+not the implementation authority for the current page. Other governance snapshots
+are unchanged. Required release checks are blocking; the application still owns
+its actual adapters and platform preparation. Local verification is not cloud
+acceptance, and no new live customer release is claimed.
 
 **Previous expanded reader journey:** explain production
 to C-level readers as **shared platform → verified release → governed action**.
@@ -90,7 +122,7 @@ guide. No production Pages publication accompanies this draft.
   go-live handoff follow the areas. Their evidence spans all three; they are not
   an AgentOps subpage. Preserve working shared fragment navigation.
 
-**Source reconciliation:** the GitHub Actions and Azure DevOps base templates
+**Historical source reconciliation (pre-F1, superseded above):** the GitHub Actions and Azure DevOps base templates
 under `skills/threadlight-cicd/references/` provision/deploy before their verdict
 readers (`needs: deploy` / `dependsOn: deploy`). The producer steps for quality,
 red-team and MCP evidence are still `echo` instructions in those base templates.

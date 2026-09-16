@@ -72,17 +72,15 @@ def test_ado_private_network_references_pool():
     assert "name:" in pipe
 
 
-def test_ado_pipeline_seeds_env_and_separates_provision_and_deploy():
+def test_ado_pipeline_separates_validated_candidate_and_production_promotion():
     tmp = pathlib.Path(tempfile.mkdtemp())
     mod.generate(_ado_framing(), out_root=tmp)
     pipe = (tmp / "azure-pipelines.yml").read_text()
-    assert "azd env new" in pipe
-    # install azd + provision + deploy = at least three AzureCLI@2 tasks
-    assert pipe.count("AzureCLI@2") >= 3
-    i_prov, i_dep = pipe.index("azd provision"), pipe.index("azd deploy")
-    assert i_prov < i_dep
-    # provision and deploy live in separate steps (a new displayName between them)
-    assert "displayName" in pipe[i_prov:i_dep]
+    assert pipe.count("AzureCLI@2") == 2
+    assert pipe.index("release_runner.py preflight") < pipe.index("AzureCLI@2")
+    assert pipe.index("release_runner.py validate") < pipe.index("stage: promotion")
+    assert "dependsOn: validation" in pipe
+    assert "--receipt-sha256" in pipe
 
 
 def test_ado_uami_runbook_has_portal_field_guidance():

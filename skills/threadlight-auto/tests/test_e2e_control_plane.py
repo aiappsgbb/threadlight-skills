@@ -331,8 +331,13 @@ def test_cicd_renders_eval_and_redteam_gates(tmp_path):
     )
     assert r.returncode == 0, f"cicd generate failed:\n{r.stdout}\n{r.stderr}"
     wf = (out / ".github/workflows/azd-deploy-prod.yml").read_text()
-    assert "eval-gate" in wf
-    assert "red-team-gate" in wf
+    assert "needs: validation" in wf and "--receipt-sha256" in wf
+    commands = " ".join(wf.split())
+    assert "release_runner.py validate" in commands and "release_runner.py promote" in commands
+    assert "continue-on-error" not in wf
+    policy = json.loads((out / "specs/release-policy.example.json").read_text())
+    assert policy["evals"]["producer"] and policy["redteam"]["producer"]
+    assert not (out / "specs/release-policy.json").exists()
 
 
 if __name__ == "__main__":

@@ -40,13 +40,13 @@ class SacredRuleWording(unittest.TestCase):
         )
 
     def test_skill_md_scaffold_paths_match_actual_writer(self):
-        """The two paths cited in the SACRED RULE prose must be the paths
+        """Paths cited in the scaffold exception must be the paths
         --scaffold-cicd actually writes. PR #34 review caught a regression
         where the prose cited fictional filenames."""
         import tempfile
         text = SKILL_MD.read_text(encoding="utf-8")
         para_match = re.search(
-            r"documented exception is `--scaffold-cicd`.*?does not\s+emit remediation patches",
+            r"The explicit `--scaffold-cicd` exception.*?apply remediation",
             text, re.DOTALL,
         )
         self.assertIsNotNone(
@@ -75,10 +75,10 @@ class SacredRuleWording(unittest.TestCase):
             )
         self.assertTrue(actual_paths, "could not parse scaffold output paths from script")
 
-        cited_paths = re.findall(r"`([^`]+\.(?:yml|yaml|md|sh))`", para)
+        cited_paths = re.findall(r"`([^`]+\.(?:yml|yaml|md|sh|py|json))`", para)
         self.assertTrue(
             cited_paths,
-            "SACRED RULE paragraph cites no file paths — should name the 2 scaffold outputs",
+            "Scaffold exception should name actual emitted tooling and handoff paths",
         )
         for cited in cited_paths:
             self.assertIn(

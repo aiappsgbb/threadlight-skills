@@ -545,13 +545,13 @@
       <h2 id="operating-heading">Deploy through CI/CD &mdash; <em>not your laptop.</em></h2>
       <p class="section-lede">From development to production, fit the customer's release model:
         an authorized operator for the pilot, GitHub Actions or Azure DevOps for controlled delivery.
-        Threadlight generates deployment artifacts and runbooks; DevSecOps owns permissions, policy and acceptance.
+        Threadlight generates validation and promotion artifacts; DevSecOps owns permissions, policy and acceptance.
         A prompt change still needs evaluation, even when the container starts.</p>
     </div>
   </section>
   <section class="chapter-section" id="delivery-controls" aria-label="Generated CI/CD pipeline">
     <figure id="ship" class="pipe-fig diagram-scroll" data-visual="deployment-lifecycle" data-topic-part="mechanism" aria-labelledby="pipe-cap" tabindex="0">
-        <svg class="pipe-svg" viewBox="0 0 1080 272" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Generated base pipeline: a main-branch change or manual run uses configured environment checks, provision and deploy. Evaluation, red-team and MCP verdict readers then run in parallel. Their hard or soft results affect CI, not whether the already completed deployment happened.">
+        <svg class="pipe-svg" viewBox="0 0 1080 272" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verified release: check reviewed source and policy, prepare and observe a separate preproduction candidate, then execute required evaluation, red-team and MCP checks. These three evidence domains are grouped by purpose, not parallel execution. Current accepted evidence and configured production approval admit promotion of the same image; production is observed afterward.">
           <defs>
             <style>
               .pp-tag  { font-family: var(--mono); font-size: 12px; letter-spacing: .03em; fill: currentColor; font-weight: 600; }
@@ -562,7 +562,7 @@
           <use data-component-icon aria-hidden="true" href="#production-icon-branch" x="53" y="14" width="24" height="24"/>
           <use data-component-icon aria-hidden="true" href="#production-icon-shield" x="206" y="14" width="24" height="24"/>
           <use data-component-icon aria-hidden="true" href="#production-icon-package" x="366" y="14" width="24" height="24"/>
-          <use data-component-icon aria-hidden="true" href="#production-icon-upload" x="526" y="14" width="24" height="24"/>
+          <use data-component-icon aria-hidden="true" href="#production-icon-chart" x="526" y="14" width="24" height="24"/>
 
           <!-- spine -->
           <rect x="6"   y="46" width="118" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
@@ -570,16 +570,16 @@
           <text x="65"  y="90" text-anchor="middle" class="pp-sub">main / manual</text>
 
           <rect x="152" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="218" y="76" text-anchor="middle" class="pp-tag">ENV CHECKS</text>
-          <text x="218" y="90" text-anchor="middle" class="pp-sub">configure approval</text>
+          <text x="218" y="76" text-anchor="middle" class="pp-tag">PREFLIGHT</text>
+          <text x="218" y="90" text-anchor="middle" class="pp-sub">policy + adapters</text>
 
           <rect x="312" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="378" y="76" text-anchor="middle" class="pp-tag">AZD PROVISION</text>
-          <text x="378" y="90" text-anchor="middle" class="pp-sub">OIDC &middot; WIF</text>
+          <text x="378" y="76" text-anchor="middle" class="pp-tag">CANDIDATE</text>
+          <text x="378" y="90" text-anchor="middle" class="pp-sub">isolated target</text>
 
           <rect x="472" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="538" y="76" text-anchor="middle" class="pp-tag">AZD DEPLOY</text>
-          <text x="538" y="90" text-anchor="middle" class="pp-sub">keyless</text>
+          <text x="538" y="76" text-anchor="middle" class="pp-tag">OBSERVE</text>
+          <text x="538" y="90" text-anchor="middle" class="pp-sub">version + image</text>
 
           <!-- forward arrows (lime) -->
           <g fill="none" stroke="var(--lime)" stroke-width="1.7">
@@ -600,58 +600,65 @@
             <rect x="692" y="18" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
             <rect x="692" y="18" width="4" height="52" rx="2" fill="var(--lime)"/>
             <text x="784" y="40" text-anchor="middle" class="pp-tag">EVAL GATE</text>
-            <text x="784" y="56" text-anchor="middle" class="pp-sub">soft | hard</text>
+            <text x="784" y="56" text-anchor="middle" class="pp-sub">quality thresholds</text>
 
             <rect x="692" y="98" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
             <rect x="692" y="98" width="4" height="52" rx="2" fill="var(--lime)"/>
             <text x="784" y="120" text-anchor="middle" class="pp-tag">RED-TEAM GATE</text>
-            <text x="784" y="136" text-anchor="middle" class="pp-sub">attack-success</text>
+            <text x="784" y="136" text-anchor="middle" class="pp-sub">attack resistance</text>
 
             <rect x="692" y="178" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
             <rect x="692" y="178" width="4" height="52" rx="2" fill="var(--lime)"/>
             <text x="784" y="200" text-anchor="middle" class="pp-tag">MCP GATE</text>
-            <text x="784" y="216" text-anchor="middle" class="pp-sub">soft | hard</text>
+            <text x="784" y="216" text-anchor="middle" class="pp-sub">supply-chain checks</text>
           </g>
 
-          <!-- reconverge to spoke -->
+          <!-- all required domains precede the production gate -->
           <g fill="none" stroke="var(--lime)" stroke-width="1.7">
             <path d="M868,44 C 906,44 906,124 944,124"/>
             <line x1="868" y1="124" x2="944" y2="124"/><path d="M939,119 L948,124 L939,129"/>
             <path d="M868,204 C 906,204 906,124 944,124"/>
           </g>
 
-          <!-- CI result: the target was already deployed -->
-          <rect x="944" y="98" width="130" height="52" rx="10" fill="var(--lime)" fill-opacity="0.14" stroke="var(--lime)" stroke-opacity="0.85" stroke-width="1.7"/>
-          <text x="1009" y="120" text-anchor="middle" class="pp-tag">CI RESULT</text>
-          <text x="1009" y="136" text-anchor="middle" class="pp-sub">not a rollout gate</text>
+          <rect x="944" y="98" width="130" height="76" rx="10" fill="var(--lime)" fill-opacity="0.14" stroke="var(--lime)" stroke-opacity="0.85" stroke-width="1.7"/>
+          <text x="1009" y="120" text-anchor="middle" class="pp-tag">PROD GATE</text>
+          <text x="1009" y="136" text-anchor="middle" class="pp-sub">approve + recheck</text>
+          <text x="1009" y="154" text-anchor="middle" class="pp-sub">promote same image</text>
 
-          <text x="784" y="252" text-anchor="middle" class="pp-note">VERDICT READERS AFTER DEPLOY &middot; hard fails / soft warns</text>
+          <text x="784" y="252" text-anchor="middle" class="pp-note">REQUIRED CHECKS BEFORE PRODUCTION</text>
         </svg>
         <figcaption id="pipe-cap" class="pipe-cap">
-          <code>needs: deploy</code> / <code>dependsOn: deploy</code> is the actual ordering.
-          A failed post-deploy check does not roll back deployed resources, switch traffic or undo a business effect.
+          Three required evidence domains, one validation job. Promotion into the production environment
+          needs current accepted evidence and owner approval; production is observed afterward.
+          A failed check does not roll back resources or undo a business effect.
         </figcaption>
       </figure>
     <div class="agentops-contract" data-producer-boundary>
-      <p><strong>What runs, what you must connect.</strong> Provision/deploy and verdict readers are executable.
-        Base evidence-producer steps are <code>echo</code> instructions: wire actual evaluation, red-team and MCP results.
-        The optional AgentOps composition runs a bound evaluation batch, not every producer.</p>
-      <p>Readers run <strong>after deployment</strong>. Soft is the default; hard rejects missing or unacceptable verdicts,
-        but evaluation/red-team still accept <code>partial</code>. Readers do not establish freshness or deployment binding.
-        A CI result is not automatic go-live approval.</p>
+      <p><strong>Validate a candidate before production.</strong> Prepare the proposed version in a separate
+        preproduction environment. Evaluation, adversarial testing and MCP supply-chain checks must pass.
+        A validation record binds results to the observed image, reviewed inputs and current run.
+        Missing, expired or changed evidence stops promotion.</p>
+      <p><strong>What runs, what you must connect.</strong> Threadlight executes the reviewed release sequence
+        and required checks. The application team supplies real deployment, target-observation,
+        evaluation and scanner integrations, plus promotion and recovery behavior.
+        Optional native AgentOps runs a bound evaluation; it does not supply every integration.</p>
+      <p><strong>Three separate decisions.</strong> A release result is not automatic go-live approval
+        and does not authorize runtime business actions. Generator and local native verification are
+        <strong>not cloud acceptance</strong>; customer-pipeline execution and real business behavior
+        need separately authorized tests.</p>
     </div>
     <div class="knob-head"><h3>Fit the customer's delivery controls</h3></div>
     <div class="knob-grid">
       <article class="knob">
-        <div class="knob-flag"><code>--platform</code></div>
-        <p>GitHub Actions or Azure DevOps. Configure federated identity, target-scoped permissions and environment reviewers.</p>
+        <div class="knob-flag"><code>Delivery platform</code></div>
+        <p>GitHub Actions or Azure DevOps. Configure separate validation/production identities, scoped permissions and environment reviewers.</p>
       </article>
       <article class="knob">
-        <div class="knob-flag"><code>--eval-gate</code> / <code>--mcp-gate</code></div>
-        <p>Select soft or hard verdict handling. Producing current evidence remains a separate integration step.</p>
+        <div class="knob-flag"><code>Acceptance policy</code></div>
+        <p>Review datasets, quality thresholds, attack coverage and evidence lifetime. Required checks cannot become warn-only.</p>
       </article>
       <article class="knob">
-        <div class="knob-flag"><code>--private-network</code></div>
+        <div class="knob-flag"><code>Execution environment</code></div>
         <p>Select suitable runners; verify DNS, routes and egress. The workload pipeline does not deploy the shared hub.</p>
       </article>
     </div>
@@ -665,9 +672,10 @@
         with authorized probes. Bind fresh evidence to this deployment; a noop is not business-write proof.</p></li>
     </ol>
     <div class="topic-deeper">
-      <a data-deep-dive="agentops" href="https://github.com/aiappsgbb/threadlight-skills/blob/73991ccfaaa99945879937a5177535baec23a59e/docs/agentops-deep-dive.md">AgentOps deep dive: delivery, evaluation and gates &rarr;</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/706332ee02433336dd8c476cd7cecee9a05e98b7/skills/threadlight-cicd/references/github-actions/azd-deploy-prod.yml.tmpl">GitHub Actions template</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/706332ee02433336dd8c476cd7cecee9a05e98b7/skills/threadlight-cicd/references/azure-devops/azure-pipelines.yml.tmpl">Azure DevOps template</a>
+      <a data-deep-dive="agentops" href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/docs/agentops-deep-dive.md">Repository guide: release flow, ownership and limits &rarr;</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/skills/threadlight-cicd/references/release-contract.md">Operator contract and recovery</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/skills/threadlight-cicd/references/github-actions/azd-deploy-prod.yml.tmpl">GitHub Actions template</a>
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/skills/threadlight-cicd/references/azure-devops/azure-pipelines.yml.tmpl">Azure DevOps template</a>
       <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md">Assessment and go-live reference</a>
       <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md">Implementation and evidence commands</a>
     </div>

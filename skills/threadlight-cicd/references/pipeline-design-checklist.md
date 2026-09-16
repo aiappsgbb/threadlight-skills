@@ -10,8 +10,10 @@ you what to hand the dev team vs the platform team).
 - [ ] A dedicated **UAMI** (or app registration) exists per pilot/environment
       (runbook `01`); its client-id replaces `REPLACE_WITH_UAMI_CLIENT_ID`.
 - [ ] The federated credential **subject** is scoped tightly — GitHub
-      `environment:production` (preferred) or a specific branch; ADO the
-      service-connection subject.
+      configured production environment only, without a main-branch credential
+      that bypasses approval; ADO the separately protected service connection.
+- [ ] Validation and production have distinct environments, identities and
+      targets; reviewed policy includes each principal's client ID.
 
 ## RBAC
 - [ ] Role assignments are **least-privilege** and scoped to the
@@ -25,13 +27,22 @@ you what to hand the dev team vs the platform team).
       shared APIM, shared networking, or platform Key Vault.
 
 ## Gates & stages
-- [ ] Production deploy runs behind an **environment approval** (required
+- [ ] Production promotion runs behind an **environment approval** (required
       reviewers / checks), not on every push.
-- [ ] The azd environment is **seeded** (`azd env new ... || true`) before
-      `provision` so a clean CI checkout (no `.azure/`) doesn't abort.
-- [ ] `provision` and `deploy` are **separate stages** so a reviewer can
-      inspect changes before resources mutate.
-- [ ] Post-deploy step re-runs the readiness re-assessment where applicable.
+- [ ] Reviewed application adapters prepare the separate preproduction target
+      and execute actual eval/red-team producers; MCP runs the supplied checker.
+- [ ] Strict current acceptance precedes the dependent production job. Missing,
+      stale or contradictory evidence and required-domain failures block it.
+- [ ] The candidate receipt SHA-256 travels through a separate CI output and is
+      checked with source, policy, input hashes, run/attempt and freshness after
+      identity waits and immediately before dispatch.
+- [ ] Promotion uses the validated immutable image and a durable backend
+      idempotency key. Post-promotion observation matches that digest; the
+      adapter keeps business routing closed until required checks complete.
+- [ ] Failure is not rollback. Required live governance, failover and telemetry
+      checks remain separately authorized and evidenced.
+- [ ] Optional native jobs use a private explicit context, pinned dependencies
+      and current scoped owner approval, not inherited deployment credentials.
 
 ## Networking / runners
 - [ ] If the landing zone uses **private endpoints**, the pipeline targets a
@@ -52,5 +63,7 @@ you what to hand the dev team vs the platform team).
 - [ ] Platform team has the `env-setup/` runbooks + `.sh` scripts and has
       provisioned UAMI/federation, RBAC, and (if needed) the private runner.
 - [ ] Dev team has the pipeline file committed to the pilot repo.
+- [ ] The [release contract](release-contract.md), executable tooling, datasets
+      and configured policy are reviewed; private outputs are Git-ignored.
 - [ ] The `threadlight-production-ready` handoff checklist **section G** is
       satisfied (the production deploy path exists).

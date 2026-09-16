@@ -14,6 +14,28 @@ const docs = {
   workshop: 'docs/WORKSHOP-1H-QUICKSTART.md',
 };
 
+test('all current CI handoffs describe the same fail-closed release boundary', () => {
+  for (const file of ['skills/threadlight-cicd/SKILL.md',
+    'skills/threadlight-production-ready/SKILL.md', 'docs/agent-operations.md',
+    'docs/production-readiness.md']) {
+    const text = read(file);
+    assert.match(text, /verified.release/i, file);
+    assert.match(text, /release-contract\.md/, file);
+  }
+  const skill = read('skills/threadlight-production-ready/SKILL.md');
+  assert.doesNotMatch(skill, /This is the \*basic\* scaffold|which writes 2 files/);
+  assert.match(read('skills/threadlight-cicd/references/pipeline-design-checklist.md'),
+    /receipt.*SHA-256|SHA-256.*receipt/s);
+  for (const recipe of ['REL-102', 'OBS-102']) {
+    const text = read(`skills/threadlight-production-ready/references/remediation-recipes/${recipe}.md`);
+    assert.doesNotMatch(text, /already contains.*job stub/);
+    assert.match(text, /release.contract/);
+  }
+  for (const template of ['azd-deploy-prod.yml.tmpl', 'central-team-uami-readme.md.tmpl']) {
+    assert.ok(!fs.existsSync(path.join(root, 'skills/threadlight-production-ready/references/cicd-templates', template)));
+  }
+});
+
 test('EU coverage documents inventory predicates, not universal green or schema validation', () => {
   for (const file of ['docs/eu-ai-act-evidence.md',
     'skills/threadlight-production-ready/references/eu-ai-act-mapping.md']) {

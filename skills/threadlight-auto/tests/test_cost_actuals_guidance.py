@@ -66,7 +66,7 @@ CONSUMPTION_IQ = (
 )
 
 AUTO_VERSION = "1.4.0"
-PROD_VERSION = "0.14.0"
+PROD_VERSION = "0.15.0"
 
 # The stage list is a contract, not an implementation detail: production-ready,
 # the Canvas control plane, and the state schema all key off these names.

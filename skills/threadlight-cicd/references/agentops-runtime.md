@@ -33,6 +33,43 @@ AZD remains credential-empty; non-CLI selectors also require an empty CLI
 directory. `AZURE_TOKEN_CREDENTIALS` is explicit. No login, account switch,
 resource creation, RBAC change or Citadel operation occurs here.
 
+### Private context transport in generated CI
+
+Existing approved runner preparation must supply an absolute regular file, with
+owner-only permissions and no symlink path, using this shape:
+
+```json
+{
+  "schema": "threadlight-agentops-context/v1",
+  "environment": {
+    "AZURE_TOKEN_CREDENTIALS": "AzureCliCredential",
+    "AZURE_CONFIG_DIR": "/existing/private/native-cli",
+    "AZD_CONFIG_DIR": "/existing/private/empty-native-azd"
+  }
+}
+```
+
+These illustrative paths must be replaced by actual authorized contexts.
+The generated job selects `THREADLIGHT_AGENTOPS_VALIDATION_CONTEXT` or
+`THREADLIGHT_AGENTOPS_PRODUCTION_CONTEXT` and passes its path through
+`THREADLIGHT_AGENTOPS_CONTEXT` to `--context`. The native process receives only
+the context's explicitly selected Azure/AZD/AgentOps/OpenAI/telemetry environment
+values, not those inherited from deployment login. Other observer safeguards,
+dotenv checks and the execution-context fingerprint still apply.
+
+Prepare the pinned dependencies and the context through the existing runner
+mechanism before this step; a hosted runner is not automatically prepared.
+Native-only PR/Doctor jobs do not log in as the deployment identity. A deployment
+job's azd credentials must not be deleted or repurposed to satisfy native isolation.
+The generator does not create this file, acquire credentials or mint approval.
+Hash the environment that native execution will actually receive when preparing
+the separately approved one-use record below.
+
+The native analyzer examines the opted-in agent root, including nearby code.
+Use the actual application root; repository-root opt-in can include vendored
+tooling and require native setup review. `native-analysis-not-ready` remains a
+blocker, not permission to bypass analysis or patch the installed SDK.
+
 ## Existing owner approval
 
 Supply `.agentops/threadlight/approvals/eval.json` or `doctor.json` privately in
@@ -95,6 +132,11 @@ agentops doctor --workspace . --config .agentops/agent.yaml --evidence-pack --se
 
 Eval and Doctor are separate approved operations. Eval-only never implicitly
 runs Doctor; Doctor refresh requires the previously observed eval binding.
+For production Doctor, that receipt must already be verified for the production
+target/environment and current source binding. A validation-target receipt does
+not transfer production authority. Without a valid same-target receipt and fresh
+Doctor approval, the generated optional job fails rather than silently refreshing
+or promoting an evaluation.
 The receiver verifies new outputs, source timestamps, scope and hashes before
 publishing `specs/agentops-manifest.json`. Neither exit zero nor a partial
 manifest substitutes for verified execution.
@@ -104,6 +146,7 @@ approved warning/info Doctor floor; execution or prerequisite failure is **1**.
 Quality failure is also preserved in the canonical eval manifest, not rewritten
 as a pass. Native readiness and quality remain separate from a technically
 complete skill smoke.
+Fixed validation reason codes are reported without raw payload diagnostics.
 
 ## Private capture and canonical consumption
 

@@ -61,6 +61,26 @@ The `local-native-contract` CI job is local proof only. The separate protected
 explicit preproduction probe opt-in and fresh hosted evidence; it does not
 substitute a noop result for an unverified business binding.
 
+## Controlled releases: choose your depth
+
+| Level | Start here | Purpose |
+|---|---|---|
+| Public overview (L200/L300) | [Production: AgentOps and release](https://aiappsgbb.github.io/threadlight-skills/production.html#operating-controls) | Understand candidate validation, production approval and the boundaries of a release |
+| Repository explanation | [From a working pilot to a controlled release](docs/agentops-deep-dive.md) | Learn the terms, responsibilities, delivery sequence and what has or has not been exercised |
+| Operator contract (L400/L500) | [Verified release contract](skills/threadlight-cicd/references/release-contract.md) | Configure actual adapters, evidence, identities, receipt checks and failure recovery |
+
+CI/CD 0.5.0 validates a separate preproduction candidate before admitting
+promotion of the same immutable image. The application team supplies deployment,
+observation and evidence-producing adapters; the platform team supplies approved
+identities, runners and protected environments. Generation does not supply those
+integrations or grant access.
+
+**Three separate decisions:** releasing a version, authorizing a selected runtime
+action, and accepting the application for business go-live. None implies the
+other two. Catalog tests and the real loopback AgentOps test are **not cloud acceptance**;
+customer-pipeline execution, production Doctor and live business checks remain
+separately authorized work.
+
 ## Runtime governance: method, enforcement and evidence
 
 **Choose your depth:** the **L200/L300**
@@ -166,7 +186,7 @@ additional governance is explicit opt-in.
 | [`threadlight-production-ready`](skills/threadlight-production-ready/) | Advisory scorecard/handoff, not certification; remediation and deployment are explicit separate choices. BicepGraph parser, 13 pillars, Defender / Policy / quota / restore-drill checks, `--gate-preview`, `--diff`, `--remediate`, `--trend-csv`, OIDC CI. Hard dep on `bicep` CLI; no regex fallback. Pillars 2/6/7 consume the govern/evals/red-team leg manifests when present + fresh, plus the connect/ground/load/upgrade gap-evidence legs. |
 | [`threadlight-loadtest`](skills/threadlight-loadtest/) | **NEW v0.1.0** — the **LOAD leg** (manual, live, cost-bearing). Runs one budget-capped load profile through **k6 / locust** (or an injected adapter) and emits `specs/load-manifest.json` (`threadlight.load/v1`, LOAD-001..003) with real p50/p95/p99 latency, error-rate, and tokens/request evidence. Aborts before any run if the projected cost exceeds `budget_ceiling_usd`, or if a production endpoint lacks explicit `allow_production`; never installs k6/locust; never loops. `threadlight-auto` does **not** run it. |
 | [`threadlight-upgrade`](skills/threadlight-upgrade/) | **NEW v0.1.0** — the **UPGRADE leg** (plan-only). Scans dependency pins, hosted-agent runtime policy, governance profile, and model families against a dated `compatibility-matrix.json` and emits `specs/upgrade-manifest.json` (UPG-001..003) + **one ordered migration plan**. No network calls, no `--apply` — it **never edits the project**. Acting on the plan is a manual, human-driven step. |
-| [`threadlight-cicd`](skills/threadlight-cicd/) | **NEW v0.1.0** — production deploy pipeline + env-setup runbooks for locked-down customer envs (no direct `azd up`). Onboarding-path gate (standalone / spoke-onboard / hub-deploy-then-spoke), then generates **GitHub Actions or Azure DevOps** OIDC/WIF pipelines + UAMI/federated-credential, least-privilege RBAC, and private-VNet runner runbooks. Secret-free; ships a `central-platform-boundary.md` that keeps the pilot pipeline **separate** from `citadel-hub-deploy`. |
+| [`threadlight-cicd`](skills/threadlight-cicd/) | **v0.5.0** — verified-release pipeline for **GitHub Actions or Azure DevOps**: isolated candidate, executed eval/red-team/MCP checks, bound receipt and approved same-image promotion. Offline generator plus separate validation/production OIDC/WIF identity and runner runbooks; application adapters and environment protection remain customer-owned. Keeps the workload pipeline **separate** from `citadel-hub-deploy`. |
 | [`threadlight-customize`](skills/threadlight-customize/) | **NEW v0.1.0** — the **fork-and-customize final leg**. Instructions/runbooks (not automation) for forking the Threadlight pipeline and onboarding it into **one customer's environment** — landing zones, RBAC, pipelines, governance — with **production onboarding priority #1**. Four moves: intake gate (customer-profile workbook), customization map (fork-vs-keep), test-in-customer-env runbook (private-VNet via **Azure ML VS Code** / **GH Codespaces**), and an explicit non-coverage boundary. Ships a fork-runbook (`upstream-pin` + overlay). Manual handoff — `threadlight-auto` does **not** drive it. |
 | [`threadlight-router-bench`](skills/threadlight-router-bench/) | **NEW v0.1.0** — the **IMPROVE leg**. Offline self-improvement cold-path: `learn <run_id>` harvests ONE finished CI run (green *or* red) into a grounded learnings digest — phase parity, a reality-tuned failure taxonomy, and recommendations; optional `bench <candidate> <baseline>` is a paired model-router **cost/quality scorecard** from Azure Monitor token metrics. Offline — `threadlight-auto` does **not** drive it. |
 | [`threadlight-auto`](skills/threadlight-auto/) | **Agent-guided lifecycle planner** — `orchestrator.py` decides, coding agent executes; manual/live/cost-bearing/plan-only legs are handoffs. Reads evidence, chooses the next stage, resumes from `.threadlight/auto-state.json`, and smart-recovers quota/RBAC/ImagePull failures. Does **not** drive the manual legs (qualify, connect, ground, loadtest, upgrade, cicd, customize) or the offline router-bench. |
