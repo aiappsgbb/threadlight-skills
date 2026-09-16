@@ -26,8 +26,9 @@ paths**, not the entire agent's reasoning or all of production readiness.
 
 ## 1. What is covered elsewhere
 
-The same six responsibilities introduced on the public page remain separate.
-They are complementary, not alternative architectures or a ranking of importance.
+The public page groups the journey into platform, AgentOps and action governance.
+These six responsibilities remain complementary, with data/privacy crossing all
+three; they are not competing architectures or a ranking of importance.
 
 | Production responsibility | Controls and owners | Relation to this guide |
 |---|---|---|
@@ -102,16 +103,51 @@ Invalid selected configuration fails closed; it is not “off.” Record coverag
 per binding as `enforced`, `observed`, `unbound`, `unverified`, `unsupported` or
 `bypassable`, not as a blanket “governed agent.”
 
-### The vocabulary, in context
+### Native components and Threadlight code
 
-| Name | Architectural job |
+**We use selected components, not the full AGT stack.** Here, "native" means
+executing the published upstream SDK, not an automatically enabled Foundry
+service. ACS is developed inside the AGT repository; Agent Hooks is a separate
+project. Calling everything "AGT governance" hides who actually owns each control.
+
+| Component | What actually runs or contributes |
 |---|---|
-| SAFE | **SAFE is the method** for specifying business invariants and their evidence. |
-| ACS / Rego / OPA | **ACS is the PDP**: the policy decision point evaluates Rego through local OPA. |
-| Agent Hooks | A **host/interceptor contract**, not independent deployment-wide enforcement. |
-| Native host or gateway | The **PEP**, or policy enforcement point, that can stop the selected effect. |
-| AGT | **AGT is the toolkit** assembling the relevant integration pieces. |
-| ASSERT | **ASSERT is assurance**: checking claims and evidence, not executing policy. |
+| SAFE | **SAFE is the method** for designing business invariants and evidence. Rules and trusted application facts implement its selected principles; installing a package does not. |
+| ACS + Rego/OPA | **ACS is the PDP**. Both profiles call `AgentControl.from_path` and `evaluate_intervention_point`. [ACS](https://github.com/microsoft/agent-governance-toolkit/tree/main/policy-engine) belongs to AGT; the separate OPA executable evaluates our local Rego rules. |
+| Agent Hooks + MAF | The published [Agent Hooks SDK](https://github.com/responsibleai/agent-hooks) supplies the **host/interceptor contract**. MAF's `create_agent_hooks_middleware` attaches it in the local profile. The gateway profile instead uses a native FunctionTool client. |
+| Threadlight runtime adapter / gateway | Threadlight implements the integration and **PEP**, or policy enforcement point: bind trusted context to the proposal, enforce the verdict and guard the selected effect transport. |
+| Threadlight control plane | Threadlight implements signed configuration, verified human decisions, one-use grants and central audit acknowledgements. This independent service uses Azure SDKs; it has no AGT/ACS/MAF/OPA dependency. |
+| AGT core package | **AGT is the toolkit** and upstream project, but its core distribution is an installed compatibility pin here. These two profiles do not call its Agent OS, AgentMesh or Agent SRE APIs. Their capabilities are not inherited. |
+| ASSERT | **ASSERT is assurance** of behavior and evidence, not a pre-effect authorization dependency in these profiles. An assessment does not prove an ASSERT campaign ran. |
+
+The [provider](../skills/threadlight-govern/references/runtime/governance_provider.py),
+[hooks bridge](../skills/threadlight-govern/references/runtime/maf_agent_hooks_acs.py)
+and [gateway policy loader](../skills/threadlight-govern/references/gateway/dispatcher.py)
+show those actual calls. The business API still owns domain authorization,
+conditional writes and transactionality.
+
+### SAFE, applied to the return
+
+**SAFE is not a Foundry feature** or an automatic whole-agent guarantee.
+The [reference method](https://github.com/placerda/safe-agent-on-foundry) becomes
+concrete requirements at the selected action boundary:
+
+| Principle | Requirement in this example |
+|---|---|
+| Scope | Only the registered case-decision action and allowed decisions; no arbitrary endpoint or payment settlement. |
+| Anchored Decisions | Eligibility and case revision come from trusted backend facts, not the model's explanation. |
+| Flow Integrity | Bind review and resume to the original operation and unchanged arguments; recheck current facts before the conditional write. |
+| Escalation | Route configured exceptions to a verified human decision; unavailable authority or unknown effects stop execution. |
+
+This implements selected controls, not a general proof of every conversation's
+trajectory. Unknown effects still require reconciliation, not blind retries.
+
+**Maintenance boundary:** upstream AGT declares **Public Preview**. Recent
+repository activity does not establish production support or long-term
+maintenance. The [dated upstream assessment](solution-review-2026-09-15.md#agt-upstream-status)
+separates the archived predecessor, current activity and package constraints.
+Replacing ACS would require policy/adapter compatibility work and fresh
+verification; changing a label or removing AGT core would not replace that engine.
 
 ## 4. Architecture and trust boundaries
 

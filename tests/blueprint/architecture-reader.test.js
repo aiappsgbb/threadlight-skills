@@ -13,7 +13,8 @@ test('architecture report leads with scope, a contents map and implementation, n
     'Limits and adoption']) assert.ok(report.includes(heading), heading);
   assert.ok((report.match(/\]\(#/g) || []).length >= 9, 'Navigable contents');
   assert.ok(report.split(/\s+/).length <= 4000, 'Keep the main reading path concise');
-  assert.doesNotMatch(report, /public hosted execution snapshot|S[123]-HOSTED|ProvisioningError|Billing Issue|2026-09-|sha256:[a-f0-9]{64}/i);
+  const proseWithoutLinkTargets = report.replace(/\]\([^)]*\)/g, ']');
+  assert.doesNotMatch(proseWithoutLinkTargets, /public hosted execution snapshot|S[123]-HOSTED|ProvisioningError|Billing Issue|2026-09-|sha256:[a-f0-9]{64}/i);
   for (const topic of ['content safety', 'IAM', 'model gateway', 'network isolation',
     'evaluations', 'business API', 'one-use', 'Outlook', 'unbound', 'without ACS']) {
     assert.ok(report.toLowerCase().includes(topic.toLowerCase()), topic);
@@ -42,28 +43,31 @@ test('production chapter explains the action boundary through a connected visual
   assert.match(section, /role="img"[^>]*aria-labelledby="authority-map-title authority-map-desc"/);
   assert.match(section, /<path[^>]*marker-end=/);
   for (const label of ['Propose', 'Authorize', 'Execute', 'Human decision', 'Outlook',
-    'Identity', 'Policy', 'Trusted facts', 'Audit']) assert.ok(section.includes(label), label);
-  assert.match(section, /Read the architecture/);
-  assert.match(section, /agent-governance-deep-dive\.md/);
+    'Identity', 'Policy', 'Trusted facts', 'audit ACK']) assert.ok(section.includes(label), label);
+  const outcomes = page.match(/<section\b[^>]*id="evidence-boundaries"[^>]*>([\s\S]*?)<\/section>/)[1];
+  assert.match(outcomes, /Read the architecture/);
+  assert.match(outcomes, /agent-governance-deep-dive\.md/);
   assert.doesNotMatch(section, /sha256:|2026-|S[123]-|ETag CAS|Idempotency-Key/);
   assert.doesNotMatch(page, /--cp-bg:\s*#f7f4ef|data-theme="dark"/, 'Do not replace the established site theme');
 });
 
-test('production presents complementary domains before the agent-action detail and explains its business gap', () => {
+test('production groups three complementary areas, keeps privacy cross-cutting and explains the action gap', () => {
   const page = read('docs/production.html');
-  const domains = ['platform-controls', 'model-controls', 'effect-authority',
-    'quality-controls', 'information-controls', 'operating-controls'];
+  const domains = ['platform-controls', 'operating-controls', 'effect-authority'];
   for (const id of domains) {
     assert.ok(page.includes(`id="${id}"`), id);
     assert.ok(page.includes(`href="#${id}"`), id);
   }
   assert.ok(page.indexOf('id="production-domains"') < page.indexOf('id="effect-authority"'));
+  assert.ok(page.indexOf('id="information-controls"') < page.indexOf('id="topic-explorer"'));
+  assert.match(page, /<aside[^>]*id="information-controls"/);
+  assert.match(page, /data-area-navigation="platform-topic"[^>]*>[\s\S]*?href="#model-controls"[\s\S]*?<\/nav>/);
   const action = page.match(/<section\b[^>]*id="effect-authority"[^>]*>([\s\S]*?)<\/section>/)[1];
-  for (const phrase of ['authenticated agent', 'outdated case', 'repeat a decision',
-    'Routine work', 'Exceptions', 'Accountability', 'existing business API']) {
+  for (const phrase of ['current case revision', 'not authorization', 'not a payment',
+    'effect boundary', 'independent business API']) {
     assert.ok(action.includes(phrase), phrase);
   }
-  assert.ok(action.indexOf('outdated case') < action.indexOf('class="authority-map"'));
+  assert.ok(action.indexOf('id="returns-walkthrough"') < action.indexOf('class="authority-map"'));
   assert.doesNotMatch(page, /Threadlight proves the agent you run in it|Agent governance &mdash; not platform governance/);
 });
 
@@ -76,4 +80,29 @@ test('technical guide follows the public domains and expands the contracts with 
   assert.ok(report.includes('<!-- contract: resumed-decision -->'));
   assert.ok(report.includes('<!-- code: native-client-wiring -->'));
   assert.ok(report.includes('<!-- code: conditional-business-effect -->'));
+});
+
+test('guide separates upstream execution, installed compatibility packages and Threadlight implementation', () => {
+  const report = read('docs/agent-governance-deep-dive.md');
+  for (const phrase of ['Native components and Threadlight code', 'AGT core package',
+    'not the full AGT stack', 'responsibleai/agent-hooks', 'create_agent_hooks_middleware',
+    'Threadlight implements', 'Public Preview']) assert.ok(report.includes(phrase), phrase);
+  assert.match(report, /policy-engine/);
+  assert.match(report, /solution-review-2026-09-15\.md#agt-upstream-status/);
+});
+
+test('SAFE principles are translated into the running return example rather than presented as a platform feature', () => {
+  const report = read('docs/agent-governance-deep-dive.md');
+  for (const principle of ['Scope', 'Anchored Decisions', 'Flow Integrity', 'Escalation']) {
+    assert.ok(report.includes(`| ${principle} |`), principle);
+  }
+  assert.match(report, /SAFE is not a Foundry feature/);
+  assert.match(report, /ASSERT.*not.*pre-effect/s);
+});
+
+test('dated upstream assessment distinguishes current activity, migration and production support', () => {
+  const report = read('docs/solution-review-2026-09-15.md');
+  for (const phrase of ['id="agt-upstream-status"', 'c63c51e881c442fbc060705f7e211f29993f2c1b',
+    'imran-siddique/agent-governance', 'Public Preview', 'does not establish an SLA',
+    'First-feedback boundary']) assert.ok(report.includes(phrase), phrase);
 });

@@ -517,14 +517,14 @@ was made.
 
 | Finding | Source implementation | Remaining acceptance |
 |---|---|---|
-| F1 | Not yet implemented | Real producer execution, strict release acceptance and protected promotion |
+| F1 | Verified-release work is in progress locally, not included in this feedback snapshot | Complete integration, real producer execution, strict release acceptance and protected promotion; no F1 closure claimed |
 | F2 | Supported SDK-resume route documented consistently; legacy-only blockers scoped correctly (`105663c`) | A newly rebuilt application's protected live attempt is separate from these source/doc tests |
 | F3 | Not yet implemented; uncertain operations remain closed | Authenticated, independently evidenced, auditable recovery without duplicate effects |
 | F4 | Not yet implemented | Explicit stop/revocation/rotation and entitlement ownership |
 | F5 | Seven supplied cards and real delegated approve/reject bridge (`105663c`) | Teams SSO/OBO, protected review storage and application-specific handlers remain integration prerequisites, not supplied channel deployments |
 | F6 | Approved customer APIM authority and canonical route validation implemented (`4a2892d`) | Canonical `returns_apply_decision` live binding remains unverified; mutable OMS/CRM adapters are not supplied |
 | F7 | Not yet implemented | Enforced workload limits and honest projected-cost boundaries |
-| F8 | Runtime/channel support matrix added; broader explanation alignment still pending | Site, lifecycle promises, ownership and cross-cutting data/privacy explanation |
+| F8 | Runtime/channel support matrix added; governance guide now separates native components, Threadlight code and SAFE principles, with sourced AGT lifecycle context | Broader site/lifecycle alignment remains distinct from this focused feedback correction |
 | F9 | Compatible dependency updates and matching portable consumers (`b21fdd3`) | Blocked upstream for cryptography 50; default-branch alerts and running images are not changed by draft source fixes |
 
 The [runtime support matrix](runtime-support.md) identifies concrete framework,
@@ -566,3 +566,57 @@ These are local source/protocol/native checks, not new Azure business
 acceptance. Retained private human proof and registered noop collector
 evidence are not reused for these packages, the canonical application or
 another deployment attempt.
+
+<a id="agt-upstream-status"></a>
+
+## AGT upstream status — checked 16 September 2026
+
+**The public evidence does not support calling the current AGT repository
+abandoned. It also does not establish an SLA, a Microsoft product support
+commitment or a guaranteed roadmap.**
+
+| Official evidence | What it establishes |
+|---|---|
+| [Current repository metadata](https://api.github.com/repos/microsoft/agent-governance-toolkit) | `archived: false`, `disabled: false` at this check |
+| [Main-branch commit `c63c51e`](https://github.com/microsoft/agent-governance-toolkit/commit/c63c51e881c442fbc060705f7e211f29993f2c1b) | AgentMesh hardening merged on 15 September at 20:36 UTC; evidence of substantive recent activity, not merely a repository timestamp |
+| [Predecessor repository](https://github.com/imran-siddique/agent-governance) | Archived, with an explicit deprecation/migration notice pointing to `microsoft/agent-governance-toolkit`; not evidence that the successor is abandoned |
+| [Current README at the inspected commit](https://github.com/microsoft/agent-governance-toolkit/blob/c63c51e881c442fbc060705f7e211f29993f2c1b/README.md) | Declares **Public Preview**, with possible breaking changes before GA |
+| [Published core package metadata](https://pypi.org/pypi/agent-governance-toolkit-core/5.0.0/json) | Core 5.0.0 was uploaded on 3 August and still requires `cryptography<50.0`; recent source activity does not resolve the installed-package constraint |
+
+The GitHub Releases API still lists v4.1.0, published 9 June, as its latest
+release, while PyPI publishes core 5.0.0. These are different publication
+surfaces; neither a GitHub release label nor a merged hardening change proves a
+compatible replacement wheel exists.
+
+### Our actual dependency and maintenance responsibility
+
+The [governance guide](agent-governance-deep-dive.md#native-components-and-threadlight-code)
+now traces the actual source calls. **ACS is our executable policy dependency
+from the AGT project.** Agent Hooks comes from `responsibleai/agent-hooks` and
+MAF supplies the native host integration. Threadlight owns its runtime adapter,
+registered gateway, approval protocol and independent control plane; it does not
+inherit AGT's mesh, SRE, sandbox, marketplace or dashboard capabilities.
+
+The AGT core distribution is installed and checked by the gateway's pin guard,
+but these two reference profiles do not invoke its Agent OS/AgentMesh/SRE APIs.
+The published ACS package requires PyYAML, not AGT core; the base Hooks package
+also does not require core. That makes the broad core installation a candidate
+for a separate dependency-minimization review, **not permission to remove a
+current compatibility requirement silently**. Even removing it would leave ACS
+as an AGT-project dependency. No runtime pin or package was changed for this
+documentation clarification.
+
+### First-feedback boundary
+
+The immediate deliverable is the accepted Production page and diagrams, the
+clarified governance guide, the runtime support matrix and this transparent
+implementation record. Keep the presentation centered on **Citadel's shared
+platform, multiple AgentOps release models, and active action governance**;
+data/privacy remains cross-cutting.
+
+Do not hold first colleague feedback until every production remediation is
+finished. Equally, do not call that feedback snapshot production-certified:
+F1's unpublished CI/CD work, F3 recovery, F4 revocation/operations, F6 canonical
+live acceptance, F7 enforced limits and F9's remaining dependency advisory stay
+open. No additional cloud demonstration, platform redesign or full backlog
+implementation is part of this focused clarification.
