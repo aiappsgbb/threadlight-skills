@@ -32,7 +32,7 @@ test('AgentOps leads directly into the retained pipeline instead of another intr
   await expect(page.locator('.pipe-svg')).toBeVisible();
   expect(await wordCount(page.locator('#operating-controls'))).toBeLessThan(110);
   expect(await page.locator('.pipe-svg').evaluate(svg => svg.getBoundingClientRect().top)).toBeLessThan(700);
-  await expect(page.locator('#readiness-topic')).toContainText('after deployment');
+  await expect(page.locator('#readiness-topic')).toContainText('before production');
   await expect(page.locator('#readiness-topic')).toContainText('before go-live');
 });
 

@@ -166,7 +166,7 @@ test('each concise topic keeps its core visual and delegates detail to reference
     const body = section(source, id);
     assert.match(body, new RegExp(`data-visual="${visual}"`), `${id}: distinct visual explanation`);
     if (id === 'delivery-controls') {
-      for (const boundary of ['after deployment', 'echo', 'partial', 'does not roll back']) {
+      for (const boundary of ['preproduction', 'same image', 'required checks', 'does not roll back']) {
         assert.ok(text(body).includes(boundary), boundary);
       }
     }
@@ -187,8 +187,8 @@ test('AgentOps frames the release area as controlled delivery rather than just r
     assert.ok(introduction.toLowerCase().includes(phrase.toLowerCase()), phrase);
   }
   const delivery = text(section(source, 'delivery-controls'));
-  for (const phrase of ['Provision/deploy', 'after deployment', 'CI RESULT',
-    'echo', 'does not roll back', 'partial']) assert.ok(delivery.includes(phrase), phrase);
+  for (const phrase of ['preproduction', 'owner approval', 'PROD GATE',
+    'same image', 'does not roll back', 'not cloud acceptance']) assert.ok(delivery.includes(phrase), phrase);
   assert.match(read('production-readiness-pages-spec.md'), /not automatic adoption of the optional.*AgentOps/s);
 });
 
@@ -200,6 +200,19 @@ test('accepted AgentOps visuals remain stable while the current generator enforc
   }
   assert.doesNotMatch(source, /class="(?:scorecard-preview|posture-trio-svg)/);
   assert.doesNotMatch(text(source), /all gates green.*ships|hard-block the merge|nothing calls home/i);
+  const delivery = text(section(source, 'delivery-controls'));
+  assert.doesNotMatch(delivery, /Soft is the default|soft \| hard|echo|needs: deploy|CI RESULT/);
+  for (const phrase of ['application team', 'same image', 'production environment',
+    'expired', 'business actions', 'local', 'not cloud acceptance']) {
+    assert.ok(delivery.includes(phrase), phrase);
+  }
+  assert.doesNotMatch(delivery, /--receipt-sha256|THREADLIGHT_AGENTOPS_CONTEXT|client_id/);
+  for (const reference of ['docs/agentops-deep-dive.md',
+    'skills/threadlight-cicd/references/release-contract.md',
+    'skills/threadlight-cicd/references/github-actions/azd-deploy-prod.yml.tmpl',
+    'skills/threadlight-cicd/references/azure-devops/azure-pipelines.yml.tmpl']) {
+    assert.ok(source.includes(`/blob/04331ba8c4764b41ad90722d1022914b239bae2a/${reference}`), reference);
+  }
   const templates = ['github-actions/azd-deploy-prod.yml.tmpl', 'azure-devops/azure-pipelines.yml.tmpl'];
   for (const template of templates) {
     const pipeline = read('../skills/threadlight-cicd/references/' + template);
