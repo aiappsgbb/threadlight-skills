@@ -24,3 +24,25 @@ test('AgentOps deep dive follows the verified-release implementation', () => {
     assert.ok(fs.existsSync(path.resolve(root, 'docs', link.split('#')[0])), link);
   }
 });
+
+test('release documentation separates orientation, repository explanation and operator contracts', () => {
+  for (const file of ['README.md', 'THREADLIGHT.md']) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    for (const reference of ['docs/agentops-deep-dive.md', 'references/release-contract.md']) {
+      assert.ok(text.includes(reference), `${file}: ${reference}`);
+    }
+    assert.match(text, /not.*cloud.*acceptance/i, file);
+  }
+  const guide = fs.readFileSync(path.join(root, 'docs/agentops-deep-dive.md'), 'utf8');
+  for (const phrase of ['## Start here', '**Candidate**', '**Promotion**', '**Receipt**',
+    '**Release approval**', '## Who supplies what', '## What has been verified',
+    'catalog CI', 'customer pipeline', 'not a signed external attestation']) {
+    assert.ok(guide.includes(phrase), phrase);
+  }
+  const contract = fs.readFileSync(path.join(root,
+    'skills/threadlight-cicd/references/release-contract.md'), 'utf8');
+  for (const phrase of ['## Operator sequence', '## Stop and recover', 'preflight',
+    'max_age_seconds', 'outcome unknown', 'complete validation']) {
+    assert.ok(contract.includes(phrase), phrase);
+  }
+});

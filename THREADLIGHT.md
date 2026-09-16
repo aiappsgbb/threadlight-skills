@@ -720,6 +720,20 @@ private-VNet runners. Where `threadlight-deploy` assumes a permissive
 sandbox, this skill assumes a **locked-down customer environment** and the
 agent has no standing deploy rights.
 
+**Reading path:** the [public Production overview](https://aiappsgbb.github.io/threadlight-skills/production.html#operating-controls)
+explains the flow; the [repository release guide](docs/agentops-deep-dive.md)
+defines the terms and responsibilities; the
+[operator contract](skills/threadlight-cicd/references/release-contract.md)
+specifies exact adapters, artifacts, acceptance and recovery.
+
+CI/CD **0.5.0** validates a separate preproduction candidate, executes required
+eval/red-team/MCP checks, then admits a protected production job. Promotion
+reuses the same immutable image and rechecks current authority after waits;
+missing, stale or contradictory evidence blocks it. Application-owned adapters,
+approved credentials and external environment protection must already exist.
+Catalog tests, including real native loopback execution, are **not cloud acceptance**.
+Release approval neither authorizes runtime business actions nor certifies go-live.
+
 It opens with an **onboarding-path decision gate** before generating
 anything:
 
@@ -747,11 +761,18 @@ python skills/threadlight-cicd/scripts/generate_pipeline.py \
 
 **Outputs (deterministic, offline, secret-free).**
 - Pipeline: `.github/workflows/azd-deploy-prod.yml` (GitHub OIDC) **or**
-  `azure-pipelines.yml` (Azure DevOps Workload Identity Federation).
+  `azure-pipelines.yml` (Azure DevOps Workload Identity Federation), with
+  separate validation and promotion jobs.
 - `docs/threadlight-cicd/env-setup/` runbooks + `.sh` scripts for the
   platform team: `01` UAMI + federated creds, `02` least-privilege RBAC
   (scoped to the target/spoke RG only), `03` private-VNet runners
   (managed **and** self-hosted), plus a `README.md`.
+- `docs/threadlight-cicd/validation-env-setup/` supplies the separate validation
+  identity/scope runbooks. `release-contract.md` and `agentops-runtime.md` explain
+  the release and optional native prerequisites; the latter does not enable AgentOps.
+- Vendored release tooling and `specs/release-policy.example.json`. The example
+  is deliberately non-executable until the application supplies and reviews
+  its actual policy, adapters, datasets and thresholds.
 - `docs/threadlight-cicd/central-platform-boundary.md` and
   `onboarding-path.json` (auditable decision record).
 
@@ -764,17 +785,17 @@ For `citadel-spoke` posture the pilot consumes the hub via an Access
 Contract (`citadel-spoke-onboarding`); the deploy identity's RBAC is
 scoped to the spoke RG, never hub scope.
 
-**Soft handoff, not a gate.** Generation is offline and never touches
-Azure. The env-setup runbooks are executed by the customer's platform
+**Offline handoff; blocking release checks.** Generation never touches
+Azure, but the generated workflow fails closed on required checks.
+The env-setup runbooks are executed by the customer's platform
 team — the skill never assumes deploy rights and never emits a long-lived
 secret (OIDC / WIF only; the test-suite fails the build if a secret or PAT
 lands in any emitted file).
 
 **Relationship to production-ready.** `threadlight-production-ready`
-Phase 3 (`--scaffold-cicd`) still ships a *basic* GitHub-Actions-only
-scaffold for backward-compat; **this skill is the authoritative, expanded
-home** (both platforms, the gate, the env runbooks, the boundary). Run it
-after the readiness scorecard is green.
+Phase 3 (`--scaffold-cicd`) delegates to **this authoritative generator**
+for both platforms. There is no weaker secondary deployment template.
+The handoff is part of readiness work, not evidence that a customer release ran.
 
 **Not driven by `threadlight-auto`.** Auto is a pilot driver, not a prod
 pipeline orchestrator — this is a manual handoff step.

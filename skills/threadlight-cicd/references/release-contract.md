@@ -24,6 +24,34 @@ Both CI systems use one validation job and one dependent, protected production
 job. CI artifacts contain metadata and hashes only; model responses, attack
 payloads, credentials and raw diagnostics must not be published.
 
+## Operator sequence
+
+This contract is copied into the application repository. It describes commands
+that the generated workflow invokes, not permission to run a deployment locally.
+
+1. Review the generated pipeline, both environment-setup directories and
+   `specs/release-policy.example.json`. Supply actual adapters and locked
+   dependencies, then commit the reviewed `specs/release-policy.json`.
+2. Have the platform owner configure federation, isolated validation scope,
+   production environment checks and approved runner preparation. The generated
+   example is not an operational default; do not run setup scripts without approval.
+3. Start the authorized workflow from protected main. `preflight` checks
+   configuration, entrypoints and committed source in the real CI context;
+   it does not authenticate or execute the adapters. Do not forge CI variables
+   to simulate authority on a laptop.
+4. Let `validate` prepare and observe the candidate, execute all required
+   producers and emit `.threadlight-release/candidate.json` only on acceptance.
+   The workflow carries its SHA-256 separately as a validation job output.
+5. After production-environment approval, `promote` receives that output through
+   `--receipt-sha256`, rechecks the receipt and current authorization, invokes
+   the application promotion adapter and observes production. Business routing
+   and broader go-live acceptance remain application-owned.
+
+The policy's `max_age_seconds` covers the original validation window, including
+subsequent approval waits. It is not reset when the receipt is downloaded.
+Review this bound against expected execution/approval time before running;
+never extend it or rewrite timestamps to rescue an already expired attempt.
+
 ## Application-owned adapters
 
 The runner invokes explicit argv arrays with `shell=False`. It is not a new
@@ -137,6 +165,21 @@ its local attempt record is not a distributed idempotency service. The actual
 promotion adapter must fence the stable operation ID in its durable backend,
 including across runner loss. Keep business routing closed until that adapter's
 required post-deployment checks complete.
+
+## Stop and recover
+
+| Failure point | Meaning | Operator action |
+|---|---|---|
+| Preflight or identity check | The reviewed configuration, source, executable or principal is not acceptable; this is not a completed release | Correct the actual prerequisite through review and start a new authorized run |
+| Candidate preparation or required evidence | A validation target may exist, but no new accepted candidate receipt is available | Inspect private diagnostics, fix the cause and rerun complete validation; do not substitute a saved report |
+| Approval wait, checksum, inputs or attempt mismatch | Previous validation no longer authorizes this promotion | Run complete validation again under the current source and policy; do not retry only promotion with stale authority |
+| Promotion timeout or runner loss: outcome unknown | The backend may have committed an effect even if CI is red | Keep traffic closed; reconcile the durable adapter operation record and actual target before another attempt |
+| Production observation mismatch | Promotion ran, but the observed image/source/target is not the accepted result | Stop and reconcile through the application runbook; automatic rollback is not provided |
+
+The local attempt file is conservative retry protection, not proof of a durable
+remote result. Do not delete it to force a retry. Backend reconciliation,
+rollback decisions and any resource cleanup need their own authorization;
+they are not implied by a failed CI job.
 
 ## Separate acceptance boundaries
 

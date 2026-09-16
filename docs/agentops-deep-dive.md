@@ -1,6 +1,7 @@
 # AgentOps: from a working pilot to a controlled release
 
-The technical companion to the [AgentOps area](production.html#operating-controls).
+The repository explanation behind the
+[public AgentOps area](https://aiappsgbb.github.io/threadlight-skills/production.html#operating-controls).
 Threadlight generates delivery artifacts and assesses evidence. The customer
 owns deployment authority, evidence execution and the decision to enable
 business use. **Deployment success is not the same event as go-live.**
@@ -10,12 +11,46 @@ tool. A passing evaluation against a mock can also hide a denied production API
 call. Configuration review, executed evaluations and deployed-target verification
 answer different questions.
 
+## Start here
+
+Read this guide for the mental model and delivery responsibilities. Use the
+[operator contract](../skills/threadlight-cicd/references/release-contract.md)
+for exact commands, schemas and recovery. The public page explains the sequence
+visually; it is not an installation guide or a report of a customer deployment.
+
+- **Candidate**: the proposed version prepared in a separate preproduction
+  environment, where evaluations and attack tests run before production promotion.
+- **Promotion**: deploying that same immutable image to the production target,
+  not rebuilding an untested version. Production-specific configuration and
+  behavior still need verification.
+- **Receipt**: metadata connecting accepted checks to the source, inputs,
+  observed candidate and CI attempt. Its independently transported checksum
+  detects substitution; it is not a signed external attestation.
+- **Release approval**: the production environment owner's decision to admit
+  promotion. It is different from permission for each runtime business action
+  and from business go-live acceptance.
+
+For example: a prompt change becomes a candidate; representative and adversarial
+tests run against it; missing or failed required evidence stops promotion.
+Only current accepted evidence plus configured production approval admits the
+same image. The application owner still verifies production behavior and decides
+when to open business use. A green release does not make every tool action safe.
+
+## Who supplies what
+
+| Owner | Supplies | Not supplied by generating the pipeline |
+|---|---|---|
+| Threadlight catalog | Two-platform release orchestration, strict readers, receipt checks, optional native bridge and runbooks | A customer-specific deployment engine, evaluator or attack scanner |
+| Application team | Reviewed adapters, real target observation, representative datasets, thresholds and dependency preparation | Results from tests that have not run |
+| Platform / DevSecOps team | Separate identities and scopes, protected environments, approved runners and credential preparation | Permissions or environment reviewers created by a YAML declaration |
+| Business and runtime owners | Go-live decision, live acceptance scope and selected action controls | Whole-agent certification inferred from a CI result |
+
 ## Contents
 
 1. [Choose the delivery model](#1-choose-the-delivery-model)
 2. [Keep the shared platform separate](#2-keep-the-shared-platform-separate)
 3. [What the generated pipeline actually executes](#3-what-the-generated-pipeline-actually-executes)
-4. [Interpret the verdict readers](#4-interpret-the-verdict-readers)
+4. [Understand required evidence](#4-interpret-the-verdict-readers)
 5. [Optional bound evaluation execution](#5-optional-bound-evaluation-execution)
 6. [Assemble evidence before go-live](#6-assemble-evidence-before-go-live)
 7. [Implementation map and boundaries](#7-implementation-map-and-boundaries)
@@ -182,3 +217,20 @@ CI settings and approved runtime preparation are still explicit prerequisites.
 Local fixtures exercise ordering and rejection paths, not customer deployment.
 No cloud execution, deployment approval or broader Task15 acceptance is
 established by publishing this document.
+
+## What has been verified
+
+The **catalog CI** tests this repository's portable implementation. The
+**customer pipeline** is the generated workflow after application integration.
+A green result in the former is not an executed release in the latter.
+
+| Evidence level | Covered here | Still outside this consolidation |
+|---|---|---|
+| Offline and process tests | Both generated pipeline shapes, strict acceptance/rejection, receipt binding, post-wait checks, portable scaffolding and credential-context isolation | Actual Azure federation, customer adapters, private networking and remote promotion |
+| Real native local execution | Pinned AgentOps CLI against a loopback HTTP target; deterministic quality-pass and quality-failure cases through the release bridge | Paid-model evaluation, production Doctor, native cloud target or scheduled execution |
+| Live customer acceptance | No new live claim | An authorized end-to-end release on the chosen CI platform, actual red-team execution, production observation, recovery and business acceptance |
+
+Before a later live test, pin the consolidated catalog revision and separately
+agree target, budget, identities, adapters and stop/recovery conditions.
+Do not turn local fixtures into deployment receipts or borrow another
+deployment's evidence.

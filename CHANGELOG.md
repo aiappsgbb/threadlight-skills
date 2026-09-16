@@ -20,6 +20,10 @@ field.
 - Native AgentOps retains its existing observer, pinned SDK and owner approval,
   with an explicit private credential context separate from deployment login.
   Real loopback native results exercise the bridge and canonical release reader.
+- Separate public overview, repository explanation and operator contracts make
+  release, runtime-action and business-acceptance boundaries explicit. The
+  generated handbook includes its optional native reference even without opt-in;
+  documentation alone does not enable native execution.
 - Plugin/marketplace candidate 2.6.0. These are offline implementation and local
   native checks, not Azure, business-write or Task15 acceptance. No release,
   merge or Pages publication is implied.

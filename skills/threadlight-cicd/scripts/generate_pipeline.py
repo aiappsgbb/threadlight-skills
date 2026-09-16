@@ -562,11 +562,10 @@ def generate(framing: dict, out_root) -> list:
         out_root / "docs/threadlight-cicd/release-contract.md",
         (REF / "release-contract.md").read_text(encoding="utf-8"),
     ))
-    if agentops:
-        written.append(_write(
-            out_root / "docs/threadlight-cicd/agentops-runtime.md",
-            (REF / "agentops-runtime.md").read_text(encoding="utf-8"),
-        ))
+    written.append(_write(
+        out_root / "docs/threadlight-cicd/agentops-runtime.md",
+        (REF / "agentops-runtime.md").read_text(encoding="utf-8"),
+    ))
     ignored = ["/.threadlight-release/", "/.threadlight-release-private/", "/.threadlight/skills/**/__pycache__/",
                "/specs/evals-manifest.json", "/docs/evals-report.md",
                "/specs/redteam-manifest.json", "/docs/redteam-report.md",

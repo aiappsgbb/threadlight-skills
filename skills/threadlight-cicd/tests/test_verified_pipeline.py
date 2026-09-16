@@ -93,6 +93,8 @@ def test_validation_setup_has_its_own_identity_and_permission_scope(tmp_path):
     assert "environment:validation" in identity
     assert "resourceGroups/rg-validation" in roles
     assert "resourceGroups/rg-prod" not in roles
+
+
 def test_cli_preserves_reviewed_platform_and_environment_from_framing(tmp_path):
     path = tmp_path / "framing.json"
     path.write_text(json.dumps({"platform": "azure-devops", "env_name": "production"}))
@@ -117,3 +119,16 @@ def test_supplied_azd_setup_precedes_executable_preflight(tmp_path):
     for job in ("validation", "promotion"):
         block = text.split(f"\n  {job}:\n")[1].split("\n  promotion:\n")[0]
         assert block.index("Azure/setup-azd") < block.index("release_runner.py preflight")
+
+
+@pytest.mark.parametrize("platform", generator.SUPPORTED_PLATFORMS)
+def test_generated_operator_handbook_has_no_dangling_local_links_without_native_opt_in(tmp_path, platform):
+    import re
+    generator.generate(framing(platform), tmp_path)
+    contract = tmp_path / "docs/threadlight-cicd/release-contract.md"
+    links = re.findall(r"\]\(([^)]+)\)", contract.read_text())
+    assert links
+    for link in links:
+        if not link.startswith(("https://", "#")):
+            assert (contract.parent / link.split("#")[0]).is_file(), link
+    assert not (tmp_path / ".threadlight/skills/threadlight-cicd/scripts/agentops_runtime.py").exists()
