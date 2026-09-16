@@ -506,3 +506,63 @@ No new cloud resource, RBAC grant, network change, live load/attack campaign,
 expired-authority reuse, merge, release or production Pages publication was
 performed. Findings are recommendations; implementation has not been silently
 applied to the accepted baseline.
+
+## Implementation delta — 16 September 2026
+
+The review above describes the preserved baseline, not the implementation
+status below. Annotated tag `checkpoint-review-20260916-0ffad93` points to
+`0ffad931b92da20f07db217dea2e4461e6e966ce` and is published independently of
+these subsequent draft changes. No release or production-site publication
+was made.
+
+| Finding | Source implementation | Remaining acceptance |
+|---|---|---|
+| F1 | Not yet implemented | Real producer execution, strict release acceptance and protected promotion |
+| F2 | Supported SDK-resume route documented consistently; legacy-only blockers scoped correctly (`105663c`) | A newly rebuilt application's protected live attempt is separate from these source/doc tests |
+| F3 | Not yet implemented; uncertain operations remain closed | Authenticated, independently evidenced, auditable recovery without duplicate effects |
+| F4 | Not yet implemented | Explicit stop/revocation/rotation and entitlement ownership |
+| F5 | Seven supplied cards and real delegated approve/reject bridge (`105663c`) | Teams SSO/OBO, protected review storage and application-specific handlers remain integration prerequisites, not supplied channel deployments |
+| F6 | Approved customer APIM authority and canonical route validation implemented (`4a2892d`) | Canonical `returns_apply_decision` live binding remains unverified; mutable OMS/CRM adapters are not supplied |
+| F7 | Not yet implemented | Enforced workload limits and honest projected-cost boundaries |
+| F8 | Runtime/channel support matrix added; broader explanation alignment still pending | Site, lifecycle promises, ownership and cross-cutting data/privacy explanation |
+| F9 | Compatible dependency updates and matching portable consumers (`b21fdd3`) | Blocked upstream for cryptography 50; default-branch alerts and running images are not changed by draft source fixes |
+
+The [runtime support matrix](runtime-support.md) identifies concrete framework,
+channel, identity and resume boundaries. The card bridge uses the existing
+delegated `/approvals/resolve` client: it loads a trusted pending review,
+validates case/nonce binding and returns `execution: not-started`. It neither
+authenticates a Teams user by itself nor executes or resumes business work.
+Edited proposals require a new intent and approval. GHCP deferred resume is
+still explicitly unsupported.
+
+**Dependency blocker:** published AGT 5.0.0 requires
+`cryptography>=46.0.7,<50.0`. The strongest published compatible release
+available for this update is 49.0.0, so **GHSA-g6cj-pr64-35w5 /
+CVE-2026-69247 remains unresolved**. Forcing cryptography 50 would break the
+native dependency contract. The affected PKCS#7 decryption APIs are not used
+by this control plane's RS256 signature verification, but downstream image
+applicability still requires its own assessment. No alert was dismissed.
+
+### Executed verification for this delta
+
+- Regression failures were observed before the dependency, proxy, delivery
+  and delegated-review fixes.
+- Exact-pin Linux execution: **522 runtime checks and 84 gateway checks
+  passed**. The runtime run includes the **47 declared CTK vectors**;
+  four undeclared incremental-output cases remain separately skipped.
+- Deployment/package run: **1,188 passed and three stale-version consumer
+  checks failed**. After the coupled fixes, the selected failures plus
+  canonical proxy/materialization coverage produced **36 passes**. The full
+  deployment suite was not rerun and is not reported as fully green.
+- Delegated card review, operator review, delivery contracts and remote
+  readiness: **43 passed**. Cases exercise actual local service protocol
+  models, delegated identity checks and one-use replay rejection.
+- All **seven cards** validate against the official Adaptive Cards JSON
+  schema (retrieved from `https://adaptivecards.io/schemas/adaptive-card.json`,
+  SHA-256 `12815f7a1f4408d533a5b97140264f840374c6a3bd51533aaa1c8cf05a9fa20e`).
+  Schema validation does not prove rendering, SSO or channel delivery.
+
+These are local source/protocol/native checks, not new Azure business
+acceptance. Retained private human proof and registered noop collector
+evidence are not reused for these packages, the canonical application or
+another deployment attempt.
