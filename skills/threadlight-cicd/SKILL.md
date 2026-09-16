@@ -188,6 +188,8 @@ With opt-in, retain native operations in the same generated workflow:
   comparison when a baseline exists. They never deploy or promote a baseline.
   The PR job uses the validation environment, never the production deploy
   identity. Untrusted fork PRs do not receive the GitHub execution context.
+  Native jobs use a separately prepared private context and do not perform
+  deployment login.
 - Canonical `evals_check.py --target . --emit` consumes the existing validated
   batch; it does not execute a second evaluation. A native negative exit is
   preserved after consumption and fails the PR check rather than being
@@ -198,7 +200,7 @@ With opt-in, retain native operations in the same generated workflow:
   after successful promotion, not as a second release evaluation.
 - An optional Doctor-only schedule skips provisioning, deployment and paid
   eval. It uses the same approved environment, private runner selection and
-  OIDC/WIF context. ADO native operations are environment-bound deployment jobs
+  explicit native credential context. ADO native operations are environment-bound deployment jobs
   so configured environment approval checks still apply.
 
 The generator vendors the minimal tooling under `.threadlight/skills/`
@@ -212,6 +214,12 @@ actual same-process receipt without requiring new PKI or an external signer; abs
 prerequisites are an actionable failure, not a green placeholder. Generated
 runtime evidence must be ignored by Git while committed policy and tooling
 remain tracked, so capture does not invalidate the clean source binding.
+Supply `THREADLIGHT_AGENTOPS_VALIDATION_CONTEXT` and, when selected,
+`THREADLIGHT_AGENTOPS_PRODUCTION_CONTEXT` through existing approved runner
+preparation. They point to private files passed as `THREADLIGHT_AGENTOPS_CONTEXT`;
+the generator neither creates them nor authorizes native execution. Production
+Doctor needs its own verified same-target eval receipt, not the validation
+candidate's receipt. See [native runtime prerequisites](references/agentops-runtime.md).
 
 Do not use `agentops workflow generate`, create another workflow, install a new
 identity, widen RBAC, provision telemetry or modify Citadel. No keys or storage
@@ -228,11 +236,11 @@ permissions and retention scope—not invented secrets or infrastructure.
 
 ## Relationship to threadlight-production-ready
 
-`threadlight-production-ready` Phase 3 (`--scaffold-cicd`) still ships a **basic**
-GitHub-Actions-only scaffold for backward-compat. **This skill is the authoritative,
-expanded home**: both platforms, the onboarding-path gate, the env-setup runbooks,
-and the central-platform boundary. After the readiness scorecard is green, hand off
-here for the production pipeline.
+`threadlight-production-ready` Phase 3 (`--scaffold-cicd`) delegates to this
+authoritative generator for both platforms, including portable tooling, policy
+example, separate environment setup and the central-platform boundary. There is
+no weaker deploy-first alternate template. The compatibility runbook path is only
+a pointer to the shared handoff; a green readiness scorecard is not release authority.
 
 ## Generator API (for tests / automation)
 

@@ -192,7 +192,7 @@ test('AgentOps frames the release area as controlled delivery rather than just r
   assert.match(read('production-readiness-pages-spec.md'), /not automatic adoption of the optional.*AgentOps/s);
 });
 
-test('AgentOps visuals do not turn the base template into an automatic producer or rollout gate', () => {
+test('accepted AgentOps visuals remain stable while the current generator enforces verified release', () => {
   const source = read('production.html');
   assert.doesNotMatch(source, /id="(?:readiness-reference|delivery-reference)"/);
   for (const visual of ['ciso-pentagon-svg', 'pipe-svg', 'authority-map']) {
@@ -203,9 +203,9 @@ test('AgentOps visuals do not turn the base template into an automatic producer 
   const templates = ['github-actions/azd-deploy-prod.yml.tmpl', 'azure-devops/azure-pipelines.yml.tmpl'];
   for (const template of templates) {
     const pipeline = read('../skills/threadlight-cicd/references/' + template);
-    assert.match(pipeline, /(?:needs|dependsOn): deploy/);
-    assert.match(pipeline, /echo "Run threadlight-evals/);
-    assert.match(pipeline, /comprehensive", "partial/);
-    assert.match(pipeline, /hardened", "partial/);
+    assert.match(pipeline, /(?:needs|dependsOn): validation/);
+    assert.match(pipeline, /release_runner\.py/);
+    assert.match(pipeline, /--receipt-sha256/);
+    assert.doesNotMatch(pipeline, /echo "Run threadlight-evals|continue-on-error|continueOnError/);
   }
 });

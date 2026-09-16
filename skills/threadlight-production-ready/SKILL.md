@@ -6,7 +6,7 @@ description: >-
   remediation ownership or an explicit CI readiness gate. Not for deployment,
   runtime implementation, model evaluation or hub provisioning.
 metadata:
-  version: "0.14.0"
+  version: "0.15.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -169,21 +169,21 @@ The skill exposes an **explicit production-onboarding workflow**:
    findings that now do — silent drift between the plan and reality is the
    single failure mode this gate exists to prevent.
 
-3. **CI/CD handoff (explicit action).** Only when the apply-plan contains
-   pipeline-deferred items (or you pass `--scaffold-cicd`) does the script
-   render a GitHub Actions workflow (`.github/workflows/azd-deploy-prod.yml`)
-   and a central-platform-team runbook
-   (`docs/threadlight-cicd/central-team-uami-readme.md`) explaining exactly
-   which UAMI + federated credential to provision so future pushes to `main`
-   deploy without long-lived secrets.
+3. **CI/CD handoff (explicit action).** `--scaffold-cicd` delegates to the
+   authoritative **`threadlight-cicd` verified-release generator** for GitHub
+   Actions or Azure DevOps. Pipeline-deferred findings alone only emit a hint;
+   they do not create a pipeline. Both entrypoints emit the same executable
+   tooling, non-executable policy example, separate validation/production setup
+   runbooks and central-platform boundary. The legacy
+   `docs/threadlight-cicd/central-team-uami-readme.md` path is a handoff pointer,
+   not an alternate deployment implementation.
 
-   > **This is the *basic* scaffold (GitHub Actions only).** The authoritative,
-   > expanded CI/CD home is the dedicated **`threadlight-cicd`** skill: GitHub
-   > Actions **and** Azure DevOps, an onboarding-path decision gate, env-setup
-   > runbooks (UAMI/federated creds, least-privilege RBAC, private-VNet runners),
-   > and an explicit central-platform boundary (keeps the pilot pipeline separate
-   > from `citadel-hub-deploy`). After this readiness gate is green, hand off to
-   > `threadlight-cicd` for the production pipeline.
+   Follow the [release contract](../threadlight-cicd/references/release-contract.md):
+   configure reviewed application adapters, isolated targets/identities and
+   protected CI environments before enabling execution. Validation runs the
+   actual required producers; promotion verifies the receipt and reuses the
+   immutable image. Generating YAML grants no deployment or native-operation
+   authority, and the scorecard does not certify a release.
 
 4. **Deployment (explicit action outside this assessment).** Production Ready
    never runs `azd up` for you. Deployment happens later through the generated
@@ -191,11 +191,12 @@ The skill exposes an **explicit production-onboarding workflow**:
 
 **The Python script is assessor-only for remediation findings.** It never
 mutates your repo or subscription for findings — fixes are dispatched to the
-agent as apply-plan tasks. The single documented exception is `--scaffold-cicd`, which writes 2 files
-(`.github/workflows/azd-deploy-prod.yml` and
-`docs/threadlight-cicd/central-team-uami-readme.md`) into the customer repo so
-the production-onboarding pipeline can run. That exception is bounded, opt-in,
-and writes deterministic templates only — it does not emit remediation patches.
+agent as apply-plan tasks. The explicit `--scaffold-cicd` exception writes the
+selected pipeline, portable release tooling
+(`.threadlight/skills/threadlight-cicd/scripts/release_runner.py`), policy example
+(`specs/release-policy.example.json`), private-output Git exclusions and runbooks
+(`docs/threadlight-cicd/release-contract.md`) into the customer repo. It does not enable the
+workflow, generate passing evidence, execute adapters or apply remediation.
 
 ## Assessment-to-plan handoff
 

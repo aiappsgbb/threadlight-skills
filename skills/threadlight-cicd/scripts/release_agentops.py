@@ -24,6 +24,9 @@ def main(argv=None) -> int:
         request_path = os.environ.get("THREADLIGHT_RELEASE_REQUEST")
         if not request_path:
             raise ValueError("the release runner's private request is required")
+        native_context = os.environ.get("THREADLIGHT_AGENTOPS_CONTEXT")
+        if not native_context:
+            raise ValueError("a separate private THREADLIGHT_AGENTOPS_CONTEXT is required; deployment credentials are not native approval")
         request = release_runner.load(Path(request_path))
         if request.get("ci") != release_runner.ci_context(root):
             raise ValueError("native evaluation request does not match the current CI attempt")
@@ -42,7 +45,7 @@ def main(argv=None) -> int:
             if binding.get("target_sha256") != targets[item["agent_key"]]:
                 raise ValueError("native binding targets a different candidate")
         started = datetime.now(timezone.utc)
-        status = agentops_runtime.main(["--repo", str(root), "--run-eval"])
+        status = agentops_runtime.main(["--repo", str(root), "--run-eval", "--context", native_context])
         if status not in {0, 2}:
             raise ValueError("native runtime/approval/observation failed; no substitute evaluator is permitted")
         document = contract.load_manifest(root)

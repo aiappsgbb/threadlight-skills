@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -56,6 +57,7 @@ def release(tmp_path, monkeypatch):
         (tmp_path / f"{name}-fixture.json").write_text(json.dumps(document(name)))
     (tmp_path / "adapter.py").write_text(ADAPTER)
     target = dict(environment="validation", tenant_id="tenant", subscription_id="subscription",
+                  client_id="validation-client",
                   resource_group="rg-validation", target_id="validation-agent",
                   observe=[sys.executable, "adapter.py", "observe"])
     plan = {
@@ -63,6 +65,7 @@ def release(tmp_path, monkeypatch):
         "inputs": ["adapter.py", "evals-fixture.json", "redteam-fixture.json"],
         "validation": dict(target, prepare=[sys.executable, "adapter.py", "prepare"]),
         "production": dict(target, environment="prod", resource_group="rg-prod",
+                           client_id="production-client",
                            target_id="production-agent", promote=[sys.executable, "adapter.py", "promote"]),
     }
     for domain in ("evals", "redteam"):
@@ -208,3 +211,91 @@ def test_targets_cannot_share_the_rg_scoped_deploy_boundary(release):
     (root / "policy.json").write_text(json.dumps(plan))
     with pytest.raises(ValueError):
         runner.policy(root, "policy.json")
+
+
+@pytest.mark.parametrize("argv", [
+    ["threadlight-missing-adapter"],
+    [sys.executable, ".ci/missing.py"],
+    [sys.executable, "-c", "print('not a reviewed entrypoint')"],
+    [sys.executable, "-m", "missing_adapter"],
+    ["./adapter.py", "prepare"],
+])
+def test_preflight_rejects_invalid_adapter_entrypoints_before_any_effect(release, argv, capsys):
+    root, plan, _ = release
+    plan["validation"]["prepare"] = argv
+    (root / "policy.json").write_text(json.dumps(plan))
+    subprocess.run(["git", "add", "policy.json"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "invalid adapter fixture"], cwd=root, check=True)
+    os.environ["GITHUB_SHA"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    assert runner.main(["preflight", "--repo", str(root), "--policy", "policy.json"]) == 1
+    assert "adapter" in capsys.readouterr().err.lower()
+    assert not (root / "effects.log").exists()
+
+
+@pytest.mark.parametrize("change", ["policy", "source", "receipt", "expiry", "ci_attempt"])
+def test_authorization_is_rechecked_after_identity_wait_before_promotion(release, monkeypatch, change):
+    root, plan, receipt = release
+    runner.validate(root, plan, "policy.json", receipt)
+    expected = runner.file_digest(receipt)
+    original_now = datetime.now(timezone.utc)
+
+    def credential_wait(*_):
+        if change == "policy":
+            (root / "policy.json").write_text("{}")
+        elif change == "source":
+            (root / "adapter.py").write_text(ADAPTER + "\n# changed during login\n")
+        elif change == "receipt":
+            receipt.write_text("{}")
+        elif change == "ci_attempt":
+            monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+        else:
+            class Later(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return original_now + timedelta(seconds=plan["max_age_seconds"] + 1)
+            monkeypatch.setattr(runner, "datetime", Later)
+
+    monkeypatch.setattr(runner, "verify_identity", credential_wait)
+    with pytest.raises(ValueError):
+        runner.promote(root, plan, "policy.json", receipt, expected)
+    assert (root / "effects.log").read_text().splitlines() == ["prepare"]
+
+
+def test_validation_rechecks_reviewed_inputs_after_identity_wait(release, monkeypatch):
+    root, plan, receipt = release
+    def credential_wait(*_):
+        (root / "adapter.py").write_text(ADAPTER + "\n# changed during login\n")
+    monkeypatch.setattr(runner, "verify_identity", credential_wait)
+    with pytest.raises(ValueError):
+        runner.validate(root, plan, "policy.json", receipt)
+    assert not (root / "effects.log").exists()
+
+
+def test_ignored_source_cannot_be_deleted_as_a_transient_output(release):
+    root, plan, _ = release
+    plan["evals"]["outputs"].append("./adapter.py")
+    (root / "policy.json").write_text(json.dumps(plan))
+    with pytest.raises(ValueError, match="output|path"):
+        runner.policy(root, "policy.json")
+
+
+def test_production_cannot_reuse_validation_principal(release):
+    root, plan, _ = release
+    plan["production"]["client_id"] = plan["validation"]["client_id"]
+    (root / "policy.json").write_text(json.dumps(plan))
+    with pytest.raises(ValueError, match="identit"):
+        runner.policy(root, "policy.json")
+
+
+def test_identity_must_match_the_approved_principal_not_just_subscription(release, monkeypatch):
+    root, plan, _ = release
+    identity_spec = importlib.util.spec_from_file_location("real_identity_check", SPEC.origin)
+    identity_module = importlib.util.module_from_spec(identity_spec)
+    identity_spec.loader.exec_module(identity_module)
+    from types import SimpleNamespace
+    monkeypatch.setattr(identity_module.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=json.dumps({
+        "tenantId": "tenant", "id": "subscription",
+        "user": {"name": "unapproved-client", "type": "servicePrincipal"},
+    })))
+    with pytest.raises(ValueError, match="principal|identity"):
+        identity_module.verify_identity(plan, "validation")

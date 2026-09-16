@@ -10,9 +10,11 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import sys
+from collections.abc import Callable
 
 SCHEMA = "threadlight-release/v1"
 MANIFESTS = {"evals": "specs/evals-manifest.json", "redteam": "specs/redteam-manifest.json",
@@ -57,7 +59,8 @@ def file_digest(path: Path) -> str:
 
 def local_path(root: Path, value: str) -> Path:
     if (not isinstance(value, str) or not value or Path(value).is_absolute()
-            or ".." in Path(value).parts or any(ord(ch) < 32 for ch in value)):
+            or ".." in Path(value).parts or Path(value).as_posix() != value
+            or any(ord(ch) < 32 for ch in value)):
         raise ReleaseError("release paths must be relative to the project")
     path = root / value
     if not path.resolve().is_relative_to(root.resolve()) or path.is_symlink():
@@ -72,6 +75,44 @@ def _command(value) -> list[str]:
     return value
 
 
+def adapter_inputs(root: Path, argv: list[str]) -> set[str]:
+    """Require an installed executable and explicit, reviewed script entrypoints."""
+    _command(argv)
+    executable = shutil.which(argv[0], path=os.environ.get("PATH"))
+    if "/" in argv[0] and not Path(argv[0]).is_absolute():
+        try:
+            executable = str(local_path(root, argv[0])) if (root / argv[0]).is_file() else None
+        except ReleaseError as error:
+            raise ReleaseError(f"invalid adapter executable path: {argv[0]}") from error
+    if not executable or not os.access(executable, os.X_OK):
+        raise ReleaseError(f"adapter executable missing or not executable: {argv[0]}")
+    name = Path(executable).name
+    scripts = set()
+    if re.fullmatch(r"python(?:\d+(?:\.\d+)*)?", name) or name in {"bash", "sh", "node"}:
+        if len(argv) < 2 or argv[1].startswith("-"):
+            raise ReleaseError("adapter requires an explicit project script, not inline code or a module")
+        script = local_path(root, argv[1])
+        if not script.is_file():
+            raise ReleaseError(f"adapter script missing: {argv[1]}")
+        if name.startswith("python"):
+            try:
+                compile(script.read_bytes(), argv[1], "exec")
+            except (SyntaxError, ValueError) as error:
+                raise ReleaseError(f"invalid Python adapter script: {argv[1]}") from error
+        scripts.add(argv[1])
+    if not Path(argv[0]).is_absolute() and "/" in argv[0]:
+        scripts.add(argv[0])
+    return scripts
+
+
+def adapters(plan: dict):
+    for phase, action in (("validation", "prepare"), ("production", "promote")):
+        yield plan[phase][action]
+        yield plan[phase]["observe"]
+    for domain in ("evals", "redteam"):
+        yield plan[domain]["producer"]
+
+
 def policy(root: Path, path: str) -> dict:
     value = load(local_path(root, path))
     expected = {"schema", "validation", "production", "inputs", "evals", "redteam",
@@ -84,10 +125,10 @@ def policy(root: Path, path: str) -> dict:
     for phase, action in (("validation", "prepare"), ("production", "promote")):
         target = value[phase]
         if not isinstance(target, dict) or set(target) != {
-            "environment", "tenant_id", "subscription_id", "resource_group", "target_id", action, "observe"
+            "environment", "tenant_id", "subscription_id", "client_id", "resource_group", "target_id", action, "observe"
         }:
             raise ReleaseError(f"invalid {phase} target")
-        for key in ("environment", "tenant_id", "subscription_id", "resource_group", "target_id"):
+        for key in ("environment", "tenant_id", "subscription_id", "client_id", "resource_group", "target_id"):
             item = target[key]
             if (not isinstance(item, str) or not item.strip() or item != item.strip()
                     or any(ord(ch) < 32 for ch in item) or "REPLACE" in item or "<" in item):
@@ -95,6 +136,8 @@ def policy(root: Path, path: str) -> dict:
         _command(target[action])
         _command(target["observe"])
     before, after = value["validation"], value["production"]
+    if before["client_id"].lower() == after["client_id"].lower():
+        raise ReleaseError("validation and production must use distinct deployment identities")
     if (before["environment"] == after["environment"] or before["target_id"] == after["target_id"]
             or (before["subscription_id"], before["resource_group"].lower()) ==
                (after["subscription_id"], after["resource_group"].lower())):
@@ -123,6 +166,9 @@ def policy(root: Path, path: str) -> dict:
         _criteria(domain, config["acceptance"])
     if set(value["evals"]["outputs"]) & set(value["redteam"]["outputs"]):
         raise ReleaseError("evidence producers must own distinct outputs")
+    entrypoints = set().union(*(adapter_inputs(root, argv) for argv in adapters(value)))
+    if entrypoints & {item for domain in ("evals", "redteam") for item in value[domain]["outputs"]}:
+        raise ReleaseError("producer outputs cannot replace adapter entrypoints")
     return value
 
 
@@ -178,12 +224,9 @@ def ci_context(root: Path) -> dict:
 
 def inputs(root: Path, plan: dict, policy_path: str) -> dict:
     paths = set(plan["inputs"]) | {policy_path}
-    for phase, action in (("validation", "prepare"), ("production", "promote")):
-        for argv in (plan[phase][action], plan[phase]["observe"]):
-            paths.update(item for item in argv
-                         if not Path(item).is_absolute() and not item.startswith("-") and (root / item).is_file())
-    for domain in ("evals", "redteam"):
-        paths.update(item for item in plan[domain]["producer"]
+    for argv in adapters(plan):
+        paths.update(adapter_inputs(root, argv))
+        paths.update(item for item in argv
                      if not Path(item).is_absolute() and not item.startswith("-") and (root / item).is_file())
     result = {name: file_digest(local_path(root, name)) for name in sorted(paths)}
     changed = subprocess.run(["git", "diff", "HEAD", "--name-only"], cwd=root, check=True,
@@ -198,7 +241,8 @@ def inputs(root: Path, plan: dict, policy_path: str) -> dict:
     return result
 
 
-def execute(root: Path, argv: list[str], timeout: int, context: dict, label: str) -> str:
+def execute(root: Path, argv: list[str], timeout: int, context: dict, label: str,
+            *, authorize: Callable[[], None] | None = None) -> str:
     directory = root / ".threadlight-release-private"
     directory.mkdir(mode=0o700, exist_ok=True)
     request = directory / "request.json"
@@ -209,6 +253,8 @@ def execute(root: Path, argv: list[str], timeout: int, context: dict, label: str
         env = {key: value for key, value in os.environ.items()
                if key not in {"GITHUB_OUTPUT", "GITHUB_ENV", "GITHUB_PATH", "GITHUB_STEP_SUMMARY"}}
         env["THREADLIGHT_RELEASE_REQUEST"] = str(request.resolve())
+        if authorize is not None:
+            authorize()
         with subprocess.Popen(argv, cwd=root, stdout=output, stderr=error, env=env,
                               start_new_session=True) as process:
             try:
@@ -232,9 +278,13 @@ def verify_identity(plan: dict, phase: str) -> None:
         raise ReleaseError("CI environment differs from the approved release target")
     result = subprocess.run(["az", "account", "show", "--output", "json"], check=True,
                             capture_output=True, text=True, timeout=30)
-    account = json.loads(result.stdout)
+    account = parse_document(result.stdout)
     if account.get("tenantId") != target["tenant_id"] or account.get("id") != target["subscription_id"]:
         raise ReleaseError("authenticated tenant/subscription differs from release policy")
+    principal = account.get("user")
+    if (not isinstance(principal, dict) or principal.get("type") != "servicePrincipal"
+            or str(principal.get("name", "")).lower() != target["client_id"].lower()):
+        raise ReleaseError("authenticated principal differs from the approved deployment identity")
 
 
 def observe(root: Path, plan: dict, phase: str, context: dict, started: datetime) -> dict:
@@ -276,11 +326,17 @@ def validate(root: Path, plan: dict, policy_path: str, receipt: Path) -> dict:
     context = {"schema": SCHEMA, "ci": ci_context(root), "policy_sha256": digest(plan),
                "inputs": inputs(root, plan, policy_path)}
     verify_identity(plan, "validation")
+    def authorize():
+        if (policy(root, policy_path) != plan or ci_context(root) != context["ci"]
+                or inputs(root, plan, policy_path) != context["inputs"]):
+            raise ReleaseError("release authorization or inputs changed before candidate execution")
+    authorize()
     receipt.unlink(missing_ok=True)
     started = datetime.now(timezone.utc)
     context["started_at"] = started.isoformat()
     context["target"] = plan["validation"]
-    execute(root, plan["validation"]["prepare"], plan["timeout_seconds"], context, "prepare")
+    execute(root, plan["validation"]["prepare"], plan["timeout_seconds"], context, "prepare",
+            authorize=authorize)
     context["candidate"] = observe(root, plan, "validation", context, started)
     accepted = {}
     for domain in ("evals", "redteam", "mcp"):
@@ -295,7 +351,7 @@ def validate(root: Path, plan: dict, policy_path: str, receipt: Path) -> dict:
             sys.executable, str(TOOL_ROOT / "threadlight-production-ready/scripts/mcp_sbom.py"),
             "--root", ".", "--out", MANIFESTS["mcp"], "--check",
         ]
-        execute(root, argv, plan["timeout_seconds"], context, domain)
+        execute(root, argv, plan["timeout_seconds"], context, domain, authorize=authorize)
         hashes = {name: file_digest(local_path(root, name)) for name in output_paths}
         report = load(local_path(root, MANIFESTS[domain]))
         criteria = config["acceptance"] if config else {}
@@ -322,6 +378,7 @@ def validate(root: Path, plan: dict, policy_path: str, receipt: Path) -> dict:
     final = observe(root, plan, "validation", context, started)
     if any(final[key] != context["candidate"][key] for key in final if key != "observed_at"):
         raise ReleaseError("candidate changed while evidence was collected")
+    authorize()
     context.pop("target")
     context.update(accepted=accepted, completed_at=datetime.now(timezone.utc).isoformat(),
                    status="validated-candidate", production=plan["production"]["target_id"])
@@ -330,23 +387,40 @@ def validate(root: Path, plan: dict, policy_path: str, receipt: Path) -> dict:
     return context
 
 
-def promote(root: Path, plan: dict, policy_path: str, receipt: Path, expected_sha256: str) -> dict:
+def promotion_context(root: Path, plan: dict, policy_path: str, receipt: Path, expected_sha256: str) -> dict:
     raw = receipt.read_bytes()
     if not re.fullmatch(r"[a-f0-9]{64}", expected_sha256) or hashlib.sha256(raw).hexdigest() != expected_sha256:
         raise ReleaseError("release receipt differs from the validation job's recorded output")
     context = parse_document(raw.decode("utf-8"))
-    if (context.get("schema") != SCHEMA or context.get("status") != "validated-candidate"
+    if (policy(root, policy_path) != plan
+            or context.get("schema") != SCHEMA or context.get("status") != "validated-candidate"
             or context.get("ci") != ci_context(root) or context.get("policy_sha256") != digest(plan)
             or context.get("inputs") != inputs(root, plan, policy_path)
             or context.get("production") != plan["production"]["target_id"]
-            or set(context.get("accepted", {})) != set(MANIFESTS)):
+            or not isinstance(context.get("accepted"), dict)
+            or set(context["accepted"]) != set(MANIFESTS)
+            or not isinstance(context.get("candidate"), dict)):
         raise ReleaseError("release receipt is not bound to this source, policy, target and CI attempt")
-    _gate()._release_stamp(context.get("completed_at"), datetime.now(timezone.utc),
-                          datetime.fromisoformat(context["started_at"]), plan["max_age_seconds"])
+    started = _gate()._parse_rfc3339_datetime(context.get("started_at"))
+    if started is None:
+        raise ReleaseError("invalid validation execution window")
+    now = datetime.now(timezone.utc)
+    for stamp in (context.get("started_at"), context.get("completed_at"),
+                  context["candidate"].get("observed_at")):
+        _gate()._release_stamp(stamp, now, started, plan["max_age_seconds"])
     for domain, result in context["accepted"].items():
-        if result.get("acceptance", {}).get("domain") != domain or result["acceptance"].get("status") != "pass":
+        if (not isinstance(result, dict) or not isinstance(result.get("acceptance"), dict)
+                or result["acceptance"].get("domain") != domain or result["acceptance"].get("status") != "pass"):
             raise ReleaseError("a required release domain did not pass")
+    return context
+
+
+def promote(root: Path, plan: dict, policy_path: str, receipt: Path, expected_sha256: str) -> dict:
+    context = promotion_context(root, plan, policy_path, receipt, expected_sha256)
     verify_identity(plan, "production")
+    def authorize():
+        promotion_context(root, plan, policy_path, receipt, expected_sha256)
+    authorize()
     context["target"] = plan["production"]
     context["operation_id"] = digest({"ci": context["ci"], "candidate": context["candidate"],
                                       "production": context["production"]})
@@ -355,7 +429,8 @@ def promote(root: Path, plan: dict, policy_path: str, receipt: Path, expected_sh
     with state.open("x", encoding="utf-8") as stream:
         json.dump({"state": "outcome-unknown", "operation_id": context["operation_id"]}, stream)
     started = datetime.now(timezone.utc)
-    execute(root, plan["production"]["promote"], plan["timeout_seconds"], context, "promote")
+    execute(root, plan["production"]["promote"], plan["timeout_seconds"], context, "promote",
+            authorize=authorize)
     observed = observe(root, plan, "production", context, started)
     if observed["image_digest"] != context["candidate"]["image_digest"]:
         raise ReleaseError("production image differs from the validated candidate; stop and reconcile")

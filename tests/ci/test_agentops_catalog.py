@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_agentops_catalog_versions_and_ownership_are_consistent():
     plugin = json.loads((ROOT / "plugin.json").read_text())
     marketplace = json.loads((ROOT / ".github/plugin/marketplace.json").read_text())
-    assert plugin["version"] == marketplace["metadata"]["version"] == "2.5.1"
+    assert plugin["version"] == marketplace["metadata"]["version"] == "2.6.0"
     assert marketplace["plugins"][0]["version"] == plugin["version"]
     assert "agentops" in plugin["keywords"]
     for filename in ("README.md", "THREADLIGHT.md", "docs/production-readiness.md"):
@@ -26,3 +26,16 @@ def test_auto_agentops_is_read_only_and_preserves_selected_binding_gates():
     assert "no native eval or Doctor" in skill
     assert "governed_actions_gate" in skill and "governance_probe" in skill
     assert "specs/agentops-manifest.json" in state
+
+
+def test_actual_native_release_test_runs_in_its_own_offline_dependency_job():
+    import yaml
+    workflow = yaml.safe_load((ROOT / ".github/workflows/python-pytest.yml").read_text())
+    job = workflow["jobs"]["native-agentops-release"]
+    assert job["permissions"] == {"contents": "read"}
+    commands = "\n".join(step.get("run", "") for step in job["steps"])
+    assert "agentops-accelerator==0.14.0" in commands
+    assert "azure-identity==1.25.3" in commands
+    assert "THREADLIGHT_NATIVE_AGENTOPS_TESTS=1" in commands
+    assert "test_native_release_local.py" in commands
+    assert "azure/login" not in str(job) and "az login" not in commands

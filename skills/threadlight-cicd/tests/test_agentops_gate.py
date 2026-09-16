@@ -161,7 +161,7 @@ def test_composed_yaml_keeps_the_canonical_eval_gate_and_approvals(platform):
         assert quality["deployment"] == "agentops_review"
         assert quality["environment"] == "validation"
         steps = quality["strategy"]["runOnce"]["deploy"]["steps"]
-        assert any("--run-eval" in step.get("inputs", {}).get("inlineScript", "") for step in steps)
+        assert any("--run-eval" in step.get("bash", "") for step in steps)
         assert stages["agentops_doctor"]["dependsOn"] == "promotion"
 
 
@@ -183,8 +183,47 @@ def test_verified_negative_capture_reaches_consumer_before_gate(
     canonical.write_text("from pathlib import Path\nPath('canonical-consumed').write_text('yes')\n")
     result = subprocess.run(
         ["bash", "-c", mod._agentops_command("github-actions", refresh)],
-        cwd=tmp_path, env=dict(os.environ, GITHUB_EVENT_NAME="push"),
+        cwd=tmp_path, env=dict(os.environ, GITHUB_EVENT_NAME="push", THREADLIGHT_AGENTOPS_CONTEXT="private-context.json"),
         capture_output=True, text=True,
     )
     assert result.returncode == expected, result.stderr
     assert (tmp_path / "canonical-consumed").exists() is consumed
+
+
+@pytest.mark.parametrize("platform", mod.SUPPORTED_PLATFORMS)
+def test_native_jobs_never_inherit_deployment_login_and_require_private_context(tmp_path, platform):
+    (tmp_path / "agentops.yaml").write_text("version: 1\nagent: support:1\n")
+    text, _ = render(tmp_path, platform, agentops_refresh_doctor=True)
+    parsed = yaml.safe_load(text)
+    jobs = (parsed["jobs"].items() if platform == "github-actions"
+            else ((stage["stage"], stage) for stage in parsed["stages"]))
+    for name, job in jobs:
+        if not name.startswith("agentops"):
+            continue
+        serialized = yaml.safe_dump(job)
+        assert "azure/login" not in serialized
+        assert "AzureCLI@2" not in serialized
+        assert 'THREADLIGHT_AGENTOPS_CONTEXT' in serialized
+        assert "--context" in serialized
+        assert "3.12" in serialized
+    assert "THREADLIGHT_AGENTOPS_VALIDATION_CONTEXT" in text
+    assert "THREADLIGHT_AGENTOPS_PRODUCTION_CONTEXT" in text
+
+
+def test_generated_native_outputs_are_ignored_without_ignoring_policy(tmp_path):
+    (tmp_path / "agentops.yaml").write_text("version: 1\nagent: support:1\n")
+    (tmp_path / ".gitignore").write_text("existing-ignore\n")
+    render(tmp_path, "github-actions")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    for name in (".agentops/threadlight/approvals/eval.json", ".threadlight-release/candidate.json",
+                 "agents/support/.agentops/threadlight/approvals/eval.json",
+                 "agents/support/.agentops/results/latest.json", "docs/evals-report.md", "docs/redteam-report.md",
+                 ".threadlight/skills/_shared/__pycache__/agentops.cpython-313.pyc",
+                 ".threadlight-release-private/request.json", "specs/agentops-manifest.json",
+                 "evals/runs/release-agentops.json", "specs/evals-manifest.json"):
+        assert subprocess.run(["git", "check-ignore", "-q", name], cwd=tmp_path).returncode == 0, name
+    assert subprocess.run(["git", "check-ignore", "-q", ".threadlight/agentops-binding.json"],
+                          cwd=tmp_path).returncode == 1
+    for name in ("agents/support/.threadlight/agentops-binding.json", "agents/support/.agentops/agent.yaml"):
+        assert subprocess.run(["git", "check-ignore", "-q", name], cwd=tmp_path).returncode == 1
+    assert (tmp_path / ".gitignore").read_text().startswith("existing-ignore\n")

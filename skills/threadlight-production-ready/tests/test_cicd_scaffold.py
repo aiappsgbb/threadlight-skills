@@ -1,6 +1,6 @@
 """Tests for Phase D: CI/CD scaffold (D3-D6).
 
-Covers: _render_template, _cicd_context_from_framing, _scaffold_cicd,
+Covers: authoritative _scaffold_cicd delegation,
         _detect_repo_full_name, --scaffold-cicd CLI flag, and the
         deferred-to-pipeline hint emitted by main().
 """
@@ -10,6 +10,8 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import json
+import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -20,40 +22,6 @@ _spec = importlib.util.spec_from_file_location(
 mod = importlib.util.module_from_spec(_spec)
 sys.modules["production_ready"] = mod
 _spec.loader.exec_module(mod)
-
-
-# --- D3 ---------------------------------------------------------------
-
-def test_render_replaces_all_tokens():
-    with tempfile.NamedTemporaryFile("w", suffix=".tmpl", delete=False) as f:
-        f.write("hello {{NAME}} from {{PLACE}}")
-        p = pathlib.Path(f.name)
-    out = mod._render_template(p, {"NAME": "Threadlight", "PLACE": "Azure"})
-    assert out == "hello Threadlight from Azure"
-
-
-def test_render_leaves_unknown_token_visible():
-    with tempfile.NamedTemporaryFile("w", suffix=".tmpl", delete=False) as f:
-        f.write("hi {{NAME}} {{UNKNOWN}}")
-        p = pathlib.Path(f.name)
-    out = mod._render_template(p, {"NAME": "x"})
-    # leaves it visible so the operator can spot gaps
-    assert "{{UNKNOWN}}" in out
-
-
-def test_render_builds_context_from_framing():
-    framing = {
-        "target_subscription_id": "sub",
-        "target_resource_group": "rg",
-        "target_posture": "agt",
-        "central_platform_team": "platform-prod",
-        "azure_tenant_id": "00000000-0000-0000-0000-000000000001",
-    }
-    ctx = mod._cicd_context_from_framing(framing, repo_full_name="aiappsgbb/threadlight-skills")
-    assert ctx["TARGET_SUBSCRIPTION_ID"] == "sub"
-    assert ctx["REPO_FULL_NAME"] == "aiappsgbb/threadlight-skills"
-    assert ctx["REPO_SLUG"] == "aiappsgbb-threadlight-skills"
-    assert ctx["UAMI_NAME"].startswith("uami-")
 
 
 # --- D4 ---------------------------------------------------------------
@@ -248,6 +216,32 @@ def test_runbook_has_no_unfilled_angle_bracket_placeholders():
         # Allow `<tenant-id>` ONLY if it's inside a code-fence comment or quoted example;
         # the strict assertion is "the substitution token didn't leak through".
         assert matches == [], f"Runbook has unfilled placeholders: {matches}. See #33."
+
+
+@pytest.mark.parametrize("platform", ["github-actions", "azure-devops"])
+def test_secondary_scaffold_uses_the_authoritative_verified_release(tmp_path, platform):
+    framing = dict(cicd_target=platform, azure_tenant_id="tenant", target_subscription_id="sub",
+                   target_resource_group="prod-rg", central_env_required=True, central_env_exists=True,
+                   validation_resource_group="validation-rg", validation_subscription_id="sub")
+    paths = mod._scaffold_cicd(framing, "example/app", tmp_path)
+    pipeline = tmp_path / (".github/workflows/azd-deploy-prod.yml" if platform == "github-actions"
+                           else "azure-pipelines.yml")
+    assert pipeline in paths
+    text = pipeline.read_text()
+    assert "release_runner.py" in text and "--receipt-sha256" in text
+    assert "continue-on-error" not in text
+    assert "azd deploy --no-prompt" not in text
+    assert (tmp_path / ".threadlight/skills/threadlight-cicd/scripts/release_runner.py").is_file()
+    assert not (tmp_path / "specs/release-policy.json").exists()
+    policy = json.loads((tmp_path / "specs/release-policy.example.json").read_text())
+    assert policy["production"]["tenant_id"] == "tenant"
+    assert policy["validation"]["resource_group"] == "validation-rg"
+    assert json.loads((tmp_path / "docs/threadlight-cicd/onboarding-path.json").read_text())["path"] == "spoke-onboard"
+
+
+def test_framing_wizard_exposes_both_supported_release_platforms():
+    question = next(item for item in mod.FRAMING_QUESTIONS if item["id"] == "cicd_target")
+    assert question["choices"] == ["github-actions", "azure-devops"]
 
 
 if __name__ == "__main__":

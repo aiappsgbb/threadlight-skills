@@ -7,10 +7,12 @@ the AgentOps skill. No external observer, signing authority or login is created.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import importlib
 import os
 from pathlib import Path
+import re
 import sys
 
 
@@ -34,6 +36,40 @@ def _contract():
 
 def _observer():
     return _packaged("threadlight-agentops/scripts/native_observer.py")
+
+
+@contextmanager
+def native_context(path: Path | None):
+    """Select pre-existing scoped credentials; never copy a deployment login."""
+    if path is None:
+        yield
+        return
+    prefixes = ("AZURE_", "AZD_", "AGENTOPS_", "OPENAI_", "OTEL_",
+                "APPLICATIONINSIGHTS_", "APPINSIGHTS_")
+    if (not path.is_absolute() or path.resolve() != path or not path.is_file()
+            or path.stat().st_mode & 0o077):
+        raise ValueError("native context must be an absolute private regular file without symlinks")
+    contract = _contract()
+    document = contract.read_json(path.parent, path.name, limit=65536)
+    environment = document.get("environment")
+    if (set(document) != {"schema", "environment"}
+            or document["schema"] != "threadlight-agentops-context/v1"
+            or not isinstance(environment, dict) or len(environment) > 256
+            or not {"AZURE_TOKEN_CREDENTIALS", "AZURE_CONFIG_DIR", "AZD_CONFIG_DIR"} <= set(environment)
+            or any(not key.startswith(prefixes) or not isinstance(value, str)
+                   or "\x00" in value or len(value) > 32768 for key, value in environment.items())):
+        raise ValueError("invalid private native credential context")
+    previous = {key: value for key, value in os.environ.items() if key.startswith(prefixes)}
+    try:
+        for key in previous:
+            del os.environ[key]
+        os.environ.update(environment)
+        yield
+    finally:
+        for key in list(os.environ):
+            if key.startswith(prefixes):
+                del os.environ[key]
+        os.environ.update(previous)
 
 
 def observe(repo, *, operation, agentops_bin=None):
@@ -86,6 +122,8 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument("--agentops-bin", type=Path)
+    parser.add_argument("--context", type=Path,
+                        help="Private pre-authenticated native environment; replaces inherited cloud settings")
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("--run-eval", action="store_true")
     actions.add_argument("--refresh-doctor", action="store_true")
@@ -102,7 +140,8 @@ def main(argv=None):
             print("AgentOps not applicable: no opted-in roots.")
             return 0
         operation = "eval" if args.run_eval else "doctor"
-        result = observe(repo, operation=operation, agentops_bin=args.agentops_bin)
+        with native_context(args.context):
+            result = observe(repo, operation=operation, agentops_bin=args.agentops_bin)
         contract.validate_manifest(result, repo=repo)
         writer = _packaged("_shared/manifest.py")
         writer.atomic_write_json(
@@ -110,9 +149,11 @@ def main(argv=None):
         )
         print(f"AgentOps local observation: {result['verdict']}; not remote attestation or certification.")
         return operation_exit_code(result, operation, repo=repo)
-    except (ImportError, OSError, ValueError, TypeError, KeyError):
+    except (ImportError, OSError, ValueError, TypeError, KeyError) as error:
+        code = (str(error) if type(error).__name__ == "AgentOpsValidationError"
+                and re.fullmatch(r"[a-z][a-z0-9-]{1,100}", str(error)) else "invalid-runtime-prerequisite")
         print(
-            "AgentOps runtime refused: provide explicit owner approval for the pinned native operation, "
+            f"AgentOps runtime refused ({code}): provide explicit owner approval for the pinned native operation, "
             "current binding and private capture/retention scope in the existing runner context. "
             "See docs/threadlight-cicd/agentops-runtime.md. No raw diagnostics are published.",
             file=sys.stderr,

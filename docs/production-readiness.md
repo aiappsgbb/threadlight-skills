@@ -794,6 +794,18 @@ production decision, not permission to skip unresolved findings.
 
 **Then the pilot ships through a pipeline, not a laptop.** Once the scorecard is green, [`threadlight-cicd`](https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd) generates the production deploy pipeline (GitHub Actions / Azure DevOps) and the env-setup runbooks the platform team runs — OIDC/WIF identity, least-privilege RBAC scoped to the spoke RG, and private-VNet runners — because in a real customer tenant the agent rarely has rights to run `azd up` itself. It is a deliberate **manual handoff** (not part of the auto chain), and it stays a **separate repo/pipeline** from the central platform: it never touches the Citadel hub, shared APIM, or platform networking — those remain `citadel-hub-deploy`.
 
+Both direct generation and production-ready `--scaffold-cicd` now use the same
+[verified-release contract](../skills/threadlight-cicd/references/release-contract.md).
+Validation prepares a separate candidate and executes actual eval/red-team/MCP
+producers before a protected production job can promote its immutable image.
+The independently transported receipt checksum binds current source, policy,
+inputs and CI attempt, with authorization rechecked after identity waits.
+The generated policy example is intentionally not executable; customer adapters,
+separate deployment identities and configured environment approvals are required.
+Optional native AgentOps uses an explicit private context and fresh owner approval,
+not deployment credentials. Neither a scorecard nor local native/fixture results
+certify production or replace current selected-binding governance evidence.
+
 ---
 
 ## Read next

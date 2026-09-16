@@ -7,6 +7,23 @@ field.
 
 ## [Unreleased]
 
+### Verified-release CI/CD (F1)
+
+- CI/CD 0.5.0 prepares an isolated preproduction candidate, executes actual
+  application-owned eval/red-team adapters and the MCP checker, and gates
+  immutable-image promotion on strict current evidence and an independently
+  transported receipt checksum. Authorization is rechecked after identity waits
+  and immediately before dispatch; production uses a separate protected identity.
+- Production-ready 0.15.0 delegates both platform scaffolds to that generator;
+  retired the weaker deploy-first templates. Saved platform/environment framing
+  remains authoritative unless explicitly overridden.
+- Native AgentOps retains its existing observer, pinned SDK and owner approval,
+  with an explicit private credential context separate from deployment login.
+  Real loopback native results exercise the bridge and canonical release reader.
+- Plugin/marketplace candidate 2.6.0. These are offline implementation and local
+  native checks, not Azure, business-write or Task15 acceptance. No release,
+  merge or Pages publication is implied.
+
 ### Fixed
 
 - Readiness report wording no longer treats absent findings as complete proof,

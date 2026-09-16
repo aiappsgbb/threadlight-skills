@@ -387,6 +387,15 @@ The existing CI/CD owner composes those operations. No automatic baseline
 promotion, retries for green, resource creation, RBAC expansion or credential
 changes are authorized by the preview assessor.
 
+The current [verified-release contract](../skills/threadlight-cicd/references/release-contract.md)
+adds candidate-bound execution before protected immutable-image promotion.
+Both CI/CD entrypoints use that one generator. Native evaluation reuses the
+existing observer with a private explicit context separate from deployment
+credentials; required-domain failures block production. Production Doctor still
+needs its own verified same-target eval receipt and fresh scoped approval.
+Local native or fixture checks do not establish cloud or business-write acceptance.
+The references below retain their explanatory snapshot pins.
+
 | Pinned reference | Use it for |
 |---|---|
 | [Artifact mapping](https://github.com/aiappsgbb/threadlight-skills/blob/4f59f7584a5f5d614c3625aa45f92f6a692c2194/skills/threadlight-agentops/references/artifact-mapping.md) | Native models, domain ownership, deduplication and privacy |

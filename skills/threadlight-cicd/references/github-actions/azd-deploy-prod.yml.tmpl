@@ -8,7 +8,6 @@ on:
   workflow_dispatch: {}
   push:
     branches: [ main ]
-    paths-ignore: [ '**.md', 'docs/**' ]
 
 permissions:
   id-token: write
@@ -34,9 +33,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: Azure/setup-azd@v2
       - name: Check reviewed policy and source before authentication or deployment
         run: python3 .threadlight/skills/threadlight-cicd/scripts/release_runner.py preflight --policy {{RELEASE_POLICY}}
-      - uses: Azure/setup-azd@v2
       - name: Validation identity (OIDC, validation RG only)
         uses: azure/login@v2
         with:
@@ -74,13 +73,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: Azure/setup-azd@v2
       - name: Check current source and policy
         run: python3 .threadlight/skills/threadlight-cicd/scripts/release_runner.py preflight --policy {{RELEASE_POLICY}}
       - uses: actions/download-artifact@v4
         with:
           name: threadlight-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: .threadlight-release
-      - uses: Azure/setup-azd@v2
       - name: Production identity (OIDC, production RG only)
         uses: azure/login@v2
         with:

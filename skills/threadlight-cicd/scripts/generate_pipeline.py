@@ -301,7 +301,8 @@ def _agentops_options(framing: dict, out_root: Path) -> tuple[bool, bool, str | 
 
 
 def _agentops_command(platform: str, refresh: bool) -> str:
-    runtime = "python3 .threadlight/skills/threadlight-cicd/scripts/agentops_runtime.py --repo ."
+    runtime = ('python3 .threadlight/skills/threadlight-cicd/scripts/agentops_runtime.py --repo .'
+               ' --context "${THREADLIGHT_AGENTOPS_CONTEXT:?Private approved native context required}"')
     event = '${GITHUB_EVENT_NAME:-}' if platform == "github-actions" else '${BUILD_REASON:-}'
     scheduled = "schedule" if platform == "github-actions" else "Schedule"
     pull_request = "pull_request" if platform == "github-actions" else "PullRequest"
@@ -334,25 +335,26 @@ def _compose_agentops(text: str, platform: str, ctx: dict,
     doctor = (
         "set -euo pipefail\nset +x\nunset GITHUB_STEP_SUMMARY\numask 077\n"
         "python3 .threadlight/skills/threadlight-cicd/scripts/agentops_runtime.py --repo . --refresh-doctor"
+        ' --context "${THREADLIGHT_AGENTOPS_CONTEXT:?Private approved native context required}"'
     )
     if platform == "github-actions":
         events = "  pull_request:\n    branches: [ main ]\n"
         if schedule:
             events += f"  schedule:\n    - cron: '{schedule}'\n"
         text = text.replace("on:\n", "on:\n" + events, 1)
+        text = text.replace("      THREADLIGHT_RELEASE_ENVIRONMENT: " + ctx["VALIDATION_ENV_NAME"],
+                            "      THREADLIGHT_AGENTOPS_CONTEXT: ${{ vars.THREADLIGHT_AGENTOPS_VALIDATION_CONTEXT }}\n"
+                            "      THREADLIGHT_RELEASE_ENVIRONMENT: " + ctx["VALIDATION_ENV_NAME"], 1)
         def job(name, condition, body, validation, needs=None):
             env = ctx["VALIDATION_ENV_NAME" if validation else "ENV_NAME"]
-            client = ctx["VALIDATION_CLIENT_ID" if validation else "AZURE_CLIENT_ID"]
-            tenant = ctx["VALIDATION_TENANT_ID" if validation else "TENANT_ID"]
-            subscription = ctx["VALIDATION_SUBSCRIPTION_ID" if validation else "TARGET_SUBSCRIPTION_ID"]
+            context = "VALIDATION" if validation else "PRODUCTION"
             return (
                 f"\n  {name}:\n" + (f"    needs: {needs}\n" if needs else "")
                 + f"    if: {condition}\n    runs-on: {ctx['RUNNER_RUNS_ON']}\n"
-                + f"    environment: {env}\n    env:\n      AZURE_TOKEN_CREDENTIALS: AzureCliCredential\n"
+                + f"    environment: {env}\n    permissions:\n      contents: read\n    env:\n"
+                + "      THREADLIGHT_AGENTOPS_CONTEXT: ${{ vars.THREADLIGHT_AGENTOPS_" + context + "_CONTEXT }}\n"
                 + "    steps:\n      - uses: actions/checkout@v4\n"
-                + "      - uses: azure/login@v2\n        with:\n"
-                + f"          client-id: {client}\n          tenant-id: {tenant}\n"
-                + f"          subscription-id: {subscription}\n"
+                + "      - uses: actions/setup-python@v5\n        with:\n          python-version: '3.12'\n"
                 + "      - name: AgentOps approved native operation\n        shell: bash\n        run: |\n"
                 + "\n".join("          " + line for line in body.splitlines()) + "\n"
             )
@@ -372,20 +374,23 @@ def _compose_agentops(text: str, platform: str, ctx: dict,
                        "    displayName: Owner-approved AgentOps Doctor\n"
                        "    branches:\n      include: [ main ]\n    always: true\n\n")
         text = text.replace("pool:\n", events + "pool:\n", 1)
+        text = text.replace("                    THREADLIGHT_RELEASE_ENVIRONMENT: " + ctx["VALIDATION_ENV_NAME"],
+                            "                    THREADLIGHT_AGENTOPS_CONTEXT: $(THREADLIGHT_AGENTOPS_VALIDATION_CONTEXT)\n"
+                            "                    THREADLIGHT_RELEASE_ENVIRONMENT: " + ctx["VALIDATION_ENV_NAME"], 1)
         def stage(name, condition, body, validation, needs="[]"):
             env = ctx["VALIDATION_ENV_NAME" if validation else "ENV_NAME"]
-            connection = ctx["VALIDATION_SERVICE_CONNECTION" if validation else "ADO_SERVICE_CONNECTION"]
+            context = "VALIDATION" if validation else "PRODUCTION"
             return (
                 f"\n  - stage: {name}\n    dependsOn: {needs}\n    condition: {condition}\n"
                 + f"    jobs:\n      - deployment: {name}\n        environment: {env}\n"
                 + "        strategy:\n          runOnce:\n            deploy:\n              steps:\n"
-                + "                - checkout: self\n                - task: AzureCLI@2\n"
+                + "                - checkout: self\n                - task: UsePythonVersion@0\n"
+                + "                  inputs:\n                    versionSpec: '3.12'\n"
+                + "                - bash: |\n"
+                + "\n".join("                    " + line for line in body.splitlines()) + "\n"
                 + "                  displayName: AgentOps approved native operation\n"
-                + "                  env:\n                    AZURE_TOKEN_CREDENTIALS: AzureCliCredential\n"
-                + f"                  inputs:\n                    azureSubscription: {connection}\n"
-                + "                    scriptType: bash\n                    scriptLocation: inlineScript\n"
-                + "                    visibleAzLogin: false\n                    inlineScript: |\n"
-                + "\n".join("                      " + line for line in body.splitlines()) + "\n"
+                + "                  env:\n                    THREADLIGHT_AGENTOPS_CONTEXT: $(THREADLIGHT_AGENTOPS_"
+                + context + "_CONTEXT)\n"
             )
         text += stage(
             "agentops_review", "and(not(canceled()), eq(variables['Build.Reason'], 'PullRequest'))",
@@ -435,6 +440,7 @@ def _release_policy_example(ctx: dict, agentops: bool = False) -> dict:
             "environment": ctx["VALIDATION_ENV_NAME" if prefix else "ENV_NAME"],
             "tenant_id": ctx["VALIDATION_TENANT_ID" if prefix else "TENANT_ID"] or "REPLACE_WITH_TENANT_ID",
             "subscription_id": ctx["VALIDATION_SUBSCRIPTION_ID" if prefix else "TARGET_SUBSCRIPTION_ID"] or "REPLACE_WITH_SUBSCRIPTION_ID",
+            "client_id": ctx["VALIDATION_CLIENT_ID" if prefix else "AZURE_CLIENT_ID"],
             "resource_group": ctx["VALIDATION_RESOURCE_GROUP" if prefix else "TARGET_RESOURCE_GROUP"] or "REPLACE_WITH_RESOURCE_GROUP",
             "target_id": "REPLACE_WITH_CANONICAL_DEPLOYMENT_RESOURCE_ID",
             action: ["python3", f".ci/{action}.py"],
@@ -561,6 +567,21 @@ def generate(framing: dict, out_root) -> list:
             out_root / "docs/threadlight-cicd/agentops-runtime.md",
             (REF / "agentops-runtime.md").read_text(encoding="utf-8"),
         ))
+    ignored = ["/.threadlight-release/", "/.threadlight-release-private/", "/.threadlight/skills/**/__pycache__/",
+               "/specs/evals-manifest.json", "/docs/evals-report.md",
+               "/specs/redteam-manifest.json", "/docs/redteam-report.md",
+               "/tests/mcp-sbom.json", "/evals/runs/release.json", "/redteam/runs/release.json"]
+    if agentops:
+        ignored += ["**/.agentops/threadlight/", "**/.agentops/results/", "**/.agentops/release/",
+                    "**/.agentops/agent/history.jsonl", "**/.agentops/credentials/",
+                    "/specs/agentops-manifest.json", "/evals/runs/release-agentops.json"]
+    ignore_path = out_root / ".gitignore"
+    existing = ignore_path.read_text(encoding="utf-8") if ignore_path.exists() else ""
+    additions = [line for line in ignored if line not in existing.splitlines()]
+    if additions:
+        existing = existing.rstrip("\n") + "\n\n# Threadlight private release outputs (not policy/tooling)\n"
+        existing += "\n".join(additions) + "\n"
+    written.append(_write(ignore_path, existing))
     return written
 
 # endregion
@@ -647,7 +668,7 @@ def _parse_args(argv):
     p.add_argument("--onboard", action="store_true",
                    help="Run the interactive onboarding-path gate.")
     p.add_argument("--framing-file", help="JSON framing file (skips interactive prompts).")
-    p.add_argument("--platform", choices=SUPPORTED_PLATFORMS, default="github-actions")
+    p.add_argument("--platform", choices=SUPPORTED_PLATFORMS, default=None)
     p.add_argument("--central-env-required", choices=["yes", "no"])
     p.add_argument("--central-env-exists", choices=["yes", "no"])
     p.add_argument("--target-posture", choices=["citadel-spoke", "standard-ai-gateway", "agt", "hybrid", "direct"])
@@ -666,7 +687,7 @@ def _parse_args(argv):
                    help="Citadel Access Contract product the spoke consumes (e.g. unified-ai).")
     p.add_argument("--ado-pool-name", dest="ado_pool_name",
                    help="Managed DevOps Pool / self-hosted pool name for private-network runs.")
-    p.add_argument("--env-name", default="prod")
+    p.add_argument("--env-name", default=None)
     p.add_argument("--eval-gate", choices=["hard"], default=None,
                    help="Required release domains are always blocking; configure thresholds in the release policy.")
     p.add_argument("--mcp-gate", choices=["hard"], default=None,

@@ -93,3 +93,27 @@ def test_validation_setup_has_its_own_identity_and_permission_scope(tmp_path):
     assert "environment:validation" in identity
     assert "resourceGroups/rg-validation" in roles
     assert "resourceGroups/rg-prod" not in roles
+def test_cli_preserves_reviewed_platform_and_environment_from_framing(tmp_path):
+    path = tmp_path / "framing.json"
+    path.write_text(json.dumps({"platform": "azure-devops", "env_name": "production"}))
+    args = generator._parse_args(["--framing-file", str(path)])
+    assert generator._framing_from_args(args)["platform"] == "azure-devops"
+    assert generator._framing_from_args(args)["env_name"] == "production"
+    override = generator._parse_args(["--framing-file", str(path), "--platform", "github-actions",
+                                     "--env-name", "prod"])
+    assert generator._framing_from_args(override)["platform"] == "github-actions"
+    assert generator._framing_from_args(override)["env_name"] == "prod"
+
+
+def test_markdown_prompt_changes_do_not_skip_release_validation(tmp_path):
+    generator.generate(framing("github-actions"), tmp_path)
+    text = (tmp_path / ".github/workflows/azd-deploy-prod.yml").read_text()
+    assert "paths-ignore" not in text
+
+
+def test_supplied_azd_setup_precedes_executable_preflight(tmp_path):
+    generator.generate(framing("github-actions"), tmp_path)
+    text = (tmp_path / ".github/workflows/azd-deploy-prod.yml").read_text()
+    for job in ("validation", "promotion"):
+        block = text.split(f"\n  {job}:\n")[1].split("\n  promotion:\n")[0]
+        assert block.index("Azure/setup-azd") < block.index("release_runner.py preflight")

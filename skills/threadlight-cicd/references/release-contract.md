@@ -16,7 +16,8 @@ in YAML does **not** configure its approval or branch checks.
    bypasses the environment.
 3. Copy `specs/release-policy.example.json` to `specs/release-policy.json`, replace
    every placeholder, and commit the reviewed deployment adapters, datasets,
-   thresholds and toolchain lock files. The example is deliberately not an
+   thresholds and toolchain lock files. Set each target's distinct deployment
+   `client_id`, tenant and subscription. The example is deliberately not an
    executable policy. Missing configuration fails before deployment.
 
 Both CI systems use one validation job and one dependent, protected production
@@ -29,6 +30,12 @@ The runner invokes explicit argv arrays with `shell=False`. It is not a new
 Azure deployment engine, model evaluator or attack scanner. The adapters are
 reviewed application code using the actual selected SDK/CLI and registered
 services; substituting an assessor or old report for execution is not supported.
+Preflight checks executable availability and explicit entrypoint files.
+Python, Bash, sh and Node commands must name a committed project script; inline
+code and Python `-m` adapters are not supported. Wrap such application commands
+in a reviewed entrypoint. Use canonical relative paths without `./` aliases.
+Python entrypoints are syntax-checked without executing them. Dependencies still
+belong to the reviewed application toolchain; preflight is not an SDK smoke test.
 
 | Adapter | Required behavior |
 |---|---|
@@ -42,6 +49,10 @@ MCP discovery/checking uses the supplied `mcp_sbom.py` directly and does not
 refresh the lock automatically. Install the approved application/producer
 dependencies on the runner; the CI generator does not invent customer adapters,
 run credentials, remote datasets or paid-probe authorization.
+The GitHub workflow installs its supplied azd tool before executable preflight;
+other application dependencies and ADO runner tools must already be prepared.
+Main-branch prompt/document changes are not blanket-skipped: Markdown can contain
+executable agent instructions, not just documentation.
 
 The private `THREADLIGHT_RELEASE_REQUEST` file contains this CI context,
 the approved target and the observed candidate. Treat it as host-owned input,
@@ -74,6 +85,14 @@ credential contexts and private retention remain prerequisites. In particular,
 native AgentOps requires the approved AZD credential directory to be empty;
 do not delete an application's populated azd context to satisfy this. Prepare
 the separate approved native context when that deployment adapter uses azd.
+Supply it as an absolute private regular file through
+`THREADLIGHT_AGENTOPS_CONTEXT`; native execution replaces inherited deployment
+credential/export variables with that context's explicit values and restores
+them afterward. The generated environment-specific variables are
+`THREADLIGHT_AGENTOPS_VALIDATION_CONTEXT` and
+`THREADLIGHT_AGENTOPS_PRODUCTION_CONTEXT`. Neither the file nor its path creates
+approval. Follow the [native runtime contract](agentops-runtime.md) for preparation,
+package requirements, one-use scope and production Doctor prerequisites.
 Generated native outputs must be Git-ignored while policy, datasets and tooling
 remain committed.
 
@@ -98,12 +117,19 @@ All capabilities are required by default. An explicit reviewed evaluation
 comparison, outside this release decision. Dataset, execution, freshness and
 quality checks cannot be omitted. This is not blanket acceptance of `partial`.
 The manifest's broader verdict is not rewritten.
+Any canonical `must_fix` still blocks, including continuous-evaluation wiring
+findings; explicit scope excludes optional incomplete adoption, not must-fix
+findings or required core checks.
 
 Only a successful validation writes the candidate receipt. Its exact SHA-256
 travels separately through the validation job's output; the promotion job checks
 it before consuming the artifact. A receipt from another source/run/attempt,
 an expired approval wait, changed input or a failed required domain blocks
 promotion. Rerun the complete validation rather than relabel old evidence.
+The authenticated service principal must match the selected target's `client_id`.
+Source, policy, receipt/input hashes and freshness are checked again after
+identity waits and immediately before promotion dispatch. Validation likewise
+rechecks current policy, inputs and CI context after credential waits.
 
 After promotion, the production observer must confirm the same image digest.
 A failure is **not rollback**. The runner never retries promotion automatically;
@@ -118,6 +144,11 @@ This is a trusted-CI execution contract, not a signed external attestation or
 whole-application production certification. Protected branch/environment
 configuration, runner isolation and honest independent observers are explicit
 trust assumptions.
+The exact pinned native CLI is locally exercised with an HTTP loopback target
+and deterministic F1 evaluator through the bridge and canonical acceptance.
+Scheduled wiring in that fixture is inventory, not an executed schedule.
+Local adapter fixtures and this native result are not Azure deployment,
+production Doctor, governance runtime or live business acceptance.
 
 Selected action governance still requires its own current signed bootstrap,
 policy, identities, registered service evidence and application acceptance.
