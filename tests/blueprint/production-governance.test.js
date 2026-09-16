@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const { homeHistory } = require('./helpers/home-history');
 
 const docs = path.join(__dirname, '../../docs');
@@ -13,6 +14,12 @@ const section = (html, id) => {
   assert.ok(match, `missing section ${id}`);
   return match[1];
 };
+
+test('returning readers receive the current Production navigation script', () => {
+  const digest = createHash('sha256').update(read('assets/production.js')).digest('hex').slice(0, 8);
+  assert.ok(read('production.html').includes(`assets/production.js?v=${digest}`));
+  assert.match(read('ci/sync_cache_bust.py'), /"production\.js":/);
+});
 
 test('primary pages remove universal authority, invented sign-off and readiness-speed claims', () => {
   for (const name of ['index.html', 'funnel.html', 'production.html']) {

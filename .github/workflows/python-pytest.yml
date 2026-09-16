@@ -272,7 +272,8 @@ jobs:
         # failure otherwise surfaces at deploy time as `unknown command` (which
         # is exactly how a mandatory Step 6 gate shipped broken). Static: reads
         # markdown, runs no azd, no network.
-        # Native generation/Bicep tests run, without skips, in deploy-generation above.
+        # Native generation/Bicep, frozen-cohort and returns SDK cases run,
+        # without skips and with required-case checks, in native-generation above.
         run: >-
           python -m pytest skills/threadlight-deploy/tests/ -v
           -m "not governance_runtime" -o "markers=governance_runtime: exact native runtime"

@@ -509,6 +509,8 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_ghcp_relay_transport.py",
              "skills/threadlight-deploy/tests/test_public_authenticated_proof.py",
              "skills/threadlight-deploy/tests/test_returns_read_audit.py",
+             "skills/threadlight-deploy/tests/test_hosted_cohort.py",
+             "skills/threadlight-deploy/tests/test_returns_mcp_backend.py",
              "tests/ci/test_hosted_bootstrap_lifecycle.py",
               "skills/threadlight-safe-check/tests",
                "skills/_shared/tests/test_governance.py",
@@ -530,6 +532,9 @@ for name, record in {sdk_wheels!r}.items():
                             for tag in ("skipped", "failure", "error")):
             raise RuntimeError("deployment tests missing, skipped, or failed")
         required_cases = {
+            "test_generation_emits_complete_frozen_cohort_without_changing_shared_pins",
+            "test_native_server_uses_explicit_operator_state_directory",
+            "test_unbound_read_uses_injected_host_credential_without_policy",
             "test_real_cosmos_guard_has_a_separate_create_only_audit_protocol",
             "test_publish_is_immutable_authorized_read_and_real_signature",
             "test_request_cannot_observe_partially_initialized_host",

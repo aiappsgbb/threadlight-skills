@@ -112,6 +112,7 @@ def test_native_responses_client_uses_azure_v1_endpoint():
     asyncio.run(check())
 
 
+@pytest.mark.governance_runtime
 def test_native_server_uses_explicit_operator_state_directory(tmp_path, monkeypatch):
     import os
     from azure.ai.agentserver.core import resolve_state_subdir
@@ -149,6 +150,7 @@ def test_demo_package_copies_real_sources_and_refuses_overwrite(tmp_path):
     assert "returns-mcp-demo.md" in skill.read_text()
 
 
+@pytest.mark.governance_runtime
 def test_unbound_read_uses_injected_host_credential_without_policy():
     import asyncio
     from contextlib import AsyncExitStack

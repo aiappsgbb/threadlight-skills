@@ -12,6 +12,20 @@
   const compact = matchMedia('(max-width: 900px)');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let sharedTargetSelected = false;
+  let scrollTarget = null;
+  let scrollFrame = 0;
+
+  function alignScrollTarget(instant = false) {
+    if (scrollFrame) return;
+    scrollFrame = requestAnimationFrame(() => {
+      scrollFrame = 0;
+      if (!scrollTarget) return;
+      updateOffset();
+      scrollTarget.scrollIntoView({
+        block: 'start', behavior: instant || reducedMotion.matches ? 'instant' : 'smooth',
+      });
+    });
+  }
 
   function isSharedTarget(target) {
     return Boolean(target?.closest('#production-domains, #production-review, #chapter-top'));
@@ -61,10 +75,9 @@
       else link.removeAttribute('aria-current');
     }
     if (scroll) {
-      requestAnimationFrame(() => target.scrollIntoView({
-        block: 'start', behavior: instant || reducedMotion.matches ? 'instant' : 'smooth',
-      }));
-    }
+      scrollTarget = target;
+      alignScrollTarget(instant);
+    } else scrollTarget = null;
     return true;
   }
 
@@ -122,9 +135,23 @@
     document.documentElement.style.setProperty('--production-scroll-offset', `${headerHeight + navigationHeight + 16}px`);
     revealSelectedTab();
   };
-  const observer = new ResizeObserver(updateOffset);
+  const observer = new ResizeObserver(() => {
+    updateOffset();
+    alignScrollTarget(true);
+  });
   observer.observe(masthead);
   observer.observe(navigation);
+  observer.observe(document.querySelector('main'));
+  document.fonts.ready.then(() => alignScrollTarget(true));
+  const releaseScrollTarget = () => { scrollTarget = null; };
+  for (const name of ['wheel', 'touchmove', 'pointerdown']) {
+    document.addEventListener(name, releaseScrollTarget, { passive: true, capture: true });
+  }
+  document.addEventListener('keydown', event => {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+      releaseScrollTarget();
+    }
+  }, true);
 
   const restoreFragment = () => {
     const target = document.getElementById(location.hash.slice(1));

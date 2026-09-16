@@ -46,6 +46,7 @@ def test_hosted_cohort_cannot_silently_replace_production_or_unverified_inputs(t
         module("generate").hosted_cohort(config, framework)
 
 
+@pytest.mark.governance_runtime
 def test_generation_emits_complete_frozen_cohort_without_changing_shared_pins(tmp_path):
     from test_maf_gateway_generation import gateway_inputs
 

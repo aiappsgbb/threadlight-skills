@@ -160,6 +160,21 @@ test('initial mobile fragments align after the shared header is enhanced', async
   })).toBeLessThan(2);
 });
 
+test('selected fragments track delayed layout without taking over manual scrolling', async ({ page }) => {
+  await page.goto('/production.html#effect-authority');
+  await page.addStyleTag({ content: 'html { overflow-anchor: none; }' });
+  const distance = () => page.locator('#effect-authority').evaluate(panel =>
+    Math.abs(panel.getBoundingClientRect().top - parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)));
+  await expect.poll(distance).toBeLessThan(2);
+  await page.locator('#production-domains').evaluate(section => { section.style.paddingTop = '180px'; });
+  await expect.poll(distance, { timeout: 1000 }).toBeLessThan(2);
+  const aligned = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, 400);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(aligned + 300);
+  await page.locator('#production-domains').evaluate(section => { section.style.paddingTop = '200px'; });
+  await expect.poll(distance).toBeGreaterThan(250);
+});
+
 test('without JavaScript all topic links and concise sections remain usable', async ({ browser }, testInfo) => {
   const context = await browser.newContext({
     javaScriptEnabled: false, viewport: testInfo.project.use.viewport,
