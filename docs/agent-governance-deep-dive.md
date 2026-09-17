@@ -163,19 +163,29 @@ path; neither the email workflow nor the model is the business writer.
 <!-- diagram: effect-boundaries -->
 ```mermaid
 flowchart TB
-    A["Native agent<br/>proposes fixed tool arguments"]
-    G["Gateway / PEP<br/>identity, schema, trusted facts"]
-    P["ACS / Rego<br/>policy decision"]
-    C["Control plane<br/>one-use grants and audit ACK"]
-    H["Human in Outlook<br/>verified approval or rejection"]
-    B["Business API<br/>independent authorization"]
-    D["Business transaction<br/>case update + audit"]
-    A -->|"Selected action"| G
-    G <-->|"Evaluate"| P
-    G <-->|"Required authority"| C
-    C <-->|"Native approval workflow"| H
-    G -->|"Only after authorization ACK"| B
-    B -->|"Current facts + conditional write"| D
+    A["Native agent identity<br/>read and propose, not database writer"]
+    subgraph Gateway["Governed MCP gateway / trusted PEP"]
+        G["Gateway identity<br/>schema, current facts, dispatch guard"]
+        P["ACS / Rego via local OPA<br/>policy evaluation inside the gateway"]
+        G <-->|"Local evaluation"| P
+    end
+    C["Control plane identity<br/>approval and audit authority"]
+    S["Governance store / Cosmos<br/>intents, one-use grants, central receipts"]
+    L["Logic App / Office 365<br/>approval UI only"]
+    H["Human in Outlook<br/>Approve or Reject this proposal"]
+    R["ARM workflow / run state<br/>independent native witness"]
+    B["Business API<br/>independent caller and domain authorization"]
+    D["Business Cosmos store<br/>conditional case + business audit"]
+    A -->|"Selected protected action"| G
+    A -.->|"Unbound read: authenticated agent credential"| B
+    G <-->|"Pending / grant / consume / audit ACK"| C
+    C -->|"Persist before acknowledgement"| S
+    C -->|"Managed identity / Entra trigger"| L
+    L <-->|"Native decision"| H
+    L -.->|"Native workflow run"| R
+    C <-->|"ARM readback: verify responder and exact intent"| R
+    G -->|"Distinct downstream identity, after audit ACK"| B
+    B -->|"Own writer identity / current revision"| D
 ```
 </details>
 
@@ -183,6 +193,21 @@ The diagram's contract in words: the gateway verifies the proposal, evaluates
 policy, obtains any required human authority and durable receipt, then uses a
 different credential to call the business API. The API authenticates that caller
 and independently checks the current business record before its transaction.
+
+**These are separate trust responsibilities, not another model gateway.**
+Citadel/APIM is the model gateway when that platform is selected; it is not the
+governed MCP effect gateway shown here. ACS/Rego evaluates locally in the latter.
+The control plane owns approval/audit authority and its durable store; the
+Logic App only presents the review. Authenticated ARM readback supplies the
+native witness before the control plane creates a grant.
+
+The agent has no database-write or signing credentials. Its authenticated
+unbound read can go directly to the business API without ACS; protected writes
+use the distinct downstream caller and the backend's own writer identity.
+Policy denial is centrally audited before the blocked response. Facts or health
+reads may already have occurred, but no business write follows that denial.
+The central authorization receipt and the later business transaction/audit are
+different records, not a single distributed transaction.
 
 ### Identity is not interchangeable
 
