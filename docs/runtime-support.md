@@ -51,6 +51,14 @@ The operations owner maintains signing keys, rotation and service availability.
 Signed snapshots can remain usable until expiry; stronger remote-bootstrap/key
 health checks must not be generalized into universal instantaneous revocation.
 
+The opt-in gateway [operator recovery and admission profile](../skills/threadlight-govern/references/gateway/README.md#operator-recovery-and-admission)
+adds authenticated outcome reconciliation and a durable stop with open leases
+bounded to 300 seconds. It requires Strong single-writer Cosmos and fresh
+post-wait admission/key checks. Completed operations recover their prior result;
+proven-not-executed operations are terminal fenced records, **not retry authority**.
+Missing/404 outcomes stay unknown. This does not add automatic failover,
+long-lived review, undo or a universal all-runtime kill switch.
+
 The September 15 private Outlook proof covered its selected reference
 application and native session. It is not acceptance for the richer
 [canonical returns application](../examples/returns-triage-governed/README.md),

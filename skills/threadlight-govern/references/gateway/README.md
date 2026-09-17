@@ -65,9 +65,11 @@ Task8 `GET /bundles/{id}/{version}`, performs Key Vault RSA verification, verifi
 the exact Task6 file set/digests (including registry), and loads `AgentControl`.
 It rejects mismatched tenant/version/expiry/content, endpoints outside the
 host-configured exact allowlist, and missing/mismatched native bindings.
-Already-issued snapshots remain valid only to their signed expiry; immediate
-revocation/automatic bundle refresh is not implemented. Roll to a newly signed
-version to change policy. Missing business SAFE evidence is not invented:
+Already-issued snapshots remain valid only to their signed expiry by default;
+the explicit [operator profile](#operator-recovery-and-admission) additionally
+checks current signing-key health and leased admission before new effects.
+This is not universal instantaneous revocation or automatic bundle refresh.
+Roll to a newly signed version to change policy. Missing business SAFE evidence is not invented:
 `host_evidence` supplies only authenticated tenant/principal/client, scope and
 deployment. A domain-specific host evidence adapter must independently verify
 business evidence; models must never supply it or approval/audit anchors.
@@ -317,8 +319,106 @@ reconstructs transformed arguments and checks their original enforced hash.
 An authorized **GET** at `outcome_endpoint` retrieves the bounded result by the
 same scoped idempotency header and validates its exact persisted receipt ID;
 output policy runs again. Results are never cached in Cosmos/audit payloads.
-No reconciliation API is supplied; operators must verify the downstream's durable
-transaction before resolving an unknown key. Never delete pending records to retry.
+The opt-in operator recovery API below reconciles only independently witnessed
+outcomes under the signed backend contract. Never delete pending records to retry.
+
+### Operator recovery and admission
+
+Portable reference version **0.4.0** adds `POST /governance/operations`, outside
+MCP discovery and tool execution. Select `operations_required: true` and explicit
+`operation_controllers` in the host-owned gateway configuration. Each controller
+maps its subject to `client_id`, permitted requesting workload `subjects`, and
+`actions`. Workload/probe-controller identities cannot also be operators.
+The generator's bind input accepts `operation_controllers` and preserves it in
+the actual gateway configuration; it grants no permissions.
+
+Entra authentication uses the existing RSA/JWKS verifier, exact tenant/audience,
+expiry and client binding. Operators need `Governance.Operate` app role;
+delegated operators additionally need that scope and an allowed human client.
+An app-only operator is a separately provisioned managed identity, not the
+model's workload identity. Approval/auditor roles do not imply operator access.
+Operator entitlement provisioning and approval remain platform-owned.
+
+The body contains `operation`, `action`, `requester` plus:
+
+| Operation | Additional fields / effect |
+|---|---|
+| `inspect` admission | No operation selector/arguments; returns state and `record_hash` |
+| `inspect` action | Exact original `operation_id` and `arguments`; validates original requester, policy, deployment and input hash |
+| `admission` | `expected_record_hash` (null only for missing initial state), `state: open\|stopped`, `valid_until` (UTC for open, null for stopped), `reason_code` |
+| `reconcile` | Original `operation_id`, original `arguments`, and the inspected `expected_record_hash`; independent backend observation/fencing then audited CAS |
+
+Every successful response says **`retry_authorized: false`**. Recovery never
+generates a new business request or selector, deletes a pending key, edits
+arguments, extends an approval, or authorizes retry.
+
+| Reconciliation result | Meaning |
+|---|---|
+| `completed` | Independently authenticated backend proves the original durable outcome. Subsequent authenticated same-operation replay retrieves that prior result via GET, with output checks and no POST/approval consumption |
+| `not_executed` | Backend has durably fenced the **same** operation/audit ID and partition against a late writer; terminal, not retryable |
+| `outcome_unknown` | Missing/404, unreadable, mismatched, stale authority, missing pre-execution audit linkage, or ambiguous backend outcome; unchanged and closed |
+
+The signed action must opt into `recovery_contract: "fenced-outcome/v1"` and
+a distinct fixed `recovery_endpoint` on the original backend authority, included
+in `allowed_endpoints`. Only this registered endpoint receives a bounded POST
+of the original policy-reconstructed arguments and original provenance headers.
+Its strict response binds state, receipt ID, action hash, original operation
+key, pre-execution provenance and deployment hash. This is an independent
+backend observation, not an operator-supplied success document.
+
+The two-tool returns backend's `recovery_enabled: true` exposes `/recovery`.
+Its create-only `no-effect-fence` occupies the **same Cosmos item ID and case
+partition** as the atomic decision audit. A concurrent or late original
+case-replace/audit-create transaction then fails atomically, leaving the case
+unchanged. If that transaction won first, recovery finds its exact audit/result
+instead. Lost fence/CAS/audit ACK remains unknown until fresh readback.
+Backend fence retention must match business idempotency retention; restoring
+case data without these records invalidates the no-duplicate-effects assurance.
+
+**No same-operation retry contract is supplied.** `not_executed` is terminal.
+A customer's retry/failover workflow needs a separately reviewed fenced retry
+protocol with fresh policy/approval and preserved original identity; this
+reference must not silently generate a substitute request.
+
+**Bounded stop/rotation contract.** With operations required, missing/expired
+admission closes all new selected effects. Open leases last at most **300 seconds**
+and never beyond signed-policy expiry. Stop is durable and has no expiry.
+Admission is per exact workload/action/policy/deployment. This profile requires
+the existing generated **Strong Cosmos consistency**, one writable region and
+no TTL; the gateway requests Strong reads explicitly and verifies the account.
+No cached allow survives a cross-worker stop. Current admission and signing-key
+health are checked before authorization and again after human/credential waits
+and at HTTP/1 transport header/body-send events, under the existing bounded
+downstream timeout (default five seconds). A stop closes new admissions; it
+cannot recall bytes already sent or undo a previously authorized effect.
+Reconcile those operations rather than promising instantaneous global revocation.
+
+To rotate policy/key/role maps, first stop and read back admission, reconcile
+inflight operations, then deploy the new reviewed configuration and signed
+association and explicitly open a fresh lease. Retain old keys as required for
+audit verification, without leaving them enabled for new effects. Entra role
+changes alone remain bounded by token/claim freshness; Outlook responder-map
+changes require a service configuration rollout. Neither is a universal
+immediate membership lookup. Lease renewal is an explicit operator action,
+not an automated keep-open loop or a model-facing override.
+
+The lightweight control-plane package supplies the operator CLI (no MAF install
+needed on the operator machine). Save the exact body privately and execute once:
+
+```bash
+threadlight-operate-action --request /operator/reconcile.json \
+  --gateway-url https://gateway.example --scope api://GATEWAY_API_ID/.default \
+  --tenant TENANT_ID --subscription SUBSCRIPTION_ID \
+  --credential azure-cli --output /operator/evidence/reconciliation-001.json
+```
+
+Both index-derived tenant CLI directories and exact subscription assertion are
+mandatory for `azure-cli`; the command checks them and does not log in or switch.
+An explicitly selected private operator MI uses `--credential managed-identity
+--client-id OPERATOR_CLIENT_ID`. Output must be new. A nonzero exit or lost ACK
+means inspect before retrying an operator mutation, never resend the business
+action. Native tests use real ACS/OPA, Entra JWT validation, MCP/HTTP and Cosmos
+SDK serialization with external-service doubles; they are not live acceptance.
 
 ### Required downstream contract
 

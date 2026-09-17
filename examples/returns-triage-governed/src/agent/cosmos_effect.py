@@ -111,6 +111,19 @@ class CosmosEffectTransport(AsyncHttpTransport):
             yield
 
     @contextmanager
+    def recovery_fence(self, check, container, partition_key, document):
+        if (not isinstance(document, dict) or document.get("kind") != "no-effect-fence"
+                or document.get("case_id") != partition_key
+                or not isinstance(document.get("id"), str)
+                or not document["id"].startswith("decision-")
+                or not isinstance(document.get("provenance"), dict)
+                or not isinstance(document.get("arguments"), dict)):
+            reject_effect()
+        with self._guarded_batch(
+                check, container, partition_key, [{"operationType": "Create", "resourceBody": document}]):
+            yield
+
+    @contextmanager
     def append_audit(self, check, container, partition_key, document):
         if (not isinstance(document, dict) or set(document) != {"id", "scope", "body"}
                 or not isinstance(document["id"], str) or not document["id"].startswith("read-")

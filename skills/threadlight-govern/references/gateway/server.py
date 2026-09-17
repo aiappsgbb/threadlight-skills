@@ -65,6 +65,28 @@ class AuthBoundary:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope["path"] == "/health":
             return await self.app(scope, receive, send)
+        if scope["path"] == "/governance/operations":
+            from starlette.requests import Request
+            request = Request(scope, receive)
+            try:
+                if scope["method"] != "POST":
+                    return await JSONResponse({"error": "method_not_allowed"}, 405)(scope, receive, send)
+                auth = request.headers.getlist("authorization")
+                if len(auth) != 1:
+                    raise ValueError()
+                raw = bytearray()
+                async with asyncio.timeout(5):
+                    async for chunk in request.stream():
+                        raw.extend(chunk)
+                        if len(raw) > 32768:
+                            raise ValueError()
+                result = await self.dispatcher.operate(authorization=auth[0], body=strict_json(bytes(raw)))
+                code = (403 if result.get("reason_code") == "operator_unauthorized" else
+                        409 if result.get("status") == "blocked" else
+                        503 if result.get("status") == "unavailable" else 200)
+                return await JSONResponse(result, code)(scope, receive, send)
+            except (ValueError, TimeoutError):
+                return await JSONResponse({"error": "invalid_request"}, 400)(scope, receive, send)
         if scope["path"].startswith("/governance/probes/"):
             if self.dispatcher.probes is None:
                 return await JSONResponse({"error": "not_found"}, 404)(scope, receive, send)
@@ -242,6 +264,7 @@ class Configuration(Settings):
     allowed_endpoints: Annotated[list[str], Field(min_length=2, max_length=128)]
     probe_enabled: bool = False
     probe_container: Identifier | None = None
+    operations_required: bool = False
 
     @model_validator(mode="after")
     def separate_credentials(self):
@@ -254,12 +277,22 @@ class Configuration(Settings):
                 raise ValueError("dedicated_probe_state_and_controller_required")
         elif self.probe_container is not None or self.probe_controllers:
             raise ValueError("explicit_probe_opt_in_required")
+        if self.operations_required != bool(self.operation_controllers):
+            raise ValueError("explicit_operations_and_controller_required")
         return self
 
 
 class GatewayStore(AzureStore):
+    def __init__(self, *args, operations_required=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.operations_required = operations_required
+
     async def health(self):
         await self.write_safety()
+        if self.operations_required:
+            account = await self.account_reader()
+            if (account.ConsistencyPolicy or {}).get("defaultConsistencyLevel") != "Strong":
+                raise RuntimeError("strong_admission_consistency_required")
 
 
 def host_evidence(identity):
@@ -306,7 +339,8 @@ async def production():
             credential = await identity(config.service_client_id)
             downstream_credential = await identity(config.downstream_client_id)
             cosmos = await managed(CosmosClient(config.cosmos_url, credential=credential,
-                retry_total=0, connection_timeout=5, read_timeout=5))
+                retry_total=0, connection_timeout=5, read_timeout=5,
+                **({"consistency_level": "Strong"} if config.operations_required else {})))
             crypto = await managed(CryptographyClient(config.key_id, credential=credential, retry_total=0))
             keys = await managed(KeyClient(
                 config.key_id.split("/keys/")[0], credential=credential, retry_total=0))
@@ -314,7 +348,7 @@ async def production():
                 timeout=5, trust_env=False, follow_redirects=False))
             store = GatewayStore(None,
                 cosmos.get_database_client(config.cosmos_database).get_container_client(config.cosmos_container),
-                account_reader=cosmos._get_database_account)
+                account_reader=cosmos._get_database_account, operations_required=config.operations_required)
             signer = KeyVaultSigner(crypto, key_client=keys)
             auth = EntraAuth(config, http)
             service = dict(base_url=config.control_plane_url, scope=config.control_plane_scope,
@@ -352,6 +386,7 @@ async def production():
             policy=policy, auth=auth, store=store, receipts=receipts, downstream=downstream,
             approvals=approvals, safe_provider=host_evidence,
             probes=probes,
+            operations_required=config.operations_required,
             approval_principal=config.service_principal, approval_agent_id=config.service_agent_id)
 
 

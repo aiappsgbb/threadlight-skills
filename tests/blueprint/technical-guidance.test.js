@@ -23,6 +23,17 @@ test('dependency disposition distinguishes artifact presence from reachable PKCS
   assert.match(text, /50\.0\.0.*AGT|AGT.*50\.0\.0/s);
 });
 
+test('operator recovery documents terminal fencing and bounded admission rather than automatic retry', () => {
+  const text = read('skills/threadlight-govern/references/gateway/README.md');
+  assert.match(text, /threadlight-operate-action/);
+  assert.match(text, /not_executed/);
+  assert.match(text, /retry_authorized.*false/);
+  assert.match(text, /Strong.*consistency/s);
+  assert.match(text, /300 seconds/);
+  assert.doesNotMatch(text, /No reconciliation API is supplied/);
+  assert.match(read('docs/runtime-support.md'), /operator.*recovery/i);
+});
+
 test('all current CI handoffs describe the same fail-closed release boundary', () => {
   for (const file of ['skills/threadlight-cicd/SKILL.md',
     'skills/threadlight-production-ready/SKILL.md', 'docs/agent-operations.md',
