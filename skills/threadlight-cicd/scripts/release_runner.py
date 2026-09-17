@@ -113,11 +113,29 @@ def adapters(plan: dict):
         yield plan[domain]["producer"]
 
 
+def application(root: Path, plan: dict):
+    selection = plan.get("application")
+    if "application" not in plan:
+        return None
+    if (not isinstance(selection, dict) or set(selection) != {"profile", "configuration"}
+            or selection["profile"] != "returns-mcp/v1"):
+        raise ReleaseError("invalid selected release application")
+    spec = importlib.util.spec_from_file_location(
+        "release_returns_application", Path(__file__).with_name("returns_release.py"))
+    module = importlib.util.module_from_spec(spec)
+    # Direct script execution and generated tooling use the same sibling imports.
+    if str(Path(__file__).parent) not in sys.path:
+        sys.path.insert(0, str(Path(__file__).parent))
+    spec.loader.exec_module(module)
+    config = module.configuration(root, selection["configuration"])
+    return module, config
+
+
 def policy(root: Path, path: str) -> dict:
     value = load(local_path(root, path))
     expected = {"schema", "validation", "production", "inputs", "evals", "redteam",
                 "max_age_seconds", "timeout_seconds"}
-    if set(value) != expected or value["schema"] != "threadlight-release-policy/v1":
+    if set(value) - {"application"} != expected or value["schema"] != "threadlight-release-policy/v1":
         raise ReleaseError("invalid release policy schema or fields")
     for key, maximum in (("max_age_seconds", 86400), ("timeout_seconds", 14400)):
         if type(value[key]) is not int or not 1 <= value[key] <= maximum:
@@ -167,6 +185,21 @@ def policy(root: Path, path: str) -> dict:
     if set(value["evals"]["outputs"]) & set(value["redteam"]["outputs"]):
         raise ReleaseError("evidence producers must own distinct outputs")
     entrypoints = set().union(*(adapter_inputs(root, argv) for argv in adapters(value)))
+    selected = application(root, value)
+    if selected:
+        module, config = selected
+        entrypoints.update(module.input_paths(root, value["application"]["configuration"], config))
+        for phase, action in (("validation", "prepare"), ("production", "promote")):
+            for name in (action, "observe"):
+                argv = value[phase][name]
+                if (len(argv) < 5 or Path(argv[1]).name != "returns_release.py"
+                        or argv[2] != name or "--configuration" not in argv
+                        or argv.index("--configuration") == len(argv) - 1
+                        or argv[argv.index("--configuration") + 1] != value["application"]["configuration"]):
+                    raise ReleaseError("selected returns release requires its concrete phase adapters")
+        for domain in ("evals", "redteam"):
+            if config["producers"][domain]["raw_output"] not in value[domain]["outputs"]:
+                raise ReleaseError("declare the selected producer's actual raw output")
     if entrypoints & {item for domain in ("evals", "redteam") for item in value[domain]["outputs"]}:
         raise ReleaseError("producer outputs cannot replace adapter entrypoints")
     return value
@@ -224,6 +257,10 @@ def ci_context(root: Path) -> dict:
 
 def inputs(root: Path, plan: dict, policy_path: str) -> dict:
     paths = set(plan["inputs"]) | {policy_path}
+    selected = application(root, plan)
+    if selected:
+        module, config = selected
+        paths.update(module.input_paths(root, plan["application"]["configuration"], config))
     for argv in adapters(plan):
         paths.update(adapter_inputs(root, argv))
         paths.update(item for item in argv
@@ -293,7 +330,7 @@ def observe(root: Path, plan: dict, phase: str, context: dict, started: datetime
     required = {
         "schema", "target_id", "environment", "source_sha", "image_digest", "version", "observed_at"
     }
-    if not required <= set(observation) or set(observation) - required - {"evaluation_targets"}:
+    if not required <= set(observation) or set(observation) - required - {"evaluation_targets", "application_contract"}:
         raise ReleaseError("observer must return the exact deployed-image/version observation")
     if "evaluation_targets" in observation:
         targets = observation["evaluation_targets"]
@@ -311,6 +348,12 @@ def observe(root: Path, plan: dict, phase: str, context: dict, started: datetime
         raise ReleaseError("observed deployment does not match the approved source and target")
     _gate()._release_stamp(observation["observed_at"], datetime.now(timezone.utc),
                           started, plan["max_age_seconds"])
+    selected = application(root, plan)
+    if selected:
+        module, config = selected
+        module.check_observation(config, phase, observation)
+    elif "application_contract" in observation:
+        raise ReleaseError("application observation requires explicit selected release policy")
     return observation
 
 
@@ -324,7 +367,7 @@ def _gate():
 
 def validate(root: Path, plan: dict, policy_path: str, receipt: Path) -> dict:
     context = {"schema": SCHEMA, "ci": ci_context(root), "policy_sha256": digest(plan),
-               "inputs": inputs(root, plan, policy_path)}
+               "policy_path": policy_path, "inputs": inputs(root, plan, policy_path)}
     verify_identity(plan, "validation")
     def authorize():
         if (policy(root, policy_path) != plan or ci_context(root) != context["ci"]
@@ -434,20 +477,84 @@ def promote(root: Path, plan: dict, policy_path: str, receipt: Path, expected_sh
     observed = observe(root, plan, "production", context, started)
     if observed["image_digest"] != context["candidate"]["image_digest"]:
         raise ReleaseError("production image differs from the validated candidate; stop and reconcile")
+    completion = complete_application(root, plan, context, observed, started, authorize)
     result = {"schema": SCHEMA, "status": "production-observed", "ci": context["ci"],
               "operation_id": context["operation_id"],
               "deployment": observed, "candidate_receipt_sha256": expected_sha256}
+    if completion is not None:
+        result["application"] = completion
     state.write_text(json.dumps(result, allow_nan=False), encoding="utf-8")
     return result
 
 
+def complete_application(root, plan, context, observed, started, authorize):
+    selected = application(root, plan)
+    if not selected:
+        return None
+    module, config = selected
+    if observed["application_contract"]["behavior"] != context["candidate"]["application_contract"]["behavior"]:
+        raise ReleaseError("production behavior differs from the validated candidate")
+    request = dict(context, production_observation=observed,
+                   postcheck_started_at=datetime.now(timezone.utc).isoformat())
+    call = module.operator(root, config, "production", request, plan)
+    try:
+        module.closed(request, call)
+        checked = call("postcheck", request)
+        module.check_postcheck(checked, request)
+        final = observe(root, plan, "production", context, started)
+        if any(final[key] != observed.get(key) for key in final if key != "observed_at"):
+            raise ReleaseError("production changed during postchecks; admission remains closed")
+        verify_identity(plan, "production")
+        authorize()
+        module.closed(request, call)
+        authorize()
+        admitted = call("admit", dict(request, postcheck_sha256=digest(checked)))
+        if (admitted.get("operation_id") != context["operation_id"]
+                or admitted.get("state") != "admitted"):
+            raise ReleaseError("admission acknowledgement unknown; stop and reconcile")
+        state = call("admission", request)
+        if (state.get("state") != "open" or state.get("target_id") != plan["production"]["target_id"]
+                or state.get("operation_id") != context["operation_id"]):
+            raise ReleaseError("admission readback mismatch; stop and reconcile")
+        return {"profile": module.PROFILE, "state": "admitted",
+                "postcheck_sha256": digest(checked), "admission_sha256": digest(state)}
+    except Exception:
+        call("stop", request)
+        module.closed(request, call)
+        raise
+
+
+def reconcile_application(root, plan, policy_path, operation_id):
+    """Close and read an uncertain remote operation; never retry or reopen it."""
+    selected = application(root, plan)
+    if not selected or not isinstance(operation_id, str) or not re.fullmatch(r"[a-f0-9]{64}", operation_id):
+        raise ReleaseError("reconciliation requires a selected application and exact prior operation ID")
+    module, config = selected
+    context = {"schema": SCHEMA, "ci": ci_context(root), "policy_path": policy_path,
+               "policy_sha256": digest(plan), "inputs": inputs(root, plan, policy_path),
+               "target": plan["production"], "operation_id": operation_id,
+               "started_at": datetime.now(timezone.utc).isoformat()}
+    verify_identity(plan, "production")
+    call = module.operator(root, config, "production", context, plan)
+    call("stop", context)
+    module.closed(context, call)
+    result = call("operation", context)
+    if result.get("operation_id") != operation_id or result.get("state") not in {
+        "absent", "prepared", "unknown", "admitted",
+    }:
+        raise ReleaseError("unconfirmed remote operation; admission remains closed")
+    return {"schema": SCHEMA, "status": "reconciled-observation-only", "state": result["state"],
+            "operation_id": operation_id, "admission": "closed", "observation_sha256": digest(result)}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=("preflight", "validate", "promote"))
+    parser.add_argument("phase", choices=("preflight", "validate", "promote", "reconcile"))
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument("--policy", default="specs/release-policy.json")
     parser.add_argument("--receipt", default=".threadlight-release/candidate.json")
     parser.add_argument("--receipt-sha256", help="validation job output, not a value read from the artifact")
+    parser.add_argument("--operation-id", help="exact prior unknown operation; reconciliation never retries")
     args = parser.parse_args(argv)
     try:
         root = args.repo.resolve()
@@ -455,6 +562,9 @@ def main(argv=None) -> int:
         if args.phase == "preflight":
             ci_context(root)
             inputs(root, plan, args.policy)
+        elif args.phase == "reconcile":
+            result = reconcile_application(root, plan, args.policy, args.operation_id)
+            print(json.dumps(result))
         else:
             receipt = local_path(root, args.receipt)
             if args.phase == "validate":
