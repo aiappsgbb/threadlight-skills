@@ -5,11 +5,24 @@ async function expectStepStart(page, id) {
   const heading = panel.locator('h2');
   await expect(heading).toBeFocused();
   await expect(heading).toHaveAttribute('tabindex', '-1');
-  await expect.poll(() => heading.evaluate(node => {
-    const bounds = node.getBoundingClientRect();
-    return bounds.top >= document.querySelector('.masthead').getBoundingClientRect().bottom &&
-      bounds.bottom <= innerHeight;
-  })).toBe(true);
+  const positions = await heading.evaluate(async node => {
+    const measure = () => ({
+      top: node.getBoundingClientRect().top,
+      bottom: node.getBoundingClientRect().bottom,
+      headerBottom: document.querySelector('.masthead').getBoundingClientRect().bottom,
+      viewportHeight: innerHeight,
+    });
+    const frames = [measure()];
+    for (let frame = 0; frame < 2; frame++) {
+      await new Promise(requestAnimationFrame);
+      frames.push(measure());
+    }
+    return frames;
+  });
+  for (const bounds of positions) {
+    expect(bounds.top, JSON.stringify(bounds)).toBeGreaterThanOrEqual(bounds.headerBottom);
+    expect(bounds.bottom, JSON.stringify(bounds)).toBeLessThanOrEqual(bounds.viewportHeight);
+  }
   return panel;
 }
 

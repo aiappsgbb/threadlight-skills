@@ -40,8 +40,8 @@
       const heading = panels[index].querySelector('h2');
       heading.setAttribute('tabindex', '-1');
       heading.focus({ preventScroll: true });
-      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      panels[index].scrollIntoView({ block: 'start', behavior: reduced ? 'instant' : 'smooth' });
+      // Keep focus and viewport together before another key or click can interrupt scrolling.
+      panels[index].scrollIntoView({ block: 'start', behavior: 'instant' });
     }
     function restore() {
       const index = panels.findIndex(panel => `#${panel.id}` === location.hash);
