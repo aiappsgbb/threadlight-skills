@@ -382,7 +382,9 @@ reference must not silently generate a substitute request.
 
 **Bounded stop/rotation contract.** With operations required, missing/expired
 admission closes all new selected effects. Open leases last at most **300 seconds**
-and never beyond signed-policy expiry. Stop is durable and has no expiry.
+and never beyond signed-policy or authenticated operator-token expiry. A credential
+or storage wait cannot open a lease that outlives its authorizing token.
+Stop is durable and has no expiry.
 Admission is per exact workload/action/policy/deployment. This profile requires
 the existing generated **Strong Cosmos consistency**, one writable region and
 no TTL; the gateway requests Strong reads explicitly and verifies the account.

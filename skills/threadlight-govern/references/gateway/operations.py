@@ -3,6 +3,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
+import jwt
 from pydantic import model_validator
 
 from govern_control_plane.auth import Unauthorized
@@ -111,6 +112,7 @@ async def operate(dispatcher, authorization, body):
                     or record["facts_hash"] != digest(facts)):
                 raise GateError("idempotency_conflict", "blocked")
         if request.operation == "inspect":
+            await authorize()
             return summary(record) if record is not None else {
                 "state": "missing", "record_hash": None, "retry_authorized": False}
         if (digest(record) if record is not None else None) != request.expected_record_hash:
@@ -118,8 +120,12 @@ async def operate(dispatcher, authorization, body):
         if request.operation == "admission":
             if request.state == "open":
                 dispatcher.policy.fresh()
+                # Claims are read only after the exact token passed EntraAuth.
+                token_expiry = datetime.fromtimestamp(
+                    jwt.decode(authorization[7:], options={"verify_signature": False})["exp"], timezone.utc)
                 if not datetime.now(timezone.utc) < request.valid_until <= min(
-                        dispatcher.policy.expires_at, datetime.now(timezone.utc) + timedelta(seconds=300)):
+                        dispatcher.policy.expires_at, token_expiry,
+                        datetime.now(timezone.utc) + timedelta(seconds=300)):
                     raise GateError("admission_lease_invalid", "blocked")
                 await dispatcher.policy.signer.health()
             audit_hash = digest({"operator": identity.subject, "client": identity.client,
@@ -172,6 +178,7 @@ async def operate(dispatcher, authorization, body):
         observed, _ = await dispatcher.store.read(*location)
         if observed != updated:
             raise GateError("operator_conflict", "blocked")
+        await authorize()
         return summary(observed)
     except Unauthorized:
         return {"status": "blocked", "reason_code": "operator_unauthorized"}

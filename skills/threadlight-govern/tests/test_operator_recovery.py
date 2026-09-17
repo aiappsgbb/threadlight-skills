@@ -232,3 +232,21 @@ def test_operator_http_and_client_are_separate_from_model_tools(tmp_path):
         finally:
             await h.close()
     asyncio.run(check())
+
+
+@pytest.mark.governance_runtime
+def test_admission_lease_cannot_outlive_operator_token(tmp_path):
+    async def check():
+        h = await harness(tmp_path)
+        try:
+            now = datetime.now(timezone.utc)
+            result = await h.dispatcher.operate(
+                authorization=operator_token(h, exp=int((now + timedelta(seconds=30)).timestamp())),
+                body={"operation": "admission", "action": "refund", "requester": WORKLOAD,
+                      "expected_record_hash": None, "state": "open",
+                      "valid_until": (now + timedelta(seconds=120)).isoformat(), "reason_code": "test"})
+            assert result["reason_code"] == "admission_lease_invalid"
+            assert not h.store.docs and not h.calls
+        finally:
+            await h.close()
+    asyncio.run(check())
