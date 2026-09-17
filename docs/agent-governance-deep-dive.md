@@ -163,51 +163,42 @@ path; neither the email workflow nor the model is the business writer.
 <!-- diagram: effect-boundaries -->
 ```mermaid
 flowchart TB
-    A["Native agent identity<br/>read and propose, not database writer"]
+    A["Agent identity<br/>read + propose"]
     subgraph Gateway["Governed MCP gateway / trusted PEP"]
-        G["Gateway identity<br/>schema, current facts, dispatch guard"]
-        P["ACS / Rego via local OPA<br/>policy evaluation inside the gateway"]
+        G["Gateway identity<br/>facts + dispatch guard"]
+        P["ACS / Rego<br/>local OPA"]
         G <-->|"Local evaluation"| P
     end
-    C["Control plane identity<br/>approval and audit authority"]
-    S["Governance store / Cosmos<br/>intents, one-use grants, central receipts"]
-    L["Logic App / Office 365<br/>approval UI only"]
-    H["Human in Outlook<br/>Approve or Reject this proposal"]
-    R["ARM workflow / run state<br/>independent native witness"]
-    B["Business API<br/>independent caller and domain authorization"]
-    D["Business Cosmos store<br/>conditional case + business audit"]
-    A -->|"Selected protected action"| G
-    A -.->|"Unbound read: authenticated agent credential"| B
-    G <-->|"Pending / grant / consume / audit ACK"| C
-    C -->|"Persist before acknowledgement"| S
+    C["Control plane<br/>approval + audit authority"]
+    S["Governance store<br/>Cosmos intents + receipts"]
+    L["Logic App<br/>Office 365 review UI"]
+    H["Human reviewer<br/>Outlook"]
+    R["ARM<br/>workflow / run witness"]
+    B["Business API<br/>authorize caller + action"]
+    D["Business Cosmos<br/>case + audit"]
+    A -->|"Protected action"| G
+    A -.->|"Unbound read<br/>agent credential"| B
+    G <-->|"Pending / grant<br/>consume / audit ACK"| C
+    C -->|"Persist / ACK"| S
     C -->|"Managed identity / Entra trigger"| L
-    L <-->|"Native decision"| H
-    L -.->|"Native workflow run"| R
-    C <-->|"ARM readback: verify responder and exact intent"| R
-    G -->|"Distinct downstream identity, after audit ACK"| B
-    B -->|"Own writer identity / current revision"| D
+    L <-->|"Approve / Reject"| H
+    L -.->|"Native run"| R
+    C <-->|"Read back / verify"| R
+    G -->|"downstream identity<br/>after audit ACK"| B
+    B -->|"Writer identity<br/>conditional write"| D
 ```
 </details>
 
-The diagram's contract in words: the gateway verifies the proposal, evaluates
-policy, obtains any required human authority and durable receipt, then uses a
-different credential to call the business API. The API authenticates that caller
-and independently checks the current business record before its transaction.
+Citadel/APIM is the optional model gateway, not this governed MCP effect gateway.
+ACS/Rego evaluates locally; the control plane owns persistent approval/audit
+authority. Logic Apps presents review; authenticated ARM readback supplies its
+witness. The agent has no database-write or signing credentials.
 
-**These are separate trust responsibilities, not another model gateway.**
-Citadel/APIM is the model gateway when that platform is selected; it is not the
-governed MCP effect gateway shown here. ACS/Rego evaluates locally in the latter.
-The control plane owns approval/audit authority and its durable store; the
-Logic App only presents the review. Authenticated ARM readback supplies the
-native witness before the control plane creates a grant.
-
-The agent has no database-write or signing credentials. Its authenticated
-unbound read can go directly to the business API without ACS; protected writes
-use the distinct downstream caller and the backend's own writer identity.
-Policy denial is centrally audited before the blocked response. Facts or health
-reads may already have occurred, but no business write follows that denial.
-The central authorization receipt and the later business transaction/audit are
-different records, not a single distributed transaction.
+Unbound authenticated reads bypass ACS, not backend authorization. Protected
+writes use a distinct downstream caller and the backend's writer identity.
+Policy denial is centrally audited before returning blocked; preceding
+facts/health reads are not business writes. Central receipts and the conditional
+business transaction are separate, not one distributed transaction.
 
 ### Identity is not interchangeable
 
