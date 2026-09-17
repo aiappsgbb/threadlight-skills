@@ -197,11 +197,12 @@
 
 - id: REL-007
   pillar: reliability
-  title: Run and commit a restore drill (refresh ≤ 90 days)
+  title: Retain scoped successful restore evidence (execution within 90 days)
   description: |
-    REL-007 requires a `docs/restore-drill-YYYY-MM-DD.md` artefact whose
-    date is ≤ 90 days old. Run the drill against your RSV, capture the
-    output, commit it.
+    REL-007 requires actual scoped execution, successful data/application
+    validation, measured RTO/RPO and retained raw evidence. Filename dates
+    and mtime do not count. Follow remediation-recipes/REL-007.md and the
+    service-specific restore runbook. A draft cannot pass.
   bash: |
     DRILL_DATE="$(date -u +%Y-%m-%d)"
     OUT="docs/restore-drill-${DRILL_DATE}.md"
@@ -209,13 +210,20 @@
     cat <<MARKDOWN > "$OUT"
     # Restore drill — ${DRILL_DATE}
 
+    **Completed at:** TODO actual timezone-aware execution timestamp
+    **Subscription id:** TODO assessed source subscription
+    **Resource group:** TODO assessed source resource group
     **Drill owner:** _your name_
     **Vault:** _RSV name + subscription_
     **Protected item:** _name + container_
     **Restore point selected:** _id_
     **Restore target:** _staging RG / temporary disk_
     **Result:** _success | failure_
-    **Notes:** _RPO observed, RTO observed, anomalies_
+    **Validation:** TODO actual data/application result
+    **RTO seconds:** TODO measured number
+    **RPO seconds:** TODO measured number
+    **Evidence ref:** TODO root-relative raw evidence path
+    **Evidence sha256:** TODO SHA-256 of raw evidence
     MARKDOWN
 
     echo "Drafted ${OUT} — fill in the placeholders and commit."
