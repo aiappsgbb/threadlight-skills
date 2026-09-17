@@ -64,8 +64,10 @@ def _attachment(root, data):
     path = root / ref
     if not path.resolve().is_relative_to(root.resolve()) or not 0 < path.stat().st_size <= 4 * 1024 * 1024:
         raise ValueError("raw evidence outside root or oversized")
-    if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != digest:
         raise ValueError("raw evidence digest mismatch")
+    return raw
 
 
 def _in_scope(resource, sub, rg):
@@ -182,7 +184,13 @@ def alert_route(root, groups, rules, sub, rg, *, now=None):
         if (received < started or receipt.get("status") != "delivered"
                 or not _text(receipt.get("correlation_id"))):
             raise ValueError("receipt missing correlated delivery")
-        _attachment(root, receipt)
+        event = json.loads(_attachment(root, receipt), object_pairs_hook=_json_pairs)
+        if (not isinstance(event, dict) or event.get("id") != receipt["correlation_id"]
+                or event.get("status") != "delivered"
+                or event.get("actionGroupId") != routing["action_group_id"]
+                or event.get("receiver") != routing["receiver_name"]
+                or _time(event.get("received_at"), now, 1) != received):
+            raise ValueError("receiver event does not corroborate delivery receipt")
     except (OSError, ValueError, TypeError, AttributeError):
         return "not-verified", ("On-call routing configured (enabled rule, target, group and intended receiver); "
                                 "delivery not-verified without a fresh correlated receiver receipt.")

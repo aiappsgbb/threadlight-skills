@@ -173,10 +173,27 @@ def test_delivery_requires_current_correlated_receipt(ctx, monkeypatch, change):
     receipt = {**routing, "status": "delivered", "received_at": stamp(),
                "correlation_id": "alert-001", "test_started_at": stamp(0.001)}
     receipt.update(raw_evidence(ctx, {"id": "alert-001", "status": "delivered",
-                                    "actionGroupId": GROUP, "receiver": "oncall"}))
+                                    "actionGroupId": GROUP, "receiver": "oncall",
+                                    "received_at": receipt["received_at"]}))
     receipt.update(change)
     (ctx.root / "evidence/alert-delivery.json").write_text(json.dumps(receipt))
     assert (sre(ctx, monkeypatch, groups, rules).status == "pass") == (not change)
+
+
+@pytest.mark.parametrize("change", [
+    {"id": "unrelated-alert"}, {"receiver": "another-receiver"},
+    {"actionGroupId": GROUP + "-other"}, {"status": "send-request-accepted"},
+    {"received_at": stamp(2)},
+])
+def test_alert_receipt_must_match_hashed_receiver_event(ctx, monkeypatch, change):
+    groups, rules, routing = alert_fixtures(ctx)
+    receipt = {**routing, "status": "delivered", "received_at": stamp(),
+               "correlation_id": "alert-001", "test_started_at": stamp(0.001)}
+    event = {"id": "alert-001", "status": "delivered", "actionGroupId": GROUP,
+             "receiver": "oncall", "received_at": receipt["received_at"], **change}
+    receipt.update(raw_evidence(ctx, event))
+    (ctx.root / "evidence/alert-delivery.json").write_text(json.dumps(receipt))
+    assert sre(ctx, monkeypatch, groups, rules).status == "not-verified"
 
 
 def test_no_fake_restore_cli_in_current_recipe():
