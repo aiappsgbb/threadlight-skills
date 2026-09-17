@@ -43,6 +43,8 @@ test('editorial contract keeps technical evidence intact and routes it outside c
   assert.ok(deepDive.includes('## Contents'));
 });
 
-test('commercial page eyebrow contrast uses the readable Clawpilot token locally', () => {
-  assert.match(read('agent-governance.html'), /\.governance-page \.eyebrow\s*\{\s*color:\s*var\(--cp-text-muted\)/);
+test('commercial page inherits the native site theme with readable local copy', () => {
+  const html = read('agent-governance.html');
+  assert.doesNotMatch(html, /--cp-|:root\s*\{|scoutTheme/);
+  assert.match(read('assets/governed-workflow.css'), /\.governance-page main \.eyebrow\s*\{\s*color:\s*var\(--ink-1\)/);
 });

@@ -3,9 +3,9 @@ import AxeBuilder from '@axe-core/playwright';
 
 for (const theme of ['light', 'dark']) {
   test(`native Outlook journey is readable and accessible in ${theme} theme`, async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto(`/agent-governance.html?scoutTheme=${theme}`);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+    await page.goto('/agent-governance.html');
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme');
     await expect(page.locator('.floating-toc')).toHaveCSS('opacity', '1');
     const journey = page.locator('#human-decisions');
     await expect(journey.getByRole('heading', { level: 2 })).toContainText('Decide in Outlook');
@@ -26,7 +26,7 @@ for (const theme of ['light', 'dark']) {
     await link.press('Enter');
     await expect.poll(() => target.evaluate(el => {
       const top = el.getBoundingClientRect().top;
-      return top >= 0 && top < 150;
+      return top >= 0 && top < 240;
     })).toBe(true);
   });
 }

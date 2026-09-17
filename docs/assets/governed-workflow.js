@@ -3,51 +3,60 @@
 
   const scenarios = {
     normal: {
-      story: 'Normal return: the case is eligible and current. Record a recommendation, not a payment.',
-      steps: ['proposal', 'checks', 'allow', 'ack', 'effect', 'result'],
+      story: 'Eligible return — record a recommendation, not a payment.',
+      steps: ['proposal', 'checks', 'ack', 'effect', 'result'],
     },
     invalid: {
-      story: 'Invalid proposal: the case is ineligible. A convincing explanation cannot authorize the write.',
+      story: 'Ineligible return — the proposal must stop before a business write.',
       steps: ['proposal', 'checks', 'deny'],
     },
     supervisor: {
-      story: 'Supervisor handoff: this case needs a person to authorize the specific exception, not a refund.',
+      story: 'Supervisor handoff — a person reviews this specific exception in Outlook.',
       steps: ['proposal', 'checks', 'review', 'fresh', 'ack', 'effect', 'result'],
     },
   };
-  const captions = {
-    proposal: 'The agent proposes fixed arguments for this case. It does not supply its own authority.',
-    checks: 'Identity, policy and trusted case facts determine which path the proposal may take.',
-    allow: 'The ordinary recommendation is permitted. The authorization record still comes before execution.',
-    deny: 'The proposal stops with no business effect. The refusal can be recorded without changing the case.',
-    review: 'Wait for the person. This illustration pauses here; use Next step to show an approved handoff.',
-    fresh: 'In this example the person approved the unchanged handoff. Recheck current authority, policy and case facts.',
-    ack: 'The central audit ACK acknowledges authorization before the backend receives the business request.',
-    effect: 'The backend independently checks the current case, then atomically records the decision and business audit.',
-    result: 'The stable result and audit ID connect to the authorization trail. No payment was sent.',
+  const steps = {
+    proposal: ['Agent proposes', 'Propose', 'The agent proposes a return recommendation for this case. It does not supply its own permission.'],
+    checks: ['Policy decides', 'Check', 'Identity, policy and trusted case facts determine whether this exact proposal may continue.'],
+    deny: ['Blocked — no business effect', 'Stop', 'Policy refuses the proposal. Record the refusal; do not change the case. This path ends here.'],
+    review: ['Person authorizes · Outlook review', 'Outlook', 'Illustration paused at the human decision. Next shows an approved example, not a real approval or email.'],
+    fresh: ['Recheck current authority', 'Recheck', 'The example handoff is approved, but its arguments must be unchanged. Recheck current policy, identity and case facts.'],
+    ack: ['Authorization recorded', 'Audit ACK', 'Receive the central audit ACK before the backend receives the business request. No ACK means no dispatch.'],
+    effect: ['Backend checks / executes', 'Commit', 'The independent backend checks the current case, then atomically records the decision and its business audit.'],
+    result: ['Record connects the outcome', 'Trace', 'The stable result and audit ID join the authorization trail. Recording a recommendation is not a payment.'],
   };
-  const STEP_MS = 1800;
+  const STEP_MS = 2000;
 
   function mount(document, window) {
     const root = document.getElementById('workflow-in-action');
     if (!root) return;
-    const controls = root.querySelector('[data-flow-controls]');
-    const story = root.querySelector('[data-flow-story]');
-    const status = root.querySelector('[data-flow-status]');
-    const motionNote = root.querySelector('[data-flow-motion]');
+    // A contextual Production deep dive, not another top-level sitemap entry.
+    const parent = document.body.dataset.chapterParent;
+    document.querySelector(`.masthead .nav a[href="./${parent}.html"]`)?.setAttribute('aria-current', 'location');
+    document.querySelector(`.cx-directory-group[data-site-group="${parent}"]`)?.setAttribute('data-current-group', '');
+    const controls = [...root.querySelectorAll('[data-flow-controls]')];
+    const tabs = [...root.querySelectorAll('[data-flow-scenario]')];
     const nodes = [...root.querySelectorAll('[data-flow-node]')];
+    const mobile = [...root.querySelectorAll('[data-mobile-node]')];
+    const edges = [...root.querySelectorAll('[data-flow-edge]')];
+    const story = root.querySelector('[data-flow-story]');
+    const title = root.querySelector('[data-flow-title]');
+    const caption = root.querySelector('[data-flow-caption]');
+    const progress = root.querySelector('[data-flow-progress]');
+    const motionNote = root.querySelector('[data-flow-motion]');
+    const playLabel = root.querySelector('[data-flow-play-label]');
+    const panel = root.querySelector('#wf-case');
     const buttons = Object.fromEntries([...root.querySelectorAll('[data-flow-control]')]
       .map((button) => [button.dataset.flowControl, button]));
-    if (!controls || !story || !status || !motionNote ||
-        !['start', 'pause', 'next', 'replay'].every((name) => buttons[name]) ||
-        !Object.keys(captions).every((name) => nodes.some((node) => node.dataset.flowNode === name))) {
-      console.error('Workflow illustration controls are incomplete; the static diagram remains available.');
+    if (!controls.length || !story || !title || !caption || !progress || !motionNote || !playLabel || !panel ||
+        !['play', 'previous', 'next'].every((name) => buttons[name]) ||
+        !Object.keys(steps).every((name) => nodes.some((node) => node.dataset.flowNode === name))) {
+      console.error('Workflow illustration controls are incomplete; the static path remains available.');
       return;
     }
-    const selectors = [...root.querySelectorAll('[data-flow-scenario]')];
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let scenario = 'normal';
-    let step = -1;
+    let step = 0;
     let playing = false;
     let timer = null;
 
@@ -57,80 +66,126 @@
       playing = false;
     }
 
+    function buildProgress() {
+      progress.replaceChildren();
+      scenarios[scenario].steps.forEach((name, index) => {
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.flowStep = String(index);
+        button.setAttribute('aria-label', `Step ${index + 1}: ${steps[name][0]}`);
+        const number = document.createElement('span');
+        number.textContent = String(index + 1);
+        const label = document.createElement('span');
+        label.className = 'wf-step-name';
+        label.textContent = steps[name][1];
+        button.append(number, label);
+        item.appendChild(button);
+        progress.appendChild(item);
+      });
+    }
+
     function render() {
       const selected = scenarios[scenario];
       const current = selected.steps[step];
+      const finished = step === selected.steps.length - 1;
       root.dataset.step = String(step);
-      root.dataset.node = current || '';
+      root.dataset.node = current;
       root.dataset.playing = String(playing);
       root.dataset.scenario = scenario;
       story.textContent = selected.story;
+      title.textContent = `${step + 1} / ${selected.steps.length} · ${steps[current][0]}`;
+      caption.textContent = steps[current][2];
+      panel.setAttribute('aria-labelledby', `wf-tab-${scenario}`);
+      tabs.forEach((tab) => {
+        const active = tab.dataset.flowScenario === scenario;
+        tab.setAttribute('aria-selected', String(active));
+        tab.tabIndex = active ? 0 : -1;
+      });
       nodes.forEach((node) => {
+        const position = selected.steps.indexOf(node.dataset.flowNode);
+        node.dataset.onPath = String(position >= 0);
+        node.querySelector('[data-flow-number]').textContent = position >= 0 ? String(position + 1) : '';
         if (node.dataset.flowNode === current) node.setAttribute('aria-current', 'step');
         else node.removeAttribute('aria-current');
       });
-      selectors.forEach((button) => {
-        button.setAttribute('aria-pressed', String(button.dataset.flowScenario === scenario));
+      mobile.forEach((node) => {
+        const position = selected.steps.indexOf(node.dataset.mobileNode);
+        node.hidden = position < 0;
+        node.toggleAttribute('data-path-last', position === selected.steps.length - 1);
+        if (node.dataset.mobileNode === current) node.setAttribute('aria-current', 'step');
+        else node.removeAttribute('aria-current');
       });
-      const finished = step === selected.steps.length - 1;
-      buttons.start.disabled = motion.matches || playing || finished || current === 'review';
-      buttons.pause.disabled = !playing;
+      edges.forEach((edge) => {
+        const [from, to] = edge.dataset.flowEdge.split(':');
+        const position = selected.steps.indexOf(from);
+        edge.dataset.onPath = String(position >= 0 && selected.steps[position + 1] === to);
+      });
+      progress.querySelectorAll('button').forEach((button, index) => {
+        if (index === step) button.setAttribute('aria-current', 'step');
+        else button.removeAttribute('aria-current');
+      });
+      playLabel.textContent = finished ? 'Replay' : playing ? 'Pause' : 'Play';
+      buttons.play.disabled = !finished && (motion.matches || current === 'review');
+      buttons.previous.disabled = step === 0;
       buttons.next.disabled = finished;
-      motionNote.textContent = motion.matches
-        ? 'Reduced motion: use Next step. No timed playback.'
-        : 'Start plays one path once. Human review pauses for a manual step.';
-      status.textContent = current
-        ? `Step ${step + 1} of ${selected.steps.length}. ${captions[current]}`
-        : 'Choose a scenario, then start or step through the illustration.';
+      buttons.next.setAttribute('aria-label', current === 'review' ? 'Show approved example' : 'Next step');
+      buttons.next.title = current === 'review' ? 'Continue the illustration after the example approval' : 'Next step';
+      motionNote.textContent = motion.matches ? 'Reduced motion: choose a step or use the arrows.' : '';
     }
 
     function advance() {
-      const steps = scenarios[scenario].steps;
-      if (step < steps.length - 1) step += 1;
-      if (step === steps.length - 1 || steps[step] === 'review') pause();
+      if (step < scenarios[scenario].steps.length - 1) step += 1;
+      if (step === scenarios[scenario].steps.length - 1 || scenarios[scenario].steps[step] === 'review') pause();
       render();
     }
 
     function schedule() {
       if (!playing) return;
-      timer = window.setTimeout(() => {
-        advance();
-        schedule();
-      }, STEP_MS);
+      timer = window.setTimeout(() => { advance(); schedule(); }, STEP_MS);
     }
 
-    buttons.start.addEventListener('click', () => {
-      if (motion.matches || playing || document.hidden) return;
+    buttons.play.addEventListener('click', () => {
+      if (step === scenarios[scenario].steps.length - 1) {
+        pause(); step = 0; render(); return;
+      }
+      if (playing) { pause(); render(); return; }
+      if (motion.matches || document.hidden || scenarios[scenario].steps[step] === 'review') return;
       playing = true;
-      if (step < 0) advance();
-      else render();
+      render();
       schedule();
     });
-    buttons.pause.addEventListener('click', () => { pause(); render(); });
+    buttons.previous.addEventListener('click', () => { pause(); step = Math.max(0, step - 1); render(); });
     buttons.next.addEventListener('click', () => { pause(); advance(); });
-    buttons.replay.addEventListener('click', () => { pause(); step = -1; advance(); });
-    selectors.forEach((button) => {
-      button.addEventListener('click', () => {
-        pause();
-        scenario = button.dataset.flowScenario;
-        step = -1;
-        render();
+    progress.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-flow-step]');
+      if (!button) return;
+      pause(); step = Number(button.dataset.flowStep); render();
+    });
+    function select(tab) {
+      pause(); scenario = tab.dataset.flowScenario; step = 0;
+      buildProgress(); render();
+    }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => select(tab));
+      tab.addEventListener('keydown', (event) => {
+        const offsets = { ArrowRight: (index + 1) % tabs.length, ArrowLeft: (index + tabs.length - 1) % tabs.length,
+          Home: 0, End: tabs.length - 1 };
+        if (!(event.key in offsets)) return;
+        event.preventDefault();
+        const next = tabs[offsets[event.key]];
+        select(next); next.focus();
       });
     });
     motion.addEventListener('change', () => { pause(); render(); });
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) { pause(); render(); }
-    });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) { pause(); render(); } });
     window.addEventListener('pagehide', pause);
-    render();
-    controls.hidden = false;
+    buildProgress(); render();
+    root.setAttribute('data-enhanced', '');
+    controls.forEach((control) => { control.hidden = false; });
   }
 
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { scenarios };
-  } else if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => mount(document, window));
-  } else {
-    mount(document, window);
-  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = { scenarios };
+  else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => mount(document, window));
+  else mount(document, window);
 })();

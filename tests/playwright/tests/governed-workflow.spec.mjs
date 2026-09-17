@@ -31,8 +31,8 @@ test('explicit play, pause, step and bounded replay never run in the background'
   const flow = page.locator(section);
   await expect(flow).toHaveAttribute('data-playing', 'false');
   await page.clock.runFor(12000);
-  await expect(flow).toHaveAttribute('data-step', '-1');
-  await flow.getByRole('button', { name: 'Start' , exact: true }).click();
+  await expect(flow).toHaveAttribute('data-step', '0');
+  await flow.getByRole('button', { name: 'Play' , exact: true }).click();
   await expect(flow).toHaveAttribute('data-step', '0');
   await page.clock.runFor(2000);
   await flow.getByRole('button', { name: 'Pause', exact: true }).click();
@@ -41,7 +41,7 @@ test('explicit play, pause, step and bounded replay never run in the background'
   await expect(flow).toHaveAttribute('data-step', paused);
   await flow.getByRole('button', { name: 'Next step', exact: true }).click();
   await expect(flow).toHaveAttribute('data-step', String(Number(paused) + 1));
-  await flow.getByRole('button', { name: 'Start', exact: true }).click();
+  await flow.getByRole('button', { name: 'Play', exact: true }).click();
   await page.clock.runFor(20000);
   await expect(flow).toHaveAttribute('data-node', 'result');
   await expect(flow).toHaveAttribute('data-playing', 'false');
@@ -54,18 +54,18 @@ test('deny has no effect; human review pauses until a deliberate continuation', 
   await page.clock.install();
   await open(page);
   const flow = page.locator(section);
-  await flow.getByRole('button', { name: 'Invalid proposal', exact: true }).click();
-  await flow.getByRole('button', { name: 'Start', exact: true }).click();
+  await flow.getByRole('tab', { name: 'Blocked', exact: true }).click();
+  await flow.getByRole('button', { name: 'Play', exact: true }).click();
   await page.clock.runFor(16000);
   await expect(flow).toHaveAttribute('data-node', 'deny');
   await expect(flow).toHaveAttribute('data-playing', 'false');
   await expect(flow.locator('[data-flow-status]')).toContainText('no business effect');
-  await flow.getByRole('button', { name: 'Supervisor handoff', exact: true }).click();
-  await flow.getByRole('button', { name: 'Start', exact: true }).click();
+  await flow.getByRole('tab', { name: 'Human review', exact: true }).click();
+  await flow.getByRole('button', { name: 'Play', exact: true }).click();
   await page.clock.runFor(16000);
   await expect(flow).toHaveAttribute('data-node', 'review');
   await expect(flow).toHaveAttribute('data-playing', 'false');
-  await flow.getByRole('button', { name: 'Next step', exact: true }).click();
+  await flow.getByRole('button', { name: 'Show approved example', exact: true }).click();
   await expect(flow).toHaveAttribute('data-node', 'fresh');
   await expect(flow.locator('[data-flow-status]')).toContainText('unchanged');
 });
@@ -75,29 +75,29 @@ test('reduced motion uses immediate keyboard steps with no autoplay', async ({ p
   await page.clock.install();
   await open(page);
   const flow = page.locator(section);
-  await expect(flow.getByRole('button', { name: 'Start', exact: true })).toBeDisabled();
+  await expect(flow.getByRole('button', { name: 'Play', exact: true })).toBeDisabled();
   const next = flow.getByRole('button', { name: 'Next step', exact: true });
   await next.focus();
   await next.press('Enter');
   await expect(next).toBeFocused();
-  await expect(flow).toHaveAttribute('data-node', 'proposal');
-  await page.clock.runFor(20000);
-  await expect(flow).toHaveAttribute('data-node', 'proposal');
-  await next.press('Space');
   await expect(flow).toHaveAttribute('data-node', 'checks');
-  await expect(flow.locator('[aria-current="step"]')).toHaveCount(1);
+  await page.clock.runFor(20000);
+  await expect(flow).toHaveAttribute('data-node', 'checks');
+  await next.press('Space');
+  await expect(flow).toHaveAttribute('data-node', 'ack');
+  await expect(flow.locator('[data-flow-progress] [aria-current="step"]')).toHaveCount(1);
 });
 
 test('scenario change resets playback and runtime motion preference stops timers', async ({ page }) => {
   await page.clock.install();
   await open(page);
   const flow = page.locator(section);
-  await flow.getByRole('button', { name: 'Start', exact: true }).click();
-  await flow.getByRole('button', { name: 'Supervisor handoff', exact: true }).click();
-  await expect(flow).toHaveAttribute('data-step', '-1');
+  await flow.getByRole('button', { name: 'Play', exact: true }).click();
+  await flow.getByRole('tab', { name: 'Human review', exact: true }).click();
+  await expect(flow).toHaveAttribute('data-step', '0');
   await page.clock.runFor(8000);
-  await expect(flow).toHaveAttribute('data-step', '-1');
-  await flow.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(flow).toHaveAttribute('data-step', '0');
+  await flow.getByRole('button', { name: 'Play', exact: true }).click();
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(flow).toHaveAttribute('data-playing', 'false');
   await page.clock.runFor(8000);
@@ -108,23 +108,44 @@ test('small screens show one alternative without a path from deny to execution',
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page);
   const flow = page.locator(section);
-  await expect(flow.locator('.wf-branch:visible')).toHaveCount(1);
-  await expect(flow.locator('.wf-execution')).toBeVisible();
-  await flow.getByRole('button', { name: 'Invalid proposal', exact: true }).click();
-  await expect(flow.locator('.wf-branch:visible')).toHaveCount(1);
-  await expect(flow.locator('[data-flow-node="deny"]')).toBeVisible();
-  await expect(flow.locator('.wf-execution')).toBeHidden();
-  await flow.getByRole('button', { name: 'Supervisor handoff', exact: true }).click();
-  await expect(flow.locator('[data-flow-node="review"]')).toBeVisible();
-  await expect(flow.locator('[data-flow-node="fresh"]')).toBeVisible();
-  await expect(flow.locator('.wf-execution')).toBeVisible();
+  await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(5);
+  await flow.getByRole('tab', { name: 'Blocked', exact: true }).click();
+  await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(3);
+  await expect(flow.locator('[data-mobile-node="deny"]')).toBeVisible();
+  await expect(flow.locator('[data-mobile-node="effect"]')).toBeHidden();
+  await expect(flow.locator('[data-mobile-node="deny"]')).toHaveAttribute('data-path-last', '');
+  await flow.getByRole('tab', { name: 'Human review', exact: true }).click();
+  await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(7);
+  await expect(flow.locator('[data-mobile-node="review"]')).toBeVisible();
+  await expect(flow.locator('[data-mobile-node="fresh"]')).toBeVisible();
+  await expect(flow.locator('[data-mobile-node="effect"]')).toBeVisible();
+});
+
+test('scenario tabs and progress support keyboard selection with visible path state', async ({ page }) => {
+  await open(page);
+  const flow = page.locator(section);
+  await flow.getByRole('tab', { name: 'Allowed', exact: true }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(flow.getByRole('tab', { name: 'Blocked', exact: true })).toBeFocused();
+  await expect(flow).toHaveAttribute('data-scenario', 'invalid');
+  expect(await flow.locator('[data-flow-edge][data-on-path="true"]').evaluateAll(nodes =>
+    nodes.map(node => node.dataset.flowEdge))).toEqual(['proposal:checks', 'checks:deny']);
+  await page.keyboard.press('End');
+  await expect(flow.getByRole('tab', { name: 'Human review', exact: true })).toBeFocused();
+  await flow.getByRole('button', { name: 'Step 3: Person authorizes · Outlook review', exact: true }).click();
+  await expect(flow).toHaveAttribute('data-node', 'review');
+  await expect(flow.locator('[data-flow-status]')).toContainText('Illustration paused');
+  await flow.getByRole('button', { name: 'Show approved example', exact: true }).click();
+  await expect(flow).toHaveAttribute('data-node', 'fresh');
+  await flow.getByRole('button', { name: 'Previous step', exact: true }).click();
+  await expect(flow).toHaveAttribute('data-node', 'review');
 });
 
 for (const theme of ['light', 'dark']) {
   test(`static path is readable, non-overflowing and accessible in ${theme}`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
     await open(page);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme');
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
     const violations = (await new AxeBuilder({ page }).include(section)
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
@@ -140,9 +161,11 @@ test('without JavaScript the full path and workbook links remain usable', async 
     const page = await context.newPage();
     await page.goto(`${baseURL}/agent-governance.html#workflow-in-action`);
     const flow = page.locator(section);
-    for (const text of ['Agent proposes', 'Policy decides', 'Person authorizes', 'central audit ACK',
-      'Backend checks', 'Record connects', 'No business effect']) await expect(flow).toContainText(text);
-    await expect(flow.locator('[data-flow-controls]')).toBeHidden();
+    await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(5);
+    await expect(flow.locator('.wf-static-note')).toBeVisible();
+    await expect(flow.locator('.wf-static-note')).toContainText('blocked proposal stops');
+    await expect(flow.locator('.wf-static-note')).toContainText('waits in Outlook');
+    for (const control of await flow.locator('[data-flow-controls]').all()) await expect(control).toBeHidden();
     await expect(flow.getByRole('link', { name: 'Open the workbook', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   } finally {

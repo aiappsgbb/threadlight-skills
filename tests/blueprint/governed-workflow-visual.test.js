@@ -11,17 +11,24 @@ const visual = () => read('docs/agent-governance.html')
 test('product illustration is static-first with separate pre-effect and business records', () => {
   const html = visual();
   assert.ok(html, 'compact section beside the existing guide CTA');
-  for (const token of ['Agent proposes', 'Policy decides', 'Person authorizes',
-    'Backend checks', 'Record connects', 'central audit ACK', 'No business effect',
+  for (const token of ['Agent proposes', 'Policy decides', 'Outlook review',
+    'Backend', 'Decision + audit', 'central audit ACK', 'No business effect',
     'No model, mailbox or backend is connected', 'Open the workbook',
-    'Normal return', 'Invalid proposal', 'Supervisor handoff']) assert.ok(html.includes(token), token);
-  for (const node of ['proposal', 'checks', 'allow', 'deny', 'review', 'fresh', 'ack', 'effect', 'result']) {
+    'Allowed', 'Blocked', 'Human review']) assert.ok(html.includes(token), token);
+  for (const node of ['proposal', 'checks', 'deny', 'review', 'fresh', 'ack', 'effect', 'result']) {
     assert.ok(html.includes(`data-flow-node="${node}"`), node);
   }
   assert.ok(html.indexOf('data-flow-node="ack"') < html.indexOf('data-flow-node="effect"'));
   assert.ok(html.indexOf('data-flow-node="effect"') < html.indexOf('data-flow-node="result"'));
   assert.match(html, /data-flow-controls hidden/);
   assert.match(html, /aria-live="polite"/);
+  assert.match(html, /<svg[^>]*class="wf-diagram"/);
+  assert.match(html, /<path[^>]*data-flow-edge="checks:ack"[^>]*marker-end=/);
+  assert.match(html, /<path[^>]*data-flow-edge="checks:deny"[^>]*marker-end=/);
+  assert.doesNotMatch(html, /data-flow-edge="deny:(?:ack|effect|result)"/);
+  assert.match(html, /role="tablist"/);
+  assert.match(html, /data-flow-progress/);
+  assert.ok((html.match(/data-component-icon/g) || []).length >= 5);
   assert.match(html, /first-governed-workflow\.md#phase-3-/);
   assert.match(html, /first-governed-workflow\.md#phase-5-/);
   const workbookLinks = [...html.matchAll(/href="([^"]*first-governed-workflow\.md[^"]*)"/g)];
@@ -64,5 +71,32 @@ test('visual assets stay local, scoped, bounded and cache-busted', () => {
   assert.match(css, /prefers-reduced-motion/);
   assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|infinite|@import/i);
   assert.match(css, /focus-visible/);
-  assert.match(css, /var\(--cp-/);
+  assert.match(css, /var\(--ink-/);
+  assert.match(css, /var\(--chapter-accent/);
+  assert.doesNotMatch(`${html}\n${css}`, /--cp-|scoutTheme|--(?:sans|serif|bg-0|ink-0|accent):/);
+});
+
+test('approved workbook bytes and existing workbook permalinks are immutable', () => {
+  const bytes = fs.readFileSync(path.join(root, 'docs/first-governed-workflow.md'));
+  const blob = crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+  assert.equal(blob, '1d6ed17fa77e14e22633c5fdf56e7e45b814e312');
+  for (const [, href] of read('docs/agent-governance.html').matchAll(/href="([^"]*first-governed-workflow\.md[^"]*)"/g)) {
+    assert.ok(href.includes('/blob/7782eba93754fb7cff85336d3f4a8703892bad76/'), href);
+  }
+});
+
+test('governance joins native chapter navigation instead of creating a second site hierarchy', () => {
+  const html = read('docs/agent-governance.html');
+  const nav = (page) => page.match(/<nav class="nav"[^>]*>([\s\S]*?)<\/nav>/)[1]
+    .replace(/aria-current="(?:page|location)"/g, '');
+  assert.equal(nav(html), nav(read('docs/production.html')));
+  assert.match(html, /chapter-experience/);
+  assert.match(html, /class="cx-journey"/);
+  assert.match(html, /class="cx-chapter-links"/);
+  assert.match(html, /class="cx-chapter-index"/);
+  for (const asset of ['site-map.js', 'chapter-experience.js', 'chapter-experience.css']) {
+    assert.ok(html.includes(`assets/${asset}?v=`), asset);
+  }
+  assert.match(html, /href="\.\/production\.html" aria-current="location"/);
+  assert.doesNotMatch(html, /get\("scoutTheme"\)|data-theme=|:root\s*\{/);
 });
