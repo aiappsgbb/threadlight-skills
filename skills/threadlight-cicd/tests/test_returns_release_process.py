@@ -74,7 +74,7 @@ def selected(tmp_path, monkeypatch):
     generate_pipeline.generate({"platform": "github-actions", "central_env_required": False,
                                 "reference_application": "returns-mcp/v1"}, tmp_path)
     for name, body in {
-        "operator.py": FIXTURE,
+        "release_operator_fixture.py": FIXTURE,
         "quality.json": json.dumps({"pass_rate": 0.99}),
         "observations.json": json.dumps({phase: observation(phase) for phase in ("validation", "production")}),
         "evals/scenarios.json": json.dumps({"scenario_id": "fixture", "tool_calls": [], "tool_outputs": []}),
@@ -102,15 +102,15 @@ def selected(tmp_path, monkeypatch):
         "owners": {key: "fixture-owner" for key in (
             "application", "central_platform", "production_approver", "human_reviewer", "incident")},
         "targets": {phase: {"external": external(phase), "operators": {
-            name: [sys.executable, "operator.py", name] for name in names}}
+            name: [sys.executable, "release_operator_fixture.py", name] for name in names}}
             for phase, names in module.OPS.items()},
-        "producers": {domain: {"execute": [sys.executable, "operator.py", domain],
+        "producers": {domain: {"execute": [sys.executable, "release_operator_fixture.py", domain],
                                "raw_output": f"{domain}/runs/release.json"}
                       for domain in ("evals", "redteam")},
     }
     (tmp_path / "specs/returns-release.json").write_text(json.dumps(config))
     plan = json.loads((tmp_path / "specs/release-policy.example.json").read_text())
-    plan["inputs"] = ["operator.py", "quality.json", "observations.json",
+    plan["inputs"] = ["release_operator_fixture.py", "quality.json", "observations.json",
                       "evals/scenarios.json", "evals/evaluation.py"]
     for phase in ("validation", "production"):
         plan[phase].update(environment=phase, tenant_id="tenant", subscription_id="subscription",
@@ -205,7 +205,7 @@ def test_input_change_during_last_admission_read_never_opens(selected, monkeypat
         if count == 4:
             pathlib.Path("quality.json").write_text('{"pass_rate":0.5}')
     state_file.write_text(json.dumps(state))''')
-    (root / "operator.py").write_text(fixture)
+    (root / "release_operator_fixture.py").write_text(fixture)
     commit_fixture(root, monkeypatch)
     release_runner.validate(root, plan, "specs/release-policy.json", receipt)
     monkeypatch.setenv("THREADLIGHT_RELEASE_ENVIRONMENT", "production")
