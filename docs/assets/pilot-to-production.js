@@ -18,6 +18,7 @@
     function show(index, updateHistory = false) {
       current = index;
       panels.forEach((panel, position) => {
+        if (position !== index && panel.contains(document.activeElement)) document.activeElement.blur();
         panel.hidden = position !== index;
         panel.classList.toggle('pg-selected', position === index);
       });
@@ -34,6 +35,14 @@
       status.textContent = `Step ${index + 1} of ${panels.length}: guided requests — guidance, not cloud execution. Next never runs Azure or marks checks as passed.`;
       if (updateHistory && location.hash !== `#${panels[index].id}`) history.pushState(null, '', `#${panels[index].id}`);
     }
+    function activate(index) {
+      show(index, true);
+      const heading = panels[index].querySelector('h2');
+      heading.setAttribute('tabindex', '-1');
+      heading.focus({ preventScroll: true });
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      panels[index].scrollIntoView({ block: 'start', behavior: reduced ? 'instant' : 'smooth' });
+    }
     function restore() {
       const index = panels.findIndex(panel => `#${panel.id}` === location.hash);
       show(index < 0 ? 0 : index);
@@ -43,10 +52,10 @@
       if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
       event.stopPropagation();
-      show(Number(link.dataset.guideIndex), true);
+      activate(Number(link.dataset.guideIndex));
     }, true);
-    previous.addEventListener('click', () => show(Math.max(0, current - 1), true));
-    next.addEventListener('click', () => show(Math.min(panels.length - 1, current + 1), true));
+    previous.addEventListener('click', () => activate(Math.max(0, current - 1)));
+    next.addEventListener('click', () => activate(Math.min(panels.length - 1, current + 1)));
     panels.forEach(panel => {
       const button = panel.querySelector('[data-copy-prompt]');
       const prompt = panel.querySelector('[data-guide-prompt]');
