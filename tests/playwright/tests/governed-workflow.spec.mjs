@@ -104,18 +104,18 @@ test('scenario change resets playback and runtime motion preference stops timers
   await expect(flow).toHaveAttribute('data-step', '0');
 });
 
-test('small screens show one alternative without a path from deny to execution', async ({ page }) => {
+test('small screens label unused modules without onward connections', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page);
   const flow = page.locator(section);
-  await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(5);
+  await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(8);
   await flow.getByRole('tab', { name: 'Blocked', exact: true }).click();
-  await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(4);
+  await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(8);
   await expect(flow.locator('[data-mobile-node="deny"]')).toBeVisible();
-  await expect(flow.locator('[data-mobile-node="effect"]')).toBeHidden();
-  await expect(flow.locator('[data-mobile-node="deny"]')).toHaveAttribute('data-path-last', '');
+  await expect(flow.locator('[data-mobile-node="effect"]')).toHaveAttribute('data-used', 'false');
+  await expect(flow.locator('[data-mobile-node="effect"] [data-mobile-next]')).toBeHidden();
   await flow.getByRole('tab', { name: 'Human review', exact: true }).click();
-  await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(9);
+  await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(8);
   await expect(flow.locator('[data-mobile-node="review"]')).toBeVisible();
   await expect(flow.locator('[data-mobile-node="fresh"]')).toBeVisible();
   await expect(flow.locator('[data-mobile-node="effect"]')).toBeVisible();
@@ -129,7 +129,7 @@ test('scenario tabs and progress support keyboard selection with visible path st
   await expect(flow.getByRole('tab', { name: 'Blocked', exact: true })).toBeFocused();
   await expect(flow).toHaveAttribute('data-scenario', 'invalid');
   expect(await flow.locator('[data-flow-edge][data-on-path="true"]').evaluateAll(nodes =>
-    nodes.map(node => node.dataset.flowEdge))).toEqual(['proposal:checks', 'checks:denial-audit', 'denial-audit:deny']);
+    nodes.map(node => node.dataset.flowEdge))).toEqual(['proposal:checks', 'checks:ack', 'ack:deny']);
   await page.keyboard.press('End');
   await expect(flow.getByRole('tab', { name: 'Human review', exact: true })).toBeFocused();
   await flow.getByRole('button', { name: 'Step 4: Person decides in Outlook', exact: true }).click();
@@ -161,7 +161,7 @@ test('without JavaScript the full path and workbook links remain usable', async 
     const page = await context.newPage();
     await page.goto(`${baseURL}/production.html#workflow-in-action`);
     const flow = page.locator(section);
-    await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(5);
+    await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(8);
     await expect(flow.locator('.wf-static-note')).toBeVisible();
     await expect(flow.locator('.wf-static-note')).toContainText('blocked proposal records a denial');
     await expect(flow.locator('.wf-static-note')).toContainText('waits in Outlook');

@@ -50,22 +50,21 @@ test('Citadel, AgentOps, global navigation and all non-action bytes stay unchang
     '1d2df136e705c273975299bb42a304f6057c477e1d9352b8ba75134f0b008d0d');
 });
 
-test('agent-governance is only a short workbook entrance, not duplicated exercises', () => {
+test('agent-governance guides an existing pilot without duplicating the architecture', () => {
   const html = read('docs/agent-governance.html');
   const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)[1];
-  assert.match(text(main), /Build your first governed workflow/);
-  assert.equal([...main.matchAll(/data-prerequisite="/g)].length, 3);
-  assert.ok(text(main).trim().split(/\s+/).length <= 260, 'brief entrance');
+  assert.match(text(main), /Take your Threadlight pilot to governed production/);
+  assert.equal([...main.matchAll(/data-guide-step="/g)].length, 5);
   assert.doesNotMatch(main, /class="wf-diagram"|data-flow-node=|data-action-actor=|class="gov-card"/);
   assert.match(main, /href="\.\/production\.html#effect-authority"/);
   assert.match(main, /platform owner/i);
-  assert.match(main, /personally authorized Office 365/i);
+  assert.match(main, /human consent/i);
 });
 
-test('the approved workbook remains the sole exercise source', () => {
+test('the approved detailed workbook remains unchanged beside the existing-pilot guide', () => {
   const html = read('docs/agent-governance.html');
   const markdown = read('docs/first-governed-workflow.md');
-  assert.doesNotMatch(html, /data-workbook-excerpt|<pre/);
+  assert.doesNotMatch(html, /data-workbook-excerpt/);
   assert.match(html, /href="https:\/\/github.com\/aiappsgbb\/threadlight-skills\/blob\/7782eba93754fb7cff85336d3f4a8703892bad76\/docs\/first-governed-workflow.md"/);
   const bytes = Buffer.from(markdown);
   assert.equal(createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex'),

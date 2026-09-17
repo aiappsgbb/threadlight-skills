@@ -15,7 +15,7 @@ test('Production explains active actors and the guided workbook leads to practic
     assert.ok(copy.includes(phrase), phrase);
   }
   assert.doesNotMatch(copy, /4\/4|14 tool calls|8 native responses|NOT PROVED|EXPIRED|CI is not all green|2026-09-|version [457]|Historical|Billing Issue/i);
-  assert.match(text(read('agent-governance.html')), /Build your first governed workflow/);
+  assert.match(text(read('agent-governance.html')), /Take your Threadlight pilot to governed production/);
 });
 
 test('commercial chapter copy separates the product architecture from instance validation status', () => {
@@ -47,5 +47,5 @@ test('editorial contract keeps technical evidence intact and routes it outside c
 test('commercial page inherits the native site theme with readable local copy', () => {
   const html = read('agent-governance.html');
   assert.doesNotMatch(html, /--cp-|:root\s*\{|scoutTheme/);
-  assert.match(read('assets/governed-workflow.css'), /\.governance-page \.wb-entry-needs p\s*\{[^}]*color:\s*var\(--ink-1\)/);
+  assert.match(read('assets/pilot-to-production.css'), /\.pg-goal\s*\{[^}]*color:\s*var\(--ink-1\)/);
 });

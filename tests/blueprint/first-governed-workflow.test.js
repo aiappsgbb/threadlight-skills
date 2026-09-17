@@ -282,7 +282,7 @@ test('beginner discoverability connects Production to the web and approved Markd
   assert.ok(read('README.md').includes(`](${guidePath})`));
   const site = read('docs/agent-governance.html');
   assert.match(site, /href="https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/7782eba93754fb7cff85336d3f4a8703892bad76\/docs\/first-governed-workflow\.md"/);
-  assert.ok(site.includes('Build your first governed workflow'));
+  assert.ok(site.includes('Take your Threadlight pilot to governed production'));
   assert.ok(site.includes('href="./production.html#effect-authority"'));
   const production = read('docs/production.html');
   assert.ok(production.includes('href="./agent-governance.html#overview">Try the guided workbook'));

@@ -13,8 +13,6 @@ async function styleSample(page) {
       background: style('body').backgroundColor,
       foreground: style('body').color,
       headingFont: style('h1').fontFamily,
-      buttonBackground: style('.chapter-hero .btn-primary').backgroundColor,
-      buttonColor: style('.chapter-hero .btn-primary').color,
       accent: style('body').getPropertyValue('--chapter-accent').trim(),
     };
   });
@@ -92,7 +90,7 @@ test('workbook entrance preserves keyboard navigation and a compact mobile menu'
   await expect(page.locator('#effect-authority')).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/agent-governance.html#overview$/);
-  await expect(page.locator('[data-prerequisite]')).toHaveCount(3);
+  await expect(page.locator('[data-guide-step]')).toHaveCount(5);
   await expect(page.locator('.wf-diagram')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   const directory = process.env.THREADLIGHT_SCREENSHOT_DIR;

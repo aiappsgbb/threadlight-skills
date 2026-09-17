@@ -156,8 +156,9 @@ and [coding-agent guidance](AGENTS.md).
 **The model proposes; trusted components authorize effects.**
 [Production: governed actions](docs/production.html#effect-authority) explains
 the actors, model-versus-tool gateways and selected action paths.
-The [workbook entrance](docs/agent-governance.html) gives the goal and essential
-prerequisites, then opens the approved Markdown workbook for the practical steps.
+The [existing-pilot guide](docs/agent-governance.html) reuses your Threadlight
+SPEC, code and tools through five governed-release prompts and verification
+checkpoints. The approved Markdown workbook remains the detailed reference.
 Validation facts and implementation limits remain in the engineering references.
 For the actual
 identity, policy, approval, transport and durable-audit boundaries, read the

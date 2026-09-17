@@ -78,14 +78,15 @@ npx playwright test tests/production-governance.spec.mjs --grep authority
 ## Visual review
 
 The compact product-path illustration is at
-`/production.html#workflow-in-action`; `/agent-governance.html` is the brief
-workbook entrance. Old architecture fragments forward to Production and retain no-JS
+`/production.html#workflow-in-action`; `/agent-governance.html` guides an existing
+Threadlight pilot through five prompts/checkpoints toward governed production.
+Old architecture fragments forward to Production and retain no-JS
 links. The approved Markdown workbook diagrams are rendered
 only in documentation/test viewers; the public illustration uses local vanilla
 JS/CSS, not Mermaid or a backend. Run just the affected page checks with:
 
 ```bash
-npx playwright test tests/governed-learning-path.spec.mjs tests/governed-workflow.spec.mjs tests/governed-page-integration.spec.mjs tests/native-outlook-page.spec.mjs
+npx playwright test tests/pilot-to-production.spec.mjs tests/governed-learning-path.spec.mjs tests/governed-workflow.spec.mjs tests/governed-page-integration.spec.mjs tests/native-outlook-page.spec.mjs
 ```
 
 These cover explicit playback, pause/step/replay, the human-review pause,

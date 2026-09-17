@@ -7,18 +7,18 @@ const open = async (page) => {
   await page.goto('/production.html#workflow-in-action');
   return page.locator('#workflow-in-action');
 };
-const visiblePath = async (flow) => flow.locator('.wf-diagram [data-flow-node]').evaluateAll(
+const visiblePath = async (flow) => flow.locator('.wf-diagram [data-flow-node][data-used="true"]').evaluateAll(
   (nodes) => nodes.map((node) => node.dataset.flowNode));
 
-test('only relevant nodes and edges exist for each scenario, including denial audit', async ({ page }) => {
+test('only relevant modules retain arrows, including the control-plane denial record', async ({ page }) => {
   const flow = await open(page);
   expect(await visiblePath(flow)).toEqual(['proposal', 'checks', 'ack', 'effect', 'result']);
   await expect(page.locator('[data-action-actor="human"] [data-actor-state]')).toHaveText('Not required');
   await flow.getByRole('tab', { name: 'Blocked', exact: true }).click();
-  expect(await visiblePath(flow)).toEqual(['proposal', 'checks', 'denial-audit', 'deny']);
-  expect(await flow.locator('[data-flow-edge]').evaluateAll(nodes => nodes.map(node => node.dataset.flowEdge)))
-    .toEqual(['proposal:checks', 'checks:denial-audit', 'denial-audit:deny']);
-  await expect(flow.locator('[data-flow-node="effect"], [data-mobile-node="effect"]')).toHaveCount(0);
+  expect(await visiblePath(flow)).toEqual(['proposal', 'checks', 'ack', 'deny']);
+  expect(await flow.locator('[data-flow-edge]:not([hidden])').evaluateAll(nodes => nodes.map(node => node.dataset.flowEdge)))
+    .toEqual(['proposal:checks', 'checks:ack', 'ack:deny']);
+  await expect(flow.locator('[data-flow-node="effect"]')).toHaveAttribute('data-used', 'false');
   await expect(page.locator('[data-action-actor="business"] [data-actor-state]')).toHaveText('Not involved in write');
   await flow.getByRole('button', { name: 'Next step', exact: true }).click();
   await expect(flow.locator('[data-flow-output]')).toHaveText('Deny');
@@ -34,8 +34,8 @@ test('human continuation cannot skip pending, real-decision concept, witness, gr
   await page.clock.install();
   const flow = await open(page);
   await flow.getByRole('tab', { name: 'Human review', exact: true }).click();
-  expect(await visiblePath(flow)).toEqual(
-    ['proposal', 'checks', 'pending', 'review', 'verify', 'fresh', 'ack', 'effect', 'result']);
+  expect((await visiblePath(flow)).sort()).toEqual(
+    ['proposal', 'checks', 'review', 'fresh', 'ack', 'effect', 'result'].sort());
   const commit = flow.getByRole('button', { name: /Step 8:/ });
   await expect(commit).toBeDisabled();
   await flow.getByRole('button', { name: 'Play', exact: true }).click();
@@ -43,7 +43,7 @@ test('human continuation cannot skip pending, real-decision concept, witness, gr
   await expect(flow).toHaveAttribute('data-node', 'review');
   await expect(flow).toHaveAttribute('data-playing', 'false');
   await expect(flow.locator('[data-current-state]')).toHaveText('Waiting for decision');
-  await expect(flow.locator('[data-flow-node="pending"] [data-node-state]')).toHaveText('Completed');
+  await expect(flow.locator('[data-flow-step="2"] [data-progress-state]')).toHaveText('Completed');
   await expect(commit).toBeDisabled();
   await expect(flow.locator('[data-flow-output]')).toHaveText('Awaiting human decision');
   await flow.getByRole('button', { name: 'Show approved example', exact: true }).click();

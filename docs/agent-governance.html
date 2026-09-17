@@ -3,20 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Build your first governed workflow — Threadlight</title>
-<meta name="description" content="Start a two-tool returns workflow with clear prerequisites. Open the approved workbook for the exercises, commands and human/platform handoffs.">
+<title>Take your Threadlight pilot to governed production — Threadlight</title>
+<meta name="description" content="Reuse your existing Threadlight SPEC, code and tools. Follow five guided prompts and checks toward a governed, evidence-backed release.">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Build your first governed workflow — Threadlight">
-<meta property="og:description" content="One goal, three prerequisites, then the practical workbook.">
+<meta property="og:title" content="Take your Threadlight pilot to governed production — Threadlight">
+<meta property="og:description" content="Inspect the pilot, select the delta, prepare a candidate, verify it and approve promotion. Guided requests, not automatic cloud execution.">
 <meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/agent-governance.html">
 <meta property="og:site_name" content="Threadlight">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
-<link rel="stylesheet" href="assets/governed-workflow.css?v=6aaa0777">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=432ea589">
+<link rel="stylesheet" href="assets/pilot-to-production.css?v=140ab4d6">
 </head>
 <body class="chapter-page chapter-production chapter-experience governance-page" data-chapter-parent="production" data-web-workbook>
-<a class="skip-link" href="#main">Skip to the workbook entrance</a>
+<a class="skip-link" href="#main">Skip to the pilot guide</a>
 <header class="masthead">
   <div class="brand">
     <a href="./index.html" class="brand-name"><span class="brand-mark" aria-hidden="true"></span>Threadlight<span>by Microsoft GBB · AI Apps</span></a>
@@ -30,36 +31,135 @@
   </nav>
 </header>
 <main id="main">
-  <section class="chapter-hero" id="overview" data-toc-id="overview" data-toc-label="Workbook">
-    <div class="wrap wb-wrap">
-      <div class="cx-journey">
-        <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Workbook</span></nav>
-      </div>
-      <h1>Build your first governed workflow</h1>
-      <p class="lede">Build a two-tool returns assistant that reads a case and records a permitted recommendation,
-        with an Outlook-reviewed exception when needed. The result is a decision and audit, not a payment.</p>
-      <ul class="wb-entry-needs" aria-label="Three essential prerequisites">
-        <li data-prerequisite="workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><div><strong>Your workspace</strong><p>A pilot repository, Copilot, the reviewed Threadlight catalog and synthetic cases. Start locally.</p></div></li>
-        <li data-prerequisite="platform"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6zM9 12l2 2 4-4"/></svg><div><strong>A platform owner</strong><p>An approved environment, identities and budget before deployment. Generated files do not grant access.</p></div></li>
-        <li data-prerequisite="reviewer"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-3a8 8 0 0 1 16 0v3"/></svg><div><strong>A real Outlook reviewer</strong><p>An available person and a personally authorized Office 365 connection for the human-review exercise.</p></div></li>
-      </ul>
-      <div class="wb-entry-links" id="next">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Open the workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
-        <a href="./production.html#effect-authority">Back to Production and the decision paths</a>
-      </div>
-      <p class="wb-note">The approved workbook contains the exercises, commands and exact authorization handoffs.</p>
-      <div class="wb-legacy">
-        <span id="effect-authority"></span><span id="workflow-in-action"></span><span id="evidence"></span><span id="human-decisions"></span><span id="freshness"></span><span id="limits"></span>
-        <span id="define"></span><span id="prepare"></span><span id="local"></span><span id="authorize"></span><span id="validate"></span><span id="operate"></span>
-        <noscript><p>Previous architecture links lead to Production above; previous exercise links are in the workbook.</p></noscript>
-      </div>
+  <div class="wrap pg-wrap" data-pilot-guide>
+    <div class="cx-journey">
+      <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Existing pilot guide</span></nav>
     </div>
-  </section>
+    <header class="pg-intro" id="overview">
+      <h1>Take your Threadlight pilot to governed production</h1>
+      <p>Start with the SPEC, generated code and tools you already have. Reuse them; add the missing governance, checks and release evidence.</p>
+    </header>
+    <svg class="pg-flow" viewBox="0 0 800 88" role="img" aria-label="Existing pilot gains action boundaries, a release candidate, evidence and a production handoff">
+      <path class="pg-line" d="M80 28H720"/>
+      <g data-guide-visual="0" transform="translate(80 28)"><circle r="15"/><text y="5">1</text><text class="pg-flow-label" y="44">Existing pilot</text></g>
+      <g data-guide-visual="1" transform="translate(240 28)"><circle r="15"/><text y="5">2</text><text class="pg-flow-label" y="44">Action delta</text></g>
+      <g data-guide-visual="2" transform="translate(400 28)"><circle r="15"/><text y="5">3</text><text class="pg-flow-label" y="44">Candidate</text></g>
+      <g data-guide-visual="3" transform="translate(560 28)"><circle r="15"/><text y="5">4</text><text class="pg-flow-label" y="44">Evidence</text></g>
+      <g data-guide-visual="4" transform="translate(720 28)"><circle r="15"/><text y="5">5</text><text class="pg-flow-label" y="44">Production</text></g>
+    </svg>
+    <nav class="pg-progress" aria-label="Pilot guide steps">
+      <a href="#inspect-pilot" data-guide-index="0">01 Inspect</a>
+      <a href="#choose-actions" data-guide-index="1">02 Select</a>
+      <a href="#prepare-candidate" data-guide-index="2">03 Prepare</a>
+      <a href="#check-candidate" data-guide-index="3">04 Check</a>
+      <a href="#promote-observe" data-guide-index="4">05 Promote</a>
+    </nav>
+    <p class="pg-status" data-guide-status role="status" aria-live="polite">Guided requests: this is guidance, not cloud execution. Next never runs Azure or marks a check as passed.</p>
+    <div class="pg-panel">
+      <section id="inspect-pilot" data-guide-step="inspect">
+        <span class="pg-badge">Offline · read-only</span>
+        <h2>Inspect the pilot you already generated</h2>
+        <p class="pg-goal">Identify its current runtime, tool boundaries and evidence gaps without rebuilding it.</p>
+        <pre data-guide-prompt tabindex="0">Use the inventory rules from threadlight-governed-actions to inspect my existing Threadlight pilot read-only.
+Read specs/SPEC.md, specs/foundation.md, specs/manifest.json, registered tools, identity mappings and retained generated artifacts/evidence.
+Do not run probes, emit files, remediate, regenerate the SPEC or switch the runtime.
+Summarize the current supported profile, read versus consequential tools, existing bindings and missing evidence. No Azure discovery or rights probes.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        <h3>Verify before continuing</h3>
+        <ul class="pg-verify">
+          <li>The inspected repository and existing foundation/manifest agree on runtime, protocol and tools.</li>
+          <li>The inventory distinguishes declared, locally tested and deployment-verified paths; original files remain unchanged.</li>
+        </ul>
+      </section>
+      <section id="choose-actions" data-guide-step="select">
+        <span class="pg-badge">Offline · owner review</span>
+        <h2>Select the missing action controls</h2>
+        <p class="pg-goal">Review only the delta: protected actions, identities, human channel and target posture.</p>
+        <pre data-guide-prompt tabindex="0">Use threadlight-govern to propose the governance delta for the existing SPEC, foundation and tool inventory.
+Select named protected actions in specs/governance-contract.json; preserve authenticated unbound reads.
+Match the current runtime to a supported human channel. Deferred Outlook resume requires the supported MAF/gateway profile; report incompatibility instead of silently switching frameworks.
+Reuse the approved target posture and identity owners. List required trusted facts, exact role/resource/expected-identity assignments and human consent handoffs. Do not force private conversion or assume administrator rights.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        <h3>Verify before continuing</h3>
+        <ul class="pg-verify">
+          <li>The reviewed contract names actual existing tools, backend targets/facts and a supported runtime/channel combination.</li>
+          <li>The owner has approved the target/posture and permission delta; personal consent is still a real human handoff.</li>
+        </ul>
+      </section>
+      <section id="prepare-candidate" data-guide-step="prepare">
+        <span class="pg-badge">Offline preparation · platform handoff</span>
+        <h2>Prepare the governed release candidate</h2>
+        <p class="pg-goal">Reuse generated sources and prepare the missing integrations, not another pilot or pipeline.</p>
+        <pre data-guide-prompt tabindex="0">Use threadlight-deploy and threadlight-cicd with the reviewed delta and existing generated host, tools, infrastructure and CI.
+Prepare only missing governance integrations and the current verified-release candidate plan. Do not overwrite unrelated generated artifacts or existing workflows.
+Identify real application-owned prepare/observe/eval/red-team/promote adapters and configure the reviewed specs/release-policy.json.
+Hand off exact permission assignments, publisher authority, native identity observation and fresh binding to the platform owner. Stop for missing prerequisites; do not deploy, grant permissions or manufacture signed evidence during preparation.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        <h3>Verify before continuing</h3>
+        <ul class="pg-verify">
+          <li>The candidate plan reuses current sources; real adapters, datasets, thresholds and immutable-image provenance are reviewed.</li>
+          <li>Validation/production identities and protected approvals are separate; the publisher and observed-identity binding handoffs are explicit.</li>
+        </ul>
+      </section>
+      <section id="check-candidate" data-guide-step="validate">
+        <span class="pg-badge">Cloud · explicit approval · real reviewer</span>
+        <h2>Execute the approved candidate checks</h2>
+        <p class="pg-goal">Produce fresh candidate evidence, including the selected business action and human review.</p>
+        <pre data-guide-prompt tabindex="0">Only after I separately approve the exact existing target, model, change list, scoped permissions and test budget, use threadlight-cicd's reviewed candidate workflow/adapters.
+Observe the actual candidate version/image/identity and current signed binding. Run configured real eval, red-team and MCP producers.
+Use threadlight-governed-actions and threadlight-safe-check for their documented scopes; governance_probe_noop is not business-write proof.
+With a real authorized reviewer, verify supported allow/deny/pending, exact same-session human resume, replay and independently joined business/audit records. No borrowed reports, fabricated consent or automatic retry of unknown outcomes.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        <h3>Verify before continuing</h3>
+        <ul class="pg-verify">
+          <li>Fresh evidence joins the observed candidate and selected binding; allow/deny/human/audit outcomes come from actual execution, not model prose.</li>
+          <li>Required eval/red-team/MCP gates pass; <code>.threadlight-release/candidate.json</code> exists only after accepted validation.</li>
+          <li>The reviewer and original session/arguments match; replay creates no second business effect.</li>
+        </ul>
+      </section>
+      <section id="promote-observe" data-guide-step="promote">
+        <span class="pg-badge">Cloud · production approval · operations</span>
+        <h2>Approve promotion and observe production</h2>
+        <p class="pg-goal">Promote the same tested image, verify the actual target and complete the operations handoff.</p>
+        <pre data-guide-prompt tabindex="0">Use threadlight-cicd's existing verified-release contract after protected production-environment approval.
+Recheck the current candidate receipt and promote the same immutable image; do not rebuild it or borrow candidate evidence as production proof.
+Independently observe production and obtain the required fresh production binding/business evidence. Keep routing closed until application-owned acceptance is complete.
+Use threadlight-production-ready for the current gaps and operations handoff. Name incident, identity/key/reviewer, budget and retention owners.
+Reconcile unknown outcomes through the existing main contract, not an unmerged operator API. Retain sanitized evidence; cleanup is separately approved and limited to new test-owned temporaries, never shared/demo environments.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        <h3>Verify before continuing</h3>
+        <ul class="pg-verify">
+          <li>Production observation matches the accepted immutable image and current authority; release approval is not action approval or business go-live.</li>
+          <li>The operations owner has the remaining gaps, retained evidence and exact test-owned cleanup scope. No automatic rollback or deletion is implied.</li>
+        </ul>
+      </section>
+    </div>
+    <div class="pg-controls" data-guide-controls hidden>
+      <button type="button" data-guide-previous disabled>Previous step</button>
+      <span data-guide-counter>1 / 5</span>
+      <button type="button" data-guide-next>Next step</button>
+    </div>
+    <div class="pg-reference-links" id="next">
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Detailed workbook and reference exercises</a>
+      <a href="./production.html#effect-authority">Back to Production and the decision paths</a>
+    </div>
+    <p class="pg-note">The detailed workbook remains the approved reference. This guide starts later: with your existing Threadlight use case.</p>
+    <div class="wb-legacy">
+      <span id="effect-authority"></span><span id="workflow-in-action"></span><span id="evidence"></span><span id="human-decisions"></span><span id="freshness"></span><span id="limits"></span>
+      <span id="define"></span><span id="prepare"></span><span id="local"></span><span id="authorize"></span><span id="validate"></span><span id="operate"></span>
+    </div>
+  </div>
 </main>
-<footer>Threadlight &middot; practical steps, explicit authority &middot; <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
+<footer>Threadlight &middot; guided requests, explicit authority &middot; <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
 <script src="assets/site.js?v=e4d413b7"></script>
 <script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
-<script src="assets/governed-workflow.js?v=a7dff5e5"></script>
+<script src="assets/governed-workflow.js?v=820aec9a"></script>
+<script src="assets/pilot-to-production.js?v=4d1b78d0"></script>
 </body>
 </html>

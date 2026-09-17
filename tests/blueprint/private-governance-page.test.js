@@ -30,7 +30,7 @@ test('Production owns actor architecture while the workbook stays practical and 
     'Governed MCP gateway', 'Control plane', 'Human reviewer', 'Business API',
     'agent-governance-deep-dive.md', 'governed-returns-validation.md',
   ]) assert.ok(html.includes(value), value);
-  assert.ok(read().includes('Build your first governed workflow'));
+  assert.ok(read().includes('Take your Threadlight pilot to governed production'));
   assert.doesNotMatch(html, /4\/4|NOT PROVED|EXPIRED|2026-09-|CI is not all green/);
   const record = fs.readFileSync(path.join(root, 'docs/governed-returns-validation.md'), 'utf8');
   for (const fact of ['S2-PRIVATE-ALLOW-DENY-VERIFIED', '4/4',

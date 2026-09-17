@@ -12,7 +12,7 @@ test('product illustration is static-first with separate pre-effect and business
   const html = visual();
   assert.ok(html, 'compact decision path in Production');
   for (const token of ['Agent', 'Gateway', 'Control plane',
-    'Business API', 'Decision + audit', 'central audit ACK',
+    'Backend', 'Decision + audit', 'central audit ACK',
     'No model, mailbox or backend is connected',
     'Allowed', 'Blocked', 'Human review']) assert.ok(html.includes(token), token);
   for (const node of ['proposal', 'checks', 'ack', 'effect', 'result']) {
@@ -89,7 +89,7 @@ test('governance joins native chapter navigation instead of creating a second si
   assert.match(html, /chapter-experience/);
   assert.match(html, /class="cx-journey"/);
   assert.match(html, /aria-label="Breadcrumb"/);
-  assert.match(html, />Open the workbook\s*</);
+  assert.match(html, /data-pilot-guide/);
   assert.doesNotMatch(html, /class="cx-chapter-index"/);
   for (const asset of ['site-map.js', 'chapter-experience.js', 'chapter-experience.css']) {
     assert.ok(html.includes(`assets/${asset}?v=`), asset);

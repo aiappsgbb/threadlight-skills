@@ -53,17 +53,15 @@ test('the existing deep-dive component map names actual trust and transport boun
   assert.match(read('scripts/render-governance-diagrams.mjs'), /--diagram/);
 });
 
-test('workbook web page is only a brief entrance with three prerequisites and one primary action', () => {
+test('web guide starts with an existing pilot and requests no fresh-pilot rebuild', () => {
   const page = read('docs/agent-governance.html');
   const main = page.match(/<main[^>]*>([\s\S]*?)<\/main>/)[1];
-  assert.equal([...main.matchAll(/data-prerequisite=/g)].length, 3);
-  assert.equal([...main.matchAll(/class="btn btn-primary"/g)].length, 1);
-  assert.match(main, />Open the workbook\s*</);
-  assert.match(main, /two-tool returns/i);
-  assert.match(main, /not a payment/i);
+  assert.equal([...main.matchAll(/data-guide-step=/g)].length, 5);
+  assert.match(main, /Take your Threadlight pilot to governed production/);
+  assert.match(main, /specs\/SPEC\.md/);
   assert.match(main, /platform owner/i);
-  assert.match(main, /Outlook reviewer/i);
-  assert.doesNotMatch(main, /data-workbook-stage|data-workbook-excerpt|<pre|class="wb-path"|data-flow-node/);
+  assert.match(main, /real authorized reviewer/i);
+  assert.doesNotMatch(main, /threadlight-qualify|threadlight-design|data-flow-node/);
   const text = main.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  assert.ok(text.split(' ').length <= 260, 'an entrance, not a duplicated workbook');
+  assert.ok(text.split(' ').length <= 1200, 'five concise guided steps, not a full reference');
 });

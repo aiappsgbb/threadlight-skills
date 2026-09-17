@@ -31,7 +31,6 @@
     effect: { actor: 'Business API / own writer', actors: ['business'], title: 'Backend checks and commits', action: 'Authorize and commit a conditional case transaction', output: 'Decision + business audit', short: 'Decision + audit', icon: 'store' },
     result: { actor: 'Agent', actors: ['agent'], title: 'Return the stable result', action: 'Return the recorded outcome', output: 'Stable audit ID', icon: 'branch' },
   };
-  const actorLabels = { agent: 'Agent', gateway: 'Gateway', control: 'Control plane', human: 'Human / Outlook', business: 'Business API' };
   const legacyRoutes = {
     'effect-authority': './production.html#effect-authority',
     'workflow-in-action': './production.html#workflow-in-action',
@@ -50,6 +49,27 @@
     operate: `${workbookBase}#phase-6-hand-off-a-controlled-release-and-safe-operations`,
   };
   const STEP_MS = 2500;
+  const moduleOrder = ['proposal', 'checks', 'deny', 'review', 'fresh', 'ack', 'effect', 'result'];
+  const moduleLabels = { proposal: 'Agent proposes', checks: 'Gateway checks', deny: 'Stop / no effect',
+    review: 'Outlook review', fresh: 'Fresh checks', ack: 'Control plane / audit', effect: 'Backend write', result: 'Decision + audit' };
+  const stepModule = id => ({ 'denial-audit': 'ack', pending: 'ack', verify: 'ack' }[id] || id);
+  function usedModules(scenario) {
+    return { normal: ['proposal', 'checks', 'ack', 'effect', 'result'],
+      invalid: ['proposal', 'checks', 'ack', 'deny'],
+      supervisor: ['proposal', 'checks', 'ack', 'review', 'fresh', 'effect', 'result'] }[scenario];
+  }
+  function permittedEdges(scenario) {
+    return { normal: ['proposal:checks', 'checks:ack', 'ack:effect', 'effect:result'],
+      invalid: ['proposal:checks', 'checks:ack', 'ack:deny'],
+      supervisor: ['proposal:checks', 'checks:review', 'review:fresh', 'fresh:ack', 'ack:effect', 'effect:result'] }[scenario];
+  }
+  function moduleState(scenario, id, current) {
+    if (!usedModules(scenario).includes(id)) return 'Not used on this path';
+    const route = scenarios[scenario].steps;
+    if (current === route.length - 1) return 'Completed';
+    if (stepModule(route[current]) === id) return stageState(scenario, current, current);
+    return route.some((step, index) => index > current && stepModule(step) === id) ? 'Waiting' : 'Completed';
+  }
 
   function stepDetails(scenario, id) {
     const result = { ...definitions[id] };
@@ -108,12 +128,15 @@
     const motionNote = root.querySelector('[data-flow-motion]');
     const playLabel = root.querySelector('[data-flow-play-label]');
     const nextLabel = root.querySelector('[data-next-label]');
+    const authorityLabel = root.querySelector('[data-authority-label]');
+    const authorityDetail = root.querySelector('[data-authority-detail]');
     const panel = root.querySelector('#wf-case');
     const buttons = Object.fromEntries([...root.querySelectorAll('[data-flow-control]')]
       .map((button) => [button.dataset.flowControl, button]));
     if (!controls.length || !svg || !nodeLayer || !edgeLayer || !mobile || !story || !title ||
         !stateLabel || !actorLabel || !actionLabel || !outputLabel || !caseNote || !progress ||
-        !motionNote || !playLabel || !nextLabel || !panel || !['play', 'previous', 'next'].every((name) => buttons[name])) {
+        !motionNote || !playLabel || !nextLabel || !authorityLabel || !authorityDetail || !panel ||
+        !['play', 'previous', 'next'].every((name) => buttons[name])) {
       console.error('Workflow illustration controls are incomplete; the static path remains available.');
       return;
     }
@@ -136,59 +159,29 @@
 
     function buildPath() {
       const route = scenarios[scenario].steps;
-      const columns = route.length > 5 ? 3 : route.length;
-      const width = columns === 3 ? 300 : columns === 4 ? 230 : 180;
-      const gap = (1060 - columns * width) / (columns - 1);
-      const rows = Math.ceil(route.length / columns);
-      svg.setAttribute('viewBox', `0 0 1100 ${rows * 128 - 10}`);
       svg.querySelector('desc').textContent = `${scenarios[scenario].story} ${route.map((id) => {
         const detail = stepDetails(scenario, id);
         return `${detail.actor}: ${detail.output}.`;
       }).join(' ')} ${scenarios[scenario].note}`;
-      nodeLayer.replaceChildren(); edgeLayer.replaceChildren(); mobile.replaceChildren(); progress.replaceChildren();
-      const positions = route.map((_, index) => {
-        const row = Math.floor(index / columns);
-        const column = row % 2 ? columns - 1 - index % columns : index % columns;
-        return { x: 20 + column * (width + gap), y: 12 + row * 128, row };
-      });
-      route.forEach((id, index) => {
-        const detail = stepDetails(scenario, id);
-        const { x, y } = positions[index];
-        const node = svgElement('g', { class: 'wf-node', 'data-flow-node': id, transform: `translate(${x} ${y})` });
-        node.append(
-          svgElement('rect', { width, height: 94, rx: 10 }),
-          svgElement('use', { class: 'wf-icon', 'data-component-icon': '', 'aria-hidden': 'true',
-            href: iconReference(detail.icon), x: 14, y: 13, width: 24, height: 24 }),
-          svgElement('text', { class: 'wf-label', x: 46, y: 29 }, actorLabels[detail.actors[0]]),
-          svgElement('text', { class: 'wf-number', x: width - 16, y: 12 }, index + 1),
-          svgElement('text', { class: 'wf-detail', 'data-node-output': '', x: 14, y: 58 }, detail.short || detail.output),
-          svgElement('text', { class: 'wf-node-state', 'data-node-state': '', x: 14, y: 81 }, 'Waiting'),
-        );
-        nodeLayer.appendChild(node);
-        if (index) {
-          const previous = positions[index - 1];
-          const d = y !== previous.y
-            ? `M${previous.x + width / 2} ${previous.y + 94}V${y - 5}`
-            : x > previous.x
-              ? `M${previous.x + width} ${y + 47}H${x - 5}`
-              : `M${previous.x} ${y + 47}H${x + width + 5}`;
-          edgeLayer.appendChild(svgElement('path', { class: 'wf-edge', 'data-flow-edge': `${route[index - 1]}:${id}`,
-            d, 'marker-end': 'url(#wf-arrow)' }));
-        }
+      mobile.replaceChildren(); progress.replaceChildren();
+      moduleOrder.forEach(id => {
         const item = document.createElement('li');
         item.dataset.mobileNode = id;
-        if (index === route.length - 1) item.setAttribute('data-path-last', '');
+        const detail = definitions[id];
         const icon = svgElement('svg', { class: 'wf-icon', 'aria-hidden': 'true' });
         icon.appendChild(svgElement('use', { href: iconReference(detail.icon) }));
         const copy = document.createElement('div');
         const actor = document.createElement('strong');
-        actor.textContent = `${index + 1}. ${actorLabels[detail.actors[0]]}`;
-        const output = document.createElement('span');
-        output.setAttribute('data-node-output', '');
-        output.textContent = detail.output;
+        actor.textContent = moduleLabels[id];
         const state = document.createElement('small');
         state.setAttribute('data-node-state', '');
-        copy.append(actor, output, state); item.append(icon, copy); mobile.appendChild(item);
+        const next = document.createElement('span');
+        next.className = 'wf-mobile-next';
+        next.setAttribute('data-mobile-next', '');
+        copy.append(actor, state, next); item.append(icon, copy); mobile.appendChild(item);
+      });
+      route.forEach((id, index) => {
+        const detail = stepDetails(scenario, id);
         const marker = document.createElement('li');
         const button = document.createElement('button');
         button.type = 'button'; button.dataset.flowStep = String(index);
@@ -220,22 +213,38 @@
       });
       for (const [selector, key] of [['[data-flow-node]', 'flowNode'], ['[data-mobile-node]', 'mobileNode']]) {
         root.querySelectorAll(selector).forEach((node) => {
-          const index = route.indexOf(node.dataset[key]);
-          const state = stageState(scenario, index, step);
-          node.querySelector('[data-node-state]').textContent = state;
-          const output = node.querySelector('[data-node-output]');
-          const item = stepDetails(scenario, node.dataset[key]);
-          output.textContent = node.dataset[key] === 'review' && state === 'Completed' && exampleApproved
-            ? 'Approved example' : key === 'flowNode' ? item.short || item.output : item.output;
+          const id = node.dataset[key];
+          const used = usedModules(scenario).includes(id);
+          const state = moduleState(scenario, id, step);
+          node.dataset.used = String(used);
           node.dataset.stageState = state;
-          if (index === step) node.setAttribute('aria-current', 'step');
+          node.setAttribute('aria-label', `${moduleLabels[id]}: ${state}`);
+          const stateText = node.querySelector('[data-node-state]');
+          if (stateText) stateText.textContent = state;
+          const number = node.querySelector('[data-flow-number]');
+          if (number) number.textContent = used ? String(usedModules(scenario).indexOf(id) + 1) : '';
+          const next = node.querySelector('[data-mobile-next]');
+          if (next) {
+            const edge = permittedEdges(scenario).find(edge => edge.startsWith(`${id}:`));
+            next.hidden = !edge;
+            next.textContent = edge ? `Next: ${moduleLabels[edge.split(':')[1]]}` : '';
+          }
+          if (stepModule(current) === id) node.setAttribute('aria-current', 'step');
           else node.removeAttribute('aria-current');
         });
       }
-      edgeLayer.querySelectorAll('path').forEach((edge, index) => {
-        edge.dataset.onPath = 'true';
-        edge.dataset.edgeState = index < step || finished ? 'Completed' : 'Waiting';
+      edgeLayer.querySelectorAll('[data-flow-edge]').forEach(edge => {
+        const used = permittedEdges(scenario).includes(edge.dataset.flowEdge) &&
+          edge.dataset.flowEdge.split(':').every(id => usedModules(scenario).includes(id));
+        edge.dataset.onPath = String(used);
+        edge.toggleAttribute('hidden', !used);
+        if (used) edge.setAttribute('marker-end', 'url(#wf-arrow)');
+        else edge.removeAttribute('marker-end');
       });
+      authorityLabel.textContent = scenario === 'invalid' ? 'Denial audit' : scenario === 'supervisor' ? 'Control plane' : 'Audit ACK';
+      authorityDetail.textContent = scenario === 'invalid' ? 'Before blocked return' : scenario === 'supervisor'
+        ? ({ pending: 'Pending request', verify: 'One-use grant', ack: 'Authorization ACK' }[current] || 'Authority + ACK')
+        : 'Before the effect';
       actors.forEach((actor) => {
         const status = actor.querySelector('[data-actor-state]');
         if (status) status.textContent = actorState(scenario, actor.dataset.actionActor, step);
@@ -312,7 +321,7 @@
     controls.forEach((control) => { control.hidden = false; });
   }
 
-  if (typeof module !== 'undefined' && module.exports) module.exports = { scenarios, legacyRoutes, workbookRoutes, stepDetails, stageState, actorState };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { scenarios, legacyRoutes, workbookRoutes, stepDetails, stageState, actorState, usedModules, permittedEdges, moduleState };
   else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => mount(document, window));
   else mount(document, window);
 })();

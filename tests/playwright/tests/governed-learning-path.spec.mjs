@@ -15,21 +15,17 @@ test('Production explains actors and keeps model access separate from protected 
   await expect(page.locator('[data-topic-tab][href="#effect-authority"]')).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('link', { name: 'Try the guided workbook', exact: true }).click();
   await expect(page).toHaveURL(/agent-governance\.html#overview$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Build your first governed workflow');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Take your Threadlight pilot to governed production');
 });
 
-test('the entrance has one workbook action and only three prerequisites', async ({ page }) => {
+test('the guide reuses an existing pilot and exposes one step at a time', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/agent-governance.html');
-  await expect(page.locator('[data-prerequisite]')).toHaveCount(3);
+  await expect(page.locator('[data-guide-step]')).toHaveCount(5);
+  await expect(page.locator('[data-guide-step]:visible')).toHaveCount(1);
   await expect(page.locator('[data-governed-flow], .wf-diagram, [data-flow-node]')).toHaveCount(0);
-  await expect(page.locator('main pre, [data-workbook-stage], .floating-toc')).toHaveCount(0);
-  const primary = page.locator('main .btn-primary');
-  await expect(primary).toHaveCount(1);
-  await expect(primary).toHaveText('Open the workbook →');
-  await expect(primary).toHaveAttribute('href', /7782eba93754fb7cff85336d3f4a8703892bad76\/docs\/first-governed-workflow.md$/);
-  await primary.focus();
-  await expect(primary).toBeFocused();
+  await expect(page.locator('[data-guide-step]:visible')).toContainText('specs/SPEC.md');
+  await expect(page.locator('[data-guide-status]')).toContainText('guidance, not cloud execution');
 });
 
 test('old architecture and diagram fragments forward to their preserved Production targets', async ({ page }) => {
@@ -99,7 +95,7 @@ test('both destinations and legacy forward links remain understandable without J
   try {
     const page = await context.newPage();
     await page.goto(`${baseURL}/agent-governance.html#workflow-in-action`);
-    await expect(page.locator('[data-prerequisite]')).toHaveCount(3);
+    await expect(page.locator('[data-guide-step]:visible')).toHaveCount(5);
     const back = page.getByRole('link', { name: 'Back to Production and the decision paths', exact: true });
     await expect(back).toBeVisible();
     await back.click();
