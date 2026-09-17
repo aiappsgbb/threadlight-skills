@@ -1,12 +1,13 @@
-# Your first governed workflow
+# Your first governed workflow: workbook
 
 Build a returns assistant that can read a case, record an allowed recommendation,
 and ask a real person in Outlook before recording a supervisor handoff.
 The useful outcome is **a business decision with a traceable authorization and
 audit**, not payment settlement.
 
-Coming from [Agent governance](agent-governance.html)? Follow this path; open
-the engineering runbooks only when you reach their handoff.
+Watch the [three decision paths](agent-governance.html#workflow-in-action), then
+work through these exercise cards. Fill inputs, ask Copilot, inspect an artifact,
+and check the result yourself. Open the L500 runbooks only at their handoff.
 
 ## Start here
 
@@ -26,6 +27,17 @@ target/model/access/budget, signing authority and an available Outlook reviewer.
 rehearsal is optional and separately budgeted. Phase 4 preparation can also
 remain local, but Phase 5 cannot start until its deployment handoff is complete.
 Do not generate the pilot inside this catalog.
+
+**Worksheet convention:** use nonsecret aliases and descriptions in the tables,
+not customer data or credentials. Keep exact deployment identifiers and signed
+configuration in the operator's protected files. Shell examples use your
+locally set variables; do not run with unset variables or literal placeholders.
+
+| Local variable | Set it to |
+|---|---|
+| `CATALOG` | Absolute path to the complete reviewed catalog, not an installed single script |
+| `PROJECT` | Absolute path to your separate pilot repository |
+| Other variables | The reviewed paths named in the exercise; never a credential or token |
 
 ## One example, one supported profile
 
@@ -55,6 +67,16 @@ Installing a construction skill does not give that application permissions or
 tools. This reference supplies executable tools and instructions; added domain
 skills must actually be loaded by the host. See
 [the two libraries](skill-based-agents.md#two-agents-and-two-libraries) for details.
+
+```mermaid
+flowchart LR
+    You["You + process owner"] --> Copilot["Construction agent<br/>Copilot + catalog skills"]
+    Copilot --> Files["Reviewed SPEC<br/>tools + instructions + tests"]
+    Files --> Host["Business agent<br/>native hosted application"]
+    Platform["Platform owner<br/>reviewed access + signed binding"] --> Host
+    Host --> Gateway["Selected MCP write"]
+    Gateway --> Backend["Business API<br/>decision + audit, not payment"]
+```
 
 **How to use the prompts:** these are instruction examples, not guaranteed
 automation or slash commands. Use one reviewed catalog revision consistently.
@@ -87,9 +109,14 @@ Use synthetic cases, not customer records.
 with the reviewed SPEC checkpoint.
 
 **Inputs:** a process owner and three synthetic cases: eligible, ineligible,
-and supervisor-only. The reference routes amounts above 500 or known high risk
-to a supervisor. Accept that sample rule for rehearsal or separately review a
-change; it is not a recommended business threshold.
+and supervisor-only. Use the reference's reviewed sample rules; do not invent a
+business threshold or silently extend the example into settlement.
+
+| Fill in locally | Your value |
+|---|---|
+| Process owner / reviewer role | ___ |
+| Ordinary / invalid / supervisor case aliases | ___ / ___ / ___ |
+| Useful outcome and how you will measure it | ___ |
 
 **Copilot prompt:**
 
@@ -114,9 +141,12 @@ No Azure discovery, business-system calls, deployment or presentation work.
 at the Phase A checkpoint. SPEC section 8 names actions; section 14 records
 value baseline, target, owner, timeframe and measurement source.
 
-**Verify:** explain the three outcomes back to the owner and check the foundation
-against the [runtime policy](../skills/threadlight-design/references/runtime-policy.json).
-Unresolved capabilities must not silently become false.
+**Verify:**
+- [ ] The owner can explain the three expected outcomes without mentioning a payment.
+- [ ] The foundation matches the [runtime policy](../skills/threadlight-design/references/runtime-policy.json); unresolved capabilities are not silently false.
+
+**Command:** none creates an approved SPEC for you. Use the prompt and human
+checkpoint, then inspect the generated files rather than inventing a Design CLI.
 
 **If blocked:** a different runtime or real payment is outside this profile; revisit
 [Foundation](../skills/threadlight-design/SKILL.md#step-0-foundation-from-scratch-path-only).
@@ -133,6 +163,13 @@ approved continuation; the companion
 contract for later Azure access.
 
 **Inputs:** approved SPEC and these handoffs; reuse approved resources, not replacements.
+
+| Fill in locally | Your value |
+|---|---|
+| Reviewed SPEC revision | ___ |
+| Tenant/index alias and intended environment alias | ___ |
+| Platform, publisher and evidence owners | ___ |
+| Missing prerequisite and its owner | ___ |
 
 | Needed when | Minimum handoff |
 |---|---|
@@ -170,6 +207,23 @@ do not make the Outlook companion's Entra-authenticated trigger private.
 **Result:** reviewed implementation inputs and named owners for missing
 prerequisites, not new resources or consents.
 
+**Command - offline skill-contract inspection:** after the project files exist,
+run the [actual validator](../skills/threadlight-design/scripts/skill_contract_check.py).
+It checks any generated domain skills and registration, not tool execution.
+The small reference's instructions alone are not proof that domain skills exist.
+
+<!-- workbook-command: skill-check -->
+```sh
+: "${CATALOG:?Set CATALOG}" "${PROJECT:?Set PROJECT}"
+python3 "$CATALOG/skills/threadlight-design/scripts/skill_contract_check.py" \
+  --target "$PROJECT" --emit --gate --json
+```
+
+**Artifact / oracle:** inspect `specs/skill-contract-manifest.json` against
+`AGENTS.md` and the actual skill/tool files. Exit `2` means `must_fix`;
+`not-verified` can still accompany exit `0`, so read the findings.
+See [validator exits](skill-based-agents.md#schema-and-exit-meaning).
+
 **Verify:** before every Azure operation, the operator derives both
 `AZURE_CONFIG_DIR` and `AZD_CONFIG_DIR` from the **personal tenant index**,
 checks the selected tenant and `allowed_subscriptions`, and asserts the exact
@@ -177,6 +231,9 @@ intended subscription immediately before acting, with the matching isolated azd
 environment. A default hint is not an explicit selection; one CLI login does not
 authenticate the other. Never copy caches or change a global context. Retain
 identifiers in protected operator configuration.
+
+- [ ] The manifest findings agree with the actual files; missing skills are not a pass.
+- [ ] The platform owner has confirmed the intended isolated context and outstanding handoffs.
 
 **If blocked:** missing connection, route, reviewer or publisher means stay local.
 Use
@@ -198,6 +255,12 @@ only for its offline source packager at this phase.
 **Inputs:** reviewed synthetic cases, unused output directory, instructions
 and installed test dependencies.
 
+| Fill in locally | Your value |
+|---|---|
+| `PACKAGE_OUTPUT`: absolute, unused output directory | ___ |
+| Local Python environment / reviewed catalog revision | ___ |
+| Optional model rehearsal endpoint alias and budget | ___ / not requested |
+
 **Copilot prompt:**
 
 ```text
@@ -216,6 +279,15 @@ No deployment, Cosmos seeding or fabricated signatures/approvals.
 | **Human:** | Review the three synthetic outcomes; separately approve any model rehearsal |
 | **Platform owner:** | Supply inference access only if requested; offline checks need no new Azure services |
 
+**Command - package real sources, without Azure:**
+
+<!-- workbook-command: package -->
+```sh
+: "${CATALOG:?Set CATALOG}" "${PACKAGE_OUTPUT:?Choose an unused PACKAGE_OUTPUT}"
+python3 "$CATALOG/skills/threadlight-deploy/references/governance/package_returns_mcp.py" \
+  --output "$PACKAGE_OUTPUT"
+```
+
 **Result:** an unused-directory source package with `source-package.json`,
 status `source-only-not-deployment-proof`, plus the actual local test results.
 The packager supplies no deployment configuration or automatic seed/reset.
@@ -226,6 +298,10 @@ skill-loading warnings. A quickstart is not the governed gateway or hosted
 route: CRUD tools mutate memory. Git-ignore and retain any
 `tests/quickstart.jsonl` under the agreed privacy rules; it contains raw
 queries/responses, not governance receipts.
+
+- [ ] `source-package.json` has the source-only status, not a deployment verdict.
+- [ ] Recomputed SHA-256 values for packaged files match its `files` map and the reviewed sources.
+- [ ] Local case/ETag tests reject model-supplied authority; mocked results remain labelled local.
 
 **If blocked:** missing packages or failed skill loading mean stop. Follow
 [materialization commands](../skills/threadlight-deploy/references/governance/returns-mcp-demo.md#materialize-the-executable-sources)
@@ -249,6 +325,14 @@ revision identified by the two-tool runbook, not an independently upgraded SDK.
 
 **Inputs:** explicit selected-governance consent, `specs/governance-contract.json`,
 approved policy rules and the real operator-supplied inputs from Phase 2.
+
+| Fill in locally | Your value |
+|---|---|
+| `GOVERNANCE_CONTRACT`: reviewed project contract file | ___ |
+| `INFRA_CONFIG`: protected, reviewed foundation configuration file | ___ |
+| Native host + separate services change-list revision | ___ |
+| Exact role / resource scope / expected identity approvals | Protected handoff reference: ___ |
+| Publisher, personal consent and reviewer availability | Owners / outstanding decisions: ___ |
 
 **Copilot prompt:**
 
@@ -296,9 +380,43 @@ sensitive run history; notification-only mail is not approval.
 **Result:** generated host/service/infra files, `specs/governance-manifest.json`
 inventory and actual local results, ready for platform review.
 
+**Command - foundation generation only:** run once at the
+[documented foundation stage](../skills/threadlight-deploy/references/governance/README.md#order-and-required-inputs),
+not over an already generated or preserved deployment. The
+[generator](../skills/threadlight-deploy/references/governance/generate.py) needs
+real reviewed configuration; this command neither signs nor provisions anything.
+
+<!-- workbook-command: foundation -->
+```sh
+: "${CATALOG:?Set CATALOG}" "${PROJECT:?Set PROJECT}" "${GOVERNANCE_CONTRACT:?Set GOVERNANCE_CONTRACT}" "${INFRA_CONFIG:?Set INFRA_CONFIG}"
+python3 "$CATALOG/skills/threadlight-deploy/references/governance/generate.py" foundation \
+  --project "$PROJECT" --contract "$GOVERNANCE_CONTRACT" --configuration "$INFRA_CONFIG"
+```
+
+**Artifact / oracle:** inspect the generated foundation sources and reported
+JSON against the approved resource/change list. A generated file is not an
+observed Azure resource. Policy publication, final host generation and binding
+continue in the existing create-once runbook, not a second command pipeline here.
+
+**Command - native catalog validation:** the
+[pinned runner](../scripts/ci/run-governance-pin-tests.py) executes real published
+native packages with Linux amd64/Docker and download prerequisites. It makes no
+model call; it is catalog/local validation, **not your pilot acceptance**.
+This is an operator exercise, not a requirement to rerun native CI for this workbook.
+
+<!-- workbook-command: native-validation -->
+```sh
+: "${CATALOG:?Set CATALOG}"
+python3 "$CATALOG/scripts/ci/run-governance-pin-tests.py" --deployment
+```
+
 **Verify:** use the [native validation gate](agent-operations.md#3-validate)
 and current `threadlight-governance-manifest/v1`, not archived v2 green.
 Skipped required tests stay unverified; preview/alpha pins require review.
+
+- [ ] Generation matches the selected two tools and reviewed inputs.
+- [ ] Actual local/native results are retained; source inspection or skipped tests are not executed proof.
+- [ ] Platform review, publisher and human consent handoffs are resolved before the authorization below.
 
 **If blocked:** retain ambiguous registration attempts and reconcile through the
 [signed-bootstrap operator contract](../skills/threadlight-deploy/references/governance/README.md#signed-remote-bootstrap-operator-contract).
@@ -348,6 +466,19 @@ present; no automatic retries or unbounded prompt loops.
 
 **Goal:** observe permitted, blocked and human-approved actions and replay.
 
+```mermaid
+flowchart TD
+    Proposal["Agent proposes"] --> Checks["Identity + policy + trusted facts"]
+    Checks -->|Allow| ACK["Central authorization audit ACK"]
+    Checks -->|Deny| Stop["Record refusal<br/>no business effect"]
+    Checks -->|Review| Wait["Wait for actual human decision"]
+    Wait -->|Reject or no current authority| Stop
+    Wait -->|Approve exact proposal| Fresh["Recheck current authority + unchanged facts"]
+    Fresh -->|Still authorized| ACK
+    Fresh -->|Changed or expired| Stop
+    ACK --> Backend["Backend checks + conditional decision/audit transaction"]
+```
+
 **Skills:** [threadlight-governed-actions](../skills/threadlight-governed-actions/SKILL.md)
 for selected-path evidence;
 [threadlight-safe-check](../skills/threadlight-safe-check/SKILL.md) for the
@@ -356,6 +487,14 @@ separately approved hosted collector. Neither invents the human or business proo
 **Inputs:** completed Phase 4 handoff, fresh policy/bootstrap, synthetic cases
 with independently read revisions, native session access, reviewer and observer
 permissions. Enable optional read audit to demonstrate backend-acknowledged reads.
+
+| Fill in locally | Your value |
+|---|---|
+| Approved target and scenario/budget reference | ___ |
+| Native response/session and operation references | Protected evidence reference: ___ |
+| `RECONCILIATION_CONFIG`: protected input with exact binding, responses and stores | ___ |
+| `EVIDENCE_OUTPUT`: new protected evidence-output path | ___ |
+| Reviewer availability / independent observer | ___ |
 
 **Copilot prompt:**
 
@@ -398,6 +537,36 @@ this is not multi-day case management.
 | Replay | Matching stable `audit_id`, with no second business effect or second grant consumption |
 | Reject, separate case | Verified human rejection, rejected operation and no business effect; do not reuse the approved case to imply this test |
 
+```mermaid
+sequenceDiagram
+    participant Agent as Same native session
+    participant Gateway as Governed gateway
+    participant Control as Control plane
+    participant Backend as Independent backend
+    Agent->>Gateway: Exact original arguments + operation selector
+    Gateway->>Control: Consume verified human authority when required
+    Control-->>Gateway: One-use consume ACK
+    Gateway->>Control: Record current execution authorization
+    Control-->>Gateway: Central audit ACK before effect
+    Gateway->>Backend: Rechecked authorized request
+    Backend->>Backend: Conditional case change + business audit
+    Backend-->>Gateway: Stable result + audit ID
+    Gateway-->>Agent: Actual result
+```
+
+**Command - independent post-run reconciliation:** only after approved live
+scenarios, with the exact configuration described in
+[response reconciliation](../skills/threadlight-deploy/references/governance/returns-mcp-demo.md#durable-unbound-read-audit-and-response-reconciliation).
+This reads Azure/native responses and stores but makes no model call or business
+write. The optional `--persist` ledger write is deliberately omitted.
+
+<!-- workbook-command: reconcile -->
+```sh
+: "${CATALOG:?Set CATALOG}" "${RECONCILIATION_CONFIG:?Set RECONCILIATION_CONFIG}" "${EVIDENCE_OUTPUT:?Choose a new EVIDENCE_OUTPUT}"
+python3 "$CATALOG/skills/threadlight-deploy/references/governance/returns_reconcile.py" \
+  --configuration "$RECONCILIATION_CONFIG" --output "$EVIDENCE_OUTPUT"
+```
+
 **Verify:** resume with the exact original `expected_etag`, decision, reason and
 `governance_operation_id` in the **same native session**.
 `previous_response_id` preserves conversational continuity; `session_id` is
@@ -411,6 +580,10 @@ persistence needs narrow approved write access.
 Sanitize shared before/after/replay evidence: business audits and workflow runs
 can contain review data. This is **not whole-agent governance**;
 `governance_probe_noop` cannot prove `returns_apply_decision`.
+
+- [ ] Independently retrieved responses, case/audit records and signed bindings join for this exact deployment.
+- [ ] Deny/pending/reject caused no business effect; replay returns the same audit ID without another effect.
+- [ ] A native session or an email alone has not been counted as an approval grant.
 
 **If blocked:** for expiry, changed facts, unavailable review or unknown outcome,
 stop and reconcile the original operation through
@@ -433,6 +606,12 @@ for an evidence-based gap/handoff report.
 **Inputs:** reviewed commit/image/binding evidence, chosen CI platform,
 datasets/thresholds, application-owned adapters, operations/retention owners
 and protected validation/production environments.
+
+| Fill in locally | Your value |
+|---|---|
+| Chosen CI platform / approved release-policy revision | ___ |
+| Adapter, environment and approval owners | ___ |
+| Evidence-retention location and cleanup owner | Protected reference: ___ |
 
 **Copilot prompt:**
 
@@ -467,10 +646,33 @@ real configuration as `specs/release-policy.json`, plus
 An accepted `.threadlight-release/candidate.json` exists only after executed
 candidate validation, not after generating YAML.
 
+**Command - preflight in the real CI context only:** after the
+[release setup](../skills/threadlight-cicd/references/release-contract.md#operator-sequence),
+the [existing runner](../skills/threadlight-cicd/scripts/release_runner.py) checks
+committed policy, inputs and adapter entrypoints. Do not forge CI variables to
+make this work on a laptop. Missing customer adapters are a stop, not an invitation
+to substitute saved reports.
+
+<!-- workbook-command: release-preflight -->
+```sh
+: "${CATALOG:?Set CATALOG}" "${PROJECT:?Set PROJECT}"
+python3 "$CATALOG/skills/threadlight-cicd/scripts/release_runner.py" preflight \
+  --repo "$PROJECT" --policy specs/release-policy.json
+```
+
+**Artifact / oracle:** preflight exit `0` means inputs passed inspection; there is
+**no candidate receipt** and no deployment. Failure exits `1` with
+`Release blocked:` diagnostics. Real candidate validation and same-image
+promotion still follow the existing approved workflow.
+
 **Verify:** name owners for entitlements, signing/rotation, monitoring, spend
 and uncertain effects. Use the [operations spine](agent-operations.md) and
 [static rescore](agent-operations.md#6-rescore); neither proves a customer
 pipeline or live production Doctor ran.
+
+- [ ] Release approval, runtime action approval and business go-live remain separate decisions.
+- [ ] The candidate receipt exists only after actual producers ran against the observed candidate.
+- [ ] The operations owner has retained evidence and reviewed the exact cleanup scope.
 
 **If blocked:** a promotion timeout means keep traffic closed and follow
 [Stop and recover](../skills/threadlight-cicd/references/release-contract.md#stop-and-recover).

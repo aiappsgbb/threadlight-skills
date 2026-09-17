@@ -76,6 +76,22 @@ npx playwright test tests/production-governance.spec.mjs --grep authority
 
 ## Visual review
 
+The compact product-path illustration is at
+`/agent-governance.html#workflow-in-action`. Its workbook diagrams are rendered
+only in documentation/test viewers; the public illustration uses local vanilla
+JS/CSS, not Mermaid or a backend. Run just the affected page checks with:
+
+```bash
+npx playwright test tests/governed-workflow.spec.mjs tests/native-outlook-page.spec.mjs
+```
+
+These cover explicit playback, pause/step/replay, the human-review pause,
+reduced motion, keyboard use, compact mobile alternatives, both themes,
+contrast/accessibility, direct fragment navigation and the no-JS diagram.
+Set `THREADLIGHT_SCREENSHOT_DIR` to an absolute artifact directory to retain
+new-section screenshots. The workbook's three Mermaid sources also parse and
+render locally using the existing test dependency, with no CDN.
+
 ```bash
 cd tests/playwright
 node grab-shots.mjs

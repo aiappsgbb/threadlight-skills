@@ -20,6 +20,7 @@
 </script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=76fd9b64">
 <style>
   :root {
     color-scheme: light;
@@ -348,6 +349,65 @@
     </div>
   </section>
 
+  <section class="chapter-section" id="workflow-in-action" data-toc-id="workflow-in-action" data-toc-label="See the path" aria-labelledby="workflow-title">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <h2 id="workflow-title">One return. <em>Three decision paths.</em></h2>
+        <p class="section-lede">See how a recommendation becomes a recorded decision, a stopped proposal or a human-reviewed handoff.</p>
+      </div>
+      <div class="wf-panel">
+        <div class="wf-controls" data-flow-controls hidden>
+          <div class="wf-choices" role="group" aria-label="Return scenario">
+            <button type="button" data-flow-scenario="normal" aria-pressed="true">Normal return</button>
+            <button type="button" data-flow-scenario="invalid" aria-pressed="false">Invalid proposal</button>
+            <button type="button" data-flow-scenario="supervisor" aria-pressed="false">Supervisor handoff</button>
+          </div>
+          <div class="wf-transport" role="group" aria-label="Illustration playback">
+            <button type="button" data-flow-control="start">Start</button>
+            <button type="button" data-flow-control="pause" disabled>Pause</button>
+            <button type="button" data-flow-control="next">Next step</button>
+            <button type="button" data-flow-control="replay">Replay</button>
+          </div>
+          <p class="wf-note" data-flow-motion></p>
+        </div>
+        <p class="wf-story" data-flow-story>A return recommendation may proceed, stop, or need a supervisor. Recording it never sends a payment.</p>
+        <ol class="wf-line wf-intake" aria-label="Proposal and decision">
+          <li class="wf-node" data-flow-node="proposal"><h3>1. Agent proposes</h3><p>A fixed action for the current case.</p></li>
+          <li class="wf-node" data-flow-node="checks"><h3>2. Policy decides</h3><p>Check identity, policy and trusted case facts.</p></li>
+        </ol>
+        <p class="wf-path" aria-hidden="true">&darr; Choose the permitted path &darr;</p>
+        <div class="wf-branches" role="group" aria-label="Three possible decision paths">
+          <div class="wf-branch" data-flow-route="normal">
+            <div class="wf-node" data-flow-node="allow"><h3>Allow</h3><p>An eligible recommendation can continue.</p></div>
+            <p class="wf-path"><strong>Continue at the authorization record</strong></p>
+          </div>
+          <div class="wf-branch" data-flow-route="invalid">
+            <div class="wf-node" data-flow-node="deny"><h3>Deny &mdash; stop here</h3><p>No business effect. Record the refusal, not a case change.</p></div>
+            <p class="wf-path"><strong>End of this path</strong></p>
+          </div>
+          <div class="wf-branch" data-flow-route="supervisor">
+            <div class="wf-node" data-flow-node="review"><h3>Person authorizes exception</h3><p>Wait for a verified decision on this specific handoff.</p></div>
+            <p class="wf-path"><strong>&darr; Only if approved</strong></p>
+            <div class="wf-node" data-flow-node="fresh"><h3>Check again</h3><p>Same proposal; current authority, policy and case facts.</p></div>
+          </div>
+        </div>
+        <p class="wf-path wf-continue"><strong>&darr; Only allowed or approved-and-rechecked paths continue &darr;</strong></p>
+        <ol class="wf-line wf-execution" aria-label="Authorization before execution, then business evidence">
+          <li class="wf-node wf-record" data-flow-node="ack"><h3>Authorization recorded</h3><p>Receive the central audit ACK <strong>before</strong> the business request.</p></li>
+          <li class="wf-node" data-flow-node="effect"><h3>Backend checks / executes</h3><p>Recheck the case; record decision + business audit atomically.</p></li>
+          <li class="wf-node wf-record" data-flow-node="result"><h3>Record connects</h3><p>Join the stable result and audit ID to their authorization trail.</p></li>
+        </ol>
+        <p class="wf-status" data-flow-status role="status" aria-live="polite" aria-atomic="true">Follow the arrows: authorization is recorded before execution; the business result and its audit are recorded together.</p>
+        <p class="wf-note">Illustration of a selected product path. No model, mailbox or backend is connected. Playback grants no authority and creates no business records.</p>
+      </div>
+      <div class="wf-links">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/first-governed-workflow.md">Open the workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/first-governed-workflow.md#phase-3-rehearse-locally-without-calling-it-azure-proof">Try the local exercise</a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/first-governed-workflow.md#phase-5-demonstrate-allow-deny-and-a-real-human-decision">Follow the human-review exercise</a>
+      </div>
+    </div>
+  </section>
+
   <section class="chapter-section" id="next" data-toc-id="next" data-toc-label="Inspect & build">
     <div class="wrap">
       <div class="section-head"><h2>Put autonomy to work.<br><em>Keep the decisions yours.</em></h2>
@@ -369,5 +429,6 @@
 </main>
 <footer>Threadlight · selected authority, visible evidence · <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
 <script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/governed-workflow.js?v=b02414d2"></script>
 </body>
 </html>

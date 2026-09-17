@@ -2,6 +2,9 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
+const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '../..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -164,9 +167,71 @@ test('local iteration and source packaging cannot be mistaken for Azure enforcem
   assert.match(text, /Copilot[\s\S]{0,100}(billing|usage|cost)/i);
   assert.match(text, /no model call/i);
   assert.match(text, /instruction examples, not guaranteed\s+automation/i);
-  assert.doesNotMatch(text, /```(?:sh|bash|python|bicep|yaml)\n/);
+  assert.doesNotMatch(text, /```(?:bicep|yaml)\n/);
 });
 
+test('workbook has editable inputs, user checks, three diagrams and bounded real commands', () => {
+  const text = guide();
+  assert.match(text, /workbook/i);
+  assert.equal([...text.matchAll(/```mermaid\n/g)].length, 3);
+  assert.match(text, /construction agent[\s\S]*business agent/i);
+  assert.match(text, /ACK[\s\S]*Backend[\s\S]*audit/);
+  for (const [, number, , body] of phases()) {
+    assert.match(body, /\| Fill in locally \| Your value \|/, `phase ${number}: editable input card`);
+    assert.match(body, /- \[ \]/, `phase ${number}: user checks`);
+  }
+  const expected = new Map([
+    ['skill-check', ['skills/threadlight-design/scripts/skill_contract_check.py', ['--target', '--emit', '--gate', '--json']]],
+    ['package', [`${reference}/package_returns_mcp.py`, ['--output']]],
+    ['foundation', [`${reference}/generate.py`, ['--project', '--contract', '--configuration']]],
+    ['native-validation', ['scripts/ci/run-governance-pin-tests.py', ['--deployment']]],
+    ['reconcile', [`${reference}/returns_reconcile.py`, ['--configuration', '--output']]],
+    ['release-preflight', ['skills/threadlight-cicd/scripts/release_runner.py', ['--repo', '--policy']]],
+  ]);
+  const commands = [...text.matchAll(/<!-- workbook-command: ([a-z-]+) -->\n```sh\n([\s\S]*?)```/g)];
+  assert.deepEqual(commands.map((match) => match[1]).sort(), [...expected.keys()].sort());
+  for (const [, name, command] of commands) {
+    const [source, flags] = expected.get(name);
+    assert.ok(command.includes(`"$CATALOG/${source}"`), name);
+    assert.ok(text.includes(`](../${source})`), `source link for ${name}`);
+    const implementation = read(source);
+    for (const [, variable] of command.matchAll(/\$([A-Z_]+)/g)) {
+      assert.ok(command.includes(`"\${${variable}:?`), `${name}: reject unset ${variable}`);
+    }
+    for (const flag of flags) {
+      assert.ok(command.includes(flag), `${name}: ${flag}`);
+      assert.ok(implementation.includes(`"${flag}"`), `${source}: real ${flag}`);
+    }
+  }
+  assert.match(commands.find((match) => match[1] === 'foundation')[2], /\bfoundation\b/);
+  assert.match(commands.find((match) => match[1] === 'release-preflight')[2], /\bpreflight\b/);
+  assert.match(text, /real CI context/i);
+  assert.match(text, /no candidate receipt/i);
+  assert.match(text, /not (?:this |your )?pilot[\s\S]{0,40}(proof|acceptance)/i);
+});
+
+test('workbook packaging command produces source-only artifacts with independently matching hashes', () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'threadlight-workbook-'));
+  const output = path.join(scratch, 'package');
+  try {
+    execFileSync('python3', [path.join(root, reference, 'package_returns_mcp.py'), '--output', output]);
+    const manifest = JSON.parse(fs.readFileSync(path.join(output, 'source-package.json'), 'utf8'));
+    assert.equal(manifest.status, 'source-only-not-deployment-proof');
+    assert.ok(Object.keys(manifest.files).length > 0);
+    for (const [file, expected] of Object.entries(manifest.files)) {
+      const filename = path.resolve(output, file);
+      assert.ok(filename.startsWith(`${output}${path.sep}`));
+      assert.equal(crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex'), expected, file);
+    }
+    const backend = `${reference}/returns_mcp_backend.py`;
+    assert.equal(fs.readFileSync(path.join(output, backend), 'utf8'), read(backend));
+    assert.throws(() => execFileSync('python3',
+      [path.join(root, reference, 'package_returns_mcp.py'), '--output', output], { stdio: 'pipe' }),
+    /refusing_to_overwrite_preserved_package/);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
 test('scope, consent, signed publication and network prerequisites are explicit', () => {
   const text = guide();
   for (const token of ['personal tenant index', 'AZURE_CONFIG_DIR', 'AZD_CONFIG_DIR',
