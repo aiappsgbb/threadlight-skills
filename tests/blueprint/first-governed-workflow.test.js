@@ -20,10 +20,58 @@ test('beginner journey has six actionable phases with explicit ownership and cos
       'Assistant', 'Human', 'Platform owner', 'Result', 'Verify', 'If blocked']) {
       assert.ok(body.includes(`**${label}:**`), `phase ${number}: ${label}`);
     }
-    assert.equal([...body.matchAll(/```text\n[\s\S]*?```/g)].length, 1, `phase ${number}: one copyable prompt`);
+    assert.equal([...body.matchAll(/```text\n[\s\S]*?```/g)].length, number === '4' ? 2 : 1,
+      `phase ${number}: preparation prompt, plus separate deployment authorization in phase 4`);
     assert.match(body.split('**If blocked:**')[1], /\]\([^)]+#[^)]+\)/, `phase ${number}: exact runbook section`);
     assert.ok(body.indexOf('**Cost and safety:**') < body.indexOf('**Copilot prompt:**'));
   }
+});
+
+test('first-screen map separates work possible now from later Azure handoffs', () => {
+  const text = guide();
+  const start = text.indexOf('## Start here');
+  assert.ok(start >= 0 && start < text.indexOf('## One example'), 'map precedes technical profile');
+  const map = text.slice(start, text.indexOf('\n## ', start + 1));
+  const steps = [...map.matchAll(/^\d\. \[[^\]]+\]\(#phase-(\d)-[^)]+\)/gm)];
+  assert.deepEqual(steps.map((step) => Number(step[1])), [1, 2, 3, 4, 5, 6]);
+  assert.match(map, /Need now[\s\S]*Copilot[\s\S]*synthetic/i);
+  assert.match(map, /Need later[\s\S]*platform owner/i);
+  assert.match(map, /Phases 1-3[\s\S]{0,80}without Azure/i);
+  assert.match(map, /model\s+rehearsal[\s\S]{0,100}(optional|separate)/i);
+});
+
+test('shared safety box keeps core authority and evidence definitions outside the phase loop', () => {
+  const text = guide();
+  const box = text.match(/^> \*\*Rules for every phase\*\*[^\n]*(?:\n>[^\n]*)*/m)?.[0];
+  assert.ok(box, 'one shared safety box');
+  assert.ok(text.indexOf(box) < text.indexOf('## Phase 1'));
+  for (const phrase of [/permission/i, /publisher/i, /central audit ACK/i,
+    /before effects/i, /LOCAL-14/, /no borrowed evidence/i, /stop/i]) assert.match(box, phrase);
+  assert.ok(box.includes('](agent-operations.md#required-controls-precede-effects)'));
+});
+
+test('reviewed deployment transition has bounded authorization and an observed exit gate', () => {
+  const phase = phases().find((section) => section[1] === '4')[3];
+  const transition = phase.split('### After platform review: authorize the exact deployment')[1];
+  assert.ok(transition, 'explicit bridge before phase 5');
+  const prompt = transition.match(/```text\n([\s\S]*?)```/)?.[1];
+  assert.ok(prompt, 'copyable follow-up authorization example');
+  for (const phrase of [/I authorize threadlight-deploy/i, /tenant\/index/i,
+    /subscription/i, /resource group/i, /model deployment/i, /resource\/change list/i,
+    /budget/i, /cleanup owner/i, /no new grants or consent/i, /stop/i]) assert.match(prompt, phrase);
+  assert.match(transition, /replace[\s\S]{0,120}placeholders/i);
+  assert.match(transition, /not[\s\S]{0,60}blanket authorization/i);
+  assert.match(transition, /Before Phase 5[\s\S]*native hosted[\s\S]*services[\s\S]*fresh signed binding/i);
+  assert.match(transition, /version[\s\S]{0,100}image[\s\S]{0,100}identit/i);
+  assert.match(transition, /signed-remote-bootstrap-operator-contract/);
+});
+
+test('browser choice belongs to the user rather than the guide author', () => {
+  const text = guide();
+  assert.match(text, /user's approved work-browser\/profile/i);
+  assert.match(text, /Edge Work[\s\S]{0,80}optional example/i);
+  assert.doesNotMatch(text, /use the user's \*\*Edge Work\*\* profile/);
+  assert.match(text, /actual human[\s\S]{0,80}sign-in\/consent/i);
 });
 
 test('guide selects the real MAF agent gateway profile and the smaller two-tool reference', () => {
@@ -49,7 +97,7 @@ test('guide selects the real MAF agent gateway profile and the smaller two-tool 
 test('prompt skill names and source paths resolve to real catalog or pinned companion files', () => {
   const text = guide();
   const prompts = [...text.matchAll(/```text\n([\s\S]*?)```/g)].map((match) => match[1]);
-  assert.equal(prompts.length, 6);
+  assert.equal(prompts.length, 7);
   for (const prompt of prompts) {
     const skills = [...prompt.matchAll(/\b((?:threadlight|foundry|azure)-[a-z]+(?:-[a-z]+)*)\b/g)]
       .map((match) => match[1]);
@@ -108,7 +156,7 @@ test('scope, consent, signed publication and network prerequisites are explicit'
   const text = guide();
   for (const token of ['personal tenant index', 'AZURE_CONFIG_DIR', 'AZD_CONFIG_DIR',
     'allowed_subscriptions', 'public-authenticated-proof', 'private-required',
-    'Office 365', 'OAuth', 'Edge Work', 'Reader', 'publisher']) assert.ok(text.includes(token), token);
+    'Office 365', 'OAuth', 'Reader', 'publisher']) assert.ok(text.includes(token), token);
   assert.match(text, /before every Azure operation/i);
   assert.match(text, /private key[\s\S]{0,100}outside the agent/i);
   assert.match(text, /never paste[\s\S]{0,100}(keys|tokens)/i);
@@ -144,9 +192,9 @@ test('release and recovery handoff uses existing contracts without promising new
   assert.match(text, /release approval[\s\S]{0,120}action approval[\s\S]{0,120}go-live/i);
   assert.match(text, /no automatic rollback/i);
   assert.match(text, /unknown outcome[\s\S]{0,200}(reconcil|stop)/i);
-  assert.match(text, /only new temporaries owned by this test/i);
+  assert.match(text, /only new temporaries owned\s+by this test/i);
   assert.match(text, /sanitized evidence[\s\S]{0,120}before cleanup/i);
-  assert.match(text, /pre-existing, shared and preserved demo/i);
+  assert.match(text, /pre-existing, shared and\s+preserved demo/i);
   assert.doesNotMatch(text, /\/pull\/132|\/tree\/[^/]*production-operational|stop.lease/i);
 });
 

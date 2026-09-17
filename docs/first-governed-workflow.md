@@ -5,20 +5,36 @@ and ask a real person in Outlook before recording a supervisor handoff.
 The useful outcome is **a business decision with a traceable authorization and
 audit**, not payment settlement.
 
-Coming from [Agent governance](agent-governance.html)? Start here, then use the
-linked engineering runbooks when you reach an implementation handoff. You do not
-need to learn the entire skill catalog first. You do need a platform owner
-before connecting Azure services.
+Coming from [Agent governance](agent-governance.html)? Follow this path; open
+the engineering runbooks only when you reach their handoff.
+
+## Start here
+
+1. [Describe the decision](#phase-1-describe-the-decision-you-want-to-improve) - agree on three synthetic cases and review the SPEC.
+2. [Prepare the handoff](#phase-2-prepare-the-people-inputs-and-access-handoff) - separate your inputs from platform prerequisites.
+3. [Rehearse locally](#phase-3-rehearse-locally-without-calling-it-azure-proof) - inspect/package the source and run fixture checks.
+4. [Review, then authorize deployment](#phase-4-opt-in-to-governance-and-review-the-hosted-setup) - opt in, obtain platform review, then approve the exact run.
+5. [Demonstrate the decision](#phase-5-demonstrate-allow-deny-and-a-real-human-decision) - observe allow/deny, real Outlook review, resume and audit.
+6. [Hand off release and operations](#phase-6-hand-off-a-controlled-release-and-safe-operations) - use the existing release profile and preserve evidence.
+
+**Need now:** Copilot with repository/shell access, a separate pilot repository,
+a reviewed complete catalog ([installation](../README.md#install)), a process
+owner and synthetic examples. **Need later:** a platform owner, approved Azure
+target/model/access/budget, signing authority and an available Outlook reviewer.
+
+**Phases 1-3 can be completed without Azure** using offline checks; model
+rehearsal is optional and separately budgeted. Phase 4 preparation can also
+remain local, but Phase 5 cannot start until its deployment handoff is complete.
+Do not generate the pilot inside this catalog.
 
 ## One example, one supported profile
 
-This guide uses **MAF / Foundry hosted / Responses + governed MCP + Cosmos
+Use **MAF / Foundry hosted / Responses + governed MCP + Cosmos
 decision/audit + native Outlook approval**. In the foundation, that means
 `microsoft-agent-framework`, `runtime_shape=agent`, `responses`, and
-`governed-tool-gateway`. Here, *workflow* means the business journey:
-this is **not a deterministic MAF workflow**. The supplied agent host has the
-same-session deferred-review seam; do not assume any arbitrary workflow has it.
-See [runtime support](runtime-support.md).
+`governed-tool-gateway`. This business journey is **not a deterministic MAF workflow**:
+use the supplied agent host's same-session review seam, not arbitrary workflow
+pause/resume. See [runtime support](runtime-support.md).
 
 The [two-tool reference](../skills/threadlight-deploy/references/governance/returns-mcp-demo.md)
 exposes only:
@@ -28,27 +44,37 @@ exposes only:
 | `returns_get_case` | Reads an authorized synthetic case and its current revision | Unbound to ACS; backend authentication and data access still apply |
 | `returns_apply_decision` | Records a recommendation or supervisor handoff with a Cosmos decision/audit transaction | Selected gateway authorization before the independent business API writes |
 
-`approve_refund` records a recommendation; it does not send money. The richer
+`approve_refund` does not send money. The richer
 [canonical returns example](../examples/returns-triage-governed/README.md)
-also needs OMS/CRM data, policy evidence and additional tools. Do not copy that
-application's four-skill business process into this smaller example or reuse the
-two-tool reference's historical receipts to claim the canonical binding works.
+needs additional OMS/CRM data, policy evidence and tools; it is not this
+two-tool application.
 
-**Two agents:** Copilot is your **construction agent**: it reads Threadlight
-skills to help design, implement and check the project. The **business agent**
-is the application you construct: model, host instructions, any domain skills,
-registered tools and runtime. Installing a construction skill does not give the
-business agent a tool, permission or enforcement. The two-tool reference supplies
-its own instructions and executable tools; additional domain Markdown must be
-deliberately loaded by the host. See [the two libraries](skill-based-agents.md#two-agents-and-two-libraries).
+**Two agents:** Copilot, the **construction agent**, uses catalog skills to
+build the **business agent**: its own instructions, tools and runtime.
+Installing a construction skill does not give that application permissions or
+tools. This reference supplies executable tools and instructions; added domain
+skills must actually be loaded by the host. See
+[the two libraries](skill-based-agents.md#two-agents-and-two-libraries) for details.
 
 **How to use the prompts:** these are instruction examples, not guaranteed
-automation or new slash commands. Work in a separate pilot repository with
-Copilot and a reviewed complete catalog available; do not generate a customer
-application inside this catalog. Refer to [installation](../README.md#install)
-instead of copying individual scripts without their dependencies. Use one
-reviewed revision consistently. Copilot usage/billing still applies when the
-project steps are offline.
+automation or slash commands. Use one reviewed catalog revision consistently.
+Copilot usage/billing still applies to offline project work.
+
+> **Rules for every phase**
+>
+> - Preparation is not permission. The platform owner authorizes scoped cloud
+>   changes; the actual mailbox user owns OAuth consent and the reviewer owns
+>   each action decision. Never paste keys, tokens, callback URLs or caches.
+> - The publisher and private key remain outside the agent. Selected writes
+>   require fresh signed policy, trusted facts, policy-required one-use approval
+>   and central audit ACK **before effects**; recheck authorization after waits.
+>   See [the L500 control contract](agent-operations.md#required-controls-precede-effects).
+> - Offline inventory, executed LOCAL-14/native tests and live evidence are
+>   distinct. No borrowed evidence: every deployment attempt needs fresh
+>   after-deployment proof for its envelope, policy, key, environment,
+>   image/version and identities. A noop is not business-write proof.
+> - Missing prerequisites, expired authority or uncertain effects mean stop,
+>   not fake success, automatic renewal or blind retry. Keep original records.
 
 ## Phase 1: Describe the decision you want to improve
 
@@ -60,58 +86,44 @@ Use synthetic cases, not customer records.
 **Skills:** [threadlight-design](../skills/threadlight-design/SKILL.md), Full mode
 with the reviewed SPEC checkpoint.
 
-**Inputs:** a process owner, the proposed read/write, an ordinary eligible case,
-an ineligible case, and a high-value or high-risk case needing supervisor review.
-The reference treats amounts above 500 or known high risk as supervisor-only.
-That is a sample rule, not a recommended business threshold: the owner must
-accept it for synthetic rehearsal or commission a separately reviewed change.
+**Inputs:** a process owner and three synthetic cases: eligible, ineligible,
+and supervisor-only. The reference routes amounts above 500 or known high risk
+to a supervisor. Accept that sample rule for rehearsal or separately review a
+change; it is not a recommended business threshold.
 
 **Copilot prompt:**
 
 ```text
-Use threadlight-design in Full mode for a small returns decision assistant.
-Use the two-tool returns MCP reference: returns_get_case and
-returns_apply_decision. Record recommendations and supervisor handoffs,
-never payments. Use synthetic data and capture the owner's acceptance rules,
-reviewer, success measure and unresolved prerequisites.
+Use threadlight-design in Full mode for the two-tool returns MCP reference:
+returns_get_case and returns_apply_decision. Record recommendations and
+supervisor handoffs, never payments. With synthetic cases, capture the owner's
+rules, reviewer, success measure and unresolved prerequisites.
 Select microsoft-agent-framework, runtime_shape=agent, protocol=responses,
-Foundry hosted and governed-tool-gateway. Resolve the actual capability
-signals through the catalog runtime policy; do not force a routing override.
-Stop at the foundation/SPEC review checkpoint. No Azure discovery, deployment,
-tool calls against business systems or optional presentation work.
+Foundry hosted and governed-tool-gateway; resolve actual capability signals
+through the runtime policy, not a forced override. Stop at the SPEC checkpoint.
+No Azure discovery, business-system calls, deployment or presentation work.
 ```
 
-**Assistant:** interviews you, records the foundation and SPEC, and distinguishes
-read access from the selected consequential write. It identifies missing
-decisions rather than inventing permissions, a reviewer or financial authority.
+| Who | Next action |
+|---|---|
+| **Assistant:** | Record the foundation, SPEC, read/write boundaries and unresolved decisions |
+| **Human:** | Review the synthetic rules and measurable outcome before continuing |
+| **Platform owner:** | Identify the later model/environment/identity owner; no changes yet |
 
-**Human:** the process owner approves the synthetic rules, escalation behavior
-and a measurable outcome, such as correctly recorded dispositions on the agreed
-case set. Review the SPEC before continuing.
+**Result:** `specs/foundation.md`, `specs/SPEC.md` and `specs/manifest.json`
+at the Phase A checkpoint. SPEC section 8 names actions; section 14 records
+value baseline, target, owner, timeframe and measurement source.
 
-**Platform owner:** identifies who can later provide the approved model,
-environment and identity integration. No platform change is needed yet.
+**Verify:** explain the three outcomes back to the owner and check the foundation
+against the [runtime policy](../skills/threadlight-design/references/runtime-policy.json).
+Unresolved capabilities must not silently become false.
 
-**Result:** reviewed `specs/foundation.md`, `specs/SPEC.md` and
-`specs/manifest.json` at the Phase A checkpoint, with explicit open prerequisites.
-SPEC section 8 names the actions; section 14 records the value baseline, target,
-owner, timeframe and measurement source.
-
-**Verify:** explain each of the three synthetic cases back to the process owner.
-The selected framework/protocol must agree with the
-[runtime policy](../skills/threadlight-design/references/runtime-policy.json);
-an unresolved capability is not silently false.
-
-**If blocked:** if Design defaults to another runtime or the intended effect
-becomes a real payment, stop and revisit
+**If blocked:** a different runtime or real payment is outside this profile; revisit
 [Foundation](../skills/threadlight-design/SKILL.md#step-0-foundation-from-scratch-path-only).
-Do not rename an unsupported application into this profile.
 
 ## Phase 2: Prepare the people, inputs and access handoff
 
-**Cost and safety:** offline preparation. Reading actual Azure configuration,
-signing in, consenting or provisioning is a separate authorized operation.
-Do not begin those operations just to fill in this table.
+**Cost and safety:** offline preparation, not Azure discovery or sign-in.
 
 **Goal:** know what you can do locally and what must come from a platform owner.
 
@@ -120,12 +132,11 @@ approved continuation; the companion
 [azure-tenant-isolation](https://github.com/aiappsgbb/awesome-gbb/blob/2ef44f6b47803a0166956cc668e5f429c1c1f8cb/skills/azure-tenant-isolation/SKILL.md)
 contract for later Azure access.
 
-**Inputs:** the approved SPEC and the following ownership decisions. Platform
-resources may already exist; this is not a request to recreate them.
+**Inputs:** approved SPEC and these handoffs; reuse approved resources, not replacements.
 
 | Needed when | Minimum handoff |
 |---|---|
-| Local construction | Copilot with repository/shell access, reviewed catalog, Git and an isolated Python 3.12+ environment for the governed reference. Native packaging uses Linux amd64; another host needs the documented container route. A thin Codespace is not automatically an Azure deployment workstation. |
+| Local construction | Git and isolated Python 3.12+; native packaging uses Linux amd64 or the documented container route. A thin Codespace is not an Azure deployment workstation. |
 | Model rehearsal | One approved model deployment and authorized inference access, plus a small call budget; otherwise remain offline |
 | Hosted preparation | Foundry project, model, registry/project connection and operator workstation or runner with the required reachability, approved Azure CLI/azd versions and deployment authority |
 | Governance services | Separate control-plane, gateway and business API services; versioned Key Vault signing key, signed-policy Blob storage, single-write-region Cosmos, scoped identities and service app roles |
@@ -135,59 +146,48 @@ resources may already exist; this is not a request to recreate them.
 **Copilot prompt:**
 
 ```text
-Use threadlight-design to continue the approved SPEC into the minimum
-two-tool application instructions, synthetic inputs and tests. Reuse the
-existing executable reference; do not add OMS/CRM, a new UI or extra tools.
-Prepare the missing-prerequisite handoff for the platform owner.
-Read azure-tenant-isolation for the selected personal tenant index entry and
-paired az/azd isolation requirements. Do not read token caches, sign in,
-grant access, consent, provision or select a default subscription for me.
-Separate local work I can do now from work awaiting an authorized operator.
+Use threadlight-design to continue the approved SPEC into two-tool instructions,
+synthetic inputs and tests. Reuse the reference: no OMS/CRM, extra UI or tools.
+Read azure-tenant-isolation for the selected personal tenant index and paired
+az/azd contexts. List missing platform prerequisites and what I can do locally.
+Do not access token caches, sign in, grant/consent/provision or select a default
+subscription for me.
 ```
 
-**Assistant:** prepares application instructions and tests derived from the
-SPEC, and records missing prerequisites in the existing SPEC. It does not
-supply permissions by generating files.
+| Who | Next action |
+|---|---|
+| **Assistant:** | Prepare instructions/tests and record missing prerequisites in the existing SPEC |
+| **Human:** | Identify the intended tenant/index entry, subscription and reviewer |
+| **Platform owner:** | Choose the networking posture and supply the scoped access handoff |
 
-**Human:** identifies the intended tenant/index entry, subscription and business
-reviewer. The actual mailbox user owns Office 365 OAuth consent; the reviewer
-later owns each specific action approval. Neither is delegable to model text.
-Never paste keys, tokens, callback URLs or login caches into a prompt.
-
-**Platform owner:** chooses the networking posture with you. For this path,
-prefer an approved existing `private-required` environment and a reachable
+Prefer an approved existing `private-required` environment with a reachable
 operator host. Private hosted networking is a first-account-creation contract;
-a laptop outside the VNet may not reach it. A
-`public-authenticated-proof` environment is a separate, explicit nonproduction
-exception, not the default or a workaround for a private-network failure.
-Do not adopt an old policy-exemption tag or broaden access to make it work.
-The Outlook companion's Entra-authenticated trigger is not proven private merely
-because the business services are private.
+a laptop outside the VNet may not reach it. `public-authenticated-proof` is an
+explicit nonproduction exception, not a default or private-network workaround.
+Do not copy policy-exemption tags or broaden access. Private business services
+do not make the Outlook companion's Entra-authenticated trigger private.
 
-**Result:** reviewed implementation inputs plus named owners for the missing
-model, platform, signing, review and observation requirements. No resources or
-consents are implied.
+**Result:** reviewed implementation inputs and named owners for missing
+prerequisites, not new resources or consents.
 
 **Verify:** before every Azure operation, the operator derives both
 `AZURE_CONFIG_DIR` and `AZD_CONFIG_DIR` from the **personal tenant index**,
 checks the selected tenant and `allowed_subscriptions`, and asserts the exact
-intended subscription immediately before acting. Use the matching isolated azd
-environment as well. A default subscription hint is not your explicit selection;
-one CLI login does not authenticate the other. Never copy caches or change a
-global context. Keep identifiers in protected operator configuration, not this
-public guide.
+intended subscription immediately before acting, with the matching isolated azd
+environment. A default hint is not an explicit selection; one CLI login does not
+authenticate the other. Never copy caches or change a global context. Retain
+identifiers in protected operator configuration.
 
-**If blocked:** if the operator cannot provide the registry connection, private
-route, approver or signing authority, stay local. Use
+**If blocked:** missing connection, route, reviewer or publisher means stay local.
+Use
 [existing isolated dependency requirements](../skills/threadlight-deploy/references/governance/returns-mcp-demo.md#supply-existing-isolated-azure-dependencies)
 for the handoff; do not ask for broad Owner/Contributor grants.
 
 ## Phase 3: Rehearse locally without calling it Azure proof
 
-**Cost and safety:** source packaging and fixture checks are local/offline,
-with no model call or Azure effect. Optional conversational rehearsal calls
-the approved model and can incur inference cost; ask for that scope and budget
-first. Package downloads/builds also need the approved local toolchain.
+**Cost and safety:** packaging and fixture checks are offline: no model call
+or Azure effect. Optional model rehearsal needs an approved endpoint/budget;
+downloads/builds need the approved local toolchain.
 
 **Goal:** make the example understandable and catch contract mistakes cheaply.
 
@@ -195,62 +195,47 @@ first. Package downloads/builds also need the approved local toolchain.
 for local rehearsal; [threadlight-deploy](../skills/threadlight-deploy/SKILL.md)
 only for its offline source packager at this phase.
 
-**Inputs:** the reviewed synthetic cases, separate unused output directory,
-application instructions and installed test dependencies. No model access is
-required to inspect or package sources.
+**Inputs:** reviewed synthetic cases, unused output directory, instructions
+and installed test dependencies.
 
 **Copilot prompt:**
 
 ```text
-Use threadlight-deploy's offline two-tool source packaging reference only:
+Use threadlight-deploy's offline packager only:
 skills/threadlight-deploy/references/governance/package_returns_mcp.py.
-Show the output destination before writing; never overwrite an existing one.
-Use threadlight-local-test to prepare a synthetic local rehearsal and check
-the instructions, case schema and tool contracts. Start with offline checks.
-Do not call a model until I approve the endpoint and call budget.
-Keep any quickstart CRUD stubs explicitly separate from the real two-tool
-gateway. Report what executed, what is simulated and what remains unverified.
-Do not deploy, seed Cosmos or fabricate a signature or approval.
+Confirm an unused destination; do not overwrite. Use threadlight-local-test
+for offline synthetic instruction/schema/tool checks first. Model rehearsal
+needs my endpoint/budget approval. Label quickstart CRUD stubs separately
+from the real gateway, and report executed versus simulated/unverified results.
+No deployment, Cosmos seeding or fabricated signatures/approvals.
 ```
 
-**Assistant:** materializes the real source closure and inspects the
-[backend contract tests](../skills/threadlight-deploy/tests/test_returns_mcp_backend.py).
-It checks allowed decision values, the original `expected_etag`, rejection of
-model-supplied authority, and the conditional case/audit transaction. It runs
-the applicable local checks only with the documented dependencies available,
-not fake replacement SDKs.
-
-**Human:** reviews ordinary, denied and escalated outcomes. Separately approves
-any model rehearsal; a prompt instructing the model to escalate is not human
-action authorization.
-
-**Platform owner:** supplies approved inference access only if model rehearsal
-is requested. No new Azure services are required for the offline portion.
+| Who | Next action |
+|---|---|
+| **Assistant:** | Package sources; use the [backend contract tests](../skills/threadlight-deploy/tests/test_returns_mcp_backend.py) for allowed decisions, ETag checks, rejected model authority and conditional case/audit writes. Use documented dependencies, not replacement SDKs. |
+| **Human:** | Review the three synthetic outcomes; separately approve any model rehearsal |
+| **Platform owner:** | Supply inference access only if requested; offline checks need no new Azure services |
 
 **Result:** an unused-directory source package with `source-package.json`,
 status `source-only-not-deployment-proof`, plus the actual local test results.
-The packager supplies no deployment configuration, credentials or automatic
-seed/reset. Its VM-first entrypoint is not the Foundry hosted deployment;
-Phase 4 uses the native hosted host.
+The packager supplies no deployment configuration or automatic seed/reset.
+Its VM-first entrypoint is not the native hosted host used in Phase 4.
 
-**Verify:** inspect the packaged file hashes and actual check output. A local
-quickstart is not the governed gateway or hosted route: its generated CRUD
-tools mutate in-memory data. Inspect loaded instructions, tools and skill
-loading warnings, not just a running UI. If enabled, `tests/quickstart.jsonl`
-contains raw local queries/responses; Git-ignore it and apply the agreed
-retention rules. It is not a governance receipt.
+**Verify:** inspect file hashes, check output, loaded instructions/tools and
+skill-loading warnings. A quickstart is not the governed gateway or hosted
+route: CRUD tools mutate memory. Git-ignore and retain any
+`tests/quickstart.jsonl` under the agreed privacy rules; it contains raw
+queries/responses, not governance receipts.
 
-**If blocked:** a missing package or empty skill loading result is a stop,
-not a pass. Follow [materialization commands](../skills/threadlight-deploy/references/governance/returns-mcp-demo.md#materialize-the-executable-sources)
+**If blocked:** missing packages or failed skill loading mean stop. Follow
+[materialization commands](../skills/threadlight-deploy/references/governance/returns-mcp-demo.md#materialize-the-executable-sources)
 and [local loading limits](skill-based-agents.md#local-quickstart-is-a-different-test-surface).
 The executable source is [package_returns_mcp.py](../skills/threadlight-deploy/references/governance/package_returns_mcp.py).
 
 ## Phase 4: Opt in to governance and review the hosted setup
 
-**Cost and safety:** authoring/generation and native local tests are separate
-from cloud deployment. The latter creates or changes billable services and
-requires explicit target, identity, network, budget and preservation approval.
-This prompt prepares that handoff; it does not authorize it.
+**Cost and safety:** preparation/local tests first; separately authorized,
+billable deployment follows the review. The first prompt does not authorize it.
 
 **Goal:** connect the selected write to real authorization and a reviewed
 native host, without giving the agent direct effect or signing authority.
@@ -268,131 +253,128 @@ approved policy rules and the real operator-supplied inputs from Phase 2.
 **Copilot prompt:**
 
 ```text
-I select governance for returns_apply_decision through governed-tool-gateway;
-leave returns_get_case unbound to ACS. Use threadlight-govern,
-threadlight-governed-actions and threadlight-deploy to prepare the real
-policy, host and separate services from the reviewed two-tool reference.
-Use foundry-hosted-agents for the documented MAF hosted baseline.
-Select deferred, policy-required review and the native Outlook channel.
-Prepare the generator inputs and required local validation; stop when a real
-publisher, observed deployment binding, permission or consent is missing.
-Before any cloud action, present its exact scope, cost and human/platform
-handoffs. Do not deploy, grant roles, sign policy or enable/send email yet.
+I select governed-tool-gateway for returns_apply_decision; leave
+returns_get_case unbound to ACS. Use threadlight-govern,
+threadlight-governed-actions and threadlight-deploy for the two-tool policy,
+host, services and local validation; foundry-hosted-agents supplies the
+documented MAF baseline. Select deferred, policy-required native Outlook review.
+Present the deployment scope, cost and operator/human handoffs. Stop for
+missing publisher, observed binding, permission or consent. Do not deploy,
+grant roles, sign policy or enable/send email yet.
 ```
 
-**Assistant:** uses the [existing generator and input order](../skills/threadlight-deploy/references/governance/README.md#order-and-required-inputs),
-not an assessment-only skeleton. It prepares the
-[MAF gateway host](../skills/threadlight-deploy/references/governance/maf-gateway-container.py)
-and exact two-tool registration. It preserves unbound reads; invalid selected
-configuration fails closed rather than becoming off. The gateway is the PEP;
-ACS/Rego is its PDP. Agent Hooks is a host/interceptor contract, not an extra
-security boundary automatically attached to this gateway path.
+**Assistant:** uses the [existing generator](../skills/threadlight-deploy/references/governance/README.md#order-and-required-inputs)
+and [MAF gateway host](../skills/threadlight-deploy/references/governance/maf-gateway-container.py),
+not an assessment-only skeleton. Preserve unbound reads; invalid selected
+configuration fails closed, not off. The gateway is the PEP, ACS/Rego its PDP;
+Agent Hooks does not automatically add a security boundary to this path.
 
-**Human:** approves the specific deployment separately from opting in to
-governance. The mailbox user completes OAuth only for the named connection.
-If browser interaction is needed, use the user's **Edge Work** profile; the
-actual human performs sign-in/consent and later Approve/Reject. No automated
-consent or fabricated human token.
+**Human:** reviews the scope before the authorization message below. Use the
+user's approved work-browser/profile; **Edge Work** is only an optional example.
+The actual human performs sign-in/consent for the named connection and later
+Approve/Reject; neither is automated.
 
-**Platform owner:** follows the
-[create-once signed-bootstrap contract](../skills/threadlight-deploy/references/governance/README.md#signed-remote-bootstrap-operator-contract)
-and the two-tool hosted runbook, with reviewed
-[runtime pins](../skills/_shared/governance-upstream-pin.json).
-First establish native hosted/model operation; retain the actual observed
-version, immutable image digest and identities. Build/register once, then
-configure the separate services and publish matching fresh signed policy/bindings;
-do not redeploy the agent after signing merely to update its own identity/digest.
-The publisher and private key remain outside the agent. The agent gets neither
-Cosmos write nor signing authority; service app roles are not ARM role grants.
-Required signed/fresh policy, trusted backend facts, authenticated one-use
-approval when selected, and **central audit ACK before effects** must survive
-credential/transport waits and be rechecked at dispatch.
+**Platform owner:** reviews [runtime pins](../skills/_shared/governance-upstream-pin.json)
+and the native host/services. Build/register once; bind the observed version,
+image digest and identities, without redeploying after signing to update them.
+No agent Cosmos-write/signing rights; service app roles are not ARM role grants.
 
 For Outlook, the operator uses the
 [native approval template](../skills/threadlight-deploy/references/governance/review-approval.bicep),
-which references the existing connection and defaults to Disabled. It does not
-grant permissions or supply consent. Explicit enablement, observed workflow
-version/digest, `outlook_approval`, gateway `approval_channel: "outlook"`,
-fixed recipient/responder mapping and control-identity workflow-scoped Reader
-are all required. Reader can expose sensitive run output. Notification-only
-email is not this authority channel.
+which references an existing connection and defaults to Disabled. It does not
+grant permissions or consent. Explicit enablement, observed workflow pin,
+`outlook_approval`, gateway `approval_channel: "outlook"`, responder mapping and
+workflow-scoped Reader for the control identity remain required. Reader exposes
+sensitive run history; notification-only mail is not approval.
 
-**Result:** actual generated host/service/infra files and scoped
-`specs/governance-manifest.json` inventory; executed local evidence only where
-the relevant tests ran. A subsequent authorized deployment adds its own
-observed binding and service readiness, not a blanket governance verdict.
+**Result:** generated host/service/infra files, `specs/governance-manifest.json`
+inventory and actual local results, ready for platform review.
 
-**Verify:** use the existing [native validation gate](agent-operations.md#3-validate).
-Distinguish offline inventory, executed LOCAL-14, native/CTK and hosted evidence;
-none substitutes for another. Unrun or skipped required tests remain unverified.
-Use the current `threadlight-governance-manifest/v1` contract, not archived v2
-green reports. A healthy hosted endpoint does not authorize a selected tool.
-Preview/alpha dependencies still require platform review.
+**Verify:** use the [native validation gate](agent-operations.md#3-validate)
+and current `threadlight-governance-manifest/v1`, not archived v2 green.
+Skipped required tests stay unverified; preview/alpha pins require review.
 
-**If blocked:** an ambiguous registration reply is not permission to create a
-second version. Preserve the attempt and reconcile through the
+**If blocked:** retain ambiguous registration attempts and reconcile through the
 [signed-bootstrap operator contract](../skills/threadlight-deploy/references/governance/README.md#signed-remote-bootstrap-operator-contract).
-Missing Outlook authority must stop at
-[workflow prerequisites](native-outlook-approval-architecture.md#4-workflow-contract-and-permissions),
-not silently switch to delegated CLI approval.
+Do not create a second version. Missing Outlook authority stops at
+[workflow prerequisites](native-outlook-approval-architecture.md#4-workflow-contract-and-permissions);
+do not silently switch to delegated CLI approval.
+
+### After platform review: authorize the exact deployment
+
+After the operator confirms prerequisites, replace the placeholders with the
+reviewed scope. This separate next message is not blanket authorization.
+Follow the existing
+[create-once sequence](../skills/threadlight-deploy/references/governance/README.md#signed-remote-bootstrap-operator-contract);
+the assistant helps the authorized operator execute it, not invent access.
+
+```text
+I authorize threadlight-deploy to execute the reviewed deployment handoff
+[handoff revision] for [tenant/index entry], [subscription], [resource group]
+and [azd environment], using [model deployment] and [network posture].
+Limit changes to [resource/change list: native host, control plane, gateway,
+business API and explicitly approved Outlook companion changes].
+Use the approved operator and publisher identities. No new grants or consent.
+Deployment budget: [ceiling]; native model smoke budget: [calls/cost ceiling].
+Cleanup owner: [owner]; preserve existing/shared/demo resources, retain
+evidence, and request separate approval for exact test-owned cleanup.
+Stop on missing prerequisites, scope drift or an ambiguous outcome.
+Return the observed deployment and binding; do not start Phase 5 business
+scenarios or send approval email under this deployment authorization.
+```
+
+**Before Phase 5**, require an actual native hosted response/session, ready
+control/gateway/business services, verified Outlook companion configuration,
+and a **fresh signed binding** matching the observed version, image and
+identities. Keep the real observations and protected attempt record.
+An image build, source package or health endpoint alone cannot satisfy this
+handoff; if anything is missing, stay in Phase 4.
 
 ## Phase 5: Demonstrate allow, deny and a real human decision
 
-**Cost and safety:** live, potentially billable model calls, synthetic Cosmos
-writes and approval email. Proceed only under a separately approved
-nonproduction target, scenario set and budget, with the actual reviewer present.
-No automatic retries or unbounded prompt loops.
+**Cost and safety:** live model calls, synthetic Cosmos writes and approval
+email. Approve the nonproduction scenarios/budget separately, with the reviewer
+present; no automatic retries or unbounded prompt loops.
 
-**Goal:** observe what the selected path permits, blocks and records in this
-deployment, including exact human-approved resume and replay.
+**Goal:** observe permitted, blocked and human-approved actions and replay.
 
 **Skills:** [threadlight-governed-actions](../skills/threadlight-governed-actions/SKILL.md)
 for selected-path evidence;
 [threadlight-safe-check](../skills/threadlight-safe-check/SKILL.md) for the
 separately approved hosted collector. Neither invents the human or business proof.
 
-**Inputs:** fresh signed policy/bootstrap, unchanged observed deployment,
-create-only synthetic cases with independently read revisions, native session
-access, reviewer availability and independent evidence-reader permissions.
-Enable the reference's optional read audit if you intend to demonstrate
-backend-acknowledged reads.
+**Inputs:** completed Phase 4 handoff, fresh policy/bootstrap, synthetic cases
+with independently read revisions, native session access, reviewer and observer
+permissions. Enable optional read audit to demonstrate backend-acknowledged reads.
 
 **Copilot prompt:**
 
 ```text
-Use threadlight-governed-actions to prepare the bounded two-tool acceptance
-matrix for this deployment: allow, deny, pending, actual native Outlook
-Approve, exact resume, replay, and a separate Reject case.
-Execute only after the operator approves the target, synthetic cases and
-budget and the reviewer confirms availability. No borrowed evidence.
-Keep session_id, previous_response_id, original arguments and
-governance_operation_id for the pending request. Do not paraphrase a resume,
-manufacture approval or silently start a new operation after a failure.
-Use threadlight-safe-check only for its separately authorized noop scope.
-Independently reconcile the business effects and audit; report unexecuted
-scenarios as unverified, not successful.
+Use threadlight-governed-actions for this deployment's allow, deny, pending,
+native Outlook Approve, exact resume, replay and separate Reject cases.
+Execute only with operator-approved target/cases/budget and a present reviewer.
+No borrowed evidence. Keep session_id, previous_response_id, original
+arguments and governance_operation_id. Never paraphrase resume, fabricate
+approval or silently replace a failed operation.
+Use threadlight-safe-check only for separately authorized noop scope.
+Independently reconcile effects/audit; unexecuted scenarios stay unverified.
 ```
 
-**Assistant:** prepares the matrix, then helps execute only the approved calls.
-It retains the original protected pending tool output and native response IDs.
-Model output is **nondeterministic**: a polite answer, a particular category
-word or a model promise of approval is not the acceptance criterion. If the
-model does not choose the scenario's tool, that scenario has not run. Any
-separately authorized direct native-tool check must be labelled as such, not
-reported as model-driven.
+**Assistant:** retains protected pending output and native response IDs.
+Model output is **nondeterministic**: check actual tool/effect fields, not a
+category word or promise. If the model never calls the tool, the scenario
+has not run. Label separately authorized direct native-tool checks honestly,
+not as model-driven.
 
-**Human:** checks the exact case, proposed action, reason and expiry in Outlook,
-then chooses **Approve** or **Reject**. Approval of a supervisor handoff never
-authorizes a refund. Confirm connection authentication from current readback;
-do not repeat OAuth solely because a historical capture was unauthenticated.
-Native Outlook decisions are witnessed through ARM and trusted responder
-mapping, not OBO or a model-supplied `approved` field.
+**Human:** checks case, action, reason and expiry, then chooses **Approve** or
+**Reject** in Outlook. A handoff approval never authorizes a refund.
+Use current connection readback before repeating OAuth. ARM witness and trusted
+responder mapping supply authority, not OBO or a model's `approved` field.
 
-**Platform owner:** verifies current signed bindings and independent store
-access, seeds only new approved cases create-only, and retains the raw evidence
-privately. Set the review window deliberately: deferred review defaults to
-300 seconds, supports up to 3,600, and is bounded by policy expiry; the native
-mail action waits at most 15 minutes. This is not multi-day case management.
+**Platform owner:** seeds new cases create-only, retains independent observations
+and checks the [review window](runtime-support.md#time-and-operations) before
+requesting review. Policy/intent expiry and the native mail window still apply;
+this is not multi-day case management.
 
 **Result:** the following observations, **only if each scenario actually ran**.
 
@@ -412,75 +394,61 @@ mail action waits at most 15 minutes. This is not multi-day case management.
 not the gateway operation key. Never fetch a newer ETag and attach the old
 approval. Use [exact resume](native-outlook-approval-architecture.md#7-resume-authorization-ack-and-effect)
 and independent [response reconciliation](../skills/threadlight-deploy/references/governance/returns-mcp-demo.md#durable-unbound-read-audit-and-response-reconciliation).
-The [returns_reconcile.py source](../skills/threadlight-deploy/references/governance/returns_reconcile.py)
-reads an explicit response set and joins the four configured stores; optional
-ledger persistence itself needs narrow approved write access.
+The [reconciler](../skills/threadlight-deploy/references/governance/returns_reconcile.py)
+joins an explicit response set to four configured stores; optional ledger
+persistence needs narrow approved write access.
 
-Retain before/after/replay observations and binding hashes, not just chat text.
-Sanitize shared evidence; business audits and workflow runs can contain review
-data even when governance receipts are payload-minimized. This is selected-path
-evidence, **not whole-agent governance**. The collector's
+Sanitize shared before/after/replay evidence: business audits and workflow runs
+can contain review data. This is **not whole-agent governance**;
 `governance_probe_noop` cannot prove `returns_apply_decision`.
-A new deployment attempt needs fresh after-deployment evidence bound to that
-same envelope, policy, key, environment, image/version and identities.
 
-**If blocked:** expired intent, changed facts, missing reviewer or missing ACK
-means stop. For an unknown outcome, retain the original operation and reconcile
-authoritative stores; do not resend email, change operation IDs or renew a
-timestamp. Follow [current failure handling](native-outlook-approval-architecture.md#9-failure-handling-and-operating-ownership).
-Lost authorization ACKs may leave no safe automatic continuation.
+**If blocked:** for expiry, changed facts, unavailable review or unknown outcome,
+stop and reconcile the original operation through
+[current failure handling](native-outlook-approval-architecture.md#9-failure-handling-and-operating-ownership).
+Do not resend email, change IDs or renew timestamps. A lost authorization ACK
+may leave no safe automatic continuation.
 
 ## Phase 6: Hand off a controlled release and safe operations
 
-**Cost and safety:** local release-artifact preparation is not release execution.
-Candidate deployments, evaluations, red-team scans and promotion are separately
-authorized, cost-bearing operations. Cleanup also needs its own exact scope.
+**Cost and safety:** local artifact preparation only. Actual candidate deployment,
+eval/red-team execution, promotion and cleanup each need their approved scope.
 
-**Goal:** make the pilot reviewable and operable without treating a successful
-demonstration as production acceptance.
+**Goal:** prepare operations without treating a demonstration as go-live.
 
 **Skills:** [threadlight-cicd](../skills/threadlight-cicd/SKILL.md) for the existing
 verified-release profile, and
 [threadlight-production-ready](../skills/threadlight-production-ready/SKILL.md)
 for an evidence-based gap/handoff report.
 
-**Inputs:** the reviewed application commit, immutable image, current selected
-binding evidence, chosen CI platform, representative datasets/thresholds,
-application-owned adapters, owners for operations and retention, and the
-platform's protected validation/production environments.
+**Inputs:** reviewed commit/image/binding evidence, chosen CI platform,
+datasets/thresholds, application-owned adapters, operations/retention owners
+and protected validation/production environments.
 
 **Copilot prompt:**
 
 ```text
-Use threadlight-cicd to prepare the existing verified-release profile for
-our chosen CI platform, not a new pipeline implementation. Identify missing
-application-owned deployment, observation, evaluation, red-team and promotion
-adapters plus platform-owned identities, runners and environment approvals.
-Use threadlight-production-ready to report current evidence and open gaps.
-Keep release approval, runtime action approval and business go-live separate.
-Do not start CI, deploy, merge, release, run paid checks or delete resources.
-Prepare the operations and exact test-owned cleanup handoff after retaining
-sanitized evidence; preserve all pre-existing and shared resources.
+Use threadlight-cicd's existing verified-release profile for our chosen CI.
+Identify missing deployment, observation, eval/red-team and promotion adapters,
+plus platform identities/runners/approvals. Use threadlight-production-ready
+to report evidence/gaps, separating release, action approval and go-live.
+Generate only: no CI run, deployment, merge/release, paid checks or deletion.
+Prepare operations and test-owned cleanup handoffs with retained sanitized
+evidence and preservation of pre-existing/shared resources.
 ```
 
-**Assistant:** generates the existing delivery artifacts and explains missing
-integrations. It uses [AgentOps: controlled release](agentops-deep-dive.md)
-for the mental model and the
-[verified release contract](../skills/threadlight-cicd/references/release-contract.md)
-for exact commands, without duplicating the pipeline here. Optional native
-AgentOps adoption is not required merely to read this guide.
+**Assistant:** generates delivery artifacts, identifying missing integrations.
+Use [AgentOps: controlled release](agentops-deep-dive.md) for the explanation and
+the [release contract](../skills/threadlight-cicd/references/release-contract.md)
+for commands. Optional native AgentOps adoption is not a guide prerequisite.
 
-**Human:** makes three separate decisions: **release approval**, **runtime
-action approval**, and **business go-live**. Accept only named, current,
-scoped risks. A green scorecard does not certify production readiness.
+**Human:** separates **release approval**, **runtime action approval** and
+**business go-live**, accepting only current scoped risks, not a green badge.
 
 **Platform owner:** supplies distinct validation/production identities,
-federation, protected environments and reachable runners. The application team
-supplies real adapters, observations, evaluator and scanner execution.
-Generation does not configure customer permissions or reviewers. The approved
-pipeline validates a preproduction candidate, then promotes the **same immutable
-image** after its receipt and approval checks; production-specific bindings and
-business behavior still need their own fresh verification.
+federation, protected environments and runners; the application team supplies
+real adapters/evaluator/scanner execution. The pipeline validates a candidate
+then promotes the **same immutable image** after receipt/approval checks.
+Production bindings and business behavior still need fresh verification.
 
 **Result:** reviewed pipeline and `specs/release-policy.example.json` awaiting
 real configuration as `specs/release-policy.json`, plus
@@ -489,38 +457,30 @@ real configuration as `specs/release-policy.json`, plus
 An accepted `.threadlight-release/candidate.json` exists only after executed
 candidate validation, not after generating YAML.
 
-**Verify:** follow the current [operations spine](agent-operations.md) and
-[static rescore handoff](agent-operations.md#6-rescore). Name owners for workflow
-entitlements, signing/rotation, service monitoring, spend and response to
-uncertain effects. Neither a static score nor catalog/local tests prove a
-customer pipeline or live production Doctor ran.
+**Verify:** name owners for entitlements, signing/rotation, monitoring, spend
+and uncertain effects. Use the [operations spine](agent-operations.md) and
+[static rescore](agent-operations.md#6-rescore); neither proves a customer
+pipeline or live production Doctor ran.
 
-**If blocked:** a promotion timeout can leave an unknown outcome. Keep business
-traffic closed and follow [Stop and recover](../skills/threadlight-cicd/references/release-contract.md#stop-and-recover);
-there is **no automatic rollback**, universal recovery command or permission to
-retry by deleting the attempt record. Application rollback does not undo a
-committed Cosmos decision.
+**If blocked:** a promotion timeout means keep traffic closed and follow
+[Stop and recover](../skills/threadlight-cicd/references/release-contract.md#stop-and-recover).
+There is **no automatic rollback** or retry by deleting the attempt.
+Application rollback does not undo a committed Cosmos decision.
 
-Retain sanitized evidence and protected originals under the agreed retention
-policy **before cleanup**. Inventory exact resources and records with their owner;
-remove **only new temporaries owned by this test** after specific approval.
-Preserve **pre-existing, shared and preserved demo** environments, images,
-attempts and audit records. Never tear down an unknown whole environment.
-Policy expiry or a failed test does not authorize deletion.
+Retain sanitized evidence and protected originals **before cleanup**. Inventory
+exact resources/records with their owner; remove **only new temporaries owned
+by this test** after specific approval. Preserve **pre-existing, shared and
+preserved demo** environments, images, attempts and audits. Never tear down an
+unknown whole environment; expiry or failure does not authorize deletion.
 
 ## Where to go next
 
-Return to [the commercial governance page](agent-governance.html) for the
-business framing. For implementation, use the
-[action-governance deep dive](agent-governance-deep-dive.md),
-[native Outlook contract](native-outlook-approval-architecture.md), and
+For implementation details, use the [action-governance deep dive](agent-governance-deep-dive.md),
+[native Outlook contract](native-outlook-approval-architecture.md) and
 [two-tool runbook](../skills/threadlight-deploy/references/governance/returns-mcp-demo.md).
-Their dated captures are historical examples, not credentials or receipts for
-your project.
+Their dated captures remain historical examples.
 
 This path was checked against catalog `main` at
 `c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f`. It needs no unmerged runtime work.
-Pinned older explanations remain useful references, but select the complete
-reviewed catalog and actual installed versions before using their commands.
-Publishing this guide performs no deployment, consent, human approval or cloud
-acceptance.
+Check the complete reviewed catalog and installed versions before executing
+commands. Publishing this guide performs no deployment, consent or cloud acceptance.
