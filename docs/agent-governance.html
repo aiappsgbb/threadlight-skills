@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Build your first governed workflow — Threadlight</title>
-<meta name="description" content="Six practical steps from a local returns prototype to an authorized deployment, real human review and an operations handoff. Start here; use the full workbook for exact contracts.">
+<meta name="description" content="Start a two-tool returns workflow with clear prerequisites. Open the approved workbook for the exercises, commands and human/platform handoffs.">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Build your first governed workflow — Threadlight">
-<meta property="og:description" content="Start locally, prepare the people and platform, then verify one governed decision path.">
+<meta property="og:description" content="One goal, three prerequisites, then the practical workbook.">
 <meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/agent-governance.html">
 <meta property="og:site_name" content="Threadlight">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
-<link rel="stylesheet" href="assets/governed-workflow.css?v=5c9b6077">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=6aaa0777">
 </head>
 <body class="chapter-page chapter-production chapter-experience governance-page" data-chapter-parent="production" data-web-workbook>
-<a class="skip-link" href="#main">Skip to the workbook</a>
+<a class="skip-link" href="#main">Skip to the workbook entrance</a>
 <header class="masthead">
   <div class="brand">
     <a href="./index.html" class="brand-name"><span class="brand-mark" aria-hidden="true"></span>Threadlight<span>by Microsoft GBB · AI Apps</span></a>
@@ -29,127 +29,37 @@
     <a href="./production.html" aria-current="location"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
   </nav>
 </header>
-<aside class="floating-toc" aria-label="Guided workbook">
-  <nav class="cx-chapter-links" aria-label="Workbook overview">
-    <a href="#overview">Start</a><a href="#local">Local exercise</a><a href="#operate">Operate</a>
-  </nav>
-  <details class="cx-chapter-index"><summary>All steps</summary><ol>
-    <li><a href="#define">Describe</a></li><li><a href="#prepare">Prepare</a></li><li><a href="#local">Local exercise</a></li>
-    <li><a href="#authorize">Authorize deployment</a></li><li><a href="#validate">Validate with a person</a></li><li><a href="#operate">Operate</a></li>
-  </ol></details>
-</aside>
 <main id="main">
-  <section class="chapter-hero" id="overview" data-toc-id="overview" data-toc-label="Start">
+  <section class="chapter-hero" id="overview" data-toc-id="overview" data-toc-label="Workbook">
     <div class="wrap wb-wrap">
       <div class="cx-journey">
-        <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Guided workbook</span></nav>
-        <a class="cx-journey-next" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Full workbook <span aria-hidden="true">&rarr;</span></a>
+        <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Workbook</span></nav>
       </div>
       <h1>Build your first governed workflow</h1>
-      <p class="lede">Use one returns example to move from local prototype to an authorized hosted workflow.
-        Practice an allowed recommendation, a blocked request and a human-reviewed handoff &mdash; never a payment.</p>
-      <dl class="wb-prerequisites">
-        <div><dt>What you need now</dt><dd>Copilot, a separate pilot repository, the reviewed catalog and synthetic cases. Start without Azure.</dd></div>
-        <div><dt>Who you need later</dt><dd>A platform owner, approved target and budget, a publisher, and a real Outlook reviewer.</dd></div>
-      </dl>
-      <div class="wb-intro-links">
-        <a class="btn btn-primary" href="#define">Start the workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
-        <a href="./production.html#effect-authority">Understand the actors and gateway first</a>
+      <p class="lede">Build a two-tool returns assistant that reads a case and records a permitted recommendation,
+        with an Outlook-reviewed exception when needed. The result is a decision and audit, not a payment.</p>
+      <ul class="wb-entry-needs" aria-label="Three essential prerequisites">
+        <li data-prerequisite="workspace"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><div><strong>Your workspace</strong><p>A pilot repository, Copilot, the reviewed Threadlight catalog and synthetic cases. Start locally.</p></div></li>
+        <li data-prerequisite="platform"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6zM9 12l2 2 4-4"/></svg><div><strong>A platform owner</strong><p>An approved environment, identities and budget before deployment. Generated files do not grant access.</p></div></li>
+        <li data-prerequisite="reviewer"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-3a8 8 0 0 1 16 0v3"/></svg><div><strong>A real Outlook reviewer</strong><p>An available person and a personally authorized Office 365 connection for the human-review exercise.</p></div></li>
+      </ul>
+      <div class="wb-entry-links" id="next">
+        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Open the workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
+        <a href="./production.html#effect-authority">Back to Production and the decision paths</a>
       </div>
-      <nav aria-label="Workbook steps">
-        <ol class="wb-path">
-          <li><a href="#define"><span>01</span> Describe</a></li><li><a href="#prepare"><span>02</span> Prepare</a></li>
-          <li><a href="#local"><span>03</span> Local</a></li><li><a href="#authorize"><span>04</span> Authorize</a></li>
-          <li><a href="#validate"><span>05</span> Validate</a></li><li><a href="#operate"><span>06</span> Operate</a></li>
-        </ol>
-      </nav>
-      <p class="wb-note">This is navigation, not execution status. Detailed contracts and complete instructions stay in the approved Markdown workbook.</p>
+      <p class="wb-note">The approved workbook contains the exercises, commands and exact authorization handoffs.</p>
+      <div class="wb-legacy">
+        <span id="effect-authority"></span><span id="workflow-in-action"></span><span id="evidence"></span><span id="human-decisions"></span><span id="freshness"></span><span id="limits"></span>
+        <span id="define"></span><span id="prepare"></span><span id="local"></span><span id="authorize"></span><span id="validate"></span><span id="operate"></span>
+        <noscript><p>Previous architecture links lead to Production above; previous exercise links are in the workbook.</p></noscript>
+      </div>
     </div>
   </section>
-  <div class="wrap wb-wrap">
-    <section class="wb-step" id="define" data-workbook-stage="1" data-toc-id="define" data-toc-label="Describe">
-      <h2><span>01</span> Describe the decision</h2>
-      <dl>
-        <div><dt>Inputs</dt><dd>Three synthetic cases: eligible, ineligible and supervisor-only.</dd></div>
-        <div><dt>People</dt><dd>You and the process owner review rules; Copilot drafts the foundation and SPEC.</dd></div>
-        <div><dt>Result</dt><dd>A reviewed SPEC checkpoint, not a deployed agent or new permissions.</dd></div>
-      </dl>
-      <details><summary>Copy the local design prompt</summary>
-        <pre data-workbook-excerpt="design" tabindex="0" role="region" aria-label="Local design prompt"><code>Use threadlight-design in Full mode for the two-tool returns MCP reference:
-returns_get_case and returns_apply_decision. Record recommendations and
-supervisor handoffs, never payments. With synthetic cases, capture the owner's
-rules, reviewer, success measure and unresolved prerequisites.
-Select microsoft-agent-framework, runtime_shape=agent, protocol=responses,
-Foundry hosted and governed-tool-gateway; resolve actual capability signals
-through the runtime policy, not a forced override. Stop at the SPEC checkpoint.
-No Azure discovery, business-system calls, deployment or presentation work.</code></pre>
-      </details>
-      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-1-describe-the-decision-you-want-to-improve">Phase 1: inputs, review and recovery &rarr;</a>
-    </section>
-    <section class="wb-step" id="prepare" data-workbook-stage="2" data-toc-id="prepare" data-toc-label="Prepare">
-      <h2><span>02</span> Prepare the handoffs</h2>
-      <dl>
-        <div><dt>Inputs</dt><dd>The reviewed SPEC, intended tenant/index alias and named owners.</dd></div>
-        <div><dt>People</dt><dd>The platform owner confirms model, network, identities and signing prerequisites. Stay local when any are missing.</dd></div>
-        <div><dt>Result</dt><dd>An explicit prerequisite and access handoff. Do not copy keys or login caches into prompts.</dd></div>
-      </dl>
-      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-2-prepare-the-people-inputs-and-access-handoff">Phase 2: people, isolation and required inputs &rarr;</a>
-    </section>
-    <section class="wb-step" id="local" data-workbook-stage="3" data-toc-id="local" data-toc-label="Local exercise">
-      <h2><span>03</span> Rehearse locally</h2>
-      <dl>
-        <div><dt>Inputs</dt><dd>Set <code>CATALOG</code> to the reviewed catalog and <code>PACKAGE_OUTPUT</code> to an unused local directory.</dd></div>
-        <div><dt>People</dt><dd>Copilot helps package sources and inspect local checks; you compare the synthetic outcomes.</dd></div>
-        <div><dt>Result</dt><dd><code>source-package.json</code> and matching file hashes. Source-only, not Azure enforcement.</dd></div>
-      </dl>
-      <pre data-workbook-excerpt="package" tabindex="0" role="region" aria-label="Local source packaging command"><code>: "${CATALOG:?Set CATALOG}" "${PACKAGE_OUTPUT:?Choose an unused PACKAGE_OUTPUT}"
-python3 "$CATALOG/skills/threadlight-deploy/references/governance/package_returns_mcp.py" \
-  --output "$PACKAGE_OUTPUT"</code></pre>
-      <p class="wb-note">This command makes no Azure or model call and refuses an existing output directory. Optional model rehearsal needs a separate endpoint and call budget.</p>
-      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-3-rehearse-locally-without-calling-it-azure-proof">Phase 3: commands, hashes and local-test limits &rarr;</a>
-    </section>
-    <section class="wb-step" id="authorize" data-workbook-stage="4" data-toc-id="authorize" data-toc-label="Authorize deployment">
-      <h2><span>04</span> Authorize the exact deployment</h2>
-      <dl>
-        <div><dt>Inputs</dt><dd>The reviewed target, model, change list, budget and exact permission assignments.</dd></div>
-        <div><dt>People</dt><dd>You authorize that scope. The platform owner registers the host, observes its identity and applies only pre-approved roles. Personal OAuth consent stays separate.</dd></div>
-        <div><dt>Result</dt><dd>The native hosted agent, separate services and a fresh signed binding. Stop before validation if any are missing.</dd></div>
-      </dl>
-      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-4-opt-in-to-governance-and-review-the-hosted-setup">Phase 4: use the complete deployment-authorization prompt &rarr;</a>
-    </section>
-    <section class="wb-step" id="validate" data-workbook-stage="5" data-toc-id="validate" data-toc-label="Validate with a person">
-      <h2><span>05</span> Validate with a real person</h2>
-      <dl>
-        <div><dt>Inputs</dt><dd>Fresh binding, approved synthetic cases and budget, reviewer availability and independent observation access.</dd></div>
-        <div><dt>People</dt><dd>The person decides in Outlook. You verify allow, deny, pending, exact same-session resume and replay; never invent an approval.</dd></div>
-        <div><dt>Result</dt><dd>Joined authorization and business-audit evidence for this deployment. Replay must not create another business effect.</dd></div>
-      </dl>
-      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-5-demonstrate-allow-deny-and-a-real-human-decision">Phase 5: exact arguments, human review and independent checks &rarr;</a>
-    </section>
-    <section class="wb-step" id="operate" data-workbook-stage="6" data-toc-id="operate" data-toc-label="Operate">
-      <h2><span>06</span> Hand off operations</h2>
-      <dl>
-        <div><dt>Inputs</dt><dd>Current evidence, immutable image, release adapters and named operations owners.</dd></div>
-        <div><dt>People</dt><dd>The application and platform teams own release preparation. Release approval, action approval and business go-live remain separate.</dd></div>
-        <div><dt>Result</dt><dd>An operations/release handoff, not certification. Retain evidence before separately approved cleanup of new test-owned temporaries.</dd></div>
-      </dl>
-      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-6-hand-off-a-controlled-release-and-safe-operations">Phase 6: existing release and recovery contracts &rarr;</a>
-    </section>
-    <aside class="wb-legacy" aria-label="Moved architecture references">
-      <span id="effect-authority"></span><span id="workflow-in-action"></span><span id="evidence"></span>
-      <span id="human-decisions"></span><span id="freshness"></span><span id="limits"></span>
-      <p>Architecture and decision diagrams are now in <a href="./production.html#effect-authority">Production: governed actions</a>.</p>
-    </aside>
-    <section class="wb-next" id="next" aria-label="Continue with the full workbook">
-      <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Open the full workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
-      <a href="./production.html#effect-authority">Back to Production</a>
-    </section>
-  </div>
 </main>
 <footer>Threadlight &middot; practical steps, explicit authority &middot; <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
 <script src="assets/site.js?v=e4d413b7"></script>
 <script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
-<script src="assets/governed-workflow.js?v=dfcb80b4"></script>
+<script src="assets/governed-workflow.js?v=a7dff5e5"></script>
 </body>
 </html>

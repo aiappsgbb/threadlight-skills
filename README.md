@@ -156,8 +156,8 @@ and [coding-agent guidance](AGENTS.md).
 **The model proposes; trusted components authorize effects.**
 [Production: governed actions](docs/production.html#effect-authority) explains
 the actors, model-versus-tool gateways and selected action paths.
-The [guided web workbook](docs/agent-governance.html) turns that explanation
-into six practical steps, with details in the approved Markdown workbook.
+The [workbook entrance](docs/agent-governance.html) gives the goal and essential
+prerequisites, then opens the approved Markdown workbook for the practical steps.
 Validation facts and implementation limits remain in the engineering references.
 For the actual
 identity, policy, approval, transport and durable-audit boundaries, read the

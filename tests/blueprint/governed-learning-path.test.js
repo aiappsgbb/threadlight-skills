@@ -50,38 +50,23 @@ test('Citadel, AgentOps, global navigation and all non-action bytes stay unchang
     '1d2df136e705c273975299bb42a304f6057c477e1d9352b8ba75134f0b008d0d');
 });
 
-test('agent-governance is a short six-step web workbook, not a second architecture page', () => {
+test('agent-governance is only a short workbook entrance, not duplicated exercises', () => {
   const html = read('docs/agent-governance.html');
   const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)[1];
   assert.match(text(main), /Build your first governed workflow/);
-  assert.equal([...main.matchAll(/data-workbook-stage="/g)].length, 6);
-  assert.match(main, /aria-label="Workbook steps"/);
-  for (const id of ['define', 'prepare', 'local', 'authorize', 'validate', 'operate']) {
-    const card = main.match(new RegExp(`<section[^>]*id="${id}"[\\s\\S]*?</section>`))?.[0];
-    assert.ok(card, id);
-    for (const label of ['Inputs', 'People', 'Result']) assert.ok(card.includes(label), `${id}: ${label}`);
-    assert.match(card, /first-governed-workflow\.md#phase-/);
-  }
-  assert.ok(text(main).trim().split(/\s+/).length <= 1100, 'web summary, not another long reference');
+  assert.equal([...main.matchAll(/data-prerequisite="/g)].length, 3);
+  assert.ok(text(main).trim().split(/\s+/).length <= 260, 'brief entrance');
   assert.doesNotMatch(main, /class="wf-diagram"|data-flow-node=|data-action-actor=|class="gov-card"/);
-  assert.match(main, /navigation, not execution status/i);
   assert.match(main, /href="\.\/production\.html#effect-authority"/);
   assert.match(main, /platform owner/i);
-  assert.match(main, /personal OAuth consent/i);
+  assert.match(main, /personally authorized Office 365/i);
 });
 
-test('web prompt and command excerpts come verbatim from the approved workbook', () => {
+test('the approved workbook remains the sole exercise source', () => {
   const html = read('docs/agent-governance.html');
   const markdown = read('docs/first-governed-workflow.md');
-  const blocks = [...html.matchAll(/<pre data-workbook-excerpt="([^"]+)"[^>]*><code>([\s\S]*?)<\/code><\/pre>/g)];
-  assert.equal(blocks.length, 2, 'one local prompt and one local command, not a command dump');
-  const source = {
-    design: markdown.split('## Phase 1:')[1].match(/```text\n([\s\S]*?)```/)[1].trim(),
-    package: markdown.match(/<!-- workbook-command: package -->\n```sh\n([\s\S]*?)```/)[1].trim(),
-  };
-  for (const [, name, code] of blocks) {
-    assert.equal(code.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim(), source[name], name);
-  }
+  assert.doesNotMatch(html, /data-workbook-excerpt|<pre/);
+  assert.match(html, /href="https:\/\/github.com\/aiappsgbb\/threadlight-skills\/blob\/7782eba93754fb7cff85336d3f4a8703892bad76\/docs\/first-governed-workflow.md"/);
   const bytes = Buffer.from(markdown);
   assert.equal(createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex'),
     '1d6ed17fa77e14e22633c5fdf56e7e45b814e312');
@@ -100,6 +85,6 @@ test('legacy architecture fragments have explicit forward destinations and no hi
   };
   assert.deepEqual(legacyRoutes, expected);
   for (const id of Object.keys(expected)) assert.ok(html.includes(`id="${id}"`), id);
-  assert.match(html, /Architecture and decision diagrams are now in/);
+  assert.match(html, /Back to Production and the decision paths/);
   assert.doesNotMatch(html, /Autonomy for agents|CIO|CISO|Your business process.<br>/);
 });

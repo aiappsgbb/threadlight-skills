@@ -55,6 +55,7 @@ dependency. From the repository root:
 
 ```bash
 node scripts/render-governance-diagrams.mjs
+node scripts/render-governance-diagrams.mjs --diagram effect-boundaries
 node scripts/render-governance-diagrams.mjs --check
 node --test tests/blueprint/architecture-reader.test.js
 ```
@@ -77,8 +78,8 @@ npx playwright test tests/production-governance.spec.mjs --grep authority
 ## Visual review
 
 The compact product-path illustration is at
-`/production.html#workflow-in-action`; `/agent-governance.html` is its short web
-workbook. Old architecture fragments forward to Production and retain no-JS
+`/production.html#workflow-in-action`; `/agent-governance.html` is the brief
+workbook entrance. Old architecture fragments forward to Production and retain no-JS
 links. The approved Markdown workbook diagrams are rendered
 only in documentation/test viewers; the public illustration uses local vanilla
 JS/CSS, not Mermaid or a backend. Run just the affected page checks with:

@@ -23,7 +23,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
-<link rel="stylesheet" href="assets/governed-workflow.css?v=5c9b6077">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=6aaa0777">
 <style>
   /* Page-local layout and contrast; retain the shared Threadlight tokens and navigation. */
   html { scroll-padding-top: var(--production-scroll-offset, 72px); }
@@ -692,12 +692,13 @@
         connects policy, a person's decision when needed, and a record of what changed.</p>
     </div>
     <ol class="action-actors" aria-label="Who does what">
-      <li data-action-actor="agent"><svg data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg><strong>Agent</strong><span>Proposes a recommendation; has no database-write or signing credentials.</span></li>
-      <li data-action-actor="gateway"><svg data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><strong title="MCP: Model Context Protocol">Governed MCP gateway</strong><span>Checks identity, policy and trusted facts, then routes authorized protected actions.</span></li>
-      <li data-action-actor="control"><svg data-component-icon aria-hidden="true"><use href="#production-icon-policy"/></svg><strong>Control plane</strong><span>Keeps approval intents and one-use decisions; supplies the audit ACK before effects.</span></li>
-      <li data-action-actor="human"><svg data-component-icon aria-hidden="true"><use href="#production-icon-person"/></svg><strong>Human reviewer</strong><span>Approves or rejects the exact exception in Outlook, not a general override.</span></li>
-      <li data-action-actor="business"><svg data-component-icon aria-hidden="true"><use href="#production-icon-store"/></svg><strong>Business API</strong><span>Independently authorizes the caller; its own writer identity commits the decision and audit.</span></li>
+      <li data-action-actor="agent"><svg data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg><strong>Agent <small data-actor-state>In progress</small></strong><span>Proposes a recommendation; has no database-write or signing credentials.</span></li>
+      <li data-action-actor="gateway"><svg data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><strong title="MCP: Model Context Protocol">Governed MCP gateway <small data-actor-state>Waiting</small></strong><span>Checks identity, policy and trusted facts, then routes authorized protected actions.</span></li>
+      <li data-action-actor="control"><svg data-component-icon aria-hidden="true"><use href="#production-icon-policy"/></svg><strong>Control plane <small data-actor-state>Waiting</small></strong><span>Keeps approval intents and one-use decisions; supplies the audit ACK before effects.</span></li>
+      <li data-action-actor="human"><svg data-component-icon aria-hidden="true"><use href="#production-icon-person"/></svg><strong>Human reviewer <small data-actor-state>Not required</small></strong><span>Approves or rejects the exact exception in Outlook, not a general override.</span></li>
+      <li data-action-actor="business"><svg data-component-icon aria-hidden="true"><use href="#production-icon-store"/></svg><strong>Business API <small data-actor-state>Waiting</small></strong><span>Independently authorizes the caller; its own writer identity commits the decision and audit.</span></li>
     </ol>
+    <p class="action-status-note">Actor badges describe the selected illustration, not live service status.</p>
     <p class="action-boundary"><strong>Two different gateways.</strong> <span title="APIM: Azure API Management">Citadel/APIM</span> is the <strong>model gateway</strong>
       for shared model traffic. Threadlight's governed MCP gateway controls <strong>selected business effects</strong>.</p>
     <p class="action-example" id="returns-walkthrough" data-production-example><strong>&ldquo;Can I return this order?&rdquo;</strong>
@@ -716,79 +717,52 @@
           </div>
           <div id="wf-case" role="tabpanel" aria-labelledby="wf-tab-normal">
             <p class="wf-story" data-flow-story>Eligible return &mdash; record a recommendation, not a payment.</p>
-            <svg class="wf-diagram" viewBox="0 0 1100 215" role="img" aria-labelledby="wf-map-title wf-map-desc">
-              <title id="wf-map-title">An action follows an allowed, blocked or human-reviewed path</title>
-              <desc id="wf-map-desc">The agent proposes. The governed MCP gateway checks identity, policy and facts.
-                Denial ends with no business effect. Human review waits in Outlook then rechecks authority.
-                The control plane supplies central audit ACK before the backend's conditional decision and business audit.</desc>
+            <svg class="wf-diagram" viewBox="0 0 1100 118" role="img" aria-labelledby="wf-map-title wf-map-desc">
+              <title id="wf-map-title">The selected scenario's actors, outputs and order</title>
+              <desc id="wf-map-desc">Allowed path: agent proposal, local gateway policy and facts, control-plane central audit ACK, backend conditional decision and business audit, then stable result. Human review is not required.</desc>
               <defs>
                 <marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10Z"/></marker>
               </defs>
-              <path class="wf-edge" data-flow-edge="proposal:checks" d="M180 94H240" marker-end="url(#wf-arrow)"/>
-              <path class="wf-edge" data-flow-edge="checks:ack" d="M405 94H465" marker-end="url(#wf-arrow)"/>
-              <path class="wf-edge" data-flow-edge="ack:effect" d="M630 94H690" marker-end="url(#wf-arrow)"/>
-              <path class="wf-edge" data-flow-edge="effect:result" d="M855 94H915" marker-end="url(#wf-arrow)"/>
-              <path class="wf-edge" data-flow-edge="checks:deny" d="M325 60V24H465" marker-end="url(#wf-arrow)"/>
-              <path class="wf-edge" data-flow-edge="checks:review" d="M325 128V151" marker-end="url(#wf-arrow)"/>
-              <path class="wf-edge" data-flow-edge="review:fresh" d="M405 183H465" marker-end="url(#wf-arrow)"/>
-              <path class="wf-edge" data-flow-edge="fresh:ack" d="M550 156V133" marker-end="url(#wf-arrow)"/>
-              <text class="wf-edge-label" x="414" y="83">Allow</text><text class="wf-edge-label" x="373" y="17">Deny</text><text class="wf-edge-label" x="339" y="145">Review</text>
-              <g class="wf-node" data-flow-node="proposal" transform="translate(20 60)">
-                <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-branch" x="16" y="13" width="25" height="25"/>
-                <text class="wf-number" x="138" y="25" data-flow-number>1</text><text class="wf-label" x="16" y="61">Agent proposes</text>
+              <g data-edge-layer>
+                <path class="wf-edge" data-flow-edge="proposal:checks" d="M200 59H235" marker-end="url(#wf-arrow)"/>
+                <path class="wf-edge" data-flow-edge="checks:ack" d="M420 59H455" marker-end="url(#wf-arrow)"/>
+                <path class="wf-edge" data-flow-edge="ack:effect" d="M640 59H675" marker-end="url(#wf-arrow)"/>
+                <path class="wf-edge" data-flow-edge="effect:result" d="M860 59H895" marker-end="url(#wf-arrow)"/>
               </g>
-              <g class="wf-node" data-flow-node="checks" transform="translate(245 60)">
-                <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="16" y="13" width="25" height="25"/>
-                <text class="wf-number" x="138" y="25" data-flow-number>2</text><text class="wf-label" x="16" y="61">Gateway checks</text>
-              </g>
-              <g class="wf-node" data-flow-node="ack" transform="translate(470 60)">
-                <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-policy" x="16" y="13" width="25" height="25"/>
-                <text class="wf-number" x="138" y="25" data-flow-number>3</text><text class="wf-label" x="52" y="30">Audit ACK</text><text class="wf-detail" x="16" y="61">Before the effect</text>
-              </g>
-              <g class="wf-node" data-flow-node="effect" transform="translate(695 60)">
-                <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-store" x="16" y="13" width="25" height="25"/>
-                <text class="wf-number" x="138" y="25" data-flow-number>4</text><text class="wf-label" x="52" y="30">Backend</text><text class="wf-detail" x="16" y="61">Checks + writes</text>
-              </g>
-              <g class="wf-node" data-flow-node="result" transform="translate(920 60)">
-                <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-policy" x="16" y="13" width="25" height="25"/>
-                <text class="wf-number" x="138" y="25" data-flow-number>5</text><text class="wf-label" x="16" y="61">Decision + audit</text>
-              </g>
-              <g class="wf-node wf-stop" data-flow-node="deny" transform="translate(470 3)">
-                <rect width="210" height="42" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-stop" x="12" y="9" width="24" height="24"/>
-                <text class="wf-label" x="45" y="27">No business effect</text><text class="wf-number" x="190" y="17" data-flow-number></text>
-              </g>
-              <g class="wf-node" data-flow-node="review" transform="translate(245 156)">
-                <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-person" x="12" y="15" width="24" height="24"/>
-                <text class="wf-label" x="43" y="25">Outlook review</text><text class="wf-detail" x="43" y="43">This handoff only</text><text class="wf-number" x="145" y="13" data-flow-number></text>
-              </g>
-              <g class="wf-node" data-flow-node="fresh" transform="translate(470 156)">
-                <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="12" y="15" width="24" height="24"/>
-                <text class="wf-label" x="43" y="25">Fresh checks</text><text class="wf-detail" x="43" y="43">Same proposal</text><text class="wf-number" x="145" y="13" data-flow-number></text>
+              <g data-node-layer>
+                <g class="wf-node" data-flow-node="proposal" transform="translate(20 12)"><rect width="180" height="94" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-branch" x="14" y="13" width="24" height="24"/><text class="wf-label" x="46" y="29">Agent</text><text class="wf-detail" x="14" y="58">Exact proposal</text><text class="wf-node-state" data-node-state x="14" y="81">In progress</text></g>
+                <g class="wf-node" data-flow-node="checks" transform="translate(240 12)"><rect width="180" height="94" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="14" y="13" width="24" height="24"/><text class="wf-label" x="46" y="29">Gateway</text><text class="wf-detail" x="14" y="58">Allow</text><text class="wf-node-state" data-node-state x="14" y="81">Waiting</text></g>
+                <g class="wf-node" data-flow-node="ack" transform="translate(460 12)"><rect width="180" height="94" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-policy" x="14" y="13" width="24" height="24"/><text class="wf-label" x="46" y="29">Control plane</text><text class="wf-detail" x="14" y="58">Receipt ACK</text><text class="wf-node-state" data-node-state x="14" y="81">Waiting</text></g>
+                <g class="wf-node" data-flow-node="effect" transform="translate(680 12)"><rect width="180" height="94" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-store" x="14" y="13" width="24" height="24"/><text class="wf-label" x="46" y="29">Business API</text><text class="wf-detail" x="14" y="58">Decision + audit</text><text class="wf-node-state" data-node-state x="14" y="81">Waiting</text></g>
+                <g class="wf-node" data-flow-node="result" transform="translate(900 12)"><rect width="180" height="94" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-branch" x="14" y="13" width="24" height="24"/><text class="wf-label" x="46" y="29">Agent</text><text class="wf-detail" x="14" y="58">Stable audit ID</text><text class="wf-node-state" data-node-state x="14" y="81">Waiting</text></g>
               </g>
             </svg>
             <ol class="wf-mobile" aria-label="Selected action path">
-              <li data-mobile-node="proposal"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-branch"/></svg><span>Agent proposes</span></li>
-              <li data-mobile-node="checks"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-shield"/></svg><span>Governed gateway checks</span></li>
-              <li data-mobile-node="deny" hidden><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-stop"/></svg><span>Blocked &mdash; no business effect</span></li>
-              <li data-mobile-node="review" hidden><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-person"/></svg><span>Outlook review &mdash; this handoff only</span></li>
-              <li data-mobile-node="fresh" hidden><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-shield"/></svg><span>Fresh checks &mdash; same proposal</span></li>
-              <li data-mobile-node="ack"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-policy"/></svg><span>Control plane: audit ACK before the effect</span></li>
-              <li data-mobile-node="effect"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-store"/></svg><span>Backend checks + writes</span></li>
-              <li data-mobile-node="result"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-policy"/></svg><span>Decision + business audit</span></li>
+              <li data-mobile-node="proposal">Agent &rarr; exact proposal <small>In progress</small></li>
+              <li data-mobile-node="checks">Gateway &rarr; allow <small>Waiting</small></li>
+              <li data-mobile-node="ack">Control plane &rarr; authorization receipt ACK <small>Waiting</small></li>
+              <li data-mobile-node="effect">Business API &rarr; conditional decision + audit <small>Waiting</small></li>
+              <li data-mobile-node="result" data-path-last>Agent &rarr; stable audit ID <small>Waiting</small></li>
             </ol>
-            <p class="wf-static-note">The ordinary path is shown. A blocked proposal stops at policy; a human-reviewed handoff waits in Outlook and repeats the checks before continuing.</p>
+            <p class="wf-static-note">The allowed path is shown. A blocked proposal records a denial in the control plane and ends with no business write. A human-reviewed request is registered, waits in Outlook, then needs a verified grant, fresh checks, one-use consumption and audit ACK before a write.</p>
             <ol class="wf-progress" data-flow-progress aria-label="Illustration steps" data-flow-controls hidden></ol>
             <div class="wf-caption-line">
               <div class="wf-status" data-flow-status role="status" aria-live="polite" aria-atomic="true">
-                <strong data-flow-title>1 / 5 &middot; Agent proposes</strong><p data-flow-caption>The agent proposes a return recommendation for this case. It does not supply its own permission.</p>
+                <strong data-flow-title>Illustration &middot; 1 / 5</strong> <span class="wf-current-state" data-current-state>In progress</span>
+                <dl class="wf-step-detail">
+                  <div><dt>Actor</dt><dd data-flow-actor>Agent</dd></div>
+                  <div><dt>Action</dt><dd data-flow-action>Propose the exact case action</dd></div>
+                  <div><dt>Output</dt><dd data-flow-output>Exact case request</dd></div>
+                </dl>
               </div>
               <div class="wf-transport" role="group" aria-label="Illustration playback" data-flow-controls hidden>
                 <button type="button" data-flow-control="previous" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
                 <button type="button" data-flow-control="play"><span data-flow-play-label>Play</span></button>
-                <button type="button" data-flow-control="next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+                <button type="button" data-flow-control="next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg><span data-next-label hidden>Approved example</span></button>
               </div>
             </div>
             <p class="wf-note" data-flow-motion></p>
+            <p class="wf-case-note" data-flow-case-note>Authorization receipt first; conditional decision and business audit afterward. This is not a payment.</p>
           </div>
         </div>
         <p id="effect-sequence-caption" class="wf-legend">Illustration only. No model, mailbox or backend is connected. Solid arrows show the selected path, not a live execution.</p>
@@ -805,7 +779,7 @@
       The workbook separates preparation, execution and independently verified evidence.</p>
     <a class="btn btn-primary" href="./agent-governance.html#overview">Try the guided workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
     <div class="topic-deeper">
-      <a data-deep-dive="governance" href="https://github.com/aiappsgbb/threadlight-skills/blob/af45bbb88cea9931082da3f20c289fa4feb73399/docs/agent-governance-deep-dive.md">Read the architecture: governance deep dive &rarr;</a>
+      <a data-deep-dive="governance" href="https://github.com/aiappsgbb/threadlight-skills/blob/6f597065fd26eae1664611df2d21396352ef10d1/docs/agent-governance-deep-dive.md#4-architecture-and-trust-boundaries">Components and trust boundaries &rarr;</a>
       <a href="https://github.com/aiappsgbb/threadlight-skills/blob/6bd6e72484039ed9db23f641f167f936beb9e072/docs/governed-returns-validation.md#september-15-native-outlook-human-approval-exact-resume-and-replay">Read the dated execution record &rarr;</a>
     </div>
   </section>
@@ -840,6 +814,6 @@
 <script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
 <script src="assets/production.js?v=96331334"></script>
-<script src="assets/governed-workflow.js?v=dfcb80b4"></script>
+<script src="assets/governed-workflow.js?v=a7dff5e5"></script>
 </body>
 </html>

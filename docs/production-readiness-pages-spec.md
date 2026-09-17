@@ -25,11 +25,18 @@ Action-governance explanation and the interactive allowed/blocked/human-review
 diagram belong in Production's action area, alongside five concise actor roles.
 Distinguish Citadel/APIM model access from the governed MCP effect gateway;
 authenticated unbound reads may go directly to the business API.
-`agent-governance.html` is now the short guided web workbook: six practical
-steps, a few verbatim prompt/command excerpts, and links to the approved
+`agent-governance.html` is the brief workbook entrance: one goal, three essential
+prerequisites and one primary link to the approved
 `first-governed-workflow.md`. That Markdown remains byte-frozen at Git blob
 `1d6ed17fa77e14e22633c5fdf56e7e45b814e312`; its permalinks use `7782eba93754fb7cff85336d3f4a8703892bad76`.
-Legacy architecture fragments forward to Production, with visible no-JS links.
+Legacy architecture fragments forward to Production; former web exercise
+fragments forward to their approved Markdown sections. No-JS users retain the
+workbook and Production links. The Production scenarios show different active
+paths and actor/action/output states, not the same graph with colored outlines:
+allow obtains authorization receipt ACK before a conditional write; deny records
+a central denial audit and returns blocked without a business write; human review
+persists an intent, waits in Outlook, then verifies a grant, rechecks/consumes and
+obtains ACK before the write. Illustration continuation is never a real grant.
 Citadel, AgentOps, shared navigation/theme and their existing state behavior
 remain unchanged. This is content relocation/refinement, not a new visual world.
 
@@ -277,8 +284,9 @@ existing Playwright dependencies in `tests/playwright`; no remote rendering
 service or client-side Mermaid dependency is required to read the documents.
 This remains draft source and a local preview, not production Pages publication.
 
-**Dedicated page implemented:** the [guided web workbook](agent-governance.html)
-now summarizes six practical steps; the architecture and decision diagrams live
+**Dedicated page implemented:** the [workbook entrance](agent-governance.html)
+now gives the goal, essential prerequisites and the approved workbook link;
+the action decision paths live
 in [Production's action area](production.html#effect-authority).
 The full Markdown retains exact implementation and validation boundaries.
 Both pages reuse the existing site assets and navigation, with focused

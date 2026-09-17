@@ -56,7 +56,7 @@ test('each area has recognizable component icons and a real deep-dive destinatio
   for (const [area, destination] of [
     ['platform-topic', /Azure-Samples\/ai-hub-gateway-solution-accelerator/],
     ['readiness-topic', /agentops-deep-dive\.md$/],
-    ['actions-topic', /agent-governance-deep-dive\.md$/],
+    ['actions-topic', /agent-governance-deep-dive\.md#4-architecture-and-trust-boundaries$/],
   ]) {
     const panel = page.locator(`#${area}`);
     await expect(panel.locator('[data-deep-dive]')).toHaveCount(1);

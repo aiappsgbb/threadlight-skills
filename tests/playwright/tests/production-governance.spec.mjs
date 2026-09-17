@@ -53,9 +53,9 @@ test('authority and evidence are named, readable without a diagram runtime and k
     await expect(authority.locator('.wf-mobile')).toBeVisible();
     await expect(authority.locator('.wf-diagram')).toBeHidden();
   } else {
-    await expect(authority.getByRole('img', { name: 'An action follows an allowed, blocked or human-reviewed path' })).toBeVisible();
+    await expect(authority.getByRole('img', { name: "The selected scenario's actors, outputs and order" })).toBeVisible();
   }
-  await expect(evidence.getByRole('link', { name: /Read the architecture/ })).toHaveAttribute('href', /agent-governance-deep-dive\.md$/);
+  await expect(evidence.getByRole('link', { name: /Components and trust boundaries/ })).toHaveAttribute('href', /agent-governance-deep-dive\.md#4-architecture-and-trust-boundaries$/);
   await expect(page.locator('main details')).toHaveCount(0);
   await expect(evidence.getByRole('link', { name: 'Try the guided workbook', exact: true })).toBeVisible();
   await expect(evidence).toContainText('independently verified evidence');

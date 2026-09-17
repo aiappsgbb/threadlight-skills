@@ -47,5 +47,5 @@ test('editorial contract keeps technical evidence intact and routes it outside c
 test('commercial page inherits the native site theme with readable local copy', () => {
   const html = read('agent-governance.html');
   assert.doesNotMatch(html, /--cp-|:root\s*\{|scoutTheme/);
-  assert.match(read('assets/governed-workflow.css'), /\.governance-page \.wb-step dd\s*\{[^}]*color:\s*var\(--ink-1\)/);
+  assert.match(read('assets/governed-workflow.css'), /\.governance-page \.wb-entry-needs p\s*\{[^}]*color:\s*var\(--ink-1\)/);
 });

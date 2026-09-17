@@ -13,7 +13,7 @@ const validateOnly = process.argv.includes('--validate');
 const check = process.argv.includes('--check');
 const diagramOption = process.argv.indexOf('--diagram');
 const selectedDiagram = diagramOption < 0 ? null : process.argv[diagramOption + 1];
-if (diagramOption >= 0 && !/^[a-z0-9-]+$/.test(selectedDiagram || '')) {
+if (diagramOption >= 0 && !/^[a-z0-9][a-z0-9-]*$/.test(selectedDiagram || '')) {
   throw new Error('--diagram requires a declared diagram name');
 }
 const directory = path.join(root, 'docs/assets/governance');

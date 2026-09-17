@@ -11,11 +11,11 @@ const visual = () => read('docs/production.html')
 test('product illustration is static-first with separate pre-effect and business records', () => {
   const html = visual();
   assert.ok(html, 'compact decision path in Production');
-  for (const token of ['Agent proposes', 'Gateway checks', 'Outlook review',
-    'Backend', 'Decision + audit', 'central audit ACK', 'No business effect',
+  for (const token of ['Agent', 'Gateway', 'Control plane',
+    'Business API', 'Decision + audit', 'central audit ACK',
     'No model, mailbox or backend is connected',
     'Allowed', 'Blocked', 'Human review']) assert.ok(html.includes(token), token);
-  for (const node of ['proposal', 'checks', 'deny', 'review', 'fresh', 'ack', 'effect', 'result']) {
+  for (const node of ['proposal', 'checks', 'ack', 'effect', 'result']) {
     assert.ok(html.includes(`data-flow-node="${node}"`), node);
   }
   assert.ok(html.indexOf('data-flow-node="ack"') < html.indexOf('data-flow-node="effect"'));
@@ -24,7 +24,7 @@ test('product illustration is static-first with separate pre-effect and business
   assert.match(html, /aria-live="polite"/);
   assert.match(html, /<svg[^>]*class="wf-diagram"/);
   assert.match(html, /<path[^>]*data-flow-edge="checks:ack"[^>]*marker-end=/);
-  assert.match(html, /<path[^>]*data-flow-edge="checks:deny"[^>]*marker-end=/);
+  assert.match(html, /data-edge-layer/);
   assert.doesNotMatch(html, /data-flow-edge="deny:(?:ack|effect|result)"/);
   assert.match(html, /role="tablist"/);
   assert.match(html, /data-flow-progress/);
@@ -44,7 +44,7 @@ test('all executable illustration paths acknowledge authorization before effects
     assert.ok(steps.indexOf('effect') < steps.indexOf('result'), name);
     assert.equal(steps.filter((step) => step === 'effect').length, 1);
   }
-  assert.deepEqual(scenarios.invalid.steps, ['proposal', 'checks', 'deny']);
+  assert.deepEqual(scenarios.invalid.steps, ['proposal', 'checks', 'denial-audit', 'deny']);
   assert.ok(scenarios.supervisor.steps.indexOf('review') < scenarios.supervisor.steps.indexOf('fresh'));
   assert.ok(scenarios.supervisor.steps.indexOf('fresh') < scenarios.supervisor.steps.indexOf('ack'));
 });
@@ -88,8 +88,9 @@ test('governance joins native chapter navigation instead of creating a second si
   assert.equal(nav(html), nav(read('docs/production.html')));
   assert.match(html, /chapter-experience/);
   assert.match(html, /class="cx-journey"/);
-  assert.match(html, /class="cx-chapter-links"/);
-  assert.match(html, /class="cx-chapter-index"/);
+  assert.match(html, /aria-label="Breadcrumb"/);
+  assert.match(html, />Open the workbook\s*</);
+  assert.doesNotMatch(html, /class="cx-chapter-index"/);
   for (const asset of ['site-map.js', 'chapter-experience.js', 'chapter-experience.css']) {
     assert.ok(html.includes(`assets/${asset}?v=`), asset);
   }

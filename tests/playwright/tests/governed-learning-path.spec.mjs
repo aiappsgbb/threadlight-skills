@@ -18,23 +18,18 @@ test('Production explains actors and keeps model access separate from protected 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Build your first governed workflow');
 });
 
-test('the mini workbook navigates six practical steps and preserves source-backed excerpts', async ({ page }) => {
+test('the entrance has one workbook action and only three prerequisites', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/agent-governance.html');
-  await expect(page.locator('[data-workbook-stage]')).toHaveCount(6);
+  await expect(page.locator('[data-prerequisite]')).toHaveCount(3);
   await expect(page.locator('[data-governed-flow], .wf-diagram, [data-flow-node]')).toHaveCount(0);
-  const path = page.getByRole('navigation', { name: 'Workbook steps' });
-  await path.getByRole('link', { name: /03.*Local/ }).focus();
-  await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/#local$/);
-  await expect(page.locator('#local')).toBeFocused();
-  await expect(page.locator('[data-workbook-excerpt="package"]')).toContainText('package_returns_mcp.py');
-  await path.getByRole('link', { name: /04.*Authorize/ }).click();
-  await expect(page.locator('#authorize')).toContainText(/personal OAuth consent/i);
-  await expect(page.locator('#authorize a')).toHaveAttribute('href', /7782eba93754fb7cff85336d3f4a8703892bad76.*#phase-4-/);
-  await page.goBack();
-  await expect(page).toHaveURL(/#local$/);
-  await expect(page.locator('#local')).toBeFocused();
+  await expect(page.locator('main pre, [data-workbook-stage], .floating-toc')).toHaveCount(0);
+  const primary = page.locator('main .btn-primary');
+  await expect(primary).toHaveCount(1);
+  await expect(primary).toHaveText('Open the workbook →');
+  await expect(primary).toHaveAttribute('href', /7782eba93754fb7cff85336d3f4a8703892bad76\/docs\/first-governed-workflow.md$/);
+  await primary.focus();
+  await expect(primary).toBeFocused();
 });
 
 test('old architecture and diagram fragments forward to their preserved Production targets', async ({ page }) => {
@@ -45,6 +40,15 @@ test('old architecture and diagram fragments forward to their preserved Producti
     await expect(page).toHaveURL(new RegExp(`production\\.html#${target}$`));
     await expect(page.locator(`#${target}`)).toBeVisible();
     await expect(page.locator('#actions-topic')).toBeVisible();
+  }
+});
+
+test('former web exercise fragments open their exact approved workbook section', async ({ page }) => {
+  await page.route('https://github.com/aiappsgbb/threadlight-skills/blob/**/docs/first-governed-workflow.md*',
+    route => route.fulfill({ contentType: 'text/html', body: '<title>Workbook destination</title>' }));
+  for (const [old, phase] of [['define', 1], ['prepare', 2], ['local', 3], ['authorize', 4], ['validate', 5], ['operate', 6]]) {
+    await page.goto(`/agent-governance.html#${old}`);
+    await expect(page).toHaveURL(new RegExp(`7782eba93754fb7cff85336d3f4a8703892bad76/.*#phase-${phase}-`));
   }
 });
 
@@ -95,9 +99,10 @@ test('both destinations and legacy forward links remain understandable without J
   try {
     const page = await context.newPage();
     await page.goto(`${baseURL}/agent-governance.html#workflow-in-action`);
-    await expect(page.locator('[data-workbook-stage]')).toHaveCount(6);
-    await expect(page.locator('.wb-legacy a')).toBeVisible();
-    await page.locator('.wb-legacy a').click();
+    await expect(page.locator('[data-prerequisite]')).toHaveCount(3);
+    const back = page.getByRole('link', { name: 'Back to Production and the decision paths', exact: true });
+    await expect(back).toBeVisible();
+    await back.click();
     await expect(page).toHaveURL(/production\.html#effect-authority$/);
     await expect(page.locator('#effect-authority [data-action-actor]')).toHaveCount(5);
     await expect(page.locator('#effect-authority .wf-mobile')).toBeVisible();

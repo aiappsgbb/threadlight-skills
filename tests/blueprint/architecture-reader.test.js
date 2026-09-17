@@ -45,7 +45,7 @@ test('production chapter explains the action boundary through a connected visual
   for (const label of ['Agent', 'Governed MCP gateway', 'Control plane', 'Human reviewer', 'Business API',
     'Outlook', 'policy', 'trusted facts', 'audit ACK']) assert.ok(section.includes(label), label);
   const outcomes = page.match(/<section\b[^>]*id="evidence-boundaries"[^>]*>([\s\S]*?)<\/section>/)[1];
-  assert.match(outcomes, /Read the architecture/);
+  assert.match(outcomes, /Components and trust boundaries/);
   assert.match(outcomes, /agent-governance-deep-dive\.md/);
   assert.doesNotMatch(section, /sha256:|2026-|S[123]-|ETag CAS|Idempotency-Key/);
   assert.doesNotMatch(page, /--cp-bg:\s*#f7f4ef|data-theme="dark"/, 'Do not replace the established site theme');
@@ -111,8 +111,10 @@ test('production feedback links resolve to the clarified governance guide snapsh
   const page = read('docs/production.html');
   const links = [...page.matchAll(/href="(https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[^/"]+\/docs\/agent-governance-deep-dive\.md)(?:#[^"]*)?"/g)];
   const expected = 'https://github.com/aiappsgbb/threadlight-skills/blob/af45bbb88cea9931082da3f20c289fa4feb73399/docs/agent-governance-deep-dive.md';
+  const current = 'https://github.com/aiappsgbb/threadlight-skills/blob/6f597065fd26eae1664611df2d21396352ef10d1/docs/agent-governance-deep-dive.md';
   assert.equal(links.length, 3, 'Privacy boundary, detailed reading and closing CTA');
-  for (const [, target] of links) assert.equal(target, expected);
+  assert.equal(links.filter(([, target]) => target === expected).length, 2);
+  assert.equal(links.filter(([, target]) => target === current).length, 1);
 });
 
 test('root guidance records the completed private human reference without extending its proof', () => {
