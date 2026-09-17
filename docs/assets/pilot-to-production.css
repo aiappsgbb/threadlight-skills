@@ -23,6 +23,8 @@
 .pg-goal { max-width: 72ch; margin: 0 0 20px; color: var(--ink-1); font-size: 16px; line-height: 1.65; }
 .pg-skills { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-bottom: 26px; }
 .pg-skills-label { color: var(--ink-0); font: 650 15px var(--sans); margin-right: 4px; }
+.pg-skills-label, .pg-panel .pg-prompt-title, .pg-panel .pg-verify-title { display: flex; align-items: center; gap: 8px; }
+.pg-heading-icon { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: var(--ink-1); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .pg-skills a { display: inline-flex; align-items: center; min-height: 40px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--ink-1); font: 15px/1.4 var(--sans); overflow-wrap: anywhere; }
 .pg-skills a[data-skill-role="primary"] { color: var(--ink-0); font-weight: 650; background: var(--bg-2); }
 .pg-skills a:hover { color: var(--ink-0); border-color: var(--ink-1); }

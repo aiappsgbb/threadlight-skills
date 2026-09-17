@@ -26,7 +26,7 @@ test('every step names exact primary/support skills with real contract links', (
   for (const [, id, body] of panels()) {
     const row = body.match(/<div class="pg-skills"[\s\S]*?<\/div>/)?.[0];
     assert.ok(row, id);
-    assert.ok(row.includes('Skills used'), id);
+    assert.ok(row.includes('>Skills</span>'), id);
     const links = [...row.matchAll(/href="([^"]+)"[^>]*>(threadlight-[a-z-]+)<\/a>/g)];
     assert.deepEqual(links.map(([, , name]) => name), skills[id], id);
     for (const [, href, name] of links) {
@@ -34,6 +34,23 @@ test('every step names exact primary/support skills with real contract links', (
       assert.ok(fs.existsSync(path.join(root, 'skills', name, 'SKILL.md')), name);
     }
     assert.equal((row.match(/data-skill-role="primary"/g) || []).length, 1);
+  }
+});
+
+test('short guide labels use only restrained decorative native icons', () => {
+  for (const [, id, body] of panels()) {
+    for (const [label, pattern, icon] of [
+      ['Skills', /<span class="pg-skills-label">([\s\S]*?)<\/span>/, 'package'],
+      ['Prompt', /<h3 class="pg-prompt-title">([\s\S]*?)<\/h3>/, 'inventory'],
+      ['Verify', /<h3 class="pg-verify-title">([\s\S]*?)<\/h3>/, 'shield'],
+    ]) {
+      const heading = body.match(pattern)?.[1];
+      assert.ok(heading, `${id}: ${label}`);
+      assert.match(heading, new RegExp(`<svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-${icon}"\\s*\\/>`));
+      assert.equal(heading.replace(/<[^>]*>/g, '').trim(), label);
+    }
+    assert.equal((body.match(/class="pg-heading-icon"/g) || []).length, 3);
+    assert.doesNotMatch(body, /Prompt for your coding agent|Verify before continuing/);
   }
 });
 

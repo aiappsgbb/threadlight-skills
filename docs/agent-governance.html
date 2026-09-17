@@ -14,7 +14,7 @@
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
 <link rel="stylesheet" href="assets/governed-workflow.css?v=432ea589">
-<link rel="stylesheet" href="assets/pilot-to-production.css?v=f2d33aa2">
+<link rel="stylesheet" href="assets/pilot-to-production.css?v=0f169132">
 </head>
 <body class="chapter-page chapter-production chapter-experience governance-page" data-chapter-parent="production" data-web-workbook>
 <svg class="pg-output-icons" width="0" height="0" aria-hidden="true" focusable="false">
@@ -70,13 +70,13 @@
         <h2>Inspect the pilot you already generated</h2>
         <p class="pg-goal">Identify its current runtime, tool boundaries and evidence gaps without rebuilding it.</p>
         <div class="pg-skills" aria-label="Skills used for inspection">
-          <span class="pg-skills-label">Skills used</span>
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
           <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-governed-actions/SKILL.md">threadlight-governed-actions</a>
           <span class="pg-skill-scope">Inventory only</span>
         </div>
         <div class="pg-step-layout">
         <div class="pg-prompt-column">
-        <h3 class="pg-prompt-title">Prompt for your coding agent</h3>
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
         <pre data-guide-prompt tabindex="0">Use the inventory rules from threadlight-governed-actions to inspect my existing Threadlight pilot read-only.
 Read specs/SPEC.md, specs/foundation.md, specs/manifest.json, registered tools, identity mappings and retained generated artifacts/evidence.
 Do not run probes, emit files, remediate, regenerate the SPEC or switch the runtime.
@@ -94,7 +94,7 @@ Summarize the current supported profile, read versus consequential tools, existi
           </ul>
           <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-2-prepare-the-people-inputs-and-access-handoff">Inventory check details</a>
         </div>
-        <h3>Verify before continuing</h3>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
         <ul class="pg-verify">
           <li>The inspected repository and existing foundation/manifest agree on runtime, protocol and tools.</li>
           <li>The inventory distinguishes declared, locally tested and deployment-verified paths; original files remain unchanged.</li>
@@ -107,12 +107,12 @@ Summarize the current supported profile, read versus consequential tools, existi
         <h2>Select the missing action controls</h2>
         <p class="pg-goal">Review only the delta: protected actions, identities, human channel and target posture.</p>
         <div class="pg-skills" aria-label="Skills used for selection">
-          <span class="pg-skills-label">Skills used</span>
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
           <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-govern/SKILL.md">threadlight-govern</a>
         </div>
         <div class="pg-step-layout">
         <div class="pg-prompt-column">
-        <h3 class="pg-prompt-title">Prompt for your coding agent</h3>
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
         <pre data-guide-prompt tabindex="0">Use threadlight-govern to propose the governance delta for the existing SPEC, foundation and tool inventory.
 Select named protected actions in specs/governance-contract.json; preserve authenticated unbound reads.
 Match the current runtime to a supported human channel. Deferred Outlook resume requires the supported MAF/gateway profile; report incompatibility instead of silently switching frameworks.
@@ -130,7 +130,7 @@ Reuse the approved target posture and identity owners. List required trusted fac
           </ul>
           <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-4-opt-in-to-governance-and-review-the-hosted-setup">Policy and binding details</a>
         </div>
-        <h3>Verify before continuing</h3>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
         <ul class="pg-verify">
           <li>The reviewed contract names actual existing tools, backend targets/facts and a supported runtime/channel combination.</li>
           <li>The owner has approved the target/posture and permission delta; personal consent is still a real human handoff.</li>
@@ -143,13 +143,13 @@ Reuse the approved target posture and identity owners. List required trusted fac
         <h2>Prepare the governed release candidate</h2>
         <p class="pg-goal">Reuse generated sources and prepare the missing integrations, not another pilot or pipeline.</p>
         <div class="pg-skills" aria-label="Skills used for candidate preparation">
-          <span class="pg-skills-label">Skills used</span>
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
           <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-deploy/SKILL.md">threadlight-deploy</a>
           <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-cicd/SKILL.md">threadlight-cicd</a>
         </div>
         <div class="pg-step-layout">
         <div class="pg-prompt-column">
-        <h3 class="pg-prompt-title">Prompt for your coding agent</h3>
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
         <pre data-guide-prompt tabindex="0">Use threadlight-deploy and threadlight-cicd with the reviewed delta and existing generated host, tools, infrastructure and CI.
 Prepare only missing governance integrations and the current verified-release candidate plan. Do not overwrite unrelated generated artifacts or existing workflows.
 Identify real application-owned prepare/observe/eval/red-team/promote adapters and configure the reviewed specs/release-policy.json.
@@ -168,7 +168,7 @@ Hand off exact permission assignments, publisher authority, native identity obse
           </ul>
           <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-6-hand-off-a-controlled-release-and-safe-operations">Release preparation details</a>
         </div>
-        <h3>Verify before continuing</h3>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
         <ul class="pg-verify">
           <li>The candidate plan reuses current sources; real adapters, datasets, thresholds and immutable-image provenance are reviewed.</li>
           <li>Validation/production identities and protected approvals are separate; the publisher and observed-identity binding handoffs are explicit.</li>
@@ -181,7 +181,7 @@ Hand off exact permission assignments, publisher authority, native identity obse
         <h2>Execute the approved candidate checks</h2>
         <p class="pg-goal">Produce fresh candidate evidence, including the selected business action and human review.</p>
         <div class="pg-skills" aria-label="Skills used for candidate checks">
-          <span class="pg-skills-label">Skills used</span>
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
           <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-cicd/SKILL.md">threadlight-cicd</a>
           <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-governed-actions/SKILL.md">threadlight-governed-actions</a>
           <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-safe-check/SKILL.md">threadlight-safe-check</a>
@@ -189,7 +189,7 @@ Hand off exact permission assignments, publisher authority, native identity obse
         </div>
         <div class="pg-step-layout">
         <div class="pg-prompt-column">
-        <h3 class="pg-prompt-title">Prompt for your coding agent</h3>
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
         <pre data-guide-prompt tabindex="0">Only after I separately approve the exact existing target, model, change list, scoped permissions and test budget, use threadlight-cicd's reviewed candidate workflow/adapters.
 Observe the actual candidate version/image/identity and current signed binding. Run configured real eval, red-team and MCP producers.
 Use threadlight-governed-actions and threadlight-safe-check for their documented scopes; governance_probe_noop is not business-write proof.
@@ -207,7 +207,7 @@ With a real authorized reviewer, verify supported allow/deny/pending, exact same
           </ul>
           <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-5-demonstrate-allow-deny-and-a-real-human-decision">Human review and audit details</a>
         </div>
-        <h3>Verify before continuing</h3>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
         <ul class="pg-verify">
           <li>Fresh evidence joins the observed candidate and selected binding; allow/deny/human/audit outcomes come from actual execution, not model prose.</li>
           <li>Required eval/red-team/MCP gates pass; <code>.threadlight-release/candidate.json</code> exists only after accepted validation.</li>
@@ -221,13 +221,13 @@ With a real authorized reviewer, verify supported allow/deny/pending, exact same
         <h2>Approve promotion and observe production</h2>
         <p class="pg-goal">Promote the same tested image, verify the actual target and complete the operations handoff.</p>
         <div class="pg-skills" aria-label="Skills used for promotion and operations">
-          <span class="pg-skills-label">Skills used</span>
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
           <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-cicd/SKILL.md">threadlight-cicd</a>
           <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-production-ready/SKILL.md">threadlight-production-ready</a>
         </div>
         <div class="pg-step-layout">
         <div class="pg-prompt-column">
-        <h3 class="pg-prompt-title">Prompt for your coding agent</h3>
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
         <pre data-guide-prompt tabindex="0">Use threadlight-cicd's existing verified-release contract after protected production-environment approval.
 Recheck the current candidate receipt and promote the same immutable image; do not rebuild it or borrow candidate evidence as production proof.
 Independently observe production and obtain the required fresh production binding/business evidence. Keep routing closed until application-owned acceptance is complete.
@@ -246,7 +246,7 @@ Reconcile unknown outcomes through the existing main contract, not an unmerged o
           </ul>
           <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-6-hand-off-a-controlled-release-and-safe-operations">Release and operations details</a>
         </div>
-        <h3>Verify before continuing</h3>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
         <ul class="pg-verify">
           <li>Production observation matches the accepted immutable image and current authority; release approval is not action approval or business go-live.</li>
           <li>The operations owner has the remaining gaps, retained evidence and exact test-owned cleanup scope. No automatic rollback or deletion is implied.</li>

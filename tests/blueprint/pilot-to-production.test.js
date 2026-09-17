@@ -37,7 +37,7 @@ test('the guide starts from an existing Threadlight pilot and has five actionabl
   assert.equal(panels.length, 5);
   for (const [panel] of panels) {
     assert.match(panel, /data-guide-prompt/);
-    assert.match(panel, /Verify before continuing/);
+    assert.match(panel, /class="pg-verify-title">[\s\S]*?Verify<\/h3>/);
     const checks = panel.match(/<ul class="pg-verify">([\s\S]*?)<\/ul>/)[1];
     assert.ok([...checks.matchAll(/<li>/g)].length >= 2);
     const prompt = panel.match(/<pre[^>]*data-guide-prompt[^>]*>([\s\S]*?)<\/pre>/)[1];
