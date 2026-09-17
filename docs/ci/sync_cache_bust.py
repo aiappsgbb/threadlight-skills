@@ -35,6 +35,10 @@ from pathlib import Path
 
 DOCS = Path(__file__).resolve().parent.parent
 ASSETS = {
+    "pilot-to-production.css": DOCS / "assets" / "pilot-to-production.css",
+    "pilot-to-production.js": DOCS / "assets" / "pilot-to-production.js",
+    "governed-workflow.css": DOCS / "assets" / "governed-workflow.css",
+    "governed-workflow.js": DOCS / "assets" / "governed-workflow.js",
     "production.js": DOCS / "assets" / "production.js",
     "site-map.js": DOCS / "assets" / "site-map.js",
     "basics-visuals.css": DOCS / "assets" / "basics-visuals.css",

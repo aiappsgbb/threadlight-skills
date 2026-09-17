@@ -316,7 +316,15 @@ test.describe('production chapter (production.html)', () => {
     await expect(page.locator('main .gap-card')).toHaveCount(0);
     await expect(page.locator('#platform-topic .source-attribution a[href*="Azure-Samples/ai-hub-gateway-solution-accelerator"]')).toHaveCount(1);
     await expect(page.locator('#readiness-topic a[href$="/docs/production-readiness.md"]')).toHaveCount(1);
-    await expect(page.locator('#actions-topic a[href$="/docs/agent-governance-deep-dive.md"]')).toHaveCount(1);
+    const governanceReference = page.locator('#actions-topic a[data-deep-dive="governance"]');
+    await expect(governanceReference).toHaveCount(1);
+    const reference = new URL(await governanceReference.getAttribute('href'));
+    expect(reference.origin).toBe('https://github.com');
+    expect(reference.pathname).toBe('/aiappsgbb/threadlight-skills/blob/6f597065fd26eae1664611df2d21396352ef10d1/docs/agent-governance-deep-dive.md');
+    expect(reference.hash).toBe('#4-architecture-and-trust-boundaries');
+    const document = await page.request.get('/agent-governance-deep-dive.md');
+    expect(document.ok()).toBe(true);
+    expect(await document.text()).toMatch(/^## 4\. Architecture and trust boundaries$/m);
   });
 
   test('the closing links to the technical guide without illustrative metrics or another tutorial', async ({ page }) => {

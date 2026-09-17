@@ -31,7 +31,11 @@ def test_pages_link_deep_governance_instead_of_repeating_the_operator_reference(
     production = (REPO / "docs/production.html").read_text()
     assert 'href="./governance.html"' in production
     assert "docs/agent-operations.md" in production
-    assert "Opt-in bindings define coverage" in production
+    assert "Selected actions, not blanket protection." in production
+    assert "authenticated unbound read can go directly" in production
+    assert 'href="./agent-governance.html#overview"' in production
+    workbook = (REPO / "docs/first-governed-workflow.md").read_text()
+    assert "I select governed-tool-gateway for returns_apply_decision" in workbook
     assert "not automatic go-live approval" in production
     home = (REPO / "docs/index.html").read_text()
     assert re.search(r'<section class="scene demo-intro(?: [^"]+)?" aria-labelledby="demo-h">', home)

@@ -11,7 +11,13 @@ const renderer = path.join(path.dirname(require.resolve('mermaid')), 'mermaid.mi
 const documents = ['agent-governance-deep-dive', 'native-outlook-approval-architecture'];
 const validateOnly = process.argv.includes('--validate');
 const check = process.argv.includes('--check');
+const diagramOption = process.argv.indexOf('--diagram');
+const selectedDiagram = diagramOption < 0 ? null : process.argv[diagramOption + 1];
+if (diagramOption >= 0 && !/^[a-z0-9][a-z0-9-]*$/.test(selectedDiagram || '')) {
+  throw new Error('--diagram requires a declared diagram name');
+}
 const directory = path.join(root, 'docs/assets/governance');
+let selectedCount = 0;
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -22,9 +28,13 @@ try {
     const markdown = await readFile(path.join(root, `docs/${document}.md`), 'utf8');
     const blocks = [...markdown.matchAll(/(?:<!-- diagram: ([a-z0-9-]+) -->\s*)?```mermaid\n([\s\S]*?)\n```/g)];
     if (!blocks.length) throw new Error(`No diagrams in ${document}`);
+    let renderedCount = 0;
     for (const [index, [, declaredName, source]] of blocks.entries()) {
       if (!declaredName && !validateOnly) throw new Error(`Missing diagram name in ${document}`);
       const name = declaredName || `${document}-${index}`;
+      if (selectedDiagram && name !== selectedDiagram) continue;
+      selectedCount += 1;
+      renderedCount += 1;
       const svg = await page.evaluate(async ({ name, source }) => {
         mermaid.initialize({
           startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true,
@@ -53,8 +63,9 @@ try {
         await writeFile(filename, output);
       }
     }
-    console.log(`${check ? 'Checked' : validateOnly ? 'Validated' : 'Rendered'} ${document}: ${blocks.length} diagrams`);
+    if (renderedCount) console.log(`${check ? 'Checked' : validateOnly ? 'Validated' : 'Rendered'} ${document}: ${renderedCount} diagrams`);
   }
+  if (selectedDiagram && !selectedCount) throw new Error(`Unknown diagram: ${selectedDiagram}`);
 } finally {
   await browser.close();
 }

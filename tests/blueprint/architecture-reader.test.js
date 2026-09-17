@@ -39,13 +39,13 @@ test('architecture diagrams are pre-rendered images with accessible text and ret
 test('production chapter explains the action boundary through a connected visual and a deeper reading path', () => {
   const page = read('docs/production.html');
   const section = page.match(/<section\b[^>]*id="effect-authority"[^>]*>([\s\S]*?)<\/section>/)[1];
-  assert.match(section, /class="authority-map"/);
-  assert.match(section, /role="img"[^>]*aria-labelledby="authority-map-title authority-map-desc"/);
+  assert.match(section, /class="wf-diagram"/);
+  assert.match(section, /role="img"[^>]*aria-labelledby="wf-map-title wf-map-desc"/);
   assert.match(section, /<path[^>]*marker-end=/);
-  for (const label of ['Propose', 'Authorize', 'Execute', 'Human decision', 'Outlook',
-    'Identity', 'Policy', 'Trusted facts', 'audit ACK']) assert.ok(section.includes(label), label);
+  for (const label of ['Agent', 'Governed MCP gateway', 'Control plane', 'Human reviewer', 'Business API',
+    'Outlook', 'policy', 'trusted facts', 'audit ACK']) assert.ok(section.includes(label), label);
   const outcomes = page.match(/<section\b[^>]*id="evidence-boundaries"[^>]*>([\s\S]*?)<\/section>/)[1];
-  assert.match(outcomes, /Read the architecture/);
+  assert.match(outcomes, /Components and trust boundaries/);
   assert.match(outcomes, /agent-governance-deep-dive\.md/);
   assert.doesNotMatch(section, /sha256:|2026-|S[123]-|ETag CAS|Idempotency-Key/);
   assert.doesNotMatch(page, /--cp-bg:\s*#f7f4ef|data-theme="dark"/, 'Do not replace the established site theme');
@@ -67,7 +67,7 @@ test('production groups three complementary areas, keeps privacy cross-cutting a
     'effect boundary', 'independent business API']) {
     assert.ok(action.includes(phrase), phrase);
   }
-  assert.ok(action.indexOf('id="returns-walkthrough"') < action.indexOf('class="authority-map"'));
+  assert.ok(action.indexOf('id="returns-walkthrough"') < action.indexOf('class="wf-diagram"'));
   assert.doesNotMatch(page, /Threadlight proves the agent you run in it|Agent governance &mdash; not platform governance/);
 });
 
@@ -111,8 +111,10 @@ test('production feedback links resolve to the clarified governance guide snapsh
   const page = read('docs/production.html');
   const links = [...page.matchAll(/href="(https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[^/"]+\/docs\/agent-governance-deep-dive\.md)(?:#[^"]*)?"/g)];
   const expected = 'https://github.com/aiappsgbb/threadlight-skills/blob/af45bbb88cea9931082da3f20c289fa4feb73399/docs/agent-governance-deep-dive.md';
+  const current = 'https://github.com/aiappsgbb/threadlight-skills/blob/6f597065fd26eae1664611df2d21396352ef10d1/docs/agent-governance-deep-dive.md';
   assert.equal(links.length, 3, 'Privacy boundary, detailed reading and closing CTA');
-  for (const [, target] of links) assert.equal(target, expected);
+  assert.equal(links.filter(([, target]) => target === expected).length, 2);
+  assert.equal(links.filter(([, target]) => target === current).length, 1);
 });
 
 test('root guidance records the completed private human reference without extending its proof', () => {

@@ -43,6 +43,11 @@ parity, and a running host is not proof it consumed its skills.
 | [Case study](https://aiappsgbb.github.io/threadlight-skills/case-study.html) | A concrete process, decisions and implementation boundaries |
 | [Production](https://aiappsgbb.github.io/threadlight-skills/production.html) | Governance, readiness and operator-owned deployment |
 
+For a hands-on starting point, follow
+[Your first governed workflow](docs/first-governed-workflow.md): one returns
+decision, six practical phases, and explicit handoffs from local rehearsal to
+native Outlook review and a controlled release.
+
 For the **L400/L500 engineering mental model**, read
 [Skill-based agents: construction, runtime and evidence](docs/skill-based-agents.md).
 It includes actual runtime loading, all 24 local capabilities, Cowork versus
@@ -148,10 +153,13 @@ file mtime, a prior empty gaps array or a changed signing envelope cannot renew 
 See [production guidance and CI inputs](docs/production-readiness.md#runtime-governance-lifecycle)
 and [coding-agent guidance](AGENTS.md).
 
-**The model proposes; trusted components authorize effects.** The implemented
-[Agent governance page](docs/agent-governance.html) presents the product vision,
-integrated controls, business value and adoption path. Detailed validation
-facts and implementation limits remain in the engineering references.
+**The model proposes; trusted components authorize effects.**
+[Production: governed actions](docs/production.html#effect-authority) explains
+the actors, model-versus-tool gateways and selected action paths.
+The [existing-pilot guide](docs/agent-governance.html) reuses your Threadlight
+SPEC, code and tools through five governed-release prompts and verification
+checkpoints. The approved Markdown workbook remains the detailed reference.
+Validation facts and implementation limits remain in the engineering references.
 For the actual
 identity, policy, approval, transport and durable-audit boundaries, read the
 [engineering deep dive](docs/agent-governance-deep-dive.md). The separate

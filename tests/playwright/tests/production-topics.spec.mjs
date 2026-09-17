@@ -8,12 +8,12 @@ const subsections = [...topics.filter(id => id !== 'information-controls'), 'del
 
 test('three areas own the correct subsections and expose one platform architecture', async ({ page }) => {
   await page.goto('/production.html');
-  await expect(page.getByRole('tab')).toHaveCount(3);
+  await expect(page.locator('[data-topic-tab]')).toHaveCount(3);
   for (const [id, owner] of [['model-controls', 'platform-topic'],
     ['quality-controls', 'readiness-topic'], ['delivery-controls', 'readiness-topic'],
     ['effect-authority', 'actions-topic']]) {
     await page.goto(`/production.html#${id}`);
-    await expect(page.getByRole('tabpanel')).toHaveAttribute('id', owner);
+    await expect(page.locator('[data-topic-panel]:not([hidden])')).toHaveAttribute('id', owner);
     await expect(page.locator(`#${id}`)).toBeVisible();
   }
   await page.goto('/production.html#platform-controls');
@@ -54,8 +54,8 @@ test('the general overview opens independent topics and keeps the return inside 
     await link.click();
     const panel = page.locator(await link.getAttribute('href'));
     await expect(panel).toBeVisible();
-    await expect(page.getByRole('tabpanel').locator('[data-visual]').first()).toBeVisible();
-    await expect(page.getByRole('tabpanel')).toHaveCount(1);
+    await expect(page.locator('[data-topic-panel]:not([hidden])').locator('[data-visual]').first()).toBeVisible();
+    await expect(page.locator('[data-topic-panel]:not([hidden])')).toHaveCount(1);
     if (await panel.getAttribute('id') === 'effect-authority') {
       await expect(panel.locator('#returns-walkthrough')).toContainText('Can I return this order');
     } else {
@@ -81,15 +81,15 @@ test('production presents a visual map and only one structured topic at a time',
   await page.goto('/production.html');
   await expect(page.locator('.production-map')).toBeVisible();
   await expect(page.getByRole('tablist', { name: 'Production topics' })).toBeVisible();
-  await expect(page.getByRole('tab')).toHaveCount(3);
-  await expect(page.getByRole('tabpanel')).toHaveCount(1);
+  await expect(page.locator('[data-topic-tab]')).toHaveCount(3);
+  await expect(page.locator('[data-topic-panel]:not([hidden])')).toHaveCount(1);
   await expect(page.locator('.topic-reference[open]')).toHaveCount(0);
   for (const id of subsections) {
     await page.goto(`/production.html#${id}`);
-    await expect(page.getByRole('tabpanel')).toHaveCount(1);
+    await expect(page.locator('[data-topic-panel]:not([hidden])')).toHaveCount(1);
     const panel = page.locator(`#${id}`);
     await expect(panel).toBeVisible();
-    await expect(page.getByRole('tabpanel').locator('[data-visual]').first()).toBeVisible();
+    await expect(page.locator('[data-topic-panel]:not([hidden])').locator('[data-visual]').first()).toBeVisible();
     expect((await panel.innerText()).split(/\s+/).length).toBeLessThan(700);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   }
@@ -99,7 +99,7 @@ test('tabs support keyboard selection and browser history without losing context
   await page.goto('/production.html#platform-controls');
   const first = page.locator('[data-topic-tab]').first();
   await first.focus();
-  const orientation = await page.getByRole('tablist').getAttribute('aria-orientation');
+  const orientation = await page.getByRole('tablist', { name: 'Production topics' }).getAttribute('aria-orientation');
   await first.press(orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight');
   await expect(page.locator('[data-topic-tab]').nth(1)).toBeFocused();
   await expect(page.locator('#operating-controls')).toBeVisible();
@@ -119,7 +119,7 @@ test('legacy deep links select the owning topic or a relevant common note', asyn
     ['evidence-boundaries', 'effect-authority']]) {
     await page.goto(`/production.html#${anchor}`);
     if (owner) await expect(page.locator(`#${owner}`)).toBeVisible();
-    await expect(page.getByRole('tabpanel')).toHaveCount(1);
+    await expect(page.locator('[data-topic-panel]:not([hidden])')).toHaveCount(1);
     const target = page.locator(`#${anchor}`);
     await expect(target).toBeVisible();
     await expect.poll(() => target.evaluate(el => {

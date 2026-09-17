@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const wordCount = locator => locator.evaluate(element => {
   const copy = element.cloneNode(true);
-  copy.querySelectorAll('style, script, .authority-mobile').forEach(node => node.remove());
+  copy.querySelectorAll('style, script, .wf-mobile').forEach(node => node.remove());
   return copy.textContent.trim().split(/\s+/).length;
 });
 
@@ -38,11 +38,11 @@ test('AgentOps leads directly into the retained pipeline instead of another intr
 
 test('action governance explains separate policy and authority services and ends without a scorecard', async ({ page }) => {
   await page.goto('/production.html#effect-authority');
-  for (const component of ['Policy service', 'Control plane', 'Human reviewer', 'Business API']) {
-    await expect(page.locator('.authority-map')).toContainText(component);
+  for (const component of ['Governed MCP gateway', 'Control plane', 'Human reviewer', 'Business API']) {
+    await expect(page.locator('.action-actors')).toContainText(component);
   }
   await expect(page.locator('#effect-authority')).toContainText('effect boundary');
-  await expect(page.locator('#evidence-boundaries')).toContainText('Outdated case');
+  await expect(page.locator('#evidence-boundaries')).toContainText('Try the guided workbook');
   await expect(page.locator('.scorecard-preview, .outcome-band, .stepper, .legend-3')).toHaveCount(0);
   expect(await wordCount(page.locator('#production-review'))).toBeLessThan(120);
   await expect(page.locator('#production-review a')).toHaveCount(2);
@@ -56,7 +56,7 @@ test('each area has recognizable component icons and a real deep-dive destinatio
   for (const [area, destination] of [
     ['platform-topic', /Azure-Samples\/ai-hub-gateway-solution-accelerator/],
     ['readiness-topic', /agentops-deep-dive\.md$/],
-    ['actions-topic', /agent-governance-deep-dive\.md$/],
+    ['actions-topic', /agent-governance-deep-dive\.md#4-architecture-and-trust-boundaries$/],
   ]) {
     const panel = page.locator(`#${area}`);
     await expect(panel.locator('[data-deep-dive]')).toHaveCount(1);
@@ -72,7 +72,7 @@ test('governance typography follows the other areas instead of an oversized diag
   const sizes = await page.locator('[data-topic-panel] h2').evaluateAll(headings =>
     headings.map(el => getComputedStyle(el).fontSize));
   expect(new Set(sizes).size).toBe(1);
-  for (const [selector, maximum] of [['.am-title', 20], ['.am-text', 14], ['.am-label', 11]]) {
+  for (const [selector, maximum] of [['.wf-label', 16], ['.wf-detail', 12], ['.wf-edge-label', 11]]) {
     const sizes = await page.locator(selector).evaluateAll(elements =>
       elements.map(el => parseFloat(getComputedStyle(el).fontSize)));
     expect(Math.max(...sizes), selector).toBeLessThanOrEqual(maximum);

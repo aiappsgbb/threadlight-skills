@@ -1,0 +1,73 @@
+.pg-wrap { max-width: 1200px; padding-block: 24px; }
+.pg-output-icons { position: absolute; }
+.pg-intro h1 { max-width: 24ch; font-size: clamp(34px, 4.4vw, 56px); line-height: 1.08; margin: 16px 0; }
+.pg-intro p { max-width: 70ch; color: var(--ink-1); font-size: 17px; }
+.pg-flow { display: block; width: 100%; max-height: 88px; margin: 20px 0 0; }
+.pg-flow .pg-line { fill: none; stroke: var(--line-2); stroke-width: 2; }
+.pg-flow circle { fill: var(--bg-1); stroke: var(--line-2); stroke-width: 1.5; }
+.pg-flow text { fill: var(--ink-1); text-anchor: middle; font: 13px var(--sans); }
+.pg-flow [data-current="true"] circle { fill: var(--chapter-accent-soft); stroke: var(--ink-0); stroke-width: 2; }
+.pg-flow [data-current="true"] text { fill: var(--ink-0); font-weight: 600; }
+.pg-progress { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 6px; }
+.pg-progress a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-1); border-bottom: 2px solid transparent; font-size: 16px; }
+.pg-progress a[aria-current="step"] { color: var(--ink-0); font-weight: 650; border-color: var(--chapter-accent); }
+.pg-status { padding-block: 12px; border-block: 1px solid var(--line); color: var(--ink-1); font-size: 15px; line-height: 1.6; }
+.pg-panel { margin-top: 18px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-1); }
+.pg-panel section { padding: 28px; }
+.pg-panel section + section { border-top: 1px solid var(--line-2); }
+[data-guide-enhanced] .pg-panel section { border-top: none; }
+.pg-panel section[hidden], [data-guide-controls][hidden], [data-copy-prompt][hidden] { display: none; }
+.pg-panel h2 { margin: 12px 0 10px; font-size: clamp(25px, 3vw, 34px); }
+.pg-panel h3 { margin: 24px 0 12px; font: 650 17px/1.4 var(--sans); }
+.pg-badge { display: inline-block; padding: 5px 9px; border: 1px solid var(--line-2); border-radius: 4px; font: 14px var(--sans); color: var(--ink-1); }
+.pg-goal { max-width: 72ch; margin: 0 0 20px; color: var(--ink-1); font-size: 16px; line-height: 1.65; }
+.pg-skills { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-bottom: 26px; }
+.pg-skills-label { color: var(--ink-0); font: 650 15px var(--sans); margin-right: 4px; }
+.pg-skills-label, .pg-panel .pg-prompt-title, .pg-panel .pg-verify-title { display: flex; align-items: center; gap: 8px; }
+.pg-heading-icon { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: var(--ink-1); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.pg-skills a { display: inline-flex; align-items: center; min-height: 40px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--ink-1); font: 15px/1.4 var(--sans); overflow-wrap: anywhere; }
+.pg-skills a[data-skill-role="primary"] { color: var(--ink-0); font-weight: 650; background: var(--bg-2); }
+.pg-skills a:hover { color: var(--ink-0); border-color: var(--ink-1); }
+.pg-skill-scope { color: var(--ink-2); font-size: 14px; }
+.pg-step-layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(260px, 1fr); gap: 32px; align-items: start; }
+.pg-prompt-column, .pg-results { min-width: 0; }
+.pg-panel .pg-prompt-title, .pg-expected h3 { margin-top: 0; }
+.pg-panel pre { max-width: 75ch; white-space: pre-wrap; overflow-wrap: anywhere; padding: 18px; margin: 0 0 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-2); color: var(--ink-0); font: 15.5px/1.65 var(--mono); }
+.pg-copy, .pg-controls button { min-height: 44px; padding: 9px 16px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--bg-2); color: var(--ink-0); font: 15px var(--sans); cursor: pointer; }
+.pg-copy:hover, .pg-controls button:hover:not(:disabled) { border-color: var(--ink-1); }
+.pg-copy:disabled, .pg-controls button:disabled { cursor: default; color: var(--ink-2); border-style: dashed; }
+.pg-wrap :focus-visible { outline: 2px solid var(--ink-0); outline-offset: 3px; }
+[data-copy-status] { min-height: 22px; margin: 8px 0 0; color: var(--ink-1); font-size: 14px; line-height: 1.5; }
+.pg-result-condition { margin: 0 0 16px; color: var(--ink-2); font-size: 15px; line-height: 1.6; }
+.pg-expected ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.pg-expected li { display: flex; align-items: flex-start; gap: 10px; color: var(--ink-0); font-size: 16px; line-height: 1.55; }
+.pg-expected li > span { min-width: 0; overflow-wrap: anywhere; }
+.pg-expected svg { width: 24px; height: 24px; flex-shrink: 0; color: var(--ink-1); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.pg-expected code { font-size: .875em; }
+.pg-expected > a { display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; color: var(--ink-1); text-decoration: underline; text-underline-offset: 3px; font-size: 15px; }
+.pg-expected > a:hover { color: var(--ink-0); }
+.pg-results > h3 { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+.pg-verify { margin: 0; padding-left: 20px; color: var(--ink-1); font-size: 16px; line-height: 1.65; }
+.pg-verify li + li { margin-top: 12px; }
+.pg-controls { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-top: 14px; }
+.pg-controls span { color: var(--ink-1); font: 15px var(--mono); }
+.pg-reference-links { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-top: 22px; }
+.pg-reference-links a { color: var(--ink-1); text-decoration: underline; text-underline-offset: 3px; font-size: 16px; }
+.pg-note { color: var(--ink-2); font-size: 15px; line-height: 1.6; max-width: 70ch; }
+[data-guide-enhanced] .pg-selected { animation: pg-reveal 180ms var(--ease-out) both; }
+@keyframes pg-reveal { from { opacity: .7; clip-path: inset(0 0 3% 0); } to { opacity: 1; clip-path: inset(0); } }
+@media (max-width: 950px) {
+  .pg-step-layout { grid-template-columns: 1fr; gap: 24px; }
+}
+@media (max-width: 700px) {
+  .pg-panel section { padding: 18px; }
+  .pg-progress { gap: 4px 12px; }
+  .pg-progress a { font-size: 15px; }
+  .pg-panel pre { padding: 14px; font-size: 15px; }
+  .pg-skills-label { flex-basis: 100%; }
+  .pg-flow .pg-flow-label { font-size: 24px; }
+  .pg-flow text:not(.pg-flow-label) { font-size: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-guide-enhanced] .pg-selected { animation: none; }
+}

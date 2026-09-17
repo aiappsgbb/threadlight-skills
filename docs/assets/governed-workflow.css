@@ -1,0 +1,154 @@
+/* Contextual Production chapter: shared theme and typography remain authoritative. */
+html:has(.governance-page) { scroll-padding-top: 0; }
+.governance-page main [id] { scroll-margin-top: calc(var(--cx-header-height) + var(--cx-index-height) + 12px); }
+html:not(.js) .governance-page main [id] { scroll-margin-top: 12px; }
+html:not(.js):has(.governance-page) { scroll-behavior: auto; }
+.governance-page .brand-name { color: inherit; text-decoration: none; }
+.governance-page .brand-name > span:last-child { color: var(--ink-2); }
+.governance-page .brand-mark { display: inline-block; vertical-align: middle; margin-right: 8px; }
+.governance-page .skip-link { position: fixed; z-index: 100; top: 8px; left: 8px; padding: 12px; background: var(--bg-1); color: var(--ink-0); transform: translateY(-160%); }
+.governance-page .skip-link:focus { transform: none; }
+.governance-page main details { margin-top: 16px; padding-block: 12px; border-block: 1px solid var(--line); }
+.governance-page main summary { cursor: pointer; font-weight: 600; color: var(--ink-0); }
+.governance-page footer { padding: 32px; border-top: 1px solid var(--line); color: var(--ink-2); }
+.governance-page footer a { color: var(--ink-1); }
+
+#workflow-in-action[data-governed-flow] { padding-block: 12px; }
+#workflow-in-action .wf-symbols { position: absolute; }
+#workflow-in-action > .wrap { max-width: 1180px; }
+#workflow-in-action .section-head { margin-bottom: 16px; }
+#workflow-in-action .section-head h2 { margin: 0; font-size: clamp(28px, 3.2vw, 42px); }
+#workflow-in-action .section-lede { margin: 8px 0 0; max-width: none; font-size: 16px; }
+#workflow-in-action .wf-panel { padding: 12px 18px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-1); box-shadow: var(--e-1); }
+#workflow-in-action [hidden] { display: none; }
+#workflow-in-action [data-flow-controls][hidden] { display: none; }
+#workflow-in-action .wf-icon { width: 22px; height: 22px; color: var(--ink-0); flex-shrink: 0; }
+#workflow-in-action .wf-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+#workflow-in-action button { min-height: 44px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--ink-0); background: var(--bg-1); font: 13px var(--sans); cursor: pointer; }
+#workflow-in-action button:hover:not(:disabled) { background: var(--bg-2); }
+#workflow-in-action button:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 3px; }
+#workflow-in-action button:disabled { cursor: default; color: var(--ink-2); border-style: dashed; }
+#workflow-in-action .wf-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 20px; border-color: transparent; }
+#workflow-in-action .wf-tabs button[aria-selected="true"] { background: var(--chapter-accent-soft); border-color: var(--line-2); box-shadow: inset 0 -3px var(--chapter-accent); font-weight: 650; }
+#workflow-in-action .wf-story { margin: 8px 0 0; color: var(--ink-1); font-size: 13px; }
+#workflow-in-action .wf-diagram { display: block; width: 100%; height: auto; margin: 6px auto; overflow: visible; }
+#workflow-in-action .wf-edge { fill: none; stroke: var(--ink-1); stroke-width: 1.8; }
+#workflow-in-action [data-flow-edge][hidden] { display: none; }
+#workflow-in-action #wf-arrow path { fill: var(--ink-1); }
+#workflow-in-action .wf-edge[data-edge-state="Completed"] { stroke: var(--ink-0); stroke-width: 2.8; stroke-dasharray: none; }
+#workflow-in-action .wf-edge-label { fill: var(--ink-1); font: 11px var(--mono); }
+#workflow-in-action .wf-node rect { fill: var(--bg-1); stroke: var(--ink-2); stroke-width: 1.5; transition: fill var(--d-fast); }
+#workflow-in-action .wf-node[data-stage-state="Completed"] rect { stroke: var(--ink-0); stroke-width: 2; }
+#workflow-in-action .wf-node[aria-current="step"] rect { fill: var(--chapter-accent-soft); stroke: var(--ink-0); stroke-width: 3; }
+#workflow-in-action .wf-label { fill: var(--ink-0); font: 600 15px var(--sans); }
+#workflow-in-action .wf-detail { fill: var(--ink-1); font: 12px var(--sans); }
+#workflow-in-action .wf-number { fill: var(--ink-1); font: 11px var(--mono); }
+#workflow-in-action .wf-node-state { fill: var(--ink-1); font: 11px var(--sans); }
+#workflow-in-action .wf-unused { display: none; fill: var(--ink-1); font: 12px var(--sans); }
+#workflow-in-action .wf-node[data-used="false"] rect { fill: var(--bg-2); stroke: var(--line-2); transition: none; }
+#workflow-in-action .wf-node[data-used="false"] .wf-icon { color: var(--ink-2); }
+#workflow-in-action .wf-node[data-used="false"] .wf-label { fill: var(--ink-2); }
+#workflow-in-action .wf-node[data-used="false"] .wf-detail,
+#workflow-in-action .wf-node[data-used="false"] .wf-number { display: none; }
+#workflow-in-action .wf-node[data-used="false"] .wf-unused { display: block; }
+#workflow-in-action .wf-node[data-used="false"][data-flow-node="result"] .wf-label { transform: translate(36px, -31px); font-size: 12px; }
+#workflow-in-action .wf-node[data-used="false"].wf-stop .wf-label { transform: translateY(-11px); font-size: 12px; }
+#workflow-in-action[data-scenario="supervisor"] [data-flow-node="ack"] .wf-number,
+#workflow-in-action[data-scenario="invalid"] [data-flow-node="ack"] .wf-number { display: none; }
+#workflow-in-action .wf-progress { display: flex; justify-content: space-between; gap: 4px; list-style: none; padding: 0; margin: 4px 0 8px; }
+#workflow-in-action .wf-progress li { flex: 1 1 0; min-width: 0; }
+#workflow-in-action .wf-progress button { width: 100%; min-height: 44px; padding: 4px; border-color: transparent; font-size: 12px; }
+#workflow-in-action .wf-progress small { display: block; color: var(--ink-1); font-size: 10px; line-height: 1.4; }
+#workflow-in-action .wf-progress button span { display: inline-block; margin-right: 6px; color: var(--ink-2); font-family: var(--mono); }
+#workflow-in-action .wf-progress button[aria-current="step"] { border-color: var(--line-2); background: var(--bg-2); font-weight: 700; box-shadow: inset 0 -2px var(--ink-0); }
+#workflow-in-action .wf-caption-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; border-top: 1px solid var(--line); padding-top: 10px; }
+#workflow-in-action .wf-status { min-height: 48px; color: var(--ink-0); }
+#workflow-in-action .wf-status strong { font: 600 14px var(--sans); }
+#workflow-in-action .wf-status p { margin: 4px 0 0; color: var(--ink-1); font-size: 13px; line-height: 1.5; }
+#workflow-in-action .wf-current-state { display: inline-block; margin-left: 8px; padding: 2px 6px; border: 1px solid var(--line-2); border-radius: 4px; color: var(--ink-0); font-size: 12px; }
+#workflow-in-action .wf-step-detail { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 0; font: 13px/1.5 var(--sans); }
+#workflow-in-action .wf-step-detail > div { display: flex; gap: 6px; min-width: 0; max-width: 100%; }
+#workflow-in-action .wf-step-detail dt { flex-shrink: 0; color: var(--ink-2); }
+#workflow-in-action .wf-step-detail dd { min-width: 0; margin: 0; color: var(--ink-0); }
+#workflow-in-action[data-node="review"] .wf-status { border-left: 3px solid var(--chapter-accent); padding-left: 12px; }
+#workflow-in-action .wf-transport { display: flex; gap: 6px; align-items: center; }
+#workflow-in-action .wf-transport button { display: inline-flex; align-items: center; justify-content: center; padding: 8px 12px; min-width: 44px; }
+#workflow-in-action .wf-transport [data-flow-control="play"] { min-width: 76px; font-weight: 600; }
+#workflow-in-action .wf-transport [data-next-label] { margin-left: 6px; font-size: 11px; }
+#workflow-in-action .wf-transport svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#workflow-in-action .wf-note, #workflow-in-action .wf-legend { color: var(--ink-2); font: 12px/1.5 var(--sans); margin: 8px 0 0; }
+#workflow-in-action .wf-note:empty { display: none; }
+#workflow-in-action .wf-case-note { color: var(--ink-1); margin: 8px 0 0; font-size: 12px; line-height: 1.5; }
+#workflow-in-action .wf-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-top: 14px; }
+#workflow-in-action .wf-links .btn { padding: 10px 18px; }
+#workflow-in-action .wf-links a:not(.btn) { color: var(--ink-1); text-decoration: underline; text-underline-offset: 3px; font-size: 13px; }
+#workflow-in-action .wf-mobile { display: none; }
+#workflow-in-action .wf-static-note { color: var(--ink-1); font-size: 13px; }
+#workflow-in-action[data-enhanced] .wf-static-note { display: none; }
+
+#actions-topic .action-actors { list-style: none; padding: 0; margin: 20px 0; }
+#actions-topic .action-actors li { display: grid; grid-template-columns: 24px 185px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--ink-1); font: 14px/1.5 var(--sans); }
+#actions-topic .action-actors strong { color: var(--ink-0); font-weight: 600; }
+#actions-topic [data-actor-state] { display: block; margin-top: 4px; color: var(--ink-1); font: 11px/1.5 var(--sans); }
+#actions-topic .action-status-note { color: var(--ink-2); font-size: 12px; margin-top: -8px; }
+#actions-topic .action-actors svg { width: 24px; height: 24px; color: var(--ink-1); }
+#actions-topic .action-boundary, #actions-topic .action-example { max-width: 75ch; color: var(--ink-1); font-size: 14px; line-height: 1.6; margin: 14px 0; }
+#actions-topic .action-example { padding-block: 12px; border-block: 1px solid var(--line); }
+#actions-topic #effect-authority { padding-bottom: 12px; }
+#actions-topic #evidence-boundaries { padding-block: 24px; }
+#actions-topic .wf-label { font-size: 16px; }
+#actions-topic .wf-stop .wf-label,
+#actions-topic [data-flow-node="review"] .wf-label,
+#actions-topic [data-flow-node="fresh"] .wf-label { font-size: 15px; }
+
+.governance-page .wb-wrap { max-width: 1040px; }
+.governance-page .chapter-hero { padding-block: 28px; }
+.governance-page .chapter-hero h1 { max-width: 18ch; margin: 16px 0; font-size: clamp(36px, 4.5vw, 60px); line-height: 1.08; }
+.governance-page .chapter-hero .lede { margin: 0; max-width: 65ch; font-size: 17px; }
+.governance-page .wb-entry-needs { list-style: none; padding: 0; margin: 28px 0; display: grid; gap: 18px; max-width: 70ch; }
+.governance-page .wb-entry-needs li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 14px; text-align: left; }
+.governance-page .wb-entry-needs svg { width: 24px; height: 24px; fill: none; stroke: var(--ink-1); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.governance-page .wb-entry-needs strong { color: var(--ink-0); font-size: 16px; }
+.governance-page .wb-entry-needs p { color: var(--ink-1); margin: 4px 0 0; font-size: 15px; line-height: 1.55; }
+.governance-page .wb-entry-links { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-top: 24px; }
+.governance-page .wb-entry-links a:not(.btn) { color: var(--ink-1); text-decoration: underline; text-underline-offset: 3px; font-size: 14px; }
+.governance-page .wb-note { color: var(--ink-2); font-size: 13px; line-height: 1.6; }
+.governance-page .wb-legacy { color: var(--ink-2); font-size: 13px; }
+.governance-page .wb-legacy span[id] { display: block; height: 0; }
+
+@media (max-width: 700px) {
+  #actions-topic .action-actors li { grid-template-columns: 24px 1fr; gap: 4px 12px; }
+  #actions-topic .action-actors li span { grid-column: 2; }
+  .governance-page .wb-entry-links .btn { width: 100%; justify-content: center; }
+  .governance-page .cx-chapter-links { gap: 0; }
+  .governance-page .cx-chapter-links a { padding-inline: 6px; font-size: 11px; }
+  .governance-page .floating-toc:has(.cx-chapter-index) { gap: 0; flex-wrap: nowrap; }
+  .governance-page .cx-chapter-index summary { padding-inline: 6px; font-size: 11px; }
+  #workflow-in-action .wf-panel { padding: 12px; }
+  #workflow-in-action .wf-tabs { gap: 2px; }
+  #workflow-in-action .wf-tabs button { flex: 1 1 0; min-width: 0; gap: 4px; padding: 6px 4px; font-size: 11px; }
+  #workflow-in-action .wf-tabs .wf-icon { width: 18px; height: 18px; }
+  #workflow-in-action .wf-diagram { display: none; }
+  #workflow-in-action .wf-mobile { display: grid; gap: 8px; padding: 0; margin: 12px 0; list-style: none; }
+  #workflow-in-action .wf-mobile li { display: flex; position: relative; align-items: flex-start; gap: 10px; padding: 6px 12px; min-height: 72px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--bg-1); font-size: 13px; }
+  #workflow-in-action .wf-mobile li[hidden] { display: none; }
+  #workflow-in-action .wf-mobile li[data-used="false"] { background: var(--bg-2); color: var(--ink-2); }
+  #workflow-in-action .wf-mobile li[data-used="false"] .wf-icon { color: var(--ink-2); }
+  #workflow-in-action [data-mobile-next] { color: var(--ink-1); font-size: 11px; }
+  #workflow-in-action [data-mobile-next][hidden] { display: none; }
+  #workflow-in-action .wf-mobile li[aria-current="step"] { outline: 2px solid var(--ink-0); background: var(--chapter-accent-soft); }
+  #workflow-in-action .wf-mobile li > div { min-width: 0; }
+  #workflow-in-action .wf-mobile li strong, #workflow-in-action .wf-mobile li span,
+  #workflow-in-action .wf-mobile li small { display: block; }
+  #workflow-in-action .wf-mobile li small { color: var(--ink-1); font-size: 11px; margin-top: 4px; }
+  #workflow-in-action .wf-progress button { padding: 4px 0; }
+  #workflow-in-action .wf-progress { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  #workflow-in-action[data-scenario="invalid"] .wf-progress { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #workflow-in-action .wf-progress button span { margin: 0; }
+  #workflow-in-action .wf-caption-line { grid-template-columns: 1fr; gap: 8px; }
+  #workflow-in-action .wf-status { min-height: 84px; }
+  #workflow-in-action .wf-transport { justify-content: flex-end; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #workflow-in-action *, #workflow-in-action *::before, #workflow-in-action *::after { transition: none; animation: none; }
+}

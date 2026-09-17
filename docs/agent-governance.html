@@ -3,370 +3,279 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Agent governance — autonomy without unlimited power.</title>
-<meta name="description" content="Give AI agents a clear path to business action. Connect identity, policy, controlled execution, human decisions and evidence in one configurable governance architecture.">
+<title>Take your Threadlight pilot to governed production — Threadlight</title>
+<meta name="description" content="Reuse your existing Threadlight SPEC, code and tools. Follow five guided prompts and checks toward a governed, evidence-backed release.">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Agent governance — autonomy without unlimited power.">
-<meta property="og:description" content="Move from helpful answers to accountable business actions. Identity, policy, human judgement and audit form a coherent operating model for your agents.">
+<meta property="og:title" content="Take your Threadlight pilot to governed production — Threadlight">
+<meta property="og:description" content="Inspect the pilot, select the delta, prepare a candidate, verify it and approve promotion. Guided requests, not automatic cloud execution.">
 <meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/agent-governance.html">
 <meta property="og:site_name" content="Threadlight">
-<script>
-  (() => {
-    const param = new URLSearchParams(window.location.search).get("scoutTheme");
-    const theme =
-      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    document.documentElement.setAttribute("data-theme", theme);
-  })();
-</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
-<style>
-  :root {
-    color-scheme: light;
-    --cp-bg: #f7f4ef;
-    --cp-bg-elevated: #fcfbf8;
-    --cp-surface: #ffffff;
-    --cp-surface-soft: #f5f5f5;
-    --cp-border: #dedede;
-    --cp-border-strong: #919191;
-    --cp-text: #242424;
-    --cp-text-muted: #5c5c5c;
-    --cp-text-soft: #6f6f6f;
-    --cp-accent: #b11f4b;
-    --cp-accent-hover: #9a1a41;
-    --cp-accent-soft: rgba(177, 31, 75, 0.08);
-    --cp-accent-fg: #ffffff;
-    --cp-success: #16a34a;
-    --cp-danger: #dc2626;
-    --cp-warning: #f59e0b;
-    --cp-link: #0078d4;
-    --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
-    --cp-overlay: rgba(255, 255, 255, 0.8);
-    --cp-panel: rgba(255, 255, 255, 0.86);
-    --cp-panel-strong: rgba(255, 255, 255, 0.96);
-    --cp-sheen: rgba(255, 255, 255, 0.55);
-    --cp-highlight: rgba(177, 31, 75, 0.12);
-  }
-  html[data-theme="dark"] {
-    color-scheme: dark;
-    --cp-bg: #3d3b3a;
-    --cp-bg-elevated: #343231;
-    --cp-surface: #292929;
-    --cp-surface-soft: #2e2e2e;
-    --cp-border: #474747;
-    --cp-border-strong: #5f5f5f;
-    --cp-text: #dedede;
-    --cp-text-muted: #919191;
-    --cp-text-soft: #b0b0b0;
-    --cp-accent: #fd8ea1;
-    --cp-accent-hover: #fb7b91;
-    --cp-accent-soft: rgba(253, 142, 161, 0.14);
-    --cp-accent-fg: #1a1a1a;
-    --cp-success: #4ade80;
-    --cp-danger: #f87171;
-    --cp-warning: #fbbf24;
-    --cp-link: #4da6ff;
-    --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
-    --cp-overlay: rgba(41, 41, 41, 0.88);
-    --cp-panel: rgba(41, 41, 41, 0.72);
-    --cp-panel-strong: rgba(41, 41, 41, 0.96);
-    --cp-sheen: rgba(255, 255, 255, 0.04);
-    --cp-highlight: rgba(253, 142, 161, 0.12);
-  }
-  :root {
-    --cp-copy-muted: var(--cp-text-muted);
-    --bg-0: var(--cp-bg); --bg-1: var(--cp-surface); --bg-2: var(--cp-surface-soft); --bg-3: var(--cp-bg-elevated);
-    --ink-0: var(--cp-text); --ink-1: var(--cp-copy-muted); --ink-2: var(--cp-text-soft); --ink-3: var(--cp-copy-muted);
-    --line: var(--cp-border); --line-2: var(--cp-border-strong);
-    --accent: var(--cp-accent); --accent-1: var(--cp-accent-hover);
-    --accent-soft: var(--cp-accent-soft); --accent-glow: var(--cp-highlight);
-    --lime: var(--cp-accent); --lime-1: var(--cp-accent-hover); --lime-soft: var(--cp-accent-soft);
-    --warn: var(--cp-warning);
-    --sans: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
-    --serif: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
-    --mono: Consolas, "Courier New", Courier, monospace;
-    --cp-card-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14);
-    --shadow-card: var(--cp-card-shadow); --shadow-pop: var(--cp-card-shadow); --shadow-glow: var(--cp-card-shadow);
-  }
-  html[data-theme="dark"] { --cp-copy-muted: var(--cp-text-soft); }
-  html[data-theme="dark"] .governance-page .eyebrow { color: var(--cp-text-soft); }
-  .governance-page { background: var(--cp-bg); color: var(--cp-text); }
-  .governance-page::before, .governance-page::after,
-  .governance-page .chapter-hero::before, .governance-page .chapter-hero::after { display: none; }
-  .governance-page .masthead, .governance-page .floating-toc { background: var(--cp-surface); border-color: var(--cp-border); box-shadow: var(--cp-card-shadow); }
-  .governance-page .floating-toc a { color: var(--cp-copy-muted); }
-  .governance-page .floating-toc a:hover,
-  .governance-page .floating-toc a:focus-visible,
-  .governance-page .floating-toc a.is-active { color: var(--cp-accent); background: var(--cp-accent-soft); }
-  .governance-page .btn-primary { background: var(--cp-accent); color: var(--cp-accent-fg); box-shadow: var(--cp-card-shadow); }
-  .governance-page .btn-primary:hover { background: var(--cp-accent-hover); }
-  .governance-page ::selection { background: var(--cp-accent); color: var(--cp-accent-fg); }
-  .governance-page .brand-name span,
-  .governance-page .breadcrumb { color: var(--cp-text-soft); }
-  .governance-page .brand-name { text-decoration: none; color: inherit; }
-  .governance-page .brand-mark { display: inline-block; vertical-align: middle; margin-right: 8px; }
-  .governance-page .skip-link { position: fixed; top: 8px; left: 8px; z-index: 2000; padding: 12px 20px; background: var(--cp-surface); color: var(--cp-text); transform: translateY(-160%); }
-  .governance-page .skip-link:focus { transform: translateY(0); }
-  .governance-page a:focus-visible,
-  .governance-page summary:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 4px; }
-  .governance-page .eyebrow { color: var(--cp-text-muted); }
-  .governance-page .gov-note { max-width: 76ch; color: var(--cp-copy-muted); line-height: 1.7; }
-  .governance-page .gov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 20px; }
-  .governance-page .gov-card { padding: 24px; border: 1px solid var(--cp-border); border-radius: 16px; background: var(--cp-surface); box-shadow: var(--cp-card-shadow); min-width: 0; }
-  .governance-page .gov-card h3 { margin: 10px 0 14px; }
-  .governance-page .gov-card p { color: var(--cp-copy-muted); line-height: 1.65; }
-  .governance-page .gov-label { display: inline-block; padding: 5px 9px; border: 1px solid var(--cp-border-strong); border-radius: 0.625rem; color: var(--cp-text); font: 12px var(--mono); letter-spacing: .035em; }
-  .governance-page .gov-flow { list-style: none; counter-reset: step; padding: 0; margin: 28px 0; }
-  .governance-page .gov-flow li { counter-increment: step; border-top: 3px solid var(--cp-accent); }
-  .governance-page .gov-flow li::before { content: "0" counter(step); color: var(--cp-text-soft); font: 16px var(--mono); }
-  .governance-page .gov-callout { padding: 24px; margin-top: 24px; border-left: 4px solid var(--cp-accent); background: var(--cp-surface-soft); color: var(--cp-copy-muted); line-height: 1.7; }
-  .governance-page .gov-callout strong { color: var(--cp-text); }
-  .governance-page .gov-facts { margin: 18px 0 0; padding-left: 20px; color: var(--cp-copy-muted); }
-  .governance-page .gov-facts li { margin: 10px 0; line-height: 1.65; }
-  .governance-page .gov-date { display: block; margin-top: 12px; color: var(--cp-text-soft); font: 12px/1.6 var(--mono); overflow-wrap: anywhere; }
-  .governance-page .gov-lease { overflow-wrap: anywhere; font-family: var(--mono); font-size: 13px; color: var(--cp-text); }
-  .governance-page .gov-links { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 26px; }
-  .governance-page details { margin-top: 20px; padding: 20px; border: 1px solid var(--cp-border); border-radius: 0.625rem; }
-  .governance-page summary { cursor: pointer; font-weight: 650; color: var(--cp-text); }
-  .governance-page footer { padding: 40px 24px; border-top: 1px solid var(--cp-border); text-align: center; color: var(--cp-text-soft); }
-  .governance-page footer a { color: var(--cp-copy-muted); }
-  @media (max-width: 600px) {
-    .governance-page .gov-card, .governance-page .gov-callout { padding: 20px; }
-    .governance-page .gov-links .btn { width: 100%; justify-content: center; text-align: center; }
-  }
-</style>
+<link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=432ea589">
+<link rel="stylesheet" href="assets/pilot-to-production.css?v=0f169132">
 </head>
-<body class="chapter-page chapter-production governance-page">
-<a class="skip-link" href="#main">Skip to agent governance</a>
+<body class="chapter-page chapter-production chapter-experience governance-page" data-chapter-parent="production" data-web-workbook>
+<svg class="pg-output-icons" width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="pg-icon-inventory" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+    <symbol id="pg-icon-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6zM9 12l2 2 4-4"/></symbol>
+    <symbol id="pg-icon-package" viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7zM3 7l9 5 9-5M12 12v10"/></symbol>
+    <symbol id="pg-icon-receipt" viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8M8 16h4"/></symbol>
+    <symbol id="pg-icon-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></symbol>
+  </defs>
+</svg>
+<a class="skip-link" href="#main">Skip to the pilot guide</a>
 <header class="masthead">
   <div class="brand">
     <a href="./index.html" class="brand-name"><span class="brand-mark" aria-hidden="true"></span>Threadlight<span>by Microsoft GBB · AI Apps</span></a>
   </div>
   <nav class="nav" aria-label="Site chapters">
-    <a href="./index.html">Home</a>
-    <a href="./blueprint.html">Blueprint</a>
-    <a href="./production.html">Production-ready</a>
-    <a href="./agent-governance.html" aria-current="page">Agent governance</a>
-    <a href="./customize.html">Customize</a>
+    <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
+    <a href="./basics.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Basics</a>
+    <a href="./funnel.html">Build</a>
+    <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
+    <a href="./production.html" aria-current="location"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
   </nav>
 </header>
-<aside class="floating-toc" aria-label="Agent governance chapter"><p class="toc-title">Chapter</p></aside>
-
 <main id="main">
-  <section class="chapter-hero" id="overview" data-toc-id="overview" data-toc-label="Overview">
-    <div class="wrap wrap-wide">
-      <p class="breadcrumb"><a href="./index.html">Threadlight</a> / Agent governance</p>
-      <p class="eyebrow"><span class="dot"></span>From intelligence to accountable action</p>
-      <h1>Autonomy for agents.<br><em>Not unlimited power.</em></h1>
-      <p class="lede">Let agents move work forward while your organization defines the boundaries.
-        Bring identity, business policy, controlled execution, human judgement and evidence
-        into one configurable architecture.</p>
-      <p class="gov-note"><strong>The model proposes; the system authorizes.</strong>
-        Build useful autonomy around the decisions that matter to your business,
-        with clear responsibility from the first request to the resulting action.</p>
-      <div class="gov-links">
-        <a class="btn btn-primary" href="./funnel.html#scene-cta">Design a governed workflow <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="#effect-authority">Explore the architecture <span class="arrow">&rarr;</span></a>
-      </div>
+  <div class="wrap pg-wrap" data-pilot-guide>
+    <div class="cx-journey">
+      <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Existing pilot guide</span></nav>
     </div>
-  </section>
-
-  <section class="chapter-section" id="effect-authority" data-toc-id="effect-authority" data-toc-label="Effect boundary">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>A connected operating model</p>
-        <h2>Give every business action <em>a clear decision path.</em></h2>
-        <p class="section-lede">Choose the controls your workflow needs and connect them at the
-          action boundary. Agents contribute intelligence; your systems retain authority.</p>
-      </div>
-      <ol class="gov-grid gov-flow" aria-label="Selected write authorization sequence">
-        <li class="gov-card"><h3>Business intent</h3><p>Turn a request into a proposed action with explicit
-          inputs and an intended outcome. Keep the purpose of the workflow visible.</p></li>
-        <li class="gov-card"><h3>Identity</h3><p>Establish which agent, person and service are participating.
-          Give each the access needed for its responsibility.</p></li>
-        <li class="gov-card"><h3>Policy</h3><p>Express business rules against trusted context and current
-          system data. Evaluate the proposed action before it can change anything.</p></li>
-        <li class="gov-card"><h3>Human decisions</h3><p>Route exceptions to the people accountable for them.
-          Record an authenticated decision and bind it to the action being reviewed.</p></li>
-        <li class="gov-card"><h3>Controlled execution</h3><p>Use a trusted host or gateway and a separately
-          authorizing backend to turn an allowed proposal into a business outcome.</p></li>
-        <li class="gov-card"><h3>Evidence</h3><p>Connect the request, policy decision, human involvement and
-          system result. Give operations and reviewers a trace they can inspect.</p></li>
-      </ol>
-      <div class="gov-callout"><strong>One journey, distinct responsibilities.</strong>
-        Model access, action authorization and business execution work together without becoming the
-        same permission. Integrate controls where they matter, and keep routine reads and prototype
-        iteration lightweight.</div>
-      <p class="gov-note">Threadlight connects native agent runtimes, governed MCP boundaries and
-        existing business APIs. Implementation profiles make the supported controls and deployment
-        choices explicit.</p>
-      <details>
-        <summary>Separate responsibilities, not interchangeable security labels</summary>
-        <ul class="gov-facts">
-          <li><strong>SAFE</strong> is the method; <strong>ACS/Rego</strong> is the policy decision point.</li>
-          <li><strong>Agent Hooks</strong> is the host/interceptor contract. The selected host or gateway is the enforcement point; <strong>AGT</strong> is the toolkit; <strong>ASSERT</strong> is assurance.</li>
-          <li>Agent Identity, reviewer, control plane, gateway, downstream caller, database writer and publisher have distinct responsibilities. The agent has no database-write or signing role.</li>
-          <li>Private networks restrict reachability; output guardrails constrain supported returned content. Neither replaces authorization of the exact business effect.</li>
-        </ul>
-      </details>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="evidence" data-toc-id="evidence" data-toc-label="Business value">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Autonomy that serves the business</p>
-        <h2>Move work forward.<br><em>Keep responsibility clear.</em></h2>
-        <p class="section-lede">Make governance part of the workflow design, so teams can delegate
-          useful work without giving an agent an unrestricted route to business systems.</p>
-      </div>
-      <div class="gov-grid">
-        <article class="gov-card">
-          <span class="gov-label">PRODUCTIVE AUTONOMY</span>
-          <h3>Delegate the repeatable work</h3>
-          <p>Let agents gather context, propose a disposition and carry out permitted actions.
-            Put business rules at the boundary where a proposal becomes an effect.</p>
-          <ul class="gov-facts">
-            <li>Define actions around clear business outcomes.</li>
-            <li>Use current facts from the systems that own them.</li>
-            <li>Keep access and execution responsibilities separate.</li>
+    <header class="pg-intro" id="overview">
+      <h1>Take your Threadlight pilot to governed production</h1>
+      <p>Start with the SPEC, generated code and tools you already have. Reuse them; add the missing governance, checks and release evidence.</p>
+    </header>
+    <svg class="pg-flow" viewBox="0 0 800 88" role="img" aria-label="Existing pilot gains action boundaries, a release candidate, evidence and a production handoff">
+      <path class="pg-line" d="M80 28H720"/>
+      <g data-guide-visual="0" transform="translate(80 28)"><circle r="15"/><text y="5">1</text><text class="pg-flow-label" y="44">Existing pilot</text></g>
+      <g data-guide-visual="1" transform="translate(240 28)"><circle r="15"/><text y="5">2</text><text class="pg-flow-label" y="44">Action delta</text></g>
+      <g data-guide-visual="2" transform="translate(400 28)"><circle r="15"/><text y="5">3</text><text class="pg-flow-label" y="44">Candidate</text></g>
+      <g data-guide-visual="3" transform="translate(560 28)"><circle r="15"/><text y="5">4</text><text class="pg-flow-label" y="44">Evidence</text></g>
+      <g data-guide-visual="4" transform="translate(720 28)"><circle r="15"/><text y="5">5</text><text class="pg-flow-label" y="44">Production</text></g>
+    </svg>
+    <nav class="pg-progress" aria-label="Pilot guide steps">
+      <a href="#inspect-pilot" data-guide-index="0">01 Inspect</a>
+      <a href="#choose-actions" data-guide-index="1">02 Select</a>
+      <a href="#prepare-candidate" data-guide-index="2">03 Prepare</a>
+      <a href="#check-candidate" data-guide-index="3">04 Check</a>
+      <a href="#promote-observe" data-guide-index="4">05 Promote</a>
+    </nav>
+    <p class="pg-status" data-guide-status role="status" aria-live="polite">Guided requests: this is guidance, not cloud execution. Next never runs Azure or marks a check as passed.</p>
+    <div class="pg-panel">
+      <section id="inspect-pilot" data-guide-step="inspect">
+        <span class="pg-badge">Offline · read-only</span>
+        <h2>Inspect the pilot you already generated</h2>
+        <p class="pg-goal">Identify its current runtime, tool boundaries and evidence gaps without rebuilding it.</p>
+        <div class="pg-skills" aria-label="Skills used for inspection">
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
+          <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-governed-actions/SKILL.md">threadlight-governed-actions</a>
+          <span class="pg-skill-scope">Inventory only</span>
+        </div>
+        <div class="pg-step-layout">
+        <div class="pg-prompt-column">
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
+        <pre data-guide-prompt tabindex="0">Use the inventory rules from threadlight-governed-actions to inspect my existing Threadlight pilot read-only.
+Read specs/SPEC.md, specs/foundation.md, specs/manifest.json, registered tools, identity mappings and retained generated artifacts/evidence.
+Do not run probes, emit files, remediate, regenerate the SPEC or switch the runtime.
+Summarize the current supported profile, read versus consequential tools, existing bindings and missing evidence. No Azure discovery or rights probes.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        </div>
+        <aside class="pg-results" aria-label="Inspection result and checks">
+        <div class="pg-expected">
+          <h3>Expected result</h3>
+          <p class="pg-result-condition">Read-only; no files emitted.</p>
+          <ul>
+            <li><svg aria-hidden="true"><use href="#pg-icon-inventory"/></svg><span>Inventory summary</span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-target"/></svg><span>Evidence gaps</span></li>
           </ul>
-        </article>
-        <article class="gov-card">
-          <span class="gov-label">DECISIONS AT THE RIGHT LEVEL</span>
-          <h3>Bring people into the exceptions</h3>
-          <p>Set thresholds, roles and approval conditions that reflect how your organization works.
-            Keep routine decisions moving and reserve human attention for consequential exceptions.</p>
-          <p>Native Outlook approval brings the decision to the reviewer. The control plane verifies
-            the person's response; the agent resumes only the operation that was reviewed.</p>
-        </article>
-        <article class="gov-card">
-          <span class="gov-label">ACCOUNTABLE OPERATIONS</span>
-          <h3>Understand how an outcome happened</h3>
-          <p>Connect agent intent, policy decisions, approvals and system results.
-            Make the evidence useful to engineering, operations and accountable business owners.</p>
-          <p>Design the right audit guarantees for each boundary, from data access to a committed
-            transaction and subsequent reconciliation.</p>
-        </article>
-      </div>
-      <div class="gov-grid" style="margin-top:20px;">
-        <article class="gov-card">
-          <span class="gov-label">EXAMPLE WORKFLOW</span>
-          <h3>Returns triage</h3>
-          <p>An agent reads an authorized case, recommends a disposition and checks the proposal
-            against eligibility, value and risk rules. Exceptions go to a supervisor.</p>
-          <p>The business system records the allowed decision and its audit. Extend the workflow
-            through explicit backend contracts rather than handing the agent a general-purpose write tool.</p>
-        </article>
-        <article class="gov-card">
-          <span class="gov-label">YOUR SYSTEMS OF RECORD</span>
-          <h3>Connect without surrendering control</h3>
-          <p>Keep business APIs responsible for their own authorization and data integrity.
-            Use agent tools as scoped contracts, with clear inputs, outcomes and ownership.</p>
-          <p>This pattern lets the agent experience evolve while business systems retain the rules
-            that protect their records.</p>
-        </article>
-        <article class="gov-card">
-          <span class="gov-label">AN EVOLVING OPERATING MODEL</span>
-          <h3>Govern the change, not just the first release</h3>
-          <p>Review policies, identities and execution boundaries as your use case grows.
-            Pair agent quality and safety evaluation with operational evidence and clear release ownership.</p>
-        </article>
-      </div>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-2-prepare-the-people-inputs-and-access-handoff">Inventory check details</a>
+        </div>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
+        <ul class="pg-verify">
+          <li>The inspected repository and existing foundation/manifest agree on runtime, protocol and tools.</li>
+          <li>The inventory distinguishes declared, locally tested and deployment-verified paths; original files remain unchanged.</li>
+        </ul>
+        </aside>
+        </div>
+      </section>
+      <section id="choose-actions" data-guide-step="select">
+        <span class="pg-badge">Offline · owner review</span>
+        <h2>Select the missing action controls</h2>
+        <p class="pg-goal">Review only the delta: protected actions, identities, human channel and target posture.</p>
+        <div class="pg-skills" aria-label="Skills used for selection">
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
+          <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-govern/SKILL.md">threadlight-govern</a>
+        </div>
+        <div class="pg-step-layout">
+        <div class="pg-prompt-column">
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
+        <pre data-guide-prompt tabindex="0">Use threadlight-govern to propose the governance delta for the existing SPEC, foundation and tool inventory.
+Select named protected actions in specs/governance-contract.json; preserve authenticated unbound reads.
+Match the current runtime to a supported human channel. Deferred Outlook resume requires the supported MAF/gateway profile; report incompatibility instead of silently switching frameworks.
+Reuse the approved target posture and identity owners. List required trusted facts, exact role/resource/expected-identity assignments and human consent handoffs. Do not force private conversion or assume administrator rights.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        </div>
+        <aside class="pg-results" aria-label="Selection result and checks">
+        <div class="pg-expected">
+          <h3>Expected result</h3>
+          <p class="pg-result-condition">A proposal for owner review.</p>
+          <ul>
+            <li><svg aria-hidden="true"><use href="#pg-icon-shield"/></svg><span>Governance delta proposal</span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-inventory"/></svg><span>Reviewed selection for <code>specs/governance-contract.json</code></span></li>
+          </ul>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-4-opt-in-to-governance-and-review-the-hosted-setup">Policy and binding details</a>
+        </div>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
+        <ul class="pg-verify">
+          <li>The reviewed contract names actual existing tools, backend targets/facts and a supported runtime/channel combination.</li>
+          <li>The owner has approved the target/posture and permission delta; personal consent is still a real human handoff.</li>
+        </ul>
+        </aside>
+        </div>
+      </section>
+      <section id="prepare-candidate" data-guide-step="prepare">
+        <span class="pg-badge">Offline preparation · platform handoff</span>
+        <h2>Prepare the governed release candidate</h2>
+        <p class="pg-goal">Reuse generated sources and prepare the missing integrations, not another pilot or pipeline.</p>
+        <div class="pg-skills" aria-label="Skills used for candidate preparation">
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
+          <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-deploy/SKILL.md">threadlight-deploy</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-cicd/SKILL.md">threadlight-cicd</a>
+        </div>
+        <div class="pg-step-layout">
+        <div class="pg-prompt-column">
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
+        <pre data-guide-prompt tabindex="0">Use threadlight-deploy and threadlight-cicd with the reviewed delta and existing generated host, tools, infrastructure and CI.
+Prepare only missing governance integrations and the current verified-release candidate plan. Do not overwrite unrelated generated artifacts or existing workflows.
+Identify real application-owned prepare/observe/eval/red-team/promote adapters and configure the reviewed specs/release-policy.json.
+Hand off exact permission assignments, publisher authority, native identity observation and fresh binding to the platform owner. Stop for missing prerequisites; do not deploy, grant permissions or manufacture signed evidence during preparation.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        </div>
+        <aside class="pg-results" aria-label="Candidate preparation result and checks">
+        <div class="pg-expected">
+          <h3>Expected result</h3>
+          <p class="pg-result-condition">No image build or deployment in this preparation step.</p>
+          <ul>
+            <li><svg aria-hidden="true"><use href="#pg-icon-package"/></svg><span>Reviewed candidate inputs</span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-inventory"/></svg><span><code>specs/release-policy.json</code></span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-shield"/></svg><span>Adapter handoff</span></li>
+          </ul>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-6-hand-off-a-controlled-release-and-safe-operations">Release preparation details</a>
+        </div>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
+        <ul class="pg-verify">
+          <li>The candidate plan reuses current sources; real adapters, datasets, thresholds and immutable-image provenance are reviewed.</li>
+          <li>Validation/production identities and protected approvals are separate; the publisher and observed-identity binding handoffs are explicit.</li>
+        </ul>
+        </aside>
+        </div>
+      </section>
+      <section id="check-candidate" data-guide-step="validate">
+        <span class="pg-badge">Cloud · explicit approval · real reviewer</span>
+        <h2>Execute the approved candidate checks</h2>
+        <p class="pg-goal">Produce fresh candidate evidence, including the selected business action and human review.</p>
+        <div class="pg-skills" aria-label="Skills used for candidate checks">
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
+          <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-cicd/SKILL.md">threadlight-cicd</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-governed-actions/SKILL.md">threadlight-governed-actions</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-safe-check/SKILL.md">threadlight-safe-check</a>
+          <span class="pg-skill-scope">Each within its documented scope</span>
+        </div>
+        <div class="pg-step-layout">
+        <div class="pg-prompt-column">
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
+        <pre data-guide-prompt tabindex="0">Only after I separately approve the exact existing target, model, change list, scoped permissions and test budget, use threadlight-cicd's reviewed candidate workflow/adapters.
+Observe the actual candidate version/image/identity and current signed binding. Run configured real eval, red-team and MCP producers.
+Use threadlight-governed-actions and threadlight-safe-check for their documented scopes; governance_probe_noop is not business-write proof.
+With a real authorized reviewer, verify supported allow/deny/pending, exact same-session human resume, replay and independently joined business/audit records. No borrowed reports, fabricated consent or automatic retry of unknown outcomes.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        </div>
+        <aside class="pg-results" aria-label="Candidate execution result and checks">
+        <div class="pg-expected">
+          <h3>Expected result</h3>
+          <p class="pg-result-condition">Only after accepted execution, not by clicking Next.</p>
+          <ul>
+            <li><svg aria-hidden="true"><use href="#pg-icon-receipt"/></svg><span>Accepted validation receipt: <code>.threadlight-release/candidate.json</code></span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-target"/></svg><span>Business/audit correlation</span></li>
+          </ul>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-5-demonstrate-allow-deny-and-a-real-human-decision">Human review and audit details</a>
+        </div>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
+        <ul class="pg-verify">
+          <li>Fresh evidence joins the observed candidate and selected binding; allow/deny/human/audit outcomes come from actual execution, not model prose.</li>
+          <li>Required eval/red-team/MCP gates pass; <code>.threadlight-release/candidate.json</code> exists only after accepted validation.</li>
+          <li>The reviewer and original session/arguments match; replay creates no second business effect.</li>
+        </ul>
+        </aside>
+        </div>
+      </section>
+      <section id="promote-observe" data-guide-step="promote">
+        <span class="pg-badge">Cloud · production approval · operations</span>
+        <h2>Approve promotion and observe production</h2>
+        <p class="pg-goal">Promote the same tested image, verify the actual target and complete the operations handoff.</p>
+        <div class="pg-skills" aria-label="Skills used for promotion and operations">
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
+          <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-cicd/SKILL.md">threadlight-cicd</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/c8de52e6652ef0e7830cf7774aa8deb2fffc6f2f/skills/threadlight-production-ready/SKILL.md">threadlight-production-ready</a>
+        </div>
+        <div class="pg-step-layout">
+        <div class="pg-prompt-column">
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
+        <pre data-guide-prompt tabindex="0">Use threadlight-cicd's existing verified-release contract after protected production-environment approval.
+Recheck the current candidate receipt and promote the same immutable image; do not rebuild it or borrow candidate evidence as production proof.
+Independently observe production and obtain the required fresh production binding/business evidence. Keep routing closed until application-owned acceptance is complete.
+Use threadlight-production-ready for the current gaps and operations handoff. Name incident, identity/key/reviewer, budget and retention owners.
+Reconcile unknown outcomes through the existing main contract, not an unmerged operator API. Retain sanitized evidence; cleanup is separately approved and limited to new test-owned temporaries, never shared/demo environments.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        </div>
+        <aside class="pg-results" aria-label="Production observation result and checks">
+        <div class="pg-expected">
+          <h3>Expected result</h3>
+          <p class="pg-result-condition">Only after the approved run and independent readback.</p>
+          <ul>
+            <li><svg aria-hidden="true"><use href="#pg-icon-target"/></svg><span>Production observation</span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-inventory"/></svg><span>Operations handoff with remaining gaps</span></li>
+          </ul>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-6-hand-off-a-controlled-release-and-safe-operations">Release and operations details</a>
+        </div>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
+        <ul class="pg-verify">
+          <li>Production observation matches the accepted immutable image and current authority; release approval is not action approval or business go-live.</li>
+          <li>The operations owner has the remaining gaps, retained evidence and exact test-owned cleanup scope. No automatic rollback or deletion is implied.</li>
+        </ul>
+        </aside>
+        </div>
+      </section>
     </div>
-  </section>
-
-  <section class="chapter-section" id="human-decisions" data-toc-id="human-decisions" data-toc-label="Human decisions">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Human judgement, without a disconnected handoff</p>
-        <h2>Decide in Outlook.<br><em>Execute under policy.</em></h2>
-        <p class="section-lede">Put consequential exceptions in front of an accountable person.
-          Keep their decision connected to the exact business action, all the way to its recorded outcome.</p>
-      </div>
-      <ol class="gov-grid gov-flow" aria-label="Native human approval journey">
-        <li class="gov-card"><h3>Review a clear proposal</h3>
-          <p>See the case, requested action, proposed reason and deadline in an approval email.
-            The recipient and review rules come from trusted configuration, not the model.</p></li>
-        <li class="gov-card"><h3>Choose Approve or Reject</h3>
-          <p>Use the native Outlook experience. The control plane independently checks the returned
-            identity and binds the decision to the original proposal.</p></li>
-        <li class="gov-card"><h3>Resume only that operation</h3>
-          <p>An approved request receives one-use authorization. The gateway and business API still
-            enforce current conditions, durable audit and duplicate-effect protection.</p></li>
-      </ol>
-      <div class="gov-callout"><strong>A decision, not a blank cheque.</strong>
-        Changed data or arguments need a new authorization path. A request past its deadline does not
-        silently renew, and a completed retry must not become another business effect.
-        The email workflow itself has no business-write action.</div>
-      <div class="gov-grid" style="margin-top:24px;">
-        <article class="gov-card"><span class="gov-label">FOR THE CIO</span>
-          <h3>Make exception handling part of the process</h3>
-          <p>Connect useful agent work, accountable people and existing systems of record.
-            Expand delegation without moving business ownership into a prompt.</p></article>
-        <article class="gov-card"><span class="gov-label">FOR THE CISO</span>
-          <h3>Know who authorized which effect</h3>
-          <p>Separate identity, policy, human authority and execution. Trace the reviewed proposal
-            to its authorization, business outcome and replay behavior.</p></article>
-      </div>
-      <p class="gov-note">The reference connects a selected native hosted workflow to an independent
-        business boundary. Supported clients, identity mappings, privacy, resilience and production
-        requirements remain explicit implementation decisions.</p>
+    <div class="pg-controls" data-guide-controls hidden>
+      <button type="button" data-guide-previous disabled>Previous step</button>
+      <span data-guide-counter>1 / 5</span>
+      <button type="button" data-guide-next>Next step</button>
     </div>
-  </section>
-
-  <section class="chapter-section" id="freshness" data-toc-id="freshness" data-toc-label="Lifecycle">
-    <div class="wrap wrap-xl">
-      <div class="section-head"><h2>Build for change.<br><em>Keep authority aligned.</em></h2></div>
-      <div class="gov-grid">
-        <article class="gov-card">
-          <h3>Identity and policy travel with the deployment</h3>
-          <p>Bind reviewed configuration to the agent and environment that will use it.
-            Version the rules, know who can publish them and re-establish authority when the system changes.</p>
-        </article>
-        <article class="gov-card">
-          <h3>Evidence supports the next decision</h3>
-          <p>Give business and platform teams a shared view of execution, exceptions and operational
-            requirements. Use that evidence to decide where to expand autonomy and where to keep review.</p>
-        </article>
-      </div>
-      <div class="gov-callout"><strong>Prototype quickly. Adopt controls deliberately.</strong>
-        Start with the business process, select the actions that matter and apply the appropriate
-        implementation profile before connecting consequential effects.</div>
+    <div class="pg-reference-links" id="next">
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Detailed workbook and reference exercises</a>
+      <a href="./production.html#effect-authority">Back to Production and the decision paths</a>
     </div>
-  </section>
-
-  <section class="chapter-section" id="limits" data-toc-id="limits" data-toc-label="Adoption">
-    <div class="wrap">
-      <div class="section-head"><h2>Your business process.<br><em>A clear path to adoption.</em></h2></div>
-      <ul class="gov-facts">
-        <li><strong>Define the outcome.</strong> Name the process, the decisions and the people accountable for them.</li>
-        <li><strong>Select the boundaries.</strong> Identify the tools, identities, policies and backend contracts the workflow needs.</li>
-        <li><strong>Connect the experience.</strong> Bring agent assistance, human decisions and business execution into a coherent journey.</li>
-        <li><strong>Prepare the operating model.</strong> Align evaluation, privacy, recovery and release ownership with your production requirements.</li>
-      </ul>
+    <p class="pg-note">The detailed workbook remains the approved reference. This guide starts later: with your existing Threadlight use case.</p>
+    <div class="wb-legacy">
+      <span id="effect-authority"></span><span id="workflow-in-action"></span><span id="evidence"></span><span id="human-decisions"></span><span id="freshness"></span><span id="limits"></span>
+      <span id="define"></span><span id="prepare"></span><span id="local"></span><span id="authorize"></span><span id="validate"></span><span id="operate"></span>
     </div>
-  </section>
-
-  <section class="chapter-section" id="next" data-toc-id="next" data-toc-label="Inspect & build">
-    <div class="wrap">
-      <div class="section-head"><h2>Put autonomy to work.<br><em>Keep the decisions yours.</em></h2>
-        <p class="section-lede">Explore the architecture, choose an implementation profile and
-          start with a business workflow worth improving.</p></div>
-      <div class="gov-links">
-        <a class="btn btn-primary" href="./funnel.html#scene-cta">Design a governed workflow <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/c4cfb09926531869b787ad8e1a0e3a67188cad49/docs/native-outlook-approval-architecture.md">Native Outlook architecture <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/772074123506c285eed2395c40ded4eaad229cc6/docs/agent-governance-deep-dive.md">Engineering deep dive <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/6bd6e72484039ed9db23f641f167f936beb9e072/docs/governed-returns-validation.md">Dated execution record <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="./production.html">Production-readiness chapter <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="./funnel.html#scene-cta">Start a pilot <span class="arrow">&rarr;</span></a>
-      </div>
-      <p class="gov-note">The engineering references describe supported profiles, implementation
-        assumptions and validation evidence for teams planning adoption.</p>
-    </div>
-  </section>
+  </div>
 </main>
-<footer>Threadlight · selected authority, visible evidence · <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
+<footer>Threadlight &middot; guided requests, explicit authority &middot; <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
 <script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=cc056191"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
+<script src="assets/governed-workflow.js?v=820aec9a"></script>
+<script src="assets/pilot-to-production.js?v=b03c792e"></script>
 </body>
 </html>
