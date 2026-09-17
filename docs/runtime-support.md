@@ -67,3 +67,25 @@ another channel, another runtime, or a subsequent image.
 Details: [action-governance architecture](agent-governance-deep-dive.md),
 [native Outlook protocol](native-outlook-approval-architecture.md),
 [card pack](../skills/threadlight-hitl-patterns/references/cards/README.md).
+
+## Control hierarchy, not a mandatory stack
+
+| Control | Establishes | Does not establish |
+|---|---|---|
+| Platform identity/RBAC and private network | Which identities and services can reach a resource | Business authorization of every proposed action |
+| Model-level content filters | Content checks on the selected model path | Tool transaction authorization or coverage of bypass paths |
+| Optional Toolbox guardrails | Named `policies.rai_config.rai_policy_name` filters tool inputs and outputs at the Toolbox layer, independently of model filters | Not effect authorization, rollback, or protection of tools that bypass Toolbox |
+| ACS/Rego at a selected PEP | Deterministic action policy over trusted scope/facts | Backend atomicity, human identity or complete agent governance |
+| Human decision + independent backend | Current scoped one-use approval and the application's transaction/fence | New authority from a card, prose, or an old receipt |
+| Release gate / AgentOps | Evidence for a candidate and observed operational checks | Runtime authority or business go-live approval |
+
+The two-tool returns reference uses direct governed MCP and **does not traverse Toolbox**.
+No Toolbox deployment/reroute or SDK-cohort upgrade is required by this guidance.
+For an application that selects Toolbox, observe its exact immutable version,
+effective connection and guardrail policy as external release inputs. A managed
+connection's credential custody does not by itself prove downstream JWT or
+end-to-end keyless authentication.
+
+Source: [Microsoft Learn: configure Toolbox guardrails](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/toolbox#configure-guardrails)
+(reviewed September 17, 2026). The configured filter's own live behavior still
+requires evidence; a resource declaration is not that evidence.

@@ -34,6 +34,14 @@ test('operator recovery documents terminal fencing and bounded admission rather 
   assert.match(read('docs/runtime-support.md'), /operator.*recovery/i);
 });
 
+test('native control hierarchy keeps optional Toolbox content filters separate from effect authorization', () => {
+  const text = read('docs/runtime-support.md');
+  assert.match(text, /policies\.rai_config\.rai_policy_name/);
+  assert.match(text, /tool inputs and outputs/);
+  assert.match(text, /does not traverse Toolbox/);
+  assert.match(text, /not.*effect authorization/i);
+});
+
 test('all current CI handoffs describe the same fail-closed release boundary', () => {
   for (const file of ['skills/threadlight-cicd/SKILL.md',
     'skills/threadlight-production-ready/SKILL.md', 'docs/agent-operations.md',
