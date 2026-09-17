@@ -43,6 +43,11 @@ parity, and a running host is not proof it consumed its skills.
 | [Case study](https://aiappsgbb.github.io/threadlight-skills/case-study.html) | A concrete process, decisions and implementation boundaries |
 | [Production](https://aiappsgbb.github.io/threadlight-skills/production.html) | Governance, readiness and operator-owned deployment |
 
+For a hands-on starting point, follow
+[Your first governed workflow](docs/first-governed-workflow.md): one returns
+decision, six practical phases, and explicit handoffs from local rehearsal to
+native Outlook review and a controlled release.
+
 For the **L400/L500 engineering mental model**, read
 [Skill-based agents: construction, runtime and evidence](docs/skill-based-agents.md).
 It includes actual runtime loading, all 24 local capabilities, Cowork versus
