@@ -7,14 +7,15 @@ const read = (name) => fs.readFileSync(path.join(docs, name), 'utf8');
 const text = (source) => source.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, '')
   .replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
-test('commercial governance page leads with autonomy, integrated controls and business value', () => {
-  const copy = text(read('agent-governance.html'));
-  for (const phrase of ['Autonomy for agents.', 'Not unlimited power.', 'Identity', 'Policy',
-    'Human decisions', 'Controlled execution', 'Evidence', 'Returns triage',
-    'Design a governed workflow', 'Explore the architecture']) {
+test('Production explains active actors and the guided workbook leads to practical work', () => {
+  const copy = text(read('production.html').split('<div class="topic-panel" id="actions-topic" data-topic-panel>')[1]
+    .split('\n      </div>\n    </div>\n  </div>\n  <section id="production-review"')[0]);
+  for (const phrase of ['Governed MCP gateway', 'Control plane', 'Human reviewer',
+    'Business API', 'Try the guided workbook', 'not a payment']) {
     assert.ok(copy.includes(phrase), phrase);
   }
   assert.doesNotMatch(copy, /4\/4|14 tool calls|8 native responses|NOT PROVED|EXPIRED|CI is not all green|2026-09-|version [457]|Historical|Billing Issue/i);
+  assert.match(text(read('agent-governance.html')), /Build your first governed workflow/);
 });
 
 test('commercial chapter copy separates the product architecture from instance validation status', () => {
@@ -46,5 +47,5 @@ test('editorial contract keeps technical evidence intact and routes it outside c
 test('commercial page inherits the native site theme with readable local copy', () => {
   const html = read('agent-governance.html');
   assert.doesNotMatch(html, /--cp-|:root\s*\{|scoutTheme/);
-  assert.match(read('assets/governed-workflow.css'), /\.governance-page main \.eyebrow\s*\{\s*color:\s*var\(--ink-1\)/);
+  assert.match(read('assets/governed-workflow.css'), /\.governance-page \.wb-step dd\s*\{[^}]*color:\s*var\(--ink-1\)/);
 });

@@ -153,10 +153,12 @@ file mtime, a prior empty gaps array or a changed signing envelope cannot renew 
 See [production guidance and CI inputs](docs/production-readiness.md#runtime-governance-lifecycle)
 and [coding-agent guidance](AGENTS.md).
 
-**The model proposes; trusted components authorize effects.** The implemented
-[Agent governance page](docs/agent-governance.html) presents the product vision,
-integrated controls, business value and adoption path. Detailed validation
-facts and implementation limits remain in the engineering references.
+**The model proposes; trusted components authorize effects.**
+[Production: governed actions](docs/production.html#effect-authority) explains
+the actors, model-versus-tool gateways and selected action paths.
+The [guided web workbook](docs/agent-governance.html) turns that explanation
+into six practical steps, with details in the approved Markdown workbook.
+Validation facts and implementation limits remain in the engineering references.
 For the actual
 identity, policy, approval, transport and durable-audit boundaries, read the
 [engineering deep dive](docs/agent-governance-deep-dive.md). The separate

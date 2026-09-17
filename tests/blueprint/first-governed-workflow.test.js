@@ -278,13 +278,15 @@ test('release and recovery handoff uses existing contracts without promising new
   assert.doesNotMatch(text, /\/pull\/132|\/tree\/[^/]*production-operational|stop.lease/i);
 });
 
-test('beginner discoverability preserves the commercial CTA and pinned references', () => {
+test('beginner discoverability connects Production to the web and approved Markdown workbook', () => {
   assert.ok(read('README.md').includes(`](${guidePath})`));
   const site = read('docs/agent-governance.html');
   assert.match(site, /href="https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/7782eba93754fb7cff85336d3f4a8703892bad76\/docs\/first-governed-workflow\.md"/);
-  assert.ok(site.includes('href="./funnel.html#scene-cta">Design a governed workflow'));
-  assert.ok(site.includes('blob/c4cfb09926531869b787ad8e1a0e3a67188cad49/docs/native-outlook-approval-architecture.md'));
-  assert.ok(site.includes('blob/772074123506c285eed2395c40ded4eaad229cc6/docs/agent-governance-deep-dive.md'));
+  assert.ok(site.includes('Build your first governed workflow'));
+  assert.ok(site.includes('href="./production.html#effect-authority"'));
+  const production = read('docs/production.html');
+  assert.ok(production.includes('href="./agent-governance.html#overview">Try the guided workbook'));
+  assert.ok(production.includes('blob/af45bbb88cea9931082da3f20c289fa4feb73399/docs/agent-governance-deep-dive.md'));
 });
 
 test('guide has no private deployment data, dangerous recipes or blanket proof claims', () => {

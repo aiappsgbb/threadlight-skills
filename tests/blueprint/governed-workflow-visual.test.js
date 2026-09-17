@@ -5,15 +5,15 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const root = path.resolve(__dirname, '../..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
-const visual = () => read('docs/agent-governance.html')
-  .match(/<section\b[^>]*id="workflow-in-action"[\s\S]*?<\/section>/)?.[0];
+const visual = () => read('docs/production.html')
+  .match(/<!-- governed-flow:start -->([\s\S]*?)<!-- governed-flow:end -->/)?.[1];
 
 test('product illustration is static-first with separate pre-effect and business records', () => {
   const html = visual();
-  assert.ok(html, 'compact section beside the existing guide CTA');
-  for (const token of ['Agent proposes', 'Policy decides', 'Outlook review',
+  assert.ok(html, 'compact decision path in Production');
+  for (const token of ['Agent proposes', 'Gateway checks', 'Outlook review',
     'Backend', 'Decision + audit', 'central audit ACK', 'No business effect',
-    'No model, mailbox or backend is connected', 'Open the workbook',
+    'No model, mailbox or backend is connected',
     'Allowed', 'Blocked', 'Human review']) assert.ok(html.includes(token), token);
   for (const node of ['proposal', 'checks', 'deny', 'review', 'fresh', 'ack', 'effect', 'result']) {
     assert.ok(html.includes(`data-flow-node="${node}"`), node);
@@ -29,14 +29,8 @@ test('product illustration is static-first with separate pre-effect and business
   assert.match(html, /role="tablist"/);
   assert.match(html, /data-flow-progress/);
   assert.ok((html.match(/data-component-icon/g) || []).length >= 5);
-  assert.match(html, /first-governed-workflow\.md#phase-3-/);
-  assert.match(html, /first-governed-workflow\.md#phase-5-/);
-  const workbookLinks = [...html.matchAll(/href="([^"]*first-governed-workflow\.md[^"]*)"/g)];
-  assert.equal(workbookLinks.length, 3);
-  for (const [, href] of workbookLinks) {
-    assert.ok(href.includes('/blob/7782eba93754fb7cff85336d3f4a8703892bad76/'),
-      'the workbook must be reachable before a merge, not an absent main file');
-  }
+  assert.match(read('docs/production.html'), /href="\.\/agent-governance\.html#overview"[^>]*>Try the guided workbook/);
+  assert.doesNotMatch(read('docs/agent-governance.html'), /data-flow-node=/);
   assert.doesNotMatch(html, /<iframe|<form|<input|<canvas|pass.fail|payment executed/i);
 });
 
@@ -56,12 +50,14 @@ test('all executable illustration paths acknowledge authorization before effects
 });
 
 test('visual assets stay local, scoped, bounded and cache-busted', () => {
-  const html = read('docs/agent-governance.html');
+  const html = read('docs/agent-governance.html') + read('docs/production.html');
   const script = read('docs/assets/governed-workflow.js');
   const css = read('docs/assets/governed-workflow.css');
   for (const name of ['governed-workflow.js', 'governed-workflow.css']) {
     const token = crypto.createHash('sha256').update(read(`docs/assets/${name}`)).digest('hex').slice(0, 8);
-    assert.ok(html.includes(`assets/${name}?v=${token}`), name);
+    for (const page of ['docs/agent-governance.html', 'docs/production.html']) {
+      assert.ok(read(page).includes(`assets/${name}?v=${token}`), `${page}: ${name}`);
+    }
     assert.ok(read('docs/ci/sync_cache_bust.py').includes(`"${name}"`), `registered ${name}`);
   }
   assert.match(script, /prefers-reduced-motion/);

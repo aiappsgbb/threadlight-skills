@@ -48,19 +48,17 @@ test('authority and evidence are named, readable without a diagram runtime and k
   const authority = page.locator('#effect-authority');
   const evidence = page.locator('#evidence-boundaries');
   await expect(authority.getByRole('heading', { level: 2 })).toContainText('Access to a system');
-  await expect(authority.getByRole('list', { name: 'Selected effect authorization sequence' }).locator(':scope > li')).toHaveCount(6);
-  if (page.viewportSize().width <= 680) {
-    await expect(authority.locator('.authority-mobile')).toBeVisible();
-    await expect(authority.locator('.authority-mobile')).toContainText('Outlook');
-    await expect(authority.locator('.authority-map')).toBeHidden();
+  await expect(authority.getByRole('list', { name: 'Who does what' }).locator(':scope > li')).toHaveCount(5);
+  if (page.viewportSize().width <= 700) {
+    await expect(authority.locator('.wf-mobile')).toBeVisible();
+    await expect(authority.locator('.wf-diagram')).toBeHidden();
   } else {
-    await expect(authority.getByRole('img', { name: 'Propose, authorize, execute: the controlled action path' })).toBeVisible();
+    await expect(authority.getByRole('img', { name: 'An action follows an allowed, blocked or human-reviewed path' })).toBeVisible();
   }
   await expect(evidence.getByRole('link', { name: /Read the architecture/ })).toHaveAttribute('href', /agent-governance-deep-dive\.md$/);
   await expect(page.locator('main details')).toHaveCount(0);
-  await expect(evidence.locator('.action-outcomes > div')).toHaveCount(4);
-  await expect(evidence).toContainText('Outdated case');
-  await expect(evidence).toContainText('Repeated completed request');
+  await expect(evidence.getByRole('link', { name: 'Try the guided workbook', exact: true })).toBeVisible();
+  await expect(evidence).toContainText('independently verified evidence');
   await expect(evidence).not.toContainText(/HISTORICAL|NOT PROVED|EXPIRED|4\/4|2026-09-/);
   await expect(evidence.locator('a[href*="governed-returns-validation.md"]')).toBeVisible();
   for (const section of [authority, evidence]) {
@@ -97,7 +95,7 @@ test('new authority and evidence remain readable when JavaScript is disabled', a
     await expect(page.locator('[data-topic-panel]')).toHaveCount(3);
     await expect(page.locator('main details')).toHaveCount(0);
     await expect(page.locator('#evidence-boundaries')).toBeVisible();
-    await expect(page.getByRole('list', { name: 'Selected effect authorization sequence' }).locator(':scope > li')).toHaveCount(6);
+    await expect(page.getByRole('list', { name: 'Who does what' }).locator(':scope > li')).toHaveCount(5);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   } finally {
     await context.close();
@@ -140,7 +138,7 @@ test('topic navigation does not cover section introductions when it resizes', as
     await page.setViewportSize({ width, height: 1000 });
     for (const id of ['production-domains', 'effect-authority', 'evidence-boundaries']) {
       await page.goto(`/production.html#${id}`);
-      await expect.poll(() => page.locator(`#${id} .eyebrow`).first().evaluate(element => {
+      await expect.poll(() => page.locator(`#${id} h2, #${id} h3`).first().evaluate(element => {
         const rect = element.getBoundingClientRect();
         const bars = ['.masthead', '.topic-navigation'].map(selector => document.querySelector(selector))
           .filter(bar => {

@@ -6,16 +6,16 @@ import { createRequire } from 'node:module';
 
 const section = '#workflow-in-action';
 const open = async (page) => {
-  await page.goto('/agent-governance.html#workflow-in-action');
+  await page.goto('/production.html#workflow-in-action');
   await expect(page.locator(section)).toBeVisible();
 };
 
-test('direct preview anchor lands on the illustration heading', async ({ page }, testInfo) => {
+test('direct preview anchor lands on the Production illustration below its navigation', async ({ page }, testInfo) => {
   await open(page);
-  const heading = page.locator(`${section} h2`);
-  await expect.poll(() => heading.evaluate((node) => {
+  await expect.poll(() => page.locator(section).evaluate((node) => {
     const top = node.getBoundingClientRect().top;
-    return top >= 0 && top < 240;
+    const offset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
+    return top >= offset - 2 && top < innerHeight;
   })).toBe(true);
   const output = process.env.THREADLIGHT_SCREENSHOT_DIR;
   if (output) {
@@ -150,8 +150,8 @@ for (const theme of ['light', 'dark']) {
     const violations = (await new AxeBuilder({ page }).include(section)
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
     expect(violations).toEqual([]);
-    await expect(page.locator(section).getByRole('link', { name: 'Open the workbook', exact: true }))
-      .toHaveAttribute('href', /first-governed-workflow\.md$/);
+    await expect(page.getByRole('link', { name: 'Try the guided workbook', exact: true }))
+      .toHaveAttribute('href', './agent-governance.html#overview');
   });
 }
 
@@ -159,14 +159,14 @@ test('without JavaScript the full path and workbook links remain usable', async 
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
   try {
     const page = await context.newPage();
-    await page.goto(`${baseURL}/agent-governance.html#workflow-in-action`);
+    await page.goto(`${baseURL}/production.html#workflow-in-action`);
     const flow = page.locator(section);
     await expect(flow.locator('.wf-mobile li:visible')).toHaveCount(5);
     await expect(flow.locator('.wf-static-note')).toBeVisible();
     await expect(flow.locator('.wf-static-note')).toContainText('blocked proposal stops');
     await expect(flow.locator('.wf-static-note')).toContainText('waits in Outlook');
     for (const control of await flow.locator('[data-flow-controls]').all()) await expect(control).toBeHidden();
-    await expect(flow.getByRole('link', { name: 'Open the workbook', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Try the guided workbook', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   } finally {
     await context.close();

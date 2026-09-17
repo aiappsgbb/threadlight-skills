@@ -39,11 +39,11 @@ test('architecture diagrams are pre-rendered images with accessible text and ret
 test('production chapter explains the action boundary through a connected visual and a deeper reading path', () => {
   const page = read('docs/production.html');
   const section = page.match(/<section\b[^>]*id="effect-authority"[^>]*>([\s\S]*?)<\/section>/)[1];
-  assert.match(section, /class="authority-map"/);
-  assert.match(section, /role="img"[^>]*aria-labelledby="authority-map-title authority-map-desc"/);
+  assert.match(section, /class="wf-diagram"/);
+  assert.match(section, /role="img"[^>]*aria-labelledby="wf-map-title wf-map-desc"/);
   assert.match(section, /<path[^>]*marker-end=/);
-  for (const label of ['Propose', 'Authorize', 'Execute', 'Human decision', 'Outlook',
-    'Identity', 'Policy', 'Trusted facts', 'audit ACK']) assert.ok(section.includes(label), label);
+  for (const label of ['Agent', 'Governed MCP gateway', 'Control plane', 'Human reviewer', 'Business API',
+    'Outlook', 'policy', 'trusted facts', 'audit ACK']) assert.ok(section.includes(label), label);
   const outcomes = page.match(/<section\b[^>]*id="evidence-boundaries"[^>]*>([\s\S]*?)<\/section>/)[1];
   assert.match(outcomes, /Read the architecture/);
   assert.match(outcomes, /agent-governance-deep-dive\.md/);
@@ -67,7 +67,7 @@ test('production groups three complementary areas, keeps privacy cross-cutting a
     'effect boundary', 'independent business API']) {
     assert.ok(action.includes(phrase), phrase);
   }
-  assert.ok(action.indexOf('id="returns-walkthrough"') < action.indexOf('class="authority-map"'));
+  assert.ok(action.indexOf('id="returns-walkthrough"') < action.indexOf('class="wf-diagram"'));
   assert.doesNotMatch(page, /Threadlight proves the agent you run in it|Agent governance &mdash; not platform governance/);
 });
 

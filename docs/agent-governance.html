@@ -3,30 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Agent governance — autonomy without unlimited power.</title>
-<meta name="description" content="Give AI agents a clear path to business action. Connect identity, policy, controlled execution, human decisions and evidence in one configurable governance architecture.">
+<title>Build your first governed workflow — Threadlight</title>
+<meta name="description" content="Six practical steps from a local returns prototype to an authorized deployment, real human review and an operations handoff. Start here; use the full workbook for exact contracts.">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Agent governance — autonomy without unlimited power.">
-<meta property="og:description" content="Move from helpful answers to accountable business actions. Identity, policy, human judgement and audit form a coherent operating model for your agents.">
+<meta property="og:title" content="Build your first governed workflow — Threadlight">
+<meta property="og:description" content="Start locally, prepare the people and platform, then verify one governed decision path.">
 <meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/agent-governance.html">
 <meta property="og:site_name" content="Threadlight">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
-<link rel="stylesheet" href="assets/governed-workflow.css?v=fea94ac9">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=5c9b6077">
 </head>
-<body class="chapter-page chapter-production chapter-experience governance-page" data-chapter-parent="production">
-<svg width="0" height="0" aria-hidden="true" focusable="false" class="wf-icons">
-  <defs>
-    <symbol id="wf-icon-agent" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.5"/><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="7" r="2.5"/><path d="M6 7.5v9M6 13h7a5 5 0 0 0 5-3.5"/></g></symbol>
-    <symbol id="wf-icon-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></g></symbol>
-    <symbol id="wf-icon-person" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="4"/><path d="M4 21v-3a8 8 0 0 1 16 0v3"/></g></symbol>
-    <symbol id="wf-icon-record" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h6M9 11h6M8 16l2 2 5-5"/></g></symbol>
-    <symbol id="wf-icon-store" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/></g></symbol>
-    <symbol id="wf-icon-stop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m8 8 8 8m0-8-8 8"/></g></symbol>
-  </defs>
-</svg>
-<a class="skip-link" href="#main">Skip to agent governance</a>
+<body class="chapter-page chapter-production chapter-experience governance-page" data-chapter-parent="production" data-web-workbook>
+<a class="skip-link" href="#main">Skip to the workbook</a>
 <header class="masthead">
   <div class="brand">
     <a href="./index.html" class="brand-name"><span class="brand-mark" aria-hidden="true"></span>Threadlight<span>by Microsoft GBB · AI Apps</span></a>
@@ -39,338 +29,127 @@
     <a href="./production.html" aria-current="location"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
   </nav>
 </header>
-<aside class="floating-toc" aria-label="Agent governance chapter">
-  <nav class="cx-chapter-links" aria-label="Agent governance overview">
-    <a href="#overview">Overview</a><a href="#workflow-in-action">See the flow</a><a href="#next">Build it</a>
+<aside class="floating-toc" aria-label="Guided workbook">
+  <nav class="cx-chapter-links" aria-label="Workbook overview">
+    <a href="#overview">Start</a><a href="#local">Local exercise</a><a href="#operate">Operate</a>
   </nav>
-  <details class="cx-chapter-index"><summary>All sections</summary><ol>
-    <li><a href="#overview">Overview</a></li><li><a href="#effect-authority">Effect boundary</a></li>
-    <li><a href="#evidence">Business value</a></li><li><a href="#human-decisions">Human decisions</a></li>
-    <li><a href="#freshness">Lifecycle</a></li><li><a href="#limits">Adoption</a></li>
-    <li><a href="#workflow-in-action">See the flow</a></li><li><a href="#next">Build it</a></li>
+  <details class="cx-chapter-index"><summary>All steps</summary><ol>
+    <li><a href="#define">Describe</a></li><li><a href="#prepare">Prepare</a></li><li><a href="#local">Local exercise</a></li>
+    <li><a href="#authorize">Authorize deployment</a></li><li><a href="#validate">Validate with a person</a></li><li><a href="#operate">Operate</a></li>
   </ol></details>
 </aside>
-
 <main id="main">
-  <section class="chapter-hero" id="overview" data-toc-id="overview" data-toc-label="Overview">
-    <div class="wrap wrap-wide">
+  <section class="chapter-hero" id="overview" data-toc-id="overview" data-toc-label="Start">
+    <div class="wrap wb-wrap">
       <div class="cx-journey">
-        <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Agent governance</span></nav>
-        <a class="cx-journey-next" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Next: Workbook <span aria-hidden="true">&rarr;</span></a>
+        <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Guided workbook</span></nav>
+        <a class="cx-journey-next" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Full workbook <span aria-hidden="true">&rarr;</span></a>
       </div>
-      <p class="eyebrow"><span class="dot"></span>From intelligence to accountable action</p>
-      <h1>Autonomy for agents.<br><em>Not unlimited power.</em></h1>
-      <p class="lede">Let agents move work forward while your organization defines the boundaries.
-        Bring identity, business policy, controlled execution, human judgement and evidence
-        into one configurable architecture.</p>
-      <p class="gov-note"><strong>The model proposes; the system authorizes.</strong>
-        Build useful autonomy around the decisions that matter to your business,
-        with clear responsibility from the first request to the resulting action.</p>
-      <div class="gov-links">
-        <a class="btn btn-primary" href="./funnel.html#scene-cta">Design a governed workflow <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="#effect-authority">Explore the architecture <span class="arrow">&rarr;</span></a>
+      <h1>Build your first governed workflow</h1>
+      <p class="lede">Use one returns example to move from local prototype to an authorized hosted workflow.
+        Practice an allowed recommendation, a blocked request and a human-reviewed handoff &mdash; never a payment.</p>
+      <dl class="wb-prerequisites">
+        <div><dt>What you need now</dt><dd>Copilot, a separate pilot repository, the reviewed catalog and synthetic cases. Start without Azure.</dd></div>
+        <div><dt>Who you need later</dt><dd>A platform owner, approved target and budget, a publisher, and a real Outlook reviewer.</dd></div>
+      </dl>
+      <div class="wb-intro-links">
+        <a class="btn btn-primary" href="#define">Start the workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
+        <a href="./production.html#effect-authority">Understand the actors and gateway first</a>
       </div>
+      <nav aria-label="Workbook steps">
+        <ol class="wb-path">
+          <li><a href="#define"><span>01</span> Describe</a></li><li><a href="#prepare"><span>02</span> Prepare</a></li>
+          <li><a href="#local"><span>03</span> Local</a></li><li><a href="#authorize"><span>04</span> Authorize</a></li>
+          <li><a href="#validate"><span>05</span> Validate</a></li><li><a href="#operate"><span>06</span> Operate</a></li>
+        </ol>
+      </nav>
+      <p class="wb-note">This is navigation, not execution status. Detailed contracts and complete instructions stay in the approved Markdown workbook.</p>
     </div>
   </section>
-
-  <section class="chapter-section" id="effect-authority" data-toc-id="effect-authority" data-toc-label="Effect boundary">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>A connected operating model</p>
-        <h2>Give every business action <em>a clear decision path.</em></h2>
-        <p class="section-lede">Choose the controls your workflow needs and connect them at the
-          action boundary. Agents contribute intelligence; your systems retain authority.</p>
-      </div>
-      <ol class="gov-grid gov-flow" aria-label="Selected write authorization sequence">
-        <li class="gov-card"><h3>Business intent</h3><p>Turn a request into a proposed action with explicit
-          inputs and an intended outcome. Keep the purpose of the workflow visible.</p></li>
-        <li class="gov-card"><h3>Identity</h3><p>Establish which agent, person and service are participating.
-          Give each the access needed for its responsibility.</p></li>
-        <li class="gov-card"><h3>Policy</h3><p>Express business rules against trusted context and current
-          system data. Evaluate the proposed action before it can change anything.</p></li>
-        <li class="gov-card"><h3>Human decisions</h3><p>Route exceptions to the people accountable for them.
-          Record an authenticated decision and bind it to the action being reviewed.</p></li>
-        <li class="gov-card"><h3>Controlled execution</h3><p>Use a trusted host or gateway and a separately
-          authorizing backend to turn an allowed proposal into a business outcome.</p></li>
-        <li class="gov-card"><h3>Evidence</h3><p>Connect the request, policy decision, human involvement and
-          system result. Give operations and reviewers a trace they can inspect.</p></li>
-      </ol>
-      <div class="gov-callout"><strong>One journey, distinct responsibilities.</strong>
-        Model access, action authorization and business execution work together without becoming the
-        same permission. Integrate controls where they matter, and keep routine reads and prototype
-        iteration lightweight.</div>
-      <p class="gov-note">Threadlight connects native agent runtimes, governed MCP boundaries and
-        existing business APIs. Implementation profiles make the supported controls and deployment
-        choices explicit.</p>
-      <details>
-        <summary>Separate responsibilities, not interchangeable security labels</summary>
-        <ul class="gov-facts">
-          <li><strong>SAFE</strong> is the method; <strong>ACS/Rego</strong> is the policy decision point.</li>
-          <li><strong>Agent Hooks</strong> is the host/interceptor contract. The selected host or gateway is the enforcement point; <strong>AGT</strong> is the toolkit; <strong>ASSERT</strong> is assurance.</li>
-          <li>Agent Identity, reviewer, control plane, gateway, downstream caller, database writer and publisher have distinct responsibilities. The agent has no database-write or signing role.</li>
-          <li>Private networks restrict reachability; output guardrails constrain supported returned content. Neither replaces authorization of the exact business effect.</li>
-        </ul>
+  <div class="wrap wb-wrap">
+    <section class="wb-step" id="define" data-workbook-stage="1" data-toc-id="define" data-toc-label="Describe">
+      <h2><span>01</span> Describe the decision</h2>
+      <dl>
+        <div><dt>Inputs</dt><dd>Three synthetic cases: eligible, ineligible and supervisor-only.</dd></div>
+        <div><dt>People</dt><dd>You and the process owner review rules; Copilot drafts the foundation and SPEC.</dd></div>
+        <div><dt>Result</dt><dd>A reviewed SPEC checkpoint, not a deployed agent or new permissions.</dd></div>
+      </dl>
+      <details><summary>Copy the local design prompt</summary>
+        <pre data-workbook-excerpt="design" tabindex="0" role="region" aria-label="Local design prompt"><code>Use threadlight-design in Full mode for the two-tool returns MCP reference:
+returns_get_case and returns_apply_decision. Record recommendations and
+supervisor handoffs, never payments. With synthetic cases, capture the owner's
+rules, reviewer, success measure and unresolved prerequisites.
+Select microsoft-agent-framework, runtime_shape=agent, protocol=responses,
+Foundry hosted and governed-tool-gateway; resolve actual capability signals
+through the runtime policy, not a forced override. Stop at the SPEC checkpoint.
+No Azure discovery, business-system calls, deployment or presentation work.</code></pre>
       </details>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="evidence" data-toc-id="evidence" data-toc-label="Business value">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Autonomy that serves the business</p>
-        <h2>Move work forward.<br><em>Keep responsibility clear.</em></h2>
-        <p class="section-lede">Make governance part of the workflow design, so teams can delegate
-          useful work without giving an agent an unrestricted route to business systems.</p>
-      </div>
-      <div class="gov-grid">
-        <article class="gov-card">
-          <span class="gov-label">PRODUCTIVE AUTONOMY</span>
-          <h3>Delegate the repeatable work</h3>
-          <p>Let agents gather context, propose a disposition and carry out permitted actions.
-            Put business rules at the boundary where a proposal becomes an effect.</p>
-          <ul class="gov-facts">
-            <li>Define actions around clear business outcomes.</li>
-            <li>Use current facts from the systems that own them.</li>
-            <li>Keep access and execution responsibilities separate.</li>
-          </ul>
-        </article>
-        <article class="gov-card">
-          <span class="gov-label">DECISIONS AT THE RIGHT LEVEL</span>
-          <h3>Bring people into the exceptions</h3>
-          <p>Set thresholds, roles and approval conditions that reflect how your organization works.
-            Keep routine decisions moving and reserve human attention for consequential exceptions.</p>
-          <p>Native Outlook approval brings the decision to the reviewer. The control plane verifies
-            the person's response; the agent resumes only the operation that was reviewed.</p>
-        </article>
-        <article class="gov-card">
-          <span class="gov-label">ACCOUNTABLE OPERATIONS</span>
-          <h3>Understand how an outcome happened</h3>
-          <p>Connect agent intent, policy decisions, approvals and system results.
-            Make the evidence useful to engineering, operations and accountable business owners.</p>
-          <p>Design the right audit guarantees for each boundary, from data access to a committed
-            transaction and subsequent reconciliation.</p>
-        </article>
-      </div>
-      <div class="gov-grid" style="margin-top:20px;">
-        <article class="gov-card">
-          <span class="gov-label">EXAMPLE WORKFLOW</span>
-          <h3>Returns triage</h3>
-          <p>An agent reads an authorized case, recommends a disposition and checks the proposal
-            against eligibility, value and risk rules. Exceptions go to a supervisor.</p>
-          <p>The business system records the allowed decision and its audit. Extend the workflow
-            through explicit backend contracts rather than handing the agent a general-purpose write tool.</p>
-        </article>
-        <article class="gov-card">
-          <span class="gov-label">YOUR SYSTEMS OF RECORD</span>
-          <h3>Connect without surrendering control</h3>
-          <p>Keep business APIs responsible for their own authorization and data integrity.
-            Use agent tools as scoped contracts, with clear inputs, outcomes and ownership.</p>
-          <p>This pattern lets the agent experience evolve while business systems retain the rules
-            that protect their records.</p>
-        </article>
-        <article class="gov-card">
-          <span class="gov-label">AN EVOLVING OPERATING MODEL</span>
-          <h3>Govern the change, not just the first release</h3>
-          <p>Review policies, identities and execution boundaries as your use case grows.
-            Pair agent quality and safety evaluation with operational evidence and clear release ownership.</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="human-decisions" data-toc-id="human-decisions" data-toc-label="Human decisions">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <p class="eyebrow"><span class="dot"></span>Human judgement, without a disconnected handoff</p>
-        <h2>Decide in Outlook.<br><em>Execute under policy.</em></h2>
-        <p class="section-lede">Put consequential exceptions in front of an accountable person.
-          Keep their decision connected to the exact business action, all the way to its recorded outcome.</p>
-      </div>
-      <ol class="gov-grid gov-flow" aria-label="Native human approval journey">
-        <li class="gov-card"><h3>Review a clear proposal</h3>
-          <p>See the case, requested action, proposed reason and deadline in an approval email.
-            The recipient and review rules come from trusted configuration, not the model.</p></li>
-        <li class="gov-card"><h3>Choose Approve or Reject</h3>
-          <p>Use the native Outlook experience. The control plane independently checks the returned
-            identity and binds the decision to the original proposal.</p></li>
-        <li class="gov-card"><h3>Resume only that operation</h3>
-          <p>An approved request receives one-use authorization. The gateway and business API still
-            enforce current conditions, durable audit and duplicate-effect protection.</p></li>
-      </ol>
-      <div class="gov-callout"><strong>A decision, not a blank cheque.</strong>
-        Changed data or arguments need a new authorization path. A request past its deadline does not
-        silently renew, and a completed retry must not become another business effect.
-        The email workflow itself has no business-write action.</div>
-      <div class="gov-grid" style="margin-top:24px;">
-        <article class="gov-card"><span class="gov-label">FOR THE CIO</span>
-          <h3>Make exception handling part of the process</h3>
-          <p>Connect useful agent work, accountable people and existing systems of record.
-            Expand delegation without moving business ownership into a prompt.</p></article>
-        <article class="gov-card"><span class="gov-label">FOR THE CISO</span>
-          <h3>Know who authorized which effect</h3>
-          <p>Separate identity, policy, human authority and execution. Trace the reviewed proposal
-            to its authorization, business outcome and replay behavior.</p></article>
-      </div>
-      <p class="gov-note">The reference connects a selected native hosted workflow to an independent
-        business boundary. Supported clients, identity mappings, privacy, resilience and production
-        requirements remain explicit implementation decisions.</p>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="freshness" data-toc-id="freshness" data-toc-label="Lifecycle">
-    <div class="wrap wrap-xl">
-      <div class="section-head"><h2>Build for change.<br><em>Keep authority aligned.</em></h2></div>
-      <div class="gov-grid">
-        <article class="gov-card">
-          <h3>Identity and policy travel with the deployment</h3>
-          <p>Bind reviewed configuration to the agent and environment that will use it.
-            Version the rules, know who can publish them and re-establish authority when the system changes.</p>
-        </article>
-        <article class="gov-card">
-          <h3>Evidence supports the next decision</h3>
-          <p>Give business and platform teams a shared view of execution, exceptions and operational
-            requirements. Use that evidence to decide where to expand autonomy and where to keep review.</p>
-        </article>
-      </div>
-      <div class="gov-callout"><strong>Prototype quickly. Adopt controls deliberately.</strong>
-        Start with the business process, select the actions that matter and apply the appropriate
-        implementation profile before connecting consequential effects.</div>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="limits" data-toc-id="limits" data-toc-label="Adoption">
-    <div class="wrap">
-      <div class="section-head"><h2>Your business process.<br><em>A clear path to adoption.</em></h2></div>
-      <ul class="gov-facts">
-        <li><strong>Define the outcome.</strong> Name the process, the decisions and the people accountable for them.</li>
-        <li><strong>Select the boundaries.</strong> Identify the tools, identities, policies and backend contracts the workflow needs.</li>
-        <li><strong>Connect the experience.</strong> Bring agent assistance, human decisions and business execution into a coherent journey.</li>
-        <li><strong>Prepare the operating model.</strong> Align evaluation, privacy, recovery and release ownership with your production requirements.</li>
-      </ul>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="workflow-in-action" data-toc-id="workflow-in-action" data-toc-label="See the path" aria-labelledby="workflow-title">
-    <div class="wrap wrap-xl">
-      <div class="section-head">
-        <h2 id="workflow-title">One return. <em>Three decision paths.</em></h2>
-        <p class="section-lede">Follow a permitted action, a blocked proposal or a human-reviewed exception.</p>
-      </div>
-      <div class="wf-panel">
-        <div class="wf-tabs" role="tablist" aria-label="Decision scenario" data-flow-controls hidden>
-          <button type="button" role="tab" id="wf-tab-normal" aria-controls="wf-case" data-flow-scenario="normal" aria-selected="true"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-shield"/></svg><span>Allowed</span></button>
-          <button type="button" role="tab" id="wf-tab-invalid" aria-controls="wf-case" data-flow-scenario="invalid" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-stop"/></svg><span>Blocked</span></button>
-          <button type="button" role="tab" id="wf-tab-supervisor" aria-controls="wf-case" data-flow-scenario="supervisor" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-person"/></svg><span>Human review</span></button>
-        </div>
-        <div id="wf-case" role="tabpanel" aria-labelledby="wf-tab-normal">
-          <p class="wf-story" data-flow-story>Eligible return &mdash; record a recommendation, not a payment.</p>
-          <svg class="wf-diagram" viewBox="0 0 1100 215" role="img" aria-labelledby="wf-map-title wf-map-desc">
-            <title id="wf-map-title">An action follows an allowed, blocked or human-reviewed path</title>
-            <desc id="wf-map-desc">The agent proposes. Policy checks identity and facts. A denial ends with no business effect. Human review waits in Outlook then rechecks current authority. Every permitted write requires the central audit ACK before the backend's conditional decision and business audit.</desc>
-            <defs><marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10Z"/></marker></defs>
-            <path class="wf-edge" data-flow-edge="proposal:checks" d="M180 94H240" marker-end="url(#wf-arrow)"/>
-            <path class="wf-edge" data-flow-edge="checks:ack" d="M405 94H465" marker-end="url(#wf-arrow)"/>
-            <path class="wf-edge" data-flow-edge="ack:effect" d="M630 94H690" marker-end="url(#wf-arrow)"/>
-            <path class="wf-edge" data-flow-edge="effect:result" d="M855 94H915" marker-end="url(#wf-arrow)"/>
-            <path class="wf-edge" data-flow-edge="checks:deny" d="M325 60V24H465" marker-end="url(#wf-arrow)"/>
-            <path class="wf-edge" data-flow-edge="checks:review" d="M325 128V151" marker-end="url(#wf-arrow)"/>
-            <path class="wf-edge" data-flow-edge="review:fresh" d="M405 183H465" marker-end="url(#wf-arrow)"/>
-            <path class="wf-edge" data-flow-edge="fresh:ack" d="M550 156V133" marker-end="url(#wf-arrow)"/>
-            <text class="wf-edge-label" x="414" y="83">Allow</text>
-            <text class="wf-edge-label" x="373" y="17">Deny</text>
-            <text class="wf-edge-label" x="339" y="145">Review</text>
-            <g class="wf-node" data-flow-node="proposal" transform="translate(20 60)">
-              <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-agent" x="16" y="13" width="25" height="25"/>
-              <text class="wf-number" x="138" y="25" data-flow-number>1</text><text class="wf-label" x="16" y="61">Agent proposes</text>
-            </g>
-            <g class="wf-node" data-flow-node="checks" transform="translate(245 60)">
-              <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-shield" x="16" y="13" width="25" height="25"/>
-              <text class="wf-number" x="138" y="25" data-flow-number>2</text><text class="wf-label" x="16" y="61">Policy decides</text>
-            </g>
-            <g class="wf-node" data-flow-node="ack" transform="translate(470 60)">
-              <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-record" x="16" y="13" width="25" height="25"/>
-              <text class="wf-number" x="138" y="25" data-flow-number>3</text><text class="wf-label" x="52" y="30">Audit ACK</text><text class="wf-detail" x="16" y="61">Before the effect</text>
-            </g>
-            <g class="wf-node" data-flow-node="effect" transform="translate(695 60)">
-              <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-store" x="16" y="13" width="25" height="25"/>
-              <text class="wf-number" x="138" y="25" data-flow-number>4</text><text class="wf-label" x="52" y="30">Backend</text><text class="wf-detail" x="16" y="61">Checks + writes</text>
-            </g>
-            <g class="wf-node" data-flow-node="result" transform="translate(920 60)">
-              <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-record" x="16" y="13" width="25" height="25"/>
-              <text class="wf-number" x="138" y="25" data-flow-number>5</text><text class="wf-label" x="16" y="61">Decision + audit</text>
-            </g>
-            <g class="wf-node wf-stop" data-flow-node="deny" transform="translate(470 3)">
-              <rect width="210" height="42" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-stop" x="12" y="9" width="24" height="24"/>
-              <text class="wf-label" x="45" y="27">No business effect</text><text class="wf-number" x="190" y="17" data-flow-number></text>
-            </g>
-            <g class="wf-node" data-flow-node="review" transform="translate(245 156)">
-              <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-person" x="12" y="15" width="24" height="24"/>
-              <text class="wf-label" x="43" y="25">Outlook review</text><text class="wf-detail" x="43" y="43">This handoff only</text><text class="wf-number" x="145" y="13" data-flow-number></text>
-            </g>
-            <g class="wf-node" data-flow-node="fresh" transform="translate(470 156)">
-              <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-shield" x="12" y="15" width="24" height="24"/>
-              <text class="wf-label" x="43" y="25">Fresh checks</text><text class="wf-detail" x="43" y="43">Same proposal</text><text class="wf-number" x="145" y="13" data-flow-number></text>
-            </g>
-          </svg>
-          <ol class="wf-mobile" aria-label="Selected action path">
-            <li data-mobile-node="proposal"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-agent"/></svg><span>Agent proposes</span></li>
-            <li data-mobile-node="checks"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-shield"/></svg><span>Policy decides</span></li>
-            <li data-mobile-node="deny" hidden><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-stop"/></svg><span>Blocked &mdash; no business effect</span></li>
-            <li data-mobile-node="review" hidden><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-person"/></svg><span>Outlook review &mdash; this handoff only</span></li>
-            <li data-mobile-node="fresh" hidden><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-shield"/></svg><span>Fresh checks &mdash; same proposal</span></li>
-            <li data-mobile-node="ack"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-record"/></svg><span>Audit ACK &mdash; before the effect</span></li>
-            <li data-mobile-node="effect"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-store"/></svg><span>Backend checks + writes</span></li>
-            <li data-mobile-node="result"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-record"/></svg><span>Decision + business audit</span></li>
-          </ol>
-          <p class="wf-static-note">The ordinary path is shown. A blocked proposal stops at policy; a human-reviewed handoff waits in Outlook and repeats the checks before continuing.</p>
-          <ol class="wf-progress" data-flow-progress aria-label="Illustration steps" data-flow-controls hidden></ol>
-          <div class="wf-caption-line">
-            <div class="wf-status" data-flow-status role="status" aria-live="polite" aria-atomic="true">
-              <strong data-flow-title>1 / 5 &middot; Agent proposes</strong>
-              <p data-flow-caption>The agent proposes a return recommendation for this case. It does not supply its own permission.</p>
-            </div>
-            <div class="wf-transport" role="group" aria-label="Illustration playback" data-flow-controls hidden>
-              <button type="button" data-flow-control="previous" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
-              <button type="button" data-flow-control="play"><span data-flow-play-label>Play</span></button>
-              <button type="button" data-flow-control="next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
-            </div>
-          </div>
-          <p class="wf-note" data-flow-motion></p>
-        </div>
-      </div>
-      <p class="wf-legend">Illustration only. No model, mailbox or backend is connected. Solid arrows show the selected path, not a live execution.</p>
-      <div class="wf-links">
-        <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Open the workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-3-rehearse-locally-without-calling-it-azure-proof">Try the local exercise</a>
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-5-demonstrate-allow-deny-and-a-real-human-decision">Follow the human-review exercise</a>
-        <a href="./production.html#effect-authority">Back to Production</a>
-      </div>
-    </div>
-  </section>
-
-  <section class="chapter-section" id="next" data-toc-id="next" data-toc-label="Inspect & build">
-    <div class="wrap">
-      <div class="section-head"><h2>Put autonomy to work.<br><em>Keep the decisions yours.</em></h2>
-        <p class="section-lede">Explore the architecture, choose an implementation profile and
-          start with a business workflow worth improving.</p></div>
-      <div class="gov-links">
-        <a class="btn btn-primary" href="./funnel.html#scene-cta">Design a governed workflow <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Your first governed workflow <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/c4cfb09926531869b787ad8e1a0e3a67188cad49/docs/native-outlook-approval-architecture.md">Native Outlook architecture <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/772074123506c285eed2395c40ded4eaad229cc6/docs/agent-governance-deep-dive.md">Engineering deep dive <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/6bd6e72484039ed9db23f641f167f936beb9e072/docs/governed-returns-validation.md">Dated execution record <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="./production.html">Production-readiness chapter <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="./funnel.html#scene-cta">Start a pilot <span class="arrow">&rarr;</span></a>
-      </div>
-      <p class="gov-note">The engineering references describe supported profiles, implementation
-        assumptions and validation evidence for teams planning adoption.</p>
-    </div>
-  </section>
+      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-1-describe-the-decision-you-want-to-improve">Phase 1: inputs, review and recovery &rarr;</a>
+    </section>
+    <section class="wb-step" id="prepare" data-workbook-stage="2" data-toc-id="prepare" data-toc-label="Prepare">
+      <h2><span>02</span> Prepare the handoffs</h2>
+      <dl>
+        <div><dt>Inputs</dt><dd>The reviewed SPEC, intended tenant/index alias and named owners.</dd></div>
+        <div><dt>People</dt><dd>The platform owner confirms model, network, identities and signing prerequisites. Stay local when any are missing.</dd></div>
+        <div><dt>Result</dt><dd>An explicit prerequisite and access handoff. Do not copy keys or login caches into prompts.</dd></div>
+      </dl>
+      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-2-prepare-the-people-inputs-and-access-handoff">Phase 2: people, isolation and required inputs &rarr;</a>
+    </section>
+    <section class="wb-step" id="local" data-workbook-stage="3" data-toc-id="local" data-toc-label="Local exercise">
+      <h2><span>03</span> Rehearse locally</h2>
+      <dl>
+        <div><dt>Inputs</dt><dd>Set <code>CATALOG</code> to the reviewed catalog and <code>PACKAGE_OUTPUT</code> to an unused local directory.</dd></div>
+        <div><dt>People</dt><dd>Copilot helps package sources and inspect local checks; you compare the synthetic outcomes.</dd></div>
+        <div><dt>Result</dt><dd><code>source-package.json</code> and matching file hashes. Source-only, not Azure enforcement.</dd></div>
+      </dl>
+      <pre data-workbook-excerpt="package" tabindex="0" role="region" aria-label="Local source packaging command"><code>: "${CATALOG:?Set CATALOG}" "${PACKAGE_OUTPUT:?Choose an unused PACKAGE_OUTPUT}"
+python3 "$CATALOG/skills/threadlight-deploy/references/governance/package_returns_mcp.py" \
+  --output "$PACKAGE_OUTPUT"</code></pre>
+      <p class="wb-note">This command makes no Azure or model call and refuses an existing output directory. Optional model rehearsal needs a separate endpoint and call budget.</p>
+      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-3-rehearse-locally-without-calling-it-azure-proof">Phase 3: commands, hashes and local-test limits &rarr;</a>
+    </section>
+    <section class="wb-step" id="authorize" data-workbook-stage="4" data-toc-id="authorize" data-toc-label="Authorize deployment">
+      <h2><span>04</span> Authorize the exact deployment</h2>
+      <dl>
+        <div><dt>Inputs</dt><dd>The reviewed target, model, change list, budget and exact permission assignments.</dd></div>
+        <div><dt>People</dt><dd>You authorize that scope. The platform owner registers the host, observes its identity and applies only pre-approved roles. Personal OAuth consent stays separate.</dd></div>
+        <div><dt>Result</dt><dd>The native hosted agent, separate services and a fresh signed binding. Stop before validation if any are missing.</dd></div>
+      </dl>
+      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-4-opt-in-to-governance-and-review-the-hosted-setup">Phase 4: use the complete deployment-authorization prompt &rarr;</a>
+    </section>
+    <section class="wb-step" id="validate" data-workbook-stage="5" data-toc-id="validate" data-toc-label="Validate with a person">
+      <h2><span>05</span> Validate with a real person</h2>
+      <dl>
+        <div><dt>Inputs</dt><dd>Fresh binding, approved synthetic cases and budget, reviewer availability and independent observation access.</dd></div>
+        <div><dt>People</dt><dd>The person decides in Outlook. You verify allow, deny, pending, exact same-session resume and replay; never invent an approval.</dd></div>
+        <div><dt>Result</dt><dd>Joined authorization and business-audit evidence for this deployment. Replay must not create another business effect.</dd></div>
+      </dl>
+      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-5-demonstrate-allow-deny-and-a-real-human-decision">Phase 5: exact arguments, human review and independent checks &rarr;</a>
+    </section>
+    <section class="wb-step" id="operate" data-workbook-stage="6" data-toc-id="operate" data-toc-label="Operate">
+      <h2><span>06</span> Hand off operations</h2>
+      <dl>
+        <div><dt>Inputs</dt><dd>Current evidence, immutable image, release adapters and named operations owners.</dd></div>
+        <div><dt>People</dt><dd>The application and platform teams own release preparation. Release approval, action approval and business go-live remain separate.</dd></div>
+        <div><dt>Result</dt><dd>An operations/release handoff, not certification. Retain evidence before separately approved cleanup of new test-owned temporaries.</dd></div>
+      </dl>
+      <a class="wb-deeper" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md#phase-6-hand-off-a-controlled-release-and-safe-operations">Phase 6: existing release and recovery contracts &rarr;</a>
+    </section>
+    <aside class="wb-legacy" aria-label="Moved architecture references">
+      <span id="effect-authority"></span><span id="workflow-in-action"></span><span id="evidence"></span>
+      <span id="human-decisions"></span><span id="freshness"></span><span id="limits"></span>
+      <p>Architecture and decision diagrams are now in <a href="./production.html#effect-authority">Production: governed actions</a>.</p>
+    </aside>
+    <section class="wb-next" id="next" aria-label="Continue with the full workbook">
+      <a class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Open the full workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
+      <a href="./production.html#effect-authority">Back to Production</a>
+    </section>
+  </div>
 </main>
-<footer>Threadlight · selected authority, visible evidence · <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
+<footer>Threadlight &middot; practical steps, explicit authority &middot; <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
 <script src="assets/site.js?v=e4d413b7"></script>
 <script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
-<script src="assets/governed-workflow.js?v=6b925180"></script>
+<script src="assets/governed-workflow.js?v=dfcb80b4"></script>
 </body>
 </html>

@@ -24,13 +24,13 @@ test('dedicated governance page uses existing site assets and accessible landmar
   assert.doesNotMatch(html, /react|unpkg\.com|cdn\.jsdelivr/i);
 });
 
-test('commercial page links to preserved technical evidence instead of showing lab status', () => {
-  const html = read();
+test('Production owns actor architecture while the workbook stays practical and free of lab status', () => {
+  const html = fs.readFileSync(path.join(root, 'docs/production.html'), 'utf8');
   for (const value of [
-    'Autonomy for agents.', 'Not unlimited power.', 'Identity', 'Policy',
-    'Human decisions', 'Controlled execution', 'Evidence', 'Returns triage',
+    'Governed MCP gateway', 'Control plane', 'Human reviewer', 'Business API',
     'agent-governance-deep-dive.md', 'governed-returns-validation.md',
   ]) assert.ok(html.includes(value), value);
+  assert.ok(read().includes('Build your first governed workflow'));
   assert.doesNotMatch(html, /4\/4|NOT PROVED|EXPIRED|2026-09-|CI is not all green/);
   const record = fs.readFileSync(path.join(root, 'docs/governed-returns-validation.md'), 'utf8');
   for (const fact of ['S2-PRIVATE-ALLOW-DENY-VERIFIED', '4/4',
@@ -62,11 +62,11 @@ test('Pages specification distinguishes the implemented dedicated page from lega
 });
 
 test('human workflow explains native Outlook and keeps exact dated proof in engineering records', () => {
-  const html = read();
-  assert.match(html, /\/blob\/[a-f0-9]{40}\/docs\/native-outlook-approval-architecture\.md/);
-  for (const term of ['id="human-decisions"', 'Outlook', 'Approve or Reject', 'one-use', 'CIO', 'CISO']) {
+  const html = fs.readFileSync(path.join(root, 'docs/production.html'), 'utf8');
+  for (const term of ['Outlook', 'one-use', 'Human reviewer', 'Control plane']) {
     assert.ok(html.includes(term), term);
   }
+  assert.ok(read().includes('id="human-decisions"'));
   const record = fs.readFileSync(path.join(root, 'docs/governed-returns-validation.md'), 'utf8');
   assert.ok(record.includes('S2-NATIVE-OUTLOOK-HUMAN-RESUME-REPLAY'));
   assert.ok(record.includes('09:50:18'));

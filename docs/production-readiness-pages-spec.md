@@ -14,12 +14,24 @@ initial proposal retained below, not the current page or its publication status.
 
 ### Commercial editorial direction
 
-The latest user direction makes `index.html`, `funnel.html`, `production.html`
-and `agent-governance.html` commercial product/architecture pages: useful
+The latest user direction keeps `index.html`, `funnel.html` and `production.html`
+as commercial product/architecture pages: useful
 autonomy, identity, policy, governance of selected tools and action paths,
 human decisions, controlled execution, audit, business outcomes and clear CTAs.
 They describe configurable capabilities, not a claim that every customer
 deployment or notification/approval integration has already been validated.
+
+Action-governance explanation and the interactive allowed/blocked/human-review
+diagram belong in Production's action area, alongside five concise actor roles.
+Distinguish Citadel/APIM model access from the governed MCP effect gateway;
+authenticated unbound reads may go directly to the business API.
+`agent-governance.html` is now the short guided web workbook: six practical
+steps, a few verbatim prompt/command excerpts, and links to the approved
+`first-governed-workflow.md`. That Markdown remains byte-frozen at Git blob
+`1d6ed17fa77e14e22633c5fdf56e7e45b814e312`; its permalinks use `7782eba93754fb7cff85336d3f4a8703892bad76`.
+Legacy architecture fragments forward to Production, with visible no-JS links.
+Citadel, AgentOps, shared navigation/theme and their existing state behavior
+remain unchanged. This is content relocation/refinement, not a new visual world.
 
 Lab versions, pass/fail matrices, call counts, lease timestamps and instance
 blockers belong in the linked execution record, not the architecture reading path.
@@ -265,12 +277,13 @@ existing Playwright dependencies in `tests/playwright`; no remote rendering
 service or client-side Mermaid dependency is required to read the documents.
 This remains draft source and a local preview, not production Pages publication.
 
-**Dedicated page implemented:** [Agent governance](agent-governance.html) now
-provides the integrated architecture, business benefits, use case and adoption
-journey. Its engineering links retain the exact validation and implementation
-boundaries outside the commercial cards. It reuses the existing site assets and
-navigation, with desktop/mobile dark/light rendered checks and focused keyboard,
-landmark, link and privacy validation. This is a local/PR preview,
+**Dedicated page implemented:** the [guided web workbook](agent-governance.html)
+now summarizes six practical steps; the architecture and decision diagrams live
+in [Production's action area](production.html#effect-authority).
+The full Markdown retains exact implementation and validation boundaries.
+Both pages reuse the existing site assets and navigation, with focused
+desktop/mobile, dark/light, keyboard, landmark, link and privacy checks.
+This is a local/PR preview,
 **not a production Pages deployment** or a whole-site accessibility certificate.
 
 **Legacy page copy implemented:** `index.html`, `funnel.html` and

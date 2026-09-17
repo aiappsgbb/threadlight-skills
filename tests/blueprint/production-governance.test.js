@@ -54,19 +54,19 @@ test('authority section is an accessible ordered contract with distinct identiti
   const body = section(source, 'effect-authority');
   assert.match(source, /id="effect-authority"[^>]*data-toc-id="effect-authority"/);
   assert.match(source, /id="effect-authority"[^>]*aria-labelledby="effect-authority-heading"/);
-  assert.match(body, /<ol[^>]*aria-label="Selected effect authorization sequence"/);
-  assert.match(body, /class="authority-steps"/);
-  for (const phrase of ['Access to a system', 'Identity', 'Policy', 'Trusted facts', 'Human decision',
-    'Outlook', 'independent business API', 'durable authorization record', 'unbound', 'without ACS',
-    'network isolation']) assert.ok(text(body).toLowerCase().includes(phrase.toLowerCase()), phrase);
+  assert.match(body, /<ol[^>]*aria-label="Who does what"/);
+  assert.match(body, /class="action-actors"/);
+  for (const phrase of ['Access to a system', 'Identity', 'Policy', 'Trusted facts', 'Human reviewer',
+    'Outlook', 'independent business API', 'audit ACK', 'unbound', 'without ACS',
+    'model gateway']) assert.ok(text(body).toLowerCase().includes(phrase.toLowerCase()), phrase);
   assert.match(source, /agent-governance-deep-dive\.md/);
   assert.match(read('agent-governance-deep-dive.md'), /references\/gateway\/dispatcher\.py/);
 });
 
 test('concrete action outcomes link to technical evidence without exposing instance status', () => {
   const body = section(read('production.html'), 'evidence-boundaries');
-  for (const phrase of ['Eligible ordinary return', 'High-value case', 'Outdated case',
-    'Repeated completed request', 'Recheck authority', 'original outcome']) {
+  for (const phrase of ['Build this workflow', 'Try the guided workbook', 'Start locally',
+    'human-review exercise', 'independently verified evidence']) {
     assert.ok(text(body).includes(phrase), phrase);
   }
   assert.doesNotMatch(text(body), /4\/4|NOT PROVED|EXPIRED|S3|BASIC v7|version 4/i);
@@ -195,7 +195,7 @@ test('AgentOps frames the release area as controlled delivery rather than just r
 test('accepted AgentOps visuals remain stable while the current generator enforces verified release', () => {
   const source = read('production.html');
   assert.doesNotMatch(source, /id="(?:readiness-reference|delivery-reference)"/);
-  for (const visual of ['ciso-pentagon-svg', 'pipe-svg', 'authority-map']) {
+  for (const visual of ['ciso-pentagon-svg', 'pipe-svg', 'wf-diagram']) {
     assert.ok(source.includes(visual), visual);
   }
   assert.doesNotMatch(source, /class="(?:scorecard-preview|posture-trio-svg)/);

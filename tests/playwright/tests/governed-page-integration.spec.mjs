@@ -48,7 +48,7 @@ for (const theme of ['light', 'dark']) {
 
 test('connected illustration fits a desktop chapter instead of a second long page', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.goto(`${pageURL}#workflow-in-action`);
+  await page.goto('/production.html#workflow-in-action');
   const flow = page.locator('#workflow-in-action');
   await expect(flow.locator('.wf-diagram')).toBeVisible();
   for (const reducedMotion of ['no-preference', 'reduce']) {
@@ -72,7 +72,7 @@ test('connected illustration fits a desktop chapter instead of a second long pag
   if (directory) await flow.screenshot({ path: path.join(directory, `${testInfo.project.name}-connected-flow.png`) });
 });
 
-test('contextual chapter links support keyboard, browser history and a compact mobile menu', async ({ page }, testInfo) => {
+test('web workbook links support keyboard, browser history and a compact mobile menu', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(`${pageURL}#overview`);
@@ -87,25 +87,25 @@ test('contextual chapter links support keyboard, browser history and a compact m
   await expect(nav).toBeHidden();
   const chapter = page.locator('.cx-chapter-links');
   await expect(chapter.locator('a')).toHaveCount(3);
-  await chapter.getByRole('link', { name: 'See the flow' }).focus();
+  await chapter.getByRole('link', { name: 'Local exercise' }).focus();
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/#workflow-in-action$/);
-  await expect(page.locator('#workflow-in-action')).toBeFocused();
-  await chapter.getByRole('link', { name: 'Build it' }).click();
-  await expect(page).toHaveURL(/#next$/);
+  await expect(page).toHaveURL(/#local$/);
+  await expect(page.locator('#local')).toBeFocused();
+  await chapter.getByRole('link', { name: 'Operate' }).click();
+  await expect(page).toHaveURL(/#operate$/);
   await page.goBack();
-  await expect(page).toHaveURL(/#workflow-in-action$/);
-  await expect(page.locator('#workflow-in-action')).toBeFocused();
-  await expect.poll(() => page.locator('#workflow-in-action').evaluate((node) => {
+  await expect(page).toHaveURL(/#local$/);
+  await expect(page.locator('#local')).toBeFocused();
+  await expect.poll(() => page.locator('#local').evaluate((node) => {
     const toc = document.querySelector('.floating-toc').getBoundingClientRect();
     const top = node.getBoundingClientRect().top;
     return top >= toc.bottom - 1 && top < innerHeight;
   })).toBe(true);
-  await expect(page.locator('.wf-mobile')).toBeVisible();
-  await expect(page.locator('.wf-diagram')).toBeHidden();
+  await expect(page.locator('[data-workbook-stage]')).toHaveCount(6);
+  await expect(page.locator('.wf-diagram')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   const directory = process.env.THREADLIGHT_SCREENSHOT_DIR;
-  if (directory) await page.locator('#workflow-in-action').screenshot({
-    path: path.join(directory, `${testInfo.project.name}-connected-mobile.png`),
+  if (directory) await page.locator('main').screenshot({
+    path: path.join(directory, `${testInfo.project.name}-web-workbook-mobile.png`),
   });
 });

@@ -15,25 +15,42 @@
       steps: ['proposal', 'checks', 'review', 'fresh', 'ack', 'effect', 'result'],
     },
   };
+  const legacyRoutes = {
+    'effect-authority': './production.html#effect-authority',
+    'workflow-in-action': './production.html#workflow-in-action',
+    evidence: './production.html#evidence-boundaries',
+    'human-decisions': './production.html#workflow-in-action',
+    freshness: './production.html#effect-authority',
+    limits: './production.html#effect-authority',
+  };
   const steps = {
     proposal: ['Agent proposes', 'Propose', 'The agent proposes a return recommendation for this case. It does not supply its own permission.'],
-    checks: ['Policy decides', 'Check', 'Identity, policy and trusted case facts determine whether this exact proposal may continue.'],
+    checks: ['Governed MCP gateway checks', 'Check', 'The governed MCP gateway checks identity, policy and trusted case facts, then routes only the authorized protected action.'],
     deny: ['Blocked — no business effect', 'Stop', 'Policy refuses the proposal. Record the refusal; do not change the case. This path ends here.'],
     review: ['Person authorizes · Outlook review', 'Outlook', 'Illustration paused at the human decision. Next shows an approved example, not a real approval or email.'],
     fresh: ['Recheck current authority', 'Recheck', 'The example handoff is approved, but its arguments must be unchanged. Recheck current policy, identity and case facts.'],
-    ack: ['Authorization recorded', 'Audit ACK', 'Receive the central audit ACK before the backend receives the business request. No ACK means no dispatch.'],
+    ack: ['Control plane records authority', 'Audit ACK', 'The control plane supplies the central audit ACK before the backend receives the business request. No ACK means no dispatch.'],
     effect: ['Backend checks / executes', 'Commit', 'The independent backend checks the current case, then atomically records the decision and its business audit.'],
     result: ['Record connects the outcome', 'Trace', 'The stable result and audit ID join the authorization trail. Recording a recommendation is not a payment.'],
   };
   const STEP_MS = 2000;
 
   function mount(document, window) {
-    const root = document.getElementById('workflow-in-action');
-    if (!root) return;
-    // A contextual Production deep dive, not another top-level sitemap entry.
     const parent = document.body.dataset.chapterParent;
-    document.querySelector(`.masthead .nav a[href="./${parent}.html"]`)?.setAttribute('aria-current', 'location');
-    document.querySelector(`.cx-directory-group[data-site-group="${parent}"]`)?.setAttribute('data-current-group', '');
+    if (parent) {
+      document.querySelector(`.masthead .nav a[href="./${parent}.html"]`)?.setAttribute('aria-current', 'location');
+      document.querySelector(`.cx-directory-group[data-site-group="${parent}"]`)?.setAttribute('data-current-group', '');
+    }
+    if (document.body.hasAttribute('data-web-workbook')) {
+      const forward = () => {
+        const destination = legacyRoutes[window.location.hash.slice(1)];
+        if (destination) window.location.replace(destination);
+      };
+      window.addEventListener('hashchange', forward);
+      forward();
+    }
+    const root = document.querySelector('[data-governed-flow]');
+    if (!root) return;
     const controls = [...root.querySelectorAll('[data-flow-controls]')];
     const tabs = [...root.querySelectorAll('[data-flow-scenario]')];
     const nodes = [...root.querySelectorAll('[data-flow-node]')];
@@ -180,12 +197,16 @@
     motion.addEventListener('change', () => { pause(); render(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) { pause(); render(); } });
     window.addEventListener('pagehide', pause);
+    const topic = root.closest('[data-topic-panel]');
+    if (topic) new MutationObserver(() => {
+      if (topic.hidden) { pause(); render(); }
+    }).observe(topic, { attributes: true, attributeFilter: ['hidden'] });
     buildProgress(); render();
     root.setAttribute('data-enhanced', '');
     controls.forEach((control) => { control.hidden = false; });
   }
 
-  if (typeof module !== 'undefined' && module.exports) module.exports = { scenarios };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { scenarios, legacyRoutes };
   else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => mount(document, window));
   else mount(document, window);
 })();

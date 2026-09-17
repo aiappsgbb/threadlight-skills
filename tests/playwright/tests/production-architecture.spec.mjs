@@ -53,7 +53,7 @@ test('the accepted introduction and action controls remain accessible with the s
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/production.html#effect-authority');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-  await expect(page.locator('.authority-mobile')).toBeVisible();
+  await expect(page.locator('.wf-mobile')).toBeVisible();
   const mobile = await new AxeBuilder({ page }).include('#effect-authority').analyze();
   expect(mobile.violations.filter(v => ['critical', 'serious'].includes(v.impact))).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('production-architecture-mobile.png'), fullPage: true });
