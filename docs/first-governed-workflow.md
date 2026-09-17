@@ -275,9 +275,15 @@ The actual human performs sign-in/consent for the named connection and later
 Approve/Reject; neither is automated.
 
 **Platform owner:** reviews [runtime pins](../skills/_shared/governance-upstream-pin.json)
-and the native host/services. Build/register once; bind the observed version,
-image digest and identities, without redeploying after signing to update them.
-No agent Cosmos-write/signing rights; service app roles are not ARM role grants.
+and the native host/services. Build/register once. After registration, match the
+observed Agent Identity to the reviewed workload/service and tenant before
+applying its pre-approved MCP/control-plane app roles. Each assignment must
+match the reviewed exact role, resource scope and expected identity;
+workflow-scoped Reader goes only to the observed control-plane identity, not
+the agent. Missing approval, identity mismatch or broader permissions means stop.
+Then bind the observed version, image digest and identities, without redeploying
+after signing to update them. No agent Cosmos-write/signing rights; service app
+roles are not ARM role grants.
 
 For Outlook, the operator uses the
 [native approval template](../skills/threadlight-deploy/references/governance/review-approval.bicep),
@@ -314,7 +320,11 @@ I authorize threadlight-deploy to execute the reviewed deployment handoff
 and [azd environment], using [model deployment] and [network posture].
 Limit changes to [resource/change list: native host, control plane, gateway,
 business API and explicitly approved Outlook companion changes].
-Use the approved operator and publisher identities. No new grants or consent.
+Use the approved operator and publisher identities.
+Permission handoff: [exact role, resource scope and expected identity per grant].
+Apply only these approved assignments to actual observed identities after
+registration. No unapproved grants; stop for missing approval, identity mismatch
+or broader permissions. Personal OAuth consent is separate and not authorized here.
 Deployment budget: [ceiling]; native model smoke budget: [calls/cost ceiling].
 Cleanup owner: [owner]; preserve existing/shared/demo resources, retain
 evidence, and request separate approval for exact test-owned cleanup.

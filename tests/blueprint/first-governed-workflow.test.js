@@ -58,12 +58,27 @@ test('reviewed deployment transition has bounded authorization and an observed e
   assert.ok(prompt, 'copyable follow-up authorization example');
   for (const phrase of [/I authorize threadlight-deploy/i, /tenant\/index/i,
     /subscription/i, /resource group/i, /model deployment/i, /resource\/change list/i,
-    /budget/i, /cleanup owner/i, /no new grants or consent/i, /stop/i]) assert.match(prompt, phrase);
+    /budget/i, /cleanup owner/i, /no unapproved grants/i, /stop/i]) assert.match(prompt, phrase);
   assert.match(transition, /replace[\s\S]{0,120}placeholders/i);
   assert.match(transition, /not[\s\S]{0,60}blanket authorization/i);
   assert.match(transition, /Before Phase 5[\s\S]*native hosted[\s\S]*services[\s\S]*fresh signed binding/i);
   assert.match(transition, /version[\s\S]{0,100}image[\s\S]{0,100}identit/i);
   assert.match(transition, /signed-remote-bootstrap-operator-contract/);
+});
+
+test('reviewed grants target observed identities while personal OAuth remains separate', () => {
+  const phase = phases().find((section) => section[1] === '4')[3];
+  const owner = phase.split('**Platform owner:**')[1].split('**Result:**')[0].replace(/\s+/g, ' ');
+  const transition = phase.split('### After platform review: authorize the exact deployment')[1];
+  const prompt = transition.match(/```text\n([\s\S]*?)```/)[1].replace(/\s+/g, ' ');
+  assert.match(owner, /after registration[\s\S]*observed Agent Identity/i);
+  assert.match(owner, /pre-approved MCP\/control-plane app roles/i);
+  assert.match(owner, /workflow-scoped Reader[\s\S]{0,100}observed control-plane identity/i);
+  assert.match(prompt, /exact role, resource scope and expected identity/i);
+  assert.match(prompt, /only[\s\S]{0,100}approved assignments[\s\S]{0,100}actual observed identit/i);
+  assert.match(prompt, /stop[\s\S]{0,100}missing approval[\s\S]{0,100}identity mismatch[\s\S]{0,100}broader permissions/i);
+  assert.match(prompt, /personal OAuth consent[\s\S]{0,100}separate[\s\S]{0,100}not authorized here/i);
+  assert.doesNotMatch(phase, /No new grants or consent/i);
 });
 
 test('browser choice belongs to the user rather than the guide author', () => {
