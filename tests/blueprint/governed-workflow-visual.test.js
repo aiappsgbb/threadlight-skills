@@ -24,6 +24,12 @@ test('product illustration is static-first with separate pre-effect and business
   assert.match(html, /aria-live="polite"/);
   assert.match(html, /first-governed-workflow\.md#phase-3-/);
   assert.match(html, /first-governed-workflow\.md#phase-5-/);
+  const workbookLinks = [...html.matchAll(/href="([^"]*first-governed-workflow\.md[^"]*)"/g)];
+  assert.equal(workbookLinks.length, 3);
+  for (const [, href] of workbookLinks) {
+    assert.ok(href.includes('/blob/7782eba93754fb7cff85336d3f4a8703892bad76/'),
+      'the workbook must be reachable before a merge, not an absent main file');
+  }
   assert.doesNotMatch(html, /<iframe|<form|<input|<canvas|pass.fail|payment executed/i);
 });
 
