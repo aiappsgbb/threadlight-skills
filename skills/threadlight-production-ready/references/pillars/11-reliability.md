@@ -1,8 +1,10 @@
 # Pillar 11 — `reliability`
 
-> **v0.3.0:** Adds `REL-007` (restore-drill artefact freshness — fails
-> if `tests/restore-drill-*.md` is older than 90 days, regardless of
-> whether `REL-004` static evidence exists) and `REL-008` (live
+> **REL-007:** Requires a successful scoped restore, data/application validation,
+> measured RTO/RPO, retained raw evidence and a non-future execution timestamp
+> within 90 days. Filename dates and checkout mtime never renew evidence.
+> See the [drill record contract](../remediation-recipes/REL-007.md).
+> `REL-008` separately checks that a live
 > Recovery Services Vault must contain at least one restore point).
 > Together these close the "configured backups, never tested them"
 > gap that motivated the v0.3.0 overhaul.
@@ -23,7 +25,7 @@
 | `REL-004` | Capacity host lifecycle understood (SPEC § 12 names the cap host / model-host owner + day-2 swap process) | `should-fix` if absent |
 | `REL-005` | Failure modes catalogued in SPEC § 12 (top-3 likely outage modes with detection + mitigation) | `should-fix` if absent |
 | `REL-006` | Health probes configured for ACA / Functions / Container Apps (Bicep declares liveness + readiness) | `should-fix` if absent |
-| `REL-007` | Restore drill artefact present and dated within freshness window (default 90 days): `tests/restore-drill-*.md` or `docs/restore-drill.md` | `must-fix` |
+| `REL-007` | Successful scoped drill with validation, measured RTO/RPO and raw evidence; execution age at most 90 days | `must-fix` if absent; `not-verified` if invalid/incomplete |
 | `MDL-008` | Knowledge index refresh cadence declared in SPEC § 12 (cross-listed here because index restore is part of the runbook surface — primary owner is pillar 13) | `should-fix` if absent |
 
 ### Live (tier 1 — `Reader`)

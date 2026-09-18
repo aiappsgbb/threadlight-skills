@@ -20,6 +20,22 @@ No private deployment identifiers or captured receipts are distributed here.
 These source files and their package manifest are **not live proof for another
 deployment**, whole-agent governance, OBO or production readiness.
 
+## Operator recovery (explicit profile, not inherited live proof)
+
+The current source can select `recovery_enabled: true` on the business API and
+the signed action's `fenced-outcome/v1` `/recovery` contract. Configure the
+gateway's scoped operation controllers and required leased admission before
+accepting protected writes. Follow the
+[operator API/CLI and stop runbook](../../../threadlight-govern/references/gateway/README.md#operator-recovery-and-admission).
+Recovery independently reads the original decision audit or creates a durable
+same-ID/same-partition no-effect fence. That fence blocks even an original writer
+that read the case before recovery; it does not change the case.
+`completed` replays the prior result. `not_executed` is terminal and always
+`retry_authorized: false`; no replacement business request is generated.
+404 alone is not absence-of-effect proof. Restore business, audit, approval and
+idempotency/fence records coherently. This source functionality and its native
+tests do not inherit the dated hosted/Outlook evidence below.
+
 ## Public authenticated hosted path (September 13)
 
 The subsequent **Foundry hosted v5** run demonstrated model-driven allow, a

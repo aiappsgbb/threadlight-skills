@@ -125,7 +125,8 @@ class GatewayHarness:
             tenant=TENANT, key_id=KEY, policy_id=policy_id, version="1",
             expected_digest=self.bundle.bundle_digest,
             allowed_endpoints={endpoint for action in self.document["actions"]
-                               for endpoint in (action["endpoint"], action["outcome_endpoint"])},
+                               for endpoint in (action["endpoint"], action["outcome_endpoint"],
+                                                action.get("recovery_endpoint")) if endpoint},
             gateway_url="https://gateway.example/mcp")
 
         async def remote(request):

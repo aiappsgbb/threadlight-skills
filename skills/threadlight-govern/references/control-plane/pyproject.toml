@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threadlight-govern-control-plane"
-version = "0.3.1"
+version = "0.4.0"
 requires-python = ">=3.12"
 description = "Independent authenticated governance reference service"
 dependencies = [
@@ -28,6 +28,7 @@ hosted-operator = ["azure-ai-projects==2.3.0"]
 
 [project.scripts]
 threadlight-review-action = "govern_control_plane.review:main"
+threadlight-operate-action = "govern_control_plane.operator:main"
 
 [tool.setuptools]
 packages = ["govern_control_plane"]
