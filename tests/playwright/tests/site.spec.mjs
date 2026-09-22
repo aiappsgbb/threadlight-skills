@@ -320,7 +320,7 @@ test.describe('production chapter (production.html)', () => {
     await expect(governanceReference).toHaveCount(1);
     const reference = new URL(await governanceReference.getAttribute('href'));
     expect(reference.origin).toBe('https://github.com');
-    expect(reference.pathname).toBe('/aiappsgbb/threadlight-skills/blob/7ef20742ac78cfe2e86db4abf21a6135916a5f64/docs/agent-governance-deep-dive.md');
+    expect(reference.pathname).toBe('/aiappsgbb/threadlight-skills/blob/83c26970ce91a2d95d33565b55db787a7c668c12/docs/agent-governance-deep-dive.md');
     expect(reference.hash).toBe('#4-architecture-and-trust-boundaries');
     const document = await page.request.get('/agent-governance-deep-dive.md');
     expect(document.ok()).toBe(true);

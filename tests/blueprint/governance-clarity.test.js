@@ -99,6 +99,6 @@ test('active Production architecture links use the reviewed immutable deep-dive 
     /href="(https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[a-f0-9]+\/docs\/agent-governance-deep-dive\.md[^"]*)"/g)];
   assert.equal(links.length, 3);
   for (const [, link] of links) {
-    assert.ok(link.includes('/blob/7ef20742ac78cfe2e86db4abf21a6135916a5f64/'), link);
+    assert.ok(link.includes('/blob/83c26970ce91a2d95d33565b55db787a7c668c12/'), link);
   }
 });

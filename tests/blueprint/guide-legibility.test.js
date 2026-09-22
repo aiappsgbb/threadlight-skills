@@ -93,7 +93,7 @@ test('prompts and verification text remain exact while presentation changes', ()
 
 test('current presentation snapshots stay fixed outside the explicit signed-evidence extension', () => {
   for (const [file, expected] of [
-    ['docs/production.html', '672aa6a854641451851821d7974f1b97b88a12a9'],
+    ['docs/production.html', '2b5b7af70aa82c89154bd5757cb294439f5b93f0'],
     ['docs/assets/governed-workflow.js', 'efaea66a59d701d7e6f2af3817733c0f8c915115'],
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
     ['docs/agent-governance-deep-dive.md', '444d07ecfc7887393bc872d929efd53db0bd35b8'],
