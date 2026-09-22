@@ -10,7 +10,7 @@ description: >-
   audit and attestation acceptance.
   Not for model content filtering, red-team scans or quality evaluations.
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
 ---
 
 # Threadlight Govern — policy into selected runtime enforcement
@@ -20,6 +20,13 @@ host/interceptor contract SDK; the native host/gateway is the PEP. AGT is the
 toolkit, ASSERT is assurance. Evidence is per binding, **not whole-agent**.
 
 ## Produce, then assess
+
+For an explicit [signed business-evidence requirement](../../docs/signed-evidence.md),
+use the existing MCP PEP and named Evidence Provider contract. The agent requests
+verification and carries the JWT; only the provider's admitted sources justify
+claims. An upload/OCR observation, amount threshold or human action approval is
+not evidence authenticity. Keep the original operation on unknown outcomes.
+The JWT path is opt-in gateway coverage, not native-local or whole-agent coverage.
 
 1. Read `specs/governance-contract.json` and the framework selection. Preserve
    unbound reads, including their tool names and responses; never enroll every

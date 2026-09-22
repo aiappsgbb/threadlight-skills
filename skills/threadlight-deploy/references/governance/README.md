@@ -1,5 +1,10 @@
 # Generated governed deployments
 
+For opt-in provider attestations, see [signed evidence](../../../../docs/signed-evidence.md).
+`signed-evidence` in the tool contract must match `evidence_requirement` in the
+signed gateway registry; one-sided selection is an error. The generator vendors
+the reusable code but does not provision an issuer, business sources or retention.
+
 These references edit a **pilot**, not this skill catalog. They never call Azure,
 change an existing Foundry account, choose a different runtime, sign with a local
 private key, or report enforcement from an assessment. Use Python 3.12/Linux

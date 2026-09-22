@@ -51,6 +51,7 @@ CONTRACT_REQUIREMENT_TOKENS = frozenset(
         "idempotency",
         "idempotency-or-transaction",
         "signed-policy-bundle",
+        "signed-evidence",
         "operator-review",
         "authorization",
     }
@@ -67,6 +68,7 @@ _PROBE_REQUIREMENT_DIMENSIONS = MappingProxyType(
         "idempotency": None,
         "idempotency-or-transaction": None,
         "signed-policy-bundle": None,
+        "signed-evidence": None,
         "operator-review": None,
         "authorization": None,
     }
@@ -316,6 +318,9 @@ def _validate_acceptance_record(raw, *, as_of=None):
 def _validate_lifecycle_binding(raw, *, runtime):
     field = "governance.lifecycle_bindings[]"
     binding = _require_object(raw, field)
+    if any(normalize_requirement_token(value) == "signed-evidence"
+           for value in binding.get("requires", [])):
+        _raise("signed-evidence is supported only on selected gateway tools")
     _require_exact_keys(
         binding,
         field,
@@ -417,6 +422,10 @@ def _validate_contract_tool(raw, *, runtime, as_of=None):
         f"{field}.requires",
         item_validator=normalize_requirement_token,
     )
+    if "signed-evidence" in normalized["requires"] and (
+            normalized["enforcement_path"] != "governed-tool-gateway"
+            or "pre_tool_call" not in normalized["intervention_points"]):
+        _raise("signed-evidence requires the selected gateway pre_tool_call path")
     if "acceptance_record" in tool:
         normalized["acceptance_record"] = _validate_acceptance_record(
             tool["acceptance_record"], as_of=as_of

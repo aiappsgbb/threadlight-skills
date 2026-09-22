@@ -1,5 +1,10 @@
 # Governance control plane (Task 8 reference)
 
+The portable `attestations.py` module reuses this package's PyJWT and signing
+authority for [named business evidence](../../../../docs/signed-evidence.md).
+There is no new central signing endpoint and no model-supplied claim-signing tool.
+The concrete issuer runs at the authenticated business/provider boundary.
+
 Independent Python 3.12/FastAPI service; **no AGT, ACS, MAF or OPA dependency**.
 Its storage implementations use the asynchronous Azure SDKs, not a production
 in-memory fallback. No resources, app registrations, human invitations or cloud

@@ -24,6 +24,9 @@ from starlette.routing import Mount
 
 from govern_control_plane.app import configure_logging
 from govern_control_plane.auth import EntraAuth, Settings
+from govern_control_plane.attestations import (
+    EVIDENCE_ARGUMENT, EVIDENCE_META, MAX_TOKEN_BYTES, evidence_tool_schema,
+)
 from govern_control_plane.client import ServiceTransport
 from govern_control_plane.models import (
     Digest, Identifier, ObjectId, canonical, parse, strict_json,
@@ -36,6 +39,7 @@ from .dispatcher import (
 from .receipts import HTTPControlPlaneApprovalService, ReceiptClient
 
 _idempotency_key = ContextVar("gateway_idempotency_key", default=None)
+_evidence_token = ContextVar("gateway_evidence_token", default=None)
 HEALTH_TIMEOUT = 5.0
 
 
@@ -82,6 +86,7 @@ class AuthBoundary:
             return await JSONResponse({"error": "unauthorized"}, 401)(scope, receive, send)
         # Bound and parse here so SDK/Pydantic errors cannot echo private input.
         body = bytearray()
+        evidence = None
         try:
             async with asyncio.timeout(5):
                 while True:
@@ -106,6 +111,10 @@ class AuthBoundary:
                             or len(params["name"]) > 64 or not isinstance(params.get("arguments", {}), dict)
                             or not keys):
                         raise ValueError()
+                    evidence = params.get("_meta", {}).get(EVIDENCE_META)
+                    if evidence is not None and (
+                            not isinstance(evidence, str) or not 1 <= len(evidence) <= MAX_TOKEN_BYTES):
+                        raise ValueError()
                 # No caller-controlled resources, prompts, logging levels or subscriptions.
                 if document["method"] not in (
                     "initialize", "notifications/initialized", "ping", "tools/list", "tools/call"):
@@ -121,29 +130,43 @@ class AuthBoundary:
             return await receive()
         identity_token = _request_identity.set(identity)
         key_token = _idempotency_key.set(keys[0] if keys else None)
+        evidence_marker = _evidence_token.set(evidence)
         try:
             return await self.app(scope, replay, send)
         finally:
             _idempotency_key.reset(key_token)
+            _evidence_token.reset(evidence_marker)
             _request_identity.reset(identity_token)
 
 
 def create_app(dispatcher):
     tools = []
     for action in dispatcher.policy.registry.actions:
-        def registered(name):
+        def registered(name, evidence_selected):
             async def invoke(arguments):
+                arguments = dict(arguments)
+                token = _evidence_token.get()
+                if evidence_selected and EVIDENCE_ARGUMENT in arguments:
+                    # Compatibility for ordinary MCP clients; never forward this field.
+                    if token is not None:
+                        return {"status": "blocked", "reason_code": "ambiguous_evidence_transport"}
+                    token = arguments.pop(EVIDENCE_ARGUMENT)
                 return await dispatcher.dispatch(
                     authorization=None, action=name, arguments=arguments,
-                    idempotency_key=_idempotency_key.get())
+                    idempotency_key=_idempotency_key.get(), evidence_token=token)
             return invoke
         async def empty():
             pass
         base = Tool.from_function(empty, name=action.name)
         tools.append(RegisteredTool(
-            fn=registered(action.name), name=action.name, description=f"Governed action: {action.name}",
-            parameters=action.input_schema, fn_metadata=base.fn_metadata, is_async=True,
-            meta={"threadlight.approval_mode": "deferred"} if action.approval_mode == "deferred" else None))
+            fn=registered(action.name, action.evidence_requirement is not None),
+            name=action.name, description=f"Governed action: {action.name}",
+            parameters=(evidence_tool_schema(action.input_schema)
+                        if action.evidence_requirement is not None else action.input_schema),
+            fn_metadata=base.fn_metadata, is_async=True,
+            meta={**({"threadlight.approval_mode": "deferred"} if action.approval_mode == "deferred" else {}),
+                  **({"threadlight.evidence": EVIDENCE_META} if action.evidence_requirement is not None else {})}
+            or None))
     url = urlsplit(dispatcher.policy.registry.gateway_url)
     mcp = GatewayMCP(
         "Threadlight governed actions", tools=tools, stateless_http=True, json_response=True,

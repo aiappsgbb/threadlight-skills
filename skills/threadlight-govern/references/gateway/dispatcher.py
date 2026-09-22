@@ -30,6 +30,9 @@ from pydantic import Field, model_validator
 
 from govern_bundle.policy_bundle import PIN_FILE, verify_bundle, validate_native_manifest
 from govern_control_plane.auth import Unauthorized
+from govern_control_plane.attestations import (
+    EVIDENCE_ARGUMENT, EvidenceError, EvidenceRequirement, verify_attestation,
+)
 from govern_control_plane.models import (
     ApprovalContext, ApprovalRequest, DecisionReceipt, Digest, Identifier, ObjectId, StrictModel,
     SignedBundle, canonical, envelope_digest, parse, strict_json,
@@ -140,9 +143,27 @@ class Action(StrictModel):
     output_schema: dict
     probe_safe: bool = False
     probe_contract: ProbeContract | None = None
+    evidence_requirement: EvidenceRequirement | None = Field(
+        default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_evidence(cls, value):
+        if isinstance(value, dict) and "evidence_requirement" in value and value["evidence_requirement"] is None:
+            raise ValueError("evidence_configuration_required")
+        return value
 
     @model_validator(mode="after")
     def validate_action(self):
+        if self.evidence_requirement is not None:
+            if self.probe_safe:
+                raise ValueError("business_evidence_not_probe_proof")
+            for name in (self.evidence_requirement.case_field, self.evidence_requirement.revision_field):
+                if (name not in self.input_schema.get("required", [])
+                        or self.input_schema.get("properties", {}).get(name, {}).get("type") != "string"):
+                    raise ValueError("evidence_binding_fields_required")
+        if EVIDENCE_ARGUMENT in self.input_schema.get("properties", {}):
+            raise ValueError("reserved_evidence_argument")
         if ((self.approval_mode == "deferred" or self.approval_requirement == "policy")
                 and not self.approval_roles):
             raise ValueError("approval_roles_required")
@@ -385,6 +406,8 @@ class DownstreamClient:
                 "X-Deployment-Hash": digest(facts["deployment"]),
                 "Accept-Encoding": "identity",
             }
+            if "evidence_fingerprint" in facts:
+                headers["X-Evidence-Fingerprint"] = facts["evidence_fingerprint"]
             if action.probe_safe:
                 headers["X-Probe-Run-ID"] = arguments["probe_run_id"]
                 headers["X-Requester-Client"] = facts["client"]
@@ -437,7 +460,7 @@ class GovernedDispatcher:
             principal=self.approval_principal, agent_id=self.approval_agent_id,
             tenant=tenant, allowed_roles=tuple(action.approval_roles))
 
-    async def dispatch(self, *, authorization, action, arguments, idempotency_key):
+    async def dispatch(self, *, authorization, action, arguments, idempotency_key, evidence_token=None):
         attempted = False
         probe = None
         try:
@@ -458,6 +481,7 @@ class GovernedDispatcher:
                     "deployment": registry.deployment.model_dump(mode="json"),
                 }
                 input_hash = digest({"facts": facts, "arguments": arguments})
+                request_facts_hash = digest(facts)
                 action_hash = input_hash
                 self.policy.fresh()
                 if self.policy.policy_id not in identity.workload.policies:
@@ -483,7 +507,8 @@ class GovernedDispatcher:
                     self.policy.fresh()
                 guard()
                 if existing is not None:
-                    if existing["input_hash"] != input_hash or existing["facts_hash"] != digest(facts):
+                    if (existing["input_hash"] != input_hash
+                            or existing.get("request_facts_hash", existing["facts_hash"]) != request_facts_hash):
                         raise GateError("idempotency_conflict", "blocked")
                     if existing["state"] == "rejected":
                         return {"status": "blocked", "reason_code": "approval_denied"}
@@ -492,6 +517,20 @@ class GovernedDispatcher:
                     if existing["state"] == "awaiting_approval" and selected.approval_mode != "deferred":
                         raise GateError("outcome_unknown")
                 if existing is not None and existing["state"] == "completed":
+                    if selected.evidence_requirement is not None:
+                        # This retrieves a durable outcome, never a new effect. Neither
+                        # expired JWTs nor a provider outage can undo that completion.
+                        facts["evidence_fingerprint"] = parse(
+                            Digest, canonical(existing["evidence_fingerprint"]))
+                        if (digest(facts) != existing["facts_hash"]
+                                or digest({"facts": facts, "arguments": arguments}) != existing["action_hash"]):
+                            raise GateError("outcome_unknown")
+                        reply = await self.downstream.request(
+                            action=selected, arguments=None, key=key, action_hash=existing["action_hash"],
+                            provenance=existing["receipt_id"], facts=facts, guard=guard, retrieve=True)
+                        if reply["receipt_id"] != existing["outcome_reference"]:
+                            raise GateError("outcome_unknown")
+                        return await self.output(selected, arguments, facts, reply, guard)
                     # Reconstruct transformed arguments without storing payloads. A completed
                     # approval is not consumed twice, but changed host evidence still closes output.
                     safe = self.safe_provider(deepcopy(facts))
@@ -510,21 +549,48 @@ class GovernedDispatcher:
                     if reply["receipt_id"] != existing["outcome_reference"]:
                         raise GateError("outcome_unknown")
                     return await self.output(selected, enforced, facts, reply, guard)
-                safe = self.safe_provider(deepcopy(facts))
-                if not isinstance(safe, dict) or safe.get("scope") != selected.scope:
-                    raise GateError("safe_evidence_unavailable")
+                evidence = None
+                if selected.evidence_requirement is not None:
+                    try:
+                        evidence = verify_attestation(
+                            evidence_token, selected.evidence_requirement, facts, arguments)
+                    except EvidenceError as error:
+                        await self.audit(selected, input_hash, key, "deny", str(error))
+                        raise
+                    facts["evidence_fingerprint"] = evidence.fingerprint
+                    if existing is not None and existing["facts_hash"] != digest(facts):
+                        raise GateError("approval_context_changed", "blocked")
+                elif evidence_token is not None:
+                    raise GateError("evidence_not_selected", "blocked")
+
+                def current_safe():
+                    safe = self.safe_provider(deepcopy(facts))
+                    if not isinstance(safe, dict) or safe.get("scope") != selected.scope:
+                        raise GateError("safe_evidence_unavailable")
+                    if evidence is not None:
+                        evidence.fresh()
+                        safe = {**safe, "evidence": deepcopy(evidence.safe)}
+                    return safe
+
+                safe = current_safe()
+                safe_hash = digest(safe)
+                evidence_digest = evidence.fingerprint if evidence else None
                 decision, enforced = await self.policy.evaluate(
                     "pre_tool_call", selected, arguments, safe)
                 if probe and (decision not in ("allow", "deny") or enforced != arguments):
                     raise GateError("probe_policy_unsupported")
                 if decision == "deny":
-                    receipt_id = await self.audit(selected, action_hash, key, "deny", "policy_deny", probe)
+                    receipt_id = await self.audit(
+                        selected, digest({"facts": facts, "arguments": arguments}), key,
+                        "deny", "policy_deny", probe, evidence_digest)
                     if probe:
                         await self.probes.intercept(probe, decision="deny", receipt_id=receipt_id)
                         await self.probes.complete(probe, terminal="denied")
                     return {"status": "blocked", "reason_code": "policy_deny",
                             **({"receipt_id": receipt_id} if probe else {})}
                 enforced = validated(enforced, selected.input_schema)
+                if evidence is not None and enforced != arguments:
+                    raise GateError("evidence_arguments_changed", "blocked")
                 action_hash = digest({"facts": facts, "arguments": enforced})
                 approval_expiry = None
                 deferred = False
@@ -550,6 +616,8 @@ class GovernedDispatcher:
                             pending = {
                                 "state": "awaiting_approval", "input_hash": input_hash, "action_hash": action_hash,
                                 "facts_hash": digest(facts), "safe_hash": safe_hash,
+                                **({"request_facts_hash": request_facts_hash,
+                                    "evidence_fingerprint": evidence_digest} if evidence else {}),
                                 "approval_intent": intent.model_dump(mode="json"),
                                 "receipt_id": None, "outcome_reference": None,
                             }
@@ -585,6 +653,9 @@ class GovernedDispatcher:
                             grant = await self.approvals.request_pending(intent)
                         guard()
                         if grant is None:
+                            if evidence is not None:
+                                await self.audit(selected, action_hash, key, "escalate", "approval_pending",
+                                                 evidence_fingerprint=evidence_digest)
                             return {
                                 "status": "pending_approval", "operation_id": idempotency_key,
                                 "approval_intent": intent.model_dump(mode="json"),
@@ -593,6 +664,8 @@ class GovernedDispatcher:
                     else:
                         grant = await self.approvals.resolve(intent)
                     guard()
+                    if evidence is not None and digest(current_safe()) != safe_hash:
+                        raise GateError("approval_context_changed", "blocked")
                     if (grant.intent != intent or grant.approver_tenant != identity.tenant
                             or grant.approver_role not in selected.approval_roles
                             or grant.approver == self.approval_principal
@@ -600,14 +673,17 @@ class GovernedDispatcher:
                         raise GateError("approval_unavailable")
                     guard()
                     if not grant.approved:
-                        await self.audit(selected, action_hash, key, "deny", "approval_denied")
+                        await self.audit(selected, action_hash, key, "deny", "approval_denied",
+                                         evidence_fingerprint=evidence_digest)
                         if deferred:
                             await self.store.replace(scope, key, {**existing, "state": "rejected"}, existing_etag)
                         return {"status": "blocked", "reason_code": "approval_denied"}
                     approval_expiry = expiry
                 guard()
                 record = {"state": "pending", "input_hash": input_hash, "action_hash": action_hash,
-                          "facts_hash": digest(facts), "receipt_id": None, "outcome_reference": None}
+                          "facts_hash": digest(facts), "receipt_id": None, "outcome_reference": None,
+                          **({"request_facts_hash": request_facts_hash,
+                              "evidence_fingerprint": evidence_digest} if evidence else {})}
                 try:
                     if deferred:
                         await self.store.replace(scope, key, record, existing_etag)
@@ -617,7 +693,8 @@ class GovernedDispatcher:
                     raise GateError("outcome_unknown") from None
                 guard()
                 receipt_id = await self.audit(selected, action_hash, key,
-                    "transform" if decision == "transform" else "allow", "execution_authorized", probe)
+                    "transform" if decision == "transform" else "allow", "execution_authorized",
+                    probe, evidence_digest)
                 if probe:
                     await self.probes.intercept(probe, decision="allow", receipt_id=receipt_id)
                 guard()
@@ -634,27 +711,31 @@ class GovernedDispatcher:
                         raise GateError("approval_expired")
                 def effect_check():
                     effect_guard()
-                    if digest(self.safe_provider(deepcopy(facts))) != safe_hash:
+                    if digest(current_safe()) != safe_hash:
                         raise GateError("approval_context_changed", "blocked")
                 attempted = True
                 reply = await self.downstream.request(
                     action=selected, arguments=enforced, key=key, action_hash=action_hash,
                     provenance=receipt_id, facts=facts, guard=guard if deferred else effect_guard,
                     **({"on_dispatch": lambda: self.probes.dispatch(probe)} if probe else {}),
-                    **({"effect_check": effect_check} if deferred else {}))
+                    **({"effect_check": effect_check} if deferred or evidence is not None else {}))
                 guard()
                 current, etag = await self.store.read(scope, key)
                 if current != record:
                     raise GateError("outcome_unknown")
                 await self.store.replace(scope, key, {
                     **record, "state": "completed", "outcome_reference": reply["receipt_id"]}, etag)
-                output = await self.output(selected, enforced, facts, reply, guard)
+                output = await self.output(
+                    selected, enforced, facts, reply, guard,
+                    evidence_safe=evidence.safe if evidence is not None else None)
                 if probe:
                     await self.probes.complete(probe, terminal="completed")
                     output["receipt_id"] = receipt_id
                 return output
         except Unauthorized:
             return {"status": "blocked", "reason_code": "authentication_denied"}
+        except EvidenceError as error:
+            return {"status": "blocked", "reason_code": str(error)}
         except GateError as error:
             return {"status": error.status, "reason_code": error.reason,
                     **({"status_code": 409} if error.reason == "idempotency_conflict" else {})}
@@ -662,20 +743,25 @@ class GovernedDispatcher:
             return {"status": "unavailable",
                     "reason_code": "outcome_unknown" if attempted else "gateway_unavailable"}
 
-    async def audit(self, action, action_hash, correlation, decision, reason, probe=None):
+    async def audit(self, action, action_hash, correlation, decision, reason, probe=None,
+                    evidence_fingerprint=None):
         deployment = self.policy.registry.deployment
         return await self.receipts.append(DecisionReceipt(
             receipt_id=uuid.uuid4().hex, correlation_id=correlation, action_id=action.name,
             action_hash=action_hash, policy_digest=self.policy.digest, decision=decision,
             reason_code=reason, agent_version=deployment.agent_version,
-            image_digest=deployment.image_digest, recorded_at=datetime.now(timezone.utc), probe=probe))
+            image_digest=deployment.image_digest, recorded_at=datetime.now(timezone.utc), probe=probe,
+            evidence_fingerprint=evidence_fingerprint))
 
-    async def output(self, action, arguments, facts, reply, guard):
+    async def output(self, action, arguments, facts, reply, guard, *, evidence_safe=None):
         guard()
         result = reply["result"]
         if action.post_policy_binding:
+            safe = self.safe_provider(deepcopy(facts))
+            if evidence_safe is not None:
+                safe = {**safe, "evidence": deepcopy(evidence_safe)}
             decision, result = await self.policy.evaluate("post_tool_call", action, arguments,
-                self.safe_provider(deepcopy(facts)), result)
+                safe, result)
             if decision not in ("allow", "transform"):
                 return {"status": "blocked", "reason_code": "output_denied"}
         try:

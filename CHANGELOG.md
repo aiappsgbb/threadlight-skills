@@ -7,6 +7,18 @@ field.
 
 ## [Unreleased]
 
+### Signed business evidence
+
+- Opt-in named Evidence Provider contract, standard RS256 JWTs using the existing
+  signing authority, and request-bound verification before ACS in the MCP PEP.
+- Semantic evidence binding in existing approval/audit/idempotency; MAF and GHCP
+  metadata transport without backend JWT forwarding. Renewal is not new consent;
+  completed replay is not another effect.
+- Returns purchase corroboration with current-source fingerprint and case CAS,
+  explicit business verification retention, and a second loan-income fixture.
+  Native local JWT coverage, GHCP deferred resume and live acceptance are not claimed.
+- Plugin/marketplace candidate 2.7.0; no deployment, RBAC change or release.
+
 ### Verified-release CI/CD (F1)
 
 - CI/CD 0.5.0 prepares an isolated preproduction candidate, executes actual

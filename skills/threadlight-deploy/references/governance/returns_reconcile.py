@@ -8,9 +8,10 @@ from datetime import datetime, timezone
 import hashlib
 import json
 
-from govern_control_plane.models import Identifier, canonical, parse, strict_json
+from govern_control_plane.models import Digest, Identifier, canonical, parse, strict_json
+from govern_control_plane.attestations import EVIDENCE_ARGUMENT
 
-TOOLS = {"returns_get_case": "none", "returns_apply_decision": "returns-safe"}
+TOOLS = {"returns_get_case": "none", "returns_apply_decision": "returns-safe", "returns_verify_purchase": "none"}
 CASE_FIELDS = ("id", "_etag", "status", "amount", "eligible", "high_risk")
 STORE_ROLES = ("governance-records", "gateway-idempotency", "returns-cases", "runner-activity")
 
@@ -104,15 +105,38 @@ def reconcile_response(response, *, binding, gateway_principal, central, operati
                         raise ValueError("read_audit_binding_mismatch")
                     body.update(read_audit_delivery="backend-acknowledged-before-return",
                                 read_audit_id=output["read_audit_id"])
+        elif call["name"] == "returns_verify_purchase":
+            if isinstance(output, dict) and output.get("status") in ("verified", "insufficient_evidence"):
+                # An observed provider response is not independent signature/source proof.
+                body["verification_observation"] = output["status"]
+                body["status"] = "provider-response-observed"
         else:
-            business_arguments = {k: v for k, v in arguments.items() if k != "governance_operation_id"}
+            business_arguments = {k: v for k, v in arguments.items()
+                                  if k not in ("governance_operation_id", EVIDENCE_ARGUMENT)}
             facts = {
                 "tenant": binding["tenant_id"], "subject": binding["principal"], "client": binding["client_id"],
                 "action": call["name"], "scope": "returns", "policy": binding["policy_digest"],
                 "deployment": deployment(binding),
             }
-            action_hash = digest({"facts": facts, "arguments": business_arguments})
             operation_scope = digest([binding["tenant_id"], binding["principal"], call["name"]])
+            input_hash = digest({"facts": facts, "arguments": business_arguments})
+            evidence_fingerprint = None
+            if isinstance(output, dict) and output.get("audit_id"):
+                matched_audits = [row for row in audits if row.get("id") == output["audit_id"]
+                                  and row.get("kind") == "decision-audit"]
+                if len(matched_audits) == 1:
+                    evidence_fingerprint = matched_audits[0].get("provenance", {}).get("evidence_fingerprint")
+            elif isinstance(output, dict) and output.get("status") == "pending_approval":
+                evidence_fingerprint = output["review_context"].get("evidence_fingerprint")
+            elif isinstance(arguments.get("governance_operation_id"), str):
+                matches = [row["body"] for row in operations if row.get("scope") == operation_scope
+                           and row.get("id") == digest(arguments["governance_operation_id"])[7:]]
+                if len(matches) == 1:
+                    evidence_fingerprint = matches[0].get("evidence_fingerprint")
+            if evidence_fingerprint is not None:
+                facts["evidence_fingerprint"] = parse(Digest, canonical(evidence_fingerprint))
+                body["evidence_fingerprint"] = evidence_fingerprint
+            action_hash = digest({"facts": facts, "arguments": business_arguments})
             body.update(action_hash=action_hash, policy_digest=binding["policy_digest"])
             if arguments.get("case_id") in reads:
                 body["revision_matched_read"] = arguments.get("expected_etag") == reads[arguments["case_id"]]["_etag"]
@@ -140,7 +164,7 @@ def reconcile_response(response, *, binding, gateway_principal, central, operati
                                  if r.get("scope") == binding["tenant_id"]
                                  and r.get("id") == "approval:" + intent.get("nonce", "")]
                     if (operation.get("state") != "completed"
-                            or operation.get("input_hash") != action_hash
+                            or operation.get("input_hash") != input_hash
                             or operation.get("action_hash") != action_hash
                             or operation.get("facts_hash") != digest(facts)
                             or intent.get("context_identity") != digest(facts)
@@ -199,7 +223,7 @@ def reconcile_response(response, *, binding, gateway_principal, central, operati
                                      if r.get("scope") == binding["tenant_id"]
                                      and r["id"] == "approval:" + intent.get("nonce", "")]
                         if (operation.get("state") == "awaiting_approval"
-                                and operation.get("input_hash") == action_hash
+                                and operation.get("input_hash") == input_hash
                                 and operation.get("action_hash") == action_hash
                                 and operation.get("facts_hash") == digest(facts)
                                 and intent.get("context_identity") == digest(facts)

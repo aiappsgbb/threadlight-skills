@@ -1,5 +1,10 @@
 # Governed MCP action gateway — Task 9 reference
 
+Selected actions can additionally require [signed business evidence](../../../../docs/signed-evidence.md).
+JWT verification precedes ACS; semantic evidence fingerprints bind the existing
+approval and audit flow. This opt-in does not change tools without requirements,
+grant OBO, or extend GHCP deferred/native-local coverage.
+
 **A real PEP, not the read-only assessor.** Official `mcp==1.29.1` FastMCP serves
 Streamable HTTP `initialize`, `tools/list`, and `tools/call`. Each signed registry
 action becomes one tool, preserving its JSON input schema. There is no URL, shell,

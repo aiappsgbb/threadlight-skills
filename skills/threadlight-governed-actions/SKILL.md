@@ -24,6 +24,11 @@ Use `threadlight-govern` for the real ACS bundle and authorized signed distribut
 implement the host-owned application seam, not an allow-only test adapter.
 Assessment alone is not implementation. Deployment remains separately authorized.
 
+For [signed business evidence](../../docs/signed-evidence.md), the assessor retains
+`signed-evidence-proof-required` as `not-verified`: generic probes, LOCAL-14 and
+hosted noop receipts cannot establish an issuer/profile/source-revision contract.
+Catalog JWT/MCP fixtures do not close a customer's business acceptance gate.
+
 The **assessor CLI** is read-only by default and renders a deterministic manifest,
 evidence pack and never-self-applying remediation plan. These are selected-path
 evidence, **not whole-agent** governance. SAFE is the method, ACS/Rego the PDP,

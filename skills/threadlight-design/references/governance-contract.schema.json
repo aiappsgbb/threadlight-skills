@@ -60,7 +60,8 @@
         "operator-review",
         "output",
         "output-mediation",
-        "signed-policy-bundle"
+        "signed-policy-bundle",
+        "signed-evidence"
       ]
     },
     "requirementList": {
@@ -78,7 +79,8 @@
           "operator-review",
           "output",
           "output-mediation",
-          "signed-policy-bundle"
+          "signed-policy-bundle",
+          "signed-evidence"
         ]
       },
       "uniqueItems": true
@@ -317,7 +319,8 @@
               "operator-review",
               "output",
               "output-mediation",
-              "signed-policy-bundle"
+              "signed-policy-bundle",
+              "signed-evidence"
             ]
           },
           "uniqueItems": true
