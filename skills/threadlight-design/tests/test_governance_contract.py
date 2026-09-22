@@ -117,6 +117,21 @@ def valid_contract() -> dict:
     }
 
 
+@pytest.mark.parametrize("selection", ["gateway", "native", "post-only", "lifecycle"])
+def test_signed_evidence_schema_matches_selected_gateway_only_support(selection):
+    document = valid_contract()
+    if selection == "lifecycle":
+        document["governance"]["lifecycle_bindings"][0]["requires"] = ["signed-evidence"]
+    else:
+        document["tools"][0]["requires"] = ["signed-evidence"]
+        if selection == "native":
+            document["tools"][0]["enforcement_path"] = "local-agent-hooks"
+        if selection == "post-only":
+            document["tools"][0]["intervention_points"] = ["post_tool_call"]
+    errors = list(build_jsonschema_validator().iter_errors(document))
+    assert bool(errors) is (selection != "gateway")
+
+
 def valid_acceptance_record() -> dict:
     return {
         "owner": "risk-owner@contoso.com",
