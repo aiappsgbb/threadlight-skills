@@ -80,3 +80,21 @@ def test_interrupted_model_conversation_cannot_make_overall_result_green(tmp_pat
         tmp_path, cloud={"deployment": "fixture", "version": "fixture"}, token=None))
     assert report["deterministic_passed"] is True
     assert report["passed"] is False
+
+
+def test_report_rejects_wrong_dispatch_boundary_even_when_no_effect_occurs():
+    module = scenario_module()
+    row = {"case": "missing-attestation", "status": "blocked", "reason_code": "evidence_required",
+           "before": {"revision": "1"}, "after": {"revision": "1"}, "downstream_posts": 0,
+           "downstream_gets": 0, "business_effects": 0, "governance_receipts": [{"decision": "deny"}]}
+    assert module.case_passed(row)
+    assert not module.case_passed({**row, "downstream_posts": 1})
+    assert not module.case_passed({**row, "reason_code": "policy_deny"})
+    assert not module.case_passed({**row, "governance_receipts": []})
+
+
+def test_receipt_projection_keeps_decision_and_reason_without_payloads():
+    module = scenario_module()
+    fields = {"receipt_id": "receipt", "correlation_id": "correlation", "action_id": "action",
+              "action_hash": "hash", "decision": "deny", "reason_code": "evidence_required"}
+    assert module.receipt_record({**fields, "attestation": "PRIVATE", "arguments": {"private": True}}) == fields
