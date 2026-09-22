@@ -48,12 +48,13 @@ test('authority and evidence are named, readable without a diagram runtime and k
   const authority = page.locator('#effect-authority');
   const evidence = page.locator('#evidence-boundaries');
   await expect(authority.getByRole('heading', { level: 2 })).toContainText('Access to a system');
-  await expect(authority.getByRole('list', { name: 'Who does what' }).locator(':scope > li')).toHaveCount(5);
+  await expect(authority.getByRole('list', { name: 'Primary business-action path' }).locator(':scope > li')).toHaveCount(3);
+  await expect(authority.getByRole('list', { name: 'Supporting authority services' }).locator(':scope > li')).toHaveCount(2);
   if (page.viewportSize().width <= 700) {
     await expect(authority.locator('.wf-mobile')).toBeVisible();
     await expect(authority.locator('.wf-diagram')).toBeHidden();
   } else {
-    await expect(authority.getByRole('img', { name: "The selected scenario's actors, outputs and order" })).toBeVisible();
+    await expect(authority.getByRole('img', { name: 'Checks required before a selected business action' })).toBeVisible();
   }
   await expect(evidence.getByRole('link', { name: /Components and trust boundaries/ })).toHaveAttribute('href', /agent-governance-deep-dive\.md#4-architecture-and-trust-boundaries$/);
   await expect(page.locator('main details')).toHaveCount(0);
@@ -95,7 +96,8 @@ test('new authority and evidence remain readable when JavaScript is disabled', a
     await expect(page.locator('[data-topic-panel]')).toHaveCount(3);
     await expect(page.locator('main details')).toHaveCount(0);
     await expect(page.locator('#evidence-boundaries')).toBeVisible();
-    await expect(page.getByRole('list', { name: 'Who does what' }).locator(':scope > li')).toHaveCount(5);
+    await expect(page.getByRole('list', { name: 'Primary business-action path' }).locator(':scope > li')).toHaveCount(3);
+    await expect(page.getByRole('list', { name: 'Supporting authority services' }).locator(':scope > li')).toHaveCount(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   } finally {
     await context.close();

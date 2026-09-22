@@ -38,8 +38,11 @@ test('AgentOps leads directly into the retained pipeline instead of another intr
 
 test('action governance explains separate policy and authority services and ends without a scorecard', async ({ page }) => {
   await page.goto('/production.html#effect-authority');
-  for (const component of ['Governed MCP gateway', 'Control plane', 'Human reviewer', 'Business API']) {
-    await expect(page.locator('.action-actors')).toContainText(component);
+  for (const component of ['Governed MCP gateway', 'Business API']) {
+    await expect(page.locator('[data-action-primary]')).toContainText(component);
+  }
+  for (const component of ['Control plane', 'Human reviewer']) {
+    await expect(page.locator('[data-action-support]')).toContainText(component);
   }
   await expect(page.locator('#effect-authority')).toContainText('effect boundary');
   await expect(page.locator('#evidence-boundaries')).toContainText('Try the guided workbook');
