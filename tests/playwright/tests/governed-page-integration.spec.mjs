@@ -54,7 +54,7 @@ test('connected illustration fits a desktop chapter instead of a second long pag
     expect((await flow.boundingBox()).height).toBeLessThanOrEqual(680);
     expect((await flow.locator('.wf-panel').boundingBox()).height).toBeLessThanOrEqual(480);
   }
-  await expect(flow.getByRole('tab')).toHaveText(['Allowed', 'Blocked', 'Human review']);
+  await expect(flow.getByRole('tab')).toHaveText(['Allowed', 'Blocked', 'Human review', 'Signed evidence']);
   await expect(flow).toHaveAttribute('data-node', 'proposal');
   await expect(flow.locator('[data-flow-progress] [aria-current="step"]')).toHaveCount(1);
   const clipped = await flow.locator('.wf-diagram').evaluate((svg) => {

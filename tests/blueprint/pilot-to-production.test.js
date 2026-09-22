@@ -7,7 +7,7 @@ const { governanceHistory } = require('./helpers/governance-history');
 const root = path.resolve(__dirname, '../..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('the Production diagram preserves the exact prior module geometry', () => {
+test('the default Production diagram preserves existing geometry beside a separate evidence sequence', () => {
   const html = read('docs/production.html');
   assert.match(html, /viewBox="0 0 1100 215"/);
   const expected = {
@@ -62,7 +62,7 @@ test('the guide starts from an existing Threadlight pilot and has five actionabl
 test('the workbook and current architecture baseline remain byte-frozen outside the signed-evidence addition', () => {
   for (const [file, expected] of [
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
-    ['docs/agent-governance-deep-dive.md', '9cee5e6e1d368b1e1c1efb2e1a8097238bb30281'],
+    ['docs/agent-governance-deep-dive.md', '006b99c4c80262eb6571a0a21ee46b12b4df95c6'],
     ['docs/assets/governance/effect-boundaries.svg', '69fa014350e3f7acaf53b8e37541717b99f8a6dd'],
   ]) {
     const bytes = file === 'docs/agent-governance-deep-dive.md'

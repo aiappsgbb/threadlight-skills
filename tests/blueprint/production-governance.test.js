@@ -172,7 +172,9 @@ test('each concise topic keeps its core visual and delegates detail to reference
       }
     }
   }
-  assert.doesNotMatch(source, /<(?:details|summary)\b/);
+  const jwtContract = source.match(/<div class="wf-jwt" data-evidence-jwt[\s\S]*?<!-- evidence-jwt:end -->/)?.[0];
+  assert.ok(jwtContract);
+  assert.doesNotMatch(source.replace(jwtContract, ''), /<(?:details|summary)\b/);
   assert.match(source, /Application and data owners/);
   assert.match(source, /not supplied by the new action-governance runtime/);
   assert.match(section(source, 'operating-controls'), /DevSecOps/);

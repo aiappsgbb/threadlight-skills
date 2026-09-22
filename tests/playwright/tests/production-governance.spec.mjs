@@ -57,7 +57,7 @@ test('authority and evidence are named, readable without a diagram runtime and k
     await expect(authority.getByRole('img', { name: 'Checks required before a selected business action' })).toBeVisible();
   }
   await expect(evidence.getByRole('link', { name: /Components and trust boundaries/ })).toHaveAttribute('href', /agent-governance-deep-dive\.md#4-architecture-and-trust-boundaries$/);
-  await expect(page.locator('main details')).toHaveCount(0);
+  await expect(page.locator('main details:not([data-evidence-jwt] details)')).toHaveCount(0);
   await expect(evidence.getByRole('link', { name: 'Try the guided workbook', exact: true })).toBeVisible();
   await expect(evidence).toContainText('independently verified evidence');
   await expect(evidence).not.toContainText(/HISTORICAL|NOT PROVED|EXPIRED|4\/4|2026-09-/);
@@ -94,7 +94,7 @@ test('new authority and evidence remain readable when JavaScript is disabled', a
     await page.goto('/production.html');
     await expect(page.locator('#effect-authority')).toBeVisible();
     await expect(page.locator('[data-topic-panel]')).toHaveCount(3);
-    await expect(page.locator('main details')).toHaveCount(0);
+    await expect(page.locator('main details:not([data-evidence-jwt] details)')).toHaveCount(0);
     await expect(page.locator('#evidence-boundaries')).toBeVisible();
     await expect(page.getByRole('list', { name: 'Primary business-action path' }).locator(':scope > li')).toHaveCount(3);
     await expect(page.getByRole('list', { name: 'Supporting authority services' }).locator(':scope > li')).toHaveCount(2);

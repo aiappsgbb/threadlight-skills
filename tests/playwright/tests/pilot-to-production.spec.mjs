@@ -14,7 +14,8 @@ test('prior diagram stays fixed while unused modules lose every arrow and gain e
   for (const label of ['Allowed', 'Blocked', 'Human review']) {
     await flow.getByRole('tab', { name: label, exact: true }).click();
     expect(await geometry()).toEqual(baseline);
-    const unused = flow.locator('.wf-diagram [data-used="false"]');
+    await expect(flow.locator('[data-evidence-sequence]')).toBeHidden();
+    const unused = flow.locator('.wf-diagram [data-used="false"]:not([hidden])');
     expect(await unused.count()).toBeGreaterThan(0);
     for (const node of await unused.all()) await expect(node.locator('[data-unused-label]')).toHaveText('Not used on this path');
     const invalidEdges = await flow.locator('.wf-diagram [data-flow-edge]').evaluateAll(edges =>
@@ -26,6 +27,12 @@ test('prior diagram stays fixed while unused modules lose every arrow and gain e
       }).map(edge => edge.dataset.flowEdge));
     expect(invalidEdges).toEqual([]);
   }
+  await flow.getByRole('tab', { name: 'Signed evidence', exact: true }).click();
+  await expect(flow.locator('.wf-diagram')).toHaveAttribute('viewBox', '0 0 1100 492');
+  await expect(flow.locator('[data-node-layer]')).toBeHidden();
+  expect(await geometry()).toEqual(baseline);
+  await flow.getByRole('tab', { name: 'Allowed', exact: true }).click();
+  expect(await geometry()).toEqual(baseline);
 });
 
 test('existing-pilot guide moves only through guidance and copies the selected prompt', async ({ page }) => {

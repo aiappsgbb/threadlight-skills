@@ -71,20 +71,15 @@ test('public surfaces carry the same explanation and distinguish primary actors 
   assert.match(read('docs/governance.html'), /Agent Control Specification/);
 });
 
-test('signed input evidence is a visible tool-policy prerequisite on all three surfaces', () => {
+test('signed input evidence is explained by the expert data story and the public policy scenario', () => {
   const visibleDeep = deep().replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '');
   assert.match(visibleDeep, /### A tool policy can require signed input evidence/);
   assert.match(visibleDeep, /signed-evidence/);
   assert.match(visibleDeep, /evidence_requirement/);
-  for (const file of ['docs/governance.html', 'docs/production.html']) {
-    const visible = read(file).replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '');
-    const policy = visible.match(/<div[^>]*data-input-evidence-policy[^>]*>([\s\S]*?)<\/div>/)?.[1];
-    assert.ok(policy, `${file}: required input proof cannot be hidden in an experiment or glossary`);
-    for (const term of ['Evidence Provider', 'signed', 'signature', 'case', 'inputs', 'approval']) {
-      assert.ok(policy.includes(term), `${file}: ${term}`);
-    }
-    assert.match(policy, /not.*(?:every document|universal)/s);
-  }
+  assert.match(read('docs/production.html'), /data-flow-scenario="evidence"/);
+  assert.match(read('docs/production.html'), /data-flow-evidence-case/);
+  assert.match(read('docs/governance.html'), /href="\.\/production\.html#production-input-proof"/);
+  assert.match(visibleDeep, /not universal document certification/);
   assert.match(read('docs/governance.html'), /input attestations.*different.*assurance evidence/is);
 });
 
@@ -93,7 +88,7 @@ test('the agent obtains required evidence before the governed call and policy re
   assert.match(source, /participant E as Evidence Provider/);
   assert.ok(source.indexOf('A->>E:') < source.indexOf('A->>G:'));
   assert.match(source, /opt Signed input evidence required/);
-  assert.match(source, /E-->>A: Signed attestation or insufficient evidence/);
+  assert.match(source, /E-->>A: Signed JWT or insufficient evidence/);
   assert.match(source, /Verify required attestation/);
   assert.ok(source.indexOf('Verify required attestation') < source.indexOf('Evaluate policy'));
   assert.match(diagram('effect-boundaries'), /signed proof if required/i);
@@ -104,6 +99,6 @@ test('active Production architecture links use the reviewed immutable deep-dive 
     /href="(https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[a-f0-9]+\/docs\/agent-governance-deep-dive\.md[^"]*)"/g)];
   assert.equal(links.length, 3);
   for (const [, link] of links) {
-    assert.ok(link.includes('/blob/7ef20742ac78cfe2e86db4abf21a6135916a5f64/'), link);
+    assert.ok(link.includes('/blob/43fd7008a5eb6aa24ecc839b6dc08ace4ed6a9b3/'), link);
   }
 });

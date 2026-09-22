@@ -30,9 +30,8 @@ that boundary and its implementation, not protection for every agent action.
 
 ## 1. What is covered elsewhere
 
-The public page groups the journey into platform, AgentOps and action governance.
-These six responsibilities remain complementary, with data/privacy crossing all
-three; they are not competing architectures or a ranking of importance.
+Platform, AgentOps and action governance are complementary;
+data/privacy crosses all three.
 
 | Production responsibility | Controls and owners | Relation to this guide |
 |---|---|---|
@@ -70,40 +69,22 @@ The running example records a return recommendation or supervisor handoff with
 an audit record. There is **no financial settlement**: recording
 `approve_refund` does not issue a payment.
 
-### A tool policy can require signed input evidence
+### Four policy scenarios
 
-**A selected tool can require signed proof of specified input facts before a new
-effect.** This is enforced by the gateway, not left to the model.
+The [public scenario tabs](production.html#workflow-in-action) illustrate these
+four paths. They are policy examples, not four separate architectures.
 
-1. The agent obtains proof from a named **Evidence Provider**.
-2. The provider checks admitted, versioned sources and returns justified claims
-   in a signed **JSON Web Token (JWT)**, not claims dictated by the model.
-3. The agent carries that proof with the tool call. The gateway verifies its
-   signature, issuer, expiry, case/revision and input binding **before policy
-   evaluates the claims**.
-
-For example, an amount below the automatic limit is not enough: absent purchase
-and amount corroboration, the selected return decision is blocked. Human approval
-of the action cannot replace that missing proof. “Certified” means signed verification of those
-facts, **not universal document certification**.
-
-Select `signed-evidence` in the tool contract, configure its signed
-`evidence_requirement`, and specify the required claims in policy.
-[Valid proof can be reused within its scope and lifetime](signed-evidence.md);
-renewal does not renew consent.
-
-### Routine work, exceptions and accountability
-
-| Business situation | Intended control behavior | Why it matters |
+| Scenario | What is true about the request? | Where does it go? |
 |---|---|---|
-| Ordinary eligible return | Execute automatically when the selected policy permits it | Routine work need not wait for a human on every tool call. |
-| Missing required input proof | Block the new effect, even below the automatic amount limit | Evidence and human consent are separate requirements. |
-| High-value return | Require a reviewer decision for the supervisor handoff | Human judgment authorizes one scoped proposal, not a general override or payment. |
-| Outdated case | Reject changed facts or a conflicting revision | A convincing explanation cannot authorize an obsolete transaction. |
-| Repeated completed request | Recheck authority and retrieve the original outcome | A retry does not silently become a second business change. |
+| **Allowed** | The selected rules and all required prerequisites hold. | Audit acknowledgement, then the independently authorizing backend. |
+| **Blocked** | A policy condition fails. | Record denial; no business write. |
+| **Human review** | Policy requires a decision on this exact proposal. | Persist pending intent; resume only with a verified one-use grant and fresh checks. |
+| **Signed evidence** | This tool additionally requires corroborated purchase and amount. | Missing proof or proof for different inputs blocks before dispatch. Matching proof permits policy evaluation, not an automatic write. |
 
-These are configurable control semantics, not measured savings or universal
-deployment coverage.
+The last two can apply together. A supervisor's consent does not create purchase
+proof; a signed purchase verification does not supply consent. If the case changes
+during review, the old proposal must not overwrite it. Sections 5–7 trace how the
+data binding, approval ledger and record revision enforce these distinct rules.
 
 ## 3. What is covered here
 
@@ -122,10 +103,9 @@ enforces it. These are different responsibilities, not extra business actors.
 | Native local hooks | A trusted Microsoft Agent Framework (MAF) host uses Agent Hooks around supported lifecycle/tool and buffered-output points | The [native runtime adapter](../skills/threadlight-govern/references/runtime/README.md), selected bindings, host-owned facts and effect transports |
 | Governed tool gateway | A native FunctionTool uses Model Context Protocol (MCP) to call a registered action; the gateway enforces the selected write boundary | The [gateway](../skills/threadlight-govern/references/gateway/README.md), [native client](../skills/threadlight-deploy/references/governance/maf_gateway.py) and independent backend |
 
-Installing Agent Hooks does not mean it intercepted the gateway-only path.
-The enforcement point in that profile is the gateway. Support is **not all
-frameworks**: provider-hosted tools, arbitrary custom clients, compaction and
-incremental streaming need their own supported contracts and verification.
+Agent Hooks does not intercept the gateway-only path. Support is **not all
+frameworks**: provider-hosted tools, custom clients, compaction and incremental
+streaming need supported contracts and verification.
 
 **Unbound reads remain usable without ACS.** They still require the backend's
 normal authentication and data-access rules. Optional read auditing can require
@@ -137,6 +117,9 @@ per binding as `enforced`, `observed`, `unbound`, `unverified`, `unsupported` or
 `bypassable`, not as a blanket “governed agent.”
 
 ### Native components and Threadlight code
+
+<details>
+<summary>Upstream components, SAFE principles and maintenance limits</summary>
 
 **We use selected components, not the full Agent Governance Toolkit (AGT) stack.**
 Here, "native" means executing a published software development kit (SDK), not an automatically enabled Foundry
@@ -181,6 +164,8 @@ maintenance. The [dated upstream assessment](solution-review-2026-09-15.md#agt-u
 separates the archived predecessor, current activity and package constraints.
 Replacing ACS would require policy/adapter compatibility work and fresh
 verification; changing a label or removing AGT core would not replace that engine.
+
+</details>
 
 ## 4. Architecture and trust boundaries
 
@@ -271,52 +256,147 @@ Concrete signing parameters and dependency pins belong in the
 [deployment reference](../skills/threadlight-deploy/references/governance/README.md),
 not the architecture's reading path.
 
-### Configuration decides where human review applies
-
-These are **selected fields**, not a complete deployable registry, from the
-gateway's actual `Action` model:
-
-<!-- contract: action-approval-fields -->
-```json
-{
-  "name": "returns_apply_decision",
-  "approval_mode": "deferred",
-  "approval_requirement": "policy",
-  "approval_roles": ["Approver"],
-  "approval_timeout_seconds": 300
-}
-```
-
-`deferred` returns a pending operation rather than holding a web request open.
-`policy` makes the policy decision select human review; `always` instead requires
-it for every invocation of this action. `Approver` is configured authority, not
-a model-supplied role. The timeout is also capped by policy expiry.
-
-The full signed action additionally fixes `policy_binding`, allowed `workloads`,
-`scope`, `endpoint`, `outcome_endpoint`, `credential_scope`, `input_schema` and
-`output_schema`. The [registry reference](../skills/threadlight-govern/references/gateway/README.md#signed-registry-and-bundle-creation)
-defines the complete shape. The host selects the native Outlook channel
-separately; adding these five fields alone does not create a workflow or grant.
-
 ## 5. From proposal to execution
 
-The two-tool gateway example uses `returns_get_case` for an authenticated read
-and `returns_apply_decision` for the selected write. Its argument contract is
-deliberately small:
+### Follow one proposal and its data
+
+Use one synthetic case, `RMA-EXAMPLE`: eligible, purchase amount **40**, current
+entity tag (**ETag**) **r7**. The real ETag is opaque; r7/r8 are teaching labels.
+The tool records a recommendation, not money movement.
+
+| Data | Created by | What it must remain connected to |
+|---|---|---|
+| `case_id`, `expected_etag` | The case read returns identity and `_etag`; the agent copies them into its proposal. | The record and revision being decided, not the conversation session. |
+| `arguments_digest` | Evidence Provider hashes all proposed business arguments. | Exact case, revision, decision and reason; even changing the reason changes this digest. |
+| `evidence_fingerprint` | Gateway hashes the verified attestation's semantic content. | Issuer/audience, holder, business subject, case/revision, action/purpose, profile, sources, claims and argument digest. |
+| `action_hash` | Gateway hashes the arguments plus authenticated/configured request facts, including that fingerprint. | The exact proposal offered for approval and sent to the backend. |
+| Approval `nonce` + expiry | Gateway creates the intent; control plane persists it and authenticates the human decision. | One-use consent to that action hash, not to any future version of the case. |
+| `governance_operation_id` | Client exposes the original operation selector for deferred resume. | The same durable gateway operation; it is not an approval token. |
+| `if_match_etag` | Backend uses the proposed revision in its conditional batch. | The database record must still be r7 at commit time. |
+
+The binding chain is **arguments → signed argument digest → evidence fingerprint
+→ action hash → approval intent**. Separately, **expected revision → conditional
+database write** checks whether the authorized proposal is still applicable.
+
+**Read → verify → authorize → commit:**
+
+1. `returns_get_case` supplies r7. The agent proposes `approve_refund` with
+   `expected_etag=r7`; amount and eligibility are backend facts, not writable
+   model arguments.
+2. The agent calls `returns_verify_purchase`. Its wrapper calls
+   `/evidence/purchase` over authenticated HTTPS: **not an MCP provider endpoint**.
+   The provider, in the external returns business service, checks admitted sources
+   and returns a signed JSON Web Token (JWT) for this subject, r7 and these arguments.
+   The authenticated workload is the holder, not an inferred end user or delegated
+   customer identity.
+3. The same agent calls `returns_apply_decision` through MCP with that JWT.
+   The gateway authenticates the caller, verifies proof, computes its fingerprint
+   and evaluates policy. Escalation persists an intent bound to `action_hash`;
+   the case has not changed yet.
+4. After any review/resume, the gateway rechecks authority, reserves the operation
+   and obtains central audit ACK before dispatch.
+5. The backend recomputes the purchase fingerprint from current data, checks its
+   business rules, then replaces r7 and creates the decision audit atomically.
+   `if_match_etag=r7` closes the race between the backend read and the commit.
+
+### A tool policy can require signed input evidence
+
+This adds a prerequisite to the same path: select `signed-evidence`, configure
+the signed `evidence_requirement`, and define sufficient claims in policy.
+The **Evidence Provider** signs a **JWT** only after checking
+admitted versioned sources; it never signs a model-dictated claim map.
+“Certified” means that bounded verification, **not universal document certification**.
+Only verified claims reach policy; missing, expired or mismatched proof stops
+a new effect. The [full profile](signed-evidence.md) defines trust and transport.
+
+The agent makes a **second, operational tool call** with that proof;
+the provider does not call the gateway or execute the operation.
+The proposal below is the **business payload only**. The JWT travels separately in
+MCP `params._meta["threadlight/evidence"]` (the tool-facing compatibility field is
+`governance_evidence`, removed before the backend call).
 
 <!-- contract: returns-decision -->
 ```json
 {
   "case_id": "RMA-EXAMPLE",
-  "expected_etag": "\"revision-from-read\"",
+  "expected_etag": "\"r7\"",
   "decision": "approve_refund",
   "reason": "Eligible ordinary return; record the recommendation."
 }
 ```
 
-An entity tag (ETag) identifies the record revision; its quoted value must survive serialization. Model-supplied amount, eligibility,
+The quoted ETag must survive serialization. Model-supplied amount, eligibility,
 approval or writer credentials are not accepted fields. The examples contain
 no private deployment data; placeholders are not executable authority.
+
+<details data-jwt-wire-contract>
+<summary>JWT contract and MCP request: what the agent receives and presents</summary>
+
+The provider returns a compact signed JWT:
+`base64url(header).base64url(payload).base64url(signature)`.
+It attests justified input facts; it is **not an access token or human approval**.
+The agent carries it unchanged, not a decoded claim map it can edit.
+
+| Signed part | Fields and meaning |
+|---|---|
+| Header | `alg: RS256`, `typ: threadlight-evidence+jwt`, `kid`: configured versioned signing key. |
+| Authority | `iss`, `aud`: admitted issuer and gateway audience. |
+| Identity | `tid`, `holder`, `holder_client`: authenticated workload; `sub`: independently authorized business subject. |
+| Scope | `case_id`, `revision`: exact record/version; `action`, `purpose`, `profile`: selected tool and named verification. |
+| Inputs | `arguments_digest`: canonical hash of **all business arguments**, including decision, reason and expected ETag. |
+| Evidence | `sources`: references, revisions and digests; `claims`: provider-derived results such as `purchase_verified: true` and `amount: 40`. A declared defect is not a verified defect. |
+| Time and identifier | `iat`, `exp`, `jti`: issue time, expiry and token ID; expiry does not replace current-state checks or make approval reusable. |
+
+For the proposal above, these are the MCP `tools/call` **parameters**.
+The placeholder is not a usable token; it must be replaced by the provider's
+attestation for these exact arguments, never by model-authored claims.
+
+```json
+{
+  "name": "returns_apply_decision",
+  "arguments": {
+    "case_id": "RMA-EXAMPLE",
+    "expected_etag": "\"r7\"",
+    "decision": "approve_refund",
+    "reason": "Eligible ordinary return; record the recommendation."
+  },
+  "_meta": {
+    "threadlight/evidence": "<provider-issued signed JWT>"
+  }
+}
+```
+
+The gateway verifies the signature against its configured keys and checks the
+issuer, audience, authenticated caller, scope, input digest and freshness before
+policy sees the claims. It does not ask the provider to execute the action.
+After authorization and audit ACK, the backend receives the business arguments
+and `X-Evidence-Fingerprint`, **not the raw JWT**. The backend still verifies the
+current source binding and commits conditionally.
+
+The [full signed-evidence profile](signed-evidence.md#jwt-profile-and-signing)
+owns validation limits, key trust, renewal and revocation limitations.
+
+</details>
+
+### What changes while approval is pending?
+
+**ETag is not an approval token.** It protects the current record. Hash binding
+protects what was approved; the nonce prevents consuming that consent twice;
+operation idempotency prevents repeating the effect.
+
+| Change after the r7 proposal | What the implementation checks | Result |
+|---|---|---|
+| JWT renewed, same checked facts | A renewal changes times and token ID, not the same semantic fingerprint. Approval keeps its original expiry. | Revalidate and resume if all authority still holds; no new consent inferred. |
+| Call changed to r8 but proof still covers r7 | `arguments_digest`/revision no longer match; reusing the original operation with changed arguments also conflicts. | Reject before business dispatch. |
+| New proof has corrected source/claims but the call is otherwise unchanged | Fingerprint changes, so request facts/`action_hash` no longer match the pending intent. | Cannot reuse old consent. |
+| Backend changed to r8; caller resends **old arguments and old proof** for r7 | JWT alone can still match the request. The **backend** detects the newer revision/current-source mismatch; a later race is caught by the conditional ETag write. | A backend call can occur, but zero business changes commit. |
+| Same completed operation replayed | The gateway retrieves its recorded outcome, even with an expired attestation; it does not reconsume consent. | No new effect. |
+| Send timed out; outcome unknown | The original operation remains reserved. | Reconcile it; do not retry under a new operation ID. |
+
+The purchase snapshot lives inside this case's revision boundary. A mutable
+external order system needs its own consistency controls: token lifetime is not
+a cross-system transaction. A legitimately revised proposal needs fresh evaluation
+and, when required, fresh approval **after resolving any unknown earlier outcome**.
 
 ### The conversation changes. Authorization does not.
 
@@ -377,6 +457,9 @@ We did not reproduce its game; that study did not evaluate this gateway or these
 
 ### Connect declared tools, not a generic remote executor
 
+<details>
+<summary>Client wiring: connect the declared read and gateway tools</summary>
+
 The generated native host uses the real `create_gateway_agent` factory from
 [`maf_gateway.py`](../skills/threadlight-deploy/references/governance/maf_gateway.py).
 This wiring fragment assumes an already verified configuration, a native model
@@ -399,7 +482,9 @@ inventory, then exposes the selected remote functions. Request options cannot
 inject extra tools, middleware or arbitrary provider options. The workload
 credential calls the gateway; it is not the business writer's credential.
 
-![Policy allow reaches the business API only after a durable authorization receipt; deny and pending approval return without executing.](assets/governance/action-execution.svg)
+</details>
+
+![The provider returns a JWT to the agent. The same agent calls the gateway; only authorized calls reach the business API after audit ACK.](assets/governance/action-execution.svg)
 
 <details>
 <summary>Diagram source</summary>
@@ -408,20 +493,20 @@ credential calls the gateway; it is not the business writer's credential.
 ```mermaid
 sequenceDiagram
     participant A as Native agent
-    participant G as Gateway / PEP
-    participant B as Business API
     box Input verification
         participant E as Evidence Provider
     end
+    participant G as Gateway / PEP
+    participant B as Business API
     box Shared services - supporting authority
         participant C as Control plane
     end
     opt Signed input evidence required and no reusable attestation
-        A->>E: Request named verification for case and inputs
+        A->>E: returns_verify_purchase via authenticated HTTPS
         E->>E: Check authorized sources and versions
-        E-->>A: Signed attestation or insufficient evidence
+        E-->>A: Signed JWT or insufficient evidence
     end
-    A->>G: Exact arguments plus proof when required
+    A->>G: MCP returns_apply_decision: exact arguments plus JWT when required
     G->>G: Verify required attestation and input binding after caller authentication
     G->>G: Evaluate policy with verified claims and trusted facts
     alt Denied
@@ -435,7 +520,7 @@ sequenceDiagram
         G->>C: Record execution authorization
         C-->>G: Durable receipt ACK
         G->>G: Persist receipt and recheck after waits
-        G->>B: Call fixed target with downstream identity
+        G->>B: Fixed target, downstream identity, fingerprint when required - no JWT
         B->>B: Check current facts and commit update + audit
         B-->>G: Stable outcome reference
         G-->>A: Validated result
@@ -450,7 +535,7 @@ the business action is executed.
 
 | Enforcement step | Implementation detail |
 |---|---|
-| Bind the proposal | `input_hash` covers the original input; `action_hash` covers enforced arguments plus trusted facts after any policy transform. A transformed action must be authorized as transformed. |
+| Bind the proposal | `input_hash` binds original arguments and authenticated/configured facts before evidence is added; `action_hash` also binds the verified fingerprint. Evidence-bound argument transforms require new proof, not silent reuse. |
 | Obtain trustworthy facts | Host-owned adapters supply evidence. A signed static snapshot is not a live enterprise resource planning (ERP) lookup; the business backend checks current state independently. |
 | Reserve and acknowledge | Create or compare-and-swap (CAS) reserves the operation. A central audit ACK and persisted receipt linkage precede the business request. Local spool fsync is insufficient. |
 | Recheck at transmission | Owned transports recheck authorization after credential acquisition, retry, connection-pool and Transport Layer Security (TLS) waits. No SDK patches. |
@@ -461,7 +546,19 @@ The backend's `if_match_etag` protects the revision. `X-Governance-Provenance`
 links the call to governance but is not itself a credential. The business audit
 contains business arguments and needs its own privacy and retention controls.
 
+### Which code connects these records?
+
+| Stage | Implementation and data handoff |
+|---|---|
+| Named verification | [`PurchaseAdapter` / `purchase_evidence`](../skills/threadlight-deploy/references/governance/returns_mcp_backend.py) reads the case and admitted purchase; [`EvidenceProvider`](../skills/threadlight-govern/references/control-plane/attestations.py) binds and signs the claims. |
+| Proof to policy | [`verify_attestation`](../skills/threadlight-govern/references/control-plane/attestations.py) returns verified claims/fingerprint; [`GovernedDispatcher`](../skills/threadlight-govern/references/gateway/dispatcher.py) supplies them to ACS and binds approval. |
+| Gateway to backend | [`DownstreamClient`](../skills/threadlight-govern/references/gateway/dispatcher.py) sends arguments, action hash, fingerprint and receipt reference, **not the raw JWT**. |
+| Current data to commit | [`verify_purchase_binding` then `decision_batch`](../skills/threadlight-deploy/references/governance/returns_mcp_backend.py) recomputes the fingerprint and prepares the case/audit batch; the owned transport guards its execution. |
+
 ### Keep domain integrity in the business service
+
+<details>
+<summary>Backend wiring: prepare and execute the already-bound conditional batch</summary>
 
 The actual `decision_batch` function in
 [`returns_mcp_backend.py`](../skills/threadlight-deploy/references/governance/returns_mcp_backend.py)
@@ -488,7 +585,40 @@ The business service executes that batch through its owned, authorization-aware
 Cosmos transport. The gateway receipt is a separate earlier record, not part of
 that database transaction.
 
+</details>
+
 ## 6. Human approval and safe resume
+
+Review is an additional condition on the proposal traced above. A pending
+response records an intent, not consent. The gateway's approval service
+authenticates and consumes the grant against the same `action_hash`,
+`context_identity`, policy, requester, expiry and nonce. Then the gateway
+reserves execution and the backend still checks current data.
+
+<details>
+<summary>Configuration: policy-driven review versus always-required approval</summary>
+
+These selected fields come from the actual gateway `Action` model:
+
+<!-- contract: action-approval-fields -->
+```json
+{
+  "name": "returns_apply_decision",
+  "approval_mode": "deferred",
+  "approval_requirement": "policy",
+  "approval_roles": ["Approver"],
+  "approval_timeout_seconds": 300
+}
+```
+
+`deferred` persists a pending operation rather than holding the request open.
+`policy` requests review when ACS escalates; `always` requires it even for an
+otherwise permitted call. `Approver` is configured authority, not a model role.
+The [complete registry](../skills/threadlight-govern/references/gateway/README.md#signed-registry-and-bundle-creation)
+also binds workloads, endpoints, schemas and evidence requirements. These fields
+do not create a workflow, grant or business entitlement.
+
+</details>
 
 **Native Outlook approval is a decision channel, not an email notification
 masquerading as authorization.** A Logic App uses Office 365
@@ -545,24 +675,27 @@ code removes it from business arguments and restores the original MCP operation
 header. Resume must use the exact original arguments, not a new case revision
 or a model's paraphrase.
 
-For a pending operation whose original proposal was the ordinary-return example
-above, the tool-level resume shape is:
+For the same ordinary-return proposal, **if the deployment selects
+`approval_requirement: always`**, the business arguments stay identical on resume.
+With policy-driven review, an ordinary allow does not enter this pending path.
+The tool-level resume shape is:
 
 <!-- contract: resumed-decision -->
 ```json
 {
   "case_id": "RMA-EXAMPLE",
-  "expected_etag": "\"revision-from-read\"",
+  "expected_etag": "\"r7\"",
   "decision": "approve_refund",
   "reason": "Eligible ordinary return; record the recommendation.",
   "governance_operation_id": "original-operation-id"
 }
 ```
 
-The real selector must be copied from that pending operation, with the same
-session and unchanged arguments. This illustrative string cannot select a real
-grant. There is intentionally no `approved`, approver identity or fresh case
-revision in the tool payload: the control plane supplies verified human authority.
+Use the real selector from that operation and the unchanged arguments.
+With signed evidence selected, also supply a still-valid attestation (or renewal
+with the same fingerprint) separately; it is deliberately absent from this
+business JSON. This illustrative selector cannot select a real grant.
+There is no `approved`, approver identity or fresh case revision in the payload.
 
 The control plane uses `POST /approvals/resolve` with `operation` equal to
 `request`, `resolve`, `decide` or `consume`; there is no invented `/resume`

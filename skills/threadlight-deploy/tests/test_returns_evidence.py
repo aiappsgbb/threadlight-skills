@@ -74,6 +74,84 @@ def test_same_provider_contract_and_backend_cas_bind_the_exact_corroboration():
     asyncio.run(run())
 
 
+@pytest.mark.governance_runtime
+def test_agent_gets_external_https_proof_then_presents_it_in_mcp_call(tmp_path):
+    from contextlib import AsyncExitStack
+    import json
+    import httpx
+    from test_gateway import GatewayHarness, Credential, gateway, registry
+    from test_maf_gateway_client import client_module
+
+    async def run():
+        e, signer, requirement, identity, _, _, _, _, _ = fixture()
+        business = backend()
+        case = purchase_case()
+        requirement = requirement.model_copy(update={
+            "profile": "returns-purchase-v1", "subjects": {case["id"]: case["customer_id"]}})
+        class ContainerFixture:
+            async def read_item(self, item, partition_key):
+                assert item == partition_key == case["id"]
+                return deepcopy(case)
+        provider = e.EvidenceProvider(
+            requirement=requirement, action="returns_apply_decision", tenant=identity.tenant,
+            signer=signer, key_id=requirement.keys[0].kid, adapter=business.PurchaseAdapter(ContainerFixture()),
+            grants=[e.EvidenceGrant(principal=identity.subject, client=identity.client,
+                                    case_id=case["id"], subject=case["customer_id"])])
+        schema = business.Decision.model_json_schema()
+        schema.pop("title", None)
+        for field in schema["properties"].values():
+            field.pop("title", None)
+            field.pop("pattern", None)
+        document = registry()
+        document["actions"][0].update(
+            name="returns_apply_decision", input_schema=schema,
+            evidence_requirement=requirement.model_dump())
+        h = await GatewayHarness().initialize(tmp_path, document=document)
+        events = []
+        async def external(request):
+            assert request.method == "POST"
+            assert str(request.url) == "https://business.example/evidence/purchase"
+            authenticated = await h.cp.auth.authenticate(request.headers.get("Authorization"))
+            proposed = json.loads(request.content)
+            assert proposed == arguments()
+            events.append("external-verification")
+            return httpx.Response(200, json=await provider.issue(authenticated, proposed))
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "two_call_returns_agent", ROOT / "skills/threadlight-deploy/references/governance/returns_mcp_agent.py")
+            agent_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(agent_module)
+            app = gateway("server").create_app(h.dispatcher)
+            async with app.router.lifespan_context(app), AsyncExitStack() as stack:
+                http = await stack.enter_async_context(httpx.AsyncClient(transport=httpx.MockTransport(external)))
+                local_tools = await agent_module.build_read_tools({
+                    "cases": [case["id"]], "business_scope": "api://business/.default",
+                    "business_url": "https://business.example", "evidence_enabled": True,
+                }, Credential(h.cp.token()), stack, http=http)
+                verify = next(tool for tool in local_tools if tool.name == "returns_verify_purchase")
+                reply = await verify.invoke(arguments=arguments(), skip_parsing=True)
+                assert reply["status"] == "verified"
+                assert events == ["external-verification"] and not h.calls
+                async def authorize():
+                    h.policy.fresh()
+                remote = client_module().GovernedMCPTools(
+                    url="https://gateway.example/mcp", scope="api://gateway/.default",
+                    credential=Credential(h.cp.token()), authorize=authorize,
+                    selected_tools=["returns_apply_decision"],
+                    transport_factory=lambda: httpx.ASGITransport(app=app))
+                await remote.connect()
+                await remote.functions[0].invoke(
+                    arguments={**arguments(), "governance_evidence": reply["attestation"]},
+                    skip_parsing=True)
+                assert len(h.calls) == 1
+                assert json.loads(h.calls[0].content) == arguments()
+                assert reply["attestation"] not in str(h.calls[0].headers)
+                assert events == ["external-verification"]
+        finally:
+            await h.close()
+    asyncio.run(run())
+
+
 def test_evidence_contract_is_gateway_only_and_read_stays_unbound():
     from skills._shared.governance import GovernanceContractError, validate_governance_contract
     path = ROOT / "skills/threadlight-deploy/references/governance/returns_mcp_agent.py"

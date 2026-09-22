@@ -17,7 +17,32 @@
       note: 'Reject, expiry or changed facts stops the write. Continue shows an approved example; it never creates a real grant.',
       steps: ['proposal', 'checks', 'pending', 'review', 'verify', 'fresh', 'ack', 'effect', 'result'],
     },
+    evidence: {
+      story: 'Below the automatic amount limit, but purchase proof is still required.',
+      note: 'A signed verification covers checked facts, not universal document certification. Human approval cannot replace missing proof.',
+      steps: ['proposal', 'proof', 'present', 'checks', 'denial-audit', 'deny'],
+    },
   };
+  const evidenceCases = {
+    missing: {
+      story: 'The provider returns insufficient evidence. If the agent still calls the operational tool, the gateway blocks it.',
+      proof: 'No attestation: insufficient evidence', verdict: 'Deny: required evidence missing',
+      steps: ['proposal', 'proof', 'present', 'checks', 'denial-audit', 'deny'],
+    },
+    valid: {
+      story: 'Verified purchase, matching inputs and eligible case: the selected policy allows the decision.',
+      proof: 'Signed JWT for this case and revision', verdict: 'Allow: proof and policy match',
+      steps: ['proposal', 'proof', 'present', 'checks', 'ack', 'effect', 'result'],
+    },
+    changed: {
+      story: 'The call now names revision r8, but the signed proof covers r7. The old proof cannot authorize the changed inputs.',
+      proof: 'Existing signed JWT for revision r7', verdict: 'Deny: revision binding mismatch',
+      steps: ['proposal', 'proof', 'present', 'checks', 'denial-audit', 'deny'],
+    },
+  };
+  function scenarioDetails(scenario, evidenceCase = 'missing') {
+    return scenario === 'evidence' ? { ...scenarios.evidence, ...evidenceCases[evidenceCase] } : scenarios[scenario];
+  }
   const definitions = {
     proposal: { actor: 'Agent', actors: ['agent'], title: 'Agent proposes', action: 'Propose the exact case action', output: 'Exact case request', short: 'Exact proposal', icon: 'branch' },
     checks: { actor: 'Governed MCP gateway', actors: ['gateway'], title: 'Gateway enforces', action: 'Verify evidence, evaluate local ACS policy and enforce the verdict', output: '', icon: 'shield' },
@@ -30,6 +55,12 @@
     ack: { actor: 'Control plane', actors: ['control'], title: 'Acknowledge authorization', action: 'Persist authorization before the business request', output: 'Authorization receipt ACK', short: 'Receipt ACK', icon: 'policy' },
     effect: { actor: 'Business API / own writer', actors: ['business'], title: 'Backend checks and commits', action: 'Authorize and commit a conditional case transaction', output: 'Decision + business audit', short: 'Decision + audit', icon: 'store' },
     result: { actor: 'Agent', actors: ['agent'], title: 'Return the stable result', action: 'Return the recorded outcome', output: 'Stable audit ID', icon: 'branch' },
+    proof: { actor: 'Evidence Provider', actors: [], title: 'Verify purchase evidence',
+      action: 'An external service verifies admitted sources and returns the result to the agent',
+      output: '', icon: 'policy' },
+    present: { actor: 'Agent', actors: ['agent'], title: 'Present proof to the operational tool',
+      action: 'Call the operational tool through MCP, carrying the returned proof with the actual arguments',
+      output: 'Operational request plus signed proof', icon: 'branch' },
   };
   const legacyRoutes = {
     'effect-authority': './production.html#effect-authority',
@@ -49,48 +80,80 @@
     operate: `${workbookBase}#phase-6-hand-off-a-controlled-release-and-safe-operations`,
   };
   const STEP_MS = 2500;
-  const moduleOrder = ['proposal', 'checks', 'deny', 'review', 'fresh', 'ack', 'effect', 'result'];
+  const moduleOrder = ['proposal', 'proof', 'present', 'checks', 'deny', 'review', 'fresh', 'ack', 'effect', 'result'];
   const moduleLabels = { proposal: 'Agent proposes', checks: 'Gateway checks', deny: 'Stop / no effect',
+    proof: 'External Evidence Provider', present: 'Same agent calls the operational tool',
     review: 'Outlook review', fresh: 'Fresh checks', ack: 'Shared authority checks', effect: 'Backend write', result: 'Decision + audit' };
   const stepModule = id => ({ 'denial-audit': 'ack', pending: 'ack', verify: 'ack' }[id] || id);
-  function usedModules(scenario) {
+  function usedModules(scenario, evidenceCase = 'missing') {
+    if (scenario === 'evidence') return evidenceCase === 'valid'
+      ? ['proposal', 'proof', 'present', 'checks', 'ack', 'effect', 'result']
+      : ['proposal', 'proof', 'present', 'checks', 'ack', 'deny'];
     return { normal: ['proposal', 'checks', 'ack', 'effect', 'result'],
       invalid: ['proposal', 'checks', 'ack', 'deny'],
       supervisor: ['proposal', 'checks', 'ack', 'review', 'fresh', 'effect', 'result'] }[scenario];
   }
-  function permittedEdges(scenario) {
+  function permittedEdges(scenario, evidenceCase = 'missing') {
+    if (scenario === 'evidence') return ['proposal:proof', 'proof:present', 'present:checks', 'checks:ack',
+      ...(evidenceCase === 'valid' ? ['ack:effect', 'effect:result'] : ['ack:deny'])];
     return { normal: ['proposal:checks', 'checks:ack', 'ack:effect', 'effect:result'],
       invalid: ['proposal:checks', 'checks:ack', 'ack:deny'],
       supervisor: ['proposal:checks', 'checks:review', 'review:fresh', 'fresh:ack', 'ack:effect', 'effect:result'] }[scenario];
   }
-  function moduleState(scenario, id, current) {
-    if (!usedModules(scenario).includes(id)) return 'Not used on this path';
-    const route = scenarios[scenario].steps;
+  function moduleState(scenario, id, current, evidenceCase = 'missing') {
+    if (!usedModules(scenario, evidenceCase).includes(id)) return 'Not used on this path';
+    const route = scenarioDetails(scenario, evidenceCase).steps;
     if (current === route.length - 1) return 'Completed';
-    if (stepModule(route[current]) === id) return stageState(scenario, current, current);
+    if (stepModule(route[current]) === id) return stageState(scenario, current, current, evidenceCase);
     return route.some((step, index) => index > current && stepModule(step) === id) ? 'Waiting' : 'Completed';
   }
 
-  function stepDetails(scenario, id) {
+  function stepDetails(scenario, id, evidenceCase = 'missing') {
     const result = { ...definitions[id] };
+    if (scenario === 'evidence') {
+      if (id === 'proposal') {
+        result.action = 'Call the verification tool on the external Evidence Provider before the operational tool';
+        result.output = 'Verification request: case, revision and proposed inputs';
+      }
+      if (id === 'proof') {
+        result.output = evidenceCases[evidenceCase].proof;
+        if (evidenceCase === 'changed') {
+          result.action = 'The external provider previously returned signed proof for r7 to the agent';
+        }
+      }
+      if (id === 'present') {
+        if (evidenceCase === 'missing') {
+          result.action = 'Attempt the operational tool call without proof; this illustrates a call the gateway must reject';
+          result.output = 'Operational request without required evidence';
+        } else if (evidenceCase === 'changed') {
+          result.action = 'Call the operational tool with inputs naming r8 and the previously returned r7 proof';
+          result.output = 'New inputs plus old proof';
+        }
+      }
+      if (id === 'checks') {
+        result.action = 'Verify signature, issuer, validity, case and actual inputs before evaluating the required claims';
+        result.output = evidenceCases[evidenceCase].verdict;
+      }
+      return result;
+    }
     if (id === 'checks') result.output = { normal: 'Allow', invalid: 'Deny', supervisor: 'Review required' }[scenario];
     return result;
   }
 
-  function stageState(scenario, index, current) {
-    const route = scenarios[scenario].steps;
+  function stageState(scenario, index, current, evidenceCase = 'missing') {
+    const route = scenarioDetails(scenario, evidenceCase).steps;
     if (index < current || current === route.length - 1) return 'Completed';
     if (index > current) return 'Waiting';
     return route[current] === 'review' ? 'Waiting for decision' : 'In progress';
   }
 
-  function actorState(scenario, actor, current) {
+  function actorState(scenario, actor, current, evidenceCase = 'missing') {
     if (actor === 'human' && scenario !== 'supervisor') return 'Not required';
-    if (actor === 'business' && scenario === 'invalid') return 'Not involved in write';
-    const route = scenarios[scenario].steps;
+    if (actor === 'business' && !scenarioDetails(scenario, evidenceCase).steps.includes('effect')) return 'Not involved in write';
+    const route = scenarioDetails(scenario, evidenceCase).steps;
     const positions = route.flatMap((id, index) => definitions[id].actors.includes(actor) ? [index] : []);
     if (current === route.length - 1) return 'Completed';
-    if (positions.includes(current)) return stageState(scenario, current, current);
+    if (positions.includes(current)) return stageState(scenario, current, current, evidenceCase);
     return positions.some((index) => index > current) ? 'Waiting' : 'Completed';
   }
 
@@ -131,11 +194,16 @@
     const authorityLabel = root.querySelector('[data-authority-label]');
     const authorityDetail = root.querySelector('[data-authority-detail]');
     const panel = root.querySelector('#wf-case');
+    const evidencePanel = root.querySelector('[data-flow-evidence]');
+    const evidenceChoices = [...root.querySelectorAll('[data-flow-evidence-case]')];
+    const evidenceSequence = root.querySelector('[data-evidence-sequence]');
+    const evidenceJwt = root.querySelector('[data-evidence-jwt]');
     const buttons = Object.fromEntries([...root.querySelectorAll('[data-flow-control]')]
       .map((button) => [button.dataset.flowControl, button]));
     if (!controls.length || !svg || !nodeLayer || !edgeLayer || !mobile || !story || !title ||
         !stateLabel || !actorLabel || !actionLabel || !outputLabel || !caseNote || !progress ||
         !motionNote || !playLabel || !nextLabel || !authorityLabel || !authorityDetail || !panel ||
+        !evidencePanel || evidenceChoices.length !== 3 || !evidenceSequence || !evidenceJwt ||
         !['play', 'previous', 'next'].every((name) => buttons[name])) {
       console.error('Workflow illustration controls are incomplete; the static path remains available.');
       return;
@@ -143,10 +211,12 @@
     const actors = [...document.querySelectorAll('#effect-authority [data-action-actor]')];
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let scenario = 'normal';
+    let evidenceCase = 'valid';
     let step = 0;
     let playing = false;
     let exampleApproved = false;
     let timer = null;
+    const selected = () => scenarioDetails(scenario, evidenceCase);
 
     function pause() { window.clearTimeout(timer); timer = null; playing = false; }
     function svgElement(name, attributes, text) {
@@ -158,13 +228,34 @@
     function iconReference(icon) { return icon === 'stop' ? '#wf-icon-stop' : `#production-icon-${icon}`; }
 
     function buildPath() {
-      const route = scenarios[scenario].steps;
-      svg.querySelector('desc').textContent = `${scenarios[scenario].story} ${route.map((id) => {
-        const detail = stepDetails(scenario, id);
+      const route = selected().steps;
+      svg.setAttribute('viewBox', scenario === 'evidence' ? '0 0 1100 492' : '0 0 1100 215');
+      nodeLayer.toggleAttribute('hidden', scenario === 'evidence');
+      edgeLayer.toggleAttribute('hidden', scenario === 'evidence');
+      evidenceSequence.toggleAttribute('hidden', scenario !== 'evidence');
+      svg.querySelector('[data-proof-return-label]').textContent = evidenceCase === 'missing'
+        ? '2. No JWT: insufficient evidence' : '2. Return signed JWT';
+      svg.querySelector('[data-proof-call-label]').textContent = evidenceCase === 'missing'
+        ? '3. Attempt returns_apply_decision without JWT · MCP'
+        : evidenceCase === 'changed' ? '3. returns_apply_decision: r8 inputs + JWT for r7 · MCP'
+          : '3. returns_apply_decision + JWT · MCP';
+      svg.querySelector('[data-proof-check-label]').textContent = evidenceCase === 'valid'
+        ? 'Then central audit ACK' : evidenceCase === 'missing' ? 'Required JWT is missing' : 'Revision does not match';
+      svg.querySelector('desc').textContent = `${selected().story} ${route.map((id) => {
+        const detail = stepDetails(scenario, id, evidenceCase);
         return `${detail.actor}: ${detail.output}.`;
-      }).join(' ')} ${scenarios[scenario].note}`;
+      }).join(' ')} ${selected().note}`;
       mobile.replaceChildren(); progress.replaceChildren();
-      moduleOrder.forEach(id => {
+      const mobileOrder = scenario === 'evidence' ? [...new Set(route.map(stepModule))] : moduleOrder;
+      const exchanges = {
+        proposal: '1. Agent → Evidence Provider', proof: '2. Evidence Provider → Agent',
+        present: '3. Agent → MCP gateway', checks: 'Gateway verifies JWT + policy',
+        ack: evidenceCase === 'valid' ? 'Central authorization audit ACK' : 'Record denial audit',
+        effect: '4. MCP gateway → Backend', result: 'Recorded decision, not payment', deny: 'No business effect',
+      };
+      mobileOrder.forEach(id => {
+        if (['proof', 'present'].includes(id) && scenario !== 'evidence') return;
+        if (scenario === 'evidence' && ['review', 'fresh'].includes(id)) return;
         const item = document.createElement('li');
         item.dataset.mobileNode = id;
         const detail = definitions[id];
@@ -172,16 +263,22 @@
         icon.appendChild(svgElement('use', { href: iconReference(detail.icon) }));
         const copy = document.createElement('div');
         const actor = document.createElement('strong');
-        actor.textContent = moduleLabels[id];
+        actor.textContent = scenario === 'evidence' ? exchanges[id] : moduleLabels[id];
         const state = document.createElement('small');
         state.setAttribute('data-node-state', '');
         const next = document.createElement('span');
         next.className = 'wf-mobile-next';
-        next.setAttribute('data-mobile-next', '');
+        if (scenario === 'evidence') {
+          next.textContent = id === 'effect' ? 'Fingerprint, not JWT; backend checks current state.'
+            : id === 'present' ? (evidenceCase === 'missing' ? 'No JWT in this attempted call.'
+              : 'JWT in _meta["threadlight/evidence"].')
+              : id === 'proposal' ? 'returns_verify_purchase over authenticated HTTPS.'
+                : id === 'proof' ? evidenceCases[evidenceCase].proof : '';
+        } else next.setAttribute('data-mobile-next', '');
         copy.append(actor, state, next); item.append(icon, copy); mobile.appendChild(item);
       });
       route.forEach((id, index) => {
-        const detail = stepDetails(scenario, id);
+        const detail = stepDetails(scenario, id, evidenceCase);
         const marker = document.createElement('li');
         const button = document.createElement('button');
         button.type = 'button'; button.dataset.flowStep = String(index);
@@ -195,17 +292,27 @@
     }
 
     function render() {
-      const route = scenarios[scenario].steps;
+      const route = selected().steps;
       const current = route[step];
-      const detail = stepDetails(scenario, current);
+      const detail = stepDetails(scenario, current, evidenceCase);
       const finished = step === route.length - 1;
       root.dataset.step = String(step); root.dataset.node = current;
       root.dataset.playing = String(playing); root.dataset.scenario = scenario;
-      story.textContent = scenarios[scenario].story;
+      root.dataset.evidenceCase = evidenceCase;
+      evidencePanel.hidden = scenario !== 'evidence';
+      evidenceJwt.hidden = scenario !== 'evidence';
+      evidenceChoices.forEach(choice => { choice.checked = choice.value === evidenceCase; });
+      evidenceSequence.querySelectorAll('[data-evidence-step]').forEach(node => {
+        const steps = node.dataset.evidenceStep.split(' ');
+        node.toggleAttribute('hidden', !steps.some(id => route.includes(id)));
+        if (steps.includes(current)) node.setAttribute('aria-current', 'step');
+        else node.removeAttribute('aria-current');
+      });
+      story.textContent = selected().story;
       title.textContent = `Illustration · ${step + 1} / ${route.length}`;
-      stateLabel.textContent = stageState(scenario, step, step);
+      stateLabel.textContent = stageState(scenario, step, step, evidenceCase);
       actorLabel.textContent = detail.actor; actionLabel.textContent = detail.action; outputLabel.textContent = detail.output;
-      caseNote.textContent = scenarios[scenario].note;
+      caseNote.textContent = selected().note;
       panel.setAttribute('aria-labelledby', `wf-tab-${scenario}`);
       tabs.forEach((tab) => {
         const active = tab.dataset.flowScenario === scenario;
@@ -214,18 +321,19 @@
       for (const [selector, key] of [['[data-flow-node]', 'flowNode'], ['[data-mobile-node]', 'mobileNode']]) {
         root.querySelectorAll(selector).forEach((node) => {
           const id = node.dataset[key];
-          const used = usedModules(scenario).includes(id);
-          const state = moduleState(scenario, id, step);
+          if (['proof', 'present'].includes(id)) node.toggleAttribute('hidden', scenario !== 'evidence');
+          const used = usedModules(scenario, evidenceCase).includes(id);
+          const state = moduleState(scenario, id, step, evidenceCase);
           node.dataset.used = String(used);
           node.dataset.stageState = state;
-          node.setAttribute('aria-label', `${moduleLabels[id]}: ${state}`);
+          node.setAttribute('aria-label', `${node.querySelector('strong')?.textContent || moduleLabels[id]}: ${state}`);
           const stateText = node.querySelector('[data-node-state]');
           if (stateText) stateText.textContent = state;
           const number = node.querySelector('[data-flow-number]');
-          if (number) number.textContent = used ? String(usedModules(scenario).indexOf(id) + 1) : '';
+          if (number) number.textContent = used ? String(usedModules(scenario, evidenceCase).indexOf(id) + 1) : '';
           const next = node.querySelector('[data-mobile-next]');
           if (next) {
-            const edge = permittedEdges(scenario).find(edge => edge.startsWith(`${id}:`));
+            const edge = permittedEdges(scenario, evidenceCase).find(edge => edge.startsWith(`${id}:`));
             next.hidden = !edge;
             next.textContent = edge ? `Next: ${moduleLabels[edge.split(':')[1]]}` : '';
           }
@@ -234,24 +342,25 @@
         });
       }
       edgeLayer.querySelectorAll('[data-flow-edge]').forEach(edge => {
-        const used = permittedEdges(scenario).includes(edge.dataset.flowEdge) &&
-          edge.dataset.flowEdge.split(':').every(id => usedModules(scenario).includes(id));
+        const used = permittedEdges(scenario, evidenceCase).includes(edge.dataset.flowEdge) &&
+          edge.dataset.flowEdge.split(':').every(id => usedModules(scenario, evidenceCase).includes(id));
         edge.dataset.onPath = String(used);
         edge.toggleAttribute('hidden', !used);
         if (used) edge.setAttribute('marker-end', 'url(#wf-arrow)');
         else edge.removeAttribute('marker-end');
       });
-      authorityLabel.textContent = scenario === 'invalid' ? 'Denial audit' : scenario === 'supervisor' ? 'Review + audit' : 'Audit confirmed';
-      authorityDetail.textContent = scenario === 'invalid' ? 'Before blocked return' : scenario === 'supervisor'
+      const denied = !route.includes('effect');
+      authorityLabel.textContent = denied ? 'Denial audit' : scenario === 'supervisor' ? 'Review + audit' : 'Audit confirmed';
+      authorityDetail.textContent = denied ? 'Before blocked return' : scenario === 'supervisor'
         ? ({ pending: 'Pending request', verify: 'One-use grant', ack: 'Authorization ACK' }[current] || 'Authority + ACK')
         : 'Before the effect';
       actors.forEach((actor) => {
         const status = actor.querySelector('[data-actor-state]');
-        if (status) status.textContent = actorState(scenario, actor.dataset.actionActor, step);
+        if (status) status.textContent = actorState(scenario, actor.dataset.actionActor, step, evidenceCase);
       });
       const reviewIndex = route.indexOf('review');
       progress.querySelectorAll('button').forEach((button, index) => {
-        const state = stageState(scenario, index, step);
+        const state = stageState(scenario, index, step, evidenceCase);
         button.querySelector('[data-progress-state]').textContent = state === 'Waiting for decision' ? 'Waiting' : state;
         button.disabled = reviewIndex >= 0 && index > reviewIndex && !exampleApproved;
         if (index === step) button.setAttribute('aria-current', 'step');
@@ -266,12 +375,12 @@
     }
 
     function moveTo(index) {
-      const reviewIndex = scenarios[scenario].steps.indexOf('review');
+      const reviewIndex = selected().steps.indexOf('review');
       if (reviewIndex >= 0 && index <= reviewIndex) exampleApproved = false;
       step = index; render();
     }
     function advance() {
-      const route = scenarios[scenario].steps;
+      const route = selected().steps;
       if (route[step] === 'review' && !exampleApproved) { pause(); render(); return; }
       if (step < route.length - 1) step += 1;
       if (step === route.length - 1 || route[step] === 'review') pause();
@@ -282,15 +391,15 @@
       timer = window.setTimeout(() => { advance(); schedule(); }, STEP_MS);
     }
     buttons.play.addEventListener('click', () => {
-      if (step === scenarios[scenario].steps.length - 1) { pause(); moveTo(0); return; }
+      if (step === selected().steps.length - 1) { pause(); moveTo(0); return; }
       if (playing) { pause(); render(); return; }
-      if (motion.matches || document.hidden || scenarios[scenario].steps[step] === 'review') return;
+      if (motion.matches || document.hidden || selected().steps[step] === 'review') return;
       playing = true; render(); schedule();
     });
     buttons.previous.addEventListener('click', () => { pause(); moveTo(Math.max(0, step - 1)); });
     buttons.next.addEventListener('click', () => {
       pause();
-      if (scenarios[scenario].steps[step] === 'review') exampleApproved = true;
+      if (selected().steps[step] === 'review') exampleApproved = true;
       advance();
     });
     progress.addEventListener('click', (event) => {
@@ -302,6 +411,21 @@
       pause(); scenario = tab.dataset.flowScenario; step = 0; exampleApproved = false;
       buildPath(); render();
     }
+    evidenceChoices.forEach(choice => choice.addEventListener('change', () => {
+      if (!Object.hasOwn(evidenceCases, choice.value)) {
+        console.error('Unknown evidence illustration; selection unchanged.');
+        render();
+        return;
+      }
+      pause(); evidenceCase = choice.value; step = 0; exampleApproved = false;
+      buildPath(); render();
+    }));
+    const selectEvidenceLink = () => {
+      if (window.location.hash === '#production-input-proof') {
+        select(tabs.find(tab => tab.dataset.flowScenario === 'evidence'));
+      }
+    };
+    window.addEventListener('hashchange', selectEvidenceLink);
     tabs.forEach((tab, index) => {
       tab.addEventListener('click', () => select(tab));
       tab.addEventListener('keydown', (event) => {
@@ -319,9 +443,10 @@
       .observe(topic, { attributes: true, attributeFilter: ['hidden'] });
     buildPath(); render(); root.setAttribute('data-enhanced', '');
     controls.forEach((control) => { control.hidden = false; });
+    selectEvidenceLink();
   }
 
-  if (typeof module !== 'undefined' && module.exports) module.exports = { scenarios, legacyRoutes, workbookRoutes, stepDetails, stageState, actorState, usedModules, permittedEdges, moduleState };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { scenarios, scenarioDetails, legacyRoutes, workbookRoutes, stepDetails, stageState, actorState, usedModules, permittedEdges, moduleState };
   else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => mount(document, window));
   else mount(document, window);
 })();
