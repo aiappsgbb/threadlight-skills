@@ -30,3 +30,14 @@ def test_pinned_deployment_gate_executes_evidence_regressions():
         "test_adversarial_evidence.py",
     ):
         assert filename in runner
+
+
+def test_existing_deep_dive_and_dated_record_explain_adversarial_evidence():
+    for name in ("agent-governance-deep-dive.md", "governed-returns-validation.md"):
+        text = (ROOT / "docs" / name).read_text()
+        for term in ("GPT-5.4", "Evidence Provider", "synthetic", "adversarial", "JWT"):
+            assert term in text, (name, term)
+    text = (ROOT / "docs/agent-governance-deep-dive.md").read_text()
+    assert "The conversation changes. Authorization does not." in text
+    assert "not a security boundary" in text
+    assert "alternative unmediated path" in text

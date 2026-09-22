@@ -123,6 +123,41 @@
 .governance-split p { color: var(--ink-1); line-height: 1.7; }
 .evidence-details > p { padding-bottom: 16px; }
 
+.evidence-case-study { margin-top: 64px; padding-top: 36px; border-top: 1px solid var(--line-2); scroll-margin-top: 110px; }
+.evidence-case-study > h3 { font: 500 clamp(30px, 3.8vw, 48px)/1.12 var(--serif); letter-spacing: -.025em; margin: 0 0 24px; }
+.evidence-case-study > h3 em { color: var(--chapter-accent); }
+.evidence-action-path { display: grid; grid-template-columns: repeat(4, 1fr); list-style: none; padding: 18px 0; margin: 28px 0 0; border-block: 1px solid var(--line-2); gap: 12px; }
+.evidence-action-path li { color: var(--ink-0); font-size: 14px; }
+.evidence-action-path li + li::before { content: "\2192"; margin-right: 12px; color: var(--chapter-accent); }
+.evidence-case-study .governance-glossary { margin-top: 20px; }
+.evidence-case-study .governance-glossary p { max-width: 72ch; padding: 0 8px 20px; color: var(--ink-1); line-height: 1.7; }
+.evidence-observation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 36px; }
+.evidence-observation-grid > div { min-width: 0; }
+.evidence-observation-grid h4 { font: 500 26px/1.25 var(--serif); margin: 0 0 22px; color: var(--ink-0); }
+.evidence-model-results { margin: 0; }
+.evidence-model-results > div { border-top: 1px solid var(--line); padding: 18px 0; }
+.evidence-model-results dt { color: var(--ink-0); font-weight: 650; }
+.evidence-model-results dd { color: var(--ink-1); margin: 8px 0 0; line-height: 1.65; font-size: 15px; }
+.evidence-outcome-table { width: 100%; border-collapse: collapse; font-size: 14px; color: var(--ink-1); }
+.evidence-outcome-table caption { text-align: left; line-height: 1.6; margin-bottom: 14px; color: var(--ink-1); }
+.evidence-outcome-table th, .evidence-outcome-table td { padding: 12px 8px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.evidence-outcome-table thead th { color: var(--ink-0); font-weight: 600; }
+.evidence-outcome-table tbody th { font-weight: 400; }
+.evidence-outcome-table td { font-variant-numeric: tabular-nums; }
+.evidence-outcome-table small { display: block; margin-top: 6px; font-size: 11px; }
+.evidence-scope, .evidence-responsibility { max-width: 75ch; color: var(--ink-1); font-size: 14px; line-height: 1.7; margin-top: 28px; }
+.evidence-record-links { display: flex; flex-wrap: wrap; gap: 14px 28px; font-size: 14px; line-height: 1.6; }
+@media (max-width: 760px) {
+  .evidence-observation-grid { grid-template-columns: 1fr; gap: 28px; }
+  .evidence-action-path { grid-template-columns: 1fr 1fr; }
+  .evidence-action-path li + li::before { content: none; }
+}
+@media print {
+  .evidence-case-study { break-before: page; }
+  .evidence-observation-grid { grid-template-columns: 1fr; }
+  .evidence-outcome-table tr { break-inside: avoid; }
+}
+
 .agentops-band { background: linear-gradient(160deg, var(--accent-soft), transparent 60%), var(--bg-1); }
 .agentops-band > .wrap > .governance-tag { color: var(--ink-0); border-color: var(--line-2); padding: 7px 12px; }
 .agentops-flow { display: grid; grid-template-columns: 1fr 1.3fr 1fr; margin: 44px 0; padding: 0; border: 1px solid var(--line-2); background: var(--bg-0); border-radius: 12px; overflow: clip; }
