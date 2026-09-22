@@ -54,7 +54,8 @@ test('authority section is an accessible ordered contract with distinct identiti
   const body = section(source, 'effect-authority');
   assert.match(source, /id="effect-authority"[^>]*data-toc-id="effect-authority"/);
   assert.match(source, /id="effect-authority"[^>]*aria-labelledby="effect-authority-heading"/);
-  assert.match(body, /<ol[^>]*aria-label="Who does what"/);
+  assert.match(body, /<ol[^>]*data-action-primary[^>]*aria-label="Primary business-action path"/);
+  assert.match(body, /<aside[^>]*data-action-support/);
   assert.match(body, /class="action-actors"/);
   for (const phrase of ['Access to a system', 'Identity', 'Policy', 'Trusted facts', 'Human reviewer',
     'Outlook', 'independent business API', 'audit ACK', 'unbound', 'without ACS',

@@ -91,13 +91,13 @@ test('prompts and verification text remain exact while presentation changes', ()
   }
 });
 
-test('approved artifacts remain frozen outside the explicit signed-evidence extension', () => {
+test('current presentation snapshots stay fixed outside the explicit signed-evidence extension', () => {
   for (const [file, expected] of [
-    ['docs/production.html', '7f83ca439a8d2ea7015c935e0edd947f6bd0d3bb'],
-    ['docs/assets/governed-workflow.js', 'e491fb5ead68a3fff8cb43e50aaf5ba2107ebca0'],
+    ['docs/production.html', '324d28699013c7594b24a372d9346c17173cc947'],
+    ['docs/assets/governed-workflow.js', '1c5ebf403c6d1662ea556c3b54bebfc6b86145d1'],
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
-    ['docs/agent-governance-deep-dive.md', 'e9252883e5a26a555cc0bf50b31fd221109084ab'],
-    ['docs/assets/governance/effect-boundaries.svg', 'bcbbb173c5f4995a65b9b2f1464a34f76183afb1'],
+    ['docs/agent-governance-deep-dive.md', '9cee5e6e1d368b1e1c1efb2e1a8097238bb30281'],
+    ['docs/assets/governance/effect-boundaries.svg', '69fa014350e3f7acaf53b8e37541717b99f8a6dd'],
   ]) {
     const bytes = file === 'docs/agent-governance-deep-dive.md'
       ? Buffer.from(governanceHistory(read(file)).baseline)

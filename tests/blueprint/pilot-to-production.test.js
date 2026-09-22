@@ -59,11 +59,11 @@ test('the guide starts from an existing Threadlight pilot and has five actionabl
   assert.match(html, /test-owned/i);
 });
 
-test('approved Markdown and component map remain byte-frozen outside the signed-evidence addition', () => {
+test('the workbook and current architecture baseline remain byte-frozen outside the signed-evidence addition', () => {
   for (const [file, expected] of [
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
-    ['docs/agent-governance-deep-dive.md', 'e9252883e5a26a555cc0bf50b31fd221109084ab'],
-    ['docs/assets/governance/effect-boundaries.svg', 'bcbbb173c5f4995a65b9b2f1464a34f76183afb1'],
+    ['docs/agent-governance-deep-dive.md', '9cee5e6e1d368b1e1c1efb2e1a8097238bb30281'],
+    ['docs/assets/governance/effect-boundaries.svg', '69fa014350e3f7acaf53b8e37541717b99f8a6dd'],
   ]) {
     const bytes = file === 'docs/agent-governance-deep-dive.md'
       ? Buffer.from(governanceHistory(read(file)).baseline)

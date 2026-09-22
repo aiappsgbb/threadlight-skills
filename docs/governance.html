@@ -21,7 +21,7 @@
 <link rel="canonical" href="https://aiappsgbb.github.io/threadlight-skills/governance.html">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
-<link rel="stylesheet" href="assets/governance.css?v=683446b6">
+<link rel="stylesheet" href="assets/governance.css?v=ee5cac4e">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
 <link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
 </head>
@@ -65,8 +65,8 @@
         <div>
           <p class="eyebrow"><span class="dot"></span>Runtime governance / try the boundary</p>
           <h1>Wrong action?<br><em>Stop it here.</em></h1>
-          <p class="lede" data-chapter-intro>A returns agent wants to record a decision.
-            Change the approval state: the request stays the same, but its permitted outcome changes.</p>
+          <p class="lede" data-chapter-intro>An agent can read a return and still propose a decision without valid purchase evidence.
+            The gateway checks the action before the backend can record it. Change the control state to see why the same request may stop.</p>
         </div>
         <div class="request-stage" data-visual-anchor data-state="allowed">
           <div class="request-bar"><span>RETURNS / RECORD DECISION</span><span>Illustration only</span></div>
@@ -100,8 +100,25 @@
     <div class="wrap">
       <p class="eyebrow"><span class="act-number">01</span>Control the action</p>
       <h2>Same request.<br><em>Different decision.</em></h2>
-      <p class="governance-intro">A binding connects one tool, intervention point and execution path to its controls.
-        Open a case to see why that specific action can proceed, must stop, or needs new evidence.</p>
+      <p class="governance-intro">The main path is agent &rarr; gateway &rarr; business system.
+        A binding selects the rules and route for one tool. Open a case to see why that action can proceed or must stop.</p>
+      <div class="input-evidence-policy" data-input-evidence-policy aria-labelledby="governance-input-proof">
+        <h3 id="governance-input-proof">A tool policy can require signed input evidence.</h3>
+        <p><strong>Example: no new return decision without corroborated purchase and amount.</strong>
+          Being below the automatic amount limit is not enough.</p>
+        <ol>
+          <li><strong>The agent obtains proof.</strong> It calls the authorized <b>Evidence Provider</b> for a named verification.</li>
+          <li><strong>The provider verifies, then signs.</strong> Admitted sources justify specific claims in a signed
+            JSON Web Token (JWT), not a statement invented by the model.</li>
+          <li><strong>The gateway enforces the prerequisite.</strong> It checks signature, issuer, expiry, case/revision
+            and actual inputs before policy accepts the claims. Missing or mismatched proof blocks the new effect.</li>
+        </ol>
+        <p>Human approval of the action does not replace missing proof. A signed verification is <strong>not universal document certification</strong>;
+          it covers only the facts checked. Valid proof can be reused within its scope and lifetime.</p>
+      </div>
+      <p class="governance-note"><strong>Shared services support the gateway.</strong>
+        The control plane supplies signed policy, verified human approvals and durable audit confirmation.
+        It is not another business executor. The gateway enforces the decision; the backend owns the transaction.</p>
       <p class="illustration-label"><span class="illustration-dot" aria-hidden="true"></span><strong>Illustration only.</strong> Choose a scenario. Watch the boundary change. No live policy engine or collected proof.</p>
       <div class="decision-workbench">
        <div class="decision-cases">
@@ -155,11 +172,14 @@
       <details class="governance-glossary">
         <summary>The architecture names, in plain English</summary>
         <dl>
-          <dt>SAFE</dt><dd>The method for defining the business invariants that must hold.</dd>
-          <dt>ACS / Rego</dt><dd>The policy decision point (PDP): evaluates the policy through OPA.</dd>
-          <dt>Host / gateway</dt><dd>The policy enforcement point (PEP): applies the decision before the selected effect.</dd>
-          <dt>Agent Hooks</dt><dd>The host/interceptor contract SDK, not an automatic whole-agent shield.</dd>
-          <dt>AGT / ASSERT</dt><dd>The governance toolkit and assurance, respectively. Neither label alone proves enforcement.</dd>
+          <dt>SAFE</dt><dd>Scope, Anchored Decisions, Flow Integrity, Escalation: the method for defining the business invariants.</dd>
+          <dt>ACS / Rego</dt><dd>Agent Control Specification (ACS) evaluates Rego rules through Open Policy Agent (OPA).
+            This is the Policy Decision Point (PDP): it returns a verdict.</dd>
+          <dt>Host / gateway</dt><dd>The Policy Enforcement Point (PEP): applies that verdict before the selected effect.
+            The tool gateway uses Model Context Protocol (MCP).</dd>
+          <dt>Agent Hooks</dt><dd>A host/interceptor contract software development kit (SDK), not an automatic whole-agent shield.</dd>
+          <dt>AGT / ASSERT</dt><dd>Agent Governance Toolkit (AGT) is the toolkit; ASSERT names assurance/evaluation work.
+            Neither label alone proves enforcement.</dd>
         </dl>
       </details>
     </div>
@@ -168,9 +188,10 @@
   <section class="chapter-section evidence-section" id="evidence" tabindex="-1" data-toc-id="evidence" data-toc-label="Evidence">
     <div class="wrap">
       <p class="eyebrow"><span class="act-number">02</span>Earn the claim</p>
-      <h2>Three levels of evidence.<br><em>Three different claims.</em></h2>
-      <p class="governance-intro">The useful question is not &ldquo;is it green?&rdquo; It is
-        &ldquo;what ran, on which path, and what does that let us conclude?&rdquo;</p>
+      <h2>Three levels of assurance.<br><em>Three different claims.</em></h2>
+      <p class="governance-intro">The input attestations required by a tool are different from assurance evidence
+        about the controls themselves. Here the question is: &ldquo;what ran, on which path,
+        and what does that let us conclude?&rdquo;</p>
       <ol class="evidence-ladder">
         <li><span class="evidence-stamp">Inventory / not enforcement</span>
           <div class="evidence-mechanism" role="img" aria-label="Tool, intervention point and execution path identify a selected binding">
@@ -251,8 +272,8 @@
         </p>
       </article>
       <details class="governance-glossary evidence-details"><summary>Where the runtime and release boundaries sit</summary><div class="governance-split">
-        <div><h3>Know the runtime boundary.</h3><p>Native MAF supports selected tool/lifecycle and
-          buffered-output controls. GHCP effect closure is limited to registered gateway action paths.
+        <div><h3>Know the runtime boundary.</h3><p>Native Microsoft Agent Framework (MAF) supports selected tool/lifecycle and
+        buffered-output controls. GitHub Copilot (GHCP) effect closure is limited to registered gateway action paths.
           Neither implies arbitrary tool or full-output coverage.</p></div>
         <div><h3>Know the release boundary.</h3><p>The governance implementation is merged in
           <a href="https://github.com/aiappsgbb/threadlight-skills/pull/127">PR #127</a>.

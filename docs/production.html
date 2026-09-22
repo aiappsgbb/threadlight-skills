@@ -23,7 +23,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
-<link rel="stylesheet" href="assets/governed-workflow.css?v=432ea589">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=b885395d">
 <style>
   /* Page-local layout and contrast; retain the shared Threadlight tokens and navigation. */
   html { scroll-padding-top: var(--production-scroll-offset, 72px); }
@@ -688,16 +688,40 @@
     <div class="section-head">
       <h2 id="effect-authority-heading">Access to a system is not <em>authority for every action.</em></h2>
       <p class="section-lede">The agent proposes; it does not authorize itself. A governed tool gateway checks
-        selected business actions before a separate business API can execute them. This <strong>effect boundary</strong>
-        connects policy, a person's decision when needed, and a record of what changed.</p>
+        selected business actions before the backend can execute them. A return may be within the amount limit
+        yet lack proof of purchase: a plausible answer must not become a recorded decision.
+        This <strong>effect boundary</strong> stops the invalid call, not just its wording.</p>
     </div>
-    <ol class="action-actors" aria-label="Who does what">
-      <li data-action-actor="agent"><svg data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg><strong>Agent <small data-actor-state>In progress</small></strong><span>Proposes a recommendation; has no database-write or signing credentials.</span></li>
-      <li data-action-actor="gateway"><svg data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><strong title="MCP: Model Context Protocol">Governed MCP gateway <small data-actor-state>Waiting</small></strong><span>Checks identity, policy and trusted facts, then routes authorized protected actions.</span></li>
-      <li data-action-actor="control"><svg data-component-icon aria-hidden="true"><use href="#production-icon-policy"/></svg><strong>Control plane <small data-actor-state>Waiting</small></strong><span>Keeps approval intents and one-use decisions; supplies the audit ACK before effects.</span></li>
-      <li data-action-actor="human"><svg data-component-icon aria-hidden="true"><use href="#production-icon-person"/></svg><strong>Human reviewer <small data-actor-state>Not required</small></strong><span>Approves or rejects the exact exception in Outlook, not a general override.</span></li>
+    <p class="action-boundary">The gateway receives tool calls through <strong>Model Context Protocol (MCP)</strong>
+      and acts as the <strong>Policy Enforcement Point (PEP)</strong>.
+      <strong>Agent Control Specification (ACS)</strong> evaluates its local policy; the gateway enforces the verdict.</p>
+    <div class="input-evidence-policy" data-input-evidence-policy aria-labelledby="production-input-proof">
+      <h3 id="production-input-proof">Some tools require signed proof before a new effect.</h3>
+      <p>A tool policy can require proof of purchase and amount, even for a return below the automatic limit.
+        The agent obtains a signed attestation from the <strong>Evidence Provider</strong>,
+        which checks admitted sources rather than signing claims supplied by the model.</p>
+      <p>The agent carries that proof with the tool call. The gateway verifies its <strong>signature,
+        issuer, validity, case/revision and actual inputs</strong>; policy then checks the required claims.
+        If the proof is missing or does not match, the new effect is blocked. Human approval of the action does not replace it.</p>
+      <p>“Certified” here means an issuer&rsquo;s signed verification of specified facts,
+        <strong>not a universal certificate that every document is true</strong>.
+        The backend still checks current business state and owns the transaction.</p>
+    </div>
+    <h3 class="action-layer-title">The main path: agent &rarr; gateway &rarr; business system</h3>
+    <ol class="action-actors" data-action-primary aria-label="Primary business-action path">
+      <li data-action-actor="agent"><svg data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg><strong>Agent <small data-actor-state>In progress</small></strong><span>Obtains required input evidence and proposes a recommendation; has no database-write or signing credentials.</span></li>
+      <li data-action-actor="gateway"><svg data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><strong>Governed MCP gateway <small data-actor-state>Waiting</small></strong><span><b>Enforcement happens here.</b> Check identity and trusted facts, verify evidence, then enforce the policy verdict.</span></li>
       <li data-action-actor="business"><svg data-component-icon aria-hidden="true"><use href="#production-icon-store"/></svg><strong>Business API <small data-actor-state>Waiting</small></strong><span>Independently authorizes the caller; its own writer identity commits the decision and audit.</span></li>
     </ol>
+    <aside class="action-support" data-action-support aria-labelledby="action-support-title">
+      <h3 id="action-support-title">Shared services support that path</h3>
+      <p>The control plane supplies signed configuration, verified approvals and a durable audit acknowledgement (ACK).
+        It is a required dependency where selected, not another business executor and not merely a log.</p>
+      <ul class="action-actors" aria-label="Supporting authority services">
+        <li data-action-actor="control"><svg data-component-icon aria-hidden="true"><use href="#production-icon-policy"/></svg><strong>Control plane <small data-actor-state>Waiting</small></strong><span>Maintains approval intents, one-use grants and audit records across calls. It does not run local policy or commit the business change.</span></li>
+        <li data-action-actor="human"><svg data-component-icon aria-hidden="true"><use href="#production-icon-person"/></svg><strong>Human reviewer <small data-actor-state>Not required</small></strong><span>Approves or rejects the exact exception in Outlook, not a general override.</span></li>
+      </ul>
+    </aside>
     <p class="action-status-note">Actor badges describe the selected illustration, not live service status.</p>
     <p class="action-boundary"><strong>Two different gateways.</strong> <span title="APIM: Azure API Management">Citadel/APIM</span> is the <strong>model gateway</strong>
       for shared model traffic. Threadlight's governed MCP gateway controls <strong>selected business effects</strong>.</p>
@@ -706,6 +730,9 @@
       Protected decisions use the gateway; the backend rejects unauthorized direct writes.
       The result is a recommendation, <strong>not a payment</strong>.</p>
     <div id="action-architecture" data-visual="effect-sequence">
+      <h3 class="action-layer-title">What must happen before a write</h3>
+      <p class="action-boundary">These are checks, not a chain of business executors.
+        The gateway obtains authority and audit confirmation from shared services, then calls the backend.</p>
       <!-- governed-flow:start -->
       <div id="workflow-in-action" data-governed-flow role="region" aria-label="Three decision paths">
         <svg class="wf-symbols" width="0" height="0" aria-hidden="true" focusable="false"><defs><symbol id="wf-icon-stop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m8 8 8 8m0-8-8 8"/></g></symbol></defs></svg>
@@ -718,8 +745,8 @@
           <div id="wf-case" role="tabpanel" aria-labelledby="wf-tab-normal">
             <p class="wf-story" data-flow-story>Eligible return &mdash; record a recommendation, not a payment.</p>
             <svg class="wf-diagram" viewBox="0 0 1100 215" role="img" aria-labelledby="wf-map-title wf-map-desc">
-              <title id="wf-map-title">The selected scenario's actors, outputs and order</title>
-              <desc id="wf-map-desc">Allowed path: agent proposal, local gateway policy and facts, control-plane central audit ACK, backend conditional decision and business audit, then stable result. Human review is not required.</desc>
+              <title id="wf-map-title">Checks required before a selected business action</title>
+              <desc id="wf-map-desc">The agent proposes. The gateway checks evidence and local policy, obtains audit confirmation from shared services, then calls the business API. The backend commits the conditional decision and business audit. This is a sequence of checks, not a chain of business executors.</desc>
               <defs>
                 <marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10Z"/></marker>
               </defs>
@@ -745,7 +772,7 @@
                 </g>
                 <g class="wf-node" data-flow-node="ack" data-used="true" transform="translate(470 60)">
                   <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-policy" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-number" x="138" y="25" data-flow-number>3</text><text class="wf-label" x="52" y="30" data-authority-label>Audit ACK</text><text class="wf-detail" x="16" y="61" data-authority-detail>Before the effect</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
+                  <text class="wf-number" x="144" y="14" data-flow-number>3</text><text class="wf-label" x="52" y="30" data-authority-label>Audit confirmed</text><text class="wf-detail" x="16" y="61" data-authority-detail>Shared service support</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
                 </g>
                 <g class="wf-node" data-flow-node="effect" data-used="true" transform="translate(695 60)">
                   <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-store" x="16" y="13" width="25" height="25"/>
@@ -771,11 +798,11 @@
             </svg>
             <ol class="wf-mobile" aria-label="Selected action path">
               <li data-mobile-node="proposal" data-used="true"><div><strong>Agent proposes</strong><small>In progress</small><span>Next: Gateway checks</span></div></li>
-              <li data-mobile-node="checks" data-used="true"><div><strong>Gateway checks</strong><small>Waiting</small><span>Next: Control plane / audit</span></div></li>
+              <li data-mobile-node="checks" data-used="true"><div><strong>Gateway checks</strong><small>Waiting</small><span>Next: Shared authority checks</span></div></li>
               <li data-mobile-node="deny" data-used="false"><div><strong>Stop / no effect</strong><small>Not used on this path</small></div></li>
               <li data-mobile-node="review" data-used="false"><div><strong>Outlook review</strong><small>Not used on this path</small></div></li>
               <li data-mobile-node="fresh" data-used="false"><div><strong>Fresh checks</strong><small>Not used on this path</small></div></li>
-              <li data-mobile-node="ack" data-used="true"><div><strong>Control plane / audit</strong><small>Waiting</small><span>Next: Backend write</span></div></li>
+              <li data-mobile-node="ack" data-used="true"><div><strong>Shared authority checks</strong><small>Waiting</small><span>Next: Backend write</span></div></li>
               <li data-mobile-node="effect" data-used="true"><div><strong>Backend write</strong><small>Waiting</small><span>Next: Decision + audit</span></div></li>
               <li data-mobile-node="result" data-used="true"><div><strong>Decision + audit</strong><small>Waiting</small></div></li>
             </ol>
@@ -849,6 +876,6 @@
 <script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
 <script src="assets/production.js?v=96331334"></script>
-<script src="assets/governed-workflow.js?v=820aec9a"></script>
+<script src="assets/governed-workflow.js?v=8dae9910"></script>
 </body>
 </html>

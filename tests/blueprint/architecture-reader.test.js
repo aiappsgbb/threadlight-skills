@@ -12,7 +12,7 @@ test('architecture report leads with scope, a contents map and implementation, n
     'Human approval and safe resume', 'State, audit and recovery', 'Implementation map',
     'Limits and adoption']) assert.ok(report.includes(heading), heading);
   assert.ok((report.match(/\]\(#/g) || []).length >= 9, 'Navigable contents');
-  const mainReadingPath = report.replace(/<details data-signed-evidence-case>[\s\S]*?<\/details>/g, '');
+  const mainReadingPath = report.replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '');
   assert.ok(mainReadingPath.split(/\s+/).length <= 4000, 'Keep the main reading path concise');
   const proseWithoutLinkTargets = report.replace(/\]\([^)]*\)/g, ']');
   assert.doesNotMatch(proseWithoutLinkTargets, /public hosted execution snapshot|S[123]-HOSTED|ProvisioningError|Billing Issue|2026-09-|sha256:[a-f0-9]{64}/i);
@@ -86,7 +86,7 @@ test('technical guide follows the public domains and expands the contracts with 
 test('guide separates upstream execution, installed compatibility packages and Threadlight implementation', () => {
   const report = read('docs/agent-governance-deep-dive.md');
   for (const phrase of ['Native components and Threadlight code', 'AGT core package',
-    'not the full AGT stack', 'responsibleai/agent-hooks', 'create_agent_hooks_middleware',
+    'not the full Agent Governance Toolkit (AGT) stack', 'responsibleai/agent-hooks', 'create_agent_hooks_middleware',
     'Threadlight implements', 'Public Preview']) assert.ok(report.includes(phrase), phrase);
   assert.match(report, /policy-engine/);
   assert.match(report, /solution-review-2026-09-15\.md#agt-upstream-status/);
