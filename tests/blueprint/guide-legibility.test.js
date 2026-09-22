@@ -93,10 +93,10 @@ test('prompts and verification text remain exact while presentation changes', ()
 
 test('current presentation snapshots stay fixed outside the explicit signed-evidence extension', () => {
   for (const [file, expected] of [
-    ['docs/production.html', '2b5b7af70aa82c89154bd5757cb294439f5b93f0'],
-    ['docs/assets/governed-workflow.js', 'efaea66a59d701d7e6f2af3817733c0f8c915115'],
+    ['docs/production.html', 'f183440ddeda235a0d99a5caf3157a6283cb2849'],
+    ['docs/assets/governed-workflow.js', 'd7157b6d34e0e190055a86a3121033b4b418d700'],
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
-    ['docs/agent-governance-deep-dive.md', '444d07ecfc7887393bc872d929efd53db0bd35b8'],
+    ['docs/agent-governance-deep-dive.md', '006b99c4c80262eb6571a0a21ee46b12b4df95c6'],
     ['docs/assets/governance/effect-boundaries.svg', '69fa014350e3f7acaf53b8e37541717b99f8a6dd'],
   ]) {
     const bytes = file === 'docs/agent-governance-deep-dive.md'

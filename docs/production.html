@@ -23,7 +23,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
-<link rel="stylesheet" href="assets/governed-workflow.css?v=77a1a25f">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=e2e8b1ab">
 <style>
   /* Page-local layout and contrast; retain the shared Threadlight tokens and navigation. */
   html { scroll-padding-top: var(--production-scroll-offset, 72px); }
@@ -733,13 +733,15 @@
           <div id="wf-case" role="tabpanel" aria-labelledby="wf-tab-normal">
             <div class="wf-evidence" data-flow-evidence hidden>
               <p><strong>Policy example: corroborate purchase and amount.</strong>
-                The agent obtains signed proof from an Evidence Provider; the gateway verifies it before policy evaluates the inputs.</p>
-              <label for="wf-evidence-case">Purchase proof</label>
-              <select id="wf-evidence-case" data-flow-evidence-case>
-                <option value="missing">Missing purchase proof</option>
-                <option value="valid">Valid proof for this request</option>
-                <option value="changed">Changed revision: r7 to r8</option>
-              </select>
+                The agent requests evidence, receives a signed JWT, then calls the gateway with it.
+                The provider never calls the gateway.</p>
+              <p class="wf-proof-transport">Current reference: verification uses authenticated HTTPS; the operational call uses MCP.</p>
+              <fieldset class="wf-evidence-choices">
+                <legend>Purchase evidence</legend>
+                <label><input type="radio" name="wf-evidence-case" value="valid" data-flow-evidence-case checked><span>Valid proof</span></label>
+                <label><input type="radio" name="wf-evidence-case" value="missing" data-flow-evidence-case><span>Missing proof</span></label>
+                <label><input type="radio" name="wf-evidence-case" value="changed" data-flow-evidence-case><span>Changed inputs</span></label>
+              </fieldset>
             </div>
             <p class="wf-story" data-flow-story>Eligible return &mdash; record a recommendation, not a payment.</p>
             <svg class="wf-diagram" viewBox="0 0 1100 215" role="img" aria-labelledby="wf-map-title wf-map-desc">
@@ -758,13 +760,11 @@
                 <path class="wf-edge" data-flow-edge="review:fresh" d="M405 183H465" hidden/>
                 <path class="wf-edge" data-flow-edge="fresh:ack" d="M550 156V133" hidden/>
                 <path class="wf-edge" data-flow-edge="ack:deny" d="M550 60V47" hidden/>
-                <path class="wf-edge" data-flow-edge="proposal:proof" d="M100 128V151" hidden/>
-                <path class="wf-edge" data-flow-edge="proof:checks" d="M180 183H213V94H240" hidden/>
               </g>
               <g data-node-layer>
                 <g class="wf-node" data-flow-node="proposal" data-used="true" transform="translate(20 60)">
                   <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-branch" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-number" x="138" y="25" data-flow-number>1</text><text class="wf-label" x="16" y="61">Agent proposes</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
+                  <text class="wf-number" x="138" y="25" data-flow-number>1</text><text class="wf-label" x="16" y="61" data-proposal-label>Agent proposes</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
                 </g>
                 <g class="wf-node" data-flow-node="checks" data-used="true" transform="translate(245 60)">
                   <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="16" y="13" width="25" height="25"/>
@@ -794,9 +794,47 @@
                   <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="12" y="15" width="24" height="24"/>
                   <text class="wf-label" x="43" y="25">Fresh checks</text><text class="wf-detail" x="43" y="43">Same proposal</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
                 </g>
-                <g class="wf-node" data-flow-node="proof" data-used="false" transform="translate(20 156)" hidden>
-                  <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-policy" x="12" y="15" width="24" height="24"/>
-                  <text class="wf-label" x="43" y="25">Evidence</text><text class="wf-detail" x="43" y="43">Provider check</text><text class="wf-number" x="145" y="13" data-flow-number></text>
+              </g>
+              <g class="wf-evidence-sequence" data-evidence-sequence hidden>
+                <g data-evidence-participant="agent" transform="translate(20 16)">
+                  <rect width="180" height="54" rx="6"/><text x="90" y="24">Agent</text><text class="wf-detail" x="90" y="43">Makes both calls</text>
+                </g>
+                <g data-evidence-participant="provider" transform="translate(315 16)">
+                  <rect width="180" height="54" rx="6"/><text x="90" y="24">Evidence Provider</text><text class="wf-detail" x="90" y="43">External service</text>
+                </g>
+                <g data-evidence-participant="gateway" transform="translate(610 16)">
+                  <rect width="180" height="54" rx="6"/><text x="90" y="24">MCP gateway</text><text class="wf-detail" x="90" y="43">Verifies and enforces</text>
+                </g>
+                <g data-evidence-participant="backend" transform="translate(905 16)">
+                  <rect width="180" height="54" rx="6"/><text x="90" y="24">Backend</text><text class="wf-detail" x="90" y="43">Owns the transaction</text>
+                </g>
+                <g class="wf-lifelines" aria-hidden="true">
+                  <path d="M110 70V282"/><path d="M405 70V205"/><path d="M700 70V440"/><path d="M995 70V477"/>
+                </g>
+                <g class="wf-message" data-evidence-message="request" data-message-from="agent" data-message-to="provider" data-evidence-step="proposal">
+                  <line class="wf-edge" x1="110" y1="125" x2="405" y2="125" marker-end="url(#wf-arrow)"/>
+                  <text x="124" y="108">1. Verify purchase · HTTPS</text>
+                </g>
+                <g class="wf-message" data-evidence-message="return" data-message-from="provider" data-message-to="agent" data-evidence-step="proof">
+                  <line class="wf-edge" x1="405" y1="193" x2="110" y2="193" marker-end="url(#wf-arrow)"/>
+                  <text x="124" y="176" data-proof-return-label>2. Return signed JWT</text>
+                </g>
+                <g class="wf-message" data-evidence-message="invoke" data-message-from="agent" data-message-to="gateway" data-evidence-step="present">
+                  <line class="wf-edge" x1="110" y1="266" x2="700" y2="266" marker-end="url(#wf-arrow)"/>
+                  <text x="124" y="247" data-proof-call-label>3. returns_apply_decision + JWT · MCP</text>
+                </g>
+                <g class="wf-sequence-check" data-evidence-step="checks ack" transform="translate(610 288)">
+                  <rect width="180" height="62" rx="6"/><text x="90" y="24">JWT + policy</text><text class="wf-detail" x="90" y="45" data-proof-check-label>Then central audit ACK</text>
+                </g>
+                <g class="wf-message" data-evidence-message="dispatch" data-message-from="gateway" data-message-to="backend" data-evidence-step="effect">
+                  <line class="wf-edge" x1="700" y1="392" x2="995" y2="392" marker-end="url(#wf-arrow)"/>
+                  <text x="714" y="375">4. Authorized call</text><text class="wf-detail" x="714" y="414">Fingerprint, not JWT</text>
+                </g>
+                <g class="wf-sequence-check" data-evidence-step="result" transform="translate(905 429)">
+                  <rect width="180" height="48" rx="6"/><text x="90" y="21">Conditional decision</text><text class="wf-detail" x="90" y="39">Not a payment</text>
+                </g>
+                <g class="wf-sequence-check" data-evidence-step="denial-audit deny" transform="translate(610 374)" hidden>
+                  <rect width="180" height="62" rx="6"/><text x="90" y="24">Blocked before write</text><text class="wf-detail" x="90" y="45">Denial audit; no effect</text>
                 </g>
               </g>
             </svg>
@@ -814,6 +852,40 @@
               Human review waits in Outlook for a verified grant, fresh checks and audit ACK.
               Signed evidence requires provider-verified purchase proof: missing or changed proof blocks the new effect;
               valid matching proof still needs policy and backend checks.</p>
+            <div class="wf-jwt" data-evidence-jwt hidden>
+              <h4>The proof is a signed JSON Web Token (JWT)</h4>
+              <p>It binds the verified facts to this caller, case, revision and exact tool arguments.
+                The agent carries it in MCP <code>_meta["threadlight/evidence"]</code>.
+                It is not an access token or human approval.</p>
+              <details>
+                <summary>Inspect the JWT contract and MCP request</summary>
+                <dl class="wf-jwt-fields">
+                  <div><dt>Signature</dt><dd><code>alg: RS256</code>, <code>typ: threadlight-evidence+jwt</code>, <code>kid</code>: configured key version.</dd></div>
+                  <div><dt>Authority</dt><dd><code>iss</code>, <code>aud</code>: admitted issuer and gateway audience.</dd></div>
+                  <div><dt>Identity</dt><dd><code>tid</code>, <code>holder</code>, <code>holder_client</code>: authenticated workload; <code>sub</code>: business subject.</dd></div>
+                  <div><dt>Exact request</dt><dd><code>case_id</code>, <code>revision</code>: record and version; <code>action</code>, <code>purpose</code>, <code>profile</code>: tool and named verification; <code>arguments_digest</code>: hash of all business arguments.</dd></div>
+                  <div><dt>Verified facts</dt><dd><code>sources</code>: references, revisions and digests; <code>claims</code>: provider-derived results such as <code>purchase_verified: true</code> and <code>amount: 40</code>, not model assertions.</dd></div>
+                  <div><dt>Validity</dt><dd><code>iat</code>, <code>exp</code>, <code>jti</code>: issue time, expiry and token identifier.</dd></div>
+                </dl>
+                <p>Illustrative <code>tools/call</code> parameters; placeholder, not a usable token.
+                  Compact signed form: <code>base64url(header).base64url(payload).base64url(signature)</code>.</p>
+                <pre><code>{
+  "name": "returns_apply_decision",
+  "arguments": {
+    "case_id": "RMA-EXAMPLE",
+    "expected_etag": "\"r7\"",
+    "decision": "approve_refund",
+    "reason": "Record the eligible recommendation."
+  },
+  "_meta": {
+    "threadlight/evidence": "&lt;provider-issued signed JWT&gt;"
+  }
+}</code></pre>
+                <p>The gateway verifies the JWT locally against configured keys. Only verified claims reach policy.
+                  The backend receives <code>X-Evidence-Fingerprint</code>, not the JWT, and still checks current business state.</p>
+              </details>
+            </div>
+            <!-- evidence-jwt:end -->
             <ol class="wf-progress" data-flow-progress aria-label="Illustration steps" data-flow-controls hidden></ol>
             <div class="wf-caption-line">
               <div class="wf-status" data-flow-status role="status" aria-live="polite" aria-atomic="true">
@@ -883,6 +955,6 @@
 <script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
 <script src="assets/production.js?v=96331334"></script>
-<script src="assets/governed-workflow.js?v=038bfb1b"></script>
+<script src="assets/governed-workflow.js?v=0c57e915"></script>
 </body>
 </html>

@@ -88,7 +88,7 @@ test('the agent obtains required evidence before the governed call and policy re
   assert.match(source, /participant E as Evidence Provider/);
   assert.ok(source.indexOf('A->>E:') < source.indexOf('A->>G:'));
   assert.match(source, /opt Signed input evidence required/);
-  assert.match(source, /E-->>A: Signed attestation or insufficient evidence/);
+  assert.match(source, /E-->>A: Signed JWT or insufficient evidence/);
   assert.match(source, /Verify required attestation/);
   assert.ok(source.indexOf('Verify required attestation') < source.indexOf('Evaluate policy'));
   assert.match(diagram('effect-boundaries'), /signed proof if required/i);

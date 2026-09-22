@@ -2,15 +2,21 @@ import { test, expect } from '@playwright/test';
 
 const wordCount = locator => locator.evaluate(element => {
   const copy = element.cloneNode(true);
-  copy.querySelectorAll('style, script, .wf-mobile').forEach(node => node.remove());
+  copy.querySelectorAll('style, script, .wf-mobile, svg [hidden], svg desc, svg title').forEach(node => node.remove());
+  copy.querySelectorAll('[data-evidence-jwt] details > :not(summary)').forEach(node => node.remove());
   return copy.textContent.trim().split(/\s+/).length;
 });
 
-test('production has no expandable content and each area has a bounded reading length', async ({ page }) => {
+test('core controls stay flat and bounded, with only the JWT wire contract behind a disclosure', async ({ page }) => {
   await page.goto('/production.html');
-  await expect(page.locator('main details, main summary')).toHaveCount(0);
+  await expect(page.locator('main details:not([data-evidence-jwt] details), main summary:not([data-evidence-jwt] summary)')).toHaveCount(0);
   for (const id of ['platform-topic', 'readiness-topic', 'actions-topic']) {
     expect(await wordCount(page.locator(`#${id}`)), id).toBeLessThan(700);
+  }
+  await page.goto('/production.html#production-input-proof');
+  for (const choice of ['valid', 'missing', 'changed']) {
+    await page.locator(`[data-flow-evidence-case][value="${choice}"]`).check();
+    expect(await wordCount(page.locator('#actions-topic')), choice).toBeLessThan(700);
   }
   expect(await wordCount(page.locator('main'))).toBeLessThan(2400);
 });
@@ -75,7 +81,8 @@ test('governance typography follows the other areas instead of an oversized diag
   const sizes = await page.locator('[data-topic-panel] h2').evaluateAll(headings =>
     headings.map(el => getComputedStyle(el).fontSize));
   expect(new Set(sizes).size).toBe(1);
-  for (const [selector, maximum] of [['.wf-label', 16], ['.wf-detail', 12], ['.wf-edge-label', 11]]) {
+  for (const [selector, maximum] of [['.wf-label', 16], ['[data-node-layer] .wf-detail', 12],
+    ['[data-evidence-sequence] .wf-detail', 14], ['.wf-edge-label', 11]]) {
     const sizes = await page.locator(selector).evaluateAll(elements =>
       elements.map(el => parseFloat(getComputedStyle(el).fontSize)));
     expect(Math.max(...sizes), selector).toBeLessThanOrEqual(maximum);

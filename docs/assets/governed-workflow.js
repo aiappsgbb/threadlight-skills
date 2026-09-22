@@ -20,24 +20,24 @@
     evidence: {
       story: 'Below the automatic amount limit, but purchase proof is still required.',
       note: 'A signed verification covers checked facts, not universal document certification. Human approval cannot replace missing proof.',
-      steps: ['proposal', 'proof', 'checks', 'denial-audit', 'deny'],
+      steps: ['proposal', 'proof', 'present', 'checks', 'denial-audit', 'deny'],
     },
   };
   const evidenceCases = {
     missing: {
-      story: 'No purchase corroboration: the provider cannot issue the required attestation.',
+      story: 'The provider returns insufficient evidence. If the agent still calls the operational tool, the gateway blocks it.',
       proof: 'No attestation: insufficient evidence', verdict: 'Deny: required evidence missing',
-      steps: ['proposal', 'proof', 'checks', 'denial-audit', 'deny'],
+      steps: ['proposal', 'proof', 'present', 'checks', 'denial-audit', 'deny'],
     },
     valid: {
       story: 'Verified purchase, matching inputs and eligible case: the selected policy allows the decision.',
-      proof: 'Signed proof for this case and revision', verdict: 'Allow: proof and policy match',
-      steps: ['proposal', 'proof', 'checks', 'ack', 'effect', 'result'],
+      proof: 'Signed JWT for this case and revision', verdict: 'Allow: proof and policy match',
+      steps: ['proposal', 'proof', 'present', 'checks', 'ack', 'effect', 'result'],
     },
     changed: {
       story: 'The call now names revision r8, but the signed proof covers r7. The old proof cannot authorize the changed inputs.',
-      proof: 'Existing signed proof for revision r7', verdict: 'Deny: revision binding mismatch',
-      steps: ['proposal', 'proof', 'checks', 'denial-audit', 'deny'],
+      proof: 'Existing signed JWT for revision r7', verdict: 'Deny: revision binding mismatch',
+      steps: ['proposal', 'proof', 'present', 'checks', 'denial-audit', 'deny'],
     },
   };
   function scenarioDetails(scenario, evidenceCase = 'missing') {
@@ -55,9 +55,12 @@
     ack: { actor: 'Control plane', actors: ['control'], title: 'Acknowledge authorization', action: 'Persist authorization before the business request', output: 'Authorization receipt ACK', short: 'Receipt ACK', icon: 'policy' },
     effect: { actor: 'Business API / own writer', actors: ['business'], title: 'Backend checks and commits', action: 'Authorize and commit a conditional case transaction', output: 'Decision + business audit', short: 'Decision + audit', icon: 'store' },
     result: { actor: 'Agent', actors: ['agent'], title: 'Return the stable result', action: 'Return the recorded outcome', output: 'Stable audit ID', icon: 'branch' },
-    proof: { actor: 'Evidence Provider', actors: ['agent'], title: 'Verify purchase evidence',
-      action: 'The agent obtains source-backed proof from the provider, not a model-supplied claim',
+    proof: { actor: 'Evidence Provider', actors: [], title: 'Verify purchase evidence',
+      action: 'An external service verifies admitted sources and returns the result to the agent',
       output: '', icon: 'policy' },
+    present: { actor: 'Agent', actors: ['agent'], title: 'Present proof to the operational tool',
+      action: 'Call the operational tool through MCP, carrying the returned proof with the actual arguments',
+      output: 'Operational request plus signed proof', icon: 'branch' },
   };
   const legacyRoutes = {
     'effect-authority': './production.html#effect-authority',
@@ -77,20 +80,21 @@
     operate: `${workbookBase}#phase-6-hand-off-a-controlled-release-and-safe-operations`,
   };
   const STEP_MS = 2500;
-  const moduleOrder = ['proposal', 'proof', 'checks', 'deny', 'review', 'fresh', 'ack', 'effect', 'result'];
+  const moduleOrder = ['proposal', 'proof', 'present', 'checks', 'deny', 'review', 'fresh', 'ack', 'effect', 'result'];
   const moduleLabels = { proposal: 'Agent proposes', checks: 'Gateway checks', deny: 'Stop / no effect',
-    proof: 'Evidence Provider', review: 'Outlook review', fresh: 'Fresh checks', ack: 'Shared authority checks', effect: 'Backend write', result: 'Decision + audit' };
+    proof: 'External Evidence Provider', present: 'Same agent calls the operational tool',
+    review: 'Outlook review', fresh: 'Fresh checks', ack: 'Shared authority checks', effect: 'Backend write', result: 'Decision + audit' };
   const stepModule = id => ({ 'denial-audit': 'ack', pending: 'ack', verify: 'ack' }[id] || id);
   function usedModules(scenario, evidenceCase = 'missing') {
     if (scenario === 'evidence') return evidenceCase === 'valid'
-      ? ['proposal', 'proof', 'checks', 'ack', 'effect', 'result']
-      : ['proposal', 'proof', 'checks', 'ack', 'deny'];
+      ? ['proposal', 'proof', 'present', 'checks', 'ack', 'effect', 'result']
+      : ['proposal', 'proof', 'present', 'checks', 'ack', 'deny'];
     return { normal: ['proposal', 'checks', 'ack', 'effect', 'result'],
       invalid: ['proposal', 'checks', 'ack', 'deny'],
       supervisor: ['proposal', 'checks', 'ack', 'review', 'fresh', 'effect', 'result'] }[scenario];
   }
   function permittedEdges(scenario, evidenceCase = 'missing') {
-    if (scenario === 'evidence') return ['proposal:proof', 'proof:checks', 'checks:ack',
+    if (scenario === 'evidence') return ['proposal:proof', 'proof:present', 'present:checks', 'checks:ack',
       ...(evidenceCase === 'valid' ? ['ack:effect', 'effect:result'] : ['ack:deny'])];
     return { normal: ['proposal:checks', 'checks:ack', 'ack:effect', 'effect:result'],
       invalid: ['proposal:checks', 'checks:ack', 'ack:deny'],
@@ -107,10 +111,23 @@
   function stepDetails(scenario, id, evidenceCase = 'missing') {
     const result = { ...definitions[id] };
     if (scenario === 'evidence') {
+      if (id === 'proposal') {
+        result.action = 'Call the verification tool on the external Evidence Provider before the operational tool';
+        result.output = 'Verification request: case, revision and proposed inputs';
+      }
       if (id === 'proof') {
         result.output = evidenceCases[evidenceCase].proof;
         if (evidenceCase === 'changed') {
-          result.action = 'The provider issued proof for r7; the agent now reuses it with inputs naming r8';
+          result.action = 'The external provider previously returned signed proof for r7 to the agent';
+        }
+      }
+      if (id === 'present') {
+        if (evidenceCase === 'missing') {
+          result.action = 'Attempt the operational tool call without proof; this illustrates a call the gateway must reject';
+          result.output = 'Operational request without required evidence';
+        } else if (evidenceCase === 'changed') {
+          result.action = 'Call the operational tool with inputs naming r8 and the previously returned r7 proof';
+          result.output = 'New inputs plus old proof';
         }
       }
       if (id === 'checks') {
@@ -178,13 +195,15 @@
     const authorityDetail = root.querySelector('[data-authority-detail]');
     const panel = root.querySelector('#wf-case');
     const evidencePanel = root.querySelector('[data-flow-evidence]');
-    const evidenceSelect = root.querySelector('[data-flow-evidence-case]');
+    const evidenceChoices = [...root.querySelectorAll('[data-flow-evidence-case]')];
+    const evidenceSequence = root.querySelector('[data-evidence-sequence]');
+    const evidenceJwt = root.querySelector('[data-evidence-jwt]');
     const buttons = Object.fromEntries([...root.querySelectorAll('[data-flow-control]')]
       .map((button) => [button.dataset.flowControl, button]));
     if (!controls.length || !svg || !nodeLayer || !edgeLayer || !mobile || !story || !title ||
         !stateLabel || !actorLabel || !actionLabel || !outputLabel || !caseNote || !progress ||
         !motionNote || !playLabel || !nextLabel || !authorityLabel || !authorityDetail || !panel ||
-        !evidencePanel || !evidenceSelect ||
+        !evidencePanel || evidenceChoices.length !== 3 || !evidenceSequence || !evidenceJwt ||
         !['play', 'previous', 'next'].every((name) => buttons[name])) {
       console.error('Workflow illustration controls are incomplete; the static path remains available.');
       return;
@@ -192,7 +211,7 @@
     const actors = [...document.querySelectorAll('#effect-authority [data-action-actor]')];
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let scenario = 'normal';
-    let evidenceCase = 'missing';
+    let evidenceCase = 'valid';
     let step = 0;
     let playing = false;
     let exampleApproved = false;
@@ -210,13 +229,33 @@
 
     function buildPath() {
       const route = selected().steps;
+      svg.setAttribute('viewBox', scenario === 'evidence' ? '0 0 1100 492' : '0 0 1100 215');
+      nodeLayer.toggleAttribute('hidden', scenario === 'evidence');
+      edgeLayer.toggleAttribute('hidden', scenario === 'evidence');
+      evidenceSequence.toggleAttribute('hidden', scenario !== 'evidence');
+      svg.querySelector('[data-proof-return-label]').textContent = evidenceCase === 'missing'
+        ? '2. No JWT: insufficient evidence' : '2. Return signed JWT';
+      svg.querySelector('[data-proof-call-label]').textContent = evidenceCase === 'missing'
+        ? '3. Attempt returns_apply_decision without JWT · MCP'
+        : evidenceCase === 'changed' ? '3. returns_apply_decision: r8 inputs + JWT for r7 · MCP'
+          : '3. returns_apply_decision + JWT · MCP';
+      svg.querySelector('[data-proof-check-label]').textContent = evidenceCase === 'valid'
+        ? 'Then central audit ACK' : evidenceCase === 'missing' ? 'Required JWT is missing' : 'Revision does not match';
       svg.querySelector('desc').textContent = `${selected().story} ${route.map((id) => {
         const detail = stepDetails(scenario, id, evidenceCase);
         return `${detail.actor}: ${detail.output}.`;
       }).join(' ')} ${selected().note}`;
       mobile.replaceChildren(); progress.replaceChildren();
-      moduleOrder.forEach(id => {
-        if (id === 'proof' && scenario !== 'evidence') return;
+      const mobileOrder = scenario === 'evidence' ? [...new Set(route.map(stepModule))] : moduleOrder;
+      const exchanges = {
+        proposal: '1. Agent → Evidence Provider', proof: '2. Evidence Provider → Agent',
+        present: '3. Agent → MCP gateway', checks: 'Gateway verifies JWT + policy',
+        ack: evidenceCase === 'valid' ? 'Central authorization audit ACK' : 'Record denial audit',
+        effect: '4. MCP gateway → Backend', result: 'Recorded decision, not payment', deny: 'No business effect',
+      };
+      mobileOrder.forEach(id => {
+        if (['proof', 'present'].includes(id) && scenario !== 'evidence') return;
+        if (scenario === 'evidence' && ['review', 'fresh'].includes(id)) return;
         const item = document.createElement('li');
         item.dataset.mobileNode = id;
         const detail = definitions[id];
@@ -224,12 +263,18 @@
         icon.appendChild(svgElement('use', { href: iconReference(detail.icon) }));
         const copy = document.createElement('div');
         const actor = document.createElement('strong');
-        actor.textContent = moduleLabels[id];
+        actor.textContent = scenario === 'evidence' ? exchanges[id] : moduleLabels[id];
         const state = document.createElement('small');
         state.setAttribute('data-node-state', '');
         const next = document.createElement('span');
         next.className = 'wf-mobile-next';
-        next.setAttribute('data-mobile-next', '');
+        if (scenario === 'evidence') {
+          next.textContent = id === 'effect' ? 'Fingerprint, not JWT; backend checks current state.'
+            : id === 'present' ? (evidenceCase === 'missing' ? 'No JWT in this attempted call.'
+              : 'JWT in _meta["threadlight/evidence"].')
+              : id === 'proposal' ? 'returns_verify_purchase over authenticated HTTPS.'
+                : id === 'proof' ? evidenceCases[evidenceCase].proof : '';
+        } else next.setAttribute('data-mobile-next', '');
         copy.append(actor, state, next); item.append(icon, copy); mobile.appendChild(item);
       });
       route.forEach((id, index) => {
@@ -255,6 +300,14 @@
       root.dataset.playing = String(playing); root.dataset.scenario = scenario;
       root.dataset.evidenceCase = evidenceCase;
       evidencePanel.hidden = scenario !== 'evidence';
+      evidenceJwt.hidden = scenario !== 'evidence';
+      evidenceChoices.forEach(choice => { choice.checked = choice.value === evidenceCase; });
+      evidenceSequence.querySelectorAll('[data-evidence-step]').forEach(node => {
+        const steps = node.dataset.evidenceStep.split(' ');
+        node.toggleAttribute('hidden', !steps.some(id => route.includes(id)));
+        if (steps.includes(current)) node.setAttribute('aria-current', 'step');
+        else node.removeAttribute('aria-current');
+      });
       story.textContent = selected().story;
       title.textContent = `Illustration · ${step + 1} / ${route.length}`;
       stateLabel.textContent = stageState(scenario, step, step, evidenceCase);
@@ -268,12 +321,12 @@
       for (const [selector, key] of [['[data-flow-node]', 'flowNode'], ['[data-mobile-node]', 'mobileNode']]) {
         root.querySelectorAll(selector).forEach((node) => {
           const id = node.dataset[key];
-          if (id === 'proof') node.toggleAttribute('hidden', scenario !== 'evidence');
+          if (['proof', 'present'].includes(id)) node.toggleAttribute('hidden', scenario !== 'evidence');
           const used = usedModules(scenario, evidenceCase).includes(id);
           const state = moduleState(scenario, id, step, evidenceCase);
           node.dataset.used = String(used);
           node.dataset.stageState = state;
-          node.setAttribute('aria-label', `${moduleLabels[id]}: ${state}`);
+          node.setAttribute('aria-label', `${node.querySelector('strong')?.textContent || moduleLabels[id]}: ${state}`);
           const stateText = node.querySelector('[data-node-state]');
           if (stateText) stateText.textContent = state;
           const number = node.querySelector('[data-flow-number]');
@@ -358,15 +411,15 @@
       pause(); scenario = tab.dataset.flowScenario; step = 0; exampleApproved = false;
       buildPath(); render();
     }
-    evidenceSelect.addEventListener('change', () => {
-      if (!Object.hasOwn(evidenceCases, evidenceSelect.value)) {
+    evidenceChoices.forEach(choice => choice.addEventListener('change', () => {
+      if (!Object.hasOwn(evidenceCases, choice.value)) {
         console.error('Unknown evidence illustration; selection unchanged.');
-        evidenceSelect.value = evidenceCase;
+        render();
         return;
       }
-      pause(); evidenceCase = evidenceSelect.value; step = 0; exampleApproved = false;
+      pause(); evidenceCase = choice.value; step = 0; exampleApproved = false;
       buildPath(); render();
-    });
+    }));
     const selectEvidenceLink = () => {
       if (window.location.hash === '#production-input-proof') {
         select(tabs.find(tab => tab.dataset.flowScenario === 'evidence'));

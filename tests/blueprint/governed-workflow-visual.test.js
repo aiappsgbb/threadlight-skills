@@ -31,7 +31,13 @@ test('product illustration is static-first with separate pre-effect and business
   assert.ok((html.match(/data-component-icon/g) || []).length >= 5);
   assert.match(read('docs/production.html'), /href="\.\/agent-governance\.html#overview"[^>]*>Try the guided workbook/);
   assert.doesNotMatch(read('docs/agent-governance.html'), /data-flow-node=/);
-  assert.doesNotMatch(html, /<iframe|<form|<input|<canvas|pass.fail|payment executed/i);
+  assert.doesNotMatch(html, /<iframe|<form|<canvas|pass.fail|payment executed/i);
+  const inputs = [...html.matchAll(/<input\b[^>]*>/g)].map(match => match[0]);
+  assert.equal(inputs.length, 3);
+  for (const input of inputs) {
+    assert.match(input, /type="radio"/);
+    assert.match(input, /data-flow-evidence-case/);
+  }
 });
 
 test('all executable illustration paths acknowledge authorization before effects', () => {
