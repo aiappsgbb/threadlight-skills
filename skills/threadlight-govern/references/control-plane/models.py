@@ -139,6 +139,7 @@ class DecisionReceipt(StrictModel):
     image_digest: Digest
     recorded_at: Timestamp
     probe: ProbeContext | None = Field(default=None, exclude_if=lambda value: value is None)
+    evidence_fingerprint: Digest | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def probe_binding(self):

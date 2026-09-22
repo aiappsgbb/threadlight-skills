@@ -40,15 +40,19 @@ test('waiting, current, completed and not-required are distinct semantic states'
   assert.equal(actorState('supervisor', 'control', 4), 'In progress');
 });
 
-test('the existing deep-dive component map names actual trust and transport boundaries', () => {
+test('the component map separates the primary path from support while the guide retains exact boundaries', () => {
   const document = read('docs/agent-governance-deep-dive.md');
   const diagram = document.match(/<!-- diagram: effect-boundaries -->\s*```mermaid\n([\s\S]*?)```/)[1];
-  for (const term of ['local OPA', 'Control plane', 'Governance store', 'Logic App',
-    'Outlook', 'ARM', 'Business API', 'Cosmos', 'downstream identity', 'Unbound read']) {
+  for (const term of ['ActionPath', 'SharedServices', 'Governed gateway - PEP',
+    'Business service + data', 'Control plane', 'Authority records']) {
     assert.ok(diagram.includes(term), term);
   }
-  assert.match(document, /Citadel\/APIM.*model gateway/s);
-  assert.match(document, /not.*governed MCP effect gateway/s);
+  for (const term of ['Open Policy Agent (OPA)', 'Logic Apps', 'Outlook',
+    'Azure Resource Manager (ARM)', 'Business API', 'Cosmos', 'Downstream identity', 'Unbound']) {
+    assert.ok(document.includes(term), term);
+  }
+  assert.match(document, /Citadel with Azure API Management \(APIM\).*model gateway/s);
+  assert.match(document, /not\s+this business-effect gateway/s);
   assert.equal([...document.matchAll(/<!-- diagram: effect-boundaries -->/g)].length, 1);
   assert.match(read('scripts/render-governance-diagrams.mjs'), /--diagram/);
 });

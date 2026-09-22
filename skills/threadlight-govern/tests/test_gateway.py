@@ -68,7 +68,7 @@ class Credential:
 class GatewayHarness:
     async def initialize(self, path, decision=None, post=None, approval=False, policy_id="safe",
                          additional_nonapproval=False, additional_approval_roles=None, document=None,
-                         downstream_transport=None):
+                         downstream_transport=None, rego_source=None, rego_package="gateway"):
         import yaml
         from test_policy_bundle import bundle_module
         self.cp = Harness()
@@ -93,14 +93,15 @@ class GatewayHarness:
             points["post_tool_call"] = ("$.tool_result", post)
         manifest = {
             "agent_control_specification_version": "0.3.1-beta",
-            "policies": {"safe": {"type": "rego", "data": ["safe.rego"], "query": "data.gateway.pre_tool_call"}},
+            "policies": {"safe": {"type": "rego", "data": ["safe.rego"],
+                                  "query": f"data.{rego_package}.pre_tool_call"}},
             "intervention_points": {
-                point: {"policy_target": target, "policy": {"id": "safe", "query": f"data.gateway.{point}"}}
+                point: {"policy_target": target, "policy": {"id": "safe", "query": f"data.{rego_package}.{point}"}}
                 for point, (target, _) in points.items()
             },
         }
         (source / "manifest.yaml").write_text(yaml.safe_dump(manifest))
-        (source / "safe.rego").write_text("package gateway\nimport rego.v1\n" + "\n".join(
+        (source / "safe.rego").write_text(rego_source or "package gateway\nimport rego.v1\n" + "\n".join(
             f"{point} := " + (value if isinstance(value, str) else json.dumps(value))
             for point, (_, value) in points.items()))
         (source / "gateway-registry.json").write_text(json.dumps(self.document))

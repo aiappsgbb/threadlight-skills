@@ -511,6 +511,12 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_returns_read_audit.py",
              "skills/threadlight-deploy/tests/test_hosted_cohort.py",
              "skills/threadlight-deploy/tests/test_returns_mcp_backend.py",
+             "skills/threadlight-deploy/tests/test_returns_evidence.py",
+             "skills/threadlight-deploy/tests/test_evidence_generation.py",
+             "skills/threadlight-deploy/tests/test_returns_reconcile.py",
+             "skills/threadlight-govern/tests/test_evidence_attestations.py",
+             "skills/threadlight-govern/tests/test_evidence_gateway.py",
+             "skills/threadlight-govern/tests/test_adversarial_evidence.py",
              "tests/ci/test_hosted_bootstrap_lifecycle.py",
               "skills/threadlight-safe-check/tests",
                "skills/_shared/tests/test_governance.py",
@@ -685,6 +691,17 @@ for name, record in {sdk_wheels!r}.items():
         }
         required_cases.update(MCP_REQUIRED_CASES)
         required_cases.update(DEFERRED_REQUIRED_CASES)
+        required_cases.update({
+            "test_standard_jwt_and_semantic_renewal",
+            "test_evidence_required_before_policy_and_automatic_allow",
+            "test_renewal_preserves_consent_but_changed_evidence_does_not",
+            "test_same_pep_and_native_rego_accept_loan_fixture_claims",
+            "test_ghcp_relay_binds_and_hoists_evidence_without_resume_claim",
+            "test_authenticated_provider_route_retains_result_and_backend_rejects_correction",
+            "test_generator_preserves_signed_evidence_and_portable_verifier",
+            "test_real_pep_adversarial_matrix_records_receipts_and_business_observations",
+            "test_interrupted_model_conversation_cannot_make_overall_result_green",
+        })
         required_cases.add("test_native_probe_permissions_require_an_actual_native_binding")
         if not required_cases <= {case.attrib["name"] for case in cases}:
             raise RuntimeError("required native generation probes did not run")

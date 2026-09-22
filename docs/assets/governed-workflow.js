@@ -20,7 +20,7 @@
   };
   const definitions = {
     proposal: { actor: 'Agent', actors: ['agent'], title: 'Agent proposes', action: 'Propose the exact case action', output: 'Exact case request', short: 'Exact proposal', icon: 'branch' },
-    checks: { actor: 'Governed MCP gateway', actors: ['gateway'], title: 'Gateway decides', action: 'Evaluate local ACS/Rego and trusted facts', output: '', icon: 'shield' },
+    checks: { actor: 'Governed MCP gateway', actors: ['gateway'], title: 'Gateway enforces', action: 'Verify evidence, evaluate local ACS policy and enforce the verdict', output: '', icon: 'shield' },
     'denial-audit': { actor: 'Control plane', actors: ['control'], title: 'Control plane records denial', action: 'Persist the denial audit', output: 'Denial audit recorded', short: 'Denial recorded', icon: 'policy' },
     deny: { actor: 'Governed MCP gateway', actors: ['gateway'], title: 'Return blocked', action: 'Return the blocked outcome', output: 'No business write', icon: 'stop' },
     pending: { actor: 'Control plane + Logic Apps', actors: ['control'], title: 'Register review request', action: 'Persist intent and send the Outlook request', output: 'pending_approval', short: 'Pending approval', icon: 'policy' },
@@ -51,7 +51,7 @@
   const STEP_MS = 2500;
   const moduleOrder = ['proposal', 'checks', 'deny', 'review', 'fresh', 'ack', 'effect', 'result'];
   const moduleLabels = { proposal: 'Agent proposes', checks: 'Gateway checks', deny: 'Stop / no effect',
-    review: 'Outlook review', fresh: 'Fresh checks', ack: 'Control plane / audit', effect: 'Backend write', result: 'Decision + audit' };
+    review: 'Outlook review', fresh: 'Fresh checks', ack: 'Shared authority checks', effect: 'Backend write', result: 'Decision + audit' };
   const stepModule = id => ({ 'denial-audit': 'ack', pending: 'ack', verify: 'ack' }[id] || id);
   function usedModules(scenario) {
     return { normal: ['proposal', 'checks', 'ack', 'effect', 'result'],
@@ -241,7 +241,7 @@
         if (used) edge.setAttribute('marker-end', 'url(#wf-arrow)');
         else edge.removeAttribute('marker-end');
       });
-      authorityLabel.textContent = scenario === 'invalid' ? 'Denial audit' : scenario === 'supervisor' ? 'Control plane' : 'Audit ACK';
+      authorityLabel.textContent = scenario === 'invalid' ? 'Denial audit' : scenario === 'supervisor' ? 'Review + audit' : 'Audit confirmed';
       authorityDetail.textContent = scenario === 'invalid' ? 'Before blocked return' : scenario === 'supervisor'
         ? ({ pending: 'Pending request', verify: 'One-use grant', ack: 'Authorization ACK' }[current] || 'Authority + ACK')
         : 'Before the effect';

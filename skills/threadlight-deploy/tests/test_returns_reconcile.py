@@ -71,7 +71,8 @@ def test_business_success_requires_independent_audit_and_receipt():
                              central=[], operations=[], audits=[], read_audits=[])
 
 
-def test_reconciliation_links_business_result_to_exact_receipt_and_completed_operation():
+@pytest.mark.parametrize("evidence", [False, True])
+def test_reconciliation_links_business_result_to_exact_receipt_and_completed_operation(evidence):
     m = module()
     expected = binding()
     arguments = {"case_id": "case", "decision": "approve_refund", "reason": "private-reason"}
@@ -79,6 +80,8 @@ def test_reconciliation_links_business_result_to_exact_receipt_and_completed_ope
     facts = {"tenant": expected["tenant_id"], "subject": expected["principal"],
              "client": expected["client_id"], "action": "returns_apply_decision", "scope": "returns",
              "policy": expected["policy_digest"], "deployment": m.deployment(expected)}
+    if evidence:
+        facts["evidence_fingerprint"] = "sha256:" + "e" * 64
     action_hash = m.digest({"facts": facts, "arguments": arguments})
     receipt = {"receipt_id": "receipt-1", "correlation_id": "operation-1", "decision": "allow",
                "action_hash": action_hash, "policy_digest": expected["policy_digest"],
@@ -86,15 +89,19 @@ def test_reconciliation_links_business_result_to_exact_receipt_and_completed_ope
     central = [{"scope": "tenant", "body": {"owner": "gateway", "receipt": receipt}}]
     audit = {"id": "decision-1", "kind": "decision-audit", "result": result, "arguments": arguments,
              "provenance": {"action_hash": action_hash, "receipt_id": "receipt-1"}}
+    if evidence:
+        audit["provenance"]["evidence_fingerprint"] = facts["evidence_fingerprint"]
     operations = [{"id": "operation-1", "scope": m.digest(["tenant", "agent", "returns_apply_decision"]),
                    "body": {"state": "completed", "receipt_id": "receipt-1",
                             "action_hash": action_hash, "facts_hash": m.digest(facts)}}]
-    rows = m.reconcile_response(response("returns_apply_decision", arguments, result),
+    call_arguments = {**arguments, **({"governance_evidence": "PRIVATE-JWT"} if evidence else {})}
+    rows = m.reconcile_response(response("returns_apply_decision", call_arguments, result),
                                 binding=expected, gateway_principal="gateway", central=central,
                                 operations=operations, audits=[audit], read_audits=[])
     assert rows[0]["body"]["status"] == "completed"
     assert rows[0]["body"]["policy_receipts"] == ["receipt-1"]
     assert "private-reason" not in str(rows)
+    assert "PRIVATE-JWT" not in str(rows)
     scope = operations[0]["scope"]
     operations[0]["scope"] = "foreign"
     with pytest.raises(ValueError, match="completed_gateway_operation"):

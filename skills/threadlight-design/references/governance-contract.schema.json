@@ -60,7 +60,8 @@
         "operator-review",
         "output",
         "output-mediation",
-        "signed-policy-bundle"
+        "signed-policy-bundle",
+        "signed-evidence"
       ]
     },
     "requirementList": {
@@ -78,7 +79,8 @@
           "operator-review",
           "output",
           "output-mediation",
-          "signed-policy-bundle"
+          "signed-policy-bundle",
+          "signed-evidence"
         ]
       },
       "uniqueItems": true
@@ -215,10 +217,16 @@
               "operator-review",
               "output",
               "output-mediation",
-              "signed-policy-bundle"
+              "signed-policy-bundle",
+              "signed-evidence"
             ]
           },
-          "uniqueItems": true
+          "uniqueItems": true,
+          "not": {
+            "contains": {
+              "const": "signed-evidence"
+            }
+          }
         }
       }
     },
@@ -317,7 +325,8 @@
               "operator-review",
               "output",
               "output-mediation",
-              "signed-policy-bundle"
+              "signed-policy-bundle",
+              "signed-evidence"
             ]
           },
           "uniqueItems": true
@@ -327,6 +336,30 @@
         }
       },
       "allOf": [
+        {
+          "if": {
+            "properties": {
+              "requires": {
+                "contains": {
+                  "const": "signed-evidence"
+                }
+              }
+            },
+            "required": ["requires"]
+          },
+          "then": {
+            "properties": {
+              "enforcement_path": {
+                "const": "governed-tool-gateway"
+              },
+              "intervention_points": {
+                "contains": {
+                  "const": "pre_tool_call"
+                }
+              }
+            }
+          }
+        },
         {
           "if": {
             "properties": {

@@ -24,6 +24,7 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 from govern_control_plane.models import Identifier, canonical, parse, strict_json
+from govern_control_plane.attestations import EVIDENCE_ARGUMENT, EVIDENCE_META
 from govern_control_plane.review import validate_pending_review
 from skills._shared.governance import validate_governance_contract
 
@@ -184,7 +185,8 @@ class GovernedMCPTools:
             if method == "tools/call":
                 params = document["params"]
                 if (call is None or params.get("name") != call["name"]
-                        or canonical(params.get("arguments", {})) != call["arguments"]):
+                        or canonical(params.get("arguments", {})) != call["arguments"]
+                        or params.get("_meta", {}).get(EVIDENCE_META) != call.get("evidence")):
                     raise GatewayToolError("threadlight:gateway_action_changed")
                 request.headers["Idempotency-Key"] = call["key"]
             await guard()
@@ -266,6 +268,7 @@ class GovernedMCPTools:
 
     def _function(self, name, descriptor, *, deferred_connect=False):
         deferred = (descriptor.get("_meta") or {}).get("threadlight.approval_mode") == "deferred"
+        evidence_selected = (descriptor.get("_meta") or {}).get("threadlight.evidence") == EVIDENCE_META
         schema = deepcopy(descriptor["inputSchema"])
         if deferred:
             if "governance_operation_id" in schema.get("properties", {}):
@@ -283,13 +286,17 @@ class GovernedMCPTools:
                     if self._descriptors != self._deferred_descriptors:
                         raise GatewayToolError("threadlight:gateway_inventory_changed")
             operation = arguments.pop("governance_operation_id", None) if deferred else None
+            evidence = arguments.pop(EVIDENCE_ARGUMENT, None) if evidence_selected else None
             if operation is not None:
                 operation = parse(Identifier, canonical(operation))
-            call = {"name": name, "arguments": canonical(arguments), "key": operation or uuid.uuid4().hex}
+            call = {"name": name, "arguments": canonical(arguments), "key": operation or uuid.uuid4().hex,
+                    "evidence": evidence}
             async with self._session(call=call) as session:
                 if await self._inventory(session) != self._descriptors:
                     raise GatewayToolError("threadlight:gateway_inventory_changed")
-                reply = await session.call_tool(name, arguments=deepcopy(arguments))
+                reply = await session.call_tool(
+                    name, arguments=deepcopy(arguments),
+                    **({"meta": {EVIDENCE_META: evidence}} if evidence is not None else {}))
             body = reply.structuredContent
             if not isinstance(body, dict):
                 raise GatewayToolError("threadlight:gateway_invalid_result")

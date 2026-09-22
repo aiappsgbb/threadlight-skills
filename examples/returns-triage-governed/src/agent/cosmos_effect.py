@@ -124,6 +124,19 @@ class CosmosEffectTransport(AsyncHttpTransport):
             yield
 
     @contextmanager
+    def append_evidence(self, check, container, partition_key, document):
+        if (not isinstance(document, dict) or set(document) != {"id", "scope", "body"}
+                or not isinstance(document["id"], str) or not document["id"].startswith("evidence-")
+                or document["scope"] != partition_key or not isinstance(document["body"], dict)
+                or document["body"].get("kind") != "evidence-verification"
+                or set(document["body"]) - {"kind", "profile", "case_id", "revision", "status",
+                                           "recorded_at", "retention_policy", "fingerprint", "sources", "claims"}):
+            reject_effect()
+        with self._guarded_batch(
+                check, container, partition_key, [{"operationType": "Create", "resourceBody": document}]):
+            yield
+
+    @contextmanager
     def _guarded_batch(self, check, container, partition_key, expected):
         if not any(container is owned for owned in self._containers):
             reject_effect()

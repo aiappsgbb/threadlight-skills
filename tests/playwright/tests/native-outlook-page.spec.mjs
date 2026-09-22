@@ -10,7 +10,8 @@ for (const theme of ['light', 'dark']) {
     await expect(journey).toContainText('Human reviewer');
     await expect(journey).toContainText('Outlook');
     await expect(journey).toContainText('one-use');
-    await expect(journey.getByRole('list', { name: 'Who does what' }).locator(':scope > li')).toHaveCount(5);
+    await expect(journey.getByRole('list', { name: 'Primary business-action path' }).locator(':scope > li')).toHaveCount(3);
+    await expect(journey.getByRole('list', { name: 'Supporting authority services' }).locator(':scope > li')).toHaveCount(2);
     await journey.getByRole('tab', { name: 'Human review', exact: true }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
     const violations = (await new AxeBuilder({ page }).include('#effect-authority')

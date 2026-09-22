@@ -17,9 +17,13 @@ from azure.cosmos.exceptions import CosmosResourceNotFoundError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import httpx
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, model_validator
 
 from govern_control_plane.auth import EntraAuth, Settings, Unauthorized
+from govern_control_plane.attestations import (
+    EvidenceError, EvidenceGrant, EvidenceProvider, EvidenceRequirement, SourceReference,
+    VerificationResult, evidence_content,
+)
 from govern_control_plane.models import (
     Digest, Identifier, ObjectId, StrictModel, canonical, parse, strict_json,
 )
@@ -40,6 +44,45 @@ class Decision(StrictModel):
 
 def digest(value):
     return "sha256:" + hashlib.sha256(canonical(value)).hexdigest()
+
+
+def purchase_evidence(case, arguments):
+    """The operator-controlled purchase snapshot is corroboration, not an uploaded receipt."""
+    purchase = case.get("purchase")
+    if (case.get("id") != arguments["case_id"] or case.get("_etag") != arguments["expected_etag"]
+            or case.get("kind") != "case" or case.get("case_id") != case.get("id")
+            or not isinstance(purchase, dict)
+            or set(purchase) != {"reference", "revision", "customer_id", "amount", "currency"}
+            or not isinstance(case.get("customer_id"), str)
+            or type(case.get("amount")) is not int or case["amount"] < 0
+            or type(purchase.get("amount")) is not int
+            or purchase["customer_id"] != case["customer_id"] or purchase["amount"] != case["amount"]
+            or purchase.get("currency") != case.get("currency") or not case.get("currency")
+            or type(case.get("defect_declared", False)) is not bool):
+        return None
+    return VerificationResult(
+        subject=case["customer_id"], case_id=case["id"], revision=case["_etag"],
+        sources=[SourceReference(
+            reference=purchase["reference"], revision=purchase["revision"], digest=digest(purchase))],
+        claims={"purchase_verified": True, "amount": case["amount"],
+                "defect_declared": case.get("defect_declared", False)})
+
+
+class PurchaseAdapter:
+    def __init__(self, container):
+        self.container = container
+
+    async def verify(self, identity, arguments):
+        args = Decision.model_validate(arguments)
+        case = await self.container.read_item(args.case_id, partition_key=args.case_id)
+        return purchase_evidence(case, arguments)
+
+
+def verify_purchase_binding(case, arguments, *, requirement, facts, expected_fingerprint):
+    result = purchase_evidence(case, arguments)
+    if (result is None or result.subject != requirement.subjects.get(case["id"])
+            or digest(evidence_content(requirement, facts, arguments, result)) != expected_fingerprint):
+        raise BusinessConflict()
 
 
 CASE_FIELDS = ("id", "_etag", "status", "amount", "eligible", "high_risk")
@@ -120,6 +163,35 @@ class Configuration(Settings):
     policy_digest: Digest
     deployment: dict
     read_audit_container: Identifier | None = None
+    evidence_requirement: EvidenceRequirement | None = Field(
+        default=None, exclude_if=lambda value: value is None)
+    evidence_container: Identifier | None = None
+    evidence_retention_seconds: Annotated[int, Field(gt=0, le=2147483647)] | None = None
+    business_retention_policy: Identifier | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_evidence(cls, value):
+        if isinstance(value, dict) and "evidence_requirement" in value and value["evidence_requirement"] is None:
+            raise ValueError("evidence_configuration_required")
+        return value
+
+    @model_validator(mode="after")
+    def evidence_scope(self):
+        if self.evidence_requirement is not None:
+            requirement = self.evidence_requirement
+            if (requirement.profile != "returns-purchase-v1" or requirement.purpose != "record-return"
+                    or requirement.case_field != "case_id" or requirement.revision_field != "expected_etag"
+                    or set(requirement.subjects) != set(self.cases)
+                    or self.key_id not in {key.kid for key in requirement.keys}
+                    or not self.evidence_container or not self.evidence_retention_seconds
+                    or not self.business_retention_policy
+                    or self.evidence_container in (self.cosmos_container, self.read_audit_container)):
+                raise ValueError("returns_evidence_configuration_required")
+        elif any(value is not None for value in (
+                self.evidence_container, self.evidence_retention_seconds, self.business_retention_policy)):
+            raise ValueError("returns_evidence_opt_in_required")
+        return self
 
 
 def create_app():
@@ -157,6 +229,34 @@ def create_app():
             auth = EntraAuth(config, http)
             await auth.health()
             state.update(container=container, auth=auth, transport=transport)
+            if config.evidence_requirement is not None:
+                from azure.keyvault.keys.aio import KeyClient
+                from azure.keyvault.keys.crypto.aio import CryptographyClient
+                from govern_control_plane.storage import KeyVaultSigner
+                crypto = await stack.enter_async_context(CryptographyClient(
+                    config.key_id, credential, retry_total=0))
+                keys = await stack.enter_async_context(KeyClient(
+                    config.key_id.split("/keys/")[0], credential, retry_total=0))
+                signer = KeyVaultSigner(crypto, key_client=keys)
+                await signer.health()
+                evidence_transport = CosmosEffectTransport(endpoint=config.cosmos_url)
+                evidence_store = await evidence_transport.connect(
+                    stack=stack, credential=credential, database=config.cosmos_database,
+                    container=config.evidence_container)
+                properties = await evidence_store.read()
+                if (properties.get("partitionKey", {}).get("paths") != ["/scope"]
+                        or properties.get("defaultTtl") != config.evidence_retention_seconds):
+                    raise ValueError("explicit_business_evidence_retention_required")
+                state.update(evidence_store=evidence_store, evidence_transport=evidence_transport,
+                    evidence=EvidenceProvider(
+                        requirement=config.evidence_requirement, action="returns_apply_decision",
+                        tenant=config.tenant_id, signer=signer, key_id=config.key_id,
+                        adapter=PurchaseAdapter(container),
+                        grants=[EvidenceGrant(
+                            principal=config.agent_subject,
+                            client=config.workloads[config.agent_subject].client_id,
+                            case_id=case_id, subject=subject)
+                            for case_id, subject in config.evidence_requirement.subjects.items()]))
             if config.read_audit_container is not None:
                 audit_transport = CosmosEffectTransport(endpoint=config.cosmos_url)
                 audit = await audit_transport.connect(
@@ -194,6 +294,11 @@ def create_app():
             "receipt_id": parse(Identifier, canonical(request.headers.get("x-governance-provenance"))),
             "action_hash": parse(Digest, canonical(request.headers.get("x-action-hash"))),
         }
+        if config.evidence_requirement is not None:
+            result["evidence_fingerprint"] = parse(
+                Digest, canonical(request.headers.get("x-evidence-fingerprint")))
+        elif request.headers.get("x-evidence-fingerprint") is not None:
+            raise BusinessConflict()
         operation = "decision-" + digest([config.tenant_id, config.agent_subject, key])[7:]
         return operation, result
 
@@ -215,6 +320,10 @@ def create_app():
     @app.exception_handler(BusinessConflict)
     async def conflict(request, error):
         return JSONResponse({"error": "business_conflict"}, status_code=409)
+
+    @app.exception_handler(EvidenceError)
+    async def evidence_error(request, error):
+        return JSONResponse({"status": "unavailable", "reason_code": str(error)}, status_code=503)
 
     @app.exception_handler(ValidationError)
     async def invalid(request, error):
@@ -259,6 +368,51 @@ def create_app():
             return JSONResponse({"error": "not_found"}, status_code=404)
         return {"receipt_id": operation, "result": record["result"]}
 
+    if config.evidence_requirement is not None:
+        @app.post("/evidence/purchase")
+        async def verify_purchase(request: Request):
+            identity = await authenticated(request)
+            body = bytearray()
+            async with asyncio.timeout(15):
+                async for chunk in request.stream():
+                    body.extend(chunk)
+                    if len(body) > 16384:
+                        return JSONResponse({"error": "request_too_large"}, status_code=413)
+                try:
+                    arguments = Decision.model_validate(strict_json(bytes(body))).model_dump()
+                except ValueError:
+                    return JSONResponse({"error": "invalid_request"}, status_code=422)
+                result = await state["evidence"].issue(identity, arguments)
+                # Business verification retention is independent of token validity.
+                from govern_control_plane.attestations import verify_attestation
+                facts = {"tenant": identity.tenant, "subject": identity.subject,
+                         "client": identity.client, "action": "returns_apply_decision"}
+                verified = (verify_attestation(result["attestation"], config.evidence_requirement,
+                                               facts, arguments)
+                            if result["status"] == "verified" else None)
+                document = {
+                    "id": "evidence-" + uuid.uuid4().hex, "scope": config.tenant_id + ":" + identity.subject,
+                    "body": {
+                        "kind": "evidence-verification", "profile": config.evidence_requirement.profile,
+                        "case_id": arguments["case_id"], "revision": arguments["expected_etag"],
+                        "status": result["status"], "recorded_at": datetime.now(timezone.utc).isoformat(),
+                        "retention_policy": config.business_retention_policy,
+                        **({"fingerprint": verified.fingerprint, "sources": verified.safe["sources"],
+                            "claims": verified.safe["claims"]} if verified else {}),
+                    },
+                }
+                async def reauthorize():
+                    await authenticated(request)
+                    if verified:
+                        verified.fresh()
+                with state["evidence_transport"].append_evidence(
+                        reauthorize, state["evidence_store"], document["scope"], document):
+                    await reauthorize()
+                    await state["evidence_store"].execute_item_batch(
+                        batch_operations=[("create", (document,), {})], partition_key=document["scope"])
+                await reauthorize()
+                return result
+
     @app.post("/decisions")
     async def decide(request: Request):
         await authenticated(request, writer=True)
@@ -282,6 +436,8 @@ def create_app():
             "action": "returns_apply_decision", "scope": "returns",
             "policy": config.policy_digest, "deployment": config.deployment,
         }
+        if config.evidence_requirement is not None:
+            facts["evidence_fingerprint"] = proof["evidence_fingerprint"]
         if digest({"facts": facts, "arguments": arguments}) != proof["action_hash"]:
             raise BusinessConflict()
         previous = await existing(operation, proof)
@@ -291,6 +447,10 @@ def create_app():
             return {"receipt_id": operation, "result": previous["result"]}
         container = state["container"]
         case = await container.read_item(args.case_id, partition_key=args.case_id)
+        if config.evidence_requirement is not None:
+            verify_purchase_binding(
+                case, arguments, requirement=config.evidence_requirement, facts=facts,
+                expected_fingerprint=proof["evidence_fingerprint"])
         operations, result = decision_batch(
             case, arguments, operation_id=operation, provenance=proof)
 

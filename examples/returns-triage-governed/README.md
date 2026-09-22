@@ -10,6 +10,10 @@ The assistant correlates RMA → order → customer and records exactly one outc
 
 ## Actual enforcement path
 
+The separate MCP returns variant now offers [signed purchase evidence](../../docs/signed-evidence.md).
+This canonical native local example retains its existing trusted-context checks;
+its LOCAL-14 evidence does not establish JWT provider coverage.
+
 ```text
 existing Citadel model proxy
   → pinned MAF Agent / ResponsesHostServer

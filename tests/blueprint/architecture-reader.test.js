@@ -12,7 +12,8 @@ test('architecture report leads with scope, a contents map and implementation, n
     'Human approval and safe resume', 'State, audit and recovery', 'Implementation map',
     'Limits and adoption']) assert.ok(report.includes(heading), heading);
   assert.ok((report.match(/\]\(#/g) || []).length >= 9, 'Navigable contents');
-  assert.ok(report.split(/\s+/).length <= 4000, 'Keep the main reading path concise');
+  const mainReadingPath = report.replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '');
+  assert.ok(mainReadingPath.split(/\s+/).length <= 4000, 'Keep the main reading path concise');
   const proseWithoutLinkTargets = report.replace(/\]\([^)]*\)/g, ']');
   assert.doesNotMatch(proseWithoutLinkTargets, /public hosted execution snapshot|S[123]-HOSTED|ProvisioningError|Billing Issue|2026-09-|sha256:[a-f0-9]{64}/i);
   for (const topic of ['content safety', 'IAM', 'model gateway', 'network isolation',
@@ -85,7 +86,7 @@ test('technical guide follows the public domains and expands the contracts with 
 test('guide separates upstream execution, installed compatibility packages and Threadlight implementation', () => {
   const report = read('docs/agent-governance-deep-dive.md');
   for (const phrase of ['Native components and Threadlight code', 'AGT core package',
-    'not the full AGT stack', 'responsibleai/agent-hooks', 'create_agent_hooks_middleware',
+    'not the full Agent Governance Toolkit (AGT) stack', 'responsibleai/agent-hooks', 'create_agent_hooks_middleware',
     'Threadlight implements', 'Public Preview']) assert.ok(report.includes(phrase), phrase);
   assert.match(report, /policy-engine/);
   assert.match(report, /solution-review-2026-09-15\.md#agt-upstream-status/);
@@ -110,11 +111,9 @@ test('dated upstream assessment distinguishes current activity, migration and pr
 test('production feedback links resolve to the clarified governance guide snapshot', () => {
   const page = read('docs/production.html');
   const links = [...page.matchAll(/href="(https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[^/"]+\/docs\/agent-governance-deep-dive\.md)(?:#[^"]*)?"/g)];
-  const expected = 'https://github.com/aiappsgbb/threadlight-skills/blob/af45bbb88cea9931082da3f20c289fa4feb73399/docs/agent-governance-deep-dive.md';
-  const current = 'https://github.com/aiappsgbb/threadlight-skills/blob/6f597065fd26eae1664611df2d21396352ef10d1/docs/agent-governance-deep-dive.md';
+  const current = 'https://github.com/aiappsgbb/threadlight-skills/blob/7ef20742ac78cfe2e86db4abf21a6135916a5f64/docs/agent-governance-deep-dive.md';
   assert.equal(links.length, 3, 'Privacy boundary, detailed reading and closing CTA');
-  assert.equal(links.filter(([, target]) => target === expected).length, 2);
-  assert.equal(links.filter(([, target]) => target === current).length, 1);
+  assert.equal(links.filter(([, target]) => target === current).length, 3);
 });
 
 test('root guidance records the completed private human reference without extending its proof', () => {

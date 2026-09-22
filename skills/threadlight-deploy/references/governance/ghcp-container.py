@@ -257,7 +257,7 @@ class McpRelay:
             key = hashlib.sha256(canonical([
                 self.invocation_id, event["sessionId"], event["toolCallId"],
             ])).hexdigest()
-            body = canonical([event["toolName"], event["arguments"]])
+            body = hashlib.sha256(canonical([event["toolName"], event["arguments"]])).digest()
             previous = self.tickets.get(key)
             if previous is not None and previous != body:
                 raise ValueError("governance_call_identity_reused")
@@ -287,11 +287,17 @@ class McpRelay:
                     if method == "tools/call":
                         params = document["params"]
                         key = params.get("_meta", {}).get("threadlight/call")
-                        if (not key or self.tickets.get(key) != canonical([
-                                params["name"], params.get("arguments", {})])):
+                        if (not key or self.tickets.get(key) != hashlib.sha256(canonical([
+                                params["name"], params.get("arguments", {})])).digest()):
                             return JSONResponse({"error": "invalid_call_identity"}, 403)
                         headers["Idempotency-Key"] = key
                         headers["X-Correlation-ID"] = key
+                        from govern_control_plane.attestations import EVIDENCE_ARGUMENT, EVIDENCE_META
+                        evidence = params.get("arguments", {}).pop(EVIDENCE_ARGUMENT, None)
+                        if EVIDENCE_META in params.get("_meta", {}):
+                            raise ValueError("caller_evidence_metadata_unsupported")
+                        if evidence is not None:
+                            params.setdefault("_meta", {})[EVIDENCE_META] = evidence
                     # MCP's protocol header is not an identity claim.
                     if "MCP-Protocol-Version" in request.headers:
                         headers["MCP-Protocol-Version"] = request.headers["MCP-Protocol-Version"]

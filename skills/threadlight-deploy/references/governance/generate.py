@@ -462,6 +462,8 @@ def validate_bundle_contract(bundle, document, config, registry=None):
     actions = {action.name: action for action in registry.actions}
     for tool in selected:
         action = actions[tool["id"]]
+        if ("signed-evidence" in tool["requires"]) != (action.evidence_requirement is not None):
+            raise ValueError("signed_registry_evidence_requirement_mismatch")
         if document["framework"] == "github-copilot-sdk" and action.approval_mode == "deferred":
             raise ValueError("ghcp_deferred_approval_resume_unsupported")
         post = tool["policy_binding"] if "post_tool_call" in tool["intervention_points"] else None

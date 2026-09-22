@@ -1,5 +1,10 @@
 # Real returns agent through governed MCP
 
+The new [signed purchase-evidence opt-in](../../../../docs/signed-evidence.md) is
+local implementation, not part of the historical live proofs below. It keeps the
+same backend decision/CAS path and adds a separately authenticated named provider
+tool; a declared defect is not a verified defect.
+
 This bounded demo uses a **real Azure model -> native MAF -> authenticated MCP
 gateway -> separately authenticated business API -> Cosmos case/audit transaction**.
 It records recommendations and supervisor handoffs, **never financial settlement**.

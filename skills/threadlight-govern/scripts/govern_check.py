@@ -106,7 +106,9 @@ def evaluate(root: str, freshness_days: int = 90, *, bundle_path: str | None = N
         })
         man["gaps"].append({
             "binding_id": binding_id, "status": status,
-            "reason_code": "explicitly-unbound" if status == "unbound" else "runtime-proof-required",
+            "reason_code": ("explicitly-unbound" if status == "unbound" else
+                            "signed-evidence-proof-required" if "signed-evidence" in tool.get("requires", [])
+                            else "runtime-proof-required"),
             "evidence_refs": refs,
         })
         man["coverage"]["tools_total"] += 1

@@ -11,8 +11,8 @@ const visual = () => read('docs/production.html')
 test('product illustration is static-first with separate pre-effect and business records', () => {
   const html = visual();
   assert.ok(html, 'compact decision path in Production');
-  for (const token of ['Agent', 'Gateway', 'Control plane',
-    'Backend', 'Decision + audit', 'central audit ACK',
+  for (const token of ['Agent', 'Gateway', 'Shared authority checks',
+    'Backend', 'Decision + audit', 'audit ACK',
     'No model, mailbox or backend is connected',
     'Allowed', 'Blocked', 'Human review']) assert.ok(html.includes(token), token);
   for (const node of ['proposal', 'checks', 'ack', 'effect', 'result']) {

@@ -27,8 +27,10 @@ without a returned audit_id. You have no payment, direct database or shell tool.
 """
 
 
-def contract():
-    return {
+def contract(*, evidence=False):
+    if type(evidence) is not bool:
+        raise ValueError("explicit_boolean_evidence_selection_required")
+    document = {
         "framework": "microsoft-agent-framework",
         "governance": {
             "mode": "selective",
@@ -53,6 +55,12 @@ def contract():
             },
         ],
     }
+    if evidence:
+        document["tools"][0]["requires"].append("signed-evidence")
+        document["tools"].append({
+            **document["tools"][1], "id": "returns_verify_purchase",
+        })
+    return document
 
 
 def model_client(config, credential):
@@ -82,7 +90,7 @@ async def build_agent(config, stack):
     from govern_control_plane.storage import KeyVaultSigner
     from maf_gateway import create_gateway_agent
 
-    config = {**config, "contract": contract()}
+    config = {**config, "contract": contract(evidence=config.get("evidence_enabled", False))}
     credential = await stack.enter_async_context(ManagedIdentityCredential(
         client_id=config["agent_client_id"], retry_total=0))
     http = await stack.enter_async_context(httpx.AsyncClient(
@@ -101,8 +109,16 @@ async def build_agent(config, stack):
     reads = await build_read_tools(config, credential, stack, http=http)
     model = await stack.enter_async_context(model_client(config, credential))
     client = OpenAIChatClient(model=config["model_deployment"], async_client=model)
+    instructions = INSTRUCTIONS
+    if config.get("evidence_enabled", False):
+        instructions += (
+            "\nBefore returns_apply_decision call returns_verify_purchase with the EXACT proposed arguments. "
+            "Only use its attestation as governance_evidence; never invent claims. "
+            "Insufficient evidence is not approval. A declared defect is not a verified defect. "
+            "On resume, obtain a fresh token for the same arguments if needed; never change the operation ID "
+            "to bypass unknown outcomes or a changed source revision.")
     return await create_gateway_agent(
-        config=config, client=client, local_tools=reads, instructions=INSTRUCTIONS,
+        config=config, client=client, local_tools=reads, instructions=instructions,
         credential=credential, authorize=authority.authorize)
 
 
@@ -129,7 +145,7 @@ async def build_read_tools(config, credential, stack, *, http=None):
             raise ValueError("business_read_case_mismatch")
         return result
 
-    return [FunctionTool(
+    tools = [FunctionTool(
         name="returns_get_case", description="Read the authoritative synthetic return case and revision.",
         input_model={
             "type": "object", "additionalProperties": False,
@@ -137,6 +153,38 @@ async def build_read_tools(config, credential, stack, *, http=None):
             "required": ["case_id"],
         },
         func=read_case, result_parser=SKIP_PARSING)]
+    if config.get("evidence_enabled", False):
+        async def verify_purchase(**arguments):
+            if arguments["case_id"] not in config["cases"]:
+                raise ValueError("case_outside_declared_scope")
+            token = await credential.get_token(config["business_scope"])
+            try:
+                response = await http.post(
+                    config["business_url"] + "/evidence/purchase", json=arguments,
+                    headers={"Authorization": "Bearer " + token.token})
+                response.raise_for_status()
+                if len(response.content) > 32768:
+                    raise ValueError("evidence_response_limit")
+                result = response.json()
+                if result.get("status") not in ("verified", "insufficient_evidence"):
+                    raise ValueError("evidence_response_invalid")
+                return result
+            except (httpx.HTTPError, ValueError):
+                raise ValueError("evidence_provider_unavailable") from None
+        tools.append(FunctionTool(
+            name="returns_verify_purchase",
+            description="Request purchase corroboration from the authorized backend; never certifies a defect.",
+            input_model={
+                "type": "object", "additionalProperties": False,
+                "properties": {
+                    "case_id": {"type": "string", "enum": config["cases"]},
+                    "expected_etag": {"type": "string", "maxLength": 128},
+                    "decision": {"type": "string", "enum": [
+                        "approve_refund", "deny_refund", "escalate_to_supervisor", "request_more_info"]},
+                    "reason": {"type": "string", "minLength": 1, "maxLength": 512}},
+                "required": ["case_id", "expected_etag", "decision", "reason"]},
+            func=verify_purchase, result_parser=SKIP_PARSING))
+    return tools
 
 
 def configure_state(config):
@@ -164,11 +212,14 @@ async def run(args):
             "runtime": "native-MAF-Azure-model-governed-MCP",
             "hosting": "operator-VM-not-Foundry-hosted",
             "started_at": started, "completed_at": datetime.now(timezone.utc).isoformat(),
-            "policy_digest": config["policy_digest"], "response": response.to_dict(),
+            "policy_digest": config["policy_digest"],
+            "response": ({"capture": "disabled-for-signed-evidence"} if config.get("evidence_enabled", False)
+                         else response.to_dict()),
         }
         with args.output.open("x") as output:
             json.dump(document, output, indent=2)
-        print(response.text)
+        if not config.get("evidence_enabled", False):
+            print(response.text)
         print(f"Recorded native response: {args.output}")
 
 
