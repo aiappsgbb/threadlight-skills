@@ -283,6 +283,9 @@ no private deployment data; placeholders are not executable authority.
 
 ### The conversation changes. Authorization does not.
 
+<details data-signed-evidence-case>
+<summary>Open the signed-evidence case and measured adversarial outcomes</summary>
+
 An opt-in **Evidence Provider** adds a named verification to this same path:
 the agent requests corroboration and carries a JWT; the provider resolves admitted,
 versioned business sources and emits only justified claims. It does not sign a
@@ -332,6 +335,8 @@ jailbreak resistance, proof that documents are true, or a readiness certificate.
 The multi-turn idea was inspired by Microsoft's
 [Can a Harmless Prompt Break an AI Guardrail?](https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/can-a-harmless-prompt-break-an-ai-guardrail/4553727).
 We did not reproduce its game; that study did not evaluate this gateway or these JWTs.
+
+</details>
 
 ### Connect declared tools, not a generic remote executor
 

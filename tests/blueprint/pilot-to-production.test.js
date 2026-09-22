@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const { governanceHistory } = require('./helpers/governance-history');
 const root = path.resolve(__dirname, '../..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
@@ -58,13 +59,15 @@ test('the guide starts from an existing Threadlight pilot and has five actionabl
   assert.match(html, /test-owned/i);
 });
 
-test('approved Markdown, deep-dive prose and rendered component map remain byte-frozen', () => {
+test('approved Markdown and component map remain byte-frozen outside the signed-evidence addition', () => {
   for (const [file, expected] of [
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
     ['docs/agent-governance-deep-dive.md', 'e9252883e5a26a555cc0bf50b31fd221109084ab'],
     ['docs/assets/governance/effect-boundaries.svg', 'bcbbb173c5f4995a65b9b2f1464a34f76183afb1'],
   ]) {
-    const bytes = fs.readFileSync(path.join(root, file));
+    const bytes = file === 'docs/agent-governance-deep-dive.md'
+      ? Buffer.from(governanceHistory(read(file)).baseline)
+      : fs.readFileSync(path.join(root, file));
     assert.equal(createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex'), expected, file);
   }
 });

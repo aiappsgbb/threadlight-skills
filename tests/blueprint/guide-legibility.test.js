@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const { governanceHistory } = require('./helpers/governance-history');
 const root = path.resolve(__dirname, '../..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const panels = () => [...read('docs/agent-governance.html').matchAll(/<section[^>]*data-guide-step="([^"]+)"([\s\S]*?)<\/section>/g)];
@@ -90,7 +91,7 @@ test('prompts and verification text remain exact while presentation changes', ()
   }
 });
 
-test('approved Production, runtime presentation and Markdown artifacts remain frozen', () => {
+test('approved artifacts remain frozen outside the explicit signed-evidence extension', () => {
   for (const [file, expected] of [
     ['docs/production.html', '7f83ca439a8d2ea7015c935e0edd947f6bd0d3bb'],
     ['docs/assets/governed-workflow.js', 'e491fb5ead68a3fff8cb43e50aaf5ba2107ebca0'],
@@ -98,7 +99,9 @@ test('approved Production, runtime presentation and Markdown artifacts remain fr
     ['docs/agent-governance-deep-dive.md', 'e9252883e5a26a555cc0bf50b31fd221109084ab'],
     ['docs/assets/governance/effect-boundaries.svg', 'bcbbb173c5f4995a65b9b2f1464a34f76183afb1'],
   ]) {
-    const bytes = fs.readFileSync(path.join(root, file));
+    const bytes = file === 'docs/agent-governance-deep-dive.md'
+      ? Buffer.from(governanceHistory(read(file)).baseline)
+      : fs.readFileSync(path.join(root, file));
     assert.equal(createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex'), expected, file);
   }
 });

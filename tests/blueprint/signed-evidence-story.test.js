@@ -2,9 +2,18 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { governanceHistory } = require('./helpers/governance-history');
 
 const root = path.resolve(__dirname, '../..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+
+test('the new deep-dive extension is bounded and leaves its historical baseline intact', () => {
+  const { extensions } = governanceHistory(read('docs/agent-governance-deep-dive.md'));
+  assert.equal(extensions.length, 1);
+  assert.ok(extensions[0].split(/\s+/).length <= 625);
+  assert.match(extensions[0], /not a security boundary/);
+  assert.match(extensions[0], /GPT-5\.4/);
+});
 
 test('existing governance chapter separates illustration, model execution and deterministic PEP proof', () => {
   const html = read('docs/governance.html');

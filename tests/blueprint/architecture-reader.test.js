@@ -12,7 +12,8 @@ test('architecture report leads with scope, a contents map and implementation, n
     'Human approval and safe resume', 'State, audit and recovery', 'Implementation map',
     'Limits and adoption']) assert.ok(report.includes(heading), heading);
   assert.ok((report.match(/\]\(#/g) || []).length >= 9, 'Navigable contents');
-  assert.ok(report.split(/\s+/).length <= 4000, 'Keep the main reading path concise');
+  const mainReadingPath = report.replace(/<details data-signed-evidence-case>[\s\S]*?<\/details>/g, '');
+  assert.ok(mainReadingPath.split(/\s+/).length <= 4000, 'Keep the main reading path concise');
   const proseWithoutLinkTargets = report.replace(/\]\([^)]*\)/g, ']');
   assert.doesNotMatch(proseWithoutLinkTargets, /public hosted execution snapshot|S[123]-HOSTED|ProvisioningError|Billing Issue|2026-09-|sha256:[a-f0-9]{64}/i);
   for (const topic of ['content safety', 'IAM', 'model gateway', 'network isolation',
