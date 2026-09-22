@@ -36,7 +36,7 @@ test('product illustration is static-first with separate pre-effect and business
 
 test('all executable illustration paths acknowledge authorization before effects', () => {
   const { scenarios } = require('../../docs/assets/governed-workflow.js');
-  assert.deepEqual(Object.keys(scenarios), ['normal', 'invalid', 'supervisor']);
+  assert.deepEqual(Object.keys(scenarios), ['normal', 'invalid', 'supervisor', 'evidence']);
   for (const name of ['normal', 'supervisor']) {
     const steps = scenarios[name].steps;
     assert.ok(steps.indexOf('checks') < steps.indexOf('ack'), name);

@@ -6,15 +6,17 @@ import path from 'node:path';
 test('prior diagram stays fixed while unused modules lose every arrow and gain explicit labels', async ({ page }) => {
   await page.goto('/production.html#workflow-in-action');
   const flow = page.locator('#workflow-in-action');
-  const geometry = () => flow.locator('.wf-diagram [data-flow-node]').evaluateAll(nodes =>
+  const geometry = () => flow.locator('.wf-diagram [data-flow-node]:not([data-flow-node="proof"])').evaluateAll(nodes =>
     nodes.map(node => [node.dataset.flowNode, node.getAttribute('transform'),
       node.querySelector('rect').getAttribute('width'), node.querySelector('rect').getAttribute('height')]));
   const baseline = await geometry();
   expect(baseline).toHaveLength(8);
-  for (const label of ['Allowed', 'Blocked', 'Human review']) {
+  await expect(flow.locator('[data-flow-node="proof"]')).toHaveAttribute('transform', 'translate(20 156)');
+  for (const label of ['Allowed', 'Blocked', 'Human review', 'Signed evidence']) {
     await flow.getByRole('tab', { name: label, exact: true }).click();
     expect(await geometry()).toEqual(baseline);
-    const unused = flow.locator('.wf-diagram [data-used="false"]');
+    await expect(flow.locator('[data-flow-node="proof"]')).toHaveAttribute('data-used', String(label === 'Signed evidence'));
+    const unused = flow.locator('.wf-diagram [data-used="false"]:not([hidden])');
     expect(await unused.count()).toBeGreaterThan(0);
     for (const node of await unused.all()) await expect(node.locator('[data-unused-label]')).toHaveText('Not used on this path');
     const invalidEdges = await flow.locator('.wf-diagram [data-flow-edge]').evaluateAll(edges =>

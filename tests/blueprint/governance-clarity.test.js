@@ -71,20 +71,15 @@ test('public surfaces carry the same explanation and distinguish primary actors 
   assert.match(read('docs/governance.html'), /Agent Control Specification/);
 });
 
-test('signed input evidence is a visible tool-policy prerequisite on all three surfaces', () => {
+test('signed input evidence is explained by the expert data story and the public policy scenario', () => {
   const visibleDeep = deep().replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '');
   assert.match(visibleDeep, /### A tool policy can require signed input evidence/);
   assert.match(visibleDeep, /signed-evidence/);
   assert.match(visibleDeep, /evidence_requirement/);
-  for (const file of ['docs/governance.html', 'docs/production.html']) {
-    const visible = read(file).replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '');
-    const policy = visible.match(/<div[^>]*data-input-evidence-policy[^>]*>([\s\S]*?)<\/div>/)?.[1];
-    assert.ok(policy, `${file}: required input proof cannot be hidden in an experiment or glossary`);
-    for (const term of ['Evidence Provider', 'signed', 'signature', 'case', 'inputs', 'approval']) {
-      assert.ok(policy.includes(term), `${file}: ${term}`);
-    }
-    assert.match(policy, /not.*(?:every document|universal)/s);
-  }
+  assert.match(read('docs/production.html'), /data-flow-scenario="evidence"/);
+  assert.match(read('docs/production.html'), /data-flow-evidence-case/);
+  assert.match(read('docs/governance.html'), /href="\.\/production\.html#production-input-proof"/);
+  assert.match(visibleDeep, /not universal document certification/);
   assert.match(read('docs/governance.html'), /input attestations.*different.*assurance evidence/is);
 });
 

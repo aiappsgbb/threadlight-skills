@@ -131,6 +131,8 @@ test('scenario tabs and progress support keyboard selection with visible path st
   expect(await flow.locator('[data-flow-edge][data-on-path="true"]').evaluateAll(nodes =>
     nodes.map(node => node.dataset.flowEdge))).toEqual(['proposal:checks', 'checks:ack', 'ack:deny']);
   await page.keyboard.press('End');
+  await expect(flow.getByRole('tab', { name: 'Signed evidence', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
   await expect(flow.getByRole('tab', { name: 'Human review', exact: true })).toBeFocused();
   await flow.getByRole('button', { name: 'Step 4: Person decides in Outlook', exact: true }).click();
   await expect(flow).toHaveAttribute('data-node', 'review');

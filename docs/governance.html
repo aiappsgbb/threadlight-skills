@@ -21,7 +21,7 @@
 <link rel="canonical" href="https://aiappsgbb.github.io/threadlight-skills/governance.html">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
-<link rel="stylesheet" href="assets/governance.css?v=ee5cac4e">
+<link rel="stylesheet" href="assets/governance.css?v=683446b6">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
 <link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
 </head>
@@ -102,20 +102,9 @@
       <h2>Same request.<br><em>Different decision.</em></h2>
       <p class="governance-intro">The main path is agent &rarr; gateway &rarr; business system.
         A binding selects the rules and route for one tool. Open a case to see why that action can proceed or must stop.</p>
-      <div class="input-evidence-policy" data-input-evidence-policy aria-labelledby="governance-input-proof">
-        <h3 id="governance-input-proof">A tool policy can require signed input evidence.</h3>
-        <p><strong>Example: no new return decision without corroborated purchase and amount.</strong>
-          Being below the automatic amount limit is not enough.</p>
-        <ol>
-          <li><strong>The agent obtains proof.</strong> It calls the authorized <b>Evidence Provider</b> for a named verification.</li>
-          <li><strong>The provider verifies, then signs.</strong> Admitted sources justify specific claims in a signed
-            JSON Web Token (JWT), not a statement invented by the model.</li>
-          <li><strong>The gateway enforces the prerequisite.</strong> It checks signature, issuer, expiry, case/revision
-            and actual inputs before policy accepts the claims. Missing or mismatched proof blocks the new effect.</li>
-        </ol>
-        <p>Human approval of the action does not replace missing proof. A signed verification is <strong>not universal document certification</strong>;
-          it covers only the facts checked. Valid proof can be reused within its scope and lifetime.</p>
-      </div>
+      <p class="governance-intro" id="governance-input-proof"><strong>One policy example: require corroborated purchase and amount.</strong>
+        An Evidence Provider signs the checked facts; the gateway verifies that proof against the call.
+        <a href="./production.html#production-input-proof">Compare missing, valid and changed proof in the Signed evidence tab &rarr;</a></p>
       <p class="governance-note"><strong>Shared services support the gateway.</strong>
         The control plane supplies signed policy, verified human approvals and durable audit confirmation.
         It is not another business executor. The gateway enforces the decision; the backend owns the transaction.</p>

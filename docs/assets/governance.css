@@ -106,15 +106,6 @@
 .governance-glossary dl { display: grid; grid-template-columns: 140px 1fr; gap: 16px; padding: 0 8px 16px; }
 .governance-glossary dt { font-family: var(--mono); }
 .governance-glossary dd { margin: 0; color: var(--ink-1); }
-.chapter-governance .input-evidence-policy { margin: 32px 0; padding: 24px 0; border-block: 1px solid var(--line-2); }
-.chapter-governance .input-evidence-policy h3 { margin: 0 0 20px; font: 500 clamp(26px, 3vw, 34px)/1.2 var(--serif); color: var(--ink-0); }
-.chapter-governance .input-evidence-policy p { max-width: 75ch; color: var(--ink-1); line-height: 1.7; font-size: 15px; }
-.chapter-governance .input-evidence-policy ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; padding-left: 22px; margin: 24px 0; }
-.chapter-governance .input-evidence-policy li { min-width: 0; padding-right: 8px; color: var(--ink-1); font-size: 15px; line-height: 1.7; }
-.chapter-governance .input-evidence-policy li strong { display: block; color: var(--ink-0); margin-bottom: 8px; }
-@media (max-width: 760px) {
-  .chapter-governance .input-evidence-policy ol { grid-template-columns: 1fr; gap: 18px; }
-}
 
 .evidence-section { background: radial-gradient(ellipse at 10% 50%, var(--accent-soft), transparent 65%); }
 .evidence-ladder { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 28px; padding: 28px 0; margin: 40px 0 24px; border-block: 1px solid var(--line-2); }

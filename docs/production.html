@@ -23,7 +23,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
-<link rel="stylesheet" href="assets/governed-workflow.css?v=b885395d">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=77a1a25f">
 <style>
   /* Page-local layout and contrast; retain the shared Threadlight tokens and navigation. */
   html { scroll-padding-top: var(--production-scroll-offset, 72px); }
@@ -694,17 +694,6 @@
     <p class="action-boundary">The gateway receives tool calls through <strong>Model Context Protocol (MCP)</strong>
       and acts as the <strong>Policy Enforcement Point (PEP)</strong>.
       <strong>Agent Control Specification (ACS)</strong> evaluates its local policy; the gateway enforces the verdict.</p>
-    <div class="input-evidence-policy" data-input-evidence-policy aria-labelledby="production-input-proof">
-      <h3 id="production-input-proof">Some tools require signed proof before a new effect.</h3>
-      <p>Tool policy can require purchase and amount proof even below the automatic limit.
-        The agent obtains a signed attestation from an <strong>Evidence Provider</strong>
-        that verifies admitted sources, not model-supplied claims.</p>
-      <p>The agent carries it with the tool call. The gateway checks <strong>signature, issuer, validity,
-        case/revision and actual inputs</strong> before policy evaluates the claims.
-        Missing or mismatched proof blocks the new effect; human approval of the action cannot replace it.</p>
-      <p>“Certified” means signed verification of specific facts, <strong>not universal document certification</strong>.
-        The backend checks current business state and owns the transaction.</p>
-    </div>
     <h3 class="action-layer-title">The main path: agent &rarr; gateway &rarr; business system</h3>
     <ol class="action-actors" data-action-primary aria-label="Primary business-action path">
       <li data-action-actor="agent"><svg data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg><strong>Agent <small data-actor-state>In progress</small></strong><span>Obtains required evidence and proposes a recommendation; no database-write or signing credentials.</span></li>
@@ -728,19 +717,30 @@
       Protected decisions use the gateway; the backend rejects unauthorized direct writes.
       The result is a recommendation, <strong>not a payment</strong>.</p>
     <div id="action-architecture" data-visual="effect-sequence">
-      <h3 class="action-layer-title">What must happen before a write</h3>
+      <h3 class="action-layer-title" id="production-input-proof">What must happen before a write</h3>
       <p class="action-boundary">These are checks, not a chain of business executors.
         The gateway obtains authority and audit confirmation from shared services, then calls the backend.</p>
       <!-- governed-flow:start -->
-      <div id="workflow-in-action" data-governed-flow role="region" aria-label="Three decision paths">
+      <div id="workflow-in-action" data-governed-flow role="region" aria-label="Four policy scenarios">
         <svg class="wf-symbols" width="0" height="0" aria-hidden="true" focusable="false"><defs><symbol id="wf-icon-stop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m8 8 8 8m0-8-8 8"/></g></symbol></defs></svg>
         <div class="wf-panel">
           <div class="wf-tabs" role="tablist" aria-label="Decision scenario" data-flow-controls hidden>
             <button type="button" role="tab" id="wf-tab-normal" aria-controls="wf-case" data-flow-scenario="normal" aria-selected="true"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-shield"/></svg><span>Allowed</span></button>
             <button type="button" role="tab" id="wf-tab-invalid" aria-controls="wf-case" data-flow-scenario="invalid" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-stop"/></svg><span>Blocked</span></button>
             <button type="button" role="tab" id="wf-tab-supervisor" aria-controls="wf-case" data-flow-scenario="supervisor" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-person"/></svg><span>Human review</span></button>
+            <button type="button" role="tab" id="wf-tab-evidence" aria-controls="wf-case" data-flow-scenario="evidence" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-policy"/></svg><span>Signed evidence</span></button>
           </div>
           <div id="wf-case" role="tabpanel" aria-labelledby="wf-tab-normal">
+            <div class="wf-evidence" data-flow-evidence hidden>
+              <p><strong>Policy example: corroborate purchase and amount.</strong>
+                The agent obtains signed proof from an Evidence Provider; the gateway verifies it before policy evaluates the inputs.</p>
+              <label for="wf-evidence-case">Purchase proof</label>
+              <select id="wf-evidence-case" data-flow-evidence-case>
+                <option value="missing">Missing purchase proof</option>
+                <option value="valid">Valid proof for this request</option>
+                <option value="changed">Changed revision: r7 to r8</option>
+              </select>
+            </div>
             <p class="wf-story" data-flow-story>Eligible return &mdash; record a recommendation, not a payment.</p>
             <svg class="wf-diagram" viewBox="0 0 1100 215" role="img" aria-labelledby="wf-map-title wf-map-desc">
               <title id="wf-map-title">Checks required before a selected business action</title>
@@ -758,6 +758,8 @@
                 <path class="wf-edge" data-flow-edge="review:fresh" d="M405 183H465" hidden/>
                 <path class="wf-edge" data-flow-edge="fresh:ack" d="M550 156V133" hidden/>
                 <path class="wf-edge" data-flow-edge="ack:deny" d="M550 60V47" hidden/>
+                <path class="wf-edge" data-flow-edge="proposal:proof" d="M100 128V151" hidden/>
+                <path class="wf-edge" data-flow-edge="proof:checks" d="M180 183H213V94H240" hidden/>
               </g>
               <g data-node-layer>
                 <g class="wf-node" data-flow-node="proposal" data-used="true" transform="translate(20 60)">
@@ -792,6 +794,10 @@
                   <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="12" y="15" width="24" height="24"/>
                   <text class="wf-label" x="43" y="25">Fresh checks</text><text class="wf-detail" x="43" y="43">Same proposal</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
                 </g>
+                <g class="wf-node" data-flow-node="proof" data-used="false" transform="translate(20 156)" hidden>
+                  <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-policy" x="12" y="15" width="24" height="24"/>
+                  <text class="wf-label" x="43" y="25">Evidence</text><text class="wf-detail" x="43" y="43">Provider check</text><text class="wf-number" x="145" y="13" data-flow-number></text>
+                </g>
               </g>
             </svg>
             <ol class="wf-mobile" aria-label="Selected action path">
@@ -804,7 +810,10 @@
               <li data-mobile-node="effect" data-used="true"><div><strong>Backend write</strong><small>Waiting</small><span>Next: Decision + audit</span></div></li>
               <li data-mobile-node="result" data-used="true"><div><strong>Decision + audit</strong><small>Waiting</small></div></li>
             </ol>
-            <p class="wf-static-note">The allowed path is shown. A blocked proposal records a denial in the control plane and ends with no business write. A human-reviewed request is registered, waits in Outlook, then needs a verified grant, fresh checks, one-use consumption and audit ACK before a write.</p>
+            <p class="wf-static-note">The allowed path is shown. A blocked proposal records a denial with no write.
+              Human review waits in Outlook for a verified grant, fresh checks and audit ACK.
+              Signed evidence requires provider-verified purchase proof: missing or changed proof blocks the new effect;
+              valid matching proof still needs policy and backend checks.</p>
             <ol class="wf-progress" data-flow-progress aria-label="Illustration steps" data-flow-controls hidden></ol>
             <div class="wf-caption-line">
               <div class="wf-status" data-flow-status role="status" aria-live="polite" aria-atomic="true">
@@ -874,6 +883,6 @@
 <script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
 <script src="assets/production.js?v=96331334"></script>
-<script src="assets/governed-workflow.js?v=8dae9910"></script>
+<script src="assets/governed-workflow.js?v=038bfb1b"></script>
 </body>
 </html>
