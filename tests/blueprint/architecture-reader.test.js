@@ -111,11 +111,9 @@ test('dated upstream assessment distinguishes current activity, migration and pr
 test('production feedback links resolve to the clarified governance guide snapshot', () => {
   const page = read('docs/production.html');
   const links = [...page.matchAll(/href="(https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[^/"]+\/docs\/agent-governance-deep-dive\.md)(?:#[^"]*)?"/g)];
-  const expected = 'https://github.com/aiappsgbb/threadlight-skills/blob/af45bbb88cea9931082da3f20c289fa4feb73399/docs/agent-governance-deep-dive.md';
-  const current = 'https://github.com/aiappsgbb/threadlight-skills/blob/6f597065fd26eae1664611df2d21396352ef10d1/docs/agent-governance-deep-dive.md';
+  const current = 'https://github.com/aiappsgbb/threadlight-skills/blob/7ef20742ac78cfe2e86db4abf21a6135916a5f64/docs/agent-governance-deep-dive.md';
   assert.equal(links.length, 3, 'Privacy boundary, detailed reading and closing CTA');
-  assert.equal(links.filter(([, target]) => target === expected).length, 2);
-  assert.equal(links.filter(([, target]) => target === current).length, 1);
+  assert.equal(links.filter(([, target]) => target === current).length, 3);
 });
 
 test('root guidance records the completed private human reference without extending its proof', () => {

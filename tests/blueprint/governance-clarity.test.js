@@ -98,3 +98,12 @@ test('the agent obtains required evidence before the governed call and policy re
   assert.ok(source.indexOf('Verify required attestation') < source.indexOf('Evaluate policy'));
   assert.match(diagram('effect-boundaries'), /signed proof if required/i);
 });
+
+test('active Production architecture links use the reviewed immutable deep-dive revision', () => {
+  const links = [...read('docs/production.html').matchAll(
+    /href="(https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[a-f0-9]+\/docs\/agent-governance-deep-dive\.md[^"]*)"/g)];
+  assert.equal(links.length, 3);
+  for (const [, link] of links) {
+    assert.ok(link.includes('/blob/7ef20742ac78cfe2e86db4abf21a6135916a5f64/'), link);
+  }
+});
