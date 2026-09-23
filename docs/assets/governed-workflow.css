@@ -123,7 +123,7 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #workflow-in-action [data-flow-play-icon][data-icon="play"] path { fill: currentColor; stroke: none; }
 #workflow-in-action .wf-transport [data-flow-control="voice"] { gap: 6px; }
 #workflow-in-action .wf-transport [data-flow-control="voice"][aria-pressed="true"] { background: var(--chapter-accent-soft); border-color: var(--ink-0); }
-#workflow-in-action .wf-narration { margin: 12px calc(-1 * var(--wf-panel-pad)); padding: 14px var(--wf-panel-pad); border-block: 1px solid var(--line-2); background: var(--bg-2); color: var(--ink-0); }
+#workflow-in-action .wf-narration { margin: 8px calc(-1 * var(--wf-panel-pad)); padding: 10px var(--wf-panel-pad); border-block: 1px solid var(--line-2); background: var(--bg-2); color: var(--ink-0); }
 #workflow-in-action .wf-narration p { margin: 0; min-block-size: 3.2em; max-width: none; font: 600 16px/1.6 var(--sans); }
 #workflow-in-action .wf-transport [data-next-label] { margin-left: 6px; font-size: 11px; }
 #workflow-in-action .wf-transport svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
