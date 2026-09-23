@@ -277,6 +277,7 @@ def main():
     os.set_inheritable(fd, False)
     sys.path[:0] = [str(root), str(project / "src/agent"),
                     str(root / "skills/threadlight-govern/references"),
+                    str(root / "skills/threadlight-local-test/references/quickstart/threadlight_quickstart"),
                     str(root / "skills/threadlight-deploy/references/governance")]
     counter = 0
     def emit(event, **fields):

@@ -77,6 +77,7 @@ def source_fingerprints(root, project):
     project_files.add(project / "scripts/local_probe.py")
     runner_files = set((root / "skills/threadlight-govern/references/runtime").glob("*.py"))
     runner_files.update((root / "skills/threadlight-deploy/references/governance").glob("*.py"))
+    runner_files.add(root / "skills/threadlight-local-test/references/quickstart/threadlight_quickstart/skill_approval.py")
     runner_files.update(root / "skills/_shared" / name for name in (
         "governance.py", "native_validation.py", "native_local_evidence.py",
         "local_control_fixture.py", "local_model_fixture.py", "governance-upstream-pin.json"))

@@ -27,6 +27,7 @@ from govern_control_plane.models import Identifier, canonical, parse, strict_jso
 from govern_control_plane.attestations import EVIDENCE_ARGUMENT, EVIDENCE_META
 from govern_control_plane.review import validate_pending_review
 from skills._shared.governance import validate_governance_contract
+from skill_approval import RequireResolvedApprovals
 
 
 class GatewayToolError(ToolExecutionException):
@@ -375,4 +376,5 @@ async def create_gateway_agent(*, config, client, local_tools, instructions, cre
     return GatewayAgent(
         client=client, id=config["agent_id"], name=config["agent_id"],
         instructions=instructions, tools=[*local_tools, *functions],
-        context_providers=list(context_providers), default_options={"store": False})
+        context_providers=list(context_providers), default_options={"store": False},
+        middleware=[RequireResolvedApprovals()])

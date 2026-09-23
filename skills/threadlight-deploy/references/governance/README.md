@@ -12,6 +12,13 @@ amd64 and the shared published pins. `generate.py --help` is the executable
 entrypoint; package inputs are JSON. No customer identifiers are baked into these
 templates.
 
+MAF hosts implement the [autonomous trusted skill-read contract](../../../_shared/maf-skill-approval.md)
+using provider-specific read exemptions, not global tool approval. Scripts and
+business governance remain unchanged. `copy_sources()` vendors the quickstart's
+portable `skill_approval.py`; its `RequireResolvedApprovals` boundary makes
+unhandled native user-input requests explicit failures in complete/streamed runs.
+This does not replace signed deferred gateway review/resume.
+
 For the executed public Foundry hosted business variant, see the
 [returns MCP runbook](returns-mcp-demo.md#public-authenticated-hosted-path-september-13)
 and its scenario-specific evidence record. The generator supports an optional

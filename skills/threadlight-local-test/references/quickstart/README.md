@@ -35,6 +35,27 @@ python -m threadlight_quickstart             # full UI
 
 (`cp` the bundled `Makefile.demo` into the PoC root if you want `make demo`.)
 
+## Unattended skill loading
+
+MAF >=1.10 requires approval for skill tools by default. This package uses native
+provider-specific read exemptions, supported by its unchanged 1.13.0 SDK baseline,
+for **trusted local** instructions and resources only. Do not point the skills
+directory at unreviewed uploads. Scripts remain approval-required and no script
+runner is installed; business-tool policies are unchanged.
+
+`build_agent()` installs `RequireResolvedApprovals`: remaining
+`user_input_requests` raise `ApprovalRequiredError` (`approval_required`) before
+being mistaken for report text, including streaming. The existing Streamlit
+error path displays and records the error; headless callers must fail the turn
+rather than parse it as JSON. `--check` tests discovery/stub CRUD only, not model
+consumption. See the [shared contract](../../../_shared/maf-skill-approval.md).
+
+Offline regression (real native MAF dispatch, deterministic model, no Azure):
+
+```bash
+PYTHONPATH=. python -m pytest tests/test_skill_approval.py -q
+```
+
 ## Try the fixture without a real PoC
 
 ```bash

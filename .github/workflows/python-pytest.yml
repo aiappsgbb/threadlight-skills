@@ -81,6 +81,23 @@ permissions:
   contents: read
 
 jobs:
+  native-skill-approval:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Install quickstart with its minimum supported native SDK
+        run: >-
+          python -m pip install
+          "./skills/threadlight-local-test/references/quickstart[test]"
+          "agent-framework==1.13.0" "agent-framework-core==1.13.0"
+      - name: Real native skill dispatch and unattended approval boundaries
+        # Deterministic model only; actual Agent, SkillsProvider and dispatch.
+        run: python -m pytest skills/threadlight-local-test/references/quickstart/tests/ -q
   native-agentops-release:
     runs-on: ubuntu-latest
     permissions:

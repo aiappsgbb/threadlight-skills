@@ -72,7 +72,8 @@ test('the two runtime skill-loading explanations match shipped adapters', () => 
   assert.match(html, /skill_directories/);
   assert.match(html, /SkillsProvider\.from_paths/);
   assert.match(read('skills/threadlight-deploy/references/governance/ghcp-container.py'), /skill_directories=\[str\(base \/ "skills"\)\]/);
-  assert.match(read('skills/threadlight-deploy/references/governance/maf-container.py'), /SkillsProvider\.from_paths\(skills\)/);
+  assert.match(read('skills/threadlight-deploy/references/governance/maf-container.py'),
+    /SkillsProvider\.from_paths\(\s*skills,\s*disable_load_skill_approval=True,\s*disable_read_skill_resource_approval=True/);
   const policy = JSON.parse(read('skills/threadlight-design/references/runtime-policy.json'));
   assert.ok(policy.compatible_combinations.some(route => route.runtime_shape === 'workflow'));
   assert.match(html, /runtime route/i);

@@ -19,7 +19,8 @@ packages:
     upstream_changelog: https://pypi.org/project/agent-framework/#history
     notes: |
       MAF surface used by Pattern 0 wiring: Agent, SkillsProvider.from_paths,
-      @tool decorator. Same pin family as foundry-hosted-agents to keep the
+      @tool decorator, provider-specific read approval flags and native
+      response middleware. Same pin family as foundry-hosted-agents to keep the
       Pattern 0 → prod-deploy ergonomic story consistent.
   - name: streamlit
     source: pypi
@@ -87,7 +88,11 @@ validation:
 
     # MAF surface used by Pattern 0 must import cleanly.
     python - <<'PY'
-    from agent_framework import Agent, SkillsProvider, tool
+    from agent_framework import Agent, AgentMiddleware, SkillsProvider, ResponseStream, tool
+    import inspect
+    parameters = inspect.signature(SkillsProvider.from_paths).parameters
+    assert "disable_load_skill_approval" in parameters
+    assert "disable_read_skill_resource_approval" in parameters
     print("ok agent-framework surface")
     PY
 
@@ -152,6 +157,13 @@ end-to-end against `fixture-poc`.
   catalog uses; refresh in lock-step with the rest.
 
 ## Known issues
+
+**Skill approval defaults changed in MAF 1.10.0.** The quickstart now opts only
+trusted provider reads out of approval using native flags available in 1.13.0,
+and rejects remaining approvals explicitly. See the
+[shared contract](../../_shared/maf-skill-approval.md) and the real dispatch
+regression in `quickstart/tests/test_skill_approval.py`. Import checks and
+`--check` alone do not establish skill consumption.
 
 **`agent-framework 1.9.0` is no longer installable from PyPI.** The break needs
 no commit on our side, which is what makes it worth writing down.

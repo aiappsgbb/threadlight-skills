@@ -7,6 +7,19 @@ field.
 
 ## [Unreleased]
 
+### Autonomous MAF skill reads
+
+- Fix unattended business-skill loading after MAF's intentional 1.10 approval
+  default change. Quickstart and generated native/gateway MAF hosts exempt only
+  trusted packaged `load_skill`/`read_skill_resource` tools through native
+  provider flags supported by the existing 1.13/1.14 pins.
+- Preserve script, unrelated/MCP tool and business/governance approvals.
+  Unhandled native approval requests now fail explicitly, including streaming,
+  rather than appearing as empty completed reports. No automatic consent.
+- Add real SDK dispatch regressions and aligned Design/Local-test/Deploy/Auto
+  generation guidance. Quickstart 0.1.2; skill patches 1.12.1/1.3.1/1.8.1/1.4.1;
+  plugin/marketplace candidate 2.7.1. No SDK upgrade, Azure deployment or release.
+
 ### Signed business evidence
 
 - Opt-in named Evidence Provider contract, standard RS256 JWTs using the existing

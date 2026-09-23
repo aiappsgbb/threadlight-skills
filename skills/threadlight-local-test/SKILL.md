@@ -16,7 +16,7 @@ description: >
   validation (use threadlight-safe-check), hosted-agent runtime testing
   in cloud (use foundry-evals).
 metadata:
-  version: "1.3.0"
+  version: "1.3.1"
 ---
 
 # Threadlight — Local Test Loop (no azd up)
@@ -146,10 +146,13 @@ in-memory `InMemoryStore`:
 | `get_<entity>(id)` | `dict \| None` | Lookup by record id |
 | `update_<entity>(id, **fields)` | `dict` | Mutates the in-memory snapshot; **reset every launch** |
 
-The agent's `SkillsProvider` loads every `src/agent/skills/<name>/SKILL.md`
-under `from_paths(skills_dir)` — same progressive-disclosure shape
-documented in [`foundry-hosted-agents`](https://github.com/aiappsgbb/awesome-gbb/blob/main/skills/foundry-hosted-agents/SKILL.md)
-§ *Skill Loading*, so the prompt the agent sees is identical to prod.
+The agent's `SkillsProvider` discovers `src/agent/skills/<name>/SKILL.md`
+under `from_paths(skills_dir)` and loads bodies on demand. Follow the
+[autonomous MAF skill-read contract](../_shared/maf-skill-approval.md):
+only trusted local instructions/resources bypass the provider's read approval;
+scripts and other tools keep their policies. Unresolved native approvals raise
+`approval_required`, surfaced by the existing UI error path rather than an empty
+successful turn. This local configuration is not proof of hosted parity.
 
 ### Custom tools (when CRUD isn't enough)
 
