@@ -5,14 +5,14 @@ A conversation can suggest treating missing purchase evidence as a verified purc
 Better prompts help, but the application must reject an unauthorized tool call even
 when the model makes it.
 
-Threadlight adds a **gateway in front of selected business actions**. A tool policy
-can require **signed proof of specified input facts**, separately from human approval.
-The gateway blocks calls failing those checks; the backend still authorizes the
-caller and commits the change. In this returns example, that change is a recorded
-recommendation, **not a payment**.
+Threadlight puts an **execution gateway in front of selected business actions**.
+It checks policy, any required **signed input evidence**, and separate human
+approval, then calls the registered backend operation. Audit does not replace execution.
+The backend still authorizes and commits the change. This returns example
+updates the case and its decision audit, **not a payment**.
 
-This [Production-ready companion](production.html#production-domains) explains
-that boundary and its implementation, not protection for every agent action.
+This [Production-ready companion](production.html#production-domains) covers
+selected actions, not whole-agent protection.
 
 **The model proposes; trusted components authorize effects.**
 
@@ -65,9 +65,9 @@ the business system. The framework makes authorization explicit there. A
 post-tool content filter is too late to prevent a transaction that already
 committed.
 
-The running example records a return recommendation or supervisor handoff with
-an audit record. There is **no financial settlement**: recording
-`approve_refund` does not issue a payment.
+The running example changes return-case status and stores a decision audit.
+It has **no financial settlement**: `approve_refund` does not issue a payment.
+That is the example's business operation, not a gateway limitation.
 
 ### Four policy scenarios
 
@@ -169,9 +169,10 @@ verification; changing a label or removing AGT core would not replace that engin
 
 ## 4. Architecture and trust boundaries
 
-Read the architecture in two layers. **The main path is agent → governed gateway
-→ business service.** The gateway is the focus of this integration: local policy
-evaluation and enforcement sit there. The business service owns the transaction.
+**The main path is agent → governed gateway → business service.**
+The gateway is an **execution proxy, not a decision log**: it verifies requirements
+and invokes the registered operation. A payment tool would need a payment backend;
+this reference updates a return case. The business service owns the transaction.
 
 **Below that path, shared governance services supply authority and records.**
 The control plane is required support, not a business-execution hop and
@@ -229,7 +230,7 @@ Central receipts and the business transaction remain separate.
 | Evidence Provider | Verify admitted sources and sign justified input claims; not supply human consent |
 | Human reviewer | Decide the exact proposal under an allowed role |
 | Control-plane identity | Serve verified configuration, validate decisions, consume grants and acknowledge receipts |
-| Gateway identity | Request authority and record the selected operation |
+| Gateway identity | Request authority and invoke the registered business operation |
 | Downstream identity | Authenticate the registered business API request |
 | Business writer | Enforce domain rules and commit the conditional database transaction |
 | Publisher | Authorize and sign the configuration that these components trust |
@@ -262,7 +263,7 @@ not the architecture's reading path.
 
 Use one synthetic case, `RMA-EXAMPLE`: eligible, purchase amount **40**, current
 entity tag (**ETag**) **r7**. The real ETag is opaque; r7/r8 are teaching labels.
-The tool records a recommendation, not money movement.
+The tool changes the case; it does not move money.
 
 | Data | Created by | What it must remain connected to |
 |---|---|---|
@@ -614,6 +615,11 @@ These selected fields come from the actual gateway `Action` model:
 `deferred` persists a pending operation rather than holding the request open.
 `policy` requests review when ACS escalates; `always` requires it even for an
 otherwise permitted call. `Approver` is configured authority, not a model role.
+Approval is a **server-held grant, not an evidence JWT**.
+The default deferred deadline is **five minutes from request creation**, not
+from the human response. Configure both `approval_timeout_seconds` and the
+control plane's `approval_max_seconds` for a different lifetime, at most one hour
+and never beyond signed policy expiry. Approval and resume do not reset it.
 The [complete registry](../skills/threadlight-govern/references/gateway/README.md#signed-registry-and-bundle-creation)
 also binds workloads, endpoints, schemas and evidence requirements. These fields
 do not create a workflow, grant or business entitlement.
@@ -810,6 +816,6 @@ has additional tools and ordered evidence adapters; its business binding remains
 live-unverified. Evidence from the two-tool gateway example does not transfer
 automatically to it.
 
-Production adoption still needs the surrounding controls in section 2, accountable
+Production adoption still needs the surrounding controls in section 1, accountable
 owners and fresh evidence. The [Production-ready chapter](production.html#effect-authority)
 places this action-level architecture within that wider operating model.

@@ -33,6 +33,7 @@ test('only relevant modules retain arrows, including the control-plane denial re
 test('human continuation cannot skip pending, real-decision concept, witness, grant and fresh ACK order', async ({ page }) => {
   await page.clock.install();
   const flow = await open(page);
+  await flow.getByRole('button', { name: 'Voice on', exact: true }).click();
   await flow.getByRole('tab', { name: 'Human review', exact: true }).click();
   expect((await visiblePath(flow)).sort()).toEqual(
     ['proposal', 'checks', 'review', 'fresh', 'ack', 'effect', 'result'].sort());

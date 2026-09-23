@@ -68,7 +68,7 @@ test('concise controls remain directly readable without disclosures', async ({ p
   await page.goto('/production.html');
   for (const id of subsections) {
     await page.goto(`/production.html#${id}`);
-    await expect(page.locator('main details:not([data-evidence-jwt] details), main summary:not([data-evidence-jwt] summary)')).toHaveCount(0);
+    await expect(page.locator('main details:not([data-evidence-jwt] details):not([data-action-implementation]), main summary:not([data-evidence-jwt] summary):not([data-action-implementation] > summary)')).toHaveCount(0);
     await expect(page.locator(`#${id}`)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
     const violations = (await new AxeBuilder({ page }).include(`#${id}`)

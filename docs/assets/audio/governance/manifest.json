@@ -1,0 +1,173 @@
+{
+  "language": "en-US",
+  "engine": "edge-tts",
+  "voice": "en-US-AvaMultilingualNeural",
+  "rate": "+0%",
+  "renderer_version": "edge-tts 7.2.8",
+  "home_voice_commit": "586c5193d06164b6563f27bb23130b18d7ebb05a",
+  "home_rate_commit": "bc167f27f2af57d0ef6eed4aeb2ddefa7e2c0e83",
+  "clips": [
+    {
+      "id": "intro-normal",
+      "text": "A customer asks to return an order. The gateway invokes a real operation: updating this case and its decision audit, not a payment. Here, the required checks pass, so the decision can proceed without human review.",
+      "seconds": 14.328,
+      "sha256": "fd323594811470cf75c7341682197468fd79ae8c4de005313acb26093db2a910"
+    },
+    {
+      "id": "intro-invalid",
+      "text": "A customer asks to return an order. The gateway invokes a real operation: updating this case and its decision audit, not a payment. Here, a policy requirement is not met. A convincing answer still cannot authorize the write.",
+      "seconds": 15.096,
+      "sha256": "5e33dddde3cba164146c092e9d4de3b589c14420c7e07cc66caff892019f7ec4"
+    },
+    {
+      "id": "intro-supervisor",
+      "text": "A customer asks to return an order. The gateway invokes a real operation: updating this case and its decision audit, not a payment. Here, policy requires a person's approval for this exact decision, with a deadline and a single permitted use.",
+      "seconds": 15.816,
+      "sha256": "5f3043eccbd42958ad09b4ab7837c4ac5cab6b6fc1a9e0b344bd057ac1cd7b09"
+    },
+    {
+      "id": "intro-evidence-valid",
+      "text": "A customer asks to return an order. The gateway invokes a real operation: updating this case and its decision audit, not a payment. Here, the agent must obtain signed purchase evidence before asking the gateway to act.",
+      "seconds": 14.424,
+      "sha256": "79d306f77ed0b0b28b0d5acf67c23bd8f46a5b57f6ad26c81ef0eb8ffb93e263"
+    },
+    {
+      "id": "intro-evidence-missing",
+      "text": "A customer asks to return an order. The gateway invokes a real operation: updating this case and its decision audit, not a payment. Here, the purchase cannot be corroborated. Watch what happens if the agent still asks to record the decision.",
+      "seconds": 15.72,
+      "sha256": "9708e07ea6672011545f823c9535f8000bbc13c524985dbf160d8971d48e0da2"
+    },
+    {
+      "id": "intro-evidence-changed",
+      "text": "A customer asks to return an order. The gateway invokes a real operation: updating this case and its decision audit, not a payment. Here, proof covers an earlier revision. The agent changes the request, but presents that old proof.",
+      "seconds": 15.816,
+      "sha256": "9f5c47b22e8f089addb0b1f17f4034a742611b5ee2a589e617f83a99c820fdb3"
+    },
+    {
+      "id": "proposal",
+      "text": "The agent proposes the case decision. That proposal is a request, not permission to act.",
+      "seconds": 6.024,
+      "sha256": "5c7fbc56a3c0061b614a6e0491ecb46960dd2c7156fcf0fde458fb76ba65b837"
+    },
+    {
+      "id": "checks",
+      "text": "The gateway checks trusted facts and policy, independently of how persuasive the agent sounds.",
+      "seconds": 6.192,
+      "sha256": "24547a49db1ad074795ae183690cdfe4626c934f43e1becf19386d58e6703d09"
+    },
+    {
+      "id": "denial-audit",
+      "text": "The refusal is recorded so the decision can be traced. That audit is not a business write.",
+      "seconds": 6.216,
+      "sha256": "fad9eae74243dc4d837b00a9edc57406a630161b8696e69c1ee2d180665b0445"
+    },
+    {
+      "id": "deny",
+      "text": "The agent receives a blocked result. No request to change the business record is sent downstream.",
+      "seconds": 5.832,
+      "sha256": "a755efdf1128d4c2f0b8f69116fb8aa86fb144e77dd57755ad20f844b682203b"
+    },
+    {
+      "id": "pending",
+      "text": "This proposal needs an authorized reviewer. The request is saved before asking for their decision.",
+      "seconds": 5.952,
+      "sha256": "c82b3683194658ffadc17ce180c724e2a2921ce7ff5d1f5ae383eff9f3d7a42e"
+    },
+    {
+      "id": "review",
+      "text": "We pause here for that person. Continuing this illustration shows approval, but creates no real grant.",
+      "seconds": 7.152,
+      "sha256": "78383e685810d76cb9235cb8a077977ba5cf3507624849ad8a535880fd100ad6"
+    },
+    {
+      "id": "verify",
+      "text": "Approval is valid once for this exact proposal, only until the original deadline.",
+      "seconds": 5.352,
+      "sha256": "5c47837f16cb826e7b3e30a2d8cd6a60c7aedb2a45f3f0527c2b44e32f124f2c"
+    },
+    {
+      "id": "fresh",
+      "text": "The gateway rechecks the same context, then consumes that permission before sending the action.",
+      "seconds": 5.736,
+      "sha256": "bd950da06f415edc6812086987d226a3210aadd2533af5862b31705a9dc23ccf"
+    },
+    {
+      "id": "ack",
+      "text": "Authorization is recorded before execution. Without that acknowledgement, the action cannot proceed.",
+      "seconds": 7.128,
+      "sha256": "7679d034ed5330b77f3a6bdb734ffe874a7643ed79b850074d7dacd21799eab0"
+    },
+    {
+      "id": "effect",
+      "text": "The gateway calls the business backend. It checks current data, then updates the return case and its audit.",
+      "seconds": 7.056,
+      "sha256": "a5c246eeaeb4c218ee7782e8cdcfec0a2f201ea111b93fd0caa2d7a86c294f1b"
+    },
+    {
+      "id": "result",
+      "text": "The case has changed, not just been approved. Replay returns the recorded result without another execution.",
+      "seconds": 6.984,
+      "sha256": "3dae5c2f1aa83dbf90ba65611779a3efa4e597cfb62c34ad4aa9846a5b2d65a7"
+    },
+    {
+      "id": "evidence-request",
+      "text": "The agent asks the external provider to verify the purchase, using this case and the proposed inputs.",
+      "seconds": 6.768,
+      "sha256": "70aac7afc08b8c7f17cf894bba72c07f04c4eac2b1986c8f01f91f4c859a37a5"
+    },
+    {
+      "id": "evidence-proof-valid",
+      "text": "The provider matches the purchase, customer and amount. It returns signed, expiring proof for this exact request.",
+      "seconds": 7.752,
+      "sha256": "837a3e6d66bdc27ced86ca9fb909d0a9a8f4432311ce6c0e17b26f24ac757c6c"
+    },
+    {
+      "id": "evidence-proof-missing",
+      "text": "The source does not corroborate the purchase. The provider refuses to turn the agent's claim into proof.",
+      "seconds": 6.264,
+      "sha256": "8610c2fbd65752be1d8723f211bf31ba85ed5abe2cae67c22c8c1126d6ab6d67"
+    },
+    {
+      "id": "evidence-proof-changed",
+      "text": "The provider's proof covers the original case revision. It does not automatically cover a later change.",
+      "seconds": 6.336,
+      "sha256": "2b3febf8f324d2ef4c934d8add88c73710a932ad73c346c12207197ed18edb77"
+    },
+    {
+      "id": "evidence-present-valid",
+      "text": "The proof comes back to the same agent. That agent now asks the gateway to perform the action.",
+      "seconds": 6.024,
+      "sha256": "c0fc9bfee8dc1d45b414ed0c277d91bc2e96bd31f5ceaf42b8a036a3ac46e3ad"
+    },
+    {
+      "id": "evidence-present-missing",
+      "text": "The agent still attempts the action without the required proof. This is the request the gateway must reject.",
+      "seconds": 6.576,
+      "sha256": "e3f2906426cc47737a528ead52f5e3a8170743ddfef981b09e48dae3fd667463"
+    },
+    {
+      "id": "evidence-present-changed",
+      "text": "The agent presents its revised request with the old proof. The words have changed, but the proof has not.",
+      "seconds": 6.696,
+      "sha256": "136b3c32af3fb706e57c15ae3065611bfa42e4b91946c8c9f6f2d0bb8e255d0c"
+    },
+    {
+      "id": "evidence-checks-valid",
+      "text": "The gateway checks the proof's source, expiry and matching request. Valid proof still does not override other rules.",
+      "seconds": 7.56,
+      "sha256": "3bd60a93310b49fe554588bcc1ab4deecca1cbf0affa82bb9c7630fe26f62c3b"
+    },
+    {
+      "id": "evidence-checks-missing",
+      "text": "Required evidence is absent. The gateway rejects the request before sending any business write.",
+      "seconds": 6.312,
+      "sha256": "a4eb4596520b440bacd170e79fed993a2ef8c05633578c33853b6be3128aba04"
+    },
+    {
+      "id": "evidence-checks-changed",
+      "text": "The proof does not match the revised request. The gateway rejects it before business execution.",
+      "seconds": 6.144,
+      "sha256": "c88fde3f4265823612728cce9726a2166111ab5acf96875b03288a31e8f9df05"
+    }
+  ]
+}

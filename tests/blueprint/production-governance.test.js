@@ -57,7 +57,7 @@ test('authority section is an accessible ordered contract with distinct identiti
   assert.match(body, /<ol[^>]*data-action-primary[^>]*aria-label="Primary business-action path"/);
   assert.match(body, /<aside[^>]*data-action-support/);
   assert.match(body, /class="action-actors"/);
-  for (const phrase of ['Access to a system', 'Identity', 'Policy', 'Trusted facts', 'Human reviewer',
+  for (const phrase of ['return decision', 'Identity', 'Policy', 'Trusted facts', 'Human reviewer',
     'Outlook', 'independent business API', 'audit ACK', 'unbound', 'without ACS',
     'model gateway']) assert.ok(text(body).toLowerCase().includes(phrase.toLowerCase()), phrase);
   assert.match(source, /agent-governance-deep-dive\.md/);
@@ -174,7 +174,9 @@ test('each concise topic keeps its core visual and delegates detail to reference
   }
   const jwtContract = source.match(/<div class="wf-jwt" data-evidence-jwt[\s\S]*?<!-- evidence-jwt:end -->/)?.[0];
   assert.ok(jwtContract);
-  assert.doesNotMatch(source.replace(jwtContract, ''), /<(?:details|summary)\b/);
+  const implementation = source.match(/<details[^>]*data-action-implementation[\s\S]*?<\/details>/)?.[0];
+  assert.ok(implementation);
+  assert.doesNotMatch(source.replace(jwtContract, '').replace(implementation, ''), /<(?:details|summary)\b/);
   assert.match(source, /Application and data owners/);
   assert.match(source, /not supplied by the new action-governance runtime/);
   assert.match(section(source, 'operating-controls'), /DevSecOps/);

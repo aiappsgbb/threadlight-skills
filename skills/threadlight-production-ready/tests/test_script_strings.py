@@ -32,7 +32,7 @@ def test_pages_link_deep_governance_instead_of_repeating_the_operator_reference(
     assert 'href="./governance.html"' in production
     assert "docs/agent-operations.md" in production
     assert "Selected actions, not blanket protection." in production
-    assert "authenticated unbound read can go directly" in production
+    assert "authenticated unbound reads go directly" in production.lower()
     assert 'href="./agent-governance.html#overview"' in production
     workbook = (REPO / "docs/first-governed-workflow.md").read_text()
     assert "I select governed-tool-gateway for returns_apply_decision" in workbook

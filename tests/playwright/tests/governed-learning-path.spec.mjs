@@ -52,6 +52,7 @@ test('leaving the action topic pauses its illustrative playback without changing
   await page.clock.install();
   await page.goto('/production.html#workflow-in-action');
   const flow = page.locator('#workflow-in-action');
+  await flow.getByRole('button', { name: 'Voice on', exact: true }).click();
   await flow.getByRole('button', { name: 'Play', exact: true }).click();
   await page.locator('[data-topic-tab][href="#operating-controls"]').click();
   await expect(flow).toBeHidden();

@@ -52,7 +52,7 @@ test('connected illustration fits a desktop chapter instead of a second long pag
   for (const reducedMotion of ['no-preference', 'reduce']) {
     await page.emulateMedia({ reducedMotion });
     expect((await flow.boundingBox()).height).toBeLessThanOrEqual(680);
-    expect((await flow.locator('.wf-panel').boundingBox()).height).toBeLessThanOrEqual(480);
+    expect((await flow.locator('.wf-panel').boundingBox()).height).toBeLessThanOrEqual(600);
   }
   await expect(flow.getByRole('tab')).toHaveText(['Allowed', 'Blocked', 'Human review', 'Signed evidence']);
   await expect(flow).toHaveAttribute('data-node', 'proposal');

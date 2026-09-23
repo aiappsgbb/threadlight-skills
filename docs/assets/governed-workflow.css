@@ -19,7 +19,7 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #workflow-in-action .section-head { margin-bottom: 16px; }
 #workflow-in-action .section-head h2 { margin: 0; font-size: clamp(28px, 3.2vw, 42px); }
 #workflow-in-action .section-lede { margin: 8px 0 0; max-width: none; font-size: 16px; }
-#workflow-in-action .wf-panel { container-type: inline-size; padding: 12px 18px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-1); box-shadow: var(--e-1); }
+#workflow-in-action .wf-panel { --wf-panel-pad: 18px; container-type: inline-size; padding: 12px var(--wf-panel-pad); border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-1); box-shadow: var(--e-1); }
 #workflow-in-action [hidden] { display: none; }
 #workflow-in-action [data-flow-controls][hidden] { display: none; }
 #workflow-in-action .wf-icon { width: 22px; height: 22px; color: var(--ink-0); flex-shrink: 0; }
@@ -31,6 +31,8 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #workflow-in-action .wf-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 20px; border-color: transparent; }
 #workflow-in-action .wf-tabs button[aria-selected="true"] { background: var(--chapter-accent-soft); border-color: var(--line-2); box-shadow: inset 0 -3px var(--chapter-accent); font-weight: 650; }
 #workflow-in-action .wf-story { margin: 8px 0 0; color: var(--ink-1); font-size: 13px; }
+#workflow-in-action .wf-playback-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-block: 8px; }
+#workflow-in-action .wf-playback-head .wf-story { flex: 1 1 260px; margin: 0; }
 #workflow-in-action .wf-evidence { margin: 12px 0; padding: 14px 0; border-bottom: 1px solid var(--line); color: var(--ink-1); font: 14px/1.6 var(--sans); }
 #workflow-in-action .wf-evidence p { max-width: 75ch; margin: 0 0 12px; }
 #workflow-in-action .wf-evidence .wf-proof-transport { font-size: 12px; color: var(--ink-1); }
@@ -44,18 +46,16 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #workflow-in-action .wf-evidence-choices input:focus-visible + span { outline: 2px solid var(--ink-0); outline-offset: 3px; }
 #workflow-in-action .wf-diagram { display: block; width: 100%; height: auto; margin: 6px auto; overflow: visible; }
 #workflow-in-action .wf-edge { fill: none; stroke: var(--ink-1); stroke-width: 1.8; }
+#workflow-in-action .wf-flow-dot { fill: var(--ink-0); stroke: var(--bg-1); stroke-width: 2; pointer-events: none; }
 #workflow-in-action [data-flow-edge][hidden] { display: none; }
 #workflow-in-action #wf-arrow path { fill: var(--ink-1); }
 #workflow-in-action .wf-edge[data-edge-state="Completed"] { stroke: var(--ink-0); stroke-width: 2.8; stroke-dasharray: none; }
 #workflow-in-action .wf-edge-label { fill: var(--ink-1); font: 11px var(--mono); }
-#workflow-in-action .wf-evidence-sequence text { fill: var(--ink-0); font: 16px var(--sans); }
-#workflow-in-action .wf-evidence-sequence .wf-detail { fill: var(--ink-1); font-size: 14px; }
-#workflow-in-action .wf-evidence-sequence rect { fill: var(--bg-1); stroke: var(--line-2); stroke-width: 1.5px; }
-#workflow-in-action [data-evidence-participant] text,
-#workflow-in-action .wf-sequence-check text { text-anchor: middle; }
-#workflow-in-action [data-evidence-participant] > text:not(.wf-detail) { font-weight: 650; font-size: 16px; }
-#workflow-in-action .wf-lifelines path { fill: none; stroke: var(--line-2); stroke-dasharray: 4 5; }
-#workflow-in-action .wf-sequence-check rect { fill: var(--bg-2); }
+#workflow-in-action .wf-evidence-map text { fill: var(--ink-0); font: 16px var(--sans); }
+#workflow-in-action .wf-evidence-map .wf-label { font-weight: 600; }
+#workflow-in-action .wf-evidence-map .wf-detail { fill: var(--ink-1); font-size: 14px; }
+#workflow-in-action .wf-evidence-map rect { fill: var(--bg-1); stroke: var(--ink-2); stroke-width: 1.5px; }
+#workflow-in-action .wf-evidence-map [data-used="false"] rect { fill: var(--bg-2); stroke: var(--line-2); }
 #workflow-in-action [data-evidence-step][aria-current="step"] .wf-edge { stroke-width: 3px; stroke: var(--ink-0); }
 #workflow-in-action [data-evidence-step][aria-current="step"] rect { fill: var(--chapter-accent-soft); stroke: var(--ink-0); }
 #workflow-in-action [data-evidence-step][aria-current="step"] text { font-weight: 650; }
@@ -71,6 +71,18 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #workflow-in-action .wf-jwt-fields dt { font-weight: 600; color: var(--ink-0); }
 #workflow-in-action .wf-jwt-fields dd { margin: 0; }
 #workflow-in-action .wf-jwt pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px; background: var(--bg-2); color: var(--ink-0); border: 1px solid var(--line); }
+#workflow-in-action .wf-business-proof,
+#workflow-in-action .wf-approval-example { padding-block: 16px; margin-top: 12px; border-top: 1px solid var(--line); color: var(--ink-1); font: 14px/1.6 var(--sans); }
+#workflow-in-action .wf-business-proof h4,
+#workflow-in-action .wf-approval-example h4 { margin: 0 0 8px; font: 600 17px/1.4 var(--sans); color: var(--ink-0); }
+#workflow-in-action .wf-business-proof p,
+#workflow-in-action .wf-approval-example p { max-width: 75ch; margin: 8px 0; }
+#workflow-in-action .wf-fact-record { margin: 12px 0 16px; }
+#workflow-in-action .wf-fact-record > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; padding-block: 8px; border-bottom: 1px solid var(--line); }
+#workflow-in-action .wf-fact-record dt { font-weight: 600; color: var(--ink-0); }
+#workflow-in-action .wf-fact-record dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+#workflow-in-action .wf-example-limit { font-size: 13px; }
+#workflow-in-action .wf-proof-unavailable { padding-block: 8px; color: var(--ink-0); }
 #workflow-in-action .wf-node rect { fill: var(--bg-1); stroke: var(--ink-2); stroke-width: 1.5; transition: fill var(--d-fast); }
 #workflow-in-action .wf-node[data-stage-state="Completed"] rect { stroke: var(--ink-0); stroke-width: 2; }
 #workflow-in-action .wf-node[aria-current="step"] rect { fill: var(--chapter-accent-soft); stroke: var(--ink-0); stroke-width: 3; }
@@ -95,7 +107,7 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #workflow-in-action .wf-progress small { display: block; color: var(--ink-1); font-size: 10px; line-height: 1.4; }
 #workflow-in-action .wf-progress button span { display: inline-block; margin-right: 6px; color: var(--ink-2); font-family: var(--mono); }
 #workflow-in-action .wf-progress button[aria-current="step"] { border-color: var(--line-2); background: var(--bg-2); font-weight: 700; box-shadow: inset 0 -2px var(--ink-0); }
-#workflow-in-action .wf-caption-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; border-top: 1px solid var(--line); padding-top: 10px; }
+#workflow-in-action .wf-caption-line { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: center; border-top: 1px solid var(--line); padding-top: 10px; }
 #workflow-in-action .wf-status { min-height: 48px; color: var(--ink-0); }
 #workflow-in-action .wf-status strong { font: 600 14px var(--sans); }
 #workflow-in-action .wf-status p { margin: 4px 0 0; color: var(--ink-1); font-size: 13px; line-height: 1.5; }
@@ -105,14 +117,21 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #workflow-in-action .wf-step-detail dt { flex-shrink: 0; color: var(--ink-2); }
 #workflow-in-action .wf-step-detail dd { min-width: 0; margin: 0; color: var(--ink-0); }
 #workflow-in-action[data-node="review"] .wf-status { border-left: 3px solid var(--chapter-accent); padding-left: 12px; }
-#workflow-in-action .wf-transport { display: flex; gap: 6px; align-items: center; }
+#workflow-in-action .wf-transport { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; align-items: center; }
 #workflow-in-action .wf-transport button { display: inline-flex; align-items: center; justify-content: center; padding: 8px 12px; min-width: 44px; }
-#workflow-in-action .wf-transport [data-flow-control="play"] { min-width: 76px; font-weight: 600; }
+#workflow-in-action .wf-transport [data-flow-control="play"] { gap: 6px; min-width: 88px; font-weight: 600; }
+#workflow-in-action [data-flow-play-icon][data-icon="play"] path { fill: currentColor; stroke: none; }
+#workflow-in-action .wf-transport [data-flow-control="voice"] { gap: 6px; }
+#workflow-in-action .wf-transport [data-flow-control="voice"][aria-pressed="true"] { background: var(--chapter-accent-soft); border-color: var(--ink-0); }
+#workflow-in-action .wf-narration { margin: 12px calc(-1 * var(--wf-panel-pad)); padding: 14px var(--wf-panel-pad); border-block: 1px solid var(--line-2); background: var(--bg-2); color: var(--ink-0); }
+#workflow-in-action .wf-narration p { margin: 0; min-block-size: 3.2em; max-width: none; font: 600 16px/1.6 var(--sans); }
 #workflow-in-action .wf-transport [data-next-label] { margin-left: 6px; font-size: 11px; }
 #workflow-in-action .wf-transport svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 #workflow-in-action .wf-note, #workflow-in-action .wf-legend { color: var(--ink-2); font: 12px/1.5 var(--sans); margin: 8px 0 0; }
 #workflow-in-action .wf-note:empty { display: none; }
 #workflow-in-action .wf-case-note { color: var(--ink-1); margin: 8px 0 0; font-size: 12px; line-height: 1.5; }
+#workflow-in-action .wf-footnotes { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; }
+#workflow-in-action .wf-footnotes > p { margin: 0; }
 #workflow-in-action .wf-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-top: 14px; }
 #workflow-in-action .wf-links .btn { padding: 10px 18px; }
 #workflow-in-action .wf-links a:not(.btn) { color: var(--ink-1); text-decoration: underline; text-underline-offset: 3px; font-size: 13px; }
@@ -146,6 +165,9 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #actions-topic .action-actors svg { width: 24px; height: 24px; color: var(--ink-1); }
 #actions-topic .action-boundary, #actions-topic .action-example { max-width: 75ch; color: var(--ink-1); font-size: 14px; line-height: 1.6; margin: 14px 0; }
 #actions-topic .action-example { padding-block: 12px; border-block: 1px solid var(--line); }
+#actions-topic .action-implementation { padding-block: 16px; margin-top: 20px; border-block: 1px solid var(--line); }
+#actions-topic .action-implementation > summary { cursor: pointer; min-height: 44px; align-content: center; font: 600 16px/1.5 var(--sans); color: var(--ink-0); }
+#actions-topic .action-implementation > summary:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 3px; }
 #actions-topic #effect-authority { padding-bottom: 12px; }
 #actions-topic #evidence-boundaries { padding-block: 24px; }
 #actions-topic .wf-label { font-size: 16px; }
@@ -178,12 +200,13 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
   .governance-page .cx-chapter-links a { padding-inline: 6px; font-size: 11px; }
   .governance-page .floating-toc:has(.cx-chapter-index) { gap: 0; flex-wrap: nowrap; }
   .governance-page .cx-chapter-index summary { padding-inline: 6px; font-size: 11px; }
-  #workflow-in-action .wf-panel { padding: 12px; }
+  #workflow-in-action .wf-panel { --wf-panel-pad: 12px; }
   #workflow-in-action .wf-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
   #workflow-in-action .wf-tabs button { flex: 1 1 0; min-width: 0; gap: 4px; padding: 6px 4px; font-size: 11px; }
   #workflow-in-action .wf-tabs .wf-icon { width: 18px; height: 18px; }
   #workflow-in-action .wf-evidence-choices span { padding-inline: 4px; font-size: 12px; }
   #workflow-in-action .wf-jwt-fields > div { grid-template-columns: 1fr; gap: 2px; }
+  #workflow-in-action .wf-fact-record > div { grid-template-columns: 1fr; gap: 2px; }
   #workflow-in-action .wf-diagram { display: none; }
   #workflow-in-action .wf-mobile { display: grid; }
   #workflow-in-action .wf-progress button { padding: 4px 0; }
