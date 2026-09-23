@@ -16,7 +16,7 @@ description: >
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.12.1"
+  version: "1.12.2"
 ---
 
 # Threadlight Design
@@ -230,6 +230,14 @@ This is the **left-of-design** gate: framework, model + region + capacity,
 hosting shape, tool binding, identity/RBAC, and the observability baseline are
 deliberate, recorded choices an operator can sign off on in one review.
 
+**Separate authoring from runtime selection.** For nontrivial discovery,
+specification and code generation, recommend a sufficiently capable authoring
+model, respecting complexity and the operator's explicit host-model choice.
+This does not select the deployed inference model. Follow
+[model roles and the optional runtime comparison](references/model-selection.md):
+Foundation § 2 / SPEC § 7b describe runtime only; skills cannot silently switch
+the outer coding host or its global settings.
+
 > **When Step 0 runs.** From-scratch path only. **Kratos-export projects skip
 > it** — the exported bundle is already designed (see the path note at the top
 > of this skill). Before locking `framework`, `runtime_shape`, or `protocol`,
@@ -281,7 +289,7 @@ cover**:
    `requires_file_generation`, `latency_sensitive_data_queries`) in
    `specs/foundation.md § 1` alongside the tuple — they are the concrete
    fields `blocked_when` evaluates, not free-floating prose.
-2. **Model & capacity** — default `gpt-5.4`, plus **`region`,
+2. **Runtime model & capacity** — default `gpt-5.4`, plus **`region`,
    `fallback_region`, `capacity_type` (GlobalStandard/PTU), and `data_boundary`
    (EU)** — the region/boundary/fallback triad § 7b does not capture but that
    decides where capacity is provisioned and whether an EU-resident pilot can
@@ -659,7 +667,7 @@ Must include all sections from the template:
 5b. **External Systems & Mocks (MCP contract)** — endpoint shape, tools exposed, mock data scale, reset semantics. **INPUT CONTRACT for `foundry-mcp-aca`.** *Required for any process that talks to external systems.*
 6. **Tool Contracts** — abstract tool definitions (not bound to any runtime)
 7. **Knowledge Sources** — reference documents, policies, search indexes — with explicit `foundry-iq` / `mcp-search` / `inline-context` backing decision
-7b. **AI Services & Model Selection** — chat / vision / DocIntel / Speech models with versions. **INPUT CONTRACT for `foundry-doc-vision-speech` and `azure.yaml` `config.deployments`.** Use **`gpt-5.4` family** as of May 2026 — `gpt-4o` is legacy. See `references/model-selection.md` for the model / capacity / region decision procedure. *Required for every process.*
+7b. **AI Services & Model Selection** — runtime chat / vision / DocIntel / Speech models with versions, not the authoring model. **INPUT CONTRACT for `foundry-doc-vision-speech` and `azure.yaml` `config.deployments`.** Use **`gpt-5.4` family** as of May 2026 — `gpt-4o` is legacy. See `references/model-selection.md` for the model / capacity / region decision procedure. *Required for every process.*
 8. **Human Interaction Points** — approvals, escalations, conversational flows — with **action-gate taxonomy** (`approve` / `edit-and-approve` / `reject` / `escalate` / `signoff` / `audit-view` / `request-info`). **INPUT CONTRACT for `threadlight-hitl-patterns`.**
 8b. **Human Interaction (Workspace UX)** — case-list / inbox / dashboard / console / kanban / map shape with primary filters, detail sections, action toolbar, audit viewer. **INPUT CONTRACT for `threadlight-workspace-ui`.** *Optional — skip if humans only interact via approval cards.*
 9. **Success Criteria** — functional, performance, quality targets + evaluation scenarios (S-XXX linked to BR-XXX) **+ Business KPIs table (BR → KPI mapping)** for continuous evaluation

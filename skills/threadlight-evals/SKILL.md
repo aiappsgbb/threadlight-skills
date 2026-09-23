@@ -16,7 +16,7 @@ description: >-
   agent-runtime action governance — use threadlight-govern; deep evaluator or
   dataset authoring — use foundry-evals.
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
 ---
 
 # Threadlight Evals — run continuous evals, then prove they ran
@@ -234,11 +234,21 @@ schedule is a hard fail.
 
 ## F3 — champion-challenger gate
 
+For an optional lower-cost runtime experiment after prototype validation, use
+the [fixed-artifact model checklist](../threadlight-design/references/model-selection.md).
+The authoring model is independent; do not regenerate the prototype or change
+its prompts to compare runtimes. Predeclare quality, tool/skill-use, structured
+output, PII/safety/governance and latency constraints; include failed-case spend
+in cost per correctly completed task. No paid comparison or deployment is
+authorized merely by this recommendation.
+
 Before changing a model, prompt, tool contract, or retrieval configuration:
 
 1. Run champion and challenger against the same held-out dataset.
-2. Compare pass-rate, protected-scenario scores, and regression delta.
-3. Promote only if the challenger meets the declared thresholds.
+2. Compare pass-rate, protected-scenario scores, regression delta, and every
+   declared control and latency constraint.
+3. Promote only if the challenger meets all declared thresholds and controls;
+   otherwise keep the champion. Never relax controls to make it pass.
 
 Place config under `evals/ab/` or include `champion`, `challenger`, and
 `baseline_vs` markers in an eval script/config. See `references/ab-comparison.md`.

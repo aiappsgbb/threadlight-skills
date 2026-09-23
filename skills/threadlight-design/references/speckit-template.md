@@ -267,6 +267,12 @@ knowledge_sources:
 > `azure.yaml` `config.deployments`.** Every model-backed capability the agent uses
 > must be declared here so deployment can provision the right model SKU and capacity.
 
+These are **runtime inference** choices, not the authoring host's model.
+A lower-cost candidate may be evaluated on the same validated prototype using
+the fixed-artifact procedure in `model-selection.md`; promote only against
+predeclared thresholds and controls. The dated table is a starting point, not
+an automatic downgrade rule or substitute for observed tool/skill execution.
+
 For each AI capability the agent needs:
 
 ### [Capability Name]
@@ -275,8 +281,8 @@ For each AI capability the agent needs:
 - **Model + version** (current as of 2026-05):
   | Use case | Recommended model | Notes |
   |----------|-------------------|-------|
-  | **Default for threadlight pilots (7+ skills, 10+ tool calls)** | `gpt-5.4` (2026-03-05) | 1M context, vision-capable. Tool-call discipline holds up under long chains — validated across recent long-chain pilots with stricter smoke-test reproducibility than gpt-5.4-mini |
-  | Trivial chat / 1-2 step flows | `gpt-5.4-mini` (2026-03-17) | 400K context, vision-capable, lower cost. Use ONLY when the agent has ≤2 tool calls per turn — degrades on long instruction chains (skips evidence-gathering tools, emits hollow commit-tool outputs) |
+  | **Default for threadlight pilots (7+ skills, 10+ tool calls)** | `gpt-5.4` (2026-03-05) | 1M context, vision-capable. Existing runtime starting point; confirm tool-call discipline on the actual artifact |
+  | Trivial chat / 1-2 step flows; lower-cost A/B candidate | `gpt-5.4-mini` (2026-03-17) | 400K context, vision-capable, lower cost. Short chains are a useful first candidate, not a tool-count limit; longer chains need explicit execution evidence before promotion |
   | Premium reasoning + vision | `gpt-5.4-pro` (2026-03-05) | When vision feeds multi-step reasoning |
   | Bulk / cheap vision | `gpt-5.4-nano` (2026-03-17) | Returns triage, photo screening |
   | Code-related multimodal | `gpt-5.3-codex` (2026-02-24) | Diagrams → code |

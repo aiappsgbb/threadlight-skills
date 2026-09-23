@@ -16,7 +16,7 @@ description: >
   validation (use threadlight-safe-check), hosted-agent runtime testing
   in cloud (use foundry-evals).
 metadata:
-  version: "1.3.1"
+  version: "1.3.2"
 ---
 
 # Threadlight — Local Test Loop (no azd up)
@@ -458,12 +458,28 @@ the developer string-replaces.
 
 | Pattern | Cloud spend | Why |
 |---------|-------------|-----|
-| 1 (MCP-direct) | $0 if MCP reads only local data; tiny if MCP reads cloud Cosmos / Search | CLI's own LLM is GitHub-billed |
-| 2 (smoke-client) | AOAI tokens only | Agent calls real `gpt-5.4-mini`; ~$0.001 per smoke turn |
+| 0 (quickstart) | Selected backend's inference charges | Local stubs do not make remote inference free |
+| 1 (MCP-direct) | Depends on the resources the MCP tools access | Host coding-assistant usage is separate from a generated agent's inference |
+| 2 (smoke-client) | Selected backend's inference + any cloud tools | Measure actual usage and failed/retried cases |
 | 3 (local-stack) | AOAI tokens + (optional) cloud Search | Same as 2; Cosmos local; UI local |
 
-A typical day of dev iteration burns < $1 of AOAI tokens. Cosmos
-emulator is free.
+Keep authoring credits, iterations and review separate from recurring runtime
+spend. Local smoke testing does not establish a daily cost or latency guarantee.
+
+## After validation — optional runtime cost experiment
+
+Building with a capable authoring model does not require deploying that model.
+If domain/capability/risk requirements permit, offer a small lower-cost runtime
+A/B using the [fixed-artifact checklist](../threadlight-design/references/model-selection.md)
+and `threadlight-evals` F3. Keep one validated implementation unchanged: no
+regeneration, prompt edits, relaxed controls or paid runs without explicit scope
+and budget approval. Promote only against the predeclared quality, tool/skill,
+safety and latency bar; otherwise retain the stronger runtime.
+
+Use the generated agent's actual client and tools for this comparison.
+Pattern 1 exercises the coding host, not the deployed business agent; Pattern 0's
+stub tools do not prove real-tool or hosted parity. Record the tested boundary.
+If a defect requires a fix, validate the new artifact before restarting the A/B.
 
 ---
 

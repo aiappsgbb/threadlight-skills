@@ -14,6 +14,87 @@ const docs = {
   workshop: 'docs/WORKSHOP-1H-QUICKSTART.md',
 };
 
+test('model guidance separates operator-owned authoring from runtime deployment choices', () => {
+  const text = read('skills/threadlight-design/references/model-selection.md').replace(/\s+/g, ' ');
+  assert.match(text, /authoring[\s\S]*discovery[\s\S]*specification[\s\S]*architecture[\s\S]*code generation/i);
+  assert.match(text, /sufficiently capable[\s\S]*complexity[\s\S]*explicit operator choice/i);
+  assert.match(text, /does not (?:imply|require)[\s\S]{0,100}same[\s\S]{0,60}runtime/i);
+  assert.match(text, /lower.cost runtime[\s\S]{0,140}does not require[\s\S]{0,100}authoring/i);
+  assert.match(text, /cannot silently switch[\s\S]{0,150}host model/i);
+  assert.match(text, /operator.supported[\s\S]{0,100}selection/i);
+  assert.match(text, /never[\s\S]{0,50}global[\s\S]{0,40}settings/i);
+  assert.match(text, /MODEL_DEPLOYMENT_NAME[\s\S]{0,130}not[\s\S]{0,40}(?:coding|authoring)/i);
+  assert.match(text, /foundation\.md[\s\S]{0,100}runtime[\s\S]{0,150}not[\s\S]{0,50}(?:builder|authoring)/i);
+});
+
+test('runtime optimization preserves a fixed artifact and predeclared promotion constraints', () => {
+  const text = read('skills/threadlight-design/references/model-selection.md').replace(/\s+/g, ' ');
+  assert.match(text, /optional[\s\S]{0,120}lower.cost runtime/i);
+  assert.match(text, /one[\s\S]{0,40}(?:validated |fixed )?artifact[\s\S]{0,100}runtime model/i);
+  assert.match(text, /do not regenerate/i);
+  for (const invariant of ['source', 'skills', 'tools', 'fixtures', 'held-out', 'validators']) {
+    assert.ok(text.includes(invariant), invariant);
+  }
+  assert.match(text, /2x2[\s\S]{0,150}both builder artifacts[\s\S]{0,100}not required/i);
+  assert.match(text, /predeclare[\s\S]*quality[\s\S]*tool[\s\S]*structured.output[\s\S]*PII[\s\S]*safety[\s\S]*governance[\s\S]*latency/i);
+  assert.match(text, /negative cases[\s\S]*paraphrases/i);
+  assert.match(text, /skill bod(?:y|ies)[\s\S]{0,200}catalog/i);
+  assert.match(text, /preserve[\s\S]{0,100}failures[\s\S]{0,100}guardrail violations/i);
+  assert.match(text, /keep[\s\S]{0,60}stronger runtime[\s\S]{0,120}never relax controls/i);
+  assert.match(text, /avoid[\s\S]{0,50}bug[\s\S]{0,100}not[\s\S]{0,30}fix/i);
+});
+
+test('runtime comparisons disclose compatibility, full cost accounting and authorization boundaries', () => {
+  const text = read('skills/threadlight-design/references/model-selection.md').replace(/\s+/g, ' ');
+  assert.match(text, /actual[\s\S]{0,60}identity[\s\S]{0,40}version/i);
+  assert.match(text, /protocol[\s\S]{0,80}tool[\s\S]{0,80}reasoning[\s\S]{0,80}compatib/i);
+  assert.match(text, /client\/API adaptation[\s\S]*matched[\s\S]*never silently disable reasoning/i);
+  assert.match(text, /region[\s\S]{0,60}data.boundary[\s\S]{0,60}capacity/i);
+  assert.match(text, /construction[\s\S]{0,80}credits[\s\S]{0,60}iterations[\s\S]{0,60}review[\s\S]{0,120}separate/i);
+  assert.match(text, /cost per correctly completed business task[\s\S]*failed.case spend/i);
+  assert.match(text, /zero[\s\S]{0,50}correct[\s\S]{0,100}(?:undefined|unavailable)/i);
+  assert.match(text, /list.price estimates[\s\S]{0,100}(?:bills|invoices)/i);
+  assert.match(text, /cache[\s\S]{0,80}reasoning[\s\S]{0,80}assumptions/i);
+  assert.match(text, /no automatic[\s\S]{0,80}paid[\s\S]{0,80}deployment/i);
+  assert.match(text, /no[\s\S]{0,60}hidden downgrade[\s\S]{0,60}fallback/i);
+  assert.match(text, /runtime-policy\.json[\s\S]*governance[\s\S]*authority/i);
+});
+
+test('SPEC model guidance does not override evidence-based runtime selection with a tool-count rule', () => {
+  const spec = read('skills/threadlight-design/references/speckit-template.md')
+    .split('## 7b. AI Services & Model Selection')[1].split('## 8.')[0]
+    .replace(/\s+/g, ' ');
+  assert.match(spec, /runtime[\s\S]{0,100}not[\s\S]{0,60}authoring/i);
+  assert.match(spec, /lower.cost[\s\S]*fixed.artifact[\s\S]*thresholds/i);
+  assert.doesNotMatch(spec, /Use ONLY when the agent has|never for the main agent loop/i);
+  assert.match(spec, /model-selection\.md/);
+});
+
+test('model-choice handoffs resolve to one canonical reference and the A/B example changes only runtime', () => {
+  const canonical = 'skills/threadlight-design/references/model-selection.md';
+  for (const file of [
+    'skills/threadlight-design/SKILL.md', 'skills/threadlight-auto/SKILL.md',
+    'skills/threadlight-local-test/SKILL.md', 'skills/threadlight-evals/SKILL.md',
+    'skills/threadlight-evals/references/ab-comparison.md',
+  ]) {
+    const text = read(file);
+    const links = [...text.matchAll(/\[[^\]]+\]\(([^)]+model-selection\.md)(?:#[^)]*)?\)/g)];
+    assert.ok(links.some(([, target]) =>
+      path.resolve(root, path.dirname(file), target) === path.resolve(root, canonical)),
+    `${file}: link to canonical model guidance must resolve`);
+    assert.match(text, /authoring|fixed.artifact/i, file);
+  }
+  const ab = read('skills/threadlight-evals/references/ab-comparison.md');
+  const example = ab.match(/```yaml\n([\s\S]*?)```/)[1];
+  const prompts = [...example.matchAll(/^\s+prompt:\s*(\S+)/gm)].map(([, value]) => value);
+  const models = [...example.matchAll(/^\s+model:\s*(\S+)/gm)].map(([, value]) => value);
+  assert.equal(prompts.length, 2);
+  assert.equal(prompts[0], prompts[1], 'runtime-only comparison must not also change prompt');
+  assert.equal(models.length, 2);
+  assert.notEqual(models[0], models[1]);
+  assert.match(ab, /presence[\s\S]{0,100}not[\s\S]{0,80}(?:execution|promotion)/i);
+});
+
 test('MAF generation handoffs preserve autonomous trusted reads and separate approvals', () => {
   for (const file of [
     'skills/threadlight-design/SKILL.md', 'skills/threadlight-local-test/SKILL.md',

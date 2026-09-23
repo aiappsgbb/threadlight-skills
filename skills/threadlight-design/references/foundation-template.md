@@ -137,6 +137,11 @@ to duplicate the selector.
 
 ## 2. Model & capacity
 
+These are the business agent's **runtime inference** choices, not the model
+authoring the spec or code. A capable authoring model does not require the same
+runtime tier. Keep host selection separate; a later approved runtime comparison
+must reconcile this record and SPEC § 7b, not silently override either.
+
 ```yaml
 model:
   default: gpt-5.4                       # (2026-03-05) — default for 7+ skill pilots

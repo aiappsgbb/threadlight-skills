@@ -15,7 +15,7 @@ description: >
   DO NOT USE FOR: per-stage control (use threadlight-design / -deploy /
   -safe-check directly), production CI/CD, single-stage iteration.
 metadata:
-  version: "1.4.1"
+  version: "1.4.2"
 ---
 
 # `threadlight-auto` — Full-auto Threadlight driver
@@ -33,6 +33,15 @@ with a single invocation. Designed for:
 
 SEs who already know the per-skill chain should keep invoking those directly —
 `threadlight-auto` is a wrapper, not a replacement.
+
+**Model roles.** Recommend a sufficiently capable authoring model for nontrivial
+design/build work, respecting the operator's host selection; do not silently
+change it or global settings. Runtime model/capacity choices remain in
+Foundation/SPEC, independent of the coding model. At the validated pilot handoff,
+offer the [optional fixed-artifact runtime comparison](../threadlight-design/references/model-selection.md)
+when a lower-cost candidate could meet the use case's requirements. This is a
+manual, explicitly authorized experiment, not a new stage, automatic paid eval,
+deployment, or hidden downgrade. Keep construction and runtime costs separate.
 
 > **Design.** The orchestrator pattern, smart-recovery table, and HARD-STOP
 > gates are the load-bearing reliability contract of this skill. Threadlight's
@@ -518,6 +527,11 @@ covered in [`threadlight-deploy` § Deploy-time failure-mode index](../threadlig
 ## Closing report
 
 After Invoke completes (or after early termination), `threadlight-auto` emits a one-shot summary:
+
+For a validated pilot, include the optional runtime-comparison offer above if it
+has not already been addressed in Local Test. State whether it was not run,
+blocked, or evaluated; never imply that smoke success approved a cheaper model.
+Early termination is a blocker handoff, not an optimization result.
 
 ```
 ✅ threadlight-auto complete — Contoso Mutual auto-claim triage pilot
