@@ -10,6 +10,7 @@ for (const theme of ['light', 'dark']) {
     await expect(journey).toContainText('Human reviewer');
     await expect(journey).toContainText('Outlook');
     await expect(journey).toContainText('one-use');
+    await journey.locator('[data-action-implementation] > summary').click();
     await expect(journey.getByRole('list', { name: 'Primary business-action path' }).locator(':scope > li')).toHaveCount(3);
     await expect(journey.getByRole('list', { name: 'Supporting authority services' }).locator(':scope > li')).toHaveCount(2);
     await journey.getByRole('tab', { name: 'Human review', exact: true }).click();

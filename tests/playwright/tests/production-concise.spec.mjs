@@ -2,14 +2,15 @@ import { test, expect } from '@playwright/test';
 
 const wordCount = locator => locator.evaluate(element => {
   const copy = element.cloneNode(true);
-  copy.querySelectorAll('style, script, .wf-mobile, svg [hidden], svg desc, svg title').forEach(node => node.remove());
+  copy.querySelectorAll('style, script, .wf-mobile, svg [hidden], svg desc, svg title, [data-flow-proof][hidden], [data-flow-approval][hidden], [data-flow-evidence][hidden], [data-evidence-jwt][hidden]').forEach(node => node.remove());
   copy.querySelectorAll('[data-evidence-jwt] details > :not(summary)').forEach(node => node.remove());
+  copy.querySelectorAll('[data-action-implementation] > :not(summary)').forEach(node => node.remove());
   return copy.textContent.trim().split(/\s+/).length;
 });
 
-test('core controls stay flat and bounded, with only the JWT wire contract behind a disclosure', async ({ page }) => {
+test('examples stay bounded while JWT and implementation details are optional', async ({ page }) => {
   await page.goto('/production.html');
-  await expect(page.locator('main details:not([data-evidence-jwt] details), main summary:not([data-evidence-jwt] summary)')).toHaveCount(0);
+  await expect(page.locator('main details:not([data-evidence-jwt] details):not([data-action-implementation]), main summary:not([data-evidence-jwt] summary):not([data-action-implementation] > summary)')).toHaveCount(0);
   for (const id of ['platform-topic', 'readiness-topic', 'actions-topic']) {
     expect(await wordCount(page.locator(`#${id}`)), id).toBeLessThan(700);
   }
@@ -18,6 +19,8 @@ test('core controls stay flat and bounded, with only the JWT wire contract behin
     await page.locator(`[data-flow-evidence-case][value="${choice}"]`).check();
     expect(await wordCount(page.locator('#actions-topic')), choice).toBeLessThan(700);
   }
+  await page.getByRole('tab', { name: 'Human review', exact: true }).click();
+  expect(await wordCount(page.locator('#actions-topic')), 'human permission').toBeLessThan(700);
   expect(await wordCount(page.locator('main'))).toBeLessThan(2400);
 });
 

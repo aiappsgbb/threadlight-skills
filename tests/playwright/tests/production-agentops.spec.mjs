@@ -66,7 +66,7 @@ test('AgentOps diagrams and checks remain readable without JavaScript', async ({
     await page.goto('/production.html');
     await expect(page.locator('.pipe-svg')).toBeVisible();
     await expect(page.locator('.release-checks > li')).toHaveCount(3);
-    await expect(page.locator('main details:not([data-evidence-jwt] details)')).toHaveCount(0);
+    await expect(page.locator('main details:not([data-evidence-jwt] details):not([data-action-implementation])')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   } finally {
     await context.close();

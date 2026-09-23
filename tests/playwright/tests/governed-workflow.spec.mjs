@@ -8,6 +8,7 @@ const section = '#workflow-in-action';
 const open = async (page) => {
   await page.goto('/production.html#workflow-in-action');
   await expect(page.locator(section)).toBeVisible();
+  await page.locator(section).getByRole('button', { name: 'Voice on', exact: true }).click();
 };
 
 test('direct preview anchor lands on the Production illustration below its navigation', async ({ page }, testInfo) => {

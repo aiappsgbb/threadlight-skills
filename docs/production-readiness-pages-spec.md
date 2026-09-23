@@ -56,6 +56,33 @@ validation history below are retained design history, **not the commercial page 
 The current commercial copy requires its own focused UI checks; prior browser
 passes are not silently reassigned to changed content.
 
+### Action walkthrough playback
+
+The four action scenarios support explicit Play/Pause and prerecorded English
+narration, enabled by default but never autoplaying. A scene-setting paragraph
+introduces the return and selected scenario before the steps begin. Each step
+then explains both the action and its purpose. Subtitles remain visible in a
+full-width band, including when muted; Play, Pause and Replay have matching icons.
+A single marker follows the current arrow; reduced motion keeps static highlights instead.
+Voice playback advances on clip completion, stops when the page/topic is hidden
+and pauses at human review: **no automatic approval**. Audio failures stop
+playback with a visible message; the silent path remains available.
+The case introduction is separate from the policy steps, can be skipped by
+manual navigation, and returns on Replay or a scenario change. The player remains
+bounded: at most 185 spoken words per scenario and 20 seconds per clip.
+
+Narration belongs to this illustration, not the whole Production chapter.
+Scripts live in `governed-workflow.js`; MP3s and their script/hash/duration
+manifest live in `docs/assets/audio/governance/`. Match the home-page voice:
+`en-US-AvaMultilingualNeural`, rate `+0%`, documented in commits `586c519` and
+`bc167f2`. Regeneration uses the online Edge TTS service through `edge-tts==7.2.8`
+and `ffprobe`: run `node scripts/render-governance-narration.mjs` with that Python
+environment active. Only the authored public narration text is sent; no cloud
+key or customer data is used. Clips are staged before replacing the previous set.
+The browser only plays shipped MP3s, never calls a speech service. Verify offline
+with `node scripts/render-governance-narration.mjs --check`.
+Existing home-page narration and historical evidence remain untouched.
+
 ### Architecture reader and Production-ready visual
 
 **Current concise presentation (supersedes the expanded layout below):** keep

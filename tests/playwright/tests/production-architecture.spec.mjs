@@ -7,7 +7,7 @@ test('Production shares the site navigation without restoring the superseded ass
     await page.goto('/production.html');
     await expect(page.locator('header .nav a')).toHaveText(['Home', 'Basics', 'Build', 'Case study', 'Production']);
     await expect(page.locator('[data-topic-tab]')).toHaveCount(3);
-    await expect(page.locator('main details:not([data-evidence-jwt] details), .pr-evidence-console, .pr-posture-picker')).toHaveCount(0);
+    await expect(page.locator('main details:not([data-evidence-jwt] details):not([data-action-implementation]), .pr-evidence-console, .pr-posture-picker')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   }
 });
@@ -72,7 +72,7 @@ test('without scripting all three topics and static navigation remain available'
     }
     await expect(page.locator('header .nav a[href="./basics.html"]')).toBeVisible();
     await expect(page.locator('.cx-directory')).toHaveCount(0);
-    await expect(page.locator('main details:not([data-evidence-jwt] details)')).toHaveCount(0);
+    await expect(page.locator('main details:not([data-evidence-jwt] details):not([data-action-implementation])')).toHaveCount(0);
   } finally {
     await context.close();
   }

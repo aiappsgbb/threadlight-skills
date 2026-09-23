@@ -62,7 +62,7 @@ test('the guide starts from an existing Threadlight pilot and has five actionabl
 test('the workbook and current architecture baseline remain byte-frozen outside the signed-evidence addition', () => {
   for (const [file, expected] of [
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
-    ['docs/agent-governance-deep-dive.md', '006b99c4c80262eb6571a0a21ee46b12b4df95c6'],
+    ['docs/agent-governance-deep-dive.md', '9ac455495e2653c3695285e5b04261011b972d79'],
     ['docs/assets/governance/effect-boundaries.svg', '69fa014350e3f7acaf53b8e37541717b99f8a6dd'],
   ]) {
     const bytes = file === 'docs/agent-governance-deep-dive.md'

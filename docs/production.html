@@ -23,7 +23,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
-<link rel="stylesheet" href="assets/governed-workflow.css?v=e2e8b1ab">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=1631c39c">
 <style>
   /* Page-local layout and contrast; retain the shared Threadlight tokens and navigation. */
   html { scroll-padding-top: var(--production-scroll-offset, 72px); }
@@ -467,7 +467,7 @@
         Application and data owners enforce caller/tenant permissions, minimize what enters prompts, memory and audit,
         and set retention. A private connection or an approved action does not grant access to every record.
         These controls are not supplied by the new action-governance runtime.
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/43fd7008a5eb6aa24ecc839b6dc08ace4ed6a9b3/docs/agent-governance-deep-dive.md#1-what-is-covered-elsewhere">Understand the boundary</a>.
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md#1-what-is-covered-elsewhere">Understand the boundary</a>.
       </aside>
     </div>
   </section>
@@ -686,40 +686,15 @@
 <div class="topic-panel" id="actions-topic" data-topic-panel>
   <section class="chapter-section governance-section" id="effect-authority" data-toc-id="effect-authority" aria-labelledby="effect-authority-heading">
     <div class="section-head">
-      <h2 id="effect-authority-heading">Access to a system is not <em>authority for every action.</em></h2>
-      <p class="section-lede">The agent proposes; it does not authorize itself. The gateway blocks calls that fail
-        its checks before backend execution. A return below the amount limit still needs purchase proof.
-        This <strong>effect boundary</strong> controls actions, not just wording.</p>
+      <h2 id="effect-authority-heading">Before the agent records <em>a return decision.</em></h2>
+      <p class="section-lede">The gateway checks evidence and any required approval, then calls the real business operation.
+        Evidence is an extra condition, not a substitute for execution.</p>
     </div>
-    <p class="action-boundary">The gateway receives tool calls through <strong>Model Context Protocol (MCP)</strong>
-      and acts as the <strong>Policy Enforcement Point (PEP)</strong>.
-      <strong>Agent Control Specification (ACS)</strong> evaluates its local policy; the gateway enforces the verdict.</p>
-    <h3 class="action-layer-title">The main path: agent &rarr; gateway &rarr; business system</h3>
-    <ol class="action-actors" data-action-primary aria-label="Primary business-action path">
-      <li data-action-actor="agent"><svg data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg><strong>Agent <small data-actor-state>In progress</small></strong><span>Obtains required evidence and proposes a recommendation; no database-write or signing credentials.</span></li>
-      <li data-action-actor="gateway"><svg data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><strong>Governed MCP gateway <small data-actor-state>Waiting</small></strong><span><b>Enforcement happens here.</b> Check identity and trusted facts, verify evidence, then enforce the policy verdict.</span></li>
-      <li data-action-actor="business"><svg data-component-icon aria-hidden="true"><use href="#production-icon-store"/></svg><strong>Business API <small data-actor-state>Waiting</small></strong><span>Independently authorizes the caller; its own writer identity commits the decision and audit.</span></li>
-    </ol>
-    <aside class="action-support" data-action-support aria-labelledby="action-support-title">
-      <h3 id="action-support-title">Shared services support that path</h3>
-      <p>The control plane supplies signed configuration, verified approvals and a durable audit acknowledgement (ACK).
-        It is a required dependency where selected, not another business executor and not merely a log.</p>
-      <ul class="action-actors" aria-label="Supporting authority services">
-        <li data-action-actor="control"><svg data-component-icon aria-hidden="true"><use href="#production-icon-policy"/></svg><strong>Control plane <small data-actor-state>Waiting</small></strong><span>Maintains approval intents, one-use grants and audit records, not local policy evaluation or business execution.</span></li>
-        <li data-action-actor="human"><svg data-component-icon aria-hidden="true"><use href="#production-icon-person"/></svg><strong>Human reviewer <small data-actor-state>Not required</small></strong><span>Approves or rejects the exact exception in Outlook, not a general override.</span></li>
-      </ul>
-    </aside>
-    <p class="action-status-note">Actor badges describe the selected illustration, not live service status.</p>
-    <p class="action-boundary"><strong>Two different gateways.</strong> <span title="APIM: Azure API Management">Citadel/APIM</span> is the <strong>model gateway</strong>
-      for shared model traffic. Threadlight's governed MCP gateway controls <strong>selected business effects</strong>.</p>
     <p class="action-example" id="returns-walkthrough" data-production-example><strong>&ldquo;Can I return this order?&rdquo;</strong>
-      In this reference, an authenticated unbound read can go directly to the business API without ACS.
-      Protected decisions use the gateway; the backend rejects unauthorized direct writes.
-      The result is a recommendation, <strong>not a payment</strong>.</p>
+      Here the tool actually updates <code>RMA-EXAMPLE</code> and its decision audit, <strong>not a payment</strong>.
+      A payment tool would instead invoke a payment backend.</p>
     <div id="action-architecture" data-visual="effect-sequence">
-      <h3 class="action-layer-title" id="production-input-proof">What must happen before a write</h3>
-      <p class="action-boundary">These are checks, not a chain of business executors.
-        The gateway obtains authority and audit confirmation from shared services, then calls the backend.</p>
+      <h3 class="action-layer-title" id="production-input-proof">Explore four policy outcomes</h3>
       <!-- governed-flow:start -->
       <div id="workflow-in-action" data-governed-flow role="region" aria-label="Four policy scenarios">
         <svg class="wf-symbols" width="0" height="0" aria-hidden="true" focusable="false"><defs><symbol id="wf-icon-stop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m8 8 8 8m0-8-8 8"/></g></symbol></defs></svg>
@@ -733,9 +708,9 @@
           <div id="wf-case" role="tabpanel" aria-labelledby="wf-tab-normal">
             <div class="wf-evidence" data-flow-evidence hidden>
               <p><strong>Policy example: corroborate purchase and amount.</strong>
-                The agent requests evidence, receives a signed JWT, then calls the gateway with it.
-                The provider never calls the gateway.</p>
-              <p class="wf-proof-transport">Current reference: verification uses authenticated HTTPS; the operational call uses MCP.</p>
+                Does the purchase record match this customer and amount?
+                The provider checks the source and returns signed proof to the agent.
+                The agent &mdash; not the provider &mdash; then calls the gateway.</p>
               <fieldset class="wf-evidence-choices">
                 <legend>Purchase evidence</legend>
                 <label><input type="radio" name="wf-evidence-case" value="valid" data-flow-evidence-case checked><span>Valid proof</span></label>
@@ -743,7 +718,19 @@
                 <label><input type="radio" name="wf-evidence-case" value="changed" data-flow-evidence-case><span>Changed inputs</span></label>
               </fieldset>
             </div>
-            <p class="wf-story" data-flow-story>Eligible return &mdash; record a recommendation, not a payment.</p>
+            <div class="wf-playback-head">
+              <p class="wf-story" data-flow-story>Eligible return &mdash; execute the case update, with its decision audit.</p>
+              <div class="wf-transport" role="group" aria-label="Illustration playback" data-flow-controls hidden>
+                <button type="button" data-flow-control="previous" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
+                <button type="button" data-flow-control="play"><svg viewBox="0 0 24 24" data-flow-play-icon data-icon="play" aria-hidden="true"><path d="M8 5 19 12 8 19Z"/></svg><span data-flow-play-label>Play</span></button>
+                <button type="button" data-flow-control="voice" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 5 9H2v6h3l6 4V5Z M15 8a6 6 0 0 1 0 8 M18 5a10 10 0 0 1 0 14"/></svg><span data-flow-voice-label>Voice on</span></button>
+                <button type="button" data-flow-control="next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg><span data-next-label hidden>Approved example</span></button>
+              </div>
+            </div>
+            <div class="wf-narration" data-flow-captions role="region" aria-label="Narration subtitles">
+              <p data-flow-narration>A customer asks to return an order. The gateway invokes a real operation: updating this case and its decision audit, not a payment. Here, the required checks pass, so the decision can proceed without human review.</p>
+            </div>
+            <p class="wf-note" data-flow-audio-note role="status" aria-live="polite"></p>
             <svg class="wf-diagram" viewBox="0 0 1100 215" role="img" aria-labelledby="wf-map-title wf-map-desc">
               <title id="wf-map-title">Checks required before a selected business action</title>
               <desc id="wf-map-desc">The agent proposes. The gateway checks evidence and local policy, obtains audit confirmation from shared services, then calls the business API. The backend commits the conditional decision and business audit. This is a sequence of checks, not a chain of business executors.</desc>
@@ -795,46 +782,43 @@
                   <text class="wf-label" x="43" y="25">Fresh checks</text><text class="wf-detail" x="43" y="43">Same proposal</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
                 </g>
               </g>
-              <g class="wf-evidence-sequence" data-evidence-sequence hidden>
-                <g data-evidence-participant="agent" transform="translate(20 16)">
-                  <rect width="180" height="54" rx="6"/><text x="90" y="24">Agent</text><text class="wf-detail" x="90" y="43">Makes both calls</text>
+              <g class="wf-evidence-map" data-evidence-sequence hidden>
+                <g data-evidence-participant="agent" data-evidence-step="proposal present" transform="translate(20 190)">
+                  <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-branch" x="16" y="13" width="25" height="25"/>
+                  <text class="wf-label" x="52" y="30">Agent</text><text class="wf-detail" x="16" y="56" data-proof-agent-label>Presents action + proof</text>
                 </g>
-                <g data-evidence-participant="provider" transform="translate(315 16)">
-                  <rect width="180" height="54" rx="6"/><text x="90" y="24">Evidence Provider</text><text class="wf-detail" x="90" y="43">External service</text>
+                <g data-evidence-participant="provider" data-evidence-step="proof" transform="translate(20 10)">
+                  <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-policy" x="16" y="13" width="25" height="25"/>
+                  <text class="wf-label" x="52" y="30">Evidence Provider</text><text class="wf-detail" x="16" y="56">Checks trusted records</text>
                 </g>
-                <g data-evidence-participant="gateway" transform="translate(610 16)">
-                  <rect width="180" height="54" rx="6"/><text x="90" y="24">MCP gateway</text><text class="wf-detail" x="90" y="43">Verifies and enforces</text>
+                <g data-evidence-participant="gateway" data-evidence-step="checks ack" transform="translate(430 190)">
+                  <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-shield" x="16" y="13" width="25" height="25"/>
+                  <text class="wf-label" x="52" y="30">Gateway</text><text class="wf-detail" x="16" y="56" data-proof-check-label>Proof, rules + audit</text>
                 </g>
-                <g data-evidence-participant="backend" transform="translate(905 16)">
-                  <rect width="180" height="54" rx="6"/><text x="90" y="24">Backend</text><text class="wf-detail" x="90" y="43">Owns the transaction</text>
-                </g>
-                <g class="wf-lifelines" aria-hidden="true">
-                  <path d="M110 70V282"/><path d="M405 70V205"/><path d="M700 70V440"/><path d="M995 70V477"/>
+                <g data-evidence-participant="backend" data-evidence-step="effect result" transform="translate(850 190)">
+                  <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-store" x="16" y="13" width="25" height="25"/>
+                  <text class="wf-label" x="52" y="30">Business system</text><text class="wf-detail" x="16" y="56" data-proof-business-label>Executes the operation</text>
                 </g>
                 <g class="wf-message" data-evidence-message="request" data-message-from="agent" data-message-to="provider" data-evidence-step="proposal">
-                  <line class="wf-edge" x1="110" y1="125" x2="405" y2="125" marker-end="url(#wf-arrow)"/>
-                  <text x="124" y="108">1. Verify purchase · HTTPS</text>
+                  <line class="wf-edge" x1="60" y1="190" x2="60" y2="83" marker-end="url(#wf-arrow)"/>
+                  <text x="76" y="122">Check facts</text>
                 </g>
                 <g class="wf-message" data-evidence-message="return" data-message-from="provider" data-message-to="agent" data-evidence-step="proof">
-                  <line class="wf-edge" x1="405" y1="193" x2="110" y2="193" marker-end="url(#wf-arrow)"/>
-                  <text x="124" y="176" data-proof-return-label>2. Return signed JWT</text>
+                  <line class="wf-edge" x1="190" y1="78" x2="190" y2="185" marker-end="url(#wf-arrow)"/>
+                  <text x="206" y="153" data-proof-return-label>Expiring proof</text>
                 </g>
                 <g class="wf-message" data-evidence-message="invoke" data-message-from="agent" data-message-to="gateway" data-evidence-step="present">
-                  <line class="wf-edge" x1="110" y1="266" x2="700" y2="266" marker-end="url(#wf-arrow)"/>
-                  <text x="124" y="247" data-proof-call-label>3. returns_apply_decision + JWT · MCP</text>
-                </g>
-                <g class="wf-sequence-check" data-evidence-step="checks ack" transform="translate(610 288)">
-                  <rect width="180" height="62" rx="6"/><text x="90" y="24">JWT + policy</text><text class="wf-detail" x="90" y="45" data-proof-check-label>Then central audit ACK</text>
+                  <line class="wf-edge" x1="220" y1="224" x2="425" y2="224" marker-end="url(#wf-arrow)"/>
+                  <text x="322" y="208" text-anchor="middle" data-proof-call-label>Action + proof</text>
                 </g>
                 <g class="wf-message" data-evidence-message="dispatch" data-message-from="gateway" data-message-to="backend" data-evidence-step="effect">
-                  <line class="wf-edge" x1="700" y1="392" x2="995" y2="392" marker-end="url(#wf-arrow)"/>
-                  <text x="714" y="375">4. Authorized call</text><text class="wf-detail" x="714" y="414">Fingerprint, not JWT</text>
+                  <line class="wf-edge" x1="630" y1="224" x2="845" y2="224" marker-end="url(#wf-arrow)"/>
+                  <text x="738" y="208" text-anchor="middle">Permitted action</text>
                 </g>
-                <g class="wf-sequence-check" data-evidence-step="result" transform="translate(905 429)">
-                  <rect width="180" height="48" rx="6"/><text x="90" y="21">Conditional decision</text><text class="wf-detail" x="90" y="39">Not a payment</text>
-                </g>
-                <g class="wf-sequence-check" data-evidence-step="denial-audit deny" transform="translate(610 374)" hidden>
-                  <rect width="180" height="62" rx="6"/><text x="90" y="24">Blocked before write</text><text class="wf-detail" x="90" y="45">Denial audit; no effect</text>
+                <g data-evidence-step="denial-audit deny" hidden>
+                  <path class="wf-edge" d="M530 258V285" marker-end="url(#wf-arrow)"/>
+                  <rect x="430" y="290" width="200" height="44" rx="10"/><use class="wf-icon" aria-hidden="true" href="#wf-icon-stop" x="444" y="300" width="24" height="24"/>
+                  <text class="wf-label" x="480" y="318">No business effect</text>
                 </g>
               </g>
             </svg>
@@ -852,11 +836,48 @@
               Human review waits in Outlook for a verified grant, fresh checks and audit ACK.
               Signed evidence requires provider-verified purchase proof: missing or changed proof blocks the new effect;
               valid matching proof still needs policy and backend checks.</p>
+            <div class="wf-business-proof" data-flow-proof hidden>
+              <h4>What the purchase certificate actually says</h4>
+              <p class="wf-proof-unavailable" data-proof-unavailable hidden><strong>No certificate issued.</strong>
+                The purchase could not be corroborated. The agent&rsquo;s claim cannot fill the gap.</p>
+              <div data-proof-certified>
+                <p>Illustrative contents of <strong>one signed record</strong>, not a separate token for every check:</p>
+                <dl class="wf-fact-record">
+                  <div><dt>Purchase + customer</dt><dd>The configured purchase snapshot matches the case&rsquo;s customer.</dd></div>
+                  <div><dt>Amount + currency</dt><dd>Amount <strong>40</strong>; the purchase and case have the same currency.</dd></div>
+                  <div><dt>Only this request</dt><dd><code>RMA-EXAMPLE</code>, revision <strong>r7</strong>, exact proposed decision and reason.</dd></div>
+                </dl>
+              </div>
+              <p class="wf-example-limit"><strong>Not every business rule is certified.</strong>
+                Separate return-window and refund-entitlement attestations are <strong>not implemented</strong> here.
+                Case eligibility and risk remain backend checks.</p>
+              <p class="wf-example-limit"><strong>Loan fixture:</strong> income extracted from a document is not corroborated income.
+                A matching payroll record supplies the evidence. Synthetic sources, not a lending workflow.</p>
+            </div>
+            <!-- business-proof:end -->
+            <div class="wf-approval-example" data-flow-approval hidden>
+              <h4>One approval. One exact action. Until expiry.</h4>
+              <p>The person permits this case update, not future decisions or an exception to missing evidence.</p>
+              <dl class="wf-fact-record">
+                <div><dt>Scope</dt><dd>Apply this return decision to <code>RMA-EXAMPLE</code>, revision <strong>r7</strong>, amount <strong>40</strong>.</dd></div>
+                <div><dt>Context</dt><dd>Same caller, arguments, verified facts and policy.</dd></div>
+                <div><dt>Deadline</dt><dd>Request <strong>10:00</strong> &rarr; expires <strong>10:15</strong>, even if approval arrives at 10:04.</dd></div>
+                <div><dt>Permission</dt><dd data-approval-state>Not issued &mdash; waiting for the person</dd></div>
+              </dl>
+              <p class="wf-example-limit">Illustrative <strong>15-minute</strong> deferred configuration.
+                Default: <strong>5 minutes</strong>; configurable up to <strong>60 minutes</strong>,
+                capped by signed policy expiry. Time starts at the request, not the human&rsquo;s reply.</p>
+              <p class="wf-example-limit"><strong>Implemented as a server-held, one-use grant &mdash; not a JWT given to the agent.</strong>
+                The gateway checks and consumes it before dispatch. After expiry or a scope change, execution is blocked;
+                completed-operation replay returns the recorded result, not another write.</p>
+            </div>
+            <!-- human-permission:end -->
             <div class="wf-jwt" data-evidence-jwt hidden>
               <h4>The proof is a signed JSON Web Token (JWT)</h4>
               <p>It binds the verified facts to this caller, case, revision and exact tool arguments.
                 The agent carries it in MCP <code>_meta["threadlight/evidence"]</code>.
                 It is not an access token or human approval.</p>
+              <p class="wf-proof-transport">Current reference: verification uses authenticated HTTPS; the operational call uses MCP.</p>
               <details>
                 <summary>Inspect the JWT contract and MCP request</summary>
                 <dl class="wf-jwt-fields">
@@ -896,20 +917,43 @@
                   <div><dt>Output</dt><dd data-flow-output>Exact case request</dd></div>
                 </dl>
               </div>
-              <div class="wf-transport" role="group" aria-label="Illustration playback" data-flow-controls hidden>
-                <button type="button" data-flow-control="previous" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
-                <button type="button" data-flow-control="play"><span data-flow-play-label>Play</span></button>
-                <button type="button" data-flow-control="next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg><span data-next-label hidden>Approved example</span></button>
-              </div>
             </div>
-            <p class="wf-note" data-flow-motion></p>
-            <p class="wf-case-note" data-flow-case-note>Authorization receipt first; conditional decision and business audit afterward. This is not a payment.</p>
+            <div class="wf-footnotes">
+              <p class="wf-note" data-flow-motion></p>
+              <p class="wf-case-note" data-flow-case-note>Authorization receipt first; conditional decision and business audit afterward. This is not a payment.</p>
+            </div>
           </div>
         </div>
         <p id="effect-sequence-caption" class="wf-legend">Illustration only. No model, mailbox or backend is connected. Solid arrows show the selected path, not a live execution.</p>
       </div>
       <!-- governed-flow:end -->
     </div>
+    <details class="action-implementation" data-action-implementation>
+      <summary>Who checks, authorizes and records?</summary>
+      <p class="action-boundary">The gateway receives tool calls through <strong>Model Context Protocol (MCP)</strong>
+        and is the <strong>Policy Enforcement Point (PEP)</strong>.
+        <strong>Agent Control Specification (ACS)</strong> evaluates policy; the gateway enforces it.
+        This <strong>effect boundary</strong> controls actions, not wording.</p>
+      <ol class="action-actors" data-action-primary aria-label="Primary business-action path">
+        <li data-action-actor="agent"><svg data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg><strong>Agent <small data-actor-state>In progress</small></strong><span>Obtains evidence and proposes; no database-write or signing credentials.</span></li>
+        <li data-action-actor="gateway"><svg data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><strong>Governed MCP gateway <small data-actor-state>Waiting</small></strong><span>Checks identity, trusted facts, evidence and policy before dispatch.</span></li>
+        <li data-action-actor="business"><svg data-component-icon aria-hidden="true"><use href="#production-icon-store"/></svg><strong>Business API <small data-actor-state>Waiting</small></strong><span>Authorizes independently; its own writer identity commits the decision and audit.</span></li>
+      </ol>
+      <aside class="action-support" data-action-support aria-labelledby="action-support-title">
+        <h3 id="action-support-title">Shared services, not another business executor</h3>
+        <p>Required signed configuration, verified approval and durable audit ACK must be available before the effect.</p>
+        <ul class="action-actors" aria-label="Supporting authority services">
+          <li data-action-actor="control"><svg data-component-icon aria-hidden="true"><use href="#production-icon-policy"/></svg><strong>Control plane <small data-actor-state>Waiting</small></strong><span>Stores approval intents, one-use grants and audit records.</span></li>
+          <li data-action-actor="human"><svg data-component-icon aria-hidden="true"><use href="#production-icon-person"/></svg><strong>Human reviewer <small data-actor-state>Not required</small></strong><span>Decides the exact request in Outlook, not a general override.</span></li>
+        </ul>
+      </aside>
+      <p class="action-status-note">Actor badges describe the illustration, not live services.</p>
+      <p class="action-boundary">These are checks, not a chain of business executors.
+        Authenticated unbound reads go directly to the business API without ACS;
+        the backend rejects unauthorized direct writes.</p>
+      <p class="action-boundary"><strong>Two different gateways.</strong> Citadel/APIM is the <strong>model gateway</strong>.
+        Threadlight&rsquo;s governed gateway controls <strong>selected business effects</strong>.</p>
+    </details>
     <p class="action-boundary"><strong>Selected actions, not blanket protection.</strong>
       This assumes trusted host and service code, not protection from a malicious administrator.
       The independent business API still checks the current case revision; a persuasive answer is not authorization.</p>
@@ -920,7 +964,7 @@
       The workbook separates preparation, execution and independently verified evidence.</p>
     <a class="btn btn-primary" href="./agent-governance.html#overview">Try the guided workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
     <div class="topic-deeper">
-      <a data-deep-dive="governance" href="https://github.com/aiappsgbb/threadlight-skills/blob/43fd7008a5eb6aa24ecc839b6dc08ace4ed6a9b3/docs/agent-governance-deep-dive.md#4-architecture-and-trust-boundaries">Components and trust boundaries &rarr;</a>
+      <a data-deep-dive="governance" href="https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md#4-architecture-and-trust-boundaries">Components and trust boundaries &rarr;</a>
       <a href="https://github.com/aiappsgbb/threadlight-skills/blob/6bd6e72484039ed9db23f641f167f936beb9e072/docs/governed-returns-validation.md#september-15-native-outlook-human-approval-exact-resume-and-replay">Read the dated execution record &rarr;</a>
     </div>
   </section>
@@ -940,7 +984,7 @@
       <p><b>Governed actions</b><span>Authorize selected business changes during operation.</span></p>
     </div>
     <div class="cost-cta-row">
-      <a id="proof" class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/43fd7008a5eb6aa24ecc839b6dc08ace4ed6a9b3/docs/agent-governance-deep-dive.md">Explore the technical architecture &rarr;</a>
+      <a id="proof" class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md">Explore the technical architecture &rarr;</a>
       <a id="start" class="btn btn-ghost" href="./funnel.html#scene-cta">Start with a pilot &rarr;</a>
     </div>
   </section>
@@ -955,6 +999,6 @@
 <script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
 <script src="assets/production.js?v=96331334"></script>
-<script src="assets/governed-workflow.js?v=0c57e915"></script>
+<script src="assets/governed-workflow.js?v=4352f753"></script>
 </body>
 </html>
