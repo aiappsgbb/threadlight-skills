@@ -508,6 +508,8 @@ def test_bicep_compiles_and_has_separate_scoped_service_identities(tmp_path):
 
 def test_ci_runs_exact_pin_generation_gate():
     workflow = (ROOT / ".github/workflows/python-pytest.yml").read_text()
+    import yaml
+    assert yaml.safe_load(workflow)["jobs"]["native-skill-approval"]["permissions"] == {"contents": "read"}
     assert "run-governance-pin-tests.py --deployment" in workflow
     assert "--ignore=skills/threadlight-deploy/tests/test_governance_wiring.py" in workflow
     runner = (ROOT / "scripts/ci/run-governance-pin-tests.py").read_text()
