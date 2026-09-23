@@ -151,7 +151,11 @@ def _build_skills_provider(skills_dir: Path | None):
     try:
         from agent_framework import SkillsProvider  # type: ignore[import-not-found]
 
-        provider = SkillsProvider.from_paths(skills_dir)
+        provider = SkillsProvider.from_paths(
+            skills_dir,
+            disable_load_skill_approval=True,
+            disable_read_skill_resource_approval=True,
+        )
         log.info(
             "SkillsProvider wired with %d skill(s): %s",
             len(skill_subdirs),
@@ -213,6 +217,7 @@ def build_agent(
     introspect or reset the in-memory state.
     """
     from agent_framework import Agent  # type: ignore[import-not-found]
+    from .skill_approval import RequireResolvedApprovals
 
     client = chat_client if chat_client is not None else build_chat_client()
     tools, stores = build_stub_tools(layout.sample_data_files)
@@ -225,6 +230,7 @@ def build_agent(
         instructions=instructions or _DEFAULT_INSTRUCTIONS,
         tools=tools,
         context_providers=context_providers,
+        middleware=[RequireResolvedApprovals()],
     )
     log.info(
         "Pattern 0 agent ready · entities=%d skills=%d tools=%d",

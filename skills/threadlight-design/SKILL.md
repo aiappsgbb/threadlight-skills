@@ -16,7 +16,7 @@ description: >
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.12.0"
+  version: "1.12.1"
 ---
 
 # Threadlight Design
@@ -892,6 +892,12 @@ Present to user before generating:
 ### Step 6: Generate Implementation Artifacts
 
 #### 1. `src/agent/skills/{skill-name}/SKILL.md` (for each skill)
+
+For MAF targets, include the [autonomous skill-read contract](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/_shared/maf-skill-approval.md)
+in the runtime handoff: reviewed packaged instructions/resources may load
+unattended, while scripts and consequential business tools retain separate
+approval policies. The runtime test must prove skill-body consumption, not
+merely advertise the skill catalog.
 
 Use the template from `references/skill-template.md`. Each skill MUST have:
 - YAML frontmatter with `name` and `description` (include USE FOR / DO NOT USE FOR)

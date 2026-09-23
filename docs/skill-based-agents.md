@@ -192,12 +192,19 @@ skill does not create either.
 ### MAF selected-governance adapter
 
 [`skills/threadlight-deploy/references/governance/maf-container.py`](../skills/threadlight-deploy/references/governance/maf-container.py)
-`build_host()` (around lines 143–166) uses `SkillsProvider.from_paths(skills)`
+`build_host()` uses `SkillsProvider.from_paths(skills, ...)`
 when child `*/SKILL.md` files exist. It passes `context_providers=contexts`,
 `tools=tools` from `governance_application`, and instructions read from
 `BASE / "copilot-instructions.md"` into `create_governed_agent`.
 The host subclasses `ResponsesHostServer` and adds dependency readiness.
 Shared validator modules under `skills/_shared` are not domain skills.
+
+MAF >=1.10 requires approval for skill tools by default. These MAF hosts and
+the local quickstart use provider-specific exemptions only for trusted packaged
+instruction/resource reads. Scripts and business effects retain separate
+policies. Unhandled native approvals raise `approval_required`, including
+streaming, rather than producing an empty completed report. See the
+[autonomous skill-read contract](../skills/_shared/maf-skill-approval.md).
 
 These two adapters are concrete **selected-governance agent** implementations,
 not proof that every workflow or every generated host uses identical loading.

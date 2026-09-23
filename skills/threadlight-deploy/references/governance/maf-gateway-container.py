@@ -142,7 +142,9 @@ async def build_host(config, *, credential, signer, stack, bootstrap_gate=None,
             model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"], project_client=project)
         stack.push_async_callback(client.client.close)
     skills = BASE / "skills"
-    contexts = [SkillsProvider.from_paths(skills)] if any(skills.glob("*/SKILL.md")) else []
+    contexts = [SkillsProvider.from_paths(
+        skills, disable_load_skill_approval=True, disable_read_skill_resource_approval=True,
+    )] if any(skills.glob("*/SKILL.md")) else []
     agent = await create_gateway_agent(
         config=config, client=client, local_tools=application.tools,
         instructions=(BASE / "copilot-instructions.md").read_text(),

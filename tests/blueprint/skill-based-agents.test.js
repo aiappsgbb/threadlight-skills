@@ -68,7 +68,7 @@ test('runtime-loading explains the actual separate instruction, skill and tool w
   assert.match(ghcp, /skill_directories=\[str\(base \/ "skills"\)\]/);
   assert.match(ghcp, /system_message=[\s\S]{0,150}copilot-instructions\.md/);
   assert.match(ghcp, /mcp_servers=servers/);
-  assert.match(maf, /def build_host\([\s\S]*SkillsProvider\.from_paths\(skills\)/);
+  assert.match(maf, /def build_host\([\s\S]*SkillsProvider\.from_paths\(\s*skills,\s*disable_load_skill_approval=True,\s*disable_read_skill_resource_approval=True/);
   assert.match(maf, /tools=tools, context_providers=contexts/);
   assert.match(maf, /class GovernedHost\(ResponsesHostServer\)/);
   assert.match(local, /continuing without it/);

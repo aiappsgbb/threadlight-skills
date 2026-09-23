@@ -12,6 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 REFERENCES = ROOT / "skills/threadlight-deploy/references/governance"
+sys.path.insert(0, str(ROOT / "skills/threadlight-local-test/references/quickstart/threadlight_quickstart"))
 
 
 def module(name):
@@ -56,6 +57,18 @@ def test_generation_off_is_byte_for_byte_noop(tmp_path):
     before = {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()}
     assert module("generate").generate(project, contract(off=True)) == {"status": "off"}
     assert before == {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()}
+
+
+def test_local_validation_export_carries_the_exact_approval_guard(tmp_path):
+    generator = module("generate")
+    generator.export_local_validation(tmp_path)
+    relative = Path("skills/threadlight-local-test/references/quickstart/threadlight_quickstart/skill_approval.py")
+    exported = tmp_path / ".governance-tools"
+    assert (exported / relative).read_bytes() == (ROOT / relative).read_bytes()
+    assert relative.as_posix() in json.loads((exported / "source-manifest.json").read_text())["files"]
+    from skills._shared.native_local_evidence import source_fingerprints
+    fingerprints = source_fingerprints(ROOT, ROOT / "examples/returns-triage-governed")
+    assert "runner:" + relative.as_posix() in fingerprints
 
 
 @pytest.mark.governance_runtime
@@ -1008,6 +1021,10 @@ def test_generated_maf_native_constructor_host_and_failed_signature(tmp_path):
     (project / "src/agent/skills/domain").mkdir(parents=True)
     (project / "src/agent/skills/domain/SKILL.md").write_text(
         "---\nname: domain\ndescription: Use for domain tasks\n---\nUse approved tools.\n")
+    (project / "src/agent/skills/domain/references").mkdir()
+    (project / "src/agent/skills/domain/references/rules.md").write_text("RESOURCE-BODY: Review after 17 minutes.")
+    (project / "src/agent/skills/domain/scripts").mkdir()
+    (project / "src/agent/skills/domain/scripts/action.py").write_text("raise AssertionError('must not execute')")
     (project / "azure.yaml").write_text(
         "name: pilot\nservices:\n  agent:\n    host: azure.ai.agent\n"
         "    project: ./src/agent\n  existing:\n    host: containerapp\n"
@@ -1191,14 +1208,21 @@ async def main():
     async with httpx.AsyncClient(transport=httpx.MockTransport(context_health)) as http:
         assert await container.resolve_identity(config, Credential(), http=http) == config["principal"]
     assert observed_contexts[0]["agent_id"] == config["agent_id"]
-    for provider, name in ((provider, "read"), (signed_provider, "act")):
+    script_provider = await container.build_provider(config, signer=Signer(), credential=object())
+    for provider, name in ((provider, "read"), (signed_provider, "act"), (script_provider, "run_skill_script")):
         application.effects.clear()
         calls = []
+        operations = [
+            ("load_skill", {"skill_name": "domain"}),
+            ("read_skill_resource", {"skill_name": "domain", "resource_name": "references/rules.md"}),
+            (name, {"skill_name": "domain", "script_name": "scripts/action.py"} if name == "run_skill_script" else {}),
+        ]
         def exchange(request):
             calls.append(json.loads(request.content))
-            output = ([{"type": "function_call", "id": "fc_1", "call_id": "call_1",
-                        "name": name, "arguments": "{}", "status": "completed"}]
-                      if len(calls) == 1 else [{"type": "message", "id": "msg_1",
+            operation, arguments = operations[len(calls) - 1] if len(calls) <= len(operations) else ("", {})
+            output = ([{"type": "function_call", "id": f"fc_{len(calls)}", "call_id": f"call_{len(calls)}",
+                        "name": operation, "arguments": json.dumps(arguments), "status": "completed"}]
+                      if operation else [{"type": "message", "id": "msg_1",
                         "role": "assistant", "status": "completed", "content": [{
                             "type": "output_text", "text": "done", "annotations": []}]}])
             return httpx.Response(200, json={"id": "resp_1", "object": "response",
@@ -1211,11 +1235,28 @@ async def main():
             # Each actual agent requires its own provider, including the failed-signature case.
             provider = await container.build_provider(config, signer=Signer(), credential=object())
         real_host = container.build_host(provider, client=model, configure_observability=None)
-        await real_host._agent.run("Use the requested tool.")
+        if name == "run_skill_script":
+            from skill_approval import ApprovalRequiredError
+            try:
+                await real_host._agent.run("Run the script.")
+            except ApprovalRequiredError as exc:
+                assert "approval_required" in str(exc)
+            else:
+                raise AssertionError("Unresolved script approval was presented as success")
+            assert not application.effects
+            assert len(calls) == 3
+        else:
+            response = await real_host._agent.run("Read the skill and use the requested tool.")
+            assert response.text == "done" and not response.user_input_requests
+            assert len(calls) == 4
+        skill_results = [item["output"] for request in calls for item in request["input"]
+                         if item["type"] == "function_call_output"]
+        assert any("Use approved tools." in str(value) for value in skill_results)
+        assert any("RESOURCE-BODY:" in str(value) for value in skill_results)
         assert all(call["store"] is False for call in calls)
         if name == "read":
             assert application.effects == ["read"]
-        else:
+        elif name == "act":
             assert application.effects == []
             assert "threadlight:policy_deny" in json.dumps(calls[-1])
         await wire.aclose()

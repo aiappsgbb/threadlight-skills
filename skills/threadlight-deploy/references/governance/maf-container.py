@@ -20,6 +20,7 @@ from govern_control_plane.models import SignedBundle, envelope_digest, parse
 from govern_control_plane.storage import KeyVaultSigner
 from skills._shared.governance import validate_governance_contract
 from audit_delivery import AuditDelivery, workload_credential
+from skill_approval import RequireResolvedApprovals
 from runtime import (
     AcsGovernanceProvider, ApprovalGrant, ApprovalIntent, DurableSpool, VerifiedPolicy,
     create_governed_agent,
@@ -144,7 +145,9 @@ def build_host(provider, *, client, **host_options):
     import governance_application as application
     skills = BASE / "skills"
     # Shared validator Python modules are not agent skills; retain progressive disclosure.
-    contexts = [SkillsProvider.from_paths(skills)] if any(skills.glob("*/SKILL.md")) else []
+    contexts = [SkillsProvider.from_paths(
+        skills, disable_load_skill_approval=True, disable_read_skill_resource_approval=True,
+    )] if any(skills.glob("*/SKILL.md")) else []
     tools = application.tools
     probes = getattr(provider, "probes", None)
     if probes is not None:
@@ -152,7 +155,7 @@ def build_host(provider, *, client, **host_options):
             raise ValueError("probe_must_not_replace_application_tool")
         tools = [*tools, probes.tool()]
     agent = create_governed_agent(
-        provider, client=client, middleware=application.middleware,
+        provider, client=client, middleware=[*application.middleware, RequireResolvedApprovals()],
         tools=tools, context_providers=contexts,
         id=provider.deployment_agent_id, name=provider.deployment_agent_id,
         instructions=(BASE / "copilot-instructions.md").read_text(),

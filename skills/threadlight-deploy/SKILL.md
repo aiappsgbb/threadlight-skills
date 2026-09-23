@@ -17,7 +17,7 @@ description: >-
   ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
-  version: "1.8.0"
+  version: "1.8.1"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -844,6 +844,15 @@ progressive disclosure) **or** loaded at startup by a `_load_skills()`
 helper that appends them to instructions (legacy concat). See
 `foundry-hosted-agents` § Skill Loading for the trade-off and a
 production-tested defensive `_build_skills_provider()` helper.
+
+**For every generated MAF agent/executor**, apply the local
+[autonomous skill-read contract](../_shared/maf-skill-approval.md), including
+`disable_load_skill_approval=True` and `disable_read_skill_resource_approval=True`
+only on the trusted packaged provider. Preserve script/business approval settings
+and existing governance; install the portable `RequireResolvedApprovals` boundary
+for unattended hosts without an approval channel. Test actual skill/resource
+delivery and explicit residual-approval errors before parsing report text.
+Do not assume an external companion example already includes this integration.
 
 ### 3. `src/agent/mcp-config.json` — MCP Server Configuration
 

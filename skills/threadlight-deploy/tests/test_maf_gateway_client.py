@@ -14,6 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "skills/threadlight-govern/tests"))
+sys.path.insert(0, str(ROOT / "skills/threadlight-local-test/references/quickstart/threadlight_quickstart"))
 from test_gateway import Credential, GatewayHarness, gateway
 
 REFERENCE = ROOT / "skills/threadlight-deploy/references/governance/maf_gateway.py"
@@ -72,7 +73,7 @@ def test_maf_gateway_dependency_and_skill_contract():
     project = tomllib.loads(REFERENCE.with_name("pyproject-maf.toml").read_text())
     assert "httpcore==1.0.9" in project["project"]["dependencies"]
     skill = (ROOT / "skills/threadlight-deploy/SKILL.md").read_text()
-    assert 'version: "1.8.0"' in skill
+    assert 'version: "1.8.1"' in skill
     assert "maf-gateway-container.py" in skill
     assert "OBO is not provided by this app-only path" in skill
     assert "no mixed local/gateway bindings" in skill
@@ -400,8 +401,20 @@ def test_native_responses_host_uses_signed_authority_and_mcp(tmp_path, monkeypat
             },
         }
         (tmp_path / "copilot-instructions.md").write_text("Use the registered business action.")
+        skill = tmp_path / "skills/domain"
+        (skill / "references").mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            "---\nname: domain\ndescription: Business rules\n---\nSKILL-BODY: Read the refund rules first.")
+        (skill / "references/rules.md").write_text("RESOURCE-BODY: Refund window is 17 days.")
+        (skill / "scripts").mkdir()
+        (skill / "scripts/action.py").write_text("raise AssertionError('must not execute')")
         monkeypatch.setattr(module, "BASE", tmp_path)
-        model = native_model_client(tool_responses("refund", {"amount": 5}))
+        model = native_model_client([
+            tool_responses("load_skill", {"skill_name": "domain"})[0],
+            tool_responses("read_skill_resource", {
+                "skill_name": "domain", "resource_name": "references/rules.md"})[0],
+            *tool_responses("refund", {"amount": 5}),
+        ])
         gateway_transport = httpx.ASGITransport(app=app)
 
         class Router(httpx.AsyncBaseTransport):
@@ -447,8 +460,21 @@ def test_native_responses_host_uses_signed_authority_and_mcp(tmp_path, monkeypat
                             "input": "Apply the decision", "stream": True, "store": False})
                         assert response.status_code == 200, response.text
                         assert "response.completed" in response.text, response.text
+                        assert len(model.requests) == 4
+                        results = [item["output"] for request, _ in model.requests for item in request
+                                   if item["type"] == "function_call_output"]
+                        assert any("SKILL-BODY:" in str(value) for value in results)
+                        assert any("RESOURCE-BODY:" in str(value) for value in results)
                         assert len(h.calls) == 1
                         assert h.receipt_bodies()[0]["decision"] == "allow"
+                        model.responses.append(tool_responses("run_skill_script", {
+                            "skill_name": "domain", "script_name": "scripts/action.py"})[0])
+                        blocked = await local.post("/responses", json={
+                            "input": "Run the script", "stream": True, "store": False})
+                        assert "approval_required" in blocked.text, blocked.text
+                        assert "response.completed" not in blocked.text, blocked.text
+                        assert len(h.calls) == 1
+                        assert len(model.requests) == 5
                         async def unavailable_key():
                             raise RuntimeError("signing key unavailable")
 

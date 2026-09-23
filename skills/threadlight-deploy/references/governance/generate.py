@@ -21,6 +21,7 @@ import tomllib
 CATALOG = Path(__file__).resolve().parents[4]
 REFERENCE = Path(__file__).resolve().parent
 GOVERN = CATALOG / "skills/threadlight-govern"
+SKILL_APPROVAL = Path("skills/threadlight-local-test/references/quickstart/threadlight_quickstart/skill_approval.py")
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 RESOURCE = rf"/subscriptions/{UUID}/resourceGroups/[^/]+/providers/"
 
@@ -205,6 +206,8 @@ def export_local_validation(project, document=None, *, configuration=None):
         shutil.copytree(CATALOG / "skills" / skill, tools / "skills" / skill,
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache",
                                                      "*.egg-info", "build", "dist"))
+    (tools / SKILL_APPROVAL).parent.mkdir(parents=True)
+    shutil.copyfile(CATALOG / SKILL_APPROVAL, tools / SKILL_APPROVAL)
     # Explicit package wins over the application's smaller vendored namespace.
     (tools / "skills/__init__.py").write_text("")
     (tools / "scripts/ci").mkdir(parents=True)
@@ -1356,6 +1359,7 @@ def foundation(project, document, *, configuration=None):
 
 def copy_sources(target):
     """Explicit portable namespaces, including the shared validator's real imports."""
+    shutil.copyfile(CATALOG / SKILL_APPROVAL, target / "skill_approval.py")
     for source, namespace in (
         (GOVERN / "references/runtime", "runtime"),
         (GOVERN / "references/control-plane", "govern_control_plane"),

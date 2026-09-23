@@ -15,7 +15,7 @@ description: >
   DO NOT USE FOR: per-stage control (use threadlight-design / -deploy /
   -safe-check directly), production CI/CD, single-stage iteration.
 metadata:
-  version: "1.4.0"
+  version: "1.4.1"
 ---
 
 # `threadlight-auto` — Full-auto Threadlight driver
@@ -338,6 +338,13 @@ invoking sub-skills.
 
 Each stage invocation goes through the `Skill` tool. `threadlight-auto` reads each
 sub-skill's closing report; if a report indicates failure, the smart-recovery table fires.
+
+For MAF business runtimes, Local-test/Deploy/Invoke must carry the
+[autonomous skill-read contract](../_shared/maf-skill-approval.md).
+`approval_required` is an incomplete run, not success or malformed JSON to retry
+blindly. Verify a real skill body/resource reached the model; catalog names,
+business-tool success and a running host do not establish consumption.
+Preserve scripts, business HITL and existing Kratos-export ownership.
 
 | # | Stage | Invokes via Skill tool | Closing report we parse |
 |---|---|---|---|

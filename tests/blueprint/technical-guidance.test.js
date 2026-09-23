@@ -14,6 +14,24 @@ const docs = {
   workshop: 'docs/WORKSHOP-1H-QUICKSTART.md',
 };
 
+test('MAF generation handoffs preserve autonomous trusted reads and separate approvals', () => {
+  for (const file of [
+    'skills/threadlight-design/SKILL.md', 'skills/threadlight-local-test/SKILL.md',
+    'skills/threadlight-deploy/SKILL.md', 'skills/threadlight-auto/SKILL.md',
+  ]) {
+    assert.match(read(file), /maf-skill-approval\.md/, file);
+  }
+  const policy = read('skills/_shared/maf-skill-approval.md');
+  for (const term of ['1.10', '1.13.0', 'disable_load_skill_approval',
+    'disable_read_skill_resource_approval', 'disable_run_skill_script_approval',
+    'user_input_requests', 'server_label']) {
+    assert.ok(policy.includes(term), term);
+  }
+  assert.match(policy, /trusted local/i);
+  assert.match(policy, /same.name/i);
+  assert.match(policy, /approval_required/);
+});
+
 test('all current CI handoffs describe the same fail-closed release boundary', () => {
   for (const file of ['skills/threadlight-cicd/SKILL.md',
     'skills/threadlight-production-ready/SKILL.md', 'docs/agent-operations.md',
