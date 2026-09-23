@@ -1,6 +1,6 @@
 # Model selection — decision procedure (`threadlight-design`)
 
-A thin **decision aid** for choosing the model, capacity, and region a pilot
+A thin **decision aid** for choosing the runtime model, capacity, and region a pilot
 locks into `specs/foundation.md` § 2 and carries into SPEC § 7b. It answers *how
 to decide*, not *what exists*:
 
@@ -12,7 +12,96 @@ to decide*, not *what exists*:
   Model availability moves faster than this skill ships; when a version or region
   named here looks stale, the catalog wins.
 
-This file is the **procedure that fills those in**. Seven decisions, in order.
+First separate the two model roles below; the seven runtime decisions then fill
+those existing fields. This is guidance, not a model leaderboard or routing engine.
+
+## Authoring and runtime are independent choices
+
+| Role | Work | Selection owner |
+|---|---|---|
+| **Authoring model** (construction agent) | Discovery, specification, architecture, code generation and review | Operator in the coding-assistant host |
+| **Runtime inference model(s)** (business agent) | Execute the already-built agent's business tasks, tools and skills | Reviewed pilot configuration and deployment |
+
+For nontrivial design/build work, recommend a **sufficiently capable authoring
+model**, considering complexity and explicit operator choice. Better construction
+can justify development effort before recurring execution; it does not require
+the most expensive model for every trivial task. A capable authoring model does
+not imply deploying the same model at runtime. Selecting a lower-cost runtime
+also does not require using that cheaper model for authoring.
+
+A skill **cannot silently switch the outer Copilot CLI, Cowork or Claude host
+model**. Use operator-supported model selection when available; otherwise state
+the limitation and retain the operator's choice. Never write global CLI settings.
+`MODEL_DEPLOYMENT_NAME` selects a configured runtime deployment, not the coding
+model. The model/capacity fields in `specs/foundation.md` § 2 and SPEC § 7b remain
+**runtime** fields, not builder provenance. Do not repurpose them.
+
+Sample instruction:
+
+> Use a capable authoring model for this nontrivial prototype. Once validated,
+> propose a small lower-cost runtime comparison on the same prototype before
+> promotion; keep the existing quality and control requirements.
+
+## Optional lower-cost runtime comparison
+
+After prototype validation, offer a **small optional A/B** against a lower-cost
+runtime candidate when domain, capability and risk requirements permit. This
+offer is **no automatic authorization for paid evaluation or deployment**.
+Agree the experiment scope, budget and permitted resources first; do not invent
+volumes, available deployments, prices, or latency/savings guarantees.
+
+1. **Freeze one validated artifact; swap only its runtime model.** Reuse the
+   source, prompts, skills/resources, registered tools and schemas, fixtures,
+   held-out cases, validators and judge configuration. Do not regenerate the
+   prototype for a runtime comparison. A **2x2 cross matrix** is useful only
+   when comparing both builder artifacts as well; it is not required for every
+   pilot. Fixing a code defect creates a new artifact: rerun both candidates
+   against that revision rather than mixing results.
+2. **Verify identity and compatibility before scoring.** Record actual runtime
+   model identity and version from deployment metadata and responses where
+   exposed, not just an alias. Check protocol, tool and reasoning compatibility,
+   output budgets and SDK support. Preserve approved region, data-boundary and
+   capacity constraints. If a client/API adaptation is necessary, obtain
+   explicit approval, declare its diff and keep the compatibility condition
+   matched across candidates with business logic unchanged. If that is not
+   possible, label the comparison confounded or blocked. Never silently disable
+   reasoning, patch installed SDKs or translate outputs to obtain green results.
+3. **Predeclare the promotion bar.** Set business quality, actual tool/skill-use,
+   structured-output, PII, safety, governance and latency constraints, including
+   protected scenarios and tolerated regressions. Include boundaries, negative
+   cases and paraphrases as well as happy paths. Verify skill bodies/resources
+   were consumed and required tools executed; a catalog advertisement or a
+   single happy path is not skill-execution evidence. Preserve all failures and
+   guardrail violations, retries and per-case outcomes; do not select only
+   successful reruns.
+4. **Compare economics at the business-task level.** Keep construction costs
+   (coding credits, iterations, review) separate from recurring runtime tokens,
+   infrastructure and retries. Prefer measured **cost per correctly completed
+   business task**: total runtime spend for all attempted business cases,
+   including failed-case spend and retries, divided by correctly completed
+   cases under the predeclared bar. With zero correct cases the ratio is
+   undefined, not zero. Report pass counts and latency alongside cost; keep
+   preflight/diagnostic spend separate and visible. Label list-price estimates
+   versus actual bills and cost coverage; state cache and reasoning assumptions,
+   measured usage categories and missing usage rather than treating it as free.
+   Do not mix development credits into inference costs or infer savings from
+   token price alone. SPEC § 14 and consumption-iq retain their existing
+   forecast/actuals/reconciliation authority.
+5. **Promote only with evidence and approval.** If the cheaper candidate misses
+   any declared constraint, keep or escalate to the stronger runtime; never
+   relax controls to make it pass. A stronger model may avoid triggering a bug;
+   that does not fix the source. Repair and revalidate the artifact separately.
+   A small successful A/B is not universal quality equivalence or production
+   readiness. Use the existing `threadlight-evals` champion–challenger gate and
+   approved configuration/release path; no hidden downgrade or fallback.
+
+**Handoff, not a new stage.** Suggest this once at the validated local-test or
+pilot handoff, not by adding a mandatory orchestrator stage. Existing
+`runtime-policy.json` selectors, governance contracts and Foundation → SPEC
+authority remain intact. Record a proposed runtime change for review; after
+approval reconcile Foundation § 2, SPEC § 7b and deployment configuration before
+promotion, renewing any affected validation/evidence. Do not mutate deployed
+configuration merely to propose an experiment.
 
 ---
 
@@ -32,14 +121,15 @@ This file is the **procedure that fills those in**. Seven decisions, in order.
 
 ## 1. Model tier — start at the default, move off it only on evidence
 
-**Default: `gpt-5.4`.** It holds tool-call discipline across the long chains a
-pilot runs (7+ skills, 10+ tool calls per turn). Start here; deviate deliberately.
+**Runtime starting default: `gpt-5.4`.** Keep the existing house starting point,
+not a guarantee of tool-call discipline or a rule for the authoring host.
+Confirm capability on the actual artifact; deviate deliberately on evidence.
 
-- **Downgrade to `gpt-5.4-mini`** only when the agent runs **≤ 2 tool calls per
-  turn** *and* short instruction chains. `-mini` degrades on long chains — it
-  skips evidence-gathering tools and emits hollow commit-tool outputs. Cheaper
-  and higher TPM, so worth it for genuinely trivial flows, never for the main
-  agent loop.
+- **Evaluate a lower-cost candidate** (for example `gpt-5.4-mini`) when the
+  required capabilities permit. Short instruction/tool chains can make a useful
+  first candidate, but tool count alone neither proves nor rules out suitability.
+  Long chains need explicit tool/skill-use evidence under the checklist above;
+  a smaller tier is not automatically excluded from the main business-agent loop.
 - **Upgrade to `gpt-5.4-pro`** when **vision feeds multi-step reasoning** (read a
   document or image, then reason across several steps on what it saw).
 - **`gpt-5.4-nano`** — bulk, cheap, shallow vision (return triage, photo
@@ -47,9 +137,9 @@ pilot runs (7+ skills, 10+ tool calls per turn). Start here; deviate deliberatel
 - **`gpt-5.3-codex`** — diagram-→-code and code-related multimodal work.
 
 > **Tier is provisional at Step 0.** Record the current choice; the **Step 2
-> trait matrix** may drop the tier after discovery (a flow that turns out to be
-> genuinely 1–2 step → `-mini`). Confirm at the Step 4 checkpoint. Do not
-> re-litigate inside the foundation record.
+> trait matrix** may nominate a lower-cost candidate after discovery. Confirm
+> the provisional choice at the Step 4 checkpoint; promoting a replacement for
+> a validated runtime still requires the fixed-artifact comparison above.
 
 ---
 
@@ -120,4 +210,6 @@ The seven values populate **`specs/foundation.md` § 2 (Model & capacity)**, whi
 `threadlight-design` Step 3 pre-populates into **SPEC § 7b (AI Services & Model
 Selection)** — the input contract for `foundry-doc-vision-speech` and the
 `azure.yaml` `config.deployments` block. Decide once, here; everything downstream
-carries the values instead of re-deciding them.
+carries the values instead of re-deciding them. A later approved A/B outcome
+revises that decision through the same authority chain, not an environment-only
+override.

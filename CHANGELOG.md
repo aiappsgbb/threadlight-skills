@@ -7,6 +7,21 @@ field.
 
 ## [Unreleased]
 
+### Independent authoring and runtime model choices
+
+- Recommend sufficiently capable authoring for nontrivial design/build work
+  without coupling the operator's coding-host model to deployed inference.
+- Offer a small, explicitly authorized, fixed-artifact lower-cost runtime A/B
+  after validation. Preserve declared quality, tool/skill execution, safety,
+  governance and latency constraints; separate construction costs from runtime
+  cost per correctly completed business task, including failed-case spend.
+- Align Design, Local Test, Auto and Evals handoffs; correct the runtime-only A/B
+  example to keep its prompt fixed. No new stage, routing engine, model default,
+  schema, automatic paid evaluation, deployment or global setting change.
+- Skill patches: Design 1.12.2 (linter metadata aligned), Local Test 1.3.2,
+  Auto 1.4.2, Evals 0.3.1; plugin/marketplace candidate 2.7.2 and refreshed
+  Cowork Design archive. No benchmark, live-readiness or guaranteed-savings claim.
+
 ### Autonomous MAF skill reads
 
 - Fix unattended business-skill loading after MAF's intentional 1.10 approval

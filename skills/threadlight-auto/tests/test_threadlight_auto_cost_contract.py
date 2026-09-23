@@ -30,7 +30,7 @@ AUTO_SKILL = REPO / "skills" / "threadlight-auto" / "SKILL.md"
 ORCHESTRATOR = REPO / "skills" / "threadlight-auto" / "references" / "orchestrator.py"
 COST_ACTUALS_TEST = Path(__file__).resolve().parent / "test_cost_actuals_guidance.py"
 
-AUTO_VERSION = "1.4.1"
+AUTO_VERSION = "1.4.2"
 
 EXPECTED_HANDOFF = {
     "execution": "manual-explicit",
