@@ -59,7 +59,8 @@ class EntraConditionalAccess:
 
     async def read(self, path, user):
         token = await self.credential.get_token("https://graph.microsoft.com/.default")
-        user.fresh()
+        if user is not None:
+            user.fresh()
         if token.expires_on <= datetime.now(timezone.utc).timestamp():
             raise ConfirmationUnavailable("confirmation_ca_unavailable")
         async with self.http.stream("GET", "https://graph.microsoft.com/v1.0/" + path,
@@ -74,8 +75,19 @@ class EntraConditionalAccess:
         value = strict_json(bytes(raw))
         if not isinstance(value, dict) or "@odata.nextLink" in value:
             raise ConfirmationUnavailable("confirmation_ca_unavailable")
-        user.fresh()
+        if user is not None:
+            user.fresh()
         return value
+
+    async def health(self, profile):
+        context = await self.read("identity/conditionalAccess/authenticationContextClassReferences/"
+                                  + profile.authentication_context, None)
+        policy = await self.read("identity/conditionalAccess/policies/"
+                                 + profile.conditional_access_policy_id, None)
+        for user in profile.users:
+            if user.issuer != self.issuer:
+                raise ConfirmationUnavailable("confirmation_ca_issuer_mismatch")
+            verify_configuration(profile, user.subject, context, policy)
 
     async def verify(self, profile, user):
         user.fresh()

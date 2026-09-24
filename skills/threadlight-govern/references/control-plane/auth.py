@@ -172,7 +172,8 @@ class EntraAuth:
                 if (workload is None or client != workload.client_id
                         or "Governance.Workload" not in roles):
                     raise Unauthorized()
-                return Identity(claims["tid"], subject, client, roles, frozenset(), workload)
+                return Identity(claims["tid"], subject, client, roles, frozenset(), workload,
+                                claims["iss"], (), claims["exp"])
             scopes = claims.get("scp")
             if (claims.get("idtyp") == "app" or not isinstance(scopes, str) or not scopes
                     or client not in self.settings.human_clients

@@ -1,5 +1,53 @@
 # Governed MCP action gateway — Task 9 reference
 
+## Requesting-user confirmation
+
+An optional signed action `confirmation_requirement` selects a separate
+requesting-user obligation:
+`{"trigger":"always","provider_profile":"email-basic","max_age_seconds":300}`.
+The strict field forbids null, unknown keys and lifetimes outside 1..3600 seconds.
+It is forbidden on `governance_probe_noop`. The supported initial host path is
+MAF gateway deferred; native-local/GHCP selection is not equivalent coverage.
+
+`always` requires confirmation after an allowing/transformed policy verdict.
+With `policy`, the **new signed opt-in** declares user confirmation on native ACS
+escalation; low-risk allow stays autonomous without a context. If reviewer roles
+are also selected, escalation requires both authorities, not either one.
+Existing actions without this new field retain their prior escalation behavior.
+Combined review requires `approval_mode: "deferred"` and an approver distinct
+from the original requester, including native Outlook review.
+
+Register the original user outside the agent using the control plane's separate
+authenticated `POST /confirmation/contexts` or interactive
+`govern_control_plane.confirmation_user register` client. This registration grants
+no transaction consent. The MCP tool descriptor advertises
+`_meta["threadlight.confirmation"] = "governance_request_context"`.
+Supply that opaque reference either in call metadata or the reserved argument
+`governance_request_context`, never both. It is stripped before policy arguments
+and downstream dispatch and establishes nothing without the control plane's
+verification against the workload/client, agent/action, operation and expiry.
+The host must supply the original registered `governance_operation_id` for the
+initial call and every resume; it must not generate a different ID on timeout.
+
+The exact pending result is
+`{status:"pending_confirmation", confirmation_id:"<32-hex>", operation_id:"<original>"}`.
+There are no user claims, OTPs, tokens or arguments in this result. The separate
+notified user sees the actual hash-verified arguments through the authenticated
+control-plane client and explicitly submits the intent digest. The minimal
+reference launch flow is a trusted interactive CLI, **not a browser BFF**;
+email is notification, not consent or MFA. Generic customer providers use a
+configured identity adapter and verified signed transaction result, not a model
+identity or success flag. See the [control-plane contract](../control-plane/README.md#requesting-user-confirmation).
+
+The permanent gateway ledger retains hashes and opaque references only. CAS
+reserves the original operation before one-use consent consumption, and the
+central receipt ACK is required before effects. At terminal dispatch, after
+credential and transport waits, the gateway rechecks exact policy decision,
+trusted facts, evidence, consent expiry and provider capability. A consumed
+confirmation does not satisfy independent reviewer authority, nor vice versa.
+Unknown effects/ACKs remain the original operation for reconciliation; do not
+automatically generate a new action. Completed outcome reads do not consume again.
+
 Selected actions can additionally require [signed business evidence](../../../../docs/signed-evidence.md).
 JWT verification precedes ACS; semantic evidence fingerprints bind the existing
 approval and audit flow. This opt-in does not change tools without requirements,

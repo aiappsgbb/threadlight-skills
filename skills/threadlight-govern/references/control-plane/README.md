@@ -1,5 +1,105 @@
 # Governance control plane (Task 8 reference)
 
+## Requesting-user confirmation
+
+This opt-in is a **separate authority** from `ApprovalGrant`. A workload OID is
+still the workload, never an end-user. The signed gateway action may select
+`confirmation_requirement: {trigger: "always" | "policy", provider_profile:
+"email-basic", max_age_seconds: 300}` (strict, positive, at most 3600 seconds).
+Confirmation proves the original authenticated requester's explicit transaction
+decision; it cannot substitute for an independently configured reviewer.
+
+`confirmation.py` supplies strict generic issuer/subject identities, pinned
+customer JWT verification, a signed customer-result provider interface, and
+authenticated explicit-POST email/basic and Entra profiles. No caller boolean,
+email delivery receipt, model user name or forwarded claim is provider authority.
+The built-in minimal user experience is a separately authenticated interactive
+terminal client, **not a browser BFF** or attestation that a human used a trusted UI.
+Never expose that client, its credentials or its cache to an agent.
+
+Configure optional `AzureConfiguration.confirmation` with:
+
+| Field | Contract |
+|---|---|
+| `cosmos_container` | Separate existing-account container, partition `/scope`, `defaultTtl: 3600`, one writable region |
+| `public_url` | Fixed HTTPS control-plane origin; never derive from forwarded Host |
+| `gateway_principals` | Exact gateway workload OIDs allowed to bind/consume |
+| `user_client_id` | Existing allowlisted public confirmation client for the email launch instructions |
+| `profiles` | Profile ID to strict `ProviderProfile`; see `confirmation.py` |
+
+Each profile declares `kind` (`email-basic`, `entra-ca`, `customer-signed`),
+`users` (`issuer`, `subject`, `client`, `delivery_ref`) and `workloads`
+(`workload`, `client`, `agent_id`, `actions`), plus `notification_url` and
+`notification_scope`. Non-Entra identity adapters use pinned
+`customer_identity` (`issuer`, `audience`, `client_id`, `scope`, RSA
+`public_key`, `key_id`). `customer-signed` additionally requires a pinned
+`result_verifier` with the same shape. Its signed result binds `sub`,
+`requester_issuer`, `confirmation_id`, `intent_digest`, exact Boolean `approved`,
+and `capability`, besides the validated issuer/audience/client/scope and times.
+For combined non-Entra requester/reviewer flows, configure explicit
+`reviewer_tenant`/`reviewer_subject` aliases; missing correlation fails closed.
+
+Add Entra users to `confirmation_subjects` and their application to `human_clients`;
+grant the delegated **`Governance.Confirm` scope**, not reviewer/auditor roles.
+Delegated confirming tokens may omit `roles`. The API still validates the exact
+configured audience (a v2 API app GUID is not its `api://` scope prefix), issuer,
+tenant, signature, client, times and delegated scope; app-only tokens cannot
+register requesting-user contexts. Registration is **not transaction consent**.
+
+| Route | Authority and behavior |
+|---|---|
+| `POST /confirmation/contexts` | Authenticated requester registers `ContextRequest`: profile, workload/client, agent/action, original operation ID and expiry; returns opaque `context_ref` |
+| `POST /confirmation/context` | Allowed gateway checks exact registered binding and obtains its expiry; no user claims returned |
+| `POST /confirmation/resolve` | Allowed gateway requests/resolves/consumes/validates immutable `ConfirmationIntent` |
+| `GET /confirmation/{confirmation_id}` | Matching authenticated requester receives hash-verified protected arguments and intent; never consents |
+| `POST /confirmation/{confirmation_id}` | Matching authenticated requester submits `intent_digest`, explicit decision and, for customer-signed, verified provider result |
+| `GET /confirmation/open/{confirmation_id}` | Scanner-safe public text launch instructions only; no transaction payload, no consent |
+| `GET /confirmation/health?provider_profile=...` | Authenticated gateway dependency readiness, not live transaction proof |
+
+The notification-only endpoint receives managed-identity Bearer authentication,
+`Idempotency-Key: <confirmation_id>`, and exactly
+`{confirmation_id, confirmation_url, delivery_ref, expires_at}`. It maps the
+preconfigured delivery reference to a fixed recipient and returns
+`200 {"notification_id":"<same ID>"}` after delivery acceptance. It must neither
+decide nor execute. The durable outbox moves `prepared -> sending -> sent`;
+an ambiguous send remains unknown and is **not resent**. A forged/duplicate
+callback cannot create consent; there is no unauthenticated callback route.
+
+The user installs the administrator-approved control-plane package and runs
+`python -m govern_control_plane.confirmation_user register --request context.json
+--control-plane-url https://control.example --scope api://API-APP-ID/Governance.Confirm
+--tenant TENANT-ID --client-id USER-CLIENT-ID` in their own interactive terminal.
+`context.json` contains the exact `ContextRequest` fields above, including an
+explicit operation ID and UTC expiry. Only its opaque reference and that operation
+ID travel to the host. When notified, the launch link supplies the concrete
+`confirm --confirmation-id ...` command. The client signs in independently,
+fetches and verifies the actual protected display, asks the user to type the
+transaction digest, and submits an authenticated POST. `reject` records rejection.
+The original workload resumes the **same operation**, arguments and context.
+
+Basic email confirmation is lower-assurance authenticated consent, **not MFA**.
+An `entra-ca` profile requires `authentication_context: "cN"`,
+`conditional_access_policy_id`, and `capability: "ca-mfa"`.
+`confirmation_entra.py` reads the exact Graph authentication context and CA policy
+with the service credential: enabled context/policy, exact context targeting,
+explicit user/All inclusion, no applicable exclusions or unresolved group/role
+conditions, `clientAppTypes: ["all"]`, and `AND` with built-in `mfa` only.
+Unsupported conditions, strengths, unavailable Graph and drift fail closed.
+Provision Graph `AuthenticationContext.Read.All` and `Policy.Read.All` separately;
+this code does not grant permissions or create CA policies. Missing `acrs` returns
+a bounded `insufficient_claims` challenge consumed through Azure Identity's
+documented `claims`/`enable_cae` arguments. `acrs` alone can exist without protecting
+CA: neither it nor `iat` proves a new factor challenge per transaction.
+Configuration reads are not atomic with Entra issuance or backend effects;
+tenant-specific live acceptance remains separate.
+
+Request contexts, exact display arguments, user identities and provider provenance
+exist only in the protected TTL store, with explicit expiration checked on every
+read/write. They never enter the permanent operation/receipt ledger. TTL bounds
+active item retention, not an organization's Cosmos backups, diagnostic logs or
+data-residency policy. Atomic consumption and durable central audit ACK precede
+effects; lost acknowledgements do not reopen or generate a new operation.
+
 The portable `attestations.py` module reuses this package's PyJWT and signing
 authority for [named business evidence](../../../../docs/signed-evidence.md).
 There is no new central signing endpoint and no model-supplied claim-signing tool.

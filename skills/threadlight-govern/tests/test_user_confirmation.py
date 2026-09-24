@@ -62,7 +62,7 @@ def confirmation_config(h, *, user=USER, kind="email-basic"):
     """Portable fixture: parent/native/generation tests can reuse the exact config."""
     return {
         "cosmos_container": "confirmation-ephemeral", "public_url": "https://control.example",
-        "gateway_principals": [WORKLOAD],
+        "gateway_principals": [WORKLOAD], "user_client_id": UI,
         "profiles": {"email-basic": {
             "kind": kind,
             "users": [{"issuer": h.settings.issuer, "subject": user, "client": UI, "delivery_ref": "requester"}],
@@ -250,3 +250,32 @@ def test_notification_unknown_is_not_resent_after_restart():
             await h.confirmation_http.aclose()
             await h.close()
     asyncio.run(run())
+
+
+def test_notification_link_is_scanner_safe_with_concrete_separate_client():
+    async def run():
+        h = await configure_confirmation(await Harness().initialize())
+        try:
+            intent = await pending_intent(h)
+            before = json.dumps(list(h.confirmation_store.docs.values()))
+            response = await h.client.get(h.notifications[0]["confirmation_url"])
+            assert response.status_code == 200
+            assert "govern_control_plane.confirmation_user confirm" in response.text
+            assert intent.confirmation_id in response.text and "--scope" in response.text
+            assert "amount" not in response.text and USER not in response.text
+            assert "not a browser BFF" in response.text
+            assert json.dumps(list(h.confirmation_store.docs.values())) == before
+        finally:
+            await h.confirmation_http.aclose()
+            await h.close()
+    asyncio.run(run())
+
+
+def test_reference_readmes_document_confirmation_boundaries():
+    from pathlib import Path
+    base = Path(__file__).resolve().parents[1] / "references"
+    for name in ("control-plane", "gateway"):
+        text = (base / name / "README.md").read_text()
+        assert "Requesting-user confirmation" in text
+        assert "confirmation_requirement" in text
+        assert "not a browser BFF" in text

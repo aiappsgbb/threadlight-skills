@@ -503,6 +503,7 @@ class GovernedDispatcher:
                     "deployment": registry.deployment.model_dump(mode="json"),
                 }
                 input_hash = digest({"facts": facts, "arguments": arguments})
+                context_expiry = None
                 if requesting_user_context is not None:
                     input_hash = digest({"input_hash": input_hash, "context_ref": requesting_user_context})
                 request_facts_hash = digest(facts)
@@ -573,7 +574,6 @@ class GovernedDispatcher:
                     if reply["receipt_id"] != existing["outcome_reference"]:
                         raise GateError("outcome_unknown")
                     return await self.output(selected, enforced, facts, reply, guard)
-                context_expiry = None
                 if requesting_user_context is not None:
                     if self.confirmations is None:
                         raise GateError("confirmation_unavailable")
@@ -628,11 +628,12 @@ class GovernedDispatcher:
                 confirmation_active = selected.confirmation_requirement is not None and (
                     selected.confirmation_requirement.trigger == "always" or decision == "escalate"
                     or existing is not None and "confirmation_intent" in existing)
-                review_required = (decision == "escalate"
+                review_required = (decision == "escalate" and bool(selected.approval_roles)
                     or bool(selected.approval_roles) and selected.approval_requirement == "always"
                     or existing is not None and existing["state"] == "awaiting_approval")
-                # ACS escalation retains independent-supervisor semantics.
-                if decision == "escalate" and not selected.approval_roles:
+                # Only the signed confirmation opt-in supplies the new obligation.
+                # Existing declarations and any configured reviewer remain independent.
+                if decision == "escalate" and not (selected.approval_roles or confirmation_active):
                     raise GateError("approval_unavailable")
                 if confirmation_active:
                     if requesting_user_context is None:
@@ -777,10 +778,6 @@ class GovernedDispatcher:
                             await self.store.replace(scope, key, {**existing, "state": "rejected"}, existing_etag)
                         return {"status": "blocked", "reason_code": "approval_denied"}
                     approval_expiry = expiry
-                if confirmation_intent is not None:
-                    await self.confirmations.resolve(
-                        confirmation_intent, operation="consume", approval_grant=grant)
-                    guard()
                 guard()
                 record = {"state": "pending", "input_hash": input_hash, "action_hash": action_hash,
                           "facts_hash": digest(facts), "receipt_id": None, "outcome_reference": None,
@@ -794,6 +791,12 @@ class GovernedDispatcher:
                         await self.store.create(scope, key, record)
                 except Conflict:
                     raise GateError("outcome_unknown") from None
+                if confirmation_intent is not None:
+                    # Reserve permanently before consumption: lost consume ACK must
+                    # reconcile this operation, not reopen its confirmation.
+                    await self.confirmations.resolve(
+                        confirmation_intent, operation="consume", approval_grant=grant)
+                    guard()
                 guard()
                 receipt_id = await self.audit(selected, action_hash, key,
                     "transform" if decision == "transform" else "allow", "execution_authorized",
@@ -821,12 +824,20 @@ class GovernedDispatcher:
                             raise GateError("confirmation_expired", "blocked")
                         await self.confirmations.resolve(
                             confirmation_intent, operation="validate", approval_grant=grant)
+                    elif requesting_user_context is not None:
+                        expiry = await self.confirmations.context(
+                            requesting_user_context, facts=facts, operation_id=idempotency_key,
+                            provider_profile=selected.confirmation_requirement.provider_profile)
+                        if expiry != context_expiry or expiry <= datetime.now(timezone.utc):
+                            raise GateError("confirmation_context_changed", "blocked")
+                    if selected.confirmation_requirement is not None:
                         fresh_decision, fresh_enforced = await self.policy.evaluate(
                             "pre_tool_call", selected, arguments, current_safe())
                         effect_guard()
                         if (fresh_decision != decision or fresh_enforced != enforced
                                 or digest(current_safe()) != safe_hash
-                                or confirmation_intent.expires_at <= datetime.now(timezone.utc)):
+                                or confirmation_intent is not None
+                                and confirmation_intent.expires_at <= datetime.now(timezone.utc)):
                             raise GateError("confirmation_context_changed", "blocked")
                 attempted = True
                 reply = await self.downstream.request(
@@ -834,7 +845,7 @@ class GovernedDispatcher:
                     provenance=receipt_id, facts=facts, guard=guard if deferred else effect_guard,
                     **({"on_dispatch": lambda: self.probes.dispatch(probe)} if probe else {}),
                     **({"effect_check": effect_check} if deferred or evidence is not None
-                       or confirmation_intent is not None else {}))
+                       or selected.confirmation_requirement is not None else {}))
                 guard()
                 current, etag = await self.store.read(scope, key)
                 if current != record:

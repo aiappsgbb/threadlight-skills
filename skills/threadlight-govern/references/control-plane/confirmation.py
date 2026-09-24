@@ -3,9 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import hashlib
-import json
 import math
-import re
 from typing import Annotated, Literal, Protocol
 from urllib.parse import urlsplit
 import uuid
@@ -145,6 +143,7 @@ class ConfirmationConfiguration(StrictModel):
     public_url: str
     gateway_principals: Annotated[list[ObjectId], Field(min_length=1, max_length=128)]
     profiles: Annotated[dict[Identifier, ProviderProfile], Field(min_length=1, max_length=32)]
+    user_client_id: ObjectId | None = None
 
     @model_validator(mode="after")
     def valid(self):
@@ -207,6 +206,7 @@ class ConfirmationOperation(StrictModel):
 
 
 class ConfirmationProvider(Protocol):
+    async def health(self, profile): ...
     async def verify(self, profile, user, intent, decision): ...
     async def recheck(self, profile, user, authority): ...
 
@@ -248,8 +248,15 @@ class ExplicitConsentProvider:
     def __init__(self, ca=None):
         self.ca = ca
 
+    async def health(self, profile):
+        if profile.kind == "entra-ca":
+            if self.ca is None:
+                raise ConfirmationUnavailable("confirmation_ca_unavailable")
+            await self.ca.health(profile)
+
     async def verify(self, profile, user, intent, decision):
         user.fresh()
+        result_expiry = None
         if profile.kind == "customer-signed":
             if decision.provider_result is None:
                 raise Unauthorized()
@@ -261,6 +268,7 @@ class ExplicitConsentProvider:
                     or claims["approved"] != decision.approved
                     or claims.get("capability") != profile.capability):
                 raise Unauthorized()
+            result_expiry = claims["exp"]
         elif decision.provider_result is not None:
             raise Unauthorized()
         if profile.kind == "entra-ca":
@@ -269,11 +277,15 @@ class ExplicitConsentProvider:
             await self.ca.verify(profile, user)
         user.fresh()
         return {"kind": profile.kind, "capability": profile.capability,
-                "decided_at": datetime.now(timezone.utc).isoformat()}
+                "decided_at": datetime.now(timezone.utc).isoformat(),
+                "profile_digest": digest(profile), "result_expires_at": result_expiry}
 
     async def recheck(self, profile, user, authority):
         user.fresh()
-        if authority["kind"] != profile.kind or authority["capability"] != profile.capability:
+        if (authority["kind"] != profile.kind or authority["capability"] != profile.capability
+                or authority.get("profile_digest") != digest(profile)
+                or authority.get("result_expires_at") is not None
+                and authority["result_expires_at"] <= datetime.now(timezone.utc).timestamp()):
             raise Conflict()
         if profile.kind == "entra-ca":
             if self.ca is None:
@@ -352,6 +364,15 @@ class ConfirmationService:
         if datetime.fromisoformat(record["expires_at"]) <= datetime.now(timezone.utc):
             raise Conflict()
 
+    def gateway_authority(self, control, identity):
+        registered = control.settings.workloads.get(identity.subject)
+        if (identity.workload is None or identity.subject not in self.config.gateway_principals
+                or identity.tenant != control.settings.tenant_id
+                or registered is None or registered != identity.workload
+                or registered.client_id != identity.client
+                or identity.expires_at <= control.now().timestamp()):
+            raise Unauthorized()
+
     async def register(self, control, user, request):
         profile = self.profile(request.provider_profile)
         self.user_binding(profile, user)
@@ -373,8 +394,7 @@ class ConfirmationService:
         return {"context_ref": ref, "operation_id": request.operation_id}
 
     async def lookup(self, control, identity, lookup):
-        if identity.workload is None or identity.subject not in self.config.gateway_principals:
-            raise Unauthorized()
+        self.gateway_authority(control, identity)
         record, _ = await self.store.read(control.settings.tenant_id, "context:" + lookup.context_ref)
         self.context_fresh(record)
         request = parse(ContextRequest, canonical(record["request"]))
@@ -383,6 +403,7 @@ class ConfirmationService:
             raise Unauthorized()
         self.user_binding(self.profile(request.provider_profile),
                           parse(RequestingUser, canonical(record["user"])))
+        self.gateway_authority(control, identity)
         return {"context_ref": lookup.context_ref, "expires_at": request.expires_at.isoformat()}
 
     async def context(self, control, intent):
@@ -392,7 +413,9 @@ class ConfirmationService:
         user = parse(RequestingUser, canonical(record["user"]))
         profile = self.profile(request.provider_profile)
         self.user_binding(profile, user)
+        workload = control.settings.workloads.get(request.workload)
         if (intent.tenant != control.settings.tenant_id or intent.agent_id != request.agent_id
+                or workload is None or (workload.client_id, workload.agent_id) != (request.client, request.agent_id)
                 or intent.action != request.action or intent.operation_id != request.operation_id
                 or intent.requirement.provider_profile != request.provider_profile
                 or intent.expires_at > request.expires_at
@@ -420,13 +443,20 @@ class ConfirmationService:
         return signed.envelope
 
     async def health(self, control, identity, profile_name):
-        if identity.workload is None or identity.subject not in self.config.gateway_principals:
-            raise Unauthorized()
-        self.profile(profile_name)
+        self.gateway_authority(control, identity)
+        profile = self.profile(profile_name)
+        if profile.customer_identity is None and (
+                self.config.user_client_id is None
+                or self.config.user_client_id not in control.settings.human_clients
+                or any(user.issuer != control.settings.issuer
+                       or user.subject not in control.settings.confirmation_subjects for user in profile.users)):
+            raise ConfirmationUnavailable("confirmation_user_client_not_configured")
         await self.store.health()
+        await self.provider.health(profile)
+        self.gateway_authority(control, identity)
         return {"status": "healthy", "confirmation_ready": True, "provider_profile": profile_name}
 
-    async def notify(self, control, intent, record, etag, profile, user):
+    async def notify(self, control, intent, record, etag, profile, user, identity):
         if record["notification"] != "prepared":
             if record["notification"] != "sent":
                 raise ConfirmationUnavailable("confirmation_notification_unknown")
@@ -435,20 +465,30 @@ class ConfirmationService:
         await self.store.replace(intent.tenant, "confirmation:" + intent.confirmation_id, sending, etag)
         # A lost ACK remains sending; never retry a possibly delivered message.
         token = await self.credential.get_token(profile.notification_scope)
-        await self.fresh(control, intent)
-        self.user_binding(profile, user)
-        if token.expires_on <= control.now().timestamp():
-            raise Unauthorized()
-        response = await self.http.post(profile.notification_url, headers={
-            "Authorization": "Bearer " + token.token,
-            "Idempotency-Key": intent.confirmation_id,
-        }, json={"confirmation_id": intent.confirmation_id,
-                 "confirmation_url": self.config.public_url.rstrip("/") + "/confirmation/" + intent.confirmation_id,
+        async def guard():
+            await self.fresh(control, intent)
+            self.gateway_authority(control, identity)
+            self.user_binding(profile, user)
+            if token.expires_on <= control.now().timestamp():
+                raise Unauthorized()
+        async def trace(event, info):
+            if event in ("http11.send_request_headers.started", "http11.send_request_body.started"):
+                await guard()
+        await guard()
+        payload = {"confirmation_id": intent.confirmation_id,
+                 "confirmation_url": self.config.public_url.rstrip("/") + "/confirmation/open/" + intent.confirmation_id,
                  "delivery_ref": self.user_binding(profile, user).delivery_ref,
-                 "expires_at": intent.expires_at.isoformat()}, follow_redirects=False)
-        if (response.status_code != 200 or len(response.content) > 1024
-                or strict_json(response.content) != {"notification_id": intent.confirmation_id}):
-            raise ConfirmationUnavailable("confirmation_notification_unknown")
+                 "expires_at": intent.expires_at.isoformat()}
+        async with self.http.stream("POST", profile.notification_url, headers={
+                "Authorization": "Bearer " + token.token, "Idempotency-Key": intent.confirmation_id},
+                json=payload, follow_redirects=False, extensions={"trace": trace}) as response:
+            raw = bytearray()
+            async for part in response.aiter_bytes():
+                raw.extend(part)
+                if len(raw) > 1024:
+                    raise ConfirmationUnavailable("confirmation_notification_unknown")
+            if response.status_code != 200 or strict_json(bytes(raw)) != {"notification_id": intent.confirmation_id}:
+                raise ConfirmationUnavailable("confirmation_notification_unknown")
         await self.fresh(control, intent)
         current, etag = await self.store.read(intent.tenant, "confirmation:" + intent.confirmation_id)
         if current != sending:
@@ -458,8 +498,8 @@ class ConfirmationService:
 
     async def resolve(self, control, identity, operation):
         intent = operation.intent
-        if (identity.workload is None or identity.subject not in self.config.gateway_principals
-                or identity.subject != intent.principal or identity.tenant != intent.tenant):
+        self.gateway_authority(control, identity)
+        if identity.subject != intent.principal or identity.tenant != intent.tenant:
             raise Unauthorized()
         policy = await self.fresh(control, intent)
         if policy.policy_id not in identity.workload.policies:
@@ -491,11 +531,16 @@ class ConfirmationService:
             record, etag = await self.store.read(intent.tenant, key)
         if record["intent"] != intent.model_dump(mode="json"):
             raise Conflict()
+        if (operation.facts is not None and operation.facts != record["facts"]
+                or operation.arguments is not None and operation.arguments != record["arguments"]):
+            raise Conflict()
+        self.gateway_authority(control, identity)
         if operation.operation in ("request", "resolve"):
             if record["state"] == "consumed":
                 raise Conflict()
-            await self.notify(control, intent, record, etag, profile, user)
+            await self.notify(control, intent, record, etag, profile, user, identity)
             await self.fresh(control, intent)
+            self.gateway_authority(control, identity)
             if record["state"] == "pending":
                 return {"status": "pending_confirmation", "confirmation_id": intent.confirmation_id,
                         "operation_id": intent.operation_id}
@@ -522,12 +567,23 @@ class ConfirmationService:
                 raise Unauthorized()
             # A caller-supplied grant is never independent-review authority.
             review, _ = await control.store.read(intent.tenant, "approval:" + grant.intent.nonce)
-            if review["state"] != "consumed" or review["grant"] != grant.model_dump(mode="json"):
+            if (review["state"] != "consumed" or review["grant"] != grant.model_dump(mode="json")
+                    or grant.approver not in control.settings.approver_subjects
+                    or grant.approver_tenant != intent.tenant
+                    or grant.approver_role not in control.settings.approver_roles
+                    or grant.approver_role not in grant.intent.allowed_roles
+                    or grant.intent.expires_at <= control.now()):
                 raise Unauthorized()
+            if "authority" in review:
+                if control.outlook is None:
+                    raise Unauthorized()
+                await control.outlook.validate_authority(control, grant.intent, review)
         await self.fresh(control, intent)
+        self.gateway_authority(control, identity)
         if operation.operation == "consume":
             await self.store.replace(intent.tenant, key, {**record, "state": "consumed"}, etag)
         await self.fresh(control, intent)
+        self.gateway_authority(control, identity)
         return {"status": expected_state if operation.operation == "validate" else "consumed",
                 "confirmation_id": intent.confirmation_id, "intent_digest": digest(intent)}
 

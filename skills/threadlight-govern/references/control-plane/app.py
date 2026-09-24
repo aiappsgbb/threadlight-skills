@@ -14,7 +14,7 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 import httpx
 from pydantic import Field, ValidationError
 
@@ -572,6 +572,35 @@ def create_app(*, service=None, auth=None):
             return await confirmation_service(current).lookup(current, identity,
                 parse(ContextLookup, await request.body()))
         return await dispatch(request, action)
+
+    @app.get("/confirmation/open/{confirmation_id}")
+    async def confirmation_open(request: Request, confirmation_id: str):
+        # Public scanner-safe launch instructions, not an authenticated display or decision.
+        try:
+            confirmation_id = parse(Nonce, canonical(confirmation_id))
+            current = app.state.service
+            config = confirmation_service(current).config
+            if config.user_client_id is None or config.user_client_id not in current.settings.human_clients:
+                raise ConfirmationUnavailable("confirmation_user_client_not_configured")
+            import shlex
+            audience = current.settings.audience
+            scope = (audience if audience.startswith("api://") else "api://" + audience) + "/Governance.Confirm"
+            command = shlex.join(["python", "-m", "govern_control_plane.confirmation_user", "confirm",
+                "--confirmation-id", confirmation_id, "--control-plane-url", config.public_url,
+                "--scope", scope, "--tenant", current.settings.tenant_id, "--client-id", config.user_client_id])
+            text = ("Requesting-user confirmation\n\n"
+                "Opening this link does not confirm anything. No transaction data is shown here.\n"
+                "On your trusted workstation, install your administrator's approved "
+                "threadlight-govern-control-plane package, then run:\n\n" + command + "\n\n"
+                "Sign in as the original requester, review the protected exact arguments, "
+                "then explicitly type the transaction digest to confirm. Replace confirm with reject to decline.\n"
+                "Do not give the agent this client, your credentials, or your token cache. "
+                "The agent resumes only the original operation after your separate decision.\n"
+                "This minimal reference uses an authenticated terminal client, not a browser BFF. "
+                "Email delivery is not consent or MFA; neither a CLI nor a bearer token attests human presence.\n")
+            return PlainTextResponse(text, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+        except (ValueError, ConfirmationUnavailable, AttributeError):
+            return JSONResponse({"error": "confirmation_launch_unavailable"}, 503)
 
     @app.get("/confirmation/{confirmation_id}")
     async def confirmation_view(request: Request, confirmation_id: str):
