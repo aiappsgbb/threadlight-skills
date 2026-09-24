@@ -1,5 +1,12 @@
 # Governed MCP action gateway — Task 9 reference
 
+The opt-in [Citadel local execution profile](../../../../docs/citadel-governance.md)
+adds strict producer/consumer generation contracts, dual proxy/caller JWT
+verification and registered REST ingress on this same dispatcher. It preserves
+the existing non-Citadel path and does not establish live Citadel readiness.
+Gateway package 0.4.0 keeps the control-plane 0.3.1 authority wire protocol;
+effective generation hashes bind the new contracts without rewriting old grants.
+
 ## Requesting-user confirmation
 
 An optional signed action `confirmation_requirement` selects a separate

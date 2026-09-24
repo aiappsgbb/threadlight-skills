@@ -245,6 +245,10 @@ def verify_gateway_junit(path):
         "test_gateway_native_transformed_approval_binds_actual_effect",
         "test_gateway_native_transport_wait_expiry_and_no_redirect",
         "test_gateway_native_post_transform_duplicate_uses_same_enforced_arguments",
+        "test_citadel_native_sdk_mcp_and_rest_share_exact_operation",
+        "test_citadel_native_confirmation_and_reviewer_both_bind_effective_generation",
+        "test_citadel_native_assembler_and_mixed_generation_fail_closed",
+        "test_citadel_native_example_builds_three_bundles_without_authority",
     }
     if not required <= names:
         raise RuntimeError("required native gateway controls did not run")
@@ -396,6 +400,8 @@ for record in records:
            "ACS_OPA_PATH": str(SCRATCH / "opa-linux-amd64")}
     env.pop("PYTEST_ADDOPTS", None)
     run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_gateway.py",
+         "skills/threadlight-govern/tests/test_citadel.py",
+         "-k", "not test_citadel_native_returns_producer_authenticates_and_records_once",
          "-q", f"--junitxml={report}", "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
     count = verify_gateway_junit(report)
     run([python, "-c", verification])
@@ -519,6 +525,7 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-govern/tests/test_evidence_gateway.py",
              "skills/threadlight-govern/tests/test_user_confirmation.py",
              "skills/threadlight-govern/tests/test_confirmation_gateway.py",
+             "skills/threadlight-govern/tests/test_citadel.py",
              "skills/threadlight-govern/tests/test_confirmation_providers.py",
              "skills/threadlight-govern/tests/test_confirmation_integration_fixes.py",
              "skills/threadlight-govern/tests/test_native_user_confirmation.py",
@@ -552,6 +559,7 @@ for name, record in {sdk_wheels!r}.items():
                             for tag in ("skipped", "failure", "error")):
             raise RuntimeError("deployment tests missing, skipped, or failed")
         required_cases = {
+            "test_citadel_native_returns_producer_authenticates_and_records_once",
             "test_generation_emits_complete_frozen_cohort_without_changing_shared_pins",
             "test_native_server_uses_explicit_operator_state_directory",
             "test_unbound_read_uses_injected_host_credential_without_policy",

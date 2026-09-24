@@ -405,6 +405,10 @@ and, when required, fresh approval **after resolving any unknown earlier outcome
 <details data-signed-evidence-case>
 <summary>Open the signed-evidence case and measured adversarial outcomes</summary>
 
+An optional [Citadel execution profile](citadel-governance.md) composes
+producer/consumer policies behind APIM with independently verified proxy/caller
+identities. Its local proof does not extend the dated business evidence.
+
 An opt-in **Evidence Provider** adds a named verification to this same path:
 the agent requests corroboration and carries a JSON Web Token (JWT); the provider resolves admitted,
 versioned business sources and emits only justified claims. It does not sign a

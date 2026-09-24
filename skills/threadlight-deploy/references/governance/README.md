@@ -1,5 +1,11 @@
 # Generated governed deployments
 
+For the separate local Citadel overlay, use the
+[single-binding native execution profile](../../../../docs/citadel-governance.md)
+and [executable example](../../../../examples/citadel-governance/README.md).
+Its package command composes signed-generation inputs and Publish/Access
+`policyXml`; this ordinary pilot generator does not deploy a Citadel hub.
+
 For opt-in provider attestations, see [signed evidence](../../../../docs/signed-evidence.md).
 `signed-evidence` in the tool contract must match `evidence_requirement` in the
 signed gateway registry; one-sided selection is an error. The generator vendors

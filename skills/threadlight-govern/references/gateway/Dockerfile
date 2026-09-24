@@ -1,4 +1,5 @@
-FROM --platform=linux/amd64 python:3.12-slim AS builder
+ARG PYTHON_IMAGE=python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
+FROM --platform=linux/amd64 ${PYTHON_IMAGE} AS builder
 WORKDIR /build
 ENV TMPDIR=/build/scratch PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN mkdir -p /build/scratch /wheels
@@ -20,14 +21,14 @@ assert hashlib.sha256(binary).hexdigest() == pin["linux_amd64_static_sha256"]
 pathlib.Path("/build/opa").write_bytes(binary)
 PY
 
-FROM --platform=linux/amd64 python:3.12-slim
+FROM --platform=linux/amd64 ${PYTHON_IMAGE}
 WORKDIR /app
 ENV TMPDIR=/app/scratch PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     ACS_OPA_PATH=/usr/local/bin/opa GATEWAY_CONFIG_FILE=/config/gateway.json
 COPY --from=builder /wheels /wheels
 COPY --from=builder /build/opa /usr/local/bin/opa
 RUN mkdir -p /app/scratch && chmod 755 /usr/local/bin/opa && \
-    python -m pip install --no-index --find-links /wheels threadlight-govern-gateway==0.1.0 && \
+    python -m pip install --no-index --find-links /wheels threadlight-govern-gateway==0.4.0 && \
     python -m pip check && rm -rf /wheels && chown -R 10001:10001 /app
 USER 10001:10001
 EXPOSE 8000

@@ -31,7 +31,7 @@ from govern_control_plane.client import ServiceTransport
 from govern_control_plane.confirmation import CONTEXT_ARGUMENT, CONTEXT_META
 from govern_control_plane.confirmation_client import ConfirmationClient
 from govern_control_plane.models import (
-    Digest, Identifier, Nonce, ObjectId, canonical, parse, strict_json,
+    Digest, Identifier, Nonce, ObjectId, StrictModel, canonical, parse, strict_json,
 )
 from govern_control_plane.storage import AzureStore, KeyVaultSigner
 
@@ -39,6 +39,7 @@ from .dispatcher import (
     GovernedDispatcher, NativePolicy, DownstreamClient, _request_identity, authenticate, https_endpoint,
 )
 from .receipts import HTTPControlPlaneApprovalService, ReceiptClient
+from .citadel import Binding, CitadelIngress, CitadelPolicy
 
 _idempotency_key = ContextVar("gateway_idempotency_key", default=None)
 _evidence_token = ContextVar("gateway_evidence_token", default=None)
@@ -65,6 +66,24 @@ class GatewayMCP(FastMCP):
         return await super().call_tool(name, arguments)
 
 
+async def registered_call(dispatcher, name, arguments, key, evidence=None, confirmation=None):
+    action = next((a for a in dispatcher.policy.registry.actions if a.name == name), None)
+    if action is None:
+        return {"status": "blocked", "reason_code": "unknown_action"}
+    arguments = dict(arguments)
+    if action.evidence_requirement is not None and EVIDENCE_ARGUMENT in arguments:
+        if evidence is not None:
+            return {"status": "blocked", "reason_code": "ambiguous_evidence_transport"}
+        evidence = arguments.pop(EVIDENCE_ARGUMENT)
+    if action.confirmation_requirement is not None and CONTEXT_ARGUMENT in arguments:
+        if confirmation is not None:
+            return {"status": "blocked", "reason_code": "ambiguous_confirmation_transport"}
+        confirmation = arguments.pop(CONTEXT_ARGUMENT)
+    return await dispatcher.dispatch(
+        authorization=None, action=name, arguments=arguments, idempotency_key=key,
+        evidence_token=evidence, requesting_user_context=confirmation)
+
+
 class AuthBoundary:
     def __init__(self, app, dispatcher):
         self.app, self.dispatcher = app, dispatcher
@@ -72,19 +91,28 @@ class AuthBoundary:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope["path"] == "/health":
             return await self.app(scope, receive, send)
+        ingress = self.dispatcher.ingress
         if scope["path"].startswith("/governance/probes/"):
-            if self.dispatcher.probes is None:
+            if ingress is not None or self.dispatcher.probes is None:
                 return await JSONResponse({"error": "not_found"}, 404)(scope, receive, send)
             from govern_control_plane.probes import control_app
             return await control_app(self.dispatcher.probes, self.dispatcher.auth)(scope, receive, send)
         headers = scope.get("headers", [])
         auth = [v.decode("latin1") for k, v in headers if k.lower() == b"authorization"]
         keys = [v.decode("latin1") for k, v in headers if k.lower() == b"idempotency-key"]
+        rest = ingress is not None and scope["path"].startswith("/operations/")
         try:
             if len(auth) != 1 or len(keys) > 1:
                 raise ValueError()
+            if ingress is not None:
+                url = urlsplit(self.dispatcher.policy.registry.gateway_url)
+                hosts = [v.decode("latin1") for k, v in headers if k.lower() == b"host"]
+                origins = [v.decode("latin1") for k, v in headers if k.lower() == b"origin"]
+                if hosts != [url.netloc] or origins not in ([], [f"https://{url.netloc}"]):
+                    raise ValueError()
             async with asyncio.timeout(5):
-                identity = await authenticate(self.dispatcher.auth, auth[0])
+                identity = (await ingress.authenticate(headers) if ingress is not None
+                            else await authenticate(self.dispatcher.auth, auth[0]))
         except Exception:
             return await JSONResponse({"error": "unauthorized"}, 401)(scope, receive, send)
         # Bound and parse here so SDK/Pydantic errors cannot echo private input.
@@ -104,6 +132,27 @@ class AuthBoundary:
                         break
             if body:
                 document = strict_json(bytes(body))
+                if rest:
+                    if (scope["method"] != "POST" or not keys or scope.get("query_string")
+                            or not isinstance(document, dict) or set(document) - {"arguments", "_meta"}
+                            or not isinstance(document.get("arguments"), dict)
+                            or not isinstance(document.get("_meta", {}), dict)
+                            or set(document.get("_meta", {})) - {EVIDENCE_META, CONTEXT_META}):
+                        raise ValueError()
+                    marker = _request_identity.set(identity)
+                    try:
+                        result = await registered_call(
+                            self.dispatcher, scope["path"].removeprefix("/operations/"),
+                            document["arguments"], keys[0],
+                            document.get("_meta", {}).get(EVIDENCE_META),
+                            document.get("_meta", {}).get(CONTEXT_META))
+                    finally:
+                        _request_identity.reset(marker)
+                    status = {"completed": 200, "pending_confirmation": 202, "pending_approval": 202,
+                              "blocked": 403, "unavailable": 503}[result["status"]]
+                    if result.get("reason_code") in ("outcome_unknown", "idempotency_conflict"):
+                        status = 409
+                    return await JSONResponse(result, status)(scope, receive, send)
                 if not isinstance(document, dict) or not isinstance(document.get("method"), str):
                     raise ValueError()
                 envelope = JSONRPCMessage.model_validate_json(bytes(body))
@@ -149,26 +198,15 @@ class AuthBoundary:
 
 
 def create_app(dispatcher):
+    if isinstance(dispatcher.policy, CitadelPolicy) and dispatcher.ingress is None:
+        raise ValueError("citadel_ingress_required")
     tools = []
     for action in dispatcher.policy.registry.actions:
-        def registered(name, evidence_selected, confirmation_selected):
+        def registered(name):
             async def invoke(arguments):
-                arguments = dict(arguments)
-                token = _evidence_token.get()
-                confirmation = _confirmation_context.get()
-                if evidence_selected and EVIDENCE_ARGUMENT in arguments:
-                    # Compatibility for ordinary MCP clients; never forward this field.
-                    if token is not None:
-                        return {"status": "blocked", "reason_code": "ambiguous_evidence_transport"}
-                    token = arguments.pop(EVIDENCE_ARGUMENT)
-                if confirmation_selected and CONTEXT_ARGUMENT in arguments:
-                    if confirmation is not None:
-                        return {"status": "blocked", "reason_code": "ambiguous_confirmation_transport"}
-                    confirmation = arguments.pop(CONTEXT_ARGUMENT)
-                return await dispatcher.dispatch(
-                    authorization=None, action=name, arguments=arguments,
-                    idempotency_key=_idempotency_key.get(), evidence_token=token,
-                    requesting_user_context=confirmation)
+                return await registered_call(
+                    dispatcher, name, arguments, _idempotency_key.get(),
+                    _evidence_token.get(), _confirmation_context.get())
             return invoke
         async def empty():
             pass
@@ -180,8 +218,7 @@ def create_app(dispatcher):
                 "type": "string", "minLength": 32, "maxLength": 32,
                 "description": "Opaque authenticated requesting-user context; not consent."}}}
         tools.append(RegisteredTool(
-            fn=registered(action.name, action.evidence_requirement is not None,
-                          action.confirmation_requirement is not None),
+            fn=registered(action.name),
             name=action.name, description=f"Governed action: {action.name}",
             parameters=schema,
             fn_metadata=base.fn_metadata, is_async=True,
@@ -203,7 +240,7 @@ def create_app(dispatcher):
             dispatcher.policy.fresh()
 
         async def auth_health():
-            await dispatcher.auth.health()
+            await (dispatcher.ingress or dispatcher.auth).health()
 
         async def store_health():
             await dispatcher.store.health()
@@ -286,6 +323,11 @@ def create_app(dispatcher):
     return app
 
 
+class CitadelConfiguration(StrictModel):
+    producer_path: Annotated[str, Field(min_length=1, max_length=1024)]
+    consumer_path: Annotated[str, Field(min_length=1, max_length=1024)]
+
+
 class Configuration(Settings):
     gateway_url: str
     control_plane_url: str
@@ -305,10 +347,20 @@ class Configuration(Settings):
     allowed_endpoints: Annotated[list[str], Field(min_length=2, max_length=128)]
     probe_enabled: bool = False
     probe_container: Identifier | None = None
+    citadel: CitadelConfiguration | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_citadel(cls, value):
+        if isinstance(value, dict) and "citadel" in value and value["citadel"] is None:
+            raise ValueError("citadel_configuration_required")
+        return value
 
     @model_validator(mode="after")
     def separate_credentials(self):
         https_endpoint(self.gateway_url)
+        if self.citadel is not None and self.probe_enabled:
+            raise ValueError("citadel_probe_unsupported")
         if (self.service_client_id == self.downstream_client_id
                 or self.downstream_client_id in {w.client_id for w in self.workloads.values()}):
             raise ValueError("distinct_downstream_identity_required")
@@ -391,7 +443,22 @@ async def production():
                 bundle_path=Path(config.bundle_path), signed=signed, signer=signer,
                 tenant=config.tenant_id, key_id=config.key_id, policy_id=config.policy_id,
                 version=config.policy_version, expected_digest=config.policy_digest,
-                allowed_endpoints=config.allowed_endpoints, gateway_url=config.gateway_url)
+                allowed_endpoints=config.allowed_endpoints, gateway_url=config.gateway_url,
+                citadel_generation=config.citadel is not None)
+            ingress = None
+            if config.citadel is not None:
+                binding = parse(Binding, (policy.bundle.root / "citadel-binding.json").read_bytes())
+                ingress = CitadelIngress.configured(binding, config, http)
+                envelopes = {}
+                for selection in (binding.producer.policy, binding.consumer.policy):
+                    status, envelope = await bundles.request(
+                        "GET", f"/bundles/{selection.policy_id}/{selection.version}")
+                    if status != 200:
+                        raise ValueError("citadel_policy_unavailable")
+                    envelopes[selection.policy_id, selection.version] = envelope
+                policy = await CitadelPolicy.load(
+                    generation=policy, producer_path=config.citadel.producer_path,
+                    consumer_path=config.citadel.consumer_path, envelopes=envelopes, signer=signer)
             if policy.registry.native_policy_digest is not None:
                 raise ValueError("native_registry_not_gateway_policy")
             probes = None
@@ -415,7 +482,7 @@ async def production():
         yield GovernedDispatcher(
             policy=policy, auth=auth, store=store, receipts=receipts, downstream=downstream,
             approvals=approvals, confirmations=confirmations, safe_provider=host_evidence,
-            probes=probes,
+            probes=probes, ingress=ingress,
             approval_principal=config.service_principal, approval_agent_id=config.service_agent_id)
 
 

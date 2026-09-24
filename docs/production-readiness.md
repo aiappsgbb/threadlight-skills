@@ -37,6 +37,12 @@ governed-tool gateway is the PEP** enforcing the selected action lifecycle.
 file, a CI badge nor one enforced tool makes the whole agent governed or
 SAFE-complete.
 
+The opt-in [Citadel execution profile](citadel-governance.md) adds a separate
+versioned producer/consumer binding and dual proxy/caller identity boundary.
+Its local native and container results do not populate hosted evidence or relax
+this lifecycle contract. W2-I, maintainer acceptance and publication remain
+separate gates; the existing collector cannot certify that business route.
+
 ### Select, implement, prove
 
 1. Select each tool, intervention point and path in the governance contract.

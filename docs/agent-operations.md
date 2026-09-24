@@ -10,6 +10,11 @@ For the action architecture, exact AGT/ACS/Hooks ownership and native human
 approval/resume, use the [agent governance deep dive](agent-governance-deep-dive.md).
 Its explanation complements the version-scoped operative commands below.
 
+For the opt-in **Citadel action execution profile**, use the
+[local vertical and external acceptance gate](citadel-governance.md). It preserves
+the native PEP behind APIM, independently validates proxy and original workload,
+and composes producer/consumer policies; it is not live Citadel evidence.
+
 **Foundation first:** [Skill-based agents: construction, runtime and evidence](skill-based-agents.md)
 separates the construction catalog from generated business skills, explains
 [runtime loading](skill-based-agents.md#runtime-loading), and traces the reviewed

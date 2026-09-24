@@ -237,7 +237,7 @@ class Registry(StrictModel):
 class NativePolicy:
     @classmethod
     async def load(cls, *, bundle_path, signed, signer, tenant, key_id, policy_id,
-                   version, expected_digest, allowed_endpoints, gateway_url):
+                   version, expected_digest, allowed_endpoints, gateway_url, citadel_generation=False):
         from agent_control_specification import AgentControl
         import yaml
         signed = parse(SignedBundle, canonical(signed))
@@ -251,6 +251,8 @@ class NativePolicy:
                     base64.b64decode(signed.signature, validate=True))):
             raise GateError("policy_unavailable")
         bundle = verify_bundle(bundle_path, expected_digest=expected_digest)
+        if ("citadel-binding.json" in {f["path"] for f in bundle.files}) != citadel_generation:
+            raise GateError("citadel_selection_mismatch")
         validate_native_manifest(bundle.root)
         if "gateway-registry.json" not in {f["path"] for f in bundle.files}:
             raise GateError("registry_unavailable")
@@ -423,6 +425,12 @@ class DownstreamClient:
             }
             if "evidence_fingerprint" in facts:
                 headers["X-Evidence-Fingerprint"] = facts["evidence_fingerprint"]
+            if "citadel" in facts:
+                headers.update({
+                    "X-Citadel-Binding": facts["citadel"]["binding_digest"],
+                    "X-Citadel-Producer-Policy": facts["citadel"]["producer_policy_digest"],
+                    "X-Citadel-Consumer-Policy": facts["citadel"]["consumer_policy_digest"],
+                })
             if action.probe_safe:
                 headers["X-Probe-Run-ID"] = arguments["probe_run_id"]
                 headers["X-Requester-Client"] = facts["client"]
@@ -461,7 +469,8 @@ class DownstreamClient:
 class GovernedDispatcher:
     def __init__(self, *, policy, auth, store, receipts: ReceiptService, downstream,
                  approvals: ApprovalService | None, safe_provider,
-                 approval_principal, approval_agent_id, timeout=15.0, probes=None, confirmations=None):
+                 approval_principal, approval_agent_id, timeout=15.0, probes=None, confirmations=None,
+                 ingress=None):
         if not 0 < timeout <= 30:
             raise ValueError("invalid_timeout")
         self.policy, self.auth, self.store, self.receipts = policy, auth, store, receipts
@@ -470,6 +479,7 @@ class GovernedDispatcher:
         self.timeout = timeout
         self.probes = probes
         self.confirmations = confirmations
+        self.ingress = ingress
 
     def approval_context(self, action, *, tenant):
         return ApprovalContext(
@@ -502,6 +512,8 @@ class GovernedDispatcher:
                     "action": selected.name, "scope": selected.scope, "policy": self.policy.digest,
                     "deployment": registry.deployment.model_dump(mode="json"),
                 }
+                if getattr(self.policy, "terminal_recheck", False):
+                    facts["citadel"] = self.policy.binding.provenance()
                 input_hash = digest({"facts": facts, "arguments": arguments})
                 context_expiry = None
                 if requesting_user_context is not None:
@@ -846,7 +858,7 @@ class GovernedDispatcher:
                             provider_profile=selected.confirmation_requirement.provider_profile)
                         if expiry != context_expiry or expiry <= datetime.now(timezone.utc):
                             raise GateError("confirmation_context_changed", "blocked")
-                    if selected.confirmation_requirement is not None:
+                    if selected.confirmation_requirement is not None or getattr(self.policy, "terminal_recheck", False):
                         fresh_decision, fresh_enforced = await self.policy.evaluate(
                             "pre_tool_call", selected, arguments, current_safe())
                         effect_guard()
@@ -862,7 +874,8 @@ class GovernedDispatcher:
                     guard=guard if deferred or confirmation_intent is not None else effect_guard,
                     **({"on_dispatch": lambda: self.probes.dispatch(probe)} if probe else {}),
                     **({"effect_check": effect_check} if deferred or evidence is not None
-                       or selected.confirmation_requirement is not None else {}))
+                       or selected.confirmation_requirement is not None
+                       or getattr(self.policy, "terminal_recheck", False) else {}))
                 guard()
                 current, etag = await self.store.read(scope, key)
                 if current != record:

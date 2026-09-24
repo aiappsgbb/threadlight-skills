@@ -14,6 +14,19 @@ const docs = {
   workshop: 'docs/WORKSHOP-1H-QUICKSTART.md',
 };
 
+test('Citadel local vertical discloses identity, effect and external acceptance boundaries', () => {
+  const runbook = read('docs/citadel-governance.md').replace(/\s+/g, ' ');
+  for (const marker of [
+    'threadlight-citadel-binding/v1', 'W2-I', 'mcp-existing',
+    'x-threadlight-consumer-authorization', 'independent reviews',
+    'host-identity-v1', 'registered-http-v1', '23fbc8fe7f2f068de3ed3c80da2344760faac1e6',
+    'No hot refresh', 'not certification',
+  ]) assert.ok(runbook.includes(marker), marker);
+  assert.match(read(docs.guide), /citadel-governance\.md/);
+  assert.match(read(docs.readiness), /citadel-governance\.md/);
+  assert.match(read('docs/agent-governance-deep-dive.md'), /citadel-governance\.md/);
+});
+
 test('model guidance separates operator-owned authoring from runtime deployment choices', () => {
   const text = read('skills/threadlight-design/references/model-selection.md').replace(/\s+/g, ' ');
   assert.match(text, /authoring[\s\S]*discovery[\s\S]*specification[\s\S]*architecture[\s\S]*code generation/i);

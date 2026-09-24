@@ -1,5 +1,10 @@
 # Real returns agent through governed MCP
 
+The optional [Citadel local profile](../../../../docs/citadel-governance.md)
+reuses this producer with an exact `citadel_binding` and effective generation
+digest. It independently checks both policy digests and reconstructs the
+effective action hash. None of the dated executions below proves that new route.
+
 The new [signed purchase-evidence opt-in](../../../../docs/signed-evidence.md) is
 local implementation, not part of the historical live proofs below. It keeps the
 same backend decision/CAS path and adds a separately authenticated named provider

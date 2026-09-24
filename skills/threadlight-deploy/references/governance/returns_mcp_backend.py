@@ -27,6 +27,7 @@ from govern_control_plane.attestations import (
 from govern_control_plane.models import (
     Digest, Identifier, ObjectId, StrictModel, canonical, parse, strict_json,
 )
+from govern_gateway.citadel import Binding
 
 
 class BusinessConflict(Exception):
@@ -168,16 +169,31 @@ class Configuration(Settings):
     evidence_container: Identifier | None = None
     evidence_retention_seconds: Annotated[int, Field(gt=0, le=2147483647)] | None = None
     business_retention_policy: Identifier | None = None
+    citadel_binding: Binding | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="before")
     @classmethod
     def explicit_evidence(cls, value):
         if isinstance(value, dict) and "evidence_requirement" in value and value["evidence_requirement"] is None:
             raise ValueError("evidence_configuration_required")
+        if isinstance(value, dict) and "citadel_binding" in value and value["citadel_binding"] is None:
+            raise ValueError("citadel_configuration_required")
         return value
 
     @model_validator(mode="after")
     def evidence_scope(self):
+        if self.citadel_binding is not None:
+            b = self.citadel_binding
+            action = b.registry().actions[0]
+            if (b.tenant_id != self.tenant_id or b.consumer.principal != self.agent_subject
+                    or self.agent_subject not in self.workloads or self.writer_subject not in self.workloads
+                    or self.workloads[self.agent_subject].client_id != b.consumer.client
+                    or self.writer_subject in (b.proxy.principal, b.consumer.principal)
+                    or self.workloads[self.writer_subject].client_id in (b.proxy.client, b.consumer.client)
+                    or b.deployment.model_dump(mode="json") != self.deployment
+                    or action.name != "returns_apply_decision" or action.scope != "returns"
+                    or action.evidence_requirement != self.evidence_requirement):
+                raise ValueError("citadel_producer_binding_mismatch")
         if self.evidence_requirement is not None:
             requirement = self.evidence_requirement
             if (requirement.profile != "returns-purchase-v1" or requirement.purpose != "record-return"
@@ -192,6 +208,18 @@ class Configuration(Settings):
                 self.evidence_container, self.evidence_retention_seconds, self.business_retention_policy)):
             raise ValueError("returns_evidence_opt_in_required")
         return self
+
+
+def operation_facts(config):
+    facts = {
+        "tenant": config.tenant_id, "subject": config.agent_subject,
+        "client": config.workloads[config.agent_subject].client_id,
+        "action": "returns_apply_decision", "scope": "returns",
+        "policy": config.policy_digest, "deployment": config.deployment,
+    }
+    if config.citadel_binding is not None:
+        facts["citadel"] = config.citadel_binding.provenance()
+    return facts
 
 
 def create_app():
@@ -286,6 +314,15 @@ def create_app():
             "x-policy-digest": config.policy_digest,
             "x-deployment-hash": digest(config.deployment),
         }
+        if config.citadel_binding is not None:
+            b = config.citadel_binding
+            expected.update({
+                "x-citadel-binding": digest(b),
+                "x-citadel-producer-policy": b.producer.policy.digest,
+                "x-citadel-consumer-policy": b.consumer.policy.digest,
+            })
+        elif any(key.lower().startswith("x-citadel-") for key in request.headers):
+            raise BusinessConflict()
         if any(request.headers.get(key) != value for key, value in expected.items()):
             raise BusinessConflict()
         key = parse(Identifier, canonical(request.headers.get("idempotency-key")))
@@ -430,12 +467,7 @@ def create_app():
         arguments = args.model_dump()
         if args.case_id not in config.cases:
             raise BusinessConflict()
-        facts = {
-            "tenant": config.tenant_id, "subject": config.agent_subject,
-            "client": config.workloads[config.agent_subject].client_id,
-            "action": "returns_apply_decision", "scope": "returns",
-            "policy": config.policy_digest, "deployment": config.deployment,
-        }
+        facts = operation_facts(config)
         if config.evidence_requirement is not None:
             facts["evidence_fingerprint"] = proof["evidence_fingerprint"]
         if digest({"facts": facts, "arguments": arguments}) != proof["action_hash"]:
