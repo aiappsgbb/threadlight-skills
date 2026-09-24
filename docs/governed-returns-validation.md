@@ -20,11 +20,65 @@ The separate delegated-token workstream is outside this record.
 | S3 | Separate public-authenticated Foundry hosted MAF with governed MCP and real Cosmos business writer | Hosted v5 allow, deny, pending approval, expired attempt and durable read/reconciliation executed | Real hosted business proof, not private-network proof; genuine human completion remains blocked |
 | S4 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1/S3 |
 | S5 | Signed evidence under multi-turn business pressure | September 22: Azure GPT-5.4 / GPT-5.4-mini with local native MCP/ACS, synthetic authorities and business storage | Hybrid experiment; not hosted JWT/PEP or live Cosmos acceptance |
+| S6 | Requesting-user confirmation through native Logic Apps/Outlook email | September 24: genuine Approve, original-operation completion and zero-extra-effect replay on hosted v8 | One scoped S3 nonproduction path; not MFA or same-session effect-resume proof |
 
 **Reference direction:** S2 now has fresh private governed allow/deny evidence,
 separate from its earlier BASIC baseline. S3's governed business proof remains
 historical: its September 14 bootstrap lease has expired. S1 is a historical
 functional baseline, not the final hosting architecture.
+
+## S6: Native requesting-user approval
+
+**2026-09-24.** A new attempt in the S3 public-authenticated nonproduction
+environment exercised native requesting-user confirmation. It does not renew
+or replace the historical v5/S3 evidence above. The running source was
+[`e6a99593de62cfcff26ce8d615da94b7bdfc69c3`](https://github.com/aiappsgbb/threadlight-skills/commit/e6a99593de62cfcff26ce8d615da94b7bdfc69c3),
+hosted version **8**, with the independently observed image, signed policy and
+configuration recorded in the private evidence pack. Later source-export
+permission fixes are separate build-time evidence, not a new live deployment.
+
+The requesting user authenticated through the browser, then chose **Approve
+directly in the native Outlook email**. No recipient command was used.
+The control plane independently verified the pinned Logic Apps run, exact
+nine-field request echo, actual responder/home identity, option and deadline.
+It consumed the separate confirmation authority for the **original operation**.
+The gateway obtained central audit acknowledgement before the business call.
+
+| Observation | Independently checked result |
+|---|---|
+| Pending native request | One native mail run; no approval authority, case change or business audit before the decision |
+| Verified Approve and original-operation resume | Exactly **one business decision and audit** in Cosmos, joined to the completed gateway operation and central receipt |
+| Completed-operation replay | **Zero additional effects**, receipts, authority consumption or emails; the same recorded result was returned |
+| Durable state after replay | Complete confirmation, operation, receipt and case/audit snapshots, including ETags, were unchanged |
+| Preservation | Original demo case ETags and S2 reviewer configuration unchanged; prior images/versions and rollback observations retained; the earlier notification-only request was never upgraded |
+
+The case operation recorded a **supervisor handoff**, not payment settlement.
+This is the requesting user's consent to that operation, not approval by an
+independent supervisor. A separately selected reviewer would remain an
+additional obligation.
+
+**Session boundary:** same-session effect resumption was not proved. The first
+resume used an ignored session header and executed the original operation in
+a new native session. The documented request-body session selector subsequently
+verified replay in the original pending session. That replay does not
+retroactively establish same-session effect execution. See the
+[hosted session contract](https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-sessions).
+
+**Not proved by this positive run:** Entra Conditional Access/MFA remains
+**unverified** live; native Reject, expiry, wrong-user and combined-reviewer live
+cases were not exercised here. Their local/native regressions are not live
+evidence. This is not private-network confirmation proof, whole-agent
+governance or production readiness. New deployments still require fresh
+acceptance tied to their own image, policy, identities and operation.
+
+Private retained artifacts include `verified-native-proof.json`,
+`native-approved-run-raw.json`, `verified-native-button.json`,
+`resume-independent-cosmos-complete.json`, `replay-independent-cosmos.json`,
+`resume-replay-independent-native-readbacks.json`, and
+`final-deployment-readback.json`, plus the creation/attempt and signed binding
+and policy records. They contain deployment or identity data and are not
+published here. The final live operator closed mutation custody with no
+ongoing process or further consent pending for this proof.
 
 ## S5: Signed-evidence adversarial experiment
 
