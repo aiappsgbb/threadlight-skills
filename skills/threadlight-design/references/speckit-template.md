@@ -3,6 +3,16 @@
 > Adapted from ghcpsdk-process-builder for general-purpose business process specification.
 > No runtime or SDK specifics — pure business + technical spec.
 
+For the explicit `presenter-ready` delivery profile, SPEC sections 1/2/8b/11/12
+reference the single process-owned `specs/presenter-contract.json` rather than
+duplicating its facts. Follow [the delivery contract](../../../docs/presenter-ready.md):
+role/problem/company, editable input, deterministic rules vs agent contribution,
+bounded outcome/human responsibility, first action/readback/reopen/recovery,
+exclusions, selected deployment consumer and sizing. Design the workspace with
+that first journey. No profile means the existing template remains unchanged.
+In the standalone Cowork bundle the same guide is `references/presenter-ready.md`
+relative to the skill root; execution remains an engineering handoff.
+
 ```markdown
 # SpecKit: [Process Name]
 

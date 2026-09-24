@@ -209,3 +209,77 @@ def test_streaming_partial_text_does_not_mask_later_approval(layout):
         assert chunks == ["Partial report"]
         assert len(model.requests) == 1
     asyncio.run(run())
+
+
+def test_ui_terminal_failure_replaces_provisional_success(layout):
+    from threadlight_quickstart.ui_streamlit import _stream_response
+
+    class FailingModel(Model):
+        def _inner_get_response(self, *, messages, stream, options, **kwargs):
+            async def updates():
+                yield ChatResponseUpdate(role="assistant", contents=[Content.from_text("Success: saved draft")])
+                raise RuntimeError("terminal-validation-failed")
+            return ResponseStream(updates(), finalizer=ChatResponse.from_updates)
+
+    class Placeholder:
+        text = ""
+
+        def markdown(self, value):
+            self.text = value
+
+    async def run():
+        agent, _ = agent_wiring.build_agent(layout, chat_client=FailingModel([]))
+        placeholder = Placeholder()
+        response = await _stream_response(agent, "Prepare a draft", placeholder)
+        assert "terminal-validation-failed" in response
+        assert "Success: saved draft" not in response
+        assert placeholder.text == response
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("entity,record", [("tickets", "T-1"), ("workorders", "W-1")])
+@pytest.mark.parametrize("stream", [False, True])
+def test_native_dispatch_reuses_method_not_process_data_or_persistence(tmp_path, entity, record, stream):
+    """Two distinct local PoCs exercise the packaged adapter; neither is durable."""
+    data = tmp_path / "specs/sample-data"
+    data.mkdir(parents=True)
+    (data / f"{entity}.json").write_text(json.dumps([{"id": record, "status": "new"}]))
+    layout = discover(tmp_path)
+
+    async def run():
+        model = Model(outputs(
+            call(f"get_{entity}", id=record),
+            call(f"update_{entity}", id=record, fields={"status": "draft"}),
+            call(f"get_{entity}", id=record),
+        ))
+        agent, stores = agent_wiring.build_agent(layout, chat_client=model)
+        result = await result_for(agent, stream=stream)
+        assert result.text == '{"status":"finished"}'
+        assert len(model.requests) == 4
+        update = next(t for t in model.tools if t.name == f"update_{entity}")
+        assert "fields" in update.parameters()["properties"]
+        assert stores[entity].get(record)["status"] == "draft"
+        # A new adapter instance is independent readback, disproving durable save.
+        _, reopened = agent_wiring.build_agent(layout, chat_client=Model(outputs()))
+        assert reopened[entity].get(record)["status"] == "new"
+        assert set(reopened) == {entity}
+    asyncio.run(run())
+
+
+def test_native_filter_schema_does_not_silently_drop_arguments(tmp_path):
+    data = tmp_path / "specs/sample-data"
+    data.mkdir(parents=True)
+    (data / "tickets.json").write_text('[{"id":"T-1","status":"new"},{"id":"T-2","status":"closed"}]')
+    layout = discover(tmp_path)
+
+    async def run():
+        model = Model(outputs(call("list_tickets", filters={"status": "closed"})))
+        agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+        await agent.run("Find closed tickets")
+        function_results = [
+            content.result for message in model.requests[-1] for content in message.contents
+            if content.type == "function_result"]
+        assert len(function_results) == 1
+        assert "T-2" in str(function_results[0])
+        assert "T-1" not in str(function_results[0])
+    asyncio.run(run())

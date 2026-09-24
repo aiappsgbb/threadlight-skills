@@ -1,5 +1,23 @@
 # `.threadlight/auto-state.json` — schema
 
+## Optional presenter-ready projection
+
+`specs/manifest.json.delivery_profile: presenter-ready` selects the
+[process delivery contract](../../../docs/presenter-ready.md).
+The planner reads `specs/presenter-contract.json`,
+`.threadlight/presenter-evidence.json` and `.threadlight/presenter-target.json`;
+it does not migrate or write canonical receipts. Its `presenter_ready` projection
+contains five separate states, per-check status/reason, `source_usable`, `owner`,
+`next_check`, `ready`, and explicit recorded-not-independently-attested authority.
+`presenter_package` precedes deploy; `presenter_ready` is the final handoff.
+These stages are opt-in and their fingerprints do not use file mtime.
+Per-check `action: refresh-observation` distinguishes expired evidence from a
+request to redeploy/replay an operation; blocked evidence requires reconciliation.
+Runtime fingerprints also include actual unified-azd service source roots and
+ejected infrastructure. Presenter projections do not override governance retry
+state or the required current Safe Check proof.
+The existing state/cascade behavior below remains the default for other pilots.
+
 `.threadlight/auto-state.json` is owned by the `threadlight-auto` guidance
 contract. The Python planner in `references/orchestrator.py` reads this file to
 decide what can resume; it does **not** write or migrate

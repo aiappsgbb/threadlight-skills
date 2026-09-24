@@ -3,9 +3,9 @@
 For every ``<entity>.json`` under ``specs/sample-data/``, register three
 plain Python tools that the MAF Agent can call:
 
-    list_<entity>(**filters)         -> list[dict]
+    list_<entity>(filters=None)      -> list[dict]
     get_<entity>(id: str)            -> dict | None
-    update_<entity>(id, **fields)    -> dict
+    update_<entity>(id, fields)      -> dict
 
 The underlying ``InMemoryStore`` reads each JSON file once at boot,
 holds a dict-of-records keyed by record ``id``, and accepts mutations
@@ -132,15 +132,15 @@ def _make_crud_tools(
     """
     name = store.name
 
-    def _list_impl(**filters: Any) -> list[dict[str, Any]]:  # noqa: ARG001
-        return store.list_all(**filters)
+    def _list_impl(filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        return store.list_all(**(filters or {}))
 
     list_records = tool(
         _list_impl,
         name=f"list_{name}",
         description=(
-            f"List `{name}` records. Pass kwargs to filter by equality "
-            f"(e.g. `status='open'`). No filters -> all records."
+            f"List `{name}` records. Pass a filters object for equality "
+            f"(e.g. {{\"status\":\"open\"}}). No filters -> all records."
         ),
     )
 
@@ -153,14 +153,14 @@ def _make_crud_tools(
         description=f"Get a single `{name}` record by id, or None.",
     )
 
-    def _update_impl(id: str, **fields: Any) -> dict[str, Any]:  # noqa: A002
+    def _update_impl(id: str, fields: dict[str, Any]) -> dict[str, Any]:  # noqa: A002
         return store.update(id, **fields)
 
     update_record = tool(
         _update_impl,
         name=f"update_{name}",
         description=(
-            f"Update fields on one `{name}` record (in-memory; reset every "
+            f"Pass a fields object to update one `{name}` record (in-memory; reset every "
             f"`python -m threadlight_quickstart` launch)."
         ),
     )

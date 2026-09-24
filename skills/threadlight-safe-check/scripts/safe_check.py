@@ -330,6 +330,7 @@ def phase_design(manifest_path: Path, out_path: Path) -> int:
     data = _load_manifest(manifest_path)
     dm = data["deployment_manifest"]
     gaps: list[str] = []
+    gaps.extend(_presenter_deployment_gaps(_repo_root_for_manifest(manifest_path), data))
 
     selectors = dm.get("module_selectors", {})
     if not selectors or not isinstance(selectors, dict):
@@ -388,9 +389,14 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
     selectors = dm.get("module_selectors", {})
     services = {s["name"]: s for s in dm.get("services", [])}
     gaps: list[str] = []
+    gaps.extend(_presenter_deployment_gaps(repo, data, packaged=True))
     governance = _governance_static(repo, data, manifest_path=manifest_path)
     gaps.extend(governance.get("gaps", []))
     extra = {"repo": str(repo), **({"governance_health": governance} if governance else {})}
+
+    if data.get("delivery_profile") == "presenter-ready":
+        # This consumer validates its selected layout, not legacy Bicep/agent.yaml assumptions.
+        return _write_and_emit(out_path, "pre-deploy", gaps, extra=extra)
 
     azure_yaml = repo / "azure.yaml"
     if not azure_yaml.exists():
@@ -493,6 +499,41 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
                            extra=extra)
 
 
+def _presenter_deployment_gaps(repo, data, *, packaged=False):
+    canonical = repo / "specs/manifest.json"
+    try:
+        with canonical.open("rb") as stream:
+            raw = stream.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024:
+            return ["presenter: canonical manifest exceeds size limit"]
+        canonical_data = json.loads(raw)
+    except FileNotFoundError:
+        canonical_data = {}
+    except (OSError, ValueError):
+        return ["presenter: canonical manifest unreadable or invalid"]
+    if not isinstance(canonical_data, dict):
+        return ["presenter: canonical manifest must be an object"]
+    if "delivery_profile" not in data and "delivery_profile" not in canonical_data:
+        return []
+    catalog = Path(__file__).resolve().parents[3]
+    if str(catalog) not in sys.path:
+        sys.path.insert(0, str(catalog))
+    try:
+        from skills._shared.presenter import deployment_gaps, load_contract, selected
+    except ImportError:
+        return ["presenter: run safe-check from the complete pinned catalog (skills/_shared required)"]
+    try:
+        enabled = selected(repo)
+        if data.get("delivery_profile", "default") != canonical_data.get("delivery_profile", "default"):
+            return ["presenter: selected manifest differs from canonical specs/manifest.json"]
+        if enabled:
+            return deployment_gaps(repo, load_contract(repo),
+                                   inventory=data.get("deployment_manifest"), packaged=packaged)
+        return []
+    except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
+        return [f"presenter contract: {exc}"]
+
+
 def _governance_enabled(data):
     """Conservative validation hint, never authority to disable a selected contract."""
     if not isinstance(data, dict):
@@ -572,6 +613,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
     scheduled_jobs = dm.get("scheduled_jobs", [])
     gaps: list[str] = []
 
+    gaps.extend(_presenter_deployment_gaps(_repo_root_for_manifest(manifest_path, repo_root), data))
     rg = rg or os.environ.get("AZURE_RESOURCE_GROUP")
     if not rg:
         try:

@@ -10,6 +10,22 @@ metadata:
   version: "1.4.0"
 ---
 
+## Presenter-ready consumer gate
+
+An explicit `delivery_profile: presenter-ready` adds the
+[presenter-ready contract](../../docs/presenter-ready.md), consumed from a complete
+catalog with `skills/_shared`. Design, Deploy and this checker use the same
+[`presenter-deployment-pin.json`](../_shared/presenter-deployment-pin.json).
+Validate the selected consumer's real manifest location, protocol, environment
+list/map and runtime root; reject active competing manifests. This profile's
+native layout supersedes the legacy `agent.yaml`/mandatory-Bicep assumptions below,
+not existing resource, reachability or selected-governance gates.
+
+Pre-deploy validates the packaged service inventory. Post-deploy retains its live
+checks and separately consumes process journey evidence; a green completeness
+manifest does not imply script-verified or human-accepted. Use
+`python3 -m skills._shared.presenter --root <pilot>` for that read-only assessment.
+
 # Threadlight Safe Check — three lifecycle gates, one CLI
 
 The single mandatory completeness gate for any threadlight pilot. Replaces

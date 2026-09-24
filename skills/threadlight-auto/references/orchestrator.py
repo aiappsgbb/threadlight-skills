@@ -1806,6 +1806,8 @@ def _read_state(state_path: Path) -> dict[str, Any]:
 
 def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
     state = _read_state(state_path) if state_path else {}
+    from skills._shared.presenter import assess as assess_presenter
+    presenter = assess_presenter(workspace)
     decisions: list[StageDecision] = []
     invalid_configuration = False
     try:
@@ -1821,7 +1823,51 @@ def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
                 hard_stop_signature="invalid-governance-configuration"))
         else:
             decisions.append(probe(workspace, state))
-    decisions = _cascade_invalidations(decisions)
+    # Legacy pilots retain the legacy cascade. The opt-in profile binds precise
+    # dependencies; a script-only edit must not redeploy or replay a business write.
+    if not presenter["enabled"]:
+        decisions = _cascade_invalidations(decisions)
+
+    if presenter["enabled"]:
+        if presenter["states"]["source-ready"] != "blocked":
+            for index, decision in enumerate(decisions):
+                check = {"deploy": "deployment", "invoke": "backend"}.get(decision.name)
+                if check:
+                    result = presenter["checks"][check]
+                    if decision.decision == "hard_stop":
+                        continue
+                    if (decision.name == "deploy" and result["status"] != "blocked"
+                            and _deploy_retry_required(workspace)):
+                        decisions[index] = StageDecision(
+                            "deploy", "run", "Previous governed deployment is incomplete or invalidated; reconcile its attempt before retry.")
+                        continue
+                    outcome = ("hard_stop" if result["status"] == "blocked" else
+                               "skip" if result["status"] == "verified"
+                               or result.get("action") == "refresh-observation" else "run")
+                    if decision.name == "invoke" and outcome == "run" and not presenter["source_usable"]:
+                        decisions[index] = StageDecision(
+                            "invoke", "hard_stop", "Source is not currently usable; explicitly prepare a new revision before new work.",
+                            hard_stop_signature="presenter-source-not-current")
+                        continue
+                    decisions[index] = StageDecision(
+                        decision.name, outcome, f"Presenter {check}: {result['reason']}",
+                        hard_stop_signature="presenter-evidence-requires-reconciliation" if outcome == "hard_stop" else None)
+            package = presenter["checks"]["package"]
+            position = stages.index("deploy")
+            stages.insert(position, "presenter_package")
+            decisions.insert(position, StageDecision(
+                "presenter_package", "skip" if package["status"] == "verified" else "run",
+                f"Exact packaged integration: {package['reason']}"))
+        stages.append("presenter_ready")
+        invalid = presenter["states"]["source-ready"] == "blocked"
+        decisions.append(StageDecision(
+            "presenter_ready",
+            "hard_stop" if invalid else "skip" if presenter["ready"] else "run",
+            ("Presenter contract invalid: " + "; ".join(presenter["gaps"])) if invalid else
+            "Presenter journey has bound recorded acceptance." if presenter["ready"] else
+            f"Process owner must supply presenter check: {presenter['next_check']}; no automatic business replay.",
+            hard_stop_signature="invalid-presenter-contract" if invalid else None,
+        ))
 
     hard_stop = next((d for d in decisions if d.decision == "hard_stop"), None)
     governed_handoff, governed_manifest = _governed_actions_projection(workspace)
@@ -1835,6 +1881,7 @@ def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
         "dependencies": {stage: [stages[index - 1]] if index else []
                          for index, stage in enumerate(stages)},
         "manual_handoffs": _manual_handoffs(workspace),
+        "presenter_ready": presenter,
         # Advisory for legacy pilots; selected bindings require the gate stage.
         "governed_actions": governed_handoff,
         "governed_actions_manifest": governed_manifest,
@@ -1877,12 +1924,25 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
             return {"status": "blocked", "stage": report["next_action"]["stage"], "executed": executed}
         pending = [s for s in report["next_action"]["stages_to_run"] if s not in executed]
         if not pending:
+            if (report["presenter_ready"]["enabled"]
+                    and STAGE_PROBES["safe_check"](workspace, {}).decision != "skip"):
+                return {"status": "blocked", "stage": "safe_check", "executed": executed}
+            if report["presenter_ready"]["enabled"] and not report["presenter_ready"]["ready"]:
+                return {"status": "blocked", "stage": "presenter_ready", "executed": executed}
             if "governance_probe" in report["stages"]:
                 for guard in ("govern", "governed_actions_gate", "governance_probe"):
                     if {**STAGE_PROBES, **GOVERNANCE_PROBES}[guard](workspace, {}).decision != "skip":
                         return {"status": "blocked", "stage": guard, "executed": executed}
             return {"status": "complete", "executed": executed}
         stage = pending[0]
+        if report["presenter_ready"]["enabled"] and stage in ("deploy", "invoke"):
+            required = ("package",) if stage == "deploy" else ("package", "deployment")
+            if any(report["presenter_ready"].get("checks", {}).get(check, {}).get("status") != "verified"
+                   for check in required):
+                return {"status": "blocked", "stage": "presenter_package" if stage == "deploy" else "deploy",
+                        "executed": executed}
+            if stage == "invoke" and STAGE_PROBES["safe_check"](workspace, {}).decision != "skip":
+                return {"status": "blocked", "stage": "safe_check", "executed": executed}
         governed = "governance_probe" in report["stages"]
         if governed:
             guards = (["govern", "governed_actions_gate"] if stage == "deploy" else
@@ -1904,6 +1964,16 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
                 state["deploy"]["status"] = "failed"
                 _write_execution_state(workspace, state)
             return {"status": "blocked", "stage": stage, "executed": executed}
+        if stage in ("presenter_package", "presenter_ready"):
+            from skills._shared.presenter import assess as assess_presenter
+            result = assess_presenter(workspace)
+            passed = (result.get("checks", {}).get("package", {}).get("status") == "verified"
+                      if stage == "presenter_package" else result.get("ready"))
+            if not passed:
+                return {"status": "blocked", "stage": stage, "executed": executed}
+        if report["presenter_ready"]["enabled"] and stage == "safe_check":
+            if STAGE_PROBES["safe_check"](workspace, {}).decision != "skip":
+                return {"status": "blocked", "stage": stage, "executed": executed}
         if stage == "deploy" and governed and not record_deploy_completed(workspace):
             return {"status": "blocked", "stage": stage, "executed": executed}
         if stage == "governed_actions_gate" and not record_governed_actions_gate(workspace):
