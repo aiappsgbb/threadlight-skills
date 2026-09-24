@@ -12,6 +12,7 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 .governance-page main summary { cursor: pointer; font-weight: 600; color: var(--ink-0); }
 .governance-page footer { padding: 32px; border-top: 1px solid var(--line); color: var(--ink-2); }
 .governance-page footer a { color: var(--ink-1); }
+.governance-page .pg-results > p a { color: var(--ink-1); text-decoration: underline; text-underline-offset: 3px; }
 
 #workflow-in-action[data-governed-flow] { padding-block: 12px; }
 #workflow-in-action .wf-symbols { position: absolute; }

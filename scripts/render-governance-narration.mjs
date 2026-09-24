@@ -14,10 +14,11 @@ const directory = path.join(root, 'docs/assets/audio/governance');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 if (process.argv.includes('--help')) {
   console.log('Render short narration with the home-page Ava Multilingual voice via online Edge TTS.\n'
-    + 'Usage: node scripts/render-governance-narration.mjs [--check | --missing]\n'
+    + 'Usage: node scripts/render-governance-narration.mjs [--check | --missing | --changed]\n'
     + 'Rendering requires python3 with edge-tts==7.2.8 and ffprobe. Only public narration text is sent.\n'
     + '--check verifies voice settings, scripts and shipped MP3 hashes offline.\n'
-    + '--missing renders new clips only; preserve existing verified narration clips.');
+    + '--missing renders new clips only; preserve existing verified narration clips.\n'
+    + '--changed renders new or changed scripts; all unchanged verified clips are preserved.');
 } else if (process.argv.includes('--check')) {
   const manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8'));
   if (Object.entries(narrationProfile).some(([key, value]) => manifest[key] !== value)) {
@@ -35,7 +36,8 @@ if (process.argv.includes('--help')) {
   }
   console.log(`Checked ${manifest.clips.length} local narration clips.`);
 } else {
-  const previous = process.argv.includes('--missing')
+  const changed = process.argv.includes('--changed');
+  const previous = process.argv.includes('--missing') || changed
     ? JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')) : null;
   if (previous && (Object.entries(narrationProfile).some(([key, value]) => previous[key] !== value)
       || new Set(previous.clips.map(clip => clip.id)).size !== previous.clips.length)) {
@@ -43,9 +45,13 @@ if (process.argv.includes('--help')) {
   }
   const preserved = new Map();
   for (const clip of previous?.clips || []) {
-    if (!Object.hasOwn(narrationClips, clip.id) || clip.text !== narrationClips[clip.id]
+    if (!Object.hasOwn(narrationClips, clip.id)
         || hash(await readFile(path.join(directory, `${clip.id}.mp3`))) !== clip.sha256) {
-      throw new Error(`Existing narration differs: ${clip.id}; explicit full regeneration required.`);
+      throw new Error(`Existing narration inventory or audio differs: ${clip.id}; cannot preserve clips.`);
+    }
+    if (clip.text !== narrationClips[clip.id]) {
+      if (changed) continue;
+      throw new Error(`Existing narration script differs: ${clip.id}; use --changed for approved copy updates.`);
     }
     preserved.set(clip.id, clip);
   }

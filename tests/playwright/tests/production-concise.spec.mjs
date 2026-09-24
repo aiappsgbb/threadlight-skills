@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const wordCount = locator => locator.evaluate(element => {
   const copy = element.cloneNode(true);
-  copy.querySelectorAll('style, script, .wf-mobile, svg [hidden], svg desc, svg title, [data-flow-proof][hidden], [data-flow-approval][hidden], [data-flow-evidence][hidden], [data-evidence-jwt][hidden]').forEach(node => node.remove());
+  copy.querySelectorAll('style, script, .wf-mobile, svg [hidden], svg desc, svg title, [data-flow-proof][hidden], [data-flow-approval][hidden], [data-flow-evidence][hidden], [data-flow-confirmation][hidden], [data-evidence-jwt][hidden]').forEach(node => node.remove());
   copy.querySelectorAll('[data-evidence-jwt] details > :not(summary)').forEach(node => node.remove());
   copy.querySelectorAll('[data-action-implementation] > :not(summary)').forEach(node => node.remove());
   return copy.textContent.trim().split(/\s+/).length;
@@ -21,6 +21,8 @@ test('examples stay bounded while JWT and implementation details are optional', 
   }
   await page.getByRole('tab', { name: 'Human review', exact: true }).click();
   expect(await wordCount(page.locator('#actions-topic')), 'human permission').toBeLessThan(700);
+  await page.getByRole('tab', { name: 'User confirmation', exact: true }).click();
+  expect(await wordCount(page.locator('#actions-topic')), 'user confirmation').toBeLessThan(700);
   expect(await wordCount(page.locator('main'))).toBeLessThan(2400);
 });
 

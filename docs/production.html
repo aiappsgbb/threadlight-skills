@@ -23,7 +23,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
-<link rel="stylesheet" href="assets/governed-workflow.css?v=a74f8d4c">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=ffa28b69">
 <style>
   /* Page-local layout and contrast; retain the shared Threadlight tokens and navigation. */
   html { scroll-padding-top: var(--production-scroll-offset, 72px); }
@@ -845,7 +845,7 @@
               Signed evidence requires provider-verified purchase proof: missing or changed proof blocks the new effect;
               valid matching proof still needs policy and backend checks.
               Requesting-user confirmation is separate from reviewer approval: a matching authenticated user
-              must explicitly confirm the exact proposal in an authenticated confirmation client. Email notification is not MFA
+              must explicitly choose Approve or Reject in the native Outlook email. Email notification is not MFA
               or consent. Rejection, expiry or changed inputs blocks the write. This new path is not live evidence.</p>
             <div class="wf-business-proof" data-flow-proof hidden>
               <h4>What the purchase certificate actually says</h4>
@@ -885,8 +885,9 @@
             <!-- human-permission:end -->
             <div id="user-confirmation" class="wf-confirmation-example" data-flow-confirmation hidden>
               <h4>The requesting user decides, not a supervisor.</h4>
-              <p>Outside the agent, an <strong>authenticated confirmation client</strong> shows the exact proposal
-                to the <strong>matching authenticated user</strong>.
+              <p><strong>Logic Apps sends an Outlook approval email</strong> to the <strong>original requesting user</strong>,
+                with the exact proposal and <strong>Approve / Reject</strong> buttons.
+                The service independently verifies the native email response and the <strong>matching authenticated user</strong>.
                 Viewing a GET link or email scanners <strong>never approve</strong>.
                 If reviewer approval is also required, both decisions must come from different people.</p>
               <dl class="wf-fact-record">
@@ -904,9 +905,8 @@
               <p class="wf-example-limit">These buttons only advance the illustration. No real identity or consent is collected.
                 The real gateway returns <code>pending_confirmation</code> with confirmation and operation IDs, without an effect.</p>
               <div class="wf-confirmation-providers">
-                <p><strong>Initial client:</strong> interactive CLI, browser login and explicit transaction-digest typing.
-                  Email landing pages give launch instructions. A confidential web BFF or browser confirmation portal is <strong>not implemented</strong>.</p>
-                <p><strong>Basic:</strong> email notification + authenticated explicit confirmation; <strong>email is not MFA</strong>.</p>
+                <p><strong>Native email:</strong> choose Approve or Reject in Outlook, outside the agent.
+                  Verified requester consent is not reviewer approval; <strong>email is not MFA</strong>.</p>
                 <p><strong>Optional employee step-up:</strong> Entra authentication context needs verified active, applicable
                   Conditional Access controls. The context alone is not MFA proof; a new MFA prompt per transaction is not guaranteed.</p>
                 <p><strong>Customer providers:</strong> configurable B2C provider seam, not all implemented.
@@ -1043,6 +1043,6 @@
 <script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
 <script src="assets/production.js?v=96331334"></script>
-<script src="assets/governed-workflow.js?v=f311577f"></script>
+<script src="assets/governed-workflow.js?v=4a69e216"></script>
 </body>
 </html>

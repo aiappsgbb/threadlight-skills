@@ -189,15 +189,15 @@
     },
     {
       "id": "confirmation-pending",
-      "text": "The service saves the proposal and notifies the user. No business change has happened.",
-      "seconds": 5.64,
-      "sha256": "4e81ee1f0fa8124b8463a8aca91522154f58ead23ad605fdf1ac993da31b79fe"
+      "text": "The service saves the proposal and sends the user an Outlook approval email. No business change has happened.",
+      "seconds": 6.48,
+      "sha256": "20c87ec6276d2a5d295c011c65a4f4a9ddcc2efa24e155942f48bab04279db88"
     },
     {
       "id": "confirm",
-      "text": "We pause for the requesting user. Viewing a message or page never confirms. Choose an illustrative outcome.",
-      "seconds": 7.608,
-      "sha256": "195c228ae313e2a0db124ecb3469614a4acc5b82ee30a658b368e0d41100aa8a"
+      "text": "We pause for the requesting user to choose Approve or Reject in Outlook. Viewing the message never confirms.",
+      "seconds": 6.768,
+      "sha256": "ffb88488e92e7f0f2af8040c5abed681eb6219ad2fb5745bb29c9959b11ae6a6"
     },
     {
       "id": "confirmation-verify-confirmed",

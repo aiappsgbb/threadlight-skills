@@ -87,9 +87,12 @@ GHCP is deferred and local native confirmation is unsupported. Live acceptance
 remains **unverified**. Read the
 [requesting-user confirmation contract](agent-governance-deep-dive.md#requesting-user-confirmation)
 before selecting a provider; B2C providers are configurable, not all implemented.
-The initial authenticated confirmation client is an interactive CLI with browser
-login and explicit transaction-digest typing, not a shipped confidential web BFF.
-Email notification is not MFA or consent. Optional Entra authentication context
+The normal user path is native Logic Apps/Outlook approval email with
+Approve / Reject buttons for the original requesting user. Independently verify
+the native response against the exact proposal and requester, not a supplied
+callback or email address alone. CLI tools are developer diagnostics, not the
+normal user handoff. Email notification alone is not MFA or consent.
+Optional Entra authentication context
 requires verified active/applicable Conditional Access mapping and controls;
 it does not guarantee a new MFA prompt per transaction.
 

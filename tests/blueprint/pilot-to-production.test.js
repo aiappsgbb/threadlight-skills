@@ -63,7 +63,7 @@ test('the guide starts from an existing Threadlight pilot and has five actionabl
 test('the workbook stays byte-frozen while the architecture pins the scoped confirmation addition', () => {
   for (const [file, expected] of [
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
-    ['docs/agent-governance-deep-dive.md', '729d78b886d0224f939b477ba77ca06eb24e1ae7'],
+    ['docs/agent-governance-deep-dive.md', 'ebfddc3537a07935972bb8eb8ec409677b0b233a'],
     ['docs/assets/governance/effect-boundaries.svg', '69fa014350e3f7acaf53b8e37541717b99f8a6dd'],
   ]) {
     const bytes = file === 'docs/agent-governance-deep-dive.md'

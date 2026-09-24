@@ -102,13 +102,14 @@ Returning to the decision resets the gate; no timers, audio events or progress
 buttons may infer consent. Buttons never send network calls or collect real
 identity. Opening a page or GET link, including scanners, never approves.
 
-Explain basic email notification plus authenticated explicit confirmation
+Explain native Logic Apps/Outlook requester email with independently verified explicit confirmation
 (**email is not MFA**), optional employee Entra authentication-context step-up
 and configurable customer/B2C providers (**not all implemented**).
-The initial authenticated confirmation client is an interactive CLI: browser
-login/claims challenge, exact proposal display and explicit transaction-digest
-typing. An email landing page supplies launch instructions. A confidential web
-BFF/browser confirmation portal is not implemented.
+The normal user chooses **Approve / Reject** in the email showing the exact
+proposal. The service independently verifies the native response against the
+original requesting user, not a supervisor role. Do not present Python commands,
+CLI launch instructions or transaction-digest typing as the normal email path;
+CLI tools remain developer diagnostics. A customer portal is a separate integration.
 Requester consent, reviewer authority and authentication assurance are distinct.
 Entra needs active/applicable CA controls, not just `acrs`; a new MFA prompt per
 transaction is not guaranteed. Initial MAF governed gateway scope is
@@ -118,7 +119,9 @@ Existing signed evidence, default/reviewer paths and unbound reads are unchanged
 Use new requester-specific narration; **preserve all existing narration clips**
 and their hashes. Run `node scripts/render-governance-narration.mjs --missing`
 for new public text; it verifies existing script/profile/hash entries and refuses
-to silently regenerate changed clips. Follow `render-governance-narration.mjs`,
+to silently regenerate changed clips. Use `--changed` only for approved public
+copy corrections; it verifies every existing MP3 hash, preserves unchanged clips,
+and renders only new or changed scripts. Follow `render-governance-narration.mjs`,
 keep its manifest complete, and refresh workflow JS/CSS references with
 `python3 docs/ci/sync_cache_bust.py --write`. This presentation addition does not
 borrow old hosted receipts or alter the byte-frozen workbook/pinned history.

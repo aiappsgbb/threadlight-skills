@@ -66,6 +66,7 @@ test('incremental rendering preserves verified clips rather than regenerating ex
   const help = execFileSync(process.execPath, ['scripts/render-governance-narration.mjs', '--help'],
     { cwd: root, encoding: 'utf8', timeout: 10000 });
   assert.match(help, /--missing/);
+  assert.match(help, /--changed/);
   assert.match(help, /preserve.*verified.*clips/i);
 });
 

@@ -37,7 +37,7 @@ test('rejected, expired or changed confirmation never reaches an authorization A
     for (const step of ['intro', ...route]) {
       const clip = model.narrationFor('confirmation', step, choice);
       assert.equal(typeof clip.text, 'string', `${choice}/${step}`);
-      assert.doesNotMatch(clip.text, /supervisor|reviewer|Outlook/i);
+      assert.doesNotMatch(clip.text, /supervisor|reviewer/i);
     }
   }
 });
@@ -108,16 +108,22 @@ test('public entry points link the scoped confirmation contract without claiming
   assert.match(spec, /preserv.*existing.*clips/is);
 });
 
-test('initial confirmation uses an authenticated CLI, not an already-shipped web portal', () => {
+test('normal requester confirmation uses native Outlook buttons rather than a command-launch email', () => {
   const guide = read('docs/agent-governance-deep-dive.md');
   const page = read('docs/production.html');
   for (const text of [guide, page]) {
-    assert.match(text, /authenticated confirmation client/i);
-    assert.match(text, /interactive CLI/i);
-    assert.match(text, /transaction.digest/i);
-    assert.match(text, /web BFF.*not implemented/is);
+    assert.match(text, /Logic Apps.*Outlook/is);
+    assert.match(text, /Approve.*Reject/is);
+    assert.match(text, /original requesting user/is);
+    assert.match(text, /independently.*native.*response/is);
+    assert.match(text, /email is not MFA/i);
   }
+  assert.doesNotMatch(page, /interactive CLI|transaction.digest typing|launch instructions|web BFF/);
+  assert.match(guide, /CLI.*developer\s+diagnostics.*not.*normal user/is);
   assert.match(guide, /policy.*escalation.*without.*reviewer roles/is);
   assert.match(guide, /reviewer roles.*both/is);
   assert.doesNotMatch(page, /A separate page shows the exact proposal/);
+  assert.match(model.stepDetails('confirmation', 'confirm').action, /Approve.*Reject.*Outlook/);
+  assert.match(model.narrationFor('confirmation', 'confirm').text, /requesting user.*Approve.*Reject.*Outlook/);
+  assert.match(model.narrationFor('confirmation', 'confirmation-pending').text, /Outlook/);
 });

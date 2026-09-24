@@ -109,9 +109,10 @@
         The control plane supplies signed policy, verified human approvals and durable audit confirmation.
         It is not another business executor. The gateway enforces the decision; the backend owns the transaction.</p>
       <p class="governance-note"><strong>Requesting-user confirmation is a separate decision.</strong>
-        The person requesting the action confirms the exact proposal outside the agent conversation;
-        a third-party reviewer and authentication assurance answer different questions.
-        Email notification is not MFA or consent. The initial MAF gateway path remains live-unverified;
+        The original requesting user chooses Approve or Reject in a native Logic Apps/Outlook email;
+        the service independently verifies the response against that exact proposal and requester.
+        A third-party reviewer and authentication assurance answer different questions.
+        Email notification alone is not consent or MFA. The initial MAF gateway path remains live-unverified;
         GHCP/local native confirmation and blanket B2C support are not implied.
         <a href="./production.html#user-confirmation">Explore User confirmation &rarr;</a></p>
       <p class="illustration-label"><span class="illustration-dot" aria-hidden="true"></span><strong>Illustration only.</strong> Choose a scenario. Watch the boundary change. No live policy engine or collected proof.</p>

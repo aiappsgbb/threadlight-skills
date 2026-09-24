@@ -5,7 +5,7 @@ test('fourth policy tab explains evidence variants without enabling a real actio
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/production.html#workflow-in-action');
   const flow = page.locator('[data-governed-flow]');
-  await expect(flow.getByRole('tab')).toHaveText(['Allowed', 'Blocked', 'Human review', 'Signed evidence']);
+  await expect(flow.getByRole('tab')).toHaveText(['Allowed', 'Blocked', 'Human review', 'Signed evidence', 'User confirmation']);
   await flow.getByRole('tab', { name: 'Human review', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(flow.getByRole('tab', { name: 'Signed evidence', exact: true })).toBeFocused();

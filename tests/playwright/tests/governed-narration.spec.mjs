@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { writeFileSync } from 'node:fs';
 
 const installAudio = async page => page.addInitScript(() => {
   window.Audio = class {
@@ -230,19 +231,38 @@ test('the shipped recording decodes and plays without an external speech service
   await flow.getByRole('button', { name: 'Pause', exact: true }).click();
 });
 
-test('actual clips complete the evidence story without a timing fallback', async ({ page }) => {
+test('actual clips complete the evidence story without a timing fallback', async ({ page }, testInfo) => {
   test.setTimeout(150000);
   await page.goto('/production.html#production-input-proof');
   const flow = page.locator('[data-governed-flow]');
-  await flow.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.waitForFunction(() => {
-    const flow = document.querySelector('[data-governed-flow]');
-    return flow.dataset.node === 'result' || flow.querySelector('[data-flow-audio-note]').textContent;
-  }, null, { timeout: 120000 });
-  await expect(flow.locator('[data-flow-audio-note]')).toBeEmpty();
-  await expect(flow).toHaveAttribute('data-node', 'result');
-  await expect(flow).toHaveAttribute('data-playing', 'false', { timeout: 28000 });
-  await expect(flow.locator('[data-flow-narration]')).toContainText('case has changed');
+  await flow.locator('[data-flow-audio]').evaluate(audio => {
+    window.audioPlayback = [];
+    for (const event of ['playing', 'waiting', 'stalled', 'ended', 'error', 'pause']) {
+      audio.addEventListener(event, () => window.audioPlayback.push({
+        event, at: performance.now(), source: audio.currentSrc, time: audio.currentTime,
+        duration: audio.duration, readyState: audio.readyState, networkState: audio.networkState,
+        hidden: document.hidden, error: audio.error?.message,
+      }));
+    }
+  });
+  try {
+    await flow.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.waitForFunction(() => {
+      const flow = document.querySelector('[data-governed-flow]');
+      return flow.dataset.node === 'result' || flow.querySelector('[data-flow-audio-note]').textContent;
+    }, null, { timeout: 120000 });
+    await expect(flow.locator('[data-flow-audio-note]')).toBeEmpty();
+    await expect(flow).toHaveAttribute('data-node', 'result');
+    await expect(flow).toHaveAttribute('data-playing', 'false', { timeout: 28000 });
+    await expect(flow.locator('[data-flow-narration]')).toContainText('case has changed');
+  } finally {
+    const artifact = testInfo.outputPath('audio-playback.json');
+    writeFileSync(artifact, JSON.stringify(await page.evaluate(() => window.audioPlayback), null, 2));
+    await testInfo.attach('audio-playback', {
+      path: artifact,
+      contentType: 'application/json',
+    });
+  }
 });
 
 test('leaving the topic cancels voice and stale completions cannot resume it', async ({ page }) => {

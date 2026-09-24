@@ -600,7 +600,7 @@ review are both required, **both decisions are required from different people**.
 Signed input evidence, policy and backend checks remain additional conditions.
 
 <details data-user-confirmation-contract>
-<summary>Wave1 integration, confirmation client and authentication assurance</summary>
+<summary>Wave1 integration, native requester email and authentication assurance</summary>
 
 **Wave1 contract, not live evidence.** The initial supported integration target
 is the **MAF governed gateway**. GHCP is deferred; local native confirmation is
@@ -625,15 +625,20 @@ this is **not OBO** and does not impersonate the user at the business backend.
 The gateway must validate that context, not accept user identity from agent text.
 
 The pending response carries `{status: pending_confirmation, confirmation_id,
-operation_id}` and has **no business effect**. The user acts outside the agent
-using an **authenticated confirmation client**. The first implementation is an
-**interactive CLI**: browser login/claims challenge establishes the matching user,
-then the client displays the exact proposal and requires explicit
-**transaction-digest typing** to confirm. Rejection remains a separate decision.
-The email landing page can supply exact client launch instructions, not consent.
-Viewing GET links and email scanners **never approve**. A confidential **web BFF**
-or browser confirmation portal is **not implemented**; a customer portal is a
-separate integration, not a shipped capability.
+operation_id}` and has **no business effect**. The normal user path is a
+**native Logic Apps/Outlook approval email** addressed to the **original requesting user**,
+showing the exact proposal and **Approve / Reject** buttons. It does not ask a
+customer to run a command. The service independently verifies the native email
+response, matching responder identity, proposal and deadline before accepting consent.
+The email address or a supplied callback alone cannot establish that authority.
+Viewing GET links and email scanners **never approve**.
+
+This reuses the native email decision channel, **not the supervisor's authority**:
+the responder must match the original requesting user, not merely hold a reviewer
+role. If both obligations are selected, requester confirmation and third-party
+review remain distinct and both must be satisfied. CLI tools remain **developer
+diagnostics**, not the normal user confirmation path. A customer portal is a
+separate provider integration, not an automatically shipped capability.
 
 Authority is server-held, **one-use with CAS** (compare-and-swap), and bound to the
 exact inputs, policy, trusted facts and authenticated subject. Expiry, rejection,
@@ -649,7 +654,7 @@ not settlement.
 
 | Profile | What must be true | What it does not prove |
 |---|---|---|
-| Basic email notification | The matching authenticated user explicitly confirms the exact proposal in the separate confirmation client | Email is not MFA, identity proof by itself, or consent |
+| Native requester email | Logic Apps/Outlook presents Approve / Reject; independently verified native response binds the exact proposal to the original requesting user | Email is not MFA; notification alone is not identity proof or consent |
 | Optional employee Entra step-up | Actual MSAL interactive/browser flow obtains `Governance.Confirm`; a claims challenge requests the configured `acrs` authentication context | A matching context alone is not proof of MFA |
 | Customer/B2C provider seam | A configured, verified provider supplies the required subject and assurance contract | Providers are configurable, **not all implemented**; no blanket B2C compatibility claim |
 
