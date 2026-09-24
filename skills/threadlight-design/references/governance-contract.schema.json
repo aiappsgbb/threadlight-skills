@@ -61,7 +61,8 @@
         "output",
         "output-mediation",
         "signed-policy-bundle",
-        "signed-evidence"
+        "signed-evidence",
+        "user-confirmation"
       ]
     },
     "requirementList": {
@@ -80,7 +81,8 @@
           "output",
           "output-mediation",
           "signed-policy-bundle",
-          "signed-evidence"
+          "signed-evidence",
+          "user-confirmation"
         ]
       },
       "uniqueItems": true
@@ -218,7 +220,8 @@
               "output",
               "output-mediation",
               "signed-policy-bundle",
-              "signed-evidence"
+              "signed-evidence",
+              "user-confirmation"
             ]
           },
           "uniqueItems": true,
@@ -326,7 +329,8 @@
               "output",
               "output-mediation",
               "signed-policy-bundle",
-              "signed-evidence"
+              "signed-evidence",
+              "user-confirmation"
             ]
           },
           "uniqueItems": true

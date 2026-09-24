@@ -23,8 +23,9 @@ from mcp.types import Tool as MCPTool
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
-from govern_control_plane.models import Identifier, canonical, parse, strict_json
+from govern_control_plane.models import Identifier, Nonce, canonical, parse, strict_json
 from govern_control_plane.attestations import EVIDENCE_ARGUMENT, EVIDENCE_META
+from govern_control_plane.confirmation import CONTEXT_ARGUMENT, CONTEXT_META
 from govern_control_plane.review import validate_pending_review
 from skills._shared.governance import validate_governance_contract
 from skill_approval import RequireResolvedApprovals
@@ -187,7 +188,8 @@ class GovernedMCPTools:
                 params = document["params"]
                 if (call is None or params.get("name") != call["name"]
                         or canonical(params.get("arguments", {})) != call["arguments"]
-                        or params.get("_meta", {}).get(EVIDENCE_META) != call.get("evidence")):
+                        or params.get("_meta", {}).get(EVIDENCE_META) != call.get("evidence")
+                        or params.get("_meta", {}).get(CONTEXT_META) != call.get("request_context")):
                     raise GatewayToolError("threadlight:gateway_action_changed")
                 request.headers["Idempotency-Key"] = call["key"]
             await guard()
@@ -268,10 +270,15 @@ class GovernedMCPTools:
         return functions
 
     def _function(self, name, descriptor, *, deferred_connect=False):
-        deferred = (descriptor.get("_meta") or {}).get("threadlight.approval_mode") == "deferred"
-        evidence_selected = (descriptor.get("_meta") or {}).get("threadlight.evidence") == EVIDENCE_META
+        metadata = descriptor.get("_meta") or {}
+        deferred = metadata.get("threadlight.approval_mode") == "deferred"
+        evidence_selected = metadata.get("threadlight.evidence") == EVIDENCE_META
+        confirmation_selected = metadata.get("threadlight.confirmation") == CONTEXT_META
+        if "threadlight.confirmation" in metadata and not confirmation_selected:
+            raise GatewayToolError("threadlight:gateway_confirmation_unsupported")
+        resumable = deferred or confirmation_selected
         schema = deepcopy(descriptor["inputSchema"])
-        if deferred:
+        if resumable:
             if "governance_operation_id" in schema.get("properties", {}):
                 raise GatewayToolError("threadlight:gateway_reserved_field")
             schema.setdefault("properties", {})["governance_operation_id"] = {
@@ -280,31 +287,44 @@ class GovernedMCPTools:
             }
 
         async def invoke(**arguments):
+            operation = arguments.pop("governance_operation_id", None) if resumable else None
+            evidence = arguments.pop(EVIDENCE_ARGUMENT, None) if evidence_selected else None
+            request_context = arguments.pop(CONTEXT_ARGUMENT, None) if confirmation_selected else None
+            if operation is not None:
+                operation = parse(Identifier, canonical(operation))
+            if request_context is not None:
+                request_context = parse(Nonce, canonical(request_context))
+                if operation is None:
+                    raise GatewayToolError("threadlight:confirmation_operation_required")
             if deferred_connect:
                 async with self._connect_lock:
                     if self._functions is None:
                         await self.connect()
                     if self._descriptors != self._deferred_descriptors:
                         raise GatewayToolError("threadlight:gateway_inventory_changed")
-            operation = arguments.pop("governance_operation_id", None) if deferred else None
-            evidence = arguments.pop(EVIDENCE_ARGUMENT, None) if evidence_selected else None
-            if operation is not None:
-                operation = parse(Identifier, canonical(operation))
             call = {"name": name, "arguments": canonical(arguments), "key": operation or uuid.uuid4().hex,
-                    "evidence": evidence}
+                    "evidence": evidence, "request_context": request_context}
+            meta = {
+                **({EVIDENCE_META: evidence} if evidence is not None else {}),
+                **({CONTEXT_META: request_context} if request_context is not None else {}),
+            }
             async with self._session(call=call) as session:
                 if await self._inventory(session) != self._descriptors:
                     raise GatewayToolError("threadlight:gateway_inventory_changed")
                 reply = await session.call_tool(
                     name, arguments=deepcopy(arguments),
-                    **({"meta": {EVIDENCE_META: evidence}} if evidence is not None else {}))
+                    **({"meta": meta} if meta else {}))
             body = reply.structuredContent
             if not isinstance(body, dict):
                 raise GatewayToolError("threadlight:gateway_invalid_result")
             if body.get("status") == "pending_approval":
-                if not deferred or reply.isError:
+                if not resumable or reply.isError:
                     raise GatewayToolError("threadlight:gateway_invalid_pending_result")
                 return self._pending_result(body, call, arguments)
+            if body.get("status") == "pending_confirmation":
+                if not confirmation_selected or reply.isError:
+                    raise GatewayToolError("threadlight:gateway_invalid_pending_confirmation")
+                return self._pending_confirmation_result(body, call, arguments)
             if body.get("reason_code") == "outcome_unknown":
                 raise GatewayToolError("threadlight:gateway_outcome_unknown")
             if body.get("reason_code") == "output_denied":
@@ -328,7 +348,25 @@ class GovernedMCPTools:
                 raise ValueError("pending_action_mismatch")
         except (ValueError, TypeError, KeyError):
             raise GatewayToolError("threadlight:gateway_invalid_pending_result") from None
-        return {**deepcopy(body), "resume_arguments": deepcopy(arguments)}
+        resume = deepcopy(arguments)
+        if call.get("request_context") is not None:
+            resume.update({CONTEXT_ARGUMENT: call["request_context"], "governance_operation_id": call["key"]})
+        return {**deepcopy(body), "resume_arguments": resume}
+
+    def _pending_confirmation_result(self, body, call, arguments):
+        try:
+            if (set(body) != {"status", "confirmation_id", "operation_id"}
+                    or body["status"] != "pending_confirmation"
+                    or body["operation_id"] != call["key"]):
+                raise ValueError("pending_confirmation_mismatch")
+            parse(Nonce, canonical(body["confirmation_id"]))
+            context = parse(Nonce, canonical(call["request_context"]))
+            parse(Identifier, canonical(body["operation_id"]))
+        except (ValueError, TypeError, KeyError):
+            raise GatewayToolError("threadlight:gateway_invalid_pending_confirmation") from None
+        return {**deepcopy(body), "resume_arguments": {
+            **deepcopy(arguments), CONTEXT_ARGUMENT: context, "governance_operation_id": call["key"],
+        }}
 
 
 async def create_gateway_agent(*, config, client, local_tools, instructions, credential,

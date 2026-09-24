@@ -308,6 +308,17 @@ def approval_window(config):
     return parse(field.rebuild_annotation(), canonical(value))
 
 
+def confirmation_store(config, *, required=False):
+    name = config.get("confirmation_container")
+    if name is None and "confirmation_container" not in config and not required:
+        return None
+    if (not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9-]{2,62}", name)
+            or name in {"governance-records", "gateway-idempotency", "probe-gateway",
+                        "probe-native", "probe-fixture"}):
+        raise ValueError("confirmation_container_required")
+    return name
+
+
 def validate_probe_observability(config):
     if "probe_observability" not in config:
         return None
@@ -465,6 +476,12 @@ def validate_bundle_contract(bundle, document, config, registry=None):
     actions = {action.name: action for action in registry.actions}
     for tool in selected:
         action = actions[tool["id"]]
+        if ("user-confirmation" in tool["requires"]) != (action.confirmation_requirement is not None):
+            raise ValueError("signed_registry_confirmation_requirement_mismatch")
+        if action.confirmation_requirement is not None:
+            confirmation_store(config, required=True)
+            if action.confirmation_requirement.max_age_seconds > approval_max_seconds:
+                raise ValueError("signed_registry_confirmation_timeout_mismatch")
         if ("signed-evidence" in tool["requires"]) != (action.evidence_requirement is not None):
             raise ValueError("signed_registry_evidence_requirement_mismatch")
         if document["framework"] == "github-copilot-sdk" and action.approval_mode == "deferred":
@@ -521,6 +538,35 @@ def validate_review_channel(control, gateway, bindings):
         raise ValueError("outlook_authority_binding_mismatch")
 
 
+def validate_confirmation_channel(control, gateway, registry, config):
+    selected = [action for action in registry.actions if action.confirmation_requirement is not None]
+    authority = control.confirmation
+    if not selected and authority is None:
+        return
+    if authority is None:
+        raise ValueError("confirmation_configuration_required")
+    if (authority.cosmos_container != confirmation_store(config, required=True)
+            or authority.public_url != config["control_plane_url"]
+            or gateway.service_principal not in authority.gateway_principals):
+        raise ValueError("confirmation_authority_binding_mismatch")
+    for action in selected:
+        requirement = action.confirmation_requirement
+        profile = authority.profiles.get(requirement.provider_profile)
+        if profile is None:
+            raise ValueError("confirmation_profile_required")
+        for principal in action.workloads:
+            workload = control.workloads.get(principal)
+            if workload is None or not any(
+                    binding.workload == principal and binding.client == workload.client_id
+                    and binding.agent_id == workload.agent_id and action.name in binding.actions
+                    for binding in profile.workloads):
+                raise ValueError("confirmation_workload_binding_mismatch")
+        if profile.kind != "customer-signed" and any(
+                user.issuer != control.issuer or user.subject not in control.confirmation_subjects
+                or user.client not in control.human_clients for user in profile.users):
+            raise ValueError("confirmation_user_binding_mismatch")
+
+
 def validate_gateway_policy(bundle, signed, config, document, agent_image, bindings=None):
     """Shared stage/bind/static association checks; signature verification stays live."""
     from govern_control_plane.models import parse
@@ -556,6 +602,7 @@ def validate_gateway_policy(bundle, signed, config, document, agent_image, bindi
     control = parse(AzureConfiguration, canonical(bindings["control_config"]))
     gateway = parse(Configuration, canonical(bindings["gateway_config"]))
     validate_review_channel(control, gateway, bindings)
+    validate_confirmation_channel(control, gateway, registry, config)
     for service, settings in (("control_plane", control), ("gateway", gateway)):
         if (settings.tenant_id != config["tenant_id"] or settings.key_id != config["key_id"]
                 or settings.approver_roles != config["approver_roles"]
@@ -1068,6 +1115,8 @@ def bind(project, document, *, configuration=None):
         frozen = gateway_policy_selection(frozen)
     if infrastructure["environment"] != frozen["environment"]:
         raise ValueError("frozen_deployment_environment_mismatch")
+    if confirmation_store(infrastructure) != confirmation_store(frozen):
+        raise ValueError("confirmation_container_changed")
     if (bindings["policy_id"] != frozen["policy_id"]
             or bindings["policy_version"] != frozen["policy_version"]
             or infrastructure["approver_roles"] != frozen["approver_roles"]
@@ -1128,6 +1177,18 @@ def bind(project, document, *, configuration=None):
         gateway["approval_channel"] = "outlook"
     elif bindings.get("gateway_config", {}).get("approval_channel") == "outlook":
         raise ValueError("outlook_gateway_configuration_required")
+    prior_confirmation = bindings.get("control_config", {}).get("confirmation")
+    if "confirmation" in config or prior_confirmation is not None:
+        from govern_control_plane.confirmation import ConfirmationConfiguration
+        authority = config["confirmation"] if "confirmation" in config else prior_confirmation
+        if not gateway_path or authority is None:
+            raise ValueError("confirmation_configuration_required")
+        authority = parse(ConfirmationConfiguration, canonical(authority))
+        control["confirmation"] = authority.model_dump(mode="json")
+        control["confirmation_subjects"] = sorted({
+            user.subject for profile in authority.profiles.values()
+            if profile.kind != "customer-signed" for user in profile.users
+        })
     control_settings = parse(AzureConfiguration, canonical(control))
     gateway_settings = parse(Configuration, canonical(gateway))
     validate_review_channel(control_settings, gateway_settings, bindings)
@@ -1262,6 +1323,7 @@ def native_probe_binding(config, bindings, packaged, images, document):
 def validate_infrastructure(config):
     validate_environment(config)
     approval_window(config)
+    confirmation_store(config)
     validate_probe_observability(config)
     validate_network(config["network"], environment=config["environment"])
     for key in ("tenant_id", "control_plane_app_id", "gateway_app_id"):

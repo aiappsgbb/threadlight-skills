@@ -30,3 +30,23 @@ def test_native_probe_permissions_require_an_actual_native_binding():
         assert "equals(parameters('config').runtime, 'microsoft-agent-framework')" in condition
         assert "contains(parameters('bindings'), 'native_probe_config')" in condition
         assert grant["properties"]["principalId"] == "[parameters('bindings').agent_principal]"
+
+
+def test_confirmation_store_is_opt_in_ephemeral_and_control_plane_only():
+    compiled = Path(os.environ.get(
+        "THREADLIGHT_GOVERNANCE_BICEP", ROOT / ".governance-validation/mcp-governance-bicep.json"))
+    template = json.loads(compiled.read_text())
+    resources = template["resources"]
+    resources = list(resources.values()) if isinstance(resources, dict) else resources
+    ephemeral = [r for r in resources
+                 if r["type"] == "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers"
+                 and r["properties"]["resource"].get("defaultTtl") == 3600]
+    assert len(ephemeral) == 1
+    assert ephemeral[0]["condition"] == "[variables('confirmationEnabled')]"
+    assert ephemeral[0]["properties"]["resource"]["partitionKey"]["paths"] == ["/scope"]
+    grants = [r for r in resources
+              if r["type"] == "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments"
+              and "confirmationContainer" in json.dumps(r["properties"])]
+    assert len(grants) == 1
+    assert grants[0]["condition"] == "[variables('confirmationEnabled')]"
+    assert "format('{0}-control', variables('prefix'))" in grants[0]["properties"]["principalId"]

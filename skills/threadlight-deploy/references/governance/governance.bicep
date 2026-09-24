@@ -19,6 +19,8 @@ var prefix = config.prefix
 var probesEnabled = contains(config, 'probe_observability')
   ? (config.probe_observability.enabled == true && contains(['staging', 'preproduction'], config.environment))
   : false
+var confirmationEnabled = contains(config, 'confirmation_container')
+var confirmationContainer = confirmationEnabled ? config.confirmation_container : 'confirmation-not-selected'
 var environmentParts = split(config.network.environment_id, '/')
 resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = {
   name: last(environmentParts)
@@ -134,6 +136,17 @@ resource idempotency 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/contain
     }
   }
 }
+resource confirmationRecords 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2025-04-15' = if (confirmationEnabled) {
+  parent: database
+  name: confirmationContainer
+  properties: {
+    resource: {
+      id: confirmationContainer
+      partitionKey: { paths: ['/scope'], kind: 'Hash' }
+      defaultTtl: 3600
+    }
+  }
+}
 // Separate writers: agent/gateway can never write authoritative fixture effects.
 resource probeContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2025-04-15' = [for producer in ['gateway', 'native', 'fixture']: if (probesEnabled) {
   parent: database
@@ -169,6 +182,15 @@ resource controlDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignme
     principalId: controlIdentity.properties.principalId
     roleDefinitionId: documentRole.id
     scope: '${cosmos.id}/dbs/governance/colls/governance-records'
+  }
+}
+resource confirmationDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = if (confirmationEnabled) {
+  parent: cosmos
+  name: guid(cosmos.id, controlIdentity.id, confirmationContainer)
+  properties: {
+    principalId: controlIdentity.properties.principalId
+    roleDefinitionId: documentRole.id
+    scope: '${cosmos.id}/dbs/governance/colls/${confirmationContainer}'
   }
 }
 resource gatewayDocuments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2025-04-15' = {

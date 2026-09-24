@@ -42,6 +42,77 @@ human input; use the [operator review and exact resume protocol](../../../thread
 No review UI, Entra client or grant is created implicitly. GHCP deferred mode
 is rejected until its client can resume the operation; inline mode is unchanged.
 
+### Requesting-user confirmation
+
+The MAF gateway can separately select `user-confirmation` in the tool contract
+and `confirmation_requirement` in its signed registry. Both sides must agree.
+This does not change the requesting workload principal, provide OBO or turn the
+user into an independent reviewer. Native-local and GHCP selection are rejected.
+
+```json
+{
+  "confirmation_requirement": {
+    "trigger": "policy",
+    "provider_profile": "email-basic",
+    "max_age_seconds": 300
+  }
+}
+```
+
+This is a fragment of a registered action. `always` requires confirmation even
+for an ACS allow; the explicit `policy` opt-in requires it on escalation.
+Escalation with both confirmation and reviewer roles requires both authorities;
+without reviewer roles it requires only the requesting user's confirmation.
+Existing actions without this selection retain their original review behavior.
+
+Declare the same `confirmation_container`, for example `user-confirmations`,
+in package and infrastructure inputs before generation. The opt-in Bicep
+container uses `/scope` and TTL 3600, separate from permanent approval/audit and
+gateway-idempotency records. Only the control-plane identity receives its scoped
+item permissions. Missing, reserved, null or changed container selections fail.
+
+At bind, provide `confirmation` using the control plane's
+[actual configuration and client contract](../../../threadlight-govern/references/control-plane/README.md):
+exact public control URL, container, gateway principals, provider profiles,
+allowed original workloads/actions and authenticated users. For the email/Entra
+profiles the generator derives `confirmation_subjects` from that trusted profile
+and requires their client IDs in `human_clients`; it does not grant Entra consent.
+Set `user_client_id` to the existing approved interactive client for usable
+notification-launch instructions. Bind preserves a prior selected configuration;
+null selection, an unknown profile, wrong user/client/workload or mismatched
+service origin fails rather than falling back to an unconfirmed path.
+
+The separate `threadlight-confirm-action register` command authenticates the
+requesting user with delegated `Governance.Confirm` and registers the intended
+workload/action/operation. Supply the returned opaque `governance_request_context`
+and its exact `governance_operation_id` to the MAF function. The native client
+transports the reference as MCP metadata and never forwards it as a business
+argument. A low-risk policy allow needs no context when confirmation is not
+required. Missing context for a required confirmation never invents a user.
+
+`pending_confirmation` means **no effect**. The user independently runs
+`threadlight-confirm-action confirm` or `reject`, sees the exact proposal and
+types its transaction digest after browser authentication. The agent then resumes
+the same operation and context. Confirmation does not execute the action;
+fresh policy/facts/expiry, all selected authorities, one-use consumption and
+central audit ACK still precede the backend call.
+
+The companion `user-confirmation-notification.bicep` reuses an already-consented
+Office 365 connection and defaults to Disabled. It admits only the configured
+control identity, disables SAS and automatic mail retries, fixes the recipient,
+and verifies the delivery reference and `/confirmation/open/{id}` link origin.
+Its success acknowledges notification only. The email is **not MFA**, and
+opening a link never consents. This first reference uses a separate interactive
+client, not a shipped browser BFF. Customers can provide their own admitted
+provider/client; generic mailbox possession, verified CA MFA and transaction
+signing must not be described as equivalent.
+
+Entra CA profiles require a real applicable enabled context policy; unavailable
+Graph/configuration fails closed. `acrs` alone does not establish MFA or a new
+factor for each transaction. See the control-plane guide for the supported
+narrow policy shape and permissions. Local tests and generic noop evidence
+cannot establish this deployment's requesting-user or MFA acceptance.
+
 ### Explicit native Outlook companion
 
 For the implemented returns email experience, deploy `review-approval.bicep`

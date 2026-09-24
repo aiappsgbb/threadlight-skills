@@ -28,6 +28,17 @@ claims. An upload/OCR observation, amount threshold or human action approval is
 not evidence authenticity. Keep the original operation on unknown outcomes.
 The JWT path is opt-in gateway coverage, not native-local or whole-agent coverage.
 
+For **requesting-user consent**, select `user-confirmation` on the MAF gateway
+and a matching signed `confirmation_requirement`. Use the separate
+`threadlight-confirm-action` client and the
+[control-plane confirmation contract](references/control-plane/README.md).
+An opaque authenticated request context is not consent; the agent retains its
+workload identity. Basic email notifies, it is not MFA. Entra context assurance
+requires actual applicable CA policy verification; customers can supply their
+own admitted provider. User consent does not satisfy an independent reviewer or
+signed business evidence. Resume the same operation with all required authorities,
+fresh policy/facts, one-use consumption and audit ACK before effects.
+
 1. Read `specs/governance-contract.json` and the framework selection. Preserve
    unbound reads, including their tool names and responses; never enroll every
    tool to make a report green. Invalid selected config is not `off`.
