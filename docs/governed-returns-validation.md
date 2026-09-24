@@ -21,11 +21,110 @@ The separate delegated-token workstream is outside this record.
 | S4 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1/S3 |
 | S5 | Signed evidence under multi-turn business pressure | September 22: Azure GPT-5.4 / GPT-5.4-mini with local native MCP/ACS, synthetic authorities and business storage | Hybrid experiment; not hosted JWT/PEP or live Cosmos acceptance |
 | S6 | Requesting-user confirmation through native Logic Apps/Outlook email | September 24: genuine Approve, original-operation completion and zero-extra-effect replay on hosted v8 | One scoped S3 nonproduction path; not MFA or same-session effect-resume proof |
+| S7 | Citadel public MCP/REST route and a separate live producer-to-PEP ACK-loss job | September 24: public allow/deny/replay and isolated native PEP response-loss reconciliation | Real Azure business persistence; job-only fault boundary is not public-route or model-driven fault proof; requesting-user flow remains unexecuted |
 
 **Reference direction:** S2 now has fresh private governed allow/deny evidence,
 separate from its earlier BASIC baseline. S3's governed business proof remains
 historical: its September 14 bootstrap lease has expired. S1 is a historical
 functional baseline, not the final hosting architecture.
+
+## S7: Citadel public route and isolated producer ACK loss
+
+**2026-09-24.** This is a new isolated Wave2 deployment, not an extension of
+S6's human approval receipt. The business operation records a synthetic return
+decision and audit in Cosmos; it never settles a payment. Runtime source is
+`d8f97cc8d619508e0cb70ef9e82c6efcf4944c1d`; the deployment-discovered APIM
+publication fixes are `d45806c65077919b13af6b7918793f2c176de5d9`.
+The [Citadel runbook](citadel-governance.md) describes the contracts and ownership.
+
+### Public route: actual MCP and REST, not model-driven
+
+A real Entra app-only consumer token passed through the existing public APIM
+instance to the new native execution PEP and independently authorizing producer.
+The PEP verified both the original consumer and APIM managed identity. Native
+MCP initialization, tool discovery and invocation were exercised; registered
+REST ingress used the same dispatcher and original operation keys.
+
+Independent read-only Cosmos snapshots joined each business audit to its
+central allow receipt, action hash, policy digest and completed operation.
+Three actual Blob policy envelopes and immutable digest indexes were retrieved;
+their Key Vault signatures were independently verified. Active service image,
+configuration and identity readbacks matched the attempt.
+
+| Public-route check | Observed result |
+|---|---|
+| Autonomous allow | One synthetic decision/audit and one central allow receipt |
+| Producer deny and consumer deny | Two independent denies, two central deny receipts, unchanged cases and ETags |
+| Identity boundaries | Genuine wrong-audience JWT, spoofed attribution and direct PEP/producer calls rejected |
+| Isolated central audit outage | The new control revision was temporarily deactivated; the request returned unavailable with no business effect. The identical revision was restored and readiness verified |
+| Consumer response loss | One real send with its response deliberately withheld from the consumer; independent state identified the completed effect |
+| Original-operation replay | MCP, REST and a replay inside the exact bound consumer image returned the existing outcomes with **zero additional** effects or receipts; all durable records and ETags remained unchanged |
+
+The public-route subset produced **two** decision/audits and **four** central
+receipts: two allow and two deny. The unavailable-audit operation remains
+`pending` without a receipt and with independently verified zero effects.
+It must not be reopened, deleted or automatically retried. Consumer response
+loss alone does **not** prove producer-to-PEP ACK loss.
+
+### Separate live job-only producer-to-PEP fault
+
+A distinct test attempt used one fresh synthetic case, a new producer endpoint,
+fresh producer/consumer/effective policy version **2**, and an image-owned native
+PEP driver. Its exact driver image digest was
+`sha256:3ca0c311fb53cf5aaeb7303747be37d4ed7d1d3685c94725bb1c1a894d5d7441`.
+The accepted public route and its service configurations were not rebound to
+this test. The job invoked the **existing native dispatcher and transport**,
+not a replacement dispatcher or simulated business store.
+
+At the existing transport seam, the driver made **one producer POST** over
+real HTTPS. The real producer returned HTTP 200 after its Cosmos transaction.
+The seam consumed and discarded that response before the native PEP could
+receive the acknowledgement. It did not patch an installed SDK, change producer
+behavior or expose a fault switch to a model.
+
+The PEP returned `unavailable / outcome_unknown`; its durable operation remained
+`pending`, with the central allow receipt already linked. Replaying the same
+operation did not send another POST or create another receipt. A separately
+authorized **outcome GET** retrieved the producer's existing immutable outcome
+using that original operation's key, action hash and receipt provenance.
+The returned audit matched the discarded acknowledgement and independent
+Cosmos evidence. A second replay after reconciliation still returned unknown
+without another effect: **read-only reconciliation does not silently promote
+or reopen the pending native ledger**.
+
+This distinct job-only subset added **one** business decision/audit, **one**
+central allow receipt, **one** pending native operation and no human authority
+consumption. Independent state comparisons preserved all previously accepted
+records and ETags. The one-shot fault job completed and its temporary fault
+control was removed; the isolated test producer was deactivated. The accepted
+public services remained healthy and unchanged.
+
+### Combined evidence and remaining gates
+
+The combined capture contains seven synthetic seeds, **three** business
+decision/audits and **five** central receipts (three allow, two deny).
+Two operations are completed; two are preserved pending: audit unavailable
+(zero effects), and reconciled producer ACK loss (one effect). Neither may be
+automatically retried. The ACK-loss job is live native PEP-to-producer evidence,
+**not public APIM fault-injection or hosted agent-loop evidence**.
+
+The new requesting-user flow remains paused: **user unavailable**, no browser
+context registered, **zero native emails and zero confirmation consumptions**.
+The human case is unchanged. S6's genuine approval cannot be borrowed to close
+this gate. No MFA, same-session human effect resume, combined reviewer/requester
+approval, model quality or load/SLO claim follows from these tests.
+
+Policy-envelope signing was exercised; vulnerability **scan**, image **signing**,
+release **publication**, PR/merge and Pages acceptance remain separate. Images
+were pushed only to the authorized deployment registry. Existing hub APIs,
+global policy, authentication fragments and diagnostic settings were compared
+unchanged; earlier demos and their evidence were preserved.
+
+The private handoff retains the exact target, image/config/identity and policy
+joins, original operation IDs, job outcomes, independent before/after snapshots,
+fault-removal readbacks, leases and ongoing resource costs. Expired envelopes
+require a fresh signed generation and attempt, never an extension of old
+authority. This dated record is not reusable current-readiness evidence.
 
 ## S6: Native requesting-user approval
 

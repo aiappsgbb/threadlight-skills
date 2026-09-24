@@ -27,6 +27,19 @@ test('Citadel local vertical discloses identity, effect and external acceptance 
   assert.match(read('docs/agent-governance-deep-dive.md'), /citadel-governance\.md/);
 });
 
+test('dated Citadel evidence separates public routing from live job-only producer ACK loss', () => {
+  const text = read('docs/governed-returns-validation.md');
+  const record = text.split('## S7: Citadel public route and isolated producer ACK loss')[1];
+  assert.ok(record, 'Dated Citadel execution record required');
+  const section = record.split('\n## ')[0].replace(/\s+/g, ' ');
+  for (const term of ['2026-09-24', 'producer-to-PEP', 'job-only', 'pending',
+    'one producer POST', 'outcome GET', 'zero additional', 'user unavailable',
+    'not model-driven', 'scan', 'signing', 'publication']) {
+    assert.ok(section.includes(term), term);
+  }
+  assert.match(read('docs/citadel-governance.md'), /governed-returns-validation\.md#s7-/);
+});
+
 test('model guidance separates operator-owned authoring from runtime deployment choices', () => {
   const text = read('skills/threadlight-design/references/model-selection.md').replace(/\s+/g, ' ');
   assert.match(text, /authoring[\s\S]*discovery[\s\S]*specification[\s\S]*architecture[\s\S]*code generation/i);

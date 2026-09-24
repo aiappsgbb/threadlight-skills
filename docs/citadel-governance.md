@@ -5,6 +5,11 @@ Citadel hub, a deployment receipt, or a certification. **W2-I remains a separate
 authorized live gate.** Local policy, protocol and container checks are not
 evidence that an APIM route, Entra role assignment or business write exists.
 
+The [September 24 execution record](governed-returns-validation.md#s7-citadel-public-route-and-isolated-producer-ack-loss)
+separates the observed public MCP/REST route from the distinct live job-only
+producer ACK-loss test. It preserves the still-open genuine requesting-user gate;
+neither local tests nor that dated record certify a new deployment.
+
 ## ADR: position of authority and ownership
 
 The first vertical is one tenant, one producer, one consumer, one registered
