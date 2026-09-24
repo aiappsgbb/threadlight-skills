@@ -9,7 +9,13 @@ const names = documents.flatMap(document => {
 });
 
 test('committed report diagrams render without clipped text or a Mermaid runtime', async ({ page }, testInfo) => {
-  expect(names).toHaveLength(8);
+  expect(names).toHaveLength(9);
+  expect(new Set(names).size).toBe(9);
+  expect(names).toEqual(expect.arrayContaining([
+    'effect-boundaries', 'action-execution', 'human-resume', 'operation-ledger',
+    'approval-ledger', 'outlook-boundaries', 'outlook-execution', 'outlook-outbox',
+    'requesting-user-confirmation',
+  ]));
   for (const name of names) {
     const response = await page.goto(`/assets/governance/${name}.svg`);
     expect(response.ok(), name).toBe(true);
