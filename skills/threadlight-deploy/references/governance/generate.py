@@ -561,7 +561,7 @@ def validate_confirmation_channel(control, gateway, registry, config):
                     and binding.agent_id == workload.agent_id and action.name in binding.actions
                     for binding in profile.workloads):
                 raise ValueError("confirmation_workload_binding_mismatch")
-        if profile.kind != "customer-signed" and any(
+        if profile.customer_identity is None and any(
                 user.issuer != control.issuer or user.subject not in control.confirmation_subjects
                 or user.client not in control.human_clients for user in profile.users):
             raise ValueError("confirmation_user_binding_mismatch")
@@ -1187,7 +1187,7 @@ def bind(project, document, *, configuration=None):
         control["confirmation"] = authority.model_dump(mode="json")
         control["confirmation_subjects"] = sorted({
             user.subject for profile in authority.profiles.values()
-            if profile.kind != "customer-signed" for user in profile.users
+            if profile.customer_identity is None for user in profile.users
         })
     control_settings = parse(AzureConfiguration, canonical(control))
     gateway_settings = parse(Configuration, canonical(gateway))

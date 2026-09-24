@@ -77,6 +77,10 @@ exact public control URL, container, gateway principals, provider profiles,
 allowed original workloads/actions and authenticated users. For the email/Entra
 profiles the generator derives `confirmation_subjects` from that trusted profile
 and requires their client IDs in `human_clients`; it does not grant Entra consent.
+Requester authentication is selected by `customer_identity`, independently of
+the result-verification provider: a customer-signed result can still belong to
+an Entra-authenticated requester, and basic email can use an admitted customer
+identity. Generic issuer/subject identifiers are never cast to Entra object IDs.
 Set `user_client_id` to the existing approved interactive client for usable
 notification-launch instructions. Bind preserves a prior selected configuration;
 null selection, an unknown profile, wrong user/client/workload or mismatched
@@ -106,6 +110,14 @@ opening a link never consents. This first reference uses a separate interactive
 client, not a shipped browser BFF. Customers can provide their own admitted
 provider/client; generic mailbox possession, verified CA MFA and transaction
 signing must not be described as equivalent.
+
+For the executable `returns_mcp_agent.py` reference, set the explicit boolean
+`confirmation_enabled: true` and generate its contract with
+`contract(confirmation=True)`. `agent_instructions(confirmation=True)` preserves
+the opaque context/operation and stops on `pending_confirmation`; use those
+instructions when preparing a hosted variant rather than copying old
+approval-only instructions. The default remains unchanged and the example
+still records a return decision/audit, not payment settlement.
 
 Entra CA profiles require a real applicable enabled context policy; unavailable
 Graph/configuration fails closed. `acrs` alone does not establish MFA or a new

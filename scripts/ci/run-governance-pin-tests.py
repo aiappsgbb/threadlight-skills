@@ -528,6 +528,8 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_maf_gateway_client.py",
              "skills/threadlight-deploy/tests/test_user_confirmation_client.py",
              "skills/threadlight-deploy/tests/test_user_confirmation_generation.py",
+             "skills/threadlight-deploy/tests/test_confirmation_identity_generation.py",
+             "skills/threadlight-deploy/tests/test_returns_confirmation.py",
              "skills/threadlight-deploy/tests/test_maf_gateway_generation.py",
              "skills/threadlight-deploy/tests/test_deferred_gateway_generation.py",
              "skills/threadlight-govern/tests/test_deferred_gateway_approval.py",

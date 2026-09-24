@@ -27,9 +27,11 @@ without a returned audit_id. You have no payment, direct database or shell tool.
 """
 
 
-def contract(*, evidence=False):
+def contract(*, evidence=False, confirmation=False):
     if type(evidence) is not bool:
         raise ValueError("explicit_boolean_evidence_selection_required")
+    if type(confirmation) is not bool:
+        raise ValueError("explicit_boolean_confirmation_selection_required")
     document = {
         "framework": "microsoft-agent-framework",
         "governance": {
@@ -60,7 +62,32 @@ def contract(*, evidence=False):
         document["tools"].append({
             **document["tools"][1], "id": "returns_verify_purchase",
         })
+    if confirmation:
+        document["tools"][0]["requires"].append("user-confirmation")
     return document
+
+
+def agent_instructions(*, evidence=False, confirmation=False):
+    contract(evidence=evidence, confirmation=confirmation)
+    instructions = INSTRUCTIONS
+    if evidence:
+        instructions += (
+            "\nBefore returns_apply_decision call returns_verify_purchase with the EXACT proposed arguments. "
+            "Only use its attestation as governance_evidence; never invent claims. "
+            "Insufficient evidence is not approval. A declared defect is not a verified defect. "
+            "On resume, obtain a fresh token for the same arguments if needed; never change the operation ID "
+            "to bypass unknown outcomes or a changed source revision.")
+    if confirmation:
+        instructions += (
+            "\nRequesting-user confirmation happens outside the agent using an independent authenticated client. "
+            "Never create or register a user context, impersonate a user, or perform their confirmation. "
+            "Use only the supplied governance_request_context and its governance_operation_id; "
+            "never invent either value. If returns_apply_decision returns pending_confirmation, stop and report "
+            "the exact confirmation_id and operation_id; no business effect has occurred. "
+            "Resume only the same operation using the original resume_arguments and supplied context "
+            "after the user has independently confirmed. An email or login is not consent, "
+            "and user confirmation does not replace any separately required reviewer.")
+    return instructions
 
 
 def model_client(config, credential):
@@ -90,7 +117,9 @@ async def build_agent(config, stack):
     from govern_control_plane.storage import KeyVaultSigner
     from maf_gateway import create_gateway_agent
 
-    config = {**config, "contract": contract(evidence=config.get("evidence_enabled", False))}
+    evidence = config.get("evidence_enabled", False)
+    confirmation = config.get("confirmation_enabled", False)
+    config = {**config, "contract": contract(evidence=evidence, confirmation=confirmation)}
     credential = await stack.enter_async_context(ManagedIdentityCredential(
         client_id=config["agent_client_id"], retry_total=0))
     http = await stack.enter_async_context(httpx.AsyncClient(
@@ -109,16 +138,9 @@ async def build_agent(config, stack):
     reads = await build_read_tools(config, credential, stack, http=http)
     model = await stack.enter_async_context(model_client(config, credential))
     client = OpenAIChatClient(model=config["model_deployment"], async_client=model)
-    instructions = INSTRUCTIONS
-    if config.get("evidence_enabled", False):
-        instructions += (
-            "\nBefore returns_apply_decision call returns_verify_purchase with the EXACT proposed arguments. "
-            "Only use its attestation as governance_evidence; never invent claims. "
-            "Insufficient evidence is not approval. A declared defect is not a verified defect. "
-            "On resume, obtain a fresh token for the same arguments if needed; never change the operation ID "
-            "to bypass unknown outcomes or a changed source revision.")
     return await create_gateway_agent(
-        config=config, client=client, local_tools=reads, instructions=instructions,
+        config=config, client=client, local_tools=reads,
+        instructions=agent_instructions(evidence=evidence, confirmation=confirmation),
         credential=credential, authorize=authority.authorize)
 
 
