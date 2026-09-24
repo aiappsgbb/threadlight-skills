@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 from pathlib import Path
 import re
 import shutil
@@ -15,6 +16,29 @@ from .citadel import Binding, RESERVED_PREFIXES
 from .dispatcher import Registry
 
 UPSTREAM = "23fbc8fe7f2f068de3ed3c80da2344760faac1e6"
+APIM_API_VERSION = "2025-09-01-preview"
+
+
+def raw_policy_xml(encoded):
+    """APIM rawxml parses C# before XML entity decoding; literals stay escaped."""
+    ET.fromstring(encoded)
+    result = re.sub(r'="(@(?:\(|\{)[^"]*)"',
+                    lambda match: '="' + html.unescape(match[1]) + '"', encoded)
+    return re.sub(r'>(@(?:\(|\{)[^<]*)<',
+                  lambda match: ">" + html.unescape(match[1]) + "<", result)
+
+
+def mcp_api_properties(binding):
+    binding = parse(Binding, canonical(binding))
+    internal, public = urlsplit(binding.gateway_url), urlsplit(binding.public_url)
+    return {
+        "type": "mcp", "displayName": binding.producer.contract_id,
+        "path": public.path.lstrip("/"), "protocols": ["https"],
+        "serviceUrl": f"https://{internal.netloc}",
+        "subscriptionRequired": True,
+        "subscriptionKeyParameterNames": {"header": "api-key", "query": "api-key"},
+        "mcpProperties": {"endpoints": {"message": {"uriTemplate": "/"}}},
+    }
 
 
 def policies(binding, *, asset_id, publish="", access=""):
@@ -153,8 +177,9 @@ def main():
                      destination=args.destination, policy_id=args.policy_id, version=args.version)
     print(canonical({
         "scope": "unsigned-local-artifacts-not-live-proof", "upstream": UPSTREAM,
-        "policy_digest": built.bundle_digest, "publish_policy_xml": publish,
-        "access_policy_xml": access,
+        "apim_api_version": APIM_API_VERSION, "mcp_api_properties": mcp_api_properties(binding),
+        "policy_digest": built.bundle_digest, "publish_policy_xml": raw_policy_xml(publish),
+        "access_policy_xml": raw_policy_xml(access),
     }).decode())
 
 

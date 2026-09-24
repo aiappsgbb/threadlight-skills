@@ -327,6 +327,27 @@ def test_citadel_container_installs_declared_service_version():
     assert f"threadlight-govern-gateway=={version}" in (root / "Dockerfile").read_text()
 
 
+def test_citadel_rawxml_hook_preserves_csharp_expressions_without_unescaping_literals():
+    api = gateway("citadel_package")
+    source = '<policies><inbound><when condition="@(x == &quot;ok&quot; &amp;&amp; y &lt; 2)" />' \
+             '<set-header name="example"><value>A &amp; B</value></set-header></inbound></policies>'
+    result = api.raw_policy_xml(source)
+    assert 'condition="@(x == "ok" && y < 2)"' in result
+    assert '<value>A &amp; B</value>' in result
+
+
+def test_citadel_native_apim_contract_uses_observed_endpoint_map_and_origin():
+    api = gateway("citadel_package")
+    binding = cp("models").parse(citadel().Binding, cp("models").canonical(contract()))
+    result = api.mcp_api_properties(binding)
+    assert result["type"] == "mcp"
+    assert result["path"] == "mcp/returns"
+    assert result["serviceUrl"] == "https://gateway.example"
+    assert result["mcpProperties"]["endpoints"] == {"message": {"uriTemplate": "/"}}
+    assert "mcpPropperties" not in result
+    assert result["subscriptionRequired"] is True
+
+
 def ingress_for(h):
     b = h.policy.binding
     settings = h.cp.settings.model_copy(update={
@@ -624,6 +645,9 @@ def test_citadel_native_example_builds_three_bundles_without_authority(tmp_path)
     assert binding.producer.policy.digest != binding.consumer.policy.digest
     assert (output / "generation/citadel-binding.json").read_bytes() == (output / "binding.json").read_bytes()
     assert (output / "source-result.json").read_text().find("synthetic-unsigned-local-only") >= 0
+    api = cp("models").strict_json((output / "apim-api.json").read_bytes())
+    assert api["api_version"] == gateway("citadel_package").APIM_API_VERSION
+    assert api["properties"] == gateway("citadel_package").mcp_api_properties(binding)
     with pytest.raises(FileExistsError):
         example.build(output)
 

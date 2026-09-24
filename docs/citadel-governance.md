@@ -149,6 +149,11 @@ credentials or existing S2/S3 resources.
    `--version`, `--asset-id`. It verifies both owner inventories and builds a
    third immutable generation; stdout contains unsigned digest and policy XML.
    It performs no Azure operations and signs nothing.
+   Exported policy XML uses APIM **`rawxml`** expression syntax for the upstream
+   `policyXml` hook. The Python `policies()` helper returns ordinary encoded XML:
+   use APIM `format: xml` for that representation, or `raw_policy_xml()` for a
+   rawxml hook. Passing encoded C# quotes/operators to rawxml can fail compilation;
+   do not fix that by deleting authentication or request-binding expressions.
 3. Have the separate authorized publisher publish **all three** envelopes
    through the existing Blob/Key Vault control-plane mechanism. Runtime readers
    have verify/read permissions, not publishing/signing authority. Mount all
@@ -171,6 +176,14 @@ credentials or existing S2/S3 resources.
    quotas, not agreed performance/cost limits. Existing nonempty custom XML is
    rejected for manual composition rather than overwritten. No selection
    preserves the original policy inputs byte-for-byte.
+   For direct publication, the package emits the observed native API property
+   shape and `apim_api_version: 2025-09-01-preview`. Use `mcpProperties` (not the
+   older pinned module's ignored `mcpPropperties`) and the endpoint dictionary
+   `{"message":{"uriTemplate":"/"}}`. The API/backend service URL is the **origin**;
+   the policy owns the exact internal `/mcp` path. A backend URL already ending
+   in `/mcp` combined with that rewrite can produce `/mcp/mcp` and a backend 404.
+   Read actual deployed properties; source/template acceptance alone is not a
+   working MCP route. This is a local overlay, not an upstream module update.
 6. Verify inherited policies do not transform effects after the PEP decision,
    read `context.Response.Body` or enable MCP response-body logging (global
    diagnostic bytes must be zero). The overlay retains baseline auth, usage,

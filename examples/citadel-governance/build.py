@@ -8,7 +8,7 @@ import yaml
 from govern_bundle.policy_bundle import build_bundle
 from govern_control_plane.models import canonical, parse, strict_json
 from govern_gateway.citadel import Binding
-from govern_gateway.citadel_package import assemble, policies
+from govern_gateway.citadel_package import APIM_API_VERSION, assemble, mcp_api_properties, policies, raw_policy_xml
 
 
 def build(output):
@@ -49,8 +49,10 @@ def build(output):
         (stage / "binding.json").write_bytes(canonical(binding))
         (stage / "binding.schema.json").write_bytes(canonical(Binding.model_json_schema()))
         publish, access = policies(binding, asset_id="returns")
-        (stage / "publish-policy.xml").write_text(publish)
-        (stage / "access-policy.xml").write_text(access)
+        (stage / "publish-policy.xml").write_text(raw_policy_xml(publish))
+        (stage / "access-policy.xml").write_text(raw_policy_xml(access))
+        (stage / "apim-api.json").write_bytes(canonical({
+            "api_version": APIM_API_VERSION, "properties": mcp_api_properties(binding)}))
         (stage / "source-result.json").write_bytes(canonical({
             "scope": "synthetic-unsigned-local-only", "policy_id": "citadel", "version": "1",
             "policy_digest": generation.bundle_digest, "business_effect": "decision-not-settlement",

@@ -19,6 +19,12 @@ and JSON schema, a third atomic generation, and opt-in Publish/Access
 rules are illustrative. The producer's independent return eligibility/risk/CAS
 checks still apply even when both policies allow.
 
+`apim-api.json` records the native API version, endpoint dictionary and backend
+origin. The two policy files use APIM `rawxml`, not ordinary XML entity encoding.
+Keep the origin separate from the policy-owned `/mcp` path; verify the deployed
+properties and real initialization rather than assuming the older upstream
+module's property spelling or a suffix.
+
 The executable producer is
 [`returns_mcp_backend.py`](../../skills/threadlight-deploy/references/governance/returns_mcp_backend.py),
 not a new HTTP executor. Its optional `citadel_binding` must equal the generated
