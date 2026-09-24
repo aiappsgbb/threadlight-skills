@@ -128,7 +128,10 @@ also selected, require both decisions from different people. With the new
 policy-driven selection, ACS escalation without reviewer roles requires user
 confirmation alone; configured reviewer roles require both. Retain the operation
 ID on unknown outcomes; no new-ID retry. Existing noop, review and signed-evidence
-receipts cannot establish this new path. Live confirmation remains **unverified**.
+receipts cannot establish this new path. The
+[September 24 scoped run](governed-returns-validation.md#s6-native-requesting-user-approval)
+verified native Approve, original-operation completion and replay. MFA and
+same-session effect resumption remain unverified; new targets need fresh evidence.
 
 | Artifact in the target project | What it contributes | What it cannot establish alone |
 |---|---|---|

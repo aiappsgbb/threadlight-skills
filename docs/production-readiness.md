@@ -83,8 +83,10 @@ not “51 passed”.
 **Requesting-user confirmation (Wave1):** a selected confirmation requirement
 needs its own evidence, separate from third-party reviewer approval and
 authentication assurance. The initial target is the MAF governed gateway;
-GHCP is deferred and local native confirmation is unsupported. Live acceptance
-remains **unverified**. Read the
+GHCP is deferred and local native confirmation is unsupported. The
+[September 24 execution](governed-returns-validation.md#s6-native-requesting-user-approval)
+records one native Approve/original-operation/replay path, not MFA or general
+readiness. New deployments remain **unverified** without their own evidence. Read the
 [requesting-user confirmation contract](agent-governance-deep-dive.md#requesting-user-confirmation)
 before selecting a provider; B2C providers are configurable, not all implemented.
 The normal user path is native Logic Apps/Outlook approval email with

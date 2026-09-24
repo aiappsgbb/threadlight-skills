@@ -80,7 +80,7 @@ five paths. They are policy examples, not five separate architectures.
 | **Blocked** | A policy condition fails. | Record denial; no business write. |
 | **Human review** | Policy requires a decision on this exact proposal. | Persist pending intent; resume only with a verified one-use grant and fresh checks. |
 | **Signed evidence** | This tool additionally requires corroborated purchase and amount. | Missing proof or proof for different inputs blocks before dispatch. Matching proof permits policy evaluation, not an automatic write. |
-| **User confirmation** | The requesting user must explicitly confirm the exact proposal outside the agent conversation. | Persist `pending_confirmation` without an effect; match the authenticated user and consume one-use authority before dispatch. Initial governed-gateway path; live acceptance remains unverified. |
+| **User confirmation** | The requesting user must explicitly confirm the exact proposal outside the agent conversation. | Persist `pending_confirmation` without an effect; match the authenticated user and consume one-use authority before dispatch. One scoped live run is recorded below; new deployments require their own acceptance. |
 
 These requirements can apply together. A supervisor's consent does not create purchase
 proof; a signed purchase verification does not supply consent. If the case changes
@@ -593,14 +593,42 @@ that database transaction.
 
 ### Requesting-user confirmation
 
-**Three separate questions:** did the requesting user consent to this operation,
-did an authorized third-party reviewer approve it, and what authentication
-assurance was established? None answers the other two. When confirmation and
-review are both required, **both decisions are required from different people**.
-Signed input evidence, policy and backend checks remain additional conditions.
+**User consent, independent review and authentication assurance are separate.**
+When confirmation and review are selected, **both decisions are required from
+different people**. Neither replaces signed evidence, policy or backend checks.
+
+![The authenticated requester confirms through native Outlook; the gateway consumes distinct authority and acknowledges audit before the business write.](assets/governance/requesting-user-confirmation.svg)
+
+<details>
+<summary>Editable requester-confirmation diagram</summary>
+
+<!-- diagram: requesting-user-confirmation -->
+```mermaid
+flowchart TD
+  U["Requesting user: authenticated request"] --> H["Trusted application context"]
+  H --> A["Agent proposes original operation"]
+  A --> G["Gateway: local ACS + trusted facts"]
+  G -->|Policy deny| X["No business effect"]
+  G -->|Confirmation required| C["Control plane: immutable pending intent"]
+  C --> L["Native Outlook: Approve / Reject"]
+  L --> D["Same requesting user makes the choice"]
+  D --> S["Agent resumes original operation"]
+  S --> V["Control plane: verify native response and identity"]
+  R["Independent reviewer, if required"] -.->|Separate authority| V
+  V -->|Rejected, expired or changed| X
+  V -->|Verified one-use authority| F["Gateway: consume, recheck + central audit ACK"]
+  F --> B["Business API: authorize and conditional write"]
+```
+
+</details>
 
 <details data-user-confirmation-contract>
 <summary>Wave1 integration, native requester email and authentication assurance</summary>
+
+The [September 24 execution record](governed-returns-validation.md#s6-native-requesting-user-approval)
+proves one native-email Approve and original-operation completion/replay on the
+MAF gateway path. It does not prove live MFA, same-session effect resumption or
+every provider; new deployments remain unverified until their own acceptance.
 
 **Wave1 contract, not live evidence.** The initial supported integration target
 is the **MAF governed gateway**. GHCP is deferred; local native confirmation is

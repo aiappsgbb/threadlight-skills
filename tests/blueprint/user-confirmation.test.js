@@ -95,7 +95,7 @@ test('engineering guidance separates confirmation, reviewer authority and authen
   assert.match(guide, /concept-session-lifetime/);
 });
 
-test('public entry points link the scoped confirmation contract without claiming hosted success', () => {
+test('public entry points retain per-deployment acceptance boundaries', () => {
   for (const file of ['docs/governance.html', 'docs/agent-governance.html',
     'docs/agent-operations.md', 'docs/production-readiness.md', 'docs/production-readiness-pages-spec.md']) {
     const text = read(file);
@@ -106,6 +106,38 @@ test('public entry points link the scoped confirmation contract without claiming
   assert.match(spec, /five action scenarios/i);
   assert.match(spec, /no automatic confirmation/i);
   assert.match(spec, /preserv.*existing.*clips/is);
+});
+
+test('the completed native run is dated, scoped and linked from the deep dive and portal', () => {
+  const record = read('docs/governed-returns-validation.md');
+  assert.match(record, /## S6: Native requesting-user approval/);
+  const section = record.split('## S6: Native requesting-user approval')[1].split('\n## ')[0];
+  assert.match(section, /2026-09-24/);
+  assert.match(section, /e6a99593de62cfcff26ce8d615da94b7bdfc69c3/);
+  assert.match(section, /one business decision.*audit/is);
+  assert.match(section, /zero additional.*effects/is);
+  assert.match(section, /same-session effect resumption was not proved/i);
+  assert.match(section, /Entra.*MFA.*unverified/is);
+  assert.match(section, /not.*production readiness/is);
+  for (const file of ['docs/agent-governance-deep-dive.md', 'docs/agent-operations.md',
+    'docs/production-readiness.md', 'docs/governance.html', 'docs/agent-governance.html',
+    'docs/production.html']) {
+    assert.ok(read(file).includes('governed-returns-validation.md#s6-native-requesting-user-approval'), file);
+    if (file.endsWith('.html')) {
+      assert.ok(read(file).includes(
+        'https://github.com/aiappsgbb/threadlight-skills/blob/86fe2c9288b42046907ade5199060df318d27b10/docs/governed-returns-validation.md#s6-native-requesting-user-approval'),
+      `${file}: use the repository reader, not a raw Markdown URL on Pages`);
+    }
+  }
+});
+
+test('the deep dive includes a dedicated requester confirmation diagram', () => {
+  const guide = read('docs/agent-governance-deep-dive.md');
+  const diagram = guide.match(/<!-- diagram: requesting-user-confirmation -->\s*```mermaid\n([\s\S]*?)```/)?.[1];
+  assert.ok(diagram, 'requester flow has its own source diagram');
+  for (const term of ['Requesting user', 'Native Outlook', 'Control plane', 'Business API',
+    'original operation', 'one-use', 'audit ACK']) assert.ok(diagram.includes(term), term);
+  assert.match(read('docs/assets/governance/requesting-user-confirmation.svg'), /<svg/);
 });
 
 test('normal requester confirmation uses native Outlook buttons rather than a command-launch email', () => {
