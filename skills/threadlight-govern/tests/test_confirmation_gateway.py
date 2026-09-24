@@ -123,6 +123,13 @@ def test_native_outlook_reviewer_stays_distinct_from_requesting_user(tmp_path, s
         doc["actions"][0]["input_schema"]["properties"]["case_id"] = {"type": "string", "maxLength": 64}
         doc["actions"][0]["input_schema"]["required"].append("case_id")
         h = await harness(tmp_path, review=True, user=HUMAN if same_user else USER, document=doc)
+        # Cross-tenant native home identities require explicit requester identity
+        # correlation; a resource-tenant object ID alone does not establish it.
+        from test_control_plane import TENANT
+        profile = h.cp.service.confirmation.profile("email-basic")
+        binding = profile.users[0].model_copy(update={
+            "requester_home_tenant": TENANT, "requester_home_subject": h.confirming_user})
+        h.cp.service.confirmation.config.profiles["email-basic"] = profile.model_copy(update={"users": [binding]})
         native = await NativeHarness().initialize(control=h.cp, actions=("refund",))
         h.approval = gateway("receipts").HTTPControlPlaneApprovalService(
             base_url="https://control.example", scope="api://governance/.default",

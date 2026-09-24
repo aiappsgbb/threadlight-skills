@@ -19,7 +19,7 @@ from test_user_confirmation import (
 
 def protected_policy():
     return {
-        "id": OTHER, "state": "enabled", "conditions": {
+        "id": OTHER, "state": "enabled", "modifiedDateTime": "2026-01-01T00:00:00Z", "conditions": {
             "clientAppTypes": ["all"],
             "users": {"includeUsers": ["All"], "excludeUsers": []},
             "applications": {"includeAuthenticationContextClassReferences": ["c1"]},
@@ -83,7 +83,12 @@ def test_entra_confirmation_verifies_claim_and_live_configuration_at_consume(cas
             intent = await pending_intent(h)
             if case == "unprotected":
                 policy["grantControls"]["builtInControls"] = ["compliantDevice"]
-            headers = user_headers(h, changes={"acrs": [] if case == "missing-context" else ["c1"]})
+            # Simulate issuance after the established protection observation, not
+            # a retroactive upgrade of the old token used to register the context.
+            await asyncio.sleep(1.05)
+            headers = user_headers(h, changes={
+                "acrs": [] if case == "missing-context" else ["c1"],
+                "iat": int(datetime.now(timezone.utc).timestamp())})
             response = await h.client.post("/confirmation/" + intent.confirmation_id, headers=headers,
                 json={"intent_digest": module("confirmation").digest(intent), "approved": True})
             expected = 401 if case == "missing-context" else 503 if case in ("unprotected", "unavailable") else 200

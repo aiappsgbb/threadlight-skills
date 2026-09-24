@@ -38,6 +38,13 @@ Each profile declares `kind` (`email-basic`, `entra-ca`, `customer-signed`),
 and `capability`, besides the validated issuer/audience/client/scope and times.
 For combined non-Entra requester/reviewer flows, configure explicit
 `reviewer_tenant`/`reviewer_subject` aliases; missing correlation fails closed.
+These grant aliases do not establish the human who actually answered Outlook.
+After validating native Outlook authority the service also compares its actual
+`home_tenant`/`home_subject` to the requester. Cross-tenant or generic identities
+require a separately configured `requester_home_tenant`/`requester_home_subject`
+pair establishing the requester's home identity; incomparable identities fail
+closed. Mapping that same human to a different approver object cannot bypass
+independent-review separation.
 
 Add Entra users to `confirmation_subjects` and their application to `human_clients`;
 grant the delegated **`Governance.Confirm` scope**, not reviewer/auditor roles.
@@ -65,6 +72,15 @@ decide nor execute. The durable outbox moves `prepared -> sending -> sent`;
 an ambiguous send remains unknown and is **not resent**. A forged/duplicate
 callback cannot create consent; there is no unauthenticated callback route.
 
+The notification destination and credential scope are validated **as a pair**.
+Custom endpoints retain query-free HTTPS URLs and `api://.../.default` scopes.
+The companion Logic App requires the exact scope
+`https://management.azure.com//.default` (ARM audience
+`https://management.azure.com/`) and a trusted host ending in `.logic.azure.com`
+with exactly `/workflows/<id>/triggers/User_confirmation_requested/paths/invoke?api-version=2016-10-01`.
+No port, fragment, redirect, `sig`, `sp`, `sv`, duplicate or unknown query parameter
+is accepted. An ARM-audience token is never sent to an arbitrary custom notifier.
+
 The user installs the administrator-approved control-plane package and runs
 `python -m govern_control_plane.confirmation_user register --request context.json
 --control-plane-url https://control.example --scope api://API-APP-ID/Governance.Confirm
@@ -86,12 +102,46 @@ explicit user/All inclusion, no applicable exclusions or unresolved group/role
 conditions, `clientAppTypes: ["all"]`, and `AND` with built-in `mfa` only.
 Unsupported conditions, strengths, unavailable Graph and drift fail closed.
 Provision Graph `AuthenticationContext.Read.All` and `Policy.Read.All` separately;
-this code does not grant permissions or create CA policies. Missing `acrs` returns
-a bounded `insufficient_claims` challenge consumed through Azure Identity's
-documented `claims`/`enable_cae` arguments. `acrs` alone can exist without protecting
-CA: neither it nor `iat` proves a new factor challenge per transaction.
+this code does not grant permissions or create CA policies.
+
+The verifier preserves **verified token `iat` as issuance time, not MFA time**.
+It establishes a process-local protection epoch only after observing the complete
+protecting context/policy and a valid, non-future Graph `modifiedDateTime`.
+The generation binds the exact profile/mappings, context and policy; a reverted
+policy still changes its modification generation. Accepted tokens must be issued
+strictly after that first protected observation. Missing `acrs` or a pre-epoch
+token receives `insufficient_claims` with `Retry-After: 1`; the client waits that
+bounded interval then calls the installed **synchronous**
+`azure.identity.InteractiveBrowserCredential.authenticate(scopes=..., claims=...,
+enable_cae=True)` through `asyncio.to_thread`, before retrieving the fresh token.
+It does not simply reuse an old cached token that already contains `acrs`.
+Only one challenge round trip is attempted, not an authentication retry loop.
+
+Unknown/missing modification history, observed unavailability, mapping/policy
+drift or process restart invalidates the epoch. Every consume/validate performs
+fresh Graph reads, and a synchronous generation check follows later awaited
+policy/storage calls before acknowledging authority. A protection observation
+has a 30-second deadline; an unchanged freshly reread Graph generation can renew
+that observation without moving the epoch while the user interacts.
+Epochs are intentionally not shared between processes: restart, replica hopping
+or overlapping profiles with different mappings can require a new token or make
+existing authority unusable. There is no claim of seamless multi-replica cached
+token reuse; use a controlled single verifier for this conservative reference.
+An existing confirmation does not silently acquire a new protection generation.
+`acrs` alone can exist without protecting CA: neither it nor `iat` proves a new
+factor challenge per transaction.
 Configuration reads are not atomic with Entra issuance or backend effects;
 tenant-specific live acceptance remains separate.
+
+Private control-plane resolve/consume/validate responses include
+`effective_authority_expires_at`, bounded by the intent, policy, authenticated user,
+signed customer result and (for Entra) observed protection lease. The service
+rechecks it immediately before and after consumption/storage acknowledgements
+and after its final asynchronous policy check. The client requires this field;
+the gateway clamps it and checks synchronously after final policy/transport waits
+at the actual wire boundary. The public three-field pending result is unchanged.
+Expiry before dispatch prevents effects; expiry after an acknowledged effect
+does not erase a durable outcome or reopen its operation.
 
 Request contexts, exact display arguments, user identities and provider provenance
 exist only in the protected TTL store, with explicit expiration checked on every

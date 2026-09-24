@@ -445,7 +445,8 @@ def create_app(*, service=None, auth=None):
                     headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
         except ClaimsChallenge as error:
             return JSONResponse({"error": error.reason}, 401,
-                                headers={"WWW-Authenticate": error.header, "Cache-Control": "no-store"})
+                                headers={"WWW-Authenticate": error.header, "Cache-Control": "no-store",
+                                         "Retry-After": "1"})
         except Unauthorized:
             return JSONResponse({"error": "unauthorized"}, 401)
         except Forbidden:

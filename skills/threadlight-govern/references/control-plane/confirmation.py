@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import hashlib
 import math
+import re
 from typing import Annotated, Literal, Protocol
 from urllib.parse import urlsplit
 import uuid
@@ -21,6 +22,7 @@ from .storage import AzureStore, Conflict, Missing, sdk_call
 
 CONTEXT_ARGUMENT = "governance_request_context"
 CONTEXT_META = CONTEXT_ARGUMENT
+ARM_NOTIFICATION_SCOPE = "https://management.azure.com//.default"
 Subject = Annotated[str, StringConstraints(min_length=1, max_length=256, pattern=r"^[^\s\x00-\x1f\x7f]+$")]
 
 
@@ -34,6 +36,23 @@ def https(value):
             or url.scheme != "https" or not url.hostname or url.port not in (None, 443)
             or url.username or url.password or url.query or url.fragment):
         raise ValueError("invalid_confirmation_endpoint")
+    return value
+
+
+def notification_endpoint(value, scope):
+    url = urlsplit(value)
+    if url.hostname and url.hostname.endswith(".logic.azure.com"):
+        if (len(value) > 2048 or not value.isascii() or url.scheme != "https"
+                or not re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.logic\.azure\.com", url.netloc)
+                or not re.fullmatch(r"/workflows/[a-zA-Z0-9_-]{1,128}"
+                    r"/triggers/User_confirmation_requested/paths/invoke", url.path)
+                or url.query != "api-version=2016-10-01" or url.fragment or "#" in value
+                or scope != ARM_NOTIFICATION_SCOPE):
+            raise ValueError("invalid_confirmation_notification")
+    else:
+        https(value)
+        if not re.fullmatch(r"api://[A-Za-z0-9._/-]+/\.default", scope):
+            raise ValueError("invalid_confirmation_notification_scope")
     return value
 
 
@@ -55,6 +74,7 @@ class RequestingUser(StrictModel):
     client: Subject
     expires_at: Timestamp
     auth_contexts: tuple[Identifier, ...] = ()
+    issued_at: Annotated[int, Field(ge=0)] = 0
 
     @model_validator(mode="after")
     def valid_issuer(self):
@@ -74,12 +94,16 @@ class UserBinding(StrictModel):
     # Explicit alias for cross-issuer independent-review separation, never inferred.
     reviewer_tenant: ObjectId | None = None
     reviewer_subject: ObjectId | None = None
+    requester_home_tenant: ObjectId | None = None
+    requester_home_subject: ObjectId | None = None
 
     @model_validator(mode="after")
     def valid(self):
         https(self.issuer)
         if (self.reviewer_tenant is None) != (self.reviewer_subject is None):
             raise ValueError("reviewer_alias_pair_required")
+        if (self.requester_home_tenant is None) != (self.requester_home_subject is None):
+            raise ValueError("requester_home_identity_pair_required")
         return self
 
 
@@ -114,7 +138,7 @@ class ProviderProfile(StrictModel):
     users: Annotated[list[UserBinding], Field(min_length=1, max_length=256)]
     workloads: Annotated[list[WorkloadBinding], Field(min_length=1, max_length=128)]
     notification_url: str
-    notification_scope: Annotated[str, Field(pattern=r"^api://[A-Za-z0-9._/-]+/\.default$")]
+    notification_scope: Annotated[str, Field(min_length=1, max_length=256)]
     customer_identity: CustomerIdentityConfiguration | None = None
     result_verifier: CustomerIdentityConfiguration | None = None
     authentication_context: Annotated[str, Field(pattern=r"^c[1-9][0-9]?$")] | None = None
@@ -123,7 +147,7 @@ class ProviderProfile(StrictModel):
 
     @model_validator(mode="after")
     def valid(self):
-        https(self.notification_url)
+        notification_endpoint(self.notification_url, self.notification_scope)
         if len({(u.issuer, u.subject, u.client) for u in self.users}) != len(self.users):
             raise ValueError("duplicate_confirmation_user")
         if self.kind == "entra-ca":
@@ -209,6 +233,7 @@ class ConfirmationProvider(Protocol):
     async def health(self, profile): ...
     async def verify(self, profile, user, intent, decision): ...
     async def recheck(self, profile, user, authority): ...
+    def fresh(self, profile, user, authority): ...
 
 
 class CustomerIdentityAdapter:
@@ -240,7 +265,8 @@ class CustomerIdentityAdapter:
             raise Unauthorized()
         claims = self.claims(authorization[7:])
         return RequestingUser(issuer=claims["iss"], subject=claims["sub"], client=claims["azp"],
-                              expires_at=datetime.fromtimestamp(claims["exp"], timezone.utc))
+                              expires_at=datetime.fromtimestamp(claims["exp"], timezone.utc),
+                              issued_at=claims["iat"])
 
 
 class ExplicitConsentProvider:
@@ -257,6 +283,7 @@ class ExplicitConsentProvider:
     async def verify(self, profile, user, intent, decision):
         user.fresh()
         result_expiry = None
+        generation = None
         if profile.kind == "customer-signed":
             if decision.provider_result is None:
                 raise Unauthorized()
@@ -274,24 +301,39 @@ class ExplicitConsentProvider:
         if profile.kind == "entra-ca":
             if self.ca is None:
                 raise ConfirmationUnavailable("confirmation_ca_unavailable")
-            await self.ca.verify(profile, user)
+            generation = await self.ca.verify(profile, user)
         user.fresh()
-        return {"kind": profile.kind, "capability": profile.capability,
+        authority = {"kind": profile.kind, "capability": profile.capability,
                 "decided_at": datetime.now(timezone.utc).isoformat(),
-                "profile_digest": digest(profile), "result_expires_at": result_expiry}
+                "profile_digest": digest(profile), "result_expires_at": result_expiry,
+                "protection_generation": generation}
+        self.fresh(profile, user, authority)
+        return authority
 
-    async def recheck(self, profile, user, authority):
+    def fresh(self, profile, user, authority):
         user.fresh()
+        result_expiry = authority.get("result_expires_at")
         if (authority["kind"] != profile.kind or authority["capability"] != profile.capability
                 or authority.get("profile_digest") != digest(profile)
-                or authority.get("result_expires_at") is not None
-                and authority["result_expires_at"] <= datetime.now(timezone.utc).timestamp()):
+                or profile.kind == "customer-signed" and type(result_expiry) is not int
+                or result_expiry is not None
+                and (type(result_expiry) is not int or result_expiry <= datetime.now(timezone.utc).timestamp())):
             raise Conflict()
+        expiry = min(user.expires_at, datetime.fromtimestamp(result_expiry, timezone.utc)) if result_expiry is not None else user.expires_at
         if profile.kind == "entra-ca":
             if self.ca is None:
                 raise ConfirmationUnavailable("confirmation_ca_unavailable")
-            await self.ca.verify(profile, user)
-        user.fresh()
+            expiry = min(expiry, self.ca.fresh(profile, user, authority.get("protection_generation")))
+        return expiry
+
+    async def recheck(self, profile, user, authority):
+        if profile.kind == "entra-ca":
+            if self.ca is None:
+                raise ConfirmationUnavailable("confirmation_ca_unavailable")
+            generation = await self.ca.verify(profile, user)
+            if generation != authority.get("protection_generation"):
+                raise Conflict()
+        self.fresh(profile, user, authority)
 
 
 class EphemeralConfirmationStore(AzureStore):
@@ -356,7 +398,7 @@ class ConfirmationService:
                 raise Unauthorized()
             user = RequestingUser(issuer=identity.issuer, subject=identity.subject, client=identity.client,
                 expires_at=datetime.fromtimestamp(identity.expires_at, timezone.utc),
-                auth_contexts=identity.auth_contexts)
+                auth_contexts=identity.auth_contexts, issued_at=identity.issued_at)
         self.user_binding(profile, user)
         return user
 
@@ -441,6 +483,24 @@ class ConfirmationService:
         if intent.expires_at <= control.now():
             raise Conflict()
         return signed.envelope
+
+    def authority_expiry(self, intent, profile, record):
+        user = parse(RequestingUser, canonical(record["user"]))
+        provider_expiry = self.provider.fresh(profile, user, record["authority"])
+        expiry = min(intent.expires_at, intent.policy_expires_at, user.expires_at, provider_expiry)
+        if expiry <= datetime.now(timezone.utc):
+            raise Conflict()
+        return expiry
+
+    def independent_native_reviewer(self, control, user, binding, authority):
+        actual = (parse(ObjectId, canonical(authority["home_tenant"])),
+                  parse(ObjectId, canonical(authority["home_subject"])))
+        direct = (control.settings.tenant_id, user.subject) if user.issuer == control.settings.issuer else None
+        home = ((binding.requester_home_tenant, binding.requester_home_subject)
+                if binding.requester_home_subject is not None else None)
+        if (actual == direct or actual == home
+                or home is None and (direct is None or actual[0] != direct[0])):
+            raise Unauthorized()
 
     async def health(self, control, identity, profile_name):
         self.gateway_authority(control, identity)
@@ -545,8 +605,10 @@ class ConfirmationService:
                 return {"status": "pending_confirmation", "confirmation_id": intent.confirmation_id,
                         "operation_id": intent.operation_id}
             await self.provider.recheck(profile, parse(RequestingUser, canonical(record["user"])), record["authority"])
+            expiry = self.authority_expiry(intent, profile, record)
             return {"status": "confirmed" if record["approved"] else "rejected",
-                    "confirmation_id": intent.confirmation_id, "intent_digest": digest(intent)}
+                    "confirmation_id": intent.confirmation_id, "intent_digest": digest(intent),
+                    "effective_authority_expires_at": expiry.isoformat()}
         expected_state = "consumed" if operation.operation == "validate" else "decided"
         if record["state"] != expected_state or not record.get("approved"):
             raise Conflict()
@@ -578,14 +640,19 @@ class ConfirmationService:
                 if control.outlook is None:
                     raise Unauthorized()
                 await control.outlook.validate_authority(control, grant.intent, review)
+                self.independent_native_reviewer(control, user, binding, review["authority"])
         await self.fresh(control, intent)
         self.gateway_authority(control, identity)
+        self.authority_expiry(intent, profile, record)
         if operation.operation == "consume":
             await self.store.replace(intent.tenant, key, {**record, "state": "consumed"}, etag)
+        self.authority_expiry(intent, profile, record)
         await self.fresh(control, intent)
         self.gateway_authority(control, identity)
+        expiry = self.authority_expiry(intent, profile, record)
         return {"status": expected_state if operation.operation == "validate" else "consumed",
-                "confirmation_id": intent.confirmation_id, "intent_digest": digest(intent)}
+                "confirmation_id": intent.confirmation_id, "intent_digest": digest(intent),
+                "effective_authority_expires_at": expiry.isoformat()}
 
     async def read_for_user(self, control, confirmation_id, auth, authorization):
         record, etag = await self.store.read(control.settings.tenant_id, "confirmation:" + confirmation_id)
@@ -613,10 +680,13 @@ class ConfirmationService:
                 or decision.intent_digest != digest(intent)):
             raise Conflict()
         authority = await self.provider.verify(profile, user, intent, decision)
+        decided = {**record, "state": "decided", "approved": decision.approved,
+                   "user": user.model_dump(mode="json"), "authority": authority}
         await self.fresh(control, intent)
-        user.fresh()
+        self.authority_expiry(intent, profile, decided)
         await self.store.replace(intent.tenant, "confirmation:" + confirmation_id,
-            {**record, "state": "decided", "approved": decision.approved,
-             "user": user.model_dump(mode="json"), "authority": authority}, etag)
+                                 decided, etag)
+        self.authority_expiry(intent, profile, decided)
         await self.fresh(control, intent)
+        self.authority_expiry(intent, profile, decided)
         return {"confirmation_id": confirmation_id, "status": "confirmed" if decision.approved else "rejected"}

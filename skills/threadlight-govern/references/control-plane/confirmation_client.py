@@ -1,5 +1,6 @@
 """Gateway-only service protocol; no polling, provider tokens or human impersonation."""
 import asyncio
+from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 from .client import ServiceTransport
@@ -45,9 +46,12 @@ class ConfirmationClient(ServiceTransport):
                           "operation_id": expected.operation_id} and operation in ("request", "resolve"):
                 return result
             states = ("confirmed", "rejected") if operation in ("request", "resolve") else ("consumed",)
-            if (set(result) != {"status", "confirmation_id", "intent_digest"}
+            if (set(result) != {"status", "confirmation_id", "intent_digest", "effective_authority_expires_at"}
                     or result["status"] not in states or result["confirmation_id"] != expected.confirmation_id
                     or result["intent_digest"] != digest(expected)):
+                raise ConfirmationUnavailable()
+            expiry = parse(Timestamp, canonical(result["effective_authority_expires_at"]))
+            if not datetime.now(timezone.utc) < expiry <= min(expected.expires_at, expected.policy_expires_at):
                 raise ConfirmationUnavailable()
             return result
         except Exception:

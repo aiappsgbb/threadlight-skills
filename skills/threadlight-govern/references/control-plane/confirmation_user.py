@@ -33,6 +33,25 @@ def validate_view(value):
         raise ValueError("confirmation_display_invalid") from None
 
 
+class InteractiveUserCredential:
+    """The pinned Azure Identity browser credential is synchronous, not aio."""
+    def __init__(self, *, tenant_id, client_id):
+        from azure.identity import InteractiveBrowserCredential
+        self.credential = InteractiveBrowserCredential(tenant_id=tenant_id, client_id=client_id, timeout=120)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        await asyncio.to_thread(self.credential.close)
+
+    async def get_token(self, scope, **kwargs):
+        return await asyncio.to_thread(self.credential.get_token, scope, **kwargs)
+
+    async def authenticate(self, **kwargs):
+        return await asyncio.to_thread(self.credential.authenticate, **kwargs)
+
+
 class ConfirmationUserClient:
     def __init__(self, *, base_url, scope, tenant, credential, http):
         https(base_url)
@@ -73,8 +92,14 @@ class ConfirmationUserClient:
                     or set(requested) != {"essential", "value"} or requested["essential"] is not True
                     or not re.fullmatch(r"c[1-9][0-9]?", requested["value"])):
                 raise ValueError("confirmation_challenge_invalid")
-            token = await self.credential.get_token(
-                self.scope, claims=canonical(claims).decode(), enable_cae=True)
+            # A cached token may already contain acrs but predate protection.
+            # Explicit interaction requests fresh issuance, not a new MFA factor.
+            if headers.get("retry-after") != "1":
+                raise ValueError("confirmation_challenge_invalid")
+            await asyncio.sleep(1)
+            await self.credential.authenticate(
+                scopes=[self.scope], claims=canonical(claims).decode(), enable_cae=True)
+            token = await self.credential.get_token(self.scope, claims=canonical(claims).decode(), enable_cae=True)
             status, _, raw = await send(token)
         if status != 200:
             raise ValueError("confirmation_not_completed")
@@ -96,10 +121,9 @@ def main(argv=None):
         return 2
 
     async def run():
-        from azure.identity.aio import InteractiveBrowserCredential
         parse(ObjectId, canonical(args.client_id))
-        async with InteractiveBrowserCredential(tenant_id=args.tenant, client_id=args.client_id,
-                timeout=120) as credential, httpx.AsyncClient(timeout=10, trust_env=False) as http:
+        async with InteractiveUserCredential(tenant_id=args.tenant, client_id=args.client_id) as credential, \
+                httpx.AsyncClient(timeout=10, trust_env=False) as http:
             client = ConfirmationUserClient(base_url=args.control_plane_url, scope=args.scope,
                                             tenant=args.tenant, credential=credential, http=http)
             if args.operation == "register":

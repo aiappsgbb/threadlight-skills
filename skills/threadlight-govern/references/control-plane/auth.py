@@ -76,6 +76,7 @@ class Identity:
     issuer: str = ""
     auth_contexts: tuple[str, ...] = ()
     expires_at: int = 0
+    issued_at: int = 0
 
 
 class EntraAuth:
@@ -173,7 +174,7 @@ class EntraAuth:
                         or "Governance.Workload" not in roles):
                     raise Unauthorized()
                 return Identity(claims["tid"], subject, client, roles, frozenset(), workload,
-                                claims["iss"], (), claims["exp"])
+                                claims["iss"], (), claims["exp"], claims["iat"])
             scopes = claims.get("scp")
             if (claims.get("idtyp") == "app" or not isinstance(scopes, str) or not scopes
                     or client not in self.settings.human_clients
@@ -185,6 +186,6 @@ class EntraAuth:
                     or any(not isinstance(value, str) or len(value) > 128 for value in contexts)):
                 raise Unauthorized()
             return Identity(claims["tid"], subject, client, roles, frozenset(scopes.split()), None,
-                            claims["iss"], tuple(contexts), claims["exp"])
+                            claims["iss"], tuple(contexts), claims["exp"], claims["iat"])
         except Exception:
             raise Unauthorized() from None

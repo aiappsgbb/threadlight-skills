@@ -45,6 +45,13 @@ central receipt ACK is required before effects. At terminal dispatch, after
 credential and transport waits, the gateway rechecks exact policy decision,
 trusted facts, evidence, consent expiry and provider capability. A consumed
 confirmation does not satisfy independent reviewer authority, nor vice versa.
+The private `effective_authority_expires_at` response bounds the intent by the
+authenticated user's token, signed provider result and current Entra protection
+lease when selected. The gateway never extends that deadline, and synchronously
+rechecks it after the last awaited native policy evaluation and at HTTP header/body
+wire callbacks. Expiry after a confirmed backend effect does not discard its
+durable outcome. Native Outlook separation checks the actual responder home
+identity, not only its configured approver alias.
 Unknown effects/ACKs remain the original operation for reconciliation; do not
 automatically generate a new action. Completed outcome reads do not consume again.
 

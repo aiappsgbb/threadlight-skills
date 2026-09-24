@@ -38,7 +38,7 @@ from govern_control_plane.confirmation import (
 )
 from govern_control_plane.models import (
     ApprovalContext, ApprovalRequest, DecisionReceipt, Digest, Identifier, ObjectId, StrictModel,
-    SignedBundle, canonical, envelope_digest, parse, strict_json,
+    SignedBundle, Timestamp, canonical, envelope_digest, parse, strict_json,
 )
 from govern_control_plane.probes import ProbeContract, PROBE_INPUT, PROBE_OUTPUT
 from govern_control_plane.storage import Conflict, Missing
@@ -625,6 +625,18 @@ class GovernedDispatcher:
                     raise GateError("evidence_arguments_changed", "blocked")
                 action_hash = digest({"facts": facts, "arguments": enforced})
                 confirmation_intent = None
+                confirmation_expiry = None
+
+                def check_confirmation_authority(response=None):
+                    nonlocal confirmation_expiry
+                    if response is not None:
+                        expiry = parse(Timestamp, canonical(response["effective_authority_expires_at"]))
+                        if expiry > min(confirmation_intent.expires_at, confirmation_intent.policy_expires_at):
+                            raise GateError("confirmation_authority_invalid", "blocked")
+                        confirmation_expiry = min(expiry, confirmation_expiry) if confirmation_expiry else expiry
+                    if confirmation_expiry is not None and confirmation_expiry <= datetime.now(timezone.utc):
+                        raise GateError("confirmation_authority_expired", "blocked")
+
                 confirmation_active = selected.confirmation_requirement is not None and (
                     selected.confirmation_requirement.trigger == "always" or decision == "escalate"
                     or existing is not None and "confirmation_intent" in existing)
@@ -682,6 +694,7 @@ class GovernedDispatcher:
                     guard()
                     if confirmation["status"] == "pending_confirmation":
                         return confirmation
+                    check_confirmation_authority(confirmation)
                     if confirmation["status"] == "rejected":
                         await self.audit(selected, action_hash, key, "deny", "confirmation_denied",
                                          evidence_fingerprint=evidence_digest)
@@ -794,8 +807,9 @@ class GovernedDispatcher:
                 if confirmation_intent is not None:
                     # Reserve permanently before consumption: lost consume ACK must
                     # reconcile this operation, not reopen its confirmation.
-                    await self.confirmations.resolve(
+                    consumed = await self.confirmations.resolve(
                         confirmation_intent, operation="consume", approval_grant=grant)
+                    check_confirmation_authority(consumed)
                     guard()
                 guard()
                 receipt_id = await self.audit(selected, action_hash, key,
@@ -813,6 +827,7 @@ class GovernedDispatcher:
                 guard()
                 def effect_guard():
                     guard()
+                    check_confirmation_authority()
                     if approval_expiry and datetime.now(timezone.utc) >= approval_expiry:
                         raise GateError("approval_expired")
                 async def effect_check():
@@ -822,8 +837,9 @@ class GovernedDispatcher:
                     if confirmation_intent is not None:
                         if confirmation_intent.expires_at <= datetime.now(timezone.utc):
                             raise GateError("confirmation_expired", "blocked")
-                        await self.confirmations.resolve(
+                        validated_confirmation = await self.confirmations.resolve(
                             confirmation_intent, operation="validate", approval_grant=grant)
+                        check_confirmation_authority(validated_confirmation)
                     elif requesting_user_context is not None:
                         expiry = await self.confirmations.context(
                             requesting_user_context, facts=facts, operation_id=idempotency_key,
@@ -842,7 +858,8 @@ class GovernedDispatcher:
                 attempted = True
                 reply = await self.downstream.request(
                     action=selected, arguments=enforced, key=key, action_hash=action_hash,
-                    provenance=receipt_id, facts=facts, guard=guard if deferred else effect_guard,
+                    provenance=receipt_id, facts=facts,
+                    guard=guard if deferred or confirmation_intent is not None else effect_guard,
                     **({"on_dispatch": lambda: self.probes.dispatch(probe)} if probe else {}),
                     **({"effect_check": effect_check} if deferred or evidence is not None
                        or selected.confirmation_requirement is not None else {}))
