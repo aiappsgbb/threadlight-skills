@@ -342,6 +342,10 @@ validators/pins, MAF client/host, and canonical `CosmosEffectTransport`. It adds
 protocols or SDK patches. Existing destinations are refused. It makes no Azure
 calls and includes no credentials, automatic seed/reset, deployment configuration
 or invented signatures.
+Public source directories are normalized to `0755` and files to `0644`
+(or `0755` for existing executables), so the native non-root container user can
+read the closure even when the operator uses `umask 077`. Private operator
+directories and configuration outside the exported closure are not changed.
 
 Build that directory under Linux amd64 using an approved Python 3.12 **digest**:
 

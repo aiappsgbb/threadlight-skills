@@ -2,7 +2,9 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
+import stat
 import sys
 
 
@@ -30,3 +32,26 @@ def test_exported_returns_generator_copies_complete_portable_confirmation_runtim
     assert (target / "govern_control_plane/confirmation.py").is_file()
     provenance = json.loads((package / "source-package.json").read_text())
     assert provenance["files"][HELPER.as_posix()] == hashlib.sha256((ROOT / HELPER).read_bytes()).hexdigest()
+
+
+def test_public_source_export_is_readable_by_native_nonroot_uid_under_private_umask(tmp_path):
+    private = tmp_path / "operator-private"
+    private.mkdir(mode=0o700)
+    secret = private / "operator-only.json"
+    secret.write_text('{"fixture":"private operator configuration"}')
+    secret.chmod(0o600)
+    packager = load("permission_source_packager", ROOT / REFERENCE / "package_returns_mcp.py")
+    previous = os.umask(0o077)
+    try:
+        package = packager.materialize(private / "public-source")
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE(package.stat().st_mode) == 0o755
+    for path in package.rglob("*"):
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if path.is_dir():
+            assert mode == 0o755, path.relative_to(package)
+        else:
+            assert mode in (0o644, 0o755), path.relative_to(package)
+    assert stat.S_IMODE(private.stat().st_mode) == 0o700
+    assert stat.S_IMODE(secret.stat().st_mode) == 0o600

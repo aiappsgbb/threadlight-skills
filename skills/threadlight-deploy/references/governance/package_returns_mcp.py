@@ -62,6 +62,10 @@ def materialize(output):
             "schema": "threadlight-returns-mcp-source/v1",
             "status": "source-only-not-deployment-proof", "files": files,
         }, indent=2) + "\n")
+        # This closure contains public source only, not operator configuration.
+        for path in stage.rglob("*"):
+            path.chmod(0o755 if path.is_dir() or path.stat().st_mode & 0o111 else 0o644)
+        stage.chmod(0o755)
         stage.rename(output)
     return output
 
