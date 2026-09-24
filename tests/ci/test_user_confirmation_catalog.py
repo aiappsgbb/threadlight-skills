@@ -41,5 +41,7 @@ def test_deployment_runner_includes_confirmation_protocol_and_generated_client()
         "skills/threadlight-govern/tests/test_confirmation_integration_fixes.py",
         "skills/threadlight-deploy/tests/test_user_confirmation_client.py",
         "skills/threadlight-deploy/tests/test_user_confirmation_generation.py",
+        "skills/threadlight-deploy/tests/test_confirmation_descriptor_selection.py",
+        "skills/threadlight-deploy/tests/test_returns_source_closure.py",
     ):
         assert test in runner

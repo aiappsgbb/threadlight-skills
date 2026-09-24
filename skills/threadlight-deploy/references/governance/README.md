@@ -64,6 +64,19 @@ for an ACS allow; the explicit `policy` opt-in requires it on escalation.
 Escalation with both confirmation and reviewer roles requires both authorities;
 without reviewer roles it requires only the requesting user's confirmation.
 Existing actions without this selection retain their original review behavior.
+For user-only confirmation, leave `approval_roles` empty and omit the old
+`approval_mode: deferred` / `approval_requirement: policy` reviewer settings.
+The confirmation descriptor independently makes the native client resumable.
+Do not copy a historical reviewer descriptor into an immutable confirmation host.
+
+When a signed registry is available, generation/staging rejects frozen
+`gateway_descriptors` whose tool names or approval/evidence/confirmation selection
+markers differ from that registry. This is a selection preflight, not a replacement
+for the native client's exact full-inventory comparison. In selected-tools
+bootstrap, where the final registry depends on the observed hosted identity,
+derive and compare the frozen schema/metadata with the actual server's planned
+tool construction **before building the agent**. A later discovered mismatch
+requires a new immutable attempt; never edit an already-created version.
 
 Declare the same `confirmation_container`, for example `user-confirmations`,
 in package and infrastructure inputs before generation. The opt-in Bicep

@@ -411,6 +411,30 @@ def validate_policy(bundle, signed, config):
         raise ValueError("signed_policy_identity_or_expiry_invalid")
 
 
+def validate_gateway_descriptor_selection(config, registry):
+    """Check frozen selection markers when the signed registry is available."""
+    if "gateway_descriptors" not in config:
+        return
+    from govern_control_plane.attestations import EVIDENCE_META
+    from govern_control_plane.confirmation import CONTEXT_META
+    descriptors = config["gateway_descriptors"]
+    if not isinstance(descriptors, dict) or set(descriptors) != {action.name for action in registry.actions}:
+        raise ValueError("signed_gateway_descriptor_selection_mismatch")
+    for action in registry.actions:
+        descriptor = descriptors[action.name]
+        if not isinstance(descriptor, dict) or descriptor.get("name") != action.name:
+            raise ValueError("signed_gateway_descriptor_selection_mismatch")
+        metadata = descriptor.get("_meta")
+        metadata = {} if metadata is None else metadata
+        expected = {
+            **({"threadlight.approval_mode": "deferred"} if action.approval_mode == "deferred" else {}),
+            **({"threadlight.evidence": EVIDENCE_META} if action.evidence_requirement is not None else {}),
+            **({"threadlight.confirmation": CONTEXT_META} if action.confirmation_requirement is not None else {}),
+        }
+        if not isinstance(metadata, dict) or metadata != expected:
+            raise ValueError("signed_gateway_descriptor_selection_mismatch")
+
+
 def validate_bundle_contract(bundle, document, config, registry=None):
     """Check control semantics, not just action-name coverage or a valid content hash."""
     import yaml
@@ -497,6 +521,7 @@ def validate_bundle_contract(bundle, document, config, registry=None):
             raise ValueError("signed_registry_contract_approval_mismatch")
         if action.approval_mode == "deferred" and action.approval_timeout_seconds > approval_max_seconds:
             raise ValueError("signed_registry_approval_timeout_mismatch")
+    validate_gateway_descriptor_selection(config, registry)
 
 
 def frozen_configuration(project, package):
