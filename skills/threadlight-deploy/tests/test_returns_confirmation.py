@@ -38,3 +38,5 @@ def test_returns_instructions_preserve_real_context_and_stop_for_user_confirmati
         assert term in text
     assert "pending_approval" in text
     assert "NOT financial settlement" in text
+    assert "Approve or Reject directly in the email" in text
+    assert "Do not tell the user to run commands" in text

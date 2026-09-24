@@ -23,6 +23,18 @@ def test_generator_guide_covers_confirmation_configuration_and_notification():
         assert term in guide
 
 
+def test_normal_user_confirmation_is_native_mail_not_a_recipient_command():
+    guide = (ROOT / "skills/threadlight-deploy/references/governance/README.md").read_text()
+    section = guide.split("### Requesting-user confirmation", 1)[1].split("### Explicit native Outlook", 1)[0]
+    assert "user-confirmation-approval.bicep" in section
+    assert "`outlook-native`" in section
+    assert "Approve/Reject directly in the email" in section
+    assert "diagnostic" in section
+    assert "The user independently runs" not in section
+    govern = (ROOT / "skills/threadlight-govern/SKILL.md").read_text()
+    assert "Approve/Reject directly in the email" in govern
+
+
 def test_governance_skills_distinguish_user_confirmation_from_review_and_noop_proof():
     govern = (ROOT / "skills/threadlight-govern/SKILL.md").read_text()
     assessor = (ROOT / "skills/threadlight-governed-actions/SKILL.md").read_text()
@@ -39,9 +51,11 @@ def test_deployment_runner_includes_confirmation_protocol_and_generated_client()
         "skills/threadlight-govern/tests/test_user_confirmation.py",
         "skills/threadlight-govern/tests/test_confirmation_providers.py",
         "skills/threadlight-govern/tests/test_confirmation_integration_fixes.py",
+        "skills/threadlight-govern/tests/test_native_user_confirmation.py",
         "skills/threadlight-deploy/tests/test_user_confirmation_client.py",
         "skills/threadlight-deploy/tests/test_user_confirmation_generation.py",
         "skills/threadlight-deploy/tests/test_confirmation_descriptor_selection.py",
         "skills/threadlight-deploy/tests/test_returns_source_closure.py",
+        "skills/threadlight-deploy/tests/test_user_confirmation_approval.py",
     ):
         assert test in runner

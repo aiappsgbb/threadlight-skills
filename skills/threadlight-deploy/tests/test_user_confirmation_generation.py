@@ -156,3 +156,57 @@ def test_confirmation_bind_rejects_partial_authority_without_writing(tmp_path, f
     with pytest.raises(ValueError, match="confirmation_"):
         generator.bind(project, document, configuration=deployment)
     assert snapshot(project) == before
+
+
+def native_authority(data):
+    authority = confirmation_authority(data)
+    authority.pop("user_client_id", None)
+    profile = authority["profiles"]["email"]
+    bindings = data[3]["bindings"]
+    tenant = data[2]["tenant_id"]
+    profile.update(
+        kind="outlook-native",
+        notification_url=(
+            "https://fixture.region.logic.azure.com/workflows/fixture/"
+            "triggers/User_confirmation_requested/paths/invoke?api-version=2016-10-01"),
+        notification_scope="https://management.azure.com//.default",
+        outlook={
+            "workflow_resource_id": (
+                f"/subscriptions/{tenant}/resourceGroups/fixture/"
+                "providers/Microsoft.Logic/workflows/user-confirmation"),
+            "workflow_version": "1", "workflow_digest": "sha256:" + "d" * 64,
+            "sender_principal": bindings["control_principal"],
+            "recipient": "requester@example.com", "home_tenant": tenant,
+            "home_subject": profile["users"][0]["subject"],
+        })
+    return authority
+
+
+def test_native_mail_bind_needs_no_recipient_cli_configuration(tmp_path):
+    data = confirmation_inputs(tmp_path)
+    generator = package(data)
+    stage(generator, data)
+    project, document, _, deployment, _ = data
+    deployment["confirmation"] = native_authority(data)
+    generator.bind(project, document, configuration=deployment)
+    control = json.loads((project / ".threadlight/governance-deployment.json").read_text())[
+        "bindings"]["control_config"]
+    assert control["confirmation"].get("user_client_id") is None
+    profile = control["confirmation"]["profiles"]["email"]
+    assert profile["kind"] == "outlook-native"
+    assert profile["outlook"]["sender_principal"] == deployment["bindings"]["control_principal"]
+    assert profile["outlook"]["approved_option"] == "Approve"
+
+
+def test_native_mail_bind_rejects_a_different_workflow_sender_before_writes(tmp_path):
+    data = confirmation_inputs(tmp_path)
+    generator = package(data)
+    stage(generator, data)
+    project, document, _, deployment, _ = data
+    authority = native_authority(data)
+    authority["profiles"]["email"]["outlook"]["sender_principal"] = "99999999-9999-9999-9999-999999999999"
+    deployment["confirmation"] = authority
+    before = snapshot(project)
+    with pytest.raises(ValueError, match="confirmation_native_sender_mismatch"):
+        generator.bind(project, document, configuration=deployment)
+    assert snapshot(project) == before

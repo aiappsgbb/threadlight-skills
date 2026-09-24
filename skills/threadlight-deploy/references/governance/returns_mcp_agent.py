@@ -79,13 +79,15 @@ def agent_instructions(*, evidence=False, confirmation=False):
             "to bypass unknown outcomes or a changed source revision.")
     if confirmation:
         instructions += (
-            "\nRequesting-user confirmation happens outside the agent using an independent authenticated client. "
+            "\nRequesting-user confirmation happens outside the agent through the configured confirmation channel. "
+            "In the normal native Logic Apps/Outlook flow, the user chooses Approve or Reject directly in the email. "
+            "Do not tell the user to run commands or a command-line confirmation client. "
             "Never create or register a user context, impersonate a user, or perform their confirmation. "
             "Use only the supplied governance_request_context and its governance_operation_id; "
             "never invent either value. If returns_apply_decision returns pending_confirmation, stop and report "
             "the exact confirmation_id and operation_id; no business effect has occurred. "
             "Resume only the same operation using the original resume_arguments and supplied context "
-            "after the user has independently confirmed. An email or login is not consent, "
+            "after the user has independently confirmed. Email delivery or login is not consent, "
             "and user confirmation does not replace any separately required reviewer.")
     return instructions
 

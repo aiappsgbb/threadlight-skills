@@ -497,6 +497,7 @@ for name, record in {sdk_wheels!r}.items():
             **os.environ, "THREADLIGHT_GOVERNANCE_RUNTIME": "1",
             "THREADLIGHT_READINESS_SDK": "1",
             "THREADLIGHT_GOVERNANCE_BICEP": str(SCRATCH / "deployment-bicep.json"),
+            "THREADLIGHT_USER_CONFIRMATION_APPROVAL_BICEP": str(SCRATCH / "user-confirmation-approval-bicep.json"),
             "ACS_OPA_PATH": str(SCRATCH / "opa-linux-amd64"), "OTEL_SDK_DISABLED": "true",
         }
         env.pop("PYTEST_ADDOPTS", None)
@@ -520,6 +521,7 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-govern/tests/test_confirmation_gateway.py",
              "skills/threadlight-govern/tests/test_confirmation_providers.py",
              "skills/threadlight-govern/tests/test_confirmation_integration_fixes.py",
+             "skills/threadlight-govern/tests/test_native_user_confirmation.py",
              "skills/threadlight-govern/tests/test_confirmation_user_client.py",
              "skills/threadlight-govern/tests/test_adversarial_evidence.py",
              "tests/ci/test_hosted_bootstrap_lifecycle.py",
@@ -533,6 +535,7 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_confirmation_descriptor_selection.py",
              "skills/threadlight-deploy/tests/test_returns_confirmation.py",
              "skills/threadlight-deploy/tests/test_returns_source_closure.py",
+             "skills/threadlight-deploy/tests/test_user_confirmation_approval.py",
              "skills/threadlight-deploy/tests/test_maf_gateway_generation.py",
              "skills/threadlight-deploy/tests/test_deferred_gateway_generation.py",
              "skills/threadlight-govern/tests/test_deferred_gateway_approval.py",
@@ -754,6 +757,8 @@ def prepare_deployment(pins, *, local_only=False):
     bicep = [compiler, "build"] if compiler else ["az", "bicep", "build", "--file"]
     if not local_only:
         run([*bicep, reference / "governance.bicep", "--outfile", output])
+        run([*bicep, reference / "user-confirmation-approval.bicep",
+             "--outfile", SCRATCH / "user-confirmation-approval-bicep.json"])
     deps = tomllib.loads((reference / "pyproject-maf.toml").read_text())["project"]["dependencies"]
     requested = sorted(set(requirements(pins) + gateway_requirements() + [
         item for item in deps if not item.startswith("threadlight-govern-")

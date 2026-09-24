@@ -53,7 +53,7 @@ user into an independent reviewer. Native-local and GHCP selection are rejected.
 {
   "confirmation_requirement": {
     "trigger": "policy",
-    "provider_profile": "email-basic",
+    "provider_profile": "requester-outlook",
     "max_age_seconds": 300
   }
 }
@@ -94,35 +94,56 @@ Requester authentication is selected by `customer_identity`, independently of
 the result-verification provider: a customer-signed result can still belong to
 an Entra-authenticated requester, and basic email can use an admitted customer
 identity. Generic issuer/subject identifiers are never cast to Entra object IDs.
-Set `user_client_id` to the existing approved interactive client for usable
-notification-launch instructions. Bind preserves a prior selected configuration;
+For normal email confirmation, select a profile with `kind: outlook-native`
+and its pinned `outlook` workflow, sender, fixed recipient, options and actual
+requester home-identity mapping. Bind verifies the sender is the actual control
+identity. `user_client_id` is optional diagnostic-client configuration, not
+required for a native mail decision. Bind preserves a prior selected configuration;
 null selection, an unknown profile, wrong user/client/workload or mismatched
 service origin fails rather than falling back to an unconfirmed path.
 
-The separate `threadlight-confirm-action register` command authenticates the
-requesting user with delegated `Governance.Confirm` and registers the intended
-workload/action/operation. Supply the returned opaque `governance_request_context`
+The authenticated application registers the requesting user through the protected
+context API, using delegated `Governance.Confirm` or its configured customer
+identity adapter. It binds the intended workload/action/operation and supplies
+the returned opaque `governance_request_context`
 and its exact `governance_operation_id` to the MAF function. The native client
 transports the reference as MCP metadata and never forwards it as a business
 argument. A low-risk policy allow needs no context when confirmation is not
 required. Missing context for a required confirmation never invents a user.
 
-`pending_confirmation` means **no effect**. The user independently runs
-`threadlight-confirm-action confirm` or `reject`, sees the exact proposal and
-types its transaction digest after browser authentication. The agent then resumes
-the same operation and context. Confirmation does not execute the action;
+`pending_confirmation` means **no effect**. With `outlook-native`, the user sees
+the exact proposal and chooses **Approve/Reject directly in the email**.
+The service independently verifies the native response, actual responder,
+workflow pin, request echo and expiry; it does not accept a manual CLI/API
+decision for this profile. The agent then resumes the same operation and context.
+Confirmation does not execute the action;
 fresh policy/facts/expiry, all selected authorities, one-use consumption and
 central audit ACK still precede the backend call.
 
-The companion `user-confirmation-notification.bicep` reuses an already-consented
-Office 365 connection and defaults to Disabled. It admits only the configured
-control identity, disables SAS and automatic mail retries, fixes the recipient,
-and verifies the delivery reference and `/confirmation/open/{id}` link origin.
-Its success acknowledges notification only. The email is **not MFA**, and
-opening a link never consents. This first reference uses a separate interactive
-client, not a shipped browser BFF. Customers can provide their own admitted
-provider/client; generic mailbox possession, verified CA MFA and transaction
-signing must not be described as equivalent.
+The primary companion is `user-confirmation-approval.bicep`: the same native
+Logic Apps/Outlook approval pattern as the independent reviewer, with a distinct
+nine-field confirmation payload and no reviewer grant. It reuses an existing
+consented Office 365 connection, fixes the intended recipient, requires the
+control identity and disables SAS on the trigger. It defaults to Disabled;
+observe the actual workflow ID/version/digest before enabling the configured
+profile. Optional `grantWorkflowReader` gives only that control identity Reader
+on this workflow for independent ARM witness verification. The template displays
+synthetic return-case details and waits at most 15 minutes, always bounded by
+the earlier intent expiry. Other business actions need their own reviewed,
+human-readable proposal schema/body and independently observed workflow pin.
+
+The recipient receives no commands. Delivery, opening a message or a scanner
+visit is not consent; only the verified native Approve/Reject response can
+create the one-use authority. The email is **not MFA**. An old notification-only
+record cannot be upgraded to native authority after changing its profile.
+
+`threadlight-confirm-action` and `user-confirmation-notification.bicep` remain
+explicit developer diagnostic/customer-adapter alternatives, not the normal
+email approval experience. The application owns authenticated context creation;
+neither an agent-supplied name nor a workload credential establishes the user.
+Customers can supply admitted identity and confirmation mechanisms, but mailbox
+possession, native email consent, verified CA MFA and transaction signing are
+not equivalent.
 
 For the executable `returns_mcp_agent.py` reference, set the explicit boolean
 `confirmation_enabled: true` and generate its contract with

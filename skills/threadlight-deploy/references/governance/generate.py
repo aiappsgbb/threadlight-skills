@@ -563,7 +563,7 @@ def validate_review_channel(control, gateway, bindings):
         raise ValueError("outlook_authority_binding_mismatch")
 
 
-def validate_confirmation_channel(control, gateway, registry, config):
+def validate_confirmation_channel(control, gateway, registry, config, bindings):
     selected = [action for action in registry.actions if action.confirmation_requirement is not None]
     authority = control.confirmation
     if not selected and authority is None:
@@ -579,6 +579,10 @@ def validate_confirmation_channel(control, gateway, registry, config):
         profile = authority.profiles.get(requirement.provider_profile)
         if profile is None:
             raise ValueError("confirmation_profile_required")
+        if profile.kind == "outlook-native" and (
+                profile.outlook is None
+                or profile.outlook.sender_principal != bindings["control_principal"]):
+            raise ValueError("confirmation_native_sender_mismatch")
         for principal in action.workloads:
             workload = control.workloads.get(principal)
             if workload is None or not any(
@@ -627,7 +631,7 @@ def validate_gateway_policy(bundle, signed, config, document, agent_image, bindi
     control = parse(AzureConfiguration, canonical(bindings["control_config"]))
     gateway = parse(Configuration, canonical(bindings["gateway_config"]))
     validate_review_channel(control, gateway, bindings)
-    validate_confirmation_channel(control, gateway, registry, config)
+    validate_confirmation_channel(control, gateway, registry, config, bindings)
     for service, settings in (("control_plane", control), ("gateway", gateway)):
         if (settings.tenant_id != config["tenant_id"] or settings.key_id != config["key_id"]
                 or settings.approver_roles != config["approver_roles"]

@@ -29,11 +29,14 @@ not evidence authenticity. Keep the original operation on unknown outcomes.
 The JWT path is opt-in gateway coverage, not native-local or whole-agent coverage.
 
 For **requesting-user consent**, select `user-confirmation` on the MAF gateway
-and a matching signed `confirmation_requirement`. Use the separate
-`threadlight-confirm-action` client and the
+and a matching signed `confirmation_requirement`. Use the native
+Logic Apps/Outlook profile: **Approve/Reject directly in the email**, with
+independent workflow/actual-responder/proposal verification. Follow the
 [control-plane confirmation contract](references/control-plane/README.md).
 An opaque authenticated request context is not consent; the agent retains its
-workload identity. Basic email notifies, it is not MFA. Entra context assurance
+workload identity. Delivery or opening a message is not consent, and native
+email consent is not MFA. `threadlight-confirm-action` is a developer diagnostic,
+not a command to send to the recipient. Entra context assurance
 requires actual applicable CA policy verification; customers can supply their
 own admitted provider. User consent does not satisfy an independent reviewer or
 signed business evidence. Resume the same operation with all required authorities,

@@ -10,14 +10,14 @@ field.
 ### Requesting-user confirmation
 
 - Add a separate one-use confirmation authority on the selected MAF gateway:
-  authenticated request context, exact transaction binding, basic email
-  notification and independent interactive user client. Existing reviewer
+  authenticated request context, exact transaction binding and native
+  Logic Apps/Outlook Approve/Reject directly in the email. Existing reviewer
   approval remains separate; configured policies can require either or both.
 - Provide an admitted customer-provider contract and a conservative Entra
   authentication-context profile. Email is not MFA; `acrs` without verified,
   applicable Conditional Access policy is not MFA proof. A new factor prompt
-  per transaction is not guaranteed, and a browser confirmation BFF is not
-  included in this initial client reference.
+  per transaction is not guaranteed. Command-line clients remain developer
+  diagnostics, not the recipient's email approval flow.
 - Carry selection through shared schemas, source generation, native MCP
   metadata, explicit ephemeral storage and notification-only IaC. Invalid or
   one-sided selection fails closed; unbound reads and existing paths remain.
