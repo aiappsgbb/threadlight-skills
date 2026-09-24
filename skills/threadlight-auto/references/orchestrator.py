@@ -1836,7 +1836,8 @@ def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
                     result = presenter["checks"][check]
                     if decision.decision == "hard_stop":
                         continue
-                    if decision.name == "deploy" and _deploy_retry_required(workspace):
+                    if (decision.name == "deploy" and result["status"] != "blocked"
+                            and _deploy_retry_required(workspace)):
                         decisions[index] = StageDecision(
                             "deploy", "run", "Previous governed deployment is incomplete or invalidated; reconcile its attempt before retry.")
                         continue
@@ -1923,6 +1924,9 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
             return {"status": "blocked", "stage": report["next_action"]["stage"], "executed": executed}
         pending = [s for s in report["next_action"]["stages_to_run"] if s not in executed]
         if not pending:
+            if (report["presenter_ready"]["enabled"]
+                    and STAGE_PROBES["safe_check"](workspace, {}).decision != "skip"):
+                return {"status": "blocked", "stage": "safe_check", "executed": executed}
             if report["presenter_ready"]["enabled"] and not report["presenter_ready"]["ready"]:
                 return {"status": "blocked", "stage": "presenter_ready", "executed": executed}
             if "governance_probe" in report["stages"]:

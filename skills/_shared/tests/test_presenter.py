@@ -636,3 +636,55 @@ def test_later_worker_cannot_invalidate_safecheck_and_still_complete(tmp_path, m
     result = orch.execute(tmp_path, worker)
     assert result["status"] == "blocked"
     assert result["stage"] == "safe_check"
+
+
+def test_already_executed_safecheck_invalidated_later_blocks_without_rerun(tmp_path, monkeypatch):
+    orch = orchestrator()
+    contract = pilot(tmp_path)
+    evidence(tmp_path, contract)
+    skip_legacy_probes(monkeypatch, orch)
+    fresh = False
+    monkeypatch.setitem(orch.STAGE_PROBES, "safe_check", lambda *_:
+                        orch.StageDecision("safe_check", "skip" if fresh else "run", "current proof"))
+    monkeypatch.setitem(orch.STAGE_PROBES, "cost_projection",
+                        lambda *_: orch.StageDecision("cost_projection", "run", "not yet run"))
+    executed = []
+
+    def worker(stage):
+        nonlocal fresh
+        executed.append(stage)
+        if stage == "safe_check":
+            fresh = True
+        elif stage == "cost_projection":
+            fresh = False
+        return 0
+
+    result = orch.execute(tmp_path, worker)
+    assert result == {"status": "blocked", "stage": "safe_check",
+                      "executed": ["safe_check", "cost_projection"]}
+    assert executed == ["safe_check", "cost_projection"]
+
+
+@pytest.mark.parametrize("receipt_result", ["uncertain", "failed", "malformed"])
+def test_governed_retry_cannot_override_blocked_deployment_receipt(tmp_path, monkeypatch, receipt_result):
+    orch = orchestrator()
+    contract = pilot(tmp_path)
+    refs = evidence(tmp_path, contract)
+    skip_legacy_probes(monkeypatch, orch)
+    value = json.loads((tmp_path / refs["deployment"]["path"]).read_text())
+    if receipt_result == "malformed":
+        value = {}
+    else:
+        value["result"] = receipt_result
+    refs["deployment"]["sha256"] = presenter.sha256(
+        write(tmp_path, refs["deployment"]["path"], value).read_bytes())
+    write(tmp_path, presenter.EVIDENCE, {"schema": "threadlight-presenter-evidence/v1", "checks": refs})
+    monkeypatch.setattr(orch, "_deploy_retry_required", lambda _: True)
+    report = orch.decide(tmp_path)
+    deploy = next(d for d in report["decisions"] if d["stage"] == "deploy")
+    assert deploy["decision"] == "hard_stop"
+    assert deploy["hard_stop_signature"] == "presenter-evidence-requires-reconciliation"
+    executed = []
+    assert orch.execute(tmp_path, lambda stage: executed.append(stage) or 0) == {
+        "status": "blocked", "stage": "deploy", "executed": []}
+    assert executed == []
