@@ -1,5 +1,19 @@
 # threadlight_quickstart — Pattern 0 reference package
 
+**Presenter-ready boundary:** this package is an iteration aid, not durable
+storage or hosted parity. Follow the [process contract](../../../../docs/presenter-ready.md).
+Real native tests cover dispatch across two independent process datasets and
+terminal-stream failure; recreating the in-memory adapter restores seed data.
+Promised saved-result reopening requires the actual process storage adapter.
+
+Native CRUD tools expose named `filters` and `fields` objects: for example
+`list_tickets(filters={"status": "closed"})` and
+`update_tickets(id="T-1", fields={"status": "draft"})`. Bare top-level keyword
+fields were absent from the SDK-generated schema; this fixes actual dispatch,
+not just direct Python store tests. The store's direct keyword API is unchanged.
+Streaming UI output is provisional; terminal errors replace prior success text
+in both the display and the returned transcript value.
+
 Drop-in implementation of the **Pattern 0 — Quickstart** runtime
 documented in `../SKILL.md`. Lets any threadlight-designed PoC boot
 a screen-shareable demo in minutes:

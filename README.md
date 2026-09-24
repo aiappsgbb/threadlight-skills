@@ -56,6 +56,13 @@ engineering-host requirements and safe offline checks.
 The governance section below preserves the current control and evidence contract;
 it is not a prerequisite for understanding what a skill is.
 
+For an explicitly requested repeatable demonstration, use the opt-in
+[presenter-ready PoC contract](docs/presenter-ready.md): one process-owned handoff,
+selected deployment consumer, exact packaged integration evidence, business UX,
+durable result retrieval where promised, and distinct source/deployment/backend/
+script/human acceptance states. It is not mandatory production governance and
+does not turn offline catalog checks into hosted acceptance.
+
 The paid live workflow has two evidence meanings. **Live smoke** proves the
 design, deployment, invocation, and assurance producers executed; it does not
 assert production readiness. **Readiness proof** additionally requires a green

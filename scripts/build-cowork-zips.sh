@@ -88,6 +88,7 @@ for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   rm -rf "${design_stage}"
   mkdir -p "${design_stage}"
   cp -R "${SRC_DIR}/${skill}/." "${design_stage}/"
+  cp "${REPO_ROOT}/docs/presenter-ready.md" "${design_stage}/references/presenter-ready.md"
   rm -rf "${design_stage}/tests"
   find "${design_stage}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
   find "${design_stage}" \( -name '*.pyc' -o -name '.DS_Store' \) -delete 2>/dev/null || true

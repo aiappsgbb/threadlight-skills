@@ -22,6 +22,24 @@ metadata:
 
 # Foundry Hosted Agent Deploy
 
+## Presenter-ready selected consumer
+
+For `delivery_profile: presenter-ready`, consume the process-owned
+[presenter-ready contract](../../docs/presenter-ready.md) and the same
+[`presenter-deployment-pin.json`](../_shared/presenter-deployment-pin.json)
+as Design and Safe Check. Read the selected upstream guide/templates at its exact
+commit. Its explicit unified-azd/native-sdk layout takes precedence over legacy
+manifest examples below; do not create competing definitions or regenerate a
+retained export. Keep Foundation/runtime-policy and selected governance cohorts.
+
+Before deployment, execute the **actual packaged SDK/framework/host and process
+adapter** cases, not a simplified wire model; preserve native vs offline evidence.
+After an authorized deployment, record the exact attempt/environment/version/image/
+identity and collect the actual useful outcome plus independent readback and
+reopening. A running container or setup-ready preflight is not backend-verified.
+Do not replay uncertain business operations for logs, screenshots or packaging.
+Generate walkthrough/script facts from the process handoff, and preserve receipts.
+
 > ⚠️ **Azure Tenant Isolation (mandatory).** Before running any Phase that
 > touches Azure (`azd up`, `az deployment`, `az acr build`), verify tenant
 > isolation per the [`azure-tenant-isolation`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azure-tenant-isolation/)

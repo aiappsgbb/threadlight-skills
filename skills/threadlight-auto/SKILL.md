@@ -20,6 +20,31 @@ metadata:
 
 # `threadlight-auto` — Full-auto Threadlight driver
 
+## Presenter-ready completion (explicit opt-in)
+
+Set `delivery_profile: presenter-ready` in the existing `specs/manifest.json`
+only when requested. Follow the single process-owned
+[presenter-ready contract](../../docs/presenter-ready.md); its absence does not
+change ordinary experiments. Malformed explicit selection blocks, not off.
+Run from the complete catalog so the shared evidence consumer is available.
+
+The planner adds `presenter_package` before deploy (exact native packaged
+SDK/framework/adapter checks) and `presenter_ready` at handoff. The coding agent
+performs only authorized work; zero exit or a successful response cannot replace
+evidence. The process owner supplies entry -> useful interaction -> persistence
+where applicable -> independent readback -> reopening, and downloads only if
+promised. A first-time presenter separately records human acceptance.
+
+`presenter_ready` in planner JSON keeps source-ready, deployed, backend-verified,
+script-verified and human-accepted distinct. It reports supplied, source-bound
+evidence, not a fresh live attestation. No human acceptance may be auto-generated.
+Dependency-specific invalidation replaces blanket cascade **only for this
+profile**: script/UX/sizing changes do not redeploy or replay the backend; runtime,
+source and new deployment attempts invalidate their actual dependents.
+Native package proof precedes deployment; selected governance gates retain
+authority. Handle permission/shared-resource/material-cost/uncertain-effect
+decisions explicitly, not repeated approvals of routine authorized steps.
+
 ## Purpose
 
 Replace the manual chain `threadlight-design → threadlight-deploy → threadlight-safe-check → invoke`

@@ -14,6 +14,25 @@ const docs = {
   workshop: 'docs/WORKSHOP-1H-QUICKSTART.md',
 };
 
+test('presenter-ready is one opt-in process-owned contract across the six skills', () => {
+  for (const skill of ['design', 'deploy', 'safe-check', 'local-test', 'workspace-ui', 'auto']) {
+    const text = read(`skills/threadlight-${skill}/SKILL.md`);
+    assert.match(text, /presenter-ready/, skill);
+    assert.match(text, /presenter-ready\.md/, skill);
+  }
+  const text = read('docs/presenter-ready.md');
+  for (const term of ['source-ready', 'deployed', 'backend-verified', 'script-verified',
+    'human-accepted', 'independent readback', 'uncertain', 'immutable', 'Citadel',
+    'model tokens', 'model rounds', 'logical tool calls', 'resource units']) {
+    assert.ok(text.includes(term), term);
+  }
+  assert.match(text, /offline.*not.*hosted/i);
+  assert.match(text, /second.*PoC/i);
+  assert.match(text, /must not.*refresh/i);
+  const guidance = JSON.parse(text.match(/<!-- deployment-guidance -->\s*```json\n([\s\S]*?)```/)[1]);
+  assert.deepEqual(guidance, JSON.parse(read('skills/_shared/presenter-deployment-pin.json')));
+});
+
 test('model guidance separates operator-owned authoring from runtime deployment choices', () => {
   const text = read('skills/threadlight-design/references/model-selection.md').replace(/\s+/g, ' ');
   assert.match(text, /authoring[\s\S]*discovery[\s\S]*specification[\s\S]*architecture[\s\S]*code generation/i);

@@ -137,3 +137,9 @@ def test_design_zip_runtime_policy_matches_current_source():
         "committed threadlight-design.zip runtime-policy.json drifted from source "
         "(rebuild scripts/build-cowork-zips.sh)"
     )
+
+
+def test_design_zip_carries_the_canonical_presenter_handoff_guide():
+    assert _read_member("references/presenter-ready.md") == (
+        REPO_ROOT / "docs/presenter-ready.md").read_text()
+    assert "references/presenter-ready.md" in _read_member("SKILL.md")
