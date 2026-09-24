@@ -69,10 +69,10 @@ The running example changes return-case status and stores a decision audit.
 It has **no financial settlement**: `approve_refund` does not issue a payment.
 That is the example's business operation, not a gateway limitation.
 
-### Four policy scenarios
+### Five policy scenarios
 
 The [public scenario tabs](production.html#workflow-in-action) illustrate these
-four paths. They are policy examples, not four separate architectures.
+five paths. They are policy examples, not five separate architectures.
 
 | Scenario | What is true about the request? | Where does it go? |
 |---|---|---|
@@ -80,8 +80,9 @@ four paths. They are policy examples, not four separate architectures.
 | **Blocked** | A policy condition fails. | Record denial; no business write. |
 | **Human review** | Policy requires a decision on this exact proposal. | Persist pending intent; resume only with a verified one-use grant and fresh checks. |
 | **Signed evidence** | This tool additionally requires corroborated purchase and amount. | Missing proof or proof for different inputs blocks before dispatch. Matching proof permits policy evaluation, not an automatic write. |
+| **User confirmation** | The requesting user must explicitly confirm the exact proposal outside the agent conversation. | Persist `pending_confirmation` without an effect; match the authenticated user and consume one-use authority before dispatch. Initial governed-gateway path; live acceptance remains unverified. |
 
-The last two can apply together. A supervisor's consent does not create purchase
+These requirements can apply together. A supervisor's consent does not create purchase
 proof; a signed purchase verification does not supply consent. If the case changes
 during review, the old proposal must not overwrite it. Sections 5–7 trace how the
 data binding, approval ledger and record revision enforce these distinct rules.
@@ -589,6 +590,91 @@ that database transaction.
 </details>
 
 ## 6. Human approval and safe resume
+
+### Requesting-user confirmation
+
+**Three separate questions:** did the requesting user consent to this operation,
+did an authorized third-party reviewer approve it, and what authentication
+assurance was established? None answers the other two. When confirmation and
+review are both required, **both decisions are required from different people**.
+Signed input evidence, policy and backend checks remain additional conditions.
+
+<details data-user-confirmation-contract>
+<summary>Wave1 integration, confirmation client and authentication assurance</summary>
+
+**Wave1 contract, not live evidence.** The initial supported integration target
+is the **MAF governed gateway**. GHCP is deferred; local native confirmation is
+unsupported. This is not a claim that every provider or deployed customer path
+works. Existing reviewer/default paths and unbound reads without ACS are unchanged.
+Invalid selected confirmation configuration fails closed, not back to "off."
+
+The signed registry optionally selects `confirmation_requirement` with
+`trigger: always | policy`, a configured `provider_profile`, and
+`max_age_seconds` no greater than **3600**. Required shared-service capability is
+`user-confirmation`. Omission preserves the existing behavior; `always` requires
+confirmation even for an otherwise allowed proposal. With the new `policy`
+selection, ACS escalation requires user confirmation alone **without reviewer
+roles**; when reviewer roles are configured, **both** obligations apply.
+Neither can override a denial or missing evidence. Without this new selection,
+existing escalation and reviewer behavior is unchanged.
+
+Before an action, the verified user registers an immutable request context
+binding the allowed workload, client, agent, action and operation. Its **opaque
+reference is not consent**. The agent/gateway retains the **workload principal**:
+this is **not OBO** and does not impersonate the user at the business backend.
+The gateway must validate that context, not accept user identity from agent text.
+
+The pending response carries `{status: pending_confirmation, confirmation_id,
+operation_id}` and has **no business effect**. The user acts outside the agent
+using an **authenticated confirmation client**. The first implementation is an
+**interactive CLI**: browser login/claims challenge establishes the matching user,
+then the client displays the exact proposal and requires explicit
+**transaction-digest typing** to confirm. Rejection remains a separate decision.
+The email landing page can supply exact client launch instructions, not consent.
+Viewing GET links and email scanners **never approve**. A confidential **web BFF**
+or browser confirmation portal is **not implemented**; a customer portal is a
+separate integration, not a shipped capability.
+
+Authority is server-held, **one-use with CAS** (compare-and-swap), and bound to the
+exact inputs, policy, trusted facts and authenticated subject. Expiry, rejection,
+changed scope/facts or a mismatched subject blocks the effect. Recheck after
+credential/transport waits; central authorization **audit ACK** and terminal
+checks must precede the backend call. Concurrent resume permits at most one
+effect. An **unknown** outcome retains the same **operation ID** for reconciliation;
+do not retry under a new ID. A completed replay returns the recorded result.
+For this example, the only write is the Cosmos return decision and business audit,
+not settlement.
+
+#### Notification, customer providers and employee step-up
+
+| Profile | What must be true | What it does not prove |
+|---|---|---|
+| Basic email notification | The matching authenticated user explicitly confirms the exact proposal in the separate confirmation client | Email is not MFA, identity proof by itself, or consent |
+| Optional employee Entra step-up | Actual MSAL interactive/browser flow obtains `Governance.Confirm`; a claims challenge requests the configured `acrs` authentication context | A matching context alone is not proof of MFA |
+| Customer/B2C provider seam | A configured, verified provider supplies the required subject and assurance contract | Providers are configurable, **not all implemented**; no blanket B2C compatibility claim |
+
+An authentication context can have **no Conditional Access policy** attached.
+For an Entra assurance claim, the backend must verify the **active and applicable
+CA mapping** and required controls, not simply find `acrs` in a token. Unknown
+conditions, filters, exclusions or unsupported mappings must **fail closed**.
+Authentication and per-operation consent remain independent.
+
+A **new per-transaction MFA prompt is not guaranteed**: existing sessions can
+satisfy controls, and "every time" has a **five-minute tolerance**. Token `iat` is
+the token issue time, not a factor-authentication timestamp. Confirmation is
+still explicit for every operation. This is not a transaction signature and
+makes no automatic **PSD2/SCA** compliance claim.
+
+First-party feasibility and limits:
+[Conditional Access authentication context](https://learn.microsoft.com/entra/identity-platform/developer-guide-conditional-access-authentication-context)
+and [session lifetime / sign-in frequency](https://learn.microsoft.com/entra/identity/conditional-access/concept-session-lifetime).
+These sources establish platform behavior, not this deployment's acceptance.
+Fresh basic-confirmation, assurance-policy and business-effect evidence must be
+collected separately for the actual configured runtime and provider.
+
+</details>
+
+### Third-party reviewer approval
 
 Review is an additional condition on the proposal traced above. A pending
 response records an intent, not consent. The gateway's approval service

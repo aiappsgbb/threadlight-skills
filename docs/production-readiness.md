@@ -80,6 +80,30 @@ not “51 passed”.
 
 ### Evidence and migration
 
+**Requesting-user confirmation (Wave1):** a selected confirmation requirement
+needs its own evidence, separate from third-party reviewer approval and
+authentication assurance. The initial target is the MAF governed gateway;
+GHCP is deferred and local native confirmation is unsupported. Live acceptance
+remains **unverified**. Read the
+[requesting-user confirmation contract](agent-governance-deep-dive.md#requesting-user-confirmation)
+before selecting a provider; B2C providers are configurable, not all implemented.
+The initial authenticated confirmation client is an interactive CLI with browser
+login and explicit transaction-digest typing, not a shipped confidential web BFF.
+Email notification is not MFA or consent. Optional Entra authentication context
+requires verified active/applicable Conditional Access mapping and controls;
+it does not guarantee a new MFA prompt per transaction.
+
+Evidence must join the authenticated user's immutable context, workload/client/
+agent/action/operation binding, exact proposal/policy/facts, one-use authority,
+freshness, audit ACK and independently observed backend outcome.
+`pending_confirmation` has no effect; rejected, expired, mismatched or changed
+requests have no business write. Exercise concurrent resume and terminal replay;
+unknown results keep their operation ID for reconciliation.
+When review and confirmation are selected together, both are required from
+different people. Existing defaults, signed evidence and unbound reads remain
+unchanged; invalid selected configuration is not "off." A page, email, local test
+or reserved noop receipt is not deployment-bound business-confirmation proof.
+
 `specs/governance-manifest.json` (`threadlight-governance-manifest/v1`) is consumed
 by the same strict validator/readiness evaluator in production-ready, evidence_gate
 and Auto. Keep offline inventory, local conformance and live evidence separate.

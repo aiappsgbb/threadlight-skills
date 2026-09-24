@@ -132,6 +132,8 @@ test('scenario tabs and progress support keyboard selection with visible path st
   expect(await flow.locator('[data-flow-edge][data-on-path="true"]').evaluateAll(nodes =>
     nodes.map(node => node.dataset.flowEdge))).toEqual(['proposal:checks', 'checks:ack', 'ack:deny']);
   await page.keyboard.press('End');
+  await expect(flow.getByRole('tab', { name: 'User confirmation', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
   await expect(flow.getByRole('tab', { name: 'Signed evidence', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowLeft');
   await expect(flow.getByRole('tab', { name: 'Human review', exact: true })).toBeFocused();
@@ -142,6 +144,88 @@ test('scenario tabs and progress support keyboard selection with visible path st
   await expect(flow).toHaveAttribute('data-node', 'verify');
   await flow.getByRole('button', { name: 'Previous step', exact: true }).click();
   await expect(flow).toHaveAttribute('data-node', 'review');
+});
+
+test('requesting-user confirmation pauses and each explicit outcome locks the correct path', async ({ page }, testInfo) => {
+  const requests = [];
+  page.on('request', request => requests.push({ method: request.method(), url: request.url() }));
+  await page.clock.install();
+  await open(page);
+  const flow = page.locator(section);
+  for (const [choice, label, terminal] of [
+    ['confirmed', 'Show confirmed example', 'result'],
+    ['rejected', 'Show rejected example', 'deny'],
+    ['expired', 'Show expiry example', 'deny'],
+    ['changed', 'Show changed-input example', 'deny'],
+  ]) {
+    await flow.getByRole('tab', { name: 'User confirmation', exact: true }).click();
+    await flow.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.clock.runFor(16000);
+    await expect(flow).toHaveAttribute('data-node', 'confirm');
+    await expect(flow).toHaveAttribute('data-playing', 'false');
+    await expect(flow.locator('[data-flow-actor]')).toHaveText('Requesting user');
+    await expect(flow.locator('[data-flow-control="next"]')).toBeDisabled();
+    await expect(flow.locator('[data-flow-step="4"]')).toBeDisabled();
+    await expect(flow.getByRole('button', { name: 'Play', exact: true })).toBeDisabled();
+    await page.clock.runFor(20000);
+    await expect(flow).toHaveAttribute('data-node', 'confirm');
+    await expect(flow.locator('[data-flow-node="review"]')).toBeHidden();
+    await expect(flow.locator('[data-flow-approval]')).toBeHidden();
+    await expect(flow.locator('[data-flow-confirmation]')).toBeVisible();
+    const choose = flow.getByRole('button', { name: label, exact: true });
+    await choose.focus();
+    await choose.press('Enter');
+    await expect(flow).toHaveAttribute('data-confirmation-case', choice);
+    await expect(flow).toHaveAttribute('data-node', 'confirmation-verify');
+    await expect(flow.locator('[data-flow-control="next"]')).toBeFocused();
+    if (choice === 'confirmed') {
+      await flow.getByRole('button', { name: 'Previous step', exact: true }).click();
+      await expect(flow.locator('[data-flow-step="4"]')).toBeDisabled();
+      await choose.click();
+    } else {
+      await expect(flow.locator('[data-flow-edge="ack:effect"]')).toHaveAttribute('hidden', '');
+      await expect(flow.locator('[data-flow-node="effect"]')).toHaveAttribute('data-used', 'false');
+    }
+    // Keep the player visible so its existing offscreen pause is not mistaken for a stalled path.
+    await flow.locator('[data-flow-control="play"]').scrollIntoViewIfNeeded();
+    await flow.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.clock.runFor(20000);
+    await expect(flow).toHaveAttribute('data-node', terminal);
+    if (choice !== 'confirmed') await expect(flow.locator('[data-flow-output]')).toHaveText('No business write');
+  }
+  expect(requests.filter(request => request.method !== 'GET')).toEqual([]);
+  expect(requests.filter(request => /\/(?:confirmations|approvals|api)\//.test(request.url))).toEqual([]);
+  const output = process.env.THREADLIGHT_SCREENSHOT_DIR;
+  if (output) {
+    mkdirSync(output, { recursive: true });
+    await flow.screenshot({ path: path.join(output, `${testInfo.project.name}-confirmation-rejected.png`) });
+  }
+});
+
+test('confirmation deep link, contrast and reduced-motion keyboard path are usable', async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/production.html#user-confirmation');
+  const flow = page.locator(section);
+  await expect(flow).toBeVisible();
+  await expect(flow).toHaveAttribute('data-scenario', 'confirmation');
+  await flow.getByRole('button', { name: 'Voice on', exact: true }).click();
+  await expect(flow.getByRole('button', { name: 'Play', exact: true })).toBeDisabled();
+  const next = flow.getByRole('button', { name: 'Next step', exact: true });
+  await next.focus();
+  for (let index = 0; index < 3; index++) await next.press('Enter');
+  await expect(flow).toHaveAttribute('data-node', 'confirm');
+  const confirm = flow.getByRole('button', { name: 'Show confirmed example', exact: true });
+  await confirm.focus();
+  expect(await confirm.evaluate(node => getComputedStyle(node).outlineStyle)).not.toBe('none');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
+  const violations = (await new AxeBuilder({ page }).include(section)
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
+  expect(violations).toEqual([]);
+  const output = process.env.THREADLIGHT_SCREENSHOT_DIR;
+  if (output) {
+    mkdirSync(output, { recursive: true });
+    await flow.screenshot({ path: path.join(output, `${testInfo.project.name}-confirmation.png`) });
+  }
 });
 
 for (const theme of ['light', 'dark']) {

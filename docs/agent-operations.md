@@ -101,6 +101,34 @@ Report `enforced`, `observed`, `unbound`, `unverified`, `unsupported` and
 
 ### Artifact map
 
+**Wave1 requesting-user confirmation is a separate opt-in, not hosted proof.**
+The [confirmation contract](agent-governance-deep-dive.md#requesting-user-confirmation)
+targets the MAF governed gateway; GHCP is deferred and local native support is
+unsupported for this feature. The pinned command examples below predate this
+addition: do not infer confirmation availability from those older revisions.
+Check the actual installed registry, gateway and control-plane implementation.
+
+Select the signed `confirmation_requirement` (`trigger: always | policy`,
+`provider_profile`, `max_age_seconds <= 3600`) and required `user-confirmation`
+service capability. Register the authenticated user's immutable context before
+the operation; its opaque reference is not consent or OBO. Preserve the workload
+principal. The initial authenticated confirmation client is an interactive CLI:
+browser login/claims challenge, exact proposal display and transaction-digest
+typing. A confidential web BFF/browser portal is not implemented.
+Basic email notification plus matching authenticated explicit consent is not MFA.
+Optional Entra step-up needs the actual MSAL claims-challenge flow and
+verified active/applicable Conditional Access controls; configurable customer/B2C
+providers are not all implemented.
+
+Collect separate proof for `pending_confirmation` with **no effect**, explicit
+confirm/reject by the matching user, expiry, changed inputs/facts/subject,
+concurrent resume, one-use CAS and pre-effect audit ACK. If reviewer approval is
+also selected, require both decisions from different people. With the new
+policy-driven selection, ACS escalation without reviewer roles requires user
+confirmation alone; configured reviewer roles require both. Retain the operation
+ID on unknown outcomes; no new-ID retry. Existing noop, review and signed-evidence
+receipts cannot establish this new path. Live confirmation remains **unverified**.
+
 | Artifact in the target project | What it contributes | What it cannot establish alone |
 |---|---|---|
 | `specs/governance-manifest.json` | Current `threadlight-governance-manifest/v1` per-binding inventory and evidence | Enforcement from a declared policy |

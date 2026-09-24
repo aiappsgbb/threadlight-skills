@@ -23,7 +23,7 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #workflow-in-action [hidden] { display: none; }
 #workflow-in-action [data-flow-controls][hidden] { display: none; }
 #workflow-in-action .wf-icon { width: 22px; height: 22px; color: var(--ink-0); flex-shrink: 0; }
-#workflow-in-action .wf-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+#workflow-in-action .wf-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
 #workflow-in-action button { min-height: 44px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--ink-0); background: var(--bg-1); font: 13px var(--sans); cursor: pointer; }
 #workflow-in-action button:hover:not(:disabled) { background: var(--bg-2); }
 #workflow-in-action button:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 3px; }
@@ -72,11 +72,19 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #workflow-in-action .wf-jwt-fields dd { margin: 0; }
 #workflow-in-action .wf-jwt pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px; background: var(--bg-2); color: var(--ink-0); border: 1px solid var(--line); }
 #workflow-in-action .wf-business-proof,
+#workflow-in-action .wf-confirmation-example,
 #workflow-in-action .wf-approval-example { padding-block: 16px; margin-top: 12px; border-top: 1px solid var(--line); color: var(--ink-1); font: 14px/1.6 var(--sans); }
 #workflow-in-action .wf-business-proof h4,
+#workflow-in-action .wf-confirmation-example h4,
 #workflow-in-action .wf-approval-example h4 { margin: 0 0 8px; font: 600 17px/1.4 var(--sans); color: var(--ink-0); }
 #workflow-in-action .wf-business-proof p,
+#workflow-in-action .wf-confirmation-example p,
 #workflow-in-action .wf-approval-example p { max-width: 75ch; margin: 8px 0; }
+#workflow-in-action .wf-confirmation-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+#workflow-in-action .wf-confirmation-choices button { padding: 8px 12px; }
+#workflow-in-action .wf-confirmation-providers { margin-block: 16px; padding-block: 8px; border-block: 1px solid var(--line); font-size: 13px; }
+#workflow-in-action .wf-confirmation-example a { color: var(--ink-0); text-underline-offset: 3px; }
+#workflow-in-action .wf-confirmation-example a:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 3px; }
 #workflow-in-action .wf-fact-record { margin: 12px 0 16px; }
 #workflow-in-action .wf-fact-record > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; padding-block: 8px; border-bottom: 1px solid var(--line); }
 #workflow-in-action .wf-fact-record dt { font-weight: 600; color: var(--ink-0); }
@@ -100,6 +108,7 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #workflow-in-action .wf-node[data-used="false"][data-flow-node="result"] .wf-label { transform: translate(36px, -31px); font-size: 12px; }
 #workflow-in-action .wf-node[data-used="false"].wf-stop .wf-label { transform: translateY(-11px); font-size: 12px; }
 #workflow-in-action[data-scenario="supervisor"] [data-flow-node="ack"] .wf-number,
+#workflow-in-action[data-scenario="confirmation"] [data-flow-node="ack"] .wf-number,
 #workflow-in-action[data-scenario="invalid"] [data-flow-node="ack"] .wf-number { display: none; }
 #workflow-in-action .wf-progress { display: flex; justify-content: space-between; gap: 4px; list-style: none; padding: 0; margin: 4px 0 8px; }
 #workflow-in-action .wf-progress li { flex: 1 1 0; min-width: 0; }
@@ -175,6 +184,7 @@ html:not(.js):has(.governance-page) { scroll-behavior: auto; }
 #actions-topic [data-authority-label] { font-size: 13px; }
 #actions-topic .wf-stop .wf-label,
 #actions-topic [data-flow-node="review"] .wf-label,
+#actions-topic [data-flow-node="confirm"] .wf-label,
 #actions-topic [data-flow-node="fresh"] .wf-label { font-size: 15px; }
 
 .governance-page .wb-wrap { max-width: 1040px; }

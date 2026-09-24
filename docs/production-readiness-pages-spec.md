@@ -21,7 +21,7 @@ human decisions, controlled execution, audit, business outcomes and clear CTAs.
 They describe configurable capabilities, not a claim that every customer
 deployment or notification/approval integration has already been validated.
 
-Action-governance explanation and the interactive allowed/blocked/human-review
+Action-governance explanation and the interactive allowed/blocked/human-review/signed-evidence/user-confirmation
 diagram belong in Production's action area, alongside five concise actor roles.
 Distinguish Citadel/APIM model access from the governed MCP effect gateway;
 authenticated unbound reads may go directly to the business API.
@@ -58,14 +58,16 @@ passes are not silently reassigned to changed content.
 
 ### Action walkthrough playback
 
-The four action scenarios support explicit Play/Pause and prerecorded English
+The five action scenarios support explicit Play/Pause and prerecorded English
 narration, enabled by default but never autoplaying. A scene-setting paragraph
 introduces the return and selected scenario before the steps begin. Each step
 then explains both the action and its purpose. Subtitles remain visible in a
 full-width band, including when muted; Play, Pause and Replay have matching icons.
 A single marker follows the current arrow; reduced motion keeps static highlights instead.
 Voice playback advances on clip completion, stops when the page/topic is hidden
-and pauses at human review: **no automatic approval**. Audio failures stop
+and pauses at human review: **no automatic approval**. Requesting-user confirmation
+has a separate pause: **no automatic confirmation**, even when narration ends.
+Audio failures stop
 playback with a visible message; the silent path remains available.
 The case introduction is separate from the policy steps, can be skipped by
 manual navigation, and returns on Replay or a scenario change. The player remains
@@ -82,6 +84,44 @@ key or customer data is used. Clips are staged before replacing the previous set
 The browser only plays shipped MP3s, never calls a speech service. Verify offline
 with `node scripts/render-governance-narration.mjs --check`.
 Existing home-page narration and historical evidence remain untouched.
+
+### Requesting-user confirmation addition (Wave1)
+
+The fifth tab, **User confirmation**, preserves the existing theme, layout and
+four prior paths. Its nine-step allowed narrative uses a distinct **User** node
+at the bottom handoff position, never a relabeled Outlook supervisor. Hide the
+review node and its edges only for this scenario. Retain mobile path labels,
+keyboard tab navigation, visible focus, reduced-motion and no-JS guidance.
+
+The user decision is deliberately illustrative: show the exact return proposal,
+pause playback, lock later steps and disable Next until a person chooses an
+example. Confirmed continues through matching-subject verification, fresh checks,
+one-use consumption and audit ACK before the Cosmos decision/audit write.
+Rejected, expired and changed-input examples end without a business write.
+Returning to the decision resets the gate; no timers, audio events or progress
+buttons may infer consent. Buttons never send network calls or collect real
+identity. Opening a page or GET link, including scanners, never approves.
+
+Explain basic email notification plus authenticated explicit confirmation
+(**email is not MFA**), optional employee Entra authentication-context step-up
+and configurable customer/B2C providers (**not all implemented**).
+The initial authenticated confirmation client is an interactive CLI: browser
+login/claims challenge, exact proposal display and explicit transaction-digest
+typing. An email landing page supplies launch instructions. A confidential web
+BFF/browser confirmation portal is not implemented.
+Requester consent, reviewer authority and authentication assurance are distinct.
+Entra needs active/applicable CA controls, not just `acrs`; a new MFA prompt per
+transaction is not guaranteed. Initial MAF governed gateway scope is
+**not live evidence**; GHCP is deferred and local native confirmation unsupported.
+Existing signed evidence, default/reviewer paths and unbound reads are unchanged.
+
+Use new requester-specific narration; **preserve all existing narration clips**
+and their hashes. Run `node scripts/render-governance-narration.mjs --missing`
+for new public text; it verifies existing script/profile/hash entries and refuses
+to silently regenerate changed clips. Follow `render-governance-narration.mjs`,
+keep its manifest complete, and refresh workflow JS/CSS references with
+`python3 docs/ci/sync_cache_bust.py --write`. This presentation addition does not
+borrow old hosted receipts or alter the byte-frozen workbook/pinned history.
 
 ### Architecture reader and Production-ready visual
 

@@ -114,7 +114,9 @@ test('remaining captions preserve conditional enforcement, private leases and wo
   const source = read('production.html');
   assert.doesNotMatch(text(source), /amber turns green|every tool call passes AGT|Nothing reaches the spoke unverified|never fails the build|Every check becomes a gate/i);
   assert.match(source, /href="https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[a-f0-9]+\/docs\/agent-governance-deep-dive\.md"/);
-  assert.doesNotMatch(source, /blob\/main\/docs\/(?:agent-governance-deep-dive|governed-returns-validation)\.md/);
+  const confirmationLink = 'https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-governance-deep-dive.md#requesting-user-confirmation';
+  assert.equal(source.split(confirmationLink).length - 1, 1);
+  assert.doesNotMatch(source.replace(confirmationLink, ''), /blob\/main\/docs\/(?:agent-governance-deep-dive|governed-returns-validation)\.md/);
   assert.doesNotMatch(source, /blob\/main\/skills\/threadlight-deploy\/references\/governance\/returns_mcp_backend\.py/);
 });
 
