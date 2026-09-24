@@ -519,6 +519,7 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-govern/tests/test_user_confirmation.py",
              "skills/threadlight-govern/tests/test_confirmation_gateway.py",
              "skills/threadlight-govern/tests/test_confirmation_providers.py",
+             "skills/threadlight-govern/tests/test_confirmation_integration_fixes.py",
              "skills/threadlight-govern/tests/test_confirmation_user_client.py",
              "skills/threadlight-govern/tests/test_adversarial_evidence.py",
              "tests/ci/test_hosted_bootstrap_lifecycle.py",
