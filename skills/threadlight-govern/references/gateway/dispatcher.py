@@ -33,6 +33,9 @@ from govern_control_plane.auth import Unauthorized
 from govern_control_plane.attestations import (
     EVIDENCE_ARGUMENT, EvidenceError, EvidenceRequirement, verify_attestation,
 )
+from govern_control_plane.confirmation import (
+    CONTEXT_ARGUMENT, ConfirmationIntent, ConfirmationRequirement, ConfirmationUnavailable,
+)
 from govern_control_plane.models import (
     ApprovalContext, ApprovalRequest, DecisionReceipt, Digest, Identifier, ObjectId, StrictModel,
     SignedBundle, canonical, envelope_digest, parse, strict_json,
@@ -145,16 +148,28 @@ class Action(StrictModel):
     probe_contract: ProbeContract | None = None
     evidence_requirement: EvidenceRequirement | None = Field(
         default=None, exclude_if=lambda value: value is None)
+    confirmation_requirement: ConfirmationRequirement | None = Field(
+        default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="before")
     @classmethod
     def explicit_evidence(cls, value):
         if isinstance(value, dict) and "evidence_requirement" in value and value["evidence_requirement"] is None:
             raise ValueError("evidence_configuration_required")
+        if isinstance(value, dict) and "confirmation_requirement" in value and value["confirmation_requirement"] is None:
+            raise ValueError("confirmation_configuration_required")
         return value
 
     @model_validator(mode="after")
     def validate_action(self):
+        if self.confirmation_requirement is not None:
+            if self.probe_safe or self.name == "governance_probe_noop":
+                raise ValueError("confirmation_not_probe_proof")
+            if self.approval_roles and self.approval_mode != "deferred":
+                raise ValueError("combined_confirmation_requires_deferred_review")
+            if any(name in self.input_schema.get("properties", {}) for name in (
+                    CONTEXT_ARGUMENT, "governance_operation_id")):
+                raise ValueError("reserved_confirmation_argument")
         if self.evidence_requirement is not None:
             if self.probe_safe:
                 raise ValueError("business_evidence_not_probe_proof")
@@ -446,7 +461,7 @@ class DownstreamClient:
 class GovernedDispatcher:
     def __init__(self, *, policy, auth, store, receipts: ReceiptService, downstream,
                  approvals: ApprovalService | None, safe_provider,
-                 approval_principal, approval_agent_id, timeout=15.0, probes=None):
+                 approval_principal, approval_agent_id, timeout=15.0, probes=None, confirmations=None):
         if not 0 < timeout <= 30:
             raise ValueError("invalid_timeout")
         self.policy, self.auth, self.store, self.receipts = policy, auth, store, receipts
@@ -454,13 +469,15 @@ class GovernedDispatcher:
         self.approval_principal, self.approval_agent_id = approval_principal, approval_agent_id
         self.timeout = timeout
         self.probes = probes
+        self.confirmations = confirmations
 
     def approval_context(self, action, *, tenant):
         return ApprovalContext(
             principal=self.approval_principal, agent_id=self.approval_agent_id,
             tenant=tenant, allowed_roles=tuple(action.approval_roles))
 
-    async def dispatch(self, *, authorization, action, arguments, idempotency_key, evidence_token=None):
+    async def dispatch(self, *, authorization, action, arguments, idempotency_key, evidence_token=None,
+                       requesting_user_context=None):
         attempted = False
         probe = None
         try:
@@ -474,6 +491,11 @@ class GovernedDispatcher:
                         or identity.workload.agent_id != registry.deployment.agent_id):
                     raise GateError("scope_denied", "blocked")
                 parse(Identifier, canonical(idempotency_key))
+                if selected.confirmation_requirement is not None and requesting_user_context is not None:
+                    from govern_control_plane.models import Nonce
+                    parse(Nonce, canonical(requesting_user_context))
+                elif selected.confirmation_requirement is None and requesting_user_context is not None:
+                    raise GateError("confirmation_not_selected", "blocked")
                 arguments = validated(arguments, selected.input_schema)
                 facts = {
                     "tenant": identity.tenant, "subject": identity.subject, "client": identity.client,
@@ -481,6 +503,8 @@ class GovernedDispatcher:
                     "deployment": registry.deployment.model_dump(mode="json"),
                 }
                 input_hash = digest({"facts": facts, "arguments": arguments})
+                if requesting_user_context is not None:
+                    input_hash = digest({"input_hash": input_hash, "context_ref": requesting_user_context})
                 request_facts_hash = digest(facts)
                 action_hash = input_hash
                 self.policy.fresh()
@@ -511,8 +535,8 @@ class GovernedDispatcher:
                             or existing.get("request_facts_hash", existing["facts_hash"]) != request_facts_hash):
                         raise GateError("idempotency_conflict", "blocked")
                     if existing["state"] == "rejected":
-                        return {"status": "blocked", "reason_code": "approval_denied"}
-                    if existing["state"] not in ("completed", "awaiting_approval"):
+                        return {"status": "blocked", "reason_code": existing.get("reason_code", "approval_denied")}
+                    if existing["state"] not in ("completed", "awaiting_approval", "awaiting_confirmation"):
                         raise GateError("outcome_unknown")
                     if existing["state"] == "awaiting_approval" and selected.approval_mode != "deferred":
                         raise GateError("outcome_unknown")
@@ -549,6 +573,14 @@ class GovernedDispatcher:
                     if reply["receipt_id"] != existing["outcome_reference"]:
                         raise GateError("outcome_unknown")
                     return await self.output(selected, enforced, facts, reply, guard)
+                context_expiry = None
+                if requesting_user_context is not None:
+                    if self.confirmations is None:
+                        raise GateError("confirmation_unavailable")
+                    context_expiry = await self.confirmations.context(
+                        requesting_user_context, facts=facts, operation_id=idempotency_key,
+                        provider_profile=selected.confirmation_requirement.provider_profile)
+                    guard()
                 evidence = None
                 if selected.evidence_requirement is not None:
                     try:
@@ -592,11 +624,73 @@ class GovernedDispatcher:
                 if evidence is not None and enforced != arguments:
                     raise GateError("evidence_arguments_changed", "blocked")
                 action_hash = digest({"facts": facts, "arguments": enforced})
+                confirmation_intent = None
+                confirmation_active = selected.confirmation_requirement is not None and (
+                    selected.confirmation_requirement.trigger == "always" or decision == "escalate"
+                    or existing is not None and "confirmation_intent" in existing)
+                review_required = (decision == "escalate"
+                    or bool(selected.approval_roles) and selected.approval_requirement == "always"
+                    or existing is not None and existing["state"] == "awaiting_approval")
+                # ACS escalation retains independent-supervisor semantics.
+                if decision == "escalate" and not selected.approval_roles:
+                    raise GateError("approval_unavailable")
+                if confirmation_active:
+                    if requesting_user_context is None:
+                        raise GateError("confirmation_context_required", "blocked")
+                    if self.confirmations is None:
+                        raise GateError("confirmation_unavailable")
+                    if existing is None:
+                        expiry = min(context_expiry, self.policy.expires_at, datetime.now(timezone.utc) + timedelta(
+                            seconds=selected.confirmation_requirement.max_age_seconds))
+                        confirmation_intent = ConfirmationIntent(
+                            confirmation_id=uuid.uuid4().hex, context_ref=requesting_user_context,
+                            operation_id=idempotency_key, principal=self.approval_principal,
+                            tenant=identity.tenant, agent_id=registry.deployment.agent_id, action=selected.name,
+                            action_hash=action_hash, facts_hash=digest(facts), safe_hash=safe_hash,
+                            policy_hash=self.policy.digest, policy_expires_at=self.policy.expires_at,
+                            expires_at=expiry, requirement=selected.confirmation_requirement,
+                            reviewer_required=review_required)
+                        pending = {"state": "awaiting_confirmation", "input_hash": input_hash,
+                            "action_hash": action_hash, "facts_hash": digest(facts), "safe_hash": safe_hash,
+                            "confirmation_intent": confirmation_intent.model_dump(mode="json"),
+                            "request_facts_hash": request_facts_hash,
+                            **({"evidence_fingerprint": evidence_digest} if evidence else {}),
+                            "receipt_id": None, "outcome_reference": None}
+                        try:
+                            await self.store.create(scope, key, pending)
+                        except Conflict:
+                            raise GateError("outcome_unknown") from None
+                        existing, existing_etag = await self.store.read(scope, key)
+                        if existing != pending:
+                            raise GateError("outcome_unknown")
+                    confirmation_intent = parse(ConfirmationIntent, canonical(existing["confirmation_intent"]))
+                    if (confirmation_intent.context_ref != requesting_user_context
+                            or confirmation_intent.operation_id != idempotency_key
+                            or confirmation_intent.action_hash != action_hash
+                            or confirmation_intent.facts_hash != digest(facts)
+                            or confirmation_intent.safe_hash != safe_hash
+                            or confirmation_intent.policy_hash != self.policy.digest
+                            or confirmation_intent.policy_expires_at != self.policy.expires_at
+                            or confirmation_intent.requirement != selected.confirmation_requirement
+                            or confirmation_intent.reviewer_required != review_required):
+                        raise GateError("confirmation_context_changed", "blocked")
+                    if confirmation_intent.expires_at <= datetime.now(timezone.utc):
+                        raise GateError("confirmation_expired", "blocked")
+                    confirmation = await self.confirmations.resolve(
+                        confirmation_intent, facts=facts, arguments=enforced)
+                    guard()
+                    if confirmation["status"] == "pending_confirmation":
+                        return confirmation
+                    if confirmation["status"] == "rejected":
+                        await self.audit(selected, action_hash, key, "deny", "confirmation_denied",
+                                         evidence_fingerprint=evidence_digest)
+                        await self.store.replace(scope, key, {**existing, "state": "rejected",
+                            "reason_code": "confirmation_denied"}, existing_etag)
+                        return {"status": "blocked", "reason_code": "confirmation_denied"}
                 approval_expiry = None
                 deferred = False
-                if (decision == "escalate"
-                        or selected.approval_roles and selected.approval_requirement == "always"
-                        or existing is not None and existing["state"] == "awaiting_approval"):
+                grant = None
+                if review_required:
                     if self.approvals is None or not selected.approval_roles:
                         raise GateError("approval_unavailable")
                     deferred = selected.approval_mode == "deferred"
@@ -612,8 +706,9 @@ class GovernedDispatcher:
                         if not callable(getattr(self.approvals, "request_pending", None)):
                             raise GateError("deferred_approval_unavailable")
                         safe_hash = digest(safe)
-                        if existing is None:
+                        if existing is None or existing["state"] == "awaiting_confirmation":
                             pending = {
+                                **(existing or {}),
                                 "state": "awaiting_approval", "input_hash": input_hash, "action_hash": action_hash,
                                 "facts_hash": digest(facts), "safe_hash": safe_hash,
                                 **({"request_facts_hash": request_facts_hash,
@@ -622,7 +717,10 @@ class GovernedDispatcher:
                                 "receipt_id": None, "outcome_reference": None,
                             }
                             try:
-                                await self.store.create(scope, key, pending)
+                                if existing is None:
+                                    await self.store.create(scope, key, pending)
+                                else:
+                                    await self.store.replace(scope, key, pending, existing_etag)
                             except Conflict:
                                 raise GateError("outcome_unknown") from None
                             existing, existing_etag = await self.store.read(scope, key)
@@ -679,13 +777,18 @@ class GovernedDispatcher:
                             await self.store.replace(scope, key, {**existing, "state": "rejected"}, existing_etag)
                         return {"status": "blocked", "reason_code": "approval_denied"}
                     approval_expiry = expiry
+                if confirmation_intent is not None:
+                    await self.confirmations.resolve(
+                        confirmation_intent, operation="consume", approval_grant=grant)
+                    guard()
                 guard()
                 record = {"state": "pending", "input_hash": input_hash, "action_hash": action_hash,
                           "facts_hash": digest(facts), "receipt_id": None, "outcome_reference": None,
                           **({"request_facts_hash": request_facts_hash,
-                              "evidence_fingerprint": evidence_digest} if evidence else {})}
+                              "evidence_fingerprint": evidence_digest} if evidence else {}),
+                          **({"request_facts_hash": request_facts_hash} if confirmation_intent else {})}
                 try:
-                    if deferred:
+                    if deferred or confirmation_intent is not None:
                         await self.store.replace(scope, key, record, existing_etag)
                     else:
                         await self.store.create(scope, key, record)
@@ -709,16 +812,29 @@ class GovernedDispatcher:
                     guard()
                     if approval_expiry and datetime.now(timezone.utc) >= approval_expiry:
                         raise GateError("approval_expired")
-                def effect_check():
+                async def effect_check():
                     effect_guard()
                     if digest(current_safe()) != safe_hash:
                         raise GateError("approval_context_changed", "blocked")
+                    if confirmation_intent is not None:
+                        if confirmation_intent.expires_at <= datetime.now(timezone.utc):
+                            raise GateError("confirmation_expired", "blocked")
+                        await self.confirmations.resolve(
+                            confirmation_intent, operation="validate", approval_grant=grant)
+                        fresh_decision, fresh_enforced = await self.policy.evaluate(
+                            "pre_tool_call", selected, arguments, current_safe())
+                        effect_guard()
+                        if (fresh_decision != decision or fresh_enforced != enforced
+                                or digest(current_safe()) != safe_hash
+                                or confirmation_intent.expires_at <= datetime.now(timezone.utc)):
+                            raise GateError("confirmation_context_changed", "blocked")
                 attempted = True
                 reply = await self.downstream.request(
                     action=selected, arguments=enforced, key=key, action_hash=action_hash,
                     provenance=receipt_id, facts=facts, guard=guard if deferred else effect_guard,
                     **({"on_dispatch": lambda: self.probes.dispatch(probe)} if probe else {}),
-                    **({"effect_check": effect_check} if deferred or evidence is not None else {}))
+                    **({"effect_check": effect_check} if deferred or evidence is not None
+                       or confirmation_intent is not None else {}))
                 guard()
                 current, etag = await self.store.read(scope, key)
                 if current != record:
@@ -736,6 +852,8 @@ class GovernedDispatcher:
             return {"status": "blocked", "reason_code": "authentication_denied"}
         except EvidenceError as error:
             return {"status": "blocked", "reason_code": str(error)}
+        except ConfirmationUnavailable as error:
+            return {"status": "unavailable", "reason_code": error.reason}
         except GateError as error:
             return {"status": error.status, "reason_code": error.reason,
                     **({"status_code": 409} if error.reason == "idempotency_conflict" else {})}

@@ -25,6 +25,11 @@ from .models import (
 )
 from .storage import AzureStore, BundleSigner, Conflict, KeyVaultSigner, Missing, Store
 from .outlook import NativeOutlook, OutlookConfiguration, OutlookUnavailable
+from .confirmation import (
+    ConfirmationConfiguration, ConfirmationDecision, ConfirmationOperation, ConfirmationService,
+    ConfirmationUnavailable, ContextLookup, ContextRequest, EphemeralConfirmationStore, ExplicitConsentProvider,
+)
+from .confirmation_entra import ClaimsChallenge, EntraConditionalAccess
 
 
 class Forbidden(Exception):
@@ -33,9 +38,10 @@ class Forbidden(Exception):
 
 class ControlPlane:
     def __init__(self, settings: Settings, store: Store, signer: BundleSigner,
-                 *, outlook: NativeOutlook | None = None):
+                 *, outlook: NativeOutlook | None = None, confirmation: ConfirmationService | None = None):
         self.settings, self.store, self.signer = settings, store, signer
         self.outlook = outlook
+        self.confirmation = confirmation
 
     def now(self):
         return datetime.now(timezone.utc)
@@ -268,6 +274,8 @@ class AzureConfiguration(Settings):
     cosmos_container: Identifier
     outlook_approval: OutlookConfiguration | None = Field(
         default=None, exclude_if=lambda value: value is None)
+    confirmation: ConfirmationConfiguration | None = Field(
+        default=None, exclude_if=lambda value: value is None)
 
 
 def configure_logging():
@@ -338,6 +346,18 @@ async def production():
             service = ControlPlane(settings, store, KeyVaultSigner(crypto, key_client=keys),
                 outlook=NativeOutlook(settings.outlook_approval, credential, http)
                 if settings.outlook_approval is not None else None)
+            if settings.confirmation is not None:
+                if settings.confirmation.cosmos_container == settings.cosmos_container:
+                    raise ValueError("separate_confirmation_container_required")
+                confirmation_store = EphemeralConfirmationStore(
+                    None, cosmos.get_database_client(settings.cosmos_database)
+                    .get_container_client(settings.confirmation.cosmos_container),
+                    account_reader=cosmos._get_database_account)
+                await confirmation_store.health()
+                service.confirmation = ConfirmationService(
+                    settings.confirmation, confirmation_store, credential=credential, http=http,
+                    provider=ExplicitConsentProvider(EntraConditionalAccess(
+                        tenant=settings.tenant_id, issuer=settings.issuer, credential=credential, http=http)))
             await store.health()
             await service.signer.health()
             await auth.health()
@@ -409,19 +429,23 @@ def create_app(*, service=None, auth=None):
     async def invalid_request(request, exception):
         return JSONResponse({"error": "invalid_request"}, 422)
 
-    async def dispatch(request, action):
+    async def dispatch(request, action, *, authenticate=True):
         current, authority = app.state.service, app.state.auth
         if current is None or authority is None:
             return JSONResponse({"error": "unavailable"}, 503)
         try:
             async with asyncio.timeout(current.settings.request_timeout):
-                identity = await authority.authenticate(request.headers.get("authorization"))
+                identity = await authority.authenticate(request.headers.get("authorization")) if authenticate else None
                 result = await action(current, identity)
                 if isinstance(result, tuple):
                     status, result = result
                 else:
                     status = 200
-                return JSONResponse(content=json.loads(canonical(result)), status_code=status)
+                return JSONResponse(content=json.loads(canonical(result)), status_code=status,
+                    headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+        except ClaimsChallenge as error:
+            return JSONResponse({"error": error.reason}, 401,
+                                headers={"WWW-Authenticate": error.header, "Cache-Control": "no-store"})
         except Unauthorized:
             return JSONResponse({"error": "unauthorized"}, 401)
         except Forbidden:
@@ -431,6 +455,10 @@ def create_app(*, service=None, auth=None):
         except OutlookUnavailable as error:
             logging.getLogger(__name__).warning(
                 "native_outlook_approval_unavailable", extra={"reason_code": error.reason})
+            return JSONResponse({"error": "unavailable", "reason_code": error.reason}, 503)
+        except ConfirmationUnavailable as error:
+            logging.getLogger(__name__).warning(
+                "confirmation_unavailable", extra={"reason_code": error.reason})
             return JSONResponse({"error": "unavailable", "reason_code": error.reason}, 503)
         except Missing:
             return JSONResponse({"error": "not_found"}, 404)
@@ -508,6 +536,57 @@ def create_app(*, service=None, auth=None):
         async def action(current, identity):
             return await current.record_receipt(identity, parse(DecisionReceipt, await request.body()))
         return await dispatch(request, action)
+
+    def confirmation_service(current):
+        if current.confirmation is None:
+            raise ConfirmationUnavailable("confirmation_not_configured")
+        return current.confirmation
+
+    @app.get("/confirmation/health")
+    async def confirmation_health(request: Request, provider_profile: str):
+        async def action(current, identity):
+            return await confirmation_service(current).health(current, identity,
+                parse(Identifier, canonical(provider_profile)))
+        return await dispatch(request, action)
+
+    @app.post("/confirmation/contexts")
+    async def confirmation_context(request: Request):
+        async def action(current, _):
+            body = parse(ContextRequest, await request.body())
+            service = confirmation_service(current)
+            user = await service.authenticate_user(current, app.state.auth,
+                request.headers.get("authorization"), service.profile(body.provider_profile))
+            return await service.register(current, user, body)
+        return await dispatch(request, action, authenticate=False)
+
+    @app.post("/confirmation/resolve")
+    async def confirmation_resolve(request: Request):
+        async def action(current, identity):
+            return await confirmation_service(current).resolve(current, identity,
+                parse(ConfirmationOperation, await request.body()))
+        return await dispatch(request, action)
+
+    @app.post("/confirmation/context")
+    async def confirmation_lookup(request: Request):
+        async def action(current, identity):
+            return await confirmation_service(current).lookup(current, identity,
+                parse(ContextLookup, await request.body()))
+        return await dispatch(request, action)
+
+    @app.get("/confirmation/{confirmation_id}")
+    async def confirmation_view(request: Request, confirmation_id: str):
+        async def action(current, _):
+            return await confirmation_service(current).view(current,
+                parse(Nonce, canonical(confirmation_id)), app.state.auth, request.headers.get("authorization"))
+        return await dispatch(request, action, authenticate=False)
+
+    @app.post("/confirmation/{confirmation_id}")
+    async def confirmation_decide(request: Request, confirmation_id: str):
+        async def action(current, _):
+            return await confirmation_service(current).decide(current,
+                parse(Nonce, canonical(confirmation_id)), app.state.auth, request.headers.get("authorization"),
+                parse(ConfirmationDecision, await request.body()))
+        return await dispatch(request, action, authenticate=False)
 
     @app.get("/receipts/{receipt_id}")
     async def receipt(request: Request, receipt_id: str):

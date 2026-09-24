@@ -28,8 +28,10 @@ from govern_control_plane.attestations import (
     EVIDENCE_ARGUMENT, EVIDENCE_META, MAX_TOKEN_BYTES, evidence_tool_schema,
 )
 from govern_control_plane.client import ServiceTransport
+from govern_control_plane.confirmation import CONTEXT_ARGUMENT, CONTEXT_META
+from govern_control_plane.confirmation_client import ConfirmationClient
 from govern_control_plane.models import (
-    Digest, Identifier, ObjectId, canonical, parse, strict_json,
+    Digest, Identifier, Nonce, ObjectId, canonical, parse, strict_json,
 )
 from govern_control_plane.storage import AzureStore, KeyVaultSigner
 
@@ -40,13 +42,14 @@ from .receipts import HTTPControlPlaneApprovalService, ReceiptClient
 
 _idempotency_key = ContextVar("gateway_idempotency_key", default=None)
 _evidence_token = ContextVar("gateway_evidence_token", default=None)
+_confirmation_context = ContextVar("gateway_confirmation_context", default=None)
 HEALTH_TIMEOUT = 5.0
 
 
 def tool_result(body):
     return CallToolResult(
         content=[TextContent(type="text", text=canonical(body).decode())],
-        structuredContent=body, isError=body["status"] not in ("completed", "pending_approval"),
+        structuredContent=body, isError=body["status"] not in ("completed", "pending_approval", "pending_confirmation"),
         **({"_meta": {"threadlight.probe.receipt_id": body["receipt_id"]}} if "receipt_id" in body else {}))
 
 
@@ -87,6 +90,7 @@ class AuthBoundary:
         # Bound and parse here so SDK/Pydantic errors cannot echo private input.
         body = bytearray()
         evidence = None
+        confirmation = None
         try:
             async with asyncio.timeout(5):
                 while True:
@@ -112,6 +116,9 @@ class AuthBoundary:
                             or not keys):
                         raise ValueError()
                     evidence = params.get("_meta", {}).get(EVIDENCE_META)
+                    confirmation = params.get("_meta", {}).get(CONTEXT_META)
+                    if confirmation is not None:
+                        parse(Nonce, canonical(confirmation))
                     if evidence is not None and (
                             not isinstance(evidence, str) or not 1 <= len(evidence) <= MAX_TOKEN_BYTES):
                         raise ValueError()
@@ -131,40 +138,55 @@ class AuthBoundary:
         identity_token = _request_identity.set(identity)
         key_token = _idempotency_key.set(keys[0] if keys else None)
         evidence_marker = _evidence_token.set(evidence)
+        confirmation_marker = _confirmation_context.set(confirmation)
         try:
             return await self.app(scope, replay, send)
         finally:
             _idempotency_key.reset(key_token)
             _evidence_token.reset(evidence_marker)
+            _confirmation_context.reset(confirmation_marker)
             _request_identity.reset(identity_token)
 
 
 def create_app(dispatcher):
     tools = []
     for action in dispatcher.policy.registry.actions:
-        def registered(name, evidence_selected):
+        def registered(name, evidence_selected, confirmation_selected):
             async def invoke(arguments):
                 arguments = dict(arguments)
                 token = _evidence_token.get()
+                confirmation = _confirmation_context.get()
                 if evidence_selected and EVIDENCE_ARGUMENT in arguments:
                     # Compatibility for ordinary MCP clients; never forward this field.
                     if token is not None:
                         return {"status": "blocked", "reason_code": "ambiguous_evidence_transport"}
                     token = arguments.pop(EVIDENCE_ARGUMENT)
+                if confirmation_selected and CONTEXT_ARGUMENT in arguments:
+                    if confirmation is not None:
+                        return {"status": "blocked", "reason_code": "ambiguous_confirmation_transport"}
+                    confirmation = arguments.pop(CONTEXT_ARGUMENT)
                 return await dispatcher.dispatch(
                     authorization=None, action=name, arguments=arguments,
-                    idempotency_key=_idempotency_key.get(), evidence_token=token)
+                    idempotency_key=_idempotency_key.get(), evidence_token=token,
+                    requesting_user_context=confirmation)
             return invoke
         async def empty():
             pass
         base = Tool.from_function(empty, name=action.name)
+        schema = (evidence_tool_schema(action.input_schema)
+                  if action.evidence_requirement is not None else action.input_schema)
+        if action.confirmation_requirement is not None:
+            schema = {**schema, "properties": {**schema["properties"], CONTEXT_ARGUMENT: {
+                "type": "string", "minLength": 32, "maxLength": 32,
+                "description": "Opaque authenticated requesting-user context; not consent."}}}
         tools.append(RegisteredTool(
-            fn=registered(action.name, action.evidence_requirement is not None),
+            fn=registered(action.name, action.evidence_requirement is not None,
+                          action.confirmation_requirement is not None),
             name=action.name, description=f"Governed action: {action.name}",
-            parameters=(evidence_tool_schema(action.input_schema)
-                        if action.evidence_requirement is not None else action.input_schema),
+            parameters=schema,
             fn_metadata=base.fn_metadata, is_async=True,
             meta={**({"threadlight.approval_mode": "deferred"} if action.approval_mode == "deferred" else {}),
+                  **({"threadlight.confirmation": CONTEXT_META} if action.confirmation_requirement is not None else {}),
                   **({"threadlight.evidence": EVIDENCE_META} if action.evidence_requirement is not None else {})}
             or None))
     url = urlsplit(dispatcher.policy.registry.gateway_url)
@@ -200,6 +222,14 @@ def create_app(dispatcher):
                     or await dispatcher.approvals.health(approval_context=context) is not True):
                 raise ValueError()
 
+        async def confirmation_health(action):
+            if (dispatcher.confirmations is None
+                    or not callable(dispatcher.confirmations.context)
+                    or not callable(dispatcher.confirmations.resolve)
+                    or await dispatcher.confirmations.health(
+                        provider_profile=action.confirmation_requirement.provider_profile) is not True):
+                raise ValueError()
+
         async def check(probe, reason, *args):
             try:
                 async with asyncio.timeout(HEALTH_TIMEOUT):
@@ -220,6 +250,14 @@ def create_app(dispatcher):
             *(check(approval_health, "approval_unavailable", action) for action in approval_actions))
         dependencies = dict(zip(probes, results[:len(probes)]))
         approvals = dict(zip((action.name for action in approval_actions), results[len(probes):]))
+        confirmation_actions = [a for a in dispatcher.policy.registry.actions if a.confirmation_requirement is not None]
+        confirmation_results = await asyncio.gather(*(
+            check(confirmation_health, "confirmation_unavailable", action) for action in confirmation_actions))
+        confirmations = dict(zip((a.name for a in confirmation_actions), confirmation_results))
+        if confirmations:
+            healthy = all(result["healthy"] for result in confirmations.values())
+            dependencies["confirmations"] = {
+                "healthy": healthy, "reason_code": None if healthy else "confirmation_unavailable"}
         if approvals:
             healthy = all(result["healthy"] for result in approvals.values())
             dependencies["approvals"] = {
@@ -233,6 +271,8 @@ def create_app(dispatcher):
                        if not dependencies[name]["healthy"]]
             if action.name in approvals and not approvals[action.name]["healthy"]:
                 reasons.append(approvals[action.name]["reason_code"])
+            if action.name in confirmations and not confirmations[action.name]["healthy"]:
+                reasons.append(confirmations[action.name]["reason_code"])
             bindings[action.name] = {"healthy": not reasons, "reason_codes": reasons}
         ready = all(binding["healthy"] for binding in bindings.values())
         return JSONResponse({
@@ -367,13 +407,14 @@ async def production():
             receipts = await stack.enter_async_context(ReceiptClient(**service))
             approvals = await stack.enter_async_context(HTTPControlPlaneApprovalService(
                 **service, review_enabled=config.approval_channel == "outlook"))
+            confirmations = await stack.enter_async_context(ConfirmationClient(**service))
             downstream = DownstreamClient(credential=downstream_credential)
             stack.push_async_callback(downstream.aclose)
             await store.health()
             await auth.health()
         yield GovernedDispatcher(
             policy=policy, auth=auth, store=store, receipts=receipts, downstream=downstream,
-            approvals=approvals, safe_provider=host_evidence,
+            approvals=approvals, confirmations=confirmations, safe_provider=host_evidence,
             probes=probes,
             approval_principal=config.service_principal, approval_agent_id=config.service_agent_id)
 
