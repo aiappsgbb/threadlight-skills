@@ -19,6 +19,7 @@ from .models import (
     canonical, parse, strict_json,
 )
 from .storage import AzureStore, Conflict, Missing, sdk_call
+from .outlook import OutlookWorkflow
 
 CONTEXT_ARGUMENT = "governance_request_context"
 CONTEXT_META = CONTEXT_ARGUMENT
@@ -133,8 +134,13 @@ class CustomerIdentityConfiguration(StrictModel):
         return self
 
 
+class NativeConfirmationMail(OutlookWorkflow):
+    home_tenant: ObjectId
+    home_subject: ObjectId
+
+
 class ProviderProfile(StrictModel):
-    kind: Literal["email-basic", "entra-ca", "customer-signed"]
+    kind: Literal["outlook-native", "email-basic", "entra-ca", "customer-signed"]
     users: Annotated[list[UserBinding], Field(min_length=1, max_length=256)]
     workloads: Annotated[list[WorkloadBinding], Field(min_length=1, max_length=128)]
     notification_url: str
@@ -144,6 +150,7 @@ class ProviderProfile(StrictModel):
     authentication_context: Annotated[str, Field(pattern=r"^c[1-9][0-9]?$")] | None = None
     conditional_access_policy_id: ObjectId | None = None
     capability: Literal["authenticated-consent", "ca-mfa"] = "authenticated-consent"
+    outlook: NativeConfirmationMail | None = None
 
     @model_validator(mode="after")
     def valid(self):
@@ -159,6 +166,14 @@ class ProviderProfile(StrictModel):
             raise ValueError("unsupported_confirmation_capability")
         if (self.kind == "customer-signed") != (self.result_verifier is not None):
             raise ValueError("signed_provider_verifier_required")
+        if self.kind == "outlook-native":
+            if (self.outlook is None or len(self.users) != 1
+                    or self.notification_scope != ARM_NOTIFICATION_SCOPE
+                    or not urlsplit(self.notification_url).hostname.endswith(".logic.azure.com")
+                    or self.outlook.approved_option == self.outlook.rejected_option):
+                raise ValueError("native_requester_mail_configuration_required")
+        elif self.outlook is not None:
+            raise ValueError("native_requester_mail_not_selected")
         return self
 
 
@@ -281,6 +296,8 @@ class ExplicitConsentProvider:
             await self.ca.health(profile)
 
     async def verify(self, profile, user, intent, decision):
+        if profile.kind == "outlook-native":
+            raise Unauthorized()
         user.fresh()
         result_expiry = None
         generation = None
@@ -380,6 +397,12 @@ class ConfirmationService:
         except KeyError:
             raise Unauthorized() from None
 
+    def native_mail(self, profile):
+        if profile.kind != "outlook-native":
+            return None
+        from .confirmation_outlook import NativeUserConfirmation
+        return NativeUserConfirmation(profile, self.credential, self.http)
+
     def user_binding(self, profile, user):
         user.fresh()
         found = next((u for u in profile.users
@@ -427,6 +450,8 @@ class ConfirmationService:
         workload = control.settings.workloads.get(request.workload)
         if workload is None or (workload.client_id, workload.agent_id) != (request.client, request.agent_id):
             raise Unauthorized()
+        if profile.kind == "outlook-native":
+            self.native_mail(profile).requester(control, self, user)
         ref = uuid.uuid4().hex
         record = {"request": request.model_dump(mode="json"), "user": user.model_dump(mode="json"),
                   "expires_at": request.expires_at.isoformat(), "confirmation_id": None}
@@ -455,6 +480,8 @@ class ConfirmationService:
         user = parse(RequestingUser, canonical(record["user"]))
         profile = self.profile(request.provider_profile)
         self.user_binding(profile, user)
+        if profile.kind == "outlook-native":
+            self.native_mail(profile).requester(control, self, user)
         workload = control.settings.workloads.get(request.workload)
         if (intent.tenant != control.settings.tenant_id or intent.agent_id != request.agent_id
                 or workload is None or (workload.client_id, workload.agent_id) != (request.client, request.agent_id)
@@ -506,13 +533,17 @@ class ConfirmationService:
         self.gateway_authority(control, identity)
         profile = self.profile(profile_name)
         if profile.customer_identity is None and (
-                self.config.user_client_id is None
-                or self.config.user_client_id not in control.settings.human_clients
+                profile.kind != "outlook-native" and (
+                    self.config.user_client_id is None
+                    or self.config.user_client_id not in control.settings.human_clients)
                 or any(user.issuer != control.settings.issuer
-                       or user.subject not in control.settings.confirmation_subjects for user in profile.users)):
+                       or user.subject not in control.settings.confirmation_subjects
+                       or user.client not in control.settings.human_clients for user in profile.users)):
             raise ConfirmationUnavailable("confirmation_user_client_not_configured")
         await self.store.health()
         await self.provider.health(profile)
+        if profile.kind == "outlook-native":
+            await self.native_mail(profile).health(control, self, guard=lambda: self.gateway_authority(control, identity))
         self.gateway_authority(control, identity)
         return {"status": "healthy", "confirmation_ready": True, "provider_profile": profile_name}
 
@@ -587,9 +618,14 @@ class ConfirmationService:
             record = {"intent": intent.model_dump(mode="json"), "user": user.model_dump(mode="json"),
                       "facts": facts, "arguments": operation.arguments, "expires_at": intent.expires_at.isoformat(),
                       "notification": "prepared", "state": "pending", "authority": None}
+            if profile.kind == "outlook-native":
+                record["outlook"] = self.native_mail(profile).initial(control, self, intent, record)
             await self.store.create(intent.tenant, key, record)
             record, etag = await self.store.read(intent.tenant, key)
         if record["intent"] != intent.model_dump(mode="json"):
+            raise Conflict()
+        native = self.native_mail(profile)
+        if (native is None) != ("outlook" not in record):
             raise Conflict()
         if (operation.facts is not None and operation.facts != record["facts"]
                 or operation.arguments is not None and operation.arguments != record["arguments"]):
@@ -598,7 +634,10 @@ class ConfirmationService:
         if operation.operation in ("request", "resolve"):
             if record["state"] == "consumed":
                 raise Conflict()
-            await self.notify(control, intent, record, etag, profile, user, identity)
+            if native is not None:
+                record, etag = await native.resolve(control, self, identity, intent, record, etag)
+            else:
+                await self.notify(control, intent, record, etag, profile, user, identity)
             await self.fresh(control, intent)
             self.gateway_authority(control, identity)
             if record["state"] == "pending":
@@ -612,6 +651,8 @@ class ConfirmationService:
         expected_state = "consumed" if operation.operation == "validate" else "decided"
         if record["state"] != expected_state or not record.get("approved"):
             raise Conflict()
+        if native is not None:
+            await native.validate_authority(control, self, identity, intent, record)
         await self.provider.recheck(profile, parse(RequestingUser, canonical(record["user"])), record["authority"])
         if intent.reviewer_required and operation.approval_grant is None:
             raise Unauthorized()
@@ -676,6 +717,8 @@ class ConfirmationService:
 
     async def decide(self, control, confirmation_id, auth, authorization, decision):
         record, etag, intent, profile, user = await self.read_for_user(control, confirmation_id, auth, authorization)
+        if profile.kind == "outlook-native" or "outlook" in record:
+            raise Unauthorized()
         if (record["state"] != "pending" or record["notification"] != "sent"
                 or decision.intent_digest != digest(intent)):
             raise Conflict()

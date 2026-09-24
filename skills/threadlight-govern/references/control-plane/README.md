@@ -5,17 +5,26 @@
 This opt-in is a **separate authority** from `ApprovalGrant`. A workload OID is
 still the workload, never an end-user. The signed gateway action may select
 `confirmation_requirement: {trigger: "always" | "policy", provider_profile:
-"email-basic", max_age_seconds: 300}` (strict, positive, at most 3600 seconds).
+"requester-email", max_age_seconds: 300}` (strict, positive, at most 3600 seconds).
 Confirmation proves the original authenticated requester's explicit transaction
 decision; it cannot substitute for an independently configured reviewer.
 
-`confirmation.py` supplies strict generic issuer/subject identities, pinned
-customer JWT verification, a signed customer-result provider interface, and
-authenticated explicit-POST email/basic and Entra profiles. No caller boolean,
-email delivery receipt, model user name or forwarded claim is provider authority.
-The built-in minimal user experience is a separately authenticated interactive
-terminal client, **not a browser BFF** or attestation that a human used a trusted UI.
-Never expose that client, its credentials or its cache to an agent.
+The normal email profile is **`kind: "outlook-native"`**: the original requesting
+user clicks **Approve or Reject inside the email**, through the existing native
+Outlook approval connector. No command is copied from email and no CLI is needed
+to confirm. `confirmation_outlook.py` reuses `OutlookWitness` from the proven
+independent-review flow for authenticated ARM reads, pinned workflow
+checks, connector responder identity and exact request echo verification.
+It creates **ConfirmationAuthority**, never `ApprovalGrant`; approving the
+requester's email cannot satisfy independent reviewer obligations.
+
+`confirmation.py` also retains generic issuer/subject identity adapters, verified
+signed customer-provider results and optional Entra authentication-context
+verification. No caller boolean, delivery receipt, model user name or forwarded
+claim is provider authority. The CLI is only a developer diagnostic for the
+explicit `email-basic`/Entra API path, not the recipient experience; it is
+**not a browser BFF** or human-presence attestation. Never expose user credentials,
+the diagnostic client or its cache to an agent.
 
 Configure optional `AzureConfiguration.confirmation` with:
 
@@ -24,10 +33,10 @@ Configure optional `AzureConfiguration.confirmation` with:
 | `cosmos_container` | Separate existing-account container, partition `/scope`, `defaultTtl: 3600`, one writable region |
 | `public_url` | Fixed HTTPS control-plane origin; never derive from forwarded Host |
 | `gateway_principals` | Exact gateway workload OIDs allowed to bind/consume |
-| `user_client_id` | Existing allowlisted public confirmation client for the email launch instructions |
+| `user_client_id` | Optional developer diagnostic client; not required to click native email buttons |
 | `profiles` | Profile ID to strict `ProviderProfile`; see `confirmation.py` |
 
-Each profile declares `kind` (`email-basic`, `entra-ca`, `customer-signed`),
+Each profile declares `kind` (`outlook-native`, `email-basic`, `entra-ca`, `customer-signed`),
 `users` (`issuer`, `subject`, `client`, `delivery_ref`) and `workloads`
 (`workload`, `client`, `agent_id`, `actions`), plus `notification_url` and
 `notification_scope`. Non-Entra identity adapters use pinned
@@ -46,12 +55,79 @@ pair establishing the requester's home identity; incomparable identities fail
 closed. Mapping that same human to a different approver object cannot bypass
 independent-review separation.
 
+### Native requesting-user email contract
+
+A native profile has exactly one intended `users` entry and a fixed-recipient
+`outlook` configuration:
+
+```json
+{
+  "workflow_resource_id": "/subscriptions/SUBSCRIPTION-ID/resourceGroups/RESOURCE-GROUP/providers/Microsoft.Logic/workflows/WORKFLOW",
+  "workflow_version": "OBSERVED-VERSION",
+  "workflow_digest": "sha256:OBSERVED-WORKFLOW-DIGEST",
+  "sender_principal": "CONTROL-PLANE-MANAGED-IDENTITY-OID",
+  "recipient": "requester@example.com",
+  "home_tenant": "ACTUAL-REQUESTER-HOME-TENANT",
+  "home_subject": "ACTUAL-REQUESTER-HOME-OID",
+  "approved_option": "Approve",
+  "rejected_option": "Reject"
+}
+```
+
+These symbolic values must be replaced with independently observed configuration;
+they are not deployable credentials or authority. `notification_url` is the
+SAS-free `User_confirmation_requested` invoke URL and `notification_scope` is
+exactly `https://management.azure.com//.default`. The actual responder
+`UserTenantId`/`UserId` must match this fixed identity **and** the original
+authenticated requester; generic/cross-tenant users require verified
+`requester_home_tenant`/`requester_home_subject` correlation. Email-address equality
+alone is never identity. Native consent does not add requester reviewer roles.
+
+The exact trigger body has nine fields:
+`status: "pending_confirmation"`, `confirmation_id`, `operation_id`, `action_hash`,
+`intent_digest`, `expires_at`, `confirmation_intent`, `review_context`,
+`proposed_arguments`. Actual arguments are hash-verified before dispatch; the
+intent includes the immutable context reference, policy/facts/SAFE digests and
+expiry. No user JWT, credential, signing secret, or CLI-launch URL is sent.
+
+The pinned workflow has one Request trigger `User_confirmation_requested` and
+only `Require_fresh_pending -> Send_approval_email` (`ApiConnectionWebhook`,
+`/approvalmail/$subscriptions`, fixed `Message.To`, exact `Options: Approve,Reject`,
+`ShowHTMLConfirmationDialog: true`). Its `outlook_decision` output contains
+`response: @body('Send_approval_email')`, `request: @triggerBody()`,
+`observed_at: @utcNow()`, `control_plane_grant_created: false`,
+`business_effect_executed: false`. The workflow must display the exact proposal
+safely and enforce the pending status/expiry; the observed definition/parameters/
+access-control digest and version freeze that contract. Configure one exact AAD
+trigger policy for the control-plane identity, tenant issuer and ARM audience,
+with SAS disabled. Workflow-scoped Reader permits independent ARM verification;
+the workflow never runs the business action.
+
+Trigger acceptance is `202` plus `x-ms-workflow-run-id`, **not consent**.
+The service correlates `x-ms-client-tracking-id` with the immutable
+`confirmation_id` and independently retrieves the exact workflow run through ARM.
+Only a succeeded, correctly timed, fully echoed request with the configured native
+Approve/Reject choice and authenticated responder can decide the confirmation.
+The protected TTL outbox retains `prepared -> sending -> sent`; an ambiguous send
+may recover exactly one authenticated matching run but must never blindly resend.
+Changed pins, unmapped responders, partial/failed runs and expiry block authority.
+Native selections reject the manual confirmation POST/CLI path.
+
+### Request context and optional diagnostic providers
+
 Add Entra users to `confirmation_subjects` and their application to `human_clients`;
 grant the delegated **`Governance.Confirm` scope**, not reviewer/auditor roles.
 Delegated confirming tokens may omit `roles`. The API still validates the exact
 configured audience (a v2 API app GUID is not its `api://` scope prefix), issuer,
 tenant, signature, client, times and delegated scope; app-only tokens cannot
 register requesting-user contexts. Registration is **not transaction consent**.
+The normal application's already-authenticated user session registers its exact
+allowed workload/client, agent/action, operation ID and bounded expiry through
+`POST /confirmation/contexts`. The opaque reference travels to the host, never
+user claims. The recipient subsequently decides in the native email and the
+original host resumes the same operation. An expired context is not renewed
+automatically; old pending diagnostic operations cannot be upgraded into native
+authority or used to broaden the user's original scope.
 
 | Route | Authority and behavior |
 |---|---|
@@ -59,11 +135,12 @@ register requesting-user contexts. Registration is **not transaction consent**.
 | `POST /confirmation/context` | Allowed gateway checks exact registered binding and obtains its expiry; no user claims returned |
 | `POST /confirmation/resolve` | Allowed gateway requests/resolves/consumes/validates immutable `ConfirmationIntent` |
 | `GET /confirmation/{confirmation_id}` | Matching authenticated requester receives hash-verified protected arguments and intent; never consents |
-| `POST /confirmation/{confirmation_id}` | Matching authenticated requester submits `intent_digest`, explicit decision and, for customer-signed, verified provider result |
-| `GET /confirmation/open/{confirmation_id}` | Scanner-safe public text launch instructions only; no transaction payload, no consent |
+| `POST /confirmation/{confirmation_id}` | Optional explicit API providers only; native mail selections reject this alternative decision path |
+| `GET /confirmation/open/{confirmation_id}` | Scanner-safe informational text only; native email users are directed to the original email buttons, never a command |
 | `GET /confirmation/health?provider_profile=...` | Authenticated gateway dependency readiness, not live transaction proof |
 
-The notification-only endpoint receives managed-identity Bearer authentication,
+For the optional legacy diagnostic `email-basic` provider, the notification-only
+endpoint receives managed-identity Bearer authentication,
 `Idempotency-Key: <confirmation_id>`, and exactly
 `{confirmation_id, confirmation_url, delivery_ref, expires_at}`. It maps the
 preconfigured delivery reference to a fixed recipient and returns
@@ -81,19 +158,21 @@ with exactly `/workflows/<id>/triggers/User_confirmation_requested/paths/invoke?
 No port, fragment, redirect, `sig`, `sp`, `sv`, duplicate or unknown query parameter
 is accepted. An ARM-audience token is never sent to an arbitrary custom notifier.
 
-The user installs the administrator-approved control-plane package and runs
+For developer diagnostics only, an operator may install the approved package and run
 `python -m govern_control_plane.confirmation_user register --request context.json
 --control-plane-url https://control.example --scope api://API-APP-ID/Governance.Confirm
 --tenant TENANT-ID --client-id USER-CLIENT-ID` in their own interactive terminal.
 `context.json` contains the exact `ContextRequest` fields above, including an
 explicit operation ID and UTC expiry. Only its opaque reference and that operation
-ID travel to the host. When notified, the launch link supplies the concrete
-`confirm --confirmation-id ...` command. The client signs in independently,
+ID travel to the host. In this explicitly selected diagnostic provider,
+`confirm --confirmation-id ...` remains available. The client signs in independently,
 fetches and verifies the actual protected display, asks the user to type the
 transaction digest, and submits an authenticated POST. `reject` records rejection.
 The original workload resumes the **same operation**, arguments and context.
+These commands are not the native email recipient workflow.
 
-Basic email confirmation is lower-assurance authenticated consent, **not MFA**.
+Native email approval and optional diagnostic confirmation are authenticated
+consent, **not MFA**.
 An `entra-ca` profile requires `authentication_context: "cN"`,
 `conditional_access_policy_id`, and `capability: "ca-mfa"`.
 `confirmation_entra.py` reads the exact Graph authentication context and CA policy

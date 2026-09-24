@@ -581,6 +581,13 @@ def create_app(*, service=None, auth=None):
             confirmation_id = parse(Nonce, canonical(confirmation_id))
             current = app.state.service
             config = confirmation_service(current).config
+            if any(profile.kind == "outlook-native" for profile in config.profiles.values()):
+                return PlainTextResponse(
+                    "Requesting-user confirmation\n\n"
+                    "Use Approve or Reject inside the original Outlook approval email. "
+                    "Opening this page never records consent and no transaction data is displayed here. "
+                    "Return to the authenticated application to resume the original operation after your decision.\n",
+                    headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
             if config.user_client_id is None or config.user_client_id not in current.settings.human_clients:
                 raise ConfirmationUnavailable("confirmation_user_client_not_configured")
             import shlex
