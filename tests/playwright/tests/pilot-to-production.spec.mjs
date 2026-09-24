@@ -10,10 +10,13 @@ test('prior diagram stays fixed while unused modules lose every arrow and gain e
     nodes.map(node => [node.dataset.flowNode, node.getAttribute('transform'),
       node.querySelector('rect').getAttribute('width'), node.querySelector('rect').getAttribute('height')]));
   const baseline = await geometry();
-  expect(baseline).toHaveLength(8);
+  expect(baseline).toHaveLength(9);
+  expect(baseline.find(([id]) => id === 'confirm')).toEqual(
+    ['confirm', ...baseline.find(([id]) => id === 'review').slice(1)]);
   for (const label of ['Allowed', 'Blocked', 'Human review']) {
     await flow.getByRole('tab', { name: label, exact: true }).click();
     expect(await geometry()).toEqual(baseline);
+    await expect(flow.locator('[data-flow-node="confirm"]')).toBeHidden();
     await expect(flow.locator('[data-evidence-sequence]')).toBeHidden();
     const unused = flow.locator('[data-node-layer] [data-used="false"]:not([hidden])');
     expect(await unused.count()).toBeGreaterThan(0);
@@ -27,6 +30,10 @@ test('prior diagram stays fixed while unused modules lose every arrow and gain e
       }).map(edge => edge.dataset.flowEdge));
     expect(invalidEdges).toEqual([]);
   }
+  await flow.getByRole('tab', { name: 'User confirmation', exact: true }).click();
+  expect(await geometry()).toEqual(baseline);
+  await expect(flow.locator('[data-flow-node="review"]')).toBeHidden();
+  await expect(flow.locator('[data-flow-node="confirm"]')).not.toHaveAttribute('hidden', '');
   await flow.getByRole('tab', { name: 'Signed evidence', exact: true }).click();
   await expect(flow.locator('.wf-diagram')).toHaveAttribute('viewBox', '0 0 1100 350');
   await expect(flow.locator('[data-node-layer]')).toBeHidden();

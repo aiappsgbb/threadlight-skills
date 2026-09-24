@@ -14,9 +14,11 @@ const directory = path.join(root, 'docs/assets/audio/governance');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 if (process.argv.includes('--help')) {
   console.log('Render short narration with the home-page Ava Multilingual voice via online Edge TTS.\n'
-    + 'Usage: node scripts/render-governance-narration.mjs [--check]\n'
+    + 'Usage: node scripts/render-governance-narration.mjs [--check | --missing | --changed]\n'
     + 'Rendering requires python3 with edge-tts==7.2.8 and ffprobe. Only public narration text is sent.\n'
-    + '--check verifies voice settings, scripts and shipped MP3 hashes offline.');
+    + '--check verifies voice settings, scripts and shipped MP3 hashes offline.\n'
+    + '--missing renders new clips only; preserve existing verified narration clips.\n'
+    + '--changed renders new or changed scripts; all unchanged verified clips are preserved.');
 } else if (process.argv.includes('--check')) {
   const manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8'));
   if (Object.entries(narrationProfile).some(([key, value]) => manifest[key] !== value)) {
@@ -34,6 +36,25 @@ if (process.argv.includes('--help')) {
   }
   console.log(`Checked ${manifest.clips.length} local narration clips.`);
 } else {
+  const changed = process.argv.includes('--changed');
+  const previous = process.argv.includes('--missing') || changed
+    ? JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')) : null;
+  if (previous && (Object.entries(narrationProfile).some(([key, value]) => previous[key] !== value)
+      || new Set(previous.clips.map(clip => clip.id)).size !== previous.clips.length)) {
+    throw new Error('Existing narration profile or inventory is invalid; cannot preserve clips.');
+  }
+  const preserved = new Map();
+  for (const clip of previous?.clips || []) {
+    if (!Object.hasOwn(narrationClips, clip.id)
+        || hash(await readFile(path.join(directory, `${clip.id}.mp3`))) !== clip.sha256) {
+      throw new Error(`Existing narration inventory or audio differs: ${clip.id}; cannot preserve clips.`);
+    }
+    if (clip.text !== narrationClips[clip.id]) {
+      if (changed) continue;
+      throw new Error(`Existing narration script differs: ${clip.id}; use --changed for approved copy updates.`);
+    }
+    preserved.set(clip.id, clip);
+  }
   const version = execFileSync('python3', ['-m', 'edge_tts', '--version'], { encoding: 'utf8', timeout: 10000 }).trim();
   if (version !== 'edge-tts 7.2.8') throw new Error('Rendering requires edge-tts==7.2.8 in the active Python environment.');
   await mkdir(directory, { recursive: true });
@@ -48,6 +69,10 @@ if (process.argv.includes('--help')) {
   try {
     for (const [id, text] of Object.entries(narrationClips)) {
       if (!/^[a-z][a-z-]+$/.test(id)) throw new Error('Invalid narration clip identifier');
+      if (preserved.has(id)) {
+        manifest.clips.push(preserved.get(id));
+        continue;
+      }
       const output = path.join(scratch, `${id}.mp3`);
       staged.push(output);
       execFileSync('python3', ['-m', 'edge_tts', '--voice', manifest.voice,
@@ -58,10 +83,11 @@ if (process.argv.includes('--help')) {
       manifest.clips.push({ id, text, seconds, sha256: hash(await readFile(output)) });
     }
     for (const clip of manifest.clips) {
+      if (preserved.has(clip.id)) continue;
       await copyFile(path.join(scratch, `${clip.id}.mp3`), path.join(directory, `${clip.id}.mp3`));
     }
     await writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    console.log(`Rendered ${manifest.clips.length} clips with ${manifest.voice}, rate ${manifest.rate}.`);
+    console.log(`Rendered ${staged.length} clips; preserved ${preserved.size}. Voice ${manifest.voice}, rate ${manifest.rate}.`);
   } finally {
     for (const file of staged) await unlink(file).catch(error => { if (error.code !== 'ENOENT') throw error; });
     await rmdir(scratch);

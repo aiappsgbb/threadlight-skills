@@ -19,13 +19,15 @@ DIRECTORIES = (
     str(REFERENCE),
 )
 EFFECT = Path("examples/returns-triage-governed/src/agent/cosmos_effect.py")
+SKILL_APPROVAL = Path("skills/threadlight-local-test/references/quickstart/threadlight_quickstart/skill_approval.py")
+FILES = (EFFECT, SKILL_APPROVAL)
 
 
 def materialize(output):
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
         raise FileExistsError("refusing_to_overwrite_preserved_package")
-    for relative in (*DIRECTORIES, str(EFFECT)):
+    for relative in (*DIRECTORIES, *FILES):
         source = ROOT / relative
         if not source.exists() or source.is_symlink():
             raise ValueError("real_runtime_source_required")
@@ -40,8 +42,9 @@ def materialize(output):
                 ROOT / relative, stage / relative,
                 ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.egg-info", ".pytest_cache"),
             )
-        (stage / EFFECT).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / EFFECT, stage / EFFECT)
+        for relative in FILES:
+            (stage / relative).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / relative, stage / relative)
         shutil.copy2(ROOT / REFERENCE / "returns-mcp.Dockerfile", stage / "Dockerfile")
         (stage / "README.md").write_text(
             "# Returns through governed MCP\n\n"
@@ -59,6 +62,10 @@ def materialize(output):
             "schema": "threadlight-returns-mcp-source/v1",
             "status": "source-only-not-deployment-proof", "files": files,
         }, indent=2) + "\n")
+        # This closure contains public source only, not operator configuration.
+        for path in stage.rglob("*"):
+            path.chmod(0o755 if path.is_dir() or path.stat().st_mode & 0o111 else 0o644)
+        stage.chmod(0o755)
         stage.rename(output)
     return output
 

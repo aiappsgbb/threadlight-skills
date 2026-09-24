@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_agentops_catalog_versions_and_ownership_are_consistent():
     plugin = json.loads((ROOT / "plugin.json").read_text())
     marketplace = json.loads((ROOT / ".github/plugin/marketplace.json").read_text())
-    assert plugin["version"] == marketplace["metadata"]["version"] == "2.7.2"
+    assert plugin["version"] == marketplace["metadata"]["version"] == "2.8.0"
     assert marketplace["plugins"][0]["version"] == plugin["version"]
     assert "agentops" in plugin["keywords"]
     for filename in ("README.md", "THREADLIGHT.md", "docs/production-readiness.md"):

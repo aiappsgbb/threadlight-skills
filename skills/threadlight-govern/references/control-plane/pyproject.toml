@@ -28,6 +28,7 @@ hosted-operator = ["azure-ai-projects==2.3.0"]
 
 [project.scripts]
 threadlight-review-action = "govern_control_plane.review:main"
+threadlight-confirm-action = "govern_control_plane.confirmation_user:main"
 
 [tool.setuptools]
 packages = ["govern_control_plane"]

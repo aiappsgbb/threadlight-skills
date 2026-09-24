@@ -108,6 +108,14 @@
       <p class="governance-note"><strong>Shared services support the gateway.</strong>
         The control plane supplies signed policy, verified human approvals and durable audit confirmation.
         It is not another business executor. The gateway enforces the decision; the backend owns the transaction.</p>
+      <p class="governance-note"><strong>Requesting-user confirmation is a separate decision.</strong>
+        The original requesting user chooses Approve or Reject in a native Logic Apps/Outlook email;
+        the service independently verifies the response against that exact proposal and requester.
+        A third-party reviewer and authentication assurance answer different questions.
+        Email notification alone is not consent or MFA.
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/86fe2c9288b42046907ade5199060df318d27b10/docs/governed-returns-validation.md#s6-native-requesting-user-approval">One scoped native-email run is recorded</a>;
+        new deployments remain unverified. GHCP/local native confirmation and blanket B2C support are not implied.
+        <a href="./production.html#user-confirmation">Explore User confirmation &rarr;</a></p>
       <p class="illustration-label"><span class="illustration-dot" aria-hidden="true"></span><strong>Illustration only.</strong> Choose a scenario. Watch the boundary change. No live policy engine or collected proof.</p>
       <div class="decision-workbench">
        <div class="decision-cases">

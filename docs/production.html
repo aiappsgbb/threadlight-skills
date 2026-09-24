@@ -23,7 +23,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/site.css?v=3eb89a76">
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
-<link rel="stylesheet" href="assets/governed-workflow.css?v=1631c39c">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=ffa28b69">
 <style>
   /* Page-local layout and contrast; retain the shared Threadlight tokens and navigation. */
   html { scroll-padding-top: var(--production-scroll-offset, 72px); }
@@ -694,9 +694,9 @@
       Here the tool actually updates <code>RMA-EXAMPLE</code> and its decision audit, <strong>not a payment</strong>.
       A payment tool would instead invoke a payment backend.</p>
     <div id="action-architecture" data-visual="effect-sequence">
-      <h3 class="action-layer-title" id="production-input-proof">Explore four policy outcomes</h3>
+      <h3 class="action-layer-title" id="production-input-proof">Explore five policy scenarios</h3>
       <!-- governed-flow:start -->
-      <div id="workflow-in-action" data-governed-flow role="region" aria-label="Four policy scenarios">
+      <div id="workflow-in-action" data-governed-flow role="region" aria-label="Five policy scenarios">
         <svg class="wf-symbols" width="0" height="0" aria-hidden="true" focusable="false"><defs><symbol id="wf-icon-stop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m8 8 8 8m0-8-8 8"/></g></symbol></defs></svg>
         <div class="wf-panel">
           <div class="wf-tabs" role="tablist" aria-label="Decision scenario" data-flow-controls hidden>
@@ -704,6 +704,7 @@
             <button type="button" role="tab" id="wf-tab-invalid" aria-controls="wf-case" data-flow-scenario="invalid" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-stop"/></svg><span>Blocked</span></button>
             <button type="button" role="tab" id="wf-tab-supervisor" aria-controls="wf-case" data-flow-scenario="supervisor" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-person"/></svg><span>Human review</span></button>
             <button type="button" role="tab" id="wf-tab-evidence" aria-controls="wf-case" data-flow-scenario="evidence" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-policy"/></svg><span>Signed evidence</span></button>
+            <button type="button" role="tab" id="wf-tab-confirmation" aria-controls="wf-case" data-flow-scenario="confirmation" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-person"/></svg><span>User confirmation</span></button>
           </div>
           <div id="wf-case" role="tabpanel" aria-labelledby="wf-tab-normal">
             <div class="wf-evidence" data-flow-evidence hidden>
@@ -745,6 +746,9 @@
                 <path class="wf-edge" data-flow-edge="checks:deny" d="M325 60V24H465" hidden/>
                 <path class="wf-edge" data-flow-edge="checks:review" d="M325 128V151" hidden/>
                 <path class="wf-edge" data-flow-edge="review:fresh" d="M405 183H465" hidden/>
+                <path class="wf-edge" data-flow-edge="checks:confirm" d="M325 128V151" hidden/>
+                <path class="wf-edge" data-flow-edge="confirm:fresh" d="M405 183H465" hidden/>
+                <path class="wf-edge" data-flow-edge="confirm:ack" d="M405 183H440V115H465" hidden/>
                 <path class="wf-edge" data-flow-edge="fresh:ack" d="M550 156V133" hidden/>
                 <path class="wf-edge" data-flow-edge="ack:deny" d="M550 60V47" hidden/>
               </g>
@@ -776,6 +780,10 @@
                 <g class="wf-node" data-flow-node="review" data-used="false" transform="translate(245 156)">
                   <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-person" x="12" y="15" width="24" height="24"/>
                   <text class="wf-label" x="43" y="25">Outlook review</text><text class="wf-detail" x="43" y="43">This handoff only</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
+                </g>
+                <g class="wf-node" data-flow-node="confirm" data-used="false" transform="translate(245 156)" hidden>
+                  <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-person" x="12" y="15" width="24" height="24"/>
+                  <text class="wf-label" x="43" y="25">User confirms</text><text class="wf-detail" x="43" y="43">Exact proposal</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
                 </g>
                 <g class="wf-node" data-flow-node="fresh" data-used="false" transform="translate(470 156)">
                   <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="12" y="15" width="24" height="24"/>
@@ -835,7 +843,10 @@
             <p class="wf-static-note">The allowed path is shown. A blocked proposal records a denial with no write.
               Human review waits in Outlook for a verified grant, fresh checks and audit ACK.
               Signed evidence requires provider-verified purchase proof: missing or changed proof blocks the new effect;
-              valid matching proof still needs policy and backend checks.</p>
+              valid matching proof still needs policy and backend checks.
+              Requesting-user confirmation is separate from reviewer approval: a matching authenticated user
+              must explicitly choose Approve or Reject in the native Outlook email. Email notification is not MFA
+              or consent. Rejection, expiry or changed inputs blocks the write. This new path is not live evidence.</p>
             <div class="wf-business-proof" data-flow-proof hidden>
               <h4>What the purchase certificate actually says</h4>
               <p class="wf-proof-unavailable" data-proof-unavailable hidden><strong>No certificate issued.</strong>
@@ -872,6 +883,40 @@
                 completed-operation replay returns the recorded result, not another write.</p>
             </div>
             <!-- human-permission:end -->
+            <div id="user-confirmation" class="wf-confirmation-example" data-flow-confirmation hidden>
+              <h4>The requesting user decides, not a supervisor.</h4>
+              <p><strong>Logic Apps sends an Outlook approval email</strong> to the <strong>original requesting user</strong>,
+                with the exact proposal and <strong>Approve / Reject</strong> buttons.
+                The service independently verifies the native email response and the <strong>matching authenticated user</strong>.
+                Viewing a GET link or email scanners <strong>never approve</strong>.
+                If reviewer approval is also required, both decisions must come from different people.</p>
+              <dl class="wf-fact-record">
+                <div><dt>Exact proposal</dt><dd>Record <code>approve_refund</code> for <code>RMA-EXAMPLE</code>,
+                  revision <strong>r7</strong>, amount <strong>40</strong>.
+                  Reason: &ldquo;Record the eligible recommendation.&rdquo; Cosmos decision + audit, not payment.</dd></div>
+                <div><dt>User decision</dt><dd data-confirmation-state aria-live="polite">No confirmation yet.</dd></div>
+              </dl>
+              <div class="wf-confirmation-choices" role="group" aria-label="Illustrative user decision">
+                <button type="button" data-confirmation-decision="confirmed" disabled>Show confirmed example</button>
+                <button type="button" data-confirmation-decision="rejected" disabled>Show rejected example</button>
+                <button type="button" data-confirmation-decision="expired" disabled>Show expiry example</button>
+                <button type="button" data-confirmation-decision="changed" disabled>Show changed-input example</button>
+              </div>
+              <p class="wf-example-limit">These buttons only advance the illustration. No real identity or consent is collected.
+                The real gateway returns <code>pending_confirmation</code> with confirmation and operation IDs, without an effect.</p>
+              <div class="wf-confirmation-providers">
+                <p><strong>Native email:</strong> choose Approve or Reject in Outlook, outside the agent.
+                  Verified requester consent is not reviewer approval; <strong>email is not MFA</strong>.</p>
+                <p><strong>Optional employee step-up:</strong> Entra authentication context needs verified active, applicable
+                  Conditional Access controls. The context alone is not MFA proof; a new MFA prompt per transaction is not guaranteed.</p>
+                <p><strong>Customer providers:</strong> configurable B2C provider seam, not all implemented.
+                  Initial path: MAF governed gateway; GHCP deferred and local native support is unsupported for this feature.
+                  This illustration is <strong>not live evidence</strong>.</p>
+              </div>
+              <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-governance-deep-dive.md#requesting-user-confirmation">Requesting-user confirmation contract and limits</a>
+              <a href="https://github.com/aiappsgbb/threadlight-skills/blob/86fe2c9288b42046907ade5199060df318d27b10/docs/governed-returns-validation.md#s6-native-requesting-user-approval">September 24: scoped native approval and replay evidence</a>
+            </div>
+            <!-- user-confirmation:end -->
             <div class="wf-jwt" data-evidence-jwt hidden>
               <h4>The proof is a signed JSON Web Token (JWT)</h4>
               <p>It binds the verified facts to this caller, case, revision and exact tool arguments.
@@ -999,6 +1044,6 @@
 <script src="assets/site-map.js?v=cc056191"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
 <script src="assets/production.js?v=96331334"></script>
-<script src="assets/governed-workflow.js?v=4352f753"></script>
+<script src="assets/governed-workflow.js?v=4a69e216"></script>
 </body>
 </html>

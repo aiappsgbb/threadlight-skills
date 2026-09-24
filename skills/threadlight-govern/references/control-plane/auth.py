@@ -34,6 +34,7 @@ class Settings(StrictModel):
     human_clients: Annotated[list[ObjectId], Field(min_length=1, max_length=128)]
     approver_subjects: Annotated[list[ObjectId], Field(min_length=1, max_length=256)]
     auditor_subjects: Annotated[list[ObjectId], Field(max_length=256)] = []
+    confirmation_subjects: Annotated[list[ObjectId], Field(max_length=256)] = []
     approver_roles: Annotated[list[Identifier], Field(min_length=1, max_length=16)]
     token_version: Literal["1.0", "2.0"] = "2.0"
     request_timeout: Annotated[float, Field(gt=0, le=30)] = 5.0
@@ -72,6 +73,10 @@ class Identity:
     roles: frozenset[str]
     scopes: frozenset[str]
     workload: Workload | None
+    issuer: str = ""
+    auth_contexts: tuple[str, ...] = ()
+    expires_at: int = 0
+    issued_at: int = 0
 
 
 class EntraAuth:
@@ -144,11 +149,18 @@ class EntraAuth:
                     or any(type(claims[key]) is not int for key in ("exp", "nbf", "iat"))):
                 raise Unauthorized()
             client = claims.get("azp" if self.settings.token_version == "2.0" else "appid")
+            confirmation_only = (
+                claims["oid"] in self.settings.confirmation_subjects
+                and client in self.settings.human_clients
+                and claims.get("idtyp") != "app"
+                and isinstance(claims.get("scp"), str)
+                and "Governance.Confirm" in claims["scp"].split())
+            raw_roles = claims.get("roles", [] if confirmation_only else None)
             if (not isinstance(claims["oid"], str) or not isinstance(client, str)
-                    or not isinstance(claims.get("roles"), list)
-                    or not all(isinstance(role, str) for role in claims["roles"])):
+                    or not isinstance(raw_roles, list)
+                    or not all(isinstance(role, str) for role in raw_roles)):
                 raise Unauthorized()
-            roles = frozenset(claims["roles"])
+            roles = frozenset(raw_roles)
             subject = claims["oid"]
             if claims.get("idtyp") == "app" and "scp" not in claims:
                 controller = self.settings.probe_controllers.get(subject)
@@ -161,12 +173,19 @@ class EntraAuth:
                 if (workload is None or client != workload.client_id
                         or "Governance.Workload" not in roles):
                     raise Unauthorized()
-                return Identity(claims["tid"], subject, client, roles, frozenset(), workload)
+                return Identity(claims["tid"], subject, client, roles, frozenset(), workload,
+                                claims["iss"], (), claims["exp"], claims["iat"])
             scopes = claims.get("scp")
             if (claims.get("idtyp") == "app" or not isinstance(scopes, str) or not scopes
                     or client not in self.settings.human_clients
-                    or subject not in set(self.settings.approver_subjects + self.settings.auditor_subjects)):
+                    or not (confirmation_only or subject in set(
+                        self.settings.approver_subjects + self.settings.auditor_subjects))):
                 raise Unauthorized()
-            return Identity(claims["tid"], subject, client, roles, frozenset(scopes.split()), None)
+            contexts = claims.get("acrs", [])
+            if (not isinstance(contexts, list) or len(contexts) > 32
+                    or any(not isinstance(value, str) or len(value) > 128 for value in contexts)):
+                raise Unauthorized()
+            return Identity(claims["tid"], subject, client, roles, frozenset(scopes.split()), None,
+                            claims["iss"], tuple(contexts), claims["exp"], claims["iat"])
         except Exception:
             raise Unauthorized() from None

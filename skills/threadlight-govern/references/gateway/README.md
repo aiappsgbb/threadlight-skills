@@ -1,5 +1,69 @@
 # Governed MCP action gateway — Task 9 reference
 
+## Requesting-user confirmation
+
+An optional signed action `confirmation_requirement` selects a separate
+requesting-user obligation:
+`{"trigger":"always","provider_profile":"requester-email","max_age_seconds":300}`.
+The strict field forbids null, unknown keys and lifetimes outside 1..3600 seconds.
+It is forbidden on `governance_probe_noop`. The supported initial host path is
+MAF gateway deferred; native-local/GHCP selection is not equivalent coverage.
+
+`always` requires confirmation after an allowing/transformed policy verdict.
+With `policy`, the **new signed opt-in** declares user confirmation on native ACS
+escalation; low-risk allow stays autonomous without a context. If reviewer roles
+are also selected, escalation requires both authorities, not either one.
+Existing actions without this new field retain their prior escalation behavior.
+Combined review requires `approval_mode: "deferred"` and an approver distinct
+from the original requester, including native Outlook review.
+
+The application's authenticated user session registers the original requester
+through the separate `POST /confirmation/contexts` API. This is not consent,
+and neither workload identity nor model claims may replace that user.
+The CLI is only a developer diagnostic, not the recipient experience.
+The MCP tool descriptor advertises
+`_meta["threadlight.confirmation"] = "governance_request_context"`.
+Supply that opaque reference either in call metadata or the reserved argument
+`governance_request_context`, never both. It is stripped before policy arguments
+and downstream dispatch and establishes nothing without the control plane's
+verification against the workload/client, agent/action, operation and expiry.
+The host must supply the original registered `governance_operation_id` for the
+initial call and every resume; it must not generate a different ID on timeout.
+
+The exact pending result is
+`{status:"pending_confirmation", confirmation_id:"<32-hex>", operation_id:"<original>"}`.
+There are no user claims, OTPs, tokens or arguments in this result. The standard
+email profile selects **`kind: "outlook-native"`**: the requesting user sees the
+actual hash-bound proposal and clicks **Approve or Reject inside the email**.
+The control plane independently verifies the pinned Logic App/Outlook connector
+run, full echoed intent, actual responder identity, timing and decision. Delivery
+or trigger acceptance alone is never consent. No command copied from email or
+CLI confirmation is required. Native consent is not MFA and does not create an
+independent reviewer's `ApprovalGrant`; both authorities remain separate.
+The optional diagnostic API client is **not a browser BFF**. Generic customer providers use a
+configured identity adapter and verified signed transaction result, not a model
+identity or success flag. See the [control-plane contract](../control-plane/README.md#requesting-user-confirmation).
+Existing diagnostic pending operations cannot be upgraded to native mail authority;
+expired user contexts are never automatically extended. The protected native
+outbox uses exactly correlated authenticated run recovery after ambiguous sends,
+never blind resend, and the gateway resumes only the original operation.
+
+The permanent gateway ledger retains hashes and opaque references only. CAS
+reserves the original operation before one-use consent consumption, and the
+central receipt ACK is required before effects. At terminal dispatch, after
+credential and transport waits, the gateway rechecks exact policy decision,
+trusted facts, evidence, consent expiry and provider capability. A consumed
+confirmation does not satisfy independent reviewer authority, nor vice versa.
+The private `effective_authority_expires_at` response bounds the intent by the
+authenticated user's token, signed provider result and current Entra protection
+lease when selected. The gateway never extends that deadline, and synchronously
+rechecks it after the last awaited native policy evaluation and at HTTP header/body
+wire callbacks. Expiry after a confirmed backend effect does not discard its
+durable outcome. Native Outlook separation checks the actual responder home
+identity, not only its configured approver alias.
+Unknown effects/ACKs remain the original operation for reconciliation; do not
+automatically generate a new action. Completed outcome reads do not consume again.
+
 Selected actions can additionally require [signed business evidence](../../../../docs/signed-evidence.md).
 JWT verification precedes ACS; semantic evidence fingerprints bind the existing
 approval and audit flow. This opt-in does not change tools without requirements,

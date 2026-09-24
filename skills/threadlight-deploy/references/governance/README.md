@@ -42,6 +42,123 @@ human input; use the [operator review and exact resume protocol](../../../thread
 No review UI, Entra client or grant is created implicitly. GHCP deferred mode
 is rejected until its client can resume the operation; inline mode is unchanged.
 
+### Requesting-user confirmation
+
+The MAF gateway can separately select `user-confirmation` in the tool contract
+and `confirmation_requirement` in its signed registry. Both sides must agree.
+This does not change the requesting workload principal, provide OBO or turn the
+user into an independent reviewer. Native-local and GHCP selection are rejected.
+
+```json
+{
+  "confirmation_requirement": {
+    "trigger": "policy",
+    "provider_profile": "requester-outlook",
+    "max_age_seconds": 300
+  }
+}
+```
+
+This is a fragment of a registered action. `always` requires confirmation even
+for an ACS allow; the explicit `policy` opt-in requires it on escalation.
+Escalation with both confirmation and reviewer roles requires both authorities;
+without reviewer roles it requires only the requesting user's confirmation.
+Existing actions without this selection retain their original review behavior.
+For user-only confirmation, leave `approval_roles` empty and omit the old
+`approval_mode: deferred` / `approval_requirement: policy` reviewer settings.
+The confirmation descriptor independently makes the native client resumable.
+Do not copy a historical reviewer descriptor into an immutable confirmation host.
+
+When a signed registry is available, generation/staging rejects frozen
+`gateway_descriptors` whose tool names or approval/evidence/confirmation selection
+markers differ from that registry. This is a selection preflight, not a replacement
+for the native client's exact full-inventory comparison. In selected-tools
+bootstrap, where the final registry depends on the observed hosted identity,
+derive and compare the frozen schema/metadata with the actual server's planned
+tool construction **before building the agent**. A later discovered mismatch
+requires a new immutable attempt; never edit an already-created version.
+
+Declare the same `confirmation_container`, for example `user-confirmations`,
+in package and infrastructure inputs before generation. The opt-in Bicep
+container uses `/scope` and TTL 3600, separate from permanent approval/audit and
+gateway-idempotency records. Only the control-plane identity receives its scoped
+item permissions. Missing, reserved, null or changed container selections fail.
+
+At bind, provide `confirmation` using the control plane's
+[actual configuration and client contract](../../../threadlight-govern/references/control-plane/README.md):
+exact public control URL, container, gateway principals, provider profiles,
+allowed original workloads/actions and authenticated users. For the email/Entra
+profiles the generator derives `confirmation_subjects` from that trusted profile
+and requires their client IDs in `human_clients`; it does not grant Entra consent.
+Requester authentication is selected by `customer_identity`, independently of
+the result-verification provider: a customer-signed result can still belong to
+an Entra-authenticated requester, and basic email can use an admitted customer
+identity. Generic issuer/subject identifiers are never cast to Entra object IDs.
+For normal email confirmation, select a profile with `kind: outlook-native`
+and its pinned `outlook` workflow, sender, fixed recipient, options and actual
+requester home-identity mapping. Bind verifies the sender is the actual control
+identity. `user_client_id` is optional diagnostic-client configuration, not
+required for a native mail decision. Bind preserves a prior selected configuration;
+null selection, an unknown profile, wrong user/client/workload or mismatched
+service origin fails rather than falling back to an unconfirmed path.
+
+The authenticated application registers the requesting user through the protected
+context API, using delegated `Governance.Confirm` or its configured customer
+identity adapter. It binds the intended workload/action/operation and supplies
+the returned opaque `governance_request_context`
+and its exact `governance_operation_id` to the MAF function. The native client
+transports the reference as MCP metadata and never forwards it as a business
+argument. A low-risk policy allow needs no context when confirmation is not
+required. Missing context for a required confirmation never invents a user.
+
+`pending_confirmation` means **no effect**. With `outlook-native`, the user sees
+the exact proposal and chooses **Approve/Reject directly in the email**.
+The service independently verifies the native response, actual responder,
+workflow pin, request echo and expiry; it does not accept a manual CLI/API
+decision for this profile. The agent then resumes the same operation and context.
+Confirmation does not execute the action;
+fresh policy/facts/expiry, all selected authorities, one-use consumption and
+central audit ACK still precede the backend call.
+
+The primary companion is `user-confirmation-approval.bicep`: the same native
+Logic Apps/Outlook approval pattern as the independent reviewer, with a distinct
+nine-field confirmation payload and no reviewer grant. It reuses an existing
+consented Office 365 connection, fixes the intended recipient, requires the
+control identity and disables SAS on the trigger. It defaults to Disabled;
+observe the actual workflow ID/version/digest before enabling the configured
+profile. Optional `grantWorkflowReader` gives only that control identity Reader
+on this workflow for independent ARM witness verification. The template displays
+synthetic return-case details and waits at most 15 minutes, always bounded by
+the earlier intent expiry. Other business actions need their own reviewed,
+human-readable proposal schema/body and independently observed workflow pin.
+
+The recipient receives no commands. Delivery, opening a message or a scanner
+visit is not consent; only the verified native Approve/Reject response can
+create the one-use authority. The email is **not MFA**. An old notification-only
+record cannot be upgraded to native authority after changing its profile.
+
+`threadlight-confirm-action` and `user-confirmation-notification.bicep` remain
+explicit developer diagnostic/customer-adapter alternatives, not the normal
+email approval experience. The application owns authenticated context creation;
+neither an agent-supplied name nor a workload credential establishes the user.
+Customers can supply admitted identity and confirmation mechanisms, but mailbox
+possession, native email consent, verified CA MFA and transaction signing are
+not equivalent.
+
+For the executable `returns_mcp_agent.py` reference, set the explicit boolean
+`confirmation_enabled: true` and generate its contract with
+`contract(confirmation=True)`. `agent_instructions(confirmation=True)` preserves
+the opaque context/operation and stops on `pending_confirmation`; use those
+instructions when preparing a hosted variant rather than copying old
+approval-only instructions. The default remains unchanged and the example
+still records a return decision/audit, not payment settlement.
+
+Entra CA profiles require a real applicable enabled context policy; unavailable
+Graph/configuration fails closed. `acrs` alone does not establish MFA or a new
+factor for each transaction. See the control-plane guide for the supported
+narrow policy shape and permissions. Local tests and generic noop evidence
+cannot establish this deployment's requesting-user or MFA acceptance.
+
 ### Explicit native Outlook companion
 
 For the implemented returns email experience, deploy `review-approval.bicep`

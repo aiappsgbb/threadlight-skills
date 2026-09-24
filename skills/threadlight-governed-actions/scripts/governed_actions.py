@@ -474,7 +474,7 @@ def _assess_design(
     must-fix finding can fail it).
     """
     inv = inventory.build_action_inventory(root)
-    findings = inv.findings + _signed_evidence_findings(root, "design") + (
+    findings = inv.findings + _specialized_authority_findings(root, "design") + (
         _design_runtime_not_verified_finding(),
         _design_ghcp_not_verified_finding(),
     )
@@ -1844,24 +1844,31 @@ def _collect_selected_live_evidence(
     return live_github, live_azure, findings
 
 
-def _signed_evidence_findings(root, phase):
+def _specialized_authority_findings(root, phase):
     from skills._shared.governance_selection import discover_contract
     from skills._shared.governance import validate_governance_contract
     document, path, _ = discover_contract(root, required=False)
     if document is None:
         return ()
     document = validate_governance_contract(document, deployment_target="demo-sandbox")
-    actions = tuple(tool["id"] for tool in document["tools"] if "signed-evidence" in tool.get("requires", []))
-    if not actions:
-        return ()
-    return (contracts.Finding(
-        finding_id="ENF-001", status="not-verified", phase=phase, plane="runtime",
-        reason_code="signed-evidence-proof-required",
-        summary="Signed business evidence needs its own selected-path acceptance.",
-        details=("Generic application probes, LOCAL-14, CTK and the hosted noop do not exercise this "
-                 "issuer/profile/source-revision contract. Catalog JWT/MCP tests are local fixtures, "
-                 "not evidence for this target. No automatic evidence-specific acceptance producer is supplied."),
-        affected_actions=actions, evidence_refs=(path.relative_to(root).as_posix(),)),)
+    findings = []
+    for requirement, subject in (
+        ("signed-evidence", "Signed business evidence"),
+        ("user-confirmation", "Requesting-user confirmation"),
+    ):
+        actions = tuple(tool["id"] for tool in document["tools"]
+                        if requirement in tool.get("requires", []))
+        if actions:
+            findings.append(contracts.Finding(
+                finding_id="ENF-001", status="not-verified", phase=phase, plane="runtime",
+                reason_code=f"{requirement}-proof-required",
+                summary=f"{subject} needs its own selected-path acceptance.",
+                details=("Generic application probes, LOCAL-14, CTK and the hosted noop do not exercise "
+                         "this specialized authority contract. Catalog protocol tests are local fixtures, "
+                         "not evidence for this target. No automatic authority-specific acceptance "
+                         "producer is supplied."),
+                affected_actions=actions, evidence_refs=(path.relative_to(root).as_posix(),)))
+    return tuple(findings)
 
 
 def _assess_repository_controls(
@@ -1875,7 +1882,7 @@ def _assess_repository_controls(
     if deployment_target is not None:
         options = replace(options, subscription=deployment_target["subscription"])
     inv = inventory.build_action_inventory(root)
-    findings: List[contracts.Finding] = [*inv.findings, *_signed_evidence_findings(root, phase)]
+    findings: List[contracts.Finding] = [*inv.findings, *_specialized_authority_findings(root, phase)]
     evidence: List[contracts.EvidenceRef] = list(_spec_section_8_evidence(inv, source, options.now))
 
     policy_hashes: Tuple[Mapping[str, str], ...] = ()

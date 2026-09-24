@@ -13,7 +13,7 @@ test('architecture report leads with scope, a contents map and implementation, n
     'Limits and adoption']) assert.ok(report.includes(heading), heading);
   assert.ok((report.match(/\]\(#/g) || []).length >= 9, 'Navigable contents');
   const mainReadingPath = report.replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '');
-  assert.ok(mainReadingPath.split(/\s+/).length <= 4000, 'Keep the main reading path concise');
+  assert.ok(mainReadingPath.split(/\s+/).length <= 4100, 'Keep the main reading path concise, including the fifth scenario');
   const proseWithoutLinkTargets = report.replace(/\]\([^)]*\)/g, ']');
   assert.doesNotMatch(proseWithoutLinkTargets, /public hosted execution snapshot|S[123]-HOSTED|ProvisioningError|Billing Issue|2026-09-|sha256:[a-f0-9]{64}/i);
   for (const topic of ['content safety', 'IAM', 'model gateway', 'network isolation',
@@ -112,8 +112,9 @@ test('production feedback links resolve to the clarified governance guide snapsh
   const page = read('docs/production.html');
   const links = [...page.matchAll(/href="(https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/[^/"]+\/docs\/agent-governance-deep-dive\.md)(?:#[^"]*)?"/g)];
   const current = 'https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md';
-  assert.equal(links.length, 3, 'Privacy boundary, detailed reading and closing CTA');
+  assert.equal(links.length, 4, 'Three pinned architecture links plus the new confirmation contract');
   assert.equal(links.filter(([, target]) => target === current).length, 3);
+  assert.match(page, /href="https:\/\/github\.com\/aiappsgbb\/threadlight-skills\/blob\/main\/docs\/agent-governance-deep-dive\.md#requesting-user-confirmation"/);
 });
 
 test('root guidance records the completed private human reference without extending its proof', () => {

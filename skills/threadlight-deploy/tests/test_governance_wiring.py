@@ -486,7 +486,12 @@ def test_bicep_compiles_and_has_separate_scoped_service_identities(tmp_path):
     assert len(apps) == 2
     assert all("condition" in app for app in apps), "foundation must deploy zero placeholder apps"
     source = path.read_text()
-    assert "/scope" in source and "defaultTtl" not in source
+    assert "/scope" in source
+    permanent = [r["properties"]["resource"] for r in resources
+                 if r["type"] == "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers"
+                 and r["properties"]["resource"]["id"] in {"governance-records", "gateway-idempotency"}]
+    assert {container["id"] for container in permanent} == {"governance-records", "gateway-idempotency"}
+    assert all("defaultTtl" not in container for container in permanent)
     assert "privateEndpoints" in source and "privateDnsZoneGroups" in source
     assert "governance-records" in source and "gateway-idempotency" in source
     assert "azd-service-name" in source

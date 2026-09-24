@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { writeFileSync } from 'node:fs';
 
 const installAudio = async page => page.addInitScript(() => {
   window.Audio = class {
@@ -89,6 +90,50 @@ test('voice stops at human review and cannot approve an action automatically', a
   await expect(flow).toHaveAttribute('data-playing', 'false');
   await expect(flow.locator('[data-approval-state]')).toContainText('Not issued');
   await expect(flow.getByRole('button', { name: 'Step 5: Verify response and grant', exact: true })).toBeDisabled();
+});
+
+test('requester narration stops at confirmation and never borrows reviewer clips', async ({ page }) => {
+  await installAudio(page);
+  await page.clock.install();
+  await page.goto('/production.html#user-confirmation');
+  const flow = page.locator('[data-governed-flow]');
+  await flow.getByRole('button', { name: 'Play', exact: true }).click();
+  for (let index = 0; index < 5; index++) await page.evaluate(() => window.testNarration.onended());
+  await expect(flow).toHaveAttribute('data-node', 'confirm');
+  await expect(flow).toHaveAttribute('data-playing', 'false');
+  await expect(flow.locator('[data-flow-step="4"]')).toBeDisabled();
+  await expect(flow.locator('[data-flow-control="next"]')).toBeDisabled();
+  await page.clock.runFor(30000);
+  await expect(flow).toHaveAttribute('data-node', 'confirm');
+  const calls = await page.evaluate(() => window.testNarration.calls);
+  expect(calls).toHaveLength(5);
+  expect(calls[0]).toContain('/intro-confirmation.mp3');
+  expect(calls.at(-1)).toContain('/confirm.mp3');
+  expect(calls.some(url => /\/(?:intro-supervisor|review|verify|pending)\.mp3/.test(url))).toBe(false);
+});
+
+test('new requester clips decode locally and use the synchronized cache revision', async ({ page }) => {
+  await page.goto('/production.html#user-confirmation');
+  const clips = ['intro-confirmation', 'confirmation-proposal', 'confirmation-checks',
+    'confirmation-pending', 'confirm', 'confirmation-verify-confirmed',
+    'confirmation-verify-rejected', 'confirmation-verify-expired',
+    'confirmation-verify-changed', 'confirmation-fresh'];
+  const results = await page.evaluate(async ids => {
+    const revision = new URL(document.querySelector('script[src*="governed-workflow.js"]').src).search;
+    return Promise.all(ids.map(id => new Promise((resolve, reject) => {
+      const audio = new Audio();
+      const timer = setTimeout(() => reject(new Error(`Metadata timeout: ${id}`)), 5000);
+      audio.onloadedmetadata = () => { clearTimeout(timer); resolve({ id, duration: audio.duration, src: audio.src }); };
+      audio.onerror = () => { clearTimeout(timer); reject(new Error(`Invalid audio: ${id}`)); };
+      audio.preload = 'metadata';
+      audio.src = `assets/audio/governance/${id}.mp3${revision}`;
+    })));
+  }, clips);
+  for (const clip of results) {
+    expect(clip.duration).toBeGreaterThan(0);
+    expect(clip.duration).toBeLessThan(20);
+    expect(clip.src).toContain('?v=');
+  }
 });
 
 test('reduced motion permits requested narration without moving markers', async ({ page }) => {
@@ -186,19 +231,38 @@ test('the shipped recording decodes and plays without an external speech service
   await flow.getByRole('button', { name: 'Pause', exact: true }).click();
 });
 
-test('actual clips complete the evidence story without a timing fallback', async ({ page }) => {
+test('actual clips complete the evidence story without a timing fallback', async ({ page }, testInfo) => {
   test.setTimeout(150000);
   await page.goto('/production.html#production-input-proof');
   const flow = page.locator('[data-governed-flow]');
-  await flow.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.waitForFunction(() => {
-    const flow = document.querySelector('[data-governed-flow]');
-    return flow.dataset.node === 'result' || flow.querySelector('[data-flow-audio-note]').textContent;
-  }, null, { timeout: 120000 });
-  await expect(flow.locator('[data-flow-audio-note]')).toBeEmpty();
-  await expect(flow).toHaveAttribute('data-node', 'result');
-  await expect(flow).toHaveAttribute('data-playing', 'false', { timeout: 28000 });
-  await expect(flow.locator('[data-flow-narration]')).toContainText('case has changed');
+  await flow.locator('[data-flow-audio]').evaluate(audio => {
+    window.audioPlayback = [];
+    for (const event of ['playing', 'waiting', 'stalled', 'ended', 'error', 'pause']) {
+      audio.addEventListener(event, () => window.audioPlayback.push({
+        event, at: performance.now(), source: audio.currentSrc, time: audio.currentTime,
+        duration: audio.duration, readyState: audio.readyState, networkState: audio.networkState,
+        hidden: document.hidden, error: audio.error?.message,
+      }));
+    }
+  });
+  try {
+    await flow.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.waitForFunction(() => {
+      const flow = document.querySelector('[data-governed-flow]');
+      return flow.dataset.node === 'result' || flow.querySelector('[data-flow-audio-note]').textContent;
+    }, null, { timeout: 120000 });
+    await expect(flow.locator('[data-flow-audio-note]')).toBeEmpty();
+    await expect(flow).toHaveAttribute('data-node', 'result');
+    await expect(flow).toHaveAttribute('data-playing', 'false', { timeout: 28000 });
+    await expect(flow.locator('[data-flow-narration]')).toContainText('case has changed');
+  } finally {
+    const artifact = testInfo.outputPath('audio-playback.json');
+    writeFileSync(artifact, JSON.stringify(await page.evaluate(() => window.audioPlayback), null, 2));
+    await testInfo.attach('audio-playback', {
+      path: artifact,
+      contentType: 'application/json',
+    });
+  }
 });
 
 test('leaving the topic cancels voice and stale completions cannot resume it', async ({ page }) => {

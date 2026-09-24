@@ -3,14 +3,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
 const model = require('../../docs/assets/governed-workflow.js');
 const audioRoot = path.join(root, 'docs/assets/audio/governance');
 
 test('every policy path introduces the case, then explains its steps without a technical monologue', () => {
   assert.equal(typeof model.narrationFor, 'function');
-  for (const scenario of ['normal', 'invalid', 'supervisor', 'evidence']) {
-    for (const choice of scenario === 'evidence' ? ['valid', 'missing', 'changed'] : ['valid']) {
+  for (const scenario of ['normal', 'invalid', 'supervisor', 'evidence', 'confirmation']) {
+    for (const choice of scenario === 'evidence' ? ['valid', 'missing', 'changed']
+      : scenario === 'confirmation' ? ['confirmed', 'rejected', 'expired', 'changed'] : ['valid']) {
       const introduction = model.narrationFor(scenario, 'intro', choice);
       assert.equal(typeof introduction.text, 'string');
       assert.match(introduction.text, /customer.*return.*order/i);
@@ -48,8 +50,9 @@ test('prerecorded narration ships locally with matching scripts and bounded dura
     assert.ok(clip.seconds > 0 && clip.seconds < 20, clip.id);
     assert.ok(bytes.length > 1000 && bytes.length < 160000, clip.id);
   }
-  for (const scenario of ['normal', 'invalid', 'supervisor', 'evidence']) {
-    for (const choice of scenario === 'evidence' ? ['valid', 'missing', 'changed'] : ['valid']) {
+  for (const scenario of ['normal', 'invalid', 'supervisor', 'evidence', 'confirmation']) {
+    for (const choice of scenario === 'evidence' ? ['valid', 'missing', 'changed']
+      : scenario === 'confirmation' ? ['confirmed', 'rejected', 'expired', 'changed'] : ['valid']) {
       const seconds = ['intro', ...model.scenarioDetails(scenario, choice).steps].reduce((total, id) => {
         const clip = model.narrationFor(scenario, id, choice);
         return total + manifest.clips.find(item => item.id === clip.id).seconds;
@@ -57,6 +60,14 @@ test('prerecorded narration ships locally with matching scripts and bounded dura
       assert.ok(seconds <= 80, `${scenario}/${choice}: ${seconds}s`);
     }
   }
+});
+
+test('incremental rendering preserves verified clips rather than regenerating existing voices', () => {
+  const help = execFileSync(process.execPath, ['scripts/render-governance-narration.mjs', '--help'],
+    { cwd: root, encoding: 'utf8', timeout: 10000 });
+  assert.match(help, /--missing/);
+  assert.match(help, /--changed/);
+  assert.match(help, /preserve.*verified.*clips/i);
 });
 
 test('the presentation contract identifies the home voice and distinguishes rendering from playback', () => {

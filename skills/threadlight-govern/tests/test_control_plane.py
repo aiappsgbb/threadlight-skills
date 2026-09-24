@@ -649,7 +649,10 @@ def test_validation_is_payload_free_bounded_and_duplicate_json_is_rejected():
             paths = {route.path for route in h.app.routes}
             assert paths == {"/health", "/bundles/{policy_id}/{version}",
                              "/approvals/resolve", "/receipts", "/receipts/{receipt_id}",
-                             "/bootstrap/{reference}", "/bootstrap/{reference}/assets/{path:path}"}
+                             "/bootstrap/{reference}", "/bootstrap/{reference}/assets/{path:path}",
+                             "/confirmation/health", "/confirmation/contexts", "/confirmation/context",
+                             "/confirmation/resolve", "/confirmation/{confirmation_id}",
+                             "/confirmation/open/{confirmation_id}"}
         finally:
             await h.close()
     run(scenario())

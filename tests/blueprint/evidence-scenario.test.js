@@ -8,7 +8,7 @@ const model = () => require('../../docs/assets/governed-workflow.js');
 test('signed evidence follows human review as a scenario, not an introductory block', () => {
   const html = read('docs/production.html');
   assert.deepEqual([...html.matchAll(/data-flow-scenario="([^"]+)"/g)].map(m => m[1]),
-    ['normal', 'invalid', 'supervisor', 'evidence']);
+    ['normal', 'invalid', 'supervisor', 'evidence', 'confirmation']);
   assert.doesNotMatch(html.split('id="action-architecture"')[0], /data-input-evidence-policy/);
   assert.match(html, /id="production-input-proof"/);
   assert.match(html, /data-flow-evidence-case/);
@@ -99,7 +99,7 @@ test('public JWT explanation names the signed bindings and exact MCP metadata wi
 
 test('expert guide introduces scenarios and connected data before configuration or code', () => {
   const text = read('docs/agent-governance-deep-dive.md');
-  assert.ok(text.indexOf('### Four policy scenarios') < text.indexOf('### A tool policy can require signed input evidence'));
+  assert.ok(text.indexOf('### Five policy scenarios') < text.indexOf('### A tool policy can require signed input evidence'));
   assert.ok(text.indexOf('### Follow one proposal and its data') < text.indexOf('```json'));
   const data = text.split('### Follow one proposal and its data')[1].split('<!-- contract: returns-decision -->')[0];
   for (const name of ['RMA-EXAMPLE', 'expected_etag', 'arguments_digest', 'evidence_fingerprint',

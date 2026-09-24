@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import hashlib
+import inspect
 from typing import Annotated
 from urllib.parse import parse_qs, urlsplit
 import uuid
@@ -37,21 +38,24 @@ class OutlookResponder(StrictModel):
     role: Identifier
 
 
-class OutlookConfiguration(StrictModel):
+class OutlookWorkflow(StrictModel):
     workflow_resource_id: Annotated[str, Field(
         max_length=1024,
         pattern=r"^/subscriptions/[0-9a-f-]{36}/resourceGroups/[A-Za-z0-9_.()-]+/providers/Microsoft\.Logic/workflows/[A-Za-z0-9_-]+$")]
     workflow_version: Annotated[str, Field(pattern=r"^[0-9]{1,64}$")]
     workflow_digest: Digest
-    trigger_url: Annotated[str, Field(max_length=2048)]
     sender_principal: ObjectId
     recipient: Email
+    approved_option: Identifier = "Approve"
+    rejected_option: Identifier = "Reject"
+
+
+class OutlookConfiguration(OutlookWorkflow):
+    trigger_url: Annotated[str, Field(max_length=2048)]
     requesters: Annotated[tuple[ObjectId, ...], Field(min_length=1, max_length=64)]
     responders: Annotated[tuple[OutlookResponder, ...], Field(min_length=1, max_length=32)]
     actions: Annotated[tuple[Identifier, ...], Field(min_length=1, max_length=32)] = (
         "returns_apply_decision",)
-    approved_option: Identifier = "Approve"
-    rejected_option: Identifier = "Reject"
 
     @model_validator(mode="after")
     def restricted(self):
@@ -86,10 +90,149 @@ def digest(value):
     return "sha256:" + hashlib.sha256(canonical(value)).hexdigest()
 
 
-class NativeOutlook:
-    def __init__(self, configuration: OutlookConfiguration, credential, http: httpx.AsyncClient):
+class OutlookWitness:
+    """Shared native connector/ARM witness; never creates reviewer or user grants."""
+    def __init__(self, configuration: OutlookWorkflow, credential, http: httpx.AsyncClient, *, trigger_url=None):
         self.config, self.credential, self.http = configuration, credential, http
+        self.trigger_url = trigger_url if trigger_url is not None else configuration.trigger_url
 
+    async def request(self, method, url, *, guard, payload=None, tracking=None):
+        async def check():
+            result = guard()
+            if inspect.isawaitable(result):
+                await result
+        await check()
+        token = await self.credential.get_token(ARM_SCOPE)
+        async def authorized():
+            await check()
+            if token.expires_on <= datetime.now(timezone.utc).timestamp():
+                raise OutlookUnavailable("outlook_credential_expired")
+        async def trace(event, info):
+            if event in ("http11.send_request_headers.started", "http11.send_request_body.started"):
+                await authorized()
+        await authorized()
+        headers = {"Authorization": f"Bearer {token.token}", "Content-Type": "application/json"}
+        if tracking is not None:
+            headers["x-ms-client-tracking-id"] = tracking
+        try:
+            async with self.http.stream(
+                    method, url, headers=headers, content=canonical(payload) if payload is not None else None,
+                    follow_redirects=False, extensions={"trace": trace}) as response:
+                raw = bytearray()
+                async for chunk in response.aiter_bytes():
+                    raw.extend(chunk)
+                    if len(raw) > 256 * 1024:
+                        raise OutlookUnavailable("outlook_response_too_large")
+                await authorized()
+                if response.status_code not in (200, 202):
+                    raise OutlookUnavailable("outlook_remote_unavailable")
+                return response.status_code, dict(response.headers), strict_json(bytes(raw)) if raw else None
+        except httpx.HTTPError:
+            raise OutlookUnavailable("outlook_transport_unavailable") from None
+
+    async def arm(self, suffix, *, guard):
+        status, _, document = await self.request(
+            "GET", ARM + self.config.workflow_resource_id + suffix, guard=guard)
+        if status != 200 or not isinstance(document, dict):
+            raise OutlookUnavailable("outlook_arm_response_invalid")
+        return document
+
+    async def verify_workflow(self, control, *, guard, trigger_name, strict_access=False):
+        workflow = await self.arm("?api-version=" + API_VERSION, guard=guard)
+        properties = workflow["properties"]
+        if (workflow["id"].lower() != self.config.workflow_resource_id.lower()
+                or properties["state"] != "Enabled" or properties["version"] != self.config.workflow_version
+                or workflow_digest(workflow) != self.config.workflow_digest):
+            raise Conflict()
+        actual = urlsplit(properties["accessEndpoint"])
+        expected = urlsplit(self.trigger_url)
+        if (actual.scheme != "https" or actual.hostname != expected.hostname
+                or actual.port not in (None, 443)
+                or expected.path != actual.path.rstrip("/") + f"/triggers/{trigger_name}/paths/invoke"):
+            raise Conflict()
+        access = properties["accessControl"]["triggers"]
+        policies = access["openAuthenticationPolicies"]["policies"]
+        required_claims = {
+            "iss": f"https://sts.windows.net/{control.settings.tenant_id}/",
+            "aud": "https://management.azure.com/", "oid": self.config.sender_principal,
+        }
+        if (access["sasAuthenticationPolicy"]["state"] != "Disabled"
+                or not any(p["type"] == "AAD" and {c["name"]: c["value"] for c in p["claims"]} == required_claims
+                           for p in policies.values())
+                or strict_access and (len(policies) != 1
+                    or any(len(p["claims"]) != len(required_claims) for p in policies.values()))):
+            raise Conflict()
+        definition = properties["definition"]
+        gate = definition["actions"]["Require_fresh_pending"]
+        email = gate["actions"]["Send_approval_email"]
+        message = email["inputs"]["body"]["Message"]
+        output = definition["outputs"]["outlook_decision"]["value"]
+        if (set(definition["actions"]) != {"Require_fresh_pending"}
+                or set(gate["actions"]) != {"Send_approval_email"}
+                or email["type"] != "ApiConnectionWebhook"
+                or email["inputs"]["path"] != "/approvalmail/$subscriptions"
+                or message["To"].casefold() != self.config.recipient.casefold()
+                or message["Options"].split(",") != [self.config.approved_option, self.config.rejected_option]
+                or message["ShowHTMLConfirmationDialog"] is not True
+                or output["response"] != "@body('Send_approval_email')" or output["request"] != "@triggerBody()"
+                or output["control_plane_grant_created"] is not False
+                or output["business_effect_executed"] is not False):
+            raise Conflict()
+        if strict_access and (
+                set(definition.get("triggers", {})) != {trigger_name}
+                or definition["triggers"][trigger_name].get("type") != "Request"):
+            raise Conflict()
+
+    async def recover_run(self, tracking, *, guard):
+        document = await self.arm("/runs?api-version=" + API_VERSION + "&$top=100", guard=guard)
+        rows = document.get("value")
+        if (not isinstance(rows, list) or len(rows) > 100
+                or document.get("nextLink") or document.get("@odata.nextLink")):
+            raise OutlookUnavailable("outlook_recovery_requires_operator")
+        candidates = [r for r in rows
+                      if r.get("properties", {}).get("correlation", {}).get("clientTrackingId") == tracking]
+        if len(candidates) != 1:
+            raise OutlookUnavailable("outlook_notification_outcome_unknown")
+        candidate = candidates[0]
+        run_id = parse(Identifier, canonical(candidate["name"]))
+        if candidate["id"].lower() != (self.config.workflow_resource_id + "/runs/" + run_id).lower():
+            raise Conflict()
+        return run_id
+
+    async def response(self, control, *, run_id, tracking, payload, created_at, expires_at, guard):
+        run = await self.arm("/runs/" + run_id + "?api-version=" + API_VERSION, guard=guard)
+        properties = run["properties"]
+        if (run["id"].lower() != (self.config.workflow_resource_id + "/runs/" + run_id).lower()
+                or properties["workflow"]["id"].lower() != (
+                    self.config.workflow_resource_id + "/versions/" + self.config.workflow_version).lower()
+                or properties["correlation"]["clientTrackingId"] != tracking):
+            raise Conflict()
+        if properties["status"] in ("Running", "Waiting"):
+            return None
+        if properties["status"] != "Succeeded":
+            raise OutlookUnavailable("outlook_review_not_completed")
+        value = properties["outputs"]["outlook_decision"]["value"]
+        if (value["request"] != payload or value["control_plane_grant_created"] is not False
+                or value["business_effect_executed"] is not False):
+            raise Conflict()
+        try:
+            response = parse(NativeResponse, canonical(value["response"]))
+            decision_at = parse(Timestamp, canonical(value["observed_at"]))
+            started = parse(Timestamp, canonical(properties["startTime"]))
+            ended = parse(Timestamp, canonical(properties["endTime"]))
+            created = parse(Timestamp, canonical(created_at))
+        except ValueError:
+            raise Conflict() from None
+        if (response.UserEmailAddress.casefold() != self.config.recipient.casefold()
+                or response.SelectedOption not in (self.config.approved_option, self.config.rejected_option)
+                or not created - timedelta(seconds=5) <= started <= decision_at <= ended
+                or ended - decision_at > timedelta(seconds=5)
+                or ended > control.now() + timedelta(seconds=5) or ended >= expires_at):
+            raise Conflict()
+        return response, decision_at, digest(value)
+
+
+class NativeOutlook(OutlookWitness):
     def selected(self, intent):
         return intent.principal in self.config.requesters
 
@@ -127,79 +270,10 @@ class NativeOutlook:
             "review_context": facts,
         }
 
-    async def request(self, method, url, *, guard, payload=None, tracking=None):
-        guard()
-        token = await self.credential.get_token(ARM_SCOPE)
-        guard()
-        if token.expires_on <= datetime.now(timezone.utc).timestamp():
-            raise OutlookUnavailable("outlook_credential_expired")
-        headers = {"Authorization": f"Bearer {token.token}", "Content-Type": "application/json"}
-        if tracking is not None:
-            headers["x-ms-client-tracking-id"] = tracking
-        try:
-            async with self.http.stream(
-                    method, url, headers=headers, content=canonical(payload) if payload is not None else None,
-                    follow_redirects=False) as response:
-                raw = bytearray()
-                async for chunk in response.aiter_bytes():
-                    raw.extend(chunk)
-                    if len(raw) > 256 * 1024:
-                        raise OutlookUnavailable("outlook_response_too_large")
-                guard()
-                if response.status_code not in (200, 202):
-                    raise OutlookUnavailable("outlook_remote_unavailable")
-                return response.status_code, dict(response.headers), strict_json(bytes(raw)) if raw else None
-        except httpx.HTTPError:
-            raise OutlookUnavailable("outlook_transport_unavailable") from None
-
-    async def arm(self, suffix, *, guard):
-        status, _, document = await self.request(
-            "GET", ARM + self.config.workflow_resource_id + suffix, guard=guard)
-        if status != 200 or not isinstance(document, dict):
-            raise OutlookUnavailable("outlook_arm_response_invalid")
-        return document
-
     async def health(self, control, *, intent=None):
         self.authorize_configuration(control)
         guard = (lambda: control.fresh(intent)) if intent is not None else (lambda: None)
-        workflow = await self.arm("?api-version=" + API_VERSION, guard=guard)
-        properties = workflow["properties"]
-        if (workflow["id"].lower() != self.config.workflow_resource_id.lower()
-                or properties["state"] != "Enabled" or properties["version"] != self.config.workflow_version
-                or workflow_digest(workflow) != self.config.workflow_digest):
-            raise Conflict()
-        actual = urlsplit(properties["accessEndpoint"])
-        expected = urlsplit(self.config.trigger_url)
-        if (actual.scheme != "https" or actual.hostname != expected.hostname
-                or actual.port not in (None, 443)
-                or expected.path != actual.path.rstrip("/") + "/triggers/Review_notification_requested/paths/invoke"):
-            raise Conflict()
-        access = properties["accessControl"]["triggers"]
-        policies = access["openAuthenticationPolicies"]["policies"]
-        required_claims = {
-            "iss": f"https://sts.windows.net/{control.settings.tenant_id}/",
-            "aud": "https://management.azure.com/", "oid": self.config.sender_principal,
-        }
-        if (access["sasAuthenticationPolicy"]["state"] != "Disabled"
-                or not any(p["type"] == "AAD" and {c["name"]: c["value"] for c in p["claims"]} == required_claims
-                           for p in policies.values())):
-            raise Conflict()
-        definition = properties["definition"]
-        gate = definition["actions"]["Require_fresh_pending"]
-        email = gate["actions"]["Send_approval_email"]
-        message = email["inputs"]["body"]["Message"]
-        output = definition["outputs"]["outlook_decision"]["value"]
-        if (set(definition["actions"]) != {"Require_fresh_pending"}
-                or set(gate["actions"]) != {"Send_approval_email"}
-                or email["type"] != "ApiConnectionWebhook"
-                or email["inputs"]["path"] != "/approvalmail/$subscriptions"
-                or message["To"].casefold() != self.config.recipient.casefold()
-                or message["Options"].split(",") != [self.config.approved_option, self.config.rejected_option]
-                or message["ShowHTMLConfirmationDialog"] is not True
-                or output["response"] != "@body('Send_approval_email')" or output["request"] != "@triggerBody()"
-                or output["control_plane_grant_created"] is not False
-                or output["business_effect_executed"] is not False):
-            raise Conflict()
+        await self.verify_workflow(control, guard=guard, trigger_name="Review_notification_requested")
 
     def initial(self, control, intent, review):
         if review is None:
@@ -255,20 +329,7 @@ class NativeOutlook:
         await self.health(control, intent=intent)
 
     async def recover_dispatch(self, control, intent):
-        document = await self.arm("/runs?api-version=" + API_VERSION + "&$top=100",
-                                  guard=lambda: control.fresh(intent))
-        rows = document.get("value")
-        if not isinstance(rows, list) or len(rows) > 100 or document.get("nextLink"):
-            raise OutlookUnavailable("outlook_recovery_requires_operator")
-        candidates = [r for r in rows
-                      if r.get("properties", {}).get("correlation", {}).get("clientTrackingId") == intent.nonce]
-        if len(candidates) != 1:
-            raise OutlookUnavailable("outlook_notification_outcome_unknown")
-        candidate = candidates[0]
-        run_id = parse(Identifier, canonical(candidate["name"]))
-        if candidate["id"].lower() != (self.config.workflow_resource_id + "/runs/" + run_id).lower():
-            raise Conflict()
-        return run_id
+        return await self.recover_run(intent.nonce, guard=lambda: control.fresh(intent))
 
     async def resolve(self, control, intent, record, etag):
         outlook = self.validate_record(control, intent, record)
@@ -293,39 +354,16 @@ class NativeOutlook:
         if outlook["dispatch_state"] != "sent":
             raise OutlookUnavailable("outlook_dispatch_state_invalid")
         run_id = parse(Identifier, canonical(outlook["run_id"]))
-        run = await self.arm("/runs/" + run_id + "?api-version=" + API_VERSION,
-                             guard=lambda: control.fresh(intent))
-        properties = run["properties"]
-        if (run["id"].lower() != (self.config.workflow_resource_id + "/runs/" + run_id).lower()
-                or properties["workflow"]["id"].lower() != (
-                    self.config.workflow_resource_id + "/versions/" + self.config.workflow_version).lower()
-                or properties["correlation"]["clientTrackingId"] != intent.nonce):
-            raise Conflict()
-        if properties["status"] in ("Running", "Waiting"):
+        observed = await self.response(control, run_id=run_id, tracking=intent.nonce,
+            payload=outlook["payload"], created_at=outlook["created_at"], expires_at=intent.expires_at,
+            guard=lambda: control.fresh(intent))
+        if observed is None:
             return 202, {"status": "pending"}
-        if properties["status"] != "Succeeded":
-            raise OutlookUnavailable("outlook_review_not_completed")
-        value = properties["outputs"]["outlook_decision"]["value"]
-        if (value["request"] != outlook["payload"] or value["control_plane_grant_created"] is not False
-                or value["business_effect_executed"] is not False):
-            raise Conflict()
-        try:
-            response = parse(NativeResponse, canonical(value["response"]))
-            decision_at = parse(Timestamp, canonical(value["observed_at"]))
-            started = parse(Timestamp, canonical(properties["startTime"]))
-            ended = parse(Timestamp, canonical(properties["endTime"]))
-            created = parse(Timestamp, canonical(outlook["created_at"]))
-        except ValueError:
-            raise Conflict() from None
+        response, decision_at, response_digest = observed
         responder = next((r for r in self.config.responders
                           if (r.home_subject, r.home_tenant) == (response.UserId, response.UserTenantId)), None)
         if (responder is None or responder.role not in intent.allowed_roles
-                or responder.approver == intent.principal
-                or response.UserEmailAddress.casefold() != self.config.recipient.casefold()
-                or response.SelectedOption not in (self.config.approved_option, self.config.rejected_option)
-                or not created - timedelta(seconds=5) <= started <= decision_at <= ended
-                or ended - decision_at > timedelta(seconds=5)
-                or ended > control.now() + timedelta(seconds=5) or ended >= intent.expires_at):
+                or responder.approver == intent.principal):
             raise Conflict()
         await self.health(control, intent=intent)
         await control.intent_policy(intent)
@@ -341,7 +379,7 @@ class NativeOutlook:
                 "workflow_version": self.config.workflow_version, "workflow_digest": self.config.workflow_digest,
                 "run_id": run_id, "home_tenant": response.UserTenantId, "home_subject": response.UserId,
                 "approver": responder.approver, "role": responder.role,
-                "decision_at": decision_at.isoformat(), "response_digest": digest(value),
+                "decision_at": decision_at.isoformat(), "response_digest": response_digest,
             },
         }
         control.fresh(intent)

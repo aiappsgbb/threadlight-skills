@@ -14,6 +14,7 @@ test('the default Production diagram preserves existing geometry beside a separa
     proposal: [20, 60, 160, 68], checks: [245, 60, 160, 68],
     ack: [470, 60, 160, 68], effect: [695, 60, 160, 68], result: [920, 60, 160, 68],
     deny: [470, 3, 210, 42], review: [245, 156, 160, 54], fresh: [470, 156, 160, 54],
+    confirm: [245, 156, 160, 54],
   };
   const actual = Object.fromEntries([...html.matchAll(
     /data-flow-node="([^"]+)"[^>]*transform="translate\((\d+) (\d+)\)"[^>]*>\s*<rect width="(\d+)" height="(\d+)"/g
@@ -59,10 +60,10 @@ test('the guide starts from an existing Threadlight pilot and has five actionabl
   assert.match(html, /test-owned/i);
 });
 
-test('the workbook and current architecture baseline remain byte-frozen outside the signed-evidence addition', () => {
+test('the workbook stays byte-frozen while the architecture pins the scoped confirmation addition', () => {
   for (const [file, expected] of [
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
-    ['docs/agent-governance-deep-dive.md', '9ac455495e2653c3695285e5b04261011b972d79'],
+    ['docs/agent-governance-deep-dive.md', '909409fe4c198d31e9f580f5eacd4b61ed50379f'],
     ['docs/assets/governance/effect-boundaries.svg', '69fa014350e3f7acaf53b8e37541717b99f8a6dd'],
   ]) {
     const bytes = file === 'docs/agent-governance-deep-dive.md'

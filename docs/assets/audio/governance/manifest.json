@@ -44,6 +44,12 @@
       "sha256": "9f5c47b22e8f089addb0b1f17f4034a742611b5ee2a589e617f83a99c820fdb3"
     },
     {
+      "id": "intro-confirmation",
+      "text": "A customer asks to return an order. The gateway invokes a real operation: updating this case and its decision audit, not a payment. Here, the requesting user must confirm this exact decision separately from the agent conversation.",
+      "seconds": 14.4,
+      "sha256": "38ab196b981faa9363a058e14a5c5856786946bd3d6c82fe4de842dfe9919907"
+    },
+    {
       "id": "proposal",
       "text": "The agent proposes the case decision. That proposal is a request, not permission to act.",
       "seconds": 6.024,
@@ -168,6 +174,60 @@
       "text": "The proof does not match the revised request. The gateway rejects it before business execution.",
       "seconds": 6.144,
       "sha256": "c88fde3f4265823612728cce9726a2166111ab5acf96875b03288a31e8f9df05"
+    },
+    {
+      "id": "confirmation-proposal",
+      "text": "The registered user context binds this request. Its reference is not consent or a change of workload identity.",
+      "seconds": 7.32,
+      "sha256": "7dd2b7ce959a89f09abb46a401c652d9464f1047ca1738dbacb092995d5dc727"
+    },
+    {
+      "id": "confirmation-checks",
+      "text": "The gateway checks policy and facts. This action also requires the requesting user to confirm.",
+      "seconds": 6.36,
+      "sha256": "1caf0fd4e534c37dd2d57d589871eb3f1c5818046863a734944a40ea19ad87ca"
+    },
+    {
+      "id": "confirmation-pending",
+      "text": "The service saves the proposal and sends the user an Outlook approval email. No business change has happened.",
+      "seconds": 6.48,
+      "sha256": "20c87ec6276d2a5d295c011c65a4f4a9ddcc2efa24e155942f48bab04279db88"
+    },
+    {
+      "id": "confirm",
+      "text": "We pause for the requesting user to choose Approve or Reject in Outlook. Viewing the message never confirms.",
+      "seconds": 6.768,
+      "sha256": "ffb88488e92e7f0f2af8040c5abed681eb6219ad2fb5745bb29c9959b11ae6a6"
+    },
+    {
+      "id": "confirmation-verify-confirmed",
+      "text": "The matching user explicitly confirmed this proposal. That permission is limited to one use before expiry.",
+      "seconds": 6.864,
+      "sha256": "a283190ed478da27f969f46b1d43d599a39e1e7ad90bff67d521cc1d885baa8f"
+    },
+    {
+      "id": "confirmation-verify-rejected",
+      "text": "The user rejected this proposal. Record the refusal without a business write.",
+      "seconds": 5.136,
+      "sha256": "16c033976b0143d47e2ce193dbefd87dc3bdcc74d450d3b30947a89150c61202"
+    },
+    {
+      "id": "confirmation-verify-expired",
+      "text": "The confirmation expired before use. It cannot authorize the action.",
+      "seconds": 4.92,
+      "sha256": "fbe2af384e8a5870e30e6705075e8f3ddc437634c3b5d90e9242f5ff3a4217e8"
+    },
+    {
+      "id": "confirmation-verify-changed",
+      "text": "The inputs changed. The old confirmation cannot authorize the new proposal.",
+      "seconds": 5.448,
+      "sha256": "9e5471306ea644f182d7e4eb56651b3b2c0c4253126442de2b55682231d7f7ca"
+    },
+    {
+      "id": "confirmation-fresh",
+      "text": "Recheck policy, facts and user binding. Consume the exact permission once, then obtain the audit acknowledgement.",
+      "seconds": 7.776,
+      "sha256": "b3ad9d9cf53af22dbcf2a3c4f59f434b6ca6281349fde290c16853bd70b253c0"
     }
   ]
 }

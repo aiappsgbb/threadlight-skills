@@ -1,5 +1,234 @@
 # Governance control plane (Task 8 reference)
 
+## Requesting-user confirmation
+
+This opt-in is a **separate authority** from `ApprovalGrant`. A workload OID is
+still the workload, never an end-user. The signed gateway action may select
+`confirmation_requirement: {trigger: "always" | "policy", provider_profile:
+"requester-email", max_age_seconds: 300}` (strict, positive, at most 3600 seconds).
+Confirmation proves the original authenticated requester's explicit transaction
+decision; it cannot substitute for an independently configured reviewer.
+
+The normal email profile is **`kind: "outlook-native"`**: the original requesting
+user clicks **Approve or Reject inside the email**, through the existing native
+Outlook approval connector. No command is copied from email and no CLI is needed
+to confirm. `confirmation_outlook.py` reuses `OutlookWitness` from the proven
+independent-review flow for authenticated ARM reads, pinned workflow
+checks, connector responder identity and exact request echo verification.
+It creates **ConfirmationAuthority**, never `ApprovalGrant`; approving the
+requester's email cannot satisfy independent reviewer obligations.
+
+`confirmation.py` also retains generic issuer/subject identity adapters, verified
+signed customer-provider results and optional Entra authentication-context
+verification. No caller boolean, delivery receipt, model user name or forwarded
+claim is provider authority. The CLI is only a developer diagnostic for the
+explicit `email-basic`/Entra API path, not the recipient experience; it is
+**not a browser BFF** or human-presence attestation. Never expose user credentials,
+the diagnostic client or its cache to an agent.
+
+Configure optional `AzureConfiguration.confirmation` with:
+
+| Field | Contract |
+|---|---|
+| `cosmos_container` | Separate existing-account container, partition `/scope`, `defaultTtl: 3600`, one writable region |
+| `public_url` | Fixed HTTPS control-plane origin; never derive from forwarded Host |
+| `gateway_principals` | Exact gateway workload OIDs allowed to bind/consume |
+| `user_client_id` | Optional developer diagnostic client; not required to click native email buttons |
+| `profiles` | Profile ID to strict `ProviderProfile`; see `confirmation.py` |
+
+Each profile declares `kind` (`outlook-native`, `email-basic`, `entra-ca`, `customer-signed`),
+`users` (`issuer`, `subject`, `client`, `delivery_ref`) and `workloads`
+(`workload`, `client`, `agent_id`, `actions`), plus `notification_url` and
+`notification_scope`. Non-Entra identity adapters use pinned
+`customer_identity` (`issuer`, `audience`, `client_id`, `scope`, RSA
+`public_key`, `key_id`). `customer-signed` additionally requires a pinned
+`result_verifier` with the same shape. Its signed result binds `sub`,
+`requester_issuer`, `confirmation_id`, `intent_digest`, exact Boolean `approved`,
+and `capability`, besides the validated issuer/audience/client/scope and times.
+For combined non-Entra requester/reviewer flows, configure explicit
+`reviewer_tenant`/`reviewer_subject` aliases; missing correlation fails closed.
+These grant aliases do not establish the human who actually answered Outlook.
+After validating native Outlook authority the service also compares its actual
+`home_tenant`/`home_subject` to the requester. Cross-tenant or generic identities
+require a separately configured `requester_home_tenant`/`requester_home_subject`
+pair establishing the requester's home identity; incomparable identities fail
+closed. Mapping that same human to a different approver object cannot bypass
+independent-review separation.
+
+### Native requesting-user email contract
+
+A native profile has exactly one intended `users` entry and a fixed-recipient
+`outlook` configuration:
+
+```json
+{
+  "workflow_resource_id": "/subscriptions/SUBSCRIPTION-ID/resourceGroups/RESOURCE-GROUP/providers/Microsoft.Logic/workflows/WORKFLOW",
+  "workflow_version": "OBSERVED-VERSION",
+  "workflow_digest": "sha256:OBSERVED-WORKFLOW-DIGEST",
+  "sender_principal": "CONTROL-PLANE-MANAGED-IDENTITY-OID",
+  "recipient": "requester@example.com",
+  "home_tenant": "ACTUAL-REQUESTER-HOME-TENANT",
+  "home_subject": "ACTUAL-REQUESTER-HOME-OID",
+  "approved_option": "Approve",
+  "rejected_option": "Reject"
+}
+```
+
+These symbolic values must be replaced with independently observed configuration;
+they are not deployable credentials or authority. `notification_url` is the
+SAS-free `User_confirmation_requested` invoke URL and `notification_scope` is
+exactly `https://management.azure.com//.default`. The actual responder
+`UserTenantId`/`UserId` must match this fixed identity **and** the original
+authenticated requester; generic/cross-tenant users require verified
+`requester_home_tenant`/`requester_home_subject` correlation. Email-address equality
+alone is never identity. Native consent does not add requester reviewer roles.
+
+The exact trigger body has nine fields:
+`status: "pending_confirmation"`, `confirmation_id`, `operation_id`, `action_hash`,
+`intent_digest`, `expires_at`, `confirmation_intent`, `review_context`,
+`proposed_arguments`. Actual arguments are hash-verified before dispatch; the
+intent includes the immutable context reference, policy/facts/SAFE digests and
+expiry. No user JWT, credential, signing secret, or CLI-launch URL is sent.
+
+The pinned workflow has one Request trigger `User_confirmation_requested` and
+only `Require_fresh_pending -> Send_approval_email` (`ApiConnectionWebhook`,
+`/approvalmail/$subscriptions`, fixed `Message.To`, exact `Options: Approve,Reject`,
+`ShowHTMLConfirmationDialog: true`). Its `outlook_decision` output contains
+`response: @body('Send_approval_email')`, `request: @triggerBody()`,
+`observed_at: @utcNow()`, `control_plane_grant_created: false`,
+`business_effect_executed: false`. The workflow must display the exact proposal
+safely and enforce the pending status/expiry; the observed definition/parameters/
+access-control digest and version freeze that contract. Configure one exact AAD
+trigger policy for the control-plane identity, tenant issuer and ARM audience,
+with SAS disabled. Workflow-scoped Reader permits independent ARM verification;
+the workflow never runs the business action.
+
+Trigger acceptance is `202` plus `x-ms-workflow-run-id`, **not consent**.
+The service correlates `x-ms-client-tracking-id` with the immutable
+`confirmation_id` and independently retrieves the exact workflow run through ARM.
+Only a succeeded, correctly timed, fully echoed request with the configured native
+Approve/Reject choice and authenticated responder can decide the confirmation.
+The protected TTL outbox retains `prepared -> sending -> sent`; an ambiguous send
+may recover exactly one authenticated matching run but must never blindly resend.
+Changed pins, unmapped responders, partial/failed runs and expiry block authority.
+Native selections reject the manual confirmation POST/CLI path.
+
+### Request context and optional diagnostic providers
+
+Add Entra users to `confirmation_subjects` and their application to `human_clients`;
+grant the delegated **`Governance.Confirm` scope**, not reviewer/auditor roles.
+Delegated confirming tokens may omit `roles`. The API still validates the exact
+configured audience (a v2 API app GUID is not its `api://` scope prefix), issuer,
+tenant, signature, client, times and delegated scope; app-only tokens cannot
+register requesting-user contexts. Registration is **not transaction consent**.
+The normal application's already-authenticated user session registers its exact
+allowed workload/client, agent/action, operation ID and bounded expiry through
+`POST /confirmation/contexts`. The opaque reference travels to the host, never
+user claims. The recipient subsequently decides in the native email and the
+original host resumes the same operation. An expired context is not renewed
+automatically; old pending diagnostic operations cannot be upgraded into native
+authority or used to broaden the user's original scope.
+
+| Route | Authority and behavior |
+|---|---|
+| `POST /confirmation/contexts` | Authenticated requester registers `ContextRequest`: profile, workload/client, agent/action, original operation ID and expiry; returns opaque `context_ref` |
+| `POST /confirmation/context` | Allowed gateway checks exact registered binding and obtains its expiry; no user claims returned |
+| `POST /confirmation/resolve` | Allowed gateway requests/resolves/consumes/validates immutable `ConfirmationIntent` |
+| `GET /confirmation/{confirmation_id}` | Matching authenticated requester receives hash-verified protected arguments and intent; never consents |
+| `POST /confirmation/{confirmation_id}` | Optional explicit API providers only; native mail selections reject this alternative decision path |
+| `GET /confirmation/open/{confirmation_id}` | Scanner-safe informational text only; native email users are directed to the original email buttons, never a command |
+| `GET /confirmation/health?provider_profile=...` | Authenticated gateway dependency readiness, not live transaction proof |
+
+For the optional legacy diagnostic `email-basic` provider, the notification-only
+endpoint receives managed-identity Bearer authentication,
+`Idempotency-Key: <confirmation_id>`, and exactly
+`{confirmation_id, confirmation_url, delivery_ref, expires_at}`. It maps the
+preconfigured delivery reference to a fixed recipient and returns
+`200 {"notification_id":"<same ID>"}` after delivery acceptance. It must neither
+decide nor execute. The durable outbox moves `prepared -> sending -> sent`;
+an ambiguous send remains unknown and is **not resent**. A forged/duplicate
+callback cannot create consent; there is no unauthenticated callback route.
+
+The notification destination and credential scope are validated **as a pair**.
+Custom endpoints retain query-free HTTPS URLs and `api://.../.default` scopes.
+The companion Logic App requires the exact scope
+`https://management.azure.com//.default` (ARM audience
+`https://management.azure.com/`) and a trusted host ending in `.logic.azure.com`
+with exactly `/workflows/<id>/triggers/User_confirmation_requested/paths/invoke?api-version=2016-10-01`.
+No port, fragment, redirect, `sig`, `sp`, `sv`, duplicate or unknown query parameter
+is accepted. An ARM-audience token is never sent to an arbitrary custom notifier.
+
+For developer diagnostics only, an operator may install the approved package and run
+`python -m govern_control_plane.confirmation_user register --request context.json
+--control-plane-url https://control.example --scope api://API-APP-ID/Governance.Confirm
+--tenant TENANT-ID --client-id USER-CLIENT-ID` in their own interactive terminal.
+`context.json` contains the exact `ContextRequest` fields above, including an
+explicit operation ID and UTC expiry. Only its opaque reference and that operation
+ID travel to the host. In this explicitly selected diagnostic provider,
+`confirm --confirmation-id ...` remains available. The client signs in independently,
+fetches and verifies the actual protected display, asks the user to type the
+transaction digest, and submits an authenticated POST. `reject` records rejection.
+The original workload resumes the **same operation**, arguments and context.
+These commands are not the native email recipient workflow.
+
+Native email approval and optional diagnostic confirmation are authenticated
+consent, **not MFA**.
+An `entra-ca` profile requires `authentication_context: "cN"`,
+`conditional_access_policy_id`, and `capability: "ca-mfa"`.
+`confirmation_entra.py` reads the exact Graph authentication context and CA policy
+with the service credential: enabled context/policy, exact context targeting,
+explicit user/All inclusion, no applicable exclusions or unresolved group/role
+conditions, `clientAppTypes: ["all"]`, and `AND` with built-in `mfa` only.
+Unsupported conditions, strengths, unavailable Graph and drift fail closed.
+Provision Graph `AuthenticationContext.Read.All` and `Policy.Read.All` separately;
+this code does not grant permissions or create CA policies.
+
+The verifier preserves **verified token `iat` as issuance time, not MFA time**.
+It establishes a process-local protection epoch only after observing the complete
+protecting context/policy and a valid, non-future Graph `modifiedDateTime`.
+The generation binds the exact profile/mappings, context and policy; a reverted
+policy still changes its modification generation. Accepted tokens must be issued
+strictly after that first protected observation. Missing `acrs` or a pre-epoch
+token receives `insufficient_claims` with `Retry-After: 1`; the client waits that
+bounded interval then calls the installed **synchronous**
+`azure.identity.InteractiveBrowserCredential.authenticate(scopes=..., claims=...,
+enable_cae=True)` through `asyncio.to_thread`, before retrieving the fresh token.
+It does not simply reuse an old cached token that already contains `acrs`.
+Only one challenge round trip is attempted, not an authentication retry loop.
+
+Unknown/missing modification history, observed unavailability, mapping/policy
+drift or process restart invalidates the epoch. Every consume/validate performs
+fresh Graph reads, and a synchronous generation check follows later awaited
+policy/storage calls before acknowledging authority. A protection observation
+has a 30-second deadline; an unchanged freshly reread Graph generation can renew
+that observation without moving the epoch while the user interacts.
+Epochs are intentionally not shared between processes: restart, replica hopping
+or overlapping profiles with different mappings can require a new token or make
+existing authority unusable. There is no claim of seamless multi-replica cached
+token reuse; use a controlled single verifier for this conservative reference.
+An existing confirmation does not silently acquire a new protection generation.
+`acrs` alone can exist without protecting CA: neither it nor `iat` proves a new
+factor challenge per transaction.
+Configuration reads are not atomic with Entra issuance or backend effects;
+tenant-specific live acceptance remains separate.
+
+Private control-plane resolve/consume/validate responses include
+`effective_authority_expires_at`, bounded by the intent, policy, authenticated user,
+signed customer result and (for Entra) observed protection lease. The service
+rechecks it immediately before and after consumption/storage acknowledgements
+and after its final asynchronous policy check. The client requires this field;
+the gateway clamps it and checks synchronously after final policy/transport waits
+at the actual wire boundary. The public three-field pending result is unchanged.
+Expiry before dispatch prevents effects; expiry after an acknowledged effect
+does not erase a durable outcome or reopen its operation.
+
+Request contexts, exact display arguments, user identities and provider provenance
+exist only in the protected TTL store, with explicit expiration checked on every
+read/write. They never enter the permanent operation/receipt ledger. TTL bounds
+active item retention, not an organization's Cosmos backups, diagnostic logs or
+data-residency policy. Atomic consumption and durable central audit ACK precede
+effects; lost acknowledgements do not reopen or generate a new operation.
+
 The portable `attestations.py` module reuses this package's PyJWT and signing
 authority for [named business evidence](../../../../docs/signed-evidence.md).
 There is no new central signing endpoint and no model-supplied claim-signing tool.

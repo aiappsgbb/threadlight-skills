@@ -29,6 +29,13 @@ For [signed business evidence](../../docs/signed-evidence.md), the assessor reta
 hosted noop receipts cannot establish an issuer/profile/source-revision contract.
 Catalog JWT/MCP fixtures do not close a customer's business acceptance gate.
 
+For consent by the **requesting user**, `user-confirmation-proof-required` also
+remains `not-verified`: generic approval probes cannot prove matching user
+identity, the selected provider's assurance, a real out-of-band decision or the
+deployment's one-use confirmation flow. It is distinct from third-party review.
+Use the actual confirmation runtime and retain separate target-bound acceptance;
+an email, local test or noop receipt is not MFA or business-write proof.
+
 The **assessor CLI** is read-only by default and renders a deterministic manifest,
 evidence pack and never-self-applying remediation plan. These are selected-path
 evidence, **not whole-agent** governance. SAFE is the method, ACS/Rego the PDP,

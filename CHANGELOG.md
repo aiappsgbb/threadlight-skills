@@ -7,6 +7,25 @@ field.
 
 ## [Unreleased]
 
+### Requesting-user confirmation
+
+- Add a separate one-use confirmation authority on the selected MAF gateway:
+  authenticated request context, exact transaction binding and native
+  Logic Apps/Outlook Approve/Reject directly in the email. Existing reviewer
+  approval remains separate; configured policies can require either or both.
+- Provide an admitted customer-provider contract and a conservative Entra
+  authentication-context profile. Email is not MFA; `acrs` without verified,
+  applicable Conditional Access policy is not MFA proof. A new factor prompt
+  per transaction is not guaranteed. Command-line clients remain developer
+  diagnostics, not the recipient's email approval flow.
+- Carry selection through shared schemas, source generation, native MCP
+  metadata, explicit ephemeral storage and notification-only IaC. Invalid or
+  one-sided selection fails closed; unbound reads and existing paths remain.
+- Add the fifth public scenario, failure outcomes and bounded narration.
+  Local/native acceptance remains distinct from deployed requesting-user
+  consent and business-effect proof; generic noop receipts cannot establish it.
+- Plugin/marketplace candidate 2.8.0. No merge, release or Citadel integration.
+
 ### Independent authoring and runtime model choices
 
 - Recommend sufficiently capable authoring for nontrivial design/build work

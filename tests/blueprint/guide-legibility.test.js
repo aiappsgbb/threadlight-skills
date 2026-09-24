@@ -91,12 +91,12 @@ test('prompts and verification text remain exact while presentation changes', ()
   }
 });
 
-test('current presentation snapshots stay fixed outside the explicit signed-evidence extension', () => {
+test('current presentation snapshots pin the explicit confirmation extension without changing the workbook', () => {
   for (const [file, expected] of [
-    ['docs/production.html', '259b996f72877c22500b9a7720480d7a00d27efd'],
-    ['docs/assets/governed-workflow.js', '83536363c65e54e5dbbbca617bc81f35b68d550c'],
+    ['docs/production.html', 'f91d80f15749f4fe510ae3f96edd15d32fe9b287'],
+    ['docs/assets/governed-workflow.js', '0f6e432b5b331fc441d98cc6728e888b7ef4eb1e'],
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
-    ['docs/agent-governance-deep-dive.md', '9ac455495e2653c3695285e5b04261011b972d79'],
+    ['docs/agent-governance-deep-dive.md', '909409fe4c198d31e9f580f5eacd4b61ed50379f'],
     ['docs/assets/governance/effect-boundaries.svg', '69fa014350e3f7acaf53b8e37541717b99f8a6dd'],
   ]) {
     const bytes = file === 'docs/agent-governance-deep-dive.md'
