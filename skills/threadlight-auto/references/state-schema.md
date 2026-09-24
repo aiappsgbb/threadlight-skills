@@ -11,6 +11,11 @@ contains five separate states, per-check status/reason, `source_usable`, `owner`
 `next_check`, `ready`, and explicit recorded-not-independently-attested authority.
 `presenter_package` precedes deploy; `presenter_ready` is the final handoff.
 These stages are opt-in and their fingerprints do not use file mtime.
+Per-check `action: refresh-observation` distinguishes expired evidence from a
+request to redeploy/replay an operation; blocked evidence requires reconciliation.
+Runtime fingerprints also include actual unified-azd service source roots and
+ejected infrastructure. Presenter projections do not override governance retry
+state or the required current Safe Check proof.
 The existing state/cascade behavior below remains the default for other pilots.
 
 `.threadlight/auto-state.json` is owned by the `threadlight-auto` guidance

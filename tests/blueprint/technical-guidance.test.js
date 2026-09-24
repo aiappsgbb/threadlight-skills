@@ -31,6 +31,8 @@ test('presenter-ready is one opt-in process-owned contract across the six skills
   assert.match(text, /must not.*refresh/i);
   const guidance = JSON.parse(text.match(/<!-- deployment-guidance -->\s*```json\n([\s\S]*?)```/)[1]);
   assert.deepEqual(guidance, JSON.parse(read('skills/_shared/presenter-deployment-pin.json')));
+  assert.match(text, /Expired evidence.*refresh.*not.*redeploy/i);
+  assert.match(text, /Citadel sequencing disposition[\s\S]*d8f97cc8d619508e0cb70ef9e82c6efcf4944c1d/);
 });
 
 test('model guidance separates operator-owned authoring from runtime deployment choices', () => {

@@ -1834,9 +1834,23 @@ def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
                 check = {"deploy": "deployment", "invoke": "backend"}.get(decision.name)
                 if check:
                     result = presenter["checks"][check]
+                    if decision.decision == "hard_stop":
+                        continue
+                    if decision.name == "deploy" and _deploy_retry_required(workspace):
+                        decisions[index] = StageDecision(
+                            "deploy", "run", "Previous governed deployment is incomplete or invalidated; reconcile its attempt before retry.")
+                        continue
+                    outcome = ("hard_stop" if result["status"] == "blocked" else
+                               "skip" if result["status"] == "verified"
+                               or result.get("action") == "refresh-observation" else "run")
+                    if decision.name == "invoke" and outcome == "run" and not presenter["source_usable"]:
+                        decisions[index] = StageDecision(
+                            "invoke", "hard_stop", "Source is not currently usable; explicitly prepare a new revision before new work.",
+                            hard_stop_signature="presenter-source-not-current")
+                        continue
                     decisions[index] = StageDecision(
-                        decision.name, "skip" if result["status"] == "verified" else "run",
-                        f"Presenter {check}: {result['reason']}")
+                        decision.name, outcome, f"Presenter {check}: {result['reason']}",
+                        hard_stop_signature="presenter-evidence-requires-reconciliation" if outcome == "hard_stop" else None)
             package = presenter["checks"]["package"]
             position = stages.index("deploy")
             stages.insert(position, "presenter_package")
@@ -1923,6 +1937,8 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
                    for check in required):
                 return {"status": "blocked", "stage": "presenter_package" if stage == "deploy" else "deploy",
                         "executed": executed}
+            if stage == "invoke" and STAGE_PROBES["safe_check"](workspace, {}).decision != "skip":
+                return {"status": "blocked", "stage": "safe_check", "executed": executed}
         governed = "governance_probe" in report["stages"]
         if governed:
             guards = (["govern", "governed_actions_gate"] if stage == "deploy" else
@@ -1950,6 +1966,9 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
             passed = (result.get("checks", {}).get("package", {}).get("status") == "verified"
                       if stage == "presenter_package" else result.get("ready"))
             if not passed:
+                return {"status": "blocked", "stage": stage, "executed": executed}
+        if report["presenter_ready"]["enabled"] and stage == "safe_check":
+            if STAGE_PROBES["safe_check"](workspace, {}).decision != "skip":
                 return {"status": "blocked", "stage": stage, "executed": executed}
         if stage == "deploy" and governed and not record_deploy_completed(workspace):
             return {"status": "blocked", "stage": stage, "executed": executed}

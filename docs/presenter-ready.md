@@ -258,13 +258,28 @@ new rehearsal readiness but does not erase historical backend proof.
 
 Auto adds `presenter_package` before deployment and `presenter_ready` at handoff.
 The selected profile uses dependency hashes instead of a blanket cascade:
-script/interface/sizing-only changes do not redeploy or replay backend operations.
+script/sizing-only changes do not redeploy or replay backend operations.
+An interface-only view change rechecks the script, but a workspace inside a
+declared deployable service is also runtime input and needs deployment proof.
+Every actual unified-azd service `project` directory and the selected ejected
+infrastructure directory are included automatically, in addition to declared
+inputs. The assessor and Safe Check validate the same service inventory.
 Runtime changes invalidate native/deployment/backend/script/human evidence;
 source changes invalidate backend/script/human; changed predecessor receipts
 invalidate their downstream acceptance. New files in declared directories count.
 Do not leave imported modules, rules, environment-name wiring or packaged assets
 out of these source roots. Selected governance still runs its existing stronger
 gates before effects and after each deployment.
+
+Expired evidence requests an observation refresh, not a redeploy or business replay.
+Reobserve the deployment or independently read the existing result; if a new
+operation is genuinely necessary, the process owner resolves its authorization
+and any uncertain prior effect first. Failed, uncertain or malformed deployment/
+backend receipts stop automatic dispatch for reconciliation. Source expiry blocks
+new backend interactions without removing historical results or receipts.
+Presenter evidence never suppresses a failed/invalidated governed deployment.
+Safe Check must have current passing evidence before invocation, and a zero-exit
+Safe Check worker without that evidence is still blocked.
 
 Reuse unchanged passing evidence. Resolve genuine permissions, shared resources,
 material cost and uncertain effects with the owner; do not turn each routine
@@ -330,8 +345,22 @@ stays with governance; synthetic scope and deliberately deferred production
 governance are not defects. No hosted/business acceptance is claimed from offline
 catalog verification. No live deployment, paid probe or RBAC expansion is implied.
 
-For issue #141 integration, keep the PR draft until the incoming Citadel runtime
-work is merged or receives an explicit disposition. Then realign to updated main,
-review the deployment/safe-check/planner touchpoints and rerun the affected
-contract tests. Do not copy its incomplete branch, manufacture binding evidence,
-or merge this profile ahead of that sequencing decision.
+### Citadel sequencing disposition
+
+On 2026-09-24, the Citadel runtime owner gave an explicit technical sequencing
+disposition for PR #142 at `271346751e5c8ab0b7b71744f273cd3e9f419741`:
+independent completion for review is permitted. The owner inspected Citadel
+`d8f97cc8d619508e0cb70ef9e82c6efcf4944c1d` and remote main
+`4aaf3831a707cf47406ca1629dc6f3673c96b523`; Citadel had no PR then.
+This is **not a merge authorization or general code review** of this change
+or later fixes. Current main was unchanged, so no artificial merge is needed.
+
+The shared file is `tests/blueprint/technical-guidance.test.js`; preserve both
+independent additions when integrating. Presenter layout guidance must not
+replace `governance-upstream-pin.json`, bypass pre-effect governance checks,
+or claim coverage of Citadel's native-SDK ancillary-service deployment.
+Keep Citadel's future gateway/control-plane pins and catalog version changes
+with its owner; do not preempt them here. If main advances before integration,
+review the actual touchpoints, realign normally and rerun affected checks and
+source-bound publication verification. Do not copy incomplete runtime work or
+manufacture hosted binding evidence.

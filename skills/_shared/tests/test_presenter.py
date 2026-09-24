@@ -516,3 +516,123 @@ def test_publication_path_error_never_leaves_ready_true(tmp_path):
     report = assess(tmp_path)
     assert not report["ready"]
     assert report["gaps"]
+
+
+def skip_legacy_probes(monkeypatch, orch):
+    for name in orch.STAGE_PROBES:
+        monkeypatch.setitem(orch.STAGE_PROBES, name, lambda workspace, state, name=name:
+                            orch.StageDecision(name, "skip", "fixture"))
+
+
+def test_presenter_receipt_cannot_hide_failed_governance_deployment(tmp_path, monkeypatch):
+    orch = orchestrator()
+    contract = pilot(tmp_path)
+    evidence(tmp_path, contract)
+    skip_legacy_probes(monkeypatch, orch)
+    monkeypatch.setattr(orch, "_deploy_retry_required", lambda _: True)
+    report = orch.decide(tmp_path)
+    assert next(d for d in report["decisions"] if d["stage"] == "deploy")["decision"] != "skip"
+
+
+def test_presenter_cannot_invoke_after_zero_exit_unverified_safe_check(tmp_path, monkeypatch):
+    orch = orchestrator()
+    contract = pilot(tmp_path)
+    evidence(tmp_path, contract)
+    skip_legacy_probes(monkeypatch, orch)
+    monkeypatch.setitem(orch.STAGE_PROBES, "safe_check",
+                        lambda *_: orch.StageDecision("safe_check", "run", "missing proof"))
+    result = orch.execute(tmp_path, lambda _: 0)
+    assert result["status"] == "blocked"
+    assert result["stage"] == "safe_check"
+    assert result["executed"] == ["safe_check"]
+
+
+def test_failed_backend_receipt_is_not_automatic_business_retry(tmp_path, monkeypatch):
+    orch = orchestrator()
+    contract = pilot(tmp_path)
+    refs = evidence(tmp_path, contract)
+    value = json.loads((tmp_path / refs["backend"]["path"]).read_text())
+    value["result"] = "uncertain"
+    refs["backend"]["sha256"] = presenter.sha256(write(tmp_path, refs["backend"]["path"], value).read_bytes())
+    write(tmp_path, presenter.EVIDENCE, {"schema": "threadlight-presenter-evidence/v1", "checks": refs})
+    skip_legacy_probes(monkeypatch, orch)
+    executed = []
+    result = orch.execute(tmp_path, lambda stage: executed.append(stage) or 0)
+    assert result["status"] == "blocked"
+    assert executed == []
+
+
+def test_expired_observation_requests_refresh_not_business_replay(tmp_path, monkeypatch):
+    orch = orchestrator()
+    contract = pilot(tmp_path)
+    contract["evidence_max_age_hours"] = 1
+    write(tmp_path, presenter.CONTRACT, contract)
+    evidence(tmp_path, contract)
+    skip_legacy_probes(monkeypatch, orch)
+    report = orch.decide(tmp_path)
+    decisions = {d["stage"]: d["decision"] for d in report["decisions"]}
+    assert decisions["deploy"] == decisions["invoke"] == "skip"
+    assert decisions["presenter_ready"] == "run"
+
+
+def test_all_declared_packaged_services_and_infrastructure_are_fingerprinted(tmp_path):
+    contract = pilot(tmp_path)
+    yaml = tmp_path / "azure.yaml"
+    yaml.write_text(yaml.read_text().replace("infra:", """  mcp:
+    host: containerapp
+    project: ./src/mcp
+infra:""").replace("provider: microsoft.foundry", "provider: bicep"))
+    write(tmp_path, "src/mcp/main.py", "service v1")
+    write(tmp_path, "infra/main.bicep", "// v1")
+    write(tmp_path, "specs/manifest.json", {
+        "delivery_profile": "presenter-ready",
+        "deployment_manifest": {"services": [{"name": "mcp", "host": "containerapp", "src": "src/mcp"}]},
+    })
+    evidence(tmp_path, contract)
+    write(tmp_path, "src/mcp/main.py", "service v2")
+    assert assess(tmp_path)["checks"]["package"]["status"] == "stale"
+    evidence(tmp_path, contract)
+    write(tmp_path, "infra/main.bicep", "// v2")
+    assert assess(tmp_path)["checks"]["deployment"]["status"] == "stale"
+
+
+def test_assessor_and_safecheck_use_same_service_inventory(tmp_path):
+    contract = pilot(tmp_path)
+    write(tmp_path, "specs/manifest.json", {
+        "delivery_profile": "presenter-ready",
+        "deployment_manifest": {"services": [{"name": "missing", "host": "containerapp", "src": "src/missing"}]},
+    })
+    evidence(tmp_path, contract)
+    assert assess(tmp_path)["states"]["source-ready"] == "blocked"
+
+
+def test_expired_source_cannot_dispatch_a_new_backend_interaction(tmp_path, monkeypatch):
+    orch = orchestrator()
+    contract = pilot(tmp_path)
+    contract["availability"]["expires_at"] = "2026-09-23T10:00:00Z"
+    write(tmp_path, presenter.CONTRACT, contract)
+    evidence(tmp_path, contract, checks=["package", "deployment"])
+    skip_legacy_probes(monkeypatch, orch)
+    executed = []
+    result = orch.execute(tmp_path, lambda stage: executed.append(stage) or 0)
+    assert result["status"] == "blocked"
+    assert result["stage"] == "invoke"
+    assert executed == []
+
+
+def test_later_worker_cannot_invalidate_safecheck_and_still_complete(tmp_path, monkeypatch):
+    orch = orchestrator()
+    contract = pilot(tmp_path)
+    evidence(tmp_path, contract)
+    skip_legacy_probes(monkeypatch, orch)
+    monkeypatch.setitem(orch.STAGE_PROBES, "cost_projection",
+                        lambda *_: orch.StageDecision("cost_projection", "run", "missing"))
+
+    def worker(stage):
+        monkeypatch.setitem(orch.STAGE_PROBES, "safe_check",
+                            lambda *_: orch.StageDecision("safe_check", "run", "invalidated"))
+        return 0
+
+    result = orch.execute(tmp_path, worker)
+    assert result["status"] == "blocked"
+    assert result["stage"] == "safe_check"

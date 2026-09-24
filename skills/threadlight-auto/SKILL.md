@@ -39,8 +39,13 @@ promised. A first-time presenter separately records human acceptance.
 script-verified and human-accepted distinct. It reports supplied, source-bound
 evidence, not a fresh live attestation. No human acceptance may be auto-generated.
 Dependency-specific invalidation replaces blanket cascade **only for this
-profile**: script/UX/sizing changes do not redeploy or replay the backend; runtime,
+profile**: script/sizing changes do not redeploy or replay the backend; runtime,
 source and new deployment attempts invalidate their actual dependents.
+Deployable workspace/service source is runtime input, not just presentation.
+Expired evidence calls for observation refresh, not effect replay. Failed or
+uncertain backend/deployment evidence stops for reconciliation; expired source
+blocks new invocation. A failed governed deployment and a missing/failed Safe
+Check cannot be bypassed by a presenter receipt or a worker's zero exit.
 Native package proof precedes deployment; selected governance gates retain
 authority. Handle permission/shared-resource/material-cost/uncertain-effect
 decisions explicitly, not repeated approvals of routine authorized steps.

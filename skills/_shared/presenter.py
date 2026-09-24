@@ -168,10 +168,7 @@ def fingerprints(root, contract):
     for group in GROUPS:
         paths = list(contract["inputs"][group])
         if group == "runtime":
-            paths.extend(contract["deployment"][name] for name in
-                         ("manifest", "runtime_root", "entrypoint", "lockfile", "adapter"))
-            if contract["deployment"]["consumer"] == "native-sdk":
-                paths.append(contract["deployment"]["create_entrypoint"])
+            paths.extend(_runtime_paths(root, contract))
         result[group] = canonical_hash({
             "process_id": contract["process_id"], "contract": sections[group],
             "files": file_inventory(root, paths),
@@ -179,28 +176,50 @@ def fingerprints(root, contract):
     return result
 
 
+def _deployment_document(root, contract):
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ValueError("presenter: install pyyaml to validate the selected deployment consumer") from exc
+    # Reject ambiguous YAML keys rather than accepting the parser's last value.
+    class UniqueLoader(yaml.SafeLoader):
+        pass
+
+    def mapping(loader, node):
+        result = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node)
+            require(isinstance(key, str) and key not in result, "duplicate-yaml-key")
+            result[key] = loader.construct_object(value_node)
+        return result
+
+    UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+    try:
+        return yaml.load(read_bytes(root, contract["deployment"]["manifest"]), Loader=UniqueLoader)
+    except yaml.YAMLError as exc:
+        raise ValueError("presenter deployment: invalid-yaml") from exc
+
+
+def _runtime_paths(root, contract):
+    deploy = contract["deployment"]
+    paths = [deploy[name] for name in ("manifest", "runtime_root", "entrypoint", "lockfile", "adapter")]
+    if deploy["consumer"] == "native-sdk":
+        paths.append(deploy["create_entrypoint"])
+    else:
+        document = _deployment_document(root, contract)
+        paths.extend(service["project"].removeprefix("./")
+                     for service in document["services"].values() if "project" in service)
+        infra = document.get("infra", {})
+        if infra.get("provider", "bicep") != "microsoft.foundry":
+            paths.append(infra.get("path", "infra"))
+    return paths
+
+
 def deployment_gaps(root, contract, *, inventory=None, packaged=False):
     """Validate the selected native consumer, never infer it from whichever file exists."""
     try:
-        import yaml
-    except ImportError:
-        return ["presenter: install pyyaml to validate the selected deployment consumer"]
-    try:
         deploy = contract["deployment"]
-        # Reject ambiguous YAML keys rather than accepting the parser's last value.
-        class UniqueLoader(yaml.SafeLoader):
-            pass
-
-        def mapping(loader, node):
-            result = {}
-            for key_node, value_node in node.value:
-                key = loader.construct_object(key_node)
-                require(isinstance(key, str) and key not in result, "duplicate-yaml-key")
-                result[key] = loader.construct_object(value_node)
-            return result
-
-        UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
-        document = yaml.load(read_bytes(root, deploy["manifest"]), Loader=UniqueLoader)
+        document = _deployment_document(root, contract)
         for folder in (Path(root), safe_path(root, deploy["runtime_root"], exists=False)):
             for name in ("agent.yaml", "agent.manifest.yaml"):
                 require(not (folder / name).exists(), "competing-deployment-manifest")
@@ -263,8 +282,6 @@ def deployment_gaps(root, contract, *, inventory=None, packaged=False):
                 "reserved-platform-environment")
         for name in ("entrypoint", "lockfile", "adapter"):
             read_bytes(root, deploy[name])
-    except yaml.YAMLError:
-        return ["presenter deployment: invalid-yaml"]
     except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
         return [f"presenter deployment: {type(exc).__name__}: {exc}"]
     return []
@@ -302,8 +319,6 @@ def _receipt(root, contract, check, reference, hashes, now, references):
     for key in PREDECESSORS[check]:
         predecessor = read_json(root, references[key]["path"])
         require(timestamp(predecessor.get("observed_at")) <= observed, "receipt-predates-predecessor")
-    if check != "package" and now - observed > timedelta(hours=contract["evidence_max_age_hours"]):
-        return {"status": "stale", "reason": "Recorded evidence validity elapsed; history preserved."}
     expected = {group: hashes[group] for group in CHECKS[check]["inputs"]}
     if value.get("inputs") != expected:
         return {"status": "stale", "reason": "Changed declared inputs; rerun only this check."}
@@ -330,6 +345,9 @@ def _receipt(root, contract, check, reference, hashes, now, references):
     if check == "human":
         require(text(facts.get("accepted_by")) and facts.get("first_time_presenter") is True,
                 "human-acceptance-required")
+    if check != "package" and now - observed > timedelta(hours=contract["evidence_max_age_hours"]):
+        return {"status": "stale", "action": "refresh-observation",
+                "reason": "Recorded evidence validity elapsed; refresh observation, not the underlying effect."}
     return {"status": "verified", "reason": "Bound recorded evidence; not an independent attestation.",
             "receipt": reference}
 
@@ -345,7 +363,8 @@ def assess(root, *, now=None):
             return {"enabled": False}
         contract = load_contract(root)
         hashes = fingerprints(root, contract)
-        gaps = deployment_gaps(root, contract)
+        inventory = read_json(root, "specs/manifest.json").get("deployment_manifest")
+        gaps = deployment_gaps(root, contract, inventory=inventory)
         require(not gaps, "; ".join(gaps))
         report["states"]["source-ready"] = "verified"
         availability = contract["availability"]
@@ -430,12 +449,9 @@ def _publication_status(root, contract):
         require(_git(root, "rev-parse", "HEAD").decode().strip() == commit, "publication-not-final-commit")
         require(proof == verify_publication(root, contract, commit), "publication-proof-drift")
         paths = [p for group in contract["inputs"].values() for p in group]
-        paths += [contract["deployment"][key] for key in
-                  ("manifest", "runtime_root", "entrypoint", "lockfile", "adapter")]
+        paths += _runtime_paths(root, contract)
         paths += [CONTRACT, *contract["publication"]["files"]]
         paths += [item["path"] for item in contract["publication"]["bundles"]]
-        if contract["deployment"]["consumer"] == "native-sdk":
-            paths.append(contract["deployment"]["create_entrypoint"])
         for path, digest in file_inventory(root, paths).items():
             require(sha256(_git(root, "show", f"{commit}:{path}")) == digest,
                     "publication-worktree-drift")
