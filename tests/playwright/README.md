@@ -56,17 +56,21 @@ dependency. From the repository root:
 ```bash
 node scripts/render-governance-diagrams.mjs
 node scripts/render-governance-diagrams.mjs --diagram effect-boundaries
+node scripts/render-governance-diagrams.mjs --diagram citadel-action-path
+node scripts/render-governance-diagrams.mjs --diagram citadel-policy-lifecycle
 node scripts/render-governance-diagrams.mjs --check
 node --test tests/blueprint/architecture-reader.test.js
 ```
 
-The script parses and renders both governance references through Chromium,
+The script parses and renders the governance references and Citadel guide through Chromium,
 rejects script/HTML-bearing SVG output, and writes named images to
 `docs/assets/governance/`. Images have an opaque light background so their
 lines remain readable in dark Markdown viewers. Editable Mermaid sources stay
 collapsed beside each image. `--check` compares current rendered output with
 the committed images; use the same browser/font environment when regenerating.
 `--validate` renders without writing images.
+Use `--diagram` for a scoped documentation change so unrelated historical SVGs
+remain unchanged; the same selector works with `--check` and `--validate`.
 
 The Production-ready schematic is independent static SVG/HTML using the site's
 existing theme, with a vertical mobile flow. Its focused checks are:
