@@ -245,3 +245,43 @@ promotion/recovery operators, a registered native evaluator/scanner, fresh
 signed publication, current scoped identities and real human approval remain
 required application integrations. The catalog intentionally supplies no
 credentials, customer targets, fabricated producers or green example receipts.
+
+## 2026-09-25 acceptance attempt
+
+The operational-closure implementation was reconciled with the later Citadel,
+signed-evidence and requesting-user confirmation work at source commit
+`4bec0f2d399df0dbf987119c02306d507bd1fb22`. The exact-published Linux runtime
+gate passed 522 runtime and 161 gateway/operator cases; the separate generated
+deployment gate passed 1,512 cases. The 47 declared CTK vectors and four
+undeclared incremental-output cases retain their separate meanings. These
+results are local/native protocol evidence with external-service doubles.
+
+The dedicated private Basic validation environment was reconciled before any
+new registration. Its existing failed version was preserved. A fresh immutable
+image, current source, new bootstrap reference and explicit hash-bound hosted
+cohort were prepared, and the new version was created **once**. Direct version
+observation then returned `failed` with `ProvisioningError`. The project
+capability host, registry connection and project pull permission were observed,
+but the root cause was not established. Those prerequisite observations and
+successful container imports do not prove hosted startup.
+
+**No hosted invocation or business acceptance completed on this candidate.**
+
+| Required live scenario | Result for this attempt |
+|---|---|
+| Hosted allow and deny | not executed: provisioning failed before invocation |
+| Genuine Outlook approve/reject, exact resume and replay | not executed; an authenticated connection is not a human decision |
+| Hosted lost-ACK recovery, fencing and stop | not executed; the passing native tests are a different evidence class |
+| Scoped restore and correlated alert delivery | not executed; no live readiness pass was generated |
+
+No successful production promotion or go-live decision follows from this run.
+The source implementation is available for an operator-owned integration, but
+this record is **not production acceptance** and cannot satisfy another
+deployment's runtime-binding evidence gate.
+
+The failed attempt's immutable metadata is retained separately from cleanup.
+Cleanup is restricted to the dedicated validation inventory, with independent
+absence checks; it does not convert a failed acceptance into a pass. Existing
+demo environments and shared infrastructure are outside that inventory.
+Provider-enforced soft-delete or purge-protection retention must be disclosed,
+not bypassed or described as permanent erasure.

@@ -198,6 +198,17 @@ test('operator recovery documents terminal fencing and bounded admission rather 
   assert.match(read('README.md'), /CI\/CD 0\.6\.0/);
 });
 
+test('operational closure retains the failed hosted attempt without claiming live acceptance', () => {
+  const text = read('docs/reference-release.md');
+  const attempt = text.split('## 2026-09-25 acceptance attempt')[1];
+  assert.ok(attempt, 'dated acceptance boundary');
+  for (const term of ['ProvisioningError', 'root cause was not established',
+    'No hosted invocation', 'not executed', 'not production acceptance']) {
+    assert.ok(attempt.includes(term), term);
+  }
+  assert.doesNotMatch(attempt, /\/subscriptions\/[0-9a-f-]{36}|\.azurecr\.io|@microsoft\.com/i);
+});
+
 test('native control hierarchy keeps optional Toolbox content filters separate from effect authorization', () => {
   const text = read('docs/runtime-support.md');
   assert.match(text, /policies\.rai_config\.rai_policy_name/);
