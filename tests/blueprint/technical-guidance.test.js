@@ -172,6 +172,51 @@ test('MAF generation handoffs preserve autonomous trusted reads and separate app
   assert.match(policy, /approval_required/);
 });
 
+test('dependency disposition distinguishes artifact presence from reachable PKCS7 decryption', () => {
+  const text = read('skills/threadlight-govern/references/control-plane/README.md');
+  for (const phrase of ['pkcs7_decrypt_der', 'pkcs7_decrypt_pem', 'pkcs7_decrypt_smime',
+    'gateway image', 'hosted agent image', 'standalone control-plane', 'No image scan']) {
+    assert.ok(text.includes(phrase), phrase);
+  }
+  assert.match(text, /50\.0\.0.*AGT|AGT.*50\.0\.0/s);
+});
+
+test('operator recovery documents terminal fencing and bounded admission rather than automatic retry', () => {
+  const text = read('skills/threadlight-govern/references/gateway/README.md');
+  assert.match(text, /threadlight-operate-action/);
+  assert.match(text, /not_executed/);
+  assert.match(text, /retry_authorized.*false/);
+  assert.match(text, /Strong.*consistency/s);
+  assert.match(text, /300 seconds/);
+  assert.doesNotMatch(text, /No reconciliation API is supplied/);
+  assert.match(read('docs/runtime-support.md'), /operator.*recovery/i);
+  const recovery = text.split('### Operator recovery and admission')[1].split('### Required downstream contract')[0];
+  for (const term of ['0.5.0', 'requesting_user_context', 'evidence_token', 'Citadel',
+    'does not consume confirmation or reviewer authority again']) {
+    assert.ok(recovery.includes(term), term);
+  }
+  assert.match(read('README.md'), /CI\/CD 0\.6\.0/);
+});
+
+test('operational closure retains the failed hosted attempt without claiming live acceptance', () => {
+  const text = read('docs/reference-release.md');
+  const attempt = text.split('## 2026-09-25 acceptance attempt')[1];
+  assert.ok(attempt, 'dated acceptance boundary');
+  for (const term of ['ProvisioningError', 'root cause was not established',
+    'No hosted invocation', 'not executed', 'not production acceptance']) {
+    assert.ok(attempt.includes(term), term);
+  }
+  assert.doesNotMatch(attempt, /\/subscriptions\/[0-9a-f-]{36}|\.azurecr\.io|@microsoft\.com/i);
+});
+
+test('native control hierarchy keeps optional Toolbox content filters separate from effect authorization', () => {
+  const text = read('docs/runtime-support.md');
+  assert.match(text, /policies\.rai_config\.rai_policy_name/);
+  assert.match(text, /tool inputs and outputs/);
+  assert.match(text, /does not traverse Toolbox/);
+  assert.match(text, /not.*effect authorization/i);
+});
+
 test('all current CI handoffs describe the same fail-closed release boundary', () => {
   for (const file of ['skills/threadlight-cicd/SKILL.md',
     'skills/threadlight-production-ready/SKILL.md', 'docs/agent-operations.md',

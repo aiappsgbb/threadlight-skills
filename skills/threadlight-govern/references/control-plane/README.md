@@ -258,6 +258,35 @@ against an unchanged default branch. The deployment owner must rebuild, inspect
 the resulting image inventory and authorize a deployment with fresh acceptance
 evidence. Do not reuse an older image's receipts for a rebuilt service.
 
+### September 17 advisory disposition (source scope)
+
+The open alert is on this package's direct `cryptography==49.0.0` dependency.
+The affected APIs are `pkcs7_decrypt_der`, `pkcs7_decrypt_pem` and
+`pkcs7_decrypt_smime`: decrypting attacker-supplied PKCS#7 EnvelopedData and
+reflecting distinguishable errors/timing. Native Outlook `SendApprovalMail`
+does not make this service an S/MIME decryption gateway.
+
+| Artifact | Presence and reachable use in the reviewed catalog |
+|---|---|
+| standalone control-plane wheel/image | Direct dependency; `auth.py` calls PyJWT RS256/JWKS verification; `storage.py` calls Azure Key Vault signing/verification. No PKCS#7 decryption route or call in this service |
+| gateway image | Installs this control-plane package alongside AGT/ACS; inherits the dependency and JWT verifier. Dispatch transports JSON; it does not decrypt PKCS#7 |
+| generated hosted agent image | Generated service/bootstrap code uses the same control-plane auth/transport package; the selected published native cohort still constrains dependency resolution. Application-added tools must be reviewed independently |
+| local tests | RSA signing and TLS certificate construction exercise signatures, not untrusted EnvelopedData decryption; these are not image exploitability tests |
+
+**No image scan or live workload exploitability test is implied by this source
+review.** Inventory each rebuilt image by digest (including linked OpenSSL and
+application tools) before deployment. The advisory distinguishes OpenSSL
+3.0/3.1 from wheels using 3.2+ implicit rejection, but does not make all PKCS#7
+usage safe: unauthenticated CBC content remains a separate oracle concern.
+
+Compatible options are: retain the known pin with this explicit unresolved
+advisory and workload-specific risk ownership; await a reviewed AGT cohort
+compatible with cryptography 50.0.0; or validate an independently versioned
+standalone control-plane dependency update separately from the AGT images.
+That last option cannot silently update the combined gateway/hosted cohort.
+No SDK metadata edits, forced incompatible resolver, alert dismissal, universal
+non-applicability statement or security-fix claim is authorized by this triage.
+
 ## Trust boundary
 
 The API validates RSA/RS256 Entra signatures against a bounded, cached JWKS fetched

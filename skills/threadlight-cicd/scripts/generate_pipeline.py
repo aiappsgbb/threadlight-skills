@@ -29,7 +29,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 
 REF = Path(__file__).resolve().parent.parent / "references"
 
@@ -471,6 +471,71 @@ def _release_policy_example(ctx: dict, agentops: bool = False) -> dict:
     return result
 
 
+def _returns_release_example(policy: dict, agentops: bool) -> dict:
+    """Non-executable handoff: real application operators and observations are required."""
+    script = ".threadlight/skills/threadlight-cicd/scripts/returns_release.py"
+    config_path = "specs/returns-release.json"
+    policy["application"] = {"profile": "returns-mcp/v1", "configuration": config_path}
+    for phase, action in (("validation", "prepare"), ("production", "promote")):
+        for name in (action, "observe"):
+            policy[phase][name] = ["python3", script, name, "--configuration", config_path]
+    for domain in ("evals", "redteam"):
+        if domain == "evals" and agentops:
+            continue
+        policy[domain]["producer"] = ["python3", script, domain, "--configuration", config_path]
+    def revision():
+        return {"resource_id": "REPLACE_WITH_OBSERVED_RESOURCE_ID",
+                "revision": "REPLACE_WITH_OBSERVED_REVISION"}
+    targets = {}
+    for phase, operations in (
+        ("validation", ("prepare", "observe")),
+        ("production", ("stop", "admission", "operation", "promote", "observe", "postcheck", "admit", "recover")),
+    ):
+        targets[phase] = {
+            "external": {
+                "signing_key_id": "REPLACE_WITH_APPROVED_VERSIONED_SIGNING_KEY_ID",
+                "model_deployment": revision(),
+                "connections": {name: revision() for name in ("model", "gateway", "outlook")},
+                "services": {name: dict(revision(), image_digest="REPLACE_WITH_IMMUTABLE_IMAGE_DIGEST")
+                             for name in ("control_plane", "gateway", "backend")},
+                "cosmos": {
+                    "account_id": "REPLACE_WITH_PHASE_SPECIFIC_COSMOS_RESOURCE_ID",
+                    "database": "REPLACE_WITH_DATABASE",
+                    "containers": {name: "REPLACE_WITH_CONTAINER" for name in
+                                   ("cases", "read_audit", "central_audit", "operations")},
+                },
+                "outlook": {
+                    "workflow_id": "REPLACE_WITH_NATIVE_APPROVAL_WORKFLOW_ID",
+                    "version": "REPLACE_WITH_VERSION", "definition_sha256": "REPLACE_WITH_SHA256",
+                    "connection_id": "REPLACE_WITH_CONNECTION_ID", "recipient_sha256": "REPLACE_WITH_SHA256",
+                },
+                "role_map": {name: [{"scope": "REPLACE_WITH_RESOURCE_SCOPE", "role": "REPLACE_WITH_EXACT_ROLE"}]
+                             for name in ("agent", "gateway", "backend", "control_plane", "human_reviewer")},
+            },
+            "operators": {name: ["python3", ".ci/returns-operator.py", phase, name] for name in operations},
+        }
+    return {
+        "schema": "threadlight-returns-release/v1",
+        "source_package": "REPLACE_WITH_SOURCE_PACKAGE_MANIFEST_PATH",
+        "behavior": {
+            "source_package_sha256": "REPLACE_WITH_SHA256", "instructions_sha256": "REPLACE_WITH_SHA256",
+            "model": {"name": "REPLACE_WITH_MODEL", "version": "REPLACE_WITH_EXACT_MODEL_VERSION"},
+            "policy_code_sha256": "REPLACE_WITH_SHA256",
+            "tools": {name: {"policy_binding": binding, "schema_sha256": "REPLACE_WITH_SHA256"}
+                      for name, binding in (("returns_get_case", "none"), ("returns_apply_decision", "returns-safe"))},
+        },
+        "targets": targets,
+        "producers": {
+            domain: {"execute": (policy[domain]["producer"] if domain == "evals" and agentops else
+                                 ["python3", f".ci/execute-returns-{domain}.py"]),
+                     "raw_output": policy[domain]["outputs"][1]}
+            for domain in ("evals", "redteam")
+        },
+        "owners": {name: "REPLACE_WITH_ACCOUNTABLE_OWNER" for name in (
+            "application", "central_platform", "production_approver", "human_reviewer", "incident")},
+    }
+
+
 def _write_setup(directory: Path, platform: str, ctx: dict) -> list[Path]:
     sources = {
         "01-uami-federated-credentials.md": f"01-uami-federated-credentials.{platform}.md.tmpl",
@@ -511,9 +576,29 @@ def generate(framing: dict, out_root) -> list:
     resolved = resolve_onboarding_path(framing)
     ctx = build_context(framing, resolved)
     agentops, refresh_doctor, doctor_schedule = _agentops_options(framing, out_root)
+    reference = framing.get("reference_application")
+    if reference is not None and reference != "returns-mcp/v1":
+        raise ValueError("unsupported selected reference application")
     tooling = _release_tooling()
     if agentops:
         tooling.update(_agentops_tooling())
+    if reference:
+        skills = Path(__file__).resolve().parents[2]
+        for path in ("threadlight-cicd/scripts/returns_release.py",
+                     "threadlight-cicd/scripts/returns_gateway_operator.py",
+                     "threadlight-evals/scripts/evals_check.py",
+                     "threadlight-redteam/scripts/redteam_check.py"):
+            tooling[Path(".threadlight/skills") / path] = (skills / path).read_text(encoding="utf-8")
+    release_policy = _release_policy_example(ctx, agentops)
+    returns_config = _returns_release_example(release_policy, agentops) if reference else None
+    if reference:
+        for target in ("validation", "production"):
+            for action in ("prepare", "promote", "observe"):
+                if action in release_policy[target]:
+                    release_policy[target][action] += ["--policy", ctx["RELEASE_POLICY"]]
+        for domain in ("evals", "redteam"):
+            if not (domain == "evals" and agentops):
+                release_policy[domain]["producer"] += ["--policy", ctx["RELEASE_POLICY"]]
     env_dir = out_root / "docs" / "threadlight-cicd" / "env-setup"
     written: list[Path] = []
 
@@ -556,8 +641,11 @@ def generate(framing: dict, out_root) -> list:
         written.append(_write(out_root / relative, content))
     written.append(_write(
         out_root / "specs/release-policy.example.json",
-        json.dumps(_release_policy_example(ctx, agentops), indent=2) + "\n",
+        json.dumps(release_policy, indent=2) + "\n",
     ))
+    if returns_config is not None:
+        written.append(_write(out_root / "specs/returns-release.example.json",
+                              json.dumps(returns_config, indent=2) + "\n"))
     written.append(_write(
         out_root / "docs/threadlight-cicd/release-contract.md",
         (REF / "release-contract.md").read_text(encoding="utf-8"),
@@ -692,6 +780,7 @@ def _parse_args(argv):
     p.add_argument("--mcp-gate", choices=["hard"], default=None,
                    help="MCP release acceptance is always blocking.")
     p.add_argument("--release-policy", default=None)
+    p.add_argument("--reference-application", choices=["returns-mcp/v1"], default=None)
     p.add_argument("--validation-env-name", default=None)
     p.add_argument("--validation-tenant-id", default=None)
     p.add_argument("--validation-sub", dest="validation_subscription_id", default=None)
@@ -731,6 +820,7 @@ def _framing_from_args(args) -> dict:
         "eval_gate": args.eval_gate,
         "mcp_gate": args.mcp_gate,
         "release_policy": args.release_policy,
+        "reference_application": args.reference_application,
         "validation_env_name": args.validation_env_name,
         "validation_tenant_id": args.validation_tenant_id,
         "validation_subscription_id": args.validation_subscription_id,

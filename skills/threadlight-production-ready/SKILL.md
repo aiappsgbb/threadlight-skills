@@ -6,7 +6,7 @@ description: >-
   remediation ownership or an explicit CI readiness gate. Not for deployment,
   runtime implementation, model evaluation or hub provisioning.
 metadata:
-  version: "0.15.0"
+  version: "0.15.1"
 ---
 
 # Threadlight Production Ready — paving the path to production

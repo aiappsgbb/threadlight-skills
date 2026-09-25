@@ -141,6 +141,8 @@ class Action(StrictModel):
         default=300, exclude_if=lambda value: value == 300)
     endpoint: str
     outcome_endpoint: str
+    recovery_contract: Literal["fenced-outcome/v1"] | None = Field(default=None, exclude_if=lambda v: v is None)
+    recovery_endpoint: str | None = Field(default=None, exclude_if=lambda v: v is None)
     credential_scope: Annotated[str, Field(pattern=r"^api://[A-Za-z0-9._/-]+/\.default$")]
     input_schema: dict
     output_schema: dict
@@ -154,6 +156,9 @@ class Action(StrictModel):
     @model_validator(mode="before")
     @classmethod
     def explicit_evidence(cls, value):
+        if isinstance(value, dict) and any(
+                name in value and value[name] is None for name in ("recovery_contract", "recovery_endpoint")):
+            raise ValueError("recovery_configuration_required")
         if isinstance(value, dict) and "evidence_requirement" in value and value["evidence_requirement"] is None:
             raise ValueError("evidence_configuration_required")
         if isinstance(value, dict) and "confirmation_requirement" in value and value["confirmation_requirement"] is None:
@@ -179,6 +184,13 @@ class Action(StrictModel):
                     raise ValueError("evidence_binding_fields_required")
         if EVIDENCE_ARGUMENT in self.input_schema.get("properties", {}):
             raise ValueError("reserved_evidence_argument")
+        if (self.recovery_contract is None) != (self.recovery_endpoint is None):
+            raise ValueError("explicit_recovery_contract_required")
+        if self.recovery_endpoint is not None:
+            if (https_endpoint(self.recovery_endpoint) != self.recovery_endpoint
+                    or urlsplit(self.recovery_endpoint).netloc != urlsplit(self.endpoint).netloc
+                    or self.recovery_endpoint in {self.endpoint, self.outcome_endpoint}):
+                raise ValueError("invalid_recovery_endpoint")
         if ((self.approval_mode == "deferred" or self.approval_requirement == "policy")
                 and not self.approval_roles):
             raise ValueError("approval_roles_required")
@@ -273,7 +285,8 @@ class NativePolicy:
             return merged
         declared = points(bundle.manifest_path)
         for action in registry.actions:
-            if not {action.endpoint, action.outcome_endpoint} <= set(allowed_endpoints):
+            if not {action.endpoint, action.outcome_endpoint, *(
+                    [action.recovery_endpoint] if action.recovery_endpoint else [])} <= set(allowed_endpoints):
                 raise GateError("endpoint_unavailable")
             for point, binding, target in (
                 ("pre_tool_call", action.policy_binding, "$.tool_call.args"),
@@ -293,6 +306,7 @@ class NativePolicy:
             if hashlib.file_digest(binary, "sha256").hexdigest() != pins["opa"]["linux_amd64_static_sha256"]:
                 raise GateError("opa_unavailable")
         result = cls()
+        result.signer = signer
         result.opa_path = str(opa)
         result.policy_id = envelope.policy_id
         result.bundle, result.registry = bundle, registry
@@ -309,6 +323,10 @@ class NativePolicy:
         if os.environ.get("ACS_OPA_PATH") != self.opa_path:
             raise GateError("opa_unavailable")
         verify_bundle(self.bundle.root, expected_digest=self.digest)
+
+    async def authority_health(self):
+        await self.signer.health()
+        self.fresh()
 
     async def evaluate(self, point, action, arguments, safe, result=None):
         from agent_control_specification import InterventionPointResult
@@ -406,12 +424,21 @@ class DownstreamClient:
     async def aclose(self):
         await self.http.aclose()
 
+    async def recover(self, **kwargs):
+        action = kwargs["action"]
+        if action.recovery_contract != "fenced-outcome/v1" or action.recovery_endpoint is None:
+            raise GateError("recovery_unsupported", "blocked")
+        try:
+            return await self.request(**kwargs, recovery=True)
+        except (GateError, httpx.HTTPError, TimeoutError, ValueError):
+            raise GateError("outcome_unknown") from None
+
     async def request(self, *, action, arguments, key, action_hash, provenance, facts, guard,
-                      retrieve=False, on_dispatch=None, effect_check=None):
+                      retrieve=False, on_dispatch=None, effect_check=None, recovery=False):
         async with asyncio.timeout(self.timeout):
             token = await self.credential.get_token(action.credential_scope)
             content = canonical(validated(arguments, action.input_schema)) if not retrieve else None
-            endpoint = action.outcome_endpoint if retrieve else action.endpoint
+            endpoint = action.recovery_endpoint if recovery else action.outcome_endpoint if retrieve else action.endpoint
             method = "GET" if retrieve else "POST"
             headers = {
                 "Authorization": f"Bearer {token.token}", "Content-Type": "application/json",
@@ -460,6 +487,17 @@ class DownstreamClient:
                 _transport_ticket.reset(marker)
             await final_check()
             reply = strict_json(bytes(raw))
+            if recovery:
+                expected = {"action_hash": action_hash, "provenance": provenance,
+                            "operation_key": headers["Idempotency-Key"],
+                            "deployment_hash": headers["X-Deployment-Hash"]}
+                if (not isinstance(reply, dict)
+                        or set(reply) != {*expected, "state", "receipt_id"}
+                        or any(reply.get(k) != v for k, v in expected.items())
+                        or reply.get("state") not in {"completed", "not_executed", "unknown"}):
+                    raise GateError("outcome_unknown")
+                parse(Identifier, canonical(reply["receipt_id"]))
+                return reply
             if not isinstance(reply, dict) or set(reply) != {"receipt_id", "result"}:
                 raise GateError("downstream_unavailable")
             parse(Identifier, canonical(reply["receipt_id"]))
@@ -470,7 +508,7 @@ class GovernedDispatcher:
     def __init__(self, *, policy, auth, store, receipts: ReceiptService, downstream,
                  approvals: ApprovalService | None, safe_provider,
                  approval_principal, approval_agent_id, timeout=15.0, probes=None, confirmations=None,
-                 ingress=None):
+                 ingress=None, operations_required=False):
         if not 0 < timeout <= 30:
             raise ValueError("invalid_timeout")
         self.policy, self.auth, self.store, self.receipts = policy, auth, store, receipts
@@ -480,6 +518,19 @@ class GovernedDispatcher:
         self.probes = probes
         self.confirmations = confirmations
         self.ingress = ingress
+        self.operations_required = operations_required
+
+    async def operate(self, *, authorization, body):
+        from .operations import operate
+        try:
+            async with asyncio.timeout(self.timeout):
+                return await operate(self, authorization, body)
+        except TimeoutError:
+            return {"status": "unavailable", "reason_code": "operator_timeout"}
+
+    async def admit(self, facts):
+        from .operations import admit
+        await admit(self, facts)
 
     def approval_context(self, action, *, tenant):
         return ApprovalContext(
@@ -549,6 +600,8 @@ class GovernedDispatcher:
                         raise GateError("idempotency_conflict", "blocked")
                     if existing["state"] == "rejected":
                         return {"status": "blocked", "reason_code": existing.get("reason_code", "approval_denied")}
+                    if existing["state"] == "not_executed":
+                        return {"status": "blocked", "reason_code": "operation_fenced"}
                     if existing["state"] not in ("completed", "awaiting_approval", "awaiting_confirmation"):
                         raise GateError("outcome_unknown")
                     if existing["state"] == "awaiting_approval" and selected.approval_mode != "deferred":
@@ -586,6 +639,7 @@ class GovernedDispatcher:
                     if reply["receipt_id"] != existing["outcome_reference"]:
                         raise GateError("outcome_unknown")
                     return await self.output(selected, enforced, facts, reply, guard)
+                await self.admit(facts)
                 if requesting_user_context is not None:
                     if self.confirmations is None:
                         raise GateError("confirmation_unavailable")
@@ -790,6 +844,7 @@ class GovernedDispatcher:
                     guard()
                     if evidence is not None and digest(current_safe()) != safe_hash:
                         raise GateError("approval_context_changed", "blocked")
+                    await self.admit(facts)
                     if (grant.intent != intent or grant.approver_tenant != identity.tenant
                             or grant.approver_role not in selected.approval_roles
                             or grant.approver == self.approval_principal
@@ -844,6 +899,8 @@ class GovernedDispatcher:
                         raise GateError("approval_expired")
                 async def effect_check():
                     effect_guard()
+                    await self.admit(facts)
+                    effect_guard()
                     if digest(current_safe()) != safe_hash:
                         raise GateError("approval_context_changed", "blocked")
                     if confirmation_intent is not None:
@@ -867,6 +924,8 @@ class GovernedDispatcher:
                                 or confirmation_intent is not None
                                 and confirmation_intent.expires_at <= datetime.now(timezone.utc)):
                             raise GateError("confirmation_context_changed", "blocked")
+                    await self.admit(facts)
+                    effect_guard()
                 attempted = True
                 reply = await self.downstream.request(
                     action=selected, arguments=enforced, key=key, action_hash=action_hash,
@@ -875,7 +934,7 @@ class GovernedDispatcher:
                     **({"on_dispatch": lambda: self.probes.dispatch(probe)} if probe else {}),
                     **({"effect_check": effect_check} if deferred or evidence is not None
                        or selected.confirmation_requirement is not None
-                       or getattr(self.policy, "terminal_recheck", False) else {}))
+                       or getattr(self.policy, "terminal_recheck", False) or self.operations_required else {}))
                 guard()
                 current, etag = await self.store.read(scope, key)
                 if current != record:
