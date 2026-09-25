@@ -40,6 +40,18 @@ test('dated Citadel evidence separates public routing from live job-only produce
   assert.match(read('docs/citadel-governance.md'), /governed-returns-validation\.md#s7-/);
 });
 
+test('Citadel requester evidence records genuine native authority without borrowing S6', () => {
+  const text = read('docs/governed-returns-validation.md');
+  const record = text.split('### September 25: genuine Citadel requesting-user confirmation')[1];
+  assert.ok(record, 'Fresh Citadel requester evidence required');
+  const section = record.split('\n## ')[0].replace(/\s+/g, ' ');
+  for (const term of ['2026-09-25', 'browser', 'native Outlook', 'original operation',
+    'independently', 'ETags', 'S6', 'not MFA', 'not model-driven']) {
+    assert.ok(section.includes(term), term);
+  }
+  assert.match(read('docs/citadel-governance.md').replace(/\s+/g, ' '), /genuine.*requesting-user/i);
+});
+
 test('model guidance separates operator-owned authoring from runtime deployment choices', () => {
   const text = read('skills/threadlight-design/references/model-selection.md').replace(/\s+/g, ' ');
   assert.match(text, /authoring[\s\S]*discovery[\s\S]*specification[\s\S]*architecture[\s\S]*code generation/i);

@@ -7,8 +7,10 @@ evidence that an APIM route, Entra role assignment or business write exists.
 
 The [September 24 execution record](governed-returns-validation.md#s7-citadel-public-route-and-isolated-producer-ack-loss)
 separates the observed public MCP/REST route from the distinct live job-only
-producer ACK-loss test. It preserves the still-open genuine requesting-user gate;
-neither local tests nor that dated record certify a new deployment.
+producer ACK-loss test. Its September 25 continuation records genuine
+requesting-user browser authentication, native email approval, exact-operation
+resume and unchanged replay, while preserving the earlier expired attempt.
+Neither local tests nor that dated record certify a new deployment.
 
 ## ADR: position of authority and ownership
 

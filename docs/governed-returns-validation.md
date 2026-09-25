@@ -21,7 +21,7 @@ The separate delegated-token workstream is outside this record.
 | S4 | Platform-managed prompt agent using an equivalent external governed action boundary | Applicability assessment only; not implemented or tested | Not interchangeable with the MAF client used in S1/S3 |
 | S5 | Signed evidence under multi-turn business pressure | September 22: Azure GPT-5.4 / GPT-5.4-mini with local native MCP/ACS, synthetic authorities and business storage | Hybrid experiment; not hosted JWT/PEP or live Cosmos acceptance |
 | S6 | Requesting-user confirmation through native Logic Apps/Outlook email | September 24: genuine Approve, original-operation completion and zero-extra-effect replay on hosted v8 | One scoped S3 nonproduction path; not MFA or same-session effect-resume proof |
-| S7 | Citadel public MCP/REST route and a separate live producer-to-PEP ACK-loss job | September 24: public allow/deny/replay and isolated native PEP response-loss reconciliation | Real Azure business persistence; job-only fault boundary is not public-route or model-driven fault proof; requesting-user flow remains unexecuted |
+| S7 | Citadel public MCP/REST route, isolated producer ACK loss and native requesting-user confirmation | September 24: nonhuman routing/fault proof; September 25: genuine native Approve, fresh-operation completion and unchanged replay | Real Azure persistence and separate one-use requester authority; not model-driven, MFA or whole-agent proof |
 
 **Reference direction:** S2 now has fresh private governed allow/deny evidence,
 separate from its earlier BASIC baseline. S3's governed business proof remains
@@ -108,11 +108,12 @@ Two operations are completed; two are preserved pending: audit unavailable
 automatically retried. The ACK-loss job is live native PEP-to-producer evidence,
 **not public APIM fault-injection or hosted agent-loop evidence**.
 
-The new requesting-user flow remains paused: **user unavailable**, no browser
-context registered, **zero native emails and zero confirmation consumptions**.
-The human case is unchanged. S6's genuine approval cannot be borrowed to close
-this gate. No MFA, same-session human effect resume, combined reviewer/requester
-approval, model quality or load/SLO claim follows from these tests.
+At the September 24 handoff, the requesting-user flow was paused: **user
+unavailable**, no browser context registered, **zero native emails and zero
+confirmation consumptions**, and the human case unchanged. S6's approval was
+not borrowed. The fresh September 25 result below closes this separate positive
+requester path, not MFA, combined reviewer/requester approval, model quality or
+load/SLO coverage.
 
 Policy-envelope signing was exercised; vulnerability **scan**, image **signing**,
 release **publication**, PR/merge and Pages acceptance remain separate. Images
@@ -125,6 +126,56 @@ joins, original operation IDs, job outcomes, independent before/after snapshots,
 fault-removal readbacks, leases and ongoing resource costs. Expired envelopes
 require a fresh signed generation and attempt, never an extension of old
 authority. This dated record is not reusable current-readiness evidence.
+
+### September 25: genuine Citadel requesting-user confirmation
+
+**2026-09-25.** The actual requester authenticated in their normal **browser**
+through authorization code/PKCE. The control plane registered an immutable
+user/workload/client/action/operation context; registration was not consent.
+The public APIM MCP path returned `pending_confirmation` and sent a genuine
+**native Outlook** approval email showing the synthetic return decision.
+
+The first attempt received a genuine **Approve at 06:43:25 UTC**, but the
+operator did not resume it before its context expired at **07:06:15 UTC**.
+This was an execution-continuity failure, not missing user consent.
+Independent reads proved zero effects and an unchanged case. That expired
+authority was not extended, consumed or reused; its native pending operation
+and the historical witness capture were preserved. It is not the successful
+attempt's authority.
+
+The user explicitly authorized a fresh request if necessary. A new browser
+context and distinctly identified operation were registered at **07:13:43 UTC**,
+against the still-valid, unchanged signed generation. A second native email
+received genuine **Approve at 07:18:37 UTC**. The unchanged native Outlook witness
+independently checked the pinned workflow/version/digest, complete request echo,
+actual responder home identity, option and deadline. The gateway promptly resumed
+the **original operation of this fresh attempt**, rechecked the authorities and
+policy, consumed the requester confirmation once, obtained central audit ACK,
+and recorded exactly one synthetic case decision/audit.
+
+| Fresh-attempt observation | Independent result |
+|---|---|
+| Before native decision/resume | Case and ETag unchanged; confirmation pending and mail sent; no business effect |
+| Genuine Approve and exact resume | One consumed requester authority, one completed operation, one new allow receipt and one business decision/audit, joined by action/policy/context/operation hashes |
+| Exact completed-operation replay | Identical outcome; zero extra writes, receipts, email runs or authority consumption |
+| Durable replay comparison | All **25 records**, including case/audit, gateway, central receipt and user-context/authority **ETags**, unchanged |
+| Email accounting | Two real emails overall: one expired first attempt and one successful fresh attempt; replay sent none |
+
+Combined with September 24, the capture contains **seven synthetic seeds,
+four business decision/audits and six central receipts** (four allow, two deny).
+The original expired requester attempt remains separate from the successful
+operation. The two fault-test pending operations were not reopened or promoted.
+The live runtime remains `d8f97cc`; APIM publication fixes remain `d45806c`;
+no new image, signing-key generation, recipient or shared mail connection was
+needed for the fresh requester attempt.
+
+This is fresh Citadel evidence, not borrowed **S6** authority. Native email is
+**not MFA**, and the workload driver is **not model-driven**. Separate MCP
+requests preserved the operation; this does not prove a continuously hosted
+agent conversation or same-session model execution. Live Reject, wrong-user,
+combined independent-reviewer/requester, image scan/signing, release publication
+and load/SLO coverage remain distinct. The actual lease and resource custody are
+retained privately; these observations do not renew an expired deployment.
 
 ## S6: Native requesting-user approval
 
