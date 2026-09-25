@@ -6,7 +6,7 @@ const path = require('node:path');
 const docsDir = path.join(__dirname, '../../docs');
 const htmlFiles = fs.readdirSync(docsDir).filter((name) => name.endsWith('.html'));
 // Declare observed Pages outputs; an arbitrary Markdown source is not publication evidence.
-const generatedPages = new Map([['citadel-governance.html', 'citadel-governance.md']]);
+const generatedPages = new Map(Object.entries(require('./helpers/published-markdown-pages.json')));
 
 const read = (name) => fs.readFileSync(path.join(docsDir, name), 'utf8');
 

@@ -47,6 +47,12 @@ npx playwright test
 
 The Playwright config auto-starts `python3 -m http.server 4173` rooted
 at `../../docs` and tears it down when the suite ends.
+This static server does not build Jekyll Markdown pages. The internal-link
+crawler checks exact source responses for observed generated routes declared in
+`tests/blueprint/helpers/published-markdown-pages.json`; all other page links
+must return their real HTML. `public-links.test.js` shares that declaration and
+checks destination/fragment existence, rejecting missing and excluded path aliases.
+This is a source contract, not a replacement for a rendered Pages preview.
 
 ## Governance report diagrams
 
