@@ -1,0 +1,115 @@
+{
+  "schema": "threadlight-citadel-binding/v1",
+  "generation": "1",
+  "tenant_id": "11111111-1111-1111-1111-111111111111",
+  "deployment": {
+    "agent_id": "agent-1",
+    "agent_version": "1",
+    "image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "environment": "preproduction",
+    "subscription": "11111111-1111-1111-1111-111111111111",
+    "resource_group": "rg-synthetic"
+  },
+  "gateway_url": "https://gateway.example/mcp",
+  "public_url": "https://citadel.example/mcp/returns",
+  "proxy": {
+    "principal": "66666666-6666-6666-6666-666666666666",
+    "client": "77777777-7777-7777-7777-777777777777",
+    "audience": "api://pep"
+  },
+  "producer": {
+    "schema": "threadlight-citadel-producer/v1",
+    "contract_id": "returns",
+    "version": "1",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "policy": {
+      "policy_id": "producer",
+      "version": "1",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "key_id": "https://test.vault.azure.net/keys/bundle/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "facts_provider": "host-identity-v1",
+    "effect_protocol": "registered-http-v1",
+    "action": {
+      "name": "returns_apply_decision",
+      "policy_binding": "safe",
+      "post_policy_binding": null,
+      "workloads": ["22222222-2222-2222-2222-222222222222"],
+      "scope": "returns",
+      "approval_roles": [],
+      "endpoint": "https://business.example/decisions",
+      "outcome_endpoint": "https://business.example/outcomes",
+      "credential_scope": "api://business/.default",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "case_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "expected_etag": {"type": "string", "minLength": 1, "maxLength": 128},
+          "decision": {"type": "string", "enum": ["approve_refund", "deny_refund", "escalate_to_supervisor", "request_more_info"]},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 512}
+        },
+        "required": ["case_id", "expected_etag", "decision", "reason"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "case_id": {"type": "string", "maxLength": 128},
+          "decision": {"type": "string", "enum": ["approve_refund", "deny_refund", "escalate_to_supervisor", "request_more_info"]},
+          "audit_id": {"type": "string", "maxLength": 128}
+        },
+        "required": ["case_id", "decision", "audit_id"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "consumer": {
+    "schema": "threadlight-citadel-consumer/v1",
+    "contract_id": "returns-agent",
+    "version": "1",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "policy": {
+      "policy_id": "consumer",
+      "version": "1",
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "key_id": "https://test.vault.azure.net/keys/bundle/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "principal": "22222222-2222-2222-2222-222222222222",
+    "client": "44444444-4444-4444-4444-444444444444",
+    "audience": "api://consumer",
+    "producer_id": "returns",
+    "producer_version": "1",
+    "action": {
+      "name": "returns_apply_decision",
+      "policy_binding": "safe",
+      "post_policy_binding": null,
+      "workloads": ["22222222-2222-2222-2222-222222222222"],
+      "scope": "returns",
+      "approval_roles": [],
+      "endpoint": "https://business.example/decisions",
+      "outcome_endpoint": "https://business.example/outcomes",
+      "credential_scope": "api://business/.default",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "case_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "expected_etag": {"type": "string", "minLength": 1, "maxLength": 128},
+          "decision": {"type": "string", "enum": ["approve_refund", "deny_refund", "escalate_to_supervisor", "request_more_info"]},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 512}
+        },
+        "required": ["case_id", "expected_etag", "decision", "reason"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "case_id": {"type": "string", "maxLength": 128},
+          "decision": {"type": "string", "enum": ["approve_refund", "deny_refund", "escalate_to_supervisor", "request_more_info"]},
+          "audit_id": {"type": "string", "maxLength": 128}
+        },
+        "required": ["case_id", "decision", "audit_id"],
+        "additionalProperties": false
+      }
+    }
+  }
+}

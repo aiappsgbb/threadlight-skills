@@ -71,6 +71,20 @@ test('public surfaces carry the same explanation and distinguish primary actors 
   assert.match(read('docs/governance.html'), /Agent Control Specification/);
 });
 
+test('governance entry exposes scoped Citadel guidance and immutable dated evidence', () => {
+  const html = read('docs/governance.html');
+  const note = html.match(/<p[^>]*id="citadel-action-profile"[^>]*>([\s\S]*?)<\/p>/)?.[1];
+  assert.ok(note, 'Citadel guidance must be visible in the existing public learning path');
+  for (const term of ['APIM', 'producer', 'consumer', 'Deny', 'dated', 'new deployment']) {
+    assert.ok(note.includes(term), term);
+  }
+  const pin = 'c538f4cf89c9c5e5f5ae0c43e3bbdae96c34778e';
+  assert.ok(note.includes(`/blob/${pin}/docs/citadel-governance.md`));
+  assert.ok(note.includes(`/blob/${pin}/docs/governed-returns-validation.md#s7-`));
+  assert.doesNotMatch(note, /href="\.?\/?(?:citadel-governance|governed-returns-validation)\.md/);
+  assert.match(read('README.md'), /\[Citadel action execution\]\(docs\/citadel-governance\.md\)/);
+});
+
 test('signed input evidence is explained by the expert data story and the public policy scenario', () => {
   const visibleDeep = deep().replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '');
   assert.match(visibleDeep, /### A tool policy can require signed input evidence/);

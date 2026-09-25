@@ -104,6 +104,12 @@ and recovery. It also covers the **opt-in AgentOps integration (merged PR #128)*
 with separate source and preview-maturity boundaries. Lifecycle evidence
 integration does not replace runtime enforcement, quality gates or readiness.
 
+For an existing hub, [Citadel action execution](docs/citadel-governance.md)
+adds an opt-in APIM-to-native-PEP path with independent producer/consumer
+policies. Its [dated live record](docs/governed-returns-validation.md#s7-citadel-public-route-and-isolated-producer-ack-loss)
+separates public routing, job-only producer ACK loss and genuine requester
+confirmation; it does not certify a new deployment or the whole agent.
+
 **SAFE is the method** for defining business invariants. **ACS is the PDP**
 (policy decision point), evaluating native Rego through OPA locally.
 **Agent Hooks is the host/interceptor contract SDK**; the **native host or

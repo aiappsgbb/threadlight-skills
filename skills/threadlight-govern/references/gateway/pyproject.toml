@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threadlight-govern-gateway"
-version = "0.3.1"
+version = "0.4.0"
 requires-python = ">=3.12"
 description = "Signed-registry MCP PEP with local native ACS and durable idempotency"
 dependencies = [
@@ -20,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 threadlight-govern-gateway = "govern_gateway.server:main"
+threadlight-citadel-package = "govern_gateway.citadel_package:main"
 
 [tool.setuptools]
 packages = ["govern_gateway", "govern_bundle", "govern_canonical", "govern_shared"]

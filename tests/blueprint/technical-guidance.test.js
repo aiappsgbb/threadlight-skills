@@ -14,6 +14,44 @@ const docs = {
   workshop: 'docs/WORKSHOP-1H-QUICKSTART.md',
 };
 
+test('Citadel local vertical discloses identity, effect and external acceptance boundaries', () => {
+  const runbook = read('docs/citadel-governance.md').replace(/\s+/g, ' ');
+  for (const marker of [
+    'threadlight-citadel-binding/v1', 'W2-I', 'mcp-existing',
+    'x-threadlight-consumer-authorization', 'independent reviews',
+    'host-identity-v1', 'registered-http-v1', '23fbc8fe7f2f068de3ed3c80da2344760faac1e6',
+    'No hot refresh', 'not certification',
+  ]) assert.ok(runbook.includes(marker), marker);
+  assert.match(read(docs.guide), /citadel-governance\.md/);
+  assert.match(read(docs.readiness), /citadel-governance\.md/);
+  assert.match(read('docs/agent-governance-deep-dive.md'), /citadel-governance\.md/);
+});
+
+test('dated Citadel evidence separates public routing from live job-only producer ACK loss', () => {
+  const text = read('docs/governed-returns-validation.md');
+  const record = text.split('## S7: Citadel public route and isolated producer ACK loss')[1];
+  assert.ok(record, 'Dated Citadel execution record required');
+  const section = record.split('\n## ')[0].replace(/\s+/g, ' ');
+  for (const term of ['2026-09-24', 'producer-to-PEP', 'job-only', 'pending',
+    'one producer POST', 'outcome GET', 'zero additional', 'user unavailable',
+    'not model-driven', 'scan', 'signing', 'publication']) {
+    assert.ok(section.includes(term), term);
+  }
+  assert.match(read('docs/citadel-governance.md'), /governed-returns-validation\.md#s7-/);
+});
+
+test('Citadel requester evidence records genuine native authority without borrowing S6', () => {
+  const text = read('docs/governed-returns-validation.md');
+  const record = text.split('### September 25: genuine Citadel requesting-user confirmation')[1];
+  assert.ok(record, 'Fresh Citadel requester evidence required');
+  const section = record.split('\n## ')[0].replace(/\s+/g, ' ');
+  for (const term of ['2026-09-25', 'browser', 'native Outlook', 'original operation',
+    'independently', 'ETags', 'S6', 'not MFA', 'not model-driven']) {
+    assert.ok(section.includes(term), term);
+  }
+  assert.match(read('docs/citadel-governance.md').replace(/\s+/g, ' '), /genuine.*requesting-user/i);
+});
+
 test('presenter-ready is one opt-in process-owned contract across the six skills', () => {
   for (const skill of ['design', 'deploy', 'safe-check', 'local-test', 'workspace-ui', 'auto']) {
     const text = read(`skills/threadlight-${skill}/SKILL.md`);
