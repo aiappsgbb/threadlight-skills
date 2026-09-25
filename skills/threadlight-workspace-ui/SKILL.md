@@ -13,7 +13,7 @@ description: >
   Teams Adaptive Cards (use threadlight-hitl-patterns), real-time chat UI,
   framework-specific scaffolds (we ship pattern, not framework).
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # Threadlight Workspace UI

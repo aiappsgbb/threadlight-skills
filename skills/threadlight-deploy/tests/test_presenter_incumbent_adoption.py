@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+import yaml
 
 from skills._shared import presenter
 from skills._shared.tests.test_presenter import (
@@ -12,6 +13,22 @@ from skills._shared.tests.test_presenter import (
 
 ROOT = Path(__file__).resolve().parents[3]
 GUIDE = ROOT / "skills/threadlight-deploy/references/presenter-adoption.md"
+
+
+def test_adoption_release_versions_and_limits():
+    for skill, version in {
+        "threadlight-deploy": "1.9.0",
+        "threadlight-workspace-ui": "1.1.1",
+        "threadlight-demo-data-factory": "1.0.1",
+    }.items():
+        text = (ROOT / "skills" / skill / "SKILL.md").read_text()
+        assert yaml.safe_load(text.split("---", 2)[1])["metadata"]["version"] == version
+    changelog = (ROOT / "CHANGELOG.md").read_text()
+    assert "### Incumbent presenter adoption and web artifact preflight" in changelog
+    section = changelog.split("### Incumbent presenter adoption and web artifact preflight", 1)[1].split("\n### ", 1)[0]
+    for marker in ("2.11.0", "1.9.0", "1.1.1", "1.0.1",
+                   "10-second", "not image-runtime or hosted proof"):
+        assert marker in section
 
 
 def test_adoption_guidance_preserves_authorities_and_incumbent():

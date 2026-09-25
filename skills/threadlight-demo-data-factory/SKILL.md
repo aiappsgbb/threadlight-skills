@@ -13,7 +13,7 @@ description: >
   that), live data ingestion (use threadlight-event-triggers), MCP
   server scaffold (use foundry-mcp-aca).
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Threadlight Demo Data Factory
