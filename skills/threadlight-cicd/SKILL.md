@@ -15,7 +15,7 @@ description: >-
   hub (use citadel-spoke-onboarding); the first-run sandbox deploy (use
   threadlight-deploy).
 metadata:
-  version: "0.5.0"
+  version: "0.6.0"
 ---
 
 # Threadlight CI/CD — verified release + environment setup
@@ -113,6 +113,7 @@ flowchart LR
 | Validation target | add `--validation-env-name`, `--validation-sub`, `--validation-rg` and `--validation-client-id` or `--validation-service-connection` |
 | Required release checks | Always blocking; legacy `--eval-gate hard` / `--mcp-gate hard` remain accepted, but soft or invalid modes fail |
 | Approved producer/promotion contract | `--release-policy specs/release-policy.json`; see [release contract](references/release-contract.md) |
+| Selected two-tool returns reference | `--reference-application returns-mcp/v1`; emits concrete adapter composition and a deliberately incomplete operator configuration |
 | Optional AgentOps integration | `--agentops auto` (default; no opt-in means no pipeline change) or `--agentops off` |
 | Explicit post-deploy Doctor opt-in | add `--agentops-refresh-doctor`; runtime owner approval and existing application telemetry scope are still required |
 | Doctor-only schedule | add `--agentops-refresh-doctor --agentops-doctor-schedule "0 6 * * *"`; never schedules deployment |
@@ -174,6 +175,29 @@ All producer evidence is bound to the current source, observed candidate,
 inputs and CI attempt. A failed gate never starts the production job. A failed
 promotion is not rollback: the deployment adapter owns immutable-image use,
 durable idempotency, business-routing closure and reconciliation.
+
+### Selected returns reference
+
+`--reference-application returns-mcp/v1` composes the existing runner with
+`returns_release.py`, canonical evaluator/scanner assessors and the actual
+`govern_control_plane.operator` admission helper. It does not generate another
+workflow or evaluator. The observed application contract binds model deployment/
+version, two tool schemas, policy/binding, connection and service revisions,
+role map, native Outlook authority and backend Cosmos targets—not only the image.
+Validation and production retain separate identities, resources and approvals.
+
+Real reviewed prepare/observe/producer/traffic/promotion/recovery operators are
+required; the example configuration cannot execute as supplied. The production
+adapter closes and reads admission, reconciles the durable promotion record
+without retrying unknown outcomes, then prepares the exact accepted image.
+Only fresh postchecks, unchanged independent observation and rechecked release
+authorization may admit. Explicit `release_runner.py reconcile --operation-id`
+closes and reads an uncertain operation; it never retries promotion or opens
+admission. See the
+[selected-reference handoff](../../docs/reference-release.md) for exact
+interfaces, native operator lease, human approvals and remaining live-integration
+limits. Local subprocess/wire tests are not hosted, Outlook, Cosmos or business
+proof. Native AgentOps opt-in and pins remain unchanged.
 
 ### `--agentops auto|off`
 

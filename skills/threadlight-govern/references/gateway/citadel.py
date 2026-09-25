@@ -198,7 +198,9 @@ class CitadelPolicy:
                 signer=signer, tenant=binding.tenant_id, key_id=selection.key_id,
                 policy_id=selection.policy_id, version=selection.version,
                 expected_digest=selection.digest,
-                allowed_endpoints=[owner.action.endpoint, owner.action.outcome_endpoint],
+                allowed_endpoints=[endpoint for endpoint in (
+                    owner.action.endpoint, owner.action.outcome_endpoint, owner.action.recovery_endpoint)
+                    if endpoint is not None],
                 gateway_url=binding.gateway_url)
             expected = binding.registry().model_copy(update={"actions": [owner.action]})
             if policy.registry != expected:
@@ -219,6 +221,11 @@ class CitadelPolicy:
             raise GateError("citadel_generation_expired")
         if parse(Binding, (self.generation.bundle.root / "citadel-binding.json").read_bytes()) != self.binding:
             raise GateError("citadel_binding_changed")
+
+    async def authority_health(self):
+        for policy in (self.generation, self.producer, self.consumer):
+            await policy.authority_health()
+        self.fresh()
 
     async def evaluate(self, point, action, arguments, safe, result=None):
         self.fresh()

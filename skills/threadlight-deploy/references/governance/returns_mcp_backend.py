@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 import uuid
 
 from azure.core.exceptions import AzureError
-from azure.cosmos.exceptions import CosmosResourceNotFoundError
+from azure.cosmos.exceptions import CosmosBatchOperationError, CosmosResourceNotFoundError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import httpx
@@ -164,6 +164,7 @@ class Configuration(Settings):
     policy_digest: Digest
     deployment: dict
     read_audit_container: Identifier | None = None
+    recovery_enabled: bool = False
     evidence_requirement: EvidenceRequirement | None = Field(
         default=None, exclude_if=lambda value: value is None)
     evidence_container: Identifier | None = None
@@ -222,11 +223,34 @@ def operation_facts(config):
     return facts
 
 
-def create_app():
+def recovery_fence(arguments, *, operation_id, provenance):
+    args = Decision.model_validate(arguments)
+    return {"id": operation_id, "case_id": args.case_id, "kind": "no-effect-fence",
+            "arguments": args.model_dump(), "provenance": deepcopy(provenance),
+            "recorded_at": datetime.now(timezone.utc).isoformat()}
+
+
+def recovery_outcome(record, arguments, *, operation_id, provenance):
+    args = Decision.model_validate(arguments)
+    if (not isinstance(record, dict) or record.get("id") != operation_id
+            or record.get("case_id") != args.case_id or record.get("provenance") != provenance
+            or record.get("arguments") != args.model_dump()):
+        raise BusinessConflict()
+    if record.get("kind") == "decision-audit" and isinstance(record.get("result"), dict):
+        return "completed"
+    if record.get("kind") == "no-effect-fence":
+        return "not_executed"
+    raise BusinessConflict()
+
+
+def create_app(*, configuration=None, credential_factory=None, transport_factory=None, auth_transport=None):
     from azure.identity.aio import ManagedIdentityCredential
     from cosmos_effect import CosmosEffectTransport
 
-    config = parse(Configuration, Path(os.environ["RETURNS_CONFIG_FILE"]).read_bytes())
+    config = parse(Configuration, canonical(configuration) if configuration is not None
+                   else Path(os.environ["RETURNS_CONFIG_FILE"]).read_bytes())
+    credential_factory = credential_factory or ManagedIdentityCredential
+    transport_factory = transport_factory or CosmosEffectTransport
     if (
         config.writer_subject == config.agent_subject
         or {config.writer_subject, config.agent_subject} != set(config.workloads)
@@ -240,9 +264,9 @@ def create_app():
     @asynccontextmanager
     async def lifespan(app):
         async with AsyncExitStack() as stack:
-            credential = await stack.enter_async_context(ManagedIdentityCredential(
+            credential = await stack.enter_async_context(credential_factory(
                 client_id=config.service_client_id, retry_total=0))
-            transport = CosmosEffectTransport(endpoint=config.cosmos_url)
+            transport = transport_factory(endpoint=config.cosmos_url)
             container = await transport.connect(
                 stack=stack, credential=credential,
                 database=config.cosmos_database, container=config.cosmos_container)
@@ -253,7 +277,7 @@ def create_app():
             ):
                 raise ValueError("persistent_case_partition_required")
             http = await stack.enter_async_context(httpx.AsyncClient(
-                timeout=5, trust_env=False, follow_redirects=False))
+                timeout=5, trust_env=False, follow_redirects=False, transport=auth_transport))
             auth = EntraAuth(config, http)
             await auth.health()
             state.update(container=container, auth=auth, transport=transport)
@@ -286,7 +310,7 @@ def create_app():
                             case_id=case_id, subject=subject)
                             for case_id, subject in config.evidence_requirement.subjects.items()]))
             if config.read_audit_container is not None:
-                audit_transport = CosmosEffectTransport(endpoint=config.cosmos_url)
+                audit_transport = transport_factory(endpoint=config.cosmos_url)
                 audit = await audit_transport.connect(
                     stack=stack, credential=credential, database=config.cosmos_database,
                     container=config.read_audit_container)
@@ -345,7 +369,8 @@ def create_app():
                 record = await state["container"].read_item(operation, partition_key=case_id)
             except CosmosResourceNotFoundError:
                 continue
-            if record.get("kind") != "decision-audit" or record.get("provenance") != expected:
+            if (record.get("kind") not in {"decision-audit", "no-effect-fence"}
+                    or record.get("provenance") != expected):
                 raise BusinessConflict()
             return record
         return None
@@ -403,6 +428,8 @@ def create_app():
         record = await existing(operation, proof)
         if record is None:
             return JSONResponse({"error": "not_found"}, status_code=404)
+        if record["kind"] != "decision-audit":
+            raise BusinessConflict()
         return {"receipt_id": operation, "result": record["result"]}
 
     if config.evidence_requirement is not None:
@@ -449,6 +476,53 @@ def create_app():
                         batch_operations=[("create", (document,), {})], partition_key=document["scope"])
                 await reauthorize()
                 return result
+    async def decision_arguments(request, proof):
+        body = bytearray()
+        async with asyncio.timeout(5):
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > 16384:
+                    raise BusinessConflict()
+        args = Decision.model_validate(strict_json(bytes(body)))
+        if args.case_id not in config.cases:
+            raise BusinessConflict()
+        facts = operation_facts(config)
+        if config.evidence_requirement is not None:
+            facts["evidence_fingerprint"] = proof["evidence_fingerprint"]
+        if digest({"facts": facts, "arguments": args.model_dump()}) != proof["action_hash"]:
+            raise BusinessConflict()
+        return args
+
+    @app.post("/recovery")
+    async def recover(request: Request):
+        await authenticated(request, writer=True)
+        if not config.recovery_enabled:
+            return JSONResponse({"error": "recovery_unsupported"}, status_code=403)
+        operation, proof = provenance(request)
+        args = await decision_arguments(request, proof)
+        container = state["container"]
+        record = await existing(operation, proof)
+        if record is None:
+            fence = recovery_fence(args.model_dump(), operation_id=operation, provenance=proof)
+            async def reauthorize():
+                await authenticated(request, writer=True)
+            # Same ID and partition as the atomic business audit. Either this
+            # create or the business transaction wins; a 404 alone proves nothing.
+            try:
+                with state["transport"].recovery_fence(reauthorize, container, args.case_id, fence):
+                    await reauthorize()
+                    await container.execute_item_batch(
+                        batch_operations=[("create", (fence,), {})], partition_key=args.case_id)
+            except CosmosBatchOperationError as exc:
+                if exc.status_code not in (409, 412):
+                    raise
+            record = await existing(operation, proof)
+        state_name = recovery_outcome(
+            record, args.model_dump(), operation_id=operation, provenance=proof)
+        await authenticated(request, writer=True)
+        return {"state": state_name, "receipt_id": operation, "action_hash": proof["action_hash"],
+                "provenance": proof["receipt_id"], "operation_key": request.headers["idempotency-key"],
+                "deployment_hash": proof["x-deployment-hash"]}
 
     @app.post("/decisions")
     async def decide(request: Request):
@@ -474,7 +548,7 @@ def create_app():
             raise BusinessConflict()
         previous = await existing(operation, proof)
         if previous is not None:
-            if previous["arguments"] != arguments:
+            if previous["kind"] != "decision-audit" or previous["arguments"] != arguments:
                 raise BusinessConflict()
             return {"receipt_id": operation, "result": previous["result"]}
         container = state["container"]

@@ -78,6 +78,40 @@ def test_schema_rejects_settlement_or_model_authority(backend):
             backend.Decision.model_validate({**arguments(), **changes})
 
 
+def test_recovery_fence_uses_the_exact_business_operation_id(backend):
+    proof = {"receipt_id": "central-1", "action_hash": "sha256:" + "a" * 64}
+    fence = backend.recovery_fence(arguments(), operation_id="decision-1", provenance=proof)
+    assert fence["id"] == "decision-1"
+    assert fence["case_id"] == "RMA-ALLOW"
+    assert fence["kind"] == "no-effect-fence"
+    assert fence["arguments"] == arguments()
+    assert fence["provenance"] == proof
+    operations, _ = backend.decision_batch(
+        case(), arguments(), operation_id="decision-1", provenance=proof)
+    assert operations[1][1][0]["id"] == fence["id"]
+
+
+@pytest.mark.parametrize("record", [
+    None, {"kind": "case"}, {"kind": "no-effect-fence", "provenance": {}},
+    {"kind": "decision-audit", "provenance": {}, "arguments": arguments()},
+])
+def test_missing_or_unbound_backend_record_is_not_proof(backend, record):
+    with pytest.raises(backend.BusinessConflict):
+        backend.recovery_outcome(record, arguments(), operation_id="decision-1",
+                                 provenance={"receipt_id": "central-1"})
+
+
+def test_recovery_classifies_completed_and_fenced_only(backend):
+    proof = {"receipt_id": "central-1"}
+    fence = backend.recovery_fence(arguments(), operation_id="decision-1", provenance=proof)
+    assert backend.recovery_outcome(
+        fence, arguments(), operation_id="decision-1", provenance=proof) == "not_executed"
+    operations, _ = backend.decision_batch(
+        case(), arguments(), operation_id="decision-1", provenance=proof)
+    assert backend.recovery_outcome(
+        operations[1][1][0], arguments(), operation_id="decision-1", provenance=proof) == "completed"
+
+
 def test_agent_uses_selected_gateway_and_unbound_case_read():
     path = PATH.with_name("returns_mcp_agent.py")
     spec = importlib.util.spec_from_file_location("returns_mcp_agent", path)

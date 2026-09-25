@@ -227,7 +227,8 @@ async def native_pair(path, producer="allow", consumer="allow", *, review=False,
         tenant=TENANT, key_id=KEY, policy_id="safe", version="1",
         expected_digest=built.bundle_digest, gateway_url=doc["gateway_url"],
         citadel_generation=True,
-        allowed_endpoints=[doc["producer"]["action"][k] for k in ("endpoint", "outcome_endpoint")])
+        allowed_endpoints=[doc["producer"]["action"][k] for k in (
+            "endpoint", "outcome_endpoint", "recovery_endpoint") if k in doc["producer"]["action"]])
     envelopes = {}
     for name, owner in zip(("producer", "consumer"), owners):
         signed_owner = cp("models").parse(cp("models").SignedBundle, cp("models").canonical(owner.signed))

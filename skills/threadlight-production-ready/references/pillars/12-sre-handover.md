@@ -43,7 +43,7 @@ No whole-agent governance or deployment certification is implied. Follow
 
 | ID | Check | Default status |
 |---|---|---|
-| `SRE-101` | Action group routes to on-call rotation (at least one non-noreply destination — Teams channel, PagerDuty, real team alias) | `must-fix` if zero usable destinations |
+| `SRE-101` | Expected enabled receiver and rule/target mapping plus fresh correlated delivery receipt; see [route contract](../remediation-recipes/SRE-101.md) | `must-fix` for broken declared routing; `not-verified` for missing mapping or delivery proof |
 | `SRE-102` | If § 12 declares SRE Agent: `Microsoft.App/agents` resource exists in the configured RG | `should-fix` if declared & missing |
 | `SRE-103` | Diagnostic settings cover all critical resources (Foundry, KV, ACA, Cosmos → Log Analytics) | `must-fix` if any critical resource has none — **experimental** |
 | `SRE-104` | Activity log alerts on the target RG (any alert at all — proves someone wired baseline platform-event detection) | `should-fix` if zero |

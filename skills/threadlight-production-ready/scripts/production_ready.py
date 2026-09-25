@@ -482,7 +482,7 @@ def _hint_pipeline_scaffold_if_needed(apply_plan: dict, scaffold_cicd_flag: bool
 # endregion: cicd_scaffold
 
 
-VERSION = "0.15.0"
+VERSION = "0.15.1"
 
 # Files emitted by THIS assessor that must never be ingested by a subsequent run
 # (issue #30 — assessor idempotency). _glob_repo filters these out by basename.
@@ -6014,6 +6014,14 @@ def _check_cost_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, 
 
 # ---- pillar 11: reliability -----------------------------------------------
 
+def _operational_evidence():
+    repo = Path(__file__).resolve().parents[3]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    from skills._shared import operational_evidence
+    return operational_evidence
+
+
 def _check_reliability_static(ctx: RepoContext) -> list[Finding]:
     out: list[Finding] = []
     spec = ctx.spec_text
@@ -6072,32 +6080,16 @@ def _check_reliability_static(ctx: RepoContext) -> list[Finding]:
         out.append(_mk_finding("REL-006", status="should-fix",
             detail=f"Health probes missing on {missing_aca + missing_web} compute resource(s) "
                    f"(aca_missing={missing_aca}, web_missing={missing_web})"))
-    # REL-007 — v0.3.0 NEW: restore drill artefact freshness (≤90d)
     drill_files = list(_glob_repo(ctx.root,
         "docs/**/restore-drill*.md", "docs/**/restore-drill*.json",
+        "docs/restore-drills/*.md", "docs/restore-drills/*.json",
+        "tests/restore-drill*.md", "tests/restore-drill*.json",
         "**/RESTORE-DRILL*.md", "evidence/**/restore-drill*.*"))
-    if not drill_files:
-        out.append(_mk_finding("REL-007", status="must-fix",
-            detail="No restore-drill artefact found under docs/, evidence/. "
-                   "Run `azqr restore-drill` (or your equivalent) and commit the report."))
-    else:
-        newest = max(drill_files, key=lambda p: p.stat().st_mtime)
-        age_days = (datetime.now(timezone.utc).timestamp() - newest.stat().st_mtime) / 86400
-        body = _read_text(newest) or ""
-        date_m = re.search(r"(\d{4}-\d{2}-\d{2})", body)
-        if date_m:
-            try:
-                drill_dt = datetime.strptime(date_m.group(1), "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                age_body = (datetime.now(timezone.utc) - drill_dt).days
-                age_days = min(age_days, age_body)
-            except ValueError:
-                pass
-        if age_days <= 90:
-            out.append(_mk_finding("REL-007", status="pass",
-                detail=f"Restore-drill artefact `{newest.name}` is {int(age_days)} days old (≤90d)"))
-        else:
-            out.append(_mk_finding("REL-007", status="must-fix",
-                detail=f"Restore-drill artefact `{newest.name}` is {int(age_days)} days old (>90d) — re-run drill"))
+    scope = getattr(ctx, "assessment_target_scope", None) or _resolve_assessment_target_scope(
+        manifest=ctx.manifest, azd_env=getattr(ctx, "azd_env", {}))
+    status, detail = _operational_evidence().restore(
+        ctx.root, drill_files, scope.subscription_id, scope.resource_group)
+    out.append(_mk_finding("REL-007", status=status, detail=detail))
     return out
 
 
@@ -6394,13 +6386,21 @@ def _check_sre_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, r
             scope=f"sub={sub} rg={rg}", tier=1, captured_at=_utc_now(),
             result="ok" if ag is not None else "error",
             notes=f"{len(ag) if isinstance(ag, list) else 0} action groups"))
-        if ag is None:
-            findings.append(_not_verified("SRE-101", "action group list failed"))
-        else:
-            findings.append(_mk_finding("SRE-101",
-                status="pass" if ag else "must-fix",
-                detail=f"{len(ag)} action group(s)" if ag else "No action group → alerts cannot reach on-call",
-                evidence_refs=["E-SRE-101"]))
+        rules = []
+        for family in (("metrics", "alert"), ("activity-log", "alert"), ("scheduled-query",)):
+            result = _az_json("monitor", *family, "list", "--resource-group", rg, "--subscription", sub)
+            evidence.append(EvidenceEntry(
+                ref="E-SRE-101-" + family[0], pillar="sre-handover",
+                description="Alert rules in target RG",
+                command=f"az monitor {' '.join(family)} list -g {rg}",
+                scope=f"sub={sub} rg={rg}", tier=1, captured_at=_utc_now(),
+                result="ok" if isinstance(result, list) else "error",
+                notes=f"{len(result) if isinstance(result, list) else 0} rules"))
+            if isinstance(result, list):
+                rules.extend(result)
+        status, detail = _operational_evidence().alert_route(ctx.root, ag, rules, sub, rg)
+        findings.append(_mk_finding("SRE-101", status=status, detail=detail,
+            evidence_refs=[e.ref for e in evidence]))
         # SRE-102 SRE Agent resource presence
         sre_res = _az_json("resource", "list", "--resource-group", rg, "--subscription", sub, "--resource-type", "Microsoft.App/agents")
         findings.append(_mk_finding("SRE-102",

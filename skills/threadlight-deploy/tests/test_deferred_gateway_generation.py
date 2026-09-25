@@ -109,6 +109,23 @@ def test_bind_preserves_explicit_native_outlook_selection_in_both_services(tmp_p
     assert (project / "src/govern-control-plane/vendor/control-plane/outlook.py").is_file()
 
 
+def test_bind_preserves_explicit_scoped_operation_controller(tmp_path):
+    data = gateway_inputs(tmp_path)
+    project, document, _, deployment, _ = data
+    infrastructure, bindings = deployment["infrastructure"], deployment["bindings"]
+    operator = infrastructure["approver_subjects"][0]
+    controllers = {operator: {"client_id": infrastructure["human_clients"][0],
+                              "subjects": [bindings["agent_principal"]], "actions": ["act"]}}
+    deployment["operation_controllers"] = controllers
+    generator = package(data)
+    stage(generator, data)
+    generator.bind(project, document, configuration=deployment)
+    bound = json.loads((project / ".threadlight/governance-deployment.json").read_text())["bindings"]
+    assert bound["gateway_config"]["operations_required"] is True
+    assert bound["gateway_config"]["operation_controllers"] == controllers
+    assert not bound["control_config"]["operation_controllers"]
+
+
 @pytest.mark.parametrize("fault", ["null", "requester", "sender", "role"])
 def test_invalid_selected_outlook_configuration_never_falls_back_to_delegated(tmp_path, fault):
     data = gateway_inputs(tmp_path)
