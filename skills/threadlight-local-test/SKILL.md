@@ -21,6 +21,22 @@ metadata:
 
 # Threadlight — Local Test Loop (no azd up)
 
+## Presenter-ready integration contract
+
+For the explicit [presenter-ready profile](../../docs/presenter-ready.md), exercise
+the **exact packaged SDK/framework, host/client and process adapter** selected in
+the process handoff. Cover response shapes (data-plane, not management-plane
+substitutes), legitimate metadata reads, real retry/dispatch, pending lifecycle,
+terminal stream errors, persistence, independent readback, reopening and recovery.
+Bind outputs to the dependency lock/source and record the layer actually run:
+offline, native, hosted and quality/human evidence are different.
+
+Pattern 0 remains a quick iteration option, not a universal runtime or durable
+result store. Its in-memory data resets on recreation and cannot satisfy promised
+save/reopen. Provisional stream text is not success before terminal validation;
+a late failure replaces successful-looking result text. Reuse valid focused
+evidence; no blanket SDK upgrade, broad rerun or business replay for screenshots.
+
 Run a generated PoC entirely on your dev box so you can iterate on
 **tools**, **prompts**, and **workspace UI** in seconds — not in the
 20-30 min round-trip of `azd deploy`. Designed for use **inside**
@@ -142,9 +158,14 @@ in-memory `InMemoryStore`:
 
 | Tool | Returns | Notes |
 |------|---------|-------|
-| `list_<entity>(**filters)` | `list[dict]` | Equality match on each filter kwarg; no filter → all records |
+| `list_<entity>(filters=None)` | `list[dict]` | Equality match on each field in the filters object; no filter → all records |
 | `get_<entity>(id)` | `dict \| None` | Lookup by record id |
-| `update_<entity>(id, **fields)` | `dict` | Mutates the in-memory snapshot; **reset every launch** |
+| `update_<entity>(id, fields)` | `dict` | Explicit fields object; mutates the in-memory snapshot; **reset every launch** |
+
+The named object parameters are intentional: the actual native SDK schema omits
+arbitrary `**kwargs`, which otherwise silently drops filters and update fields.
+Existing Python store methods retain their keyword API; native tool callers use
+the explicit `filters` / `fields` objects.
 
 The agent's `SkillsProvider` discovers `src/agent/skills/<name>/SKILL.md`
 under `from_paths(skills_dir)` and loads bodies on demand. Follow the

@@ -18,6 +18,24 @@ metadata:
 
 # Threadlight Workspace UI
 
+## Presenter-ready business journey
+
+For an explicit [presenter-ready profile](../../docs/presenter-ready.md), design the
+workspace **alongside the first end-to-end journey**, not after all backends.
+Read the process-owned `specs/presenter-contract.json`: coherent fictional-company
+identity, clear first action, editable inputs, evidence and useful outcome,
+saved-result retrieval/reopen and understandable recovery. Keep technical
+diagnostics secondary. Preserve the project's existing design system, framework
+and chosen design tooling rather than replacing them with this reference.
+
+Observe keyboard/focus, accessible labels/contrast, status beyond color, mobile
+and desktop overflow with real text. Distinguish pending, failed, uncertain and
+expired-source states; saved historical results retain their own authorized read
+path after source/session expiry. Do not wire a reset-demo action that refreshes
+data, resets consumed operations or clears uncertainty. Explicitly authorized
+practice material is a new synthetic revision. Download/export panels are
+conditional on the process promise, not mandatory for this profile.
+
 Generate a curated, framework-agnostic **workspace UI** reference for a
 designed threadlight process. The output is ONE polished example —
 intentionally **shipped as pattern, not framework** — that the customer can

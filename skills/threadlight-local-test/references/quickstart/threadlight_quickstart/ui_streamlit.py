@@ -61,10 +61,9 @@ async def _stream_response(agent, prompt: str, placeholder) -> str:
                 placeholder.markdown("".join(chunks))
         return "".join(chunks)
     except Exception as exc:  # noqa: BLE001
-        msg = f"\n\n_error: {type(exc).__name__}: {exc}_"
-        chunks.append(msg)
-        placeholder.markdown("".join(chunks))
-        return "".join(chunks)
+        msg = f"_error: {type(exc).__name__}: {exc}_"
+        placeholder.markdown(msg)
+        return msg
 
 
 def _append_transcript(root: Path, query: str, response: str) -> None:

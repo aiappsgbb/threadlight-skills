@@ -25,6 +25,28 @@ Turn a business process or customer use case into a **durable specification** (S
 and then derive **AGENTS.md + Skills** from it — ready for a credible enterprise pilot
 that holds up in front of an industry SME.
 
+## Presenter-ready delivery (explicit opt-in)
+
+When requested, follow the [presenter-ready process contract](../../docs/presenter-ready.md).
+The standalone Cowork ZIP carries the same guide at `references/presenter-ready.md`;
+use its pinned guidance object for authoring, then hand execution to an engineer
+with the complete catalog. The ZIP is not a deployment/runtime package.
+Set `delivery_profile: presenter-ready` in `specs/manifest.json` and author the
+single `specs/presenter-contract.json` alongside SPEC and the first workspace
+journey, before generating secondary backends. Keep role/problem, one coherent
+fictional company, editable inputs, deterministic rules versus agent contribution,
+useful outcome, human responsibility, persistence/readback/reopen/recovery, and
+inclusions/exclusions concise and process-specific. SPEC and presenter material
+are views of that handoff, not competing facts.
+
+Design, Deploy and Safe Check consume the same
+[`presenter-deployment-pin.json`](../_shared/presenter-deployment-pin.json).
+Select `unified-azd` or reviewed `native-sdk` explicitly and record the actual
+runtime root, manifest, protocol, model environment name, lock and adapter.
+For this profile the pinned consumer supersedes legacy manifest examples below:
+do not generate both `agent.yaml` and `azure.yaml` as active definitions.
+Foundation/runtime-policy and selected governance pins are unchanged.
+
 ## When to Use
 
 Invoke this skill when the user wants to:
