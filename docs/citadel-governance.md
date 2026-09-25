@@ -12,7 +12,7 @@ an executable bundle example and an APIM overlay. It covers **one tenant, one
 producer, one consumer, one registered operation** and one exact
 deployment/image/version binding, not a replacement Citadel hub or whole-agent governance.
 
-The [S7 execution record](governed-returns-validation.md#s7-citadel-public-route-and-isolated-producer-ack-loss)
+The [S7 execution record](https://github.com/aiappsgbb/threadlight-skills/blob/c538f4cf89c9c5e5f5ae0c43e3bbdae96c34778e/docs/governed-returns-validation.md#s7-citadel-public-route-and-isolated-producer-ack-loss)
 records public MCP/REST routing and a separate job-only producer ACK-loss test.
 Its **September 25 continuation closes genuine requesting-user confirmation for
 that exact binding**: browser authentication, native email approval, exact-operation

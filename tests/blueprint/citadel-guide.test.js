@@ -114,3 +114,11 @@ test('Citadel clarity preserves limits, historical proof and independent owner a
   assert.match(text, /governed-returns-validation\.md#s7-/);
   assert.match(text, /expired leases cannot be extended/);
 });
+
+test('the Citadel guide opens S7 in the immutable GitHub document reader, not a raw Markdown route', () => {
+  const target = guide().match(/\[S7 execution record\]\(([^)]+)\)/)?.[1];
+  assert.equal(target, 'https://github.com/aiappsgbb/threadlight-skills/blob/' +
+    'c538f4cf89c9c5e5f5ae0c43e3bbdae96c34778e/docs/governed-returns-validation.md' +
+    '#s7-citadel-public-route-and-isolated-producer-ack-loss');
+  assert.ok(read('docs/governance.html').includes(`href="${target}"`), 'Both readers use the same immutable record');
+});
