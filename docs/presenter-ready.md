@@ -92,10 +92,88 @@ change a governance pin, or switch protocols to make a check pass.
 | `unified-azd` | Root `azure.yaml`; selected `services.<service>` has native top-level `host: azure.ai.agent`, `project`, `kind`, `protocols`, and **list-shaped** `environmentVariables`. No `config` wrapper. Project points to the declared runtime root. Use the pinned upstream template. |
 | `native-sdk` | One frozen native create-definition JSON at the declared `manifest` path, with native `kind`, `protocol_versions`, `environment_variables`; the declared `create_entrypoint` is packaged and fingerprinted. No competing root `azure.yaml`. Retain native creation/provisioning provenance and use the upstream approved raw/brownfield path. This is not automatic certification of arbitrary SDK definitions. |
 
-Native-SDK ancillary services/jobs need their own checked consumer; this bounded
-profile rejects them rather than silently bypassing deployment inventory checks.
-Use unified azd for a compatible multi-service project or agree an explicit
-consumer extension before claiming coverage.
+Native-SDK projects can explicitly select the bounded ACA consumer below, without
+regenerating the incumbent agent or migrating it to azd. Unchecked ancillary
+services and scheduled jobs remain unsupported. Existing single-agent native
+contracts and the default/unselected profile are unchanged.
+
+### Independently validated native ACA services
+
+Add `deployment.service` for the native agent's logical inventory name and a
+nonempty `deployment.ancillary_services` list in the **same** process contract.
+Each record has exactly these fields:
+
+| Field | Rule |
+|---|---|
+| `name`, `resource_name` | Unique logical inventory name and unique native ACA resource name. Two services may share `src: "."`; never deduplicate by directory. |
+| `host`, `consumer`, `role` | `containerapp`, `containerapp-arm`, and `mcp` or `workspace` respectively. Other hosts/consumers/jobs require a separate reviewed extension. |
+| `src` | Existing build-context directory, matching the canonical `deployment_manifest.services` entry after optional `./` normalization. |
+| `manifest` | Path to the frozen native ARM resource JSON, not an azd wrapper or a CLI output envelope. |
+| `create_entrypoint`, `lockfile`, `adapter`, `dockerfile` | Existing retained creator, exact SDK/toolchain lock, service package-test adapter and service-specific Dockerfile. All must exist; Dockerfile must be inside the build context. |
+| `inputs` | Complete source directories plus explicit files outside them, relative to the project, inside the build context. At least one source directory is required. |
+
+The canonical inventory must contain **exactly** the agent and every declared ACA
+service, with matching names, hosts and build-context paths. Missing, duplicate,
+extra, unsupported or mismatched entries fail; omission of the inventory fails.
+Keep the real agent/MCP/workspace inventory even when a service lacks proof.
+No second deployment manifest or orchestration engine is generated.
+
+The ACA resource must have `type: Microsoft.App/containerApps`, an explicit dated
+`apiVersion`, the matching `name`, `location`, managed identity and
+`properties.managedEnvironmentId`. This bounded consumer supports one container,
+no init containers, one immutable `repository@sha256:<digest>` image, and explicit
+ingress `external`/integer `targetPort`. An optional single traffic record must
+route 100 percent to the latest revision or one named revision; a named revision
+must match the observed target version. Traffic-split configurations are rejected.
+User-assigned identity selections require a nonempty identity map. These are
+structural discriminators from the
+[native ARM resource shape](https://learn.microsoft.com/en-us/azure/templates/microsoft.app/2025-01-01/containerapps),
+**not a full ARM schema validator or a new API/SDK recommendation**. The package
+producer must validate the complete frozen definition against its actual declared
+API version and locked native SDK/toolchain; unsupported fields/configuration must
+fail that native test. Do not strip fields, change an API version or replace
+identities just to fit this bounded consumer.
+
+For a root build context, `inputs` names the real source subtrees (for example
+`src/mcp`, `src/workspace`, shared `config`) and root-level imported files, not
+the entire project `"."` containing mutable receipts. This separates build context
+from source roots; it is not permission to hand-pick a passing subset. The
+creator/adapter/Dockerfile/lock/definition and both context `.dockerignore` and
+Dockerfile-specific ignore files are fingerprinted automatically when present.
+The producer must verify complete packaged imports/assets against the actual
+built image. Root source-file omissions cannot be inferred by a metadata reader;
+they remain a producer validation responsibility. Keep execution outputs outside
+declared source inputs to avoid self-referential receipt hashes.
+
+The existing `package` and `deployment` receipts gain `facts.services`, keyed by
+**every** ancillary logical name (no extra or missing names). Each entry binds
+`manifest_sha256`, `adapter_sha256` and nonempty `evidence` path/SHA-256 references
+to retained **service-specific** producer outputs. Package entries require all
+`SERVICE_PACKAGE_CASES`: `schema_validated`, `image_runtime`, `startup`, `adapter`
+set to true only after executing those checks. The adapter exercises the real MCP
+request/rejection path or workspace origin/assets/MIME/download/auth boundaries,
+as applicable to the promised journey. Static web preflight is not `image_runtime`.
+Deployment entries require `observed: true` backed by authorized native
+creation/provisioning and independently observed loaded-revision output. Old
+agent-only receipts cannot stand in for these per-service results.
+
+The current `.threadlight/presenter-target.json` retains the native agent tuple
+and adds `services`, keyed by exactly those ancillary names. Each entry contains
+its own `attempt`, `environment`, `version` (ACA revision), `image`, `identity`,
+plus `resource_name` and `definition_sha256`. The name, immutable image and
+definition hash must match the frozen service definition. Every hosted/human
+receipt binds the entire target, including this map. A new ancillary attempt,
+revision, configuration/definition, image or identity invalidates prior hosted
+acceptance even when the agent is unchanged. Changed service sources invalidate
+native and downstream evidence through the existing runtime fingerprint.
+
+Service proof is still **recorded-not-independently-attested**: a matching hash or
+boolean is not an independent attestation, permission, successful deployment or
+human acceptance. Keep the real producer's SDK serialization, image identity,
+UID/configuration, command/output and observation provenance under the existing
+trusted evidence custody. Never fabricate new receipts from these fixtures or
+borrow another process's proof. No live calls are made by this extension, and
+no SDK, governance or upstream deployment pin is changed.
 
 The bounded consumer checks support Responses/Invocations protocol `2.0.0`;
 the process's exact SDK/host still needs native compatibility proof. Retained

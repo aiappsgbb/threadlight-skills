@@ -7,6 +7,24 @@ field.
 
 ## [Unreleased]
 
+### Native presenter ancillary services
+
+- Extend the existing native-SDK presenter consumer with explicit, independently
+  validated ACA MCP/workspace service records. Require exact complete inventory,
+  frozen native definitions, retained creators/adapters/locks/Dockerfiles and
+  complete service source inputs; preserve shared root build contexts.
+- Bind per-service package/schema/image-runtime output and deployment observations
+  through the existing receipts and current target map. Omitted, unsupported,
+  mismatched, unproved or changed services cannot inherit agent-only acceptance.
+  Jobs, sidecars, init containers and traffic splitting remain outside this
+  bounded extension; existing competing-definition checks still apply.
+- Preserve native incumbents, opt-in/default compatibility, source expiry,
+  historical read authorization and selected governance. No runtime/AZD migration,
+  profile adoption, SDK/upstream pin upgrade or live operation is performed.
+- Plugin/marketplace candidate 2.12.0 and refreshed Cowork Design guide archive.
+  Synthetic two-process fixtures verify reader behavior, not independent
+  attestation, native/image execution, hosted/business or human acceptance.
+
 ### Incumbent presenter adoption and web artifact preflight
 
 - Adopt the existing opt-in presenter contract in retained projects without

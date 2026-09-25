@@ -36,6 +36,8 @@ CHECKS = {
 STATES = ("source-ready", "deployed", "backend-verified", "script-verified", "human-accepted")
 PREDECESSORS = {"package": (), "deployment": (), "backend": ("package", "deployment"),
                 "script": ("backend",), "human": ("script",)}
+SERVICE_PACKAGE_CASES = ("schema_validated", "image_runtime", "startup", "adapter")
+SERVICE_FILES = ("manifest", "create_entrypoint", "lockfile", "adapter", "dockerfile")
 
 
 def require(condition, code):
@@ -205,6 +207,13 @@ def _runtime_paths(root, contract):
     paths = [deploy[name] for name in ("manifest", "runtime_root", "entrypoint", "lockfile", "adapter")]
     if deploy["consumer"] == "native-sdk":
         paths.append(deploy["create_entrypoint"])
+        for service in _native_services(deploy):
+            paths.extend(service[name] for name in SERVICE_FILES)
+            paths.extend(service["inputs"])
+            context = service["src"].removeprefix("./")
+            for relative in (f"{context}/.dockerignore", service["dockerfile"] + ".dockerignore"):
+                if safe_path(root, relative, exists=False).exists():
+                    paths.append(relative)
     else:
         document = _deployment_document(root, contract)
         paths.extend(service["project"].removeprefix("./")
@@ -215,10 +224,120 @@ def _runtime_paths(root, contract):
     return paths
 
 
+def _native_services(deploy):
+    services = deploy.get("ancillary_services", [])
+    require(isinstance(services, list), "native-services-list")
+    if "ancillary_services" in deploy:
+        require(deploy["consumer"] == "native-sdk" and bool(services),
+                "native-services-consumer")
+        require(text(deploy.get("service")), "native-agent-service-name")
+    names = {deploy.get("service")}
+    for service in services:
+        require(isinstance(service, dict) and set(service) == {
+            "name", "resource_name", "host", "role", "src", "consumer", "inputs", *SERVICE_FILES,
+        }, "native-service-shape")
+        require(all(text(service[key]) for key in ("name", "resource_name", "src", *SERVICE_FILES)),
+                "native-service-paths")
+        require(service["name"] not in names, "native-service-duplicate")
+        names.add(service["name"])
+        require(service["host"] == "containerapp" and service["consumer"] == "containerapp-arm",
+                "native-service-consumer")
+        require(service["role"] in ("mcp", "workspace"), "native-service-role")
+        require(strings(service["inputs"]), "native-service-inputs")
+    require(len({s["resource_name"] for s in services}) == len(services),
+            "native-service-resource-duplicate")
+    return services
+
+
+def _service_definition(root, service):
+    """Bounded ARM resource checks; full schema/native SDK proof stays with the producer."""
+    value = read_json(root, service["manifest"])
+    require(isinstance(value, dict) and value.get("type") == "Microsoft.App/containerApps",
+            "native-service-resource-type")
+    require(value.get("name") == service["resource_name"] and text(value.get("location")),
+            "native-service-resource-identity")
+    require(isinstance(value.get("apiVersion"), str)
+            and re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:-preview)?", value["apiVersion"]),
+            "native-service-api-version")
+    identity = value.get("identity", {})
+    require(isinstance(identity, dict) and identity.get("type") in
+            ("SystemAssigned", "UserAssigned", "SystemAssigned, UserAssigned"),
+            "native-service-managed-identity")
+    if "UserAssigned" in identity["type"]:
+        assigned = identity.get("userAssignedIdentities")
+        require(isinstance(assigned, dict) and bool(assigned)
+                and all(text(k) and isinstance(v, dict) for k, v in assigned.items()),
+                "native-service-user-identity")
+    properties = value["properties"]
+    require(isinstance(properties, dict) and text(properties.get("managedEnvironmentId")),
+            "native-service-environment")
+    template = properties["template"]
+    containers = template["containers"]
+    require(isinstance(containers, list) and len(containers) == 1
+            and not template.get("initContainers"), "native-service-single-container")
+    container = containers[0]
+    require(isinstance(container, dict) and text(container.get("name")), "native-service-container")
+    require(text(container.get("image")) and
+            re.fullmatch(r"[^@\s]+@sha256:[0-9a-f]{64}", container["image"]),
+            "native-service-image-digest")
+    ingress = properties["configuration"]["ingress"]
+    require(isinstance(ingress, dict) and type(ingress.get("external")) is bool
+            and type(ingress.get("targetPort")) is int and 0 < ingress["targetPort"] <= 65535,
+            "native-service-ingress")
+    traffic = ingress.get("traffic", [])
+    require(isinstance(traffic, list) and len(traffic) <= 1, "native-service-traffic-split-unsupported")
+    if traffic:
+        route = traffic[0]
+        require(isinstance(route, dict) and type(route.get("weight")) is int
+                and route["weight"] == 100 and (
+                    (route.get("latestRevision") is True and not route.get("revisionName"))
+                    or (route.get("latestRevision", False) is False and text(route.get("revisionName")))
+                ), "native-service-traffic-route")
+    return value
+
+
+def _native_inventory(root, deploy, inventory):
+    services = _native_services(deploy)
+    if not services:
+        if inventory is not None:
+            require(not inventory.get("scheduled_jobs"), "native-ancillary-consumer-required")
+            require(all(item.get("src", "").removeprefix("./") == deploy["runtime_root"]
+                        for item in inventory.get("services", [])),
+                    "native-ancillary-consumer-required")
+        return
+    require(isinstance(inventory, dict) and isinstance(inventory.get("services"), list),
+            "native-complete-inventory-required")
+    require(not inventory.get("scheduled_jobs"), "native-jobs-unsupported")
+    expected = {deploy["service"]: ("azure.ai.agent", deploy["runtime_root"])}
+    expected.update({s["name"]: (s["host"], s["src"].removeprefix("./")) for s in services})
+    actual = {}
+    for item in inventory["services"]:
+        require(isinstance(item, dict) and text(item.get("name"))
+                and item["name"] not in actual and text(item.get("src")),
+                "native-inventory-service-shape")
+        actual[item["name"]] = (item.get("host"), item["src"].removeprefix("./"))
+    require(actual == expected, "native-service-inventory-drift")
+    for service in services:
+        context = safe_path(root, service["src"], exists=False)
+        require(context.is_dir(), "native-service-context")
+        for key in SERVICE_FILES:
+            read_bytes(root, service[key])
+        require(safe_path(root, service["dockerfile"]).is_relative_to(context),
+                "native-service-dockerfile-context")
+        sources = [safe_path(root, path, exists=False) for path in service["inputs"]]
+        require(any(source.is_dir() for source in sources), "native-service-source-directory")
+        for source in sources:
+            require(source.exists() and source != Path(root).resolve()
+                    and source.is_relative_to(context), "native-service-source-directory")
+        file_inventory(Path(root).resolve(), service["inputs"])
+        _service_definition(root, service)
+
+
 def deployment_gaps(root, contract, *, inventory=None, packaged=False):
     """Validate the selected native consumer, never infer it from whichever file exists."""
     try:
         deploy = contract["deployment"]
+        _native_services(deploy)
         document = _deployment_document(root, contract)
         for folder in (Path(root), safe_path(root, deploy["runtime_root"], exists=False)):
             for name in ("agent.yaml", "agent.manifest.yaml"):
@@ -266,11 +385,7 @@ def deployment_gaps(root, contract, *, inventory=None, packaged=False):
             environment = document.get("environment_variables", {})
             if packaged:
                 read_bytes(root, deploy["runtime_root"].rstrip("/") + "/Dockerfile")
-            if inventory is not None:
-                require(not inventory.get("scheduled_jobs"), "native-ancillary-consumer-required")
-                require(all(item.get("src", "").removeprefix("./") == deploy["runtime_root"]
-                            for item in inventory.get("services", [])),
-                        "native-ancillary-consumer-required")
+            _native_inventory(root, deploy, inventory)
         require(protocols == [{"protocol": deploy["protocol"], "version": deploy["protocol_version"]}],
                 "deployment-protocol-drift")
         require(isinstance(environment, dict) and text(environment.get(deploy["model_env"])),
@@ -287,13 +402,59 @@ def deployment_gaps(root, contract, *, inventory=None, packaged=False):
     return []
 
 
-def _target(root):
+def _target(root, contract):
     value = read_json(root, TARGET)
-    require(isinstance(value, dict) and set(value) == {
-        "attempt", "environment", "version", "image", "identity"}, "target-shape")
-    require(all(text(v) for v in value.values()), "target-empty")
-    require(re.fullmatch(r"(?:[^@\s]+@)?sha256:[0-9a-f]{64}", value["image"]), "target-image-digest")
+    services = _native_services(contract["deployment"])
+    fields = {"attempt", "environment", "version", "image", "identity"}
+    require(isinstance(value, dict) and set(value) == fields | ({"services"} if services else set()),
+            "target-shape")
+    _target_tuple(value)
+    if services:
+        targets = value["services"]
+        require(isinstance(targets, dict) and set(targets) == {s["name"] for s in services},
+                "native-service-target-inventory")
+        for service in services:
+            target = targets[service["name"]]
+            require(isinstance(target, dict) and set(target) == fields | {
+                "resource_name", "definition_sha256"}, "native-service-target-shape")
+            _target_tuple(target)
+            definition = _service_definition(root, service)
+            require(target["resource_name"] == definition["name"]
+                    and target["definition_sha256"] == sha256(read_bytes(root, service["manifest"]))
+                    and target["image"] == definition["properties"]["template"]["containers"][0]["image"],
+                    "native-service-target-definition")
+            traffic = definition["properties"]["configuration"]["ingress"].get("traffic", [])
+            if traffic and traffic[0].get("revisionName"):
+                require(target["version"] == traffic[0]["revisionName"], "native-service-target-route")
     return value
+
+
+def _target_tuple(value):
+    require(all(text(value.get(k)) for k in ("attempt", "environment", "version", "image", "identity")),
+            "target-empty")
+    require(re.fullmatch(r"(?:[^@\s]+@)?sha256:[0-9a-f]{64}", value["image"]), "target-image-digest")
+
+
+def _service_facts(root, contract, check, facts):
+    services = _native_services(contract["deployment"])
+    if not services or check not in ("package", "deployment"):
+        return
+    recorded = facts.get("services")
+    require(isinstance(recorded, dict) and set(recorded) == {s["name"] for s in services},
+            "native-service-proof-inventory")
+    for service in services:
+        proof = recorded[service["name"]]
+        require(isinstance(proof, dict), "native-service-proof-shape")
+        required = SERVICE_PACKAGE_CASES if check == "package" else ("observed",)
+        require(all(proof.get(name) is True for name in required), "native-service-proof-cases")
+        require(proof.get("manifest_sha256") == sha256(read_bytes(root, service["manifest"]))
+                and proof.get("adapter_sha256") == sha256(read_bytes(root, service["adapter"])),
+                "native-service-proof-binding")
+        refs = proof.get("evidence")
+        require(isinstance(refs, list) and bool(refs), "native-service-retained-output")
+        for ref in refs:
+            require(isinstance(ref, dict) and sha256(read_bytes(root, ref["path"])) == ref["sha256"],
+                    "native-service-output-digest")
 
 
 def _receipt(root, contract, check, reference, hashes, now, references):
@@ -322,10 +483,11 @@ def _receipt(root, contract, check, reference, hashes, now, references):
     expected = {group: hashes[group] for group in CHECKS[check]["inputs"]}
     if value.get("inputs") != expected:
         return {"status": "stale", "reason": "Changed declared inputs; rerun only this check."}
-    if check != "package" and value.get("target") != _target(root):
+    if check != "package" and value.get("target") != _target(root, contract):
         return {"status": "stale", "reason": "Deployment attempt/identity/version/image changed."}
     facts = value.get("facts", {})
     require(isinstance(facts, dict), "receipt-facts")
+    _service_facts(root, contract, check, facts)
     if check == "package":
         require(all(facts.get(name) is True for name in PACKAGE_CASES), "packaged-integration-cases")
     if check in ("backend", "script"):
