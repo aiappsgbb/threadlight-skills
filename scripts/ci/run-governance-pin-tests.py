@@ -401,6 +401,7 @@ for record in records:
     env.pop("PYTEST_ADDOPTS", None)
     run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_gateway.py",
          "skills/threadlight-govern/tests/test_citadel.py",
+         "skills/threadlight-govern/tests/test_operator_recovery.py",
          "-k", "not test_citadel_native_returns_producer_authenticates_and_records_once",
          "-q", f"--junitxml={report}", "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
     count = verify_gateway_junit(report)
@@ -516,6 +517,7 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_ghcp_relay_transport.py",
              "skills/threadlight-deploy/tests/test_public_authenticated_proof.py",
              "skills/threadlight-deploy/tests/test_returns_read_audit.py",
+             "skills/threadlight-deploy/tests/test_returns_recovery_wire.py",
              "skills/threadlight-deploy/tests/test_hosted_cohort.py",
              "skills/threadlight-deploy/tests/test_returns_mcp_backend.py",
              "skills/threadlight-deploy/tests/test_returns_evidence.py",
@@ -564,6 +566,9 @@ for name, record in {sdk_wheels!r}.items():
             "test_native_server_uses_explicit_operator_state_directory",
             "test_unbound_read_uses_injected_host_credential_without_policy",
             "test_real_cosmos_guard_has_a_separate_create_only_audit_protocol",
+            "test_real_cosmos_fence_blocks_late_original_writer[fence-first]",
+            "test_real_cosmos_fence_blocks_late_original_writer[lost-fence-ack]",
+            "test_bind_preserves_explicit_scoped_operation_controller",
             "test_publish_is_immutable_authorized_read_and_real_signature",
             "test_request_cannot_observe_partially_initialized_host",
             "test_assets_use_authenticated_create_only_chunked_blob_transport",

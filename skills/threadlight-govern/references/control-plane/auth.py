@@ -40,6 +40,7 @@ class Settings(StrictModel):
     request_timeout: Annotated[float, Field(gt=0, le=30)] = 5.0
     approval_max_seconds: Annotated[int, Field(gt=0, le=3600)] = 300
     probe_controllers: Annotated[dict[ObjectId, ProbeController], Field(max_length=32)] = {}
+    operation_controllers: Annotated[dict[ObjectId, ProbeController], Field(max_length=32)] = {}
 
     @model_validator(mode="after")
     def separate_authorities(self):
@@ -47,6 +48,9 @@ class Settings(StrictModel):
             raise ValueError("self approval forbidden")
         if set(self.workloads).intersection(self.probe_controllers):
             raise ValueError("distinct_probe_controller_required")
+        if (set(self.operation_controllers).intersection(self.workloads)
+                or set(self.operation_controllers).intersection(self.probe_controllers)):
+            raise ValueError("distinct_operation_controller_required")
         return self
 
     @property
@@ -162,6 +166,18 @@ class EntraAuth:
                 raise Unauthorized()
             roles = frozenset(raw_roles)
             subject = claims["oid"]
+            operator = self.settings.operation_controllers.get(subject)
+            if operator is not None:
+                app_only = claims.get("idtyp") == "app" and "scp" not in claims
+                scopes = claims.get("scp")
+                delegated = (claims.get("idtyp") != "app" and isinstance(scopes, str)
+                             and "Governance.Operate" in scopes.split()
+                             and client in self.settings.human_clients)
+                if (client != operator.client_id or "Governance.Operate" not in roles
+                        or not (app_only or delegated)):
+                    raise Unauthorized()
+                return Identity(claims["tid"], subject, client, roles,
+                                frozenset() if app_only else frozenset(scopes.split()), None)
             if claims.get("idtyp") == "app" and "scp" not in claims:
                 controller = self.settings.probe_controllers.get(subject)
                 if controller is not None:

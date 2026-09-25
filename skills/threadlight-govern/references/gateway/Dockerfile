@@ -28,7 +28,7 @@ ENV TMPDIR=/app/scratch PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
 COPY --from=builder /wheels /wheels
 COPY --from=builder /build/opa /usr/local/bin/opa
 RUN mkdir -p /app/scratch && chmod 755 /usr/local/bin/opa && \
-    python -m pip install --no-index --find-links /wheels threadlight-govern-gateway==0.4.0 && \
+    python -m pip install --no-index --find-links /wheels threadlight-govern-gateway==0.5.0 && \
     python -m pip check && rm -rf /wheels && chown -R 10001:10001 /app
 USER 10001:10001
 EXPOSE 8000

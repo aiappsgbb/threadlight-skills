@@ -623,7 +623,9 @@ def validate_gateway_policy(bundle, signed, config, document, agent_image, bindi
             or bindings["policy_digest"] != bundle.bundle_digest
             or any(bindings[key] != config[key] for key in ("policy_id", "policy_version", "key_id"))):
         raise ValueError("signed_registry_deployment_mismatch")
-    if not all({a.endpoint, a.outcome_endpoint} <= set(bindings["allowed_endpoints"]) for a in registry.actions):
+    if not all({a.endpoint, a.outcome_endpoint, *(
+            [a.recovery_endpoint] if a.recovery_endpoint else [])} <= set(bindings["allowed_endpoints"])
+            for a in registry.actions):
         raise ValueError("downstream_allowlist_mismatch")
     from govern_control_plane.app import AzureConfiguration
     from govern_control_plane.models import canonical
@@ -1218,6 +1220,13 @@ def bind(project, document, *, configuration=None):
             user.subject for profile in authority.profiles.values()
             if profile.customer_identity is None for user in profile.users
         })
+    prior_operations = bindings.get("gateway_config", {}).get("operations_required", False)
+    if "operation_controllers" in config or prior_operations:
+        if not gateway_path:
+            raise ValueError("operations_require_gateway")
+        controllers = (config["operation_controllers"] if "operation_controllers" in config
+                       else bindings["gateway_config"]["operation_controllers"])
+        gateway.update(operations_required=True, operation_controllers=controllers)
     control_settings = parse(AzureConfiguration, canonical(control))
     gateway_settings = parse(Configuration, canonical(gateway))
     validate_review_channel(control_settings, gateway_settings, bindings)
