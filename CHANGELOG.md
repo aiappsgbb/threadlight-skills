@@ -7,6 +7,28 @@ field.
 
 ## [Unreleased]
 
+### Incumbent presenter adoption and web artifact preflight
+
+- Adopt the existing opt-in presenter contract in retained projects without
+  regenerating their runtime or frontend. Consume the canonical deployment pin,
+  existing dependency fingerprints and immutable receipts rather than adding
+  another contract or validator.
+- Separate ordinary authorized recovery from source/authorization expiry and
+  UNKNOWN effects. Preserve independent history permissions, deny new expired
+  writes and require explicit new synthetic preparation for tomorrow's demo.
+- Add a standard-library web artifact diagnostic for missing built JSON/modules,
+  changed bytes, portable non-root modes, module MIME, SPA fallback and promised
+  downloads. One owned HTTP worker has a 10-second overall deadline and is killed
+  and reaped on expiry; the static filesystem preflight is outside that deadline.
+- Verify with synthetic offline fixtures on two process contracts; this is
+  not image-runtime or hosted proof. Actual image identity/startup, browser
+  journey, authorized durable readback and human acceptance remain separate gates.
+  The failed September 25 hosted acceptance recorded in `docs/reference-release.md`
+  remains failed; these checks do not replace or relabel it.
+- Skill versions: Deploy 1.9.0, Workspace UI 1.1.1, Demo Data Factory 1.0.1.
+  Plugin/marketplace candidate 2.11.0. No runtime/provider pin change, deployment,
+  installed-mirror update or production-readiness claim.
+
 ### Requesting-user confirmation
 
 - Add a separate one-use confirmation authority on the selected MAF gateway:

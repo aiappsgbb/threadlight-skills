@@ -17,12 +17,19 @@ description: >-
   ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
-  version: "1.8.1"
+  version: "1.9.0"
 ---
 
 # Foundry Hosted Agent Deploy
 
 ## Presenter-ready selected consumer
+
+For an incumbent project, follow the [adoption map](references/presenter-adoption.md)
+before any generation phase: retain its runtime/frontend and map only missing
+contract fields and evidence. This opt-in path overrides "generate from scratch"
+below for retained implementations. Use the narrow
+[built web artifact smoke](references/web-artifact-smoke.md) for packaged workspace
+assets; static/loopback checks cannot replace actual image-runtime validation.
 
 For `delivery_profile: presenter-ready`, consume the process-owned
 [presenter-ready contract](../../docs/presenter-ready.md) and the same

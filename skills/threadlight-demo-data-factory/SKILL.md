@@ -13,10 +13,26 @@ description: >
   that), live data ingestion (use threadlight-event-triggers), MCP
   server scaffold (use foundry-mcp-aca).
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Threadlight Demo Data Factory
+
+## Presenter-ready incumbent data
+
+For an explicitly selected presenter-ready profile, consume the process-owned
+`specs/presenter-contract.json` and
+[incumbent adoption map](../threadlight-deploy/references/presenter-adoption.md).
+Retain existing producers and data; adoption is not permission to run seed/reset.
+This selected-profile rule takes precedence over the generic reset examples below:
+never wipe retained receipts, reset consumed approvals/operation IDs, or clear
+UNKNOWN effects. Ordinary authorized corrections remain in scope; expired source
+or authorization does not grant a new write. Preparation requires the designated
+producer and a distinct synthetic revision with new lawful operation intent.
+Reads must not refresh data. Exercise the day-after case: expiry denies new work
+while the shell and historical reads remain available only under their own
+contract, authorization and retention. Treat malformed configuration separately
+from valid-but-expired data; do not force full regeneration or extend leases.
 
 Generate per-domain synthetic demo data + idempotent reset/seed scripts for
 a threadlight process. The output drives both the mock MCP server (via

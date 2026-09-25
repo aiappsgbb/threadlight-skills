@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_confirmation_catalog_version_is_consistent():
     plugin = json.loads((ROOT / "plugin.json").read_text())
     marketplace = json.loads((ROOT / ".github/plugin/marketplace.json").read_text())
-    assert plugin["version"] == marketplace["metadata"]["version"] == "2.10.0"
+    assert plugin["version"] == marketplace["metadata"]["version"] == "2.11.0"
     assert marketplace["plugins"][0]["version"] == plugin["version"]
 
 

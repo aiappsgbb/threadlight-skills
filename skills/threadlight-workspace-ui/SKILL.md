@@ -13,12 +13,22 @@ description: >
   Teams Adaptive Cards (use threadlight-hitl-patterns), real-time chat UI,
   framework-specific scaffolds (we ship pattern, not framework).
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # Threadlight Workspace UI
 
 ## Presenter-ready business journey
+
+For an existing workspace, use the
+[incumbent adoption map](../threadlight-deploy/references/presenter-adoption.md);
+do not regenerate the UI. Use
+[`web_artifact_smoke.py`](../threadlight-deploy/scripts/web_artifact_smoke.py)
+against final built files and the real server origin to catch omitted JSON/COPY
+assets, incorrect `.mjs` MIME and non-root readability. These diagnostics do not
+prove runtime identity: require the actual image, configured non-root user,
+browser imports and promised download journey before hosted-quality claims.
+See the [smoke evidence limits](../threadlight-deploy/references/web-artifact-smoke.md).
 
 For an explicit [presenter-ready profile](../../docs/presenter-ready.md), design the
 workspace **alongside the first end-to-end journey**, not after all backends.
