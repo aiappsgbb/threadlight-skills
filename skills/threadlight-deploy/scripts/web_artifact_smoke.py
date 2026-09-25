@@ -7,6 +7,8 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import stat
+import subprocess
+import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -20,6 +22,7 @@ MIME = {
     ".pdf": {"application/pdf"}, ".zip": {"application/zip"},
     ".svg": {"image/svg+xml"}, ".png": {"image/png"},
 }
+HTTP_PROBE_DEADLINE_SECONDS = 10
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -66,6 +69,34 @@ def read_asset(root, name, *, portable_read=False):
     return current.read_bytes()
 
 
+def probe_http(origin, assets, downloads):
+    errors = []
+    # No environment proxy, credentials or redirects: probe only the chosen local server.
+    opener = build_opener(ProxyHandler({}), NoRedirect())
+    for asset in assets:
+        name = asset["path"]
+        try:
+            request = Request(f"{origin}/{quote(name, safe='/')}",
+                              headers={"Accept-Encoding": "identity"})
+            with opener.open(request, timeout=5) as response:
+                if response.status != 200:
+                    raise ValueError(f"Expected HTTP 200, got {response.status}")
+                mime = response.headers.get_content_type()
+                allowed = MIME.get(PurePosixPath(name).suffix.lower(),
+                                   {"application/octet-stream"})
+                if mime not in allowed:
+                    raise ValueError(f"Unexpected MIME {mime!r}; expected {sorted(allowed)}")
+                content = response.read(asset["bytes"] + 1)
+                if (len(content) != asset["bytes"]
+                        or hashlib.sha256(content).hexdigest() != asset["sha256"]):
+                    raise ValueError("Served bytes differ from built artifact (possibly SPA fallback)")
+                if name in downloads and response.headers.get_content_disposition() != "attachment":
+                    raise ValueError("Promised attachment lacks Content-Disposition: attachment")
+        except (OSError, ValueError, HTTPError, URLError) as exc:
+            errors.append(f"http {name}: {exc}")
+    return errors
+
+
 def check(expected, built, *, files, origin=None, downloads=()):
     expected, built = Path(expected).absolute(), Path(built).absolute()
     files = list(dict.fromkeys(asset_name(name) for name in files))
@@ -79,14 +110,12 @@ def check(expected, built, *, files, origin=None, downloads=()):
         "image_runtime": {"status": "not-executed"},
         "hosted_quality": "unproven", "assets": [], "errors": [],
     }
-    contents = {}
     for name in files:
         try:
             source = read_asset(expected, name)
             artifact = read_asset(built, name, portable_read=True)
             if artifact != source:
                 raise ValueError(f"Built bytes differ from expected bytes: {name}")
-            contents[name] = artifact
             report["assets"].append({
                 "path": name, "sha256": hashlib.sha256(artifact).hexdigest(),
                 "bytes": len(artifact),
@@ -97,32 +126,37 @@ def check(expected, built, *, files, origin=None, downloads=()):
         return report
     report["static"]["status"] = "passed"
     if origin:
-        # No environment proxy, credentials or redirects: probe only the chosen local server.
-        opener = build_opener(ProxyHandler({}), NoRedirect())
-        for name, content in contents.items():
-            try:
-                request = Request(f"{origin}/{quote(name, safe='/')}",
-                                  headers={"Accept-Encoding": "identity"})
-                with opener.open(request, timeout=5) as response:
-                    if response.status != 200:
-                        raise ValueError(f"Expected HTTP 200, got {response.status}")
-                    mime = response.headers.get_content_type()
-                    allowed = MIME.get(PurePosixPath(name).suffix.lower(),
-                                       {"application/octet-stream"})
-                    if mime not in allowed:
-                        raise ValueError(f"Unexpected MIME {mime!r}; expected {sorted(allowed)}")
-                    if response.read(len(content) + 1) != content:
-                        raise ValueError("Served bytes differ from built artifact (possibly SPA fallback)")
-                    if name in downloads and response.headers.get_content_disposition() != "attachment":
-                        raise ValueError("Promised attachment lacks Content-Disposition: attachment")
-            except (OSError, ValueError, HTTPError, URLError) as exc:
-                report["errors"].append(f"http {name}: {exc}")
+        try:
+            # One worker, no descendants: run() kills and reaps it on timeout or interruption.
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).resolve()), "--http-worker"],
+                input=json.dumps({"origin": origin, "assets": report["assets"],
+                                  "downloads": sorted(downloads)}),
+                capture_output=True, text=True, check=True,
+                timeout=HTTP_PROBE_DEADLINE_SECONDS,
+            )
+            report["errors"].extend(json.loads(result.stdout))
+        except subprocess.TimeoutExpired:
+            report["errors"].append(
+                f"http overall probe deadline exceeded ({HTTP_PROBE_DEADLINE_SECONDS}s); "
+                "worker killed and reaped")
+        except subprocess.CalledProcessError as exc:
+            report["errors"].append(f"http worker failed ({exc.returncode}): {exc.stderr.strip()}")
+        except (OSError, ValueError) as exc:
+            report["errors"].append(f"http worker: {exc}")
         report["http"]["status"] = "failed" if report["errors"] else "passed"
     report["passed"] = not report["errors"]
     return report
 
 
 def main():
+    if sys.argv[1:] == ["--http-worker"]:
+        payload = json.load(sys.stdin)
+        payload["origin"] = origin_url(payload["origin"])
+        for asset in payload["assets"]:
+            asset_name(asset["path"])
+        print(json.dumps(probe_http(**payload)))
+        return 0
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected", type=Path, required=True)
     parser.add_argument("--built", type=Path, required=True)

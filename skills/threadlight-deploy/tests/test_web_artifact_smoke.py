@@ -6,7 +6,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import subprocess
 import sys
-from threading import Thread
+from threading import Event, Thread
+from time import monotonic
 
 import pytest
 
@@ -165,3 +166,86 @@ def test_cli_failure_is_machine_readable(trees):
                              "--file", "data.json"], capture_output=True, text=True)
     assert result.returncode == 1
     assert json.loads(result.stdout)["passed"] is False
+
+
+@pytest.mark.parametrize("phase", ["headers", "body", "aggregate"])
+def test_overall_deadline_stops_slow_drip_and_reaps_worker(smoke, trees, monkeypatch, phase):
+    stop = Event()
+    finished = Event()
+    started = Event()
+    processes = []
+    original_popen = subprocess.Popen
+
+    def tracked_popen(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    class SlowHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            started.set()
+            body = (trees[1] / "report.txt").read_bytes()
+            try:
+                if phase == "aggregate":
+                    stop.wait(0.2)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if phase == "headers":
+                    payload = b"HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\n" + body
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain")
+                    self.end_headers()
+                    payload = body
+                for byte in payload:
+                    self.wfile.write(bytes([byte]))
+                    self.wfile.flush()
+                    if stop.wait(0.04):
+                        break
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                finished.set()
+
+        def log_message(self, *_):
+            pass
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), SlowHandler)
+    httpd.daemon_threads = False
+    thread = Thread(target=httpd.serve_forever)
+    thread.start()
+    monkeypatch.setattr(smoke, "HTTP_PROBE_DEADLINE_SECONDS", 0.3)
+    monkeypatch.setattr(smoke.subprocess, "Popen", tracked_popen)
+    try:
+        files = ["report.txt"]
+        if phase == "aggregate":
+            for name in ("second.txt", "third.txt"):
+                for root in trees:
+                    (root / name).write_bytes((root / "report.txt").read_bytes())
+                    (root / name).chmod(0o644)
+                files.append(name)
+        start = monotonic()
+        report = smoke.check(*trees, files=files,
+                             origin=f"http://127.0.0.1:{httpd.server_port}")
+        elapsed = monotonic() - start
+        assert started.is_set(), "The regression must reach the slow local response"
+        assert elapsed < 1.5
+        assert not report["passed"]
+        assert report["static"]["status"] == "passed"
+        assert report["http"]["status"] == "failed"
+        assert report["image_runtime"]["status"] == "not-executed"
+        assert any("deadline" in error for error in report["errors"])
+        assert len(processes) == 1
+        assert processes[0].poll() is not None
+        assert processes[0].returncode != 0
+        assert finished.wait(1), "Killed worker must close its connection"
+    finally:
+        stop.set()
+        httpd.shutdown()
+        thread.join()
+        httpd.server_close()
+    assert not thread.is_alive()
+    assert finished.is_set()

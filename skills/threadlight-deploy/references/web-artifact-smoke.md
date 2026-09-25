@@ -44,8 +44,16 @@ Use the real server origin and its actual URL paths, not `file://`, a dev server
 that manufactures missing files, or a filesystem path mistaken for a URL.
 The narrow helper supports literal loopback HTTP only, disables proxies, and
 rejects redirects. It sends no auth tokens. Each request has a five-second socket
-timeout and reads at most expected size plus one byte. It is for trusted local
-fixtures/servers, not hostile-server resource isolation. It compares exact served
+inactivity timeout and reads at most expected size plus one byte. Independently,
+one **10-second overall deadline** covers the complete HTTP probe across all
+selected assets, including header/body reads and slow-drip responses. The HTTP
+phase runs in one owned subprocess with no descendants; `subprocess.run(timeout=10)`
+kills and reaps that worker on expiry, closing its sockets. The result is a failed
+HTTP diagnostic, never partial success or a background retry. The helper does not
+stop or own the server. The deadline excludes the preceding local filesystem
+preflight and OS process-creation time; those are not network checks.
+It is for trusted local fixtures/servers, not hostile-server resource isolation.
+It compares exact served
 bytes, checks MIME (including JavaScript `.mjs`), rejects HTML SPA fallback, and
 requires attachment disposition for explicitly listed downloads. A browser
 generated download or authenticated API export instead needs the process's
