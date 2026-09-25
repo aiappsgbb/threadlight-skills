@@ -79,7 +79,7 @@ test('governance entry exposes scoped Citadel guidance and immutable dated evide
     assert.ok(note.includes(term), term);
   }
   const pin = 'c538f4cf89c9c5e5f5ae0c43e3bbdae96c34778e';
-  assert.ok(note.includes(`/blob/${pin}/docs/citadel-governance.md`));
+  assert.ok(note.includes('href="./citadel-governance.html"'), 'Guide follows the published Pages document');
   assert.ok(note.includes(`/blob/${pin}/docs/governed-returns-validation.md#s7-`));
   assert.doesNotMatch(note, /href="\.?\/?(?:citadel-governance|governed-returns-validation)\.md/);
   assert.match(read('README.md'), /\[Citadel action execution\]\(docs\/citadel-governance\.md\)/);

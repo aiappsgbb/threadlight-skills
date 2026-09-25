@@ -17,8 +17,12 @@
 // Both are covered there and are intentionally not re-asserted in this file.
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { readFileSync } from 'node:fs';
 
 const LANDING = '/index.html';
+const generatedPages = new Map(Object.entries(JSON.parse(readFileSync(
+  new URL('../../blueprint/helpers/published-markdown-pages.json', import.meta.url), 'utf8',
+))));
 
 // Every page that carries the shared masthead + chapter nav.
 const CHAPTER_PAGES = [
@@ -513,7 +517,7 @@ test.describe('Open Graph & social assets', () => {
 });
 
 test.describe('internal link integrity — page links reachable from the primary pages', () => {
-  test('every internal .html link resolves (excluding anchors/downloads/mailto/external)', async ({ page }) => {
+  test('every internal .html link has a published page or declared Jekyll source', async ({ page }) => {
     const broken = [];
     const checked = new Set();
     for (const url of CHAPTER_PAGES) {
@@ -530,8 +534,16 @@ test.describe('internal link integrity — page links reachable from the primary
         if (!norm.startsWith('/')) norm = '/' + norm;
         if (checked.has(norm)) continue;
         checked.add(norm);
-        const res = await page.request.get(norm);
+        // The local static server does not run Jekyll. Validate declared generated
+        // pages against their exact source; the Node contract also checks fragments.
+        const source = generatedPages.get(norm.slice(1));
+        const res = await page.request.get(source ? `/${source}` : norm);
         if (!res.ok()) broken.push(`${url} -> ${raw} (${res.status()})`);
+        else if (source) {
+          expect(await res.text(), `${norm}: declared Jekyll source`).toBe(
+            readFileSync(new URL(`../../../docs/${source}`, import.meta.url), 'utf8'),
+          );
+        }
       }
     }
     expect(broken, `broken internal page links:\n${broken.join('\n')}`).toEqual([]);

@@ -47,6 +47,12 @@ npx playwright test
 
 The Playwright config auto-starts `python3 -m http.server 4173` rooted
 at `../../docs` and tears it down when the suite ends.
+This static server does not build Jekyll Markdown pages. The internal-link
+crawler checks exact source responses for observed generated routes declared in
+`tests/blueprint/helpers/published-markdown-pages.json`; all other page links
+must return their real HTML. `public-links.test.js` shares that declaration and
+checks destination/fragment existence, rejecting missing and excluded path aliases.
+This is a source contract, not a replacement for a rendered Pages preview.
 
 ## Governance report diagrams
 
@@ -56,17 +62,21 @@ dependency. From the repository root:
 ```bash
 node scripts/render-governance-diagrams.mjs
 node scripts/render-governance-diagrams.mjs --diagram effect-boundaries
+node scripts/render-governance-diagrams.mjs --diagram citadel-action-path
+node scripts/render-governance-diagrams.mjs --diagram citadel-policy-lifecycle
 node scripts/render-governance-diagrams.mjs --check
 node --test tests/blueprint/architecture-reader.test.js
 ```
 
-The script parses and renders both governance references through Chromium,
+The script parses and renders the governance references and Citadel guide through Chromium,
 rejects script/HTML-bearing SVG output, and writes named images to
 `docs/assets/governance/`. Images have an opaque light background so their
 lines remain readable in dark Markdown viewers. Editable Mermaid sources stay
 collapsed beside each image. `--check` compares current rendered output with
 the committed images; use the same browser/font environment when regenerating.
 `--validate` renders without writing images.
+Use `--diagram` for a scoped documentation change so unrelated historical SVGs
+remain unchanged; the same selector works with `--check` and `--validate`.
 
 The Production-ready schematic is independent static SVG/HTML using the site's
 existing theme, with a vertical mobile flow. Its focused checks are:

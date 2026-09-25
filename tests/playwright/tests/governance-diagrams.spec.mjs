@@ -2,19 +2,19 @@ import { test, expect } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-const documents = ['agent-governance-deep-dive', 'native-outlook-approval-architecture'];
+const documents = ['agent-governance-deep-dive', 'native-outlook-approval-architecture', 'citadel-governance'];
 const names = documents.flatMap(document => {
   const markdown = readFileSync(new URL(`../../../docs/${document}.md`, import.meta.url), 'utf8');
   return [...markdown.matchAll(/<!-- diagram: ([a-z0-9-]+) -->/g)].map(match => match[1]);
 });
 
 test('committed report diagrams render without clipped text or a Mermaid runtime', async ({ page }, testInfo) => {
-  expect(names).toHaveLength(9);
-  expect(new Set(names).size).toBe(9);
+  expect(names).toHaveLength(11);
+  expect(new Set(names).size).toBe(11);
   expect(names).toEqual(expect.arrayContaining([
     'effect-boundaries', 'action-execution', 'human-resume', 'operation-ledger',
     'approval-ledger', 'outlook-boundaries', 'outlook-execution', 'outlook-outbox',
-    'requesting-user-confirmation',
+    'requesting-user-confirmation', 'citadel-action-path', 'citadel-policy-lifecycle',
   ]));
   for (const name of names) {
     const response = await page.goto(`/assets/governance/${name}.svg`);
@@ -30,6 +30,7 @@ test('committed report diagrams render without clipped text or a Mermaid runtime
           box.top < boundary.top - 1 || box.right > boundary.right + 1 || box.bottom > boundary.bottom + 1);
       }).map(text => text.textContent);
     });
+
     expect(clipped, name).toEqual([]);
     const directory = process.env.THREADLIGHT_SCREENSHOT_DIR;
     if (directory && testInfo.project.name === 'chromium-desktop') {
@@ -38,4 +39,22 @@ test('committed report diagrams render without clipped text or a Mermaid runtime
       await image.screenshot({ path: path.join(directory, `${name}.png`) });
     }
   }
+});
+
+test('Citadel action diagram stays legible in the document and keeps its gateway title clear', async ({ page }) => {
+  await page.goto('/assets/governance/citadel-action-path.svg');
+  const result = await page.locator('svg').evaluate(svg => {
+    const title = svg.querySelector('.cluster-label').getBoundingClientRect();
+    return {
+      width: svg.viewBox.baseVal.width,
+      titleOverlapsNode: [...svg.querySelectorAll('.node rect')].some(node => {
+        const box = node.getBoundingClientRect();
+        return title.left < box.right && title.right > box.left &&
+          title.top < box.bottom && title.bottom > box.top;
+      }),
+    };
+  });
+  // The published Markdown has 358px of content at a 390px mobile viewport.
+  expect(16 * 358 / result.width, 'Inline diagram labels remain at least 12px').toBeGreaterThanOrEqual(12);
+  expect(result.titleOverlapsNode, 'ACA gateway label must not collide with the first check').toBe(false);
 });
