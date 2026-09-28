@@ -7,6 +7,23 @@ field.
 
 ## [Unreleased]
 
+### Coherent recipient delivery
+
+- Add an opt-in `delivery` section to the existing presenter contract and an
+  executable current-facts block shared by promised page/guide/diagram/sizing
+  views. Bind complete view bytes and current facts to the existing recipient
+  journey and scoped process-owner semantic review before readiness.
+- Preserve historical proof, current source eligibility, read permissions and
+  new-action authority as separate facts; no new pipeline or production gate.
+- Deploy 1.10.0 discovers static and literal dynamic JS imports transitively
+  with a locked parse-only lexer, checks served MIME/nosniff and required bytes,
+  and rejects internal/evidence files in built/exported application trees.
+  Actual-image package cases remain separately required, not inferred from
+  static or loopback checks.
+- Plugin/marketplace candidate 2.13.0; refreshed canonical guide archive.
+  No Library adoption, provider/SDK pin change, live operation, semantic/visual
+  attestation or installed-mirror update.
+
 ### Native presenter ancillary services
 
 - Extend the existing native-SDK presenter consumer with explicit, independently

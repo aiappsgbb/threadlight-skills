@@ -1,0 +1,8 @@
+{
+  "name": "threadlight-web-artifact-parser",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "es-module-lexer": "1.7.0"
+  }
+}

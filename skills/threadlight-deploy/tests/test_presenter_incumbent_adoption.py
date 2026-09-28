@@ -17,7 +17,7 @@ GUIDE = ROOT / "skills/threadlight-deploy/references/presenter-adoption.md"
 
 def test_adoption_release_versions_and_limits():
     for skill, version in {
-        "threadlight-deploy": "1.9.0",
+        "threadlight-deploy": "1.10.0",
         "threadlight-workspace-ui": "1.1.1",
         "threadlight-demo-data-factory": "1.0.1",
     }.items():

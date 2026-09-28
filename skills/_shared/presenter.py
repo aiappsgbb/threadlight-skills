@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timedelta, timezone
+from html import escape
 import io
 import json
 import math
@@ -38,6 +39,8 @@ PREDECESSORS = {"package": (), "deployment": (), "backend": ("package", "deploym
                 "script": ("backend",), "human": ("script",)}
 SERVICE_PACKAGE_CASES = ("schema_validated", "image_runtime", "startup", "adapter")
 SERVICE_FILES = ("manifest", "create_entrypoint", "lockfile", "adapter", "dockerfile")
+DELIVERY_START = "<!-- threadlight-delivery:start -->"
+DELIVERY_END = "<!-- threadlight-delivery:end -->"
 
 
 def require(condition, code):
@@ -128,6 +131,22 @@ def load_contract(root):
     for bundle in publication["bundles"]:
         require(isinstance(bundle, dict) and text(bundle.get("path"))
                 and text(bundle.get("source_root")), "publication-bundle")
+    if "delivery" in contract:
+        delivery = contract["delivery"]
+        require(isinstance(delivery, dict) and set(delivery) == {"version", "surfaces"}
+                and text(delivery.get("version")), "delivery-contract")
+        surfaces = delivery["surfaces"]
+        require(isinstance(surfaces, list) and bool(surfaces), "delivery-surfaces")
+        paths, roles = set(), set()
+        for surface in surfaces:
+            require(isinstance(surface, dict) and set(surface) == {"role", "path"}
+                    and surface["role"] in ("page", "guide", "diagram", "sizing", "publication")
+                    and text(surface["path"]), "delivery-surface")
+            path = safe_path(root, surface["path"], exists=False)
+            require(path not in paths, "delivery-surface-duplicate")
+            paths.add(path)
+            roles.add(surface["role"])
+        require({"page", "guide", "diagram", "sizing"} <= roles, "delivery-required-roles")
     return contract
 
 
@@ -166,6 +185,8 @@ def fingerprints(root, contract):
         "script": {"journey": contract["journey"], "owner": contract["owner"]},
         "sizing": {"sizing": contract["sizing"]},
     }
+    if "delivery" in contract:
+        sections["interface"]["delivery"] = contract["delivery"]
     result = {}
     for group in GROUPS:
         paths = list(contract["inputs"][group])
@@ -490,6 +511,11 @@ def _receipt(root, contract, check, reference, hashes, now, references):
     _service_facts(root, contract, check, facts)
     if check == "package":
         require(all(facts.get(name) is True for name in PACKAGE_CASES), "packaged-integration-cases")
+        if "delivery" in contract:
+            web = facts.get("web_artifacts", {})
+            require(isinstance(web, dict) and all(web.get(name) is True for name in (
+                "import_closure", "mime_nosniff", "private_files_absent", "image_runtime")),
+                "delivery-built-artifact-cases")
     if check in ("backend", "script"):
         require(all(facts.get(name) is True for name in ("interaction", "terminal_success")),
                 "terminal-result-required")
@@ -566,12 +592,77 @@ def assess(root, *, now=None):
         if report["publication"]["status"] not in ("verified", "not-requested"):
             report["ready"] = False
             report["next_check"] = report["next_check"] or "publication"
+        if "delivery" in contract:
+            report["delivery"] = _delivery_status(root, contract, report)
+            if report["delivery"]["status"] != "verified":
+                report["ready"] = False
+                report["next_check"] = report["next_check"] or "delivery-views"
     except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
         report["ready"] = False
         report["states"]["source-ready"] = "blocked"
         report["gaps"].append(str(exc))
         report["next_check"] = "contract"
     return report
+
+
+def render_delivery(facts):
+    """Canonical visible HTML fragment; also valid inside Markdown, never a semantic review."""
+    rows = "\n".join(
+        f"<dt>{escape(key)}</dt><dd>{escape(value if isinstance(value, str) else json.dumps(value, sort_keys=True))}</dd>"
+        for key, value in sorted(facts.items()))
+    return (f'{DELIVERY_START}\n<section data-threadlight-delivery="{canonical_hash(facts)}">'
+            f"<dl>\n{rows}\n</dl></section>\n{DELIVERY_END}")
+
+
+def _delivery_status(root, contract, report):
+    description, availability = contract["description"], contract["availability"]
+    facts = {
+        "process_id": contract["process_id"], "version": contract["delivery"]["version"],
+        "owner": contract["owner"], "outcome": description["outcome"],
+        "agent_contribution": description["agent_contribution"],
+        "deterministic_rules": description["deterministic_rules"],
+        "next_human_action": description["human_responsibility"],
+        "entry": contract["journey"]["entry"], "explanation": description["problem"],
+        "source_revision": availability["source_revision"],
+        "effective_at": availability["effective_at"], "expires_at": availability["expires_at"],
+        "source_usable": report["source_usable"],
+        "presenter_access": availability["presenter_access"],
+        "historical_read": availability["historical_read"],
+        "recorded_backend": report["states"]["backend-verified"],
+        "sizing": contract["sizing"],
+        "authority": "recorded-not-independently-attested; not write authorization",
+    }
+    result = {"status": "blocked", "facts": facts, "facts_sha256": canonical_hash(facts)}
+    try:
+        hashes = {}
+        block = render_delivery(facts)
+        for surface in contract["delivery"]["surfaces"]:
+            raw = read_bytes(root, surface["path"])
+            content = raw.decode("utf-8")
+            require(content.count(DELIVERY_START) == content.count(DELIVERY_END) == 1
+                    and block in content, "delivery-surface-current-facts")
+            hashes[surface["path"]] = sha256(raw)
+        for check in ("script", "human"):
+            require(report["checks"][check]["status"] == "verified", f"delivery-{check}-proof-required")
+            ref = report["checks"][check]["receipt"]
+            proof = read_json(root, ref["path"])["facts"].get("delivery", {})
+            require(proof.get("facts_sha256") == result["facts_sha256"]
+                    and proof.get("surfaces") == hashes, "delivery-review-source-binding")
+            if check == "script":
+                journey = proof.get("journey", {})
+                require(all(journey.get(step) is True for step in (
+                    "entry", "explanation", "outcome", "next_human_action")), "delivery-recipient-journey")
+            else:
+                review = proof.get("semantic_review", {})
+                require(review.get("reviewer") == contract["owner"]
+                        and review.get("qualification") == "process-owner"
+                        and all(review.get(key) is True for key in (
+                            "topology", "promises", "responsibilities", "current_vs_history")),
+                        "delivery-semantic-review")
+        result["status"] = "verified"
+    except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
+        result["reason"] = str(exc)
+    return result
 
 
 def validate_comparison(root, relative):
@@ -613,6 +704,7 @@ def _publication_status(root, contract):
         paths = [p for group in contract["inputs"].values() for p in group]
         paths += _runtime_paths(root, contract)
         paths += [CONTRACT, *contract["publication"]["files"]]
+        paths += [s["path"] for s in contract.get("delivery", {}).get("surfaces", [])]
         paths += [item["path"] for item in contract["publication"]["bundles"]]
         for path, digest in file_inventory(root, paths).items():
             require(sha256(_git(root, "show", f"{commit}:{path}")) == digest,
@@ -646,7 +738,9 @@ def verify_publication(root, contract, commit):
         return _git(root, "cat-file", "blob", tree[path][2])
 
     require(parse_json(blob(CONTRACT)) == contract, "publication-contract-not-source-bound")
-    files = {p: sha256(blob(p)) for p in contract["publication"]["files"]}
+    publication_paths = set(contract["publication"]["files"])
+    publication_paths.update(s["path"] for s in contract.get("delivery", {}).get("surfaces", []))
+    files = {p: sha256(blob(p)) for p in sorted(publication_paths)}
     for bundle in contract["publication"]["bundles"]:
         prefix = bundle["source_root"].rstrip("/") + "/"
         safe_path(root, bundle["source_root"], exists=False)
@@ -671,9 +765,17 @@ def main(argv=None):
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--publication-commit")
     parser.add_argument("--comparison", help="Validate one additive comparison's immutable receipt bindings")
+    parser.add_argument("--delivery-block", action="store_true",
+                        help="Print the canonical current-facts HTML fragment for declared delivery surfaces")
     args = parser.parse_args(argv)
     try:
-        require(not (args.publication_commit and args.comparison), "choose-one-assessment")
+        require(sum(bool(v) for v in (args.publication_commit, args.comparison, args.delivery_block)) <= 1,
+                "choose-one-assessment")
+        if args.delivery_block:
+            report = assess(args.root)
+            require("delivery" in report, "valid-delivery-contract-required")
+            print(render_delivery(report["delivery"]["facts"]))
+            return 0
         report = (validate_comparison(args.root, args.comparison) if args.comparison else
                   verify_publication(args.root, load_contract(args.root), args.publication_commit)
                   if args.publication_commit else assess(args.root))

@@ -40,7 +40,8 @@ def trees(tmp_path):
 
 
 @contextmanager
-def server(root, *, bad_mime=False, fallback=False, redirect=False, attachment=True):
+def server(root, *, bad_mime=False, fallback=False, redirect=False, attachment=True, nosniff=True,
+           bad_module=None):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if redirect:
@@ -55,9 +56,11 @@ def server(root, *, bad_mime=False, fallback=False, redirect=False, attachment=T
                 return
             self.send_response(200)
             mime = {".html": "text/html", ".json": "application/json",
-                    ".mjs": "text/plain" if bad_mime else "text/javascript",
+                    ".mjs": "text/plain" if bad_mime or name == bad_module else "text/javascript",
                     ".txt": "text/plain"}[path.suffix]
             self.send_header("Content-Type", mime)
+            if nosniff:
+                self.send_header("X-Content-Type-Options", "nosniff")
             if name == "report.txt" and attachment:
                 self.send_header("Content-Disposition", 'attachment; filename="report.txt"')
             self.end_headers()
@@ -249,3 +252,79 @@ def test_overall_deadline_stops_slow_drip_and_reaps_worker(smoke, trees, monkeyp
         httpd.server_close()
     assert not thread.is_alive()
     assert finished.is_set()
+
+
+def test_transitive_module_added_after_first_build_is_not_omitted(smoke, trees):
+    for root in trees:
+        (root / "app.mjs").write_text("export { value } from './nested.mjs';")
+        (root / "nested.mjs").write_text("import('./third.mjs'); export const value = 1;")
+        (root / "third.mjs").write_text("export const version = 2;")
+    with server(trees[1]) as origin:
+        report = smoke.check(*trees, files=["index.html"], origin=origin)
+    assert report["passed"]
+    assert {a["path"] for a in report["assets"]} == {"index.html", "app.mjs", "nested.mjs", "third.mjs"}
+    (trees[1] / "third.mjs").unlink()
+    assert not smoke.check(*trees, files=["index.html"])["passed"]
+
+
+def test_new_transitive_module_mime_and_nosniff_are_checked(smoke, trees):
+    for root in trees:
+        (root / "app.mjs").write_text("import './new.mjs';")
+        (root / "new.mjs").write_text("export const value = 1;")
+    for options in ({"bad_module": "new.mjs"}, {"nosniff": False}):
+        with server(trees[1], **options) as origin:
+            report = smoke.check(*trees, files=["index.html"], origin=origin)
+        assert not report["passed"]
+        assert report["http"]["status"] == "failed"
+        assert any("http new.mjs" in error for error in report["errors"])
+
+
+@pytest.mark.parametrize("name", ["evidence/private.json", ".threadlight/receipt.json", "tests/test_internal.py", ".env"])
+def test_internal_files_in_packaged_application_tree_block(smoke, trees, name):
+    target = trees[1] / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("private fixture; do not include content in report")
+    report = smoke.check(*trees, files=FILES)
+    assert not report["passed"]
+    assert any(name in error for error in report["errors"])
+    assert "private fixture" not in json.dumps(report)
+    assert report["image_runtime"]["status"] == "not-executed"
+
+
+def test_exported_image_application_tree_is_separate_from_web_root(smoke, trees, tmp_path):
+    application = tmp_path / "image-app"
+    application.mkdir()
+    (application / "evidence").mkdir()
+    (application / "evidence/receipt.json").write_text("private")
+    report = smoke.check(*trees, files=FILES, image_app=application)
+    assert not report["passed"]
+    assert report["image_filesystem"]["status"] == "failed"
+    assert report["image_runtime"]["status"] == "not-executed"
+
+
+def test_import_escape_and_bare_import_require_explicit_build_resolution(smoke, trees):
+    for specifier in ("../../../outside.mjs", "https://example.invalid/a.mjs", "package"):
+        for root in trees:
+            (root / "app.mjs").write_text(f"import '{specifier}';")
+        assert not smoke.check(*trees, files=FILES)["passed"]
+
+
+def test_computed_dynamic_import_is_not_silently_excluded(smoke, trees):
+    for root in trees:
+        (root / "app.mjs").write_text("const moduleName = './third.mjs'; import(moduleName);")
+    assert not smoke.check(*trees, files=FILES)["passed"]
+
+
+def test_import_text_in_comments_and_strings_is_not_a_dependency(smoke, trees):
+    for root in trees:
+        (root / "app.mjs").write_text("// import './missing.mjs';\nconst s = \"import('./absent.mjs')\";")
+    assert smoke.check(*trees, files=FILES)["passed"]
+
+
+def test_parser_is_locked_and_wired_in_unit_ci():
+    root = SCRIPT.parents[3]
+    workflow = (root / ".github/workflows/python-pytest.yml").read_text()
+    assert "npm ci --ignore-scripts --no-audit --no-fund --prefix skills/threadlight-deploy/scripts" in workflow
+    package = json.loads((SCRIPT.parent / "package.json").read_text())
+    lock = json.loads((SCRIPT.parent / "package-lock.json").read_text())
+    assert package["dependencies"]["es-module-lexer"] == lock["packages"]["node_modules/es-module-lexer"]["version"]

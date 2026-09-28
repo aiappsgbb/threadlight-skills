@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from html.parser import HTMLParser
 import json
 from pathlib import Path, PurePosixPath
+import posixpath
 import stat
 import subprocess
 import sys
+from time import monotonic
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -23,6 +26,8 @@ MIME = {
     ".svg": {"image/svg+xml"}, ".png": {"image/png"},
 }
 HTTP_PROBE_DEADLINE_SECONDS = 10
+IMPORT_PARSE_DEADLINE_SECONDS = 10
+PRIVATE_NAMES = {".git", ".threadlight", ".env", "evidence", "tests", "__pycache__"}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -69,6 +74,75 @@ def read_asset(root, name, *, portable_read=False):
     return current.read_bytes()
 
 
+class ScriptSources(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.sources = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "script":
+            values = dict(attrs)
+            if values.get("src"):
+                self.sources.append(values["src"])
+
+
+def module_closure(expected, files):
+    """Resolve static/literal dynamic browser imports without executing project JS."""
+    pending, visited = list(files), set()
+    deadline = monotonic() + IMPORT_PARSE_DEADLINE_SECONDS
+    while pending:
+        name = pending.pop(0)
+        if name in visited:
+            continue
+        if len(visited) >= 1000:
+            raise ValueError("Module graph exceeds 1000 assets")
+        visited.add(name)
+        suffix = PurePosixPath(name).suffix.lower()
+        if suffix not in (".html", ".js", ".mjs"):
+            continue
+        source = read_asset(expected, name).decode("utf-8")
+        if suffix == ".html":
+            parser = ScriptSources()
+            parser.feed(source)
+            dependencies = parser.sources
+        else:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise ValueError("Module discovery overall deadline exceeded")
+            parsed = subprocess.run(
+                ["node",
+                 str(Path(__file__).with_name("module_imports.mjs"))],
+                input=source, capture_output=True, text=True, timeout=remaining,
+            )
+            if parsed.returncode:
+                raise ValueError(f"Cannot parse module imports: {name}")
+            dependencies = json.loads(parsed.stdout)
+        for dependency in dependencies:
+            if suffix != ".html" and not dependency.startswith(("./", "../", "/")):
+                raise ValueError(f"Resolve nonlocal/bare module import before packaging: {name}")
+            if "://" in dependency or dependency.startswith("//"):
+                raise ValueError(f"External script is outside packaged artifact: {name}")
+            resolved = posixpath.normpath(
+                dependency.lstrip("/") if dependency.startswith("/")
+                else posixpath.join(posixpath.dirname(name), dependency))
+            pending.append(asset_name(resolved))
+    return sorted(visited)
+
+
+def private_files(root):
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError("Packaged application root must be a real directory")
+    found = []
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if path.is_symlink():
+            raise ValueError(f"Cannot inventory symlink: {relative.as_posix()}")
+        if path.is_file() and any(part in PRIVATE_NAMES or part.startswith(".env.")
+                                  for part in relative.parts):
+            found.append(relative.as_posix())
+    return found
+
+
 def probe_http(origin, assets, downloads):
     errors = []
     # No environment proxy, credentials or redirects: probe only the chosen local server.
@@ -86,6 +160,9 @@ def probe_http(origin, assets, downloads):
                                    {"application/octet-stream"})
                 if mime not in allowed:
                     raise ValueError(f"Unexpected MIME {mime!r}; expected {sorted(allowed)}")
+                if PurePosixPath(name).suffix.lower() in (".js", ".mjs") and (
+                        response.headers.get("X-Content-Type-Options", "").lower() != "nosniff"):
+                    raise ValueError("JavaScript requires X-Content-Type-Options: nosniff")
                 content = response.read(asset["bytes"] + 1)
                 if (len(content) != asset["bytes"]
                         or hashlib.sha256(content).hexdigest() != asset["sha256"]):
@@ -97,7 +174,7 @@ def probe_http(origin, assets, downloads):
     return errors
 
 
-def check(expected, built, *, files, origin=None, downloads=()):
+def check(expected, built, *, files, origin=None, downloads=(), image_app=None):
     expected, built = Path(expected).absolute(), Path(built).absolute()
     files = list(dict.fromkeys(asset_name(name) for name in files))
     downloads = set(asset_name(name) for name in downloads)
@@ -109,7 +186,20 @@ def check(expected, built, *, files, origin=None, downloads=()):
         "http": {"status": "not-executed", "origin": origin},
         "image_runtime": {"status": "not-executed"},
         "hosted_quality": "unproven", "assets": [], "errors": [],
+        "image_filesystem": {"status": "not-executed"},
     }
+    try:
+        files = module_closure(expected, files)
+        for name in private_files(built):
+            report["errors"].append(f"Excluded internal file in built web root: {name}")
+        if image_app is not None:
+            report["image_filesystem"]["status"] = "failed"
+            internal = private_files(Path(image_app).absolute())
+            report["errors"].extend(f"Excluded internal file in image application tree: {p}" for p in internal)
+            report["image_filesystem"]["status"] = "failed" if internal else "passed"
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        report["errors"].append(f"artifact preflight: {exc}")
+        return report
     for name in files:
         try:
             source = read_asset(expected, name)
@@ -163,6 +253,8 @@ def main():
     parser.add_argument("--file", action="append", required=True, dest="files")
     parser.add_argument("--origin", help="Explicit loopback origin; does not assert image provenance")
     parser.add_argument("--download", action="append", default=[], dest="downloads")
+    parser.add_argument("--image-app", type=Path,
+                        help="Application tree extracted from actual image; filesystem scan only, not runtime proof")
     args = parser.parse_args()
     try:
         report = check(**vars(args))

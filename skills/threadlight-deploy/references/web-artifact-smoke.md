@@ -1,11 +1,26 @@
 # Web artifact smoke: a bounded preflight
 
 [`scripts/web_artifact_smoke.py`](../scripts/web_artifact_smoke.py) is a Python
-standard-library diagnostic, not a packaging engine, Dockerfile interpreter,
+Python diagnostic with a locked parse-only JavaScript lexer, not a packaging engine, Dockerfile interpreter,
 presenter validator or evidence producer. It compares explicitly selected
 expected build-output files with the final artifact filesystem. Select the real
 entry HTML, imported `.mjs`/CSS/assets, required JSON and promised download files,
-not an arbitrary sample. It does not discover transitive imports.
+not an arbitrary sample. It follows HTML script sources and transitive static,
+re-export and literal dynamic JavaScript imports using `es-module-lexer` without
+executing project JavaScript. Computed dynamic imports, unresolved bare imports
+and external scripts fail: first produce a self-contained resolvable build.
+Inline module scripts, import maps, CSS imports and runtime-computed assets are
+not discovered; explicitly list those asset entrypoints and cover their browser
+loading in the actual-image test. Install the locked parser before use:
+
+```bash
+npm ci --ignore-scripts --no-audit --no-fund --prefix skills/threadlight-deploy/scripts
+```
+
+Import parsing shares a ten-second overall subprocess deadline and a 1,000-asset
+graph limit. Module code is parsed, never linked/evaluated. Every newly discovered
+module must match required built bytes and, in HTTP mode, JavaScript MIME plus
+`X-Content-Type-Options: nosniff`.
 
 The expected tree is the intended output of the existing build. The built tree
 must come from the final artifact stage (or, before an image is available, the
@@ -39,6 +54,17 @@ python3 skills/threadlight-deploy/scripts/web_artifact_smoke.py \
   --file index.html --file app.mjs --file data.json --file report.txt \
   --origin http://127.0.0.1:8080 --download report.txt
 ```
+
+For the exclusion check, optionally add `--image-app /path/to/exported-image/app`
+using the application subtree actually extracted from the immutable image, not
+the source checkout or merely the public web directory. This scans paths without
+reading contents and reports `image_filesystem` separately. Both trees reject
+files under `.git`, `.threadlight`, `evidence`, `tests`, `__pycache__`, and `.env`
+or `.env.*`; symlinks are rejected rather than traversed. This is a bounded
+packaging policy, not a secret scanner: other private paths need producer review.
+Do not scan the OS/system-package tree or modify source permissions to force green.
+The helper does not extract images or establish export provenance; even a passed
+exported-tree scan leaves `image_runtime: not-executed`.
 
 Use the real server origin and its actual URL paths, not `file://`, a dev server
 that manufactures missing files, or a filesystem path mistaken for a URL.

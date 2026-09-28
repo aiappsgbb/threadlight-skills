@@ -366,6 +366,95 @@ a business operation or synthesizes a human acceptance receipt.
 
 ## Handoff, sizing and immutable publication
 
+### Executable current delivery views
+
+For a recipient-facing delivery, opt into the additive `delivery` section of the
+**existing** `specs/presenter-contract.json`; do not create another authority:
+
+```json
+{
+  "delivery": {
+    "version": "release-1",
+    "surfaces": [
+      {"role": "page", "path": "views/page.html"},
+      {"role": "guide", "path": "views/guide.md"},
+      {"role": "diagram", "path": "views/diagram.md"},
+      {"role": "sizing", "path": "views/sizing.html"}
+    ]
+  }
+}
+```
+
+All four roles are required; additional declared surfaces can also have role
+`publication`. List every promised view, including additional calculators, not
+just one example. Paths are unique project-relative files. Missing/malformed
+selected sections fail closed. Existing contracts without `delivery`, and
+default/unselected profiles, retain their previous behavior.
+
+Use the existing consumer's executable projection, not independently typed
+current-state labels:
+
+```bash
+python3 -m skills._shared.presenter --root /path/to/pilot --delivery-block
+```
+
+It prints a canonical visible HTML fragment suitable for HTML or Markdown,
+bounded by `threadlight-delivery:start` / `threadlight-delivery:end` comments.
+The renderer can call `render_delivery(report["delivery"]["facts"])` directly.
+Insert **exactly one** block in each declared surface. The reader compares its
+bytes to the same current facts: process/version/owner, outcome, deterministic
+rules, model contribution, next human action, entry/explanation, availability,
+source eligibility, independently reported historical-read policy, backend
+evidence state and sizing. An old version/outcome/status in this generated block,
+or an omitted promised view, blocks promotion. Aggregating publishers must
+calculate counts from these current per-process projections; dated historical
+snapshots are separate, not competing current totals. No arbitrary aggregate
+count is inferred from prose.
+
+The facts hash is `canonical_hash(report["delivery"]["facts"])`. It deliberately
+does not hash the rendered file itself, so it has no self-reference. Surface
+bytes are bound separately below. Render after current backend observations;
+do not put the generated views inside backend runtime input roots if they would
+embed backend-evidence state into their own source hash. A deployed workspace
+still follows the existing runtime invalidation rules: separate current-status
+data from the compiled application rather than claiming a changed image is old.
+
+This comparison is **not semantic verification**. It cannot prove that prose
+outside the block, a topology drawing, a model claim or a calculator formula is
+correct. The existing `script` receipt's `facts.delivery` must bind:
+`facts_sha256`, `surfaces` (exact map of every declared path to its current
+SHA-256), and `journey` with executed `entry`, `explanation`, `outcome`,
+`next_human_action` true. Its real recipient test must verify the current process
+and version, understandable explanation, useful promised outcome and next action.
+
+The existing `human` receipt binds that same facts hash and surface map plus
+`semantic_review`: `reviewer` equals the contract's accountable `owner`,
+`qualification: "process-owner"`, and explicit `topology`, `promises`,
+`responsibilities`, `current_vs_history` acceptance booleans. The accountable
+owner must actually inspect the complete surfaces, including embedded diagrams
+and calculator descriptions, before their trusted producer records acceptance.
+This is scoped recorded review, not independent attestation or automated semantic
+judgment. A wrong/unqualified reviewer or any changed surface bytes invalidates
+the review; a renderer must never mint human acceptance.
+
+The existing native `package` receipt additionally requires
+`facts.web_artifacts` with `import_closure`, `mime_nosniff`,
+`private_files_absent`, `image_runtime` true, backed by its retained real package
+outputs. Use the Deploy web-artifact helper against the actual built web tree and
+the exported image application tree; static/loopback success must not set
+`image_runtime`. It parses static and literal dynamic imports transitively;
+computed dynamic imports require bundling into a resolvable build first.
+The actual image producer verifies runtime identity/configuration, served bytes,
+module MIME/nosniff, absence of internal evidence files and browser behavior.
+The reader makes no image or network call.
+
+`report.delivery` exposes blocked reasons and the current facts without a new
+pipeline stage. It gates `ready`; it does not erase historical backend receipts,
+grant historical read access, renew source validity or authorize writes.
+Recorded backend success can coexist with `source_usable: false`; new generation
+remains ineligible. Every declared delivery surface is included in immutable
+publication verification whenever that existing publication flow is requested.
+
 Canonical business receipts stay byte-for-byte unchanged. Add explanatory UI
 fields in a source-bound **versioned companion** referencing the original receipt
 path/digest, process/source revision and view version; never mutate history.

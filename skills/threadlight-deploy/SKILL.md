@@ -17,7 +17,7 @@ description: >-
   ghcp-hosted-agents), azd tenant isolation (use
   azure-tenant-isolation).
 metadata:
-  version: "1.9.0"
+  version: "1.10.0"
 ---
 
 # Foundry Hosted Agent Deploy
