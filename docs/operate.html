@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Operate a governed Threadlight agent — Threadlight</title>
+<meta name="description" content="Day-2 routines after go-live: collect fresh evidence, gate every change, review cost and drift, handle unknown outcomes and turn incidents into regression cases.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Operate a governed Threadlight agent — Threadlight">
+<meta property="og:description" content="Five day-2 routines with prompts, expected results and checks. Guided requests, not automatic cloud execution.">
+<meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/operate.html">
+<meta property="og:site_name" content="Threadlight">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
+<link rel="stylesheet" href="assets/governed-workflow.css?v=ffa28b69">
+<link rel="stylesheet" href="assets/pilot-to-production.css?v=0f169132">
+<link rel="stylesheet" href="assets/ops-journey.css?v=5195efff">
+</head>
+<body class="chapter-page chapter-production chapter-experience governance-page" data-chapter-parent="production">
+<svg class="pg-output-icons" width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="pg-icon-inventory" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+    <symbol id="pg-icon-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6zM9 12l2 2 4-4"/></symbol>
+    <symbol id="pg-icon-package" viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7zM3 7l9 5 9-5M12 12v10"/></symbol>
+    <symbol id="pg-icon-receipt" viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8M8 16h4"/></symbol>
+    <symbol id="pg-icon-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></symbol>
+  </defs>
+</svg>
+<a class="skip-link" href="#main">Skip to the operating routines</a>
+<header class="masthead">
+  <div class="brand">
+    <a href="./index.html" class="brand-name"><span class="brand-mark" aria-hidden="true"></span>Threadlight<span>by Microsoft GBB · AI Apps</span></a>
+  </div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
+    <a href="./basics.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Basics</a>
+    <a href="./funnel.html">Build</a>
+    <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
+    <a href="./production.html" aria-current="location"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
+  </nav>
+</header>
+<main id="main">
+  <div class="wrap pg-wrap" data-pilot-guide>
+    <div class="cx-journey">
+      <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Operate</span></nav>
+      <a class="cx-journey-next" href="./self-improving.html">Next: Improve <span aria-hidden="true">→</span></a>
+    </div>
+    <header class="pg-intro" id="overview">
+      <h1>Operate a governed agent after go-live</h1>
+      <p>A release is a starting point. These five routines keep the evidence current, stop unsafe changes and turn surprises into tests. Each one is a request you give your coding agent, with the result to expect and the check to make.</p>
+    </header>
+    <nav class="ops-journey" aria-label="Operating path" data-ops-journey>
+      <ol>
+        <li><a href="./workbook.html#stage-design" data-ops-stage="build"><strong>Build</strong><small>Idea to a working pilot</small></a></li>
+        <li><a href="./workbook.html#stage-production" data-ops-stage="assure"><strong>Assure</strong><small>Evals, red team, readiness gaps</small></a></li>
+        <li><a href="./agent-governance.html#overview" data-ops-stage="release"><strong>Governed release</strong><small>Candidate, checks, approved promotion</small></a></li>
+        <li><a href="./operate.html#overview" data-ops-stage="operate" aria-current="step"><strong>Operate</strong><small>Evidence, change, incidents, learning</small></a></li>
+      </ol>
+    </nav>
+    <svg class="pg-flow" viewBox="0 0 800 88" role="img" aria-label="Day-2 routines: after each deployment, before each change, every week, when an outcome is unknown, and learning from what happened">
+      <path class="pg-line" d="M80 28H720"/>
+      <g data-guide-visual="0" transform="translate(80 28)"><circle r="15"/><text y="5">1</text><text class="pg-flow-label" y="44">Deploy</text></g>
+      <g data-guide-visual="1" transform="translate(240 28)"><circle r="15"/><text y="5">2</text><text class="pg-flow-label" y="44">Change</text></g>
+      <g data-guide-visual="2" transform="translate(400 28)"><circle r="15"/><text y="5">3</text><text class="pg-flow-label" y="44">Weekly</text></g>
+      <g data-guide-visual="3" transform="translate(560 28)"><circle r="15"/><text y="5">4</text><text class="pg-flow-label" y="44">Incident</text></g>
+      <g data-guide-visual="4" transform="translate(720 28)"><circle r="15"/><text y="5">5</text><text class="pg-flow-label" y="44">Learn</text></g>
+    </svg>
+    <nav class="pg-progress" aria-label="Operating routines">
+      <a href="#after-deploy" data-guide-index="0">01 After deploy</a>
+      <a href="#before-change" data-guide-index="1">02 Change</a>
+      <a href="#weekly" data-guide-index="2">03 Weekly</a>
+      <a href="#incident" data-guide-index="3">04 Incident</a>
+      <a href="#learn" data-guide-index="4">05 Learn</a>
+    </nav>
+    <p class="pg-status" data-guide-status role="status" aria-live="polite">Guided requests: this is guidance, not cloud execution. Next never runs Azure or marks a check as passed.</p>
+    <div class="pg-panel">
+      <section id="after-deploy" data-guide-step="after-deploy">
+        <span class="pg-badge">Cloud · approved read-only scope</span>
+        <h2>After every deployment, collect fresh evidence</h2>
+        <p class="pg-goal">Prove that what runs now is what was accepted: same image, identities, binding and policy. Old receipts do not carry over.</p>
+        <div class="pg-skills" aria-label="Skills used after deployment">
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
+          <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-safe-check/SKILL.md">threadlight-safe-check</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md">threadlight-production-ready</a>
+        </div>
+        <div class="pg-step-layout">
+        <div class="pg-prompt-column">
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
+        <pre data-guide-prompt tabindex="0">Run threadlight-safe-check --phase post-deploy against the environment I just deployed, within the read-only scope I approved.
+Confirm every deployed image is the accepted immutable image, the identities and roles match the manifest, and each channel is reachable.
+If the governance collector is configured, record its governance_probe_noop result as runtime-path evidence only, not as proof of a business write.
+Then run threadlight-production-ready to rescore the pillars with this fresh after-deployment evidence. Do not reuse candidate or earlier receipts.
+List the remaining gaps with an owner for each. Do not remediate, redeploy or change configuration.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        </div>
+        <aside class="pg-results" aria-label="After-deployment result and checks">
+        <div class="pg-expected">
+          <h3>Expected result</h3>
+          <p class="pg-result-condition">Read-only; evidence is dated and tied to this deployment.</p>
+          <ul>
+            <li><svg aria-hidden="true"><use href="#pg-icon-receipt"/></svg><span>Post-deploy gaps (empty means complete)</span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-target"/></svg><span>Rescored readiness with named owners</span></li>
+          </ul>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#evidence-freshness">Evidence freshness rules</a>
+        </div>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
+        <ul class="pg-verify">
+          <li>The evidence names the same image, environment, identities and policy bundle that were approved; anything older than its freshness window is marked stale, not green.</li>
+          <li><code>governance_probe_noop</code> is reported as a runtime-path probe only. Business writes still need their own binding evidence.</li>
+          <li>No configuration, role or resource changed during collection.</li>
+        </ul>
+        </aside>
+        </div>
+      </section>
+      <section id="before-change" data-guide-step="before-change">
+        <span class="pg-badge">Candidate · explicit approval · budget</span>
+        <h2>Before any change, gate it like a release</h2>
+        <p class="pg-goal">A new prompt, model, tool or policy is a new candidate. Compare it with the champion before it reaches users.</p>
+        <div class="pg-skills" aria-label="Skills used to gate a change">
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
+          <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-evals/SKILL.md">threadlight-evals</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-redteam/SKILL.md">threadlight-redteam</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/SKILL.md">threadlight-cicd</a>
+        </div>
+        <div class="pg-step-layout">
+        <div class="pg-prompt-column">
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
+        <pre data-guide-prompt tabindex="0">I want to change [prompt / model / tool / policy]. Treat it as a new release candidate.
+Use threadlight-evals to run a champion-challenger comparison on the existing dataset and regression cases; report any metric that drops below its threshold.
+Use threadlight-redteam for the attack categories this change touches. Paid or cloud runs need my approval and a stated budget first.
+Prepare the change through threadlight-cicd's verified-release contract: build one immutable image, attach the eval and red-team receipts, and stop if any required check is missing or expired.
+Do not promote. Show me the comparison and the candidate receipt for approval.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        </div>
+        <aside class="pg-results" aria-label="Change gate result and checks">
+        <div class="pg-expected">
+          <h3>Expected result</h3>
+          <p class="pg-result-condition">A candidate awaiting approval; production unchanged.</p>
+          <ul>
+            <li><svg aria-hidden="true"><use href="#pg-icon-target"/></svg><span>Champion versus challenger scores</span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-package"/></svg><span>Candidate receipt for one image</span></li>
+          </ul>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/references/release-contract.md">Verified-release contract</a>
+        </div>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
+        <ul class="pg-verify">
+          <li>Promotion later uses the same immutable image the checks ran against; nothing is rebuilt from a mutable tag.</li>
+          <li>A missing, failed or expired check stops the candidate instead of being waived silently.</li>
+          <li>Policy or binding changes carry a new signed policy bundle, not an edited copy of the old one.</li>
+        </ul>
+        </aside>
+        </div>
+      </section>
+      <section id="weekly" data-guide-step="weekly">
+        <span class="pg-badge">Scheduled review · read-only</span>
+        <h2>Every week, review cost, drift and stale evidence</h2>
+        <p class="pg-goal">Catch slow problems early: spend that departs from the forecast, preview features nearing expiry, evidence that has quietly aged out.</p>
+        <div class="pg-skills" aria-label="Skills used in the weekly review">
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
+          <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/SKILL.md">threadlight-consumption-iq</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-upgrade/SKILL.md">threadlight-upgrade</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-agentops/SKILL.md">threadlight-agentops</a>
+        </div>
+        <div class="pg-step-layout">
+        <div class="pg-prompt-column">
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
+        <pre data-guide-prompt tabindex="0">Run my weekly operations review. Everything is read-only.
+Use threadlight-consumption-iq to collect actuals for the approved scope and reconcile them with the forecast; flag any line more than the agreed tolerance away.
+Use threadlight-upgrade in plan-only mode to list dependency staleness and preview features approaching expiry, with one ordered migration plan.
+If this repository has opted in to AgentOps, run threadlight-agentops with --freshness-hours 168 and list each stale or missing evidence item.
+Summarize as: cost variance, drift, stale evidence, and who owns each follow-up. Do not upgrade, resize or delete anything.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        </div>
+        <aside class="pg-results" aria-label="Weekly review result and checks">
+        <div class="pg-expected">
+          <h3>Expected result</h3>
+          <p class="pg-result-condition">A short review; no resources changed.</p>
+          <ul>
+            <li><svg aria-hidden="true"><use href="#pg-icon-receipt"/></svg><span>Actuals against forecast</span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-inventory"/></svg><span>Migration plan and stale-evidence list</span></li>
+          </ul>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md">Agent operations reference</a>
+        </div>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
+        <ul class="pg-verify">
+          <li>Each finding has an owner and a date; a variance or drift item without an owner is not closed.</li>
+          <li>Upgrades from the plan go through routine 2 as a new candidate, never straight to production.</li>
+        </ul>
+        </aside>
+        </div>
+      </section>
+      <section id="incident" data-guide-step="incident">
+        <span class="pg-badge">Incident · named owner</span>
+        <h2>When an outcome is unknown, stop and reconcile</h2>
+        <p class="pg-goal">A timeout or lost runner does not mean nothing happened. Find out what actually changed before anyone tries again.</p>
+        <div class="pg-skills" aria-label="Skills used to reconcile an unknown outcome">
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
+          <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/SKILL.md">threadlight-cicd</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-governed-actions/SKILL.md">threadlight-governed-actions</a>
+        </div>
+        <div class="pg-step-layout">
+        <div class="pg-prompt-column">
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
+        <pre data-guide-prompt tabindex="0">A [promotion / governed action] ended with an unknown outcome. Help me reconcile it without retrying.
+Keep traffic closed. Using threadlight-cicd's release contract, read the durable operation record for this operation_id and independently read back the actual target: image, revision and routing.
+For governed actions, use threadlight-governed-actions to check the audit trail: was the approval consumed, was the effect acknowledged, is there any duplicate?
+Report what is known, what is still unknown, and the options for the incident owner. Do not retry, roll back, delete or clean up anything.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        </div>
+        <aside class="pg-results" aria-label="Reconciliation result and checks">
+        <div class="pg-expected">
+          <h3>Expected result</h3>
+          <p class="pg-result-condition">A reconciliation report; the decision stays with the owner.</p>
+          <ul>
+            <li><svg aria-hidden="true"><use href="#pg-icon-target"/></svg><span>Observed target versus intended target</span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-receipt"/></svg><span>Audit and approval status</span></li>
+          </ul>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/references/release-contract.md">Failure and reconciliation rules</a>
+        </div>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
+        <ul class="pg-verify">
+          <li>Routing stays closed until the owner accepts the reconciled state. A red CI run is not proof that no effect happened.</li>
+          <li>No automatic rollback: rollback, retry and cleanup each need their own authorization from the incident owner.</li>
+        </ul>
+        </aside>
+        </div>
+      </section>
+      <section id="learn" data-guide-step="learn">
+        <span class="pg-badge">Offline · reviewed change</span>
+        <h2>Learn from what happened, then test for it</h2>
+        <p class="pg-goal">Every surprise should become a check that would have caught it. Improvement goes through review, never self-modification.</p>
+        <div class="pg-skills" aria-label="Skills used to learn from runs">
+          <span class="pg-skills-label"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-package"/></svg>Skills</span>
+          <a data-skill-role="primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-router-bench/SKILL.md">threadlight-router-bench</a>
+          <a data-skill-role="support" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-evals/SKILL.md">threadlight-evals</a>
+        </div>
+        <div class="pg-step-layout">
+        <div class="pg-prompt-column">
+        <h3 class="pg-prompt-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-inventory"/></svg>Prompt</h3>
+        <pre data-guide-prompt tabindex="0">Use threadlight-router-bench learn [run_id] on the CI run from this incident or release, and summarize the grounded learnings.
+For each exception the agent missed or mishandled, draft a regression case for the threadlight-evals dataset with the expected behaviour.
+Propose any prompt, tool or policy change as a pull request for review. Do not edit the running agent or merge anything.</pre>
+        <button type="button" class="pg-copy" data-copy-prompt hidden>Copy prompt</button>
+        <p data-copy-status role="status" aria-live="polite"></p>
+        </div>
+        <aside class="pg-results" aria-label="Learning result and checks">
+        <div class="pg-expected">
+          <h3>Expected result</h3>
+          <p class="pg-result-condition">Offline; proposals only.</p>
+          <ul>
+            <li><svg aria-hidden="true"><use href="#pg-icon-inventory"/></svg><span>Learnings digest from the run</span></li>
+            <li><svg aria-hidden="true"><use href="#pg-icon-target"/></svg><span>New regression cases and a reviewable pull request</span></li>
+          </ul>
+          <a href="./self-improving.html">How the improvement loop works</a>
+        </div>
+        <h3 class="pg-verify-title"><svg class="pg-heading-icon" aria-hidden="true"><use href="#pg-icon-shield"/></svg>Verify</h3>
+        <ul class="pg-verify">
+          <li>The new regression case fails on the old behaviour and passes on the proposed change.</li>
+          <li>The change returns to routine 2 as a candidate; a reviewer, not the agent, approves it.</li>
+        </ul>
+        </aside>
+        </div>
+      </section>
+    </div>
+    <div class="pg-controls" data-guide-controls hidden>
+      <button type="button" data-guide-previous disabled>Previous routine</button>
+      <span data-guide-counter>1 / 5</span>
+      <button type="button" data-guide-next>Next routine</button>
+    </div>
+    <div class="pg-reference-links" id="next">
+      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md">Agent operations: the full operative path</a>
+      <a href="./agent-governance.html#overview">Back to the governed release guide</a>
+    </div>
+    <p class="pg-note">Name the owners before go-live: incident, identity and keys, reviewers, budget and retention. These routines assume they exist; they do not create them.</p>
+  </div>
+</main>
+<footer>Threadlight &middot; guided requests, explicit authority &middot; <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
+<script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=27594af5"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
+<script src="assets/pilot-to-production.js?v=b03c792e"></script>
+</body>
+</html>

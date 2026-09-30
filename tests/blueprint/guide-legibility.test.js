@@ -99,9 +99,12 @@ test('current presentation snapshots pin the explicit confirmation extension wit
     ['docs/agent-governance-deep-dive.md', '909409fe4c198d31e9f580f5eacd4b61ed50379f'],
     ['docs/assets/governance/effect-boundaries.svg', '69fa014350e3f7acaf53b8e37541717b99f8a6dd'],
   ]) {
+    // The shared site-map cache token changes whenever a page joins the directory; content stays frozen.
     const bytes = file === 'docs/agent-governance-deep-dive.md'
       ? Buffer.from(governanceHistory(read(file)).baseline)
-      : fs.readFileSync(path.join(root, file));
+      : file === 'docs/production.html'
+        ? Buffer.from(read(file).replace(/(src="assets\/site-map\.js\?v=)[a-f0-9]+/, '$1cc056191'))
+        : fs.readFileSync(path.join(root, file));
     assert.equal(createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex'), expected, file);
   }
 });

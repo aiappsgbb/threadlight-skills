@@ -17,7 +17,7 @@ const groups = [
   { id: 'basics', title: 'Basics', entry: 'basics', slugs: ['basics'] },
   { id: 'build', title: 'Build', entry: 'funnel', slugs: ['funnel', 'blueprint', 'industries', 'workbook'] },
   { id: 'example', title: 'Case study', entry: 'case-study', slugs: ['case-study'] },
-  { id: 'production', title: 'Production', entry: 'production', slugs: ['production', 'governance', 'customize', 'self-improving'] },
+  { id: 'production', title: 'Production', entry: 'production', slugs: ['production', 'agent-governance', 'operate', 'governance', 'customize', 'self-improving'] },
 ];
 const existing = ['index', ...groups.flatMap(group => group.slugs).filter(slug => slug !== 'basics')];
 const text = html => html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').trim();

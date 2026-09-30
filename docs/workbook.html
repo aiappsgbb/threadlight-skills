@@ -279,6 +279,7 @@
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
 <link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
 <link rel="stylesheet" href="assets/workbook-visuals.css?v=3f311e2b">
+<link rel="stylesheet" href="assets/ops-journey.css?v=5195efff">
 </head>
 <body class="chapter-page chapter-workbook chapter-experience">
 
@@ -306,7 +307,7 @@
   <details class="cx-chapter-index"><summary>All sections</summary><ol>
     <li><a href="#wb-top">Start here</a></li><li><a href="#prereqs">Prepare</a></li><li><a href="#arc">The arc</a></li>
     <li><a href="#stage-design">Build</a></li><li><a href="#stage-deploy">Deploy</a></li><li><a href="#stage-production">Assure</a></li>
-    <li><a href="#recovery">Recovery</a></li><li><a href="#deeper">Go deeper</a></li>
+    <li><a href="#operating-path">Operating path</a></li><li><a href="#recovery">Recovery</a></li><li><a href="#deeper">Go deeper</a></li>
   </ol></details>
 </aside>
 
@@ -438,6 +439,15 @@ target subscription, region and quota before asking for approval.</div>
           you get; there is no one-session production guarantee.
         </p>
       </div>
+
+      <nav class="ops-journey" aria-label="Where this workbook fits in the operating path" data-ops-journey>
+        <ol>
+          <li><a href="./workbook.html#stage-design" data-ops-stage="build" aria-current="step"><strong>Build</strong><small>Idea to a working pilot</small></a></li>
+          <li><a href="./workbook.html#stage-production" data-ops-stage="assure"><strong>Assure</strong><small>Evals, red team, readiness gaps</small></a></li>
+          <li><a href="./agent-governance.html#overview" data-ops-stage="release"><strong>Governed release</strong><small>Candidate, checks, approved promotion</small></a></li>
+          <li><a href="./operate.html#overview" data-ops-stage="operate"><strong>Operate</strong><small>Evidence, change, incidents, learning</small></a></li>
+        </ol>
+      </nav>
 
       <details class="wb-leg">
         <summary><span class="lk">skill map</span><h4>Which entrypoint to use at each boundary</h4></summary>
@@ -824,8 +834,22 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
         </details>
       </div>
 
+      <div class="ops-fork" data-production-fork>
+        <div>
+          <span class="ops-fork-tag">Current path</span>
+          <h3>Take this pilot to a governed release</h3>
+          <p>Reuse the SPEC, code and tools you already have. Add action controls, build one release candidate, run the approved checks and promote it with a protected approval. Then keep it healthy with the day-2 routines.</p>
+          <a class="btn btn-primary" href="./agent-governance.html#overview">Open the governed release guide <span class="arrow">→</span></a>
+        </div>
+        <div>
+          <span class="ops-fork-tag">Historical reference</span>
+          <h3>How the captured run reached production</h3>
+          <p>The legs below record what one earlier run did: Citadel spoke onboarding, a gateway-routed deploy, a pipeline and a customer handoff. Read them for findings and pitfalls, not as the steps to follow today.</p>
+        </div>
+      </div>
+
       <div class="wb-legs handoff reveal">
-        <p class="legs-h">Then &mdash; hand off to governed production (advanced &middot; the case-study road)</p>
+        <p class="legs-h">Historical reference &middot; the case-study road</p>
 
         <details class="wb-leg">
           <summary><span class="lk">citadel-spoke-onboarding</span><h4>Onboard behind the gateway</h4><span class="lt">keyless, additive-only spoke on a Citadel hub</span><span class="auto">🔵 hub</span></summary>
@@ -906,6 +930,55 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
     </div>
   </section>
 
+  <!-- ==================== OPERATING PATH ==================== -->
+  <section class="chapter-section" id="operating-path" data-toc-id="operating-path" data-toc-label="Operating path">
+    <div class="wrap wrap-wide">
+      <div class="section-head">
+        <h2>From pilot to operations: <em>which page, which skill, who decides.</em></h2>
+        <p class="section-lede wb-lede">Four stages, each with its own guide. The workbook covers the first two. Each later stage starts only when its approver says so and its cost is agreed.</p>
+      </div>
+      <div class="ops-map">
+        <article class="ops-stage" data-ops-row="build" data-ops-here>
+          <header><h3>1. Build</h3><p>A paragraph becomes a spec, a runnable pilot and synthetic test cases.</p></header>
+          <dl>
+            <div><dt>Open</dt><dd><a href="#stage-design">This workbook, stages 1&ndash;2</a></dd></div>
+            <div><dt>Skills</dt><dd class="ops-skill-list"><code>threadlight-design</code> <code>threadlight-local-test</code> <code>threadlight-deploy</code></dd></div>
+            <div><dt>Who approves</dt><dd>You, for local work. The subscription owner, before the first deployment.</dd></div>
+            <div><dt>Cost and cloud</dt><dd>Local build is free of cloud changes. Deployment needs an agreed subscription and budget.</dd></div>
+          </dl>
+        </article>
+        <article class="ops-stage" data-ops-row="assure">
+          <header><h3>2. Assure</h3><p>Measure quality, attack resistance and readiness gaps, each with an owner.</p></header>
+          <dl>
+            <div><dt>Open</dt><dd><a href="#stage-production">This workbook, stage 3</a></dd></div>
+            <div><dt>Skills</dt><dd class="ops-skill-list"><code>threadlight-production-ready</code> <code>threadlight-evals</code> <code>threadlight-redteam</code> <code>threadlight-consumption-iq</code></dd></div>
+            <div><dt>Who approves</dt><dd>The pilot owner, for each paid run and for accepting the gap list.</dd></div>
+            <div><dt>Cost and cloud</dt><dd>Evals and red-team runs spend model tokens. The readiness score is advisory, not go-live approval.</dd></div>
+          </dl>
+        </article>
+        <article class="ops-stage" data-ops-row="release">
+          <header><h3>3. Governed release</h3><p>Add action controls, build one candidate, check it and promote it.</p></header>
+          <dl>
+            <div><dt>Open</dt><dd><a href="./agent-governance.html#overview">Governed release guide</a></dd></div>
+            <div><dt>Skills</dt><dd class="ops-skill-list"><code>threadlight-governed-actions</code> <code>threadlight-govern</code> <code>threadlight-cicd</code></dd></div>
+            <div><dt>Who approves</dt><dd>The platform owner for policy and bindings; a protected production approval for promotion.</dd></div>
+            <div><dt>Cost and cloud</dt><dd>Candidate checks run in an approved environment and budget. Production changes only on promotion.</dd></div>
+          </dl>
+        </article>
+        <article class="ops-stage" data-ops-row="operate">
+          <header><h3>4. Operate</h3><p>Keep evidence fresh, gate every change, reconcile surprises and learn from them.</p></header>
+          <dl>
+            <div><dt>Open</dt><dd><a href="./operate.html#overview">Day-2 operating routines</a></dd></div>
+            <div><dt>Skills</dt><dd class="ops-skill-list"><code>threadlight-safe-check</code> <code>threadlight-agentops</code> <code>threadlight-upgrade</code> <code>threadlight-router-bench</code></dd></div>
+            <div><dt>Who approves</dt><dd>Named owners for incidents, identities and keys, budget and retention.</dd></div>
+            <div><dt>Cost and cloud</dt><dd>Mostly read-only reviews. Any change goes back through stage 3 as a new candidate.</dd></div>
+          </dl>
+        </article>
+      </div>
+      <p class="ops-map-note">Stages do not unlock each other automatically. A green result in one stage is evidence for that stage only.</p>
+    </div>
+  </section>
+
   <!-- ==================== RECOVERY ==================== -->
   <section class="chapter-section" id="recovery" data-toc-id="recovery" data-toc-label="Recovery prompts">
     <div class="wrap wrap-wide">
@@ -922,8 +995,6 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
           <p class="sym"><span class="d"></span><code>az</code> on the wrong subscription / tenant</p>
           <div class="wb-term"><div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div><div class="body"><span class="ps">›</span> use the azure-tenant-isolation skill to isolate the azure cli to tenant &lt;tenant-id&gt; and switch to subscription &lt;sub-id&gt;, then confirm with az account show</div></div>
         </div>
-          </div>
-        </details>
         <div class="wb-rcard">
           <p class="sym"><span class="d"></span>Azure OpenAI quota / HTTP 429 mid-test</p>
           <div class="wb-term"><div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div><div class="body"><span class="ps">›</span> switch the running pattern 0 backend from aoai to copilot github models — refresh gh auth with scope models, export GITHUB_TOKEN, set LLM_BACKEND=copilot in .env.local, and relaunch</div></div>
@@ -945,6 +1016,8 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
           <div class="wb-term"><div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div><div class="body"><span class="ps">›</span> skip the playwright install and the browser preview — just cat or view any generated HTML instead, and continue</div></div>
         </div>
       </div>
+        </div>
+      </details>
     </div>
   </section>
 
@@ -957,6 +1030,14 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
       </div>
 
       <div class="wb-deeper reveal" data-delay="1">
+        <a class="wb-link" href="./agent-governance.html#overview">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg></span>
+          <span><span class="t">Governed release guide</span><span class="d">Five guided prompts that take this pilot to an approved, evidence-backed release.</span></span>
+        </a>
+        <a class="wb-link" href="./operate.html#overview">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+          <span><span class="t">Day-2 operating routines</span><span class="d">After go-live: fresh evidence, change gates, weekly review, unknown outcomes and learning.</span></span>
+        </a>
         <a class="wb-link" href="./case-study.html">
           <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg></span>
           <span><span class="t">The historical case study</span><span class="d">Captured prompts, findings, traces and costs. Evidence for that run, not a forecast or acceptance record for yours.</span></span>
@@ -1010,7 +1091,7 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
 </footer>
 
 <script src="assets/site.js?v=e4d413b7"></script>
-<script src="assets/site-map.js?v=cc056191"></script>
+<script src="assets/site-map.js?v=27594af5"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
 <script>
   document.querySelectorAll('[data-copy]').forEach(button => {

@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
 <link rel="stylesheet" href="assets/governed-workflow.css?v=ffa28b69">
 <link rel="stylesheet" href="assets/pilot-to-production.css?v=0f169132">
+<link rel="stylesheet" href="assets/ops-journey.css?v=5195efff">
 </head>
 <body class="chapter-page chapter-production chapter-experience governance-page" data-chapter-parent="production" data-web-workbook>
 <svg class="pg-output-icons" width="0" height="0" aria-hidden="true" focusable="false">
@@ -43,11 +44,20 @@
   <div class="wrap pg-wrap" data-pilot-guide>
     <div class="cx-journey">
       <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./production.html">Production</a><span aria-hidden="true">/</span><span aria-current="page">Existing pilot guide</span></nav>
+      <a class="cx-journey-next" href="./operate.html">Next: Operate <span aria-hidden="true">→</span></a>
     </div>
     <header class="pg-intro" id="overview">
       <h1>Take your Threadlight pilot to governed production</h1>
       <p>Start with the SPEC, generated code and tools you already have. Reuse them; add the missing governance, checks and release evidence.</p>
     </header>
+    <nav class="ops-journey" aria-label="Operating path" data-ops-journey>
+      <ol>
+        <li><a href="./workbook.html#stage-design" data-ops-stage="build"><strong>Build</strong><small>Idea to a working pilot</small></a></li>
+        <li><a href="./workbook.html#stage-production" data-ops-stage="assure"><strong>Assure</strong><small>Evals, red team, readiness gaps</small></a></li>
+        <li><a href="./agent-governance.html#overview" data-ops-stage="release" aria-current="step"><strong>Governed release</strong><small>Candidate, checks, approved promotion</small></a></li>
+        <li><a href="./operate.html#overview" data-ops-stage="operate"><strong>Operate</strong><small>Evidence, change, incidents, learning</small></a></li>
+      </ol>
+    </nav>
     <svg class="pg-flow" viewBox="0 0 800 88" role="img" aria-label="Existing pilot gains action boundaries, a release candidate, evidence and a production handoff">
       <path class="pg-line" d="M80 28H720"/>
       <g data-guide-visual="0" transform="translate(80 28)"><circle r="15"/><text y="5">1</text><text class="pg-flow-label" y="44">Existing pilot</text></g>
@@ -269,7 +279,21 @@ Reconcile unknown outcomes through the existing main contract, not an unmerged o
       <a href="https://github.com/aiappsgbb/threadlight-skills/blob/7782eba93754fb7cff85336d3f4a8703892bad76/docs/first-governed-workflow.md">Detailed workbook and reference exercises</a>
       <a href="./production.html#effect-authority">Back to Production and the decision paths</a>
     </div>
-    <p class="pg-note">The detailed workbook remains the approved reference. This guide starts later: with your existing Threadlight use case.</p>
+    <p class="pg-note">The detailed workbook remains the approved reference. This guide starts later: with your existing Threadlight use case. After promotion, continue with the <a href="./operate.html#overview">day-2 operating routines</a>.</p>
+    <section class="ops-glossary" id="glossary" aria-labelledby="glossary-title">
+      <h2 id="glossary-title">Words used in this guide</h2>
+      <p>Each term limits what a result can prove.</p>
+      <dl>
+        <div><dt>Binding</dt><dd>One consequential action tied to its policy, approval and audit rules. Proven per binding, never for the whole agent.</dd></div>
+        <div><dt>Unbound read</dt><dd>A read-only call outside the policy decision point. It keeps working without a binding.</dd></div>
+        <div><dt>Governed gateway</dt><dd>The enforcement point in front of a bound action. It runs only what the policy allowed.</dd></div>
+        <div><dt>Trusted facts</dt><dd>Target values the backend supplies, such as owner or amount. The model cannot set them.</dd></div>
+        <div><dt>Release candidate</dt><dd>One built version plus its check receipts, waiting for a protected approval.</dd></div>
+        <div><dt>Immutable image</dt><dd>An image pinned by digest. Promotion deploys exactly what was checked, without rebuilding.</dd></div>
+        <div><dt>Fresh evidence</dt><dd>Collected after this deployment, for the same image, identities and policy, within its time window.</dd></div>
+        <div><dt><code>governance_probe_noop</code></dt><dd>A harmless probe showing the governed path answers. It proves no business write or approval.</dd></div>
+      </dl>
+    </section>
     <div class="wb-legacy">
       <span id="effect-authority"></span><span id="workflow-in-action"></span><span id="evidence"></span><span id="human-decisions"></span><span id="freshness"></span><span id="limits"></span>
       <span id="define"></span><span id="prepare"></span><span id="local"></span><span id="authorize"></span><span id="validate"></span><span id="operate"></span>
@@ -278,7 +302,7 @@ Reconcile unknown outcomes through the existing main contract, not an unmerged o
 </main>
 <footer>Threadlight &middot; guided requests, explicit authority &middot; <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
 <script src="assets/site.js?v=e4d413b7"></script>
-<script src="assets/site-map.js?v=cc056191"></script>
+<script src="assets/site-map.js?v=27594af5"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
 <script src="assets/governed-workflow.js?v=4a69e216"></script>
 <script src="assets/pilot-to-production.js?v=b03c792e"></script>

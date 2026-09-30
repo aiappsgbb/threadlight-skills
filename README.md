@@ -172,6 +172,9 @@ the actors, model-versus-tool gateways and selected action paths.
 The [existing-pilot guide](docs/agent-governance.html) reuses your Threadlight
 SPEC, code and tools through five governed-release prompts and verification
 checkpoints. The approved Markdown workbook remains the detailed reference.
+After promotion, the [day-2 operating guide](docs/operate.html) covers fresh
+evidence after each deployment, change gates, weekly review, unknown outcomes
+and turning incidents into regression cases.
 Validation facts and implementation limits remain in the engineering references.
 For the actual
 identity, policy, approval, transport and durable-audit boundaries, read the

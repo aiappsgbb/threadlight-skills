@@ -7,6 +7,19 @@ field.
 
 ## [Unreleased]
 
+### Public site operating path
+
+- Add a day-2 operating guide (`docs/operate.html`) in the existing pilot-guide
+  format: after-deploy evidence, change gates, weekly review, unknown outcomes and
+  learning from incidents, each with skills, a prompt, expected result and checks.
+- Show one four-stage journey (Build, Assure, Governed release, Operate) on the
+  Workbook, the existing-pilot guide and the new page. The Workbook now separates
+  the current verified-release path from the historical case-study road and
+  maps each stage to its skills and evidence.
+- Add a short glossary to the existing-pilot guide and list it and Operate in the
+  Production navigation group; shorten four menu descriptions so Explore still
+  fits without scrolling. Documentation only: no skill, runtime or live change.
+
 ### Native presenter ancillary services
 
 - Extend the existing native-SDK presenter consumer with explicit, independently
