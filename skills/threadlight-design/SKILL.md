@@ -2,17 +2,17 @@
 name: threadlight-design
 description: >
   Spec out a business process or customer use case for an enterprise pilot, then
-  generate agent architecture (AGENTS.md + Skills) — a durable SpecKit specification
+  generate agent architecture (AGENTS.md + Skills) — a SpecKit specification
   first (process flow, business rules, data models, tool contracts, mock data,
   KPIs, governance), then implementation artifacts derived from the spec. Targets
   named LOB processes in regulated industries (FSI, Mfg, Retail, Telco, Healthcare,
   Utilities) where a customer SME will judge the SPEC on industry realism before
-  the demo even runs.
+  the demo runs.
   USE FOR: design a process, spec out a use case, create agent architecture, automate
   a regulated workflow, threadlight design, skill factory, business process
   specification, speckit, define a customer scenario, mock backend systems,
   seller prep guide, demo script, demo prompts, lint skill contracts,
-  lock the stack/model/hosting foundation, export a SPEC for Agentic Loop / spec2cloud.
+  lock the stack/model/hosting foundation, Agentic Loop export.
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
