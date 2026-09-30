@@ -12,11 +12,11 @@ description: >
   a regulated workflow, threadlight design, skill factory, business process
   specification, speckit, define a customer scenario, mock backend systems,
   seller prep guide, demo script, demo prompts, lint skill contracts,
-  lock the stack/model/hosting foundation.
+  lock the stack/model/hosting foundation, export a SPEC for Agentic Loop / spec2cloud.
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.12.2"
+  version: "1.13.0"
 ---
 
 # Threadlight Design
@@ -65,6 +65,15 @@ Invoke this skill when the user wants to:
 > (Kratos-export mode) and the production-hardening skills. See
 > [`docs/KRATOS-BRIDGE.md`](../../docs/KRATOS-BRIDGE.md). No change to this skill
 > is needed for that path — the two starting points are intentionally separate.
+
+> **Handing the design to Agentic Loop.** To build a finished SPEC with the
+> Agentic Loop / Spec2Cloud loop, export it once:
+> `python3 scripts/export_agentic_loop_spec.py specs/SPEC.md -o docs/spec.md`.
+> It writes the loop's `docs/spec.md` shape (rules as traceable requirements,
+> human gates, scenarios, data model, tools, open questions), marks gaps as
+> `[NEEDS CLARIFICATION: ...]` and lists what stays in Threadlight. `specs/SPEC.md`
+> remains the source of truth. See
+> [`docs/AGENTIC-LOOP-BRIDGE.md`](../../docs/AGENTIC-LOOP-BRIDGE.md).
 
 ## Using this skill in Microsoft Copilot Cowork
 
@@ -2183,6 +2192,7 @@ The spec is durable and runtime-agnostic. You can derive different implementatio
 | File | Purpose | Status |
 |------|---------|--------|
 | `scripts/skill_contract_check.py` | Static contract linter for the generated `src/agent/skills/` (12 checks, SKC-001…SKC-012) — run by Step 8 auto-review | ✅ Included |
+| `scripts/export_agentic_loop_spec.py` | Optional one-way export of `specs/SPEC.md` to an Agentic Loop / Spec2Cloud `docs/spec.md`; worked example in `references/agentic-loop-export/returns-triage.spec.md` | ✅ Included |
 | `references/speckit-template.md` | Template for SpecKit specification documents (14 sections + abstract-vs-pure-coding contracts) | ✅ Included |
 | `references/value-model-schema.md` | Field-by-field schema, bounds, and rationale for SPEC § 14's `value_model:` cost-actuals reconciliation contract (no defaults) | ✅ Included |
 | `references/process-traits.md` | Composable trait catalog for process pattern detection | ✅ Included |
@@ -2226,6 +2236,7 @@ The spec is durable and runtime-agnostic. You can derive different implementatio
 | `specs/prep-guide.html` § "Demo Script" | `threadlight-deploy` Phase 6.7 | Runnable seller demo script (acts contain literal prompts + concrete expected data points + seller narration); deploy back-fills a separate "Live MVP Walkthrough" appendix with workspace URL / Teams sideload / reset / eval / smoke commands |
 | `AGENTS.md` + `src/agent/skills/` | `threadlight-deploy` | Skill catalog + behavioral guidelines |
 | `specs/skill-contract-manifest.json` + `docs/skill-contract-report.md` | `threadlight-production-ready`, reviewers | Skill contract lint verdict (`sound` / `partial` / `unsound`) + the 12 SKC checks with evidence |
+| `docs/spec.md` (optional export) | Agentic Loop / Spec2Cloud `plan` | Build-loop view of the SPEC via `scripts/export_agentic_loop_spec.py`; never edited as a second source |
 
 > If a section is missing or under-specified, the corresponding downstream skill
 > will either fail or fall back to defaults. **Always populate every input contract

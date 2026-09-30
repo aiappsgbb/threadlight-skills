@@ -90,6 +90,10 @@ for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   cp -R "${SRC_DIR}/${skill}/." "${design_stage}/"
   cp "${REPO_ROOT}/docs/presenter-ready.md" "${design_stage}/references/presenter-ready.md"
   rm -rf "${design_stage}/tests"
+  # The Agentic Loop export needs a shell and a checkout (see
+  # docs/AGENTIC-LOOP-BRIDGE.md); it is not a Cowork companion.
+  rm -f "${design_stage}/scripts/export_agentic_loop_spec.py"
+  rm -rf "${design_stage}/references/agentic-loop-export"
   find "${design_stage}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
   find "${design_stage}" \( -name '*.pyc' -o -name '.DS_Store' \) -delete 2>/dev/null || true
 

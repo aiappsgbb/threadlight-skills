@@ -7,6 +7,18 @@ field.
 
 ## [Unreleased]
 
+### Agentic Loop spec export
+
+- Add `threadlight-design/scripts/export_agentic_loop_spec.py`: a deterministic,
+  standard-library export of `specs/SPEC.md` into the twelve-section Agentic Loop /
+  Spec2Cloud `docs/spec.md`. Business rules and human gates become traceable
+  requirements; scenarios, data model, tools and open questions are carried; gaps
+  become `[NEEDS CLARIFICATION: ...]`; a provenance appendix lists what stays in
+  Threadlight. Documented in `docs/AGENTIC-LOOP-BRIDGE.md` with a returns-triage
+  worked example. Checked against the template's sections only, not run through
+  the loop end to end. The exporter is excluded from the Cowork design bundle.
+- Plugin/marketplace candidate 2.13.0; Design 1.13.0.
+
 ### Public site operating path
 
 - Add a day-2 operating guide (`docs/operate.html`) in the existing pilot-guide
