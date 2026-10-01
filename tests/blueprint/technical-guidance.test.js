@@ -444,3 +444,14 @@ test('scoped technical guides use existing local file and heading targets', () =
     }
   }
 });
+
+test('Agentic Loop bridge is discoverable, one-way and honest about its proof', () => {
+  const bridge = read('docs/AGENTIC-LOOP-BRIDGE.md').replace(/\s+/g, ' ');
+  for (const marker of [
+    'export_agentic_loop_spec.py', 'NEEDS CLARIFICATION', 'stays the source of truth',
+    'not by running the Agentic Loop', 'does not inherit', 'not in the Cowork',
+  ]) assert.ok(bridge.includes(marker), marker);
+  assert.match(read('README.md'), /docs\/AGENTIC-LOOP-BRIDGE\.md/);
+  assert.match(read('skills/threadlight-design/SKILL.md'), /AGENTIC-LOOP-BRIDGE\.md/);
+  assert.match(read('CHANGELOG.md'), /Agentic Loop/);
+});

@@ -34,6 +34,7 @@ test('Production owns actor explanation and the liked interactive decision path'
 test('Citadel, AgentOps, global navigation and all non-action bytes stay unchanged', () => {
   const html = read('docs/production.html').replace(
     /^<(?:link rel="stylesheet" href="assets\/governed-workflow\.css\?v=[a-f0-9]+"|script src="assets\/governed-workflow\.js\?v=[a-f0-9]+")>(?:<\/script>)?\n/gm, '')
+    .replace(/(src="assets\/site-map\.js\?v=)[a-f0-9]+/, '$1cc056191')
     .replace(/\/blob\/979772904624ad873969cb6f84388f4a6f3f587b\/docs\/agent-governance-deep-dive\.md/g,
       '/blob/af45bbb88cea9931082da3f20c289fa4feb73399/docs/agent-governance-deep-dive.md')
     .replace(/(<nav[^>]*data-area-navigation="actions-topic"[^>]*>)([\s\S]*?)(<\/nav>)/,

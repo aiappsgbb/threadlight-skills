@@ -37,6 +37,8 @@ const CHAPTER_PAGES = [
   '/customize.html',
   '/workbook.html',
   '/governance.html',
+  '/agent-governance.html',
+  '/operate.html',
 ];
 
 // The top nav is chapter pages only — these five, in this shape.

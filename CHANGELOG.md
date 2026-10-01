@@ -7,6 +7,31 @@ field.
 
 ## [Unreleased]
 
+### Agentic Loop spec export
+
+- Add `threadlight-design/scripts/export_agentic_loop_spec.py`: a deterministic,
+  standard-library export of `specs/SPEC.md` into the twelve-section Agentic Loop /
+  Spec2Cloud `docs/spec.md`. Business rules and human gates become traceable
+  requirements; scenarios, data model, tools and open questions are carried; gaps
+  become `[NEEDS CLARIFICATION: ...]`; a provenance appendix lists what stays in
+  Threadlight. Documented in `docs/AGENTIC-LOOP-BRIDGE.md` with a returns-triage
+  worked example. Checked against the template's sections only, not run through
+  the loop end to end. The exporter is excluded from the Cowork design bundle.
+- Plugin/marketplace candidate 2.13.0; Design 1.13.0.
+
+### Public site operating path
+
+- Add a day-2 operating guide (`docs/operate.html`) in the existing pilot-guide
+  format: after-deploy evidence, change gates, weekly review, unknown outcomes and
+  learning from incidents, each with skills, a prompt, expected result and checks.
+- Show one four-stage journey (Build, Assure, Governed release, Operate) on the
+  Workbook, the existing-pilot guide and the new page. The Workbook now separates
+  the current verified-release path from the historical case-study road and
+  maps each stage to its skills and evidence.
+- Add a short glossary to the existing-pilot guide and list it and Operate in the
+  Production navigation group; shorten four menu descriptions so Explore still
+  fits without scrolling. Documentation only: no skill, runtime or live change.
+
 ### Native presenter ancillary services
 
 - Extend the existing native-SDK presenter consumer with explicit, independently

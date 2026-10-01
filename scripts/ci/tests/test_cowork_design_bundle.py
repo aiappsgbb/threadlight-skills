@@ -81,6 +81,15 @@ def test_design_zip_excludes_tests_and_keeps_required_governance_references():
     assert len(names) - 1 <= 20
 
 
+def test_design_zip_excludes_the_checkout_only_agentic_loop_export():
+    names = _member_names()
+    source_names = _source_file_names()
+
+    assert "scripts/export_agentic_loop_spec.py" in source_names
+    assert "scripts/export_agentic_loop_spec.py" not in names
+    assert not any(name.startswith("references/agentic-loop-export/") for name in names)
+
+
 def test_design_zip_speckit_template_has_section14_value_model():
     text = _read_member("references/speckit-template.md")
     missing = [m for m in SPECKIT_SECTION14_MARKERS if m not in text]

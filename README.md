@@ -4,6 +4,13 @@
 >
 > Twenty-three pipeline skills plus one agent-guided lifecycle planner (24 total) take a brief into a working pilot. Governance is evidenced per selected binding, not asserted for the whole agent. A working session produces the pilot and auditable evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
 >
+> **Idea to production, alongside the build tools you already use.** Threadlight
+> is complementary to the GBB Agentic Loop and to Kratos exports: it designs the
+> business process and carries the pilot to production evidence, and it can
+> [hand its design to the Agentic Loop](#handing-a-design-to-the-agentic-loop) or
+> [harden a Kratos export](#starting-from-a-kratos-export). Use only the skills
+> you need.
+>
 > SPEC § 14 is the value-model contract: baseline, target, owner, timeframe,
 > measurement source, and maturity policy. Its public arc is forecast →
 > settled Azure actuals → reconciliation → cost per successful interaction.
@@ -172,6 +179,9 @@ the actors, model-versus-tool gateways and selected action paths.
 The [existing-pilot guide](docs/agent-governance.html) reuses your Threadlight
 SPEC, code and tools through five governed-release prompts and verification
 checkpoints. The approved Markdown workbook remains the detailed reference.
+After promotion, the [day-2 operating guide](docs/operate.html) covers fresh
+evidence after each deployment, change gates, weekly review, unknown outcomes
+and turning incidents into regression cases.
 Validation facts and implementation limits remain in the engineering references.
 For the actual
 identity, policy, approval, transport and durable-audit boundaries, read the
@@ -319,6 +329,22 @@ Then invoke, in order: `threadlight-safe-check` → `threadlight-deploy`
 `threadlight-workspace-ui`. The canonical reference — detection signal,
 skills-root convention, what's intentionally trimmed, and the full invocation
 order — is in [`docs/KRATOS-BRIDGE.md`](docs/KRATOS-BRIDGE.md).
+
+## Handing a design to the Agentic Loop
+
+Threadlight and the GBB **Agentic Loop** (with Spec2Cloud) are complementary:
+Threadlight designs the business process and carries it to production evidence;
+the loop builds it. After `threadlight-design`, one command exports the SPEC into
+the loop's `docs/spec.md` shape, keeping every business rule, human gate and
+evaluation scenario traceable:
+
+```bash
+python3 skills/threadlight-design/scripts/export_agentic_loop_spec.py specs/SPEC.md -o docs/spec.md
+```
+
+The export is one-way and marks gaps as `[NEEDS CLARIFICATION: ...]`;
+`specs/SPEC.md` stays the source of truth. Mapping, worked example and limits:
+[`docs/AGENTIC-LOOP-BRIDGE.md`](docs/AGENTIC-LOOP-BRIDGE.md).
 
 ## Quickstart in GitHub Codespaces
 
