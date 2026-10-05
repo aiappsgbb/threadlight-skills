@@ -48,7 +48,13 @@ plugins (Copilot CLI, `--plugin-dir`, no awesome-gbb).
   matrix: 88% official-first vs 100% threadlight-first). The README now
   installs threadlight-skills first (with the reinstall fix for existing
   setups), and `official_skills.py` reports `routing_order` and an `ORDER`
-  finding (exit 1) from the `copilot skill list` order.
+  finding (exit 1) from the `copilot skill list` order. The check also
+  simulates the shared description budget (about 15,000 characters, calibrated
+  on CLI 1.0.91 listings) and reports `ORDER` when personal skills or other
+  plugins listed earlier leave `threadlight-auto`/`-design`/`-deploy` name-only
+  (seen on a real setup with Work IQ, M365 Agents Toolkit and awesome-gbb, no
+  official plugin). Official-named skills from other marketplaces (awesome-gbb
+  `foundry-iq`) no longer count as the official plugin being first.
 - **F2 — SPEC §11a contract.** A parseable but incomplete governance contract
   (missing framework/tools/governance keys) now routes back to design
   (`incomplete-governance-contract`) instead of a govern hard stop; design emits

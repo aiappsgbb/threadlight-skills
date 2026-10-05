@@ -22,7 +22,11 @@ in plugin install order up to a prompt budget and lists the rest by name only.
 When the official plugins are installed before threadlight-skills, no
 threadlight-* skill is described and Threadlight prompts route to official
 skills (for example "deploy the pilot" to azure-deploy). The listing follows
-the same order, so the check reports ORDER with the reinstall fix.
+the same order, so the check reports ORDER with the reinstall fix. The budget is
+shared with personal skills and every other plugin listed before
+threadlight-skills, so the check also simulates it (about 15,000 characters of
+name, description and markup, calibrated on CLI 1.0.91 listings) and reports
+ORDER when threadlight-auto, -design or -deploy would be listed by name only.
 
 Exit 0 when every locked skill resolves to the pinned content, 1 otherwise.
 Offline: it reads local files only and never contacts GitHub or Azure.
@@ -41,6 +45,9 @@ SHARED = Path(__file__).resolve().parent
 LOCK_PATH = SHARED / "official-skills-lock.json"
 MANIFEST_PATH = SHARED / "skill-dependencies.json"
 OFFICIAL_PLUGINS = ("azure@azure-skills", "azure-cost@azure-skills", "foundry-iq-skills@azure-skills")
+DESCRIPTION_BUDGET_CHARS = 15000
+ENTRY_OVERHEAD_CHARS = 80
+ROUTING_SKILLS = ("threadlight-auto", "threadlight-design", "threadlight-deploy")
 
 
 def _load(path: Path) -> dict:
@@ -57,10 +64,50 @@ def _sha256(path: Path) -> str | None:
 def _routing_order(listing: list[dict], official: set[str]) -> str:
     plugin_rows = [r for r in listing if r.get("enabled", True) and r.get("source") == "plugin"]
     tl = next((i for i, r in enumerate(plugin_rows) if r["name"].startswith("threadlight-")), None)
-    off = next((i for i, r in enumerate(plugin_rows) if r["name"].split(":")[-1] in official), None)
+    off = next((i for i, r in enumerate(plugin_rows)
+                if r["name"].split(":")[-1] in official and not _other_marketplace(r)), None)
     if tl is None or off is None:
         return "unknown"
     return "threadlight-first" if tl < off else "official-first"
+
+
+def _other_marketplace(row: dict) -> bool:
+    parts = Path(row.get("path") or "").parts
+    if "installed-plugins" not in parts:
+        return False
+    i = parts.index("installed-plugins")
+    return len(parts) > i + 1 and parts[i + 1] != "azure-skills"
+
+
+def _plugin_label(row: dict) -> str:
+    parts = Path(row.get("path") or "").parts
+    if row.get("source") == "plugin" and "installed-plugins" in parts:
+        i = parts.index("installed-plugins")
+        if len(parts) > i + 2:
+            return f"{parts[i + 2]}@{parts[i + 1]}"
+    return "personal skills" if row.get("source") != "plugin" else "plugin skills"
+
+
+def _routing_budget(listing: list[dict]) -> tuple[list[str], list[str]]:
+    """Return (threadlight skills listed by name only, sources described before them)."""
+    rows = [r for r in listing if r.get("enabled", True) and r.get("source") != "builtin"]
+    used, overflow, seen_threadlight, ahead = 0, False, False, []
+    name_only = []
+    for row in rows:
+        name = row["name"].split(":")[-1]
+        cost = len(name) + len(row.get("description") or "") + ENTRY_OVERHEAD_CHARS
+        overflow = overflow or used + cost > DESCRIPTION_BUDGET_CHARS
+        if not overflow:
+            used += cost
+        if name.startswith("threadlight-"):
+            if overflow:
+                name_only.append(name)
+        elif not seen_threadlight:
+            label = _plugin_label(row)
+            if label not in ahead:
+                ahead.append(label)
+        seen_threadlight = seen_threadlight or name.startswith("threadlight-")
+    return name_only, ahead
 
 
 def check(listing: list[dict], lock: dict | None = None, manifest: dict | None = None) -> dict:
@@ -90,9 +137,12 @@ def check(listing: list[dict], lock: dict | None = None, manifest: dict | None =
             rows.append(row)
     official = {skill for entry in lock["plugins"].values() for skill in entry["skills"]}
     order = _routing_order(listing, official)
-    ok = all(r["status"].startswith("ok") for r in rows) and order != "official-first"
+    name_only, ahead = _routing_budget(listing)
+    crowded = any(s in name_only for s in ROUTING_SKILLS)
+    ok = all(r["status"].startswith("ok") for r in rows) and order != "official-first" and not crowded
     return {"status": "ok" if ok else "degraded", "tag": lock["tag"], "commit": lock["commit"],
-            "routing_order": order, "skills": rows}
+            "routing_order": order, "routing_name_only": name_only, "routing_ahead": ahead if crowded else [],
+            "skills": rows}
 
 
 def render(report: dict) -> str:
@@ -106,6 +156,14 @@ def render(report: dict) -> str:
         lines.append("    " + " && ".join(f"copilot plugin uninstall {p}" for p in OFFICIAL_PLUGINS))
         lines.append("    copilot plugin install threadlight-skills@threadlight-skills  # if not installed")
         lines.append("    " + " && ".join(f"copilot plugin install {p}" for p in OFFICIAL_PLUGINS))
+    elif report.get("routing_ahead"):
+        lines.append("ORDER " + ", ".join(s for s in ROUTING_SKILLS if s in report["routing_name_only"])
+                     + " would be listed by name only: skills listed before threadlight-skills ("
+                     + ", ".join(report["routing_ahead"]) + ") fill Copilot's skill-description budget, so "
+                     "Threadlight prompts can route to other skills.")
+        lines.append("  Fix: reinstall the plugins listed before threadlight-skills after it "
+                     "(copilot plugin uninstall NAME@MARKETPLACE && copilot plugin install NAME@MARKETPLACE), "
+                     "or disable the ones you do not use in workshops.")
     for row in report["skills"]:
         status, skill, plugin = row["status"], row["skill"], row["plugin"]
         if status == "ok":

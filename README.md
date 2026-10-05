@@ -461,8 +461,9 @@ To check what your Copilot actually loads, run `python3 skills/_shared/official_
 it reports each locked official skill as OK, MISSING or DRIFT (including a stale
 personal copy that shadows the plugin), with the install fix and the
 Threadlight fallback recorded under `official.fallbacks` in the manifest. It
-reports ORDER when the official plugins were installed before threadlight-skills
-(see the install order below), and UNCHECKED (exit 2) when the `copilot` CLI cannot list skills.
+reports ORDER when the official plugins were installed before threadlight-skills,
+or when personal skills and other plugins listed earlier would leave
+`threadlight-auto`, `-design` or `-deploy` without a description (see the install order below), and UNCHECKED (exit 2) when the `copilot` CLI cannot list skills.
 `threadlight-auto` runs it in Stage 0 and continues with a warning.
 
 | Need | Use |
@@ -500,7 +501,13 @@ this mapping does not change them.
 budget and lists the rest by name only. Installed after the official plugins,
 no `threadlight-*` skill is described and prompts such as "deploya il pilota"
 route to `azure-deploy` (offline routing matrix: 88% official-first vs 100%
-threadlight-first). `official_skills.py` reports this as `ORDER`.
+threadlight-first). The budget (about 15,000 characters) is shared with personal
+skills (`~/.copilot/skills`, `~/.agents/skills`) and every other plugin listed
+earlier: on a machine with Work IQ, Microsoft 365 Agents Toolkit and awesome-gbb
+installed first, no `threadlight-*` skill was described even without the
+official plugins. Install threadlight-skills before other skill-heavy plugins
+too. `official_skills.py` simulates the budget from `copilot skill list --json`
+and reports either case as `ORDER`, naming the plugins listed ahead.
 
 ```bash
 copilot plugin marketplace add aiappsgbb/threadlight-skills
@@ -512,7 +519,8 @@ copilot plugin install azure-cost@azure-skills         # cost analysis/estimatio
 copilot plugin install foundry-iq-skills@azure-skills  # Foundry IQ (preview)
 ```
 
-Already have the official plugins? Reinstall them after threadlight-skills:
+Already have the official plugins (or other skill-heavy plugins)? Reinstall
+them after threadlight-skills, or disable the ones you do not need in workshops:
 
 ```bash
 copilot plugin uninstall azure@azure-skills && copilot plugin uninstall azure-cost@azure-skills && copilot plugin uninstall foundry-iq-skills@azure-skills

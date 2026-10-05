@@ -270,3 +270,41 @@ def test_readme_companion_install_order_puts_threadlight_first():
     assert block.index("copilot plugin install threadlight-skills@threadlight-skills") < block.index(
         "copilot plugin install azure@azure-skills")
     assert "copilot plugin uninstall azure@azure-skills" in block
+
+
+def _crowding_plugin(tmp_path, count, chars=900):
+    return [{"name": f"other-{i}", "description": "x" * chars, "source": "plugin", "enabled": True,
+             "path": str(tmp_path / "installed-plugins" / "other-mkt" / "other-plugin" / "skills" / f"other-{i}")}
+            for i in range(count)]
+
+
+def test_other_plugins_installed_before_threadlight_are_reported_even_without_official(tmp_path):
+    # Real machine (env B): personal skills plus workiq/m365/awesome-gbb plugins
+    # used the whole description budget, so every threadlight-* skill was
+    # name-only although no official plugin was installed (code review on #155).
+    official, lock = install(tmp_path)
+    listing = _crowding_plugin(tmp_path, 20) + _with_threadlight(official, tmp_path, first=True)
+    report = official_skills.check(listing, lock=lock, manifest=MANIFEST)
+    assert report["routing_order"] == "threadlight-first"
+    assert "threadlight-auto" in report["routing_name_only"]
+    assert report["status"] == "degraded"
+    text = official_skills.render(report)
+    assert "ORDER" in text and "other-plugin" in text
+
+
+def test_small_skill_sets_before_threadlight_keep_routing_ok(tmp_path):
+    listing, lock = install(tmp_path)
+    listing = _crowding_plugin(tmp_path, 3) + _with_threadlight(listing, tmp_path, first=True)
+    report = official_skills.check(listing, lock=lock, manifest=MANIFEST)
+    assert report["routing_name_only"] == []
+    assert report["status"] == "ok"
+
+
+def test_official_named_skill_from_another_marketplace_is_not_official_first(tmp_path):
+    # awesome-gbb ships its own foundry-iq; it must not be reported as the
+    # official azure-skills plugin being installed first.
+    listing, lock = install(tmp_path)
+    gbb = [{"name": "foundry-iq", "source": "plugin", "enabled": True,
+            "path": str(tmp_path / "installed-plugins" / "_direct" / "aiappsgbb--awesome-gbb" / "skills" / "foundry-iq")}]
+    report = official_skills.check(gbb + _with_threadlight(listing, tmp_path, first=True), lock=lock, manifest=MANIFEST)
+    assert report["routing_order"] == "threadlight-first"
