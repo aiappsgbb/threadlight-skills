@@ -62,7 +62,7 @@ these fixture receipts.
 Design, Deploy and Safe Check read
 [`presenter-deployment-pin.json`](../skills/_shared/presenter-deployment-pin.json).
 Copy that exact object to `deployment.guidance`. It selects the official
-[microsoft/azure-skills `microsoft-foundry` hosted-agent deploy guide at release `v1.2.77`](https://github.com/microsoft/azure-skills/blob/74f27068b21b85807e35ae69ab3976756b060c03/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md),
+[microsoft/azure-skills `microsoft-foundry` hosted-agent deploy guide at release `v1.2.77`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md),
 fixed by tag, commit and the file's sha256, which must equal the entry in
 [`official-skills-lock.json`](../skills/_shared/official-skills-lock.json).
 Its relative references, deployment preflight and troubleshooting must be read at
