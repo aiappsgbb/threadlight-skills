@@ -11,7 +11,7 @@ description: >
   XPIA, exfiltration testing, attack success rate, ASR, PyRIT, safety scan,
   responsible-ai evidence, pillar 7 evidence, SAFE-1xx findings, pre-deploy
   red team, post-deploy red team. DO NOT USE FOR: static content-filter or
-  RAI policy authoring (threadlight-govern / foundry-agt); quality,
+  RAI policy authoring (threadlight-govern); quality,
   groundedness, relevance, or regression evals (threadlight-evals); token-level
   model content filtering (Azure AI Content Safety).
 metadata:

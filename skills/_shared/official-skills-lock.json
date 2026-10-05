@@ -1,0 +1,201 @@
+{
+  "schema": "threadlight-official-skills-lock/v1",
+  "repository": "microsoft/azure-skills",
+  "marketplace": "azure-skills",
+  "tag": "v1.2.77",
+  "commit": "74f27068b21b85807e35ae69ab3976756b060c03",
+  "note": "Generated from skill-dependencies.json. tree = git tree object SHA at commit; files = sha256 of each referenced file; description = SKILL.md frontmatter description at commit; catalog_skill_names = every skill directory per plugin root at commit (collision checks). Verify online with scripts/verify_official_skills_lock.py; CI checks only offline consistency.",
+  "plugins": {
+    "azure-cost@azure-skills": {
+      "root": ".github/plugins/azure-cost",
+      "skills": {
+        "cost-analysis": {
+          "tree": "e2bcd6ba7f86f01f7c2ed74a3b7ef22d290ed3fd",
+          "files": {
+            "SKILL.md": "a3708374c3c66dc2e353e745ca9c9e3b48632b8abbfd7b6c64ab2cbb31693594"
+          },
+          "description": "Analyze actual Azure spend, bill changes, and AKS or AI costs. WHEN: \"Azure cost breakdown\", \"most expensive resources\", \"why did my bill increase\", \"cost spike\", \"unexpected charge\", \"Cosmos DB charges\", \"Foundry model costs\", \"AKS cluster cost\", \"namespace cost\", \"enable AKS cost analysis\", \"idle AKS capacity\". DO NOT USE FOR: forecasts, pricing estimates, rightsizing, commitments, or budgets."
+        },
+        "cost-estimation": {
+          "tree": "a21080854fecab8e15014121bcfd328bf4cbe5df",
+          "files": {
+            "SKILL.md": "17f6d77d27ede847ce910183a232d4fdcd999a7501d9a5a13391e51a91231f16"
+          },
+          "description": "Forecast Azure spend and price planned resources or workloads. WHEN: \"forecast Azure spending\", \"project next month cost\", \"compare forecast to my planning target\", \"how much will Azure cost\", \"estimate VM cost\", \"compare storage tiers\", \"compare Azure regions\", \"retail price\", \"EA rate card\", \"negotiated pricesheet\". DO NOT USE FOR: configured budget health or alerts, bill analysis, cost spikes, rightsizing, or commitments."
+        },
+        "cost-governance": {
+          "tree": "dd006778491a957cd453b02ca0dcda6fb06f337b",
+          "files": {
+            "SKILL.md": "4241add12fefc5e51afc1a925426dd5f7d3494e642753fedb03273a3f2fcd30a"
+          },
+          "description": "Govern Azure costs with budgets, alerts, tags, and policy restrictions. WHEN: \"Azure budget health\", \"configured budget overrun\", \"list Azure budgets\", \"create Azure budget\", \"budget alerts\", \"budget coverage\", \"missing CostCenter tags\", \"allowed VM SKUs\", \"allowed Azure regions\", \"would this SKU be denied\", \"cost guardrails\". DO NOT USE FOR: planning-target forecasts, bill investigations, pricing, rightsizing, or commitments."
+        }
+      },
+      "version": "1.0.5",
+      "tree": "4d8091f142d75ce72cd42cafe964fd17e2b3fc38"
+    },
+    "azure@azure-skills": {
+      "root": ".github/plugins/azure-skills",
+      "skills": {
+        "appinsights-instrumentation": {
+          "tree": "c8073c3feba00a1ac15f83a586f85cac7c99721d",
+          "files": {
+            "SKILL.md": "f46e9dd4d4bef33ca78b32980eb06d6667d1c68bf0c1690eef26ea90ca0ae4fa"
+          },
+          "description": "Guidance for instrumenting webapps with Azure Application Insights. Provides telemetry patterns, SDK setup, and configuration references. WHEN: how to instrument app, App Insights SDK, telemetry patterns, what is App Insights, Application Insights guidance, instrumentation examples, APM best practices."
+        },
+        "azure-ai": {
+          "tree": "88009b2c4e3acfe43034d75a75b3167c6fa73ffa",
+          "files": {
+            "SKILL.md": "d445410cfbeb391a1eaf95fbf951ba08a017b66f9404cd434c534d54f64329b5"
+          },
+          "description": "Use for Azure AI: Search, Speech, OpenAI, Document Intelligence. Helps with search, vector/hybrid search, speech-to-text, text-to-speech, transcription, OCR. WHEN: AI Search, query search, vector search, hybrid search, semantic search, speech-to-text, text-to-speech, transcribe, OCR, convert text to speech."
+        },
+        "azure-aigateway": {
+          "tree": "8529348e07a31f48a46f0345a34fcaae9b27e7d0",
+          "files": {
+            "SKILL.md": "05acd88e75ab23776d2876a1f91f6cfe2fd666c48f4f45176e7ea9d3d873b9be"
+          },
+          "description": "Configure Azure API Management as an AI Gateway for AI models, MCP tools, and agents. WHEN: semantic caching, token limit, content safety, load balancing, AI model governance, MCP rate limiting, jailbreak detection, add Azure OpenAI backend, add AI Foundry model, test AI gateway, LLM policies, configure AI backend, token metrics, AI cost control, convert API to MCP, import OpenAPI to gateway."
+        },
+        "azure-compliance": {
+          "tree": "83ec452ff0bb131e41363be040ad22251d7bcb5a",
+          "files": {
+            "SKILL.md": "f5ef52fa1c810d80ffb89d1dd0cc427f43f88849a6aa32fd7a6ee358e8d1eef4"
+          },
+          "description": "Run Azure compliance and security audits with azqr plus Key Vault expiration checks. Covers best-practice assessment, resource review, policy/compliance validation, and security posture checks. WHEN: compliance scan, security audit, BEFORE running azqr (compliance cli tool), Azure best practices, Key Vault expiration check, expired certificates, expiring secrets, orphaned resources, compliance assessment."
+        },
+        "azure-deploy": {
+          "tree": "782b021717e199423ed37720a6ba5436b2951aa7",
+          "files": {
+            "SKILL.md": "d44c25fde43a5ccfa4c16975ea75518e1d963e1c84f1da2545fb970ef79dd066"
+          },
+          "description": "Execute Azure deployments for ALREADY-PREPARED applications that have existing .azure/deployment-plan.md and infrastructure files. DO NOT use this skill when the user asks to CREATE a new application \u2014 use azure-prepare instead. This skill runs azd up, azd deploy, terraform apply, and az deployment commands with built-in error recovery. Requires .azure/deployment-plan.md from azure-prepare and validated status from azure-validate. WHEN: \"run azd up\", \"run azd deploy\", \"execute deployment\", \"push to production\", \"push to cloud\", \"go live\", \"ship it\", \"bicep deploy\", \"terraform apply\", \"publish to Azure\", \"launch on Azure\". DO NOT USE WHEN: \"create and deploy\", \"build and deploy\", \"create a new app\", \"set up infrastructure\", \"create and deploy to Azure using Terraform\" \u2014 use azure-prepare for these."
+        },
+        "azure-diagnostics": {
+          "tree": "e042226f48ca3c11ebca65aefb67e82c9f7b2579",
+          "files": {
+            "SKILL.md": "5b763986add6c09a090d0cafec21b8d9c4c24ca7cfe5470b88281e7f1e26f723"
+          },
+          "description": "Debug Azure production issues on Azure using AppLens, Azure Monitor, resource health, and safe triage. WHEN: debug production issues, troubleshoot app service, app service high CPU, app service deployment failure, troubleshoot container apps, troubleshoot functions, troubleshoot AKS, VM RDP, Linux SSH, VM black screen, can't connect to VM, reset VM password, NSG or firewall blocking, kubectl cannot connect, kube-system/CoreDNS failures, pod pending, crashloop, node not ready, upgrade failures, analyze logs, KQL, insights, image pull failures, cold start issues, health probe failures, resource health, root cause of errors, troubleshoot event hubs, troubleshoot service bus, messaging SDK error, AMQP connection failure, message lock lost, service bus dead letter."
+        },
+        "azure-prepare": {
+          "tree": "af6e7838c7281c6c80f07588e0b5251181e49506",
+          "files": {
+            "SKILL.md": "d90c1cc298bac2b434ca4caa27358320144711da0fd0247a8497f7c9710ee689"
+          },
+          "description": "Prepare azd-based Azure projects for deployment: generates azure.yaml, infrastructure (Bicep/Terraform), and Dockerfiles for the Azure Developer CLI (azd) workflow. USE ONLY when the user explicitly wants to use azd as the deployment tool, or the project already has an azure.yaml file. DO NOT USE FOR: non-azd deployments, Python App Service code-only deploys (use python-appservice-deploy), or cross-cloud migration (use azure-cloud-migrate). WHEN: prepare app for azd, create azure.yaml, set up azd infrastructure, modernize app for Azure with azd, deploy with azd, function app, timer trigger, service bus trigger, event-driven function, managed identity, generate Bicep, generate Terraform, create and deploy to Azure."
+        },
+        "azure-validate": {
+          "tree": "23c61eed8d0009d712d71904e21e3c4e0df4d6d0",
+          "files": {
+            "SKILL.md": "207cdd198906b644bca68ee08d51b377d8ebf0c9e1b579405cc675b2e6e7972e"
+          },
+          "description": "Pre-deployment validation for Azure readiness. Run deep checks on configuration, infrastructure (Bicep or Terraform), RBAC role assignments, managed identity permissions, and prerequisites before deploying. WHEN: validate my app, check deployment readiness, run preflight checks, verify configuration, check if ready to deploy, validate azure.yaml, validate Bicep, test before deploying, troubleshoot deployment errors, validate Azure Functions, validate function app, validate serverless deployment, verify RBAC roles, check role assignments, review managed identity permissions, what-if analysis, validate Container Apps deployment."
+        },
+        "entra-app-registration": {
+          "tree": "051071c18ecb38347076f857819987e3ec37685e",
+          "files": {
+            "SKILL.md": "8f8e7b7429b04c3150c7393997d6ccd433defd497ad22a7e43979cc43e309c32"
+          },
+          "description": "Guides Microsoft Entra ID app registration, OAuth 2.0 authentication, and MSAL integration. USE FOR: create app registration, register Azure AD app, configure OAuth, set up authentication, add API permissions, generate service principal, MSAL example, console app auth, Entra ID setup, Azure AD authentication. DO NOT USE FOR: Key Vault secrets (use azure-keyvault-expiration-audit), general Azure resource security guidance."
+        },
+        "microsoft-foundry": {
+          "tree": "233dad996312195f0ea0505b87a66f12b835e892",
+          "files": {
+            "SKILL.md": "e92acb2507b616007aafb8f55a5c879a428ddd37cf7b0efe00bbff53c770b110",
+            "foundry-agent/agent-optimizer/agent-optimizer.md": "f7cb8e650820d49f0387f118f77081bfe6ce0d7fc70f78e84d1dd852e3024c70",
+            "foundry-agent/azd-guidance/azd-guidance.md": "ec0ca086da1be842b7be511f836ba71e670cb5d77171bdf10240dd994760e4aa",
+            "foundry-agent/create/create-hosted.md": "69d55e7dc400103b9c92d79e95d8998d7b1f4867c52d9966f7b2808b8da6d1fd",
+            "foundry-agent/create/create-prompt.md": "0d7cf22c07fec1ae271c97ef1c11bda7a391844a8af81ed0cb4d50708b701a69",
+            "foundry-agent/create/references/skills/skill-attach.md": "169d21b35fc7fa0f9e2c38f4d97ead446f41672a193a3ea02da16cfc894bdeba",
+            "foundry-agent/create/references/skills/skill-manage.md": "430c2f9fbb113bc6952a50eef496966ec55c5564951330da25f2aa0894b39457",
+            "foundry-agent/deploy/deploy.md": "54d7725d5f33238cd36fc6c00f468be67ee560d26849f8d32699ac4dd51cba50",
+            "foundry-agent/eval-datasets/eval-datasets.md": "02654e7ae740323ce61c94b1425135452ff44e1ca8d73bc89656282bafca0fa9",
+            "foundry-agent/insights/insights.md": "22de2687e082980d7b4547db4c0f1190ba0c3ff95135028d655ae45fb73bd572",
+            "foundry-agent/invocations-ws/invocations-ws.md": "7dc293f3222dbcfc4ab9d06847f9825814a1e44581a3823d5fa23b6d21c000f1",
+            "foundry-agent/invoke/invoke.md": "97961a9d30e8cee2e0e9f1bae56c66335ee25e87c7d8a14ff585e2accd38fa2c",
+            "foundry-agent/observe/observe.md": "be1c0584b0bc0a5ef33add774cb1b4bb11ff0e5c8fcb0285ecd74241205e25a1",
+            "foundry-agent/routine/routine.md": "f7fe5adf57792ff1e4380533ef465b8dc601ea6196e9422917fdf7e1f9d0d78f",
+            "foundry-agent/toolbox/toolbox.md": "2a40f895eb5975febede4d119c2549b7e6897d63d444cdcca1a27342b0df44c4",
+            "foundry-agent/trace/trace.md": "cb46d57ef65d3c38b4ca4145177ef38758bbb540c1f521a4bfd22886e547903c",
+            "foundry-agent/troubleshoot/troubleshoot.md": "46fbc87daada93ffc66f2b79569035e6139949ff69aaa2041c5a8d84f3332122",
+            "models/deploy-model/SKILL.md": "ae0de869fdaee1a6b6b04582e723a2363d482d85a5c119f1963a2c36eff5667c",
+            "project/connections.md": "fc009f41df960263bc89b04bce8f2ee1b8872fc797ff30cf3eef021f575df75a",
+            "quota/references/ptu-guide.md": "012db2f537dcb7da0a7d1caf773e04e66a96e142b7c3072dd98bfcc183c3d3f4",
+            "rbac/rbac.md": "1fb39251c178ec8b3bb586bfceba793631faf7ab7de5037f4bdd01df9e6fb647",
+            "references/standard-agent-setup.md": "d279ee9b1bfa1f43ec127cd0890703621ed0866f8eec5eee66960e3bb51b9cd6",
+            "resource/private-network/private-network.md": "a0a2c5b532306008ea89e77e007c03561f623bf54d09ca1b14b7838ba5721518"
+          },
+          "description": "Build, deploy, evaluate, optimize, fine-tune, and manage Microsoft Foundry agents, models, and resources end to end. USE FOR: foundry, azd ai agent, azd provision/deploy, hosted agent scaffold/develop/run/deploy/troubleshoot, prompt agent create, create agent, update agent, add tool to agent, invoke agent, agent.yaml, agent insights, pull agent insights, evaluate agent, batch eval, continuous eval, continuous monitoring, agent CI/CD, optimize prompt, improve prompt, prompt optimizer, optimize agent instructions, Agent Optimizer scaffold, dataset curation from traces, deploy model, model fine-tuning (SFT/DPO/RFT), Foundry project, RBAC, role assignment, permissions, quota, capacity, region, deployment failure, AI Services, create Foundry resource, knowledge index, customize deployment, onboard, availability, training-data, grader, distillation, large file upload. DO NOT USE FOR: Azure Functions, App Service, general Azure deploy (use azure-deploy), general Azure prep (use azure-prepare)."
+        }
+      },
+      "version": "1.2.77",
+      "tree": "d0ed2393c1cbee0b9b85f5615f4b1c35663a796e"
+    },
+    "foundry-iq-skills@azure-skills": {
+      "root": ".github/plugins/foundry-iq-skills",
+      "skills": {
+        "foundry-iq": {
+          "tree": "8347596f680c0a76bf20c60e544a90a8be204a81",
+          "files": {
+            "SKILL.md": "96dcea6d4430c16cc3b098f6824b5e4272b665de3ee25f6fb22f2449bce0be84"
+          },
+          "description": "Foundry IQ knowledge bases. WHEN: make local or Blob documents searchable; create/diagnose KBs; triage unsupported connectors or multi-source KB creation/reconfiguration; connect existing KB to agents (including multi-source KBs); create/reuse a Search service; retrieve from an existing knowledge base with citations; no brand words needed. Read its procedure before query/target questions. NOT: other KB providers, repository-file search, classic Azure AI Search index/query/app work, generic agent creation."
+        }
+      },
+      "version": "0.1.10",
+      "tree": "3886746539ded6f3705962168297055cad119763"
+    }
+  },
+  "catalog_skill_names": {
+    "azure-cost": [
+      "cost-analysis",
+      "cost-estimation",
+      "cost-governance",
+      "cost-optimization"
+    ],
+    "azure-kusto-graph-skills": [
+      "azure-kusto-graph",
+      "azure-kusto-irql",
+      "azure-kusto-irql-graph"
+    ],
+    "azure-local-skills": [
+      "azure-local",
+      "azure-local-multi-rack"
+    ],
+    "azure-skills": [
+      "airunway-aks-setup",
+      "appinsights-instrumentation",
+      "azure-ai",
+      "azure-aigateway",
+      "azure-app-onboard",
+      "azure-app-onboard-prereq",
+      "azure-cloud-migrate",
+      "azure-compliance",
+      "azure-compute",
+      "azure-deploy",
+      "azure-diagnostics",
+      "azure-enterprise-infra-planner",
+      "azure-kubernetes",
+      "azure-kusto",
+      "azure-messaging",
+      "azure-prepare",
+      "azure-quotas",
+      "azure-reliability",
+      "azure-resource-lookup",
+      "azure-resource-visualizer",
+      "azure-storage",
+      "azure-upgrade",
+      "azure-validate",
+      "discover-azure-skills",
+      "entra-agent-id",
+      "entra-app-registration",
+      "microsoft-foundry",
+      "python-appservice-deploy"
+    ],
+    "foundry-iq-skills": [
+      "foundry-iq"
+    ]
+  }
+}

@@ -4,17 +4,17 @@ description: >-
   Threadlight evals leg: offline batch quality, Foundry Continuous Evaluation
   and champion-challenger gates. Emits `specs/evals-manifest.json` for pillar 6.
   Reuses validated opted-in AgentOps batches without reruns or live-wiring claims.
-  USE FOR: continuous evals, offline eval gate, eval schedule, Foundry
-  Continuous Evaluation, create_agent_evaluation, Application Insights eval
+  USE FOR: Threadlight pilot evals leg, offline eval gate, eval schedule
+  for a Threadlight pilot, create_agent_evaluation, Application Insights eval
   results, eval threshold alert, eval run freshness, eval dataset shape,
   tool_calls tool_outputs, champion challenger, A/B eval gate,
   model/prompt swap gate, judge calibration, LLM-as-judge,
-  foundry-evals pipeline leg,
   EVAL-001..006, EVAL-101..105, evals-manifest. DO NOT USE FOR: token-level
   content filtering — use Azure AI Content Safety;
   adversarial scanning — use threadlight-redteam;
-  agent-runtime action governance — use threadlight-govern; deep evaluator or
-  dataset authoring — use foundry-evals.
+  agent-runtime action governance — use threadlight-govern; generic Foundry
+  batch or continuous eval, evaluator or dataset authoring outside a
+  Threadlight pilot — use microsoft-foundry.
 metadata:
   version: "0.3.1"
 ---

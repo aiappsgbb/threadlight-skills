@@ -7,6 +7,32 @@ field.
 
 ## [Unreleased]
 
+### Official skills lock and routing probe
+
+- Add `skills/_shared/official-skills-lock.json`: `microsoft/azure-skills`
+  `v1.2.77` (`74f27068`) pinned by commit, plugin and skill tree SHAs, the
+  sha256 of every referenced file, the pinned skill descriptions and the full
+  official skill-name catalog (5 plugin roots, 38 names).
+- Add `scripts/verify_official_skills_lock.py` (manual, online) to recompute the
+  lock from the tag; CI runs only offline consistency tests with an injected
+  fetcher.
+- Add `skills/_shared/tests/test_official_skills_lock.py`: lock/manifest
+  consistency, no Threadlight skill name shadows an official or awesome-gbb
+  name, no Threadlight description routes to a custom skill that has an
+  official default, and a static routing probe
+  (`tests/fixtures/routing-probe.json`, description evidence only, not model
+  routing evidence).
+- Descriptions: `threadlight-deploy` and `threadlight-evals` now claim only
+  Threadlight-pilot triggers and route generic Foundry hosted-agent deploy and
+  evaluation to `microsoft-foundry`; `threadlight-local-test` and
+  `threadlight-safe-check` route to `microsoft-foundry` instead of
+  `foundry-evals`; `threadlight-loadtest` to `azure-deploy` instead of
+  `azd-patterns`; `threadlight-redteam` drops `foundry-agt`;
+  `threadlight-consumption-iq` routes bill analysis to the official cost skills.
+  Skill body text, generators and the presenter pin are unchanged in this step.
+- `skill-dependencies.json` records one local upstream TODO per gap (not filed).
+- Plugin/marketplace candidate 2.15.0.
+
 ### Official skills are the default
 
 - Add `skills/_shared/skill-dependencies.json`: every awesome-gbb skill checked

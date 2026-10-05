@@ -120,7 +120,12 @@
           "plugin": "azure@azure-skills",
           "skill": "azure-compliance"
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "learn-ops-knowledge",
+        "target": "Microsoft Learn content (MicrosoftDocs/Agent-Skills regenerates from Learn)",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "azure-monitor-alert-baseline": {
       "label": "residual",
@@ -135,7 +140,12 @@
           "plugin": "azure@azure-skills",
           "skill": "azure-diagnostics"
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "learn-ops-knowledge",
+        "target": "Microsoft Learn content (MicrosoftDocs/Agent-Skills regenerates from Learn)",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "azure-resource-diagnostics": {
       "label": "official-default",
@@ -154,6 +164,11 @@
         "reason": "Azure SRE Agent workflow has no product skill in the azure plugin.",
         "official_tag_checked": "v1.2.77",
         "observation": "git grep at v1.2.77 skills/: 'SRE Agent|sre-agent' 0 files."
+      },
+      "upstream_todo": {
+        "draft": "learn-ops-knowledge",
+        "target": "Microsoft Learn content (MicrosoftDocs/Agent-Skills regenerates from Learn)",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
       }
     },
     "azure-tenant-isolation": {
@@ -178,7 +193,12 @@
           "plugin": "azure@azure-skills",
           "skill": "azure-aigateway"
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "aigateway-hub-spoke",
+        "target": "azure-aigateway references (generic hub/spoke topology; Citadel brand stays Threadlight-owned)",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "citadel-spoke-onboarding": {
       "label": "residual",
@@ -193,7 +213,12 @@
           "plugin": "azure@azure-skills",
           "skill": "azure-aigateway"
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "aigateway-hub-spoke",
+        "target": "azure-aigateway references (generic hub/spoke topology; Citadel brand stays Threadlight-owned)",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "copilot-doctor": {
       "label": "out-of-product-scope",
@@ -229,7 +254,12 @@
           ]
         }
       ],
-      "threadlight_owned_gap": "Delete/recreate failure modes; proposed upstream."
+      "threadlight_owned_gap": "Delete/recreate failure modes; proposed upstream.",
+      "upstream_todo": {
+        "draft": "caphost-lifecycle",
+        "target": "microsoft-foundry/references/standard-agent-setup.md",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "foundry-cost-monitoring": {
       "label": "official-default",
@@ -285,7 +315,12 @@
           ]
         }
       ],
-      "threadlight_owned_gap": "SAFE evidence packaging and release gates stay in threadlight-evals and threadlight-production-ready."
+      "threadlight_owned_gap": "SAFE evidence packaging and release gates stay in threadlight-evals and threadlight-production-ready.",
+      "upstream_todo": {
+        "draft": "evals-ci-gating",
+        "target": "microsoft-foundry/foundry-agent/observe",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "foundry-hosted-agents": {
       "label": "official-default",
@@ -302,7 +337,12 @@
           ]
         }
       ],
-      "threadlight_owned_gap": "Presenter delivery contract and the native-SDK hosted create-definition checks (skills/_shared/presenter.py, docs/presenter-ready.md)."
+      "threadlight_owned_gap": "Presenter delivery contract and the native-SDK hosted create-definition checks (skills/_shared/presenter.py, docs/presenter-ready.md).",
+      "upstream_todo": {
+        "draft": "hosted-agent-durable-ops",
+        "target": "microsoft-foundry/foundry-agent/deploy and troubleshoot",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "foundry-iq": {
       "label": "official-default",
@@ -336,7 +376,12 @@
           "plugin": "azure@azure-skills",
           "skill": "azure-prepare"
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "mcp-server-on-aca",
+        "target": "microsoft-foundry/foundry-agent/toolbox or azure-prepare recipes",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "foundry-mcp-aca-jobs": {
       "label": "residual",
@@ -351,7 +396,12 @@
           "plugin": "azure@azure-skills",
           "skill": "azure-prepare"
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "mcp-server-on-aca",
+        "target": "microsoft-foundry/foundry-agent/toolbox or azure-prepare recipes",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "foundry-mcp-auth": {
       "label": "residual",
@@ -366,7 +416,12 @@
           "plugin": "azure@azure-skills",
           "skill": "entra-app-registration"
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "mcp-server-on-aca",
+        "target": "microsoft-foundry/foundry-agent/toolbox or azure-prepare recipes",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "foundry-network-runbook": {
       "label": "official-default",
@@ -475,7 +530,12 @@
             "foundry-agent/deploy/deploy.md"
           ]
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "teams-publishing",
+        "target": "microsoft-foundry/foundry-agent/deploy (beyond TEAMS_APP_SETUP.md)",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "foundry-toolbox": {
       "label": "official-default",
@@ -521,7 +581,12 @@
             "foundry-agent/invocations-ws/invocations-ws.md"
           ]
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "voice-live",
+        "target": "microsoft-foundry (new voice reference)",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "foundry-voice-live": {
       "label": "residual",
@@ -539,7 +604,12 @@
             "foundry-agent/invocations-ws/invocations-ws.md"
           ]
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "voice-live",
+        "target": "microsoft-foundry (new voice reference)",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "gbb-humanizer": {
       "label": "out-of-product-scope",
@@ -587,7 +657,12 @@
           "plugin": "azure-cost@azure-skills",
           "skill": "cost-estimation"
         }
-      ]
+      ],
+      "upstream_todo": {
+        "draft": "payg-ptu-breakeven",
+        "target": "microsoft-foundry/quota/references/ptu-guide.md or azure-cost cost-estimation",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "progress-guard": {
       "label": "out-of-product-scope",

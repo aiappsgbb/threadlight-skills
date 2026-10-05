@@ -14,7 +14,7 @@ description: >
   boot Kratos export locally.
   DO NOT USE FOR: prod deployment (use threadlight-deploy), pre-pilot
   validation (use threadlight-safe-check), hosted-agent runtime testing
-  in cloud (use foundry-evals).
+  in cloud (use microsoft-foundry).
 metadata:
   version: "1.3.2"
 ---

@@ -10,7 +10,7 @@ description: >
   load runs, production load-test confirmation, load-manifest evidence,
   p50/p95 latency evidence, error-rate/tokens-per-request evidence. DO NOT
   USE FOR: deploying infrastructure or agents (threadlight-deploy /
-  azd-patterns); autonomous/agentic-loop execution — this skill never runs
+  azure-deploy); autonomous/agentic-loop execution — this skill never runs
   unattended and never installs k6/locust itself; release or rollout
   gating (threadlight-production-ready); quality/groundedness evals
   (threadlight-evals); adversarial/safety scans (threadlight-redteam).
