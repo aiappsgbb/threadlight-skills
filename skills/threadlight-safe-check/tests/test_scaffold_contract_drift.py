@@ -56,6 +56,13 @@ def test_predeploy_accepts_project_path_layout() -> None:
     assert _predeploy_gaps("services:\n  mcp:\n    host: containerapp\n    project: ./src/mcp\n") == []
 
 
+def test_predeploy_accepts_trailing_yaml_comments() -> None:
+    text = ("services:\n  mcp:\n    project: ./src/mcp   # MCP server\n"
+            "  ui:\n    project: .\n    docker:\n      path: src/mcp/Dockerfile  # remote build\n")
+    assert _predeploy_gaps(text) == []
+    assert sc._azure_yaml_builds("    path: src/mcp/Dockerfile  # remote build\n", "src/mcp")
+
+
 def test_predeploy_still_flags_missing_mcp_service() -> None:
     assert _predeploy_gaps("services:\n  agent:\n    host: azure.ai.agent\n    project: ./src/agent\n")
 

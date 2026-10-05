@@ -399,8 +399,8 @@ def _azure_yaml_builds(azure_text: str, src: str) -> bool:
     src/mcp/Dockerfile``; older layouts use ``project: ./src/mcp``.
     """
     s = re.escape(src)
-    return bool(re.search(rf"^\s*project:\s*['\"]?(?:\./)?{s}/?['\"]?\s*$", azure_text, re.MULTILINE)
-                or re.search(rf"^\s*path:\s*['\"]?(?:\./)?{s}/Dockerfile['\"]?\s*$", azure_text, re.MULTILINE))
+    return bool(re.search(rf"^\s*project:\s*['\"]?(?:\./)?{s}/?['\"]?\s*(?:#.*)?$", azure_text, re.MULTILINE)
+                or re.search(rf"^\s*path:\s*['\"]?(?:\./)?{s}/Dockerfile['\"]?\s*(?:#.*)?$", azure_text, re.MULTILINE))
 
 
 def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
