@@ -227,14 +227,16 @@ def test_completed_effect_survives_expiry_and_provider_outage(tmp_path):
     async def run():
         h, e, signer, req, _, args, adapter, _, token = await harness(tmp_path)
         claims = jwt.decode(token, options={"verify_signature": False})
-        claims.update(iat=int(time.time()), exp=int(time.time()) + 1)
+        # Wide enough for slow CI pre-effect checks; the effect then outlives exp.
+        expiry = int(time.time()) + 5
+        claims.update(iat=int(time.time()), exp=expiry)
         token = jwt.encode(claims, signer.key, algorithm="RS256",
                            headers={"kid": req.keys[0].kid, "typ": e.EVIDENCE_TYPE})
         request = h.downstream.request
         async def slow_reply(**kwargs):
             result = await request(**kwargs)
             if not kwargs.get("retrieve"):
-                await asyncio.sleep(1.1)
+                await asyncio.sleep(max(0.0, expiry - time.time()) + 1.1)
             return result
         async def unavailable(*_):
             raise OSError("provider offline")

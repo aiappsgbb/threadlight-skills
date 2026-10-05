@@ -17,6 +17,13 @@ Official plugins loaded with ``copilot --plugin-dir DIR`` are visible to
 them with repeatable ``--plugin-dir`` or ``THREADLIGHT_PLUGIN_DIRS``
 (os.pathsep-separated); otherwise the check reports false MISSING/DRIFT.
 
+Install order matters: Copilot CLI (observed on 1.0.91) describes plugin skills
+in plugin install order up to a prompt budget and lists the rest by name only.
+When the official plugins are installed before threadlight-skills, no
+threadlight-* skill is described and Threadlight prompts route to official
+skills (for example "deploy the pilot" to azure-deploy). The listing follows
+the same order, so the check reports ORDER with the reinstall fix.
+
 Exit 0 when every locked skill resolves to the pinned content, 1 otherwise.
 Offline: it reads local files only and never contacts GitHub or Azure.
 """
@@ -33,6 +40,7 @@ from pathlib import Path
 SHARED = Path(__file__).resolve().parent
 LOCK_PATH = SHARED / "official-skills-lock.json"
 MANIFEST_PATH = SHARED / "skill-dependencies.json"
+OFFICIAL_PLUGINS = ("azure@azure-skills", "azure-cost@azure-skills", "foundry-iq-skills@azure-skills")
 
 
 def _load(path: Path) -> dict:
@@ -44,6 +52,15 @@ def _sha256(path: Path) -> str | None:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
         return None
+
+
+def _routing_order(listing: list[dict], official: set[str]) -> str:
+    plugin_rows = [r for r in listing if r.get("enabled", True) and r.get("source") == "plugin"]
+    tl = next((i for i, r in enumerate(plugin_rows) if r["name"].startswith("threadlight-")), None)
+    off = next((i for i, r in enumerate(plugin_rows) if r["name"].split(":")[-1] in official), None)
+    if tl is None or off is None:
+        return "unknown"
+    return "threadlight-first" if tl < off else "official-first"
 
 
 def check(listing: list[dict], lock: dict | None = None, manifest: dict | None = None) -> dict:
@@ -71,13 +88,24 @@ def check(listing: list[dict], lock: dict | None = None, manifest: dict | None =
             else:
                 row["status"] = "ok"
             rows.append(row)
-    status = "ok" if all(r["status"].startswith("ok") for r in rows) else "degraded"
-    return {"status": status, "tag": lock["tag"], "commit": lock["commit"], "skills": rows}
+    official = {skill for entry in lock["plugins"].values() for skill in entry["skills"]}
+    order = _routing_order(listing, official)
+    ok = all(r["status"].startswith("ok") for r in rows) and order != "official-first"
+    return {"status": "ok" if ok else "degraded", "tag": lock["tag"], "commit": lock["commit"],
+            "routing_order": order, "skills": rows}
 
 
 def render(report: dict) -> str:
     tag, commit = report["tag"], report["commit"]
     lines = [f"Official skills pinned at microsoft/azure-skills {tag} ({commit[:8]}): {report['status'].upper()}"]
+    if report.get("routing_order") == "official-first":
+        lines.append("ORDER official plugins are installed before threadlight-skills: Copilot describes skills in "
+                     "install order within a prompt budget, so threadlight-* skills are listed by name only and "
+                     "Threadlight prompts can route to official skills.")
+        lines.append("  Fix: reinstall the official plugins after threadlight-skills:")
+        lines.append("    " + " && ".join(f"copilot plugin uninstall {p}" for p in OFFICIAL_PLUGINS))
+        lines.append("    copilot plugin install threadlight-skills@threadlight-skills  # if not installed")
+        lines.append("    " + " && ".join(f"copilot plugin install {p}" for p in OFFICIAL_PLUGINS))
     for row in report["skills"]:
         status, skill, plugin = row["status"], row["skill"], row["plugin"]
         if status == "ok":

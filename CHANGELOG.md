@@ -41,6 +41,14 @@ plugins (Copilot CLI, `--plugin-dir`, no awesome-gbb).
   reads `--plugin-dir` / `THREADLIGHT_PLUGIN_DIRS` and namespaced
   `plugin:skill` names, so loaded official skills are no longer reported
   MISSING/DRIFT.
+- **Install order (routing).** Copilot CLI 1.0.91 describes plugin skills in
+  install order up to a prompt budget and lists the rest by name only. With the
+  official plugins installed first, no `threadlight-*` skill was described and
+  demo/deploy prompts went to `azure-deploy` or no skill (offline routing
+  matrix: 88% official-first vs 100% threadlight-first). The README now
+  installs threadlight-skills first (with the reinstall fix for existing
+  setups), and `official_skills.py` reports `routing_order` and an `ORDER`
+  finding (exit 1) from the `copilot skill list` order.
 - **F2 — SPEC §11a contract.** A parseable but incomplete governance contract
   (missing framework/tools/governance keys) now routes back to design
   (`incomplete-governance-contract`) instead of a govern hard stop; design emits

@@ -225,3 +225,48 @@ def test_namespaced_skill_names_from_colliding_plugins_resolve(tmp_path):
     report = official_skills.check(listing, lock=lock, manifest=MANIFEST)
     row = next(r for r in report["skills"] if r["skill"] == "foundry-iq")
     assert row["status"] == "ok", row
+
+
+def _with_threadlight(listing, tmp_path, first):
+    tl = [{"name": f"threadlight-{n}", "source": "plugin", "enabled": True,
+           "path": str(tmp_path / "tl" / n)} for n in ("auto", "deploy", "design")]
+    return tl + listing if first else listing + tl
+
+
+def test_threadlight_installed_after_official_is_reported_as_order_risk(tmp_path):
+    # Copilot CLI 1.0.91 describes plugin skills in install order up to a
+    # prompt budget; official-first left every threadlight-* skill name-only
+    # and routed "deploya il pilota" to azure-deploy (Phase 2 baseline 88%).
+    listing, lock = install(tmp_path)
+    report = official_skills.check(_with_threadlight(listing, tmp_path, first=False), lock=lock, manifest=MANIFEST)
+    assert report["routing_order"] == "official-first"
+    assert report["status"] == "degraded"
+    text = official_skills.render(report)
+    assert "ORDER" in text
+    assert "copilot plugin uninstall azure@azure-skills" in text
+    assert text.index("copilot plugin install threadlight-skills@threadlight-skills") < text.index(
+        "copilot plugin install azure@azure-skills")
+
+
+def test_threadlight_installed_first_is_ok(tmp_path):
+    listing, lock = install(tmp_path)
+    report = official_skills.check(_with_threadlight(listing, tmp_path, first=True), lock=lock, manifest=MANIFEST)
+    assert report["routing_order"] == "threadlight-first"
+    assert report["status"] == "ok"
+    assert "ORDER" not in official_skills.render(report)
+
+
+def test_order_is_unknown_without_threadlight_plugin_skills(tmp_path):
+    listing, lock = install(tmp_path)
+    report = official_skills.check(listing, lock=lock, manifest=MANIFEST)
+    assert report["routing_order"] == "unknown"
+    assert report["status"] == "ok"
+
+
+def test_readme_companion_install_order_puts_threadlight_first():
+    text = (ROOT / "README.md").read_text()
+    block = text[text.index("### Companion skills: official first"):]
+    block = block[:block.index("## Live experience")]
+    assert block.index("copilot plugin install threadlight-skills@threadlight-skills") < block.index(
+        "copilot plugin install azure@azure-skills")
+    assert "copilot plugin uninstall azure@azure-skills" in block

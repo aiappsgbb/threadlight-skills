@@ -330,8 +330,10 @@ next to the existing use-case skills.
    (`--plugin-dir DIR`, repeatable, or `THREADLIGHT_PLUGIN_DIRS`); without them
    the listing omits those plugins and reports false MISSING/DRIFT. It compares the installed
    official skills with the pinned `azure@azure-skills` release. This check
-   **does not stop** the pilot: show each MISSING or DRIFT line verbatim,
-   including its fix and Threadlight fallback, and continue. The presenter
+   **does not stop** the pilot: show each MISSING, DRIFT or ORDER line verbatim,
+   including its fix and Threadlight fallback, and continue. ORDER means the
+   official plugins were installed before threadlight-skills, so threadlight-*
+   skills are not described to the model; tell the user to reinstall them after it. The presenter
    deploy handoff still stops on drift as `docs/presenter-ready.md` describes.
    Exit 0 records `official_skills: "ok"` and exit 1 records `"degraded"`. If
    the `copilot` CLI is unavailable or cannot list skills, the check exits 2
