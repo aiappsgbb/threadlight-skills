@@ -217,7 +217,7 @@ observability:
   trace_convention: gen_ai.*            # semantic-convention spans for agent turns / tool calls
 ```
 
-→ **Pre-populates** SPEC § 12 and the `microsoft-foundry` wiring the deploy
+→ **Pre-populates** SPEC § 12 and the `threadlight-deploy/references/observability` wiring the deploy
 leg builds on. Observability is not a post-hoc add — it is a foundation.
 
 ---

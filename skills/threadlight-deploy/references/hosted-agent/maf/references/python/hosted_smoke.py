@@ -1,6 +1,6 @@
 """Canonical native SDK model/session readback oracle and private BASIC smoke.
 
-Source of truth for `../../SKILL.md § Private BASIC consumer`.
+Source of truth for `../../README.md § Private BASIC consumer`.
 The CLI performs live GETs and ONE model request only with --execute.
 It never deploys, grants roles, updates routing or cleans up. Output stays private.
 """

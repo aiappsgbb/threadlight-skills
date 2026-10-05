@@ -107,7 +107,7 @@ design            local-test       deploy             safe-check
        ┌──────────────────────────────────────────┐
        │ awesome-gbb companion SKILLs             │
        │ (threadlight-deploy/references/hosted-agent/maf, threadlight-deploy/references/azd-modules,    │
-       │  microsoft-foundry, …)               │
+       │  threadlight-deploy/references/observability, …)               │
        └──────────────────────────────────────────┘
 ```
 

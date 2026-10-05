@@ -300,8 +300,8 @@ Generate `infra/triggers/{trigger-name}.bicep`. Pick the template by shape:
 > **Bicep helper symbols** (`jobExists`, `appExists`, `fetchLatestImage`,
 > `emptyContainerImage`) are **expected to be passed in as params or
 > defined in your `infra/main.bicep`**. They come from the canonical
-> azd-Bicep helper pattern documented in `threadlight-deploy/references/azd-modules/SKILL.md`
-> § "Helper symbols for image-aware deployment". Don't redefine them
+> azd-Bicep helper pattern documented in [`threadlight-deploy/references/azd-modules/README.md`](../threadlight-deploy/references/azd-modules/README.md)
+> § "Fetch-Latest-Image Pattern (Bicep + ACR)". Don't redefine them
 > ad-hoc in this module; reuse the parent's.
 
 ```bicep

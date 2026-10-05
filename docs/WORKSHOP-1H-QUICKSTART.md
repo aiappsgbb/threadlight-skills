@@ -269,7 +269,7 @@ Then review the broader readiness work:
   selector before go-live.
 - **Continuous eval** — `microsoft-foundry` consumes `tests/quickstart.jsonl`
   (which Pattern 0 has been quietly writing the entire workshop).
-- **Observability** — `microsoft-foundry` wires App Insights + OTel into
+- **Observability** — `threadlight-deploy/references/observability` wires App Insights + OTel into
   hosted-agent + MCP without changing app code.
 - **End-to-end automation** — `threadlight-auto` orchestrates the full
   design → local-test → deploy → safe-check → evals pipeline as one prompt.

@@ -3,7 +3,7 @@
 # Canonical unified GHCP SDK hosted-agent azure.yaml — GA container-deploy shape.
 #
 # Source of truth for the prose example in
-# `../../SKILL.md § azure.yaml (unified GA deployment)`.
+# `../../README.md § azure.yaml (unified GA deployment)`.
 #
 # Matches the official Microsoft sample
 # (microsoft-foundry/foundry-samples commit

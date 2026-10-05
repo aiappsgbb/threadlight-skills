@@ -7,7 +7,7 @@
 // Outcome: all 4 demo scenarios passed live; deploy attempt 3 (after MID-9
 //          quota fix + MID-10 capabilityHost fix) Succeeded in 3m02s.
 //
-// Source of truth for the prose example in ../../SKILL.md § Composable
+// Source of truth for the prose example in ../../README.md § Composable
 // Bicep Module Library. When this file changes, also update the prose
 // (per AGENTS.md § 4 mass-edit playbook).
 //

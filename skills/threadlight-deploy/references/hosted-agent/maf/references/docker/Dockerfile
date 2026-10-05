@@ -1,7 +1,7 @@
 # Canonical hosted-agent Dockerfile.
 #
 # Source of truth for the prose example in
-# `../../SKILL.md § Dockerfile`.
+# `../../README.md § Dockerfile`.
 #
 # Container image for a Foundry hosted agent (GA container-deploy path).
 # `azd deploy` builds this remotely in Azure Container Registry by

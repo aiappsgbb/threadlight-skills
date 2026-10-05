@@ -1,6 +1,6 @@
 """Canonical offline staging and artifact inventory for a private BASIC consumer.
 
-Source of truth for `../../SKILL.md § Private BASIC consumer`.
+Source of truth for `../../README.md § Private BASIC consumer`.
 No logins, build commands, subprocesses or Azure calls. See ../private-basic.md.
 """
 

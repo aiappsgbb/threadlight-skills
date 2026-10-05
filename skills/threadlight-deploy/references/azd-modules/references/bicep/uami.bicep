@@ -1,5 +1,5 @@
 // Canonical workload pull identity without bundled permissions.
-// Source of truth for `../../SKILL.md § Private network composition`.
+// Source of truth for `../../README.md § Private network composition`.
 
 param name string
 param location string

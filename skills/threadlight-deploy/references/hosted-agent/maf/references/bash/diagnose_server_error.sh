@@ -3,7 +3,7 @@
 # Local diagnostic for Foundry hosted agents returning `server_error`.
 #
 # Source of truth for the prose example in
-# `../../SKILL.md § Diagnosing server_error locally`.
+# `../../README.md § Diagnosing server_error locally`.
 #
 # Step 1 (pull `run.last_error` via the SYNC AIProjectClient) is documented
 # inline in SKILL.md — it requires Python, not bash. This script handles

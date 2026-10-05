@@ -76,8 +76,8 @@ The canonical [Python gate](python/deploy_preflight.py) uses only the standard
 library. From the catalog root:
 
 ```bash
-python3 skills/foundry-hosted-agents/references/python/deploy_preflight.py <private-setup-evidence.json>
-python3 skills/foundry-hosted-agents/references/python/deploy_preflight.py <private-execution-evidence.json> --phase execution
+python3 skills/threadlight-deploy/references/hosted-agent/maf/references/python/deploy_preflight.py <private-setup-evidence.json>
+python3 skills/threadlight-deploy/references/hosted-agent/maf/references/python/deploy_preflight.py <private-execution-evidence.json> --phase execution
 ```
 
 Exit `1` means `BLOCKED`, with the first issue's exact `code`, `scope` and `action`.

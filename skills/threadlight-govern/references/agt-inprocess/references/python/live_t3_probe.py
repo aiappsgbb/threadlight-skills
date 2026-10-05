@@ -1,6 +1,6 @@
 """Canonical live T3 verification probe for the AGT 4.1.0 / AF 1.13.0 pin.
 
-Source of truth for the prose example in `../../SKILL.md § Verification status`.
+Source of truth for the prose example in `../../README.md § Verification status`.
 
 This is the ONLY script in this skill that touches real Azure resources. It
 proves, against a real `<ci-foundry-account>` deployment in

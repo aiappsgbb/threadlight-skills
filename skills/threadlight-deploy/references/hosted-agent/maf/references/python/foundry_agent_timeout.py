@@ -1,7 +1,7 @@
 """Canonical FoundryAgent timeout parameter usage (MAF 1.8.0).
 
 Source of truth for the prose example in
-`../../SKILL.md § FoundryAgent timeout parameter (MAF 1.8.0)`.
+`../../README.md § FoundryAgent timeout parameter (MAF 1.8.0)`.
 
 Demonstrates the new `timeout: float | None = None` kwarg on
 `agent_framework.foundry.FoundryAgent` (added in MAF 1.8.0). Per the

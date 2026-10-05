@@ -1,6 +1,6 @@
 """Canonical live-import + shape contract probe for the AGT 4.1.0 pin.
 
-Source of truth for the prose example in `../../SKILL.md § Wiring snippet`.
+Source of truth for the prose example in `../../README.md § Wiring snippet`.
 
 This is the durable regression harness behind the ``agent-governance-toolkit``
 4.1.0 / Agent Framework Core 1.13.0 pin (see ``../upstream-pin.md``). It is

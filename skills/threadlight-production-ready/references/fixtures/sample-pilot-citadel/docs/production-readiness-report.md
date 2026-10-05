@@ -316,9 +316,9 @@ flowchart LR
 10. **IAM-007** — Agent identity declares a responsible owner. See: `threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`
 11. **IAM-008** — Agent identity scope is least-privilege. See: `threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`
 12. **IAM-009** — Agent identity lifecycle (expiry/review) is declared. See: `threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`
-13. **KPI-001** — Outcome KPI baselines declared (latency, cost/interaction, success-rate). See: `microsoft-foundry`
-14. **KPI-002** — Deviation alert wired for an outcome KPI baseline. See: `microsoft-foundry`
-15. **KPI-003** — Outcome scorecard joins eval pass-rate + actual cost/successful interaction + traces. See: `microsoft-foundry`
+13. **KPI-001** — Outcome KPI baselines declared (latency, cost/interaction, success-rate). See: `threadlight-deploy/references/observability`
+14. **KPI-002** — Deviation alert wired for an outcome KPI baseline. See: `threadlight-deploy/references/observability`
+15. **KPI-003** — Outcome scorecard joins eval pass-rate + actual cost/successful interaction + traces. See: `threadlight-deploy/references/observability`
 16. **MDL-002** — Deprecation plan referenced in SPEC. See: `microsoft-foundry`
 17. **MDL-003** — Model upgrade canary process documented. See: `microsoft-foundry`
 18. **MDL-005** — Fallback model strategy documented. See: `microsoft-foundry`
@@ -326,8 +326,8 @@ flowchart LR
 20. **MDL-008** — Knowledge index refresh cadence declared. See: `microsoft-foundry`
 21. **MDL-009** — Project-level RBAC declared on Foundry account. See: `microsoft-foundry`
 22. **MDL-011** — Agent thread retention/policy declared in SPEC. See: `microsoft-foundry`
-23. **OBS-004** — Foundry observability emit configured. See: `microsoft-foundry`
-24. **OBS-005** — Workbook scaffold present. See: `microsoft-foundry`
+23. **OBS-004** — Foundry observability emit configured. See: `threadlight-deploy/references/observability`
+24. **OBS-005** — Workbook scaffold present. See: `threadlight-deploy/references/observability`
 25. **RAI-004** — PII redaction strategy documented. See: `threadlight-govern/references/agt-inprocess`
 26. **RAI-005** — Groundedness check planned for RAG. See: `threadlight-govern/references/agt-inprocess`
 27. **REL-002** — Multi-region plan documented if RTO < 4h. See: `microsoft-foundry`
@@ -354,7 +354,7 @@ Joins the three outcome signals a production review needs (eval quality + measur
 |---|---|---|
 | Eval pass-rate | not-verified | `specs/evals-manifest.json` (threadlight-evals) |
 | Actual cost / successful interaction | not-verified | `specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals) |
-| Traces emitting | ✅ yes | microsoft-foundry / OTel wiring |
+| Traces emitting | ✅ yes | threadlight-deploy/references/observability / OTel wiring |
 
 | Baseline declared | Status |
 |---|---|

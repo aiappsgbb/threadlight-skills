@@ -58,7 +58,7 @@ hard-fail**.
 |---|---|
 | Schedule continuous evals | `microsoft-foundry` (Plan A or Plan B) |
 | Fix eval dataset shape | `microsoft-foundry` (enriched dataset shape) |
-| Wire threshold alert | `microsoft-foundry` |
+| Wire threshold alert | `threadlight-deploy/references/observability` + `microsoft-foundry` |
 | Add eval scenarios | `threadlight-design` (SPEC § 9) |
 
 ## Why this pillar matters

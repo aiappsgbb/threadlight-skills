@@ -15,7 +15,7 @@ Layers demonstrated (full threat model in SKILL.md):
     L3  secret_status() returns secret METADATA, never the value.
         safe_lookup() rejects path-traversal / injection characters.
     L5  audit_event() emits one structured line per call; ACA ships stdout to
-        Log Analytics for a microsoft-foundry scheduled-query alert.
+        Log Analytics for a threadlight-deploy/references/observability scheduled-query alert.
 
 NEVER call one @mcp.tool()-decorated function from inside another — @mcp.tool()
 wraps it in a FunctionTool that is not plain-callable. Extract shared logic into
@@ -50,7 +50,7 @@ _UNSAFE = ("..", "/", "\\", ";", "|", "`", "$(")
 
 def audit_event(caller: str, tool: str, decision: str, detail: str = "") -> None:
     """Emit one structured audit line (Layer 5). ACA -> Log Analytics captures
-    stdout; a microsoft-foundry scheduled query alerts on spikes / denials."""
+    stdout; a threadlight-deploy/references/observability scheduled query alerts on spikes / denials."""
     _audit.info(
         json.dumps(
             {

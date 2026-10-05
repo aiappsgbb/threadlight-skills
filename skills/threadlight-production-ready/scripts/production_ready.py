@@ -4028,7 +4028,7 @@ def _check_observability_static(ctx: RepoContext) -> list[Finding]:
 #                                     (threadlight-evals)
 #   * cost per successful interaction specs/cost-reconciliation-manifest.json
 #                                     (threadlight-consumption-iq actuals)
-#   * traces emitting                 microsoft-foundry / OTel wiring in
+#   * traces emitting                 threadlight-deploy/references/observability / OTel wiring in
 #                                     infra+src
 #
 # plus the declared baseline targets + a deviation-alert resource. The cost
@@ -4572,7 +4572,7 @@ def _check_kpi_static(ctx: RepoContext) -> list[Finding]:
     elif not have:
         out.append(_mk_finding("KPI-003", status="not-verified",
             detail="No outcome signals yet — run threadlight-evals, threadlight-consumption-iq "
-                   "(`actuals` then `reconcile`), and microsoft-foundry to populate the "
+                   "(`actuals` then `reconcile`), and threadlight-deploy/references/observability to populate the "
                    "scorecard."))
     else:
         out.append(_mk_finding("KPI-003", status="should-fix",
@@ -7575,7 +7575,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         "agent-governance": "`threadlight-govern/references/agt-inprocess`",
         "identity-access": "`threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`",
         "secrets": "`threadlight-deploy/references/azd-modules`",
-        "observability": "`microsoft-foundry`",
+        "observability": "`threadlight-deploy/references/observability`",
         "continuous-evals": "`microsoft-foundry`",
         "responsible-ai": "`threadlight-govern/references/agt-inprocess`",
         "hitl-audit": "`threadlight-hitl-patterns`",
@@ -7684,7 +7684,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         out.append(f"| Eval pass-rate | {pr_str} | `specs/evals-manifest.json` (threadlight-evals) |")
         out.append(f"| Actual cost / successful interaction | {cpi_str} | "
                    "`specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals) |")
-        out.append(f"| Traces emitting | {_yn(bool(kpi.get('traces_emit')))} | microsoft-foundry / OTel wiring |")
+        out.append(f"| Traces emitting | {_yn(bool(kpi.get('traces_emit')))} | threadlight-deploy/references/observability / OTel wiring |")
         out.append("")
         out.append("| Baseline declared | Status |")
         out.append("|---|---|")

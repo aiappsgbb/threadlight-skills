@@ -580,7 +580,7 @@ alone do not establish runtime enforcement. See the lifecycle above.
 
 **Right when** the customer is in a greenfield or experimental tenant where introducing APIM mid-pilot would be premature. Still produces auditable evidence; just operates one defence layer instead of two.
 
-Remediation skills: [`threadlight-govern/references/agt-inprocess`](../skills/threadlight-govern/references/agt-inprocess/README.md), [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry).
+Remediation skills: [`threadlight-govern/references/agt-inprocess`](../skills/threadlight-govern/references/agt-inprocess/README.md), [`threadlight-deploy/references/observability`](../skills/threadlight-deploy/references/observability/README.md).
 
 ### 🌐 Standard AI gateway / VNet
 
@@ -686,7 +686,7 @@ This skill is **the cross-cutting scorecard.** It does not replace any of the fo
 | Generating the prod CI/CD pipeline + env (UAMI / federated creds, RBAC, private-VNet runners) | `threadlight-cicd` |
 | Structural / behavioural deploy gate | `threadlight-safe-check --phase post-deploy` |
 | Invocation testing of the agent | `microsoft-foundry` |
-| Wiring App Insights / OTel | `microsoft-foundry` |
+| Wiring App Insights / OTel | `threadlight-deploy/references/observability` |
 | Provisioning Citadel hub | `threadlight-citadel-hub` |
 | Onboarding spoke to Citadel | `threadlight-citadel-spoke` |
 | Provisioning Azure SRE Agent | `azure-sre-agent` |

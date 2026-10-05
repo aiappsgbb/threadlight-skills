@@ -410,7 +410,7 @@ and one successful command is not complete runtime evidence.
 **Inputs.** `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`,
 `specs/manifest.json` (the § 11c selector contract). Reads `threadlight-deploy/references/hosted-agent/maf`
 for RBAC + identity, `threadlight-mcp-aca` for MCP deploy, and
-`microsoft-foundry` for the 3-layer telemetry wiring.
+`threadlight-deploy/references/observability` for the 3-layer telemetry wiring.
 
 **Outputs.**
 - `container.py` — **GHCP SDK runtime by default**
@@ -953,13 +953,13 @@ that agent over the next weeks and months.
 
 | Family | What it adds after the wedge | Key skills |
 |---|---|---|
-| **`foundry-*` building blocks** | The Azure-Foundry primitives that threadlight composes — RBAC, agent runtime, MCP deploy, enterprise RAG, document / vision / speech, Teams CEA, evals, telemetry, and **skills/tools published as versioned artifacts**. | `threadlight-deploy/references/hosted-agent/maf`, `threadlight-mcp-aca`, `foundry-iq`, `azure-ai`, `foundry-teams-bot`, `microsoft-foundry`, `threadlight-govern/references/agt-inprocess`, `microsoft-foundry`, `threadlight-deploy/references/hosted-agent/ghcp` |
+| **`foundry-*` building blocks** | The Azure-Foundry primitives that threadlight composes — RBAC, agent runtime, MCP deploy, enterprise RAG, document / vision / speech, Teams CEA, evals, telemetry, and **skills/tools published as versioned artifacts**. | `threadlight-deploy/references/hosted-agent/maf`, `threadlight-mcp-aca`, `foundry-iq`, `azure-ai`, `foundry-teams-bot`, `microsoft-foundry`, `threadlight-deploy/references/observability`, `microsoft-foundry`, `threadlight-govern/references/agt-inprocess`, `microsoft-foundry`, `threadlight-deploy/references/hosted-agent/ghcp` |
 | **`citadel-*` governance** | The production landing zone — APIM AI Gateway, Access Contracts, JWT auth, BYO VNet, multi-region hub. | `threadlight-citadel-hub`, `threadlight-citadel-spoke` |
 | **`gbb-*` content** | Pitch-side artefacts (PowerPoint generators, narrative humanisers). | `gbb-pptx`, `gbb-humanizer` |
 | **`auto-demo-producer`** | Records the deployed agent as a narrated video demo (Playwright + edge-tts + ffmpeg). | `auto-demo-producer` |
 | **`threadlight-deploy/references/azd-modules` / `threadlight-tenant-isolation`** | Cross-cutting deployment + multi-tenant isolation rules. | `threadlight-deploy/references/azd-modules`, `threadlight-tenant-isolation` |
 
-> **Cross-skill defaults that matter.** `microsoft-foundry` is
+> **Cross-skill defaults that matter.** `threadlight-deploy/references/observability` is
 > **always** layered into `threadlight-deploy` (Bicep substrate +
 > account-level App Insights connection + `configure_azure_monitor()` in
 > each ACA workload). `microsoft-foundry` runs against SPEC § 9 scenarios
@@ -1008,7 +1008,7 @@ the cited `SKILL.md`; this is the index, not the cure.
 Insights connection, or `configure_azure_monitor()` was never called in
 the ACA workload.
 
-**Fix.** `microsoft-foundry` § 3-Layer Wiring (postprovision script
+**Fix.** `threadlight-deploy/references/observability` § 3-Layer Wiring (postprovision script
 puts the AppIn connection on the **account**, not the project; ACA
 workload boots with `configure_azure_monitor()` wrapped for local-dev
 safety). `threadlight-safe-check --phase post-deploy` raises a gap.

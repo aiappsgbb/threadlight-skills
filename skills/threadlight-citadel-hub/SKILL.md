@@ -137,7 +137,7 @@ on day 91.
 | Deploy a single-resource Foundry inside a private VNet (no APIM) | `microsoft-foundry` |
 | Switch tenants, isolate az/azd config dirs | `threadlight-tenant-isolation` |
 | Apply MCAPS pilot tagging conventions (`SecurityControl: Ignore`, `AZURE_TAGS`) | `threadlight-deploy/references/azd-modules` |
-| Get App Insights traces from the deployed hub into your spoke | `microsoft-foundry` |
+| Get App Insights traces from the deployed hub into your spoke | `threadlight-deploy/references/observability` |
 
 ---
 
@@ -816,10 +816,10 @@ argument validation remains the caller's or tool body's responsibility.
 |-------|-------------|
 | `threadlight-tenant-isolation` | **Mandatory.** Per-tenant `AZURE_CONFIG_DIR` + `AZD_CONFIG_DIR` + two-layer assertion before `azd up`. The hub is too expensive to deploy to the wrong sub. |
 | `threadlight-deploy/references/azd-modules` | Apply MCAPS pilot tagging (`SecurityControl: Ignore` is already in upstream `bicepparam`; layer `AZURE_TAGS` env-var per `threadlight-deploy/references/azd-modules` for cost-allocation tags). |
-| `microsoft-foundry` | Pair for spoke-side VNet bring-up. Path C above is pre-wired for this. The spoke VNet peers to the hub VNet; `apim-dns-zone-link.bicep` from `microsoft-foundry` links `privatelink.azure-api.net` into the spoke. |
+| `microsoft-foundry` | Pair for spoke-side VNet bring-up. Path C above is pre-wired for this. The spoke VNet peers to the hub VNet; link the hub's `privatelink.azure-api.net` zone into the spoke with [`threadlight-citadel-spoke`](../threadlight-citadel-spoke/SKILL.md) (`apimDnsZoneResourceId`). |
 | `threadlight-citadel-spoke` | The **post-deploy** sibling. Hub deploys infra; spoke-onboarding creates per-team Access Contracts on top. |
 | `threadlight-govern` | The **in-process** sibling. Hub governs at the gateway; AGT governs inside the agent process. **Use both.** |
-| `microsoft-foundry` | The hub deploys its own 3× Application Insights (apim, foundry, func). For spoke agent traces to flow into the hub's central observability story, follow `microsoft-foundry`'s 3-layer pattern (Bicep + AppIn account-level connection + `configure_azure_monitor()`). |
+| `threadlight-deploy/references/observability` | The hub deploys its own 3× Application Insights (apim, foundry, func). For spoke agent traces to flow into the hub's central observability story, follow `threadlight-deploy/references/observability`'s 3-layer pattern (Bicep + AppIn account-level connection + `configure_azure_monitor()`). |
 | `microsoft-foundry` | If a spoke needs to call models in a Foundry project that lives in a *different* Foundry account from the hub's Foundry pool, the cross-resource pattern (connectionName/deploymentName) routes through APIM transparently. |
 
 ---
@@ -960,4 +960,4 @@ The following observations were captured during the historical audit pass on
   warm, `gpt-5.4-mini` chat ~1 sec warm round-trip). Cross-skill
   composition wired to threadlight-tenant-isolation, threadlight-deploy/references/azd-modules,
   microsoft-foundry, threadlight-citadel-spoke, threadlight-govern,
-  microsoft-foundry.
+  threadlight-deploy/references/observability.

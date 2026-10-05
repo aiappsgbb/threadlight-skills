@@ -1,6 +1,6 @@
 """Canonical hosted profile selection and read-only artifact provenance.
 
-Source of truth for `../../SKILL.md § Deployment preflight`.
+Source of truth for `../../README.md § Deployment preflight`.
 No Azure calls, installation, account switching, or automatic migration.
 """
 

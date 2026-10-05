@@ -476,7 +476,7 @@ was considered.
 
 > **Threadlight default:** `app-insights` should always be in
 > `module_selectors`. Add `Microsoft.Insights/components` to
-> `expected_resource_types`. See `microsoft-foundry` skill for the
+> `expected_resource_types`. See the threadlight-deploy observability reference (`references/observability`) for the
 > drop-in `app-insights.bicep` + `log-analytics.bicep` modules and the
 > postprovision script that connects the Foundry account to AppIn so
 > hosted-agent traces flow.

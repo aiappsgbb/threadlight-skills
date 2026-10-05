@@ -1,5 +1,5 @@
 # Canonical no-tools container; source of truth for
-# ../../SKILL.md § Private BASIC consumer.
+# ../../README.md § Private BASIC consumer.
 # Supply approved immutable base references through native azd buildArgs.
 ARG PYTHON_IMAGE
 ARG UV_IMAGE

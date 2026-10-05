@@ -2,7 +2,7 @@
 #
 # This is the field-validated reference shape for a Foundry hosted agent on
 # the GA container-deploy path. It is the SOURCE OF TRUTH for the prose
-# example in `../../SKILL.md § Runtime Pattern (MAF Variant)`. When the SKILL
+# example in `../../README.md § Runtime Pattern (MAF Variant)`. When the SKILL
 # prose drifts from this file (or vice-versa), update both in the same commit.
 #
 # Pre-conditions consumed from the platform-injected environment:

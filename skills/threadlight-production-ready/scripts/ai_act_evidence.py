@@ -207,7 +207,7 @@ ARTICLE_MAP = [
      ["scorecard", "mcp_sbom"], "threadlight-production-ready", _coverage_art11),
     ("art-12-records", "Article 12 — Record-keeping (logging)",
      "Automatically record events over the system's lifetime for traceability.",
-     ["scorecard", "agent_identity"], "microsoft-foundry", _coverage_art12),
+     ["scorecard", "agent_identity"], "threadlight-deploy/references/observability", _coverage_art12),
     ("art-14-oversight", "Article 14 — Human oversight",
      "Enable effective oversight by natural persons during operation.",
      ["scorecard"], "threadlight-hitl-patterns", _coverage_art14),

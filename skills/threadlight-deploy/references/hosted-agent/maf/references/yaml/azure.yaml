@@ -5,7 +5,7 @@
 # requiredVersions is a CLI constraint, not certification of every later version.
 #
 # Source of truth for the prose example in
-# `../../SKILL.md § azure.yaml (unified hosted-agent configuration)`.
+# `../../README.md § azure.yaml (unified hosted-agent configuration)`.
 #
 # This is the single-file contract that replaces the old two-file
 # `agent.yaml` + `agent.manifest.yaml` split. Connects to a

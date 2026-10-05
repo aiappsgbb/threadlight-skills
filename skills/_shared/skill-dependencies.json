@@ -457,7 +457,8 @@
           "skill": "microsoft-foundry",
           "paths": [
             "foundry-agent/trace/trace.md",
-            "foundry-agent/insights/insights.md"
+            "foundry-agent/insights/insights.md",
+            "foundry-agent/troubleshoot/troubleshoot.md"
           ]
         },
         {
@@ -465,7 +466,15 @@
           "skill": "appinsights-instrumentation"
         }
       ],
-      "threadlight_owned_gap": "Governance audit telemetry conventions stay in threadlight-govern."
+      "threadlight_owned_gap": "Reading traces, troubleshooting and generic App Insights instrumentation stay official. v1.2.77 ships no postprovision script for the Foundry account-level App Insights connection on Threadlight-generated Bicep, no guarded init_telemetry() helper (appinsights-instrumentation/references/python.md calls configure_azure_monitor() unguarded, the hosted-agent O-011 server_error failure), no single-workspace observability Bicep composition and no first-trace / KQL probe helpers; these are ported to skills/threadlight-deploy/references/observability. Governance audit telemetry conventions stay in threadlight-govern.",
+      "note": "Ported reference, not a skill: the official microsoft-foundry trace/troubleshoot guidance and appinsights-instrumentation remain the default route.",
+      "threadlight_target": "skills/threadlight-deploy/references/observability",
+      "provenance": "awesome-gbb@7f1de882 (MIT)",
+      "upstream_todo": {
+        "draft": "observability-substrate",
+        "target": "appinsights-instrumentation and microsoft-foundry/foundry-agent/trace",
+        "status": "local draft only; not filed (Q5: do not touch microsoft/azure-skills)"
+      }
     },
     "foundry-prompt-agents": {
       "label": "official-default",

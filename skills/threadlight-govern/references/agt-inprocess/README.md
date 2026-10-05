@@ -47,7 +47,7 @@ AgentOps aggregates evidence and never replaces those enforcement controls.
 | Edge auth, rate limiting, product policy | APIM / gateway — see [`threadlight-citadel-spoke`](../../../threadlight-citadel-spoke/SKILL.md) | Gates the HTTP edge; AGT gates inside the tool loop. |
 | Network isolation (VNet, private endpoints) | [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Network plane, not policy plane. |
 | Quality / task-adherence evaluation | [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | AGT governs the safety of actions, not answer quality. |
-| Telemetry plumbing (App Insights, OTel exporters) | [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | AGT **emits** CloudEvents; this skill owns the pipe they flow through. |
+| Telemetry plumbing (App Insights, OTel exporters) | [`threadlight-deploy/references/observability`](../../../threadlight-deploy/references/observability/README.md) | AGT **emits** CloudEvents; this skill owns the pipe they flow through. |
 
 Any workload with both chat content and side-effecting tools needs
 Content Safety **and** AGT — never treat one as a stand-in for the
@@ -232,7 +232,7 @@ Load every policy file in the directory at once:
 from agent_os.policies import PolicyEvaluator
 
 evaluator = PolicyEvaluator()
-evaluator.load_policies("skills/foundry-agt/references/policies")
+evaluator.load_policies("skills/threadlight-govern/references/agt-inprocess/references/policies")
 ```
 
 `load_policies(...)` is the only loader this skill exercises and pins —
@@ -268,7 +268,7 @@ the chain and confirms nothing was altered after the fact — this is
 third-party certification of anything upstream or downstream.
 `audit_log.export_cloudevents()` emits an OTel-compatible CloudEvents
 list; wire it into the App Insights pipeline
-[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) already
+[`threadlight-deploy/references/observability`](../../../threadlight-deploy/references/observability/README.md) already
 provisions rather than inventing parallel telemetry plumbing.
 
 ---
@@ -292,7 +292,7 @@ agent = build_governed_agent(
     name="my-governed-agent",
     instructions="...",
     chat_client=chat_client,
-    policy_dir="skills/foundry-agt/references/policies",
+    policy_dir="skills/threadlight-govern/references/agt-inprocess/references/policies",
     allowed_tools=["web_search"],
     denied_tools=["delete_account"],
 )
@@ -313,7 +313,7 @@ shape.
 Run the pinned validation flow rather than trusting this prose:
 
 ```bash
-python3 skills/foundry-agt/references/python/contract_probe.py
+python3 skills/threadlight-govern/references/agt-inprocess/references/python/contract_probe.py
 ```
 
 or run the equivalent `validation.script` in
@@ -399,7 +399,7 @@ shape with `detection_confidence: 0.0`.
   middleware wires into.
 - [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) — quality / task-adherence
   evaluation; complements, does not replace, action governance.
-- [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) — owns
+- [`threadlight-deploy/references/observability`](../../../threadlight-deploy/references/observability/README.md) — owns
   the App Insights pipe `AuditLog.export_cloudevents()` exports to.
 - [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) — network
   isolation; a different plane entirely.

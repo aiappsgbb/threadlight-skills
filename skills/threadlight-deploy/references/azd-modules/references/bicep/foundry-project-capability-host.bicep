@@ -1,5 +1,5 @@
 // Canonical Basic project capability host with platform-managed backing stores.
-// Source of truth for `../../SKILL.md § Private network composition`.
+// Source of truth for `../../README.md § Private network composition`.
 // This is project-wide infrastructure, not an agent-local routing toggle.
 
 param accountName string

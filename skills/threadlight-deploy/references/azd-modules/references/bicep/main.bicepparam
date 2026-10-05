@@ -5,7 +5,7 @@
 // Live-deployed: 2026-05-29 (agentic-loop SKILL Validation history row 8)
 // Subscription: <internal-pilot-sub> (swedencentral)
 //
-// Source of truth for the prose example in ../../SKILL.md § azd env set
+// Source of truth for the prose example in ../../README.md § azd env set
 // + JSON arrays/objects: use .bicepparam, not JSON parameters.
 //
 // ⚠️  This file references `./main.bicep` via the `using` directive.

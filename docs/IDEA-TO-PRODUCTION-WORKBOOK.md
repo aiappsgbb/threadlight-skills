@@ -360,7 +360,7 @@ Legacy v2 captures stay historical and cannot pass the new readiness gate.
 ### 9 · Observability — can we see what it's doing? 🟡
 
 ```
-Use the microsoft-foundry skill to confirm the agent is emitting traces,
+Use the threadlight-deploy observability reference (`references/observability`) to confirm the agent is emitting traces,
 and show me the spans for the eval runs — model calls and tool calls.
 ```
 

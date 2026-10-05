@@ -405,7 +405,7 @@ apply HTTP-layer transport timeouts on the underlying client instead.
 > **See also (MAF 1.8.0, experimental):**
 > - `AgentFileStore` — new abstract base class for agent file-management
 >   backends. Re-exported as `from agent_framework import AgentFileStore`.
->   Concrete implementations + usage patterns live in [`foundry-memory`](https://github.com/microsoft/azure-skills/blob/main/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md) and
+>   Concrete implementations + usage patterns live in [`foundry-memory`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md) and
 >   `microsoft-foundry`. NOT consumed by the hosted-agents runtime patterns
 >   documented in this skill.
 
@@ -454,11 +454,11 @@ from the canonical
 >   **Voice Live** retains its separately documented status in `foundry-voice-live`.
 > - **Hosted tracing** (distributed traces / gen_ai spans in App
 >   Insights) is partial GA / preview depending on the exact signal —
->   see `microsoft-foundry` for the current split.
+>   see `threadlight-deploy/references/observability` for the current split.
 > - **Agent guardrails** (content-safety toggle), **Optimizer**,
 >   and **Memory** remain preview surfaces layered on
 >   top of the GA hosted-agent runtime — see their owning skills
->   ([`foundry-memory`](https://github.com/microsoft/azure-skills/blob/main/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md)) for details; this skill does
+>   ([`foundry-memory`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md)) for details; this skill does
 >   not restate their contracts.
 > - **Routines** is a GA service with a Python `beta.routines` client surface.
 >   See `microsoft-foundry` for client versions, trigger/delivery evidence and
@@ -1706,9 +1706,9 @@ unchanged.
 ### Mitigation (eval / workshop posture)
 
 * **Run evals in 5-scenario batches** with 5-minute cooldown between
-  batches. Pre-warm each batch with a throwaway invocation. See
-  `microsoft-foundry` SKILL § "Warmup retry loop, not single-shot" and
-  § "Resume-after-cooldown".
+  batches. Pre-warm each batch with a throwaway invocation and retry the
+  warmup instead of firing a single shot; after a throttled batch, resume
+  from the first unscored scenario once the cooldown has elapsed.
 * **Move tool work to INGEST time** where feasible — visual extraction,
   document parsing, embedding generation should run in a one-shot
   ACA Job or postprovision script, not inside the agent's tool budget.
@@ -1736,7 +1736,7 @@ coincides with **zero `AppExceptions` / `AppTraces` reaching App
 Insights** — the gateway absorbs the failed requests and never emits
 container-side telemetry for them. Ensure your `_init_telemetry()`
 guard is in place (see § Troubleshooting → AppInsights row + `gap O-011`
-in `microsoft-foundry`) BEFORE investigating; otherwise you're
+in `threadlight-deploy/references/observability`) BEFORE investigating; otherwise you're
 flying blind.
 
 ---
@@ -1964,8 +1964,8 @@ unique build stamp.
   two independent variables and the gen_ai telemetry becomes ambiguous.
   Split on agent version first; after promotion, do a separate model
   rollout.
-- **Pair the canary phase with continuous evaluation** — see
-  `microsoft-foundry` § Continuous Evaluation Loop. The eval runner's
+- **Pair the canary phase with continuous evaluation** — see the official
+  microsoft-foundry [`foundry-agent/observe/references/continuous-eval.md`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/observe/references/continuous-eval.md). The eval runner's
   per-response sampling naturally surfaces v2 quality regressions
   within the canary window.
 - **ACA-side rollout primitives (revisions, ingress weighting) do NOT
@@ -2078,9 +2078,9 @@ Any capacity change needs a separate approved capacity/cost decision.
 | Agent skips evidence-gathering tools and emits hollow packets | gpt-5.4-mini tool-call discipline degrades on long instruction chains (10+ steps); model calls commit-tool before evidence is ready | Two complementary fixes: (1) switch `MODEL_DEPLOYMENT_NAME` to `gpt-5.4` (full); (2) make commit-tools refuse hollow inputs server-side via the validate-or-reject pattern in `threadlight-mcp-aca`. Recent strict-smoke runs showed low reproducibility with mini + permissive MCP and high reproducibility with gpt-5.4 + validate-or-reject. |
 | `Managed environment provisioning timed out` / `ProvisioningError` | Generic failure; missing private project setup is one possible prerequisite failure, not a proven universal cause | Follow [Deployment preflight](#deployment-preflight): private Basic requires a project `Agents` / `Succeeded` host; Standard also requires its account/BYO contract. Never blanket-create/delete hosts. Preserve direct version GET errors and stop after bounded observation; platform-managed compute alone does not prove project setup. |
 | Private ACR image pull fails | Project generation, project-MI permissions, registry policy or private reachability may be incompatible | [Learn checked 2026-09-12](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent): projects created **after June 25, 2026** support private registries. Verify `systemData.createdAt`, registry permission mode and `azureADAuthenticationAsArmPolicy`, then actual pull path. Older/unknown/boundary date requires review, never automatic public exposure. |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING is reserved` (HTTP 400 `invalid_request_error` at `create_version`) | Set in `azure.yaml` `environmentVariables` OR `HostedAgentDefinition.environment_variables` (e.g. as escape-hatch when platform auto-injection silently failed) | Remove it. Cannot be escape-hatched. You MUST guard `configure_azure_monitor()` defensively in `container.py` instead — use `_init_telemetry()` from `microsoft-foundry` (gap O-011). Observed in hosted-agent validation |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING is reserved` (HTTP 400 `invalid_request_error` at `create_version`) | Set in `azure.yaml` `environmentVariables` OR `HostedAgentDefinition.environment_variables` (e.g. as escape-hatch when platform auto-injection silently failed) | Remove it. Cannot be escape-hatched. You MUST guard `configure_azure_monitor()` defensively in `container.py` instead — use `_init_telemetry()` from `threadlight-deploy/references/observability` (gap O-011). Observed in hosted-agent validation |
 | Agent traces not appearing in AppInsights | Agent identities lack `Monitoring Metrics Publisher` (GUID `3913510d-...`) OR AppInsights connection missing on account. **IMPORTANT:** GUID `f526a384-...` is "Azure Event Hubs Data Owner" — a completely wrong role despite being mislabeled in some references. When `DisableLocalAuth: false`, RBAC is not required — ikey auth works | Assign `Monitoring Metrics Publisher` RBAC to both identity principal IDs. Create `AppInsights` connection on the **account** (not project): category `AppInsights`, target = ARM resource ID, metadata `ApiType: Azure`. |
-| **Hosted agent returns `server_error`/`model:""` on every smoke; AppIn 0 rows; `azd ai agent show` reports active** | `container.py` calls raw `configure_azure_monitor()` as the first line of `main()` with no try/except. When the platform fails to auto-inject `APPLICATIONINSIGHTS_CONNECTION_STRING` (e.g. AppIn account-level connection persisted with `credentials: null`), the SDK raises `ValueError`. Container crashes before `ResponsesHostServer` binds. Foundry runtime sees no agent. **The agent itself is fine — telemetry init is what killed it.** | Wrap telemetry init in `_init_telemetry()` (no-ops on missing env / SDK ImportError / any SDK exception). Never call `configure_azure_monitor()` raw at module/main scope. See `microsoft-foundry` gap row O-011 |
+| **Hosted agent returns `server_error`/`model:""` on every smoke; AppIn 0 rows; `azd ai agent show` reports active** | `container.py` calls raw `configure_azure_monitor()` as the first line of `main()` with no try/except. When the platform fails to auto-inject `APPLICATIONINSIGHTS_CONNECTION_STRING` (e.g. AppIn account-level connection persisted with `credentials: null`), the SDK raises `ValueError`. Container crashes before `ResponsesHostServer` binds. Foundry runtime sees no agent. **The agent itself is fine — telemetry init is what killed it.** | Wrap telemetry init in `_init_telemetry()` (no-ops on missing env / SDK ImportError / any SDK exception). Never call `configure_azure_monitor()` raw at module/main scope. See `threadlight-deploy/references/observability` gap row O-011 |
 | **AppInsights connection PUT 400 ValidationError "AuthType for AppInsights Connection can only be ApiKey"** | Account-RP scope `2025-10-01-preview` in some regions rejects `authType: AAD` despite skill guidance (correlation IDs available) | Use `authType: ApiKey` with `credentials.key` in body. **BUT:** the key is silently dropped server-side — GET returns `credentials: null` and platform never injects the env var. There is no working workaround at the platform layer. File a support ticket; ship with guarded `_init_telemetry()` so the agent functions without telemetry; consider region pivot |
 | **AppInsights connection account-level "1-per-category" limit** | Account-level `AppInsights` connections enforce a single-instance-per-category constraint — cannot create parallel connections in the same account. Re-creation requires DELETE first | DELETE the existing connection BEFORE re-PUT. Use `az rest --method DELETE` with full URI **as a variable** (do NOT inline `?api-version=...` — see next row) |
 | **`az rest --method DELETE` strips `?api-version=...` query string when URI is inlined on PowerShell** | PowerShell argument parsing eats the `?api-version=` before `az` sees it. The DELETE then fails with "MissingApiVersionParameter" or behaves inconsistently against the bare resource without the version | Workaround: assign the URI to a variable first, then pass via `--uri $delUri`: `$delUri = "https://management.azure.com/.../connections/<name>?api-version=2025-10-01-preview"; az rest --method DELETE --uri $delUri` |
@@ -2101,7 +2101,7 @@ Any capacity change needs a separate approved capacity/cost decision.
 
 > This SKILL describes runtime patterns for hosted agents on Foundry (container build, SDK wiring, debugging). Some concerns belong to sibling SKILLs:
 >
-> - **Telemetry initialization** (`configure_azure_monitor()` guard, `_init_telemetry()` pattern): owned by `microsoft-foundry` § Layer 2. See gap O-011 / O-012 for AppInsights connection failures.
+> - **Telemetry initialization** (`configure_azure_monitor()` guard, `_init_telemetry()` pattern): owned by `threadlight-deploy/references/observability` § Layer 2. See gap O-011 / O-012 for AppInsights connection failures.
 > - **Deploy hooks** (`azd postdeploy` scripts, role assignment automation): owned by `threadlight-deploy/references/azd-modules` § azd hooks. See section on environment injection and dependency ordering.
 > - **Model selection** (region availability, task/modality tables, tier maps): owned by `agentic-loop` § Foundry Model Selector — that table is the single source of truth across all awesome-gbb skills.
 >

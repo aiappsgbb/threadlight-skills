@@ -5,7 +5,7 @@
 // Live-deployed: 2026-05-29 (agentic-loop SKILL Validation history row 8)
 // Subscription: <internal-pilot-sub> (swedencentral)
 //
-// Source of truth for the prose example in ../../SKILL.md § RBAC — assign
+// Source of truth for the prose example in ../../README.md § RBAC — assign
 // once, applies to all resources + § Prefer Bicep dependsOn:[rbac] over
 // the retry loop.
 //

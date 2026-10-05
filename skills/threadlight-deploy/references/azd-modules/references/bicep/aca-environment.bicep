@@ -1,5 +1,5 @@
 // Canonical internal Consumption environment using Azure Monitor, not shared keys.
-// Source of truth for `../../SKILL.md § Private network composition`.
+// Source of truth for `../../README.md § Private network composition`.
 
 param name string
 param location string

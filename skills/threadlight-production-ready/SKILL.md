@@ -118,7 +118,7 @@ knowledge.
 | Running `azd up` | `threadlight-deploy` |
 | Structural / behavioural deploy gate | `threadlight-safe-check --phase post-deploy` |
 | Invocation testing of the agent | `microsoft-foundry` |
-| Wiring App Insights / OTel | `microsoft-foundry` |
+| Wiring App Insights / OTel | `threadlight-deploy/references/observability` |
 | Provisioning Citadel hub | `threadlight-citadel-hub` |
 | Onboarding spoke to Citadel | `threadlight-citadel-spoke` |
 | Provisioning Azure SRE Agent | `azure-sre-agent` |
@@ -307,7 +307,7 @@ about findings, not just emit them.
 | 2 | [`agent-governance`](references/pillars/02-agent-governance.md) | Current selected-binding v1 evidence and exact signed policy/config/deployment; module imports and legacy policy/verifier artifacts alone are not enforcement | `threadlight-govern`, `threadlight-governed-actions` |
 | 3 | [`identity-access`](references/pillars/03-identity-access.md) | Workloads use managed identity; **no client secrets**; RBAC least-privilege; KV access via RBAC not access policies | `threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`, `threadlight-deploy/references/azd-modules` |
 | 4 | [`secrets`](references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `threadlight-deploy/references/azd-modules`, `threadlight-deploy/references/hosted-agent/maf` |
-| 5 | [`observability`](references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `microsoft-foundry` |
+| 5 | [`observability`](references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `threadlight-deploy/references/observability` |
 | 6 | [`continuous-evals`](references/pillars/06-continuous-evals.md) | SPEC § 9 scenarios scheduled (Plan A or Plan B); threshold alerts wired; last run within freshness window; eval datasets stored | `microsoft-foundry` |
 | 7 | [`responsible-ai`](references/pillars/07-responsible-ai.md) | Content filters, jailbreak shields, grounded-language eval; AGT RAI policy; PII redaction declared; allow/deny tested | `threadlight-govern/references/agt-inprocess`, `microsoft-foundry` |
 | 8 | [`hitl-audit`](references/pillars/08-hitl-audit.md) | If SPEC § 8 declares gates: wired, persistent audit trail, escalation channel reachable, idempotent | `threadlight-hitl-patterns` |
@@ -1205,7 +1205,7 @@ sync with the awesome-gbb skill catalog as it evolves.
 | AGT policy authoring / lint / CI-gate | `threadlight-govern/references/agt-inprocess` | `foundry-*` |
 | Cap-host lifecycle / day-2 | `microsoft-foundry` | `foundry-*` |
 | Hosted-agent RBAC / managed identity | `threadlight-deploy/references/hosted-agent/maf` | `foundry-*` |
-| OTel emit / AppIn wiring | `microsoft-foundry` | `foundry-*` |
+| OTel emit / AppIn wiring | `threadlight-deploy/references/observability` | `foundry-*` |
 | Eval scheduling / dataset shape | `microsoft-foundry` | `foundry-*` |
 | Tenant-isolation hardening | `threadlight-tenant-isolation` | `azure-*` |
 | ACR / Bicep / azd patterns | `threadlight-deploy/references/azd-modules` | `azd-*` |
@@ -1387,4 +1387,4 @@ the official **[Azure Skills](https://github.com/microsoft/azure-skills)** catal
 *Further reading, not a dependency* — Threadlight's guidance stays the source of
 truth for the pilot flow:
 
-- **[`azure-reliability`](https://github.com/microsoft/azure-skills/blob/main/skills/azure-reliability/SKILL.md)** — PaaS **reliability posture** (zone redundancy, ZRS storage, health probes, multi-region) that deepens this scorecard's reliability pillar.
+- **[`azure-reliability`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/azure-reliability/SKILL.md)** — PaaS **reliability posture** (zone redundancy, ZRS storage, health probes, multi-region) that deepens this scorecard's reliability pillar.

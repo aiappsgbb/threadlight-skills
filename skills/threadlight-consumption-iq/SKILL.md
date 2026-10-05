@@ -88,7 +88,7 @@ This skill produces the answer in one command.
 | Assessing the verified reconciliation bundle in a readiness report | `threadlight-production-ready` `COST-102`, `COST-103`, `KPI-003` *(artifact consumers only; no query/recompute)* |
 | Bicep mutation from recommendations | `threadlight-deploy` on the next run (this skill is advisory) |
 | Real-time anomaly detection | Azure-native budget/anomaly automation; this skill stays evidence-only |
-| Demand forecasting / usage time-series | out of scope; microsoft-foundry owns the trace side |
+| Demand forecasting / usage time-series | out of scope; threadlight-deploy/references/observability owns the trace side |
 
 ## When to invoke
 
@@ -108,7 +108,7 @@ This skill produces the answer in one command.
 threadlight-design → threadlight-demo-data-factory → threadlight-local-test →
 threadlight-deploy → threadlight-safe-check →
 threadlight-consumption-iq      ← THIS SKILL
-microsoft-foundry →
+microsoft-foundry + threadlight-deploy/references/observability →
 threadlight-production-ready
 ```
 
@@ -121,7 +121,7 @@ threadlight-production-ready
 | `azd env get-values` | live azd env | yes (skip with `--pre-deploy` to read Bicep only) |
 | `specs/SPEC.md § 11c` (tech-stack selectors) | `threadlight-design` | yes — not present in a Kratos export; resources come from `infra/` instead |
 | `specs/SPEC.md § 12 → load_profile{}` (NEW sub-block) | this skill's wizard OR hand-authored | yes (skill writes it back if absent; in Kratos-export mode it writes to `use-cases/<x>/load-profile.yml` since there's no SPEC) |
-| Recent Application Insights / `microsoft-foundry` traces | live monitor | optional (fidelity boost post-launch) |
+| Recent Application Insights / `threadlight-deploy/references/observability` traces | live monitor | optional (fidelity boost post-launch) |
 
 ### Kratos-export mode (discover from `infra/`, not from a SPEC)
 
@@ -498,5 +498,5 @@ official **[Azure Skills](https://github.com/microsoft/azure-skills)** catalog.
 *Further reading, not a dependency* — Threadlight's guidance stays the source of
 truth for the pilot flow:
 
-- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/main/skills/microsoft-foundry/SKILL.md)** — model **quota / capacity** (TPM, PTU) planning that this projection reasons about per resource.
-- **[`azure-cost`](https://github.com/microsoft/azure-skills/blob/main/skills/azure-cost/SKILL.md)** — subscription-wide **cost query, forecast, and optimization**; the platform-native companion to this skill's per-pilot projection.
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — model **quota / capacity** (TPM, PTU) planning that this projection reasons about per resource.
+- **[`azure-cost`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-cost/skills/cost-analysis)** (`azure-cost` plugin: cost-analysis, cost-estimation, cost-optimization) — subscription-wide **cost query, forecast, and optimization**; the platform-native companion to this skill's per-pilot projection.

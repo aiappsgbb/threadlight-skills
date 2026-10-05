@@ -8,7 +8,7 @@ already-collected signals into one measurable outcome view:
   * eval pass-rate                    (specs/evals-manifest.json — threadlight-evals)
   * cost per successful interaction   (specs/cost-reconciliation-manifest.json —
                                        threadlight-consumption-iq actuals)
-  * traces emitting                   (microsoft-foundry wiring in infra/src)
+  * traces emitting                   (threadlight-deploy/references/observability wiring in infra/src)
 
 The cost signal is an **actual**, never a forecast. It is read only out of the
 reconciliation artifact bundle, through the same strict loader COST-102/COST-103

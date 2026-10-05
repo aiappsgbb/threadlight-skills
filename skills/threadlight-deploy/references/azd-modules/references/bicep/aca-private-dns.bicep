@@ -1,5 +1,5 @@
 // Canonical DNS for an internal ACA ILB, not an ACA Private Endpoint.
-// Source of truth for `../../SKILL.md § Private network composition`.
+// Source of truth for `../../README.md § Private network composition`.
 
 param defaultDomain string
 param staticIp string

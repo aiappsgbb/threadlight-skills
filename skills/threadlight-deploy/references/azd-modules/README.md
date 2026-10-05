@@ -781,7 +781,7 @@ modules) so they can be vendored independently.
 | **service-bus** | `infra/modules/service-bus.bicep` | `service-bus: yes` (params: `tier: 'standard' \| 'premium'`, `queues: [...]`, `topics: [...]`) | `namespace`, `queueNames[]`, `topicNames[]` | Async work queues (PIM enrichment batch, Card Dispute case routing) |
 | **storage-blob** | `infra/modules/storage-blob.bicep` | `storage-blob: yes` (params: `containers: [...]`) | `accountName`, `containerNames[]`, `endpoint` | Document/image/audio storage for vision / doc-intel / speech |
 | **key-vault** | `infra/modules/key-vault.bicep` | `key-vault: yes` (params: `enabled: bool`) | `vaultName`, `vaultUri` | Required ONLY when external API keys must be secured (e.g., third-party data sources). NOT in always-include — threadlight pilots are keyless-by-mandate. |
-| **app-insights** | `infra/modules/app-insights.bicep` | (always — non-optional) | `connectionString`, `instrumentationKey`, `appId` | Always — required for `microsoft-foundry` continuous loop. **Telemetry wiring** (AppInsights connection string env injection, client-side instrumentation, retry on transient drops) is owned by [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) § Layer 2. This SKILL focuses on deploy mechanics; for telemetry configuration, see microsoft-foundry. |
+| **app-insights** | `infra/modules/app-insights.bicep` | (always — non-optional) | `connectionString`, `instrumentationKey`, `appId` | Always — required for official continuous evaluation (`foundry-agent/observe` continuous-eval reads hosted-agent traces from App Insights). **Telemetry wiring** (AppInsights connection string env injection, client-side instrumentation, retry on transient drops) is owned by [`threadlight-deploy/references/observability`](../observability/README.md) § Layer 2. This SKILL focuses on deploy mechanics; for telemetry configuration, see threadlight-deploy/references/observability. |
 | **aca-job** | `infra/modules/aca-job.bicep` | `aca-job: yes` (params: `[{ name, imageDigest, containerName, command, args, environmentVariables, uamiResourceId, acrServer, environmentId }]`) | `id`, `name` | Manual only; `threadlight-event-triggers` owns the cron/event variant |
 | **aca-mcp** | `infra/modules/aca-mcp.bicep` | `aca-mcp: yes` (params: `[{ name, image, ... }]`) | `mcpEndpoints{}`, `mcpFqdns{}` | Wired by `threadlight-mcp-aca` for each mocked or custom MCP server |
 | **aca-bot** | `infra/modules/aca-bot.bicep` | `aca-bot: yes` (params: `manifest: ...`) | `botFqdn`, `botResourceId`, `botAppId` | Wired by `foundry-teams-bot` when SPEC § 8 includes Teams |
@@ -1015,8 +1015,9 @@ Every `azd`-based deploy in this catalog should expose `mcapsPilotPosture`
 - **`threadlight-deploy`** — Phase 6 module composer threads `tags` into
   every selected module from the catalog above (when present in SPEC § 11c
   or via `AZURE_TAGS`).
-- **`microsoft-foundry`** — `templates/main.bicep` accepts `tags` (manual
-  apply via Step 8 interview); when the deploy lands in an MCAPS sub, the
+- **Foundry account / project templates** (official `microsoft-foundry`
+  `project/create` azd template or Threadlight-generated `infra/main.bicep`)
+  accept `tags` (manual apply via Step 8 interview); when the deploy lands in an MCAPS sub, the
   operator should answer `yes` to the implicit MCAPS prompt.
 - **`threadlight-mcp-aca`**, **`foundry-teams-bot`**, **`threadlight-citadel-spoke`** —
   all consume the same module library; the tag rides along automatically
@@ -1354,7 +1355,7 @@ reports no diff in `azd env get-values`.
 > and OOM kills are all visible in system logs. Retrying without reading
 > logs wastes time.
 
-**Canonical owner of container-debugging diagnostics:** This section (§ ACA Container Debugging) is the authoritative reference for container-failure diagnosis. Sibling SKILLs (`threadlight-deploy/references/hosted-agent/maf`, `microsoft-foundry`, etc.) should link here rather than duplicate.
+**Canonical owner of container-debugging diagnostics:** This section (§ ACA Container Debugging) is the authoritative reference for container-failure diagnosis. Sibling SKILLs (`threadlight-deploy/references/hosted-agent/maf`, `threadlight-deploy/references/observability`, etc.) should link here rather than duplicate.
 
 ```bash
 # System logs — infrastructure events (port mismatch, probe fail, OOM)
@@ -1423,4 +1424,4 @@ scale: {
 | [**threadlight-citadel-spoke**](../../../threadlight-citadel-spoke/SKILL.md) | Adds Citadel hub wiring AFTER the base Bicep is provisioned (opt-in via SPEC § 11b `citadel.required: yes`) |
 | [**threadlight-tenant-isolation**](../../../threadlight-tenant-isolation/SKILL.md) | Per-tenant `AZURE_CONFIG_DIR` so `azd up` lands in the right tenant |
 
-**Note:** External threadlight-skills links (threadlight-deploy, threadlight-design, threadlight-event-triggers) point to a separate repository. For offline or agent-context use, abbreviated summaries of those skills are often included in local `threadlight-skills/SKILL.md` installations.
+**Note:** Relative links resolve inside this threadlight-skills package; awesome-gbb links are pinned to a commit and are optional GBB residual patterns.

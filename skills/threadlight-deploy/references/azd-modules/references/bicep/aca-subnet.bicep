@@ -1,5 +1,5 @@
 // Canonical ACA subnet in an existing VNet; no parent-VNet replacement.
-// Source of truth for `../../SKILL.md § Private network composition`.
+// Source of truth for `../../README.md § Private network composition`.
 
 param virtualNetworkName string
 param subnetName string

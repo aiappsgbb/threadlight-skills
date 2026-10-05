@@ -12,8 +12,8 @@
 > verified by real recent traces? Are alert rules wired? Workbook?
 > Retention?
 
-This pillar partners with `microsoft-foundry` — the awesome-gbb
-skill that does the wiring. This skill **verifies the wiring took
+This pillar partners with `threadlight-deploy/references/observability` — the Threadlight-owned
+reference that does the wiring. This skill **verifies the wiring took
 effect**.
 
 ## Checks
@@ -127,7 +127,7 @@ For production, at minimum:
 | Container restart count > N / hour | Detects crash loop |
 | Token usage spike beyond budget anomaly threshold | Cost guardrail (also covered in pillar 10) |
 
-These map to the `microsoft-foundry` reference workbook + alert
+These map to the `threadlight-deploy/references/observability` reference workbook + alert
 catalogue.
 
 ## Common gaps
@@ -145,10 +145,10 @@ catalogue.
 
 | Finding | Skill |
 |---|---|
-| Wire AppIn at account-level | `microsoft-foundry` |
-| Add OTel init to workload | `microsoft-foundry` (workload patterns) |
-| Add alert rules | `microsoft-foundry` |
-| Deploy reference workbook | `microsoft-foundry` |
+| Wire AppIn at account-level | `threadlight-deploy/references/observability` |
+| Add OTel init to workload | `threadlight-deploy/references/observability` (workload patterns) |
+| Add alert rules | `threadlight-deploy/references/observability` |
+| Deploy reference workbook | `threadlight-deploy/references/observability` |
 | Extend retention | `threadlight-deploy/references/azd-modules` |
 
 ## Why this pillar matters

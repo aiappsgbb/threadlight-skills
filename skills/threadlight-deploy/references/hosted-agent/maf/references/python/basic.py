@@ -1,6 +1,6 @@
 """Canonical no-tools Responses BASIC runtime.
 
-Source of truth for `../../SKILL.md § Private BASIC consumer`.
+Source of truth for `../../README.md § Private BASIC consumer`.
 Adapted from the official 01-basic sample pinned in ../private-basic.md.
 """
 

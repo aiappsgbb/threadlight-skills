@@ -650,7 +650,7 @@ keeps remaining multi-user and lifecycle gates explicit.
 | Over-broad RBAC → lateral movement | **L2** one least-privilege role assignment | `references/bicep/mcp-aca-auth.bicep` |
 | Secret exfiltration through a tool result | **L3** return secret *metadata*, never values; Key Vault refs | `references/python/secure_server.py` |
 | Path traversal / command injection in tool args | **L3** allow-list inputs; reject `..` `/` `\` `;` `\|` `` ` `` `$(` | `references/python/secure_server.py` |
-| Undetected abuse (invocation floods, probing) | **L5** one audit event per call → scheduled-query alert | `references/python/secure_server.py` + `microsoft-foundry` |
+| Undetected abuse (invocation floods, probing) | **L5** one audit event per call → scheduled-query alert | `references/python/secure_server.py` + `threadlight-deploy/references/observability` |
 
 Defense-in-depth: skipping **L1** makes everything else moot; **L2–L5** keep a
 breach from spreading.
@@ -778,10 +778,10 @@ runtime's actual route and DNS before using a private topology.
 
 Emit one structured audit line per tool call (caller, tool, decision). ACA ships
 stdout to Log Analytics automatically, so a
-[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) scheduled-query
+[`threadlight-deploy/references/observability`](../threadlight-deploy/references/observability/README.md) scheduled-query
 alert can fire on invocation spikes or repeated `denied` events. The
 `audit_event` helper in `secure_server.py` is the emitter; upgrade to Azure
-Monitor OpenTelemetry spans via `microsoft-foundry` when you want
+Monitor OpenTelemetry spans via `threadlight-deploy/references/observability` when you want
 distributed tracing.
 
 ### Connecting clients

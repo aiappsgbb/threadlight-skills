@@ -70,7 +70,7 @@ def _append_transcript(root: Path, query: str, response: str) -> None:
     """Append one row to ``<root>/tests/quickstart.jsonl`` (microsoft-foundry shape).
 
     Shape matches the `tool_definitions` / `tool_calls` schema documented
-    in ``microsoft-foundry`` § *Enriched dataset shape*; for the quickstart
+    in the official microsoft-foundry ``foundry-agent/eval-datasets`` guidance; for the quickstart
     we only have query + response (tools are stub CRUD), which is the
     minimum the eval pipeline accepts.
     """

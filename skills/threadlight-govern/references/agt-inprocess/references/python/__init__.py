@@ -1,1 +1,1 @@
-"""Canonical Python helpers for the threadlight-govern/references/agt-inprocess skill."""
+"""Canonical Python helpers for the Threadlight AGT in-process reference (threadlight-govern)."""

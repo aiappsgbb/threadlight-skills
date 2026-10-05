@@ -1,5 +1,5 @@
 // Canonical additive Private DNS link to an existing VNet.
-// Source of truth for `../../SKILL.md § Private network composition`.
+// Source of truth for `../../README.md § Private network composition`.
 
 param zoneName string
 param linkName string

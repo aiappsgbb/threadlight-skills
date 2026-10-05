@@ -1,7 +1,7 @@
 """Canonical blue-green / canary / rollback patterns for Foundry hosted agents.
 
 Source of truth for the prose example in
-`../../SKILL.md § Version rollout patterns (blue-green / canary / rollback)`.
+`../../README.md § Version rollout patterns (blue-green / canary / rollback)`.
 
 Demonstrates the **native** Foundry platform traffic-routing primitives —
 NOT a client-side router. Each `create_version` call yields an immutable

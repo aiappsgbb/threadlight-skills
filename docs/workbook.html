@@ -509,7 +509,7 @@ aiappsgbb org on github, then list my installed copilot plugins</div>
           </div>
           <div class="wb-check">
             <p class="h">Why both</p>
-            <p>Threadlight stays thin where the <code>foundry-*</code> family is already deep &mdash; it <b>composes</b> with those skills rather than reimplementing them. Skills &amp; tools ship as <b>versioned, immutable Foundry artifacts</b> via <code>microsoft-foundry</code> and <code>microsoft-foundry</code> (pin a version, promote <code>default_version</code> in stages, download at deploy), batch scoring delegates to <code>microsoft-foundry</code>, agent-runtime governance to <code>threadlight-govern/references/agt-inprocess</code>, and hosting, deploy hooks &amp; OTel build on <code>threadlight-deploy/references/hosted-agent/maf</code>, <code>threadlight-deploy/references/azd-modules</code>, and <code>microsoft-foundry</code>.</p>
+            <p>Threadlight stays thin where the <code>foundry-*</code> family is already deep &mdash; it <b>composes</b> with those skills rather than reimplementing them. Skills &amp; tools ship as <b>versioned, immutable Foundry artifacts</b> via <code>microsoft-foundry</code> and <code>microsoft-foundry</code> (pin a version, promote <code>default_version</code> in stages, download at deploy), batch scoring delegates to <code>microsoft-foundry</code>, agent-runtime governance to <code>threadlight-govern/references/agt-inprocess</code>, and hosting, deploy hooks &amp; OTel build on <code>threadlight-deploy/references/hosted-agent/maf</code>, <code>threadlight-deploy/references/azd-modules</code>, and <code>threadlight-deploy/references/observability</code>.</p>
           </div>
         </div>
       </details>
@@ -811,11 +811,11 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
         </details>
 
         <details class="wb-leg">
-          <summary><span class="lk">microsoft-foundry</span><h4>Observability &mdash; can we see what it&rsquo;s doing?</h4><span class="lt">OTel traces &middot; spans per model &amp; tool call</span><span class="auto">🟡 spend</span></summary>
+          <summary><span class="lk">threadlight-deploy/references/observability</span><h4>Observability &mdash; can we see what it&rsquo;s doing?</h4><span class="lt">OTel traces &middot; spans per model &amp; tool call</span><span class="auto">🟡 spend</span></summary>
           <div class="lb">
             <div class="wb-term">
               <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-              <div class="body"><span class="ps">›</span> <span class="cmd">Use the microsoft-foundry skill to confirm the agent is emitting
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the threadlight-deploy observability reference (references/observability) to confirm the agent is emitting
   traces, and show me the spans for the eval runs — model calls and
   tool calls.</span></div>
             </div>

@@ -927,7 +927,7 @@ hosted agents are unsupported:
 | Difference / comparison | Evidence and action |
 |---|---|
 | Basic project capability host | The working private setup explicitly added an `Agents` Basic project host with platform-managed stores. Our S2 project returned `capabilityHosts: []`. |
-| Conflicting guidance | The generic `threadlight-deploy/references/hosted-agent/maf` warning against manually creating Capability Hosts was applied without reconciling it with `microsoft-foundry`'s Basic **project** host module. This was an operator interpretation/preflight error as well as an instruction conflict. |
+| Conflicting guidance | The generic `foundry-hosted-agents` warning against manually creating Capability Hosts was applied without reconciling it with `foundry-vnet-deploy`'s Basic **project** host module. This was an operator interpretation/preflight error as well as an instruction conflict. |
 | Minimal setup correction | Deployed the exact working `add-project-capability-host.bicep` module against S2 only. The missing-host check failed before creation and passed after the host reported `Agents`/`Succeeded`. No existing host, account or store was recreated. |
 | Result of that correction alone | Version 1 remained failed. A controlled version 2 using unchanged application/runtime code and SDKs, with a fresh binding reference and policy version 3, also failed with the same `ProvisioningError`. The missing project host was therefore not established as the sole provisioning cause. |
 | Protocol/image shape | The working service readback also contains `container_protocol_versions: []`, typed `protocol_versions` with Responses `2.0.0`, and nested `container_configuration.image`. Those fields were not changed speculatively. |

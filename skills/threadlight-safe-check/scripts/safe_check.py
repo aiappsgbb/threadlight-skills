@@ -776,7 +776,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
     # if no AppIn resource exists in the deployed RG. Catches the silent
     # observability gap discovered in recent pilots (azd up returned
     # 0 but App Insights stayed completely empty because the bicep module
-    # was never composed in main.bicep). See microsoft-foundry skill.
+    # was never composed in main.bicep). See threadlight-deploy observability reference (references/observability).
     # ------------------------------------------------------------------
     appin_health_results: list[dict[str, Any]] = []
     appin_expected = (
@@ -816,7 +816,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
                     f"never provisioned — agent traces, MCP tool calls, and "
                     f"cron logs will be silently lost. Check that "
                     f"infra/main.bicep includes app-insights.bicep (always-on). "
-                    f"See microsoft-foundry skill for the drop-in module."
+                    f"See threadlight-deploy observability reference (references/observability) for the drop-in module."
                 )
             else:
                 for appin in appin_resources:
@@ -835,7 +835,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
                 "expected_resource_types did not include "
                 "Microsoft.Insights/components. Add them to enable "
                 "this gate. (Threadlight default: app-insights is "
-                "always-on — see microsoft-foundry skill.)"
+                "always-on — see threadlight-deploy observability reference (references/observability).)"
             ),
         })
 

@@ -3,7 +3,7 @@
 # This is the field-validated reference shape for a Foundry hosted agent that
 # bundles multiple business SKILLs (the threadlight-style multi-SKILL composition
 # pattern). It is the SOURCE OF TRUTH for the prose example in
-# `../../SKILL.md § Skill Loading — SkillsProvider (recommended)`.
+# `../../README.md § Skill Loading — SkillsProvider (recommended)`.
 #
 # When to use this vs ../python/main.py:
 #   - main.py: single-purpose agent, 0-1 business SKILLs, simple tool list
@@ -39,7 +39,7 @@ def _init_telemetry() -> None:
     """Guarded OTel init — never crashes the container.
 
     The platform auto-injects APPLICATIONINSIGHTS_CONNECTION_STRING. On
-    O-012 affected accounts (see microsoft-foundry SKILL § Common
+    O-012 affected accounts (see threadlight-deploy/references/observability SKILL § Common
     silent-failure modes) the injection silently fails OR injects a
     malformed value missing the '=' separator. Either way, calling
     configure_azure_monitor() raw at module/main scope crashes the

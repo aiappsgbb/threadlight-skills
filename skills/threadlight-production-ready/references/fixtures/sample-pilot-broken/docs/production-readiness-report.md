@@ -332,8 +332,8 @@ flowchart LR
 8. **NET-001** — infra references network module. See: `threadlight-citadel-spoke`, `microsoft-foundry`
 9. **NET-002** — Private endpoints declared for Foundry account. See: `threadlight-citadel-spoke`, `microsoft-foundry`
 10. **NET-003** — Public network access disabled on AI services. See: `threadlight-citadel-spoke`, `microsoft-foundry`
-11. **OBS-001** — App Insights declared in infra. See: `microsoft-foundry`
-12. **OBS-002** — Log Analytics workspace declared. See: `microsoft-foundry`
+11. **OBS-001** — App Insights declared in infra. See: `threadlight-deploy/references/observability`
+12. **OBS-002** — Log Analytics workspace declared. See: `threadlight-deploy/references/observability`
 13. **RAI-001** — Content filters declared on model deployments. See: `threadlight-govern/references/agt-inprocess`
 14. **RAI-002** — AGT policy constrains sensitive actions. See: `threadlight-govern/references/agt-inprocess`
 15. **RAI-003** — Prompt shields enabled in policy. See: `threadlight-govern/references/agt-inprocess`
@@ -352,9 +352,9 @@ flowchart LR
 28. **HITL-005** — HITL decision SLA documented. See: `threadlight-hitl-patterns`
 29. **IAM-003** — RBAC scopes declared in Bicep (not subscription-wide). See: `threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`
 30. **IAM-005** — ACA / Functions auth enabled. See: `threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`
-31. **KPI-001** — Outcome KPI baselines declared (latency, cost/interaction, success-rate). See: `microsoft-foundry`
-32. **KPI-002** — Deviation alert wired for an outcome KPI baseline. See: `microsoft-foundry`
-33. **KPI-003** — Outcome scorecard joins eval pass-rate + actual cost/successful interaction + traces. See: `microsoft-foundry`
+31. **KPI-001** — Outcome KPI baselines declared (latency, cost/interaction, success-rate). See: `threadlight-deploy/references/observability`
+32. **KPI-002** — Deviation alert wired for an outcome KPI baseline. See: `threadlight-deploy/references/observability`
+33. **KPI-003** — Outcome scorecard joins eval pass-rate + actual cost/successful interaction + traces. See: `threadlight-deploy/references/observability`
 34. **MDL-002** — Deprecation plan referenced in SPEC. See: `microsoft-foundry`
 35. **MDL-003** — Model upgrade canary process documented. See: `microsoft-foundry`
 36. **MDL-005** — Fallback model strategy documented. See: `microsoft-foundry`
@@ -363,8 +363,8 @@ flowchart LR
 39. **MDL-008** — Knowledge index refresh cadence declared. See: `microsoft-foundry`
 40. **MDL-011** — Agent thread retention/policy declared in SPEC. See: `microsoft-foundry`
 41. **NET-004** — Subnet delegation correct for ACA / Functions. See: `threadlight-citadel-spoke`, `microsoft-foundry`
-42. **OBS-004** — Foundry observability emit configured. See: `microsoft-foundry`
-43. **OBS-005** — Workbook scaffold present. See: `microsoft-foundry`
+42. **OBS-004** — Foundry observability emit configured. See: `threadlight-deploy/references/observability`
+43. **OBS-005** — Workbook scaffold present. See: `threadlight-deploy/references/observability`
 44. **RAI-004** — PII redaction strategy documented. See: `threadlight-govern/references/agt-inprocess`
 45. **RAI-005** — Groundedness check planned for RAG. See: `threadlight-govern/references/agt-inprocess`
 46. **REL-002** — Multi-region plan documented if RTO < 4h. See: `microsoft-foundry`
@@ -396,7 +396,7 @@ Joins the three outcome signals a production review needs (eval quality + measur
 |---|---|---|
 | Eval pass-rate | not-verified | `specs/evals-manifest.json` (threadlight-evals) |
 | Actual cost / successful interaction | not-verified | `specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals) |
-| Traces emitting | ✅ yes | microsoft-foundry / OTel wiring |
+| Traces emitting | ✅ yes | threadlight-deploy/references/observability / OTel wiring |
 
 | Baseline declared | Status |
 |---|---|

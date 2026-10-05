@@ -1,6 +1,6 @@
 """Canonical read-only hosted deployment evidence gate.
 
-Source of truth for the prose example in `../../SKILL.md § Deployment preflight`.
+Source of truth for the prose example in `../../README.md § Deployment preflight`.
 Consumes operator-owned JSON observations; never calls Azure, runs subprocesses,
 repairs resources, or authenticates. A passing setup is NOT hosted execution.
 See ../deployment-preflight.md for collection, trust boundary and schema.
@@ -21,8 +21,8 @@ CONNECTIONS = (
     "storageConnections", "aiServicesConnections",
 )
 BASIC_MODULE = (
-    "skills/foundry-vnet-deploy/templates/basic-vnet/"
-    "modules-network-secured/add-project-capability-host.bicep"
+    "the capability-host template selected from microsoft-foundry "
+    "references/standard-agent-setup.md (azure-skills v1.2.77)"
 )
 MAX_AGE_SECONDS = 1800
 
@@ -197,7 +197,7 @@ def check_host(hosts: list, scope: str, kind: str, required: bool) -> dict | Non
     missing_action = (
         f"Stop registration. Obtain explicit authorization to create ONLY the missing project host using {BASIC_MODULE}; read back Agents/Succeeded."
         if kind == "PROJECT" else
-        "Stop registration. Review the selected Standard account-host module with microsoft-foundry; no automatic creation."
+        "Stop registration. Review the selected Standard setup against microsoft-foundry references/standard-agent-setup.md; no automatic creation."
     )
     require(not required or bool(hosts), f"{kind}_HOST_MISSING", scope, missing_action)
     if not hosts:

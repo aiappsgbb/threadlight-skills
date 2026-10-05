@@ -1473,10 +1473,10 @@ the Foundry project** for eval telemetry and agent tracing to work.
 > crashed). The agent itself is fine; only the unguarded init kills it.
 >
 > **Hosted-agent `container.py` MUST wrap the init defensively** —
-> use `init_telemetry()` from `microsoft-foundry`'s
+> use `init_telemetry()` from `threadlight-deploy/references/observability`'s
 > `references/python/otel_init.py`, OR inline an 8-line equivalent
 > that no-ops on missing env / SDK import / SDK raise. See the
-> `microsoft-foundry` skill (gap rows O-011 / O-012) for the
+> the threadlight-deploy observability reference (`references/observability`) (gap rows O-011 / O-012) for the
 > full forensic and reference helper.
 
 Add to `pyproject.toml`:
@@ -1543,10 +1543,11 @@ Each line maps directly to a scenario row in the spec.
 
 #### `tests/run_evals.py`
 
-Invoke + score script using the `microsoft-foundry` two-phase pattern.
-**MUST** include three Windows-survival defenses from day one — every
-PoC that has skipped them has lost full eval batches mid-run (see
-`microsoft-foundry` SKILL § "Eval scripts on Windows: cp1252 trap"):
+Invoke + score script using a two-phase pattern (invoke every scenario,
+then score the saved responses with the official microsoft-foundry
+`foundry-agent/observe` evaluators). **MUST** include three
+Windows-survival defenses from day one — every PoC that has skipped them
+has lost full eval batches mid-run (the Windows cp1252 console trap):
 
 1. **UTF-8 stdout wrap** so the agent's `→` / em-dashes don't crash
 2. **`safe()` ASCII-strip** on every agent string before printing
@@ -1724,7 +1725,7 @@ Check every file. Mark each ✅ or fix before presenting.
 - [ ] All `__PLACEHOLDER__` tokens replaced with actual values
 - [ ] Shared UAMI: one UAMI for bot + MCP ACA + hooks; `AZURE_CLIENT_ID` set on all ACAs
 - [ ] AppInsights connection to Foundry project exists (or postprovision hook creates it)
-- [ ] **`container.py` wraps telemetry init defensively** (no raw `configure_azure_monitor()` at module/main scope — use `_init_telemetry()` or `init_telemetry()` helper that no-ops on missing env / SDK import / SDK raise; see `microsoft-foundry` gap O-011)
+- [ ] **`container.py` wraps telemetry init defensively** (no raw `configure_azure_monitor()` at module/main scope — use `_init_telemetry()` or `init_telemetry()` helper that no-ops on missing env / SDK import / SDK raise; see `threadlight-deploy/references/observability` gap O-011)
 
 #### SPEC § 11c module-selector cross-check (MANDATORY)
 
@@ -2920,7 +2921,7 @@ see Step 4).
 // infra/main.bicep — extended by Phase 6 from the Phase 5 stub
 module uami 'modules/uami.bicep' = { /* always */ }
 module acr 'modules/acr.bicep' = { /* always */ }
-module appInsights 'modules/app-insights.bicep' = { /* always — see microsoft-foundry skill for layers 2 + 3 */ }
+module appInsights 'modules/app-insights.bicep' = { /* always — see threadlight-deploy observability reference (references/observability) for layers 2 + 3 */ }
 module cosmos 'modules/cosmos-db.bicep' = if (deployCosmosDb) { /* ... */ }
 
 module search 'modules/ai-search.bicep' = if (deployAiSearch) { /* ... */ }
@@ -3025,7 +3026,7 @@ hooks:
 For more than two scripts, write a `infra/scripts/postdeploy.py`
 dispatcher that invokes each subscript in order — that keeps `azure.yaml`
 stable across spec changes. The dispatcher pattern is documented in
-`threadlight-deploy/references/azd-modules/SKILL.md` § "Cross-platform deployment scripts".
+[`references/azd-modules/README.md`](references/azd-modules/README.md) § "Recommended: Python + `postdeploy` hook (cross-platform)".
 
 These scripts are **vendored into the project** so they don't depend on
 network access at deploy time. The factory shapes are defined by `threadlight-deploy/references/azd-modules`.
@@ -3056,9 +3057,9 @@ azd ai agent doctor
 > the internet at deploy time. Guessing `--runtime` is the most common first
 > failure of an automated deploy.
 
-> **The full Bicep module catalog** lives in `threadlight-deploy/references/azd-modules/SKILL.md` →
+> **The full Bicep module catalog** lives in [`references/azd-modules/README.md`](references/azd-modules/README.md) →
 > "Composable Bicep Module Library". This skill orchestrates inclusion;
-> threadlight-deploy/references/azd-modules owns the module shapes.
+> the `references/azd-modules` reference owns the module shapes.
 
 ---
 
@@ -3141,7 +3142,7 @@ hooks:
 ```
 
 The dispatcher pattern (`infra/scripts/postdeploy.py`) is documented in
-`threadlight-deploy/references/azd-modules/SKILL.md` § "Cross-platform deployment scripts".
+[`references/azd-modules/README.md`](references/azd-modules/README.md) § "Recommended: Python + `postdeploy` hook (cross-platform)".
 
 ### Step 4 — Verify
 
@@ -3524,7 +3525,7 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | **Foundry project creation returns 500 InternalServerError** | **`PUT .../accounts/{account}/projects/{project}` without an `identity` block in the request body. Backend AML RP rejects with 400 (missing managed identity) but CogServices RP wraps it as 500. Affects Bicep, REST, and `azd up` — any path that creates a project without identity.** | **Add `identity: { type: 'SystemAssigned' }` to the Bicep project resource (or `"identity":{"type":"SystemAssigned"}` in REST body). The AI account also needs `allowProjectManagement: true` (set via `2025-04-01-preview` or later API). Without both, project creation silently fails. Discovered May 2026 — cost 36+ hours across 2 tenants, 5 regions, 10+ accounts before PG provided the Kusto pointer.** |
 | Agent returns empty responses | TPM too low — 429 rate limits | Use ≥300K TPM deployment |
 | **`FOUNDRY_PROJECT_ENDPOINT` in agent.yaml** | **All `FOUNDRY_*` and `AGENT_*` env vars are reserved by the platform (injected automatically)** | **Remove from `environment_variables` in agent.yaml. Container reads it via `os.environ` at runtime.** |
-| **Hosted agent returns `server_error`/`model:""` on every smoke; AppIn 0 rows; container looks healthy in `azd ai agent show`** | `container.py` calls raw `configure_azure_monitor()` as the first line of `main()` with no try/except. When the platform fails to auto-inject `APPLICATIONINSIGHTS_CONNECTION_STRING` (e.g. AppIn account-level connection persisted with `credentials: null` — see next row), the SDK raises `ValueError` and the container crashes before `ResponsesHostServer` binds. Foundry runtime then sees no agent → `server_error`. **The agent itself is fine.** | Wrap telemetry init in `_init_telemetry()` helper that no-ops on missing env / SDK ImportError / SDK exception. NEVER call `configure_azure_monitor()` raw at module/main scope. See `microsoft-foundry` skill, gap rows O-011 / O-012 for the full forensic and reference template. |
+| **Hosted agent returns `server_error`/`model:""` on every smoke; AppIn 0 rows; container looks healthy in `azd ai agent show`** | `container.py` calls raw `configure_azure_monitor()` as the first line of `main()` with no try/except. When the platform fails to auto-inject `APPLICATIONINSIGHTS_CONNECTION_STRING` (e.g. AppIn account-level connection persisted with `credentials: null` — see next row), the SDK raises `ValueError` and the container crashes before `ResponsesHostServer` binds. Foundry runtime then sees no agent → `server_error`. **The agent itself is fine.** | Wrap telemetry init in `_init_telemetry()` helper that no-ops on missing env / SDK ImportError / SDK exception. NEVER call `configure_azure_monitor()` raw at module/main scope. See the threadlight-deploy observability reference (`references/observability`), gap rows O-011 / O-012 for the full forensic and reference template. |
 | **AppInsights connection PUT returns 400 ValidationError on `authType: AAD`; ApiKey fallback returns 200 but GET shows `credentials: null` (silent server-side drop)** | Platform gap on account-RP scope `2025-10-01-preview` in some regions (correlation IDs available). Connection persists with `isDefault: true` but no usable secret → platform never auto-injects `APPLICATIONINSIGHTS_CONNECTION_STRING` into hosted agents | **No code workaround exists today.** Ship the agent with guarded `_init_telemetry()` (preceding row) so it functions without telemetry. File a support ticket with the correlation IDs. If AppIn telemetry is non-negotiable, pivot region (`eastus` / `northcentralus` are the best initial bets — verify auto-injection works BEFORE committing to a redeploy) |
 | **`template.kind` validation error** | **agent.yaml uses wrong schema — `template:` nesting is for `agent.manifest.yaml` (samples only)** | **Use ContainerAgent schema: `kind: hosted` at top level, NOT `template.kind`. Schema: `ContainerAgent.yaml`** |
 | **"Experience not available" on create_version** | **Region does not support hosted agents OR `ENABLE_CAPABILITY_HOST=true` (removed in refreshed preview)** | **Set `ENABLE_CAPABILITY_HOST=false` in `main.parameters.json`. Try `northcentralus`, `eastus`, `swedencentral`. Avoid `eastus2`.** |
@@ -3595,7 +3596,7 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Evaluate agent quality + **continuous evaluation**: Plan A (default) Foundry built-in scheduled evals, Plan B (fallback) ACA Job (reads SPEC § 9 KPI table) |
 | [**threadlight-safe-check**](../threadlight-safe-check/) | **Mandatory post-deploy completeness gate** — invoked from `predeploy` / `postdeploy` hooks; verifies every SPEC § 11c selector maps to deployed resources, all channels reach, all jobs are wired. Run this before declaring victory or kicking off `microsoft-foundry` |
 | [**threadlight-production-ready**](../threadlight-production-ready/) | **Advisory production-readiness gate** — runs *after* a green `--phase post-deploy`. Walks 13 cross-cutting pillars (network/AGT/IAM/secrets/observability/evals/RAI/HITL/supply-chain/cost/reliability/SRE/model-lifecycle), resolves Citadel-spoke vs AGT vs standard AI gateway from SPEC § 12, and produces a customer-facing hand-off report + JSON scorecard. Soft advisory — never fails the deploy |
-| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | **Always layered into deploy from day one.** Owns the 3-layer telemetry pattern (Bicep substrate → Foundry account-level AppIn connection → `configure_azure_monitor()` in each ACA workload). Without this, `azd up` returns 0 but App Insights stays empty for the entire pilot lifetime — the silent gap observed in recent pilots. The post-deploy hook MUST call `connect_foundry_appinsights.py` and every ACA workload entry point MUST start with `init_telemetry(role=...)` |
+| [**threadlight-deploy/references/observability**](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/references/observability/README.md) | **Always layered into deploy from day one.** Owns the 3-layer telemetry pattern (Bicep substrate → Foundry account-level AppIn connection → `configure_azure_monitor()` in each ACA workload). Without this, `azd up` returns 0 but App Insights stays empty for the entire pilot lifetime — the silent gap observed in recent pilots. The post-deploy hook MUST call `connect_foundry_appinsights.py` and every ACA workload entry point MUST start with `init_telemetry(role=...)` |
 | [**threadlight-local-test**](../threadlight-local-test/) | **For SEs.** Optional fast inner-loop before `azd up` — run the designed agent locally (FoundryChatClient + FastMCP + workspace + sample data) in Copilot CLI / Cowork / Clawpilot. Skip when the spec is a one-shot demo or already-deployed pilot |
 | [**threadlight-workspace-ui**](../threadlight-workspace-ui/) | Generates the operator workspace from SPEC § 8b (case-list, inbox, dashboard, console, kanban, map) |
 | [**threadlight-hitl-patterns**](../threadlight-hitl-patterns/) | Generates Adaptive Cards + audit trail for SPEC § 8 action gates |
@@ -3615,4 +3616,4 @@ to replace it. For first-party depth behind this deploy leg, reach for the offic
 reading, not a dependency* — Threadlight's guidance stays the source of truth for
 the pilot flow:
 
-- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/main/skills/microsoft-foundry/SKILL.md)** — first-party `azd`-based **model deployment + hosted-agent create/run**; the platform surface Phase 5's `azd ai agent` scaffold builds on.
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — first-party `azd`-based **model deployment + hosted-agent create/run**; the platform surface Phase 5's `azd ai agent` scaffold builds on.

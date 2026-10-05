@@ -265,7 +265,7 @@ CONNECT: threadlight-connect (mock→real tool swap — manual, evidence-gated) 
 DISCOVER: threadlight-evals (offline + online CE) + threadlight-redteam (adversarial scan) +
           threadlight-ground (ACL / citation / refusal grounding — manual) →
 PROTECT: maintain selected runtime policy, bindings and fresh scoped evidence →
-microsoft-foundry →
+threadlight-deploy/references/observability →
 threadlight-loadtest (budget-capped, production-confirmed load evidence — manual) →
 threadlight-production-ready (advisory; verifies the legs ran) → customer architecture review →
 threadlight-cicd (prod deploy pipeline, when the customer env is locked down) →

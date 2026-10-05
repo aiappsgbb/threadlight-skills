@@ -1,7 +1,7 @@
 // =============================================================================
 // CANONICAL REFERENCE — ACA Job module
 //
-// Source of truth for the prose example in ../../SKILL.md § Bicep: ACA Job Pattern.
+// Source of truth for the prose example in ../../README.md § Bicep: ACA Job Pattern.
 //
 // Manual-trigger ACA Job module with UAMI + registry identity, immutable
 // digest contract, explicit command/args/env wiring, and id/name outputs.

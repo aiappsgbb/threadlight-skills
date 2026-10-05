@@ -1,6 +1,6 @@
 """Canonical response/effect custody primitives, without dispatch or replay.
 
-Source of truth for `../../SKILL.md § Operation recovery`.
+Source of truth for `../../README.md § Operation recovery`.
 The caller supplies a durable private record sink. Metadata is an allowlisted
 projection, never a response body, bearer, signed URL or exception string.
 """

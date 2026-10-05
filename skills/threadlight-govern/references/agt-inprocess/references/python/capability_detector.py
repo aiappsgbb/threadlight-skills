@@ -1,6 +1,7 @@
-"""Canonical threadlight-govern/references/agt-inprocess capability detector.
+"""Canonical capability detector for the Threadlight AGT in-process reference
+(threadlight-govern/references/agt-inprocess; provenance in ../../PROVENANCE.md).
 
-Source of truth for the prose example in `../../SKILL.md § Using the canonical capability detector`.
+Source of truth for the prose example in `../../README.md § Using the canonical capability detector`.
 
 Implements the public API for issue #248 — a 9-key dict capability snapshot
 that threadlight v0.5.1 calls when dispatching AGT-V4-001..007 findings as
@@ -87,7 +88,7 @@ def _v4_scoped_files(root: Path) -> dict[str, list[Path]]:
 
 
 # Regex to extract a version string from a package specifier like:
-# threadlight-govern/references/agt-inprocess==4.0.0  or  threadlight-govern/references/agt-inprocess>=4.0.0  or  threadlight-govern/references/agt-inprocess~=4.0.0
+# foundry-agt==4.0.0  or  foundry-agt>=4.0.0  or  foundry-agt~=4.0.0  (legacy distribution name)
 _VERSION_EXTRACT_RE = re.compile(
     r"(?:==|~=|>=|>|<=|<|!=|@)\s*([A-Za-z0-9._+-]+)"
 )
@@ -100,7 +101,7 @@ _AGT_LINE_RE = re.compile(
 )
 
 # Regex to detect SHA-pinned CI action reference
-_CI_ACTION_RE = re.compile(r"uses:\s*threadlight-govern/references/agt-inprocess/verify@(\S+)")
+_CI_ACTION_RE = re.compile(r"uses:\s*foundry-agt/verify@(\S+)")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 # Regex for deny key in policy YAML

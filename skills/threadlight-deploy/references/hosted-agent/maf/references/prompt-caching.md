@@ -199,7 +199,7 @@ that another part of the system worked.
 Use correlation IDs, version identifiers, token counts, and timings.
 **Do not enable sensitive-data capture or log prompts, skill bodies, tool
 arguments/results, or model outputs for cache diagnosis.** Follow the
-existing [observability skill](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) for
+existing [observability skill](../../../observability/README.md) for
 telemetry ownership; no new instrumentation runtime is introduced here.
 
 [hosting]: https://learn.microsoft.com/agent-framework/hosting/foundry-hosted-agent?pivots=programming-language-python

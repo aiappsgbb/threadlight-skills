@@ -1,7 +1,7 @@
 """Canonical MAF middleware wiring for Agent Governance Toolkit 4.1.0
 with Agent Framework Core 1.13.0.
 
-Source of truth for the prose example in `../../SKILL.md § Wiring snippet`.
+Source of truth for the prose example in `../README.md § Wiring snippet`.
 
 The pin validation probe imports this module and constructs an Agent from it
 on every refresh.

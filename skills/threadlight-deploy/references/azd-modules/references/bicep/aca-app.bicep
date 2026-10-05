@@ -11,7 +11,7 @@
 // pattern below is what closes A2 (every ACA UAMI needs AcrPull) — see
 // rbac.bicep for the matching role assignment.
 //
-// Source of truth for the prose example in ../../SKILL.md § ACR + ACA
+// Source of truth for the prose example in ../../README.md § ACR + ACA
 // Registry Binding.
 // =============================================================================
 
