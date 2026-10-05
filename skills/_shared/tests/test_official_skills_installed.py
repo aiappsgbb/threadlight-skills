@@ -154,3 +154,74 @@ def test_auto_preflight_runs_the_check_and_records_it():
     assert "_shared/official_skills.py" in text
     assert "official_skills" in text and "preflight-passed.json" in text
     assert "exits 2" in text and '"unchecked"' in text
+
+
+def _fake_copilot(tmp_path, listing):
+    """A fake `copilot` that records argv and prints `listing` only when invoked
+    as `copilot [--plugin-dir D]... skill list --json`."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    argv_log = tmp_path / "argv.txt"
+    out = tmp_path / "listing.json"
+    out.write_text(json.dumps(listing))
+    fake = bindir / "copilot"
+    fake.write_text(
+        "#!/bin/sh\n"
+        f"echo \"$@\" > '{argv_log}'\n"
+        "last3=$(echo \"$@\" | awk '{print $(NF-2), $(NF-1), $NF}')\n"
+        "[ \"$last3\" = 'skill list --json' ] || { echo 'unexpected argument' >&2; exit 2; }\n"
+        f"cat '{out}'\n"
+    )
+    fake.chmod(0o755)
+    return bindir, argv_log
+
+
+def test_plugin_dirs_are_passed_to_the_copilot_listing_before_the_subcommand(tmp_path):
+    # Copilot CLI only lists --plugin-dir skills when the flag precedes the
+    # `skill list` subcommand; omitting it produced false MISSING/DRIFT in live2.
+    listing, _ = install(tmp_path)
+    bindir, argv_log = _fake_copilot(tmp_path, listing)
+    env = {"PATH": f"{bindir}:/usr/bin:/bin", "HOME": str(tmp_path)}
+    proc = subprocess.run(
+        [sys.executable, str(SHARED / "official_skills.py"), "--json",
+         "--plugin-dir", "/p/azure-skills", "--plugin-dir", "/p/azure-cost"],
+        capture_output=True, text=True, cwd=ROOT, env=env,
+    )
+    assert proc.returncode in (0, 1), proc.stderr
+    assert argv_log.read_text().split() == [
+        "--plugin-dir", "/p/azure-skills", "--plugin-dir", "/p/azure-cost", "skill", "list", "--json"]
+
+
+def test_plugin_dirs_env_var_is_honoured(tmp_path):
+    import os
+    listing, _ = install(tmp_path)
+    bindir, argv_log = _fake_copilot(tmp_path, listing)
+    env = {"PATH": f"{bindir}:/usr/bin:/bin", "HOME": str(tmp_path),
+           "THREADLIGHT_PLUGIN_DIRS": os.pathsep.join(["/p/a", "/p/b"])}
+    proc = subprocess.run(
+        [sys.executable, str(SHARED / "official_skills.py"), "--json"],
+        capture_output=True, text=True, cwd=ROOT, env=env,
+    )
+    assert proc.returncode in (0, 1), proc.stderr
+    assert argv_log.read_text().split() == ["--plugin-dir", "/p/a", "--plugin-dir", "/p/b", "skill", "list", "--json"]
+
+
+def test_auto_preflight_forwards_plugin_dirs():
+    text = (ROOT / "skills/threadlight-auto/SKILL.md").read_text()
+    assert "THREADLIGHT_PLUGIN_DIRS" in text and "--plugin-dir" in text
+
+
+def test_namespaced_skill_names_from_colliding_plugins_resolve(tmp_path):
+    # When two plugins ship the same skill name, `copilot skill list` reports
+    # `<plugin>:<skill>`; the pinned plugin's copy must still resolve.
+    def namespace(_, listing):
+        for row in listing:
+            if row["name"] == "foundry-iq":
+                row["name"] = "foundry-iq-skills:foundry-iq"
+                listing.append({"name": "awesome-gbb:foundry-iq", "source": "plugin",
+                                "path": "/elsewhere/foundry-iq", "enabled": True})
+                break
+    listing, lock = install(tmp_path, mutate=namespace)
+    report = official_skills.check(listing, lock=lock, manifest=MANIFEST)
+    row = next(r for r in report["skills"] if r["skill"] == "foundry-iq")
+    assert row["status"] == "ok", row

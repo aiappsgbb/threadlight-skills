@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+#
+# Canonical Threadlight pilot azure.yaml: GHCP hosted agent (Foundry) +
+# mock MCP server (ACA), Bicep-provisioned by `infra/main.bicep` from
+# `pilot/infra/`. Replace `__PROJECT_NAME__` and `__AGENT_NAME__`
+# (lowercase, hyphens). Keep `remoteBuild: true` on both services: images
+# build in ACR, so no local Docker daemon or `docker login` is needed.
+name: __PROJECT_NAME__
+
+requiredVersions:
+  extensions:
+    azure.ai.agents: '>=1.0.0-beta.4'
+
+services:
+  ai-project:
+    host: azure.ai.project
+    endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
+
+  mcp:
+    host: containerapp
+    project: .
+    language: docker
+    docker:
+      path: src/mcp/Dockerfile
+      context: .
+      remoteBuild: true
+
+  __AGENT_NAME__:
+    host: azure.ai.agent
+    project: src/agent
+    language: docker
+    docker:
+      remoteBuild: true
+    uses:
+      - ai-project
+    kind: hosted
+    name: __AGENT_NAME__
+    description: __AGENT_DESCRIPTION__
+    protocols:
+      - protocol: invocations
+        version: 2.0.0
+    environmentVariables:
+      # Never declare FOUNDRY_* variables here: the platform injects them.
+      - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+        value: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+      - name: MCP_SERVER_FQDN
+        value: ${MCP_SERVER_FQDN}
+    container:
+      resources:
+        cpu: "1"
+        memory: 2Gi
+
+hooks:
+  # Grants the agent INSTANCE identity Foundry User (by role GUID) on the
+  # Foundry account and project after every deploy. Idempotent.
+  postdeploy:
+    posix:
+      shell: sh
+      run: sh hooks/postdeploy.sh
+      continueOnError: false
+
+infra:
+  provider: bicep
+  path: infra

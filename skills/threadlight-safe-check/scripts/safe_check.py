@@ -534,6 +534,43 @@ def _presenter_deployment_gaps(repo, data, *, packaged=False):
         return [f"presenter contract: {exc}"]
 
 
+FOUNDRY_PROJECT_TYPE = "Microsoft.CognitiveServices/accounts/projects"
+
+
+def _azure_yaml_service_hosts(root: Path | None) -> dict[str, str]:
+    """Map azd service name -> host from azure.yaml (empty when absent/unreadable)."""
+    try:
+        text = (Path(root) / "azure.yaml").read_text(encoding="utf-8")
+    except (OSError, TypeError):
+        return {}
+    try:
+        import yaml
+        services = (yaml.safe_load(text) or {}).get("services") or {}
+        return {str(k): str((v or {}).get("host", "")) for k, v in services.items()}
+    except ImportError:
+        pass
+    except Exception:  # noqa: BLE001 - optional enrichment, never fatal
+        return {}
+    # Stdlib fallback for copied CLIs without PyYAML: block-style services only.
+    hosts: dict[str, str] = {}
+    current = None
+    in_services = False
+    for line in text.splitlines():
+        if re.match(r"^services:\s*$", line):
+            in_services = True
+            continue
+        if in_services and re.match(r"^\S", line):
+            break
+        m = re.match(r"^  ([A-Za-z0-9_.-]+):\s*$", line) if in_services else None
+        if m:
+            current = m.group(1)
+            continue
+        m = re.match(r"^\s{4,}host:\s*['\"]?([A-Za-z0-9_.-]+)", line) if current else None
+        if m:
+            hosts[current] = m.group(1)
+    return hosts
+
+
 def _governance_enabled(data):
     """Conservative validation hint, never authority to disable a selected contract."""
     if not isinstance(data, dict):
@@ -1025,6 +1062,8 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         })
 
     channel_results: list[dict[str, Any]] = []
+    service_hosts = _azure_yaml_service_hosts(
+        _repo_root_for_manifest(manifest_path, repo_root))
     for ch in channels:
         ch_type = ch.get("type", "").lower()
         ch_name = ch.get("name", "?")
@@ -1036,7 +1075,18 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
             "fqdn": target["fqdn"] if target else None,
             "status": "skipped",
         }
-        if not target:
+        if not target and service_hosts.get(svc) == "azure.ai.agent":
+            # Foundry hosted agents are served by the Foundry project (playground /
+            # Responses API), not by an ACA ingress. Require the project to exist.
+            result["host"] = "azure.ai.agent"
+            if FOUNDRY_PROJECT_TYPE in deployed_types:
+                result["status"] = "foundry_hosted_agent"
+            else:
+                result["status"] = "foundry_project_missing"
+                gaps.append(f"channel {ch_name!r} ({ch_type}): service {svc!r} is a "
+                            f"Foundry hosted agent but no Foundry project "
+                            f"({FOUNDRY_PROJECT_TYPE}) is deployed")
+        elif not target:
             result["status"] = "no_aca_matched"
             if ch_type in ("web", "teams"):
                 gaps.append(f"channel {ch_name!r} ({ch_type}): no matching ACA")
@@ -1217,8 +1267,9 @@ def main() -> int:
     parser.add_argument("--manifest", default="specs/manifest.json",
                         help="Path to manifest.json (default: %(default)s)")
     parser.add_argument("--out", default="tests",
-                        help="Output dir for safe-check manifest "
-                             "(default: %(default)s)")
+                        help="Output directory for the safe-check manifest "
+                             "(default: %(default)s). A value ending in .json "
+                             "is used as the exact output file path.")
     parser.add_argument("--rg",
                         help="Override AZURE_RESOURCE_GROUP for post-deploy")
     parser.add_argument("--subscription",
@@ -1228,18 +1279,21 @@ def main() -> int:
 
     repo = Path.cwd()
     manifest_path = repo / args.manifest
-    out_dir = (repo / args.out).resolve()
+    out_target = (repo / args.out).resolve()
+    explicit_file = out_target.suffix.lower() == ".json"
+    out_dir = out_target.parent if explicit_file else out_target
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    def out_file(default_name: str) -> Path:
+        return out_target if explicit_file else out_dir / default_name
+
     if args.phase == "post-deploy":
-        out = out_dir / "postdeploy-manifest.json"
-        return phase_postdeploy(manifest_path, out, args.rg, repo_root=repo,
+        return phase_postdeploy(manifest_path, out_file("postdeploy-manifest.json"),
+                                args.rg, repo_root=repo,
                                 subscription=args.subscription)
     if args.phase == "design":
-        out = out_dir / "safe-check-design-manifest.json"
-        return phase_design(manifest_path, out)
-    out = out_dir / "safe-check-predeploy-manifest.json"
-    return phase_predeploy(repo, manifest_path, out)
+        return phase_design(manifest_path, out_file("safe-check-design-manifest.json"))
+    return phase_predeploy(repo, manifest_path, out_file("safe-check-predeploy-manifest.json"))
 
 
 if __name__ == "__main__":

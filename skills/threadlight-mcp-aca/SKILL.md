@@ -177,7 +177,7 @@ disable account keys at the Cosmos resource (`disableLocalAuth: true`).
 > fastmcp>=2.0.0,<3.0.0  # MUST upper-bound — see callout below
 > azure-cosmos>=4.15.0   # see kwarg callout below
 > azure-identity>=1.19.0
-> mcp>=1.10.0
+> mcp>=1.10.0,<2         # mcp 2.x removes mcp.server.fastmcp
 > aiohttp>=3.9.0         # REQUIRED — async HTTP transport for azure-cosmos
 > ```
 
@@ -528,7 +528,8 @@ Copy sample data from `specs/sample-data/*.json` into `src/mcp/data/`.
 ### Generate `src/mcp/Dockerfile`
 
 ```dockerfile
-FROM python:3.12-slim
+# MCR base: remote ACR Tasks builds hit Docker Hub anonymous pull limits.
+FROM mcr.microsoft.com/oryx/python:3.12
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

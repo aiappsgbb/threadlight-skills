@@ -7,6 +7,48 @@ field.
 
 ## [Unreleased]
 
+### Official Microsoft skills compatibility (live2 E2E defects)
+
+Found by running Threadlight on top of the official azure-skills v1.2.77
+plugins (Copilot CLI, `--plugin-dir`, no awesome-gbb).
+
+- **Generated artifacts (no agent self-repair needed).** The GHCP Dockerfile
+  copies and runs the real `container.py` from an MCR base (Docker Hub anonymous
+  pulls fail in remote ACR builds); `ghcp/references/dockerignore` ships with it.
+  The MAF and `threadlight-mcp-aca` Dockerfiles also use the MCR base. New
+  canonical azd scaffold `ghcp/references/pilot/`: complete Bicep (Foundry
+  account + project with identity, model deployment, ACR, ACA, tags parameter,
+  every role by GUID including the deployer's Foundry User at project scope),
+  `remoteBuild: true` on both services, an allowlist `.dockerignore`, a mock MCP
+  server without the `parents[2]` path walk or eager `getenv` defaults, and a
+  `postdeploy` hook granting the instance identity Foundry User by GUID.
+- **`mcp<2`.** Every generated `mcp` pin is upper-bounded: mcp 2.x removes
+  `mcp.server.fastmcp`.
+- **Role GUIDs.** Deploy guidance assigns Foundry User as
+  `53ca6127-db72-4b80-b1b0-d745d6d5456d`; `az` 2.86 does not resolve the name
+  `Azure AI User`.
+- **Routing.** `threadlight-deploy` has an explicit "Platform steps owned by
+  `microsoft-foundry`" section (model deployment, generic hosted-agent
+  create/run/invoke, evaluation); Threadlight keeps SPEC-driven generation,
+  packaging, governance and the safe-check gate.
+- **F1 — official skills via `--plugin-dir`.** `skills/_shared/official_skills.py`
+  reads `--plugin-dir` / `THREADLIGHT_PLUGIN_DIRS` and namespaced
+  `plugin:skill` names, so loaded official skills are no longer reported
+  MISSING/DRIFT.
+- **F2 — SPEC §11a contract.** A parseable but incomplete governance contract
+  (missing framework/tools/governance keys) now routes back to design
+  (`incomplete-governance-contract`) instead of a govern hard stop; design emits
+  the complete block and validates it with
+  `skills/threadlight-design/scripts/validate_governance_contract.py`. The auto
+  test for a partial `governance: {mode: selective}` block now expects a design
+  repair rather than "invalid, not legacy"; an unparseable selection is still
+  invalid.
+- **Safe check.** Post-deploy recognizes a Foundry hosted-agent channel
+  (`azure.ai.agent` service in `azure.yaml`) as `foundry_hosted_agent` when the
+  Foundry project is deployed, instead of "no matching ACA". `--out` ending in
+  `.json` is the exact output file; otherwise it remains an output directory.
+- Plugin and marketplace version 2.19.0.
+
 ### Hosted-agent ghcp template fixes from the OS1 live E2E
 
 - `ghcp/references/container.py` `_load_mcp_servers()` returns `dict[str, dict]`

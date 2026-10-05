@@ -255,12 +255,22 @@ def test_invalid_selected_config_blocks_planner_and_worker(tmp_path, monkeypatch
     "governance:\n  mode: selective\n",
     "**Governance mode**: `selective`\n",
     "```yaml\ngovernance: [\n```\n",
-    "```yaml\ngovernance: {mode: selective}\n```\n",
 ])
 def test_incomplete_spec_selection_is_invalid_not_legacy(tmp_path, text):
     (tmp_path / "specs").mkdir()
     (tmp_path / "specs/SPEC.md").write_text(text)
     assert orch.decide(tmp_path)["next_action"].get("signature") == "invalid-governance-configuration"
+
+
+def test_parseable_partial_spec_contract_is_design_repair_not_legacy(tmp_path):
+    # A parseable but incomplete §11a contract is repairable by design; it must
+    # never be silently treated as legacy and must not reach deploy.
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs/SPEC.md").write_text("```yaml\ngovernance: {mode: selective}\n```\n")
+    report = orch.decide(tmp_path)
+    nxt = report["next_action"]
+    assert nxt["type"] == "run" and nxt["stages_to_run"][:2] == ["preflight", "design"]
+    assert "incomplete-governance-contract" in json.dumps(report)
 
 
 def test_invalid_parent_json_cannot_be_treated_as_legacy_off(tmp_path):
@@ -1802,3 +1812,58 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+LIVE2_INCOMPLETE_SPEC = (
+    "## 11a. Runtime Governance Contract\n```yaml\ngovernance:\n  mode: off\n"
+    "  environment_modes: {development: evaluate_only, staging: evaluate_only, "
+    "preproduction: enforce, production: enforce}\n```\n"
+)
+
+
+def test_incomplete_spec_contract_routes_back_to_design_with_missing_keys(tmp_path):
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs/SPEC.md").write_text(LIVE2_INCOMPLETE_SPEC)
+    decision = orch._check_design(tmp_path, {"design": {"artifact_hash": "stale"}})
+    assert decision.decision == "run"
+    assert "incomplete-governance-contract" in decision.reason
+    for key in ("framework", "tools", "governance.lifecycle_bindings"):
+        assert key in decision.reason
+    assert "validate_governance_contract.py" in decision.reason
+    # Also when no prior hash exists (a manually written SPEC is not trusted blindly).
+    assert orch._check_design(tmp_path, {}).decision == "run"
+
+
+def test_incomplete_spec_contract_is_design_repair_not_opaque_hard_stop(tmp_path, monkeypatch):
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs/SPEC.md").write_text(LIVE2_INCOMPLETE_SPEC)
+    monkeypatch.setitem(orch.STAGE_PROBES, "preflight",
+                        lambda w, s: orch.StageDecision("preflight", "skip", "fixture"))
+    report = orch.decide(tmp_path)
+    assert report["next_action"]["type"] == "run"
+    assert report["next_action"]["stages_to_run"][0] == "design"
+    assert "deploy" in report["stages"]
+    calls = []
+    result = orch.execute(tmp_path, lambda stage: calls.append(stage) or 0)
+    # A design run that does not repair the contract blocks; nothing deploys.
+    assert calls == ["design"]
+    assert result["status"] == "blocked" and result["stage"] == "design"
+
+
+def test_design_repair_of_spec_contract_unblocks_pipeline(tmp_path, monkeypatch):
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs/SPEC.md").write_text(LIVE2_INCOMPLETE_SPEC)
+    monkeypatch.setitem(orch.STAGE_PROBES, "preflight",
+                        lambda w, s: orch.StageDecision("preflight", "skip", "fixture"))
+    fixed = ("```yaml\nframework: github-copilot-sdk\ngovernance:\n  mode: off\n"
+             "  environment_modes: {development: evaluate_only, staging: evaluate_only, "
+             "preproduction: enforce, production: enforce}\n  lifecycle_bindings: []\ntools: []\n```\n")
+
+    def worker(stage):
+        if stage == "design":
+            (tmp_path / "specs/SPEC.md").write_text(fixed)
+        return 0
+
+    calls = []
+    orch.execute(tmp_path, lambda stage: calls.append(stage) or worker(stage))
+    assert calls[0] == "design" and "deploy" in calls

@@ -8,7 +8,8 @@
 # default — no local Docker needed. Use `azd ai agent run` when you
 # intentionally want to build and run the agent locally.
 
-FROM python:3.12-slim
+# MCR base: remote ACR Tasks builds hit Docker Hub anonymous pull limits.
+FROM mcr.microsoft.com/oryx/python:3.12
 WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
 COPY pyproject.toml .

@@ -176,7 +176,28 @@ directly, or use `azd ai agent invoke --protocol invocations`. If you need
 
 ## Dockerfile
 
-**Copy** `references/Dockerfile` into your project root. No changes needed for most agents.
+**Copy** `references/Dockerfile` into your project root, with
+`references/dockerignore` as `.dockerignore`. No changes needed for most agents.
+The image uses an MCR base (remote ACR Tasks builds hit Docker Hub anonymous pull
+limits) and its `COPY`/`CMD` name the entrypoint `container.py`; keep that name.
+
+## Canonical pilot scaffold
+
+`references/pilot/` is the complete azd project for a Threadlight pilot: GHCP
+hosted agent on Foundry plus the mock MCP server on Azure Container Apps.
+
+| File | Contract |
+|---|---|
+| `azure.yaml` | `azure.ai.agent` + `containerapp` services, both `remoteBuild: true`; `postdeploy` hook |
+| `infra/main.bicep` | Foundry account + project (system identity), model deployment, ACR, ACA, Log Analytics; every role assigned by GUID, including the deployer's Foundry User (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) at project scope; `tags` parameter |
+| `infra/main.parameters.json` | tags from `THREADLIGHT_OWNER`, `THREADLIGHT_PURPOSE`, `THREADLIGHT_DISPOSABLE` azd env values |
+| `mcp/Dockerfile`, `mcp/server.py` | MCR base, `mcp>=1.10,<2`, `SAMPLE_DATA_DIR` env (no path walk), `tool=` log lines for server-side proof |
+| `dockerignore` | allowlist root `.dockerignore` (repo-root build context exceeds the ACR tar limit otherwise) |
+| `hooks/postdeploy.sh` | grants the agent instance identity Foundry User by GUID on account and project |
+
+Replace `__PROJECT_NAME__`, `__AGENT_NAME__` and `__AGENT_DESCRIPTION__`. Copy
+`mcp/` to `src/mcp/`, the agent files to `src/agent/` and `dockerignore` to
+`.dockerignore`. No local Docker daemon or registry login is needed.
 
 ---
 

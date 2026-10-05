@@ -10,6 +10,12 @@ silently runs against an unpinned or absent companion.
     python3 skills/_shared/official_skills.py                       # runs `copilot skill list --json`
     python3 skills/_shared/official_skills.py --skill-list FILE     # saved listing
     python3 skills/_shared/official_skills.py --json                # machine-readable report
+    python3 skills/_shared/official_skills.py --plugin-dir DIR ...  # session started with --plugin-dir
+
+Official plugins loaded with ``copilot --plugin-dir DIR`` are visible to
+``copilot skill list`` only when the same flags precede the subcommand. Pass
+them with repeatable ``--plugin-dir`` or ``THREADLIGHT_PLUGIN_DIRS``
+(os.pathsep-separated); otherwise the check reports false MISSING/DRIFT.
 
 Exit 0 when every locked skill resolves to the pinned content, 1 otherwise.
 Offline: it reads local files only and never contacts GitHub or Azure.
@@ -19,6 +25,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -48,7 +55,8 @@ def check(listing: list[dict], lock: dict | None = None, manifest: dict | None =
     for plugin, entry in sorted(lock["plugins"].items()):
         for skill, spec in sorted(entry["skills"].items()):
             row = {"skill": skill, "plugin": plugin, "fallback": fallbacks.get(skill)}
-            found = resolved.get(skill)
+            # Colliding names are listed as `<plugin>:<skill>`; prefer the pinned plugin's copy.
+            found = resolved.get(f"{plugin.split('@')[0]}:{skill}") or resolved.get(skill)
             if not found:
                 row["status"] = "missing"
                 rows.append(row)
@@ -92,8 +100,16 @@ def render(report: dict) -> str:
     return "\n".join(lines)
 
 
-def _copilot_listing() -> list[dict]:
-    proc = subprocess.run(["copilot", "skill", "list", "--json"], capture_output=True, text=True, check=True)
+def _plugin_dirs(explicit: list[str] | None) -> list[str]:
+    dirs = list(explicit or [])
+    env = os.environ.get("THREADLIGHT_PLUGIN_DIRS", "")
+    dirs += [d for d in env.split(os.pathsep) if d.strip() and d not in dirs]
+    return dirs
+
+
+def _copilot_listing(plugin_dirs: list[str] | None = None) -> list[dict]:
+    flags = [arg for d in plugin_dirs or [] for arg in ("--plugin-dir", d)]
+    proc = subprocess.run(["copilot", *flags, "skill", "list", "--json"], capture_output=True, text=True, check=True)
     return json.loads(proc.stdout)
 
 
@@ -107,12 +123,15 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--skill-list", type=Path, help="saved output of `copilot skill list --json`")
     ap.add_argument("--json", action="store_true", help="print the report as JSON")
+    ap.add_argument("--plugin-dir", action="append", default=[], metavar="DIR",
+                    help="plugin directory the session loads with `copilot --plugin-dir` (repeatable; "
+                         "also THREADLIGHT_PLUGIN_DIRS, os.pathsep-separated)")
     args = ap.parse_args(argv)
     if args.skill_list:
         listing = _load(args.skill_list)
     else:
         try:
-            listing = _copilot_listing()
+            listing = _copilot_listing(_plugin_dirs(args.plugin_dir))
         except FileNotFoundError:
             return _unchecked("copilot CLI not found on PATH", args.json)
         except subprocess.CalledProcessError as exc:

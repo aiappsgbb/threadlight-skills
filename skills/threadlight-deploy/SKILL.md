@@ -56,6 +56,25 @@ Generate walkthrough/script facts from the process handoff, and preserve receipt
 Take a project folder (containing AGENTS.md, `src/agent/skills/`, config/, etc.) and enrich
 it with all files needed to deploy as a **Microsoft Foundry Hosted Agent**.
 
+## Platform steps owned by `microsoft-foundry`
+
+Threadlight owns the Threadlight-specific steps: SPEC-driven artifact
+generation, packaging skills into the image, the pilot scaffold, Threadlight
+governance wiring and the `threadlight-safe-check` post-deploy gate. Generic
+Foundry platform steps belong to the official `microsoft-foundry` skill; load it
+for these steps instead of improvising:
+
+- model deployment, quota and capacity in the Foundry account;
+- hosted-agent create, run, invoke and troubleshoot (`azd ai agent init`,
+  `azd ai agent run`, `azd ai agent invoke`, `azd ai agent show`) outside the
+  generated pilot flow;
+- agent evaluation (batch and continuous), after Threadlight generated the
+  scenarios from SPEC § 9.
+
+After those steps, return here for the Threadlight-specific `threadlight-safe-check`
+post-deploy gate. Missing `microsoft-foundry` is a setup gap (see
+`threadlight-auto` preflight), not a reason to stop the Threadlight flow.
+
 ## Selected governance — before choosing a container template
 
 Read the explicit governance contract first. **Off means no changes and no
@@ -1002,7 +1021,13 @@ Generate the container runtime based on the chosen variant (see Phase 1 § 1d).
 #### GHCP SDK variant (default)
 
 **Copy the reference template** from the `threadlight-deploy/references/hosted-agent/ghcp` reference's
-`references/container.py` and adapt:
+`references/container.py` and adapt. Start the azd project from the canonical
+pilot scaffold in `references/hosted-agent/ghcp/references/pilot` (`azure.yaml`
+with `remoteBuild: true`, complete `infra/main.bicep` with Foundry account +
+project + model + role GUIDs, the MCP server, `.dockerignore` and the
+`hooks/postdeploy.sh` instance-identity grant). Do not hand-write these files.
+Copy `references/Dockerfile` and `references/dockerignore` (as `.dockerignore`)
+next to `container.py`; the entrypoint name stays `container.py`.
 
 - Model provider: BYOK with `DefaultAzureCredential` → bearer token
 - Instructions: loaded from `copilot-instructions.md`
@@ -1092,7 +1117,7 @@ dependencies = [
     "agent-framework-foundry==1.3.0",
     "agent-framework-foundry-hosting>=1.0.0a260421",
     "azure-identity>=1.19.0,<1.26.0a0",
-    "mcp>=1.10.0",
+    "mcp>=1.10.0,<2",
     "python-dotenv>=1.0.0",
 ]
 
@@ -1137,8 +1162,9 @@ of azure-identity and other packages unintentionally.
 > - **Drop** any explicit `azure-ai-agentserver-responses` line. Let `agent-framework-foundry-hosting`
 >   pull its own pinned transitive (`==1.0.0b4` currently, but the right value for whatever
 >   foundry-hosting wants).
-> - **Add** explicit `mcp>=1.10.0`. `agent-framework-core 1.3.0` does NOT auto-pull it, and
->   `MCPStreamableHTTPTool` will fail at runtime without it.
+> - **Add** explicit `mcp>=1.10.0,<2`. `agent-framework-core 1.3.0` does NOT auto-pull it, and
+>   `MCPStreamableHTTPTool` will fail at runtime without it. Keep the `<2` bound: mcp 2.x
+>   removes `mcp.server.fastmcp`.
 > - **Include** `[tool.setuptools] packages = []` — uv needs it to resolve cleanly when
 >   the project itself isn't installed (`uv sync --no-install-project`).
 > - **Reference**: keep a canonical `src/agent/pyproject.toml` in each process repo
@@ -1302,7 +1328,8 @@ This agent deploys as a **Microsoft Foundry Hosted Agent** using the
    hosted agent version needs `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`,
    formerly `Azure AI User`) or `Foundry Project Manager` at the project scope,
    otherwise the deploy fails with `403 Forbidden ERROR CODE: UserError`.
-   Threadlight `azd-modules` grants `Azure AI User` on the account when
+   Always assign roles by **GUID**: `az` 2.86 no longer resolves the name `Azure AI User`.
+   Threadlight `azd-modules` grants `Foundry User` on the account when
    `deployingUserObjectId` is set. The official `azd ai agent init` template does
    not: run `azd provision`, then assign the role and wait for propagation:
    ```bash
@@ -1394,7 +1421,7 @@ Key rule: bot MUST use `get_openai_client(agent_name=...)` — NOT the old `agen
   - Created by `infra/bot/uami.bicep` (or a shared `infra/identity/uami.bicep`)
   - Assigned to: Bot ACA, MCP ACA, and any other ACA/Function
   - `AZURE_CLIENT_ID` env var set on all ACAs pointing to the shared UAMI
-  - RBAC: assign `Azure AI User` on Foundry account + project, `Cognitive Services OpenAI User`,
+  - RBAC: assign `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) on Foundry account + project, `Cognitive Services OpenAI User`,
     plus any data-plane roles (Cosmos, Search, etc.) to this single UAMI
 - **Azure AI Project Manager** role required at project scope to deploy
 
@@ -2145,7 +2172,7 @@ container.py (MAF variant)
 
 **Essential for deploy (quick reference):**
 - Each hosted agent gets **two Entra identities** at deploy time (instance + blueprint)
-- Both need `Azure AI User` on Foundry account AND project
+- Both need `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`, formerly `Azure AI User`) on Foundry account AND project — assign by GUID
 - Deployer needs `Azure AI Project Manager` on the project
 - Set `AZURE_TENANT_ID` in azd env for postdeploy RBAC auto-assignment
 - RBAC propagation takes 5-15 minutes for new service principals
@@ -3557,8 +3584,8 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | **AppInsights connection PUT returns 400 ValidationError on `authType: AAD`; ApiKey fallback returns 200 but GET shows `credentials: null` (silent server-side drop)** | Platform gap on account-RP scope `2025-10-01-preview` in some regions (correlation IDs available). Connection persists with `isDefault: true` but no usable secret → platform never auto-injects `APPLICATIONINSIGHTS_CONNECTION_STRING` into hosted agents | **No code workaround exists today.** Ship the agent with guarded `_init_telemetry()` (preceding row) so it functions without telemetry. File a support ticket with the correlation IDs. If AppIn telemetry is non-negotiable, pivot region (`eastus` / `northcentralus` are the best initial bets — verify auto-injection works BEFORE committing to a redeploy) |
 | **`template.kind` validation error** | **agent.yaml uses wrong schema — `template:` nesting is for `agent.manifest.yaml` (samples only)** | **Use ContainerAgent schema: `kind: hosted` at top level, NOT `template.kind`. Schema: `ContainerAgent.yaml`** |
 | **"Experience not available" on create_version** | **Region does not support hosted agents OR `ENABLE_CAPABILITY_HOST=true` (removed in refreshed preview)** | **Set `ENABLE_CAPABILITY_HOST=false` in `main.parameters.json`. Try `northcentralus`, `eastus`, `swedencentral`. Avoid `eastus2`.** |
-| **Agent 401 on `storage/history`** | **Agent's Entra identity missing `Azure AI User` on project scope, OR RBAC not yet propagated (5-15 min for new SPs)** | **Assign `Azure AI User` to BOTH `instance_identity` AND `blueprint` principal IDs on Foundry account + project. Wait 15 min, then redeploy to force new session.** |
-| **401 PermissionDenied on agent invoke (caller)** | **Calling user/principal missing `Azure AI User` on Foundry account + project** | **Assign `Azure AI User` to your principal on both account and project scope** |
+| **Agent 401 on `storage/history`** | **Agent's Entra identity missing `Azure AI User` on project scope, OR RBAC not yet propagated (5-15 min for new SPs)** | **Assign `Foundry User` (role GUID `53ca6127-db72-4b80-b1b0-d745d6d5456d`) to BOTH `instance_identity` AND `blueprint` principal IDs on Foundry account + project. Wait 15 min, then redeploy to force new session.** |
+| **401 PermissionDenied on agent invoke (caller)** | **Calling user/principal missing `Azure AI User` on Foundry account + project** | **Assign `Foundry User` (role GUID `53ca6127-db72-4b80-b1b0-d745d6d5456d`) to your principal on both account and project scope** |
 | **`{{chat}}` literal in env vars** | **Mustache `{{template}}` syntax in agent.yaml `environment_variables` is NOT expanded by the azd extension** | **Use literal model deployment names (e.g., `gpt-5.4`) or `__PLACEHOLDER__` tokens** |
 | **pip can't resolve agent-framework deps** | **Pre-release `agent-framework-foundry-hosting` and its beta transitive deps** | **Use `uv` with `prerelease = "if-necessary-or-explicit"` in `[tool.uv]`. Do NOT use `"allow"` — it pulls beta azure-identity.** |
 | MCP tools not appearing | MCP server returns 400/404 on protocol methods | All 6 JSON-RPC methods must return 200 |
@@ -3601,7 +3628,7 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | **ACA `secrets[].keyVaultUrl` fails at create-time** when KV secret doesn't exist yet | Secret refs are validated **at ACA provisioning**, not at runtime. Cannot create ACA + KV secret + auth wiring in a single Bicep deploy when the secret value comes from `az ad app credential reset` (which needs the ACA's FQDN as redirect URI… circular). | **2-phase Bicep deploy with a `wireAuth bool = false` param.** Phase 1: deploy ACA with empty `secrets:` array + skipped `authConfigs`. Between phases: grant deployer `Key Vault Secrets Officer`, mint client secret on the app reg via `az ad app credential reset --append --display-name <label>`, write to KV. Phase 2: re-deploy with `wireAuth=true` to wire the secret reference + `authConfigs`. See **Static-Site Showroom Deploy** reference below. |
 | **`enableRbacAuthorization=true` on KV** — Owner can't write secrets | KV with RBAC mode requires data-plane role; Owner only grants control plane | Assign `Key Vault Secrets Officer` (`b86a8fe4-44ce-4948-aee5-eccb2c155cd7`) to the deployer principal, wait **25-30s** for RBAC propagation before `az keyvault secret set` |
 | **PowerShell array param `--parameters key=[\"$oid\"]` corrupts JSON** | Quote escaping between PowerShell + az CLI strips the inner `"`, leaving `[bare-guid]` which fails JSON parse | Either pass arrays via a parameters JSON file, OR drop the array param from Bicep and grant the role via post-deploy `az role assignment create` |
-| **Wrong built-in role GUID hard-coded in Bicep** | Easy to typo (`...406e-8b5a-...` vs `...408a-b874-...`); deploy doesn't fail until role-assignment resource provisions | **NEVER hard-code role GUIDs from memory.** Look up via `az role definition list --name "<role>" --query "[0].name" -o tsv`. Useful pins: AcrPull `7f951dda-4ed3-4680-a7ca-43fe172d538d` · KV Secrets User `4633458b-17de-408a-b874-0445c86b69e6` · KV Secrets Officer `b86a8fe4-44ce-4948-aee5-eccb2c155cd7` |
+| **Wrong built-in role GUID hard-coded in Bicep** | Easy to typo (`...406e-8b5a-...` vs `...408a-b874-...`); deploy doesn't fail until role-assignment resource provisions | **NEVER hard-code role GUIDs from memory.** Look up via `az role definition list --name "<role>" --query "[0].name" -o tsv`. Useful pins: Foundry User (formerly Azure AI User) `53ca6127-db72-4b80-b1b0-d745d6d5456d` · AcrPull `7f951dda-4ed3-4680-a7ca-43fe172d538d` · KV Secrets User `4633458b-17de-408a-b874-0445c86b69e6` · KV Secrets Officer `b86a8fe4-44ce-4948-aee5-eccb2c155cd7` |
 | **`az rest --headers Content-Type=application/json` fails on Windows** ("non atteso" / "unexpected") | The `--headers` flag has inconsistent parsing between az CLI versions and locales | For redirect-URI updates, use `az ad app update --id <appId> --web-redirect-uris uri1 uri2 …` (replaces the full array — read existing first, merge, then update) |
 | **`az ad app credential reset` without `--append` blows away other secrets** | Default behavior is REPLACE, not append | Always pass `--append --display-name <label>`. Verify with `az ad app credential list --id <appId>` after |
 | **Redeploying ANY MCP service (`azd deploy <mcp>`) silently breaks the running agent** — every tool call returns `404 Session not found`, agent self-reports `case read failed` / `query failed` on EVERY call, MCP container is `Healthy`, MCP logs show `POST /mcp HTTP/1.1" 404 Not Found` WITHOUT a preceding `new transport with session ID: ...` line | Agent's MCP client caches the `mcp-session-id` from the previous initialize handshake. New MCP container = sessions wiped. Agent does NOT auto-re-handshake on `Session not found`. External probes to `/mcp` with proper Accept headers return `200 OK` — confirming the path is fine, the SESSION is gone | **Treat MCP + agent as a coupled deploy pair on running pilots.** After `azd deploy <mcp-service>`, also run `azd deploy <agent-service>` (creates new agent version, fresh MCP session pool) AND restart the bot replica: `az containerapp revision restart -g <rg> -n <bot-aca> --revision $(az containerapp revision list -g <rg> -n <bot-aca> --query "[?properties.active] | [0].name" -o tsv)`. Alternative: wait ~15 min idle for refreshed-preview auto-deprovision. See `threadlight-mcp-aca` skill v1.0.3 for the full diagnostic table (FastMCP 3.x mount-path 404 vs stale-session 404). |
