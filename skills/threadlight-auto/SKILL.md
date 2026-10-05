@@ -324,9 +324,19 @@ next to the existing use-case skills.
      the exported runtime is preserved verbatim and deploy Phase 2 is skipped;
      only the unconditional policy-dependency readability check above applies.
    `threadlight-auto` owns **no separate framework or protocol default**.
-5. Writes `.threadlight/preflight-passed.json` with
+5. Official companion skills: run `python3 ../_shared/official_skills.py`
+   (offline; it reads `copilot skill list --json`). It compares the installed
+   official skills with the pinned `azure@azure-skills` release. This check
+   **does not stop** the pilot: show each MISSING or DRIFT line verbatim,
+   including its fix and Threadlight fallback, and continue. The presenter
+   deploy handoff still stops on drift as `docs/presenter-ready.md` describes.
+   Exit 0 records `official_skills: "ok"` and exit 1 records `"degraded"`. If
+   the `copilot` CLI is unavailable or cannot list skills, the check exits 2
+   with an `UNCHECKED:` line: record `official_skills: "unchecked"`.
+6. Writes `.threadlight/preflight-passed.json` with
    `foundation_sha256: <sha256>` when Foundation exists, or
-   `foundation_sha256: null` before it exists. The marker has 24h maximum
+   `foundation_sha256: null` before it exists, plus
+   `official_skills: "ok" | "degraded" | "unchecked"`. The marker has 24h maximum
    validity, but Foundation creation, editing, or removal invalidates it
    immediately.
 

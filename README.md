@@ -457,6 +457,12 @@ with the official tag checked and the evidence for every exception, is in
 The official release Threadlight is tested against is pinned by tag, commit and
 file hashes in [`skills/_shared/official-skills-lock.json`](skills/_shared/official-skills-lock.json);
 `python3 scripts/verify_official_skills_lock.py` recomputes it from the tag.
+To check what your Copilot actually loads, run `python3 skills/_shared/official_skills.py`:
+it reports each locked official skill as OK, MISSING or DRIFT (including a stale
+personal copy that shadows the plugin), with the install fix and the
+Threadlight fallback recorded under `official.fallbacks` in the manifest; it
+reports UNCHECKED (exit 2) when the `copilot` CLI cannot list skills.
+`threadlight-auto` runs it in Stage 0 and continues with a warning.
 
 | Need | Use |
 |---|---|

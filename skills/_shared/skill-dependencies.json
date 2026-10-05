@@ -15,7 +15,89 @@
     "tag": "v1.2.77",
     "commit": "74f27068b21b85807e35ae69ab3976756b060c03",
     "plugin_root": ".github/plugins/azure-skills",
-    "paths_relative_to": "<plugin_root>/skills/<skill>/"
+    "paths_relative_to": "<plugin_root>/skills/<skill>/",
+    "fallbacks": {
+      "microsoft-foundry": {
+        "threadlight": [
+          "skills/threadlight-deploy/references/hosted-agent/maf",
+          "skills/threadlight-deploy/references/hosted-agent/ghcp",
+          "skills/threadlight-deploy/references/azd-modules",
+          "skills/threadlight-deploy/references/observability",
+          "skills/threadlight-evals"
+        ],
+        "note": "Deploy stops the presenter handoff (docs/presenter-ready.md). Hosted-agent layout, azd modules, Foundry App Insights wiring and evals continue from the Threadlight-owned references; prompt agents, toolbox, routines, RBAC and private networking have no Threadlight fallback."
+      },
+      "azure-prepare": {
+        "threadlight": [
+          "skills/threadlight-deploy/references/azd-modules",
+          "skills/threadlight-deploy"
+        ],
+        "note": "threadlight-deploy still generates the azd project from its own module catalog; run azd provision/deploy as its SKILL.md describes."
+      },
+      "azure-validate": {
+        "threadlight": [
+          "skills/threadlight-deploy",
+          "skills/threadlight-safe-check"
+        ],
+        "note": "Use threadlight-deploy's offline generation checks and threadlight-safe-check; there is no official pre-deploy validation pass."
+      },
+      "azure-deploy": {
+        "threadlight": [
+          "skills/threadlight-deploy"
+        ],
+        "note": "Run azd up as threadlight-deploy's SKILL.md describes; there is no official deploy diagnosis."
+      },
+      "azure-diagnostics": {
+        "threadlight": [],
+        "note": "No Threadlight equivalent: Threadlight stages that need it stop at that step and report it; the rest of the pilot continues."
+      },
+      "azure-ai": {
+        "threadlight": [],
+        "note": "No Threadlight equivalent: Threadlight stages that need it stop at that step and report it; the rest of the pilot continues."
+      },
+      "appinsights-instrumentation": {
+        "threadlight": [
+          "skills/threadlight-deploy/references/observability"
+        ],
+        "note": "Foundry account-level App Insights wiring continues from the Threadlight-owned observability reference; generic app instrumentation has no fallback."
+      },
+      "azure-aigateway": {
+        "threadlight": [
+          "skills/threadlight-citadel-hub"
+        ],
+        "note": "Use the Threadlight-owned Citadel hub for APIM AI-gateway patterns."
+      },
+      "azure-compliance": {
+        "threadlight": [
+          "skills/threadlight-production-ready"
+        ],
+        "note": "threadlight-production-ready still reports its own findings; there is no official compliance scan."
+      },
+      "entra-app-registration": {
+        "threadlight": [],
+        "note": "No Threadlight equivalent: Threadlight stages that need it stop at that step and report it; the rest of the pilot continues."
+      },
+      "cost-analysis": {
+        "threadlight": [
+          "skills/threadlight-consumption-iq"
+        ],
+        "note": "Token-span chargeback continues in threadlight-consumption-iq; bill analysis has no fallback."
+      },
+      "cost-estimation": {
+        "threadlight": [],
+        "note": "No Threadlight equivalent: Threadlight stages that need it stop at that step and report it; the rest of the pilot continues."
+      },
+      "cost-governance": {
+        "threadlight": [],
+        "note": "No Threadlight equivalent: Threadlight stages that need it stop at that step and report it; the rest of the pilot continues."
+      },
+      "foundry-iq": {
+        "threadlight": [
+          "skills/threadlight-ground"
+        ],
+        "note": "Knowledge-source ACL and citation evidence continues in threadlight-ground; Foundry IQ setup has no fallback."
+      }
+    }
   },
   "custom_catalog": {
     "repository": "aiappsgbb/awesome-gbb",
