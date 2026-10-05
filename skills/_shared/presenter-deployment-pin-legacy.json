@@ -1,0 +1,14 @@
+{
+  "schema": "threadlight-presenter-deployment-pin-legacy/v1",
+  "accepted": [
+    {
+      "guidance": {
+        "repository": "aiappsgbb/awesome-gbb",
+        "commit": "2a29e084882a52e74b94def3ee9bb32b73592e60",
+        "path": "skills/foundry-hosted-agents/SKILL.md"
+      },
+      "reason": "Frozen incumbent presenter contracts (for example threadlight-library 02-retail/returns-triage) were recorded against this guide before the official azure-skills pin. Accepted read-only so they keep validating unchanged; not for new contracts. New contracts copy presenter-deployment-pin.json.",
+      "superseded_by": "presenter-deployment-pin.json"
+    }
+  ]
+}

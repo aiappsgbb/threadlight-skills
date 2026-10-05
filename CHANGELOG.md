@@ -7,6 +7,22 @@ field.
 
 ## [Unreleased]
 
+### Presenter deployment guidance pinned to the official azure-skills guide
+
+- `skills/_shared/presenter-deployment-pin.json` now selects the official
+  `microsoft/azure-skills` `microsoft-foundry` hosted-agent deploy guide
+  (`v1.2.77`, `74f27068`, sha256 equal to `official-skills-lock.json`) instead of
+  the earlier awesome-gbb hosted-agent guide. New presenter contracts copy it.
+- `skills/_shared/presenter-deployment-pin-legacy.json` lists the earlier
+  awesome-gbb `2a29e08` guidance object. The validator accepts it read-only so
+  frozen incumbent contracts (for example threadlight-library returns-triage)
+  keep validating unchanged; it is not for new contracts.
+- `docs/presenter-ready.md` explains the official pin, the missing/drifted plugin
+  fallback and the Threadlight-owned `hosted-agent/{maf,ghcp}` references for the
+  native-SDK create contract, which the official azd-only guide does not cover.
+  The Cowork Design ZIP is rebuilt with the updated guide.
+- Plugin and marketplace version 2.17.0.
+
 ### One self-contained package: awesome-gbb gaps ported as Threadlight-owned
 
 - Port the awesome-gbb skills that have no official `azure@azure-skills`

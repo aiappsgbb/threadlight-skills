@@ -21,6 +21,9 @@ EVIDENCE = ".threadlight/presenter-evidence.json"
 TARGET = ".threadlight/presenter-target.json"
 PUBLICATION = ".threadlight/presenter-publication.json"
 DEPLOYMENT_PIN = parse_json(Path(__file__).with_name("presenter-deployment-pin.json").read_bytes())
+# Exact pins of frozen incumbent contracts; accepted read-only, never for new contracts.
+LEGACY_DEPLOYMENT_PINS = [entry["guidance"] for entry in parse_json(
+    Path(__file__).with_name("presenter-deployment-pin-legacy.json").read_bytes())["accepted"]]
 GROUPS = ("runtime", "interface", "source", "script", "sizing")
 PACKAGE_CASES = (
     "exact_sdk", "response_shape", "retry_dispatch", "metadata_reads",
@@ -107,7 +110,8 @@ def load_contract(root):
     require(timestamp(availability.get("expires_at")) > timestamp(availability.get("effective_at")),
             "source-validity-order")
     deploy = contract.get("deployment", {})
-    require(deploy.get("guidance") == DEPLOYMENT_PIN, "deployment-guidance-pin-mismatch")
+    require(deploy.get("guidance") == DEPLOYMENT_PIN or deploy.get("guidance") in LEGACY_DEPLOYMENT_PINS,
+            "deployment-guidance-pin-mismatch")
     require(deploy.get("consumer") in ("unified-azd", "native-sdk"), "deployment-consumer-required")
     for name in ("manifest", "runtime_root", "entrypoint", "lockfile", "adapter", "model_env"):
         require(text(deploy.get(name)), f"deployment-{name}")
