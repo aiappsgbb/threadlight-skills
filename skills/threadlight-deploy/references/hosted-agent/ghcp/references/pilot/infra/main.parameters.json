@@ -6,6 +6,8 @@
     "location": { "value": "${AZURE_LOCATION}" },
     "principalId": { "value": "${AZURE_PRINCIPAL_ID}" },
     "principalType": { "value": "${AZURE_PRINCIPAL_TYPE=User}" },
+    "mcpImage": { "value": "${SERVICE_MCP_IMAGE_NAME=mcr.microsoft.com/k8se/quickstart:latest}" },
+    "modelCapacity": { "value": "${AZURE_AI_MODEL_CAPACITY=300}" },
     "tags": {
       "value": {
         "owner": "${THREADLIGHT_OWNER}",

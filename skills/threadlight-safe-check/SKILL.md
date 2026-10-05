@@ -179,6 +179,12 @@ python3 tests/safe_check.py --phase pre-deploy    # immediately before azd up
 python3 tests/safe_check.py --phase post-deploy   # immediately after azd up returns 0
 ```
 
+A copied `tests/safe_check.py` cannot find the governance collector next to
+itself. Put the plugin's `skills/threadlight-safe-check/references` directory
+on `PYTHONPATH` (or install the collector package) before running it.
+Otherwise a selected governance binding reports
+`governance: install the governance safe-check collector package`.
+
 Exit codes:
 
 | Code | Meaning |

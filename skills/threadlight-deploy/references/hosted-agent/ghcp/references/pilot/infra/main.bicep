@@ -33,8 +33,8 @@ param mcpImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param modelName string = 'gpt-5.4-mini'
 param modelVersion string = '2026-03-17'
 
-@description('GlobalStandard pay-as-you-go capacity in thousands of TPM. Keep it small for pilots.')
-param modelCapacity int = 10
+@description('GlobalStandard pay-as-you-go capacity in thousands of TPM (billed per token, not reserved). The GHCP runtime bursts ~10 calls of ~8K tokens per case; 50 or less returned 429 in live runs.')
+param modelCapacity int = 300
 
 var token = uniqueString(subscription().id, resourceGroup().id, environmentName)
 var allTags = union(tags, { 'azd-env-name': environmentName })

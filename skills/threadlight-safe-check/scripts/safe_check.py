@@ -33,6 +33,11 @@ from pathlib import Path
 from typing import Any
 
 
+# Child resources `az resource list -g` does not return (verify them another way).
+UNLISTED_CHILD_RESOURCE_TYPES = frozenset({
+    "Microsoft.CognitiveServices/accounts/deployments",
+})
+
 SELECTOR_TO_RESOURCE_TYPES: dict[str, list[str]] = {
     "foundry-account":  ["Microsoft.CognitiveServices/accounts"],
     "cosmos-db":        ["Microsoft.DocumentDB/databaseAccounts"],
@@ -352,6 +357,10 @@ def phase_design(manifest_path: Path, out_path: Path) -> int:
             gaps.append("aca-job:yes but no scheduled_jobs[] entries")
 
     expected = set(dm.get("expected_resource_types", []))
+    for t in sorted(expected & UNLISTED_CHILD_RESOURCE_TYPES):
+        gaps.append(
+            f"expected_resource_types lists {t!r}, which az resource list never "
+            "returns; remove it (post-deploy would report it missing)")
     if not expected:
         gaps.append("expected_resource_types[] is empty")
     else:
@@ -382,6 +391,17 @@ def phase_design(manifest_path: Path, out_path: Path) -> int:
 # ---------------------------------------------------------------------------
 # Phase 2 — pre-deploy
 # ---------------------------------------------------------------------------
+
+def _azure_yaml_builds(azure_text: str, src: str) -> bool:
+    """True when azure.yaml builds ``src`` via ``project:`` or ``docker.path``.
+
+    The GHCP pilot scaffold declares ``project: .`` + ``docker.path:
+    src/mcp/Dockerfile``; older layouts use ``project: ./src/mcp``.
+    """
+    s = re.escape(src)
+    return bool(re.search(rf"^\s*project:\s*['\"]?(?:\./)?{s}/?['\"]?\s*$", azure_text, re.MULTILINE)
+                or re.search(rf"^\s*path:\s*['\"]?(?:\./)?{s}/Dockerfile['\"]?\s*$", azure_text, re.MULTILINE))
+
 
 def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
     data = _load_manifest(manifest_path)
@@ -436,14 +456,14 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
                 gaps.append(
                     "aca-bot:yes but src/bot/teams_package/manifest.json missing")
         elif selector == "aca-mcp":
-            if "project: ./src/mcp" not in azure_text:
+            if not _azure_yaml_builds(azure_text, "src/mcp"):
                 gaps.append(
                     "aca-mcp:yes but azure.yaml missing service with "
                     "project: ./src/mcp")
             if not (repo / "src" / "mcp" / "Dockerfile").exists():
                 gaps.append("aca-mcp:yes but src/mcp/Dockerfile missing")
         elif selector == "workspace-ui":
-            if "project: ./src/workspace" not in azure_text:
+            if not _azure_yaml_builds(azure_text, "src/workspace"):
                 gaps.append(
                     "workspace-ui:yes but azure.yaml missing service with "
                     "project: ./src/workspace")
@@ -644,11 +664,16 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
                      subscription: str | None = None) -> int:
     data = _load_manifest(manifest_path)
     dm = data["deployment_manifest"]
-    selectors = {k for k, v in dm.get("module_selectors", {}).items() if v == "yes"}
+    raw_selectors = dm.get("module_selectors", {})
+    selectors = {k for k, v in raw_selectors.items() if v == "yes"}
     expected_types = set(dm.get("expected_resource_types", []))
     channels = dm.get("channels", [])
     scheduled_jobs = dm.get("scheduled_jobs", [])
     gaps: list[str] = []
+    # A non-"yes"/"no" value would otherwise silently disable that selector's checks.
+    for k, v in raw_selectors.items():
+        if v not in ("yes", "no"):
+            gaps.append(f"selector {k!r}={v!r} must be 'yes' or 'no'")
 
     gaps.extend(_presenter_deployment_gaps(_repo_root_for_manifest(manifest_path, repo_root), data))
     rg = rg or os.environ.get("AZURE_RESOURCE_GROUP")

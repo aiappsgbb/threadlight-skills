@@ -6,6 +6,7 @@ Replace the example tool with the SPEC section 5b tools.
 import json
 import os
 import pathlib
+import sys
 
 from mcp.server.fastmcp import FastMCP
 
@@ -31,7 +32,8 @@ def _load(name: str) -> dict:
 @mcp.tool()
 def get_record(record_id: str) -> dict:
     """Example read tool: return one record from sample-data/records.json."""
-    print(f"tool=get_record record_id={record_id}", flush=True)
+    # stdout carries the stdio JSON-RPC stream; logs go to stderr.
+    print(f"tool=get_record record_id={record_id}", file=sys.stderr, flush=True)
     for record in _load("records.json").get("records", []):
         if record.get("id") == record_id:
             return record

@@ -161,6 +161,9 @@ def load_or_prompt_profile(
 # Parsing
 # ---------------------------------------------------------------------------
 
+# threadlight-design emits `## 12. Production Readiness`; older SPECs use `## § 12`.
+_SEC12_HEADING = r"^## (?:§\s*)?12\b\.?"
+
 
 def _parse_section_12(spec_text: str) -> dict[str, Any]:
     """Extract the load_profile{} YAML block from SPEC § 12.
@@ -169,7 +172,7 @@ def _parse_section_12(spec_text: str) -> dict[str, Any]:
     Never uses the yaml module — hand-rolls the tiny 2-level schema.
     """
     # Locate § 12 heading.
-    sec12_m = re.search(r"^## §\s*12\b", spec_text, re.MULTILINE)
+    sec12_m = re.search(_SEC12_HEADING, spec_text, re.MULTILINE)
     if not sec12_m:
         return {}
 
@@ -538,7 +541,7 @@ def _write_back(spec_path: Path, block_text: str) -> None:
     """Splice the yaml block into SPEC § 12 under ### `load_profile{}`."""
     text = spec_path.read_text(encoding="utf-8")
 
-    if not re.search(r"^## §\s*12\b", text, re.MULTILINE):
+    if not re.search(_SEC12_HEADING, text, re.MULTILINE):
         raise RuntimeError("SPEC § 12 missing; run threadlight-design to scaffold")
 
     new_fence = f"```yaml\n{block_text}```"
@@ -564,7 +567,7 @@ def _write_back(spec_path: Path, block_text: str) -> None:
             new_text = text[:insert_pos] + "\n" + new_fence + "\n" + text[insert_pos:]
     else:
         # No subsection at all — append it right after the § 12 heading line.
-        sec12_m = re.search(r"^## §\s*12\b[^\n]*\n", text, re.MULTILINE)
+        sec12_m = re.search(_SEC12_HEADING + r"[^\n]*\n", text, re.MULTILINE)
         if not sec12_m:
             raise RuntimeError("SPEC § 12 missing; run threadlight-design to scaffold")
         insert_pos = sec12_m.end()

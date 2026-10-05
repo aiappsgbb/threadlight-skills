@@ -69,6 +69,22 @@ plugins (Copilot CLI, `--plugin-dir`, no awesome-gbb).
   (`azure.ai.agent` service in `azure.yaml`) as `foundry_hosted_agent` when the
   Foundry project is deployed, instead of "no matching ACA". `--out` ending in
   `.json` is the exact output file; otherwise it remains an output directory.
+- **Live Phase 3 contract drift (returns, kyc).** Pre-deploy accepts the
+  canonical pilot scaffold (`project: .` + `docker.path: src/mcp/Dockerfile`)
+  as well as `project: ./src/mcp`, instead of forcing an `azure.yaml` rewrite.
+  Design fails `expected_resource_types` that list child types `az resource
+  list` never returns (`Microsoft.CognitiveServices/accounts/deployments`), and
+  post-deploy fails non-`yes`/`no` selector values instead of silently checking
+  zero selectors. `threadlight-consumption-iq` reads and writes SPEC §12 under
+  both `## § 12` and the template's `## 12.` heading. Pilot
+  `main.parameters.json` maps `mcpImage` to `SERVICE_MCP_IMAGE_NAME` (a
+  re-provision no longer resets the MCP app to the quickstart image) and
+  `modelCapacity` to `AZURE_AI_MODEL_CAPACITY` (default 300K TPM GlobalStandard,
+  billed per token: 50 or less returned 429 for the GHCP runtime's bursts). The
+  mock MCP server logs to stderr so stdout stays a clean stdio JSON-RPC stream.
+  A copied `tests/safe_check.py` needs the plugin's
+  `skills/threadlight-safe-check/references` on `PYTHONPATH` for the governance
+  collector (documented in the safe-check CLI section).
 - Plugin and marketplace version 2.19.0.
 
 ### Hosted-agent ghcp template fixes from the OS1 live E2E

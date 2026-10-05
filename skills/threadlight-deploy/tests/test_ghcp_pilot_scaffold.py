@@ -141,3 +141,22 @@ def test_pilot_postdeploy_publishes_agent_fqdn_for_the_auto_deploy_probe():
     hook = read(PILOT / "hooks" / "postdeploy.sh")
     assert "azd env set AGENT_FQDN" in hook
     assert hook.index('[ -z "$pid" ]') < hook.index("azd env set AGENT_FQDN")
+
+
+def test_pilot_parameters_map_mcp_image_and_model_capacity():
+    """Live P3 kyc C-03/C-07: unmapped params made `azd provision` revert the MCP
+    app to the quickstart image and pinned capacity to a 429-prone value."""
+    params = json.loads(read(PILOT / "infra/main.parameters.json"))["parameters"]
+    assert params["mcpImage"]["value"].startswith("${SERVICE_MCP_IMAGE_NAME=mcr.microsoft.com/")
+    capacity = params["modelCapacity"]["value"]
+    assert re.fullmatch(r"\$\{AZURE_AI_MODEL_CAPACITY=(\d+)\}", capacity), capacity
+    assert int(re.search(r"=(\d+)", capacity).group(1)) >= 300
+    bicep = read(PILOT / "infra/main.bicep")
+    assert re.search(r"^param modelCapacity int = 300$", bicep, re.M)
+
+
+def test_pilot_mcp_server_never_writes_logs_to_stdout():
+    """Live P3 kyc C-06: print() to stdout corrupts the stdio JSON-RPC stream."""
+    text = read(PILOT / "mcp/server.py")
+    for call in re.findall(r"print\((.*)\)", text):
+        assert "file=sys.stderr" in call, call
