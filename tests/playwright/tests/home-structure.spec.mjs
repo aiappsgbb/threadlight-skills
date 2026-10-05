@@ -6,7 +6,7 @@ test('Home puts the unchanged demo before optional explanations', async ({ page 
   await expect(page.locator('.home-context')).not.toHaveAttribute('open', '');
   await expect(page.locator('.home-journey nav a')).toHaveCount(3);
   const catalogue = page.locator('.home-catalogue-note').filter({ hasText: 'reviewed 23-skill snapshot' });
-  await expect(catalogue).toContainText('current 24-skill catalog');
+  await expect(catalogue).toContainText('current 28-skill catalog');
   await expect(page.locator('.home-catalogue-note').filter({ hasText: 'Historical demo captions' }))
     .toContainText('not current guarantees');
   const order = await page.evaluate(() =>

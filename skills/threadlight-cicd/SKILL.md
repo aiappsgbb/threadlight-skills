@@ -6,13 +6,13 @@ description: >-
   federated identity with scoped RBAC from private-VNet runners and the agent
   has no standing deploy rights. Generates a GitHub Actions or Azure DevOps
   prod-deploy pipeline + env-setup runbooks, with an onboarding-path gate and
-  a central-platform boundary vs citadel-hub-deploy. USE FOR: ci/cd pipeline,
+  a central-platform boundary vs threadlight-citadel-hub. USE FOR: ci/cd pipeline,
   prod deploy pipeline, github actions pipeline, azure devops pipeline, OIDC,
   workload identity federation, WIF, UAMI, scoped RBAC, self-hosted runners,
   private vnet runners, restricted environment deploy, platform team handoff,
   onboarding path gate. DO NOT USE FOR: deploying the central Citadel hub /
-  shared AI gateway (use citadel-hub-deploy); wiring a pilot to an existing
-  hub (use citadel-spoke-onboarding); the first-run sandbox deploy (use
+  shared AI gateway (use threadlight-citadel-hub); wiring a pilot to an existing
+  hub (use threadlight-citadel-spoke); the first-run sandbox deploy (use
   threadlight-deploy).
 metadata:
   version: "0.6.0"
@@ -40,8 +40,8 @@ metadata:
 - You must make the **central-platform boundary** explicit so the pilot pipeline
   never touches the Citadel hub.
 
-**When NOT to use:** deploying the hub itself (`citadel-hub-deploy`), onboarding a
-spoke onto an existing hub (`citadel-spoke-onboarding`), the permissive first-run
+**When NOT to use:** deploying the hub itself (`threadlight-citadel-hub`), onboarding a
+spoke onto an existing hub (`threadlight-citadel-spoke`), the permissive first-run
 deploy (`threadlight-deploy`), or the readiness scorecard
 (`threadlight-production-ready`). See the description's DO NOT USE FOR list.
 
@@ -62,13 +62,13 @@ Is a central platform env required?  (Citadel hub / shared AI gateway /
 └─ yes ─► already deployed?
           │
           ├─ yes ─────────► spoke-onboard    (consume hub via Access Contract →
-          │                                   citadel-spoke-onboarding)
+          │                                   threadlight-citadel-spoke)
           │                                   posture: citadel-spoke · RBAC scope: spoke-rg
           │
           └─ no  ─────────► hub-deploy-then-spoke
                                               (stand up hub on the SEPARATE central
-                                               track → citadel-hub-deploy, THEN
-                                               citadel-spoke-onboarding)
+                                               track → threadlight-citadel-hub, THEN
+                                               threadlight-citadel-spoke)
                                               posture: citadel-spoke · RBAC scope: spoke-rg
 ```
 
@@ -83,8 +83,8 @@ The pilot pipeline is a **separate repo and pipeline** from the central platform
 
 | Concern | Owner | Track / skill |
 |---|---|---|
-| Citadel hub, shared APIM AI gateway, shared networking, platform Key Vault | Central platform team | **`citadel-hub-deploy`** (awesome-gbb, separate repo) |
-| Wire the pilot to consume the hub via an Access Contract | Platform / SE | **`citadel-spoke-onboarding`** |
+| Citadel hub, shared APIM AI gateway, shared networking, platform Key Vault | Central platform team | **`threadlight-citadel-hub`** (Threadlight-owned, separate repo) |
+| Wire the pilot to consume the hub via an Access Contract | Platform / SE | **`threadlight-citadel-spoke`** |
 | Deploy the pilot's **use-case** resources into the spoke/target RG | This pipeline | **`threadlight-cicd`** |
 
 The generated `central-platform-boundary.md` states the pilot pipeline **must not**
@@ -93,12 +93,12 @@ deploy or modify the hub, and that its UAMI RBAC is **spoke-RG-scoped only**.
 ```mermaid
 flowchart LR
   subgraph central["Central platform repo (separate)"]
-    HUB["citadel-hub-deploy<br/>hub · shared APIM · networking · KV"]
+    HUB["threadlight-citadel-hub<br/>hub · shared APIM · networking · KV"]
   end
   subgraph pilot["Pilot repo (this pipeline)"]
     PIPE["threadlight-cicd<br/>azd-deploy-prod → spoke/target RG only"]
   end
-  HUB -. "Access Contract<br/>(citadel-spoke-onboarding)" .-> PIPE
+  HUB -. "Access Contract<br/>(threadlight-citadel-spoke)" .-> PIPE
   PIPE -. "never writes" .-x HUB
 ```
 
@@ -288,7 +288,7 @@ stdlib). Tests under `tests/` pin the artifact paths, the OIDC/WIF-only invarian
   client secret, stop — use OIDC/WIF. The test suite fails the build if a secret
   or PAT lands in any emitted file.
 - **Letting the pilot deploy the hub.** A missing central env is stood up on the
-  `citadel-hub-deploy` track, not by this pipeline.
+  `threadlight-citadel-hub` track, not by this pipeline.
 - **Skipping the gate.** Generating before resolving the onboarding path produces
   the wrong posture and RBAC scope. Run `--onboard` (or pass the flags) first.
 
@@ -296,7 +296,7 @@ stdlib). Tests under `tests/` pin the artifact paths, the OIDC/WIF-only invarian
 
 - [`references/onboarding-path-decision.md`](references/onboarding-path-decision.md) —
   the decision tree (standalone vs spoke-onboard vs hub-deploy-then-spoke) and when to
-  engage `citadel-hub-deploy` vs `citadel-spoke-onboarding`.
+  engage `threadlight-citadel-hub` vs `threadlight-citadel-spoke`.
 - [`references/best-practices.md`](references/best-practices.md) — OIDC/WIF federation,
   least-privilege RBAC, environment gates, and private-VNet runners, with Microsoft
   Learn citations.
@@ -313,4 +313,4 @@ to replace it. For first-party depth behind this CI/CD leg, reach for the offici
 reading, not a dependency* — Threadlight's guidance stays the source of truth for
 the pilot flow:
 
-- **[`entra-app-registration`](https://github.com/microsoft/azure-skills/blob/main/skills/entra-app-registration/SKILL.md)** — **Entra app registration** + OAuth 2.0 / MSAL; first-party depth behind the OIDC / Workload-Identity-Federation federated-credential setup this generator scaffolds.
+- **[`entra-app-registration`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/entra-app-registration/SKILL.md)** — **Entra app registration** + OAuth 2.0 / MSAL; first-party depth behind the OIDC / Workload-Identity-Federation federated-credential setup this generator scaffolds.

@@ -1,0 +1,2359 @@
+> **Threadlight-owned reference.** Threadlight-owned Microsoft Agent Framework (MAF) hosted-agent contract. The official [microsoft-foundry deploy guidance](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md) is the authority for `azd` deploy of hosted agents; this reference covers only what it does not: the native-SDK create-definition, env-var contract, `create_version` dedup trap, capability-host gating and the MAF ResponsesHostServer runtime.
+>
+> Provenance: ported from `aiappsgbb/awesome-gbb@7f1de882` `skills/foundry-hosted-agents/SKILL.md (+ references/)` (MIT License, Copyright (c) 2026 AI Global Black Belts — Microsoft). See [PROVENANCE.md](PROVENANCE.md). Sibling-skill names were rewritten to Threadlight or official `azure-skills` equivalents; skills without a mapping remain residual awesome-gbb names (see `skills/_shared/skill-dependencies.json`).
+
+# Microsoft Foundry Hosted Agents — Reference Guide
+
+Production-tested patterns for deploying hosted agents on Microsoft Foundry.
+**Container-based deployment (Dockerfile + unified `azure.yaml` + `azd`) is
+GA.** Source-code (`--deploy-mode code`) deployment is a separate, still-preview
+surface — see [§ Preview appendix: source-code deploy](#preview-appendix-source-code-deploy-still-preview)
+for that path in isolation. Covers the `Agent` + `FoundryChatClient` +
+`ResponsesHostServer` (MAF) variant exclusively.
+
+> **✅ Core 1.14.0 is the current dependency stack.** Use the canonical pins in
+> this skill (`agent-framework-core~=1.14.0`, `agent-framework-foundry~=1.11.0`,
+> `agent-framework-foundry-hosting==1.0.0b260813`) for new hosted-agent work and
+> refreshes.
+>
+> `MAF 1.8.0` matters here only as the historical feature boundary where the
+> caller-side `agent_framework.foundry.FoundryAgent(timeout=...)` knob landed
+> (overrides the OpenAI-SDK 5s connect / 600s total defaults) — see
+> [§ MAF 1.8.0 update](#maf-180-update-june-2026).
+>
+> If you are still on 1.3.x, upgrade directly to current 1.14.0 and absorb the
+> 1.4.0 breaking changes below plus the 1.6.0 telemetry bundling and the 1.8.0
+> timeout knob in one pass.
+
+## When to Use
+
+- Deploying a custom container agent to Foundry (GA path)
+- Debugging hosted agent failures (401, 500, import errors)
+- Understanding agent identity + when (rarely) explicit RBAC is needed
+- Authoring the unified `azure.yaml` (`azure.ai.project` + `azure.ai.agent` services)
+- Blue-green / canary / rollback traffic routing across agent versions
+- **Migrating from MAF 1.3.x → 1.4.0** ([§ below](#maf-140-breaking-changes-may-2026))
+- **Migrating from the legacy two-file `agent.yaml` + `agent.manifest.yaml`
+  contract** — select and verify the versioned consumer before migration;
+  the supported unified profile uses a single `azure.yaml`
+  ([§ azure.yaml](#azureyaml-unified-hosted-agent-configuration))
+
+| Need | Use |
+|---|---|
+| Build an already-hostable `Agent` with `create_harness_agent` | [`agent-framework-harness`](https://github.com/aiappsgbb/awesome-gbb/blob/7f1de882d5386e5a27852c91d3a89523eef218d0/skills/agent-framework-harness/SKILL.md) |
+
+> **Choosing a model?** See [`references/model-selection.md`](references/model-selection.md) for the model / region / capacity / data-residency decision before you `azd provision`.
+
+## Deployment preflight
+
+**Select a versioned contract before authoring.** The authoritative profile is
+[`references/hosted-contract.json`](references/hosted-contract.json), consumed by
+[`hosted_contract.py`](references/python/hosted_contract.py) and the stager.
+It binds the tested consumer, manifest/environment shape, protocol, runtime
+dependencies, identities and lifecycle; the existing template and pyproject
+remain the source of their actual content. The recorded private BASIC profile
+is azd **1.34.1 + azure.ai.agents 1.0.0-beta.14**, not “this version or newer”.
+Its historical no-tools evidence does not certify other modes or business tools.
+
+Legacy two-file manifests are **migration-only**. Preserve them until the owner
+selects and verifies a migration; do not delete them merely because this skill
+documents a unified manifest. Current Learn pages use an `env` map while the
+recorded consumer template uses an `environmentVariables` list. Do not mix
+the shapes or rewrite a working cohort without checking actual consumer emission.
+An unknown toolchain is `UNSUPPORTED_CAPABILITY`, not permission to upgrade.
+
+Run the new **capabilities** phase of the existing preflight before building or
+publishing an image; then the setup and execution phases at their own boundaries.
+See [capability evidence](references/deployment-preflight.md#early-capability-evidence).
+The capability check is not a new deployment framework and never changes Azure.
+
+**Platform-managed compute does not mean that private project setup is optional.**
+Before hosted registration, select the account/project/network mode and follow
+the single [deployment preflight and evidence contract](references/deployment-preflight.md).
+Run its read-only `references/python/deploy_preflight.py` gate on fresh,
+operator-collected observations. It performs no Azure calls or repairs.
+
+| Selected route | Capability-host prerequisite before registration |
+|---|---|
+| Public, platform-managed azd setup | Let the selected template/platform own setup; do not add manual capability hosts from legacy instructions. Raw/legacy public provisioning needs its own explicit contract review. |
+| Private Basic, including raw SDK or brownfield azd | Read the **project** capability-host inventory and exact host GET. Require `Agents` / `Succeeded`, no BYO stores. The canonical Basic template has a project host only; no customer-created account host is required by that template. |
+| Private Standard/BYO | Verify the account host/subnet and project host with the selected existing BYO connection names. Preserve hosts, connections and stores. |
+
+For a missing Basic project host, stop and request explicit authorization to use
+only the [existing project-host module](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry).
+An unreadable inventory is not absence. A failed, incompatible or BYO host is
+not permission to recreate it; use
+[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) to inspect.
+`azd deploy` against a pre-existing project does not certify these prerequisites.
+
+The gate also checks project/model scope, actual operator/runtime-path evidence,
+the credential-free **project ContainerRegistry connection** and retained native
+identity mapping, mode-appropriate project-MI ACR pull access/policy, immutable image and the selected
+runtime cohort. Preserve the default container identity and verify writable
+`/home/session/.sessions`; a fixed UID can break the native mounted session home.
+Keep management and runtime environments separate. Do not change pins merely
+because another working deployment uses a different tested cohort.
+
+**Registration, readiness, invocation and business proof are separate.** LIST
+versions is inventory, not readiness: require two consecutive **direct version
+GET** observations, then exact endpoint routing, authenticated invocation and the
+real requested tool result with independent audit. Account `Succeeded`, image
+build, LIST `active`, health, or a noop are insufficient. Lost create ACK means
+reconcile existing versions against the frozen definition before any retry.
+Retain old versions and signed bindings; changed image/version/identity requires
+a new exact observation and association. A prompt agent is not an automatic substitute.
+
+## Private BASIC consumer
+
+For an existing private project/ACR, execute the bounded
+[private BASIC procedure](references/private-basic.md) and its
+opt-in private fixture (kept in the provenance source, not shipped here).
+This no-tools bootstrap is independent of tool consent and governed business
+execution; the public CI consumer and private prompt-agent E2E are not substitutes.
+
+Use the canonical stager, runtime and native SDK oracle below. Source builds
+retain lock/base/context provenance and need a network-reachable builder.
+Prebuilt images use a service-level immutable `image` with native
+`docker.imagePassthrough: true` / `remoteBuild: false`, plus explicit
+`azd deploy "$AGENT" --from-package "$IMAGE" --no-prompt` on the live-validated
+**azd 1.34.1 + azure.ai.agents 1.0.0-beta.14** compatibility baseline
+(not a minimum-version claim). **azd 1.27.0 is blocked for this private
+prebuilt route:** it can still republish despite that flag. This remote-image argument
+is distinct from `azd publish --from-package`, which consumes a local package
+and pushes it. A matching connection is reused; missing configuration routes
+to separately authorized native connection-only provisioning, while unreadable
+or conflicting state blocks without repair. No public-network opening, new
+grants, global tool update or OCI-format ban is part of this route.
+
+**Validated 2026-09-17 ([#500](https://github.com/aiappsgbb/awesome-gbb/pull/500)):**
+the no-tools private BASIC consumer activated from the existing immutable image,
+completed one model request and passed independent response/session/version
+readbacks. Exact owned native objects were subsequently verified absent; retained
+image/cache and service history have explicit bounded owner custody, not a purge
+claim. This proves the tested BASIC path, not governed business execution or
+other runtime/tooling combinations.
+
+---
+
+## MAF 1.4.0 breaking changes (May 2026)
+
+> **Historical boundary only.** The pins below are preserved for the
+> original 1.4.0 cutover. If you are still on 1.3.x today, do **not** copy
+> these historical 1.4 pins — use the current canonical 1.14 stack in
+> [`references/python/pyproject.toml`](references/python/pyproject.toml),
+> which already incorporates the 1.4 breaking changes, the 1.6 telemetry
+> update, and the 1.8 timeout correction.
+
+Azure renamed the Foundry data-plane role from **"Azure AI User"** to
+**"Foundry User"** and changed the AAD token audience the SDK requests
+from `https://cognitiveservices.azure.com/.default` to
+`https://ai.azure.com/.default`. **`agent-framework-core` 1.4.0**
+(2026-05-14, alongside `agent-framework-foundry-hosting` 1.0.0a260514)
+is the first SDK that requests the new scope; everything pinned to 1.3.x
+or earlier requests the old scope and gets **`401 Unauthorized`** from
+the post-rename data plane.
+
+### The three changes you have to absorb
+
+| # | Change | Symptom on pinned 1.3.x | Fix |
+|---|--------|------------------------|-----|
+| 1 | **AAD token scope:** `cognitiveservices.azure.com` → `ai.azure.com` | Every Responses request → `401 Unauthorized` (with valid `Foundry User` RBAC) | Upgrade to `agent-framework-core~=1.4.0` + `agent-framework-foundry~=1.4.0` + `agent-framework-foundry-hosting==1.0.0a260514` |
+| 2 | **Role display name** "Azure AI User" → "Foundry User" | `az role assignment create --role "Azure AI User"` fails with `RoleDefinitionNotFound` | Use `--role "Foundry User"` OR pin by GUID `53ca6127-db72-4b80-b1b0-d745d6d5456d` (unchanged across the rename — the safest call-site form is the GUID) |
+| 3 | **`AzureOpenAIChatClient` removed** from `agent_framework.azure` | `ImportError: cannot import name 'AzureOpenAIChatClient'` after `pip install -U` | Use `OpenAIChatClient(azure_endpoint=..., model=..., credential=...)` from `agent_framework.openai` — see snippet below |
+
+### `AzureOpenAIChatClient` → `OpenAIChatClient` migration
+
+`FoundryChatClient` is the right choice for hosted Foundry agents and is
+unaffected. The removal hits **adjacent code paths** that talked directly
+to Azure OpenAI (eval judges, batch scoring, sidecar services, agents
+that route through APIM):
+
+```python
+# OLD (MAF 1.3.x — REMOVED in 1.4.0)
+from agent_framework.azure import AzureOpenAIChatClient
+from azure.identity import get_bearer_token_provider, DefaultAzureCredential
+client = AzureOpenAIChatClient(
+    endpoint=AZURE_OPENAI_ENDPOINT,
+    deployment_name=DEPLOYMENT,
+    ad_token_provider=get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default",
+    ),
+)
+
+# NEW (MAF 1.4.0)
+from agent_framework.openai import OpenAIChatClient
+from azure.identity import DefaultAzureCredential
+client = OpenAIChatClient(
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,    # NB: kwarg renamed from `endpoint`
+    model=DEPLOYMENT,                         # NB: kwarg renamed from `deployment_name`
+    credential=DefaultAzureCredential(),     # SDK derives the right token scope internally
+)
+```
+
+Drop the explicit `get_bearer_token_provider` / `ad_token_provider` —
+`OpenAIChatClient` now derives the scope itself. The unused
+`get_bearer_token_provider` import can be removed.
+
+### Image-tag staleness trap (mandatory read for any pilot that pins by digest)
+
+Hosted agent versions reference the orchestrator container by ACR
+image **reference**. There are two common shapes:
+
+- `<acr>.azurecr.io/tl-maf-orchestrator:latest` — re-resolves to the
+  newest pushed image on every container start. Auto-picks up MAF
+  rebuilds the next time the agent provisions.
+- `<acr>.azurecr.io/tl-maf-orchestrator@sha256:abc…` — pinned to a
+  specific registry manifest/index digest (not a local image configuration ID
+  or an individual layer digest). Reproducible, but **frozen at the MAF version
+  that was in the image when the digest was computed**.
+
+After a MAF 1.4.0 rebuild, agents using `:latest` work; agents using
+`@sha256:…` digests from the 1.3.x era keep hitting the old token scope
+and fail. **Re-import every hosted agent version** (or pin by digest to
+the freshly-built 1.4.0 image) as part of the upgrade. `azd ai agent
+deploy` does this automatically if the YAML references `:latest`.
+
+### Rebuild recipe (copy-paste)
+
+```bash
+# 1. Upgrade orchestrator pyproject.toml + regenerate uv.lock
+sed -i.bak 's/"agent-framework-core[^"]*"/"agent-framework-core~=1.4.0"/' src/orchestrator/pyproject.toml
+sed -i.bak 's/"agent-framework-foundry[^"]*"/"agent-framework-foundry~=1.4.0"/' src/orchestrator/pyproject.toml
+sed -i.bak 's/"agent-framework-foundry-hosting[^"]*"/"agent-framework-foundry-hosting==1.0.0a260514"/' src/orchestrator/pyproject.toml
+(cd src/orchestrator && uv lock)
+
+# 2. ACR remote build — tag with :latest AND a date-pinned tag for forensics
+ACR=tl<your-acr-suffix>
+az acr build --registry "$ACR" \
+  --image "tl-maf-orchestrator:maf14-$(date +%Y%m%d%H%M)" \
+  --image "tl-maf-orchestrator:latest" \
+  --file src/orchestrator/dockerfile src/orchestrator/
+
+# 3. Re-deploy + re-import each agent so it picks up the fresh image
+azd deploy agents
+(cd infra/scripts && uv run deploy_job.py)
+# Then: azd ai agent show — confirm new image digest under each version
+```
+
+> **Why date-pinned tags matter.** `:latest` is fine for the agent
+> reference but leaves zero forensic trail in ACR's image history.
+> The `maf14-YYYYMMDDHHMM` tag lets you correlate "which agent
+> version is running which MAF build?" months later when a regression
+> bisect needs it.
+
+## MAF 1.6.0 update (May 2026)
+
+`agent-framework-core` 1.6.0 and `agent-framework-foundry-hosting`
+1.0.0a260521 ship with **instrumentation enabled by default**. The
+hosting package transitively pulls `azure-ai-agentserver-core>=2.0.0b3`
+which depends on `microsoft-opentelemetry>=1.0.0` (resolves to 1.1.0),
+bundling all OTel instrumentors:
+
+| Bundled instrumentor | What it captures |
+|---|---|
+| `opentelemetry-instrumentation-openai-v2==2.3b0` | gen_ai spans: model name, token usage, latency for every OpenAI/Responses call |
+| `opentelemetry-instrumentation-openai-agents-v2==0.1.0` | Agent-level invocation spans |
+| `opentelemetry-instrumentation-httpx` | HTTP dependency spans |
+| `azure-core-tracing-opentelemetry` | Azure SDK call tracing |
+
+### What this means for `container.py`
+
+**Remove all manual OTel code.** No `configure_azure_monitor()`, no
+`OpenAIInstrumentor().instrument()`, no custom `TracerProvider`. The
+platform handles everything. Your container code only needs:
+
+```python
+# Ensure env var is set (deploy.py passthrough for O-012 workaround)
+cs = os.getenv("APPLICATION_INSIGHTS_CONNECTION_STRING") or \
+     os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
+if cs:
+    os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"] = cs
+
+# Optionally: SDK-level telemetry setup (after FoundryChatClient creation)
+try:
+    await client.configure_azure_monitor(enable_sensitive_data=True)
+except Exception:
+    pass  # Agent works without telemetry
+```
+
+### gen_ai spans appear under `cloud_RoleName = "agent_framework"`
+
+**Important for KQL queries:** gen_ai dependency spans use
+`cloud_RoleName = "agent_framework"`, NOT `agent-{jobId}-maf`.
+Queries filtering `cloud_RoleName startswith "agent-"` will miss them.
+
+```kql
+// gen_ai spans — model, tokens, latency
+dependencies
+| where timestamp > ago(1h)
+| where cloud_RoleName == "agent_framework"
+| project timestamp, name, duration,
+    model=tostring(customDimensions['gen_ai.response.model']),
+    input_tokens=tostring(customDimensions['gen_ai.usage.input_tokens']),
+    output_tokens=tostring(customDimensions['gen_ai.usage.output_tokens']),
+    op=tostring(customDimensions['gen_ai.operation.name'])
+| order by timestamp desc
+```
+
+### Upgrade recipe (→ 1.7.0)
+
+> **Historical boundary only — do not copy these pins; use [`references/python/pyproject.toml`](references/python/pyproject.toml).**
+
+```bash
+sed -i.bak 's/"agent-framework-core[^"]*"/"agent-framework-core~=1.7.0"/' pyproject.toml
+sed -i.bak 's/"agent-framework-foundry[^"]*"/"agent-framework-foundry~=1.7.0"/' pyproject.toml
+sed -i.bak 's/"agent-framework-foundry-hosting[^"]*"/"agent-framework-foundry-hosting==1.0.0a260528"/' pyproject.toml
+# Remove explicit OTel deps — now bundled via hosting package:
+# azure-monitor-opentelemetry, opentelemetry-sdk, opentelemetry-instrumentation-*
+```
+
+### `create_version` deduplication trap
+
+Foundry deduplicates `create_version` when environment variables and
+metadata are **identical** — even if the container image tag/digest
+differs. This is SEPARATE from the ACR layer cache trap below. After
+a base image rebuild, new code never reaches the container because
+Foundry returns the existing version.
+
+**Fix:** Add a changing environment variable to force a new version:
+```python
+import time
+env_vars["_BUILD_TS"] = str(int(time.time()))
+```
+
+### ACR layer cache trap (per-job images built via `DockerBuildRequest`)
+
+When per-job images are built via the Azure Container Registry
+`DockerBuildRequest` API (e.g., from `deploy.py`), ACR Tasks uses
+**layer caching by default**. If the per-job Dockerfile's `COPY . ./`
+content hasn't changed (only the base image changed), ACR produces
+the **identical digest** — and Foundry deduplicates the
+`create_version` call, silently returning the existing version.
+New base-image code never reaches the container.
+
+**Fix (both are required):**
+
+1. **`no_cache=True`** on `DockerBuildRequest` — forces ACR to
+   rebuild all layers from scratch.
+2. **A used `ARG`** in the generated Dockerfile — Docker only
+   invalidates cache when an ARG changes AND is consumed:
+   ```dockerfile
+   ARG BASE_IMAGE=hosted-agent-base-maf:v6
+   FROM ${BASE_IMAGE}
+   ARG BUILD_TS=1716400000
+   RUN echo "build=$BUILD_TS" > /app/.build_ts
+   # ... rest of Dockerfile
+   ```
+   Without the `RUN` line, Docker ignores the ARG for caching.
+
+Discovered May 2026: base image rebuild with `SkillsProvider.from_paths()`
+fix + observability fix never reached any agent until both guards were
+applied.
+
+---
+
+## MAF 1.8.0 update (June 2026)
+
+`agent-framework-core` and `agent-framework-foundry` 1.8.x land one
+hosted-agent-relevant new knob and two `[BREAKING]` markers — both
+non-impact for this skill.
+
+- **`FoundryAgent(timeout=...)`** — new HTTP timeout kwarg on the
+  caller-side `agent_framework.foundry.FoundryAgent` class. Overrides
+  the underlying OpenAI-SDK default (connect: 5s, total: 600s). Useful
+  when orchestrator code calling INTO a hosted agent wants a bounded
+  ceiling. See [§ below](#foundryagent-timeout-parameter-maf-180).
+
+### MAF 1.8.0 breaking markers — non-impact analysis
+
+MAF 1.8.0 ships two `[BREAKING]` markers; neither affects hosted-agent code:
+
+1. **`agent-framework-github-copilot` sub-package internal rename** —
+   this skill does not pin or import `agent-framework-github-copilot`. **N/A.**
+2. **Experimental `Skill` abstract-class refactor in `agent-framework-core`** —
+   this skill uses the high-level `SkillsProvider.from_paths(...)` facade
+   (see § Skill Loading below), not the experimental `Skill` ABC.
+   Hosted-agent containers continue to work unchanged. **Non-impact.**
+
+### FoundryAgent timeout parameter (MAF 1.8.0)
+
+MAF 1.8.0 adds `timeout: float | None = None` to
+`agent_framework.foundry.FoundryAgent.__init__`. This is an **HTTP-layer
+timeout** that overrides the OpenAI SDK's default (connect: 5s, total: 600s)
+for ALL requests made by this agent instance. Per the upstream docstring:
+*"HTTP timeout in seconds for requests. When not provided, the OpenAI SDK
+default is used (connect: 5s, total: 600s)."*
+
+Use it to:
+
+- **Lower the ceiling** for short-running agents that should fail fast
+  (e.g. `timeout=30` for tool-routing agents with user-facing chat budgets).
+- **Raise the ceiling** for long-running agents where 600s isn't enough
+  (e.g. `timeout=1800` for multi-step research loops).
+
+Scope note: this kwarg lives on the CALLER-side `FoundryAgent` class
+(orchestrator code calling a hosted agent). The CONTAINER-side runtime
+covered by [§ Runtime Pattern](#runtime-pattern-maf-variant) uses
+`FoundryChatClient` directly and does NOT accept `timeout=` in 1.8.0 —
+apply HTTP-layer transport timeouts on the underlying client instead.
+
+> **MUST:** Copy verbatim from
+> [`references/python/foundry_agent_timeout.py`](references/python/foundry_agent_timeout.py).
+> Do NOT redefine inline — the validator enforces single-source-of-truth.
+
+> **See also (MAF 1.8.0, experimental):**
+> - `AgentFileStore` — new abstract base class for agent file-management
+>   backends. Re-exported as `from agent_framework import AgentFileStore`.
+>   Concrete implementations + usage patterns live in [`foundry-memory`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md) and
+>   `microsoft-foundry`. NOT consumed by the hosted-agents runtime patterns
+>   documented in this skill.
+
+### Upgrade recipe (→ 1.8.0)
+
+> **Historical boundary only — do not copy these pins; use [`references/python/pyproject.toml`](references/python/pyproject.toml).**
+
+```bash
+sed -i.bak 's/"agent-framework-core[^"]*"/"agent-framework-core~=1.8.0"/' pyproject.toml
+sed -i.bak 's/"agent-framework-foundry[^"]*"/"agent-framework-foundry~=1.8.0"/' pyproject.toml
+sed -i.bak 's/"agent-framework-foundry-hosting[^"]*"/"agent-framework-foundry-hosting==1.0.0a260528"/' pyproject.toml
+# Telemetry bundling from MAF 1.6.0 is unchanged in 1.8.0 — no other deps to touch.
+```
+
+Historical note: this recipe used an exact alpha pin because PEP 440
+compatible-release syntax could drift to a later pre-release. It is not
+current guidance; current operators must use the exact beta `agent-framework-foundry-hosting==1.0.0b260813`
+from the canonical
+[`references/python/pyproject.toml`](references/python/pyproject.toml).
+
+---
+
+## Container GA status and adjacent preview surfaces
+
+> **Status.** **Container-based** hosted agent deploy (Dockerfile +
+> unified `azure.yaml` + `azd`) is **GA** — that is the stable path
+> documented throughout the rest of this skill. Container deploy was
+> still labelled preview as recently as the March 2026 announcement
+> blog; treat "GA" as current as of this skill's `last_validated` date
+> in [`references/upstream-pin.md`](references/upstream-pin.md), not as
+> a permanently-fixed fact — re-check the sources below if it's been a
+> while.
+>
+> A few adjacent surfaces remain preview or partial-GA and are called
+> out explicitly wherever they appear in this skill, rather than
+> assumed GA by association:
+>
+> - **Source-code deploy** (`--deploy-mode code`, ZIP upload, no
+>   Dockerfile) is preview — isolated in its own
+>   [§ Preview appendix](#preview-appendix-source-code-deploy-still-preview)
+>   at the end of this file. Do not mix its guidance into the container
+>   (GA) path documented above it.
+> - **A2A 1.0** is GA; **A2A 0.3** remains preview. This does not imply
+>   that every hosted runtime can expose an incoming A2A endpoint.
+>   See `microsoft-foundry` for the protocol/client/access boundary.
+>   **Voice Live** retains its separately documented status in `foundry-voice-live`.
+> - **Hosted tracing** (distributed traces / gen_ai spans in App
+>   Insights) is partial GA / preview depending on the exact signal —
+>   see `threadlight-deploy/references/observability` for the current split.
+> - **Agent guardrails** (content-safety toggle), **Optimizer**,
+>   and **Memory** remain preview surfaces layered on
+>   top of the GA hosted-agent runtime — see their owning skills
+>   ([`foundry-memory`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md)) for details; this skill does
+>   not restate their contracts.
+> - **Routines** is a GA service with a Python `beta.routines` client surface.
+>   See `microsoft-foundry` for client versions, trigger/delivery evidence and
+>   creator identity; it does not require a hosted-framework upgrade.
+>
+> Sources:
+> [container deploy](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent),
+> [source-code deploy — preview](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-code),
+> [author azure.yaml](https://learn.microsoft.com/azure/foundry/agents/how-to/author-azure-yaml),
+> [azure.yaml reference](https://learn.microsoft.com/azure/foundry/agents/concepts/azure-yaml-reference),
+> [hosted agent permissions](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions),
+> [install azd Foundry extensions](https://learn.microsoft.com/azure/foundry/agents/how-to/install-cli-foundry-extensions).
+
+### Built-in content-safety toggle (preview)
+
+Content safety is a **Foundry portal toggle** under the **Guardrails**
+blade of the agent resource — not an SDK call, not an `azure.yaml`
+field. Toggle on to enable platform-side prompt/response filtering with
+the project's default content-safety policy. Toggle off if you bring
+your own filtering layer upstream (e.g., APIM policy fragment, in-agent
+middleware). Guardrails remain a **preview** capability layered on the
+GA hosted-agent runtime.
+
+The toggle is per-agent, per-environment. Production environments
+should turn it ON by default; dev environments may turn it off to
+test prompt patterns that would otherwise be blocked.
+
+### Responses, Invocations, Invocations (WebSocket), and Activity
+
+Hosted agent containers can expose one or more protocols side by side.
+Per Microsoft Learn: *"The Responses, Invocations, and Invocations
+(WebSocket) protocols are available in all regions that support Hosted
+agents."* — none of the three is region-restricted.
+
+| Protocol | Python library | Use for |
+|----------|----------------|---------|
+| `responses` | `azure-ai-agentserver-responses` | Conversational chatbots, streaming, multi-turn with platform-managed history. This skill's primary pattern. |
+| `invocations` | `azure-ai-agentserver-invocations` | Webhook receivers, non-conversational processing, custom async workflows. |
+| `invocations_ws` | `azure-ai-agentserver-invocations` (same package, WebSocket route) | Bidirectional streaming — real-time voice agents, interactive media. Documented here; **not exercised by this skill's fixture**, which only drives Responses. |
+| Activity (auto-bridge) | n/a — platform-managed | Foundry automatically bridges Responses to the Bot Framework Activity protocol for Teams / Microsoft 365 Copilot publishing. No code change on the agent side. Publishing setup itself is out of scope for this skill — see `foundry-teams-bot` / the Teams publishing backlog for that contract. |
+
+Declare the protocols a container serves in the `protocols` list of the
+`azure.ai.agent` service in `azure.yaml` (§ below) — a single container
+can serve multiple protocols simultaneously by importing the matching
+libraries.
+
+### Unified `azure.yaml` (replaces the old two-file contract)
+
+For the selected unified-manifest consumer, configuration lives in
+`azure.yaml`; the older `agent.yaml`/`agent.manifest.yaml` pair is a
+separate migration-only contract, not interchangeable input. See
+[§ azure.yaml (unified hosted-agent configuration)](#azureyaml-unified-hosted-agent-configuration)
+below for the canonical shape. Migrate only after reviewing the actual consumer,
+comparing the rendered definition and retaining the old project for rollback.
+
+### Hosting SDK matrix (Python)
+
+| Framework | Hosting package | Server class |
+|-----------|-----------------|--------------|
+| MAF | `agent-framework-foundry-hosting` | `agent_framework_foundry_hosting.ResponsesHostServer` |
+| BYO Responses | `azure-ai-agentserver-responses` | `azure.ai.agentserver.responses.ResponsesHostServer` |
+| BYO Invocations (WS) | `azure-ai-agentserver-invocations` | `azure.ai.agentserver.invocations.InvocationsHostServer` |
+| LangGraph | `langchain-azure-ai[hosting]` | `langchain_azure_ai.agents.hosting.ResponsesHostServer` |
+
+Pin to the MAF row unless you have a documented reason to use one of
+the BYO packages (custom protocol handler, non-MAF framework lock-in,
+LangGraph state-graph requirements).
+
+---
+
+## Runtime Pattern (MAF Variant)
+
+> **Model selection (verified across recent pilots).** Default
+> to **`gpt-5.4`** for production agents that run instruction chains
+> with 10+ tool steps (case investigation, multi-source RAG synthesis,
+> regulatory drafting). Use **`gpt-5.4-mini`** only for trivial
+> 1-2-step flows (single-tool lookups, formatters). The mini variant's
+> tool-call discipline degrades sharply on long chains: in recent
+> strict-smoke reproducibility on a 7-skill flow went from **1/3** with
+> gpt-5.4-mini to **3/3** with gpt-5.4 (same MCP server, same prompts).
+> The mini variant tends to call commit-style tools before evidence is
+> gathered — partially mitigated by the validate-or-reject pattern in
+> `threadlight-mcp-aca`, but gpt-5.4 still fixes the root cause.
+>
+> **Cost/latency note.** `gpt-5.4` GlobalStandard at 50 capacity costs
+> a few cents per scenario at idle the deployment ticks negligibly,
+> so the typical pilot cost is dominated by the scenarios you actually
+> run. Don't downgrade to mini just to save on the deployment standby.
+>
+> **Full model catalog.** For the complete May 2026 Foundry model selector
+> (task/modality tables, region availability tiers, embeddings, rerank,
+> image/video gen, Document AI, audio), see the
+> [`agentic-loop` skill](https://github.com/aiappsgbb/agentic-loop) §
+> "Foundry Model Selector". That table is the single source of truth for
+> model selection across all awesome-gbb skills — we don't duplicate it here.
+
+> **MUST:** Copy verbatim from [`references/python/main.py`](references/python/main.py). Do NOT redefine inline — the validator enforces single-source-of-truth. That file is the field-validated `FoundryChatClient` + `Agent` + `ResponsesHostServer` shape for a single-purpose hosted agent (one tool, no `SkillsProvider`, MAF 1.6.0).
+
+**Key points (why each line in `main.py` matters):**
+- `FOUNDRY_PROJECT_ENDPOINT` is **injected by the platform** — never declare in `azure.yaml`
+- `default_options={"store": False}` — hosting platform manages conversation history
+- `ResponsesHostServer` handles liveness/readiness probes natively
+- `DefaultAzureCredential` resolves to the agent's dedicated Entra identity
+- Custom tools use `@tool(approval_mode="never_require")` with `Annotated` type hints
+
+**Canonical reference files for the rest of this skill** (each one is the source of truth for its § below; SKILL.md prose never re-defines these):
+
+| Reference file | Consumed by § |
+|---|---|
+| [`references/python/main.py`](references/python/main.py) | § Runtime Pattern (MAF Variant) |
+| [`references/python/container.py`](references/python/container.py) | § Skill Loading — `SkillsProvider` (multi-SKILL composition + guarded `_init_telemetry()`) |
+| [`references/python/pyproject.toml`](references/python/pyproject.toml) | § Dependencies (pyproject.toml) |
+| [`references/docker/Dockerfile`](references/docker/Dockerfile) | § Dependencies (pyproject.toml) → Dockerfile |
+| [`references/yaml/azure.yaml`](references/yaml/azure.yaml) | § azure.yaml (unified hosted-agent configuration) — the single source of truth for hosted-agent config, replacing the old `agent.yaml` + `agent.manifest.yaml` two-file contract |
+| [`references/python/version_rollout.py`](references/python/version_rollout.py) | § Version rollout patterns (blue-green / canary / rollback) |
+| [`references/python/deploy_preflight.py`](references/python/deploy_preflight.py) | § Deployment preflight |
+| [`references/python/private_bootstrap.py`](references/python/private_bootstrap.py) | § Private BASIC consumer: offline staging and build/manifest inventory |
+| [`references/python/basic.py`](references/python/basic.py) | § Private BASIC consumer: no-tools runtime |
+| [`references/docker/Dockerfile.basic`](references/docker/Dockerfile.basic) | § Private BASIC consumer: locked container build |
+| [`references/python/hosted_smoke.py`](references/python/hosted_smoke.py) | § Private BASIC consumer: native model/session oracle |
+
+> **⚠️ Deprecation: `ChatAgent` is gone in MAF 1.6.0**
+>
+> Any older examples showing `from agent_framework import ChatAgent` followed by `ChatAgent(chat_client=...)` are **stale — no migration alias is exported**. The class was renamed to `Agent` and the kwarg changed from `chat_client=` to `client=`. If you're copying code from pre-May-2026 prose or SKILLs, replace `ChatAgent(chat_client=client, ...)` with `Agent(client=client, ...)`.
+
+### Skill Loading — `SkillsProvider` (recommended) vs. inline `_load_skills()` (legacy)
+
+> **Authoritative source.** [Microsoft Agent Framework — Agent Skills (Python)](https://learn.microsoft.com/en-us/agent-framework/agents/skills?pivots=programming-language-python).
+> `SkillsProvider` is a first-class **MAF Python class** shipped in the same
+> `agent_framework` package as `Agent`, `MCPStreamableHTTPTool`, and `@tool`
+> (no extra install). It implements the [agentskills.io](https://agentskills.io/)
+> 4-stage progressive disclosure pattern:
+> **Advertise (~100 tokens/skill) → `load_skill` → `read_skill_resource` → `run_skill_script`**.
+> Wired via `context_providers=[skills_provider]` on the `Agent(...)`
+> constructor — orthogonal to `tools=[...]`.
+
+> **Cross-link.** The exact same `SkillsProvider.from_paths(skills_dir)`
+> wiring shape is what [`threadlight-local-test` **Pattern 0 — Quickstart**](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-local-test/SKILL.md)
+> runs locally against a designed PoC — so the prompt context the local
+> demo agent sees is identical to what ships to Foundry.
+
+#### ⚠️ Separation of concerns (read this first)
+
+When `SkillsProvider` is wired, `_load_instructions()` MUST contain **only**
+the baseline orchestration prompt (`copilot-instructions.md`) plus
+SPEC-derived constants (`config.json`: thresholds, enums, templates).
+
+It MUST NOT also concat `SKILL.md` content. `SkillsProvider` advertises
+each skill in ~100 tokens, then the agent calls `load_skill(name)` on
+demand. Concatenating both **double-counts** every skill body, blows
+out the static prompt, and silently defeats progressive disclosure.
+
+#### Recommended — `SkillsProvider` context provider
+
+> **⚠️ DO and DO NOT — API change in MAF 1.4.0 / 1.6.0:**
+>
+> - **DO** use `SkillsProvider.from_paths(skills_dir)` (MAF 1.6.0 recommended, works on 1.4.0+)
+> - **DO NOT** use the legacy `SkillsProvider(skill_paths=skills_dir)` constructor — it was **removed in MAF 1.4.0** with no alias
+>
+> If you see `TypeError: SkillsProvider.__init__() got an unexpected keyword argument 'skill_paths'` at container startup, replace `SkillsProvider(skill_paths=...)` with `SkillsProvider.from_paths(...)` immediately.
+
+Defensive-init helper. The agent stays runnable with `context_providers=[]`
+even if the skills directory is missing or a `SKILL.md` is malformed —
+critical for ops, since a single broken skill file should not crash the
+container at startup.
+
+> **MUST:** Copy verbatim from [`references/python/container.py`](references/python/container.py). Do NOT redefine inline — the validator enforces single-source-of-truth. That file ships the canonical `_init_telemetry()` (guarded against O-012 AppIn injection failures) + `_build_skills_provider()` (returns `None` on missing/corrupt skills dir so the agent stays runnable) + the full `FoundryChatClient` / `Agent` / `ResponsesHostServer` wiring for a multi-SKILL hosted agent.
+>
+> **The pattern in one line:** `context_providers=[skills_provider] if skills_provider else []` on the `Agent(...)` ctor — and `instructions=_load_instructions()` returns base prompt + SPEC config ONLY (never concatenate `SKILL.md` bodies; that double-counts and defeats progressive disclosure).
+
+**Constructor variants.**
+- `SkillsProvider.from_paths(skills_dir)` — classmethod, the form used in
+  production hosted agents. **Use this.**
+- ~~`SkillsProvider(skill_paths=skills_dir)`~~ — **REMOVED in MAF 1.4.0.**
+  Causes `TypeError: SkillsProvider.__init__() got an unexpected keyword
+  argument 'skill_paths'` → container crashes before readiness → sticky
+  `session_not_ready` on every invocation. Always use `from_paths()`.
+
+The provider searches up to two levels deep, so `skills/<name>/SKILL.md`
+and `skills/<group>/<name>/SKILL.md` layouts are both auto-discovered.
+
+**Per-query cost.** `SkillsProvider` adds **+1 `load_skill` tool call per
+skill the agent activates per query** (typically 1-3 per query). This is
+**NOT** the 20-34-internal-call overhead seen on `CopilotClient` runs —
+that overhead lives in `CopilotClient` itself and is unrelated to
+`SkillsProvider`.
+
+**Quantified benefits** (from production MAF deployments):
+- **~75% token saving** on the static prompt vs. concatenating all
+  `SKILL.md` bodies into instructions.
+- **Per-skill App Insights telemetry** — every `load_skill(name)` is a
+  traceable tool-call span, so routing analysis (which skills get used?
+  which never load? which load on the wrong intent?) is free.
+
+#### Legacy alternative — inline `_load_skills()` concat
+
+The pre-`SkillsProvider` pattern: read every `skills/*/SKILL.md` at
+startup and append the bodies to the system prompt. Still supported,
+still works, occasionally still the right choice.
+
+```python
+def _load_skills() -> str:
+    chunks: list[str] = []
+    skills_dir = Path(__file__).parent / "skills"
+    for skill_file in sorted(skills_dir.glob("*/SKILL.md")):
+        chunks.append(
+            f"\n\n---\n\n# Skill: {skill_file.parent.name}\n\n"
+            + skill_file.read_text(encoding="utf-8")
+        )
+    return "".join(chunks)
+
+
+def _load_instructions_legacy() -> str:
+    base = (Path(__file__).parent / "copilot-instructions.md").read_text(encoding="utf-8")
+    return f"{base}\n\n{_load_skills()}"
+
+
+agent = Agent(
+    client=client,
+    instructions=_load_instructions_legacy(),   # everything baked into the prompt
+    tools=[my_tool, mcp_tool],
+    # context_providers omitted — skills already in instructions
+    default_options={"store": False},
+)
+```
+
+#### When to choose which
+
+| | `SkillsProvider` (recommended) | `_load_skills()` concat (legacy) |
+|---|---|---|
+| Per-query overhead | +1 `load_skill` per skill loaded (1-3/query typical) | None |
+| Static prompt size | ~100 tokens/skill advertised | Full SKILL.md bodies always present |
+| Total skill content >5 KB | ✅ recommended | ⚠️ blows up context budget every turn |
+| Strict latency budget (sub-2s tools) | ⚠️ adds `load_skill` round-trip | ✅ faster cold path |
+| Per-skill usage telemetry | ✅ free (every `load_skill` is a span) | ❌ invisible |
+| New PoCs | ✅ default | only if total skill content is small (<5 KB) |
+| Mixing both | ❌ never — double-counts every skill body | n/a |
+
+#### Centralizing skills via the Foundry Skills REST API
+
+The patterns above all assume `SKILL.md` files live in the agent's source
+tree. If multiple Hosted agents in the same project need to share a
+canonical set of `SKILL.md` files (without each repo carrying its own
+copy), publish them to the project-level **Foundry Skills** store
+(`{project}/skills`) and consume them via either:
+
+- **Build-time bundle** — `azd predeploy` hook downloads all published
+  skills into `src/skills/` so the standard `SkillsProvider.from_paths(…)`
+  above keeps working unchanged.
+- **Runtime fetch** — `SkillsProvider(source=FoundrySkillsSource(…))` with
+  a custom `SkillsSource` that pulls from the REST API on session create.
+
+See **`microsoft-foundry`** for the REST surface, the silent
+JSON-mode-is-write-only trap, and the verified-working `FoundrySkillsSource`
+adapter.
+
+### Prompt caching and inference efficiency
+
+In `ResponsesHostServer -> Agent + SkillsProvider -> FoundryChatClient ->
+model service`, **Foundry owns hosting, MAF owns the tool/inference loop,
+and the model service owns the KV cache**. Do not rewrite the loop to
+benefit from automatic prompt caching on supported models.
+
+**Reduce unnecessary tokens first, then optimize reuse.** Keep baseline
+instructions, the authorized skill catalog, and tool schemas/order stable;
+keep variable context after reusable content where the framework permits.
+Preserve progressive disclosure: never duplicate skill bodies in
+`instructions`, and never add padding just to reach a cache threshold.
+
+Inference options belong on the **Agent/client inside the hosted runtime**,
+not merely on the external caller's Responses request. There is no hosted
+deployment/YAML cache switch here. An implicit cache policy does **not** add
+an explicit breakpoint after the instructions and skill catalog.
+Keep the canonical downstream `store=False`: response/history persistence
+is separate from prompt caching. Do not add a second history manager to the
+default `ResponsesHostServer` path. Persisted sessions, cached skill sources,
+and warm containers neither are nor keep alive the model's KV cache.
+
+> **Compatibility and evidence boundary.** This is public-source guidance,
+> not a live-validated caching recipe for the pinned stack. Automatic caching,
+> explicit breakpoints, and PTU-M have different model/deployment requirements.
+> `ChatMiddleware` is a documented per-inference extension point, but this
+> skill has no verified adapter that marks the complete stable Agent +
+> SkillsProvider prefix. Never blindly mark the last system/developer message;
+> it can contain variable memory or context. `prompt_cache_key` is not an
+> authorization boundary. Measure internal-inference cache reads/writes, cost,
+> and TTFT without logging sensitive prompts or outputs; HTTP 200 and session
+> continuity are not cache-hit evidence.
+>
+> See the [operational guide and compatibility checklist](references/prompt-caching.md)
+> for the dated service requirements, `main` versus pin comparison, and
+> validation still needed before adopting advanced options.
+
+### Multi-Agent: Calling Other Foundry Agents as Tools
+
+Use the **client-swap pattern** to connect to existing prompt/hosted agents in the same project:
+
+```python
+from agent_framework import Agent
+from agent_framework.foundry import FoundryChatClient
+from azure.ai.projects.aio import AIProjectClient  # MUST be .aio (async)!
+from azure.identity import DefaultAzureCredential
+
+project_client = AIProjectClient(
+    endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
+    credential=DefaultAzureCredential(),
+)
+
+# Create FoundryChatClient, swap its OpenAI client to the agent-bound one
+sub_client = FoundryChatClient(project_client=project_client, model="gpt-5.4-mini")
+sub_client.client = project_client.get_openai_client(agent_name="my-sub-agent")
+
+sub_agent = Agent(name="my-sub-agent", client=sub_client)
+
+orchestrator = Agent(
+    client=FoundryChatClient(
+        project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
+        model="gpt-5.4-mini",
+        credential=DefaultAzureCredential(),
+    ),
+    instructions="You orchestrate sub-agents.",
+    tools=[sub_agent.as_tool()],
+    default_options={"store": False},
+)
+
+ResponsesHostServer(orchestrator).run()
+```
+
+**Critical rules:**
+- `AIProjectClient` MUST be from `azure.ai.projects.aio` (async) — the sync version returns a sync `OpenAI` client that **silently fails** inside `FoundryChatClient`
+- `allow_preview=True` is **not required** for `agent_name`-based `get_openai_client()` — verified against `azure-ai-projects` 2.3.0: the base-URL / query-param resolution the SDK uses for the agent endpoint doesn't gate on `allow_preview` (the constructor docstring is stale on this point; the actual code path isn't). Only opt into `allow_preview=True` if you need a genuinely preview surface (e.g. `project.beta.*` operations).
+- `FoundryChatClient` does NOT accept `agent_name`/`agent_version` — use the client-swap pattern
+
+> **⚠️ Historical (MAF 1.1.1) — sub-agent delegation note.**
+> `FoundryAgent` in MAF 1.1.1 silently hardcoded
+> `extra_body={"agent_reference": ...}` internally — the old initial-preview
+> pattern that silently failed against the refreshed preview ("Function
+> failed." on tool calls). **As of MAF 1.8.0**, `FoundryAgent` has been
+> rehabilitated: `__init__` takes `project_endpoint` + `agent_name` +
+> `agent_version` directly and `extra_body` is only available as a user
+> opt-in via `default_options`. The 1.1.1-era prohibition no longer
+> applies; use `FoundryAgent` freely under MAF ≥ 1.8.0. The client-swap
+> pattern above remains the recommended path for sub-agent delegation
+> in this skill's container runtime (it composes cleanly with
+> `FoundryChatClient`'s async surface); `FoundryAgent` is most useful
+> for caller-side orchestration code (see
+> [§ FoundryAgent timeout parameter (MAF 1.8.0)](#foundryagent-timeout-parameter-maf-180)).
+> Exact version of rehabilitation between 1.1.1 and 1.8.0 not determined.
+
+### MCP Tools via FoundryChatClient
+
+> **🚫 DO NOT and DO — URL and Environment Variable Requirements:**
+>
+> - **DO NOT** ship `${ENV_VAR}` placeholders in `url` parameters unless they are **validated upstream** to expand to a non-empty value. Empty expansion produces `invalid_payload` errors at runtime.
+> - **DO** reject any URL that is not `http://` or `https://` before calling `get_mcp_tool(url=...)`. Guard with `if not url or not url.startswith(("http://", "https://"))` to skip gracefully when the MCP server is unreachable or unconfigured.
+
+> **🟡 Status: bug-009/014 FIXED in `agent-framework-core` 1.3.0
+> (released 2026-05-07 via [PR #5581](https://github.com/microsoft/agent-framework/pull/5581),
+> merged 2026-04-30).** The fix prefers plain string entries, then
+> `.text` attribute, then `entry["text"]` for `Mapping` entries, then
+> `json.dumps(output, default=str)` final fallback — sidestepping the
+> `str()` fallback that produced `[<Content object at 0x...>]` Python
+> reprs from the canonical MCP raw-JSON shape. Companion fix
+> [PR #5687](https://github.com/microsoft/agent-framework/pull/5687)
+> (also in 1.3.0) stops `MCPStreamableHTTPTool` from swallowing
+> `asyncio.CancelledError` when the MCP server is unreachable.
+>
+> **Both surfaces are now valid in 1.3.0+:**
+> - `client.get_mcp_tool()` — concise, hosted MCP shape, **STATIC `headers: dict[str, str]`** only
+>   (no `header_provider` callback — bearer tokens expire after ~1h, so
+>   this path is **not viable for AAD-bearer-authenticated MCP servers**
+>   like AI Search KB MCP unless headers can be pinned for the agent's
+>   lifetime; fine for API-key auth or unauthenticated MCP)
+> - `MCPStreamableHTTPTool + parse_tool_results` — verbose,
+>   client-side, supports `header_provider: Callable[[dict], dict[str, str]]`
+>   for per-call token refresh — **REQUIRED for AAD-bearer auth**
+>
+> Choose `MCPStreamableHTTPTool` whenever the MCP server uses
+> short-lived bearer tokens or you need per-request header logic; choose
+> `client.get_mcp_tool()` for static-header MCP servers when you want
+> the hosted MCP execution model.
+>
+> **Pre-1.3.0 versions (1.1.x, 1.2.x) still have the bug.** If pinned
+> to an older release, stay on `MCPStreamableHTTPTool + parse_tool_results`.
+
+```python
+# ✅ OK in 1.3.0+ (was buggy in 1.1.x/1.2.x); STATIC headers only
+mcp_tool = client.get_mcp_tool(
+    name="my-mcp",
+    url="https://my-mcp-server.azurecontainerapps.io/mcp",
+    headers={"Authorization": f"Bearer {long_lived_or_api_key}"},
+    approval_mode="never_require",
+)
+agent = Agent(client=client, tools=[my_tool, mcp_tool], ...)
+```
+
+> **URL must be a valid URI** (starts with `http://` or `https://`). Unresolved
+> `${ENV_VAR}` placeholders that expand to empty strings cause `invalid_payload`
+> errors at runtime.
+
+### MCP Tools — recommended pattern (`MCPStreamableHTTPTool` + `parse_tool_results`)
+
+Use `MCPStreamableHTTPTool` directly with a custom `parse_tool_results`
+callback that extracts the `TextContent.text` payload from the MCP
+`CallToolResult` and surfaces it to the model as plain JSON. This
+sidesteps `FoundryChatClient.get_mcp_tool()` entirely and avoids the
+`[<Content object>]` repr leak.
+
+**Worked example** — validated in recent pilots, running on a
+10-tool MCP server with `gpt-5.4-mini`:
+
+```python
+import json
+from agent_framework import Agent, MCPStreamableHTTPTool, tool
+from agent_framework.foundry import FoundryChatClient
+from agent_framework_foundry_hosting import ResponsesHostServer
+from azure.identity import DefaultAzureCredential
+
+
+def _mcp_text_extractor(result):
+    """Convert an MCP CallToolResult into the plain JSON string the model expects.
+
+    Without this callback, agent_framework's default rendering of MCP results
+    leaks the Python repr of `[<Content object>]` into the model's view, which
+    gpt-5.4-mini reads as a tool failure. We surface the first TextContent
+    payload (which the MCP server returns as `json.dumps(...)`) verbatim.
+    """
+    if getattr(result, "isError", False):
+        return json.dumps({
+            "error": "mcp_tool_error",
+            "content": [str(c) for c in (result.content or [])],
+        })
+    for c in result.content or []:
+        text = getattr(c, "text", None)
+        if isinstance(text, str) and text:
+            return text
+    sc = getattr(result, "structuredContent", None)
+    if sc is not None:
+        return json.dumps(sc, default=str)
+    return json.dumps({"_empty": True})
+
+
+client = FoundryChatClient(
+    project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
+    model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"],
+    credential=DefaultAzureCredential(),
+)
+
+mcp_tool = MCPStreamableHTTPTool(
+    name="<process>_mcp",
+    url=f"https://{os.environ['MCP_SERVER_FQDN']}/mcp",
+    approval_mode="never_require",
+    parse_tool_results=_mcp_text_extractor,   # ⚠️ THE FIX — opts out of default rendering
+    request_timeout=60,
+)
+
+agent = Agent(client=client, tools=[my_local_tool, mcp_tool], ...)
+```
+
+**Why this works:**
+- `MCPStreamableHTTPTool` is the lower-level MAF primitive that
+  `client.get_mcp_tool()` wraps — bypassing the wrapper avoids the
+  buggy renderer.
+- `parse_tool_results` is invoked by MAF on every tool result before
+  it's rendered into the model's history; returning a plain string
+  makes that string what the model sees verbatim.
+- The MCP server should return `json.dumps(...)` from each tool
+  handler (FastMCP wraps it as a single `TextContent`); the extractor
+  unwraps that back to the JSON string.
+
+**When pure-compute logic doesn't need to be on the MCP server,
+inline it as `@tool`.** The MCP-vs-`@tool` rule from recent pilots:
+- **MCP server** for any tool with I/O (DB lookups, file reads,
+  external API calls).
+- **Inline `@tool`** for pure computation (date math, formatting,
+  validation) — cheaper round-trip, no HTTP hop.
+
+**Probe to verify the fix is in place** — dump the raw
+`custom_tool_call_output` from a real Foundry trace; the `output`
+field should be a plain JSON string (e.g. `{"case_id":"...","status":"..."}`),
+NOT `[<agent_framework._types.Content object at 0x...>]`. Your
+process repo should ship `tests/probe_mcp_output.py` for this.
+
+> **Status note.** As of `agent-framework-core` 1.3.0 (2026-05-07,
+> [PR #5581](https://github.com/microsoft/agent-framework/pull/5581)),
+> `client.get_mcp_tool()` is also bug-free — but only supports STATIC
+> `headers` (no per-call refresh callback), so it cannot be used for
+> AAD-bearer-authenticated MCP servers like AI Search KB MCP. The
+> `MCPStreamableHTTPTool + parse_tool_results` pattern remains the
+> canonical choice for any MCP server that needs short-lived tokens
+> via `header_provider`. Captured from recent PoC retrospectives.
+
+### MCP with per-call AAD bearer (`header_provider`)
+
+> These credential-based patterns do not establish the Playground user's
+> delegated identity. The [foundry-mcp-auth candidate](https://github.com/aiappsgbb/awesome-gbb/blob/7f1de882d5386e5a27852c91d3a89523eef218d0/skills/foundry-mcp-auth/SKILL.md)
+> owns the OAuth composition through the upstream Toolbox wrapper, including
+> its unresolved late-consent and direct-MCP caller-context limits.
+
+> **⚠️ Bootstrap caveat (CRITICAL — read first).** `header_provider=`
+> only covers `call_tool()` requests, NOT the MCP bootstrap exchange
+> (`initialize` + `tools/list` issued by `_ensure_connected`). For
+> AAD-secured MCP endpoints that require auth on bootstrap (Azure AI
+> Search Knowledge Base MCP, anything behind PMI), `header_provider=`
+> fails with **401** BEFORE the first `call_tool` ever fires — the
+> `_mcp_call_headers` ContextVar that `header_provider` writes to is
+> only set inside `call_tool()` (`agent_framework/_mcp.py` ~line 1589).
+> On hosted agents the symptom is every Responses request returning
+> `server_error` with no useful log signal. **Use `httpx.AsyncClient(auth=httpx.Auth)`
+> via `http_client=` instead** (companion example below) — see
+> `foundry-iq` SKILL § "KB access from a hosted MAF agent — three
+> routes" → Route B for the canonical pattern.
+
+For MCP servers backed by Azure services that authenticate with
+Microsoft Entra ID **where bootstrap does NOT require auth** (e.g.
+some custom MCP servers that auth-gate per-tool but allow open
+discovery), use the `header_provider` callback to mint a fresh
+bearer token per tool invocation. Per the SDK's own docstring, the
+callback "receives the runtime keyword arguments" — a generic
+`dict[str, Any]` populated by MAF at tool-invoke time — and returns
+a `dict[str, str]` of HTTP headers attached to every outbound request
+during that tool call.
+
+```python
+import os
+from agent_framework import MCPStreamableHTTPTool
+from azure.identity import DefaultAzureCredential
+
+# Module-level singleton so the in-memory token cache is reused across
+# MCP calls; get_token() returns a cached token if it's valid for >= ~5 min
+_credential: DefaultAzureCredential | None = None
+
+def _get_credential() -> DefaultAzureCredential:
+    global _credential
+    if _credential is None:
+        _credential = DefaultAzureCredential()
+    return _credential
+
+def _bearer_headers(_kwargs: dict) -> dict[str, str]:
+    """MAF header_provider — mints a fresh AAD bearer per MCP call.
+    Cached by the credential layer; refreshed automatically on expiry.
+    """
+    tok = _get_credential().get_token("https://search.azure.com/.default")
+    return {"Authorization": f"Bearer {tok.token}"}
+
+kb_mcp = MCPStreamableHTTPTool(
+    name="my_kb_mcp",
+    url=f"{os.environ['AI_SEARCH_ENDPOINT']}/knowledgebases/<kb-name>/mcp"
+        f"?api-version=2025-11-01-preview",
+    approval_mode="never_require",
+    parse_tool_results=_mcp_text_extractor,   # same extractor as above
+    header_provider=_bearer_headers,           # 🔑 per-call refresh
+    request_timeout=60,
+)
+```
+
+#### Companion: `httpx.Auth` for AAD-bootstrap-required MCPs (CANONICAL)
+
+When the MCP endpoint authenticates `initialize` / `tools/list` (any
+Azure AI Search KB MCP, any PMI-protected MCP), supply auth at the
+`httpx` transport layer instead — `httpx.Auth.auth_flow()` is invoked
+on EVERY outbound request including bootstrap, so the agent's MCP
+handshake completes successfully:
+
+```python
+import os, httpx
+from agent_framework import MCPStreamableHTTPTool
+from azure.identity import DefaultAzureCredential
+
+_credential = DefaultAzureCredential()
+
+class _AADBearerAuth(httpx.Auth):
+    """Mints AAD bearer per request — covers MCP bootstrap, not just call_tool."""
+    def __init__(self, scope: str) -> None:
+        self.scope = scope
+    def auth_flow(self, request: httpx.Request):
+        token = _credential.get_token(self.scope).token
+        request.headers["Authorization"] = f"Bearer {token}"
+        yield request
+
+_http = httpx.AsyncClient(
+    auth=_AADBearerAuth("https://search.azure.com/.default"),
+    timeout=120.0,
+)
+
+kb_mcp = MCPStreamableHTTPTool(
+    name="my_kb_mcp",
+    url=(f"{os.environ['AI_SEARCH_ENDPOINT']}/knowledgebases/<kb-name>/mcp"
+         f"?api-version=2025-11-01-preview"),
+    http_client=_http,            # 🔑 auth covers BOOTSTRAP, not just call_tool
+    parse_tool_results=_mcp_text_extractor,
+    load_prompts=False,           # avoid prompts/list 500s on KB MCP
+    request_timeout=120,
+)
+```
+
+> **Do NOT combine `header_provider=` AND `http_client=` (with auth).**
+> Pick one. `httpx.Auth` is canonical for AAD-secured Azure MCP
+> endpoints; `header_provider=` is appropriate only for tool-call-only
+> headers (e.g. per-call correlation IDs that don't need to cover
+> bootstrap).
+
+> **⚠️ MCP `ping` trap on Foundry-hosted MCP servers.** MAF's
+> `MCPStreamableHTTPTool._ensure_connected()` issues an MCP `ping`
+> request during agent registration. **The Foundry Toolbox MCP
+> endpoint is documented to return HTTP 500 on `ping`** because the
+> server doesn't implement the optional MCP `ping` method (per the
+> Toolbox docs). The same failure mode has been observed on direct
+> KB MCP wiring (`/knowledgebases/<n>/mcp`) but is not yet documented
+> upstream — treat as suspected, not confirmed, until you've reproduced
+> it on your tenant. When the trap fires, agent registration fails and
+> every invoke returns `server_error` from the responses endpoint with
+> no useful log signal. Workarounds:
+>
+> **(a) Recommended (MAF 1.6.0+): set `_ping_available = False` in
+> `__init__`.** MAF 1.6.0's base `_ensure_connected()` already
+> respects a `_ping_available` flag (set `True` by default in
+> `MCPStreamableHTTPTool.__init__`). Setting it to `False` makes the
+> base skip `send_ping()` without overriding `_ensure_connected` at
+> all — cleaner and survives internal attribute renames across MAF
+> versions (e.g. `_client` → `client` in 1.6.0 broke overrides that
+> referenced `self._client`):
+>
+> ```python
+> class _PingSkipMCPTool(MCPStreamableHTTPTool):
+>     """Skip MCP ping — KB MCP / Toolbox MCP return 500 on ping."""
+>     def __init__(self, **kwargs):
+>         super().__init__(**kwargs)
+>         self._ping_available = False
+> ```
+>
+> **(b) Legacy (pre-1.6.0): override `_ensure_connected`** with a
+> no-op subclass to skip the ping entirely. ⚠️ This pattern broke in
+> MAF 1.6.0 when `self._client` was renamed to `self.client` — if you
+> reference internal attributes in the override, the agent crashes with
+> `AttributeError` on the first request (container starts fine,
+> readiness passes, but every actual invoke returns empty `output: []`
+> / `model: ""`). Prefer option (a) on 1.6.0+.
+>
+> **(c)** Use the static-headers `client.get_mcp_tool()` shape if your
+> MCP doesn't need per-call AAD refresh.
+
+### File Generation (@tool pattern)
+
+Agents can generate downloadable files (XLSX, PDF, CSV, HTML) using a custom `@tool`.
+Files are written to `$HOME` inside the container; the hosting platform exposes them
+via the session files API, and the Teams bot delivers them via FileConsentCard
+(see [foundry-teams-bot skill](https://github.com/aiappsgbb/awesome-gbb/blob/7f1de882d5386e5a27852c91d3a89523eef218d0/skills/foundry-teams-bot/SKILL.md#sending-files-to-teams)).
+
+```python
+@tool(approval_mode="never_require")
+def save_report(
+    filename: Annotated[str, Field(description="Filename (e.g. report.xlsx, summary.pdf)")],
+    content: Annotated[str, Field(description="File content: CSV text, JSON for XLSX, HTML for pdf")],
+    format: Annotated[str, Field(description="Format: csv, xlsx, html, or pdf")] = "csv",
+) -> str:
+    """Save a report file that the user can download."""
+    from pathlib import Path
+    home = Path.home()
+    filepath = home / filename
+
+    if format == "xlsx":
+        import openpyxl
+        import json as _json
+        data = _json.loads(content)
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        if data and isinstance(data, list):
+            ws.append(list(data[0].keys()))
+            for row in data:
+                ws.append(list(row.values()))
+        wb.save(str(filepath))
+    elif format == "pdf":
+        from fpdf import FPDF
+        import re
+        # Strip CSS but keep structural HTML for write_html()
+        cleaned = re.sub(r"<style[^>]*>.*?</style>", "", content, flags=re.DOTALL)
+        cleaned = re.sub(r'\s+(class|style|id)="[^"]*"', "", cleaned)
+        cleaned = cleaned.replace("<table", '<table border="1" width="100%"')
+        cleaned = cleaned.replace("<th", '<th bgcolor="#d0d0d0"')
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Helvetica", "", 10)
+        pdf.write_html(cleaned)
+        pdf.output(str(filepath))
+    else:
+        filepath.write_text(content, encoding="utf-8")
+
+    return f"Report saved: {filename} ({filepath.stat().st_size:,} bytes). User can download it."
+```
+
+**Required dependencies** in `pyproject.toml`:
+
+```toml
+dependencies = [
+    # ... agent-framework packages ...
+    "openpyxl>=3.1.0",   # XLSX generation
+    "fpdf2>=2.8.0",      # PDF generation (pure Python, no system deps)
+]
+```
+
+**Instructions directive** — add to `copilot-instructions.md`:
+
+```markdown
+## Report Generation
+
+You have a `save_report` tool for generating downloadable files:
+- **XLSX**: JSON array of objects → `save_report(filename="report.xlsx", content=json_data, format="xlsx")`
+- **PDF**: HTML content → `save_report(filename="report.pdf", content=html, format="pdf")`
+- **CSV**: Raw CSV text → `save_report(filename="report.csv", content=csv, format="csv")`
+- **HTML**: HTML content → `save_report(filename="report.html", content=html, format="html")`
+```
+
+**Key points:**
+- `fpdf2` is pure Python — no Playwright, wkhtmltopdf, or headless Chrome needed
+- `fpdf2.write_html()` renders HTML tables with borders and header highlighting
+- Files written to `Path.home()` are automatically available via the session files API
+- The bot captures `agent_session_id` from the `response.completed` event to locate files
+- Wrap each format in try/except to return a clean error if generation fails
+
+> **Validated** — XLSX and PDF file delivery tested end-to-end in recent
+> file-delivery pilots. FileConsentCard renders clickable OneDrive cards in Teams.
+
+---
+
+## Dependencies (pyproject.toml)
+
+> **🔴 DO NOT** install the `agent-framework` meta-package with `>=` or let
+> this stack float transitively. Pin the direct consumer set:
+> ```
+> agent-framework-core~=1.14.0
+> agent-framework-foundry~=1.11.0
+> agent-framework-foundry-hosting==1.0.0b260813
+> azure-ai-agentserver-core==2.1.0b1
+> azure-ai-agentserver-responses==2.1.0b1
+> azure-ai-agentserver-invocations==1.1.0b1
+> azure-ai-projects~=2.3.0
+> azure-identity~=1.25.3
+> mcp~=1.29.0
+> python-dotenv~=1.2.2
+> ```
+> `agent-framework-foundry~=1.11.0` requires
+> `azure-ai-projects>=2.2,<2.4`, so this hosted-agent stack deliberately
+> pins `azure-ai-projects~=2.3.0` as a direct dependency. Do not
+> independently bump one package. The hosting package is the current beta
+> pre-release and stays pinned exact at `==1.0.0b260813`; MCP remains on
+> `~=1.29.0` because hosting still requires `mcp<2`. This August release
+> train moves Agent Server Responses/Core `2.1.0b1` and Agent Server Invocations `1.1.0b1`
+> together. Pin all three Agent Server prereleases directly and exactly:
+> uv does not admit those transitive prereleases under
+> `prerelease = "if-necessary-or-explicit"` unless the root project names them.
+> Do not globally switch uv to `prerelease = "allow"`; that can pull unrelated
+> prereleases inside otherwise bounded dependency windows.
+
+> 🚨 **READ FIRST.** Five pyproject mistakes silently break this stack:
+>
+> 1. **`agent-framework>=1.14.0` meta-package** — non-deterministic transitive resolution; resolves differently across uv versions. **DO** pin `agent-framework-core` and `agent-framework-foundry` individually.
+> 2. **Transitive Agent Server betas** — hosting `b260813` declares lower bounds on Agent Server core/responses `>=2.1.0b1` and invocations `>=1.1.0b1`, but uv's safe `if-necessary-or-explicit` policy does not treat those transitive markers as explicit. Pin `azure-ai-agentserver-core==2.1.0b1`, `azure-ai-agentserver-responses==2.1.0b1`, and `azure-ai-agentserver-invocations==1.1.0b1` directly or `uv sync` reports that only older stable releases are available.
+> 3. **`agent-framework-core[mcp]` extra** — that extra **does NOT exist**. `MCPStreamableHTTPTool` / `MCPSseTool` / `MCPStdioTool` are top-level exports of `agent_framework`; the bare `agent-framework-core~=1.14.0` pin already includes them. Writing `[mcp]` produces a uv warning but does NOT fail resolution, so the pyproject can ship looking "MCP-ready" while operators chase phantom problems.
+> 4. **Floating or transitive `azure-ai-projects`** — `agent-framework-foundry~=1.11.0` requires `azure-ai-projects>=2.2,<2.4`, and this skill depends on the stable `project.agents.update_details` surface available in `~=2.3.0`. Pin `azure-ai-projects~=2.3.0` directly in every hosted-agent `pyproject.toml`; do not bump it independently of the Foundry package.
+> 5. **Missing `mcp`** — `agent_framework_foundry_hosting._responses` imports `from mcp import McpError` at module-load time, so the container crashes at startup with `ModuleNotFoundError: No module named 'mcp'` even when no MCP tool is wired. The platform surfaces this as `session_not_ready` after a ~60 s timeout, so diagnosis cost is high. Pin `mcp~=1.29.0` in **every** hosted-agent `pyproject.toml` because the current beta hosting package still requires `mcp<2`.
+
+> **MUST:** Copy verbatim from [`references/python/pyproject.toml`](references/python/pyproject.toml). Do NOT redefine inline — the validator enforces single-source-of-truth. That file pins `agent-framework-core~=1.14.0`, `agent-framework-foundry~=1.11.0`, the beta hosting at exact `==1.0.0b260813`, Agent Server core/responses `==2.1.0b1`, Agent Server invocations `==1.1.0b1`, direct `azure-ai-projects~=2.3.0` (because Foundry 1.11.0 requires `>=2.2,<2.4`), `azure-identity~=1.25.3`, `mcp~=1.29.0` (mandatory — hosting still requires `mcp<2`), and `python-dotenv~=1.2.2`. The header comment captures the five pitfalls (meta-package, transitive Agent Server betas, phantom `[mcp]` extra, floating `azure-ai-projects`, missing `mcp`) the file prevents.
+
+**Do NOT use `agent-framework>=1.14.0` as a meta-package.** The meta-package's transitive
+resolution is non-deterministic across uv versions. Pin `agent-framework-core~=1.14.0`,
+`agent-framework-foundry~=1.11.0`, and direct `azure-ai-projects~=2.3.0` instead. Do not
+independently bump the Foundry and Projects packages: `agent-framework-foundry~=1.11.0`
+requires `azure-ai-projects>=2.2,<2.4`, and this skill uses the stable 2.3 line for
+`project.agents.update_details`. Pin the beta hosting package by exact version
+`==1.0.0b260813` — pre-release cap math doesn't survive across beta boundaries, so `~=`
+would silently jump to a later beta (this is a recurring policy bug in this skill's own
+pin-validation script — see [`references/upstream-pin.md`](references/upstream-pin.md)
+for the fix).
+
+**Simplified deps.** The hosting package bundles `microsoft-opentelemetry`
+which transitively pulls ALL OTel instrumentors (openai-v2, agents-v2, httpx, logging,
+fastapi, etc.) and the Azure Monitor exporter. **Remove** any explicit
+`azure-monitor-opentelemetry`, `opentelemetry-sdk`, `opentelemetry-instrumentation-*`
+lines from your pyproject — they are now transitive and declaring them explicitly causes
+version conflicts.
+
+**Mandatory adjacent rules** (lessons from dependency-resolution retrospectives):
+- **Add** exact Agent Server prerelease pins for core/responses `==2.1.0b1` and
+  invocations `==1.1.0b1`. Hosting declares compatible lower bounds but uv does not
+  activate transitive prereleases under `if-necessary-or-explicit`; the exact direct
+  pins both enable resolution and prevent cross-beta drift.
+- **Add** explicit direct `azure-ai-projects~=2.3.0` — **mandatory**, not transitive. `agent-framework-foundry~=1.11.0`
+  requires `azure-ai-projects>=2.2,<2.4`, and this stack uses the stable 2.3 line for
+  `project.agents.update_details`. Do not let it float via transitive resolution or bump it
+  independently of the Foundry package.
+- **Add** explicit `mcp~=1.29.0` — **mandatory**, not conditional. `agent_framework_foundry_hosting._responses`
+  imports `from mcp import McpError` unconditionally (module-level), so the container crashes
+  at startup with `ModuleNotFoundError: No module named 'mcp'` even when the agent uses no MCP
+  tools. The platform surfaces this as `session_not_ready` after a ~60 s timeout (not as an
+  import error), so the diagnosis cost is high — pin `mcp` in **every** hosted-agent
+  `pyproject.toml`. Verified on `agent-framework-foundry-hosting==1.0.0b260813`; the current
+  beta hosting package still requires `mcp<2`.
+- **Do NOT write `agent-framework-core[mcp]`.** The `[mcp]` extra does NOT exist in
+  `agent-framework-core` (PEP 503 / `setup.cfg` of the published wheel has no
+  `[project.optional-dependencies] mcp = […]` entry). `MCPStreamableHTTPTool` /
+  `MCPSseTool` / `MCPStdioTool` are **top-level exports** of `agent_framework` — pin
+  `agent-framework-core~=1.14.0` (plain, no extras) and import them with
+  `from agent_framework import MCPStreamableHTTPTool`. Writing the non-existent extra
+  produces a uv warning but does **not** fail resolution, so a pyproject can ship looking
+  "MCP-ready" while actually missing nothing (the transports are already there) — but the
+  warning suggests something's wrong and operators chase the wrong thing.
+- **Include** `[tool.setuptools] packages = []` for clean uv resolution.
+
+**`prerelease = "if-necessary-or-explicit"` is correct** — packages with explicit
+prerelease markers (e.g. `==1.0.0b260813`) resolve to prereleases; everything else
+stays GA. Do NOT use `"allow"` — it can pull an unpinned beta `azure-identity`.
+
+### Dependency Chain (verified on PyPI)
+
+| Package | Version | Type | Pulls in |
+|---------|---------|------|----------|
+| `agent-framework-core` | 1.14.0 | ✅ Stable | pydantic, opentelemetry-api (instrumentation enabled by default) |
+| `agent-framework-foundry` | 1.11.0 | ✅ Stable | core, openai, azure-ai-projects (`>=2.2,<2.4`) |
+| `agent-framework-foundry-hosting` | 1.0.0b260813 | ⚠️ Beta (pinned exact) | Requires the Agent Server beta train below |
+| `azure-ai-agentserver-core` | 2.1.0b1 | ⚠️ Beta (pinned exact) | Direct pin required for uv prerelease admission; pulls **microsoft-opentelemetry** (bundles all OTel instrumentors + exporters) |
+| `azure-ai-agentserver-responses` | 2.1.0b1 | ⚠️ Beta (pinned exact) | Direct pin required for the hosted Responses protocol |
+| `azure-ai-agentserver-invocations` | 1.1.0b1 | ⚠️ Beta (pinned exact) | Coherent with the hosting beta's Agent Server contract |
+| `azure-ai-projects` | 2.3.0 | ✅ Stable (direct pin) | Stable `project.agents.update_details`; deliberately held below 2.4 to stay aligned with `agent-framework-foundry` 1.11.0 |
+| `mcp` | 1.29.0 | ✅ Stable | **Required by every hosted agent** — `agent_framework_foundry_hosting._responses` imports `from mcp import McpError` unconditionally, even when no MCP tools are used. Hosting still requires `mcp<2` |
+| `azure-identity` | 1.25.3 | ✅ Stable | |
+| `python-dotenv` | 1.2.2 | ✅ Stable | `.env` parity for local/container env loading |
+
+No `override-dependencies` needed — the direct exact prerelease pins are compatible
+with the hosting package's declared bounds.
+
+### Dockerfile
+
+> **MUST:** Copy verbatim from [`references/docker/Dockerfile`](references/docker/Dockerfile). Do NOT redefine inline — the validator enforces single-source-of-truth. That file is the canonical, field-validated container image for a hosted agent (uv-based dependency sync, port 8088, remote-buildable via `azd deploy`).
+
+- Port 8088 is the standard Foundry agent port
+- `--platform linux/amd64` only needed for local builds
+- `azd deploy` builds remotely in Azure Container Registry by default — no local Docker needed. Use `azd ai agent run` when you intentionally want to build and run the agent locally.
+
+---
+
+## azure.yaml (unified hosted-agent configuration)
+
+For the selected profile, a single `azure.yaml` at the project root is the source of
+truth for both the Foundry project/model deployment and the hosted
+agent itself — declared as a graph of `services`, each with a `host`
+field and a `uses` list of dependencies.
+
+> **MUST:** Copy the complete configuration verbatim from
+> [`references/yaml/azure.yaml`](references/yaml/azure.yaml).
+> Do not redefine it inline; that file is the canonical unified
+> `host: azure.ai.agent` configuration used by the fixture.
+
+### Critical rules
+
+| Rule | Why |
+|------|-----|
+| `kind: hosted` on the `azure.ai.agent` service | Marks it as a containerized/source-built hosted agent (as opposed to a Foundry Agent Service prompt agent) |
+| Protocol version `2.0.0` | Current GA protocol version. `"v1"` and `"1.0.0"` are historical preview values from before the two-file contract was retired — see [§ Migration from Initial Preview](#migration-from-initial-preview-pre-april-2026) |
+| `container.resources` nested object | NOT a top-level `resources:` list |
+| NO `FOUNDRY_PROJECT_ENDPOINT` in `environmentVariables` | Reserved — the platform injects it automatically, along with `FOUNDRY_PROJECT_ARM_ID`, `FOUNDRY_AGENT_NAME`, `FOUNDRY_AGENT_VERSION`, `FOUNDRY_AGENT_SESSION_ID`, and `APPLICATIONINSIGHTS_CONNECTION_STRING`. Declaring any of them yourself is redundant at best and risks shadowing the platform value |
+| `uses: [ai-project]` on the agent service | Forms the dependency graph `azd` resolves at provision/deploy time — the agent can't reference the project's model deployment without it |
+| Connect to an existing project via `endpoint:` | Set `services.ai-project.endpoint` from `${FOUNDRY_PROJECT_ENDPOINT}` to reuse a pre-provisioned Foundry project instead of having `azd` provision a new one; omit `deployments:` you don't want `azd` to manage |
+| `infra.provider: microsoft.foundry` | Selects the Foundry extension's bicep-less provisioning provider for the unified services graph; it does not rename or replace the `azure.ai.agents` extension |
+
+> **One schema, no scaffold-time mustache.** Unlike the old two-file
+> contract, there is no separate `{{VAR}}`-templated companion file.
+> `${VAR_NAME}` in `azure.yaml` resolves client-side from your `azd`
+> environment (`.azure/<env>/.env`) at `azd provision`/`deploy` time;
+> `${{ connections.<name>.<path> }}` resolves server-side, at sandbox
+> start, from a Foundry project connection (e.g. secrets) — see the
+> [`azure.yaml` reference](https://learn.microsoft.com/azure/foundry/agents/concepts/azure-yaml-reference)
+> for the full field list, including `azure.ai.connection` and
+> `azure.ai.toolbox` services this skill doesn't otherwise cover.
+
+> **Foundry provider is bicep-less.** `infra.provider:
+> microsoft.foundry` selects the Foundry extension's provisioning
+> provider, which synthesizes infrastructure from the `services` graph
+> at `azd provision` time; there is no local `infra/` directory. If you
+> explicitly eject infrastructure with `azd ai agent init --infra` or
+> `--infra=terraform`, the generated project switches the provider to
+> `bicep` or `terraform` and uses those local files instead.
+
+### Guided init vs. direct-copy brownfield deploy
+
+The **recommended guided path** adopts the manifest and wires the existing
+project/registry context into the active azd environment:
+
+```bash
+PROJECT_ID="/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>"
+azd ai agent init -m ./azure.yaml \
+  --project-id "$PROJECT_ID" \
+  --deploy-mode container
+```
+
+If you instead copy the canonical files into an existing repository and run
+`azd deploy` directly, `azure.yaml` alone is insufficient. The
+`azure.ai.agents` service target requires the full project ARM ID, project
+endpoint, subscription, and bare ACR login server in the **active azd
+environment**:
+
+```bash
+azd env set AZURE_SUBSCRIPTION_ID "<sub-id>"
+azd env set FOUNDRY_PROJECT_ENDPOINT \
+  "https://<account>.services.ai.azure.com/api/projects/<project>"
+azd env set AZURE_AI_PROJECT_ID \
+  "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>"
+azd env set AZURE_CONTAINER_REGISTRY_ENDPOINT "<registry>.azurecr.io"
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "<model-deployment>"
+azd deploy my-agent --no-prompt
+```
+
+`AZURE_CONTAINER_REGISTRY_ENDPOINT` is a **bare hostname** — no
+`https://` scheme and no trailing slash. This direct-copy limitation is
+the adoption wiring covered by
+[Azure/azure-dev #8981](https://github.com/Azure/azure-dev/pull/8981):
+`azd ai agent init ... --deploy-mode container` wires it automatically;
+plain `azd deploy` cannot infer the omitted brownfield values.
+
+### Installing the `azd` Foundry extensions
+
+```bash
+azd ext install microsoft.foundry
+```
+
+`microsoft.foundry` is a **beta meta-package** — it contributes no
+commands of its own. Installing it pulls in every individual Foundry
+extension: `azure.ai.agents` (`azd ai agent`, the one this skill uses),
+`azure.ai.connections`, `azure.ai.inspector`, `azure.ai.projects`,
+`azure.ai.routines`, `azure.ai.skills`, and `azure.ai.toolboxes`. It is
+**not** a rename or replacement of `azure.ai.agents` — the agent
+extension still owns the `azd ai agent` command group, the
+`azure.ai.agent` service `host` value, and the `microsoft.foundry`
+**provisioning** identifier azd uses internally when it synthesizes
+infrastructure. Installing just `azure.ai.agents` also pulls in
+`azure.ai.inspector` (a dependency), so it's a valid narrower
+alternative to the meta-package:
+
+```bash
+# Just the agent surface (also pulls in azure.ai.inspector)
+azd ext install azure.ai.agents
+
+# Upgrade later
+azd ext upgrade microsoft.foundry
+```
+
+Verify what's installed:
+
+```bash
+azd ext list --output json
+```
+
+### Model Version Lookup
+
+| Model | Version |
+|-------|---------|
+| `gpt-5.6-sol` | `2026-07-09` |
+| `gpt-5.6-terra` | `2026-07-09` |
+| `gpt-5.6-luna` | `2026-07-09` |
+| `gpt-5.4` | `2026-03-05` |
+| `gpt-5.4-mini` | `2026-03-17` |
+| `gpt-5.4-nano` | `2026-03-17` |
+| `gpt-5.3-codex` | `2026-02-24` |
+| `gpt-5.2` | `2025-12-11` |
+| `gpt-5` | `2025-08-07` |
+| `gpt-5-mini` | `2025-08-07` |
+| `gpt-4.1` | `2025-04-14` |
+| `gpt-4.1-mini` | `2025-04-14` |
+
+> **GPT-5.6 GA boundary (verified 2026-07-15).** Microsoft publishes
+> `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` as three distinct
+> model IDs at version `2026-07-09`. All three are GA and have a documented
+> retirement date of `2027-07-09`. They share a 1,050,000-token context
+> envelope (922,000 input + 128,000 output), accept text and image input,
+> produce text output, and support both the Responses API and Chat
+> Completions API. `gpt-5.6` and `gpt-5.6-mini` are not documented Azure
+> model IDs - do not invent either alias. Sources:
+> [model catalog](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure)
+> and [retirement schedule](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-retirement-schedule).
+
+Verify with: `az cognitiveservices account list-models --resource-group <rg> --name <account> -o table`
+
+> **Which** model/version/capacity/SKU to put in the block above → [`references/model-selection.md`](references/model-selection.md).
+
+---
+
+## `azd env` variables for the `azure.ai.agents` extension
+
+`azd ai agent init` is **bicep-less by default** — it doesn't write an
+`infra/` directory; `azd` synthesizes infrastructure from the
+`services` graph in `azure.yaml` at `azd provision` time. Guided init
+writes the brownfield values below. A direct-copy deploy must set them
+explicitly before `azd deploy`:
+
+| Env var | Set via | Format | Why it matters |
+|---------|---------|--------|-----------------|
+| `AZURE_SUBSCRIPTION_ID` | `azd env set` or guided init | subscription GUID | Selects the subscription containing the existing project and registry |
+| `FOUNDRY_PROJECT_ENDPOINT` | `azd env set` or guided init | `https://<account>.services.ai.azure.com/api/projects/<project>` | Deploy-time project lookup for direct-copy brownfield deploy; also injected by Foundry into the running container, but MUST NOT be listed under `environmentVariables` |
+| `AZURE_AI_PROJECT_ID` | `azd env set` or guided init | `/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>` | Full ARM ID required by `ensureFoundryProject`; an endpoint alone is insufficient |
+| `AZURE_CONTAINER_REGISTRY_ENDPOINT` | `azd env set` or guided init | `<registry>.azurecr.io` | Bare ACR login server used for container build/push; no scheme or trailing slash |
+| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | `azd ai agent init` records it automatically from the deployment you select; change later with `azd env set` | deployment name (e.g. `gpt-5.4-mini`) | Projected through the agent service's `environmentVariables` entry in `azure.yaml`, and read by `container.py` / `main.py` as `os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"]` |
+
+`azd provision` writes these into `.azure/<env>/.env`. If you eject
+Bicep (`azd ai agent init --infra`), the generated `main.bicep` exposes
+the equivalent `output`s and you rarely need to hand-wire them.
+
+> **Deploy-time azd env vs. runtime container env.**
+> `FOUNDRY_PROJECT_ENDPOINT` MUST be set in the active azd environment for
+> direct-copy brownfield deploy, but MUST NOT be projected through the
+> agent's `environmentVariables` list. Foundry injects it into the running
+> container. The same container-only prohibition applies to
+> `FOUNDRY_PROJECT_ARM_ID`, `FOUNDRY_AGENT_NAME`,
+> `FOUNDRY_AGENT_VERSION`, `FOUNDRY_AGENT_SESSION_ID`, and
+> `APPLICATIONINSIGHTS_CONNECTION_STRING`.
+
+---
+
+## Identity & RBAC
+
+### Agent Identities
+
+Each hosted agent gets a **dedicated Microsoft Entra agent identity**
+(a service principal) at deploy time — this is what your running
+container uses to call models and tools. `azd`, the VS Code Foundry
+Toolkit, or the SDK/REST create it automatically; you don't configure
+managed identities by hand. View it with `azd ai agent show`.
+
+> **⚠️ ServiceIdentity Cosmos limitation.** The agent identity's
+> principal type is not accepted by every data-plane RBAC engine —
+> Cosmos DB in particular rejects direct role assignments against it
+> with `unsupported type [Unfamiliar]`. The same has been seen against
+> Azure AI Search data-plane in some configurations.
+> **Workaround:** route Cosmos / Search access through an MCP server
+> backed by a **separate User-Assigned Managed Identity (UAMI)**. Grant
+> the data-plane role to that UAMI, give the agent only the MCP tool;
+> the agent never touches the data plane directly.
+
+> **Per-instance identity for Graph API.** When a hosted agent needs its own
+> audit-distinct identity — calling Microsoft Graph (Calendar, Mail, Teams),
+> performing on-behalf-of (OBO) flows, or operating cross-tenant — the
+> standard project-scoped agent identity is not enough. The official
+> `entra-agent-id` skill documents the `fmi_path` token-exchange pattern,
+> app-registration setup, and the `ai.azure.com` token-scope requirement.
+
+### Default case: no agent role assignment needed
+
+Per the [Hosted agent permissions reference](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions):
+*"The agent identity can access model inferencing through the project
+endpoint and session storage by default."* Implicit access covers:
+
+- Model inferencing through the project endpoint (`FoundryChatClient(project_endpoint=..., credential=DefaultAzureCredential())` — the standard pattern in this skill)
+- Session storage read and write
+
+**No explicit role assignment or additional configuration is needed
+for the standard case documented in [§ Runtime Pattern](#runtime-pattern-maf-variant).**
+There is no postdeploy RBAC-grant hook to run, and no canonical
+account-scope `Foundry User` grant for the agent identity in this
+skill's default path — both were removed as part of the GA migration.
+If you were relying on `references/bash/postdeploy-agent.sh` or a
+manual `Foundry User` grant to the agent's `instance_identity` /
+`blueprint.principal_id` from a pre-GA build of this skill, delete
+that step; it's not just unnecessary now, it's dead weight.
+
+**Deploying user** still needs a role to create/update the agent:
+
+| Role | Scope | Why |
+|------|-------|-----|
+| `Foundry Project Manager` | Foundry project | Data-plane permissions to create/update agents, plus the ability to create role assignments for the agent identity if an advanced scenario needs one |
+
+`azd` and the VS Code Foundry Toolkit handle the ACR pull role
+(**Container Registry Repository Reader** on the project's managed
+identity) automatically as part of `azd deploy`.
+
+### Agent access beyond defaults (advanced scenarios only)
+
+Additional permissions are only needed when an agent uses connected
+tools that access **external** resources, references data outside its
+own project, or calls **account-level** capabilities directly (bypassing
+the project endpoint). Grant the **least-privilege** role for the
+specific capability actually called — don't reach for a broad role by
+default:
+
+| Scenario | Role | Scope | Notes |
+|----------|------|-------|-------|
+| Agent calls the account-level OpenAI endpoint directly (bypassing the project endpoint) | `Cognitive Services OpenAI User` | Foundry account | Covers only OpenAI data actions — narrower than `Foundry User` |
+| Agent calls account-level non-OpenAI capabilities directly (Speech, Content Safety, Vision, Document Intelligence, Language, Translator) | `Cognitive Services User` | Foundry account | Covers those capabilities without granting OpenAI/agents access |
+| Agent needs both of the above with a single grant | `Foundry User` | Foundry account | Broadest of the three — use only if the agent genuinely needs both OpenAI and non-OpenAI account-level capabilities |
+| Custom project-level access beyond the implicit default | Custom role scoped to `Microsoft.CognitiveServices/accounts/AIServices/responses/*` + `agents/*/read` + `agents/*/write` | Foundry project | Lower privilege than the built-in `Foundry User` role for the project-level inferencing case; requires `Microsoft.Authorization/roleAssignments/write` at the project scope to create |
+
+> Because a role assignment against the agent identity can't be created
+> until after the agent exists, the user/principal that creates the
+> agent also needs permission to assign roles. `Foundry Project Manager`
+> at the project scope is the recommended assignment for agent creators
+> in this scenario — it includes both the data-plane permissions and
+> the ability to assign the `Foundry User` role.
+
+---
+
+## Deployment Flow
+
+```
+azd up
+  ├── provision → synthesize infra from azure.yaml services (Foundry
+  │   project + model deployment, ACR, monitoring) — bicep-less by
+  │   default; use ejected Bicep/Terraform if you materialized infra
+  ├── postprovision hooks (if any)
+  ├── azd ai agent extension →
+  │   ├── Build container remotely via ACR (default)
+  │   ├── Push image + create hosted agent version
+  │   └── Agent gets a dedicated Entra identity with implicit access
+  │       to model inferencing + session storage — no RBAC grant step
+  └── deploy other services (bot, MCP servers, etc.)
+```
+
+### Invocation
+
+Persist the original operation before dispatch and its returned identity/status
+before interpreting content. The short example below omits custody plumbing;
+use [Operation recovery](#operation-recovery) for executable consumers with
+tools or remote effects. A failed response does not authorize another invoke.
+
+```python
+from azure.ai.projects import AIProjectClient
+from azure.identity import DefaultAzureCredential
+
+project = AIProjectClient(
+    endpoint="<project_endpoint>",
+    credential=DefaultAzureCredential(),
+)
+oai = project.get_openai_client(agent_name="my-agent")
+response = oai.responses.create(input="Hello!", stream=False)
+print(response.output_text)
+```
+
+`allow_preview=True` is **not required** for this call (see the
+Multi-Agent § note above for the SDK-level detail). Or via CLI:
+`azd ai agent invoke "Hello!"`. Or via REST:
+
+```
+POST {project_endpoint}/agents/{name}/endpoint/protocols/openai/responses?api-version=v1
+```
+
+### Compute Lifecycle
+
+- **Automatic** — no manual start/stop
+- Provisions on first request
+- Deprovisions after 15 minutes of inactivity
+- No replica management
+
+> **Container status API.** The `.../versions/{v}/containers/default`
+> endpoint (and the `:start` action) is not a supported public status
+> surface for hosted agents — the platform auto-provisions containers.
+> If your deploy or eval script polls a container-status endpoint to
+> check readiness, **skip straight to a warmup chat** instead. Pattern:
+> attempt a `responses.create("ping")` warmup with retry/backoff. Poll
+> the version's `status` field (`creating` → `active` / `failed`) via
+> `project.agents.get_version(...)` or `azd ai agent show` if you need
+> a structured readiness signal.
+
+---
+
+## Region Availability
+
+Not all regions support hosted agents. If you get `"The requested experience is
+not available for this subscription"`, try a different region.
+
+> **Snapshot — 2026-07-14.** Per the authoritative
+> [Region availability](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#region-availability)
+> page, Hosted agents are currently available in **20 regions**: East US 2,
+> North Central US, Sweden Central, Canada Central, Canada East,
+> Southeast Asia, Poland Central, South Africa North, Korea Central,
+> South India, Brazil South, West US, West US 3, Norway East, Japan
+> East, France Central, Germany West Central, Switzerland North, Spain
+> Central, Australia East. **This list is not evergreen** — Microsoft
+> updates it as more regions come online. Re-check the live page before
+> you commit a region; East US 2 in particular used to fail (a stale,
+> now-outdated claim from an earlier preview build of this skill) and
+> is on the current list.
+
+Verify current model + hosted-agent availability together before you
+commit a region:
+
+```bash
+# Hosted agents + model deployability in an existing account's region
+az cognitiveservices account list-models --resource-group <rg> --name <account> -o table
+
+# Model availability in a region (pre-account planning)
+az cognitiveservices model list --location <region> -o table
+```
+
+> Region choice interacts with model + capacity availability and data residency — see [`references/model-selection.md`](references/model-selection.md) §§ 2–4.
+
+---
+
+## Gateway throttle finding (historical, pre-GA — unverified post-GA)
+
+> **Status: historical.** The finding below was observed during the
+> May 2026 preview era, before container hosted-agent deploy reached
+> GA. It has **not** been re-verified against the current GA gateway.
+> Treat it as a diagnostic pattern to recognize if you see the same
+> symptoms — not as production sizing guidance for a GA deployment. If
+> you reproduce it post-GA, that's worth a fresh, dated finding of its
+> own; don't assume the ~6-call boundary still applies.
+
+The Foundry hosted-agent gateway had an undocumented preview-time
+throttle: **~6 sustained sequential invocations per warm period**
+before sticky `internal_server_error` responses with a **5–10 minute
+recovery window**. Validated in May 2026 against a real pilot agent
+across 3 successive eval runs, pre-GA.
+
+### Detection signature
+
+Look for ALL of these together:
+
+* Cold-start: first 1–2 warmup pings return `server_error` in 5–10s
+  before the platform brings a replica up
+* Warm phase: exactly **5–6 sequential invocations** answer in 30–60s
+  each (real tool work) with normal latency
+* Throttle phase: from invocation 7–9 onwards, every call returns
+  `internal_server_error` (or `server_error` / `model:""`) in **5–10s
+  consistent latency** — too fast for real tool work, too slow for a
+  4xx routing failure
+* Recovery: **5–10 min idle restores normal operation** (no manual
+  restart, no replica scale, no env change required)
+
+### What's NOT the cause
+
+Each lever was independently bumped in a controlled test (single pilot
+agent, 30-scenario eval) and the boundary did NOT move:
+
+| Lever | Before | After | Effect on 6-call boundary |
+|---|---|---|---|
+| Container CPU | 0.25 | 1.0 | none |
+| Container memory | 0.5Gi | 2Gi | none |
+| Replicas | 1 (no scale) | min=1 max=3 | none |
+| Model TPM | 50K | 300K | +1 answered scenario only |
+| Pacing between invocations | 5s | 30s | none |
+| Invocation retries | 1 | 3 | retry burst makes it WORSE |
+
+The boundary is **gateway-side, not container-side**. Container restart,
+replica swap, and `azd deploy agent` all leave the throttle window
+unchanged.
+
+### Mitigation (eval / workshop posture)
+
+* **Run evals in 5-scenario batches** with 5-minute cooldown between
+  batches. Pre-warm each batch with a throwaway invocation and retry the
+  warmup instead of firing a single shot; after a throttled batch, resume
+  from the first unscored scenario once the cooldown has elapsed.
+* **Move tool work to INGEST time** where feasible — visual extraction,
+  document parsing, embedding generation should run in a one-shot
+  ACA Job or postprovision script, not inside the agent's tool budget.
+  See `azure-ai` SKILL § Pattern X for the ingest-time
+  vision pattern that explicitly sidesteps this throttle.
+* **Sample, don't burst** for continuous-eval — see `microsoft-foundry`
+  SKILL § Continuous Evaluation Loop, Plan A `EvaluationRule` with
+  `event_type=SAMPLED` (not `RESPONSE_COMPLETED`).
+
+### Production posture (not just demo)
+
+* **Target architecture for production traffic at scale: APIM gateway
+  in front of the hosted agent**, with retry + queue semantics in the
+  gateway (not in every client). The hosted-agent runtime itself is the
+  bottleneck; horizontally scaling the agent container does NOT bypass
+  the throttle.
+* **File a Foundry support ticket** with detection-signature evidence
+  if the throttle blocks your production sizing — preview limits are
+  often raised on request once a pattern is documented end-to-end.
+
+### Diagnosis blocker
+
+Confirming root cause is hard because the throttle window typically
+coincides with **zero `AppExceptions` / `AppTraces` reaching App
+Insights** — the gateway absorbs the failed requests and never emits
+container-side telemetry for them. Ensure your `_init_telemetry()`
+guard is in place (see § Troubleshooting → AppInsights row + `gap O-011`
+in `threadlight-deploy/references/observability`) BEFORE investigating; otherwise you're
+flying blind.
+
+---
+
+## Version rollout patterns (blue-green / canary / rollback)
+
+Foundry hosted agents are versioned and the platform supports **native
+weighted traffic routing** between versions — no client-side router,
+custom load balancer, or APIM rewrite required. Each `create_version`
+call produces an immutable agent version; the agent endpoint's
+`version_selector` distributes traffic across them via `FixedRatio`
+rules (0-100 % per version, integers summing to 100). This unlocks
+three production rollout patterns from a single primitive.
+
+> **Requires:** Python SDK `azure-ai-projects~=2.3.0` (stable, no
+> `allow_preview` needed for this surface), Azure CLI >= 2.80, and `azd`
+> extension `azure.ai.agents`. Traffic routing is exposed through the
+> **stable** `project.agents.update_details(...)` method — the old
+> `project.beta.agents.patch_agent_details(...)` call and the
+> `Foundry-Features: AgentEndpoints=V1Preview` header it required are
+> gone; `azure-ai-projects` 2.3.0 does not expose
+> `patch_agent_details` under `.beta.agents` at all (verified:
+> `BetaAgentsOperations` only covers `AgentsOptimization` operations).
+
+### When to use which pattern
+
+| Pattern | Use when | Risk profile | Time-to-rollback |
+|---------|----------|--------------|------------------|
+| **Blue-green** | Image / model / role-binding change; want instant cutover with prior version warm in case of regression | Atomic; if v2 is broken, **every** request fails until rollback | < 30 s (one `update_details` call back to v1) |
+| **Canary** | Same change classes; want gradual exposure with bounded blast radius | Bounded — typically 5-10 % see v2 first, ramp on success | < 30 s (one `update_details` call back to v1) at any ramp stage |
+| **Rollback** | Production v2 misbehaving after promotion; emergency revert | Re-warm of v1 if cold; `creating` window only if v1 was already deleted | < 30 s (re-call) or 2-5 min (re-create v1 from prior image digest) |
+
+The three patterns share **one primitive**: create v2 -> poll to
+`active` -> update routing -> invoke -> (optional) delete prior.
+Blue-green is "0 -> 100 % in one call"; canary is "10 -> 50 -> 100 %
+across multiple calls"; rollback is "100 -> 0 % to the new version in
+one call". Same SDK surface end to end.
+
+### The 4-step rollout primitive
+
+1. **Create v2** with `project.agents.create_version(agent_name=...,
+   definition=HostedAgentDefinition(kind="hosted", cpu=..., memory=...,
+   environment_variables={"AZURE_AI_MODEL_DEPLOYMENT_NAME": _env("AZURE_AI_MODEL_DEPLOYMENT_NAME"), "_BUILD_TS": ...},
+   container_configuration=ContainerConfiguration(image=...),
+   protocol_versions=[ProtocolVersionRecord(protocol=AgentEndpointProtocol.RESPONSES, version="2.0.0")]))`.
+   Returns immediately with `status: "creating"`. A new immutable version
+   does not inherit omitted definition fields, so carry every required
+   runtime variable forward; `_BUILD_TS` is additive, not a replacement.
+2. **Poll** the version via `project.agents.get_version(agent_name,
+   agent_version)` until `status == "active"` (typically 2-5 min;
+   `failed` is terminal — read the `error` field for cause).
+3. **Update routing** via `project.agents.update_details(agent_name=...,
+   agent_endpoint=AgentEndpointConfig(version_selector=VersionSelector(...),
+   protocol_configuration=ProtocolConfiguration(responses=ResponsesProtocolConfiguration())))`
+   with `version_selection_rules` summing to 100.
+4. **Invoke** the agent endpoint as usual (`responses.create(...)`) —
+   the platform routes per the rules. (Optional) **delete the prior
+   version** with `project.agents.delete_version(...)` ONLY after
+   sustained success; keep it warm if you might need to roll back.
+
+The canonical reference is
+[`references/python/version_rollout.py`](references/python/version_rollout.py)
+— a single script that demonstrates all three patterns end-to-end
+against a real project, using the stable `azure-ai-projects` 2.3.0
+surface. Import it from your tooling; do NOT redefine inline (per
+AGENTS.md § 7 SSOT rule).
+
+This routing example is not the deployment preflight or a business acceptance
+test. Complete the [shared prerequisite and evidence contract](references/deployment-preflight.md)
+for the selected mode first. `wait_for_active` requires two consecutive direct
+GETs but cannot certify a native session or tool result. Do not rerun a create
+after losing its ACK: reconcile frozen inputs first, and retain every version,
+image, identity and signed association.
+
+### Blue-green example (atomic 0 -> 100 % cutover)
+
+```python
+from azure.ai.projects.models import (
+    AgentEndpointConfig,
+    ProtocolConfiguration,
+    ResponsesProtocolConfiguration,
+    FixedRatioVersionSelectionRule,
+    VersionSelector,
+)
+
+# After create_version + wait-for-active for v2:
+project.agents.update_details(
+    agent_name=AGENT_NAME,
+    agent_endpoint=AgentEndpointConfig(
+        version_selector=VersionSelector(
+            version_selection_rules=[
+                FixedRatioVersionSelectionRule(
+                    agent_version="2", traffic_percentage=100
+                ),
+            ]
+        ),
+        protocol_configuration=ProtocolConfiguration(
+            responses=ResponsesProtocolConfiguration()
+        ),
+    ),
+)
+```
+
+The cutover is **atomic at the gateway** — the next request after the
+call returns sees v2. Existing inflight requests on v1 finish on v1
+(no mid-request swap).
+
+### Canary example (10 % -> 50 % -> 100 % staged promotion)
+
+```python
+# Phase 1 - 90/10:
+project.agents.update_details(
+    agent_name=AGENT_NAME,
+    agent_endpoint=AgentEndpointConfig(
+        version_selector=VersionSelector(
+            version_selection_rules=[
+                FixedRatioVersionSelectionRule(agent_version="1", traffic_percentage=90),
+                FixedRatioVersionSelectionRule(agent_version="2", traffic_percentage=10),
+            ]
+        ),
+        protocol_configuration=ProtocolConfiguration(
+            responses=ResponsesProtocolConfiguration()
+        ),
+    ),
+)
+# Observe gen_ai response.id mix in AppIn for hours-to-days.
+# Promote phases: 50/50 then 0/100 via the same update_details shape.
+```
+
+Traffic split percentages can be **arbitrary integers summing to 100**
+— not fixed buckets. Choose ramps (5/95 -> 25/75 -> 50/50 -> 100/0)
+sized to your traffic volume and observation window. For low-QPS
+agents, 50/50 may be the smallest split that produces statistically
+meaningful v2 sample within a single business day.
+
+### Rollback (immediate revert)
+
+If v2 misbehaves after promotion, **route back to v1 at 100 %** —
+provided v1 was NOT yet deleted:
+
+```python
+project.agents.update_details(
+    agent_name=AGENT_NAME,
+    agent_endpoint=AgentEndpointConfig(
+        version_selector=VersionSelector(
+            version_selection_rules=[
+                FixedRatioVersionSelectionRule(
+                    agent_version="1", traffic_percentage=100
+                ),
+            ]
+        ),
+        protocol_configuration=ProtocolConfiguration(
+            responses=ResponsesProtocolConfiguration()
+        ),
+    ),
+)
+```
+
+This is **< 30 s round-trip** to atomic revert. If you already deleted
+v1, recovery requires re-creating it from the prior image digest (2-5
+min cold provision + warmup) — which is why the **don't delete v1
+until v2 is proven** discipline matters. **Keep prior version for
+>= 24 h** after promotion to 100 % is the safe default.
+
+### Preconditions and traps
+
+The rollout patterns are sensitive to two existing traps documented
+above — these are NOT new failure modes but they become much more
+visible when you're moving versions around:
+
+- **[`create_version` dedup trap](#create_version-deduplication-trap)**
+  — if v2 has identical environment variables, image tag, **and**
+  metadata to v1, the platform silently returns v1 (no error). Your
+  "v2 deploy" is then your v1, and the canary appears stuck at 100 % v1
+  even though the `update_details` call succeeded. **Always bump a
+  `_BUILD_TS` or `_GIT_SHA` environment variable** on every
+  `create_version` call to defeat the dedup, while also carrying required
+  runtime variables such as `AZURE_AI_MODEL_DEPLOYMENT_NAME` into the new
+  complete definition. The canonical reference script does both.
+- **[ACR layer-cache trap](#acr-layer-cache-trap-per-job-images-built-via-dockerbuildrequest)**
+  — if you tag both versions `:latest` and ACR caches a stale layer, v2
+  may pull v1's image bits. **Pin by digest (`@sha256:...`) for canary
+  windows** so the gateway routes to byte-identical-on-disk versions.
+  Tag by date for human-readable rollback handles
+  (`my-agent:rollback-20260612`).
+
+### Inspection
+
+`azd ai agent show` returns both the active set of versions AND the
+current agent-endpoint traffic split — use it as the one-command
+sanity check after every routing update:
+
+```bash
+azd ai agent show
+# Versions:
+#   1   active    image: my-agent@sha256:abc...
+#   2   active    image: my-agent@sha256:def...
+# Endpoint protocols: responses (2.0.0)
+# Traffic routing:
+#   version 1: 90 %
+#   version 2: 10 %
+```
+
+If the traffic split shown by `azd ai agent show` does not match what
+you just set, you are likely hitting the dedup trap (v2 silently
+became v1) — re-check `azd ai agent show` for whether v2 was actually
+created, and inspect each version's `environment_variables` for a
+unique build stamp.
+
+### Production posture
+
+- **The traffic-routing surface (`update_details` +
+  `AgentEndpointConfig`) is stable, GA SDK surface** — no preview
+  header needed. Still worth a non-prod dry run before your first
+  production rollout of a given change class, same as any other
+  production routing change.
+- **Keep prior version for >= 24 h** after promotion to 100 %. That's
+  enough for instant rollback without re-provisioning. Idle versions
+  cost nothing — see [§ Compute Lifecycle](#compute-lifecycle) (auto-
+  deprovision after 15 min idle; no replica charges in between
+  requests).
+- **Never canary across the agent version AND the backing chat-model
+  deployment simultaneously.** If you're also bumping
+  `AZURE_AI_MODEL_DEPLOYMENT_NAME` in v2, the traffic split conflates
+  two independent variables and the gen_ai telemetry becomes ambiguous.
+  Split on agent version first; after promotion, do a separate model
+  rollout.
+- **Pair the canary phase with continuous evaluation** — see the official
+  microsoft-foundry [`foundry-agent/observe/references/continuous-eval.md`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/observe/references/continuous-eval.md). The eval runner's
+  per-response sampling naturally surfaces v2 quality regressions
+  within the canary window.
+- **ACA-side rollout primitives (revisions, ingress weighting) do NOT
+  apply here.** Foundry hosted agents run on platform-managed compute,
+  not customer-managed ACA. The "split-traffic-between-revisions"
+  pattern in `microsoft-foundry` is a sibling primitive for a
+  different runtime — it has no integration point with the Foundry
+  agent-version surface. Do NOT try to wire ACA ingress weights to
+  agent versions.
+
+---
+
+## Operation recovery
+
+**MUST:** use the [response/effect custody contract](references/operation-recovery.md)
+and canonical [`operation_evidence.py`](references/python/operation_evidence.py).
+The caller supplies a private durable recorder; failure to persist intent
+prevents dispatch. These standard-library primitives do not select a hosted
+profile or dispatch work.
+Request intent, dispatch, service completion, business effect, independent
+readback and client/browser delivery are separate facts. A client correlation
+ID is not a service-issued retrievable response ID.
+
+The private oracle persists a safe HTTP envelope and response/session IDs
+before semantic parsing, with an optional private raw body capture. A pending
+version may omit its future identity; it is observed without invoking. An
+active version still requires the exact binding. No timeout, malformed output,
+generic404 or failed client assertion clears UNKNOWN or authorizes replay.
+
+**Adoption is separate from source review.** Run the read-only
+`hosted_contract.py --references <actual-loaded-references-directory>` inventory
+on the reviewed source and the actual adopted directory. Compare every hash,
+not just `metadata.version`. Record source commit, any local correction, contract
+profile and installed/packaged hashes separately; no automatic mirror update.
+Downstream authoring/refresh flows must stop on drift, review a contract-version
+change, regenerate only the selected profile and rerun its acceptance cases.
+Threadlight adoption belongs to its owner and is not completed by a merge here.
+
+## Troubleshooting
+
+### Diagnosing `server_error` locally
+
+Foundry's `server_error` is a **generic envelope** that hides the actual
+failure code. Don't read it as "the agent is broken" — it almost always means
+a specific downstream layer failed (chat-model quota, telemetry init,
+identity, MCP) and the runtime swallowed the real exception in the response
+body. **Always pull `run.last_error` first** before chasing higher-level
+theories — it carries the actual code and message in most cases.
+
+**Step 1 — pull `run.last_error` with the SYNC client** (async
+`AIProjectClient` silently fails to surface `last_error` on streamed
+responses; use the SYNC client for this one-shot diagnostic):
+
+```python
+from azure.ai.projects import AIProjectClient
+from azure.identity import DefaultAzureCredential
+
+pc = AIProjectClient(endpoint="<your-project-endpoint>",
+                     credential=DefaultAzureCredential())
+client = pc.get_openai_client(agent_name="<agent-name>")
+resp = client.responses.create(input="ping")
+print(resp.model_dump_json(indent=2))  # inspect `last_error.code` + `.message`
+```
+
+Common `last_error.code` values seen behind `server_error`:
+
+| `last_error.code` | Real cause | Where to look next |
+|-------------------|------------|--------------------|
+| `rate_limit_exceeded` | Backing chat-model deployment hit TPM/RPM quota | "Backing-model 429" row below; run `references/bash/diagnose_server_error.sh` |
+| `model_error` / `invalid_request` | Bad request shape (tools schema, max tokens) | Reproduce against the model deployment directly with the helper's Step 3 |
+| `internal_error` + empty message | Container crashed at startup, or `_init_telemetry()` raised | "telemetry init" rows below; pull `:logstream` |
+| (no `last_error` at all) | Agent identity has no inference role on the deployment | "agent returns `server_error` … zero rows" row below |
+
+**Step 2 — run the bash helper** for the most common root cause (backing-model
+quota exhaustion). It consolidates deployment-quota inspection, a direct
+chat-completions reproduction that bypasses the agent runtime, and an
+optional App Insights KQL probe — see
+[`references/bash/diagnose_server_error.sh`](references/bash/diagnose_server_error.sh):
+
+```bash
+AZURE_RESOURCE_GROUP=<rg> FOUNDRY_ACCOUNT=<acct> \
+MODEL_DEPLOYMENT_NAME=<deployment> \
+  ./references/bash/diagnose_server_error.sh
+```
+
+Set `DIAGNOSTIC_EVIDENCE_DIR` to an existing private directory. By default the
+helper reads quota metadata only. A new inference requires the separate explicit
+`ALLOW_NEW_MODEL_PROBE=yes` decision; its result describes that new call, not
+the original failure. Every CLI/curl call has a finite deadline. Raw body/headers
+stay private; telemetry failure is inconclusive, never “LIKELY 429”.
+Any capacity change needs a separate approved capacity/cost decision.
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `FOUNDRY_PROJECT_ENDPOINT is reserved` | Declared in `azure.yaml` `environmentVariables` | Remove it — platform injects automatically |
+| `AGENT_* env var is reserved` | All `FOUNDRY_*` and `AGENT_*` prefixed vars are reserved | Use a different prefix (e.g. `TL_SUB_AGENTS`) |
+| `session_not_ready` (424) | Container crashed before readiness probe | Check logstream: `curl ...sessions/{sid}:logstream`. Common causes: import error, sync/async mismatch, missing dep |
+| Sub-agent tool calls return "Function failed" | `FoundryAgent` uses old `agent_reference` pattern | Use the client-swap pattern: `sub_client.client = project_client.get_openai_client(agent_name=...)` |
+| Sub-agent calls silently fail (empty output) | `AIProjectClient` imported from sync (`azure.ai.projects`) | MUST use `azure.ai.projects.aio` — sync `get_openai_client` returns sync OpenAI which fails in async `FoundryChatClient` |
+| `PermissionDenied: Principal does not have access` (standard project-scoped model inference) | Should not happen by default — the agent identity has implicit access. If it does, the project's own managed identity may be missing `Foundry User` on the Foundry account (an account/project provisioning issue, not an agent-identity issue) | See [§ Identity & RBAC](#identity--rbac). Do NOT reach for a broad `Foundry User` grant on the agent identity as a first fix — that's not how access is modeled anymore |
+| `PermissionDenied` when the agent calls an **external** resource or the **account-level** endpoint directly | Advanced scenario beyond the implicit default | Grant the least-privilege role for the specific capability called — see [§ Agent access beyond defaults](#agent-access-beyond-defaults-advanced-scenarios-only) |
+| **`401 Unauthorized` on every Responses call after `azd deploy`; RBAC visibly correct (`Foundry User` on both scopes)** | Orchestrator image still on `agent-framework-core` ≤ 1.3.x — requests the OLD `cognitiveservices.azure.com` token scope, which the post-rename Foundry data plane rejects. Most commonly happens to agent versions pinned by `sha256@…` digest (digest is frozen at the 1.3.x build) while a sibling agent on the same project that uses `:latest` works fine because ACR re-resolved it to a fresh 1.4.0 layer | Upgrade orchestrator `pyproject.toml` to `agent-framework-core~=1.4.0` + `agent-framework-foundry~=1.4.0` + `agent-framework-foundry-hosting==1.0.0a260514`, regenerate `uv.lock`, `az acr build` with BOTH `:latest` AND a date-pinned tag (`maf14-YYYYMMDDHHMM`), `azd deploy agents`, then re-import every agent version. See [§ MAF 1.4.0 breaking changes](#maf-140-breaking-changes-may-2026) for the full recipe |
+| **`ImportError: cannot import name 'AzureOpenAIChatClient' from 'agent_framework.azure'`** after `pip install -U agent-framework-*` | `AzureOpenAIChatClient` was removed in `agent-framework-core` 1.4.0 (2026-05-14). Hits sidecars, agents service, eval judges — anywhere that talked directly to Azure OpenAI without going through `FoundryChatClient` | Swap to `from agent_framework.openai import OpenAIChatClient` and use `OpenAIChatClient(azure_endpoint=…, model=…, credential=DefaultAzureCredential())`. Drop the explicit `get_bearer_token_provider` / `ad_token_provider` — the SDK derives the right scope itself. See snippet in [§ MAF 1.4.0 breaking changes](#maf-140-breaking-changes-may-2026) |
+| **`ImportError: cannot import name 'ChatAgent' from 'agent_framework'`** | `ChatAgent` was renamed to `Agent` in `agent-framework-core` 1.6.0. No alias is exported. Any prose / older SKILL examples showing `ChatAgent(chat_client=...)` are stale | **DO** `from agent_framework import Agent` and call `Agent(client=chat_client, tools=[...], instructions=...)`. Note: the kwarg also renamed from `chat_client=` to `client=` |
+| **`AttributeError: module 'agent_framework' has no attribute 'tools'`** or `ImportError: cannot import name 'MCPStreamableHTTPTool' from 'agent_framework.tools.mcp'` | The `agent_framework.tools.mcp` submodule was promoted to top-level in 1.6.0. `MCPStreamableHTTPTool`, `MCPSseTool`, `MCPStdioTool` are now top-level exports of `agent_framework` | **DO** `from agent_framework import MCPStreamableHTTPTool`. No `[mcp]` extra is needed (and none exists in 1.6.0 — see § Dependencies) |
+| **`uv` warning `unknown extra 'mcp' for agent-framework-core`** during install; pyproject ships looking MCP-ready but operators chase phantom issues | `[mcp]` extra does NOT exist in `agent-framework-core` 1.6.0. uv emits a warning but does NOT fail resolution, so the pyproject ships and the package is installed without the extra. MCP transport adapters are top-level exports already — no extra is needed | Remove `[mcp]` from the dep line: `agent-framework-core~=1.6.0` (NOT `agent-framework-core[mcp]~=1.6.0`). See § Dependencies callout at top |
+| **Workload UAMI (companion service, e.g. a bot or MCP server, using its own identity) hits `Foundry User`-gated 403 even with `Foundry Account Owner`** | `Foundry Account Owner` covers control-plane operations only; account-level data-plane access (model inference, agents endpoint) requires an explicit grant. This is about a companion service's own identity, not the hosted agent's — the agent identity itself has implicit access by default (see § Identity & RBAC above) | Grant `Foundry User` (or the narrower `Cognitive Services OpenAI User` / `Cognitive Services User`) to the companion service's identity on the Foundry account scope. See [§ Agent access beyond defaults](#agent-access-beyond-defaults-advanced-scenarios-only) for the least-privilege options |
+| `Experience not available for this subscription` | Region doesn't support hosted agents | Try a region from the current [§ Region Availability](#region-availability) list |
+| Eval items have empty responses | Concurrent eval requests overwhelm cold-start container | Use sequential eval with warm-up request first (see `run_evals()` in evals.py) |
+| Agent skips evidence-gathering tools and emits hollow packets | gpt-5.4-mini tool-call discipline degrades on long instruction chains (10+ steps); model calls commit-tool before evidence is ready | Two complementary fixes: (1) switch `MODEL_DEPLOYMENT_NAME` to `gpt-5.4` (full); (2) make commit-tools refuse hollow inputs server-side via the validate-or-reject pattern in `threadlight-mcp-aca`. Recent strict-smoke runs showed low reproducibility with mini + permissive MCP and high reproducibility with gpt-5.4 + validate-or-reject. |
+| `Managed environment provisioning timed out` / `ProvisioningError` | Generic failure; missing private project setup is one possible prerequisite failure, not a proven universal cause | Follow [Deployment preflight](#deployment-preflight): private Basic requires a project `Agents` / `Succeeded` host; Standard also requires its account/BYO contract. Never blanket-create/delete hosts. Preserve direct version GET errors and stop after bounded observation; platform-managed compute alone does not prove project setup. |
+| Private ACR image pull fails | Project generation, project-MI permissions, registry policy or private reachability may be incompatible | [Learn checked 2026-09-12](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent): projects created **after June 25, 2026** support private registries. Verify `systemData.createdAt`, registry permission mode and `azureADAuthenticationAsArmPolicy`, then actual pull path. Older/unknown/boundary date requires review, never automatic public exposure. |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING is reserved` (HTTP 400 `invalid_request_error` at `create_version`) | Set in `azure.yaml` `environmentVariables` OR `HostedAgentDefinition.environment_variables` (e.g. as escape-hatch when platform auto-injection silently failed) | Remove it. Cannot be escape-hatched. You MUST guard `configure_azure_monitor()` defensively in `container.py` instead — use `_init_telemetry()` from `threadlight-deploy/references/observability` (gap O-011). Observed in hosted-agent validation |
+| Agent traces not appearing in AppInsights | Agent identities lack `Monitoring Metrics Publisher` (GUID `3913510d-...`) OR AppInsights connection missing on account. **IMPORTANT:** GUID `f526a384-...` is "Azure Event Hubs Data Owner" — a completely wrong role despite being mislabeled in some references. When `DisableLocalAuth: false`, RBAC is not required — ikey auth works | Assign `Monitoring Metrics Publisher` RBAC to both identity principal IDs. Create `AppInsights` connection on the **account** (not project): category `AppInsights`, target = ARM resource ID, metadata `ApiType: Azure`. |
+| **Hosted agent returns `server_error`/`model:""` on every smoke; AppIn 0 rows; `azd ai agent show` reports active** | `container.py` calls raw `configure_azure_monitor()` as the first line of `main()` with no try/except. When the platform fails to auto-inject `APPLICATIONINSIGHTS_CONNECTION_STRING` (e.g. AppIn account-level connection persisted with `credentials: null`), the SDK raises `ValueError`. Container crashes before `ResponsesHostServer` binds. Foundry runtime sees no agent. **The agent itself is fine — telemetry init is what killed it.** | Wrap telemetry init in `_init_telemetry()` (no-ops on missing env / SDK ImportError / any SDK exception). Never call `configure_azure_monitor()` raw at module/main scope. See `threadlight-deploy/references/observability` gap row O-011 |
+| **AppInsights connection PUT 400 ValidationError "AuthType for AppInsights Connection can only be ApiKey"** | Account-RP scope `2025-10-01-preview` in some regions rejects `authType: AAD` despite skill guidance (correlation IDs available) | Use `authType: ApiKey` with `credentials.key` in body. **BUT:** the key is silently dropped server-side — GET returns `credentials: null` and platform never injects the env var. There is no working workaround at the platform layer. File a support ticket; ship with guarded `_init_telemetry()` so the agent functions without telemetry; consider region pivot |
+| **AppInsights connection account-level "1-per-category" limit** | Account-level `AppInsights` connections enforce a single-instance-per-category constraint — cannot create parallel connections in the same account. Re-creation requires DELETE first | DELETE the existing connection BEFORE re-PUT. Use `az rest --method DELETE` with full URI **as a variable** (do NOT inline `?api-version=...` — see next row) |
+| **`az rest --method DELETE` strips `?api-version=...` query string when URI is inlined on PowerShell** | PowerShell argument parsing eats the `?api-version=` before `az` sees it. The DELETE then fails with "MissingApiVersionParameter" or behaves inconsistently against the bare resource without the version | Workaround: assign the URI to a variable first, then pass via `--uri $delUri`: `$delUri = "https://management.azure.com/.../connections/<name>?api-version=2025-10-01-preview"; az rest --method DELETE --uri $delUri` |
+| ACA job uses old code after deploy | Postdeploy hook fails (`AZURE_AI_PROJECT_ENDPOINT not set`) | Run `cd infra/scripts && uv run deploy_job.py` manually after each `azd deploy` |
+| **`mcp-config.json` `${ENV_VAR}/mcp` expands to `/mcp` when env var unset** | Regex expansion `${MCP_SERVER_URL}` → `""` produces URL `"/mcp"` — truthy but not a valid HTTP URL. `get_mcp_tool(url="/mcp")` either crashes or sends requests to localhost. | **In `_create_mcp_tools()`, guard with `if not url or not url.startswith("http")` instead of just `if not url`. Agent gracefully skips and runs instruction-only when no MCP server is deployed.** |
+| Container starts but `agent_reference` errors in logs | `FoundryAgent` used for sub-agents | Replace with client-swap pattern |
+| Protocol version error | Using `"v1"` or the historical `"1.0.0"` | Use the current GA semver `"2.0.0"` |
+| **Sticky `424 session_not_ready` for 8+ minutes; ZERO AppIn / LAW signal** | New Python module added to agent code but NOT included in Dockerfile `COPY` line. Module import fails on container start → `ResponsesHostServer` never binds → `/readiness` never returns 200 → Foundry retries readiness in long backoff → every Responses request returns sticky `424`. App Insights shows nothing because `_init_telemetry()` never runs (the module that calls it didn't even import). Near-impossible to diagnose from logs because there are no logs | Explicitly enumerate every Python module in the Dockerfile `COPY` line; do NOT rely on `COPY ./* .` or `COPY . .` globs (silently skip dotfiles + reorder hazards + cache-bust footguns). Pattern: `COPY container.py corpus.py my_kb_tool.py copilot-instructions.md ./`. After ANY new `.py` added to the agent module, re-check Dockerfile + rebuild |
+| **Sticky `424 session_not_ready` after MAF 1.4.0 upgrade; logstream shows `TypeError: SkillsProvider.__init__() got an unexpected keyword argument 'skill_paths'`** | `SkillsProvider(skill_paths=...)` keyword constructor was **removed** in `agent-framework-core` 1.4.0. Container crashes at agent init before `ResponsesHostServer` binds. All agents using `skill_paths=` fail; agents without skills (or using `from_paths()`) work fine on the same base image | Replace `SkillsProvider(skill_paths=skills_dir)` with `SkillsProvider.from_paths(skills_dir)`. Rebuild base image + all per-job overlay images. Verify via logstream: look for `SkillsProvider configured` log line instead of `TypeError` |
+| **Skill silently missing from agent — `load_skill` never offered for one skill; container starts fine, other skills work** | `SkillsProvider` (MAF 1.6.0) validates each `SKILL.md` YAML frontmatter `description:` field against a **1024-character limit**. If a skill's description exceeds 1024 chars, MAF logs `ERROR agent_framework._skills Skill '<name>' has an invalid description: Must be 1024 characters or fewer` and **silently drops the skill** from the advertised set. No crash, no `session_not_ready` — the agent runs with N-1 skills. Extremely hard to diagnose without container logs because the agent appears healthy | Trim the YAML `description:` field to ≤ 1024 chars. Condense `USE FOR` / `DO NOT USE FOR` phrases; move verbose guidance into the skill body below the frontmatter. Verify with: `python3 -c "import yaml; d=yaml.safe_load(open('SKILL.md').read().split('---')[1]); print(len(d.get('description','')))"` — must print ≤ 1024. Discovered May 2026 — a skill with 1054-char description was silently dropped, only 3/4 skills loaded |
+| **`azure.yaml` `container.resources` block silently not applied by an older `azure.ai.agents` extension on `azd deploy`** | Historical (pre-GA) reports of the deploy CLI accepting the block at the YAML schema layer but not passing it through to the platform — deployed agents came up at default `cpu`/`memory` regardless of what the YAML declared. Re-verify against your current `azd` extension version before assuming this still applies post-GA | Confirm actual deployed resources with `azd ai agent show --output json` (`definition.cpu` / `definition.memory`). If they don't match `azure.yaml`, retry after upgrading the `azure.ai.agents` extension; file a CLI bug if reproducible on a current extension version |
+| **Scary RED `404 NotFound` block at the tail of `azd deploy <any-service>` (`agents/<key>/versions/<n>` not found); the actual deploy succeeded** | The `azure.ai.agents` azd extension's postdeploy hook fires after **every** `azd deploy` invocation (including unrelated services like `bot`, `workspace`, `mcp`) and looks up `agents/<service-key>/versions/<n>` — using the SERVICE KEY from `azure.yaml` verbatim, not the actual agent name. If your azure.yaml has e.g. `services.agent.host: azure.ai.agent` but the real agent is named `orchestrator`, the postdeploy hook 404s on `agents/agent/versions/<n>` every single time. Benign-but-loud false alarm; pollutes CI logs and CX in pilots | **Preferred**: rename the service key in `azure.yaml` to match the agent name (`services.orchestrator.host: azure.ai.agent`). **If you can't rename** (downstream scripts reference the key): error is cosmetic — verify with `azd ai agent show <agent-name>`. Track as `azure.ai.agents` extension bug; consider proposing an extension-level config like `agentName:` override |
+| **Agent returns `server_error`; `run.last_error.code` is `rate_limit_exceeded`** | The **backing chat-model deployment** (the one named in `AZURE_AI_MODEL_DEPLOYMENT_NAME`) hit its TPM/RPM quota. The agent runtime catches the 429 and re-emits the generic `server_error` in the chat envelope, so the throttle is invisible from the agent's response body. Hits demos and bursty eval loops most often. This is the deployment's own quota — NOT the historical gateway-level throttle described in [§ Gateway throttle finding](#gateway-throttle-finding-historical-pre-ga--unverified-post-ga), which is a different layer. | Run `references/bash/diagnose_server_error.sh` (lists deployment `Capacity`, reproduces a direct chat call to confirm the 429 is at the model layer, optionally KQLs App Insights for `429`). On `CONFIRMED 429`, raise `Capacity` (TPM, in thousands) via `az cognitiveservices account deployment update --deployment-name <name> --capacity <N>` or the portal. No agent redeploy needed. See `### Diagnosing server_error locally` above for the SYNC `last_error` probe. |
+| **Agent returns `server_error` on every call; a manual advanced-access role assignment appears not to have taken effect; `az role assignment list --assignee <principal_id> --all` returns ZERO rows** | Deploy script calls ARM `PUT roleAssignments/` for the agent identity (an advanced-scenario grant per [§ Agent access beyond defaults](#agent-access-beyond-defaults-advanced-scenarios-only)), but the deployer's own identity only has `Contributor` — which **excludes** `Microsoft.Authorization/roleAssignments/write`. The ARM PUT returns 403, deploy script logs a warning and continues | Grant `Microsoft.Authorization/roleAssignments/write` (e.g. via `Role Based Access Control Administrator` or `User Access Administrator`) to the deployer's identity, scoped to the Foundry project (not the whole subscription) — least-privilege scope. Verify: `az role assignment list --assignee <deployer_identity> --scope <project_id> --query "[].roleDefinitionName"` |
+| **Deploy script polls `.../versions/{v}/containers/default` and gets 404 for minutes; agent is actually working** | Refreshed-preview hosted agents auto-provision containers — the legacy `/containers/default` status endpoint and `:start` action are not exposed. Polling this endpoint wastes 3+ min and blocks downstream steps (RBAC assignment, eval warmup) | Skip the container status/start API entirely. Go straight to a warmup chat (`responses.create("ping")`) with retry/backoff. If the warmup succeeds, the agent is ready — no container API needed. See § Compute Lifecycle note on refreshed preview |
+
+### Cross-skill ownership
+
+> This SKILL describes runtime patterns for hosted agents on Foundry (container build, SDK wiring, debugging). Some concerns belong to sibling SKILLs:
+>
+> - **Telemetry initialization** (`configure_azure_monitor()` guard, `_init_telemetry()` pattern): owned by `threadlight-deploy/references/observability` § Layer 2. See gap O-011 / O-012 for AppInsights connection failures.
+> - **Deploy hooks** (`azd postdeploy` scripts, role assignment automation): owned by `threadlight-deploy/references/azd-modules` § "Hooks: `postprovision` vs `postdeploy`" (environment injection and dependency ordering).
+> - **Model selection** (region availability, task/modality tables, tier maps): owned by [`references/model-selection.md`](references/model-selection.md) — the single source of truth for Threadlight hosted agents.
+>
+> Link back to these SKILLs when diagnosing deploy-stage failures.
+
+### Container Logs (Logstream API)
+
+```bash
+# Get session ID from session_not_ready error, then:
+curl -H "Authorization: Bearer $TOKEN" -H "Accept: text/event-stream" \
+  "$PROJECT_ENDPOINT/agents/orchestrator/versions/$VER/sessions/$SID:logstream?api-version=2025-11-15-preview"
+```
+
+Returns SSE events with `{"stream":"stderr","message":"..."}` — shows startup logs, tracebacks.
+Also: `azd ai agent monitor` (session auto-resolves from the last invoke; `--session-id` optional)
+
+### Useful Commands
+
+```bash
+azd ai agent show                    # Agent status, identities, version, endpoints (--output json|table)
+azd ai agent monitor                 # Stream logs; session auto-resolves from last invoke (--follow to tail, --session-id optional)
+azd ai agent invoke "Hello!"         # Quick test; consecutive invokes REUSE the session (--new-session to reset)
+azd ai agent sessions                # Manage sessions (list / show / stop / delete)
+azd deploy <service> --no-prompt     # Redeploy a service without reprovisioning
+```
+
+> **CLI shape gotchas (verified live against `azure.ai.agents@1.0.0-beta.4`, July 2026):**
+>
+> - **Multiple hosted-agent services: pass the service name positionally.**
+>   `azd ai agent show / invoke / monitor [name]` — name and version
+>   auto-resolve from `azure.yaml` + the current azd environment when there's
+>   a single service. With more than one `host: azure.ai.agent` entry, give
+>   the service name (from `azure.yaml`) as the first positional argument, or
+>   scope with the global `-C/--cwd`. (`azd ai agent sessions` uses
+>   `--agent-name` instead of a positional for the same purpose.)
+> - **`azd ai agent monitor` does NOT require `--session-id`.** The session
+>   auto-resolves from the last invocation; `--session-id` is optional (use it
+>   to target a specific session). Add `--follow/-f` to tail in real-time,
+>   `--type system` for system events, `--tail N` (1-300) for recent lines.
+> - **`azd ai agent invoke` reuses the session by default.** Sessions are
+>   persisted per-agent — consecutive invokes reuse the same session
+>   automatically; pass `--new-session` to force a reset. One positional arg
+>   is the message (name auto-detected from `azure.yaml`); two args are
+>   `[name] [message]`. `--input-file/-f` sends a file as the request body,
+>   `--local` targets a locally-running agent (`azd ai agent run`), and
+>   `--output raw` dumps the verbatim server response (status line + headers +
+>   body) for debugging.
+> - **Run agent commands from the azd project root** (where `azure.yaml` is),
+>   or scope with the global `-C/--cwd`; otherwise the extension can't resolve
+>   the project and errors out.
+
+#### `azd ai agent show` output shape
+
+The JSON shape a deploy script (e.g. one that persists the agent id
+into `azd env` for downstream services) needs to parse:
+
+```json
+{
+  "object": "agent.version",
+  "id": "<service-name>:<version>",
+  "name": "<service-name>",
+  "version": "1",
+  "agent_guid": "<guid>",
+  "agent_endpoints": {
+    "responses": "https://<acct>.services.ai.azure.com/api/projects/<proj>/agents/<service-name>/endpoint/protocols/openai/responses?api-version=v1"
+  },
+  "definition": {
+    "container_protocol_versions": [ { "protocol": "responses", "version": "2.0.0" } ],
+    "cpu": "1", "memory": "2Gi",
+    "image": "<acr>.azurecr.io/<service>/<service>-<env>:azd-deploy-<unix-ts>",
+    "kind": "hosted",
+    "environment_variables": { … }
+  },
+  "playground_url": "https://ai.azure.com/nextgen/r/…/build/agents/<service-name>/build?version=1",
+  "status": "active" | "creating" | "failed"
+}
+```
+
+Typical deploy-hook snippet (persist agent id for downstream services to read):
+
+```bash
+# Use .name (not .id) — .id returns "<service-name>:<version>", but downstream
+# services need the bare agent name to construct /agents/<name>/endpoint/... URLs.
+AGENT_NAME=$(azd ai agent show -o json | jq -r '.name')
+azd env set WEATHER_AGENT_ID "$AGENT_NAME"
+```
+
+> No role grant is needed for the agent to reach the project's own
+> model deployment (see [§ Identity & RBAC](#identity--rbac)). Only add
+> an explicit role assignment against the agent's identity if it needs
+> [access beyond the implicit default](#agent-access-beyond-defaults-advanced-scenarios-only)
+> — e.g. calling the account-level OpenAI endpoint directly instead of
+> through the project endpoint.
+
+---
+
+## Migration from Initial Preview (pre-April 2026)
+
+| Initial Preview | Refreshed Preview |
+|----------------|-------------------|
+| `from_agent_framework(agent).run()` | `ResponsesHostServer(agent).run()` |
+| `ChatAgent` | `Agent` (from `agent_framework`) |
+| `AzureOpenAIChatClient` | `FoundryChatClient` (from `agent_framework.foundry`) |
+| `AzureAIClient(agent_name=...)` | Client-swap: `FoundryChatClient.client = project_client.get_openai_client(agent_name=...)` |
+| `@ai_function` | `@tool(approval_mode="never_require")` |
+| `azure-ai-agentserver-agentframework` | `agent-framework-foundry-hosting` |
+| Protocol version `"v1"` | `"1.0.0"` (semver) |
+| `extra_body={"agent_reference": ...}` | `get_openai_client(agent_name=...)` |
+| Shared project MI | Dedicated agent Entra identity |
+| Manual `start`/`stop` | Automatic compute lifecycle |
+| `ENABLE_CAPABILITY_HOST=true` | Historical public/platform-managed template flag only: `ENABLE_CAPABILITY_HOST=false` is NOT an instruction to omit a private Basic **project** host or overwrite a Standard/BYO host. See [Deployment preflight](#deployment-preflight). |
+| `project_client.agents.list()` at startup | `TL_SUB_AGENTS` env var (avoids blocking readiness) |
+| `azure.ai.projects` (sync) in container | `azure.ai.projects.aio` (ASYNC) — sync silently fails |
+
+> **⚠️ Historical (MAF 1.1.1):** `FoundryAgent` in MAF 1.1.1 silently
+> hardcoded `extra_body={"agent_reference": ...}` internally — the old
+> initial-preview pattern that fails against the refreshed preview.
+> **As of MAF 1.8.0**, `FoundryAgent` has been rehabilitated: `__init__`
+> takes `project_endpoint` + `agent_name` + `agent_version` properly,
+> supports both PromptAgents and HostedAgents, and `extra_body` is only
+> available as a user opt-in via `default_options`. The 1.1.1-era
+> prohibition no longer applies; use `FoundryAgent` freely under
+> MAF ≥ 1.8.0. The client-swap pattern above remains the recommended
+> path for sub-agent delegation in this skill's container runtime;
+> `FoundryAgent` is most useful for caller-side orchestration code (see
+> [§ FoundryAgent timeout parameter (MAF 1.8.0)](#foundryagent-timeout-parameter-maf-180)).
+> Exact version of rehabilitation between 1.1.1 and 1.8.0 not determined.
+
+**Deadline:** Initial preview backend retires **May 22, 2026**.
+
+Reference: [Migration guide](https://learn.microsoft.com/azure/foundry/agents/how-to/migrate-hosted-agent-preview)
+
+### GA migration reference (two-file era → unified `azure.yaml`)
+
+A separate, more recent migration than the table above: moving from
+the **refreshed-preview two-file contract** to the **current GA**
+unified-`azure.yaml` contract this skill now documents throughout.
+
+| Refreshed preview (two-file era) | Current GA |
+|---|---|
+| `agent.yaml` (literal ContainerAgent schema) + `agent.manifest.yaml` (mustache scaffold) | Single `azure.yaml` — `azure.ai.project` + `azure.ai.agent` services |
+| Protocol version `"1.0.0"` | Protocol version `"2.0.0"` |
+| `project.beta.agents.patch_agent_details(agent_endpoint=AgentEndpoint(...))` for traffic routing | `project.agents.update_details(agent_endpoint=AgentEndpointConfig(...))` — stable, no preview header |
+| `Foundry-Features: AgentEndpoints=V1Preview` REST header for routing calls | Not required — the routing surface is stable GA |
+| `allow_preview=True` required for `get_openai_client(agent_name=...)` | Not required — verified against `azure-ai-projects` 2.3.0 |
+| Postdeploy hook auto-assigns `Foundry User` to the agent identity | No role assignment needed by default — implicit access to model inferencing + session storage |
+| `northcentralus`/`eastus`/`swedencentral`/`westus` known-working region list (April 2026) | 20-region list including East US 2 — see [§ Region Availability](#region-availability) |
+
+If migrating an older project, retain its files and grants until the selected
+consumer, identity and exact access requirements have been reviewed. Generate
+the new profile separately, compare the emitted definition and validate it.
+Removing an obsolete file is not authorization to revoke an existing grant;
+advanced-access requirements remain operation-specific.
+
+
+---
+
+## Preview appendix: source-code deploy (still preview)
+
+> **Status.** Everything in this appendix is **preview** — isolated
+> here on purpose so it never bleeds into the GA container-deploy
+> guidance above. *"Functionality, region availability, and APIs might
+> change before general availability."* Source: [Deploy a hosted agent
+> from source code (preview)](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-code).
+> Prefer the **container** (GA) path documented in the rest of this
+> skill for production. Use this appendix only when you deliberately
+> want a Docker-less inner loop.
+
+Source-code deploy uploads a `.zip` of your Python or .NET code; the
+platform builds it remotely instead of you building/pushing a
+container image.
+
+### `--deploy-mode code`
+
+```bash
+azd ai agent init --deploy-mode code --runtime python_3_13 \
+  --entry-point main.py --dep-resolution remote_build
+```
+
+After initialization, `azd` writes the source-code settings to a
+`codeConfiguration` block on the `azure.ai.agent` service in
+`azure.yaml`:
+
+```yaml
+my-agent:
+  host: azure.ai.agent
+  kind: hosted
+  codeConfiguration:
+    runtime: python_3_13
+    entryPoint: main.py
+```
+
+### Supported runtimes
+
+The `codeConfiguration.runtime` field accepts **only** these values —
+pick the one matching the binaries in your zip (Linux x86_64 wheels
+for Python, or the `TargetFramework` of your `dotnet publish` output
+for .NET):
+
+| Language | Supported `runtime` values |
+|----------|---------------------------|
+| Python | `python_3_13`, `python_3_14` |
+| .NET | `dotnet_10` |
+
+**Python 3.11 and 3.12 are NOT supported for the source-code path.**
+If your code targets 3.11/3.12, bump to 3.13+ before adopting
+`--deploy-mode code`. This constraint is specific to the
+platform-managed source-code runtime — container-mode deploys with a
+custom Dockerfile can keep whatever Python the base image ships.
+
+### Dependency resolution: `--dep-resolution`
+
+| Value | Behavior | When to use |
+|-------|----------|-------------|
+| `remote_build` (default) | Platform resolves + installs from your `pyproject.toml` or `requirements.txt` server-side. | Faster iteration; smaller repo. |
+| `bundled` | You vendor wheels locally (`pip download --target packages/ --platform manylinux2014_x86_64 --only-binary=:all:`) and the platform installs from the bundle. | Air-gapped policies; reproducible builds; deps not on PyPI. |
+
+The resolver auto-detects `pyproject.toml` first, then falls back to
+`requirements.txt`. Mixing both is unsupported.
+
+### Preview REST header
+
+Source-code deploy uses the preview `project.beta.agents` surface for
+mutating calls. On raw REST (Create/Update/Delete), send:
+
+```
+Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview
+```
+
+`azd ai agent` adds this for you; raw REST / custom tooling must set it
+explicitly. GET requests work without it today, but include it to be
+safe — the header gates preview behaviour and may be enforced more
+strictly before GA. On the Python SDK side, create the client with
+`allow_preview=True` — this preview surface (unlike the GA
+`get_openai_client(agent_name=...)` invoke path documented in the rest
+of this skill) genuinely requires it, and `create_version_from_code` /
+`download_code` live on `project.beta.agents`, not the stable
+`project.agents`.
+
+### Retirement policy
+
+Foundry aligns hosted-agent language support with each language's
+community end-of-life date. After a language's end-of-life date, you
+can still create/update/run agents on the retired runtime value, but
+they're not eligible for support, new features, or security patches
+until you set a current `codeConfiguration.runtime` value and redeploy.
+
+### Why this stays out of the GA guidance above
+
+Mixing preview source-code-deploy guidance into the GA container-deploy
+sections would make it easy to accidentally follow a preview code path
+(with its own preview header, preview SDK surface, and narrower
+runtime support) while believing you're on the stable GA path. Keep
+them separate; if you need this path, treat every claim here as
+preview and re-verify against the source doc before shipping.

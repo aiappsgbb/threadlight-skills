@@ -125,7 +125,7 @@ presence + a recent date. The shape above is the recommended template.
 |---|---|
 | Provision SRE Agent | `azure-sre-agent` |
 | Apply `threadlight-pilot-handover` recipe | `azure-sre-agent` |
-| Wire alert action groups | `foundry-observability` |
+| Wire alert action groups | `threadlight-deploy/references/observability` |
 | Author runbook | (manual; recipe ships template) |
 | Get handoff acceptance | (operational; document in report) |
 

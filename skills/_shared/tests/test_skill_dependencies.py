@@ -1,7 +1,9 @@
 """Offline contract for skills/_shared/skill-dependencies.json.
 
-Official Microsoft skills (azure@azure-skills) are the default. A custom
-awesome-gbb skill may stay only as a labelled residual with recorded evidence.
+Official Microsoft skills (azure@azure-skills) are the default. Capabilities with
+no official equivalent are ported into threadlight-skills as threadlight-owned
+skills or references; other awesome-gbb skills stay labelled residual with
+recorded evidence.
 These checks prove the manifest's shape and labels, not skill runtime behaviour.
 """
 from __future__ import annotations
@@ -13,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = ROOT / "skills" / "_shared" / "skill-dependencies.json"
-LABELS = {"official-default", "residual", "out-of-product-scope"}
+LABELS = {"official-default", "threadlight-owned", "residual", "out-of-product-scope"}
 OFFICIAL_PLUGINS = {"azure@azure-skills", "azure-cost@azure-skills", "foundry-iq-skills@azure-skills"}
 RESIDUAL_LABEL = "GBB pattern, not a Microsoft product skill"
 AWESOME_GBB_SKILL_LINK = re.compile(r"awesome-gbb/(?:tree|blob)/[^/\s)\]]+/skills/([a-z0-9]+(?:-[a-z0-9]+)*)")
@@ -76,21 +78,26 @@ def test_every_entry_has_a_valid_label_and_evidence():
             assert entry.get("coverage") in {"full", "partial"}, name
             if entry["coverage"] == "partial":
                 assert entry.get("threadlight_owned_gap"), f"{name}: partial coverage needs the owned gap"
-        elif label == "residual":
+        elif label in {"residual", "threadlight-owned"}:
             exc = entry.get("exception") or {}
             assert exc.get("reason"), f"{name}: residual needs exception.reason"
             assert exc.get("official_tag_checked") == tag, f"{name}: exception must cite {tag}"
             assert exc.get("observation"), f"{name}: residual needs a test or observation"
-            assert entry.get("display_label") == RESIDUAL_LABEL, name
+            if label == "residual":
+                assert entry.get("display_label") == RESIDUAL_LABEL, name
+            else:
+                assert (ROOT / entry["threadlight_target"]).is_dir(), f"{name}: missing port target"
+                assert entry.get("provenance", "").startswith("awesome-gbb@"), name
         else:
             assert entry.get("reason"), f"{name}: out-of-product-scope needs a reason"
 
 
-def test_expected_residual_set_is_labelled_residual():
+def test_expected_gaps_are_threadlight_owned_or_residual():
     data = load()
     for name in ("citadel-hub-deploy", "citadel-spoke-onboarding", "foundry-agt", "azure-tenant-isolation",
-                 "foundry-mcp-aca", "foundry-teams-bot"):
-        assert data["skills"][name]["label"] == "residual", name
+                 "foundry-mcp-aca", "ghcp-hosted-agents"):
+        assert data["skills"][name]["label"] == "threadlight-owned", name
+    assert data["skills"]["foundry-teams-bot"]["label"] == "residual"
 
 
 def test_heavily_used_platform_skills_default_to_official():

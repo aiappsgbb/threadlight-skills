@@ -740,7 +740,7 @@
         },
         {
           "id": "EVAL-002",
-          "title": "evals/ folder with foundry-evals run files",
+          "title": "evals/ folder with microsoft-foundry run files",
           "pillar": "continuous-evals",
           "severity": "must-fix",
           "status": "must-fix",

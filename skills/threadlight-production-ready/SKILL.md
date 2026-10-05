@@ -117,14 +117,14 @@ knowledge.
 | Authoring SPEC / `deployment_manifest{}` | `threadlight-design` |
 | Running `azd up` | `threadlight-deploy` |
 | Structural / behavioural deploy gate | `threadlight-safe-check --phase post-deploy` |
-| Invocation testing of the agent | `foundry-evals` |
-| Wiring App Insights / OTel | `foundry-observability` |
-| Provisioning Citadel hub | `citadel-hub-deploy` |
-| Onboarding spoke to Citadel | `citadel-spoke-onboarding` |
+| Invocation testing of the agent | `microsoft-foundry` |
+| Wiring App Insights / OTel | `threadlight-deploy/references/observability` |
+| Provisioning Citadel hub | `threadlight-citadel-hub` |
+| Onboarding spoke to Citadel | `threadlight-citadel-spoke` |
 | Provisioning Azure SRE Agent | `azure-sre-agent` |
-| Authoring / linting the AGT policy | `foundry-agt` |
-| Generating Bicep / Terraform | `azd-patterns`, `azureterraform`, `bicepschema` |
-| Deploying to a VNet-injected Foundry | `foundry-vnet-deploy` |
+| Authoring / linting the AGT policy | `threadlight-govern/references/agt-inprocess` |
+| Generating Bicep / Terraform | `threadlight-deploy/references/azd-modules`, `azureterraform`, `bicepschema` |
+| Deploying to a VNet-injected Foundry | `microsoft-foundry` |
 
 **This skill separates assessment from follow-on actions.** The scorecard is
 always advisory and read-only. The remediation workflow is explicit, reviewable,
@@ -303,19 +303,19 @@ about findings, not just emit them.
 
 | # | Pillar | What "good" looks like | Primary remediation skill |
 |---|---|---|---|
-| 1 | [`network-posture`](references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); data-residency considered (model region, APIM region, backup region, cross-border support) — declarative SPEC check, not sub-scored | `citadel-spoke-onboarding`, `foundry-vnet-deploy`, `foundry-network-runbook` |
+| 1 | [`network-posture`](references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); data-residency considered (model region, APIM region, backup region, cross-border support) — declarative SPEC check, not sub-scored | `threadlight-citadel-spoke`, `microsoft-foundry` |
 | 2 | [`agent-governance`](references/pillars/02-agent-governance.md) | Current selected-binding v1 evidence and exact signed policy/config/deployment; module imports and legacy policy/verifier artifacts alone are not enforcement | `threadlight-govern`, `threadlight-governed-actions` |
-| 3 | [`identity-access`](references/pillars/03-identity-access.md) | Workloads use managed identity; **no client secrets**; RBAC least-privilege; KV access via RBAC not access policies | `foundry-hosted-agents`, `azure-tenant-isolation`, `azd-patterns` |
-| 4 | [`secrets`](references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `azd-patterns`, `foundry-hosted-agents` |
-| 5 | [`observability`](references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `foundry-observability` |
-| 6 | [`continuous-evals`](references/pillars/06-continuous-evals.md) | SPEC § 9 scenarios scheduled (Plan A or Plan B); threshold alerts wired; last run within freshness window; eval datasets stored | `foundry-evals` |
-| 7 | [`responsible-ai`](references/pillars/07-responsible-ai.md) | Content filters, jailbreak shields, grounded-language eval; AGT RAI policy; PII redaction declared; allow/deny tested | `foundry-agt`, `foundry-evals` |
+| 3 | [`identity-access`](references/pillars/03-identity-access.md) | Workloads use managed identity; **no client secrets**; RBAC least-privilege; KV access via RBAC not access policies | `threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`, `threadlight-deploy/references/azd-modules` |
+| 4 | [`secrets`](references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `threadlight-deploy/references/azd-modules`, `threadlight-deploy/references/hosted-agent/maf` |
+| 5 | [`observability`](references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `threadlight-deploy/references/observability` |
+| 6 | [`continuous-evals`](references/pillars/06-continuous-evals.md) | SPEC § 9 scenarios scheduled (Plan A or Plan B); threshold alerts wired; last run within freshness window; eval datasets stored | `microsoft-foundry` |
+| 7 | [`responsible-ai`](references/pillars/07-responsible-ai.md) | Content filters, jailbreak shields, grounded-language eval; AGT RAI policy; PII redaction declared; allow/deny tested | `threadlight-govern/references/agt-inprocess`, `microsoft-foundry` |
 | 8 | [`hitl-audit`](references/pillars/08-hitl-audit.md) | If SPEC § 8 declares gates: wired, persistent audit trail, escalation channel reachable, idempotent | `threadlight-hitl-patterns` |
-| 9 | [`supply-chain`](references/pillars/09-supply-chain.md) | Container images pinned **by digest**; Bicep modules pinned; dependency scanning enabled; SBOM emitted; **skills/tools published as pinned, versioned Foundry artifacts** (no force-publish, no floating default) | `azd-patterns`, `foundry-skill-catalog`, `foundry-toolbox` |
+| 9 | [`supply-chain`](references/pillars/09-supply-chain.md) | Container images pinned **by digest**; Bicep modules pinned; dependency scanning enabled; SBOM emitted; **skills/tools published as pinned, versioned Foundry artifacts** (no force-publish, no floating default) | `threadlight-deploy/references/azd-modules`, `microsoft-foundry` |
 | 10 | [`cost`](references/pillars/10-cost.md) | Pricing plan declared (PAYG vs PTU); budget + anomaly alerts wired; cost-projection artefact fresh (`COST-005`); unaddressed recommendations reviewed (`COST-006`); idle-resource sweep done | `paygo-ptu-cost-analyzer`, `threadlight-consumption-iq` |
-| 11 | [`reliability`](references/pillars/11-reliability.md) | Multi-region plan vs RTO/RPO from § 12; backup/restore configured AND restore-drill artefact present and ≤90 days old (REL-007); runbook exists; chaos test referenced | `foundry-vnet-deploy`, `foundry-caphost-lifecycle` |
+| 11 | [`reliability`](references/pillars/11-reliability.md) | Multi-region plan vs RTO/RPO from § 12; backup/restore configured AND restore-drill artefact present and ≤90 days old (REL-007); runbook exists; chaos test referenced | `microsoft-foundry` |
 | 12 | [`sre-handover`](references/pillars/12-sre-handover.md) | **Evidence-based:** incident owner + escalation path; runbook links; alert destinations; SRE Agent resource/recipe if selected; handoff acceptance signed | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) |
-| 13 | [`model-lifecycle`](references/pillars/13-model-lifecycle.md) | Model deployment **names + versions pinned** (no `latest`); fallback model declared; retirement-notice owner; A/B or rollback strategy; region/capacity documented | `paygo-ptu-cost-analyzer`, `foundry-hosted-agents` |
+| 13 | [`model-lifecycle`](references/pillars/13-model-lifecycle.md) | Model deployment **names + versions pinned** (no `latest`); fallback model declared; retirement-notice owner; A/B or rollback strategy; region/capacity documented | `paygo-ptu-cost-analyzer`, `threadlight-deploy/references/hosted-agent/maf` |
 
 **Per-finding status taxonomy:**
 
@@ -393,7 +393,7 @@ and never commit **inline credentials** (SUP-013). The assessor writes an
 
 `python3 scripts/mcp_sbom.py --root . --update-lock`
 
-Remediation points at `foundry-toolbox` (secret injection), Key Vault, and ACR —
+Remediation points at `microsoft-foundry` (secret injection), Key Vault, and ACR —
 this hardens how you consume MCP on the platform; it does not replace it.
 
 ### Agent-identity binding — NHI governance (IAM-006..009)
@@ -414,7 +414,7 @@ automatically (IAM-009, should-fix). Inspect or refresh the inventory with:
 
 Optionally declare `agent-identity.governance.json` at the repo root to supply
 owner / review metadata per subject id. Remediation points at `entra-agent-id`,
-`foundry-agt`, `azure-rbac`, and Entra access reviews / PIM — it amplifies the
+`threadlight-govern/references/agt-inprocess`, `azure-rbac`, and Entra access reviews / PIM — it amplifies the
 platform's identity primitives; it does not replace them.
 
 ### EU AI Act evidence pack (Art 9 / 11 / 12 / 14 / 15 / 26 / 27)
@@ -760,7 +760,7 @@ every other finding in this skill.
     "top_findings": [
       { "pillar": "secrets", "id": "SEC-004", "status": "must-fix",
         "title": "Key Vault lacks purge protection",
-        "remediation_skill": "azd-patterns" },
+        "remediation_skill": "threadlight-deploy/references/azd-modules" },
       // ... up to 5
     ]
   },
@@ -838,7 +838,7 @@ every other finding in this skill.
 3. **Hard-gate preview** — what would fail if this were a gate, not advisory. The bridge to v2.
 4. **Pillar scorecard** — 13-row table with score per pillar, plus the residency sub-section under pillar 1.
 5. **Pillar deep-dives** — one block per pillar with all findings, evidence references, remediation links.
-6. **Uplift plan** — ordered next steps. Each step links to the awesome-gbb skill that fixes it.
+6. **Uplift plan** — ordered next steps. Each step links to the sibling skill that fixes it (official first, then Threadlight-owned, then a labelled GBB pattern skill).
 7. **Cost projection** — forecast source, reconciled Azure actuals, scope/window/coverage/variance evidence, PAYG vs PTU recommendation at observed token volume, unallocated-cost callout, and idle-resource sweep.
 8. **Outcome KPI scorecard** — joined outcome evidence for eval pass-rate, measured cost per successful interaction, traces, and declared baselines / deviation alert coverage.
 9. **Residual risk register + RACI + rollout/rollback/cutover** — the "what's left after waivers, who owns it, how do we land in production safely?" trio.
@@ -1198,17 +1198,17 @@ sync with the awesome-gbb skill catalog as it evolves.
 
 | Finding theme | Remediation skill | Family |
 |---|---|---|
-| Citadel spoke not onboarded / Access Contract missing | `citadel-spoke-onboarding` | `citadel-*` |
-| Citadel hub absent (need to provision) | `citadel-hub-deploy` | `citadel-*` |
-| VNet-injected Foundry needed | `foundry-vnet-deploy` | `foundry-*` |
-| Network diagnostics needed | `foundry-network-runbook` | `foundry-*` |
-| AGT policy authoring / lint / CI-gate | `foundry-agt` | `foundry-*` |
-| Cap-host lifecycle / day-2 | `foundry-caphost-lifecycle` | `foundry-*` |
-| Hosted-agent RBAC / managed identity | `foundry-hosted-agents` | `foundry-*` |
-| OTel emit / AppIn wiring | `foundry-observability` | `foundry-*` |
-| Eval scheduling / dataset shape | `foundry-evals` | `foundry-*` |
-| Tenant-isolation hardening | `azure-tenant-isolation` | `azure-*` |
-| ACR / Bicep / azd patterns | `azd-patterns` | `azd-*` |
+| Citadel spoke not onboarded / Access Contract missing | `threadlight-citadel-spoke` | `citadel-*` |
+| Citadel hub absent (need to provision) | `threadlight-citadel-hub` | `citadel-*` |
+| VNet-injected Foundry needed | `microsoft-foundry` | `foundry-*` |
+| Network diagnostics needed | `microsoft-foundry` | `foundry-*` |
+| AGT policy authoring / lint / CI-gate | `threadlight-govern/references/agt-inprocess` | `foundry-*` |
+| Cap-host lifecycle / day-2 | `microsoft-foundry` | `foundry-*` |
+| Hosted-agent RBAC / managed identity | `threadlight-deploy/references/hosted-agent/maf` | `foundry-*` |
+| OTel emit / AppIn wiring | `threadlight-deploy/references/observability` | `foundry-*` |
+| Eval scheduling / dataset shape | `microsoft-foundry` | `foundry-*` |
+| Tenant-isolation hardening | `threadlight-tenant-isolation` | `azure-*` |
+| ACR / Bicep / azd patterns | `threadlight-deploy/references/azd-modules` | `azd-*` |
 | Cost analysis (PAYG vs PTU) | `paygo-ptu-cost-analyzer` | `paygo-*` |
 | SRE Agent + handover recipe | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) | `azure-sre-*` |
 | HITL gate wiring | `threadlight-hitl-patterns` | `threadlight-*` |
@@ -1281,7 +1281,7 @@ lifecycle/review (IAM-009, should-fix).
 | --- | --- |
 | Identity-access pillar | Adds IAM-006..009 for the agent NHI surface (passwordless, owner, least-privilege, lifecycle). |
 | New producer | `scripts/agent_identity.py` — stdlib-only identity discovery (UAMI / federated / app-secret) → `agent-identity.json`, with a `--check` CLI. |
-| Recipes | Four new remediation recipes (IAM-006..009) point at `entra-agent-id`, `foundry-agt`, `azure-rbac`, and Entra access reviews / PIM. |
+| Recipes | Four new remediation recipes (IAM-006..009) point at `entra-agent-id`, `threadlight-govern/references/agt-inprocess`, `azure-rbac`, and Entra access reviews / PIM. |
 | Governance manifest | Optional `agent-identity.governance.json` supplies owner / review metadata per subject id. |
 | Degrade-safe | A producer error degrades the four findings to `not-verified` — the assessor never crashes on the identity scan. |
 
@@ -1298,7 +1298,7 @@ free of undocumented drift (SUP-012, must-fix), and free of inline credentials
 | --- | --- |
 | Supply-chain pillar | Adds SUP-010..013 for the MCP server/tool surface (pin, source, lock-drift, inline-creds). |
 | New producer | `scripts/mcp_sbom.py` — stdlib-only MCP discovery → SBOM → lock-diff, with a `--check` / `--update-lock` CLI. |
-| Recipes | Three new must-fix remediation recipes (SUP-010/012/013) point at ACR digests, the lock producer, and Key Vault / `foundry-toolbox`. |
+| Recipes | Three new must-fix remediation recipes (SUP-010/012/013) point at ACR digests, the lock producer, and Key Vault / `microsoft-foundry`. |
 | Degrade-safe | A producer error degrades the four findings to `not-verified` — the assessor never crashes on the MCP scan. |
 
 ## What changed since v0.4.0
@@ -1342,7 +1342,7 @@ field-test protocols without claiming field execution.
   Copilot agent** consumes `apply-plan.json` and performs repo edits /
   invokes sibling skills — every mutation flows through `git diff` +
   PR review so the audit trail is preserved.
-- **Not a substitute for `foundry-evals`.** The eval summary pillar reads
+- **Not a substitute for `microsoft-foundry`.** The eval summary pillar reads
   the latest eval-runs output; it does not run new evals.
 - **Not a cost model.** The cost pillar checks for budget/anomaly
   presence and consumes reconciled actuals from
@@ -1387,4 +1387,4 @@ the official **[Azure Skills](https://github.com/microsoft/azure-skills)** catal
 *Further reading, not a dependency* — Threadlight's guidance stays the source of
 truth for the pilot flow:
 
-- **[`azure-reliability`](https://github.com/microsoft/azure-skills/blob/main/skills/azure-reliability/SKILL.md)** — PaaS **reliability posture** (zone redundancy, ZRS storage, health probes, multi-region) that deepens this scorecard's reliability pillar.
+- **[`azure-reliability`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/azure-reliability/SKILL.md)** — PaaS **reliability posture** (zone redundancy, ZRS storage, health probes, multi-region) that deepens this scorecard's reliability pillar.

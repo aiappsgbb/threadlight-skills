@@ -1,7 +1,7 @@
 # Skill & tool supply-chain — governed Foundry artifacts
 
 > **Pillar:** `supply-chain` (9). **Checks:** `SUP-008`, `SUP-009`.
-> **Companion skills:** [`foundry-skill-catalog`](https://github.com/aiappsgbb/awesome-gbb), [`foundry-toolbox`](https://github.com/aiappsgbb/awesome-gbb).
+> **Companion skills:** [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry), [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry).
 
 The container image, the Bicep modules, and the Python dependencies are not
 the only things an agent depends on. The **skills** (reusable capability
@@ -72,7 +72,7 @@ Workflow:
 
 1. Declare servers in `.mcp.json` (or any `mcpServers` / `servers` map).
 2. Pin each server (`@1.2.3`, `==1.2.3`, or `@sha256:...`) — never `latest`.
-3. Inject credentials via `foundry-toolbox` / Key Vault; never inline them.
+3. Inject credentials via `microsoft-foundry` / Key Vault; never inline them.
 4. Generate the lock: `python3 scripts/mcp_sbom.py --root . --update-lock`.
 5. Commit `mcp-lock.json`. In CI, `--check` fails the build on undocumented
    drift of a pinned server.

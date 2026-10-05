@@ -100,7 +100,7 @@ validation:
   script: |
     #!/usr/bin/env bash
     # HUMAN EXECUTION ONLY — requires Azure subscription + tenant-isolated az/azd auth
-    # Run this from a shell with AZURE_CONFIG_DIR set per azure-tenant-isolation skill
+    # Run this from a shell with AZURE_CONFIG_DIR set per threadlight-tenant-isolation skill
     set -euo pipefail
 
     : "${AZURE_SUBSCRIPTION_ID:?Set target Azure subscription id}"
@@ -205,7 +205,7 @@ git ls-remote https://github.com/Azure-Samples/azd-ai-starter-basic main
 ```bash
 #!/usr/bin/env bash
 # HUMAN EXECUTION ONLY — requires Azure subscription + tenant-isolated az/azd auth
-# Run this from a shell with AZURE_CONFIG_DIR set per azure-tenant-isolation skill
+# Run this from a shell with AZURE_CONFIG_DIR set per threadlight-tenant-isolation skill
 set -euo pipefail
 
 : "${AZURE_SUBSCRIPTION_ID:?Set target Azure subscription id}"

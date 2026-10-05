@@ -45,7 +45,7 @@ counted as additional policy failures.
 
 This pillar is **capability-based, not version-pinned.** AGT is
 evolving rapidly (v3.7 → v4 shipped 2026-06-01) and the upstream
-awesome-gbb `foundry-agt` wrapper skill is currently lagging at AGT
+awesome-gbb AGT wrapper skill (now ported as `threadlight-govern/references/agt-inprocess`) was lagging at AGT
 3.7.0 per their PR #242 (5-distribution reorg landed upstream but
 their wrapper has not absorbed it yet). This skill detects AGT v4
 directly because customers may install AGT distributions independently
@@ -194,8 +194,8 @@ into `v4_preview`.
 
 | Finding | Skill |
 |---|---|
-| Author + lint + CI-gate the policy | `foundry-agt` |
-| Choose AGT vs Citadel-spoke posture | This skill's `network-posture` pillar callout + `foundry-agt` decision matrix |
+| Author + lint + CI-gate the policy | `threadlight-govern/references/agt-inprocess` |
+| Choose AGT vs Citadel-spoke posture | This skill's `network-posture` pillar callout + `threadlight-govern/references/agt-inprocess` decision matrix |
 
 ## Why this pillar matters
 
@@ -210,8 +210,8 @@ it), the answer is "the prompt", which is the wrong answer.
 
 **Upstream status (2026-06-10):** AGT v4.1.0 shipped on 2026-06-01 in
 `microsoft/agent-governance-toolkit` (git tag `v4.1.0`, all Python
-distributions pinned at `4.1.0`). The `awesome-gbb` `foundry-agt`
-wrapper skill is **currently lagging at AGT 3.7.0** per their PR #242
+distributions pinned at `4.1.0`). The awesome-gbb AGT wrapper skill (now ported as
+`threadlight-govern/references/agt-inprocess`) was **lagging at AGT 3.7.0** per their PR #242
 coordinator decision (option B — defer the wrapper bump to a follow-up).
 
 This skill detects AGT v4 directly via artefact signals — customers may
@@ -222,7 +222,7 @@ in the table above; `--agt-profile auto` resolves automatically by
 scanning artefact files for any of the v4 signals (deps, policy schema,
 or dynamic conditions).
 
-**Never hard-fail on profile mismatch.** When the `foundry-agt` wrapper
+**Never hard-fail on profile mismatch.** When the `threadlight-govern/references/agt-inprocess` wrapper
 absorbs v4 and the v4 GA designation lands, the `v4_preview` profile
 will be renamed `v4` (and a new `v5_preview` may appear); this skill
 version will bump minor at that point.

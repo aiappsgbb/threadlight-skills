@@ -64,10 +64,10 @@ or a claim of regulatory compliance.
 
 | Finding | Skill |
 |---|---|
-| Configure / tighten content filter | `foundry-agt`, manual Foundry portal |
-| Add jailbreak / prompt-shield | `foundry-agt` |
-| Author PII redaction policy | `foundry-agt` |
-| Author RAI evals | `foundry-evals` |
+| Configure / tighten content filter | `threadlight-govern/references/agt-inprocess`, manual Foundry portal |
+| Add jailbreak / prompt-shield | `threadlight-govern/references/agt-inprocess` |
+| Author PII redaction policy | `threadlight-govern/references/agt-inprocess` |
+| Author RAI evals | `microsoft-foundry` |
 
 ## Why this pillar matters
 

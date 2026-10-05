@@ -306,7 +306,7 @@ deployment and live evidence still need an authorized engineering environment.
 
 This map covers the 23-skill governance baseline at
 [`8153bc2e0a677d99b8414053d7a00cfdab495444`](https://github.com/aiappsgbb/threadlight-skills/tree/8153bc2e0a677d99b8414053d7a00cfdab495444).
-The AgentOps extension below completes the current 24-skill catalog. Inspect
+The AgentOps and Azure platform extensions below complete the current 28-skill catalog. Inspect
 the installed revision before applying either contract.
 
 These are **capability groups, not one universal execution DAG**. Read the
@@ -389,6 +389,21 @@ normalizes evidence is not a second runtime policy enforcement engine.
 | Skill | Purpose | Actual mechanism | Artifacts | Execution and evidence boundary |
 |---|---|---|---|---|
 | [`threadlight-agentops`](../skills/threadlight-agentops/SKILL.md) | Reuse per-agent operational evidence | Bounded `scripts/agentops_check.py` validates opt-in, provenance, scope and freshness; native refresh requires separate approval | `specs/agentops-manifest.json` | No opt-in is not-applicable; partial evidence is not a pass, and local provenance is not Azure attestation or production certification |
+
+### Optional Azure platform extension (Threadlight-owned ports)
+
+These four skills were ported from `aiappsgbb/awesome-gbb` at
+`7f1de882d5386e5a27852c91d3a89523eef218d0` because the official
+`azure@azure-skills` catalog (pinned in `skills/_shared/official-skills-lock.json`)
+has no equivalent. Each carries a `PROVENANCE.md`; the official skills remain the
+default for everything else.
+
+| Skill | Purpose | Actual mechanism | Artifacts | Execution and evidence boundary |
+|---|---|---|---|---|
+| [`threadlight-citadel-hub`](../skills/threadlight-citadel-hub/SKILL.md) | Deploy an AI Citadel Governance Hub for a pilot | Instructions wrap the pinned `ai-hub-gateway-solution-accelerator` azd template with three environment profiles | Hub azd environment, profile parameters and access-contract outputs | Live, cost-bearing platform deployment owned by the platform team; a generated profile is not a deployed or governed gateway |
+| [`threadlight-citadel-spoke`](../skills/threadlight-citadel-spoke/SKILL.md) | Connect a pilot's Foundry project to an existing hub | Instructions plus access-contract templates for APIM connections, product policies and JWT auth | Access contract, APIM connection and policy configuration | Requires an existing hub and its owner's approval; routing through APIM is not runtime governance of business effects |
+| [`threadlight-tenant-isolation`](../skills/threadlight-tenant-isolation/SKILL.md) | Prevent cross-tenant deploys from concurrent terminals | Per-tenant `AZURE_CONFIG_DIR`/`AZD_CONFIG_DIR` convention and an `az account show` assertion | Tenant index and per-terminal environment settings | Local operator hygiene, not an Azure control; an assertion only checks the active context at that moment |
+| [`threadlight-mcp-aca`](../skills/threadlight-mcp-aca/SKILL.md) | Host a custom MCP server for a hosted agent | Instructions and references for MCP on Container Apps or Functions with Easy Auth, OAuth or managed identity | MCP server source, container/Functions config and auth settings | A reachable endpoint is not proof of correct authorization; live deployment and protocol tests are separate evidence |
 
 ## Offline inspection and the skill contract validator
 

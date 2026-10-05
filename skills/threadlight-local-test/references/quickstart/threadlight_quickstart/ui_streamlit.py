@@ -7,7 +7,7 @@ to wire the page to a specific PoC root:
   THREADLIGHT_QUICKSTART_SIMULATOR  "1" to enable the prompt simulator
 
 After every turn the UI appends a row to ``<root>/tests/quickstart.jsonl``
-in the shape ``foundry-evals`` consumes (query + response). Disable by
+in the shape ``microsoft-foundry`` consumes (query + response). Disable by
 setting ``THREADLIGHT_QUICKSTART_NO_TRANSCRIPT=1``.
 
 Deliberately stays single-file — no extra dirs, no theme, no auth.
@@ -67,10 +67,10 @@ async def _stream_response(agent, prompt: str, placeholder) -> str:
 
 
 def _append_transcript(root: Path, query: str, response: str) -> None:
-    """Append one row to ``<root>/tests/quickstart.jsonl`` (foundry-evals shape).
+    """Append one row to ``<root>/tests/quickstart.jsonl`` (microsoft-foundry shape).
 
     Shape matches the `tool_definitions` / `tool_calls` schema documented
-    in ``foundry-evals`` § *Enriched dataset shape*; for the quickstart
+    in the official microsoft-foundry ``foundry-agent/eval-datasets`` guidance; for the quickstart
     we only have query + response (tools are stub CRUD), which is the
     minimum the eval pipeline accepts.
     """

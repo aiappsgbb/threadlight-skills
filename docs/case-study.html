@@ -1198,7 +1198,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           <div class="cs-marker">6</div>
           <div class="cs-card">
             <p class="cs-cat">Evaluate</p>
-            <div class="cs-meta"><span class="cs-skill">foundry-evals</span><span class="cs-wall">30 min</span><span class="cs-pill is-pass">Pass</span></div>
+            <div class="cs-meta"><span class="cs-skill">microsoft-foundry</span><span class="cs-wall">30 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Does the agent actually work? &mdash; 14 / 15</h3>
             <p>
               A real evaluation against the <em>live</em> agent, all fifteen scenarios scored by deterministic
@@ -1215,7 +1215,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           <div class="cs-marker">7</div>
           <div class="cs-card">
             <p class="cs-cat">Observe</p>
-            <div class="cs-meta"><span class="cs-skill">foundry-observability</span><span class="cs-wall">21 min</span><span class="cs-pill is-pass">Pass</span></div>
+            <div class="cs-meta"><span class="cs-skill">threadlight-deploy/references/observability</span><span class="cs-wall">21 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Can we see what it&rsquo;s doing?</h3>
             <p>
               The first queries came back empty &mdash; and untangling that was the stage&rsquo;s most useful work.
@@ -1282,7 +1282,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           <div class="cs-marker">11</div>
           <div class="cs-card">
             <p class="cs-cat">Govern &middot; spoke</p>
-            <div class="cs-meta"><span class="cs-skill">citadel-spoke-onboarding</span><span class="cs-wall">13.8 min</span><span class="cs-pill is-pass">Pass</span></div>
+            <div class="cs-meta"><span class="cs-skill">threadlight-citadel-spoke</span><span class="cs-wall">13.8 min</span><span class="cs-pill is-pass">Pass</span></div>
             <h3>Building the spoke &mdash; and proving the wall holds</h3>
             <p>
               Onboarding registered a small isolated product as an infrastructure-as-code contract &mdash; entirely
@@ -1360,10 +1360,10 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
         </div>
         <div class="cs-bars" role="img" aria-label="Per-stage inner-agent wall-clock time in minutes. Prod deploy 36, evals 30, deploy 23, design 23, observability 21, production-ready 19, local-test 18, consumption-IQ 18, citadel-spoke 14, customize 10, safe-check 7, CI/CD 6, invoke 3. Total three hours forty-six minutes.">
           <div class="cs-bar is-peak"><div class="bl">12 &middot; prod deploy<small>citadel spoke</small></div><div class="track"><div class="fill" style="--w:100%"></div></div><div class="bv">36 min</div></div>
-          <div class="cs-bar"><div class="bl">06 &middot; evals<small>foundry-evals</small></div><div class="track"><div class="fill" style="--w:82.6%"></div></div><div class="bv">30 min</div></div>
+          <div class="cs-bar"><div class="bl">06 &middot; evals<small>microsoft-foundry</small></div><div class="track"><div class="fill" style="--w:82.6%"></div></div><div class="bv">30 min</div></div>
           <div class="cs-bar"><div class="bl">03 &middot; deploy<small>threadlight-deploy</small></div><div class="track"><div class="fill" style="--w:64.1%"></div></div><div class="bv">23 min</div></div>
           <div class="cs-bar"><div class="bl">01 &middot; design<small>threadlight-design</small></div><div class="track"><div class="fill" style="--w:62.8%"></div></div><div class="bv">23 min</div></div>
-          <div class="cs-bar"><div class="bl">07 &middot; observability<small>foundry-observability</small></div><div class="track"><div class="fill" style="--w:58.7%"></div></div><div class="bv">21 min</div></div>
+          <div class="cs-bar"><div class="bl">07 &middot; observability<small>threadlight-deploy/references/observability</small></div><div class="track"><div class="fill" style="--w:58.7%"></div></div><div class="bv">21 min</div></div>
           <div class="cs-bar"><div class="bl">09 &middot; production-ready<small>production-ready</small></div><div class="track"><div class="fill" style="--w:51.8%"></div></div><div class="bv">19 min</div></div>
           <div class="cs-bar"><div class="bl">05 &middot; consumption-IQ<small>consumption-iq</small></div><div class="track"><div class="fill" style="--w:48.4%"></div></div><div class="bv">18 min</div></div>
           <div class="cs-bar"><div class="bl">02 &middot; local test<small>local-test</small></div><div class="track"><div class="fill" style="--w:48.2%"></div></div><div class="bv">17 min</div></div>
@@ -1844,7 +1844,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
 
       <figure class="cs-arch reveal" data-delay="1" aria-labelledby="prodarch-cap">
         <div class="frame">
-          <svg viewBox="0 0 1120 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The production architecture that landed. In resource group rg-prod sits a Foundry-hosted agent with no model of its own, backed by a container registry, with its own agent tools and full OpenTelemetry tracing into Application Insights and Log Analytics, and a human-in-the-loop sign-off gate that leaves every memo pending review. Every model call leaves rg-prod keyless and crosses into the bank's shared Citadel hub, where the Citadel AI gateway authenticates with JWT, meters, and allow-lists the call before reaching the hub's current-generation model pool: an approved model returns 200, a deprecated one is refused 403. Onboarding was an additive access contract — six resources created, none modified or deleted, twenty-three existing hub products untouched. The hub runs fully private on the backend: a dedicated VNet with every model endpoint behind private endpoints and private DNS, and only the gateway is public. Today the spoke reaches it over that public gateway, keyless, with TLS, JWT and an allow-list, without touching the shared VNet. The fully private spoke-to-hub link — bidirectional VNet peering plus a Private Link into the hub VNet — is the next hardening step and is already covered by the foundry-vnet-deploy and citadel-spoke-onboarding Option B skills. Cosmos, Key Vault and AI Search remain on the hardening backlog.">
+          <svg viewBox="0 0 1120 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The production architecture that landed. In resource group rg-prod sits a Foundry-hosted agent with no model of its own, backed by a container registry, with its own agent tools and full OpenTelemetry tracing into Application Insights and Log Analytics, and a human-in-the-loop sign-off gate that leaves every memo pending review. Every model call leaves rg-prod keyless and crosses into the bank's shared Citadel hub, where the Citadel AI gateway authenticates with JWT, meters, and allow-lists the call before reaching the hub's current-generation model pool: an approved model returns 200, a deprecated one is refused 403. Onboarding was an additive access contract — six resources created, none modified or deleted, twenty-three existing hub products untouched. The hub runs fully private on the backend: a dedicated VNet with every model endpoint behind private endpoints and private DNS, and only the gateway is public. Today the spoke reaches it over that public gateway, keyless, with TLS, JWT and an allow-list, without touching the shared VNet. The fully private spoke-to-hub link — bidirectional VNet peering plus a Private Link into the hub VNet — is the next hardening step and is already covered by the microsoft-foundry and threadlight-citadel-spoke Option B skills. Cosmos, Key Vault and AI Search remain on the hardening backlog.">
             <defs>
               <marker id="cs-a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0,0 L10,5 L0,10 z" fill="#8e95a8"/>
@@ -1939,7 +1939,7 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
 
             <circle cx="60" cy="466" r="4" fill="none" stroke="#6e87ff" stroke-width="1.4"/>
             <text x="74" y="470" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#6e87ff">NEXT</text>
-            <text x="140" y="470" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#cfd2dc">Fully private: <tspan fill="#9fb0ff">VNet peering + Private Link</tspan>, spoke VNet &harr; hub VNet &mdash; <tspan fill="#8e95a8">skill-covered by</tspan> <tspan font-family="Cascadia Mono,monospace" fill="#a8ff60">foundry-vnet-deploy</tspan> <tspan fill="#8e95a8">+</tspan> <tspan font-family="Cascadia Mono,monospace" fill="#a8ff60">citadel-spoke-onboarding</tspan> <tspan fill="#8e95a8">Option B.</tspan></text>
+            <text x="140" y="470" font-family="Inter,system-ui,sans-serif" font-size="11" fill="#cfd2dc">Fully private: <tspan fill="#9fb0ff">VNet peering + Private Link</tspan>, spoke VNet &harr; hub VNet &mdash; <tspan fill="#8e95a8">skill-covered by</tspan> <tspan font-family="Cascadia Mono,monospace" fill="#a8ff60">microsoft-foundry</tspan> <tspan fill="#8e95a8">+</tspan> <tspan font-family="Cascadia Mono,monospace" fill="#a8ff60">threadlight-citadel-spoke</tspan> <tspan fill="#8e95a8">Option B.</tspan></text>
 
             <text x="560" y="505" text-anchor="middle" font-family="Cascadia Mono,monospace" font-size="9.5" fill="#7b8498">also on the hardening backlog: Cosmos &middot; Key Vault &middot; AI Search &middot; HA / DR</text>
           </svg>
@@ -1951,12 +1951,12 @@ deployment will route LLM calls through an existing Citadel AI gateway&hellip;</
           current-generation model (<strong>200</strong>) and refuses deprecated ones (<strong>403</strong>).
           Today the link is the hub&rsquo;s <strong>public gateway</strong> (TLS + JWT, keyless); the fully-private
           <strong>VNet peering</strong> between spoke and hub is the next hardening step &mdash; already covered by the
-          <code>foundry-vnet-deploy</code> + <code>citadel-spoke-onboarding</code> skills.
+          <code>microsoft-foundry</code> + <code>threadlight-citadel-spoke</code> skills.
         </figcaption>
       </figure>
 
       <p class="cs-hownote reveal">
-        <span class="k">Private by design</span>The hub already runs <strong>fully private on the backend</strong> &mdash; a dedicated VNet with every model endpoint behind <strong>private endpoints + private DNS</strong>; only the gateway faces out. The matching <strong>spoke-side private VNet + peering</strong> wasn&rsquo;t stood up in this low-risk pilot &mdash; but it&rsquo;s <strong>a first-class, skill-covered path</strong>, not a backlog wish: <code>foundry-vnet-deploy</code> stands up the isolated spoke VNet + Private Link and <code>citadel-spoke-onboarding</code> Option B peers it into the hub.
+        <span class="k">Private by design</span>The hub already runs <strong>fully private on the backend</strong> &mdash; a dedicated VNet with every model endpoint behind <strong>private endpoints + private DNS</strong>; only the gateway faces out. The matching <strong>spoke-side private VNet + peering</strong> wasn&rsquo;t stood up in this low-risk pilot &mdash; but it&rsquo;s <strong>a first-class, skill-covered path</strong>, not a backlog wish: <code>microsoft-foundry</code> stands up the isolated spoke VNet + Private Link and <code>threadlight-citadel-spoke</code> Option B peers it into the hub.
         <span class="r">Option A (public gateway) landed in the pilot &middot; Option B (VNet-isolated) skill-ready &middot; shared hub VNet never touched</span>
       </p>
     </div>

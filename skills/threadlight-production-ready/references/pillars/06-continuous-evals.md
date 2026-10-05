@@ -9,7 +9,7 @@ swap models?" The answer is **continuous evals**.
 
 ## Eval plan A vs Plan B
 
-`foundry-evals` documents two plans:
+`microsoft-foundry` documents two plans:
 
 - **Plan A (preferred):** Foundry Continuous Evaluation — scheduled
   runs against named datasets, results in AppIn, alerts on threshold.
@@ -56,9 +56,9 @@ hard-fail**.
 
 | Finding | Skill |
 |---|---|
-| Schedule continuous evals | `foundry-evals` (Plan A or Plan B) |
-| Fix eval dataset shape | `foundry-evals` (enriched dataset shape) |
-| Wire threshold alert | `foundry-observability` + `foundry-evals` |
+| Schedule continuous evals | `microsoft-foundry` (Plan A or Plan B) |
+| Fix eval dataset shape | `microsoft-foundry` (enriched dataset shape) |
+| Wire threshold alert | `threadlight-deploy/references/observability` + `microsoft-foundry` |
 | Add eval scenarios | `threadlight-design` (SPEC § 9) |
 
 ## Why this pillar matters

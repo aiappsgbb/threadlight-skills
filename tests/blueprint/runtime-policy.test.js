@@ -1408,23 +1408,23 @@ test('blocked_when consumer prose avoids the misleading "higher-priority route" 
   );
 });
 
-test('threadlight-deploy describes ghcp-hosted-agents as the canonical runtime implementation companion, not an "Alternative runtime"', () => {
+test('threadlight-deploy describes the Threadlight-owned GHCP hosted-agent reference as the canonical runtime implementation companion, not an "Alternative runtime"', () => {
   const content = read('skills/threadlight-deploy/SKILL.md');
 
   assert.doesNotMatch(
     content,
     /Alternative runtime/,
-    'threadlight-deploy must not label ghcp-hosted-agents as an "Alternative runtime" — GHCP Invocations is the canonical default route',
+    'threadlight-deploy must not label the GHCP hosted-agent reference as an "Alternative runtime" — GHCP Invocations is the canonical default route',
   );
 
   const ghcpSeeAlsoRow = content
     .split('\n')
-    .find((line) => line.includes('ghcp-hosted-agents') && line.trim().startsWith('|'));
-  assert.ok(ghcpSeeAlsoRow, 'expected a See Also table row referencing ghcp-hosted-agents');
+    .find((line) => line.includes('references/hosted-agent/ghcp') && line.trim().startsWith('|'));
+  assert.ok(ghcpSeeAlsoRow, 'expected a See Also table row referencing the Threadlight-owned references/hosted-agent/ghcp');
   assert.match(
     ghcpSeeAlsoRow,
     /Canonical runtime/i,
-    'the ghcp-hosted-agents See Also row must describe it relative to the canonical runtime default',
+    'the GHCP hosted-agent See Also row must describe it relative to the canonical runtime default',
   );
 });
 

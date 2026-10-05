@@ -1,0 +1,19 @@
+{
+  "tag": "v1.2.77",
+  "commit": "74f27068b21b85807e35ae69ab3976756b060c03",
+  "note": "Every microsoft/azure-skills path linked from a live surface, verified with git cat-file at the tag.",
+  "paths": [
+    ".github/plugins/azure-cost/skills/cost-analysis",
+    ".github/plugins/azure-skills/skills/azure-ai",
+    ".github/plugins/azure-skills/skills/azure-compliance/SKILL.md",
+    ".github/plugins/azure-skills/skills/azure-reliability/SKILL.md",
+    ".github/plugins/azure-skills/skills/entra-agent-id/SKILL.md",
+    ".github/plugins/azure-skills/skills/entra-app-registration/SKILL.md",
+    ".github/plugins/azure-skills/skills/microsoft-foundry",
+    ".github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md",
+    ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md",
+    ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md",
+    ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/observe/references/continuous-eval.md",
+    ".github/plugins/azure-skills/skills/microsoft-foundry/rbac/rbac.md"
+  ]
+}

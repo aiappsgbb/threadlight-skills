@@ -56,11 +56,15 @@ approve/reject and successful hosted resume remain unproved there; an expired
 resume was observed without a second business write. See the
 [scenario-specific execution record](../../../../docs/governed-returns-validation.md#s3-public-authenticated-foundry-hosted-execution).
 
-Use the complete `foundry-hosted-agents` baseline from the reviewed
-`aiappsgbb/awesome-gbb` commit `2ef44f6b47803a0166956cc668e5f429c1c1f8cb`:
+Use the complete Threadlight-owned
+[hosted-agent baseline](../hosted-agent/maf/README.md):
 `references/python/main.py`, `references/python/pyproject.toml`,
-`references/docker/Dockerfile`, and `references/yaml/azure.yaml`.
-Apply **azure-tenant-isolation** first: derive both CLI configuration directories
+`references/docker/Dockerfile`, and `references/yaml/azure.yaml`. The recorded
+validation used the same baseline at `aiappsgbb/awesome-gbb` commit
+`2ef44f6b47803a0166956cc668e5f429c1c1f8cb`; the port is from a later commit
+(`7f1de882`), so a new deployment needs fresh validation rather than borrowing
+that record.
+Apply [**threadlight-tenant-isolation**](../../../threadlight-tenant-isolation/SKILL.md) first: derive both CLI configuration directories
 from the personal index, verify the selected tenant and allowed subscription,
 and assert the exact intended subscription immediately before each operation.
 Setting only `AZURE_CONFIG_DIR` is not that contract. Do not copy login caches.

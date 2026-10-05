@@ -42,7 +42,7 @@ python -m threadlight_quickstart --simulator  # pre-load the demo-script prompts
 pip install -e <awesome-gbb>/skills/threadlight-local-test/references/quickstart
 cp <…>/quickstart/.env.local.example .env.local
 $EDITOR .env.local              # FOUNDRY_PROJECT_ENDPOINT, MODEL_DEPLOYMENT_NAME
-az login --tenant <dev-tid>     # see azure-tenant-isolation skill
+az login --tenant <dev-tid>     # see threadlight-tenant-isolation skill
 python -m threadlight_quickstart --check     # sanity (~5s)
 python -m threadlight_quickstart             # full UI
 ```

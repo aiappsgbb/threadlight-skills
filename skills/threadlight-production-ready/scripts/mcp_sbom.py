@@ -12,7 +12,7 @@ Findings produced (aggregated, one per id) by :func:`check`:
   * SUP-012 — mcp-lock.json committed and free of undocumented drift.
   * SUP-013 — MCP server credentials are not committed inline.
 
-Remediation always points at Microsoft platform primitives (foundry-toolbox for
+Remediation always points at Microsoft platform primitives (microsoft-foundry for
 secret injection, Key Vault, ACR) — this amplifies the platform, never replaces it.
 """
 from __future__ import annotations
@@ -504,7 +504,7 @@ def _detail_for(fid: str, offenders: list[str], lock_exists: bool) -> str:
                 + ", ".join(offenders)) if offenders else \
             "mcp-lock.json is committed and matches the current MCP surface."
     if fid == "SUP-013":
-        return ("Move inline credentials to injected secrets (foundry-toolbox / "
+        return ("Move inline credentials to injected secrets (microsoft-foundry / "
                 "Key Vault) for: " + ", ".join(offenders)) if offenders else \
             "No MCP server commits credentials inline."
     return ""

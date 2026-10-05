@@ -12,7 +12,7 @@ description: >
   threadlight triggers, add trigger to Kratos export.
   DO NOT USE FOR: chat / on-demand triggers (those go through the agent
   directly), bot infrastructure (use foundry-teams-bot), MCP server
-  deployment (use foundry-mcp-aca).
+  deployment (use threadlight-mcp-aca).
 metadata:
   version: "1.2.0"
 ---
@@ -23,11 +23,11 @@ Generate non-interactive trigger receivers (ACA jobs, ACA HTTP apps, ACA
 consumers with KEDA, optionally Functions) for a threadlight process,
 based on `specs/SPEC.md` § 10b.
 
-> **Why a separate skill from `azd-patterns`?** `azd-patterns` documents
+> **Why a separate skill from `threadlight-deploy/references/azd-modules`?** `threadlight-deploy/references/azd-modules` documents
 > the ACA-job *deployment* pattern (Bicep, postdeploy hook, image update).
 > This skill is one level up: given a spec, it picks the right
 > receiver shape, generates the receiver code, wires idempotency and
-> dead-letter rules, and emits the right Bicep that `azd-patterns`
+> dead-letter rules, and emits the right Bicep that `threadlight-deploy/references/azd-modules`
 > teaches how to deploy. They're complementary.
 
 ## When to Use
@@ -109,7 +109,7 @@ infra/triggers/
 Plus updates to:
 - `azure.yaml` — register the new service
 - `infra/main.bicep` — wire the trigger module
-- `scripts/postdeploy.py` — for ACA Job image updates (per `azd-patterns`)
+- `scripts/postdeploy.py` — for ACA Job image updates (per `threadlight-deploy/references/azd-modules`)
 
 > **Kratos-export mode.** This skill layers cleanly onto a **Kratos-exported
 > project** (`src/hosted-agent/` + `use-cases/<x>/`, trimmed `infra/` — see
@@ -232,7 +232,7 @@ Foundry-hosted agent from a containerized receiver as of May 2026.
 > ⚠️ **Do NOT use `agent_framework.foundry.FoundryAgent` or the legacy
 > `agent_framework.azure.AzureAIAgentClient`.** Both have been removed
 > from agent-framework as of the April 2026 hosted-agents preview
-> refresh. The canonical pattern lives in `foundry-hosted-agents` SKILL —
+> refresh. The canonical pattern lives in `threadlight-deploy/references/hosted-agent/maf` SKILL —
 > copy from there.
 
 ```python
@@ -300,8 +300,8 @@ Generate `infra/triggers/{trigger-name}.bicep`. Pick the template by shape:
 > **Bicep helper symbols** (`jobExists`, `appExists`, `fetchLatestImage`,
 > `emptyContainerImage`) are **expected to be passed in as params or
 > defined in your `infra/main.bicep`**. They come from the canonical
-> azd-Bicep helper pattern documented in `azd-patterns/SKILL.md`
-> § "Helper symbols for image-aware deployment". Don't redefine them
+> azd-Bicep helper pattern documented in [`threadlight-deploy/references/azd-modules/README.md`](../threadlight-deploy/references/azd-modules/README.md)
+> § "Fetch-Latest-Image Pattern (Bicep + ACR)". Don't redefine them
 > ad-hoc in this module; reuse the parent's.
 
 ```bicep
@@ -465,7 +465,7 @@ module trigger './triggers/{trigger-name}.bicep' = {
 ```
 
 For ACA Jobs, also extend `scripts/postdeploy.py` to update the job image
-(per the `azd-patterns` ACA Job pattern).
+(per the `threadlight-deploy/references/azd-modules` ACA Job pattern).
 
 ### Step 7: Validate
 
@@ -570,8 +570,8 @@ or Service Bus DLQ) — not a fire-and-forget log entry.
 | Skill | Use When |
 |-------|----------|
 | [`threadlight-design`](../threadlight-design/) | Produces spec § 10b that this skill consumes |
-| [`azd-patterns`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azd-patterns/) | The ACA Job deployment pattern (Bicep + postdeploy hook) |
+| [`threadlight-deploy/references/azd-modules`](../threadlight-deploy/references/azd-modules/README.md) | The ACA Job deployment pattern (Bicep + postdeploy hook) |
 | [`threadlight-deploy`](../threadlight-deploy/) | The orchestrator that calls this skill when § 10b is non-empty |
 | [`threadlight-safe-check`](../threadlight-safe-check/) | Probes the receivers generated here (last 5 ACA Job executions must not all be Failed) in the post-deploy phase |
 | [`threadlight-hitl-patterns`](../threadlight-hitl-patterns/) | The SLA watcher receiver type (cron job that escalates stale approvals) |
-| [`foundry-mcp-aca`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-mcp-aca/) | If the receiver also exposes a webhook *into* the system (mock receiver) |
+| [`threadlight-mcp-aca`](../threadlight-mcp-aca/SKILL.md) | If the receiver also exposes a webhook *into* the system (mock receiver) |

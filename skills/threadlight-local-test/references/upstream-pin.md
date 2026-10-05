@@ -20,7 +20,7 @@ packages:
     notes: |
       MAF surface used by Pattern 0 wiring: Agent, SkillsProvider.from_paths,
       @tool decorator, provider-specific read approval flags and native
-      response middleware. Same pin family as foundry-hosted-agents to keep the
+      response middleware. Same pin family as threadlight-deploy/references/hosted-agent/maf to keep the
       Pattern 0 → prod-deploy ergonomic story consistent.
   - name: streamlit
     source: pypi
@@ -147,7 +147,7 @@ end-to-end against `fixture-poc`.
 ## Why these caps
 
 - **`agent-framework ~=1.13.0`** — Pattern 0 uses the same wiring shape
-  (`Agent + SkillsProvider`) documented in `foundry-hosted-agents` for prod
+  (`Agent + SkillsProvider`) documented in `threadlight-deploy/references/hosted-agent/maf` for prod
   deploy. Keeping the cap consistent across skills means the
   design → quickstart → deploy ergonomic story doesn't bifurcate.
 - **`streamlit ~=1.40.0`** — Streamlit's minor releases land renderer

@@ -12,9 +12,9 @@ description: >-
   agent, model deployment or agent evaluation outside a Threadlight project
   (use microsoft-foundry); generic Azure app deployment (use azure-prepare /
   azure-deploy); designing the process (use threadlight-design); Teams bot
-  (use foundry-teams-bot); MCP server deployment (use foundry-mcp-aca);
-  non-Threadlight GHCP runtime (use ghcp-hosted-agents); azd tenant isolation
-  (use azure-tenant-isolation).
+  (use foundry-teams-bot); MCP server deployment (use threadlight-mcp-aca);
+  non-Threadlight GHCP runtime (see references/hosted-agent/ghcp); azd tenant
+  isolation (use threadlight-tenant-isolation).
 metadata:
   version: "1.9.0"
 ---
@@ -48,7 +48,7 @@ Generate walkthrough/script facts from the process handoff, and preserve receipt
 
 > ⚠️ **Azure Tenant Isolation (mandatory).** Before running any Phase that
 > touches Azure (`azd up`, `az deployment`, `az acr build`), verify tenant
-> isolation per the [`azure-tenant-isolation`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azure-tenant-isolation/)
+> isolation per the [`threadlight-tenant-isolation`](../threadlight-tenant-isolation/SKILL.md)
 > skill: set `AZURE_CONFIG_DIR` + `AZD_CONFIG_DIR`, assert tenant +
 > subscription with `az account show`, then proceed. Check token validity
 > first — only prompt `az login` if `az account show` fails.
@@ -215,24 +215,26 @@ Recommended (from `threadlight-design`):
 > **Dependency skills.** This skill references content from other skills instead of
 > duplicating it. Check that companion skills are available:
 >
-> | Skill | When Needed |
+> | Skill or reference | When Needed |
 > |-------|------------|
-> | `foundry-hosted-agents` | **Always** — RBAC, identity model, agent.yaml schema, dependency versions, troubleshooting |
+> | [`references/hosted-agent/maf`](references/hosted-agent/maf/README.md) (Threadlight-owned) | **Always** — RBAC, identity model, agent.yaml schema, dependency versions, troubleshooting |
 > | `threadlight-design` | **Always** — produces SPEC.md sections this skill consumes (§ 5b, § 7b, § 8, § 8b, § 9, § 10b, § 11b, § 11c, § 11d) |
-> | `azd-patterns` | **Always** — Bicep module library that Phase 6 (Module Composer) reads from |
-> | `foundry-iq` | **Default for every process** — provisions the Knowledge Agent + AI Search index for SPEC § 7 knowledge sources |
-> | `foundry-teams-bot` | If Teams integration is needed |
-> | `foundry-mcp-aca` | If deploying custom MCP servers as ACA or Azure Functions |
+> | [`references/azd-modules`](references/azd-modules/README.md) (Threadlight-owned) | **Always** — Bicep module library that Phase 6 (Module Composer) reads from |
+> | `foundry-iq` (official, `foundry-iq-skills@azure-skills`) | **Default for every process** — provisions the Knowledge Agent + AI Search index for SPEC § 7 knowledge sources |
+> | `foundry-teams-bot` (optional GBB pattern skill in awesome-gbb; not a Microsoft product skill) | If Teams integration is needed |
+> | `threadlight-mcp-aca` | If deploying custom MCP servers as ACA or Azure Functions |
 > | `threadlight-workspace-ui` | If SPEC § 8b specifies an operator workspace |
 > | `threadlight-hitl-patterns` | If SPEC § 8 declares any human action gate (approve/edit-and-approve/reject/escalate/signoff/audit-view/request-info) |
 > | `threadlight-event-triggers` | If SPEC § 10b declares any event-driven, scheduled, or webhook trigger |
 > | `threadlight-demo-data-factory` | If SPEC § 5 marks any system as `mock` (almost always true for pilots) |
-> | `foundry-doc-vision-speech` | If SPEC § 7b selects any vision / DocIntel / Speech model |
-> | `foundry-evals` | For post-deployment evaluation AND continuous evaluation: **Plan A** (default) — Foundry's built-in scheduled evaluations (no extra infra). **Plan B** (fallback) — ACA Job cron eval that reads from App Insights and writes to Workbook (use only when Plan A doesn't yet support hosted-agent eval kinds you need). Phase 6 includes the ACA Job ONLY when SPEC § 9 sets `continuous_eval.plan: "B"` |
-> | `citadel-spoke-onboarding` | **Phase 7 (opt-in)** — runs ONLY when SPEC § 11b sets `governance_hub.required: yes` |
+> | `azure-ai` | If SPEC § 7b selects any vision / DocIntel / Speech model |
+> | `microsoft-foundry` | For post-deployment evaluation AND continuous evaluation: **Plan A** (default) — Foundry's built-in scheduled evaluations (no extra infra). **Plan B** (fallback) — ACA Job cron eval that reads from App Insights and writes to Workbook (use only when Plan A doesn't yet support hosted-agent eval kinds you need). Phase 6 includes the ACA Job ONLY when SPEC § 9 sets `continuous_eval.plan: "B"` |
+> | `threadlight-citadel-spoke` | **Phase 7 (opt-in)** — runs ONLY when SPEC § 11b sets `governance_hub.required: yes` |
 > | `threadlight-workflow` | **Phase 2 alternative** — runs ONLY when SPEC § 11e sets `workflow_model: "workflow"` **AND the skill is installed** (`/skills list`). Generates a MAF Workflow container instead of an Agent container, then Phase 5-6 pick it up. **If it is not installed, do NOT block or hunt for it — fall back to the Phase 2 agent container path (see the Workflow model gate below).** |
 >
-> Use `/skills list` to check availability. If missing, install from `aiappsgbb/awesome-gbb`.
+> Use `/skills list` to check availability. If missing, install the official skills from
+> `microsoft/azure-skills` (`azure@azure-skills`, `foundry-iq-skills@azure-skills`) and the
+> Threadlight skills from `aiappsgbb/threadlight-skills`. Only the optional Teams row needs awesome-gbb.
 
 ## Workflow
 
@@ -308,7 +310,7 @@ remediated by asking the user to split the repo.
    `../threadlight-design/references/runtime-policy.json` cannot be read
    (the skill isn't installed/enabled), stop immediately and tell the
    operator to install or enable **`threadlight-design`** (`/skills list`; if
-   missing, install from `aiappsgbb/awesome-gbb`). `threadlight-deploy`
+   missing, install from `aiappsgbb/threadlight-skills`). `threadlight-deploy`
    already declares `threadlight-design` an **Always** dependency (see
    Prerequisites above), so this file is expected to exist whenever
    `threadlight-design` is present — its absence is a broken installation,
@@ -518,7 +520,7 @@ SpecKit specification from `threadlight-design`. Extract:
 - **§ 5 System Integrations** → which are mock vs real → drives MCP config
 - **§ 6 Tool Contracts** → map to Foundry tools or MCP servers
 - **§ 8 Human Interaction Points** → Teams bot needed? Which channels?
-- **§ 9 Success Criteria** → eval scenarios for post-deploy validation (→ `foundry-evals`)
+- **§ 9 Success Criteria** → eval scenarios for post-deploy validation (→ `microsoft-foundry`)
 - **§ 10 Trigger & Run Model** → model capacity, container resources
 - **§ 11 Security/Compliance** → regulatory constraints, data retention
 - **`specs/foundation.md` selectors** → already resolved and validated by the
@@ -579,7 +581,7 @@ Core deployment inputs:
   are **`CopilotClient` runtime overhead**, NOT `SkillsProvider` overhead —
   `SkillsProvider` itself only adds +1 `load_skill` per skill the agent
   activates per query, and works on both runtimes (see
-  `foundry-hosted-agents` § Skill Loading).
+  `threadlight-deploy/references/hosted-agent/maf` § Skill Loading).
 - **Use MAF Workflow when**: the resolved route is
   `deterministic-workflow` / SPEC § 11e `workflow_model: "workflow"` —
   deterministic multi-phase processes where the phase order is fixed, persona
@@ -610,7 +612,7 @@ Core deployment inputs:
 - Governance requires routing through APIM (logging, rate limiting, policies)
 - You need models from a different Azure region or subscription
 
-> **See `foundry-cross-resource` skill** for the full AI Gateway setup —
+> **See `microsoft-foundry` skill** for the full AI Gateway setup —
 > APIM connection creation, `connectionName/deploymentName` pattern,
 > Bicep for managed connections, and troubleshooting.
 
@@ -621,9 +623,9 @@ When using AI Gateway:
 - **Use `authType: "AAD"` (recommended)** — no Key Vault needed. ApiKey auth requires a Key Vault on the project, which our Bicep scaffold doesn't create.
 - Works with both GHCP SDK (BYOK) and MAF (FoundryChatClient) — routing is transparent
 
-> **See `ghcp-hosted-agents` skill** for the full GHCP reference (container.py template,
+> **See `threadlight-deploy/references/hosted-agent/ghcp` reference** for the full GHCP reference (container.py template,
 > pyproject.toml, agent.yaml, invocation patterns, troubleshooting).
-> **See `foundry-hosted-agents` skill** for the full MAF reference.
+> **See `threadlight-deploy/references/hosted-agent/maf` reference** for the full MAF reference.
 
 ---
 
@@ -680,14 +682,14 @@ Default posture per target (each row tagged as **supported-now** today vs
 
 | Posture row        | demo-sandbox          | customer-pilot                  | production-bound                          | supported-now? |
 |--------------------|-----------------------|---------------------------------|-------------------------------------------|----------------|
-| Networking         | public                | public                          | private-required                          | public ✓ / private-required = **deferred** (needs `azd-patterns` VNet work) |
+| Networking         | public                | public                          | private-required                          | public ✓ / private-required = **deferred** (needs `threadlight-deploy/references/azd-modules` VNet work) |
 | Replicas           | single                | single                          | ha-min-replicas                           | ✓ (verify per-module) |
 | Model pinning      | preview-ok            | ga-pinned                       | ga-pinned                                 | ✓ (via `__MODEL_VERSION__`) |
 | Retention          | 90d                   | 90d                             | regulated-7y or customer-defined          | ✓ (Log Analytics retention param) |
 | Defender for Cloud | off + Ignore tag      | off + Ignore tag                | on + alerts                               | off ✓ / on = **deferred** (separate plan enrollment) |
 | Cost guardrails    | none                  | none                            | budget + alert rules                      | none ✓ / budgets = **deferred** |
 | Backup / DR        | none                  | none                            | Cosmos PITR + paired-region failover      | PITR ✓ (when Cosmos selected) / failover = **deferred** |
-| Continuous eval    | Plan A defaults       | Plan A defaults                 | scheduled cadence + on-call routing       | ✓ (via `foundry-evals`) |
+| Continuous eval    | Plan A defaults       | Plan A defaults                 | scheduled cadence + on-call routing       | ✓ (via `microsoft-foundry`) |
 
 ### Path 2: SPEC § 11f absent — ask the operator once
 
@@ -719,7 +721,7 @@ failure mode this gate exists to prevent:
   Contributor for PE + Defender Plan Admin)
 - **Tenant / subscription / region** — `az account show` matches
   expectation; per-tenant `AZURE_CONFIG_DIR` set per the
-  `azure-tenant-isolation` skill
+  `threadlight-tenant-isolation` skill
 - **Quota / capacity / model availability** — preflight
   `az cognitiveservices usage list` for the selected model in the chosen
   region
@@ -866,7 +868,7 @@ skills/
 These are surfaced to the agent through `SkillsProvider` (recommended,
 progressive disclosure) **or** loaded at startup by a `_load_skills()`
 helper that appends them to instructions (legacy concat). See
-`foundry-hosted-agents` § Skill Loading for the trade-off and a
+`threadlight-deploy/references/hosted-agent/maf` § Skill Loading for the trade-off and a
 production-tested defensive `_build_skills_provider()` helper.
 
 **For every generated MAF agent/executor**, apply the local
@@ -909,19 +911,19 @@ Map configured MCP servers for Foundry runtime (NOT local dev):
 | Browser Automation | **MCP ACA** — deploy Playwright as a remote MCP server | Local Playwright cannot run inside hosted agent containers. Use `npx @playwright/mcp` on ACA. |
 | Web Search | **Foundry Toolbox** — `client.get_toolbox("toolbox-name")` | Built-in Toolbox tool type. No Bing resource needed. *MAF only.* |
 | Code Interpreter | **Foundry Toolbox** — add `code_interpreter` to Toolbox | Computation and data processing. *MAF only.* |
-| File Generation | **Custom `@tool`** — `save_report` writing to `$HOME` | XLSX (openpyxl), PDF (fpdf2), CSV/HTML (text). Downloadable via session files API + FileConsentCard in Teams. *MAF only.* See `foundry-hosted-agents` skill § File Generation. |
+| File Generation | **Custom `@tool`** — `save_report` writing to `$HOME` | XLSX (openpyxl), PDF (fpdf2), CSV/HTML (text). Downloadable via session files API + FileConsentCard in Teams. *MAF only.* See `threadlight-deploy/references/hosted-agent/maf` reference § File Generation. |
 | **Knowledge sources (docs, policies, KB)** | **Foundry IQ** — Azure AI Search with agentic retrieval | For static/semi-static knowledge (policies, regulations, product docs). See `foundry-iq` skill. Creates Knowledge Base with query planning + citations. |
-| **API data (dynamic, transactional)** | **MCP ACA** — custom or mock MCP server | For live data (CRM, orders, transactions). See `foundry-mcp-aca` skill. |
-| **Cosmos DB** | **MCP ACA** — .NET MCPToolKit (10 tools out of the box) | See `foundry-mcp-aca` Option A. Deploy as `src/mcp/` or shared ACA. |
+| **API data (dynamic, transactional)** | **MCP ACA** — custom or mock MCP server | For live data (CRM, orders, transactions). See `threadlight-mcp-aca` skill. |
+| **Cosmos DB** | **MCP ACA** — .NET MCPToolKit (10 tools out of the box) | See `threadlight-mcp-aca` Option A. Deploy as `src/mcp/` or shared ACA. |
 | Azure AI Search (direct) | Foundry Toolbox or custom MCP | Use Toolbox if available, or deploy custom MCP ACA |
-| Custom data store | Custom MCP server (deploy as ACA or Azure Functions) | Proven pattern — see `foundry-mcp-aca` |
+| Custom data store | Custom MCP server (deploy as ACA or Azure Functions) | Proven pattern — see `threadlight-mcp-aca` |
 
 > **Knowledge vs API data:** Use the spec § 7 (Knowledge Sources) vs § 5 (System Integrations)
 > distinction to choose:
 > - **Knowledge sources** (documents, policies, search indexes) → **Foundry IQ** (agentic retrieval
 >   with query planning, multi-hop reasoning, citations). See `foundry-iq` skill.
 > - **API data** (CRM, ERP, transactional systems) → **MCP server** (mock or real).
->   See `foundry-mcp-aca` skill.
+>   See `threadlight-mcp-aca` skill.
 > - **Cosmos DB** → MCPToolKit as `src/mcp/` — provides 10 tools, deploy as ACA.
 
 > **Key constraints for MAF hosted agents:**
@@ -999,7 +1001,7 @@ Generate the container runtime based on the chosen variant (see Phase 1 § 1d).
 
 #### GHCP SDK variant (default)
 
-**Copy the reference template** from the `ghcp-hosted-agents` skill's
+**Copy the reference template** from the `threadlight-deploy/references/hosted-agent/ghcp` reference's
 `references/container.py` and adapt:
 
 - Model provider: BYOK with `DefaultAzureCredential` → bearer token
@@ -1016,7 +1018,7 @@ The runtime uses `CopilotClient` + `InvocationAgentServerHost`:
 
 #### MAF variant (when Toolbox or custom @tool needed)
 
-**Copy the reference template** from the `foundry-hosted-agents` companion
+**Copy the reference template** from the `threadlight-deploy/references/hosted-agent/maf` companion
 skill and adapt:
 
 The runtime uses `Agent` + `FoundryChatClient` + `ResponsesHostServer`:
@@ -1025,7 +1027,7 @@ The runtime uses `Agent` + `FoundryChatClient` + `ResponsesHostServer`:
    `context_providers=[skills_provider]` for progressive disclosure
    (recommended), **or** legacy `_load_skills()` that reads all SKILL.md
    files and appends to instructions. Pick one — never both. See
-   `foundry-hosted-agents` § Skill Loading for the trade-off.
+   `threadlight-deploy/references/hosted-agent/maf` § Skill Loading for the trade-off.
 3. `_create_mcp_tools()` creates tools via `MCPStreamableHTTPTool` with a
    `parse_tool_results` extractor (avoids the [<Content>] repr leak)
 4. `ResponsesHostServer(agent).run()` serves the Responses protocol
@@ -1260,7 +1262,7 @@ This agent deploys as a **Microsoft Foundry Hosted Agent** using the
 
 > **Tenant hygiene before `azd up`.** If you work across multiple Azure
 > tenants, set up per-tenant `AZURE_CONFIG_DIR` / `AZD_CONFIG_DIR` in
-> the calling shell **first** — see the **`azure-tenant-isolation`**
+> the calling shell **first** — see the **`threadlight-tenant-isolation`**
 > skill. Without isolation, an `azd up` here may silently deploy into
 > whatever subscription another shell last `az account set` against.
 
@@ -1284,7 +1286,7 @@ This agent deploys as a **Microsoft Foundry Hosted Agent** using the
 > your shell startup script.
 >
 > Verified working sequence (per-shell, after the alias env vars are
-> exported per `azure-tenant-isolation`):
+> exported per `threadlight-tenant-isolation`):
 >
 > ```bash
 > az login --tenant "$TENANT_ID"
@@ -1346,7 +1348,7 @@ This agent deploys as a **Microsoft Foundry Hosted Agent** using the
    `00000000-0000-0000-0000-000000000002` = Data Contributor). For a permanent
    fix, add this to the `postdeploy.py` hook in `infra/scripts/`.
 
-6. **Cosmos firewall pilot-posture (mandatory if `cosmos-db` selected) — see `foundry-mcp-aca` SKILL.md § "Cosmos firewall + ACA egress" for the full runbook.** Quick check:
+6. **Cosmos firewall pilot-posture (mandatory if `cosmos-db` selected) — see `threadlight-mcp-aca` SKILL.md § "Cosmos firewall + ACA egress" for the full runbook.** Quick check:
 
    ```bash
    az cosmosdb show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_COSMOS_ACCOUNT_NAME" \
@@ -1354,7 +1356,7 @@ This agent deploys as a **Microsoft Foundry Hosted Agent** using the
    ```
 
    If `publicNetAccess: Disabled` OR `ipRules: []` (and ACA-side writes are
-   failing), apply the runbook from `foundry-mcp-aca`. The `azd-patterns`
+   failing), apply the runbook from `threadlight-mcp-aca`. The `threadlight-deploy/references/azd-modules`
    `cosmos-db.bicep` module defaults to `pilotPosture=true` to avoid this trap
    on fresh pilots; the `ipRules` array still needs the ACA egress IP added
    post-deploy (extracted from the `ca-*-cosmos-mcp-*` ACA logs).
@@ -1471,10 +1473,10 @@ the Foundry project** for eval telemetry and agent tracing to work.
 > crashed). The agent itself is fine; only the unguarded init kills it.
 >
 > **Hosted-agent `container.py` MUST wrap the init defensively** —
-> use `init_telemetry()` from `foundry-observability`'s
+> use `init_telemetry()` from `threadlight-deploy/references/observability`'s
 > `references/python/otel_init.py`, OR inline an 8-line equivalent
 > that no-ops on missing env / SDK import / SDK raise. See the
-> `foundry-observability` skill (gap rows O-011 / O-012) for the
+> the threadlight-deploy observability reference (`references/observability`) (gap rows O-011 / O-012) for the
 > full forensic and reference helper.
 
 Add to `pyproject.toml`:
@@ -1520,7 +1522,7 @@ def main() -> None:
 
 ## Evaluations
 
-> **See the `foundry-evals` skill** for the complete evaluation guide — two-phase
+> **See the `microsoft-foundry` skill** for the complete evaluation guide — two-phase
 > invoke+score pattern, 6 built-in evaluators, RBAC for judge models, and score interpretation.
 
 ### Generated eval files
@@ -1541,10 +1543,11 @@ Each line maps directly to a scenario row in the spec.
 
 #### `tests/run_evals.py`
 
-Invoke + score script using the `foundry-evals` two-phase pattern.
-**MUST** include three Windows-survival defenses from day one — every
-PoC that has skipped them has lost full eval batches mid-run (see
-`foundry-evals` SKILL § "Eval scripts on Windows: cp1252 trap"):
+Invoke + score script using a two-phase pattern (invoke every scenario,
+then score the saved responses with the official microsoft-foundry
+`foundry-agent/observe` evaluators). **MUST** include three
+Windows-survival defenses from day one — every PoC that has skipped them
+has lost full eval batches mid-run (the Windows cp1252 console trap):
 
 1. **UTF-8 stdout wrap** so the agent's `→` / em-dashes don't crash
 2. **`safe()` ASCII-strip** on every agent string before printing
@@ -1590,7 +1593,7 @@ dataset = [json.loads(line) for line in
            Path("tests/eval_dataset.jsonl").read_text(encoding="utf-8").splitlines()
            if line.strip()]
 
-# Cold-start retry loop (foundry-evals warmup pattern)
+# Cold-start retry loop (microsoft-foundry warmup pattern)
 for attempt in range(1, 5):
     try:
         w = oai.responses.create(input="Reply 'OK' if ready.", stream=False)
@@ -1635,7 +1638,7 @@ for item in dataset:
     RESULTS_PATH.write_text(json.dumps(results, indent=2), encoding="utf-8")
     time.sleep(5)
 
-print(f"\n{len(results)} scenarios invoked. Run foundry-evals to score.")
+print(f"\n{len(results)} scenarios invoked. Run microsoft-foundry to score.")
 ```
 
 Run with `python -X utf8 tests/run_evals.py` (or set `PYTHONUTF8=1` /
@@ -1722,7 +1725,7 @@ Check every file. Mark each ✅ or fix before presenting.
 - [ ] All `__PLACEHOLDER__` tokens replaced with actual values
 - [ ] Shared UAMI: one UAMI for bot + MCP ACA + hooks; `AZURE_CLIENT_ID` set on all ACAs
 - [ ] AppInsights connection to Foundry project exists (or postprovision hook creates it)
-- [ ] **`container.py` wraps telemetry init defensively** (no raw `configure_azure_monitor()` at module/main scope — use `_init_telemetry()` or `init_telemetry()` helper that no-ops on missing env / SDK import / SDK raise; see `foundry-observability` gap O-011)
+- [ ] **`container.py` wraps telemetry init defensively** (no raw `configure_azure_monitor()` at module/main scope — use `_init_telemetry()` or `init_telemetry()` helper that no-ops on missing env / SDK import / SDK raise; see `threadlight-deploy/references/observability` gap O-011)
 
 #### SPEC § 11c module-selector cross-check (MANDATORY)
 
@@ -1807,7 +1810,7 @@ remove them.
 > FIRST before retrying.** Run `az containerapp logs show -g <rg> -n <app>
 > --type system --tail 20` for infrastructure events (port mismatch,
 > probe failures, image pull errors) and `--type console` for application
-> crashes. See `azd-patterns` § "ACA Container Debugging" for the full
+> crashes. See `threadlight-deploy/references/azd-modules` § "ACA Container Debugging" for the full
 > playbook. Never retry blind.
 
 > **Canonical implementation: `threadlight-safe-check` skill.** Invoke as
@@ -1827,7 +1830,7 @@ remove them.
 ### Step 1 ` capture deployed state
 
 ```bash
-# Make sure azure-tenant-isolation env vars are set first
+# Make sure threadlight-tenant-isolation env vars are set first
 RG=$(azd env get-value AZURE_RESOURCE_GROUP)
 az resource list -g "$RG" \
    --query "[].{type:type, name:name}" -o json > tests/deployed-resources.json
@@ -2000,7 +2003,7 @@ If it's a simple Q&A agent with built-in tools → Prompt Agent is simpler.
 - **Simpler MCP**: `mcp_servers` parameter vs manual `get_mcp_tool()` calls
 
 > Note: progressive skill loading via `SkillsProvider` is **NOT** a GHCP-only
-> feature — MAF supports it equally well. See `foundry-hosted-agents`
+> feature — MAF supports it equally well. See `threadlight-deploy/references/hosted-agent/maf`
 > § Skill Loading for the MAF wiring (`context_providers=[skills_provider]`).
 
 ### When to Use MAF Instead
@@ -2109,7 +2112,7 @@ container.py (MAF variant)
 
 ## Reference: Identity & RBAC
 
-> **See the `foundry-hosted-agents` skill** for the complete RBAC reference — identity model,
+> **See the `threadlight-deploy/references/hosted-agent/maf` reference** for the complete RBAC reference — identity model,
 > required role assignments for deployer/project MI/agent identities, manual assignment
 > commands, and RBAC propagation timing.
 
@@ -2181,20 +2184,20 @@ available for this subscription"` during `azd deploy`, try a different region.
 
 ## Reference: MCP ACA Deployment
 
-> **See the dedicated `foundry-mcp-aca` skill** for full details on deploying MCP servers
+> **See the dedicated `threadlight-mcp-aca` skill** for full details on deploying MCP servers
 > as Azure Container Apps or Azure Functions — including Cosmos DB MCPToolKit, Playwright MCP,
 > protocol requirements, Bicep modules, and authentication patterns.
 
 ### Mock Systems → Mock MCP Server
 
 For systems marked **mock** in the spec, generate a mock MCP server using
-`foundry-mcp-aca` Option D (Mock MCP). This ensures the demo agent has callable
+`threadlight-mcp-aca` Option D (Mock MCP). This ensures the demo agent has callable
 tools backed by sample data — the customer sees real MCP tool calls.
 
 For systems using **Cosmos DB**, generate a Cosmos MCPToolKit deployment using
-`foundry-mcp-aca` Option A — provides 10 tools out of the box.
+`threadlight-mcp-aca` Option A — provides 10 tools out of the box.
 
-1. Run the `foundry-mcp-aca` skill to generate `src/mcp/` from spec tool contracts
+1. Run the `threadlight-mcp-aca` skill to generate `src/mcp/` from spec tool contracts
 2. Deploy to ACA (or run locally for dev)
 3. Wire the endpoint into `src/agent/mcp-config.json`:
 
@@ -2214,7 +2217,7 @@ For systems using **Cosmos DB**, generate a Cosmos MCPToolKit deployment using
 ```
 📎 Mock Systems (demo data — swap when onboarding):
   - {system-name}: mock MCP at ${MOCK_MCP_URL}
-    → See foundry-mcp-aca skill to deploy real MCP when system is accessible.
+    → See threadlight-mcp-aca skill to deploy real MCP when system is accessible.
     → Tool contracts stay the same — only the endpoint URL changes.
 ```
 
@@ -2225,7 +2228,7 @@ For systems using **Cosmos DB**, generate a Cosmos MCPToolKit deployment using
 > **When to use.** A **static showroom** (lobby + catalog + cinematic process
 > walkthroughs) is a classic adjacent need to a hosted-agent pilot — the
 > seller wants a single URL to put on a slide that gates by Entra ID.
-> Same `azure-tenant-isolation` discipline, same `acme-shared` ACR, same
+> Same `threadlight-tenant-isolation` discipline, same `acme-shared` ACR, same
 > Communication Blue brand bar — but the **runtime is nginx, not an agent**,
 > and the **2-phase Easy Auth wiring** below is non-negotiable. This is
 > NOT modeled in SPEC § 11c (it's not a per-process agent repo); ship it
@@ -2677,7 +2680,7 @@ Replace these tokens in the generated and Phase 2 files:
 
 #### Model Version Lookup
 
-> **See the `foundry-hosted-agents` skill** for the complete model version lookup table.
+> **See the `threadlight-deploy/references/hosted-agent/maf` reference** for the complete model version lookup table.
 
 Verify with: `az cognitiveservices account list-models --resource-group <rg> --name <account> -o table`
 
@@ -2718,7 +2721,7 @@ azd up
 > modules declare ACA containers with a placeholder image
 > (`mcr.microsoft.com/azuredocs/containerapps-helloworld`). Provision
 > resets every ACA to that placeholder unless the module uses the
-> `fetch-container-image` pattern (see `azd-patterns` skill). Running
+> `fetch-container-image` pattern (see `threadlight-deploy/references/azd-modules` reference). Running
 > `azd deploy` (no service argument) rebuilds and deploys all services,
 > restoring the correct images.
 >
@@ -2815,7 +2818,7 @@ for module inclusion. Example excerpt:
 
 **Selector vocabulary is THE contract.** Use the kebab-case names from
 the SPEC template verbatim — every other place in the toolchain
-(`azd-patterns` Bicep module library, this composer) must match. Do
+(`threadlight-deploy/references/azd-modules` Bicep module library, this composer) must match. Do
 **not** invent a parallel YAML/camelCase namespace; that creates
 silent no-ops where the composer doesn't recognize the SPEC's selector
 and produces a Bicep tree missing the module the SPEC asked for.
@@ -2852,7 +2855,7 @@ supports it.
 | `retention: regulated-7y`                | `app-insights.bicep` (Log Analytics linked) | `logAnalyticsRetentionDays` | no |
 | `retention: customer-defined`            | `app-insights.bicep`                | `logAnalyticsRetentionDays` (operator-supplied integer) | no |
 | `backup_dr: pitr+failover` (PITR slice)  | `cosmos-db.bicep` (when selected)   | `enableContinuousBackup: true` | no |
-| `continuous_eval: scheduled`             | `foundry-evals` hook scaffold       | post-deploy script registration | no |
+| `continuous_eval: scheduled`             | `microsoft-foundry` hook scaffold       | post-deploy script registration | no |
 | `networking: private-required`           | `main.bicep` (top of file)          | — | **yes** → TODO comment block |
 | `defender: on`                           | `main.bicep` (top of file)          | — | **yes** → TODO comment block |
 | `cost_guardrails: budget+alerts`         | `main.bicep` (top of file)          | — | **yes** → TODO comment block |
@@ -2866,7 +2869,7 @@ declaration) so the operator sees it on review:
 // TODO(posture: production-bound, networking: private-required):
 //   `specs/deployment-posture.md` declares `private-required` networking,
 //   but this scaffold ships with public ingress. To complete the
-//   private-network posture, follow the `azd-patterns` VNet + Private
+//   private-network posture, follow the `threadlight-deploy/references/azd-modules` VNet + Private
 //   Endpoints recipe (out of scope for the current threadlight-deploy
 //   composer release). Recorded on 2026-05-23 by alex@partner.example.
 ```
@@ -2891,9 +2894,9 @@ Conditionally include based on SPEC § 11c selector rows:
 - `cosmos-db: yes` → include `cosmos-db.bicep`
 - `ai-search: yes` → include `ai-search.bicep`
 - `foundry-iq-index: yes` → include `foundry-iq-index.bicep` (delegates to `foundry-iq` skill)
-- `azure-vision`/`doc-intel`/`azure-speech` `: yes` → include corresponding modules (delegates to `foundry-doc-vision-speech` skill)
+- `azure-vision`/`doc-intel`/`azure-speech` `: yes` → include corresponding modules (delegates to `azure-ai` skill)
 - `event-grid`/`service-bus`/`storage-blob` `: yes` → include corresponding modules
-- `aca-mcp: yes` → include `aca-mcp.bicep` per server (delegates to `foundry-mcp-aca` skill)
+- `aca-mcp: yes` → include `aca-mcp.bicep` per server (delegates to `threadlight-mcp-aca` skill)
 - `aca-job: yes` → include `aca-job.bicep` per job (delegates to `threadlight-event-triggers` skill)
 - `aca-bot: yes` → include `aca-bot.bicep` (delegates to `foundry-teams-bot` skill)
 
@@ -2918,7 +2921,7 @@ see Step 4).
 // infra/main.bicep — extended by Phase 6 from the Phase 5 stub
 module uami 'modules/uami.bicep' = { /* always */ }
 module acr 'modules/acr.bicep' = { /* always */ }
-module appInsights 'modules/app-insights.bicep' = { /* always — see foundry-observability skill for layers 2 + 3 */ }
+module appInsights 'modules/app-insights.bicep' = { /* always — see threadlight-deploy observability reference (references/observability) for layers 2 + 3 */ }
 module cosmos 'modules/cosmos-db.bicep' = if (deployCosmosDb) { /* ... */ }
 
 module search 'modules/ai-search.bicep' = if (deployAiSearch) { /* ... */ }
@@ -3023,10 +3026,10 @@ hooks:
 For more than two scripts, write a `infra/scripts/postdeploy.py`
 dispatcher that invokes each subscript in order — that keeps `azure.yaml`
 stable across spec changes. The dispatcher pattern is documented in
-`azd-patterns/SKILL.md` § "Cross-platform deployment scripts".
+[`references/azd-modules/README.md`](references/azd-modules/README.md) § "Recommended: Python + `postdeploy` hook (cross-platform)".
 
 These scripts are **vendored into the project** so they don't depend on
-network access at deploy time. The factory shapes are defined by `azd-patterns`.
+network access at deploy time. The factory shapes are defined by `threadlight-deploy/references/azd-modules`.
 
 ### Step 6 — Validation
 
@@ -3054,9 +3057,9 @@ azd ai agent doctor
 > the internet at deploy time. Guessing `--runtime` is the most common first
 > failure of an automated deploy.
 
-> **The full Bicep module catalog** lives in `azd-patterns/SKILL.md` →
+> **The full Bicep module catalog** lives in [`references/azd-modules/README.md`](references/azd-modules/README.md) →
 > "Composable Bicep Module Library". This skill orchestrates inclusion;
-> azd-patterns owns the module shapes.
+> the `references/azd-modules` reference owns the module shapes.
 
 ---
 
@@ -3139,7 +3142,7 @@ hooks:
 ```
 
 The dispatcher pattern (`infra/scripts/postdeploy.py`) is documented in
-`azd-patterns/SKILL.md` § "Cross-platform deployment scripts".
+[`references/azd-modules/README.md`](references/azd-modules/README.md) § "Recommended: Python + `postdeploy` hook (cross-platform)".
 
 ### Step 4 — Verify
 
@@ -3378,7 +3381,7 @@ and the live-deploy walkthrough (from this phase).
 
 If the customer wants the deployed agent to land as a **spoke under their
 AI Governance Hub** (centralized model gateway, key vault inheritance,
-APIM policies, JWT auth), Phase 7 invokes the `citadel-spoke-onboarding`
+APIM policies, JWT auth), Phase 7 invokes the `threadlight-citadel-spoke`
 skill AFTER the base deployment is provisioned.
 
 ### Why this is opt-in (default: no)
@@ -3409,17 +3412,17 @@ governance:
     jwt_auth: true
 ```
 
-Then it hands off to `citadel-spoke-onboarding` (the **AI Citadel
+Then it hands off to `threadlight-citadel-spoke` (the **AI Citadel
 Governance Hub** is the reference implementation; the SPEC field is
 named generically because some customers run other hub products):
 
 ```
 1. Run base azd up (Phase 5 + 6 complete) — agent deploys to its own tenant
-2. Invoke citadel-spoke-onboarding skill with:
+2. Invoke threadlight-citadel-spoke skill with:
    - hub_endpoint
    - access_contracts list
    - the agent's UAMI principal (so APIM can grant it product subscription)
-3. citadel-spoke-onboarding produces:
+3. threadlight-citadel-spoke produces:
    - APIM connection in the Foundry project pointing to hub gateway
      (use Option B — Foundry Connection — NOT Option A; Option A breaks
      the keyless-by-mandate posture for threadlight pilots)
@@ -3464,7 +3467,7 @@ end. The customer can re-enable later by setting
 4. JWT auth? [yes/no, default: yes]
 ```
 
-Then proceed with the same `citadel-spoke-onboarding` handoff as Path 1.
+Then proceed with the same `threadlight-citadel-spoke` handoff as Path 1.
 The operator-provided values are equivalent to SPEC § 11b — the skill
 treats them identically.
 
@@ -3474,7 +3477,7 @@ treats them identically.
 > subscription and can check. The prompt surfaces the option without
 > forcing SPEC rewrites.
 
-> **See `citadel-spoke-onboarding` skill** for the full step-by-step
+> **See `threadlight-citadel-spoke` skill** for the full step-by-step
 > onboarding procedure, APIM access contract details, and validation
 > notebook.
 
@@ -3522,7 +3525,7 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | **Foundry project creation returns 500 InternalServerError** | **`PUT .../accounts/{account}/projects/{project}` without an `identity` block in the request body. Backend AML RP rejects with 400 (missing managed identity) but CogServices RP wraps it as 500. Affects Bicep, REST, and `azd up` — any path that creates a project without identity.** | **Add `identity: { type: 'SystemAssigned' }` to the Bicep project resource (or `"identity":{"type":"SystemAssigned"}` in REST body). The AI account also needs `allowProjectManagement: true` (set via `2025-04-01-preview` or later API). Without both, project creation silently fails. Discovered May 2026 — cost 36+ hours across 2 tenants, 5 regions, 10+ accounts before PG provided the Kusto pointer.** |
 | Agent returns empty responses | TPM too low — 429 rate limits | Use ≥300K TPM deployment |
 | **`FOUNDRY_PROJECT_ENDPOINT` in agent.yaml** | **All `FOUNDRY_*` and `AGENT_*` env vars are reserved by the platform (injected automatically)** | **Remove from `environment_variables` in agent.yaml. Container reads it via `os.environ` at runtime.** |
-| **Hosted agent returns `server_error`/`model:""` on every smoke; AppIn 0 rows; container looks healthy in `azd ai agent show`** | `container.py` calls raw `configure_azure_monitor()` as the first line of `main()` with no try/except. When the platform fails to auto-inject `APPLICATIONINSIGHTS_CONNECTION_STRING` (e.g. AppIn account-level connection persisted with `credentials: null` — see next row), the SDK raises `ValueError` and the container crashes before `ResponsesHostServer` binds. Foundry runtime then sees no agent → `server_error`. **The agent itself is fine.** | Wrap telemetry init in `_init_telemetry()` helper that no-ops on missing env / SDK ImportError / SDK exception. NEVER call `configure_azure_monitor()` raw at module/main scope. See `foundry-observability` skill, gap rows O-011 / O-012 for the full forensic and reference template. |
+| **Hosted agent returns `server_error`/`model:""` on every smoke; AppIn 0 rows; container looks healthy in `azd ai agent show`** | `container.py` calls raw `configure_azure_monitor()` as the first line of `main()` with no try/except. When the platform fails to auto-inject `APPLICATIONINSIGHTS_CONNECTION_STRING` (e.g. AppIn account-level connection persisted with `credentials: null` — see next row), the SDK raises `ValueError` and the container crashes before `ResponsesHostServer` binds. Foundry runtime then sees no agent → `server_error`. **The agent itself is fine.** | Wrap telemetry init in `_init_telemetry()` helper that no-ops on missing env / SDK ImportError / SDK exception. NEVER call `configure_azure_monitor()` raw at module/main scope. See the threadlight-deploy observability reference (`references/observability`), gap rows O-011 / O-012 for the full forensic and reference template. |
 | **AppInsights connection PUT returns 400 ValidationError on `authType: AAD`; ApiKey fallback returns 200 but GET shows `credentials: null` (silent server-side drop)** | Platform gap on account-RP scope `2025-10-01-preview` in some regions (correlation IDs available). Connection persists with `isDefault: true` but no usable secret → platform never auto-injects `APPLICATIONINSIGHTS_CONNECTION_STRING` into hosted agents | **No code workaround exists today.** Ship the agent with guarded `_init_telemetry()` (preceding row) so it functions without telemetry. File a support ticket with the correlation IDs. If AppIn telemetry is non-negotiable, pivot region (`eastus` / `northcentralus` are the best initial bets — verify auto-injection works BEFORE committing to a redeploy) |
 | **`template.kind` validation error** | **agent.yaml uses wrong schema — `template:` nesting is for `agent.manifest.yaml` (samples only)** | **Use ContainerAgent schema: `kind: hosted` at top level, NOT `template.kind`. Schema: `ContainerAgent.yaml`** |
 | **"Experience not available" on create_version** | **Region does not support hosted agents OR `ENABLE_CAPABILITY_HOST=true` (removed in refreshed preview)** | **Set `ENABLE_CAPABILITY_HOST=false` in `main.parameters.json`. Try `northcentralus`, `eastus`, `swedencentral`. Avoid `eastus2`.** |
@@ -3555,7 +3558,7 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | **Two identities in `azd ai agent show`** | Refreshed preview creates `instance_identity` + `blueprint` per agent | Both need RBAC — assign same roles to both principal IDs |
 | **MCP `server_url` invalid URI error** | `${ENV_VAR}` in mcp-config.json not set → expands to empty string → `/mcp` is not a valid URI | **Only include MCP servers with deployed endpoints. Remove entries with unresolved env vars. The container skips empty URLs, but `FoundryChatClient.get_mcp_tool()` registers them and Foundry rejects at runtime.** |
 | **Deployer needs `Azure AI Project Manager`** | The extension postdeploy hook auto-assigns `Azure AI User` to agent identity, but needs role-assignment permission to do so | **Assign `Azure AI Project Manager` to deployer on Foundry project scope. Also set `AZURE_TENANT_ID` in azd env.** |
-| **MCP ACA 200-500s cold start** | Default 0.5 CPU / scale-to-0 causes massive latency | Use 1 CPU / 2Gi minimum, set `minReplicas: 1` in Bicep (see `foundry-mcp-aca` skill) |
+| **MCP ACA 200-500s cold start** | Default 0.5 CPU / scale-to-0 causes massive latency | Use 1 CPU / 2Gi minimum, set `minReplicas: 1` in Bicep (see `threadlight-mcp-aca` skill) |
 | **Missing `[tool.setuptools] packages = []`** | GHCP SDK pyproject.toml needs it for uv to resolve correctly | Add `[tool.setuptools]\npackages = []` to pyproject.toml |
 | **Bicep missing `AZURE_AI_PROJECT_ID` output** | Postprovision/postdeploy hooks need the ARM resource ID | Bicep must output `AZURE_AI_PROJECT_ID` (full ARM resource ID, not just endpoint) |
 | **CognitiveServices API version wrong** | Using old `2024-10-01` API | Use `2025-10-01-preview` for connections and agent management |
@@ -3573,9 +3576,9 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | **Wrong built-in role GUID hard-coded in Bicep** | Easy to typo (`...406e-8b5a-...` vs `...408a-b874-...`); deploy doesn't fail until role-assignment resource provisions | **NEVER hard-code role GUIDs from memory.** Look up via `az role definition list --name "<role>" --query "[0].name" -o tsv`. Useful pins: AcrPull `7f951dda-4ed3-4680-a7ca-43fe172d538d` · KV Secrets User `4633458b-17de-408a-b874-0445c86b69e6` · KV Secrets Officer `b86a8fe4-44ce-4948-aee5-eccb2c155cd7` |
 | **`az rest --headers Content-Type=application/json` fails on Windows** ("non atteso" / "unexpected") | The `--headers` flag has inconsistent parsing between az CLI versions and locales | For redirect-URI updates, use `az ad app update --id <appId> --web-redirect-uris uri1 uri2 …` (replaces the full array — read existing first, merge, then update) |
 | **`az ad app credential reset` without `--append` blows away other secrets** | Default behavior is REPLACE, not append | Always pass `--append --display-name <label>`. Verify with `az ad app credential list --id <appId>` after |
-| **Redeploying ANY MCP service (`azd deploy <mcp>`) silently breaks the running agent** — every tool call returns `404 Session not found`, agent self-reports `case read failed` / `query failed` on EVERY call, MCP container is `Healthy`, MCP logs show `POST /mcp HTTP/1.1" 404 Not Found` WITHOUT a preceding `new transport with session ID: ...` line | Agent's MCP client caches the `mcp-session-id` from the previous initialize handshake. New MCP container = sessions wiped. Agent does NOT auto-re-handshake on `Session not found`. External probes to `/mcp` with proper Accept headers return `200 OK` — confirming the path is fine, the SESSION is gone | **Treat MCP + agent as a coupled deploy pair on running pilots.** After `azd deploy <mcp-service>`, also run `azd deploy <agent-service>` (creates new agent version, fresh MCP session pool) AND restart the bot replica: `az containerapp revision restart -g <rg> -n <bot-aca> --revision $(az containerapp revision list -g <rg> -n <bot-aca> --query "[?properties.active] | [0].name" -o tsv)`. Alternative: wait ~15 min idle for refreshed-preview auto-deprovision. See `foundry-mcp-aca` skill v1.0.3 for the full diagnostic table (FastMCP 3.x mount-path 404 vs stale-session 404). |
+| **Redeploying ANY MCP service (`azd deploy <mcp>`) silently breaks the running agent** — every tool call returns `404 Session not found`, agent self-reports `case read failed` / `query failed` on EVERY call, MCP container is `Healthy`, MCP logs show `POST /mcp HTTP/1.1" 404 Not Found` WITHOUT a preceding `new transport with session ID: ...` line | Agent's MCP client caches the `mcp-session-id` from the previous initialize handshake. New MCP container = sessions wiped. Agent does NOT auto-re-handshake on `Session not found`. External probes to `/mcp` with proper Accept headers return `200 OK` — confirming the path is fine, the SESSION is gone | **Treat MCP + agent as a coupled deploy pair on running pilots.** After `azd deploy <mcp-service>`, also run `azd deploy <agent-service>` (creates new agent version, fresh MCP session pool) AND restart the bot replica: `az containerapp revision restart -g <rg> -n <bot-aca> --revision $(az containerapp revision list -g <rg> -n <bot-aca> --query "[?properties.active] | [0].name" -o tsv)`. Alternative: wait ~15 min idle for refreshed-preview auto-deprovision. See `threadlight-mcp-aca` skill v1.0.3 for the full diagnostic table (FastMCP 3.x mount-path 404 vs stale-session 404). |
 
-> **See `foundry-hosted-agents`** for additional troubleshooting, migration guide,
+> **See `threadlight-deploy/references/hosted-agent/maf`** for additional troubleshooting, migration guide,
 > and detailed RBAC scenarios.
 
 ---
@@ -3585,25 +3588,25 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | Skill | Use When |
 |-------|----------|
 | [**threadlight-design**](../threadlight-design/) | Spec out the business process first (produces specs/ + AGENTS.md + skills that this skill consumes) |
-| [**foundry-hosted-agents**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-hosted-agents/) | Reference for RBAC, identity model, agent.yaml schema, dependencies, troubleshooting |
+| [**threadlight-deploy/references/hosted-agent/maf**](references/hosted-agent/maf/README.md) | Reference for RBAC, identity model, agent.yaml schema, dependencies, troubleshooting |
 | [**foundry-iq**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-iq/) | **Default for every process** — provisions the AI Search index + Knowledge Agent (consumed in Phase 6 via `foundry-iq-index.bicep`) |
-| [**foundry-doc-vision-speech**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-doc-vision-speech/) | Vision / Document Intelligence / Speech models — consumed in Phase 6 when SPEC § 7b selects them |
+| [**azure-ai**](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/azure-ai) | Vision / Document Intelligence / Speech models — consumed in Phase 6 when SPEC § 7b selects them |
 | [**foundry-teams-bot**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-teams-bot/) | Deep dive on Teams bot integration (bot.py, manifest, Bicep, sideloading) |
-| [**foundry-mcp-aca**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-mcp-aca/) | Deploy custom MCP servers as ACA or Azure Functions |
-| [**foundry-evals**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-evals/) | Evaluate agent quality + **continuous evaluation**: Plan A (default) Foundry built-in scheduled evals, Plan B (fallback) ACA Job (reads SPEC § 9 KPI table) |
-| [**threadlight-safe-check**](../threadlight-safe-check/) | **Mandatory post-deploy completeness gate** — invoked from `predeploy` / `postdeploy` hooks; verifies every SPEC § 11c selector maps to deployed resources, all channels reach, all jobs are wired. Run this before declaring victory or kicking off `foundry-evals` |
+| [**threadlight-mcp-aca**](../threadlight-mcp-aca/SKILL.md) | Deploy custom MCP servers as ACA or Azure Functions |
+| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Evaluate agent quality + **continuous evaluation**: Plan A (default) Foundry built-in scheduled evals, Plan B (fallback) ACA Job (reads SPEC § 9 KPI table) |
+| [**threadlight-safe-check**](../threadlight-safe-check/) | **Mandatory post-deploy completeness gate** — invoked from `predeploy` / `postdeploy` hooks; verifies every SPEC § 11c selector maps to deployed resources, all channels reach, all jobs are wired. Run this before declaring victory or kicking off `microsoft-foundry` |
 | [**threadlight-production-ready**](../threadlight-production-ready/) | **Advisory production-readiness gate** — runs *after* a green `--phase post-deploy`. Walks 13 cross-cutting pillars (network/AGT/IAM/secrets/observability/evals/RAI/HITL/supply-chain/cost/reliability/SRE/model-lifecycle), resolves Citadel-spoke vs AGT vs standard AI gateway from SPEC § 12, and produces a customer-facing hand-off report + JSON scorecard. Soft advisory — never fails the deploy |
-| [**foundry-observability**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-observability/) | **Always layered into deploy from day one.** Owns the 3-layer telemetry pattern (Bicep substrate → Foundry account-level AppIn connection → `configure_azure_monitor()` in each ACA workload). Without this, `azd up` returns 0 but App Insights stays empty for the entire pilot lifetime — the silent gap observed in recent pilots. The post-deploy hook MUST call `connect_foundry_appinsights.py` and every ACA workload entry point MUST start with `init_telemetry(role=...)` |
+| [**threadlight-deploy/references/observability**](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/references/observability/README.md) | **Always layered into deploy from day one.** Owns the 3-layer telemetry pattern (Bicep substrate → Foundry account-level AppIn connection → `configure_azure_monitor()` in each ACA workload). Without this, `azd up` returns 0 but App Insights stays empty for the entire pilot lifetime — the silent gap observed in recent pilots. The post-deploy hook MUST call `connect_foundry_appinsights.py` and every ACA workload entry point MUST start with `init_telemetry(role=...)` |
 | [**threadlight-local-test**](../threadlight-local-test/) | **For SEs.** Optional fast inner-loop before `azd up` — run the designed agent locally (FoundryChatClient + FastMCP + workspace + sample data) in Copilot CLI / Cowork / Clawpilot. Skip when the spec is a one-shot demo or already-deployed pilot |
 | [**threadlight-workspace-ui**](../threadlight-workspace-ui/) | Generates the operator workspace from SPEC § 8b (case-list, inbox, dashboard, console, kanban, map) |
 | [**threadlight-hitl-patterns**](../threadlight-hitl-patterns/) | Generates Adaptive Cards + audit trail for SPEC § 8 action gates |
 | [**threadlight-event-triggers**](../threadlight-event-triggers/) | Generates trigger receivers from SPEC § 10b (ACA Job cron/manual, Functions, ACA consumer) |
 | [**threadlight-demo-data-factory**](../threadlight-demo-data-factory/) | Generates realistic demo data when SPEC § 5 marks any system as `mock` |
-| [**ghcp-hosted-agents**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/ghcp-hosted-agents/) | Canonical runtime implementation companion — deep reference for the `default-agent` route (GHCP SDK + Invocations, container.py template, long-running agents >120s) |
-| [**citadel-spoke-onboarding**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/citadel-spoke-onboarding/) | **Phase 7 (opt-in)** — onboards as a spoke under an AI Governance Hub when SPEC § 11b sets `governance_hub.required: yes` |
-| [**foundry-cross-resource**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-cross-resource/) | AI Gateway (APIM) — use models from another Foundry resource or shared pool |
-| [**azure-tenant-isolation**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azure-tenant-isolation/) | Per-tenant `AZURE_CONFIG_DIR` / `AZD_CONFIG_DIR` so `azd up` always lands in the right tenant + subscription |
-| [**azd-patterns**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azd-patterns/) | `azd` hooks, ACA job deployment, **Composable Bicep Module Library** (the source of every module Phase 6 includes) |
+| [**threadlight-deploy/references/hosted-agent/ghcp**](references/hosted-agent/ghcp/README.md) | Canonical runtime implementation companion — deep reference for the `default-agent` route (GHCP SDK + Invocations, container.py template, long-running agents >120s) |
+| [**threadlight-citadel-spoke**](../threadlight-citadel-spoke/SKILL.md) | **Phase 7 (opt-in)** — onboards as a spoke under an AI Governance Hub when SPEC § 11b sets `governance_hub.required: yes` |
+| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | AI Gateway (APIM) — use models from another Foundry resource or shared pool |
+| [**threadlight-tenant-isolation**](../threadlight-tenant-isolation/SKILL.md) | Per-tenant `AZURE_CONFIG_DIR` / `AZD_CONFIG_DIR` so `azd up` always lands in the right tenant + subscription |
+| [**threadlight-deploy/references/azd-modules**](references/azd-modules/README.md) | `azd` hooks, ACA job deployment, **Composable Bicep Module Library** (the source of every module Phase 6 includes) |
 
 ## See also — official Azure Skills
 
@@ -3613,4 +3616,4 @@ to replace it. For first-party depth behind this deploy leg, reach for the offic
 reading, not a dependency* — Threadlight's guidance stays the source of truth for
 the pilot flow:
 
-- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/main/skills/microsoft-foundry/SKILL.md)** — first-party `azd`-based **model deployment + hosted-agent create/run**; the platform surface Phase 5's `azd ai agent` scaffold builds on.
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — first-party `azd`-based **model deployment + hosted-agent create/run**; the platform surface Phase 5's `azd ai agent` scaffold builds on.

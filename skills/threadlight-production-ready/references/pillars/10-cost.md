@@ -110,7 +110,7 @@ projection" section.
 | Finding | Skill |
 |---|---|
 | PAYG/PTU analysis | `paygo-ptu-cost-analyzer` |
-| Budget / alert wiring | `azd-patterns` |
+| Budget / alert wiring | `threadlight-deploy/references/azd-modules` |
 | Idle resource cleanup | (manual) |
 | COST-005 tightened + COST-006 | `threadlight-consumption-iq` |
 | COST-007 meter coverage (not-priceable / not-verified lines) | `threadlight-consumption-iq` (recipe `references/remediation-recipes/COST-007.md`) |

@@ -89,7 +89,7 @@ address every `must-fix` and either fix or waive every `should-fix`.
 | ID | Status | Title | Evidence | Remediation |
 |---|---|---|---|---|
 | `NET-001` | `pass` | SPEC § 12 declares `target_posture` | `EV-001` | n/a |
-| `NET-501` | `must-fix` | APIM Foundry connection missing in hub | `EV-101` | `citadel-spoke-onboarding` |
+| `NET-501` | `must-fix` | APIM Foundry connection missing in hub | `EV-101` | `threadlight-citadel-spoke` |
 | … |  |  |  |  |
 
 #### Data residency sub-section
@@ -107,16 +107,16 @@ address every `must-fix` and either fix or waive every `should-fix`.
 
 ## 6. Uplift plan
 
-Ordered remediation steps. Each step links to the awesome-gbb skill
+Ordered remediation steps. Each step links to the sibling skill (official first)
 that fixes it. Run each step's skill in a fresh Copilot session, then
 re-run this skill to verify.
 
-### Step 1 — `citadel-spoke-onboarding` *(unblocks `NET-501`, `NET-502`)*
+### Step 1 — `threadlight-citadel-spoke` *(unblocks `NET-501`, `NET-502`)*
 
 > "Onboard a Foundry project as a spoke into an AI Citadel Governance Hub.
 > Covers Access Contracts, APIM connections, product policies, JWT auth."
 
-### Step 2 — `azd-patterns` *(unblocks `SEC-001`, `SEC-002`, `SUP-001`)*
+### Step 2 — `threadlight-deploy/references/azd-modules` *(unblocks `SEC-001`, `SEC-002`, `SUP-001`)*
 
 > "Tips and patterns for Azure Developer CLI (azd) workflows…"
 
@@ -144,7 +144,7 @@ _v1: high-level reminders only. For deep PAYG vs PTU analysis, run `paygo-ptu-co
 
 ## 8. Outcome KPI scorecard
 
-> Source: joined outcome evidence from the latest `foundry-evals` run,
+> Source: joined outcome evidence from the latest `microsoft-foundry` run,
 > reconciled Azure actuals, and live telemetry/traces.
 
 | KPI signal | Value | Source |

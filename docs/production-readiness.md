@@ -516,7 +516,7 @@ cleanup. Broader acceptance/deployment verification is separate.
 
 > *Green `safe-check` proves a pilot is structurally complete and behaves. It does not prove the customer's CISO, SRE, FinOps and network architect can sign off on it. That conversation needs an evidence-backed artefact — produced in one command, not weeks of tribal-knowledge assembly.*
 
-This page is the long-form companion to the [`threadlight-production-ready`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md) skill. It explains **what production-readiness means in the threadlight chain**, the **three postures** a pilot can target, the **thirteen cross-cutting pillars** the skill scores, the **status taxonomy** that surfaces what's actually blocking go-live, and the **two moments per pilot lifecycle** when you run it.
+This page is the long-form companion to the [`threadlight-production-ready`](../skills/threadlight-production-ready/SKILL.md) skill. It explains **what production-readiness means in the threadlight chain**, the **three postures** a pilot can target, the **thirteen cross-cutting pillars** the skill scores, the **status taxonomy** that surfaces what's actually blocking go-live, and the **two moments per pilot lifecycle** when you run it.
 
 ---
 
@@ -555,7 +555,7 @@ The report is **the conversation starter** with the customer's production team. 
 
 ## 3. The three postures
 
-A pilot's production posture is **resolved from SPEC § 12** (the production-readiness section of the threadlight SPEC). The skill ships a [`spec-section-12-template.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/spec-section-12-template.md) for authoring it. If § 12 is missing, posture falls back to `standard-ai-gateway` and an `RDY-002` finding surfaces "author § 12 before the architecture review."
+A pilot's production posture is **resolved from SPEC § 12** (the production-readiness section of the threadlight SPEC). The skill ships a [`spec-section-12-template.md`](../skills/threadlight-production-ready/references/spec-section-12-template.md) for authoring it. If § 12 is missing, posture falls back to `standard-ai-gateway` and an `RDY-002` finding surfaces "author § 12 before the architecture review."
 
 ### 🛡️ Citadel spoke *(default · recommended)*
 
@@ -569,7 +569,7 @@ receipt evidence; do not assume a shared audit chain from topology alone.
 
 **Right when** the customer tenant already has — or is provisioning — Citadel. This is the GBB AI Apps recommended posture for any new pilot.
 
-Remediation skills: [`citadel-spoke-onboarding`](https://github.com/aiappsgbb/awesome-gbb), [`citadel-hub-deploy`](https://github.com/aiappsgbb/awesome-gbb), [`foundry-agt`](https://github.com/aiappsgbb/awesome-gbb).
+Remediation skills: [`threadlight-citadel-spoke`](../skills/threadlight-citadel-spoke/SKILL.md), [`threadlight-citadel-hub`](../skills/threadlight-citadel-hub/SKILL.md), [`threadlight-govern/references/agt-inprocess`](../skills/threadlight-govern/references/agt-inprocess/README.md).
 
 ### 🧬 Native selected runtime enforcement
 
@@ -580,7 +580,7 @@ alone do not establish runtime enforcement. See the lifecycle above.
 
 **Right when** the customer is in a greenfield or experimental tenant where introducing APIM mid-pilot would be premature. Still produces auditable evidence; just operates one defence layer instead of two.
 
-Remediation skills: [`foundry-agt`](https://github.com/aiappsgbb/awesome-gbb), [`foundry-observability`](https://github.com/aiappsgbb/awesome-gbb).
+Remediation skills: [`threadlight-govern/references/agt-inprocess`](../skills/threadlight-govern/references/agt-inprocess/README.md), [`threadlight-deploy/references/observability`](../skills/threadlight-deploy/references/observability/README.md).
 
 ### 🌐 Standard AI gateway / VNet
 
@@ -588,7 +588,7 @@ Brownfield or regulated estate with an **existing APIM**, NetSec-controlled **VN
 
 **Right when** the customer's NetSec team owns the perimeter and the pilot has to slot in behind it. The skill scores against that perimeter's contract (private endpoints, allowlists, JWT validation) rather than Citadel's.
 
-Remediation skills: [`foundry-vnet-deploy`](https://github.com/aiappsgbb/awesome-gbb), [`foundry-hosted-agents`](https://github.com/aiappsgbb/awesome-gbb), [`azure-tenant-isolation`](https://github.com/aiappsgbb/awesome-gbb).
+Remediation skills: [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry), [`threadlight-deploy/references/hosted-agent/maf`](../skills/threadlight-deploy/references/hosted-agent/maf/README.md), [`threadlight-tenant-isolation`](../skills/threadlight-tenant-isolation/SKILL.md).
 
 > **Hybrid is supported.** `--target hybrid` runs Citadel checks where applicable and AGT checks where Citadel artefacts are missing. Useful for pilots mid-uplift.
 
@@ -600,19 +600,19 @@ Every pillar has its own [reference doc under `references/pillars/`](https://git
 
 | # | Pillar | What "good" looks like | Primary remediation skill |
 |---|---|---|---|
-| 1 | [`network-posture`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); **data-residency sub-scored** (model region, APIM region, data-plane regions, backups, cross-border support) | `citadel-spoke-onboarding`, `foundry-vnet-deploy` |
-| 2 | [`agent-governance`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/02-agent-governance.md) | Current selected-binding v1 evidence; exact policy/config/deployment and live-proof requirements, not import or policy-file presence | `threadlight-govern`, `threadlight-governed-actions` |
-| 3 | [`identity-access`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/03-identity-access.md) | Workloads use **managed identity**; **no client secrets**; RBAC least-privilege; Key Vault access via RBAC not access policies; **agent (non-human) identity governed** &mdash; passwordless binding, named owner, least-privilege scope, lifecycle/review (emits `agent-identity.json`) | `foundry-hosted-agents`, `entra-agent-id`, `foundry-agt`, `azure-tenant-isolation` |
-| 4 | [`secrets`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `azd-patterns`, `foundry-hosted-agents` |
-| 5 | [`observability`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `foundry-observability` |
-| 6 | [`continuous-evals`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/06-continuous-evals.md) | SPEC § 9 scenarios scheduled (Plan A or Plan B); threshold alerts wired; last run within freshness window; eval datasets stored | `foundry-evals` |
-| 7 | [`responsible-ai`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/07-responsible-ai.md) | Content filters, jailbreak shields, grounded-language eval; AGT RAI policy; PII redaction declared; allow/deny tested | `foundry-agt`, `foundry-evals` |
-| 8 | [`hitl-audit`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/08-hitl-audit.md) | If SPEC § 8 declares gates: wired, persistent audit trail, escalation channel reachable, idempotent | `threadlight-hitl-patterns` |
-| 9 | [`supply-chain`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/09-supply-chain.md) | Container images **pinned by digest**; Bicep modules pinned; dependency scanning enabled; SBOM emitted | `azd-patterns` |
-| 10 | [`cost`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/10-cost.md) | Pricing plan declared (PAYG vs PTU); budget + anomaly alerts wired; forecast vs budget cap; idle-resource sweep done | `paygo-ptu-cost-analyzer` |
-| 11 | [`reliability`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/11-reliability.md) | Multi-region plan vs RTO/RPO from § 12; **backup/restore tested** (not just "configured"); runbook exists; chaos test done | `foundry-vnet-deploy` |
-| 12 | [`sre-handover`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/12-sre-handover.md) | **Evidence-based:** incident owner + escalation path; runbook links; alert destinations; SRE Agent resource/recipe if selected; handoff acceptance signed | `azure-sre-agent` |
-| 13 | [`model-lifecycle`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/pillars/13-model-lifecycle.md) | Model deployment **names + versions pinned** (no `latest`); fallback model declared; retirement-notice owner; A/B or rollback strategy; region/capacity documented | `paygo-ptu-cost-analyzer`, `foundry-hosted-agents` |
+| 1 | [`network-posture`](../skills/threadlight-production-ready/references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); **data-residency sub-scored** (model region, APIM region, data-plane regions, backups, cross-border support) | `threadlight-citadel-spoke`, `microsoft-foundry` |
+| 2 | [`agent-governance`](../skills/threadlight-production-ready/references/pillars/02-agent-governance.md) | Current selected-binding v1 evidence; exact policy/config/deployment and live-proof requirements, not import or policy-file presence | `threadlight-govern`, `threadlight-governed-actions` |
+| 3 | [`identity-access`](../skills/threadlight-production-ready/references/pillars/03-identity-access.md) | Workloads use **managed identity**; **no client secrets**; RBAC least-privilege; Key Vault access via RBAC not access policies; **agent (non-human) identity governed** &mdash; passwordless binding, named owner, least-privilege scope, lifecycle/review (emits `agent-identity.json`) | `threadlight-deploy/references/hosted-agent/maf`, `entra-agent-id`, `threadlight-govern/references/agt-inprocess`, `threadlight-tenant-isolation` |
+| 4 | [`secrets`](../skills/threadlight-production-ready/references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `threadlight-deploy/references/azd-modules`, `threadlight-deploy/references/hosted-agent/maf` |
+| 5 | [`observability`](../skills/threadlight-production-ready/references/pillars/05-observability.md) | App Insights connected at **account-level** (Foundry); OTel emit verified (recent traces); alert rules wired; workbook + retention declared | `microsoft-foundry` |
+| 6 | [`continuous-evals`](../skills/threadlight-production-ready/references/pillars/06-continuous-evals.md) | SPEC § 9 scenarios scheduled (Plan A or Plan B); threshold alerts wired; last run within freshness window; eval datasets stored | `microsoft-foundry` |
+| 7 | [`responsible-ai`](../skills/threadlight-production-ready/references/pillars/07-responsible-ai.md) | Content filters, jailbreak shields, grounded-language eval; AGT RAI policy; PII redaction declared; allow/deny tested | `threadlight-govern/references/agt-inprocess`, `microsoft-foundry` |
+| 8 | [`hitl-audit`](../skills/threadlight-production-ready/references/pillars/08-hitl-audit.md) | If SPEC § 8 declares gates: wired, persistent audit trail, escalation channel reachable, idempotent | `threadlight-hitl-patterns` |
+| 9 | [`supply-chain`](../skills/threadlight-production-ready/references/pillars/09-supply-chain.md) | Container images **pinned by digest**; Bicep modules pinned; dependency scanning enabled; SBOM emitted | `threadlight-deploy/references/azd-modules` |
+| 10 | [`cost`](../skills/threadlight-production-ready/references/pillars/10-cost.md) | Pricing plan declared (PAYG vs PTU); budget + anomaly alerts wired; forecast vs budget cap; idle-resource sweep done | `paygo-ptu-cost-analyzer` |
+| 11 | [`reliability`](../skills/threadlight-production-ready/references/pillars/11-reliability.md) | Multi-region plan vs RTO/RPO from § 12; **backup/restore tested** (not just "configured"); runbook exists; chaos test done | `microsoft-foundry` |
+| 12 | [`sre-handover`](../skills/threadlight-production-ready/references/pillars/12-sre-handover.md) | **Evidence-based:** incident owner + escalation path; runbook links; alert destinations; SRE Agent resource/recipe if selected; handoff acceptance signed | `azure-sre-agent` |
+| 13 | [`model-lifecycle`](../skills/threadlight-production-ready/references/pillars/13-model-lifecycle.md) | Model deployment **names + versions pinned** (no `latest`); fallback model declared; retirement-notice owner; A/B or rollback strategy; region/capacity documented | `paygo-ptu-cost-analyzer`, `threadlight-deploy/references/hosted-agent/maf` |
 
 > **Current governance authority:** selected-binding v1 evidence is evaluated by
 > the shared validator. `--agt-profile` retains legacy capability diagnostics;
@@ -669,7 +669,7 @@ Every live probe stamps a `captured_at` timestamp (ISO 8601 UTC, second precisio
 | `safe-check --phase post-deploy` returned green and the customer wants to talk about production | Pinned catalog invocation below, without `--static` after approving live reads | Markdown report + JSON manifest, all 13 pillars, live + static |
 | Customer architecture review in 3 days, posture is known | Same invocation with `--target citadel-spoke` | Same, scored against the declared target |
 | Pilot has been parked for weeks; someone asks "could we ship this?" | Same invocation with `--static --no-rights-probe` | Static scorecard; still requires valid, fresh, matching safe-check input |
-| Inherited a pilot whose SPEC has no § 12 | Skill still runs — falls back to `standard-ai-gateway`; `RDY-002` surfaces "author § 12" | Author § 12 from the [template](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/spec-section-12-template.md), re-run for full scorecard |
+| Inherited a pilot whose SPEC has no § 12 | Skill still runs — falls back to `standard-ai-gateway`; `RDY-002` surfaces "author § 12" | Author § 12 from the [template](../skills/threadlight-production-ready/references/spec-section-12-template.md), re-run for full scorecard |
 | Historical AGT v4 inspection | Add `--pillar agent-governance --agt-profile v4_preview` | Legacy compatibility diagnostics only, never current v1 runtime readiness |
 | Customer accepted some `must-fix` findings as risk | Author `tests/production-readiness-waivers.json`, re-run | Report shows `score_with_waivers` + `would_fail_hard_gate` flags |
 
@@ -685,14 +685,14 @@ This skill is **the cross-cutting scorecard.** It does not replace any of the fo
 | Running `azd up` | `threadlight-deploy` |
 | Generating the prod CI/CD pipeline + env (UAMI / federated creds, RBAC, private-VNet runners) | `threadlight-cicd` |
 | Structural / behavioural deploy gate | `threadlight-safe-check --phase post-deploy` |
-| Invocation testing of the agent | `foundry-evals` |
-| Wiring App Insights / OTel | `foundry-observability` |
-| Provisioning Citadel hub | `citadel-hub-deploy` |
-| Onboarding spoke to Citadel | `citadel-spoke-onboarding` |
+| Invocation testing of the agent | `microsoft-foundry` |
+| Wiring App Insights / OTel | `threadlight-deploy/references/observability` |
+| Provisioning Citadel hub | `threadlight-citadel-hub` |
+| Onboarding spoke to Citadel | `threadlight-citadel-spoke` |
 | Provisioning Azure SRE Agent | `azure-sre-agent` |
 | Authoring selected native policy/host/service bindings | `threadlight-govern`, `threadlight-governed-actions` |
-| Generating Bicep / Terraform | `azd-patterns`, `azureterraform`, `bicepschema` |
-| Deploying to a VNet-injected Foundry | `foundry-vnet-deploy` |
+| Generating Bicep / Terraform | `threadlight-deploy/references/azd-modules`, `azureterraform`, `bicepschema` |
+| Deploying to a VNet-injected Foundry | `microsoft-foundry` |
 
 **This skill recommends, never executes.** Every `must-fix` and `should-fix` links to the remediation skill above. The operator (or a follow-up Copilot session) runs that skill.
 
@@ -827,7 +827,7 @@ structural/evidence gate; production-ready supports `--gate-preview` and human
 review. This skill is the **bridge** from a working pilot to an evidence-based
 production decision, not permission to skip unresolved findings.
 
-**Then the pilot ships through a pipeline, not a laptop.** Once the scorecard is green, [`threadlight-cicd`](https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd) generates the production deploy pipeline (GitHub Actions / Azure DevOps) and the env-setup runbooks the platform team runs — OIDC/WIF identity, least-privilege RBAC scoped to the spoke RG, and private-VNet runners — because in a real customer tenant the agent rarely has rights to run `azd up` itself. It is a deliberate **manual handoff** (not part of the auto chain), and it stays a **separate repo/pipeline** from the central platform: it never touches the Citadel hub, shared APIM, or platform networking — those remain `citadel-hub-deploy`.
+**Then the pilot ships through a pipeline, not a laptop.** Once the scorecard is green, [`threadlight-cicd`](https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd) generates the production deploy pipeline (GitHub Actions / Azure DevOps) and the env-setup runbooks the platform team runs — OIDC/WIF identity, least-privilege RBAC scoped to the spoke RG, and private-VNet runners — because in a real customer tenant the agent rarely has rights to run `azd up` itself. It is a deliberate **manual handoff** (not part of the auto chain), and it stays a **separate repo/pipeline** from the central platform: it never touches the Citadel hub, shared APIM, or platform networking — those remain `threadlight-citadel-hub`.
 
 Both direct generation and production-ready `--scaffold-cicd` now use the same
 [verified-release contract](../skills/threadlight-cicd/references/release-contract.md).
@@ -846,14 +846,14 @@ certify production or replace current selected-binding governance evidence.
 ## Read next
 
 - **Real endpoint, retrieval and load evidence:** [Connect](../skills/threadlight-connect/SKILL.md), [Ground](../skills/threadlight-ground/SKILL.md) and [Load test](../skills/threadlight-loadtest/SKILL.md) remain separately selected workflows with their own prerequisites and evidence.
-- **Full skill metadata + invocation patterns:** [`skills/threadlight-production-ready/SKILL.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md)
-- **Author SPEC § 12 from scratch:** [`references/spec-section-12-template.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/spec-section-12-template.md)
-- **Pre-go-live handoff checklist:** [`references/handoff-checklist.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/handoff-checklist.md)
-- **Generate the prod CI/CD pipeline + env (UAMI/federated creds, RBAC, private-VNet runners):** [`threadlight-cicd`](https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd) · [onboarding-path decision tree](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-cicd/references/onboarding-path-decision.md)
-- **Per-pillar Azure RBAC for live probes:** [`references/live-probe-permissions.md`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/live-probe-permissions.md)
-- **Sample CI workflow (PR comments + artefacts):** [`references/ci-github-actions.yml`](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/references/ci-github-actions.yml)
+- **Full skill metadata + invocation patterns:** [`skills/threadlight-production-ready/SKILL.md`](../skills/threadlight-production-ready/SKILL.md)
+- **Author SPEC § 12 from scratch:** [`references/spec-section-12-template.md`](../skills/threadlight-production-ready/references/spec-section-12-template.md)
+- **Pre-go-live handoff checklist:** [`references/handoff-checklist.md`](../skills/threadlight-production-ready/references/handoff-checklist.md)
+- **Generate the prod CI/CD pipeline + env (UAMI/federated creds, RBAC, private-VNet runners):** [`threadlight-cicd`](https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-cicd) · [onboarding-path decision tree](../skills/threadlight-cicd/references/onboarding-path-decision.md)
+- **Per-pillar Azure RBAC for live probes:** [`references/live-probe-permissions.md`](../skills/threadlight-production-ready/references/live-probe-permissions.md)
+- **Sample CI workflow (PR comments + artefacts):** [`references/ci-github-actions.yml`](../skills/threadlight-production-ready/references/ci-github-actions.yml)
 - **End-to-end workshop (1 hour, includes a production-readiness pass):** [WORKSHOP-1H-QUICKSTART.md](WORKSHOP-1H-QUICKSTART.md)
-- **The whole threadlight chain (technical briefing):** [THREADLIGHT.md](https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md)
+- **The whole threadlight chain (technical briefing):** [THREADLIGHT.md](../THREADLIGHT.md)
 - **Foundational skills (Citadel, AGT, Foundry, SRE Agent):** [awesome-gbb](https://aiappsgbb.github.io/awesome-gbb/)
 
 ---

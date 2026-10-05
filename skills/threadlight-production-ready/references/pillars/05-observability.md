@@ -12,8 +12,8 @@
 > verified by real recent traces? Are alert rules wired? Workbook?
 > Retention?
 
-This pillar partners with `foundry-observability` — the awesome-gbb
-skill that does the wiring. This skill **verifies the wiring took
+This pillar partners with `threadlight-deploy/references/observability` — the Threadlight-owned
+reference that does the wiring. This skill **verifies the wiring took
 effect**.
 
 ## Checks
@@ -127,7 +127,7 @@ For production, at minimum:
 | Container restart count > N / hour | Detects crash loop |
 | Token usage spike beyond budget anomaly threshold | Cost guardrail (also covered in pillar 10) |
 
-These map to the `foundry-observability` reference workbook + alert
+These map to the `threadlight-deploy/references/observability` reference workbook + alert
 catalogue.
 
 ## Common gaps
@@ -145,11 +145,11 @@ catalogue.
 
 | Finding | Skill |
 |---|---|
-| Wire AppIn at account-level | `foundry-observability` |
-| Add OTel init to workload | `foundry-observability` (workload patterns) |
-| Add alert rules | `foundry-observability` |
-| Deploy reference workbook | `foundry-observability` |
-| Extend retention | `azd-patterns` |
+| Wire AppIn at account-level | `threadlight-deploy/references/observability` |
+| Add OTel init to workload | `threadlight-deploy/references/observability` (workload patterns) |
+| Add alert rules | `threadlight-deploy/references/observability` |
+| Deploy reference workbook | `threadlight-deploy/references/observability` |
+| Extend retention | `threadlight-deploy/references/azd-modules` |
 
 ## Why this pillar matters
 

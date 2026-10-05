@@ -8,7 +8,7 @@ to decide*, not *what exists*:
   `references/speckit-template.md` § 7b. This file does not duplicate it.
 - **The authoritative, always-current model matrix** (families, dated versions,
   regional availability, TPM ceilings) lives in the foundry skill catalog —
-  [`foundry-skill-catalog`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-skill-catalog/).
+  [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry).
   Model availability moves faster than this skill ships; when a version or region
   named here looks stale, the catalog wins.
 
@@ -208,7 +208,7 @@ invalidate an otherwise-fine region choice, so settle it before pinning the regi
 
 The seven values populate **`specs/foundation.md` § 2 (Model & capacity)**, which
 `threadlight-design` Step 3 pre-populates into **SPEC § 7b (AI Services & Model
-Selection)** — the input contract for `foundry-doc-vision-speech` and the
+Selection)** — the input contract for `azure-ai` and the
 `azure.yaml` `config.deployments` block. Decide once, here; everything downstream
 carries the values instead of re-deciding them. A later approved A/B outcome
 revises that decision through the same authority chain, not an environment-only

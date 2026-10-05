@@ -245,7 +245,7 @@ policy layer accepted the spec, or deploy anything.
 | § 3. Business Rules | § 4 | — |
 | § 4. Data Models | § 10 | — |
 | § 5. System Integrations | § 11 | — |
-| § 5b. External Systems & Mocks (MCP contract) | not carried | `foundry-mcp-aca` |
+| § 5b. External Systems & Mocks (MCP contract) | not carried | `threadlight-mcp-aca` |
 | § 6. Tool Contracts | § 11 | — |
 | § 7. Knowledge Sources | § 9 | — |
 | § 7b. AI Services & Model Selection | § 9 | — |

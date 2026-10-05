@@ -15,7 +15,7 @@
 - **Verification debt:** 65 not-verified findings (top pillars: sre-handover=9, model-lifecycle=8, secrets=7). `not-verified` no longer earns partial score credit in v0.3.0.
 
 **Top gaps:**
-- ❌ `EVAL-002` (continuous-evals) — evals/ folder with foundry-evals run files. No evals/ folder with eval files
+- ❌ `EVAL-002` (continuous-evals) — evals/ folder with microsoft-foundry run files. No evals/ folder with eval files
 - ❌ `HITL-002` (hitl-audit) — HITL gate implementations referenced in src/. SPEC declares HITL but no implementation in src/
 - ❌ `MDL-004` (model-lifecycle) — Capacity / quota considered for prod scale. No quota / capacity sizing in SPEC
 - ❌ `SUP-001` (supply-chain) — Container images pinned by digest. :latest tags found and no digest pins — prod images must be pinned
@@ -36,7 +36,7 @@ flowchart LR
 
 ❌ **Would fail a hard gate.** 4 must-fix finding(s):
 
-- `EVAL-002` (continuous-evals): evals/ folder with foundry-evals run files
+- `EVAL-002` (continuous-evals): evals/ folder with microsoft-foundry run files
 - `HITL-002` (hitl-audit): HITL gate implementations referenced in src/
 - `SUP-001` (supply-chain): Container images pinned by digest
 - `MDL-004` (model-lifecycle): Capacity / quota considered for prod scale
@@ -304,40 +304,40 @@ flowchart LR
 
 ## 6. Uplift plan (suggested order)
 
-1. **EVAL-002** — evals/ folder with foundry-evals run files. See: `foundry-evals`
+1. **EVAL-002** — evals/ folder with microsoft-foundry run files. See: `microsoft-foundry`
 2. **HITL-002** — HITL gate implementations referenced in src/. See: `threadlight-hitl-patterns`
-3. **MDL-004** — Capacity / quota considered for prod scale. See: `foundry-skill-catalog`, `foundry-evals`
-4. **SUP-001** — Container images pinned by digest. See: `azd-patterns`
+3. **MDL-004** — Capacity / quota considered for prod scale. See: `microsoft-foundry`
+4. **SUP-001** — Container images pinned by digest. See: `threadlight-deploy/references/azd-modules`
 5. **COST-004** — Idle scale-down configured for ACA / Functions. See: `paygo-ptu-cost-analyzer`
 6. **COST-005** — Cost-projection artefact present and fresh (docs/cost-projection.md + specs/cost-manifest.json). See: `paygo-ptu-cost-analyzer`
 7. **HITL-004** — Escalation channel reachable (Teams/email/webhook). See: `threadlight-hitl-patterns`
 8. **HITL-005** — HITL decision SLA documented. See: `threadlight-hitl-patterns`
 9. **HITL-007** — SPEC sec 8 declares the resume trigger and rehydrated state. See: `threadlight-hitl-patterns`
-10. **IAM-007** — Agent identity declares a responsible owner. See: `foundry-hosted-agents`, `azure-tenant-isolation`
-11. **IAM-008** — Agent identity scope is least-privilege. See: `foundry-hosted-agents`, `azure-tenant-isolation`
-12. **IAM-009** — Agent identity lifecycle (expiry/review) is declared. See: `foundry-hosted-agents`, `azure-tenant-isolation`
-13. **KPI-001** — Outcome KPI baselines declared (latency, cost/interaction, success-rate). See: `foundry-observability`
-14. **KPI-002** — Deviation alert wired for an outcome KPI baseline. See: `foundry-observability`
-15. **KPI-003** — Outcome scorecard joins eval pass-rate + actual cost/successful interaction + traces. See: `foundry-observability`
-16. **MDL-002** — Deprecation plan referenced in SPEC. See: `foundry-skill-catalog`, `foundry-evals`
-17. **MDL-003** — Model upgrade canary process documented. See: `foundry-skill-catalog`, `foundry-evals`
-18. **MDL-005** — Fallback model strategy documented. See: `foundry-skill-catalog`, `foundry-evals`
-19. **MDL-006** — Rate limit handling in code. See: `foundry-skill-catalog`, `foundry-evals`
-20. **MDL-008** — Knowledge index refresh cadence declared. See: `foundry-skill-catalog`, `foundry-evals`
-21. **MDL-009** — Project-level RBAC declared on Foundry account. See: `foundry-skill-catalog`, `foundry-evals`
-22. **MDL-011** — Agent thread retention/policy declared in SPEC. See: `foundry-skill-catalog`, `foundry-evals`
-23. **OBS-004** — Foundry observability emit configured. See: `foundry-observability`
-24. **OBS-005** — Workbook scaffold present. See: `foundry-observability`
-25. **RAI-004** — PII redaction strategy documented. See: `foundry-agt`
-26. **RAI-005** — Groundedness check planned for RAG. See: `foundry-agt`
-27. **REL-002** — Multi-region plan documented if RTO < 4h. See: `foundry-vnet-deploy`, `foundry-caphost-lifecycle`
-28. **REL-004** — Capacity host lifecycle understood. See: `foundry-vnet-deploy`, `foundry-caphost-lifecycle`
-29. **SEC-003** — appsettings reference KV references, not raw values. See: `azd-patterns`
-30. **SEC-004** — Secret rotation policy documented in SPEC. See: `azd-patterns`
+10. **IAM-007** — Agent identity declares a responsible owner. See: `threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`
+11. **IAM-008** — Agent identity scope is least-privilege. See: `threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`
+12. **IAM-009** — Agent identity lifecycle (expiry/review) is declared. See: `threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`
+13. **KPI-001** — Outcome KPI baselines declared (latency, cost/interaction, success-rate). See: `threadlight-deploy/references/observability`
+14. **KPI-002** — Deviation alert wired for an outcome KPI baseline. See: `threadlight-deploy/references/observability`
+15. **KPI-003** — Outcome scorecard joins eval pass-rate + actual cost/successful interaction + traces. See: `threadlight-deploy/references/observability`
+16. **MDL-002** — Deprecation plan referenced in SPEC. See: `microsoft-foundry`
+17. **MDL-003** — Model upgrade canary process documented. See: `microsoft-foundry`
+18. **MDL-005** — Fallback model strategy documented. See: `microsoft-foundry`
+19. **MDL-006** — Rate limit handling in code. See: `microsoft-foundry`
+20. **MDL-008** — Knowledge index refresh cadence declared. See: `microsoft-foundry`
+21. **MDL-009** — Project-level RBAC declared on Foundry account. See: `microsoft-foundry`
+22. **MDL-011** — Agent thread retention/policy declared in SPEC. See: `microsoft-foundry`
+23. **OBS-004** — Foundry observability emit configured. See: `threadlight-deploy/references/observability`
+24. **OBS-005** — Workbook scaffold present. See: `threadlight-deploy/references/observability`
+25. **RAI-004** — PII redaction strategy documented. See: `threadlight-govern/references/agt-inprocess`
+26. **RAI-005** — Groundedness check planned for RAG. See: `threadlight-govern/references/agt-inprocess`
+27. **REL-002** — Multi-region plan documented if RTO < 4h. See: `microsoft-foundry`
+28. **REL-004** — Capacity host lifecycle understood. See: `microsoft-foundry`
+29. **SEC-003** — appsettings reference KV references, not raw values. See: `threadlight-deploy/references/azd-modules`
+30. **SEC-004** — Secret rotation policy documented in SPEC. See: `threadlight-deploy/references/azd-modules`
 31. **SRE-003** — Azure SRE Agent integration considered. See: `azure-sre-agent` (recipe: `threadlight-pilot-handover`)
-32. **SUP-004** — SBOM generation step declared. See: `azd-patterns`
-33. **SUP-005** — Vulnerability scan step declared. See: `azd-patterns`
-34. **SUP-007** — Provenance / attestation considered. See: `azd-patterns`
+32. **SUP-004** — SBOM generation step declared. See: `threadlight-deploy/references/azd-modules`
+33. **SUP-005** — Vulnerability scan step declared. See: `threadlight-deploy/references/azd-modules`
+34. **SUP-007** — Provenance / attestation considered. See: `threadlight-deploy/references/azd-modules`
 
 ## 7. Cost projection
 
@@ -354,7 +354,7 @@ Joins the three outcome signals a production review needs (eval quality + measur
 |---|---|---|
 | Eval pass-rate | not-verified | `specs/evals-manifest.json` (threadlight-evals) |
 | Actual cost / successful interaction | not-verified | `specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals) |
-| Traces emitting | ✅ yes | foundry-observability / OTel wiring |
+| Traces emitting | ✅ yes | threadlight-deploy/references/observability / OTel wiring |
 
 | Baseline declared | Status |
 |---|---|
@@ -363,7 +363,7 @@ Joins the three outcome signals a production review needs (eval quality + measur
 | Success-rate | ✅ yes |
 | Deviation alert wired | ⚠️ no |
 
-_Scored as `KPI-001` (baselines), `KPI-002` (deviation alert), `KPI-003` (scorecard joinable) under pillar 5. Run `foundry-evals` and paste eval thresholds into SPEC § 9._
+_Scored as `KPI-001` (baselines), `KPI-002` (deviation alert), `KPI-003` (scorecard joinable) under pillar 5. Run `microsoft-foundry` and paste eval thresholds into SPEC § 9._
 
 ## 9. Residual risk, RACI, rollout / rollback / cutover
 
@@ -489,7 +489,7 @@ _No evidence captured (static mode or no Azure access)._
 ### Glossary
 
 - **AGT** — Agent Governance Toolkit (`agent-governance-toolkit`, CLI `agt`). A committed policy that CI lints (`agt lint-policy`), replays against fixtures (`agt test`), and verifies (`agt verify` → OWASP ASI 2026 attestation); optionally enforced in the agent runtime via `agent_compliance` evaluators.
-- **Citadel spoke** — Foundry account fronted by an APIM-based AI Hub Gateway (Citadel). See `citadel-hub-deploy` and `citadel-spoke-onboarding`.
+- **Citadel spoke** — Foundry account fronted by an APIM-based AI Hub Gateway (Citadel). See `threadlight-citadel-hub` and `threadlight-citadel-spoke`.
 - **OWASP ASI 2026** — OWASP AI/Agentic Security Initiative top-N risks reference.
 
 _End of report. Manifest: see `tests/production-readiness-manifest.json`._

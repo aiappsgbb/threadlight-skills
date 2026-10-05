@@ -58,7 +58,7 @@ item is a yes/no question.
 
 | ☐ | Item | Owner |
 |---|---|---|
-| ☐ | Latest `foundry-evals` run is within freshness window and passing | Product |
+| ☐ | Latest `microsoft-foundry` run is within freshness window and passing | Product |
 | ☐ | One warm-up invocation done in the 5 minutes before traffic | SE |
 | ☐ | If SRE Agent recipe adopted: daily health task is scheduled | SRE |
 | ☐ | If AGT middleware in use: verifier run within last 30 days, results green | Product |
@@ -89,7 +89,7 @@ current risk signal, so push hard against waiving them.
 When the customer's prod environment is locked down (no direct `azd up`, the
 agent has no standing deploy rights), the pilot ships through a pipeline. Generate
 these with the dedicated **`threadlight-cicd`** skill — they are deliberately a
-**separate repo/pipeline** from the central platform (`citadel-hub-deploy`).
+**separate repo/pipeline** from the central platform (`threadlight-citadel-hub`).
 
 | ☐ | Item | Owner |
 |---|---|---|

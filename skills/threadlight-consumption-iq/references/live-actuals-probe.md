@@ -17,7 +17,7 @@
 * Run against a **dedicated, isolated, personal demo Azure subscription**
   — never a shared, customer, or production tenant.
 * Set `AZURE_CONFIG_DIR` / `AZD_CONFIG_DIR` from the per-tenant index (see
-  the `azure-tenant-isolation` skill) **before** anything below runs. This
+  the `threadlight-tenant-isolation` skill) **before** anything below runs. This
   runbook never authenticates and never switches context on the
   operator's behalf: it does not call `az login` and it does not call
   `az account set`. It only *reads* whatever context those two isolated

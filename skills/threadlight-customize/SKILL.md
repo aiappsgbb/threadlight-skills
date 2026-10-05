@@ -14,8 +14,8 @@ description: >-
   overlay merge, test in customer environment. DO NOT USE FOR: generating the
   prod deploy pipeline (use threadlight-cicd); the readiness scorecard (use
   threadlight-production-ready); the first-run deploy (use
-  threadlight-deploy); a central hub (use citadel-spoke-onboarding /
-  citadel-hub-deploy).
+  threadlight-deploy); a central hub (use threadlight-citadel-spoke /
+  threadlight-citadel-hub).
 metadata:
   version: "0.1.0"
 ---

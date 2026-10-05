@@ -268,7 +268,7 @@ SAFE is a method, AGT the toolkit, and Agent Hooks the interceptor contract.
 No upstream Bicep is forked or vendored. Public upstream evidence is frozen at
 `Azure-Samples/ai-hub-gateway-solution-accelerator`,
 `23fbc8fe7f2f068de3ed3c80da2344760faac1e6` on `citadel-v1`. The installed
-`citadel-hub-deploy` skill's older pin remains historical and unchanged.
+`threadlight-citadel-hub` skill's older pin remains historical and unchanged.
 
 ### Build and integration reference
 

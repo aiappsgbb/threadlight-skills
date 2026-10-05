@@ -140,13 +140,13 @@ skills, extended to the MCP surface.
 
 | Finding | Skill |
 |---|---|
-| Pin Dockerfile / image references | `azd-patterns` |
-| Pin AVM modules | `azd-patterns`, `bicepschema` |
+| Pin Dockerfile / image references | `threadlight-deploy/references/azd-modules` |
+| Pin AVM modules | `threadlight-deploy/references/azd-modules`, `bicepschema` |
 | Enable dependency scanning | (manual — `dependabot.yml`) |
 | Emit SBOM | (manual — `syft` / GH action) |
-| Publish skills/tools as pinned versions (no `--force`) | `foundry-skill-catalog`, `foundry-toolbox` |
-| Pin MCP servers + commit `mcp-lock.json` | `foundry-toolbox`, `azd-patterns` |
-| Inject MCP credentials (no inline secrets) | `foundry-toolbox`, Key Vault |
+| Publish skills/tools as pinned versions (no `--force`) | `microsoft-foundry` |
+| Pin MCP servers + commit `mcp-lock.json` | `microsoft-foundry`, `threadlight-deploy/references/azd-modules` |
+| Inject MCP credentials (no inline secrets) | `microsoft-foundry`, Key Vault |
 
 ## Why this pillar matters
 

@@ -13,7 +13,7 @@ What this file is:
   rule, threshold, approver, tenant id, role assignment, or deployment
   target is invented here or in the policy file: this scaffold authors
   none of that. A customer's own governance/security team, working with
-  the ``foundry-agt`` skill, is responsible for turning the empty policy
+  the ``threadlight-govern/references/agt-inprocess`` reference, is responsible for turning the empty policy
   into a real one.
 - Framework-neutral: this module has no dependency on any particular
   agent runtime. It is meant to be called from wherever a customer's own
@@ -39,7 +39,7 @@ What this file explicitly is NOT:
   matching strategy (exact ``action_id`` match against ``policy["rules"]``)
   and one deny-by-default fallback. Anything more (conditions, scopes,
   time windows, approval routing, ...) is customer policy-authoring
-  scope, again delegated to ``foundry-agt`` -- not invented here.
+  scope, again delegated to ``threadlight-govern/references/agt-inprocess`` -- not invented here.
 
 Every conclusion the threadlight-governed-actions assessor reaches about
 mediation coverage is independent of whether this file exists: scaffolding

@@ -95,6 +95,51 @@
       ],
       "owner": "threadlight-evals",
       "threadlight": true
+    },
+    {
+      "prompt": "Deploy the AI Citadel governance hub for our pilots",
+      "triggers": [
+        "deploy citadel hub",
+        "citadel-v1",
+        "citadel access contract"
+      ],
+      "owner": "threadlight-citadel-hub"
+    },
+    {
+      "prompt": "Onboard my Foundry project as a spoke of our Citadel hub",
+      "triggers": [
+        "citadel spoke onboarding",
+        "connect Foundry to Citadel",
+        "access contract"
+      ],
+      "owner": "threadlight-citadel-spoke"
+    },
+    {
+      "prompt": "Make sure azd up lands in the right tenant with AZURE_CONFIG_DIR",
+      "triggers": [
+        "AZURE_CONFIG_DIR",
+        "multi-tenant az login",
+        "prevent cross-tenant deployment"
+      ],
+      "owner": "threadlight-tenant-isolation"
+    },
+    {
+      "prompt": "Deploy our custom MCP server on Azure Container Apps",
+      "triggers": [
+        "MCP on ACA",
+        "deploy MCP server",
+        "MCP authentication"
+      ],
+      "owner": "threadlight-mcp-aca"
+    },
+    {
+      "prompt": "Add Agent Governance Toolkit in-process policy middleware to my agent",
+      "triggers": [
+        "Agent Governance Toolkit",
+        "AGT",
+        "in-process policy"
+      ],
+      "owner": "threadlight-govern"
     }
   ]
 }

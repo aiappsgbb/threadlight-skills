@@ -71,7 +71,7 @@ attestation (`governance-attestation/v1`):
 much of the real runtime governance is wired (`agent_compliance` /
 `agent_os.integrations.*`); the attestation names any control still absent. Raise
 it by wiring the framework integration for your agent runtime — that is the deep
-upstream work `foundry-agt` owns.
+upstream work `threadlight-govern/references/agt-inprocess` owns.
 
 ## 4. (Optional) defence-in-depth evaluators
 

@@ -150,7 +150,7 @@ single prompt to Copilot CLI — the right skill handles the fix.
 Symptom: Copilot CLI reports `az account show` is pointed at a different tenant
 than the AOAI deployment lives in.
 
-> use the azure-tenant-isolation skill to isolate the azure cli to tenant <tenant-id> and switch to subscription <sub-id>, then confirm with az account show
+> use the threadlight-tenant-isolation skill to isolate the azure cli to tenant <tenant-id> and switch to subscription <sub-id>, then confirm with az account show
 
 ### 5.2 AOAI quota / HTTP 429 mid-demo
 
@@ -208,7 +208,7 @@ Provisions the resource group, creates the Foundry account + project, builds
 and deploys the MCP Container App, builds the hosted-agent container remotely,
 and resolves `${SERVICE_MCP_FQDN}` into the agent environment.
 
-Expect ~3 min of `azure-tenant-isolation` handshake (tenant index lookup,
+Expect ~3 min of `threadlight-tenant-isolation` handshake (tenant index lookup,
 subscription assertion, `AZURE_CONFIG_DIR` setup) **before** provisioning
 actually starts. That's the safety gate, not a hang.
 
@@ -260,16 +260,16 @@ Then review the broader readiness work:
   For real customer tenants where the agent can't run `azd up` itself. A
   deliberate **manual handoff** after a green scorecard, and a **separate
   repo/pipeline** from the central platform — it never touches the Citadel
-  hub, shared APIM, or platform networking (those stay `citadel-hub-deploy`).
-- **Governance / model routing** — `citadel-spoke-onboarding` skill in
+  hub, shared APIM, or platform networking (those stay `threadlight-citadel-hub`).
+- **Governance / model routing** — `threadlight-citadel-spoke` skill in
   `awesome-gbb`. Routes model traffic through a shared APIM AI Gateway and
   flips `AZURE_AI_MODEL_DEPLOYMENT_NAME` to the `connectionName/deploymentName`
   form during spoke onboarding.
 - **Pre-deploy gates** — `threadlight-safe-check` validates every resource
   selector before go-live.
-- **Continuous eval** — `foundry-evals` consumes `tests/quickstart.jsonl`
+- **Continuous eval** — `microsoft-foundry` consumes `tests/quickstart.jsonl`
   (which Pattern 0 has been quietly writing the entire workshop).
-- **Observability** — `foundry-observability` wires App Insights + OTel into
+- **Observability** — `threadlight-deploy/references/observability` wires App Insights + OTel into
   hosted-agent + MCP without changing app code.
 - **End-to-end automation** — `threadlight-auto` orchestrates the full
   design → local-test → deploy → safe-check → evals pipeline as one prompt.

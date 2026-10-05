@@ -59,7 +59,7 @@ skill like `threadlight-production-ready`) to read.
   retry loop, no autonomous re-run. A human (or an explicit CI step) invokes
   it once per evidence run.
 - **Never deploys or releases anything.** No infra provisioning, no rollout
-  gating. Use `threadlight-deploy` / `azd-patterns` for deployment and
+  gating. Use `threadlight-deploy` / `threadlight-deploy/references/azd-modules` for deployment and
   `threadlight-production-ready` for release-readiness scoring.
 - **Never writes SPEC.md automatically.** Only a `complete` run may propose an
   advisory patch snippet (`spec_update_plan`, a safe quoted-YAML block under

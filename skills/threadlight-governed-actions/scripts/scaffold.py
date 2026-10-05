@@ -13,7 +13,7 @@ What this module is *not*:
   approver, tenant id, role assignment, or deployment target is ever
   invented anywhere in the templates this module places. Turning the
   scaffold into a real, customer-specific policy is delegated entirely to
-  the ``foundry-agt`` skill (policy authoring) and, if the workflow needs
+  the ``threadlight-govern/references/agt-inprocess`` reference (policy authoring) and, if the workflow needs
   a real deploy pipeline, to ``threadlight-cicd`` (pipeline expansion) --
   this module writes neither.
 - It does **not** make the target project "governed". A freshly

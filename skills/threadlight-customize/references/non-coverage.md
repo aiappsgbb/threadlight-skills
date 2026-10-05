@@ -23,7 +23,7 @@ Confirm each line and add customer-specifics:
   and role assignments are created by the platform team (see `threadlight-cicd`
   env-setup runbooks). Threadlight consumes them.
 - **Central platform / shared AI gateway.** Out of scope here — that is the
-  `citadel-hub-deploy` / `citadel-spoke-onboarding` track.
+  `threadlight-citadel-hub` / `threadlight-citadel-spoke` track.
 - **Customer change-management & approvals.** Freeze windows, CAB, sign-off
   chains are the customer's process; Threadlight slots into them.
 - **Customer-mandated IaC internals.** Where the customer requires their own

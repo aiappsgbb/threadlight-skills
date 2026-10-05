@@ -177,7 +177,7 @@ walkthrough where the customer asks scale questions.
   policy (e.g. `Cardinal Federal Bank KYC Manual v3.2'') with realistic
   structure. Citation pattern is what matters; content is plausible fiction.
 
-## FSI-native KPIs (for SPEC § 9 + foundry-evals)
+## FSI-native KPIs (for SPEC § 9 + microsoft-foundry)
 
 When designing KPIs for an FSI process, prefer these over generic
 `auto_decline_rate'' style metrics. SMEs will recognize them:

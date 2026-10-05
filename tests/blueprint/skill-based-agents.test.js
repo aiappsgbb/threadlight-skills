@@ -125,7 +125,7 @@ test('Auto follows the selected DAG and delegates execution rather than inventin
 
 test('all local skills have a mechanism, artifact and evidence boundary in capability groups', () => {
   const text = guide();
-  assert.equal(localSkills.length, 24);
+  assert.equal(localSkills.length, 28);
   const rows = text.split('\n').filter((line) => /^\| \[`threadlight-/.test(line));
   const documented = rows.map((row) => row.match(/\[`(threadlight-[^`]+)`\]/)[1]).sort();
   assert.deepEqual(documented, localSkills);

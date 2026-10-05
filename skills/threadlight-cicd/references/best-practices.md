@@ -8,7 +8,7 @@ customer's platform team.
 > **Golden rule.** The pilot pipeline never holds a long-lived secret and
 > never touches the central platform. Authenticate with **OIDC / Workload
 > Identity Federation**; scope RBAC to the **target / spoke resource group**;
-> leave the hub to `citadel-hub-deploy`.
+> leave the hub to `threadlight-citadel-hub`.
 
 ---
 
@@ -82,7 +82,7 @@ subscription scope "to be safe", and never at hub scope.
   <https://azure.github.io/Azure-Verified-Modules/contributing/bicep/bicep-contribution-flow/#2-configure-a-deployment-identity-in-azure>
 
 **Boundary invariant.** For `citadel-spoke` posture the pilot consumes the
-hub through an **Access Contract** (`citadel-spoke-onboarding`), so the
+hub through an **Access Contract** (`threadlight-citadel-spoke`), so the
 pilot's UAMI needs **no** role on the hub, shared APIM, shared networking, or
 platform Key Vault. Runbook `02` asserts spoke-RG scope; the generator marks
 spoke paths `rbac_scope=spoke-rg` unconditionally.
@@ -141,9 +141,9 @@ deployment. It must **never** deploy or modify:
 - shared networking (hub VNet, firewall, DNS zones),
 - the platform Key Vault.
 
-Those are owned by the central-platform team via **`citadel-hub-deploy`**
+Those are owned by the central-platform team via **`threadlight-citadel-hub`**
 (awesome-gbb), with the pilot wired in as a spoke via
-**`citadel-spoke-onboarding`**. The onboarding-path gate resolves which of
+**`threadlight-citadel-spoke`**. The onboarding-path gate resolves which of
 the three paths applies and writes `onboarding-path.json`; the generated
 `central-platform-boundary.md` restates the rule for the customer. See
 `onboarding-path-decision.md` for the decision tree.

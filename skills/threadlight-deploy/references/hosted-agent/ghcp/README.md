@@ -1,0 +1,824 @@
+> **Threadlight-owned reference.** Threadlight-owned GitHub Copilot SDK (GHCP) hosted-agent template. The official `azure-hosted-copilot-sdk` skill was retired; the official [microsoft-foundry deploy guidance](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md) remains the authority for `azd` deploy. This reference keeps only the GHCP Invocations container template.
+>
+> Provenance: ported from `aiappsgbb/awesome-gbb@7f1de882` `skills/ghcp-hosted-agents/SKILL.md (+ references/)` (MIT License, Copyright (c) 2026 AI Global Black Belts — Microsoft). See [PROVENANCE.md](PROVENANCE.md). Sibling-skill names were rewritten to Threadlight or official `azure-skills` equivalents; skills without a mapping remain residual awesome-gbb names (see `skills/_shared/skill-dependencies.json`).
+
+# GHCP SDK Hosted Agents on Foundry
+
+Deploy Foundry hosted agents using the **GitHub Copilot SDK** with BYOK
+(Bring Your Own Key) authentication. No `GITHUB_TOKEN` required. Uses the
+**Invocations protocol** (GA, version `2.0.0`) with SSE streaming for
+unlimited tool-loop duration.
+
+> **GA migration (v2.0.0).** This skill now uses the unified single-file
+> `azure.yaml` deploy shape shared with `threadlight-deploy/references/hosted-agent/maf` — the old
+> two-file `agent.yaml` + separately-wired `azure.yaml` contract, the
+> remote-build/manual `services:` wiring, and the tenant-ID-env deploy hook
+> are all retired.
+> See § "azure.yaml (unified GA deployment)" and § "Identity & RBAC for
+> hosted agents" below.
+>
+> **RBAC correction (v2.0.9).** Real model inference requires granting the
+> hosted-agent **instance** identity the `Foundry User` role at BOTH the
+> Foundry **account** and **project** scopes before invoking. The earlier
+> "no agent role assignment needed" claim was validated only against an
+> upstream echo agent that never called a real model, so it silently
+> returned HTTP 401 on live inference. See § "Identity & RBAC for hosted
+> agents".
+
+## When to Use GHCP SDK Instead of MAF
+
+**Shared deployment, distinct runtime.** Select/review the consumer against
+the [hosted contract](../maf/references/hosted-contract.json).
+The MAF private BASIC evidence does not certify this GHCP/Invocations variant.
+Keep its BYOK identities and permissions; do not copy the MAF implicit-access
+assumption to a different account-level call.
+
+The optional Python invoker now requires a durable `record` callback, or
+`INVOCATION_EVIDENCE_FILE` for the CLI. Package the canonical
+[operation evidence helper](../maf/references/python/operation_evidence.py)
+beside it. It retains intent/HTTP metadata, rejects truncated or malformed SSE,
+and treats the template runtime's `invocation_id` as a custom ID, not proof of
+a retrievable Foundry response. Reconcile an uncertain effect; never repeat it
+merely to recover output. See the [recovery contract](../maf/references/operation-recovery.md).
+
+| Consideration | MAF | GHCP SDK |
+|---------------|-----|----------|
+| **Auth** | `DefaultAzureCredential` → `FoundryChatClient` | BYOK: `DefaultAzureCredential` → bearer token |
+| **Protocol** | Responses API (request/response) | Invocations (SSE streaming) |
+| **Tool loop limit** | ~120s (Foundry gateway timeout) | ♾️ (SSE keeps connection alive) |
+| **Per-query overhead** | Low (1-3 internal turns) | High (20-34 internal tool calls per query) |
+| **Skill discovery** | `SkillsProvider.from_paths()` (recommended) **OR** inline concat (legacy) | `SkillsProvider` (default) |
+| **Custom tools** | `@tool` decorator | Not supported (use MCP servers instead) |
+| **Toolbox** | `MCPStreamableHTTPTool` (was `client.get_toolbox()`, removed 1.3.0) | Not directly available |
+| **Maturity** | Production-proven | Validated (identical eval scores) |
+
+**Use GHCP SDK when:**
+- Slow tools mask the per-query overhead: web scraping, long-running tools, or multi-site scans.
+- You need streaming progress events to the caller for workflows that run beyond the ~120s Responses gateway limit.
+- The workload looks like **bat-scraper**: Playwright/tool calls take 30-60s each, so GHCP SDK orchestration overhead is acceptable.
+
+**Use MAF when:**
+- Tools are fast: data queries, MCP retrieval, or single-shot tools where orchestration overhead dominates latency.
+- You need the faster runtime path; field measurements show MAF at **~19s** vs GHCP SDK at **>220s** for the same fast-MCP workload (~10x faster).
+- Agent needs custom `@tool` functions, Foundry Toolbox (`web_search`, `code_interpreter`), or simpler deployment.
+
+---
+
+## ⚠️ Performance Caveat: Per-Query Overhead
+
+Each `CopilotClient` query generates **20-34 internal tool calls** for planning,
+skill discovery, tool selection, and related orchestration.
+That happens regardless of how many user-facing tool calls the agent actually makes.
+The overhead lives in `CopilotClient` itself; `SkillsProvider` is **NOT** the cause.
+Removing `SkillsProvider` does not eliminate the extra internal turns.
+Field measurement on an identical agent (`gpt-5.4`, same MCP tool set, same query)
+ran in **~19s on MAF** but **>220s on GHCP SDK** when MCP tools were fast.
+The overhead is masked when tools are slow: bat-scraper Playwright calls take
+30-60s each, so 20 internal calls vanish in the noise.
+Decision rule: if your slowest tool is <2s, you almost certainly want MAF.
+If your slowest tool is >30s and you need streaming progress events to the caller,
+GHCP SDK is the better fit.
+
+> **Note on `SkillsProvider` cost (both runtimes).** `SkillsProvider` is
+> **not** GHCP-only — MAF supports it equally well via
+> `context_providers=[skills_provider]` (see `threadlight-deploy/references/hosted-agent/maf`
+> § Skill Loading). On both runtimes, `SkillsProvider` itself adds only
+> **+1 `load_skill` round-trip per skill the agent activates per query**
+> (typically 1-3 per query). The 20-34-call overhead above is the
+> `CopilotClient` runtime, an entirely separate concern.
+
+---
+
+## Runtime Pattern (GHCP SDK + Invocations)
+
+**Copy the reference template** at `references/container.py` into the project root.
+Then adapt `_load_mcp_servers()` for your MCP server configuration.
+
+The template provides:
+1. `_init_byok()` / `_get_provider()` — BYOK auth with `DefaultAzureCredential`
+2. `_ensure_session()` — Creates/resumes `CopilotClient` session with provider, skills, MCP
+3. `_stream_response()` — Subscribes to session events, yields SSE
+4. `handle_invoke()` — `@app.invoke_handler` that returns `StreamingResponse`
+
+```
+container.py → CopilotClient + InvocationAgentServerHost → port 8088
+  ├── BYOK auth (ai.azure.com scope)
+  ├── Skills via skill_directories parameter
+  ├── MCP servers via mcp_servers parameter
+  └── SSE streaming (no timeout on long tool loops)
+```
+
+**Key points:**
+- `FOUNDRY_PROJECT_ENDPOINT` is **injected by the platform** — never declare it
+  under the `azure.yaml` agent service's `environmentVariables` list (see
+  § "azure.yaml (unified GA deployment)")
+- BYOK scope is `https://ai.azure.com/.default` — NOT `cognitiveservices.azure.com`
+- Token is static per session — `_get_provider()` mints fresh token each session creation
+- `working_directory` should be `$HOME` (hosted agents sandbox filesystem at home dir)
+- `system_message` requires dict format: `{"mode": "replace", "content": "..."}`
+- `PermissionHandler.approve_all` auto-approves tool calls (required for unattended agents)
+
+---
+
+## Why Invocations Protocol (Not Responses)
+
+The GHCP SDK can also run behind `ResponsesHostServer` using `GitHubCopilotAgent`:
+
+```python
+# ⚠️ This pattern DOES NOT WORK for long tool loops on Foundry
+from agent_framework_foundry_hosting import ResponsesHostServer
+from agent_framework.github import GitHubCopilotAgent
+
+agent = GitHubCopilotAgent(...)
+server = ResponsesHostServer(agent)
+server.run()
+```
+
+**Why it fails:** `GitHubCopilotAgent.send_and_wait()` blocks until the full response
+completes. Default timeout is 60s (configurable). But **Foundry's gateway has a ~120s
+hard timeout** on non-streaming responses. Any tool-heavy workflow (web scraping,
+multi-site scanning) taking >120s returns a gateway timeout.
+
+**Invocations protocol solves this:** SSE events stream continuously, keeping the
+connection alive. A query using 50+ tool calls over 5 minutes works perfectly because
+events flow throughout.
+
+| Approach | Max Duration | Why |
+|----------|-------------|-----|
+| ResponsesHostServer + send_and_wait | ~120s | Foundry gateway timeout on non-streaming |
+| InvocationAgentServerHost + SSE | Unlimited | Events stream continuously |
+
+**Critical:** the `azure.yaml` agent service must declare `protocol: invocations`
+only — do **not** add a `responses` protocol entry. `InvocationAgentServerHost`
+only serves `/invocations`; the `/responses` path returns 404 even if declared.
+See the troubleshooting row **"responses protocol not declared" (bot 400)** —
+dual protocols don't work. **WHY:** `InvocationAgentServerHost` is the only
+server type the GHCP SDK runtime ships with; serving Responses requires
+switching to the MAF runtime (`ResponsesHostServer`) entirely. External
+callers (bot, eval scripts) must POST to the Invocations SSE endpoint
+directly, or use `azd ai agent invoke --protocol invocations`. If you need
+`oai.responses.create()` for a Teams bot, use MAF runtime instead.
+
+---
+
+## pyproject.toml
+
+**Copy** `references/pyproject.toml` into your project root and update `name` and `version`.
+
+**Notes:**
+- `github-copilot-sdk` provides `CopilotClient`, session management, event types
+- `azure-ai-agentserver-invocations` provides `InvocationAgentServerHost`
+- `azure-ai-agentserver-core` pinned EXACT (`==2.0.0b7`) — it's a transitive dep of `-invocations` declared as `>=2.0.0b7` (unbounded upper); the exact pin stops a future core `b8+` from silently breaking fresh container builds
+- `azure-identity` pinned to avoid pulling beta versions
+- `prerelease = "if-necessary-or-explicit"` needed for beta agentserver package
+
+---
+
+## Dockerfile
+
+**Copy** `references/Dockerfile` into your project root. No changes needed for most agents.
+
+---
+
+## BYOK Authentication Deep Dive
+
+BYOK (Bring Your Own Key) lets `CopilotClient` use your Foundry model deployment
+instead of GitHub's hosted models. No `GITHUB_TOKEN` needed.
+
+### How It Works
+
+```
+CopilotClient.create_session(provider={...})
+  └── Routes LLM calls to your Foundry project endpoint
+      └── Uses bearer token from DefaultAzureCredential
+          └── Scope: https://ai.azure.com/.default
+```
+
+### Provider Configuration
+
+`copilot.ProviderConfig` is a `TypedDict` — at runtime it produces a
+plain `dict`, so the "class" form and the "dict" form below are byte-identical
+runtime objects. Use the class form when you want IDE / typing help; use the
+dict form when you want a one-liner.
+
+What actually matters is the **values**: `type="azure"` + bare endpoint is the
+PRIMARY shape (matches the official Microsoft sample, ~2-3× faster); the
+legacy `type="openai"` + `/openai/v1/` is still accepted for backward compat.
+
+```python
+# RECOMMENDED — class form (TypedDict), gives you typing + IDE completion.
+from copilot import ProviderConfig
+
+provider = ProviderConfig(
+    type="azure",                          # SDK adds api-version itself
+    base_url=FOUNDRY_ENDPOINT,             # BARE project endpoint — no /openai/v1/
+    wire_api="responses",
+    bearer_token=token.token,              # from DefaultAzureCredential
+)
+```
+
+```python
+# LEGACY — same wire shape, type='openai' kept for backward compat (2-3× slower).
+provider = {
+    "type": "openai",
+    "base_url": f"{FOUNDRY_ENDPOINT}/openai/v1/",  # must end with /openai/v1/
+    "bearer_token": token.token,
+    "wire_api": "responses",
+}
+```
+
+### Provider shape decision matrix
+
+Measured against `gpt-5.4-mini` on a live Foundry project (May 2026):
+
+| `type` | `base_url` suffix | Result | Latency |
+|--------|-------------------|--------|---------|
+| `"azure"` | bare endpoint | ✅ **Recommended** | ~2.6s |
+| `"azure"` | `/openai/v1/` | ✅ Works | ~7.9s |
+| `"openai"` | `/openai/v1/` | ✅ Legacy compat | ~6.9s |
+| `"openai"` | bare endpoint | ❌ `400 Missing api-version` | n/a |
+
+`github-copilot-sdk` `1.0.1` (GA, this skill) and prior `0.3.0` / `1.0.0b*`
+preview lines all accept both `type="azure"` and the legacy
+`type="openai"` shapes; the legacy dict form is preserved across releases
+for backward compatibility. The 1.0 GA constructor is flat — pass
+`github_token=...` directly to `CopilotClient(...)` (no `SubprocessConfig`
+wrapper; `auto_start` kwarg removed — call `await client.start()` explicitly).
+The public import surface as of the GA release is
+`from copilot import CopilotClient, PermissionHandler, ProviderConfig` and
+`from copilot.session_events import SessionEventType` (matches the official
+Microsoft sample's `main.py`) — see `references/container.py`.
+
+### Common BYOK Mistakes
+
+| Mistake | Symptom | Fix |
+|---------|---------|-----|
+| Wrong scope | 401 Unauthorized | Use `ai.azure.com` not `cognitiveservices.azure.com` |
+| `type="openai"` + bare endpoint | `400 Missing api-version` | Either switch to `type="azure"` + bare, or append `/openai/v1/` |
+| Token not refreshed | 401 after ~1h | Mint fresh token per session in `_get_provider()` |
+| Permission error during deploy or invoke | 403 / `PermissionDenied` | Hard FAIL except the exact immediate-post-active readiness envelope documented under § "Invoking the Agent". That narrow case retries the same path; all others require root-cause investigation. The two required instance grants (account + project) are a documented prerequisite, not an invoke-time workaround - do not add further grants to route around a failure |
+
+---
+
+## CopilotClient Session Parameters
+
+```python
+# Recommended pattern (matches official Microsoft sample): explicit start().
+# As of github-copilot-sdk 1.0 GA, CopilotClient takes flat kwargs — no
+# SubprocessConfig wrapper, no auto_start. Construct, then await start().
+client = CopilotClient()
+await client.start()
+
+session = await client.create_session(
+    provider=provider,                    # ProviderConfig OR dict — see "Provider Configuration"
+    model="gpt-5.4-mini",                 # Foundry model deployment name
+    system_message={                      # MUST be dict, not string
+        "mode": "replace",
+        "content": "You are a helpful assistant.",
+    },
+    skill_directories=["/app/skills"],    # Paths to SKILL.md directories
+    mcp_servers=[                         # MCP server configs (list[dict] or dict[str, dict])
+        {"name": "playwright", "url": "https://my-mcp.azurecontainerapps.io/mcp"},
+    ],
+    working_directory=str(Path.home()),   # Must be $HOME for hosted agents
+    streaming=True,                       # Enable streaming events
+    on_permission_request=PermissionHandler.approve_all,  # Auto-approve tools
+)
+```
+
+### Session Event Types
+
+| Event Type | Meaning | Action |
+|------------|---------|--------|
+| `SESSION_IDLE` | Response complete | Stop streaming, yield `done` event |
+| `SESSION_ERROR` | Agent error | Yield error event, stop |
+| `assistant.message` | Final assistant response | Contains full response text |
+| `assistant.message_delta` | Streaming content chunk | Accumulate for progressive display |
+| `assistant.streaming_delta` | Raw streaming delta | Lower-level than message_delta |
+| `assistant.reasoning` | Reasoning trace | Full reasoning block |
+| `assistant.reasoning_delta` | Reasoning chunk | Streaming reasoning |
+| `tool.execution_start` | Tool call started | Log for debugging |
+| `tool.execution_complete` | Tool call finished | Log for debugging |
+| `assistant.turn_start` | New turn | Track turn count |
+| `assistant.turn_end` | Turn complete | May have more turns |
+
+---
+
+## Invoking the Agent
+
+**Primary path — `azd ai agent invoke`.** Per the current GA CLI (verified
+against a locally installed `azure.ai.agents` `1.0.0-beta.4` extension),
+`azd ai agent invoke` DOES wrap the positional message argument correctly
+and accepts a raw JSON payload for the Invocations protocol:
+
+```bash
+azd ai agent invoke "<agent-name>" '{"input": "Say hello in one short sentence."}' \
+  --protocol invocations \
+  --output raw \
+  --timeout 180
+```
+
+- `--protocol invocations` selects the Invocations protocol (the CLI
+  defaults to `responses` otherwise)
+- `--output raw` (or `-o raw`) dumps the unmodified server response
+  (status line, headers, body) — the SSE `data:` lines are visible verbatim,
+  which is what you want to grep for `assistant.message` /
+  `assistant.message_delta`
+- `--timeout <seconds>` (or `-t`) bounds the request; the CLI default is
+  1800s, which is far longer than most smoke/CI budgets need
+
+Immediately after a new version becomes `active`, the first model call can
+briefly return an HTTP-200 SSE readiness envelope while the platform's
+implicit agent permission finishes propagating. The exception is exact and
+has these guards:
+
+1. The first recognized auth failure must be a `model.call_failure` event
+   with `statusCode: 401` whose
+   `PermissionDenied` error contains both
+   `Microsoft.CognitiveServices/accounts/OpenAI/responses/write` and
+   `POST /openai/v1/responses`.
+2. After that anchor, subsequent generic 401 `PermissionDenied`
+   `model.call_failure` events and `session.info` events containing
+   `transient_auth_error` may interleave. At least one transient-info event
+   is required. The anchor must not repeat; a repeated anchored failure is
+   outside the observed readiness envelope and remains a hard failure.
+3. The envelope must end with a terminal error containing
+   `Authentication failed with provider` and
+   `HTTP 401`.
+
+Observed streams may include benign `session.usage_info` and
+`assistant.turn_end` lifecycle events inside the recognized envelope. The SSE
+epilogue is a separate `event: done` frame whose JSON payload contains a
+non-empty string `invocation_id`; accept it only after assistant success or
+the recognized provider-auth terminal. Untyped data outside that done frame,
+unknown typed events inside the envelope, or a malformed done payload remain
+hard failures.
+
+If assistant output arrives after the recognized provider-auth terminal, it
+establishes recovered assistant output. Only after that recovery may
+`session.usage_info` and `assistant.turn_end` follow before the exact done
+frame. Those lifecycle events before assistant recovery do not convert the
+terminal failure into success.
+
+Only that complete immediate-post-active sequence is retryable. Retry the
+**same JSON positional invoke path** with bounded backoff (six attempts,
+15 seconds between attempts). Do not switch invocation methods and do not
+add a role grant. Missing, malformed, reordered, or unrelated terminal
+events remain a hard failure.
+
+> The older claim that `azd ai agent invoke` "does not wrap user input" was
+> a pre-GA defect specific to earlier preview builds. It does not reproduce
+> against the current GA CLI and is retired from this skill — do not carry
+> it forward into new guidance.
+
+### Via curl or the reference script (advanced/optional)
+
+For callers that need to parse the raw SSE stream directly (e.g. wiring a
+bot integration rather than a one-off smoke test), use
+`references/invoke_agent.py` as a library or standalone script:
+
+```bash
+export AZURE_AI_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
+export AGENT_NAME="my-agent"
+python references/invoke_agent.py "What is the capital of France?"
+```
+
+The `invoke_invocations()` function POSTs to
+`{endpoint}/agents/{agent_name}/endpoint/protocols/invocations?api-version=v1`
+(GA endpoint API version literal `v1` — no `Foundry-Features` preview
+header) and parses both `assistant.message` and `assistant.message_delta`
+events, preferring the complete message when available.
+
+**Important:** Always parse both event types. Some responses only emit deltas
+without a final complete message event.
+
+---
+
+## Evaluation
+
+### Two-Phase Eval (Invocations Protocol)
+
+Foundry eval SDK's `azure_ai_agent` target does not route to hosted agent endpoints.
+Use a two-phase workaround:
+
+1. **Invoke**: Call the agent via Invocations endpoint, collect responses
+2. **Score**: Submit query+response pairs to Foundry evaluators
+
+### Eval Data Format for Task Adherence
+
+Task Adherence evaluates whether the agent followed its system instructions.
+Include the system message in conversation array format:
+
+```python
+eval_item = {
+    "query": [
+        {"role": "system", "content": "Your system prompt here..."},
+        {"role": "user", "content": [{"type": "text", "text": "User question"}]},
+    ],
+    "response": [
+        {"role": "assistant", "content": [{"type": "text", "text": "Agent response"}]},
+    ],
+}
+```
+
+### Eval Judge Model Sensitivity
+
+| Judge Model | Task Adherence | Other Evaluators |
+|-------------|---------------|------------------|
+| `gpt-5.4` | **7%** (overly strict) | Stable |
+| `gpt-5.4-mini` | **86%** (accurate) | Stable |
+
+**Always use `gpt-5.4-mini`** as the judge model for Task Adherence.
+`gpt-5.4` penalizes responses for claiming tool usage that can't be verified
+from response-only data. All other evaluators (Coherence, Intent Resolution,
+Task Completion) are stable across both judge models.
+
+### Validated Scores (14-query benchmark)
+
+| Evaluator | Score | Notes |
+|-----------|-------|-------|
+| **Coherence** | 100% | Identical to MAF |
+| **Intent Resolution** | 100% | Identical to MAF |
+| **Task Adherence** | 86% | Identical to MAF (gpt-5.4-mini judge) |
+| **Task Completion** | 64% | Identical to MAF |
+| **Tool Usage (URLs)** | 100% | All responses contain source URLs |
+
+---
+
+## azure.yaml (unified GA deployment)
+
+The old **two-file** contract (`agent.yaml` + a separately hand-wired
+`azure.yaml`) is gone. A single `azure.yaml` at the project root is now the
+source of truth for both the Foundry project/model deployment and the
+hosted agent itself — declared as a graph of `services`, each with a `host`
+field and a `uses` list of dependencies. This is the same unified shape
+`threadlight-deploy/references/hosted-agent/maf` uses, adapted for the GHCP SDK's Invocations
+protocol instead of MAF's Responses protocol.
+
+> **MUST:** Copy verbatim from [`references/yaml/azure.yaml`](references/yaml/azure.yaml). Do NOT redefine inline — the validator enforces single-source-of-truth. That file is the canonical `azure.ai.project` + `azure.ai.agent` service pair for a container-built GHCP SDK hosted agent connecting to a **pre-provisioned** Foundry project.
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: my-agent-project
+
+requiredVersions:
+  extensions:
+    azure.ai.agents: '>=1.0.0-beta.4'
+
+services:
+  ai-project:
+    host: azure.ai.project
+    # Point at an EXISTING project instead of provisioning a new one.
+    endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
+
+  my-agent:
+    host: azure.ai.agent
+    project: .
+    language: docker
+    uses:
+      - ai-project
+    kind: hosted
+    name: my-agent
+    protocols:
+      - protocol: invocations
+        version: 2.0.0
+    environmentVariables:
+      - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+        value: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+    container:
+      resources:
+        cpu: "1"
+        memory: 2Gi
+
+infra:
+  provider: microsoft.foundry
+```
+
+### Critical rules
+
+| Rule | Why |
+|------|-----|
+| `kind: hosted` on the `azure.ai.agent` service | Marks it as a containerized/source-built hosted agent (as opposed to a Foundry Agent Service prompt agent) |
+| Protocol `invocations`, version `2.0.0` | Current GA protocol + version for the GHCP SDK's `InvocationAgentServerHost`. Do NOT add a `responses` protocol entry — see § "Why Invocations Protocol (Not Responses)" |
+| `container.resources` nested object | NOT a top-level `resources:` list |
+| NO `FOUNDRY_PROJECT_ENDPOINT` in `environmentVariables` | Reserved — the platform injects it automatically, along with `FOUNDRY_PROJECT_ARM_ID`, `FOUNDRY_AGENT_NAME`, `FOUNDRY_AGENT_VERSION`, `FOUNDRY_AGENT_SESSION_ID`, and `APPLICATIONINSIGHTS_CONNECTION_STRING`. Declaring any of them yourself is redundant at best and risks shadowing the platform value |
+| `uses: [ai-project]` on the agent service | Forms the dependency graph `azd` resolves at provision/deploy time — the agent can't reference the project's model deployment without it |
+| Connect to an existing project via `endpoint:` | Set `services.ai-project.endpoint` from `${FOUNDRY_PROJECT_ENDPOINT}` to reuse a pre-provisioned Foundry project instead of having `azd` provision a new one |
+| `infra.provider: microsoft.foundry` | Selects the Foundry extension's bicep-less provisioning provider for the unified services graph |
+
+### Guided init vs. direct-copy brownfield deploy
+
+The **recommended guided path** adopts the manifest and wires the existing
+project/registry context into the active azd environment:
+
+```bash
+PROJECT_ID="/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>"
+azd ai agent init -m ./azure.yaml \
+  --project-id "$PROJECT_ID" \
+  --deploy-mode container
+```
+
+If you instead copy the canonical files into an existing repository and run
+`azd deploy` directly (**direct-copy**), `azure.yaml` alone is insufficient.
+The `azure.ai.agents` service target requires the full project ARM ID,
+project endpoint, subscription, and bare ACR login server in the **active
+azd environment**:
+
+```bash
+azd env set AZURE_SUBSCRIPTION_ID "<sub-id>"
+azd env set FOUNDRY_PROJECT_ENDPOINT \
+  "https://<account>.services.ai.azure.com/api/projects/<project>"
+azd env set AZURE_AI_PROJECT_ID \
+  "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>"
+azd env set AZURE_CONTAINER_REGISTRY_ENDPOINT "<registry>.azurecr.io"
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "<model-deployment>"
+azd deploy my-agent --no-prompt
+```
+
+`AZURE_CONTAINER_REGISTRY_ENDPOINT` is a **bare hostname** — no
+`https://` scheme and no trailing slash. This direct-copy limitation is
+the adoption wiring covered by
+[Azure/azure-dev #8981](https://github.com/Azure/azure-dev/pull/8981):
+`azd ai agent init ... --deploy-mode container` wires it automatically;
+plain `azd deploy` cannot infer the omitted brownfield values.
+
+### Installing the `azd` Foundry extensions
+
+```bash
+azd ext install microsoft.foundry
+```
+
+`microsoft.foundry` is a **beta meta-package** — it contributes no
+commands of its own. Installing it pulls in every individual Foundry
+extension: `azure.ai.agents` (`azd ai agent`, the one this skill uses),
+`azure.ai.connections`, `azure.ai.inspector`, `azure.ai.projects`,
+`azure.ai.routines`, `azure.ai.skills`, and `azure.ai.toolboxes`. It is
+**not** a rename or replacement of `azure.ai.agents` — the agent
+extension still owns the `azd ai agent` command group, the
+`azure.ai.agent` service `host` value, and the `microsoft.foundry`
+**provisioning** identifier azd uses internally when it synthesizes
+infrastructure. Installing just `azure.ai.agents` also pulls in
+`azure.ai.inspector` (a dependency), so it's a valid narrower
+alternative to the meta-package:
+
+```bash
+# Just the agent surface (also pulls in azure.ai.inspector)
+azd ext install azure.ai.agents
+
+# Upgrade later
+azd ext upgrade microsoft.foundry
+```
+
+Verify what's installed:
+
+```bash
+azd ext list --output json
+```
+
+---
+
+## `azd env` variables for the `azure.ai.agents` extension
+
+The guided `azd ai agent init` path is **bicep-less by default** — it
+doesn't write an `infra/` directory; `azd` synthesizes infrastructure from
+the `services` graph in `azure.yaml`. Guided init writes the brownfield
+values below automatically. A direct-copy deploy must set them explicitly
+before `azd deploy`:
+
+| Env var | Set via | Format | Why it matters |
+|---------|---------|--------|-----------------|
+| `AZURE_SUBSCRIPTION_ID` | `azd env set` or guided init | subscription GUID | Selects the subscription containing the existing project and registry |
+| `FOUNDRY_PROJECT_ENDPOINT` | `azd env set` or guided init | `https://<account>.services.ai.azure.com/api/projects/<project>` | Deploy-time project lookup for direct-copy brownfield deploy; also injected by Foundry into the running container, but MUST NOT be listed under `environmentVariables` |
+| `AZURE_AI_PROJECT_ID` | `azd env set` or guided init | `/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>` | Full ARM ID required by the Foundry project resolver; an endpoint alone is insufficient |
+| `AZURE_CONTAINER_REGISTRY_ENDPOINT` | `azd env set` or guided init | `<registry>.azurecr.io` | Bare ACR login server used for container build/push; no scheme or trailing slash |
+| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | `azd ai agent init` records it automatically from the deployment you select; change later with `azd env set` | deployment name (e.g. `gpt-5.4-mini`) | Projected through the agent service's `environmentVariables` entry in `azure.yaml`, and read by `container.py` as `os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"]` |
+
+> **Deploy-time azd env vs. runtime container env.**
+> `FOUNDRY_PROJECT_ENDPOINT` MUST be set in the active azd environment for
+> direct-copy brownfield deploy, but MUST NOT be projected through the
+> agent's `environmentVariables` list. Foundry injects it into the running
+> container. The same container-only prohibition applies to
+> `FOUNDRY_PROJECT_ARM_ID`, `FOUNDRY_AGENT_NAME`,
+> `FOUNDRY_AGENT_VERSION`, `FOUNDRY_AGENT_SESSION_ID`, and
+> `APPLICATIONINSIGHTS_CONNECTION_STRING`.
+
+---
+
+## Identity & RBAC for hosted agents
+
+`azd ai agent` creates two distinct managed identities you must not
+confuse:
+
+- **Blueprint identity** — a stable Entra identity bound to the agent
+  definition (visible via `azd ai agent show`). It handles deploy-time
+  wiring (ACR pulls, version registration). **The blueprint identity
+  needs no data-plane role grants for inference.**
+- **Instance identity** — a per-version (per-instance) service principal
+  created for the active agent *version*. **This** identity is what the
+  running agent presents when it calls the model through the project
+  endpoint. It is the identity that must hold model-inference permission.
+
+The blueprint identity needs no role assignments; only the instance identity does.
+
+### Required: grant the instance identity `Foundry User` at BOTH scopes
+
+Real model inference through a hosted agent requires the **instance**
+identity to hold the **`Foundry User`** role
+(GUID `53ca6127-db72-4b80-b1b0-d745d6d5456d`) at **both** of these scopes
+**before** the first invocation:
+
+| Role | Assignee | Scope | Why |
+|------|----------|-------|-----|
+| `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) | Instance identity | Foundry **account** | Model gateway authorizes `responses/write` at account scope |
+| `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) | Instance identity | Foundry **project** | Data-plane project authorization for the agent's calls |
+
+Controlled Azure testing proved this is the **minimum** working contract:
+project-scope-only failed with 401, account-scope-only failed with 401,
+and **both scopes together succeeded**. Grant one without the other and
+real inference returns `PermissionDenied` /
+`Microsoft.CognitiveServices/accounts/OpenAI/responses/write`.
+
+> **Why the earlier "no grant" contract was wrong.** A prior build of
+> this skill claimed the Foundry service granted the agent identity its
+> permissions internally with no client-side assignment. That was
+> validated only against an upstream **echo** agent that never called a
+> real model, so the missing inference permission never surfaced. On a
+> live model deployment it 401s deterministically. This is a persistent
+> **authorization** gap, not a transient — do not paper over it in a
+> retry classifier.
+
+### Scope construction (no hardcoded IDs)
+
+`AZURE_AI_PROJECT_ID` is the **full project ARM resource ID**:
+
+```
+/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>
+```
+
+Derive both scopes from it with pure string manipulation:
+
+```bash
+project_scope="$AZURE_AI_PROJECT_ID"                 # full project ARM id
+account_scope="${AZURE_AI_PROJECT_ID%/projects/*}"   # strip /projects/<name>
+```
+
+Grant the instance identity at both scopes, **capturing each assignment's
+ARM id** so teardown can revoke exactly what it created (never a standing
+grant):
+
+```bash
+account_assignment_id=$(az role assignment create \
+  --role 53ca6127-db72-4b80-b1b0-d745d6d5456d \
+  --assignee-object-id "$instance_principal_id" \
+  --assignee-principal-type ServicePrincipal \
+  --scope "$account_scope" \
+  --query id -o tsv)
+project_assignment_id=$(az role assignment create \
+  --role 53ca6127-db72-4b80-b1b0-d745d6d5456d \
+  --assignee-object-id "$instance_principal_id" \
+  --assignee-principal-type ServicePrincipal \
+  --scope "$project_scope" \
+  --query id -o tsv)
+```
+
+If a grant may already exist, resolve its id idempotently first and only
+create (and only later revoke) the ones you actually add:
+
+```bash
+account_assignment_id=$(az role assignment list \
+  --assignee "$instance_principal_id" \
+  --role 53ca6127-db72-4b80-b1b0-d745d6d5456d \
+  --scope "$account_scope" --query "[0].id" -o tsv)
+# empty -> create it (owned by you); non-empty -> pre-existing, do not revoke
+```
+
+### Discovering the instance identity (deterministic)
+
+`azd ai agent show --output json` exposes **both** managed identities by
+explicit field path — do not scan the object heuristically:
+
+```bash
+azd ai agent show --output json
+# .instance_identity.principal_id  -> the runtime per-version INSTANCE MI (grant this)
+# .blueprint.principal_id          -> the blueprint identity (never grant)
+# fallbacks: .versions.latest.instance_identity.principal_id
+#            .versions.latest.blueprint.principal_id
+INSTANCE_PID=$(azd ai agent show --output json | jq -er '.instance_identity.principal_id')
+BLUEPRINT_PID=$(azd ai agent show --output json | jq -er '.blueprint.principal_id')
+```
+
+Discover and log **both** so the instance-vs-blueprint distinction is explicit,
+then grant **only** `$INSTANCE_PID`. The instance identity is populated shortly
+after the version goes active; if it is briefly empty, retry `azd ai agent show`
+up to twice with a short wait. `$instance_principal_id` above is this
+`instance_identity.principal_id` — never the `blueprint.principal_id`.
+
+> **Least-privilege note.** The grantor needs
+> `Microsoft.Authorization/roleAssignments/write` scoped to grant only
+> this one role GUID at the account and its descendants. Nothing broader
+> is required.
+
+### Full-event-stream handling after granting
+
+Role assignments take time to propagate. A valid dual-scope invocation
+**may still emit an initial 401 (`model.call_failure` /
+`transient_auth_error`) before an internal retry succeeds within the same
+stream.** Therefore, **inspect the entire SSE event stream — never abort
+on the first transient event.** Accept **recovered assistant output**
+(`assistant.message` / `assistant.message_delta`) even after an earlier
+401 envelope; only treat the invocation as failed if the complete stream
+ends with no assistant output. The exact immediate-post-active readiness
+envelope and bounded backoff are documented under § "Invoking the Agent".
+
+### Cleanup / revocation
+
+The two `Foundry User` grants are the only assignments you add. When
+tearing down (or after a one-shot validation), revoke **strictly by the
+assignment id you captured at create time** — deleting by
+`--assignee`/`--role`/`--scope` can match and remove a pre-existing
+standing grant you did not create:
+
+```bash
+az role assignment delete --ids "$account_assignment_id"
+az role assignment delete --ids "$project_assignment_id"
+```
+
+Revocation is best-effort during teardown — a failed delete must not fail
+an otherwise-successful run (the instance identity is deleted with the
+agent version anyway). Never revoke an id you resolved as **pre-existing**
+in the idempotent-create step above (`az role assignment list --assignee
+... --role ... --scope ... --query "[0].id"` returned non-empty before you
+created anything) — you did not create it, so it is not yours to delete.
+
+### Deploying user
+
+The **deploying user** still needs a role to create/update the agent:
+
+| Role | Scope | Why |
+|------|-------|-----|
+| `Foundry Project Manager` | Foundry project | Data-plane permissions to create/update agents |
+
+`azd` handles the ACR pull role (**Container Registry Repository
+Reader** on the project's managed identity) automatically as part of
+`azd deploy`.
+
+---
+
+## Troubleshooting
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| **401 on BYOK** | Wrong scope (`cognitiveservices.azure.com`) | Use `https://ai.azure.com/.default` |
+| **`send_and_wait()` timeout** | 60s default + 120s gateway limit | Use Invocations protocol instead of ResponsesHostServer |
+| **SSE response 0 chars** | Parser only captures `assistant.message` | Also capture `assistant.message_delta` as fallback |
+| **Task Adherence eval 0%** | Using `gpt-5.4` as judge model | Use `gpt-5.4-mini` as judge |
+| **Agent feels much slower than expected** | CopilotClient internal-turn overhead (20-34 internal calls per query) | Use MAF runtime instead — see `## ⚠️ Performance Caveat: Per-Query Overhead` |
+| **CopilotClient needs GITHUB_TOKEN** | Not using BYOK provider | Pass `provider` dict to `create_session()` |
+| **`system_message` ignored** | Passed as string | Must be dict: `{"mode": "replace", "content": "..."}` |
+| **Skills not loading** | Wrong path format | Use absolute paths in `skill_directories` list |
+| **Agent crashes on startup** | Missing `azure-ai-agentserver-invocations` | Add to dependencies, use `prerelease = "if-necessary-or-explicit"` |
+| **Gateway timeout (502/504)** | Using Responses protocol for long queries | Switch to Invocations protocol |
+| **Token expired during long query** | BYOK token static per session | Token has ~1h validity; for longer sessions, create new session |
+| **Token expired during eval runs** | Long eval runs (many scenarios) exhaust the BYOK token | Refresh the provider token per invocation: call `_get_provider()` fresh before each `_ensure_session()`, or create a new session every ~30 min |
+| **Container can't resolve packages** | pip doesn't handle pre-release deps | Use `uv` with pre-release settings in `[tool.uv]` |
+| **Missing `[tool.setuptools] packages = []`** | uv resolution fails without it | Add to pyproject.toml (see `references/pyproject.toml`) |
+| **CognitiveServices API version wrong** | Using old `2024-10-01` | Use `2025-10-01-preview` for agent management APIs |
+| **Hooks fail on Windows** | `shell: sh` in a custom azd hook | Use `shell: pwsh` for cross-platform |
+| **401 on real model inference** | Instance identity lacks `Foundry User` at the required scopes | Grant `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) to the **instance** identity at BOTH the Foundry account scope AND the project scope before invoking; project-only and account-only both 401. See § "Identity & RBAC for hosted agents" |
+| **Immediate post-grant SSE `model.call_failure` 401 / `transient_auth_error`** | Instance grants are correct but role-assignment propagation has not completed | Inspect the full event stream and retry the same JSON positional `azd ai agent invoke` path with bounded 15-second backoff (max six); accept recovered assistant output later in the stream. A 401 that never recovers after both grants is a hard FAIL |
+| **"responses protocol not declared" (bot 400)** | `azure.yaml`'s agent service only declares `invocations` but bot/CLI calls via Responses API (`oai.responses.create()`) | **Dual protocols don't work** — `InvocationAgentServerHost` only serves `/invocations`; the `/responses` path returns 404 even if a second protocol entry is declared. **Fix:** Rewrite the bot to POST directly to the Invocations SSE endpoint (or use `azd ai agent invoke --protocol invocations`) and parse `assistant.message` + `assistant.message_delta` events. **Alternative:** Use MAF runtime (ResponsesHostServer) which natively serves responses. |
+| **ACR push 403 / RBAC error** | Deploying user lacks `AcrPush` on the target ACR | Assign `AcrPush` on the ACR, or use the guided `azd ai agent init --deploy-mode container` path, which wires the registry automatically (Azure/azure-dev #8981) |
+| **Evals show no telemetry** | AppInsights not connected to Foundry account | Create `AppInsights` connection on the **account** (not project). Category: `AppInsights`, target: ARM resource ID, metadata: `ApiType: Azure`. `APPLICATIONINSIGHTS_CONNECTION_STRING` is reserved — platform injects it. |
+| **Agent traces missing** | Agent identity lacks telemetry RBAC | Assign `Monitoring Metrics Publisher` on AppInsights to the agent identity (from `azd ai agent show`). Project MI needs `Log Analytics Data Reader` on Log Analytics workspace. |
+| **gpt-4.1 encrypted content error** | gpt-4.1 deprecated, doesn't support encrypted content required by GHCP SDK | Default to `gpt-5.4-mini` or `gpt-5.4`. Update `AZURE_AI_MODEL_DEPLOYMENT_NAME` in `azure.yaml` / azd env. |
+| **`azd deploy` says "deployed in <1s" and nothing ships** | Copied a stripped-down `azure.yaml` missing the `services:` block | Use the canonical `references/yaml/azure.yaml` verbatim — see § "azure.yaml (unified GA deployment)" |
+
+---
+
+## Architecture Comparison
+
+```
+MAF (Responses Protocol):
+  container.py → Agent + FoundryChatClient + ResponsesHostServer → port 8088
+    └── Request/response: caller waits for full response
+    └── Timeout: ~120s (Foundry gateway)
+
+GHCP SDK (Invocations Protocol):
+  container.py → CopilotClient + InvocationAgentServerHost → port 8088
+    └── SSE streaming: events flow continuously
+    └── Timeout: unlimited (connection kept alive by events)
+```
+
+### Decision Matrix
+
+| Factor | Choose MAF | Choose GHCP SDK |
+|--------|-----------|----------------|
+| Tool loop duration | <120s | >120s |
+| Custom `@tool` functions | ✅ Required | ❌ Not supported |
+| Foundry Toolbox | ✅ `MCPStreamableHTTPTool` (was `get_toolbox()`, removed 1.3.0) | ❌ Not available |
+| Streaming output | ❌ Response only | ✅ Event stream |
+| Progressive skills | ✅ `SkillsProvider.from_paths()` (or legacy concat) | ✅ `SkillsProvider` |
+| MCP tools | `client.get_mcp_tool()` | `mcp_servers` parameter |
+| Auth complexity | Low (DAC → FoundryChatClient) | Medium (BYOK token minting) |
+| Packages | Stable releases | Pre-release beta |
+| Deploy shape | Unified `azure.yaml` (`threadlight-deploy/references/hosted-agent/maf`) | Unified `azure.yaml` (this skill) — same GA shape, different protocol/runtime |

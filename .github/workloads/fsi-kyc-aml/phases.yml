@@ -63,7 +63,7 @@ phases:
         - azd env set AZURE_TENANT_ID "$AZURE_TENANT_ID"
       (If `azd env new` reports the env already exists, that's fine — just `azd env select ci-${GITHUB_RUN_ID}` and continue with the `azd env set` calls.)
 
-      Use the threadlight-deploy skill to azd up the pilot to Azure — tenant alias is ${E2E_TENANT_ALIAS}. Expect ~3 min of azure-tenant-isolation handshake (tenant index lookup, subscription assertion, AZURE_CONFIG_DIR setup) BEFORE provisioning starts — that's the safety gate, not a hang.
+      Use the threadlight-deploy skill to azd up the pilot to Azure — tenant alias is ${E2E_TENANT_ALIAS}. Expect ~3 min of threadlight-tenant-isolation handshake (tenant index lookup, subscription assertion, AZURE_CONFIG_DIR setup) BEFORE provisioning starts — that's the safety gate, not a hang.
 
       threadlight-deploy GENERATES the deploy scaffold for you — do NOT hunt the repo for templates, fixtures, generators, or an example azure.yaml to copy, and do NOT hand-write azure.yaml yourself. The skill's Phase 2 writes azure.yaml + src/agent/ + the container files from the design project, and its Phase 4 scaffolds infra/ (Bicep) in place. The kyc-aml design project is the complete input the skill needs; invoke threadlight-deploy and follow its documented Phase 2 → Phase 4 steps rather than reconstructing a scaffold by hand.
 

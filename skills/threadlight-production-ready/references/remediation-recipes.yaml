@@ -159,12 +159,12 @@
   description: |
     For Citadel-spoke posture, the pilot's Foundry account must be
     fronted by an APIM Access Contract product in the Citadel hub RG.
-    See the `citadel-spoke-onboarding` skill for the full flow.
+    See the `threadlight-citadel-spoke` skill for the full flow.
   bash: |
     # Prereq: TL_CITADEL_HUB_RG must point to the Citadel hub RG.
     : "${TL_CITADEL_HUB_RG:?Set TL_CITADEL_HUB_RG=<hub-rg> before running}"
-    # Invoke the citadel-spoke-onboarding skill (delegated):
-    echo "Run \`copilot skill citadel-spoke-onboarding\` and follow the"
+    # Invoke the threadlight-citadel-spoke skill (delegated):
+    echo "Run \`copilot skill threadlight-citadel-spoke\` and follow the"
     echo "Access Contract onboarding for this pilot. After the contract"
     echo "is published, re-run production-readiness with --pillar network-posture."
 
