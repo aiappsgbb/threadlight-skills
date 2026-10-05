@@ -308,3 +308,19 @@ def test_official_named_skill_from_another_marketplace_is_not_official_first(tmp
             "path": str(tmp_path / "installed-plugins" / "_direct" / "aiappsgbb--awesome-gbb" / "skills" / "foundry-iq")}]
     report = official_skills.check(gbb + _with_threadlight(listing, tmp_path, first=True), lock=lock, manifest=MANIFEST)
     assert report["routing_order"] == "threadlight-first"
+
+
+def test_direct_installed_plugins_are_labelled_by_name_and_github_source(tmp_path):
+    # GitHub-direct installs live under installed-plugins/_direct/<owner>--<repo>;
+    # "<dir>@_direct" is not a valid install spec (code review on #155).
+    root = tmp_path / "installed-plugins" / "_direct" / "aiappsgbb--awesome-gbb"
+    (root / "skills").mkdir(parents=True)
+    (root / "plugin.json").write_text('{"name": "awesome-gbb"}')
+    official, lock = install(tmp_path)
+    crowd = [{"name": f"gbb-{i}", "description": "x" * 900, "source": "plugin", "enabled": True,
+              "path": str(root / "skills" / f"gbb-{i}")} for i in range(20)]
+    report = official_skills.check(crowd + _with_threadlight(official, tmp_path, first=True), lock=lock, manifest=MANIFEST)
+    assert report["routing_ahead"] == ["awesome-gbb (aiappsgbb/awesome-gbb)"]
+    text = official_skills.render(report)
+    assert "@_direct" not in text
+    assert "copilot plugin install aiappsgbb/awesome-gbb" in text

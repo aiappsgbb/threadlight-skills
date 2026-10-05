@@ -83,6 +83,15 @@ def _plugin_label(row: dict) -> str:
     parts = Path(row.get("path") or "").parts
     if row.get("source") == "plugin" and "installed-plugins" in parts:
         i = parts.index("installed-plugins")
+        if len(parts) > i + 2 and parts[i + 1] == "_direct":
+            root = Path(*parts[: i + 3])
+            try:
+                name = _load(root / "plugin.json").get("name")
+            except (OSError, ValueError, AttributeError):
+                name = None
+            segments = parts[i + 2].split("--")
+            source = "/".join(segments) if len(segments) == 2 else "its original source"
+            return f"{name or parts[i + 2]} ({source})"
         if len(parts) > i + 2:
             return f"{parts[i + 2]}@{parts[i + 1]}"
     return "personal skills" if row.get("source") != "plugin" else "plugin skills"
@@ -161,9 +170,16 @@ def render(report: dict) -> str:
                      + " would be listed by name only: skills listed before threadlight-skills ("
                      + ", ".join(report["routing_ahead"]) + ") fill Copilot's skill-description budget, so "
                      "Threadlight prompts can route to other skills.")
-        lines.append("  Fix: reinstall the plugins listed before threadlight-skills after it "
-                     "(copilot plugin uninstall NAME@MARKETPLACE && copilot plugin install NAME@MARKETPLACE), "
-                     "or disable the ones you do not use in workshops.")
+        lines.append("  Fix: reinstall the plugins listed before threadlight-skills after it, "
+                     "or disable the ones you do not use in workshops:")
+        for label in report["routing_ahead"]:
+            if label.endswith("(its original source)"):
+                lines.append(f"    copilot plugin uninstall {label.split(' (')[0]}, then reinstall it from its original source")
+            elif " (" in label:
+                name, source = label[:-1].split(" (", 1)
+                lines.append(f"    copilot plugin uninstall {name} && copilot plugin install {source}")
+            elif "@" in label:
+                lines.append(f"    copilot plugin uninstall {label} && copilot plugin install {label}")
     for row in report["skills"]:
         status, skill, plugin = row["status"], row["skill"], row["plugin"]
         if status == "ok":

@@ -54,7 +54,9 @@ plugins (Copilot CLI, `--plugin-dir`, no awesome-gbb).
   plugins listed earlier leave `threadlight-auto`/`-design`/`-deploy` name-only
   (seen on a real setup with Work IQ, M365 Agents Toolkit and awesome-gbb, no
   official plugin). Official-named skills from other marketplaces (awesome-gbb
-  `foundry-iq`) no longer count as the official plugin being first.
+  `foundry-iq`) no longer count as the official plugin being first. The fix
+  prints one reinstall command per plugin listed earlier, using `owner/repo`
+  for GitHub-direct installs such as awesome-gbb.
 - **F2 — SPEC §11a contract.** A parseable but incomplete governance contract
   (missing framework/tools/governance keys) now routes back to design
   (`incomplete-governance-contract`) instead of a govern hard stop; design emits
