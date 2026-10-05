@@ -1,0 +1,601 @@
+{
+  "schema": "threadlight-skill-dependencies/v1",
+  "policy": "Official Microsoft skills from azure@azure-skills are the default. A custom awesome-gbb skill is used only as a labelled residual when no official skill covers the capability or the official one demonstrably cannot do it; each exception records its evidence. Out-of-product-scope tools are not Azure product dependencies.",
+  "official": {
+    "marketplace": "microsoft/azure-skills",
+    "default_plugin": "azure@azure-skills",
+    "other_plugins": [
+      "azure-cost@azure-skills",
+      "foundry-iq-skills@azure-skills"
+    ],
+    "install": [
+      "/plugin marketplace add microsoft/azure-skills",
+      "/plugin install azure@azure-skills"
+    ],
+    "tag": "v1.2.77",
+    "commit": "74f27068b21b85807e35ae69ab3976756b060c03",
+    "plugin_root": ".github/plugins/azure-skills",
+    "paths_relative_to": "<plugin_root>/skills/<skill>/"
+  },
+  "custom_catalog": {
+    "repository": "aiappsgbb/awesome-gbb",
+    "commit_checked": "7f1de882d5386e5a27852c91d3a89523eef218d0",
+    "version_checked": "5.0.0",
+    "skills": [
+      "agent-framework-harness",
+      "auto-demo-producer",
+      "azd-patterns",
+      "azure-backup-readiness",
+      "azure-monitor-alert-baseline",
+      "azure-resource-diagnostics",
+      "azure-sre-agent",
+      "azure-tenant-isolation",
+      "citadel-hub-deploy",
+      "citadel-spoke-onboarding",
+      "copilot-doctor",
+      "foundry-agentops",
+      "foundry-agt",
+      "foundry-caphost-lifecycle",
+      "foundry-cost-monitoring",
+      "foundry-cross-resource",
+      "foundry-doc-vision-speech",
+      "foundry-evals",
+      "foundry-hosted-agents",
+      "foundry-iq",
+      "foundry-mcp-aca",
+      "foundry-mcp-aca-jobs",
+      "foundry-mcp-auth",
+      "foundry-network-runbook",
+      "foundry-observability",
+      "foundry-prompt-agents",
+      "foundry-rbac-audit",
+      "foundry-routines",
+      "foundry-skill-catalog",
+      "foundry-teams-bot",
+      "foundry-toolbox",
+      "foundry-vnet-deploy",
+      "foundry-voice-agents",
+      "foundry-voice-live",
+      "gbb-humanizer",
+      "gbb-pptx",
+      "ghcp-cli-config",
+      "ghcp-hosted-agents",
+      "ip-catalog",
+      "paygo-ptu-cost-analyzer",
+      "progress-guard",
+      "web-experience-design"
+    ]
+  },
+  "frozen_consumers": "Live demos and library processes keep their recorded awesome-gbb pins; this manifest does not change them.",
+  "skills": {
+    "agent-framework-harness": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Agent Framework harness (create_harness_agent) workflow is not covered.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "v1.2.77 skills/: 'Agent Framework' appears in 6 files (e.g. create/references/use-toolbox-in-hosted-agent.md uses it as the default hosted-agent SDK; toolbox/toolbox.md; agent-optimizer/references/python-patterns.md) as an SDK choice, but no file provides a local harness/test-loop workflow."
+      }
+    },
+    "auto-demo-producer": {
+      "label": "out-of-product-scope",
+      "reason": "Demo video production tool; not an Azure product capability."
+    },
+    "azd-patterns": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-prepare"
+        },
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-validate"
+        },
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-deploy"
+        },
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/azd-guidance/azd-guidance.md"
+          ]
+        }
+      ],
+      "threadlight_owned_gap": "The composable Bicep module catalog that threadlight-deploy Phase 6 reads (azd-patterns module shapes) has no official equivalent: v1.2.77 azure-prepare/references/recipes/bicep has only README.md and patterns.md. Until those shapes move into threadlight-deploy, awesome-gbb azd-patterns stays a required companion for threadlight-deploy."
+    },
+    "azure-backup-readiness": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Backup readiness assessment workflow is not covered.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "v1.2.77: backup appears only as azqr remediation (azure-compliance/references/azqr-remediation-patterns.md:167) and generic mentions; azure-reliability is Functions/App Service only."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-compliance"
+        }
+      ]
+    },
+    "azure-monitor-alert-baseline": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Alert-rule baseline workflow is not covered.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "git grep at v1.2.77 skills/: 'action group|metric alert' 0 files, 'alert rule' 0 files."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-diagnostics"
+        }
+      ]
+    },
+    "azure-resource-diagnostics": {
+      "label": "official-default",
+      "coverage": "full",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-diagnostics"
+        }
+      ]
+    },
+    "azure-sre-agent": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Azure SRE Agent workflow has no product skill in the azure plugin.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "git grep at v1.2.77 skills/: 'SRE Agent|sre-agent' 0 files."
+      }
+    },
+    "azure-tenant-isolation": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Per-tenant Azure CLI isolation is an operator-safety convention, not a product workflow.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "git grep at v1.2.77 skills/: 'AZURE_CONFIG_DIR' 0 files."
+      }
+    },
+    "citadel-hub-deploy": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Citadel hub (ai-hub-gateway-solution-accelerator, citadel-v1 profiles, access contracts) has no product skill.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "git grep at v1.2.77 skills/: 'Citadel' 0 files, 'ai-hub-gateway' 0 files; azure-aigateway covers generic APIM AI gateway policies only."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-aigateway"
+        }
+      ]
+    },
+    "citadel-spoke-onboarding": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Hub/spoke onboarding and access-contract issuance have no product skill.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "git grep at v1.2.77 skills/: 'Citadel' 0 files; 'spoke' 4 files, all generic networking (azure-ai, azure-enterprise-infra-planner, private-network intake)."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-aigateway"
+        }
+      ]
+    },
+    "copilot-doctor": {
+      "label": "out-of-product-scope",
+      "reason": "Copilot setup maintenance; not an Azure product capability."
+    },
+    "foundry-agentops": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Native AgentOps adoption for one agent has no product skill.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "git grep at v1.2.77 skills/: 'agentops' 0 files."
+      }
+    },
+    "foundry-agt": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Agent Governance Toolkit / ACS policy, Agent Hooks PEP and signed bundles have no product skill.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "git grep at v1.2.77 skills/: 'Agent Governance Toolkit' 0 files; 'Agent Hooks|ACS|Rego' 0 files."
+      }
+    },
+    "foundry-caphost-lifecycle": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "references/standard-agent-setup.md"
+          ]
+        }
+      ],
+      "threadlight_owned_gap": "Delete/recreate failure modes; proposed upstream."
+    },
+    "foundry-cost-monitoring": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure-cost@azure-skills",
+          "skill": "cost-analysis"
+        },
+        {
+          "plugin": "azure-cost@azure-skills",
+          "skill": "cost-governance"
+        }
+      ],
+      "threadlight_owned_gap": "Token-span chargeback stays in threadlight-consumption-iq."
+    },
+    "foundry-cross-resource": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "resource/private-network/private-network.md",
+            "project/connections.md"
+          ]
+        }
+      ],
+      "threadlight_owned_gap": "Cross-subscription examples only; no Threadlight-owned logic."
+    },
+    "foundry-doc-vision-speech": {
+      "label": "official-default",
+      "coverage": "full",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-ai"
+        }
+      ]
+    },
+    "foundry-evals": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/observe/observe.md",
+            "foundry-agent/eval-datasets/eval-datasets.md",
+            "foundry-agent/agent-optimizer/agent-optimizer.md"
+          ]
+        }
+      ],
+      "threadlight_owned_gap": "SAFE evidence packaging and release gates stay in threadlight-evals and threadlight-production-ready."
+    },
+    "foundry-hosted-agents": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/create/create-hosted.md",
+            "foundry-agent/deploy/deploy.md",
+            "foundry-agent/invoke/invoke.md",
+            "foundry-agent/troubleshoot/troubleshoot.md"
+          ]
+        }
+      ],
+      "threadlight_owned_gap": "Presenter delivery contract and the native-SDK hosted create-definition checks (skills/_shared/presenter.py, docs/presenter-ready.md)."
+    },
+    "foundry-iq": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "foundry-iq-skills@azure-skills",
+          "skill": "foundry-iq"
+        }
+      ],
+      "threadlight_owned_gap": "Knowledge-source ACL/citation evidence stays in threadlight-ground.",
+      "note": "Official plugin is preview (0.1.x) and uses the same skill name; install only one foundry-iq."
+    },
+    "foundry-mcp-aca": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "MCP server hosted on Azure Container Apps with Entra auth and Foundry wiring has no product workflow.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "v1.2.77 microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-mcp.md:43 only lists an Azure-Samples sample as a hosting option; toolbox covers consuming MCP, not hosting it."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/toolbox/toolbox.md"
+          ]
+        },
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-prepare"
+        }
+      ]
+    },
+    "foundry-mcp-aca-jobs": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Scheduled MCP/ACA job pattern has no product workflow.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "Same evidence as foundry-mcp-aca at v1.2.77; azure-prepare covers generic Container Apps only."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-prepare"
+        }
+      ]
+    },
+    "foundry-mcp-auth": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Entra auth for self-hosted MCP servers has no product workflow.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "Same evidence as foundry-mcp-aca at v1.2.77; entra-app-registration covers app registration only."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "entra-app-registration"
+        }
+      ]
+    },
+    "foundry-network-runbook": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "resource/private-network/private-network.md"
+          ]
+        }
+      ],
+      "threadlight_owned_gap": "Known-failure runbook depth; proposed upstream."
+    },
+    "foundry-observability": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/trace/trace.md",
+            "foundry-agent/insights/insights.md"
+          ]
+        },
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "appinsights-instrumentation"
+        }
+      ],
+      "threadlight_owned_gap": "Governance audit telemetry conventions stay in threadlight-govern."
+    },
+    "foundry-prompt-agents": {
+      "label": "official-default",
+      "coverage": "full",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/create/create-prompt.md"
+          ]
+        }
+      ]
+    },
+    "foundry-rbac-audit": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "rbac/rbac.md"
+          ]
+        },
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "azure-compliance"
+        }
+      ],
+      "threadlight_owned_gap": "Finding IAM-101 report format stays in threadlight-production-ready."
+    },
+    "foundry-routines": {
+      "label": "official-default",
+      "coverage": "full",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/routine/routine.md"
+          ]
+        }
+      ]
+    },
+    "foundry-skill-catalog": {
+      "label": "official-default",
+      "coverage": "full",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/create/references/skills/skill-manage.md",
+            "foundry-agent/create/references/skills/skill-attach.md"
+          ]
+        }
+      ]
+    },
+    "foundry-teams-bot": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Bot registration and Teams channel publishing are not covered.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "v1.2.77 microsoft-foundry/foundry-agent/deploy/deploy.md:153 only generates TEAMS_APP_SETUP.md for Activity-protocol agents; 'Azure Bot|bot service' 0 files."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/deploy/deploy.md"
+          ]
+        }
+      ]
+    },
+    "foundry-toolbox": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/toolbox/toolbox.md"
+          ]
+        }
+      ],
+      "threadlight_owned_gap": "Governed-action binding through the toolbox stays in threadlight-governed-actions."
+    },
+    "foundry-vnet-deploy": {
+      "label": "official-default",
+      "coverage": "partial",
+      "official": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "resource/private-network/private-network.md"
+          ]
+        }
+      ],
+      "threadlight_owned_gap": "Known-failure runbook depth; proposed upstream (files/upstream/drafts)."
+    },
+    "foundry-voice-agents": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Service-native voice prompt agents (preview) are not covered.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "v1.2.77: create-prompt.md has no voice mode; invocations-ws covers hosted agents only."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/invocations-ws/invocations-ws.md"
+          ]
+        }
+      ]
+    },
+    "foundry-voice-live": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "Azure AI Voice Live service migration ladder is not covered.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "git grep at v1.2.77 skills/: 'Voice Live|voice-live' 0 files; invocations-ws covers hosted WebSocket voice agents only."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "foundry-agent/invocations-ws/invocations-ws.md"
+          ]
+        }
+      ]
+    },
+    "gbb-humanizer": {
+      "label": "out-of-product-scope",
+      "reason": "Writing-style tool; not an Azure product capability."
+    },
+    "gbb-pptx": {
+      "label": "out-of-product-scope",
+      "reason": "Presentation authoring tool; not an Azure product capability."
+    },
+    "ghcp-cli-config": {
+      "label": "out-of-product-scope",
+      "reason": "Copilot CLI bootstrap; not an Azure product capability."
+    },
+    "ghcp-hosted-agents": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "GitHub Copilot SDK hosted agents: the official azure-hosted-copilot-sdk skill was retired.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "v1.2.77 .github/plugins/azure-skills/CHANGELOG.md:401 'retire azure-hosted-copilot-sdk skill' (GitHub-Copilot-for-Azure#2556); no replacement skill in skills/."
+      }
+    },
+    "ip-catalog": {
+      "label": "out-of-product-scope",
+      "reason": "GBB IP catalogue; not an Azure product capability."
+    },
+    "paygo-ptu-cost-analyzer": {
+      "label": "residual",
+      "display_label": "GBB pattern, not a Microsoft product skill",
+      "exception": {
+        "reason": "PAYG to PTU break-even modelling is not covered; PTU deployment itself is official.",
+        "official_tag_checked": "v1.2.77",
+        "observation": "git grep at v1.2.77: 'break-even|breakeven' 0 files repo-wide; microsoft-foundry/quota/references/ptu-guide.md:42 only advises comparing costs."
+      },
+      "official_partial": [
+        {
+          "plugin": "azure@azure-skills",
+          "skill": "microsoft-foundry",
+          "paths": [
+            "quota/references/ptu-guide.md",
+            "models/deploy-model/SKILL.md"
+          ]
+        },
+        {
+          "plugin": "azure-cost@azure-skills",
+          "skill": "cost-estimation"
+        }
+      ]
+    },
+    "progress-guard": {
+      "label": "out-of-product-scope",
+      "reason": "Agent execution discipline; not an Azure product capability."
+    },
+    "web-experience-design": {
+      "label": "out-of-product-scope",
+      "reason": "Web design guidance; not an Azure product capability."
+    }
+  }
+}
