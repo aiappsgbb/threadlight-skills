@@ -14,7 +14,8 @@ field.
   and reports each as OK, MISSING (absent or disabled) or DRIFT (content differs,
   including a personal copy shadowing the plugin). Each problem names the install
   fix, the parity-rerun rule for re-pinning and the Threadlight fallback. Offline;
-  exit 1 when degraded.
+  exit 1 when degraded, exit 2 (`UNCHECKED`) when the `copilot` CLI cannot list
+  skills.
 - `skill-dependencies.json` gains `official.fallbacks`: one entry per locked
   official skill with its Threadlight-owned fallback paths, or an explicit none.
 - `threadlight-auto` Stage 0 runs the check as a non-blocking warning and records

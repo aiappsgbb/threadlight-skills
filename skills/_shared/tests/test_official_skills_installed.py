@@ -126,7 +126,31 @@ def test_cli_reads_a_skill_list_file_and_exits_nonzero_when_degraded(tmp_path):
     assert any(r["skill"] == "azure-prepare" and r["status"] == "missing" for r in out["skills"])
 
 
+@pytest.mark.parametrize("failure", ["missing-binary", "nonzero", "bad-json"])
+def test_unavailable_copilot_cli_reports_unchecked_not_degraded(tmp_path, failure):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    if failure != "missing-binary":
+        fake = bindir / "copilot"
+        body = "echo 'unknown command' >&2; exit 3" if failure == "nonzero" else "echo 'not json'"
+        fake.write_text(f"#!/bin/sh\n{body}\n")
+        fake.chmod(0o755)
+    env = {"PATH": str(bindir), "HOME": str(tmp_path)}
+    for args in ([], ["--json"]):
+        proc = subprocess.run(
+            [sys.executable, str(SHARED / "official_skills.py"), *args],
+            capture_output=True, text=True, cwd=ROOT, env=env,
+        )
+        assert proc.returncode == 2, proc.stderr
+        assert "Traceback" not in proc.stderr
+        if args:
+            assert json.loads(proc.stdout)["status"] == "unchecked"
+        else:
+            assert proc.stdout.startswith("UNCHECKED:")
+
+
 def test_auto_preflight_runs_the_check_and_records_it():
     text = (ROOT / "skills/threadlight-auto/SKILL.md").read_text()
     assert "_shared/official_skills.py" in text
     assert "official_skills" in text and "preflight-passed.json" in text
+    assert "exits 2" in text and '"unchecked"' in text

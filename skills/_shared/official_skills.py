@@ -97,12 +97,28 @@ def _copilot_listing() -> list[dict]:
     return json.loads(proc.stdout)
 
 
+def _unchecked(reason: str, as_json: bool) -> int:
+    msg = f"copilot skill list --json unavailable ({reason}); official skills not checked."
+    print(json.dumps({"status": "unchecked", "reason": msg}, indent=2) if as_json else f"UNCHECKED: {msg}")
+    return 2
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--skill-list", type=Path, help="saved output of `copilot skill list --json`")
     ap.add_argument("--json", action="store_true", help="print the report as JSON")
     args = ap.parse_args(argv)
-    listing = _load(args.skill_list) if args.skill_list else _copilot_listing()
+    if args.skill_list:
+        listing = _load(args.skill_list)
+    else:
+        try:
+            listing = _copilot_listing()
+        except FileNotFoundError:
+            return _unchecked("copilot CLI not found on PATH", args.json)
+        except subprocess.CalledProcessError as exc:
+            return _unchecked(f"exit {exc.returncode}: {(exc.stderr or '').strip()[:200]}", args.json)
+        except json.JSONDecodeError:
+            return _unchecked("output is not JSON", args.json)
     report = check(listing)
     print(json.dumps(report, indent=2) if args.json else render(report))
     return 0 if report["status"] == "ok" else 1

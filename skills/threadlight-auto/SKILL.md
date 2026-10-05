@@ -330,7 +330,9 @@ next to the existing use-case skills.
    **does not stop** the pilot: show each MISSING or DRIFT line verbatim,
    including its fix and Threadlight fallback, and continue. The presenter
    deploy handoff still stops on drift as `docs/presenter-ready.md` describes.
-   If the `copilot` CLI is unavailable, record `official_skills: "unchecked"`.
+   Exit 0 records `official_skills: "ok"` and exit 1 records `"degraded"`. If
+   the `copilot` CLI is unavailable or cannot list skills, the check exits 2
+   with an `UNCHECKED:` line: record `official_skills: "unchecked"`.
 6. Writes `.threadlight/preflight-passed.json` with
    `foundation_sha256: <sha256>` when Foundation exists, or
    `foundation_sha256: null` before it exists, plus
