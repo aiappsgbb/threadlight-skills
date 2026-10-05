@@ -61,10 +61,16 @@ these fixture receipts.
 
 Design, Deploy and Safe Check read
 [`presenter-deployment-pin.json`](../skills/_shared/presenter-deployment-pin.json).
-Copy that exact object to `deployment.guidance`. It selects
-[awesome-gbb's hosted-agent guide at an immutable commit](https://github.com/aiappsgbb/awesome-gbb/blob/2a29e084882a52e74b94def3ee9bb32b73592e60/skills/foundry-hosted-agents/SKILL.md).
-Its relative templates, deployment-preflight and private/brownfield instructions
-must be read at **that same commit**, not a mutable installed companion.
+Copy that exact object to `deployment.guidance`. It selects the official
+[microsoft/azure-skills `microsoft-foundry` hosted-agent deploy guide at release `v1.2.77`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md),
+fixed by tag, commit and the file's sha256, which must equal the entry in
+[`official-skills-lock.json`](../skills/_shared/official-skills-lock.json).
+Its relative references, deployment preflight and troubleshooting must be read at
+**that same commit**, not a mutable installed companion. If the installed
+`azure@azure-skills` plugin is missing or its content differs from the lock, stop
+the handoff and report it: re-pin and rerun parity, then use the Threadlight-owned
+[`hosted-agent/maf`](../skills/threadlight-deploy/references/hosted-agent/maf/README.md)
+reference as the fallback layout guide meanwhile.
 
 For standalone authoring bundles, this checked copy of the guidance object is
 kept equal to the shared pin by the catalog's technical-guidance test:
@@ -72,11 +78,19 @@ kept equal to the shared pin by the catalog's technical-guidance test:
 <!-- deployment-guidance -->
 ```json
 {
-  "repository": "aiappsgbb/awesome-gbb",
-  "commit": "2a29e084882a52e74b94def3ee9bb32b73592e60",
-  "path": "skills/foundry-hosted-agents/SKILL.md"
+  "repository": "microsoft/azure-skills",
+  "tag": "v1.2.77",
+  "commit": "74f27068b21b85807e35ae69ab3976756b060c03",
+  "path": ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md",
+  "sha256": "54d7725d5f33238cd36fc6c00f468be67ee560d26849f8d32699ac4dd51cba50"
 }
 ```
+
+Frozen incumbent contracts recorded before this pin keep their exact earlier
+guidance object (the earlier awesome-gbb hosted-agent guide at `2a29e08`).
+[`presenter-deployment-pin-legacy.json`](../skills/_shared/presenter-deployment-pin-legacy.json)
+lists those objects; the validator accepts them read-only so retained contracts are
+not rewritten. Do not copy a legacy object into a new contract.
 
 The Cowork Design ZIP includes this guide, not the executable shared validator or
 other skills. Repository-relative code/test links below are engineering handoff
@@ -90,7 +104,7 @@ change a governance pin, or switch protocols to make a check pass.
 | Consumer | Single definition and validation |
 |---|---|
 | `unified-azd` | Root `azure.yaml`; selected `services.<service>` has native top-level `host: azure.ai.agent`, `project`, `kind`, `protocols`, and **list-shaped** `environmentVariables`. No `config` wrapper. Project points to the declared runtime root. Use the pinned upstream template. |
-| `native-sdk` | One frozen native create-definition JSON at the declared `manifest` path, with native `kind`, `protocol_versions`, `environment_variables`; the declared `create_entrypoint` is packaged and fingerprinted. No competing root `azure.yaml`. Retain native creation/provisioning provenance and use the upstream approved raw/brownfield path. This is not automatic certification of arbitrary SDK definitions. |
+| `native-sdk` | One frozen native create-definition JSON at the declared `manifest` path, with native `kind`, `protocol_versions`, `environment_variables`; the declared `create_entrypoint` is packaged and fingerprinted. No competing root `azure.yaml`. Retain native creation/provisioning provenance. The official guide covers the azd route only; for the native create definition (protocol server, environment variables, capability-host gating) use the Threadlight-owned [`references/hosted-agent/maf`](../skills/threadlight-deploy/references/hosted-agent/maf/README.md) or [`ghcp`](../skills/threadlight-deploy/references/hosted-agent/ghcp/README.md) reference. This is not automatic certification of arbitrary SDK definitions. |
 
 Native-SDK projects can explicitly select the bounded ACA consumer below, without
 regenerating the incumbent agent or migrating it to azd. Unchecked ancillary

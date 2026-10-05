@@ -1,5 +1,7 @@
 {
-  "repository": "aiappsgbb/awesome-gbb",
-  "commit": "2a29e084882a52e74b94def3ee9bb32b73592e60",
-  "path": "skills/foundry-hosted-agents/SKILL.md"
+  "repository": "microsoft/azure-skills",
+  "tag": "v1.2.77",
+  "commit": "74f27068b21b85807e35ae69ab3976756b060c03",
+  "path": ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md",
+  "sha256": "54d7725d5f33238cd36fc6c00f468be67ee560d26849f8d32699ac4dd51cba50"
 }
