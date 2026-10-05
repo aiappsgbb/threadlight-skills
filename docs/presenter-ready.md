@@ -71,6 +71,8 @@ Its relative references, deployment preflight and troubleshooting must be read a
 the handoff and report it: re-pin and rerun parity, then use the Threadlight-owned
 [`hosted-agent/maf`](../skills/threadlight-deploy/references/hosted-agent/maf/README.md)
 reference as the fallback layout guide meanwhile.
+`python3 skills/_shared/official_skills.py` detects both cases from the skills
+Copilot actually resolves, including a personal copy that shadows the plugin.
 
 For standalone authoring bundles, this checked copy of the guidance object is
 kept equal to the shared pin by the catalog's technical-guidance test:

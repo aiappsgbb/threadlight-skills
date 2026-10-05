@@ -7,6 +7,20 @@ field.
 
 ## [Unreleased]
 
+### Installed official-skills check (no dead ends)
+
+- `skills/_shared/official_skills.py` compares the official skills the Copilot
+  runtime resolves (`copilot skill list --json`) with `official-skills-lock.json`
+  and reports each as OK, MISSING (absent or disabled) or DRIFT (content differs,
+  including a personal copy shadowing the plugin). Each problem names the install
+  fix, the parity-rerun rule for re-pinning and the Threadlight fallback. Offline;
+  exit 1 when degraded.
+- `skill-dependencies.json` gains `official.fallbacks`: one entry per locked
+  official skill with its Threadlight-owned fallback paths, or an explicit none.
+- `threadlight-auto` Stage 0 runs the check as a non-blocking warning and records
+  `official_skills` in `.threadlight/preflight-passed.json`.
+- Plugin and marketplace version 2.18.0.
+
 ### Presenter deployment guidance pinned to the official azure-skills guide
 
 - `skills/_shared/presenter-deployment-pin.json` now selects the official
