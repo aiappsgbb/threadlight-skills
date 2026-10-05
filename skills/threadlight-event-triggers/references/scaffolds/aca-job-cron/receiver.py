@@ -83,7 +83,7 @@ async def invoke_agent(payload):
     """The ONLY runtime-supported path to invoke a Foundry-hosted agent from a
     containerized receiver (``azure-ai-projects>=2.0.0``). Do NOT use
     ``agent_framework.foundry.FoundryAgent`` / ``AzureAIAgentClient`` (both
-    removed) — see foundry-hosted-agents SKILL for the canonical pattern."""
+    removed) — see threadlight-deploy/references/hosted-agent/maf SKILL for the canonical pattern."""
     from azure.ai.projects.aio import AIProjectClient
     from azure.identity.aio import DefaultAzureCredential
 

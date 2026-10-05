@@ -61,7 +61,7 @@
 The audit container is queried by:
 
 - **Workspace UI** (audit viewer drawer / panel)
-- **Continuous evals** — `foundry-evals` ACA job pulls these to compute
+- **Continuous evals** — `microsoft-foundry` ACA job pulls these to compute
   KPIs (approval rate, escalation rate, SLA-met rate, etc.)
 - **Compliance team** — direct Cosmos queries for regulator reports
 - **Replay tooling** — to reconstruct what happened on a case

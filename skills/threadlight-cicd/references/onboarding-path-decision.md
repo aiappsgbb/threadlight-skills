@@ -21,15 +21,15 @@ Does the pilot require a CENTRAL PLATFORM environment?
    │
    ├─ YES ─────────────────────────────────────────► path = spoke-onboard
    │       Onboard the pilot as a SPOKE: consume the hub via an
-   │       Access Contract → citadel-spoke-onboarding.
+   │       Access Contract → threadlight-citadel-spoke.
    │       Ask for hub coordinates (hub sub, APIM resource id,
    │       access-contract product) to validate the contract.
    │       posture = citadel-spoke. RBAC scope = spoke-rg.
    │
    └─ NO ──────────────────────────────────────────► path = hub-deploy-then-spoke
            Stand the hub up on the SEPARATE central track →
-           citadel-hub-deploy (awesome-gbb, different repo/pipeline),
-           THEN citadel-spoke-onboarding to wire the pilot in.
+           threadlight-citadel-hub (Threadlight-owned, different repo/pipeline),
+           THEN threadlight-citadel-spoke to wire the pilot in.
            The pilot pipeline still never deploys the hub.
            posture = citadel-spoke. RBAC scope = spoke-rg.
 ```
@@ -39,16 +39,16 @@ Does the pilot require a CENTRAL PLATFORM environment?
 | Path | Engage | Repo / pipeline | RBAC scope |
 |---|---|---|---|
 | `standalone` | (none) | pilot repo only | target RG |
-| `spoke-onboard` | `citadel-spoke-onboarding` | pilot repo (consumes hub) | spoke RG |
-| `hub-deploy-then-spoke` | `citadel-hub-deploy` **then** `citadel-spoke-onboarding` | **central** repo for the hub, pilot repo for the spoke | spoke RG (pilot); hub scope stays with the central team |
+| `spoke-onboard` | `threadlight-citadel-spoke` | pilot repo (consumes hub) | spoke RG |
+| `hub-deploy-then-spoke` | `threadlight-citadel-hub` **then** `threadlight-citadel-spoke` | **central** repo for the hub, pilot repo for the spoke | spoke RG (pilot); hub scope stays with the central team |
 
 ## Invariants
 
 - Spoke paths (`spoke-onboard`, `hub-deploy-then-spoke`) **always** resolve
   `rbac_scope = spoke-rg`. The pilot identity is never granted hub scope.
-- `citadel-hub-deploy` is mentioned **only** on the `hub-deploy-then-spoke`
+- `threadlight-citadel-hub` is mentioned **only** on the `hub-deploy-then-spoke`
   path (the hub doesn't yet exist). When the hub already exists, the gate
-  points at `citadel-spoke-onboarding` only.
+  points at `threadlight-citadel-spoke` only.
 - The generator emits the pipeline + runbooks; it **never** deploys a hub or
   invokes a sibling skill itself. Hub/spoke onboarding is an operator action
   taken on the central track with consent.

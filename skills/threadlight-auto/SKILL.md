@@ -106,8 +106,8 @@ design            local-test       deploy             safe-check
                 ▼
        ┌──────────────────────────────────────────┐
        │ awesome-gbb companion SKILLs             │
-       │ (foundry-hosted-agents, azd-patterns,    │
-       │  foundry-observability, …)               │
+       │ (threadlight-deploy/references/hosted-agent/maf, threadlight-deploy/references/azd-modules,    │
+       │  microsoft-foundry, …)               │
        └──────────────────────────────────────────┘
 ```
 
@@ -285,14 +285,14 @@ Stage 0 Preflight
 
 The skills root resolves to `use-cases/<x>/skills/` for every stage. Optional
 extension skills (`threadlight-hitl-patterns`, `threadlight-event-triggers`,
-`threadlight-workspace-ui`, `citadel-spoke-onboarding`) run on demand, writing
+`threadlight-workspace-ui`, `threadlight-citadel-spoke`) run on demand, writing
 next to the existing use-case skills.
 
 ## Stage 0 — Preflight
 
 **Always runs** as the bootstrap preflight. Checks:
 
-1. Tenant + subscription match `~/.azure-tenants/index.json` for the alias (azure-tenant-isolation rule 4a)
+1. Tenant + subscription match `~/.azure-tenants/index.json` for the alias (threadlight-tenant-isolation rule 4a)
 2. Tool versions: `az ≥ 2.86`, `azd ≥ 1.25.4`, `bicep ≥ 0.43`, `uv ≥ 0.7`, `node ≥ 22`, `python ≥ 3.12`
 3. `azd ai agent` extension installed in the alias's `AZD_CONFIG_DIR`
 4. The `../threadlight-design/references/runtime-policy.json` dependency must
@@ -393,7 +393,7 @@ Preserve scripts, business HITL and existing Kratos-export ownership.
 | 4 | Safe-check (post-deploy) | `threadlight-safe-check` `phase=post-deploy` | `tests/postdeploy-manifest.json` (`checked_at`, `phase=post-deploy`, `gaps=[]`) + behavioral gates green; `docs/safe-check-post.md` is optional human-readable evidence |
 | 5 | Cost-projection (**new**, advisory) | `threadlight-consumption-iq` (`scripts/consumption_iq.py run --all`) | `docs/cost-projection.md` + `specs/cost-manifest.json`. Exit 4 (load profile incomplete) → sets `cost-projection: needs-wizard` in state, surfaces wizard prompt to operator; does NOT block chain. Exit 3 (pricing unavailable, no fixture) → sets `cost-projection: degraded-no-pricing`, warns, continues. Exit 2 (missing prereq, e.g. no SPEC) → same as other missing-prereq cases. Reconciled actuals are an opt-in subphase of this stage — see [§ Reconciled actuals](#cost-projection-stage--optional-reconciled-actuals-subphase-opt-in). |
 | 6 | Invoke | direct `azd ai agent invoke` ×2 | Both demo scenarios from `specs/SPEC.md § Demo Scenarios` succeed |
-| 7 | Evals — Discover (advisory) | `threadlight-evals` (`scripts/evals_check.py`) | `specs/evals-manifest.json` — offline batch (delegates to `foundry-evals`), Foundry Continuous Evaluation wiring on live threads, + A/B champion–challenger gate. Consumed by production-ready pillar 6 (EVAL-001..004). Advisory — degrades to `not-verified`, never blocks. |
+| 7 | Evals — Discover (advisory) | `threadlight-evals` (`scripts/evals_check.py`) | `specs/evals-manifest.json` — offline batch (delegates to `microsoft-foundry`), Foundry Continuous Evaluation wiring on live threads, + A/B champion–challenger gate. Consumed by production-ready pillar 6 (EVAL-001..004). Advisory — degrades to `not-verified`, never blocks. |
 | 8 | Red-team — Discover (advisory) | `threadlight-redteam` (`scripts/redteam_check.py`) | `docs/redteam-report.md` + `specs/redteam-manifest.json` — AI Red Teaming Agent adversarial scan (jailbreak / prompt-injection / exfiltration / harmful-content). Mapped to production-ready pillar 7 (SAFE-101..106). Advisory — never blocks. |
 | before 3 | Govern + mandatory governed-actions gate (when selected) | `threadlight-govern`, `threadlight-governed-actions` | Current binding inventory + strictly validated pre-deploy ledger. Blocks deploy until satisfied. |
 | after 3 | Governance probe (when selected) | `threadlight-safe-check` explicit collector | Current exact binding evidence at `specs/governance-manifest.json`. Blocks all subsequent stages until satisfied; no business-action probing. |
@@ -621,4 +621,4 @@ Next steps:
 - Cross-refs:
   - `threadlight-deploy` SKILL § Deploy-time failure-mode index F-01..F-22 (smart-recovery table cribs from here)
   - `threadlight-safe-check` SKILL `phase=post-deploy` (invoked at Safe-check stage)
-  - `azure-tenant-isolation` SKILL (Stage 0 HARD STOP enforcer)
+  - `threadlight-tenant-isolation` SKILL (Stage 0 HARD STOP enforcer)

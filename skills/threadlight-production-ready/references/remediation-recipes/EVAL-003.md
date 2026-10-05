@@ -58,8 +58,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run evals
         run: |
-          pip install foundry-evals
-          foundry-evals run evals/scenarios.yaml --output evals/runs/$(date +%Y%m%d-%H%M%S).json
+          pip install microsoft-foundry
+          microsoft-foundry run evals/scenarios.yaml --output evals/runs/$(date +%Y%m%d-%H%M%S).json
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:

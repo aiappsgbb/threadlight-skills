@@ -1,7 +1,7 @@
 # Threadlight — Technical Briefing
 
 > **Engineering reference for a working pilot with selected runtime governance and an evidence-backed path to production.**
-> Threadlight is a library of twenty-four `threadlight-*` skills (23 pipeline skills + the `threadlight-auto` lifecycle planner) that takes a customer engagement from a brief into a working pilot with selected runtime governance and auditable evidence. A working session produces the pilot and the evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
+> Threadlight is a library of twenty-eight `threadlight-*` skills (27 pipeline skills + the `threadlight-auto` lifecycle planner) that takes a customer engagement from a brief into a working pilot with selected runtime governance and auditable evidence. A working session produces the pilot and the evidence; production certification, settled Azure actuals, and customer-environment onboarding each have their own timelines.
 >
 > Governance evidence is per binding, not whole-agent. See the current
 > [runtime lifecycle](docs/production-readiness.md#runtime-governance-lifecycle);
@@ -80,13 +80,15 @@ explains the same boundaries visually; it is not the operator runbook.
 > to end.
 > Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
-The twenty-four skills (alphabetical, but the canonical flow order is given in
+The twenty-eight skills (alphabetical, but the canonical flow order is given in
 the next section):
 
 ```
 threadlight-agentops
 threadlight-auto
 threadlight-cicd
+threadlight-citadel-hub
+threadlight-citadel-spoke
 threadlight-connect
 threadlight-consumption-iq
 threadlight-customize
@@ -101,11 +103,13 @@ threadlight-ground
 threadlight-hitl-patterns
 threadlight-loadtest
 threadlight-local-test
+threadlight-mcp-aca
 threadlight-production-ready
 threadlight-qualify
 threadlight-redteam
 threadlight-router-bench
 threadlight-safe-check
+threadlight-tenant-isolation
 threadlight-upgrade
 threadlight-workspace-ui
 ```
@@ -127,15 +131,15 @@ skill sounds most exciting.
 | Spec + data exist, ready to ship to a customer sandbox | `threadlight-deploy` | safe-check (post-deploy) |
 | A pilot works against a **mocked** tool and you're ready to point it at a **real** endpoint | `threadlight-connect` (writes `specs/connect-manifest.json` INT-001..004; gates `mock → real` on conformance + OBO + role revalidation; `--apply` + validated `--real-endpoint` to persist) | production-ready (INT-001..004). **Manual hand-off — `threadlight-auto` does not run it** |
 | You inherited an existing deploy and need to know what's broken | `threadlight-safe-check --phase post-deploy` | deploy (re-run) → safe-check |
-| The agent is deployed and you need to **run** quality evals (offline batch + online/continuous on live threads + an A/B champion–challenger gate before a model/prompt swap) | `threadlight-evals` (writes `specs/evals-manifest.json`; delegates invoke+score to `foundry-evals`, wires Foundry Continuous Evaluation → App Insights) | production-ready (pillar 6 EVAL-001..004 verifies the leg ran) |
+| The agent is deployed and you need to **run** quality evals (offline batch + online/continuous on live threads + an A/B champion–challenger gate before a model/prompt swap) | `threadlight-evals` (writes `specs/evals-manifest.json`; delegates invoke+score to `microsoft-foundry`, wires Foundry Continuous Evaluation → App Insights) | production-ready (pillar 6 EVAL-001..004 verifies the leg ran) |
 | The agent is deployed and you need an **AI Red Teaming** adversarial scan (jailbreak / prompt-injection / exfiltration / harmful-content) before sign-off | `threadlight-redteam` (writes `docs/redteam-report.md` + `specs/redteam-manifest.json`; runs the PyRIT-based AI Red Teaming Agent) | production-ready (pillar 7 SAFE-101..106 verifies the scan ran) |
 | The agent grounds answers on a **knowledge source** and you need to prove retrieval is ACL-safe, cited, and honest about what it doesn't know | `threadlight-ground` (writes `specs/ground-manifest.json` GRD-001..004 from caller-supplied ACL / citation / refusal probe evidence; a coordinator — never calls Foundry IQ, never runs a live probe) | production-ready (GRD-001..004). **Manual hand-off — `threadlight-auto` never runs probes** |
 | You need to **govern selected runtime actions** — author ACS/Rego and generate native host/gateway/service wiring, then collect scoped evidence | `threadlight-govern` and `threadlight-governed-actions` (`specs/governance-manifest.json`) | production-ready verifies current binding evidence; policy/CI alone cannot pass |
 | You need to **prove the agent's consequential actions are governed** — action inventory, interceptor mediation, fail-closed enforcement, one-time approvals, output gating, payload-free audit, and the GitHub Copilot change plane | `threadlight-governed-actions` (read-only by default; `--emit` writes `tests/governed-actions-manifest.json` + `docs/governance/evidence-pack.md`) | production-ready (AGT-007 / HITL-008 / SUP-014 consume the manifest as leg-verified evidence) |
 | Safe-check is green and you need a cost story (per-resource projection + cheaper-SKU recommendations) before architecture review | `threadlight-consumption-iq` (writes `docs/cost-projection.md` + `specs/cost-manifest.json`; the wizard back-fills SPEC § 12 `load_profile{}` if it's empty) | production-ready (COST-005 + COST-006 consume the manifest) |
 | You need **real latency / throughput / error-rate evidence** under a hard budget cap before go-live | `threadlight-loadtest` (writes `specs/load-manifest.json` LOAD-001..003 from one budget-capped k6/locust run; aborts if the projection exceeds `budget_ceiling_usd` or a production endpoint lacks explicit `allow_production`; never installs engines, never loops) | production-ready (LOAD-001..003). **Manual, live, cost-bearing — `threadlight-auto` does not run it** |
-| Safe-check is green and the customer is about to take this to architecture review / CISO sign-off | `threadlight-production-ready` (run `foundry-evals` first if you want continuous-evals scored as `pass` rather than `not-verified`; run `consumption-iq` first to populate the cost manifest so COST-005 + COST-006 score `pass` rather than `not-verified`) | (advisory; reads SPEC § 12, produces hand-off report) |
-| Production-readiness gate is green but the customer's prod env is locked down (no direct `azd up`, deploys must go through a pipeline) | `threadlight-cicd` (onboarding-path gate, then generates a GitHub Actions or Azure DevOps OIDC/WIF prod pipeline + env-setup runbooks) | (manual handoff; platform team runs the env-setup runbooks. **Separate** repo/pipeline from `citadel-hub-deploy`) |
+| Safe-check is green and the customer is about to take this to architecture review / CISO sign-off | `threadlight-production-ready` (run `microsoft-foundry` first if you want continuous-evals scored as `pass` rather than `not-verified`; run `consumption-iq` first to populate the cost manifest so COST-005 + COST-006 score `pass` rather than `not-verified`) | (advisory; reads SPEC § 12, produces hand-off report) |
+| Production-readiness gate is green but the customer's prod env is locked down (no direct `azd up`, deploys must go through a pipeline) | `threadlight-cicd` (onboarding-path gate, then generates a GitHub Actions or Azure DevOps OIDC/WIF prod pipeline + env-setup runbooks) | (manual handoff; platform team runs the env-setup runbooks. **Separate** repo/pipeline from `threadlight-citadel-hub`) |
 | A CI run finished (green **or** red) and you want to harvest it into grounded learnings, or compare model-router cost/quality before a swap | `threadlight-router-bench` (`learn <run_id>` → learnings digest: phase parity, failure taxonomy, recommendations; optional `bench <candidate> <baseline>` cost/quality scorecard from Azure Monitor token metrics) | (offline IMPROVE leg; feeds design / prompt / model tuning. Reads finished CI runs, writes nothing to prod) |
 | A shipped pilot has been running a while and you want to know what has **drifted** (dependency pins, preview→GA, deprecations) before it breaks | `threadlight-upgrade` (writes `specs/upgrade-manifest.json` UPG-001..003 + one ordered migration plan by comparing the project to a dated `compatibility-matrix.json`; no network calls) | (plan-only lifecycle scan; **no `--apply`, never edits the project** — acting on the plan is manual) |
 | The pilot is proven and you need to **fork Threadlight and onboard it into one specific customer's environment** (landing zones, RBAC, pipelines, governance) — especially the **production onboarding** | `threadlight-customize` (intake gate → customization map → test-in-customer-env runbook → non-coverage boundary; instructions/runbooks, **not** automation) | (manual handoff; SE-led first. `threadlight-auto` does **not** drive it) |
@@ -253,7 +257,7 @@ workspace UI, eval dataset — reads the same canonical seed.
   per-industry canon when the pilot revealed new realism rules.
 
 **Depends on.** `threadlight-design` (for the spec). Outputs feed
-`foundry-mcp-aca` (Option D mock-server backing) and
+`threadlight-mcp-aca` (Option D mock-server backing) and
 `threadlight-workspace-ui` (seed for the SPA).
 
 ---
@@ -360,7 +364,7 @@ calls the agent), § 11c (confirms `event-grid` / `service-bus` /
 - `infra/triggers/<trigger-name>.bicep` + `dead-letter.bicep`.
 - Updates to `azure.yaml` to register the new service.
 
-**Depends on.** `threadlight-design`. Complementary to `azd-patterns`
+**Depends on.** `threadlight-design`. Complementary to `threadlight-deploy/references/azd-modules`
 (which teaches *how* to deploy ACA jobs; this skill picks the receiver
 shape and writes the code).
 
@@ -404,9 +408,9 @@ services and operator prerequisites. Generation is not authorization to deploy,
 and one successful command is not complete runtime evidence.
 
 **Inputs.** `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`,
-`specs/manifest.json` (the § 11c selector contract). Reads `foundry-hosted-agents`
-for RBAC + identity, `foundry-mcp-aca` for MCP deploy, and
-`foundry-observability` for the 3-layer telemetry wiring.
+`specs/manifest.json` (the § 11c selector contract). Reads `threadlight-deploy/references/hosted-agent/maf`
+for RBAC + identity, `threadlight-mcp-aca` for MCP deploy, and
+`microsoft-foundry` for the 3-layer telemetry wiring.
 
 **Outputs.**
 - `container.py` — **GHCP SDK runtime by default**
@@ -506,7 +510,7 @@ comes from. Consumed by `production-ready` (GRD-001..004).
 **Purpose.** The **Discover** evals leg — the threadlight-owned step that
 *runs* evaluation rather than only scoring whether evals were declared.
 Three modes: offline batch quality evals (delegates invoke+score to
-`foundry-evals`), **online / continuous evaluation** on live threads
+`microsoft-foundry`), **online / continuous evaluation** on live threads
 (Foundry `create_agent_evaluation` → App Insights, with reasoning), and an
 **A/B champion–challenger** comparison gate before any model or prompt swap.
 
@@ -696,7 +700,7 @@ intermediate excuse to leave the pilot in lab graveyard.
 
 **Recommended ordering.** `threadlight-safe-check --phase post-deploy`
 must be green and fresh **before** running this skill. For the
-strongest scorecard, also run `foundry-evals` first — otherwise
+strongest scorecard, also run `microsoft-foundry` first — otherwise
 the `continuous-evals` pillar checks degrade to `not-verified` rather
 than `pass`.
 
@@ -740,8 +744,8 @@ anything:
 | Is a central platform env required? | Already deployed? | Resolves to | Posture · RBAC scope |
 |---|---|---|---|
 | no | — | `standalone` (validate target sub/RG, shared-resource usage, network exposure first) | standard-ai-gateway/agt/direct · target-rg |
-| yes | yes | `spoke-onboard` (consume hub via Access Contract → `citadel-spoke-onboarding`) | citadel-spoke · spoke-rg |
-| yes | no | `hub-deploy-then-spoke` (stand up hub on the **separate** central track → `citadel-hub-deploy`, then spoke-onboard) | citadel-spoke · spoke-rg |
+| yes | yes | `spoke-onboard` (consume hub via Access Contract → `threadlight-citadel-spoke`) | citadel-spoke · spoke-rg |
+| yes | no | `hub-deploy-then-spoke` (stand up hub on the **separate** central track → `threadlight-citadel-hub`, then spoke-onboard) | citadel-spoke · spoke-rg |
 
 ```bash
 # interactive onboarding-path gate, then generate
@@ -780,9 +784,9 @@ python skills/threadlight-cicd/scripts/generate_pipeline.py \
 **separate repo/pipeline** from central-platform deployment. It deploys
 **only** use-case resources into the spoke/target RG and **must never**
 deploy or modify the Citadel hub, shared APIM, shared networking, or
-platform Key Vault — those belong to `citadel-hub-deploy` (awesome-gbb).
+platform Key Vault — those belong to `threadlight-citadel-hub` (Threadlight-owned, separate central-platform track).
 For `citadel-spoke` posture the pilot consumes the hub via an Access
-Contract (`citadel-spoke-onboarding`); the deploy identity's RBAC is
+Contract (`threadlight-citadel-spoke`); the deploy identity's RBAC is
 scoped to the spoke RG, never hub scope.
 
 **Offline handoff; blocking release checks.** Generation never touches
@@ -912,7 +916,7 @@ Do NOT use it when:
 
 - You want fine-grained control over each stage (call the spine skills directly)
 - You're iterating on a single stage
-- This is production CI/CD — `threadlight-auto` is a pilot driver, not a production pipeline orchestrator. For that, see `azd-patterns` + your CI tool.
+- This is production CI/CD — `threadlight-auto` is a pilot driver, not a production pipeline orchestrator. For that, see `threadlight-deploy/references/azd-modules` + your CI tool.
 
 The planner keeps the manual handoff model: `threadlight-connect`, `threadlight-ground`, `threadlight-loadtest`, `threadlight-cicd`, `threadlight-customize`, and the offline improvement legs remain human-led.
 ---
@@ -949,16 +953,16 @@ that agent over the next weeks and months.
 
 | Family | What it adds after the wedge | Key skills |
 |---|---|---|
-| **`foundry-*` building blocks** | The Azure-Foundry primitives that threadlight composes — RBAC, agent runtime, MCP deploy, enterprise RAG, document / vision / speech, Teams CEA, evals, telemetry, and **skills/tools published as versioned artifacts**. | `foundry-hosted-agents`, `foundry-mcp-aca`, `foundry-iq`, `foundry-doc-vision-speech`, `foundry-teams-bot`, `foundry-evals`, `foundry-observability`, `foundry-skill-catalog`, `foundry-toolbox`, `foundry-vnet-deploy`, `foundry-agt`, `foundry-cross-resource`, `ghcp-hosted-agents` |
-| **`citadel-*` governance** | The production landing zone — APIM AI Gateway, Access Contracts, JWT auth, BYO VNet, multi-region hub. | `citadel-hub-deploy`, `citadel-spoke-onboarding` |
+| **`foundry-*` building blocks** | The Azure-Foundry primitives that threadlight composes — RBAC, agent runtime, MCP deploy, enterprise RAG, document / vision / speech, Teams CEA, evals, telemetry, and **skills/tools published as versioned artifacts**. | `threadlight-deploy/references/hosted-agent/maf`, `threadlight-mcp-aca`, `foundry-iq`, `azure-ai`, `foundry-teams-bot`, `microsoft-foundry`, `threadlight-govern/references/agt-inprocess`, `microsoft-foundry`, `threadlight-deploy/references/hosted-agent/ghcp` |
+| **`citadel-*` governance** | The production landing zone — APIM AI Gateway, Access Contracts, JWT auth, BYO VNet, multi-region hub. | `threadlight-citadel-hub`, `threadlight-citadel-spoke` |
 | **`gbb-*` content** | Pitch-side artefacts (PowerPoint generators, narrative humanisers). | `gbb-pptx`, `gbb-humanizer` |
 | **`auto-demo-producer`** | Records the deployed agent as a narrated video demo (Playwright + edge-tts + ffmpeg). | `auto-demo-producer` |
-| **`azd-patterns` / `azure-tenant-isolation`** | Cross-cutting deployment + multi-tenant isolation rules. | `azd-patterns`, `azure-tenant-isolation` |
+| **`threadlight-deploy/references/azd-modules` / `threadlight-tenant-isolation`** | Cross-cutting deployment + multi-tenant isolation rules. | `threadlight-deploy/references/azd-modules`, `threadlight-tenant-isolation` |
 
-> **Cross-skill defaults that matter.** `foundry-observability` is
+> **Cross-skill defaults that matter.** `microsoft-foundry` is
 > **always** layered into `threadlight-deploy` (Bicep substrate +
 > account-level App Insights connection + `configure_azure_monitor()` in
-> each ACA workload). `foundry-evals` runs against SPEC § 9 scenarios
+> each ACA workload). `microsoft-foundry` runs against SPEC § 9 scenarios
 > after every deploy. The pilot ships with telemetry, evals and a
 > safe-check gate from day one or it is not a pilot.
 
@@ -974,8 +978,8 @@ deliberately.**
 - **Author in Git → publish an immutable version.** The editable copy
   lives in source control; the reviewed source is promoted to a
   **versioned Foundry artifact** — a `SkillVersion`, a toolbox version —
-  via [`foundry-skill-catalog`](https://github.com/aiappsgbb/awesome-gbb)
-  and [`foundry-toolbox`](https://github.com/aiappsgbb/awesome-gbb).
+  via [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry)
+  and [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry).
 - **Reference by a pinned version.** Production agents bind to a specific
   version, never a floating pointer, so "which capabilities ran during
   the incident?" has a single, auditable answer.
@@ -1004,7 +1008,7 @@ the cited `SKILL.md`; this is the index, not the cure.
 Insights connection, or `configure_azure_monitor()` was never called in
 the ACA workload.
 
-**Fix.** `foundry-observability` § 3-Layer Wiring (postprovision script
+**Fix.** `microsoft-foundry` § 3-Layer Wiring (postprovision script
 puts the AppIn connection on the **account**, not the project; ACA
 workload boots with `configure_azure_monitor()` wrapped for local-dev
 safety). `threadlight-safe-check --phase post-deploy` raises a gap.
@@ -1050,7 +1054,7 @@ Coding Agent, Cursor, Clawpilot). The seller→SE handoff happens at
 The evaluator can't see what the agent read, so it scores every cited
 fact as fabricated.
 
-**Fix.** `foundry-evals` "enriched dataset shape" — populate
+**Fix.** `microsoft-foundry` "enriched dataset shape" — populate
 `tool_calls` and `tool_outputs` in each row.
 
 ### 7. Demo data isn't reset between live runs and the second take is broken

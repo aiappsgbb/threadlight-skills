@@ -1,23 +1,24 @@
 # Sibling-skill invocation map
 
 When threadlight's apply-plan emits `kind: sibling-skill` for a finding, the
-agent should consult this table to learn (a) which awesome-gbb skill to invoke,
+agent should consult this table to learn (a) which sibling skill to invoke (official `azure@azure-skills` first, then
+Threadlight-owned, then a labelled GBB pattern skill from awesome-gbb),
 (b) the input contract that skill expects, and (c) which threadlight finding
 the invocation is expected to flip green.
 
 ## Currently mapped (v0.4.0)
 
-| Finding ID | Sibling skill (awesome-gbb) | Input contract | Notes |
+| Finding ID | Sibling skill (source) | Input contract | Notes |
 | --- | --- | --- | --- |
-| AOPS-001 | `foundry-agentops` | opted-in agent root, current binding and owner-approved runtime scope | Merged consumable-main pin `2db28d1f52bf288f2d0fd40b7c8beb913ceeee09`; native `0.14.0`. Re-run `threadlight-agentops` and canonical domains; not certification or a tagged-release claim. |
-| NET-501 | `citadel-spoke-onboarding` | `spoke_subscription_id`, `spoke_resource_group`, `hub_subscription_id`, `hub_apim_resource_id`, `access_contract_product` | Hub coordinates may need user confirmation if not in framing. |
-| NET-502 | `citadel-spoke-onboarding` | (same as NET-501) | Same skill handles reachability — single invocation closes both. |
-| IAM-101 | `foundry-rbac-audit` *(planned — awesome-gbb#268)* | `subscription_id`, `resource_group`, `target_principal_types` | Skill not yet released; until then this finding stays `kind: manual`. |
-| MDL-010 | `foundry-iq` | `subscription_id`, `resource_group`, `private_endpoint_required: true` | Existing skill — confirm version ≥ 0.3.0. |
-| MDL-011 | `foundry-hosted-agents` | `subscription_id`, `resource_group`, `retention_days` (from framing) | Thread retention policy. |
-| OBS-106 | `azure-resource-diagnostics` *(planned — awesome-gbb#271)* | `subscription_id`, `resource_group`, `target_resource_types` | Not yet released — fall back to `kind: manual`. |
-| REL-007 | `azure-backup-readiness` *(planned — awesome-gbb#267)* | `subscription_id`, `resource_group`, `protected_item_types` | Not yet released — fall back to `kind: manual`. |
-| SRE-104 | `azure-monitor-alert-baseline` *(planned — awesome-gbb#272)* | `subscription_id`, `resource_group`, `alert_baseline_kind` | Not yet released — fall back to `kind: manual`. |
+| AOPS-001 | `foundry-agentops` (awesome-gbb, GBB pattern) | opted-in agent root, current binding and owner-approved runtime scope | Merged consumable-main pin `2db28d1f52bf288f2d0fd40b7c8beb913ceeee09`; native `0.14.0`. Re-run `threadlight-agentops` and canonical domains; not certification or a tagged-release claim. |
+| NET-501 | `threadlight-citadel-spoke` (Threadlight-owned) | `spoke_subscription_id`, `spoke_resource_group`, `hub_subscription_id`, `hub_apim_resource_id`, `access_contract_product` | Hub coordinates may need user confirmation if not in framing. |
+| NET-502 | `threadlight-citadel-spoke` (Threadlight-owned) | (same as NET-501) | Same skill handles reachability — single invocation closes both. |
+| IAM-101 | `microsoft-foundry` (official; RBAC guidance, no automated audit) | `subscription_id`, `resource_group`, `target_principal_types` | The official skill gives RBAC guidance, not an automated audit; this finding stays `kind: manual`. |
+| MDL-010 | `foundry-iq` (official, `foundry-iq-skills@azure-skills`) | `subscription_id`, `resource_group`, `private_endpoint_required: true` | Existing skill — confirm version ≥ 0.3.0. |
+| MDL-011 | `threadlight-deploy/references/hosted-agent/maf` (Threadlight-owned) | `subscription_id`, `resource_group`, `retention_days` (from framing) | Thread retention policy. |
+| OBS-106 | `azure-diagnostics` (official) | `subscription_id`, `resource_group`, `target_resource_types` | The official skill diagnoses but does not emit this baseline; fall back to `kind: manual`. |
+| REL-007 | `azure-backup-readiness` *(planned — awesome-gbb#267; GBB pattern, not a Microsoft product skill)* | `subscription_id`, `resource_group`, `protected_item_types` | Not yet released — fall back to `kind: manual`. |
+| SRE-104 | `azure-monitor-alert-baseline` *(planned — awesome-gbb#272; GBB pattern, not a Microsoft product skill)* | `subscription_id`, `resource_group`, `alert_baseline_kind` | Not yet released — fall back to `kind: manual`. |
 | SAFE-101 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after policy hardening via `threadlight-govern` | Jailbreak attack-success-rate above threshold — harden prompt shields + content filter, then re-scan. |
 | SAFE-102 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after tool-authorization hardening via `threadlight-govern` | Prompt-injection (direct/XPIA) ASR above threshold — enable indirect-attack shield + HITL gate, then re-scan. |
 | SAFE-103 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after egress hardening via `threadlight-govern` | Data/prompt exfiltration ASR above threshold — deny egress sinks + block external PII, then re-scan. |

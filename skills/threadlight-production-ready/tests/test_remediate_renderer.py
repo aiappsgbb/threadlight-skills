@@ -166,7 +166,7 @@ def test_per_file_only_recipe_is_reachable() -> None:
     out = buf.getvalue()
     assert "# remediation recipe — NET-502" in out, out[:300]
     # marker unique to NET-502.md's body
-    assert "citadel-spoke-onboarding" in out, out[:400]
+    assert "threadlight-citadel-spoke" in out, out[:400]
 
 
 def test_per_file_recipe_case_insensitive() -> None:

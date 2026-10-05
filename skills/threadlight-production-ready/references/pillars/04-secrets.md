@@ -49,8 +49,8 @@
 
 | Finding | Skill |
 |---|---|
-| KV config patterns | `azd-patterns` |
-| Use managed identity for secret retrieval | `foundry-hosted-agents` |
+| KV config patterns | `threadlight-deploy/references/azd-modules` |
+| Use managed identity for secret retrieval | `threadlight-deploy/references/hosted-agent/maf` |
 | Rotate hardcoded secrets out of repo | (manual; document in the report) |
 
 ## Why this pillar matters

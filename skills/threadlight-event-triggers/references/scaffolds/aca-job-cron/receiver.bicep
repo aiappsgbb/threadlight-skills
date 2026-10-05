@@ -2,8 +2,8 @@
 // A scheduled Container Apps Job that runs the receiver once per cron tick.
 //
 // Helper symbols (jobExists, fetchLatestImage, emptyContainerImage) come from
-// the azd-patterns image-aware deployment pattern — main.bicep resolves them
-// and passes the result in as `image`. See azd-patterns/SKILL.md
+// the threadlight-deploy/references/azd-modules image-aware deployment pattern — main.bicep resolves them
+// and passes the result in as `image`. See threadlight-deploy/references/azd-modules/SKILL.md
 // § "Helper symbols for image-aware deployment".
 
 @description('Resource name prefix (azd env name).')

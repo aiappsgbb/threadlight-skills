@@ -11,7 +11,7 @@ description: >
   demo data, populate sample-data, golden cases, idempotent reset.
   DO NOT USE FOR: indexing real customer data (use foundry-iq for
   that), live data ingestion (use threadlight-event-triggers), MCP
-  server scaffold (use foundry-mcp-aca).
+  server scaffold (use threadlight-mcp-aca).
 metadata:
   version: "1.0.1"
 ---
@@ -36,10 +36,10 @@ from valid-but-expired data; do not force full regeneration or extend leases.
 
 Generate per-domain synthetic demo data + idempotent reset/seed scripts for
 a threadlight process. The output drives both the mock MCP server (via
-`foundry-mcp-aca` Option D) and the workspace UI (via
+`threadlight-mcp-aca` Option D) and the workspace UI (via
 `threadlight-workspace-ui`) — every demo surface reads the same seed.
 
-> **Why a separate skill?** `foundry-mcp-aca` knows how to *serve* mock
+> **Why a separate skill?** `threadlight-mcp-aca` knows how to *serve* mock
 > data via FastMCP; `threadlight-design` knows how to *declare* what
 > entities and shapes are needed. This skill bridges them: it generates
 > the actual JSON files (with realistic distributions, golden cases, and
@@ -122,7 +122,7 @@ scripts/
 └── README.md            # How to run + golden case scripts
 
 src/mcp/data/            # COPIED from specs/sample-data/ at deploy time
-├── {entity1}.json       # (handled by threadlight-deploy / foundry-mcp-aca)
+├── {entity1}.json       # (handled by threadlight-deploy / threadlight-mcp-aca)
 └── {entity2}.json
 ```
 
@@ -462,7 +462,7 @@ realism").
 | Skill | Use When |
 |-------|----------|
 | [`threadlight-design`](../threadlight-design/) | Produces spec § 4 + § 11d + the per-industry realism references |
-| [`foundry-mcp-aca`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-mcp-aca/) | Serves the generated JSON via FastMCP (Option D) |
+| [`threadlight-mcp-aca`](../threadlight-mcp-aca/SKILL.md) | Serves the generated JSON via FastMCP (Option D) |
 | [`threadlight-workspace-ui`](../threadlight-workspace-ui/) | Renders the same JSON in the operator workspace |
 | [`foundry-iq`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-iq/) | If the spec also needs a Knowledge Base, that's separate — this skill is for transactional/relational data only |
 | [`threadlight-deploy`](../threadlight-deploy/) | Wires seed + reset scripts into the deploy lifecycle |

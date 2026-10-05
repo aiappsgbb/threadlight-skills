@@ -109,7 +109,7 @@ Number all rules BR-XXX. These drive evaluation scenarios and skill logic.
 > evaluation scenario should trace back to one or more BR-XXX rules.
 >
 > **Continuous evaluation contract:** every BR-XXX should map to at least one
-> measurable KPI in § 9. The KPI is what the `foundry-evals` continuous loop
+> measurable KPI in § 9. The KPI is what the `microsoft-foundry` continuous loop
 > watches week-over-week — `eval_dataset.jsonl` (one-shot) only proves the
 > agent works in lab; KPIs prove it keeps working in production.
 
@@ -152,7 +152,7 @@ External systems the process needs to interact with.
 
 ## 5b. External Systems & Mocks (MCP contract)
 
-> **INPUT CONTRACT for `foundry-mcp-aca`.** This section drives the FastMCP server
+> **INPUT CONTRACT for `threadlight-mcp-aca`.** This section drives the FastMCP server
 > generation. Every tool the agent calls against an external system must be declared
 > here with its endpoint shape, response semantics, and reset behavior.
 
@@ -177,7 +177,7 @@ specify:
 > **Why a separate section?** § 5 is the business-level inventory ("we talk to SAP").
 > § 5b is the developer-level contract ("here's exactly what the MCP server returns,
 > at what shape, and how to reset it for a clean demo run"). The first is for stakeholders;
-> the second is what `foundry-mcp-aca` reads to generate code.
+> the second is what `threadlight-mcp-aca` reads to generate code.
 
 ---
 
@@ -273,7 +273,7 @@ knowledge_sources:
 
 ## 7b. AI Services & Model Selection
 
-> **INPUT CONTRACT for `foundry-doc-vision-speech` and the model declarations in
+> **INPUT CONTRACT for `azure-ai` and the model declarations in
 > `azure.yaml` `config.deployments`.** Every model-backed capability the agent uses
 > must be declared here so deployment can provision the right model SKU and capacity.
 
@@ -378,7 +378,7 @@ Where humans are involved — approvals, escalations, input requests, feedback l
 
 ### Business KPIs (BR → KPI mapping)
 
-> **INPUT CONTRACT for `foundry-evals` continuous-loop.** Every BR-XXX should
+> **INPUT CONTRACT for `microsoft-foundry` continuous-loop.** Every BR-XXX should
 > map to at least one **measurable KPI** that can be computed from agent traces
 > (Application Insights). This is what the continuous evaluation dashboard
 > watches week-over-week — not just the binary scenario pass/fail.
@@ -590,9 +590,9 @@ tools:
 
 ## 11c. Tech Stack (Module selectors)
 
-> **INPUT CONTRACT for `azd-patterns` Bicep module library and the
+> **INPUT CONTRACT for `threadlight-deploy/references/azd-modules` Bicep module library and the
 > composer in `threadlight-deploy`.** This selector vocabulary is the
-> **canonical source of truth** — both the `azd-patterns` module library
+> **canonical source of truth** — both the `threadlight-deploy/references/azd-modules` module library
 > and the `threadlight-deploy` Phase-6 composer must read from this list
 > verbatim. If you change a selector name, change it here first.
 >

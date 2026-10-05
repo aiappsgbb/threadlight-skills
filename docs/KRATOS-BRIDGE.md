@@ -95,7 +95,7 @@ the Python safe-check CLI does not automatically recognize the export and
 waive prerequisites or findings:
 
 - **No APIM / AI Gateway** in the export's Bicep. (Add it later via
-  `citadel-spoke-onboarding` only if the customer needs a governance hub.)
+  `threadlight-citadel-spoke` only if the customer needs a governance hub.)
 - **No multi-tenant frontend** module. (The export is a single hosted-agent
   service; the operator workspace is added on demand via
   `threadlight-workspace-ui`.)
@@ -150,7 +150,7 @@ azd up (Kratos export)
    ├─ coding-agent manifest adaptation  # explicit contract from shipped infra + selected requirements
    ├─ threadlight-safe-check        # real --manifest; validates the adapted contract
    ├─ threadlight-deploy            # Kratos-export mode: enrich/validate only, backfill evals/
-   ├─ foundry-evals                 # run the backfilled eval scenarios
+   ├─ microsoft-foundry                 # run the backfilled eval scenarios
    ├─ threadlight-consumption-iq    # cost projection off the exported Bicep + azd env
    ├─ threadlight-production-ready  # pinned catalog --root; prerequisites and gaps still apply
    │
@@ -158,7 +158,7 @@ azd up (Kratos export)
         threadlight-hitl-patterns       # Teams Adaptive Card approval gates
         threadlight-event-triggers      # ACA Jobs / Event Grid / cron receivers
         threadlight-workspace-ui        # operator dashboard behind Easy Auth
-        citadel-spoke-onboarding        # governance hub, only if required
+        threadlight-citadel-spoke        # governance hub, only if required
 ```
 
 `threadlight-auto` exposes this same chain behind one prompt via its
@@ -173,7 +173,7 @@ bundle. `threadlight-deploy` (Kratos-export mode) backfills them:
 `use-cases/<x>/evals/{scenarios/*.json, eval_config.json}` regenerated from the
 use-case's `SYSTEM_PROMPT.md` + `skills/`. See
 [`threadlight-deploy/references/kratos-export-mode.md`](../skills/threadlight-deploy/references/kratos-export-mode.md).
-Running the backfilled scenarios is delegated to `foundry-evals` (awesome-gbb) —
+Running the backfilled scenarios is delegated to `microsoft-foundry` (awesome-gbb) —
 the same engine the README pipeline already references.
 
 ---

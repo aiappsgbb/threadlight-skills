@@ -50,10 +50,10 @@ do not interpret this pack as a quality gate or conformity assessment.
 | --- | --- | --- | --- | --- |
 | **Art 9** — Risk management | Continuous, documented risk process | govern manifest + scorecard `agent-governance` pillar | `threadlight-govern`, `threadlight-production-ready` | `threadlight-govern` |
 | **Art 11 + Annex IV** — Technical documentation | Technical file describing design & controls | scorecard manifest + `mcp-sbom.json` | `threadlight-production-ready` | `threadlight-production-ready` |
-| **Art 12** — Record-keeping | Automatic lifetime event logging | scorecard `observability` pillar + `agent-identity.json` | `threadlight-production-ready`, `foundry-observability` | `foundry-observability` |
+| **Art 12** — Record-keeping | Automatic lifetime event logging | scorecard `observability` pillar + `agent-identity.json` | `threadlight-production-ready`, `microsoft-foundry` | `microsoft-foundry` |
 | **Art 14** — Human oversight | Effective oversight by natural persons | scorecard `hitl-audit` pillar | `threadlight-hitl-patterns` | `threadlight-hitl-patterns` |
 | **Art 15** — Accuracy, robustness, cybersecurity | Demonstrated accuracy + resilience | `evals-manifest.json` + `redteam-manifest.json` + `mcp-sbom.json` | `threadlight-evals`, `threadlight-redteam` | `threadlight-evals` |
-| **Art 26** — Deployer obligations | Named responsible owner, operate as instructed | `agent-identity.json` (owner coverage) | `threadlight-production-ready` (Epic B) | `foundry-agt` |
+| **Art 26** — Deployer obligations | Named responsible owner, operate as instructed | `agent-identity.json` (owner coverage) | `threadlight-production-ready` (Epic B) | `threadlight-govern/references/agt-inprocess` |
 | **Art 27** — FRIA | Fundamental-rights impact assessment | *(scaffold — human-authored)* | — | `threadlight-govern` |
 
 The `--check` flag exits `3` when a **load-bearing** article — Art 11, Art 12, or

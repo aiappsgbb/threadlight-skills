@@ -1,6 +1,6 @@
 ---
 kind: repo-edit
-summary: Scaffold evals/ folder with foundry-evals config files
+summary: Scaffold evals/ folder with microsoft-foundry config files
 target_file: evals/scenarios.yaml
 edit_type: insert
 ---
@@ -11,15 +11,15 @@ edit_type: insert
 
 ## Edit type
 
-`insert` — create the `evals/` folder and add minimal foundry-evals scenario files.
+`insert` — create the `evals/` folder and add minimal microsoft-foundry scenario files.
 
 ## Edit recipe
 
 1. Create the `evals/` folder if it doesn't exist (relative to repo root).
-2. Add a minimal foundry-evals scenario file `evals/scenarios.yaml`:
+2. Add a minimal microsoft-foundry scenario file `evals/scenarios.yaml`:
 
 ```yaml
-# evals/scenarios.yaml — foundry-evals scenario suite for production readiness
+# evals/scenarios.yaml — microsoft-foundry scenario suite for production readiness
 
 scenarios:
   - name: qa-retrieval
@@ -49,7 +49,7 @@ scenarios:
 # Eval Scenarios
 
 Scenarios in this folder are scheduled as continuous evals per the SPEC § 9 plan.
-Run locally: `foundry-evals run scenarios.yaml --config run-config.yaml`
+Run locally: `microsoft-foundry run scenarios.yaml --config run-config.yaml`
 ```
 
 4. Optionally add `evals/run-config.yaml` if using Plan B (GitHub Actions):

@@ -4,7 +4,7 @@
 // Service Bus DLQ (maxDeliveryCount on the queue/subscription).
 //
 // Helper symbols (appExists, fetchLatestImage, emptyContainerImage) come from
-// the azd-patterns image-aware deployment pattern — main.bicep resolves them
+// the threadlight-deploy/references/azd-modules image-aware deployment pattern — main.bicep resolves them
 // and passes the result in as `image`.
 
 @description('Resource name prefix (azd env name).')

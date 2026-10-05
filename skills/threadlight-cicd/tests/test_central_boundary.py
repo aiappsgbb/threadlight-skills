@@ -35,7 +35,7 @@ def test_boundary_doc_names_the_central_track_and_forbids_hub_writes():
     doc = (tmp / "docs/threadlight-cicd/central-platform-boundary.md").read_text()
     low = doc.lower()
     # references the central-platform deployment track explicitly
-    assert "citadel-hub-deploy" in low
+    assert "threadlight-citadel-hub" in low
     # states the pilot pipeline must not deploy/modify the hub
     assert "hub" in low
     assert "must not" in low or "never" in low
@@ -54,20 +54,20 @@ def test_boundary_doc_emitted_even_for_standalone():
 
 def test_boundary_doc_spoke_onboard_forbids_running_hub_deploy():
     # hub already exists -> onboard as a spoke; the doc must explicitly say
-    # NOT to run citadel-hub-deploy (the apply-test caught this contradiction).
+    # NOT to run threadlight-citadel-hub (the apply-test caught this contradiction).
     tmp = pathlib.Path(tempfile.mkdtemp())
     mod.generate(_framing(central_env_required=True, central_env_exists=True), out_root=tmp)
     low = (tmp / "docs/threadlight-cicd/central-platform-boundary.md").read_text().lower()
-    assert "citadel-spoke-onboarding" in low
+    assert "threadlight-citadel-spoke" in low
     assert "already exists" in low
-    assert "do not run citadel-hub-deploy" in low
+    assert "do not run threadlight-citadel-hub" in low
 
 
 def test_boundary_doc_hub_missing_instructs_central_track():
     tmp = pathlib.Path(tempfile.mkdtemp())
     mod.generate(_framing(central_env_required=True, central_env_exists=False), out_root=tmp)
     low = (tmp / "docs/threadlight-cicd/central-platform-boundary.md").read_text().lower()
-    assert "citadel-hub-deploy" in low
+    assert "threadlight-citadel-hub" in low
     assert "not yet" in low
 
 

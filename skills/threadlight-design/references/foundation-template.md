@@ -184,7 +184,7 @@ lever. `deployment_target` chains into `threadlight-deploy` Phase 1.5.
 ```yaml
 tools:
   binding: mcp                          # mcp | native | mixed
-  toolbox: <curated tool set>           # versioned alongside skills (see foundry-toolbox)
+  toolbox: <curated tool set>           # versioned alongside skills (see microsoft-foundry)
   mock_first: true                      # inaccessible systems mocked via FastMCP + sample data
 ```
 
@@ -217,7 +217,7 @@ observability:
   trace_convention: gen_ai.*            # semantic-convention spans for agent turns / tool calls
 ```
 
-→ **Pre-populates** SPEC § 12 and the `foundry-observability` wiring the deploy
+→ **Pre-populates** SPEC § 12 and the `microsoft-foundry` wiring the deploy
 leg builds on. Observability is not a post-hoc add — it is a foundation.
 
 ---

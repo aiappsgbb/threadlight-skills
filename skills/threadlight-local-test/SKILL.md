@@ -120,7 +120,7 @@ python -m threadlight_quickstart --check
 ### The loop (every time)
 
 ```bash
-az login --tenant <dev-tid>          # per azure-tenant-isolation skill
+az login --tenant <dev-tid>          # per threadlight-tenant-isolation skill
 python -m threadlight_quickstart     # Streamlit on http://localhost:8501
 ```
 
@@ -143,7 +143,7 @@ python -m threadlight_quickstart --simulator
 > want the side-effect.
 
 > **Every UI turn appends to `<poc-root>/tests/quickstart.jsonl`.**
-> Shape matches what [`foundry-evals`](https://github.com/aiappsgbb/awesome-gbb/blob/main/skills/foundry-evals/SKILL.md)
+> Shape matches what [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry)
 > consumes — `{ts, query, response}` per row. Run a few Pattern 0
 > demos, then promote the JSONL into your Foundry eval dataset
 > without reshaping. Disable with `THREADLIGHT_QUICKSTART_NO_TRANSCRIPT=1`.
@@ -239,7 +239,7 @@ references/quickstart/
 | **Python 3.13** + `uv` | Run agent/MCP code | [uv install](https://docs.astral.sh/uv/) |
 | **Docker Desktop** (or Rancher) | Cosmos emulator + nginx | Standard install |
 | **Azure OpenAI deployment** of `gpt-5.4-mini` (or any model), **OR** GitHub Models via `GITHUB_TOKEN` | Agent needs a real LLM | Any AOAI account, or just a GitHub account for GitHub Models. **The skill does NOT require Foundry locally.** |
-| **`az` logged in** to the AOAI tenant | DefaultAzureCredential in the agent code resolves to your `az` token | `az login --tenant <tid>` (per `azure-tenant-isolation`) |
+| **`az` logged in** to the AOAI tenant | DefaultAzureCredential in the agent code resolves to your `az` token | `az login --tenant <tid>` (per `threadlight-tenant-isolation`) |
 | **GitHub Copilot CLI** ≥ 1.0.40 | For Pattern 1 (MCP-direct) | `gh extension install github/gh-copilot-cli` |
 
 > **Bring-Your-Own-Foundry option.** If you have a Foundry project,
@@ -448,14 +448,14 @@ the developer string-replaces.
 - ❌ **Run the agent against prod Cosmos / Search by accident.**
   Always `az account show` before starting; the smoke client uses
   `DefaultAzureCredential` and will happily auth into any
-  subscription you're logged into. Per `azure-tenant-isolation`,
+  subscription you're logged into. Per `threadlight-tenant-isolation`,
   set `AZURE_CONFIG_DIR` to a dev-tenant alias before any
   smoke run.
 - ❌ **Use `ollama` / local LLM instead of AOAI.** Tempting for
   offline dev, but the production agent is tuned for `gpt-5.4`
   family behaviour. Tool-calling reliability differs significantly
   on smaller open models, so smoke results don't transfer. See
-  `foundry-hosted-agents` § "Model selection — gpt-5.4 vs mini".
+  `threadlight-deploy/references/hosted-agent/maf` § "Model selection — gpt-5.4 vs mini".
 - ❌ **Skip Pattern 1 because "the CLI is just a chat box".**
   Copilot CLI's MCP integration is genuinely the fastest tool-dev
   loop available — write a tool, save the file, ask the CLI to
@@ -513,17 +513,17 @@ If a defect requires a fix, validate the new artifact before restarting the A/B.
   If your `build_agent()` factory bakes in cloud-only assumptions
   (e.g. hardcoded Foundry endpoint), refactor it to read from
   env-vars first; that's the prerequisite for local test.
-- **Pairs with `foundry-hosted-agents`.** The Pattern 2 smoke uses
+- **Pairs with `threadlight-deploy/references/hosted-agent/maf`.** The Pattern 2 smoke uses
   the same `Agent + FoundryChatClient` you ship to ACA; the only
   difference is no `ResponsesHostServer` wrapping it. If
-  `foundry-hosted-agents` says the agent needs `MCPStreamableHTTPTool
+  `threadlight-deploy/references/hosted-agent/maf` says the agent needs `MCPStreamableHTTPTool
   + parse_tool_results=_mcp_text_extractor`, that's still required
   here.
-- **Pairs with `azd-patterns`.** When the local smoke fails at
+- **Pairs with `threadlight-deploy/references/azd-modules`.** When the local smoke fails at
   step "agent calls MCP tool and gets `[<Content object>]`",
-  that's `gap-009` from `foundry-hosted-agents` — the local stack
+  that's `gap-009` from `threadlight-deploy/references/hosted-agent/maf` — the local stack
   is identical to prod here so the same fix applies.
-- **Cross-cuts `azure-tenant-isolation`.** Your local AOAI / Foundry
+- **Cross-cuts `threadlight-tenant-isolation`.** Your local AOAI / Foundry
   must be in the dev tenant; never the prod one. The smoke
   client auths via `DefaultAzureCredential` so the active
   `AZURE_CONFIG_DIR` decides which tenant gets billed.

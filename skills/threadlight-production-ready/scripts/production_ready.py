@@ -762,7 +762,7 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
 
     # ---- continuous-evals
     "EVAL-001": {"title": "SPEC sec 9 declares eval scenarios", "pillar": "continuous-evals", "severity": "must-fix", "tier": 0},
-    "EVAL-002": {"title": "evals/ folder with foundry-evals run files", "pillar": "continuous-evals", "severity": "must-fix", "tier": 0},
+    "EVAL-002": {"title": "evals/ folder with microsoft-foundry run files", "pillar": "continuous-evals", "severity": "must-fix", "tier": 0},
     "EVAL-003": {"title": "Eval scheduling plan documented (A or B)", "pillar": "continuous-evals", "severity": "must-fix", "tier": 0},
     "EVAL-004": {"title": "Threshold values match SPEC sec 9", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
     "EVAL-005": {"title": "Grader strategy named in SPEC", "pillar": "continuous-evals", "severity": "should-fix", "tier": 0},
@@ -3353,7 +3353,7 @@ def _check_network_live(ctx: RepoContext, tiers: dict[int, bool], resolved_postu
                         detail=f"No Access Contract product found on any APIM in hub RG `{hub_rg}`",
                         evidence_refs=["E-NET-501"]))
         findings.append(_mk_finding("NET-502", status="must-fix",
-            detail="Citadel-spoke connection check requires the `citadel-spoke-onboarding` sibling skill. Dispatch via the recipe at references/remediation-recipes/NET-502.md."))
+            detail="Citadel-spoke connection check requires the `threadlight-citadel-spoke` sibling skill. Dispatch via the recipe at references/remediation-recipes/NET-502.md."))
         findings.append(_not_verified("NET-503",
             "Tier 5 Citadel/APIM product-policy probe remains experimental (set --include-experimental to enable)"))
     return findings, evidence
@@ -4028,7 +4028,7 @@ def _check_observability_static(ctx: RepoContext) -> list[Finding]:
 #                                     (threadlight-evals)
 #   * cost per successful interaction specs/cost-reconciliation-manifest.json
 #                                     (threadlight-consumption-iq actuals)
-#   * traces emitting                 foundry-observability / OTel wiring in
+#   * traces emitting                 microsoft-foundry / OTel wiring in
 #                                     infra+src
 #
 # plus the declared baseline targets + a deviation-alert resource. The cost
@@ -4572,7 +4572,7 @@ def _check_kpi_static(ctx: RepoContext) -> list[Finding]:
     elif not have:
         out.append(_mk_finding("KPI-003", status="not-verified",
             detail="No outcome signals yet — run threadlight-evals, threadlight-consumption-iq "
-                   "(`actuals` then `reconcile`), and foundry-observability to populate the "
+                   "(`actuals` then `reconcile`), and microsoft-foundry to populate the "
                    "scorecard."))
     else:
         out.append(_mk_finding("KPI-003", status="should-fix",
@@ -7571,19 +7571,19 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("## 6. Uplift plan (suggested order)")
     out.append("")
     uplift_links = {
-        "network-posture": "`citadel-spoke-onboarding`, `foundry-vnet-deploy`, `foundry-network-runbook`",
-        "agent-governance": "`foundry-agt`",
-        "identity-access": "`foundry-hosted-agents`, `azure-tenant-isolation`",
-        "secrets": "`azd-patterns`",
-        "observability": "`foundry-observability`",
-        "continuous-evals": "`foundry-evals`",
-        "responsible-ai": "`foundry-agt`",
+        "network-posture": "`threadlight-citadel-spoke`, `microsoft-foundry`",
+        "agent-governance": "`threadlight-govern/references/agt-inprocess`",
+        "identity-access": "`threadlight-deploy/references/hosted-agent/maf`, `threadlight-tenant-isolation`",
+        "secrets": "`threadlight-deploy/references/azd-modules`",
+        "observability": "`microsoft-foundry`",
+        "continuous-evals": "`microsoft-foundry`",
+        "responsible-ai": "`threadlight-govern/references/agt-inprocess`",
         "hitl-audit": "`threadlight-hitl-patterns`",
-        "supply-chain": "`azd-patterns`",
+        "supply-chain": "`threadlight-deploy/references/azd-modules`",
         "cost": "`paygo-ptu-cost-analyzer`",
-        "reliability": "`foundry-vnet-deploy`, `foundry-caphost-lifecycle`",
+        "reliability": "`microsoft-foundry`",
         "sre-handover": "`azure-sre-agent` (recipe: `threadlight-pilot-handover`)",
-        "model-lifecycle": "`foundry-skill-catalog`, `foundry-evals`",
+        "model-lifecycle": "`microsoft-foundry`",
     }
     step = 1
     for f in all_gaps:
@@ -7684,7 +7684,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         out.append(f"| Eval pass-rate | {pr_str} | `specs/evals-manifest.json` (threadlight-evals) |")
         out.append(f"| Actual cost / successful interaction | {cpi_str} | "
                    "`specs/cost-reconciliation-manifest.json` (threadlight-consumption-iq actuals) |")
-        out.append(f"| Traces emitting | {_yn(bool(kpi.get('traces_emit')))} | foundry-observability / OTel wiring |")
+        out.append(f"| Traces emitting | {_yn(bool(kpi.get('traces_emit')))} | microsoft-foundry / OTel wiring |")
         out.append("")
         out.append("| Baseline declared | Status |")
         out.append("|---|---|")
@@ -7694,10 +7694,10 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
         out.append(f"| Deviation alert wired | {_yn(bool(kpi.get('deviation_alert_present')))} |")
         out.append("")
         out.append("_Scored as `KPI-001` (baselines), `KPI-002` (deviation alert), `KPI-003` "
-                   "(scorecard joinable) under pillar 5. Run `foundry-evals` and paste eval "
+                   "(scorecard joinable) under pillar 5. Run `microsoft-foundry` and paste eval "
                    "thresholds into SPEC § 9._")
     else:
-        out.append("_v1: eval live probes are stubbed. Run `foundry-evals` and paste the result into SPEC § 9._")
+        out.append("_v1: eval live probes are stubbed. Run `microsoft-foundry` and paste the result into SPEC § 9._")
     out.append("")
     # 9. Residual risk + rollout/rollback
     out.append("## 9. Residual risk, RACI, rollout / rollback / cutover")
@@ -7767,7 +7767,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     out.append("### Glossary")
     out.append("")
     out.append("- **AGT** — Agent Governance Toolkit (`agent-governance-toolkit`, CLI `agt`). A committed policy that CI lints (`agt lint-policy`), replays against fixtures (`agt test`), and verifies (`agt verify` → OWASP ASI 2026 attestation); optionally enforced in the agent runtime via `agent_compliance` evaluators.")
-    out.append("- **Citadel spoke** — Foundry account fronted by an APIM-based AI Hub Gateway (Citadel). See `citadel-hub-deploy` and `citadel-spoke-onboarding`.")
+    out.append("- **Citadel spoke** — Foundry account fronted by an APIM-based AI Hub Gateway (Citadel). See `threadlight-citadel-hub` and `threadlight-citadel-spoke`.")
     out.append("- **OWASP ASI 2026** — OWASP AI/Agentic Security Initiative top-N risks reference.")
     out.append("")
     out.append(f"_End of report. Manifest: see `tests/production-readiness-manifest.json`._")

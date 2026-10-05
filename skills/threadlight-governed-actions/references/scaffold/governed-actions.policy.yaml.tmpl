@@ -12,7 +12,7 @@
 #
 # Turning this into a real policy -- adding rules, approvers, and any
 # other customer-specific governance decision -- is delegated entirely to
-# the `foundry-agt` skill (policy authoring). This scaffold only ever
+# the `threadlight-govern/references/agt-inprocess` reference (policy authoring). This scaffold only ever
 # creates the file; it never fills it in.
 #
 # Until `rules` below is non-empty, `src/governance/agent_hooks_interceptor.py`
@@ -29,7 +29,7 @@ policy_schema_version: "1.0.0"
 default_decision: deny
 
 # Exact-match rules the interceptor consults, in list order. Empty until a
-# customer authors real ones (via `foundry-agt`); this scaffold never
+# customer authors real ones (via `threadlight-govern/references/agt-inprocess`); this scaffold never
 # invents a rule, a business threshold, or a named approver here.
 rules: []
 

@@ -695,10 +695,10 @@ Must include all sections from the template:
 3. **Business Rules** — numbered BR-XXX, each with condition/action/exception **+ KPI mapping** (drives § 9 continuous-eval contract)
 4. **Data Models** — all entities with field-level schemas and system of record
 5. **System Integrations** — each external system, direction, auth, availability (including **mock** flag)
-5b. **External Systems & Mocks (MCP contract)** — endpoint shape, tools exposed, mock data scale, reset semantics. **INPUT CONTRACT for `foundry-mcp-aca`.** *Required for any process that talks to external systems.*
+5b. **External Systems & Mocks (MCP contract)** — endpoint shape, tools exposed, mock data scale, reset semantics. **INPUT CONTRACT for `threadlight-mcp-aca`.** *Required for any process that talks to external systems.*
 6. **Tool Contracts** — abstract tool definitions (not bound to any runtime)
 7. **Knowledge Sources** — reference documents, policies, search indexes — with explicit `foundry-iq` / `mcp-search` / `inline-context` backing decision
-7b. **AI Services & Model Selection** — runtime chat / vision / DocIntel / Speech models with versions, not the authoring model. **INPUT CONTRACT for `foundry-doc-vision-speech` and `azure.yaml` `config.deployments`.** Use **`gpt-5.4` family** as of May 2026 — `gpt-4o` is legacy. See `references/model-selection.md` for the model / capacity / region decision procedure. *Required for every process.*
+7b. **AI Services & Model Selection** — runtime chat / vision / DocIntel / Speech models with versions, not the authoring model. **INPUT CONTRACT for `azure-ai` and `azure.yaml` `config.deployments`.** Use **`gpt-5.4` family** as of May 2026 — `gpt-4o` is legacy. See `references/model-selection.md` for the model / capacity / region decision procedure. *Required for every process.*
 8. **Human Interaction Points** — approvals, escalations, conversational flows — with **action-gate taxonomy** (`approve` / `edit-and-approve` / `reject` / `escalate` / `signoff` / `audit-view` / `request-info`). **INPUT CONTRACT for `threadlight-hitl-patterns`.**
 8b. **Human Interaction (Workspace UX)** — case-list / inbox / dashboard / console / kanban / map shape with primary filters, detail sections, action toolbar, audit viewer. **INPUT CONTRACT for `threadlight-workspace-ui`.** *Optional — skip if humans only interact via approval cards.*
 9. **Success Criteria** — functional, performance, quality targets + evaluation scenarios (S-XXX linked to BR-XXX) **+ Business KPIs table (BR → KPI mapping)** for continuous evaluation
@@ -707,7 +707,7 @@ Must include all sections from the template:
 11. **Security, Compliance & Governance** — PII, auth, retention, regulatory, audit
 11a. **Runtime Governance Contract** — `governance.mode: off | selective | comprehensive`, fixed `environment_modes` (`development`/`staging` = `evaluate_only`, `preproduction`/`production` = `enforce`), lifecycle bindings, and per-tool records (`id`, `consequence`, `policy_binding`, `enforcement_path`, `intervention_points`, `safe_principles`, `requires`). **INPUT CONTRACT for runtime governance design.** Validate the machine-readable block against `references/governance-contract.schema.json`. Legacy string tools remain accepted only as explicit `unknown/unbound` placeholders, `comprehensive` rejects unsupported provider-hosted consequential/unknown tools, and `production-bound` unbound consequential/unknown tools require an acceptance record (`owner`, `justification`, `review_date`, `expiry`).
 11b. **Governance Posture (AI Governance Hub spoke — opt-in)** — `governance_hub.required` flag + spoke artifacts needed. **INPUT CONTRACT for the optional governance-hub spoke handoff in `threadlight-deploy`.** *Required for every regulated process.*
-11c. **Tech Stack (Module selectors)** — Bicep module on/off list (cosmos, search, doc-intel, speech, event-grid, service-bus, foundry-iq-index, etc.). **INPUT CONTRACT for the `azd-patterns` Bicep module library and the composer in `threadlight-deploy`.** *Required for every process.*
+11c. **Tech Stack (Module selectors)** — Bicep module on/off list (cosmos, search, doc-intel, speech, event-grid, service-bus, foundry-iq-index, etc.). **INPUT CONTRACT for the `threadlight-deploy/references/azd-modules` Bicep module library and the composer in `threadlight-deploy`.** *Required for every process.*
 
 > **Legacy-SPEC backfill — mandatory check before handing off to threadlight-deploy.**
 > SPECs generated before § 11c was added to this skill (any SPEC where the section list jumps from § 11 to § 12, or has no kebab-case selector table) **must be backfilled** before Phase 6 of `threadlight-deploy` runs. The composer reads § 11c verbatim — without it, it can't tell "no aca-bot deployed" from "aca-bot intentionally not selected", and the post-deploy gate ships partial PoCs as if they were complete (for example, `aca-bot` and `aca-job` declared `yes` but zero deployed). Run a one-shot grep before generating Phase 6 modules:
@@ -768,7 +768,7 @@ systematically:
 **Minimum coverage:** At least 3 scenarios per business rule (happy + boundary/negative + error).
 For a spec with 10 rules, expect 30-50 eval scenarios.
 
-These scenarios feed directly into `foundry-evals` for post-deployment scoring.
+These scenarios feed directly into `microsoft-foundry` for post-deployment scoring.
 
 #### `specs/sample-data/{entity}.json` — Mock data (for systems marked "mock")
 
@@ -884,7 +884,7 @@ Read the spec and derive the architecture using these deterministic rules:
      § 7 unless the corpus is genuinely tiny (then `inline-context`) or genuinely
      live (then `mcp-search`).
    - **Dynamic/transactional data** (spec § 5 integrations) → **MCP server**
-     (mock for PoC, real for production). See `foundry-mcp-aca` skill.
+     (mock for PoC, real for production). See `threadlight-mcp-aca` skill.
    - **Cosmos DB** → MCPToolKit (10 tools out of the box) as `src/mcp/`
 
 5. **Temporal pattern → trigger design:**
@@ -932,7 +932,7 @@ Present to user before generating:
 
 #### 1. `src/agent/skills/{skill-name}/SKILL.md` (for each skill)
 
-For MAF targets, include the [autonomous skill-read contract](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/_shared/maf-skill-approval.md)
+For MAF targets, include the [autonomous skill-read contract](../_shared/maf-skill-approval.md)
 in the runtime handoff: reviewed packaged instructions/resources may load
 unattended, while scripts and consequential business tools retain separate
 approval policies. The runtime test must prove skill-body consumption, not
@@ -2086,7 +2086,7 @@ path documented per surface.
 A 1-page markdown scorecard derived from `tests/eval-results-*.jsonl`
 that any non-engineer reviewer (compliance, FCA-style auditor, exec
 sponsor) can read. The eval dataset is generated by this skill (in SPEC
-§ 9.4) and run by `foundry-evals`; this scorecard is the *summary* of
+§ 9.4) and run by `microsoft-foundry`; this scorecard is the *summary* of
 that run, hand-curated because heuristic scorers produce false-negatives
 that an experienced operator must adjudicate.
 
@@ -2113,7 +2113,7 @@ Walk through the generated structure with the user:
    - **`specs/`** = WHAT the business needs (reviewable by stakeholders)
    - **`src/agent/skills/` + `AGENTS.md`** = HOW the agent implements it
    - **Deploy artifacts** = generated separately by `threadlight-deploy`
-4. Suggest next steps (test locally with `threadlight-local-test` if iterating; deploy with `threadlight-deploy` when ready; then evaluate with `foundry-evals`)
+4. Suggest next steps (test locally with `threadlight-local-test` if iterating; deploy with `threadlight-deploy` when ready; then evaluate with `microsoft-foundry`)
 
 ### Step 8: Auto-Review (mandatory)
 
@@ -2158,7 +2158,7 @@ must catch its own mistakes.
 - [ ] **No-commitment closing** (Cross-cutting Pattern 7) — grep deck slides N-1 and N (Follow-up proposal + Thank you) (and the `experience.html` trust panel if generated) for banned phrases (`we'll build`, `by {date}`, `let's commit`, `next month`, `pick one journey`, any literal future date within 90 days of the generation timestamp). Zero hits required. The Thank-you slide MUST contain literal `Thank you.` and the MS × {Customer} co-brand bar; the Follow-up slide MUST have ≥ 3 step cards with concrete actions (not open questions); if any card text matches a banned phrase, fail.
 - [ ] **`tests/killer-prompts.md` exists** (mandatory unless SPEC § 13 carries `internal-no-demo: true`) with ≥ 3 ranked rows (K1, K2, K3 minimum). Each `Prompt` literal exists verbatim in `tests/eval_dataset.jsonl` (the eval-validated set). Each `BR-XXX` exists in SPEC § 3. Each `Expected anchors` row has ≥ 1 named entity + ≥ 1 digit. `agent.yaml` carries `STARTER_{1,2,3}_TITLE` + `STARTER_{1,2,3}_PROMPT` env vars synced from this file by `infra/scripts/refresh_killer_prompts.py`.
 - [ ] **`specs/demo-rehearsal.md` exists** (mandatory unless SPEC § 13 carries `internal-no-demo: true`) with all six required beat rows (T-24h, T-15min, T-5min, T-0, backup paths, ship checklist). T-0 budget ≤ 8 minutes total. Each killer prompt referenced verbatim by rank with its wow-line.
-- [ ] **`tests/eval-summary.md` exists** when an eval run has produced `tests/eval-results-*.jsonl` (skip the gate gracefully if no eval results file exists yet — the dataset can be run later via `foundry-evals`). Top-line numbers present, ≥ 3 inline transcripts (K1/K2/K3), adjudicated scenarios documented when present.
+- [ ] **`tests/eval-summary.md` exists** when an eval run has produced `tests/eval-results-*.jsonl` (skip the gate gracefully if no eval results file exists yet — the dataset can be run later via `microsoft-foundry`). Top-line numbers present, ≥ 3 inline transcripts (K1/K2/K3), adjudicated scenarios documented when present.
 - [ ] **`prep-guide.html` contains the three required structural placeholders** — `id="demo-entrypoint"` (filled by `threadlight-deploy` Phase 6.7), `id="mvp-capabilities"` (filled by this skill from the SPEC), `id="ms-services-map"` (filled by this skill from the deployment_manifest module selectors).
 - [ ] **`prep-guide.html` dual-mode toggle present** — the file MUST contain a sticky mode-toggle bar with 🎤 Seller / 🔧 SE buttons, the `setGuideMode()` JS function, and CSS rules for `body.mode-seller details.se-only { display: none }`. In Seller mode, zero engineering tokens (MCP, Responses API, UAMI, azd, Bicep, DefaultAzureCredential, ACA, OTel, Container Apps, FastMCP, region labels, gpt-5.x model names) should be visible — grep the rendered Seller view.
 - [ ] **`prep-guide.html` sidebar TOC present** — a `<nav class="toc">` with `position: fixed` links to each `<section id="sec-*">`. Scroll-spy JS highlights the active section. Main content offset with `margin-left` to clear the TOC.
@@ -2221,17 +2221,17 @@ The spec is durable and runtime-agnostic. You can derive different implementatio
 
 | File | Consumed by | Purpose |
 |------|-------------|---------|
-| `specs/SPEC.md` § 5b | `foundry-mcp-aca` | External Systems & Mocks (MCP contract) — endpoint shape, tools, mock data scale, reset semantics |
+| `specs/SPEC.md` § 5b | `threadlight-mcp-aca` | External Systems & Mocks (MCP contract) — endpoint shape, tools, mock data scale, reset semantics |
 | `specs/SPEC.md` § 7 | `foundry-iq` | Knowledge Sources — which corpora become Knowledge Bases |
-| `specs/SPEC.md` § 7b | `foundry-doc-vision-speech` + `azure.yaml` | AI Services & Model Selection — model + version + capacity |
+| `specs/SPEC.md` § 7b | `azure-ai` + `azure.yaml` | AI Services & Model Selection — model + version + capacity |
 | `specs/SPEC.md` § 8 | `threadlight-hitl-patterns` | Action gates — Adaptive Card generation |
 | `specs/SPEC.md` § 8b | `threadlight-workspace-ui` | Workspace shape — case-list / dashboard / console / kanban |
-| `specs/SPEC.md` § 9 KPI table | `foundry-evals` continuous loop | BR → KPI mapping for week-over-week dashboards |
+| `specs/SPEC.md` § 9 KPI table | `microsoft-foundry` continuous loop | BR → KPI mapping for week-over-week dashboards |
 | `specs/SPEC.md` § 10b | `threadlight-event-triggers` | Receiver type + idempotency + dead-letter rule |
-| `specs/SPEC.md` § 11b | `threadlight-deploy` Citadel handoff + `citadel-spoke-onboarding` | Governance posture — citadel.required flag |
-| `specs/SPEC.md` § 11c | `azd-patterns` Bicep module library + `threadlight-deploy` composer | Tech stack module selectors — which Bicep modules to wire |
+| `specs/SPEC.md` § 11b | `threadlight-deploy` Citadel handoff + `threadlight-citadel-spoke` | Governance posture — citadel.required flag |
+| `specs/SPEC.md` § 11c | `threadlight-deploy/references/azd-modules` Bicep module library + `threadlight-deploy` composer | Tech stack module selectors — which Bicep modules to wire |
 | `specs/SPEC.md` § 11d | `threadlight-demo-data-factory` | Demo data realism rules — volumes, distribution, golden cases |
-| `specs/sample-data/{entity}.json` | `foundry-mcp-aca` Option D + `threadlight-demo-data-factory` | Seed data for mock MCP server |
+| `specs/sample-data/{entity}.json` | `threadlight-mcp-aca` Option D + `threadlight-demo-data-factory` | Seed data for mock MCP server |
 | `specs/manifest.json` | `threadlight-deploy` | Machine-readable deployment contract |
 | `specs/prep-guide.html` § "Demo Script" | `threadlight-deploy` Phase 6.7 | Runnable seller demo script (acts contain literal prompts + concrete expected data points + seller narration); deploy back-fills a separate "Live MVP Walkthrough" appendix with workspace URL / Teams sideload / reset / eval / smoke commands |
 | `AGENTS.md` + `src/agent/skills/` | `threadlight-deploy` | Skill catalog + behavioral guidelines |
@@ -2264,17 +2264,17 @@ The spec is durable and runtime-agnostic. You can derive different implementatio
 | [**threadlight-deploy**](../threadlight-deploy/) | Consumes the SPEC + AGENTS.md + skills produced by this skill; turns them into a deployable Foundry hosted-agent project |
 | [**threadlight-local-test**](../threadlight-local-test/) | **Optional fast inner-loop for SEs.** Run the design output locally (FoundryChatClient + FastMCP + workspace) without `azd up` — Cowork-friendly for iterating on tools and prompts before a customer workshop |
 | [**threadlight-safe-check**](../threadlight-safe-check/) | Reads the `deployment_manifest{}` block authored under SPEC § 11c (this skill's responsibility) and gates design / pre-deploy / post-deploy completeness |
-| [**foundry-observability**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-observability/) | Always layered into deploy from day one — App Insights + OTel telemetry across hosted agents, MCP, ACA jobs, workspace; closes the silent gap where `azd up` returns 0 but AppIn stays empty |
+| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Always layered into deploy from day one — App Insights + OTel telemetry across hosted agents, MCP, ACA jobs, workspace; closes the silent gap where `azd up` returns 0 but AppIn stays empty |
 | [**foundry-iq**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-iq/) | **Default knowledge retrieval pattern** — every SPEC § 7 should declare a Knowledge Base with `Backing service: foundry-iq` unless the process has zero domain documents |
-| [**foundry-doc-vision-speech**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-doc-vision-speech/) | Consumes SPEC § 7b AI Services & Model Selection — wires vision / DocIntel / Speech tools |
+| [**azure-ai**](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/azure-ai) | Consumes SPEC § 7b AI Services & Model Selection — wires vision / DocIntel / Speech tools |
 | [**threadlight-workspace-ui**](../threadlight-workspace-ui/) | Consumes SPEC § 8b Workspace UX — generates the operator workspace |
 | [**threadlight-hitl-patterns**](../threadlight-hitl-patterns/) | Consumes SPEC § 8 Action Gates — generates Adaptive Cards + audit trail for the seven canonical gates |
 | [**threadlight-event-triggers**](../threadlight-event-triggers/) | Consumes SPEC § 10b Triggers — generates ACA Job / Function / consumer receivers |
 | [**threadlight-demo-data-factory**](../threadlight-demo-data-factory/) | Consumes SPEC § 11d Demo Data + the `references/data-realism/` industry rules — generates realistic demo data |
-| [**foundry-mcp-aca**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-mcp-aca/) | Consumes SPEC § 5 / § 5b — wraps mocked systems behind MCP |
-| [**foundry-evals**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-evals/) | Consumes SPEC § 9 KPI table — runs continuous evaluation loop |
-| [**citadel-spoke-onboarding**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/citadel-spoke-onboarding/) | Consumes SPEC § 11b Governance Posture — opt-in Citadel handoff after initial deploy |
-| [**azd-patterns**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azd-patterns/) | Composable Bicep module library that all module-emitting skills above feed into |
+| [**threadlight-mcp-aca**](../threadlight-mcp-aca/SKILL.md) | Consumes SPEC § 5 / § 5b — wraps mocked systems behind MCP |
+| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Consumes SPEC § 9 KPI table — runs continuous evaluation loop |
+| [**threadlight-citadel-spoke**](../threadlight-citadel-spoke/SKILL.md) | Consumes SPEC § 11b Governance Posture — opt-in Citadel handoff after initial deploy |
+| [**threadlight-deploy/references/azd-modules**](../threadlight-deploy/references/azd-modules/README.md) | Composable Bicep module library that all module-emitting skills above feed into |
 | [**gbb-pptx**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/gbb-pptx/) | **When a 1-slider PPTX leave-behind is requested** after the deck-led demo (exec brief, steering committee handout, asynchronous follow-up to non-attendees). Complements the deck, not a replacement. |
 | [**auto-demo-producer**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/auto-demo-producer/) | **When a narrated 90s MP4 backup is needed** — pre-rendered video that survives flaky agent surfaces, hotel wifi, and last-minute outages. Lists in `specs/demo-rehearsal.md` § "Backup paths". |
 | [**gbb-humanizer**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/gbb-humanizer/) | **Polish pass** for the prose-heavy artifacts this skill generates (`demo-deck.html` speaker-note prose, `experience.html` lede paragraphs, `prep-guide.html` Demo Script narration). 29 patterns from Wikipedia's "Signs of AI writing" + GBB-specific section-aware mode + density-preserving guardrail so domain rule-of-three lists survive |

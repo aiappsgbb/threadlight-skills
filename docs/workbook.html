@@ -509,7 +509,7 @@ aiappsgbb org on github, then list my installed copilot plugins</div>
           </div>
           <div class="wb-check">
             <p class="h">Why both</p>
-            <p>Threadlight stays thin where the <code>foundry-*</code> family is already deep &mdash; it <b>composes</b> with those skills rather than reimplementing them. Skills &amp; tools ship as <b>versioned, immutable Foundry artifacts</b> via <code>foundry-skill-catalog</code> and <code>foundry-toolbox</code> (pin a version, promote <code>default_version</code> in stages, download at deploy), batch scoring delegates to <code>foundry-evals</code>, agent-runtime governance to <code>foundry-agt</code>, and hosting, deploy hooks &amp; OTel build on <code>foundry-hosted-agents</code>, <code>azd-patterns</code>, and <code>foundry-observability</code>.</p>
+            <p>Threadlight stays thin where the <code>foundry-*</code> family is already deep &mdash; it <b>composes</b> with those skills rather than reimplementing them. Skills &amp; tools ship as <b>versioned, immutable Foundry artifacts</b> via <code>microsoft-foundry</code> and <code>microsoft-foundry</code> (pin a version, promote <code>default_version</code> in stages, download at deploy), batch scoring delegates to <code>microsoft-foundry</code>, agent-runtime governance to <code>threadlight-govern/references/agt-inprocess</code>, and hosting, deploy hooks &amp; OTel build on <code>threadlight-deploy/references/hosted-agent/maf</code>, <code>threadlight-deploy/references/azd-modules</code>, and <code>microsoft-foundry</code>.</p>
           </div>
         </div>
       </details>
@@ -797,11 +797,11 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
         </details>
 
         <details class="wb-leg">
-          <summary><span class="lk">foundry-evals</span><h4>Evals &mdash; does it actually work?</h4><span class="lt">deterministic graders + a gpt-5 judge</span><span class="auto">🟡 spend</span></summary>
+          <summary><span class="lk">microsoft-foundry</span><h4>Evals &mdash; does it actually work?</h4><span class="lt">deterministic graders + a gpt-5 judge</span><span class="auto">🟡 spend</span></summary>
           <div class="lb">
             <div class="wb-term">
               <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-              <div class="body"><span class="ps">›</span> <span class="cmd">Use the foundry-evals skill to evaluate the live agent across the
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the microsoft-foundry skill to evaluate the live agent across the
   full scenario set, scored by deterministic graders and a gpt-5
   judge. Report exception recall, citation coverage, and whether it
   ever self-finalized.</span></div>
@@ -811,11 +811,11 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
         </details>
 
         <details class="wb-leg">
-          <summary><span class="lk">foundry-observability</span><h4>Observability &mdash; can we see what it&rsquo;s doing?</h4><span class="lt">OTel traces &middot; spans per model &amp; tool call</span><span class="auto">🟡 spend</span></summary>
+          <summary><span class="lk">microsoft-foundry</span><h4>Observability &mdash; can we see what it&rsquo;s doing?</h4><span class="lt">OTel traces &middot; spans per model &amp; tool call</span><span class="auto">🟡 spend</span></summary>
           <div class="lb">
             <div class="wb-term">
               <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div>
-              <div class="body"><span class="ps">›</span> <span class="cmd">Use the foundry-observability skill to confirm the agent is emitting
+              <div class="body"><span class="ps">›</span> <span class="cmd">Use the microsoft-foundry skill to confirm the agent is emitting
   traces, and show me the spans for the eval runs — model calls and
   tool calls.</span></div>
             </div>
@@ -852,7 +852,7 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
         <p class="legs-h">Historical reference &middot; the case-study road</p>
 
         <details class="wb-leg">
-          <summary><span class="lk">citadel-spoke-onboarding</span><h4>Onboard behind the gateway</h4><span class="lt">keyless, additive-only spoke on a Citadel hub</span><span class="auto">🔵 hub</span></summary>
+          <summary><span class="lk">threadlight-citadel-spoke</span><h4>Onboard behind the gateway</h4><span class="lt">keyless, additive-only spoke on a Citadel hub</span><span class="auto">🔵 hub</span></summary>
           <div class="lb">
             <div class="wb-term">
               <div class="bar"><i></i><i></i><i></i><span class="ttl">copilot — probe the hub, then onboard</span></div>
@@ -860,7 +860,7 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
   public internet with private backends, or VNet-only? List which
   models it exposes and flag any deprecated ones.</span>
 
-<span class="ps">›</span> <span class="cmd">Use the citadel-spoke-onboarding skill to register this agent as an
+<span class="ps">›</span> <span class="cmd">Use the threadlight-citadel-spoke skill to register this agent as an
   isolated spoke product on the hub — keyless managed-identity
   connection, an allow-list naming ONLY the current-generation models
   we approve, and preview the change before applying. It must be
@@ -871,7 +871,7 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
               <span class="k">Carry this in</span> The sample onboarding policy ships an allow-list that <b>includes deprecated models</b>. Copy the default blindly and you onboard with the wrong rule baked in. Name your approved models explicitly.
             </div>
             <div class="wb-note" style="border-left-color:var(--accent-1);border-color:color-mix(in srgb,var(--accent-1) 30%,var(--line));background:color-mix(in srgb,var(--accent-1) 5%,var(--bg-1));">
-              <span class="k" style="color:var(--accent-1);">Private networking</span> Here the spoke reaches the hub&rsquo;s <b>public gateway</b> (TLS &middot; JWT &middot; allow-list) while the hub&rsquo;s model backends sit <b>private behind private endpoints</b> &mdash; the shipped, additive-only posture. A fully private <b>VNet-peered</b> spoke (spoke&nbsp;VNet&nbsp;&harr;&nbsp;hub&nbsp;VNet&nbsp;+&nbsp;Private&nbsp;Link) is a first-class, <b>skill-covered</b> path &mdash; <code>foundry-vnet-deploy</code> plus <code>citadel-spoke-onboarding</code>&rsquo;s VNet-isolated (Option&nbsp;B) pattern &mdash; when the bank is ready to peer.
+              <span class="k" style="color:var(--accent-1);">Private networking</span> Here the spoke reaches the hub&rsquo;s <b>public gateway</b> (TLS &middot; JWT &middot; allow-list) while the hub&rsquo;s model backends sit <b>private behind private endpoints</b> &mdash; the shipped, additive-only posture. A fully private <b>VNet-peered</b> spoke (spoke&nbsp;VNet&nbsp;&harr;&nbsp;hub&nbsp;VNet&nbsp;+&nbsp;Private&nbsp;Link) is a first-class, <b>skill-covered</b> path &mdash; <code>microsoft-foundry</code> plus <code>threadlight-citadel-spoke</code>&rsquo;s VNet-isolated (Option&nbsp;B) pattern &mdash; when the bank is ready to peer.
             </div>
           </div>
         </details>
@@ -993,7 +993,7 @@ AGENTS.md, the per-tool skills/ scaffold, and docs/.</div>
       <div class="wb-recover reveal" data-delay="1">
         <div class="wb-rcard">
           <p class="sym"><span class="d"></span><code>az</code> on the wrong subscription / tenant</p>
-          <div class="wb-term"><div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div><div class="body"><span class="ps">›</span> use the azure-tenant-isolation skill to isolate the azure cli to tenant &lt;tenant-id&gt; and switch to subscription &lt;sub-id&gt;, then confirm with az account show</div></div>
+          <div class="wb-term"><div class="bar"><i></i><i></i><i></i><span class="ttl">copilot</span></div><div class="body"><span class="ps">›</span> use the threadlight-tenant-isolation skill to isolate the azure cli to tenant &lt;tenant-id&gt; and switch to subscription &lt;sub-id&gt;, then confirm with az account show</div></div>
         </div>
         <div class="wb-rcard">
           <p class="sym"><span class="d"></span>Azure OpenAI quota / HTTP 429 mid-test</p>

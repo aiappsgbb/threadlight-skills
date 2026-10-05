@@ -800,7 +800,7 @@ async def download_session_file(session_id: str, filename: str):
     # ... fetch and serve with correct media_type
 ```
 
-See `foundry-hosted-agents` skill § "Session Files API" for the full URL
+See `threadlight-deploy/references/hosted-agent/maf` reference § "Session Files API" for the full URL
 pattern and required headers.
 
 ### Pattern 2: Export endpoint (fallback — no session dependency)

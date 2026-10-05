@@ -7,6 +7,30 @@ field.
 
 ## [Unreleased]
 
+### One self-contained package: awesome-gbb gaps ported as Threadlight-owned
+
+- Port the awesome-gbb skills that have no official `azure@azure-skills`
+  equivalent into four Threadlight-owned skills, each with a `PROVENANCE.md`
+  (source `aiappsgbb/awesome-gbb@7f1de882`): `threadlight-citadel-hub`,
+  `threadlight-citadel-spoke`, `threadlight-tenant-isolation` and
+  `threadlight-mcp-aca`. The catalog is now 28 skills (27 pipeline + auto).
+- Port the runtime references Threadlight consumed from awesome-gbb into the
+  owning skills: `threadlight-deploy/references/azd-modules/` (azd/Bicep module
+  catalog), `threadlight-deploy/references/hosted-agent/{maf,ghcp}/` (native-SDK
+  hosted-agent contract; no official equivalent since `azure-hosted-copilot-sdk`
+  was retired) and `threadlight-govern/references/agt-inprocess/`.
+- Repoint live skills, scripts, docs and tests from awesome-gbb names to the
+  official `azure@azure-skills` v1.2.77 skills (default) or the Threadlight-owned
+  ports. `skills/_shared/tests/test_threadlight_owned_ports.py` fails if a live
+  surface still routes to a ported or official-default awesome-gbb name, or if a
+  Threadlight skill name collides with an official or awesome-gbb one.
+  `sibling-skills-map.md` labels every row official, Threadlight-owned or GBB
+  pattern.
+- Not changed: the approved, byte-frozen `docs/first-governed-workflow.md`
+  still names its pinned awesome-gbb companions (re-approval needed to change
+  it); the presenter deployment pin; the live demos and library pins.
+- Plugin/marketplace 2.16.0.
+
 ### Official skills lock and routing probe
 
 - Add `skills/_shared/official-skills-lock.json`: `microsoft/azure-skills`

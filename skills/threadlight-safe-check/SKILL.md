@@ -60,7 +60,7 @@ post-deploy  → manifest <-> az resource list <-> channel reachability
 
 ## What this skill does NOT replace
 
-- **Invocation testing** of the agent → use `foundry-evals`
+- **Invocation testing** of the agent → use `microsoft-foundry`
 - **Authoring** the manifest → use `threadlight-design` (its
   `deployment_manifest{}` JSON block in `specs/manifest.json` is the
   contract this skill consumes)
@@ -476,7 +476,7 @@ was considered.
 
 > **Threadlight default:** `app-insights` should always be in
 > `module_selectors`. Add `Microsoft.Insights/components` to
-> `expected_resource_types`. See `foundry-observability` skill for the
+> `expected_resource_types`. See `microsoft-foundry` skill for the
 > drop-in `app-insights.bicep` + `log-analytics.bicep` modules and the
 > postprovision script that connects the Foundry account to AppIn so
 > hosted-agent traces flow.
@@ -579,7 +579,7 @@ for spec in expected_seeded:
     cont = db.get_container_client(spec["container"])
     # NOTE: enable_cross_partition_query was dropped in azure-cosmos>=4.15 async.
     # Cross-partition is now inferred when partition_key is omitted.
-    # See foundry-mcp-aca SKILL.md "azure-cosmos>=4.15" callout.
+    # See threadlight-mcp-aca SKILL.md "azure-cosmos>=4.15" callout.
     count = list(cont.query_items(
         query="SELECT VALUE COUNT(1) FROM c",
     ))[0]
@@ -658,12 +658,12 @@ declare `cosmos-db`, the check is skipped silently.
 > az cosmosdb update -g <rg> -n <cosmos-account> \
 >   --public-network-access Enabled
 > ```
-> AND patch `infra/<your-cosmos>.bicep` to follow the `azd-patterns`
+> AND patch `infra/<your-cosmos>.bicep` to follow the `threadlight-deploy/references/azd-modules`
 > pilot-posture pattern: `pilotPosture: bool = true` param defaulting
 > `publicNetworkAccess: 'Enabled'` + `networkAclBypass: 'AzureServices'`
 > + `ipAllowlist` (driven by `COSMOS_IP_ALLOWLIST` azd env var). See
-> `azd-patterns` SKILL.md § "Cosmos firewall — pilot-grade defaults"
-> and `foundry-mcp-aca` SKILL.md § "Cosmos firewall + ACA egress".
+> `threadlight-deploy/references/azd-modules` SKILL.md § "Cosmos firewall — pilot-grade defaults"
+> and `threadlight-mcp-aca` SKILL.md § "Cosmos firewall + ACA egress".
 
 ### Step 5.10 — Integration binding (catches "declared real, still wired to the mock")
 
@@ -842,7 +842,7 @@ az resource list -g <rg> --resource-type Microsoft.BotService/botServices -o jso
 The Python process inherits parent env vars, but if `AZURE_CONFIG_DIR`
 isn't set in the shell that launches `python3 tests/safe_check.py`,
 `az` falls back to `~/.azure` and reads the wrong tenant. Per
-`azure-tenant-isolation`: set both `AZURE_CONFIG_DIR` and
+`threadlight-tenant-isolation`: set both `AZURE_CONFIG_DIR` and
 `AZD_CONFIG_DIR` in the shell before invoking this gate.
 
 The CLI resolves and logs the selected account's canonical tenant + subscription,
@@ -928,7 +928,7 @@ declaring victory.
 > produces a customer-facing hand-off report. If the pilot is heading
 > into customer architecture review, run
 > `python skills/threadlight-production-ready/scripts/production_ready.py`
-> next. **Recommended ordering: green safe-check → `foundry-evals` (so
+> next. **Recommended ordering: green safe-check → `microsoft-foundry` (so
 > the continuous-evals pillar scores `pass` from real eval evidence) →
 > `threadlight-production-ready`.** Production-readiness will still run
 > without recent evals — those checks simply degrade to `not-verified`.
@@ -949,9 +949,9 @@ declaring victory.
 | [`threadlight-event-triggers`](../threadlight-event-triggers/) | Produces ACA Job / Function / consumer receivers whose deployment status (last 5 executions) safe-check probes |
 | [`threadlight-hitl-patterns`](../threadlight-hitl-patterns/) | Produces the bot + audit trail that safe-check verifies for channel reachability (SPEC § 8) |
 | [`threadlight-workspace-ui`](../threadlight-workspace-ui/) | Produces the operator workspace whose static-site / Easy Auth wiring safe-check probes |
-| [`foundry-evals`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-evals/) | Runs *after* safe-check passes — quality/behavioural eval is meaningless on a half-deployed surface |
-| [`azure-tenant-isolation`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azure-tenant-isolation/) | `AZURE_CONFIG_DIR` setup that `safe_check.py` relies on for correct-tenant `az` calls |
-| [`azd-patterns`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azd-patterns/) | Module library and canonical Bicep selector vocabulary the pre-deploy check uses |
+| [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Runs *after* safe-check passes — quality/behavioural eval is meaningless on a half-deployed surface |
+| [`threadlight-tenant-isolation`](../threadlight-tenant-isolation/SKILL.md) | `AZURE_CONFIG_DIR` setup that `safe_check.py` relies on for correct-tenant `az` calls |
+| [`threadlight-deploy/references/azd-modules`](../threadlight-deploy/references/azd-modules/README.md) | Module library and canonical Bicep selector vocabulary the pre-deploy check uses |
 
 ## References
 

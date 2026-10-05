@@ -64,11 +64,11 @@ Production must plan for all three.
 
 | Finding | Skill |
 |---|---|
-| Pin model versions in Bicep | `azd-patterns`, manual Bicep edit |
-| Add fallback deployment | `foundry-hosted-agents` |
+| Pin model versions in Bicep | `threadlight-deploy/references/azd-modules`, manual Bicep edit |
+| Add fallback deployment | `threadlight-deploy/references/hosted-agent/maf` |
 | Choose PAYG vs PTU + plan capacity | `paygo-ptu-cost-analyzer` |
 | Document rollback strategy | (manual; ties to pillar 11 runbook) |
-| Refactor agent to call deployment-name, not model-name | `foundry-hosted-agents` |
+| Refactor agent to call deployment-name, not model-name | `threadlight-deploy/references/hosted-agent/maf` |
 
 ## Why this pillar matters
 

@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_agentops_catalog_versions_and_ownership_are_consistent():
     plugin = json.loads((ROOT / "plugin.json").read_text())
     marketplace = json.loads((ROOT / ".github/plugin/marketplace.json").read_text())
-    assert plugin["version"] == marketplace["metadata"]["version"] == "2.15.0"
+    assert plugin["version"] == marketplace["metadata"]["version"] == "2.16.0"
     assert marketplace["plugins"][0]["version"] == plugin["version"]
     assert "agentops" in plugin["keywords"]
     for filename in ("README.md", "THREADLIGHT.md", "docs/production-readiness.md"):
@@ -16,7 +16,7 @@ def test_agentops_catalog_versions_and_ownership_are_consistent():
         assert "threadlight-agentops" in text, filename
         assert "agentops.yaml" in text, filename
         assert "AOPS-001" in text, filename
-    assert "24 total" in plugin["description"]
+    assert "28 total" in plugin["description"]
 
 
 def test_auto_agentops_is_read_only_and_preserves_selected_binding_gates():

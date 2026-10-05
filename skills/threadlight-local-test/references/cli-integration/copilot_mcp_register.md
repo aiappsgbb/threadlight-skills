@@ -51,7 +51,7 @@ Because the local MCP process uses `DefaultAzureCredential`, it
 inherits your `az` token.
 
 ```powershell
-# Make sure you're in the right tenant (per azure-tenant-isolation)
+# Make sure you're in the right tenant (per threadlight-tenant-isolation)
 $env:AZURE_CONFIG_DIR = "$env:USERPROFILE\.azure-tenants\dev"
 az account show --query "{tenantId:tenantId, sub:name}" -o table
 
@@ -74,7 +74,7 @@ az cosmosdb sql role assignment create `
 ```
 
 (For non-prod tenants only — production data plane RBAC should be
-managed via Bicep + UAMI per `foundry-hosted-agents`.)
+managed via Bicep + UAMI per `threadlight-deploy/references/hosted-agent/maf`.)
 
 ## Removing / disabling
 
@@ -96,7 +96,7 @@ development; Pattern 2 (`local_smoke.py`) for full-agent testing.
 
 The Copilot CLI's MCP client does NOT need the
 `parse_tool_results=_mcp_text_extractor` workaround that
-`agent_framework` requires (per `foundry-hosted-agents` § "MCP
+`agent_framework` requires (per `threadlight-deploy/references/hosted-agent/maf` § "MCP
 Tools — recommended pattern"). The CLI's MCP renderer handles
 `TextContent` correctly. So if the JSON looks fine in the CLI but
 broken when called from the actual agent in Pattern 2 / 3, the

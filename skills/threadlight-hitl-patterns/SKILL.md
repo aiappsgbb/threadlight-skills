@@ -332,13 +332,13 @@ async def aclose() -> None:
 > **Keyless RBAC pin**: assign `Cosmos DB Built-in Data Contributor`
 > (`00000000-0000-0000-0000-000000000002`) to the bot's UAMI on the Cosmos
 > account scope. **NOT** `DocumentDB Account Contributor` — that's
-> control-plane only. See `azd-patterns` § Shared UAMI for the Bicep wiring.
+> control-plane only. See `threadlight-deploy/references/azd-modules` § Shared UAMI for the Bicep wiring.
 > Verify with `az cosmosdb sql role assignment list --account-name <acct>
 > --resource-group <rg>` after deploy.
 
 This audit trail powers:
 - The workspace UI's audit viewer (see `threadlight-workspace-ui`)
-- The continuous-eval KPIs (see `foundry-evals` continuous loop)
+- The continuous-eval KPIs (see `microsoft-foundry` continuous loop)
 - Regulator-facing reports (compliance team queries Cosmos directly)
 
 ### Step 6: SLA timeouts
@@ -428,5 +428,5 @@ declarations harvested by this skill.
 | [`foundry-teams-bot`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-teams-bot/) | Hosts the bot infrastructure that delivers cards |
 | [`threadlight-workspace-ui`](../threadlight-workspace-ui/) | Renders the same gates inside the operator workspace |
 | [`threadlight-event-triggers`](../threadlight-event-triggers/) | Generates the SLA watcher ACA job |
-| [`foundry-evals`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-evals/) | Reads the audit trail to compute continuous-loop KPIs |
+| [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Reads the audit trail to compute continuous-loop KPIs |
 | [`threadlight-safe-check`](../threadlight-safe-check/) | Verifies the bot + audit trail this skill generates are reachable from SPEC § 8 channels (post-deploy gate) |

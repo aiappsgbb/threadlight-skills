@@ -81,7 +81,7 @@ inputs and have their own owners:
 
 | Not carried | Keep using |
 |-------------|------------|
-| Mock/MCP contract (§ 5b) | `foundry-mcp-aca` |
+| Mock/MCP contract (§ 5b) | `threadlight-mcp-aca` |
 | Workspace UX (§ 8b) | `threadlight-workspace-ui` |
 | Demo data (§ 11d) | `threadlight-demo-data-factory` |
 | Deployment posture (§ 11f) | `threadlight-deploy` |

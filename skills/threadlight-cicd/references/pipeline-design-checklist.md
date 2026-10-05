@@ -53,7 +53,7 @@ you what to hand the dev team vs the platform team).
       changes *where* the job runs, not *how* it authenticates).
 
 ## Boundary (must-tell)
-- [ ] This is a **separate repo/pipeline** from `citadel-hub-deploy`.
+- [ ] This is a **separate repo/pipeline** from `threadlight-citadel-hub`.
 - [ ] The pipeline deploys **only** use-case resources into the spoke/target
       RG; it never deploys/modifies the hub or shared platform resources.
 - [ ] `onboarding-path.json` + `central-platform-boundary.md` are present and

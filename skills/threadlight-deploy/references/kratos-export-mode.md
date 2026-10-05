@@ -67,10 +67,10 @@ Source of truth for regeneration, in order:
 2. **Regenerate from the bundle** — otherwise synthesize scenarios from
    `use-cases/<x>/SYSTEM_PROMPT.md` (success criteria, tone, refusal rules) +
    each `use-cases/<x>/skills/*/SKILL.md` (one happy-path + one edge scenario
-   per skill). Mirror Kratos's `evals/scenarios/*.json` shape so `foundry-evals`
+   per skill). Mirror Kratos's `evals/scenarios/*.json` shape so `microsoft-foundry`
    and Kratos both consume them.
 
-**Running** the backfilled scenarios is delegated to `foundry-evals`
+**Running** the backfilled scenarios is delegated to `microsoft-foundry`
 (awesome-gbb) — the same engine the README pipeline references. This skill only
 backfills the directory; it does not run evals.
 
@@ -93,7 +93,7 @@ the runtime as pre-built.
 
 After enrichment, the recommended downstream order is in
 [`docs/KRATOS-BRIDGE.md` § 5](../../../docs/KRATOS-BRIDGE.md):
-`threadlight-safe-check` → `foundry-evals` → `threadlight-consumption-iq` →
+`threadlight-safe-check` → `microsoft-foundry` → `threadlight-consumption-iq` →
 `threadlight-production-ready`, then on-demand `threadlight-hitl-patterns` /
 `threadlight-event-triggers` / `threadlight-workspace-ui` /
-`citadel-spoke-onboarding`.
+`threadlight-citadel-spoke`.

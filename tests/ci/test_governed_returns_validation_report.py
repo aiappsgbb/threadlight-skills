@@ -117,7 +117,7 @@ def test_reproduction_documents_operator_supplied_cohort_and_audit_limits():
     for marker in (
         "hosted_cohort", "read_audit_container", "returns_reconcile.py",
         "review-notification.bicep", "imagePassthrough", "selected-tools",
-        "1.34.0", "azure-tenant-isolation", "RETURNS_CONFIG_VERSION",
+        "1.34.0", "threadlight-tenant-isolation", "RETURNS_CONFIG_VERSION",
         "Office 365 consent", "not a grant",
         "Edit API connection", "APPROVE <nonce>", "Governance.Approve",
         "omit `governance_operation_id`", "new-pending.json",

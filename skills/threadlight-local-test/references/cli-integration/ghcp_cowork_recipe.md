@@ -120,7 +120,7 @@ in the PoC root, ask it to call tools.
 - **Tools work in CLI but break in `local_smoke.py`** → the agent
   uses `MCPStreamableHTTPTool` which needs the
   `parse_tool_results=_mcp_text_extractor` workaround per
-  `foundry-hosted-agents`. The CLI's MCP client doesn't have this
+  `threadlight-deploy/references/hosted-agent/maf`. The CLI's MCP client doesn't have this
   bug. Fix is in the agent code, not the MCP server.
 
 ---

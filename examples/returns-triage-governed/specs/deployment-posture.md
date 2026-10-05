@@ -12,7 +12,7 @@ overrides:
   defender: off               # status: supported-now (off + Ignore tag)
   cost_guardrails: none       # status: supported-now
   backup_dr: none             # status: supported-now
-  continuous_eval: plan-a     # status: supported-now (foundry-evals Plan A defaults)
+  continuous_eval: plan-a     # status: supported-now (microsoft-foundry Plan A defaults)
 deferred_decisions:
   - waf-front-door
   - dr-runbook

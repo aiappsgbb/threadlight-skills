@@ -135,7 +135,11 @@ test('prompt skill names and source paths resolve to real catalog or pinned comp
       assert.ok(text.includes(`](../${source})`), `missing source link ${source}`);
     }
   }
-  assert.ok(read(`${reference}/returns-mcp-demo.md`).includes(companionRevision));
+  // The guide is a byte-frozen approved workbook and keeps its pinned companions;
+  // the live demo reference routes to the Threadlight-owned hosted baseline.
+  const demo = read(`${reference}/returns-mcp-demo.md`);
+  assert.ok(demo.includes(companionRevision), 'demo keeps the historically validated baseline revision');
+  assert.ok(demo.includes('../hosted-agent/maf/README.md'), 'demo routes to the Threadlight-owned hosted baseline');
 });
 
 test('all guide relative links and heading targets resolve without a network dependency', () => {

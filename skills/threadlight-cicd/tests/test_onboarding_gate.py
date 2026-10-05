@@ -4,8 +4,8 @@ The gate runs FIRST, before any artifact is generated. It asks whether a
 central platform environment (Citadel hub / shared gateway / networking) is
 required and branches into one of three paths:
 
-  1. required + NOT deployed  -> hub-deploy-then-spoke (hand off to citadel-hub-deploy)
-  2. required + already exists -> spoke-onboard       (citadel-spoke-onboarding)
+  1. required + NOT deployed  -> hub-deploy-then-spoke (hand off to threadlight-citadel-hub)
+  2. required + already exists -> spoke-onboard       (threadlight-citadel-spoke)
   3. not required             -> standalone           (validate the path first)
 """
 import importlib.util
@@ -31,8 +31,8 @@ def test_required_and_missing_resolves_hub_deploy_then_spoke():
     assert r["posture"] == "citadel-spoke"
     assert r["rbac_scope"] == "spoke-rg"
     joined = " ".join(r["next_actions"]).lower()
-    assert "citadel-hub-deploy" in joined
-    assert "citadel-spoke-onboarding" in joined
+    assert "threadlight-citadel-hub" in joined
+    assert "threadlight-citadel-spoke" in joined
 
 
 def test_required_and_exists_resolves_spoke_onboard():
@@ -44,9 +44,9 @@ def test_required_and_exists_resolves_spoke_onboard():
     assert r["posture"] == "citadel-spoke"
     assert r["rbac_scope"] == "spoke-rg"
     joined = " ".join(r["next_actions"]).lower()
-    assert "citadel-spoke-onboarding" in joined
+    assert "threadlight-citadel-spoke" in joined
     # must NOT ask the pilot to deploy the hub when it already exists
-    assert "citadel-hub-deploy" not in joined
+    assert "threadlight-citadel-hub" not in joined
 
 
 def test_not_required_resolves_standalone_and_demands_validation():

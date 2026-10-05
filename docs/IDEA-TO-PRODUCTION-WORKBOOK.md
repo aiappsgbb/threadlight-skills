@@ -300,7 +300,7 @@ index runs zone-redundant or single-replica.
 
 ```
 Use the threadlight-evals skill to run the evals leg against the live agent:
-offline batch (delegating to foundry-evals), online/continuous eval on live
+offline batch (delegating to microsoft-foundry), online/continuous eval on live
 threads (Foundry Continuous Evaluation → App Insights), and an A/B
 champion–challenger gate before any model or prompt swap.
 ```
@@ -360,7 +360,7 @@ Legacy v2 captures stay historical and cannot pass the new readiness gate.
 ### 9 · Observability — can we see what it's doing? 🟡
 
 ```
-Use the foundry-observability skill to confirm the agent is emitting traces,
+Use the microsoft-foundry skill to confirm the agent is emitting traces,
 and show me the spans for the eval runs — model calls and tool calls.
 ```
 
@@ -399,7 +399,7 @@ and flag any deprecated ones.
 Then onboard the spoke as an infrastructure-as-code contract:
 
 ```
-Use the citadel-spoke-onboarding skill to register this agent as an isolated
+Use the threadlight-citadel-spoke skill to register this agent as an isolated
 spoke product on the hub — keyless managed-identity connection, an allow-list
 naming ONLY the current-generation models we approve, and preview the change
 before applying. It must be purely additive: nothing modified or deleted on
@@ -420,8 +420,8 @@ refused.
 gateway** (TLS · JWT · allow-list), while the hub's model backends sit
 **private behind private endpoints** — the shipped, additive-only posture. A
 fully private **VNet-peered** spoke (spoke VNet ↔ hub VNet + Private Link) is
-a first-class, **skill-covered** path — `foundry-vnet-deploy` plus
-`citadel-spoke-onboarding`'s VNet-isolated (Option B) pattern — when the bank
+a first-class, **skill-covered** path — `microsoft-foundry` plus
+`threadlight-citadel-spoke`'s VNet-isolated (Option B) pattern — when the bank
 is ready to peer.
 
 ### 12 · Production deploy — routed through the gateway 🔵
@@ -487,7 +487,7 @@ Copilot CLI — the right skill handles the fix.
 **`az` is pointed at the wrong subscription / tenant**
 
 ```
-use the azure-tenant-isolation skill to isolate the azure cli to tenant
+use the threadlight-tenant-isolation skill to isolate the azure cli to tenant
 <tenant-id> and switch to subscription <sub-id>, then confirm with
 az account show
 ```

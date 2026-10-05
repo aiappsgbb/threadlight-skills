@@ -56,7 +56,7 @@ PROVENANCE = [
     ("business rules", "§ 4", None),
     ("data models", "§ 10", None),
     ("system integrations", "§ 11", None),
-    ("external systems", None, "foundry-mcp-aca"),
+    ("external systems", None, "threadlight-mcp-aca"),
     ("tool contracts", "§ 11", None),
     ("knowledge sources", "§ 9", None),
     ("ai services", "§ 9", None),

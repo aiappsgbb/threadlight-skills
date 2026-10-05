@@ -64,8 +64,8 @@
 
 | Finding | Skill |
 |---|---|
-| Multi-region Foundry | `foundry-vnet-deploy` (with multi-region patterns) |
-| Cap-host / Day-2 lifecycle | `foundry-caphost-lifecycle` |
+| Multi-region Foundry | `microsoft-foundry` (with multi-region patterns) |
+| Cap-host / Day-2 lifecycle | `microsoft-foundry` |
 | Runbook authoring | (manual; `azure-sre-agent` `threadlight-pilot-handover` recipe ships a template) |
 | Restore drill | (manual; operationally led) |
 

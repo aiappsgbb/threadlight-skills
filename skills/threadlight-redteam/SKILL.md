@@ -50,7 +50,7 @@ DESIGN → BUILD/DEPLOY → [ DISCOVER / SAFETY ] → PROTECT → GOVERN → IMP
 - **Emits:** `specs/redteam-manifest.json` and `docs/redteam-report.md`.
 - **Does not mutate findings:** this is a producing leg for evidence. It writes
   manifest/report artefacts; remediation is dispatched separately.
-- **Does not author static policy:** use `threadlight-govern` / `foundry-agt` to
+- **Does not author static policy:** use `threadlight-govern` / `threadlight-govern/references/agt-inprocess` to
   harden AGT policy, content-filter references, prompt-shield settings, and
   action-level deny rules.
 - **Does not replace quality evals:** use `threadlight-evals` for groundedness,
@@ -269,7 +269,7 @@ Red-team and governance are paired legs:
 3. `threadlight-redteam` runs again to prove the attack no longer succeeds.
 4. `threadlight-production-ready` consumes both manifests for pillars 2 and 7.
 
-Use `foundry-agt` for deep policy authoring. Use this skill to make adversarial
+Use `threadlight-govern/references/agt-inprocess` for deep policy authoring. Use this skill to make adversarial
 safety a pipeline step that runs and leaves committed evidence.
 
 ## Files

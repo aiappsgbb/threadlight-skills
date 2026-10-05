@@ -1,0 +1,148 @@
+"""Invoke a GHCP SDK hosted agent via Invocations SSE endpoint (advanced/optional).
+
+The PRIMARY invoke path is `azd ai agent invoke <name> '{"input": "..."}'
+--protocol invocations --output raw` — see SKILL.md § "Invoking the Agent".
+This script is an optional SDK-level alternative for callers that need to
+parse the raw SSE stream directly (e.g. a bot integration), not the
+recommended first path.
+
+Parses both assistant.message and assistant.message_delta events.
+Use as a library or run directly to test an agent.
+
+Usage:
+    export AZURE_AI_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
+    python invoke_agent.py "What is the capital of France?"
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import time
+
+import requests
+from azure.identity import DefaultAzureCredential
+from operation_evidence import SSEFrames, begin_operation, error_metadata, safe_id
+
+
+def invoke_invocations(
+    endpoint: str,
+    token: str,
+    agent_name: str,
+    query: str,
+    timeout: int = 600,
+    *,
+    record=None,
+) -> str:
+    """Invoke via Invocations SSE endpoint and extract response text.
+
+    Parses both event types:
+      - assistant.message: full final message (preferred)
+      - assistant.message_delta: streaming content chunks (fallback)
+    """
+    if not callable(record):
+        raise ValueError("A durable operation record is required before invoking")
+    if not isinstance(timeout, (int, float)) or not 0 < timeout <= 1800:
+        raise ValueError("Use a finite invocation deadline between 0 and 1800 seconds")
+    # GA endpoint — no `Foundry-Features: *=V1Preview` header (removed for
+    # GA, Azure/azure-dev PR #8866). `api-version=v1` is the current GA
+    # literal for this endpoint.
+    url = f"{endpoint.rstrip('/')}/agents/{agent_name}/endpoint/protocols/invocations?api-version=v1"
+    begin_operation(record, target=url, intent={"input": query})
+    deadline = time.monotonic() + timeout
+    def post_once(*args, **kwargs):
+        try:
+            return requests.post(*args, **kwargs)
+        except requests.RequestException as error:
+            record("invoke-unresolved", error_metadata(error))
+            raise
+    resp = post_once(
+        url,
+        json={"input": query},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        stream=True,
+        timeout=(min(10, timeout), min(timeout, 60)),
+    )
+    try:
+        record("http-response", {"status_code": resp.status_code,
+                                "request_id": safe_id(resp.headers.get("x-request-id"))})
+    except BaseException:
+        resp.close()
+        raise
+    message_text = ""
+    delta_text = ""
+    tool_count = 0
+    frames = SSEFrames()
+    completed = False
+    try:
+        resp.raise_for_status()
+        for line in resp.iter_lines(decode_unicode=True):
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Invocation observation expired; reconcile original operation")
+            frame = frames.feed(line)
+            if frame is None:
+                continue
+            event_name, event = frame
+            if event_name == "done":
+                record("runtime-completed", {"runtime_invocation_id": safe_id(event.get("invocation_id")),
+                                              "native_retrievable_id": False, "effect": "UNKNOWN"})
+                completed = True
+                break
+            event_type = event.get("type", "")
+            if event_type in ("error", "session.error"):
+                raise RuntimeError("Runtime invocation failed; original effect remains unknown")
+            content = event.get("data", {}).get("content", "")
+
+            if event_type == "assistant.message" and content:
+                message_text += content
+            elif event_type == "assistant.message_delta" and content:
+                delta_text += content
+            elif event_type == "tool.execution_start":
+                tool_count += 1
+        if not completed:
+            raise RuntimeError("Invocation stream ended without completion; reconcile original operation")
+    except (ValueError, RuntimeError, TimeoutError, requests.RequestException) as error:
+        record("invoke-unresolved", error_metadata(error))
+        raise
+    finally:
+        resp.close()
+
+    return message_text if message_text else delta_text
+
+
+def main():
+    import os
+
+    endpoint = os.environ.get("AZURE_AI_PROJECT_ENDPOINT", "")
+    agent_name = os.environ.get("AGENT_NAME", "my-agent")
+
+    if not endpoint:
+        print("ERROR: Set AZURE_AI_PROJECT_ENDPOINT")
+        sys.exit(1)
+
+    query = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "Hello"
+
+    credential = DefaultAzureCredential()
+    token = credential.get_token("https://ai.azure.com/.default").token
+
+    print(f"Invoking {agent_name}: {query[:80]}...")
+    t0 = time.time()
+    descriptor = os.open(os.environ["INVOCATION_EVIDENCE_FILE"],
+                         os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as evidence:
+        def record(event, data):
+            evidence.write(json.dumps({"event": event, **data}) + "\n")
+            evidence.flush()
+            os.fsync(evidence.fileno())
+        response = invoke_invocations(endpoint, token, agent_name, query, record=record)
+    elapsed = time.time() - t0
+
+    print(f"\n--- Response ({len(response)} chars, {elapsed:.1f}s) ---")
+    print(response)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,7 +1,7 @@
 """Build a MAF Agent that consumes a discovered PoC.
 
 This is the canonical Pattern 0 wiring — same shape as the
-``SkillsProvider`` snippet documented in ``foundry-hosted-agents``
+``SkillsProvider`` snippet documented in ``threadlight-deploy/references/hosted-agent/maf``
 § Skill Loading, but with:
 
   * **Stub Python tools** (from ``stub_tools.build_stub_tools``) in

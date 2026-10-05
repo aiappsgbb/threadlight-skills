@@ -70,7 +70,7 @@ table. Reads SPEC § 12 `residency` block as the source of truth.
 ## Common gaps
 
 - SPEC declares `citadel-spoke` but the spoke was deployed without ever
-  invoking `citadel-spoke-onboarding`. The Access Contract is missing.
+  invoking `threadlight-citadel-spoke`. The Access Contract is missing.
 - AGT is "declared" in § 12 but the middleware file lives only in
   `src/agent/skills/` (skill-level) and never wraps the agent at the
   container boundary. AGT-as-skill ≠ AGT-as-middleware.
@@ -86,11 +86,11 @@ Map findings to skills:
 
 | Finding pattern | Skill |
 |---|---|
-| Access Contract / APIM product missing | `citadel-spoke-onboarding` |
-| Need to deploy / shape the hub | `citadel-hub-deploy` |
-| Need to inject Foundry into a VNet | `foundry-vnet-deploy` |
-| Network connectivity / probe failures | `foundry-network-runbook` |
-| Tagging convention | `azd-patterns` |
+| Access Contract / APIM product missing | `threadlight-citadel-spoke` |
+| Need to deploy / shape the hub | `threadlight-citadel-hub` |
+| Need to inject Foundry into a VNet | `microsoft-foundry` |
+| Network connectivity / probe failures | `microsoft-foundry` |
+| Tagging convention | `threadlight-deploy/references/azd-modules` |
 
 ## Why this pillar matters
 

@@ -1,6 +1,6 @@
 {
   "schema": "threadlight-skill-dependencies/v1",
-  "policy": "Official Microsoft skills from azure@azure-skills are the default. A custom awesome-gbb skill is used only as a labelled residual when no official skill covers the capability or the official one demonstrably cannot do it; each exception records its evidence. Out-of-product-scope tools are not Azure product dependencies.",
+  "policy": "Official Microsoft skills from azure@azure-skills are the default. Where no official skill covers a capability Threadlight needs, the awesome-gbb skill is ported into threadlight-skills as a threadlight-owned skill or reference (MIT, with PROVENANCE.md), so Threadlight runs on azure@azure-skills plus threadlight-skills only. Other awesome-gbb skills are labelled residual: optional, not Threadlight dependencies; each exception records its evidence. Out-of-product-scope tools are not Azure product dependencies.",
   "official": {
     "marketplace": "microsoft/azure-skills",
     "default_plugin": "azure@azure-skills",
@@ -105,7 +105,10 @@
           ]
         }
       ],
-      "threadlight_owned_gap": "The composable Bicep module catalog that threadlight-deploy Phase 6 reads (azd-patterns module shapes) has no official equivalent: v1.2.77 azure-prepare/references/recipes/bicep has only README.md and patterns.md. Until those shapes move into threadlight-deploy, awesome-gbb azd-patterns stays a required companion for threadlight-deploy."
+      "threadlight_owned_gap": "The composable Bicep module catalog that threadlight-deploy Phase 6 reads has no official equivalent (v1.2.77 azure-prepare/references/recipes/bicep has only README.md and patterns.md); it is ported to skills/threadlight-deploy/references/azd-modules.",
+      "note": "Ported reference, not a skill: azure-prepare / azure-validate / azure-deploy remain the default azd route.",
+      "threadlight_target": "skills/threadlight-deploy/references/azd-modules",
+      "provenance": "awesome-gbb@7f1de882 (MIT)"
     },
     "azure-backup-readiness": {
       "label": "residual",
@@ -172,8 +175,9 @@
       }
     },
     "azure-tenant-isolation": {
-      "label": "residual",
-      "display_label": "GBB pattern, not a Microsoft product skill",
+      "label": "threadlight-owned",
+      "threadlight_target": "skills/threadlight-tenant-isolation",
+      "provenance": "awesome-gbb@7f1de882 (MIT)",
       "exception": {
         "reason": "Per-tenant Azure CLI isolation is an operator-safety convention, not a product workflow.",
         "official_tag_checked": "v1.2.77",
@@ -181,8 +185,9 @@
       }
     },
     "citadel-hub-deploy": {
-      "label": "residual",
-      "display_label": "GBB pattern, not a Microsoft product skill",
+      "label": "threadlight-owned",
+      "threadlight_target": "skills/threadlight-citadel-hub",
+      "provenance": "awesome-gbb@7f1de882 (MIT)",
       "exception": {
         "reason": "Citadel hub (ai-hub-gateway-solution-accelerator, citadel-v1 profiles, access contracts) has no product skill.",
         "official_tag_checked": "v1.2.77",
@@ -201,8 +206,9 @@
       }
     },
     "citadel-spoke-onboarding": {
-      "label": "residual",
-      "display_label": "GBB pattern, not a Microsoft product skill",
+      "label": "threadlight-owned",
+      "threadlight_target": "skills/threadlight-citadel-spoke",
+      "provenance": "awesome-gbb@7f1de882 (MIT)",
       "exception": {
         "reason": "Hub/spoke onboarding and access-contract issuance have no product skill.",
         "official_tag_checked": "v1.2.77",
@@ -234,8 +240,9 @@
       }
     },
     "foundry-agt": {
-      "label": "residual",
-      "display_label": "GBB pattern, not a Microsoft product skill",
+      "label": "threadlight-owned",
+      "threadlight_target": "skills/threadlight-govern/references/agt-inprocess",
+      "provenance": "awesome-gbb@7f1de882 (MIT)",
       "exception": {
         "reason": "Agent Governance Toolkit / ACS policy, Agent Hooks PEP and signed bundles have no product skill.",
         "official_tag_checked": "v1.2.77",
@@ -337,7 +344,10 @@
           ]
         }
       ],
-      "threadlight_owned_gap": "Presenter delivery contract and the native-SDK hosted create-definition checks (skills/_shared/presenter.py, docs/presenter-ready.md).",
+      "threadlight_owned_gap": "Presenter delivery contract and the native-SDK hosted create-definition checks (skills/_shared/presenter.py, docs/presenter-ready.md); MAF template, env-var contract and durable-ops depth ported to skills/threadlight-deploy/references/hosted-agent/maf.",
+      "note": "Ported reference, not a skill: the official microsoft-foundry deploy guidance remains the default route.",
+      "threadlight_target": "skills/threadlight-deploy/references/hosted-agent/maf",
+      "provenance": "awesome-gbb@7f1de882 (MIT)",
       "upstream_todo": {
         "draft": "hosted-agent-durable-ops",
         "target": "microsoft-foundry/foundry-agent/deploy and troubleshoot",
@@ -357,8 +367,9 @@
       "note": "Official plugin is preview (0.1.x) and uses the same skill name; install only one foundry-iq."
     },
     "foundry-mcp-aca": {
-      "label": "residual",
-      "display_label": "GBB pattern, not a Microsoft product skill",
+      "label": "threadlight-owned",
+      "threadlight_target": "skills/threadlight-mcp-aca",
+      "provenance": "awesome-gbb@7f1de882 (MIT)",
       "exception": {
         "reason": "MCP server hosted on Azure Container Apps with Entra auth and Foundry wiring has no product workflow.",
         "official_tag_checked": "v1.2.77",
@@ -624,8 +635,9 @@
       "reason": "Copilot CLI bootstrap; not an Azure product capability."
     },
     "ghcp-hosted-agents": {
-      "label": "residual",
-      "display_label": "GBB pattern, not a Microsoft product skill",
+      "label": "threadlight-owned",
+      "threadlight_target": "skills/threadlight-deploy/references/hosted-agent/ghcp",
+      "provenance": "awesome-gbb@7f1de882 (MIT)",
       "exception": {
         "reason": "GitHub Copilot SDK hosted agents: the official azure-hosted-copilot-sdk skill was retired.",
         "official_tag_checked": "v1.2.77",

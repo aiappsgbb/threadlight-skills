@@ -202,7 +202,7 @@ The only writing mode beyond `--emit` is the bounded scaffold, which requires a
 flag alone refuses and writes nothing. The scaffold places exactly five starter
 files (interceptor, empty deny-by-default policy, approval-binding fixture,
 contract test, workflow); its `rules` and `approvers` are always empty. Turning
-that skeleton into a real policy belongs to `foundry-agt`, and turning the
+that skeleton into a real policy belongs to `threadlight-govern/references/agt-inprocess`, and turning the
 workflow into a real deploy pipeline belongs to `threadlight-cicd`.
 
 ### Exit codes

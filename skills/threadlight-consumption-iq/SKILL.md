@@ -88,7 +88,7 @@ This skill produces the answer in one command.
 | Assessing the verified reconciliation bundle in a readiness report | `threadlight-production-ready` `COST-102`, `COST-103`, `KPI-003` *(artifact consumers only; no query/recompute)* |
 | Bicep mutation from recommendations | `threadlight-deploy` on the next run (this skill is advisory) |
 | Real-time anomaly detection | Azure-native budget/anomaly automation; this skill stays evidence-only |
-| Demand forecasting / usage time-series | out of scope; foundry-observability owns the trace side |
+| Demand forecasting / usage time-series | out of scope; microsoft-foundry owns the trace side |
 
 ## When to invoke
 
@@ -108,7 +108,7 @@ This skill produces the answer in one command.
 threadlight-design → threadlight-demo-data-factory → threadlight-local-test →
 threadlight-deploy → threadlight-safe-check →
 threadlight-consumption-iq      ← THIS SKILL
-foundry-evals + foundry-observability →
+microsoft-foundry →
 threadlight-production-ready
 ```
 
@@ -121,7 +121,7 @@ threadlight-production-ready
 | `azd env get-values` | live azd env | yes (skip with `--pre-deploy` to read Bicep only) |
 | `specs/SPEC.md § 11c` (tech-stack selectors) | `threadlight-design` | yes — not present in a Kratos export; resources come from `infra/` instead |
 | `specs/SPEC.md § 12 → load_profile{}` (NEW sub-block) | this skill's wizard OR hand-authored | yes (skill writes it back if absent; in Kratos-export mode it writes to `use-cases/<x>/load-profile.yml` since there's no SPEC) |
-| Recent Application Insights / `foundry-observability` traces | live monitor | optional (fidelity boost post-launch) |
+| Recent Application Insights / `microsoft-foundry` traces | live monitor | optional (fidelity boost post-launch) |
 
 ### Kratos-export mode (discover from `infra/`, not from a SPEC)
 

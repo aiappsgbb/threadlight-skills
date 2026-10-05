@@ -34,7 +34,7 @@ DESIGN → BUILD/DEPLOY → DISCOVER → PROTECT → [ GOVERN / IMPROVE ] → PR
 > **Why this skill exists.** A pilot can have strong unit tests, local smoke
 > tests, and a green deployment gate, yet still regress silently after a model,
 > prompt, retrieval, or tool-schema change. Previously the chain delegated eval
-> work entirely to `foundry-evals`, and pillar 6 could only score whether a
+> work entirely to `microsoft-foundry`, and pillar 6 could only score whether a
 > schedule appeared to exist. This skill makes evals a threadlight-owned leg:
 > it detects offline datasets, live continuous evaluation wiring, threshold
 > alerts, run freshness, and champion-challenger gates; then emits a manifest the
@@ -44,7 +44,7 @@ DESIGN → BUILD/DEPLOY → DISCOVER → PROTECT → [ GOVERN / IMPROVE ] → PR
 
 | Feature | Purpose | Output signal |
 |---|---|---|
-| **F1 Offline batch quality eval** | Thin-wrap the `foundry-evals` invoke+score path in the threadlight spine. Heavy evaluator authoring still belongs to `foundry-evals`; this leg owns running it and producing evidence. | `eval_scenarios_present`, `eval_datasets_present`, `run_history_present`, `latest_pass_rate_ok` |
+| **F1 Offline batch quality eval** | Thin-wrap the `microsoft-foundry` invoke+score path in the threadlight spine. Heavy evaluator authoring still belongs to `microsoft-foundry`; this leg owns running it and producing evidence. | `eval_scenarios_present`, `eval_datasets_present`, `run_history_present`, `latest_pass_rate_ok` |
 | **F2 Online / continuous eval** | Wire Foundry Continuous Evaluation on live threads using `create_agent_evaluation(thread, run, evaluators=[...], app_insights_connection_string=...)`. Results land in Application Insights. | `schedule_present`, `online_eval_wired`, `latest_eval_run_fresh`, `alert_wired` |
 | **F3 A/B champion–challenger** | Gate a model/prompt/tool swap by running the same eval dataset against champion and challenger before the swap. | `ab_comparison_present` |
 
@@ -55,7 +55,7 @@ DESIGN → BUILD/DEPLOY → DISCOVER → PROTECT → [ GOVERN / IMPROVE ] → PR
 | Token-level content filtering, prompt shields, content safety at the model edge | Model guardrail / Azure AI Content Safety |
 | Adversarial scanning and jailbreak probe campaigns | `threadlight-redteam` |
 | Agent-runtime action policy, tool allow/deny, excessive-agency controls | `threadlight-govern` |
-| Deep evaluator authoring, grading rubric design, dataset enrichment work | `foundry-evals` |
+| Deep evaluator authoring, grading rubric design, dataset enrichment work | `microsoft-foundry` |
 | Overall production-readiness scorecard | `threadlight-production-ready` |
 
 ## The contract — `specs/evals-manifest.json`
@@ -290,9 +290,9 @@ aggregation — never gate on the mean. Full recipe, including the mapping table
 Freshness is determined by the consuming scorecard and by this validator's
 `latest_eval_run_fresh` capability. Default window: 7 days.
 
-## Relationship to `foundry-evals`
+## Relationship to `microsoft-foundry`
 
-`foundry-evals` is the deep upstream skill for evaluator selection, rubric
+`microsoft-foundry` is the deep upstream skill for evaluator selection, rubric
 authoring, dataset expansion, and Foundry eval details. `threadlight-evals` is a
 thin threadlight pipeline leg: it makes evals a step that runs in the spine,
 checks whether the production posture is wired, and emits the manifest the
@@ -300,7 +300,7 @@ scorecard understands.
 
 Use both together:
 
-- Use `foundry-evals` to author or repair evaluator definitions and datasets.
+- Use `microsoft-foundry` to author or repair evaluator definitions and datasets.
 - Use `threadlight-evals` to verify the pilot has offline, online, alerting,
   freshness, and A/B gate evidence.
 
@@ -362,4 +362,4 @@ to replace it. For first-party depth behind this evals leg, reach for the offici
 reading, not a dependency* — Threadlight's guidance stays the source of truth for
 the pilot flow:
 
-- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/main/skills/microsoft-foundry/SKILL.md)** — first-party **batch eval, continuous evaluation, and tracing / observability** surfaces this leg wires (via `foundry-evals` + Foundry Continuous Evaluation).
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/main/skills/microsoft-foundry/SKILL.md)** — first-party **batch eval, continuous evaluation, and tracing / observability** surfaces this leg wires (via `microsoft-foundry` + Foundry Continuous Evaluation).

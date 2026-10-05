@@ -11,7 +11,7 @@ Design rules (enforced by tests under ../tests/):
     ready-to-run `az` scripts the customer's central platform team executes.
   * Parallel-track safe. A pilot pipeline deploys ONLY use-case resources into
     its spoke/target resource group — never the Citadel hub, which is owned by
-    the central platform team via citadel-hub-deploy in a separate repo.
+    the central platform team via threadlight-citadel-hub in a separate repo.
 
 The renderer uses the standard library for `{{TOKEN}}` markers from a framing
 dict; optional AgentOps discovery uses the shared contract. Unknown markers are
@@ -69,7 +69,7 @@ def resolve_onboarding_path(framing: dict) -> dict:
             path = "spoke-onboard"
             next_actions = [
                 "Confirm hub coordinates (hub_subscription_id, hub_apim_resource_id).",
-                "Onboard this pilot as a spoke via citadel-spoke-onboarding (Access Contract).",
+                "Onboard this pilot as a spoke via threadlight-citadel-spoke (Access Contract).",
                 "Scope the pilot deploy identity's RBAC to the spoke resource group ONLY.",
             ]
         else:
@@ -80,9 +80,9 @@ def resolve_onboarding_path(framing: dict) -> dict:
                 "must not deploy it."
             )
             next_actions = [
-                "Stand up the central platform via citadel-hub-deploy in the SEPARATE "
+                "Stand up the central platform via threadlight-citadel-hub in the SEPARATE "
                 "central repo/pipeline (platform team owns this).",
-                "Then onboard this pilot as a spoke via citadel-spoke-onboarding (Access Contract).",
+                "Then onboard this pilot as a spoke via threadlight-citadel-spoke (Access Contract).",
                 "Scope the pilot deploy identity's RBAC to the spoke resource group ONLY.",
             ]
     else:
@@ -161,8 +161,8 @@ def build_context(framing: dict, resolved: dict) -> dict:
     if path == "spoke-onboard":
         boundary_guidance = (
             "## Your onboarding path: the hub already exists\n\n"
-            "Onboard this pilot as a **spoke** via `citadel-spoke-onboarding` — consume the "
-            "hub through an Access Contract. **Do not run citadel-hub-deploy**: the central "
+            "Onboard this pilot as a **spoke** via `threadlight-citadel-spoke` — consume the "
+            "hub through an Access Contract. **Do not run threadlight-citadel-hub**: the central "
             "hub already exists and is owned by the platform team.\n\n"
             f"- Access Contract product: `{access_contract}`\n"
             f"- Hub APIM resource id: `{hub_apim}`\n"
@@ -172,8 +172,8 @@ def build_context(framing: dict, resolved: dict) -> dict:
         boundary_guidance = (
             "## Your onboarding path: the hub is required but not yet deployed\n\n"
             "The central hub does **not yet** exist. The platform team stands it up via "
-            "`citadel-hub-deploy` on the **separate** central-platform track first; then "
-            "onboard this pilot via `citadel-spoke-onboarding`. This pilot pipeline never "
+            "`threadlight-citadel-hub` on the **separate** central-platform track first; then "
+            "onboard this pilot via `threadlight-citadel-spoke`. This pilot pipeline never "
             "deploys the hub.\n"
         )
     else:  # standalone
@@ -712,7 +712,7 @@ def _onboard(framing: dict) -> dict:
         ).lower().startswith("y")
         if not framing["central_env_exists"]:
             print("\n>> The central platform must be stood up on the SEPARATE central-platform "
-                  "track (citadel-hub-deploy), not by this pilot pipeline. This generator will "
+                  "track (threadlight-citadel-hub), not by this pilot pipeline. This generator will "
                   "still scaffold the spoke pipeline; coordinate hub deploy with the platform team.\n")
         framing["hub_subscription_id"] = _prompt("Hub subscription id (optional now)",
                                                  framing.get("hub_subscription_id", ""))

@@ -33,7 +33,7 @@
       "finding_id": "NET-501",
       "kind": "sibling-skill",
       "recipe_path": "/Users/ricchi/.copilot/repos/copilot-worktrees/threadlight-skills/unsafecode-fantastic-waddle/skills/threadlight-production-ready/references/remediation-recipes/NET-501.md",
-      "sibling_skill": "citadel-spoke-onboarding",
+      "sibling_skill": "threadlight-citadel-spoke",
       "summary": "Onboard the Foundry spoke to the Citadel hub (peering + APIM Access Contract)",
       "target_file": null
     },

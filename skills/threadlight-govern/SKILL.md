@@ -7,7 +7,8 @@ description: >-
   AgentOps ASSERT/ACS summaries in specs/agentops-manifest.json are
   supplemental only, outside canonical binding-scoped proof. They cannot
   change selected bindings, live enforcement, or policy, signature, approval,
-  audit and attestation acceptance.
+  audit and attestation acceptance. Also owns the Agent Governance Toolkit
+  (AGT) in-process policy middleware reference (references/agt-inprocess).
   Not for model content filtering, red-team scans or quality evaluations.
 metadata:
   version: "2.2.0"
