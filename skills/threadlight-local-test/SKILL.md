@@ -455,7 +455,7 @@ the developer string-replaces.
   offline dev, but the production agent is tuned for `gpt-5.4`
   family behaviour. Tool-calling reliability differs significantly
   on smaller open models, so smoke results don't transfer. See
-  `threadlight-deploy/references/hosted-agent/maf` § "Model selection — gpt-5.4 vs mini".
+  `threadlight-deploy/references/hosted-agent/maf/references/model-selection.md` § "1 — Capability selection".
 - ❌ **Skip Pattern 1 because "the CLI is just a chat box".**
   Copilot CLI's MCP integration is genuinely the fastest tool-dev
   loop available — write a tool, save the file, ask the CLI to

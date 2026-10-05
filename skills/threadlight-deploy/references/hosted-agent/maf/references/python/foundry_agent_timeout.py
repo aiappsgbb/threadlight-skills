@@ -12,7 +12,7 @@ timeout the OpenAI client uses.
 
 This kwarg lives on the CALLER-side `FoundryAgent` class (orchestrator
 code calling a hosted agent). The CONTAINER-side runtime for hosted
-agents (covered in SKILL.md § Runtime Pattern) uses `FoundryChatClient`
+agents (covered in README.md § Runtime Pattern) uses `FoundryChatClient`
 directly and does NOT accept `timeout=` in 1.8.0 — apply HTTP-layer
 transport timeouts on the underlying client instead.
 

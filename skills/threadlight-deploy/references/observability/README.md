@@ -475,7 +475,7 @@ template: {
 The scheduled/event-trigger module family is owned by `threadlight-event-triggers`; `threadlight-deploy/references/azd-modules/references/bicep/aca-job.bicep` stays the generic Manual module.
 
 > **The silent-cron lesson** (from recent pilot retrospectives — see
-> `threadlight-deploy/references/azd-modules` § ACA Job silent-failure playbook). When the cron
+> `threadlight-deploy/references/azd-modules` § "ACA Job: silent-failure debug playbook"). When the cron
 > exits with non-zero before any `print()` reaches stdout, ACA's
 > default LAW logging routes nothing — but if `configure_azure_monitor()`
 > ran successfully *before* the crash, the exception trace lands in

@@ -1008,7 +1008,7 @@ the cited `SKILL.md`; this is the index, not the cure.
 Insights connection, or `configure_azure_monitor()` was never called in
 the ACA workload.
 
-**Fix.** `threadlight-deploy/references/observability` § 3-Layer Wiring (postprovision script
+**Fix.** `threadlight-deploy/references/observability` § "Layer 1 — Bicep substrate" (postprovision script
 puts the AppIn connection on the **account**, not the project; ACA
 workload boots with `configure_azure_monitor()` wrapped for local-dev
 safety). `threadlight-safe-check --phase post-deploy` raises a gap.

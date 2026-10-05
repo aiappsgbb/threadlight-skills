@@ -662,7 +662,7 @@ declare `cosmos-db`, the check is skipped silently.
 > pilot-posture pattern: `pilotPosture: bool = true` param defaulting
 > `publicNetworkAccess: 'Enabled'` + `networkAclBypass: 'AzureServices'`
 > + `ipAllowlist` (driven by `COSMOS_IP_ALLOWLIST` azd env var). See
-> `threadlight-deploy/references/azd-modules` SKILL.md § "Cosmos firewall — pilot-grade defaults"
+> `threadlight-deploy/references/azd-modules` README.md § "Cosmos firewall — pilot-grade defaults"
 > and `threadlight-mcp-aca` SKILL.md § "Cosmos firewall + ACA egress".
 
 ### Step 5.10 — Integration binding (catches "declared real, still wired to the mock")

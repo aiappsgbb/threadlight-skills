@@ -121,37 +121,37 @@ known_issues:
       required for the standard case (see hosted-agent-permissions doc).
     upstream_url: https://learn.microsoft.com/azure/foundry/agents/concepts/azure-yaml-reference
     status: open
-    workaround_location: SKILL.md § "azure.yaml (unified hosted-agent configuration)" + § "Identity & RBAC" + § "Version rollout patterns (blue-green / canary / rollback)"
+    workaround_location: README.md § "azure.yaml (unified hosted-agent configuration)" + § "Identity & RBAC" + § "Version rollout patterns (blue-green / canary / rollback)"
   - id: KI-002
     description: |
       MAF 1.4.0 cutover (May 2026): SDK requests ai.azure.com token audience instead of cognitiveservices.azure.com; pinned-by-sha256 orchestrator images on 1.3.x get 401 on every Responses call after Foundry data-plane rename completes. Re-build with 1.4.0 and re-import every agent version.
     upstream_url: https://pypi.org/project/agent-framework-core/1.4.0/
     status: open
-    workaround_location: SKILL.md § "MAF 1.4.0 breaking changes (May 2026)"
+    workaround_location: README.md § "MAF 1.4.0 breaking changes (May 2026)"
   - id: KI-003
     description: |
       MAF 1.4.0: AzureOpenAIChatClient removed from agent_framework.azure; companion services (eval judges, sidecars, direct-AOAI code paths) must migrate to OpenAIChatClient(azure_endpoint=..., model=..., credential=...) from agent_framework.openai.
     upstream_url: https://pypi.org/project/agent-framework-core/1.4.0/
     status: open
-    workaround_location: SKILL.md § "MAF 1.4.0 breaking changes (May 2026)" → AzureOpenAIChatClient → OpenAIChatClient migration
+    workaround_location: README.md § "MAF 1.4.0 breaking changes (May 2026)" → AzureOpenAIChatClient → OpenAIChatClient migration
   - id: KI-005
     description: |
       MAF 1.4.0: SkillsProvider(skill_paths=...) keyword constructor removed. Causes TypeError at container startup → sticky session_not_ready on every invocation (container never becomes ready). Use SkillsProvider.from_paths(...) classmethod instead.
     upstream_url: https://pypi.org/project/agent-framework-core/1.4.0/
     status: open
-    workaround_location: SKILL.md § "Skill Loading — SkillsProvider" → Constructor variants
+    workaround_location: README.md § "Skill Loading — SkillsProvider" → Constructor variants
   - id: KI-006
     description: |
       ACR layer caching produces identical per-job image digests when only the base image changed (domain files same). Foundry deduplicates create_version → new base image code never reaches the container. Fix: no_cache=True on DockerBuildRequest + ARG BUILD_TS with RUN echo $BUILD_TS.
     upstream_url: https://learn.microsoft.com/azure/container-registry/container-registry-tasks-reference-yaml
     status: open
-    workaround_location: SKILL.md § "ACR layer cache trap"
+    workaround_location: README.md § "ACR layer cache trap"
   - id: KI-007
     description: |
       Foundry create_version deduplication: even with a different image tag/digest, create_version returns the existing version when env vars + metadata are identical. New base image code never reaches the container. SEPARATE from KI-006 (image-level vs version-level). Fix: add a changing env var (_BUILD_TS=timestamp) to environment_variables in create_version().
     upstream_url: https://learn.microsoft.com/azure/foundry/agents/concepts/azure-yaml-reference
     status: open
-    workaround_location: SKILL.md § "MAF 1.6.0 update" → create_version deduplication trap
+    workaround_location: README.md § "MAF 1.6.0 update" → create_version deduplication trap
   - id: KI-008
     description: |
       MAF 1.8.0 (June 2026) ships two [BREAKING] markers AND triggers two
@@ -188,17 +188,17 @@ known_issues:
           with current-version guidance.
     upstream_url: https://pypi.org/project/agent-framework-core/1.8.1/
     status: open
-    workaround_location: SKILL.md § "MAF 1.8.0 update (June 2026)" → breaking markers non-impact analysis
+    workaround_location: README.md § "MAF 1.8.0 update (June 2026)" → breaking markers non-impact analysis
   - id: KI-009
     description: agent-framework-foundry 1.11.0 requires azure-ai-projects>=2.2,<2.4; hosted agents prefer the current Foundry integration over Azure AI Projects 2.4-only Toolbox features.
     upstream_url: https://pypi.org/project/agent-framework-foundry/
     status: open
-    workaround_location: SKILL.md § "Dependencies (pyproject.toml)"
+    workaround_location: README.md § "Dependencies (pyproject.toml)"
   - id: KI-010
     description: agent-framework-foundry-hosting 1.0.0b260813 requires direct exact Agent Server core + Responses 2.1.0b1 and invocations 1.1.0b1 pins for uv prerelease admission, plus mcp>=1.24,<2.
     upstream_url: https://pypi.org/project/agent-framework-foundry-hosting/
     status: open
-    workaround_location: SKILL.md § "Dependencies (pyproject.toml)"
+    workaround_location: README.md § "Dependencies (pyproject.toml)"
 
 validation:
   requires: [pypi]

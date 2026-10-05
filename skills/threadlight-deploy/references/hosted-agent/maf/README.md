@@ -2102,8 +2102,8 @@ Any capacity change needs a separate approved capacity/cost decision.
 > This SKILL describes runtime patterns for hosted agents on Foundry (container build, SDK wiring, debugging). Some concerns belong to sibling SKILLs:
 >
 > - **Telemetry initialization** (`configure_azure_monitor()` guard, `_init_telemetry()` pattern): owned by `threadlight-deploy/references/observability` § Layer 2. See gap O-011 / O-012 for AppInsights connection failures.
-> - **Deploy hooks** (`azd postdeploy` scripts, role assignment automation): owned by `threadlight-deploy/references/azd-modules` § azd hooks. See section on environment injection and dependency ordering.
-> - **Model selection** (region availability, task/modality tables, tier maps): owned by `agentic-loop` § Foundry Model Selector — that table is the single source of truth across all awesome-gbb skills.
+> - **Deploy hooks** (`azd postdeploy` scripts, role assignment automation): owned by `threadlight-deploy/references/azd-modules` § "Hooks: `postprovision` vs `postdeploy`" (environment injection and dependency ordering).
+> - **Model selection** (region availability, task/modality tables, tier maps): owned by [`references/model-selection.md`](references/model-selection.md) — the single source of truth for Threadlight hosted agents.
 >
 > Link back to these SKILLs when diagnosing deploy-stage failures.
 

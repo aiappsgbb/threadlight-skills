@@ -39,13 +39,13 @@ known_issues:
     description: Foundry AppInsights connection behavior can fail to inject APPLICATIONINSIGHTS_CONNECTION_STRING; workloads must guard configure_azure_monitor initialization.
     upstream_url: https://learn.microsoft.com/azure/ai-foundry/concepts/connections
     status: open
-    workaround_location: SKILL.md § "Layer 2 caveat"
+    workaround_location: README.md § "Layer 2 caveat"
   - id: KI-002
     description: |
       O-012 WORKAROUND FOUND: pass APPLICATION_INSIGHTS_CONNECTION_STRING (underscored variant) directly via create_version env_vars. Platform reserves APPLICATIONINSIGHTS_CONNECTION_STRING but accepts the underscored name. Container reads both with priority validation. Verified: 88+ traces from hosted agent on northcentralus. Also: FoundryChatClient.configure_azure_monitor() SDK path hits same O-012 gap (data-plane getConnectionWithCredentials returns empty credentials). Use env var path as primary, SDK as fallback.
     upstream_url: https://learn.microsoft.com/azure/ai-foundry/concepts/connections
     status: open
-    workaround_location: SKILL.md § O-012 gap row + "O-012 workaround found" callout
+    workaround_location: README.md § O-012 gap row + "O-012 workaround found" callout
 
 known_issues_count: 2
 

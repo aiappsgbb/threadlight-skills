@@ -102,7 +102,7 @@ known_issues:
       GENUINELY BROKEN — yields "Missing required query parameter: api-version".
     upstream_url: https://github.com/microsoft-foundry/foundry-samples/blob/main/samples/python/hosted-agents/bring-your-own/invocations/github-copilot/src/github-copilot-invocations/main.py
     status: open
-    workaround_location: SKILL.md § "BYOK Authentication Deep Dive" -> provider shape decision matrix
+    workaround_location: README.md § "BYOK Authentication Deep Dive" -> provider shape decision matrix
 
   - id: KI-006
     description: |
@@ -116,7 +116,7 @@ known_issues:
       auto_start=False)` raises `ImportError` on 1.0.0+ at import time.
     upstream_url: https://pypi.org/project/github-copilot-sdk/1.0.0/
     status: documented_in_skill
-    workaround_location: SKILL.md § "CopilotClient Session Parameters" + container.py reference (callout in version-drift note)
+    workaround_location: README.md § "CopilotClient Session Parameters" + container.py reference (callout in version-drift note)
 
 validation:
   requires: [pypi]
@@ -214,7 +214,7 @@ adapted for `language: docker` + the Invocations protocol instead of MAF's
 Responses protocol. The old two-file `agent.yaml` + hand-wired `azure.yaml`
 contract, the `remoteBuild`/manual `services:` wiring, the
 `AZURE_TENANT_ID` postdeploy-hook requirement, and the manual account-scope
-`Foundry User` role grant are all removed — see SKILL.md § "azure.yaml
+`Foundry User` role grant are all removed — see README.md § "azure.yaml
 (unified GA deployment)" and § "Identity & RBAC for hosted agents".
 
 **KI-001, KI-002, KI-003, and KI-004 are retired, not merely closed:**
@@ -240,7 +240,7 @@ contract, the `remoteBuild`/manual `services:` wiring, the
   path; only the instance identity requires the dual-scope grant. The
   skill and fixture
   now document and perform the dual-scope instance grant before invocation
-  (SKILL.md § "Identity & RBAC for hosted agents", Step 3.5 of the
+  (README.md § "Identity & RBAC for hosted agents", Step 3.5 of the
   fixture). This is not a re-opening of KI-001's *deploy-time* auto-grant
   (still retired); it is a distinct, previously-undocumented
   model-inference prerequisite.
@@ -279,7 +279,7 @@ on the first transient event. The earlier "no agent role grant needed"
 claim derived from an upstream echo-agent sample that never called a model;
 it silently 401'd on live inference. No package pins, SHAs, or
 `known_issues_count` changed in this correction — only the RBAC contract
-prose (this file), SKILL.md § "Identity & RBAC for hosted agents", and the
+prose (this file), README.md § "Identity & RBAC for hosted agents", and the
 fixture's grant/revoke steps. Do NOT add `transient_auth_error` (or any
 authorization token) to the workflow retry classifier: this was a
 persistent authorization regression, not a transient. Live GHCP T3 evidence

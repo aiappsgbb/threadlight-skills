@@ -802,7 +802,7 @@ the relevant mapping for this catalog is:
 
 Defence in depth is the principle: APIM governs edge authentication,
 rate limiting, and product policy (L1), while
-[`threadlight-govern`](../threadlight-govern/SKILL.md#why-action-governance-matters)
+[`threadlight-govern`](../threadlight-govern/references/agt-inprocess/README.md#why-action-governance-matters)
 provides in-process action governance (L1.5). As documented in
 **Why action governance matters**, AGT makes deterministic allow/deny
 decisions by tool name before the tool body (`call_next()`) executes;

@@ -28,7 +28,7 @@ symbols (``EXPECTED_VERSIONS``, ``POLICY_DIR``, ``check_imports``,
 ``check_versions``, ``build_factory_stack``, ``exercise_capability_hook``)
 via a normal local-module import rather than redefining any of that logic.
 
-Pre-implementation API proof (see the skill's SKILL.md § Verification status
+Pre-implementation API proof (see the skill's README.md § Verification status
 for the summary) empirically confirmed two things this probe relies on. Both
 were independently re-litigated a second time, live, against the exact
 pinned package set in a disposable venv — after a report claimed the

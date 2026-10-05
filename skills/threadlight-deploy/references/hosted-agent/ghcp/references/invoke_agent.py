@@ -1,7 +1,7 @@
 """Invoke a GHCP SDK hosted agent via Invocations SSE endpoint (advanced/optional).
 
 The PRIMARY invoke path is `azd ai agent invoke <name> '{"input": "..."}'
---protocol invocations --output raw` — see SKILL.md § "Invoking the Agent".
+--protocol invocations --output raw` — see README.md § "Invoking the Agent".
 This script is an optional SDK-level alternative for callers that need to
 parse the raw SSE stream directly (e.g. a bot integration), not the
 recommended first path.

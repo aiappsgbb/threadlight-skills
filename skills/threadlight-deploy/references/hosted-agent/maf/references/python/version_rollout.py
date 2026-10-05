@@ -144,7 +144,7 @@ def create_new_version(
 
     Carries the required `AZURE_AI_MODEL_DEPLOYMENT_NAME` runtime setting
     into the complete immutable definition and bumps `_BUILD_TS` to defeat
-    the `create_version` deduplication trap documented in SKILL.md §
+    the `create_version` deduplication trap documented in README.md §
     `create_version deduplication trap`. Without the model setting, the new
     version does not inherit it and the container fails at startup. Without
     the build stamp, the platform may silently return an existing version

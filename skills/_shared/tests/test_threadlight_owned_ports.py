@@ -10,6 +10,7 @@ ported runtime behaviour.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -50,6 +51,8 @@ HISTORY = re.compile(
     # Approved workbook, byte-frozen by tests/blueprint (sha1 blob 1d6ed17f); changing
     # its pinned companions needs an explicit re-approval of that freeze.
     r"|docs/first-governed-workflow\.md$|tests/blueprint/first-governed-workflow\.test\.js$"
+    # Pinned explanatory snapshot, byte-frozen by tests/blueprint (sha1 blob 909409fe).
+    r"|docs/agent-governance-deep-dive\.md$"
     r")"
 )
 # `foundry-agt` is also a legacy Python distribution name; lines that name it next to
@@ -279,4 +282,96 @@ def test_source_of_truth_pointers_inside_ports_resolve_to_an_existing_section():
                                 if h.startswith("#")]
                     if not any(h.startswith(heading[:40]) or heading[:40] in h for h in headings):
                         broken.append(f"{path.relative_to(ROOT)}: no heading '{heading}' in {m.group(1)}")
+    assert not broken, broken
+
+
+PORT_TEXT_NAMES = {"Dockerfile"}
+PORT_EXTRA_SUFFIXES = {".toml", ".bicepparam", ".env"}
+
+
+def _port_text_files(root):
+    for path in (SKILLS / root).rglob("*"):
+        if not path.is_file() or "__pycache__" in path.parts or path.name == "PROVENANCE.md":
+            continue
+        if path.suffix in TEXT_SUFFIXES | PORT_EXTRA_SUFFIXES or path.name in PORT_TEXT_NAMES:
+            yield path
+
+
+def test_bare_skill_md_pointers_inside_reference_ports_name_an_existing_file():
+    """Ported references have a README.md, not a SKILL.md. A bare `SKILL.md §` pointer
+    (one not qualified by a path or a skill name) inside them is a dead end."""
+    bare = re.compile(r"(?<![\w./`-])(?<!`\s)SKILL\.md`?\s*§")
+    broken = []
+    for root in PORTED_REFERENCES.values():
+        assert not (SKILLS / root / "SKILL.md").exists(), root
+        for path in _port_text_files(root):
+            for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                if bare.search(line):
+                    broken.append(f"{path.relative_to(ROOT)}:{n}")
+    assert not broken, broken
+
+
+def test_relative_pointers_inside_all_ports_resolve():
+    """Same as the pointer test above, but across ported skills too and every text
+    file type the ports ship (Dockerfile, toml, bicepparam, env)."""
+    pointer = re.compile(r"((?:\.\./)+[\w./-]+\.md)")
+    broken = []
+    for root in PORT_ROOTS:
+        for path in _port_text_files(root):
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                for m in pointer.finditer(line):
+                    if not (path.parent / m.group(1)).resolve().is_file():
+                        broken.append(f"{path.relative_to(ROOT)}: missing {m.group(1)}")
+    assert not broken, broken
+
+
+def _github_slug(heading):
+    heading = heading.strip().replace("`", "").lower()
+    return re.sub(r"[^\w\- ]", "", heading).replace(" ", "-")
+
+
+def _headings(path):
+    return [line.lstrip("#").strip() for line in path.read_text(encoding="utf-8").splitlines()
+            if line.startswith("#")]
+
+
+def test_live_markdown_anchor_links_resolve():
+    link = re.compile(r"\]\(([^)\s#:]+\.md)#([^)\s]+)\)")
+    broken = []
+    for rel, text in live_files():
+        if not rel.endswith(".md"):
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            for m in link.finditer(line):
+                target = ((ROOT / rel).parent / m.group(1)).resolve()
+                if not target.is_file():
+                    broken.append(f"{rel}:{n} missing {m.group(1)}")
+                elif m.group(2) not in {_github_slug(h) for h in _headings(target)}:
+                    broken.append(f"{rel}:{n} no anchor #{m.group(2)} in {m.group(1)}")
+    assert not broken, broken
+
+
+def test_live_prose_pointers_to_ported_references_name_an_existing_section():
+    """`threadlight-deploy/references/x` [README.md] § "Heading" in live text must resolve."""
+    roots = "|".join(re.escape(r) for r in PORTED_REFERENCES.values())
+    pointer = re.compile(rf"`?((?:{roots})(?:/[\w./-]+\.md)?)`?\s*(?:(SKILL|README)\.md\s*)?§\s*"
+                         rf"(?:[\"“]([^\"”\n]+)[\"”]|([^\n]+))")
+    broken = []
+    for rel, text in live_files():
+        for n, line in enumerate(text.splitlines(), 1):
+            for m in pointer.finditer(line):
+                if m.group(2) == "SKILL":
+                    broken.append(f"{rel}:{n} {m.group(1)} has no SKILL.md")
+                    continue
+                target = SKILLS / m.group(1)
+                target = target if target.suffix == ".md" else target / "README.md"
+                headings = [h.replace("`", "").lower() for h in _headings(target)]
+                if m.group(3):  # quoted: the heading must start with it
+                    quoted = m.group(3).replace("`", "").lower().strip()
+                    ok = any(h.startswith(quoted) for h in headings)
+                else:  # unquoted (or a quote wrapped over two lines): prose must open with a heading's start
+                    prose = m.group(4).replace("`", "").lower().strip().lstrip("\"“")
+                    ok = any(len(os.path.commonprefix([prose, h])) >= min(len(h), len(prose), 7) for h in headings)
+                if not ok:
+                    broken.append(f"{rel}:{n} no heading for '{(m.group(3) or m.group(4))[:60]}' in {target.relative_to(SKILLS)}")
     assert not broken, broken

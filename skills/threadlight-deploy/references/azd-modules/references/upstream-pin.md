@@ -37,7 +37,7 @@ known_issues:
     description: "entra-agent-id Step 2 uses cognitiveservices.azure.com scope — fails for Foundry targets (need ai.azure.com)"
     upstream_url: https://github.com/microsoft/azure-skills/issues
     status: open
-    workaround_location: "threadlight-deploy/references/hosted-agent/maf SKILL.md § Identity & RBAC callout"
+    workaround_location: "threadlight-deploy/references/hosted-agent/maf README.md § Identity & RBAC callout"
 
 validation:
   requires:
