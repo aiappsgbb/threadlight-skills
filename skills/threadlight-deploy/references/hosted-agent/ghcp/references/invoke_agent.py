@@ -11,18 +11,45 @@ Use as a library or run directly to test an agent.
 
 Usage:
     export AZURE_AI_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
+    export AGENT_NAME="my-agent"
+    # Required, write-once: a NEW path per invocation (the file is created
+    # with O_EXCL and mode 0600; an existing path is rejected, never reused).
+    export INVOCATION_EVIDENCE_FILE="$(mktemp -d)/invocation-evidence.jsonl"
     python invoke_agent.py "What is the capital of France?"
+
+Dependency: ``operation_evidence`` is the canonical helper in
+``references/hosted-agent/maf/references/python/operation_evidence.py``.
+Inside the skill layout this script finds it automatically. When you copy
+the script elsewhere, copy ``operation_evidence.py`` beside it or set
+``PYTHONPATH=<threadlight-deploy>/references/hosted-agent/maf/references/python``.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
+from pathlib import Path
 
 import requests
 from azure.identity import DefaultAzureCredential
-from operation_evidence import SSEFrames, begin_operation, error_metadata, safe_id
+
+try:
+    from operation_evidence import SSEFrames, begin_operation, error_metadata, safe_id
+except ModuleNotFoundError as exc:
+    if exc.name != "operation_evidence":
+        raise
+    _HELPER_DIR = Path(__file__).resolve().parents[2] / "maf" / "references" / "python"
+    if not (_HELPER_DIR / "operation_evidence.py").is_file():
+        raise ModuleNotFoundError(
+            "operation_evidence is required: copy "
+            "references/hosted-agent/maf/references/python/operation_evidence.py "
+            "beside invoke_agent.py or add that directory to PYTHONPATH",
+            name="operation_evidence",
+        ) from exc
+    sys.path.insert(0, str(_HELPER_DIR))
+    from operation_evidence import SSEFrames, begin_operation, error_metadata, safe_id
 
 
 def invoke_invocations(
@@ -114,14 +141,26 @@ def invoke_invocations(
 
 
 def main():
-    import os
-
     endpoint = os.environ.get("AZURE_AI_PROJECT_ENDPOINT", "")
     agent_name = os.environ.get("AGENT_NAME", "my-agent")
+    evidence_path = os.environ.get("INVOCATION_EVIDENCE_FILE", "").strip()
 
     if not endpoint:
         print("ERROR: Set AZURE_AI_PROJECT_ENDPOINT")
         sys.exit(1)
+    if not evidence_path:
+        print("ERROR: Set INVOCATION_EVIDENCE_FILE to a new, write-once path per "
+              "invocation, e.g. \"$(mktemp -d)/invocation-evidence.jsonl\"")
+        sys.exit(1)
+
+    def _reused():
+        print(f"ERROR: INVOCATION_EVIDENCE_FILE {evidence_path} already exists; the "
+              "evidence file is write-once. Use a new path for this invocation and "
+              "keep the existing file as the record of the earlier attempt.")
+        sys.exit(1)
+
+    if os.path.lexists(evidence_path):
+        _reused()
 
     query = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "Hello"
 
@@ -130,8 +169,10 @@ def main():
 
     print(f"Invoking {agent_name}: {query[:80]}...")
     t0 = time.time()
-    descriptor = os.open(os.environ["INVOCATION_EVIDENCE_FILE"],
-                         os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        descriptor = os.open(evidence_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        _reused()
     with os.fdopen(descriptor, "w", encoding="utf-8") as evidence:
         def record(event, data):
             evidence.write(json.dumps({"event": event, **data}) + "\n")
