@@ -1297,6 +1297,22 @@ This agent deploys as a **Microsoft Foundry Hosted Agent** using the
 
 ## Deploy Steps
 
+0. **Give the deploying user a Foundry data-plane role on the project (before the agent deploy):**
+   Subscription/RG `Owner` or `Contributor` is control-plane only; creating the
+   hosted agent version needs `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`,
+   formerly `Azure AI User`) or `Foundry Project Manager` at the project scope,
+   otherwise the deploy fails with `403 Forbidden ERROR CODE: UserError`.
+   Threadlight `azd-modules` grants `Azure AI User` on the account when
+   `deployingUserObjectId` is set. The official `azd ai agent init` template does
+   not: run `azd provision`, then assign the role and wait for propagation:
+   ```bash
+   az role assignment create --role 53ca6127-db72-4b80-b1b0-d745d6d5456d \
+     --assignee-object-id "$(az ad signed-in-user show --query id -o tsv)" \
+     --assignee-principal-type User --scope "$(azd env get-value AZURE_AI_PROJECT_ID)"
+   sleep 60   # observed propagation delay; then run step 1
+   ```
+   See `references/hosted-agent/ghcp/README.md` § "Deploying user".
+
 1. **Deploy everything with one command:**
    ```bash
    azd env set AZURE_TENANT_ID <your-tenant-id>
@@ -1646,7 +1662,17 @@ Run with `python -X utf8 tests/run_evals.py` (or set `PYTHONUTF8=1` /
 
 #### `tests/invoke_agent.py`
 
-Simple smoke test — invoke the deployed agent with a single message (already covered).
+Simple smoke test — invoke the deployed agent with a single message. Copy
+`references/hosted-agent/ghcp/references/invoke_agent.py` **and**
+`references/hosted-agent/maf/references/python/operation_evidence.py` into
+`tests/` (the script imports the helper; outside the skill layout it stops with
+an explicit `ModuleNotFoundError` naming it). Each run needs a new, write-once
+`INVOCATION_EVIDENCE_FILE`; an unset or existing path exits 1 before any token
+is requested:
+
+```bash
+INVOCATION_EVIDENCE_FILE="$(mktemp -d)/invocation-evidence.jsonl" python tests/invoke_agent.py "<prompt>"
+```
 
 ---
 
@@ -1715,6 +1741,7 @@ Check every file. Mark each ✅ or fix before presenting.
 
 #### `tests/` — Eval and smoke test
 - [ ] `tests/invoke_agent.py` — smoke test script
+- [ ] `tests/operation_evidence.py` — copied beside `invoke_agent.py` (its required import)
 - [ ] `tests/eval_dataset.jsonl` — one line per spec § 9 scenario (if spec exists)
 - [ ] `tests/run_evals.py` — invoke+score script (if spec exists)
 
@@ -2036,7 +2063,7 @@ container.py (GHCP variant)
 ├── SkillsProvider(skills_directory="skills/")
 │   └── Progressive skill loading on demand
 │
-├── CopilotClient(model_provider=BYOK, mcp_servers=[...])
+├── CopilotClient(model_provider=BYOK, mcp_servers={...})
 │   └── DefaultAzureCredential → bearer token
 │
 └── InvocationAgentServerHost(agent).run()  →  port 8088 (SSE)
@@ -2774,7 +2801,8 @@ project/                    # ← REPO ROOT
 ├── scripts/                # Infra hooks only (postprovision, postdeploy)
 │
 ├── tests/                  # Test/invocation scripts
-│   └── invoke_agent.py     # Smoke test — invoke deployed agent
+│   ├── invoke_agent.py     # Smoke test — invoke deployed agent
+│   └── operation_evidence.py  # Evidence helper imported by invoke_agent.py
 │
 └── deploy-notes.md         # Deployment guide
 ```
@@ -3205,7 +3233,7 @@ Pull from the artifacts already produced by Phase 3.5 + Phase 5 + Phase 6.5:
 | Mock MCP FQDN (if seeded) | `tests/deployed-containerapps.json` | `jq -r '.[] \| select(.name \| contains("mcp")) \| .fqdn'` |
 | Reset / seed command | repo path | `python scripts/seed_data.py --reset` (when Phase 6.5 ran) |
 | Eval command | repo path | `python tests/run_evals.py` |
-| Smoke-test command | repo path | `python tests/invoke_agent.py "<prompt>"` |
+| Smoke-test command | repo path | `INVOCATION_EVIDENCE_FILE="$(mktemp -d)/invocation-evidence.jsonl" python tests/invoke_agent.py "<prompt>"` (new path per run) |
 | Sample queries (3–5) | `specs/SPEC.md` § 9 | grep `S-\d+ .*happy` rows OR read `tests/eval_dataset.jsonl` and pick the first 3–5 happy-path inputs verbatim |
 | Resource group | `azd env get-value AZURE_RESOURCE_GROUP` | for the appendix |
 | Foundry project endpoint | `azd env get-value AZURE_AI_PROJECT_ENDPOINT` | for the appendix |
@@ -3302,8 +3330,8 @@ python scripts/seed_data.py --reset
 # Re-score the demo against the eval dataset
 python tests/run_evals.py
 
-# One-off smoke check
-python tests/invoke_agent.py "{first sample query}"</code></pre>
+# One-off smoke check (new write-once evidence path per run)
+INVOCATION_EVIDENCE_FILE="$(mktemp -d)/invocation-evidence.jsonl" python tests/invoke_agent.py "{first sample query}"</code></pre>
 
       <h3>Appendix — environment</h3>
       <ul>

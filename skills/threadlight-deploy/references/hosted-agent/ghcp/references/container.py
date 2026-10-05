@@ -12,7 +12,8 @@ Two auth modes, selected automatically from environment variables:
 
 Usage:
     Copy this file as ``main.py`` in your agent project root.
-    Adapt ``_load_mcp_servers()`` for your MCP server configuration.
+    Adapt ``_load_mcp_servers()`` for your MCP server configuration
+    (``dict[str, dict]`` keyed by server name).
 """
 
 from __future__ import annotations
@@ -109,20 +110,22 @@ def _load_instructions() -> str:
     return ci.read_text(encoding="utf-8").strip() if ci.exists() else ""
 
 
-def _load_mcp_servers() -> list[dict] | None:
+def _load_mcp_servers() -> dict[str, dict] | None:
     """Load MCP servers from environment variables.
 
-    Adapt this function for your agent's MCP server configuration. Both
-    ``list[dict]`` (used here) and ``dict[str, dict]`` are accepted by the
-    SDK; ``list[dict]`` reads slightly more naturally.
+    Adapt this function for your agent's MCP server configuration. Return a
+    ``dict[str, dict]`` keyed by server name: github-copilot-sdk 1.0.x converts
+    ``mcp_servers`` with ``servers.items()``, so any other shape fails session
+    creation and the Invocations call returns 502.
 
-    Each entry needs a ``name`` and either ``url`` (HTTP MCP) or ``command``
-    (stdio MCP). Pass an HTTPS URL ending in ``/mcp`` for HTTP servers.
+    Each value needs ``type`` plus ``url`` (``"http"``) or ``command``
+    (``"stdio"``), and a ``tools`` allow-list. Pass an HTTPS URL ending in
+    ``/mcp`` for HTTP servers.
     """
-    servers = []
+    servers: dict[str, dict] = {}
     mcp_fqdn = os.environ.get("MCP_SERVER_FQDN", "").strip()
     if mcp_fqdn:
-        servers.append({"name": "mcp", "url": f"https://{mcp_fqdn}/mcp"})
+        servers["mcp"] = {"type": "http", "url": f"https://{mcp_fqdn}/mcp", "tools": ["*"]}
     return servers or None
 
 

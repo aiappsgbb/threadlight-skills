@@ -7,6 +7,25 @@ field.
 
 ## [Unreleased]
 
+### Hosted-agent ghcp template fixes from the OS1 live E2E
+
+- `ghcp/references/container.py` `_load_mcp_servers()` returns `dict[str, dict]`
+  keyed by server name (`type`, `url`, `tools`). github-copilot-sdk 1.0.x calls
+  `.items()` on `mcp_servers`; the previous list shape failed session creation
+  and the Invocations call returned 502. README and SKILL.md examples follow.
+- `ghcp/references/invoke_agent.py` resolves the canonical `operation_evidence`
+  helper from `maf/references/python` when run from the skill layout, and fails
+  with an explicit message otherwise. It requires `INVOCATION_EVIDENCE_FILE`
+  and refuses an existing path (write-once) before requesting a token.
+- Generated pilots copy `operation_evidence.py` beside `tests/invoke_agent.py`;
+  the checklist, tree, smoke-command table and presenter snippet set a fresh
+  `INVOCATION_EVIDENCE_FILE` per run.
+- The deploying user's `Foundry User` (`53ca6127-…`) or `Foundry Project Manager`
+  role at project scope is now a documented deploy step with the observed
+  `403 Forbidden UserError` symptom, command and propagation wait.
+- Regression tests: `skills/threadlight-deploy/tests/test_ghcp_template_contract.py`.
+- Plugin and marketplace version 2.18.1.
+
 ### Installed official-skills check (no dead ends)
 
 - `skills/_shared/official_skills.py` compares the official skills the Copilot

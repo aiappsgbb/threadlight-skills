@@ -277,9 +277,9 @@ session = await client.create_session(
         "content": "You are a helpful assistant.",
     },
     skill_directories=["/app/skills"],    # Paths to SKILL.md directories
-    mcp_servers=[                         # MCP server configs (list[dict] or dict[str, dict])
-        {"name": "playwright", "url": "https://my-mcp.azurecontainerapps.io/mcp"},
-    ],
+    mcp_servers={                         # dict[str, dict] keyed by name; SDK 1.0.x calls .items(), a list fails
+        "playwright": {"type": "http", "url": "https://my-mcp.azurecontainerapps.io/mcp", "tools": ["*"]},
+    },
     working_directory=str(Path.home()),   # Must be $HOME for hosted agents
     streaming=True,                       # Enable streaming events
     on_permission_request=PermissionHandler.approve_all,  # Auto-approve tools
@@ -380,8 +380,20 @@ bot integration rather than a one-off smoke test), use
 ```bash
 export AZURE_AI_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
 export AGENT_NAME="my-agent"
+# Required and write-once: a NEW path for every invocation (O_EXCL, mode 0600).
+export INVOCATION_EVIDENCE_FILE="$(mktemp -d)/invocation-evidence.jsonl"
 python references/invoke_agent.py "What is the capital of France?"
 ```
+
+The script imports the canonical `operation_evidence` helper from
+`references/hosted-agent/maf/references/python/`. Run from the skill layout,
+it resolves that directory automatically. If you copy `invoke_agent.py` into
+a project, copy `operation_evidence.py` beside it or set
+`PYTHONPATH=<threadlight-deploy>/references/hosted-agent/maf/references/python`;
+otherwise it stops with an explicit `ModuleNotFoundError` naming the helper.
+`INVOCATION_EVIDENCE_FILE` is checked before a token is requested: if it is
+unset or the path already exists, the script exits with code 1 and a message
+asking for a fresh path. Keep the existing file as the earlier attempt's record.
 
 The `invoke_invocations()` function POSTs to
 `{endpoint}/agents/{agent_name}/endpoint/protocols/invocations?api-version=v1`
@@ -752,11 +764,30 @@ created anything) — you did not create it, so it is not yours to delete.
 
 ### Deploying user
 
-The **deploying user** still needs a role to create/update the agent:
+The **deploying user** still needs a Foundry data-plane role at the
+**project** scope to create/update the agent. Subscription or resource-group
+`Owner`/`Contributor` are control-plane roles only: without a project-scope
+data-plane role, `azd deploy` fails with `403 Forbidden ERROR CODE: UserError`.
 
 | Role | Scope | Why |
 |------|-------|-----|
-| `Foundry Project Manager` | Foundry project | Data-plane permissions to create/update agents |
+| `Foundry Project Manager` | Foundry project | Documented prerequisite ([Learn](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent#prerequisites)): data-plane permissions to create/update agents, plus assigning `Foundry User` to the agent identity |
+| `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`, formerly `Azure AI User`) | Foundry project | Minimum observed sufficient for `azd deploy` in the OS1 live E2E when you grant the agent-identity roles yourself |
+
+Assign it after `azd provision` (the project exists) and **before** `azd deploy`:
+
+```bash
+az role assignment create \
+  --role 53ca6127-db72-4b80-b1b0-d745d6d5456d \
+  --assignee-object-id "$(az ad signed-in-user show --query id -o tsv)" \
+  --assignee-principal-type User \
+  --scope "$(azd env get-value AZURE_AI_PROJECT_ID)"
+# Role propagation is not instant: wait about 60 seconds before azd deploy.
+```
+
+Threadlight's `azd-modules` `rbac.bicep` grants `Azure AI User` on the Foundry
+account (inherited by its projects) when `deployingUserObjectId` is set; the
+official `azd ai agent init` template does not, so add the step above.
 
 `azd` handles the ACR pull role (**Container Registry Repository
 Reader** on the project's managed identity) automatically as part of
@@ -787,6 +818,7 @@ Reader** on the project's managed identity) automatically as part of
 | **401 on real model inference** | Instance identity lacks `Foundry User` at the required scopes | Grant `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) to the **instance** identity at BOTH the Foundry account scope AND the project scope before invoking; project-only and account-only both 401. See § "Identity & RBAC for hosted agents" |
 | **Immediate post-grant SSE `model.call_failure` 401 / `transient_auth_error`** | Instance grants are correct but role-assignment propagation has not completed | Inspect the full event stream and retry the same JSON positional `azd ai agent invoke` path with bounded 15-second backoff (max six); accept recovered assistant output later in the stream. A 401 that never recovers after both grants is a hard FAIL |
 | **"responses protocol not declared" (bot 400)** | `azure.yaml`'s agent service only declares `invocations` but bot/CLI calls via Responses API (`oai.responses.create()`) | **Dual protocols don't work** — `InvocationAgentServerHost` only serves `/invocations`; the `/responses` path returns 404 even if a second protocol entry is declared. **Fix:** Rewrite the bot to POST directly to the Invocations SSE endpoint (or use `azd ai agent invoke --protocol invocations`) and parse `assistant.message` + `assistant.message_delta` events. **Alternative:** Use MAF runtime (ResponsesHostServer) which natively serves responses. |
+| **`azd deploy` 403 Forbidden `ERROR CODE: UserError`** | Deploying user has only control-plane roles (subscription/RG `Owner`/`Contributor`), no Foundry data-plane role on the project | Assign `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) or `Foundry Project Manager` at `AZURE_AI_PROJECT_ID` scope, wait ~60 s, rerun `azd deploy` — see § "Deploying user" |
 | **ACR push 403 / RBAC error** | Deploying user lacks `AcrPush` on the target ACR | Assign `AcrPush` on the ACR, or use the guided `azd ai agent init --deploy-mode container` path, which wires the registry automatically (Azure/azure-dev #8981) |
 | **Evals show no telemetry** | AppInsights not connected to Foundry account | Create `AppInsights` connection on the **account** (not project). Category: `AppInsights`, target: ARM resource ID, metadata: `ApiType: Azure`. `APPLICATIONINSIGHTS_CONNECTION_STRING` is reserved — platform injects it. |
 | **Agent traces missing** | Agent identity lacks telemetry RBAC | Assign `Monitoring Metrics Publisher` on AppInsights to the agent identity (from `azd ai agent show`). Project MI needs `Log Analytics Data Reader` on Log Analytics workspace. |
