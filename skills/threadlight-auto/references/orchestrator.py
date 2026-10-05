@@ -718,9 +718,9 @@ GOVERNANCE_CONTRACT_REPAIR = "incomplete-governance-contract"
 def _spec_contract_gaps(workspace: Path) -> list[str]:
     try:
         from skills._shared.governance_selection import spec_contract_gaps
+        return spec_contract_gaps(workspace) or []
     except ImportError:
         return []
-    return spec_contract_gaps(workspace) or []
 
 
 def _is_contract_repair(decision: "StageDecision") -> bool:

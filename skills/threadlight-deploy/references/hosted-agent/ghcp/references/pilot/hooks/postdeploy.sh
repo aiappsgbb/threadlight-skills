@@ -31,4 +31,8 @@ for scope in "$ACCOUNT_SCOPE" "$PROJECT_SCOPE"; do
     echo "postdeploy: Foundry User already present at $scope"
   fi
 done
+# Publish the agent endpoint so threadlight-auto's deploy probe sees a completed deploy.
+endpoint="${AZURE_AI_PROJECT_ENDPOINT:?AZURE_AI_PROJECT_ENDPOINT missing from azd env}"
+azd env set AGENT_FQDN "${endpoint%/}/agents/$AGENT_NAME" >/dev/null
+echo "postdeploy: AGENT_FQDN set for $AGENT_NAME"
 echo "postdeploy: role propagation can take about 60 seconds before the first invocation succeeds"

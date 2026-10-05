@@ -1867,3 +1867,15 @@ def test_design_repair_of_spec_contract_unblocks_pipeline(tmp_path, monkeypatch)
     calls = []
     orch.execute(tmp_path, lambda stage: calls.append(stage) or worker(stage))
     assert calls[0] == "design" and "deploy" in calls
+
+
+def test_missing_yaml_dependency_does_not_crash_the_design_probe(tmp_path, monkeypatch):
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs/SPEC.md").write_text(LIVE2_INCOMPLETE_SPEC)
+    import skills._shared.governance_selection as selection
+
+    def no_yaml(_workspace):
+        raise ImportError("No module named 'yaml'")
+
+    monkeypatch.setattr(selection, "spec_contract_gaps", no_yaml)
+    assert orch._spec_contract_gaps(tmp_path) == []

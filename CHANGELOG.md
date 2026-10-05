@@ -21,7 +21,13 @@ plugins (Copilot CLI, `--plugin-dir`, no awesome-gbb).
   every role by GUID including the deployer's Foundry User at project scope),
   `remoteBuild: true` on both services, an allowlist `.dockerignore`, a mock MCP
   server without the `parents[2]` path walk or eager `getenv` defaults, and a
-  `postdeploy` hook granting the instance identity Foundry User by GUID.
+  `postdeploy` hook granting the instance identity Foundry User by GUID and
+  publishing `AGENT_FQDN` so the `threadlight-auto` deploy probe recognizes a
+  completed pilot deploy. The GHCP Dockerfile copies the filtered context
+  (`skills/` and `copilot-instructions.md` stay optional) and fails fast only
+  when `container.py` is missing; the deployer role's `principalType` follows
+  `AZURE_PRINCIPAL_TYPE` (default `User`). A missing PyYAML no longer crashes
+  the orchestrator's SPEC contract probe.
 - **`mcp<2`.** Every generated `mcp` pin is upper-bounded: mcp 2.x removes
   `mcp.server.fastmcp`.
 - **Role GUIDs.** Deploy guidance assigns Foundry User as

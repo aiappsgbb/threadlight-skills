@@ -94,6 +94,9 @@ for skill in "${COWORK_SAFE_SKILLS[@]}"; do
   # docs/AGENTIC-LOOP-BRIDGE.md); it is not a Cowork companion.
   rm -f "${design_stage}/scripts/export_agentic_loop_spec.py"
   rm -rf "${design_stage}/references/agentic-loop-export"
+  # The SPEC §11a validator imports skills/_shared and needs a checkout; in
+  # Cowork the contract is checked against references/governance-contract.schema.json.
+  rm -f "${design_stage}/scripts/validate_governance_contract.py"
   find "${design_stage}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
   find "${design_stage}" \( -name '*.pyc' -o -name '.DS_Store' \) -delete 2>/dev/null || true
 

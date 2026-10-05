@@ -33,9 +33,11 @@ def test_ghcp_dockerfile_uses_mcr_and_existing_entrypoint():
     text = read(REFS / "Dockerfile")
     assert all(img.startswith("mcr.microsoft.com/") for img in from_lines(text)), from_lines(text)
     assert 'CMD ["python", "container.py"]' in text
-    assert re.search(r"^COPY .*container\.py", text, re.M)
     assert (REFS / "container.py").exists()
-    assert "COPY . ." not in text
+    # skills/ and copilot-instructions.md are optional for container.py, so the
+    # build must not COPY them by name; the entrypoint must still fail fast.
+    assert not re.search(r"^COPY .*(skills/|copilot-instructions\.md)", text, re.M)
+    assert re.search(r"^RUN test -f container\.py", text, re.M)
 
 
 def test_dockerignore_ships_with_ghcp_and_pilot():
@@ -128,3 +130,14 @@ def test_deploy_skill_delegates_platform_steps_to_microsoft_foundry():
     for step in ("model deployment", "hosted-agent", "evaluation", "azd ai agent"):
         assert step in body, step
     assert "threadlight-safe-check" in body
+
+
+def test_pilot_deployer_principal_type_follows_azd_login():
+    params = read(PILOT / "infra" / "main.parameters.json")
+    assert '"principalType": { "value": "${AZURE_PRINCIPAL_TYPE=User}" }' in params
+
+
+def test_pilot_postdeploy_publishes_agent_fqdn_for_the_auto_deploy_probe():
+    hook = read(PILOT / "hooks" / "postdeploy.sh")
+    assert "azd env set AGENT_FQDN" in hook
+    assert hook.index('[ -z "$pid" ]') < hook.index("azd env set AGENT_FQDN")

@@ -39,7 +39,7 @@ function extractProducerSectionHeading(text, number) {
 // The single release contract these publication assertions are built from.
 // expectedPipelineSkillCount counts every skill except the threadlight-auto
 // planner, so expectedSkillCount is always expectedPipelineSkillCount + 1.
-const expectedVersion = '2.18.1';
+const expectedVersion = '2.19.0';
 const expectedSkillCount = 28;
 const expectedPipelineSkillCount = 27;
 
