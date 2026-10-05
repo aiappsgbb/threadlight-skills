@@ -454,6 +454,9 @@ Official Microsoft skills are the default. Threadlight composes with
 diagnostics, RBAC, private networking, AI services and cost. The full mapping,
 with the official tag checked and the evidence for every exception, is in
 [`skills/_shared/skill-dependencies.json`](skills/_shared/skill-dependencies.json).
+The official release Threadlight is tested against is pinned by tag, commit and
+file hashes in [`skills/_shared/official-skills-lock.json`](skills/_shared/official-skills-lock.json);
+`python3 scripts/verify_official_skills_lock.py` recomputes it from the tag.
 
 | Need | Use |
 |---|---|

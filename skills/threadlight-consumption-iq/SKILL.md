@@ -11,8 +11,9 @@ description: >-
   USE FOR: Azure consumption projection, post-deploy cost, SKU diff, PAYG vs
   PTU, load profile, cost manifest, pre-sales estimate, EA/MCA discount, cost
   actuals, forecast vs actual, reconciliation. DO NOT USE FOR: AOAI-only
-  break-even without a pilot (use paygo-ptu-cost-analyzer); Bicep mutation
-  (use threadlight-deploy).
+  break-even without a pilot (use paygo-ptu-cost-analyzer); subscription bill analysis, budgets or
+  rightsizing outside a pilot (use cost-analysis / cost-governance /
+  cost-optimization); Bicep mutation (use threadlight-deploy).
 metadata:
   version: "0.4.0"
 ---

@@ -1,0 +1,100 @@
+{
+  "schema": "threadlight-routing-probe/v1",
+  "evidence_kind": "static",
+  "note": "Static description-claim probe. A skill claims a trigger when the trigger appears in its frontmatter description outside the DO NOT USE FOR / Not for tail. Official descriptions come from official-skills-lock.json at the pinned tag. This is not model routing evidence; live routing is checked separately with real prompts in a CLI session.",
+  "probes": [
+    {
+      "prompt": "Deploy my hosted agent to Microsoft Foundry with azd",
+      "triggers": [
+        "hosted agent",
+        "azd provision/deploy",
+        "azd ai agent"
+      ],
+      "owner": "microsoft-foundry"
+    },
+    {
+      "prompt": "Create a Foundry project and deploy a model",
+      "triggers": [
+        "Foundry project",
+        "deploy model",
+        "create Foundry resource"
+      ],
+      "owner": "microsoft-foundry"
+    },
+    {
+      "prompt": "Run a batch eval and continuous eval on my Foundry agent",
+      "triggers": [
+        "batch eval",
+        "continuous eval",
+        "evaluate agent"
+      ],
+      "owner": "microsoft-foundry"
+    },
+    {
+      "prompt": "Prepare my app for azd and create azure.yaml",
+      "triggers": [
+        "prepare app for azd",
+        "create azure.yaml",
+        "deploy with azd"
+      ],
+      "owner": "azure-prepare"
+    },
+    {
+      "prompt": "Set up a Foundry IQ knowledge base",
+      "triggers": [
+        "Foundry IQ",
+        "knowledge bases",
+        "create/diagnose KBs"
+      ],
+      "owner": "foundry-iq"
+    },
+    {
+      "prompt": "Give me an Azure cost breakdown and explain the cost spike",
+      "triggers": [
+        "Azure cost breakdown",
+        "cost spike",
+        "most expensive resources"
+      ],
+      "owner": "cost-analysis"
+    },
+    {
+      "prompt": "Configure APIM as an AI Gateway with a token limit",
+      "triggers": [
+        "AI Gateway",
+        "token limit",
+        "semantic caching"
+      ],
+      "owner": "azure-aigateway"
+    },
+    {
+      "prompt": "Make this Threadlight project deployable",
+      "triggers": [
+        "make this deployable",
+        "generate deployment files",
+        "Kratos export"
+      ],
+      "owner": "threadlight-deploy",
+      "threadlight": true
+    },
+    {
+      "prompt": "Add ACS Rego governance policy to the Threadlight pilot",
+      "triggers": [
+        "ACS/Rego policy",
+        "SAFE business invariants",
+        "runtime governance"
+      ],
+      "owner": "threadlight-govern",
+      "threadlight": true
+    },
+    {
+      "prompt": "Add the Threadlight offline eval gate and champion challenger",
+      "triggers": [
+        "offline eval gate",
+        "champion challenger",
+        "evals-manifest"
+      ],
+      "owner": "threadlight-evals",
+      "threadlight": true
+    }
+  ]
+}

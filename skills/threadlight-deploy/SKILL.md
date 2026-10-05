@@ -1,21 +1,20 @@
 ---
 name: threadlight-deploy
 description: >-
-  Take a designed agent project (from threadlight-design or hand-crafted) and
-  generate all deployment artifacts for Microsoft Foundry Hosted Agents. Reads
-  specs/SPEC.md, AGENTS.md, and skills to produce container.py, Dockerfile,
-  pyproject.toml, an azd project, and deploy-notes.md for one-command `azd
-  up`. Also runs in Kratos-export mode: handed a Kratos-exported project
-  (src/hosted-agent/ + use-cases/<x>/) it enriches/validates only and
-  backfills the missing evals/ directory. USE FOR: deploy to Foundry, make
-  this deployable, generate deployment files, Foundry hosted agent,
-  containerize agent, package agent, deploy agent, azd deploy, azd up, Kratos
-  export, foundry-agent.zip, backfill evals. DO NOT USE FOR: designing the
-  process (use threadlight-design), running evals (use foundry-evals), Teams
-  bot (use foundry-teams-bot), MCP server deployment (use foundry-mcp-aca),
-  standalone/non-Threadlight GHCP runtime customization (use
-  ghcp-hosted-agents), azd tenant isolation (use
-  azure-tenant-isolation).
+  Generate deployment artifacts for a designed Threadlight project on
+  Microsoft Foundry Hosted Agents: container.py, Dockerfile, pyproject.toml,
+  an azd project and deploy-notes.md for one-command `azd up`. Kratos-export
+  mode enriches/validates a Kratos export and backfills evals/. USE FOR:
+  deploy a Threadlight project to Foundry, make this deployable, generate
+  deployment files, Threadlight hosted-agent packaging, azd up for a
+  Threadlight pilot, Kratos export, foundry-agent.zip, backfill evals. DO NOT
+  USE FOR: generic Foundry hosted-agent deploy, invoke or troubleshoot, azd ai
+  agent, model deployment or agent evaluation outside a Threadlight project
+  (use microsoft-foundry); generic Azure app deployment (use azure-prepare /
+  azure-deploy); designing the process (use threadlight-design); Teams bot
+  (use foundry-teams-bot); MCP server deployment (use foundry-mcp-aca);
+  non-Threadlight GHCP runtime (use ghcp-hosted-agents); azd tenant isolation
+  (use azure-tenant-isolation).
 metadata:
   version: "1.9.0"
 ---

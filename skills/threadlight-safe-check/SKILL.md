@@ -5,7 +5,7 @@ description: >
   completeness checks: manifest drift, missing resources, orphan modules,
   placeholder images, failed jobs, missing telemetry, or selected runtime
   governance requiring deployed enforcement evidence. Not for deployment
-  orchestration (threadlight-deploy) or general agent evaluations (foundry-evals).
+  orchestration (threadlight-deploy) or general agent evaluations (microsoft-foundry).
 metadata:
   version: "1.4.0"
 ---
