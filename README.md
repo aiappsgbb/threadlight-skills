@@ -446,30 +446,49 @@ gh skill install aiappsgbb/threadlight-skills threadlight-deploy
 # ... etc
 ```
 
-### Companion skills (in awesome-gbb)
+### Companion skills: official first
 
-Threadlight skills cross-reference foundry-*, azd-patterns, citadel-*, and
-other skills from [awesome-gbb](https://github.com/aiappsgbb/awesome-gbb).
+Official Microsoft skills are the default. Threadlight composes with
+`azure@azure-skills` from [microsoft/azure-skills](https://github.com/microsoft/azure-skills)
+(source: `microsoft/GitHub-Copilot-for-Azure`) for Foundry agents, azd, deploy,
+diagnostics, RBAC, private networking, AI services and cost. The full mapping,
+with the official tag checked and the evidence for every exception, is in
+[`skills/_shared/skill-dependencies.json`](skills/_shared/skill-dependencies.json).
 
-Threadlight is deliberately **thin where the foundry-\* family is already deep** —
-it composes with those skills rather than reimplementing them:
-
-| Companion (awesome-gbb) | Threadlight composes with it for |
+| Need | Use |
 |---|---|
-| [`foundry-skill-catalog`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-skill-catalog) | Publishing skills/tools as **versioned, immutable Foundry artifacts** — pin a version, promote `default_version` in stages, download at deploy. This is the lifecycle `threadlight-production-ready`'s supply-chain pillar checks (SUP-008/009). |
-| [`foundry-toolbox`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-toolbox) | Curating the **tool set** an agent binds to, versioned alongside its skills. |
-| [`foundry-evals`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-evals) | Offline batch invoke + score behind `threadlight-evals`. |
-| [`foundry-agt`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-agt) | Agent-runtime governance policy behind `threadlight-govern`. |
-| [`foundry-hosted-agents`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-hosted-agents) · [`azd-patterns`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/azd-patterns) · [`foundry-observability`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-observability) | Hosting, deploy hooks, and OTel wiring the deploy leg builds on. |
+| Foundry hosted/prompt agents, toolbox, skills, routines, evals, traces, RBAC, private network | `microsoft-foundry` (official) |
+| azd prepare, validate, deploy | `azure-prepare`, `azure-validate`, `azure-deploy` (official) |
+| Diagnostics, AI services, App Insights | `azure-diagnostics`, `azure-ai`, `appinsights-instrumentation` (official) |
+| Cost | `azure-cost@azure-skills` (official) |
 
-Install both plugins for the full pipeline:
+A small residual set from [awesome-gbb](https://github.com/aiappsgbb/awesome-gbb)
+stays where no official skill covers the capability: Citadel hub/spoke, AGT/ACS
+governance, tenant isolation, MCP on Azure Container Apps, Teams publishing,
+AgentOps, SRE Agent, backup and alert baselines, Voice Live, Agent Framework
+harness, GitHub Copilot SDK hosted agents and PAYG/PTU break-even. These are
+labelled **GBB pattern, not a Microsoft product skill**. Live demos keep their
+recorded pins; this mapping does not change them.
+
+Until the remaining partial gaps move into Threadlight, `threadlight-deploy`
+still reads two companions from awesome-gbb: `azd-patterns` (the composable
+Bicep module catalog) and `foundry-hosted-agents` (the native-SDK hosted-agent
+contract). `foundry-iq` exists under the same name in both catalogs; install
+only one of them. Install awesome-gbb alongside the official plugins when you
+deploy pilots.
 
 ```bash
-copilot plugin marketplace add aiappsgbb/awesome-gbb
-copilot plugin install awesome-gbb@awesome-gbb
+copilot plugin marketplace add microsoft/azure-skills
+copilot plugin install azure@azure-skills
+copilot plugin install azure-cost@azure-skills         # cost analysis/estimation
+copilot plugin install foundry-iq-skills@azure-skills  # Foundry IQ (preview)
 
 copilot plugin marketplace add aiappsgbb/threadlight-skills
 copilot plugin install threadlight-skills@threadlight-skills
+
+# Residual GBB pattern skills, and threadlight-deploy companions (see above):
+copilot plugin marketplace add aiappsgbb/awesome-gbb
+copilot plugin install awesome-gbb@awesome-gbb
 ```
 
 ## Live experience

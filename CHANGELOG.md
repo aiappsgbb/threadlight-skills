@@ -7,6 +7,23 @@ field.
 
 ## [Unreleased]
 
+### Official skills are the default
+
+- Add `skills/_shared/skill-dependencies.json`: every awesome-gbb skill checked
+  (42 at `7f1de88`, 5.0.0) is labelled `official-default` (17, mapped to
+  `azure@azure-skills` v1.2.77 targets), `residual` (17, each with the reason,
+  official tag checked and the grep or file observation) or
+  `out-of-product-scope` (8). Residual skills carry the label "GBB pattern, not
+  a Microsoft product skill". An offline test fails if any tracked file links
+  an awesome-gbb skill that the manifest does not label.
+- `threadlight-deploy` still reads `azd-patterns` (Bicep module catalog) and
+  `foundry-hosted-agents` (native-SDK contract) from awesome-gbb; the README
+  says so and lists the `azure-cost` and `foundry-iq-skills` install lines.
+- README companion section and plugin description now point to the official
+  `azure@azure-skills` plugin first. Live demos and library pins are unchanged;
+  no runtime, generator or presenter pin change in this step.
+- Plugin/marketplace candidate 2.14.0.
+
 ### Agentic Loop spec export
 
 - Add `threadlight-design/scripts/export_agentic_loop_spec.py`: a deterministic,
