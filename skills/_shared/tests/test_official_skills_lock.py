@@ -182,3 +182,14 @@ def test_manifest_records_upstream_todos_as_local_drafts_only():
     for name, todo in todos.items():
         assert todo["draft"] and todo["target"], name
         assert "not filed" in todo["status"], name
+
+
+def test_routing_exclusions_keep_every_description_loadable():
+    """Longer DO NOT USE FOR lists must not push a description past the 1024-char
+    loader limit, or the Copilot CLI silently drops the whole skill."""
+    import subprocess
+    import sys
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/ci/check-skill-description-length.py")],
+        cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
