@@ -89,3 +89,12 @@ def test_docs_name_the_official_guide_and_the_native_sdk_gap():
     assert "awesome-gbb's hosted-agent guide at an immutable commit" not in doc
     assert "presenter-deployment-pin-legacy.json" in doc
     assert "references/hosted-agent/maf" in doc
+
+
+def test_incumbent_adoption_guide_keeps_legacy_guidance_unrewritten():
+    guide = (ROOT / "skills/threadlight-deploy/references/presenter-adoption.md").read_text()
+    flat = " ".join(guide.split())
+    assert "presenter-deployment-pin-legacy.json" in flat
+    assert "keep `deployment.guidance` equal to that pin" not in flat
+    assert "keeps its existing guidance object" in flat
+    assert "Only new contracts copy" in flat

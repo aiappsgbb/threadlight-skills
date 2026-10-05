@@ -27,9 +27,11 @@ Use the existing contract fields to map the actual files and missing evidence:
 | Presenter script, sizing and promised downloads/archives | `inputs.script`, `inputs.sizing`, `sizing`, `publication` |
 | Existing execution outputs | Immutable producer receipts referenced by the existing evidence index |
 
-Read the canonical `skills/_shared/presenter-deployment-pin.json` and its guide,
-templates and preflight at the exact selected commit; keep `deployment.guidance`
-equal to that pin. Do not copy a candidate PR, use `latest`, change SDK/governance
+A retained contract keeps its existing guidance object when it exactly equals an
+entry in `skills/_shared/presenter-deployment-pin-legacy.json`; read that guide,
+templates and preflight at the legacy commit and do not rewrite the object.
+Only new contracts copy the canonical `skills/_shared/presenter-deployment-pin.json`
+and read its guide at that exact commit. Do not copy a candidate PR, use `latest`, change SDK/governance
 pins, or replace the frozen deployment authority. Retain one supported unified-azd
 or native-SDK definition. An unsupported incumbent layout requires an explicit
 migration/consumer-extension decision, not automatic deletion or a new validator.
