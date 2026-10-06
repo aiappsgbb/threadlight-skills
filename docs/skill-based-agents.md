@@ -78,8 +78,10 @@ select the MAF agent capability route. Otherwise the default remains GHCP.
 
 On the agent branch, skills describe procedures the agent selects and follows.
 On the deterministic workflow branch, `WORKFLOW.md` accompanies `AGENTS.md`
-with executor/phase definitions; generated workflow code owns ordered execution
-and gates. Markdown describing phases is not that executor implementation.
+with executor/phase definitions as the target design. Deploy generates the MAF
+Agent container on Responses; the phase order and gates are enforced through its
+instructions and HITL tools, because workflow-graph generation is not shipped.
+Markdown describing phases is not an executor implementation.
 Do not force the workflow branch into a universal skill-routing architecture.
 For a route change, reconcile foundation, SPEC signals, manifest and generated
 host together, then rerun the relevant contract and runtime checks.

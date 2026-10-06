@@ -194,7 +194,14 @@ is also gone.
 No cell completed end-to-end, but **two brand-new, non-quality blockers** now cap
 everyone — and the *way* each arm meets them is the signal.
 
-### Blocker A — missing `threadlight-workflow` skill (Phase 3, complex only)
+### Blocker A — missing `threadlight-workflow` skill (Phase 3, complex only; never existed, resolved in 2.19.2)
+
+> **Resolved in 2.19.2 (historical record kept as evidence).** The phantom
+> `threadlight-workflow` reference was removed: `threadlight-workflow` never existed and is
+> not shipped. `threadlight-deploy` now always generates the MAF Agent container for
+> `workflow_model: "workflow"` and states that workflow-graph generation is not
+> shipped; a CI guard (`skills/_shared/tests/test_skill_references_resolve.py`) fails
+> on any unresolved skill reference. See CHANGELOG 2.19.2.
 
 `fsi-kyc-aml` correctly classifies as `workflow_model: "workflow"` (§11e), so
 `threadlight-deploy` Phase 2 delegates container generation to a
@@ -267,7 +274,7 @@ workflow-classified workload it is universal and blocking → should be `[high]`
 
 ## Actionable improvements (matrix 2)
 
-1. **Author/vendor the `threadlight-workflow` skill**, OR make `threadlight-deploy`'s
+1. *(Resolved in 2.19.2: phantom removed — the skill was never shipped; deploy states MAF Agent container.)* **Author/vendor the `threadlight-workflow` skill**, OR make `threadlight-deploy`'s
    `workflow_model: "workflow"` path resilient (inline the workflow-container
    generation / graceful fallback with guidance). Unblocks Phase 3 for **every arm**
    on complex/workflow workloads. Highest value.

@@ -663,9 +663,9 @@ that integration explicitly in § 5).
 
 ## 11e. Workflow Model
 
-> **INPUT CONTRACT for `threadlight-deploy` Phase 2.** Determines whether
-> the deploy skill generates an Agent container or a DurableWorkflow
-> container. Defaults to `agent` when absent. Also carries the
+> **INPUT CONTRACT for `threadlight-deploy` Phase 2.** Selects the deploy
+> route. `workflow` routes to MAF + Responses; deploy generates the MAF
+> Agent container (workflow-graph generation is not shipped). Defaults to `agent` when absent. Also carries the
 > `capability_signals` block that `threadlight-deploy`'s Runtime-policy
 > pre-flight cross-checks against `specs/foundation.md § 1` before route
 > validation — the two must stay consistent (see
@@ -689,9 +689,11 @@ capability_signals:                     # machine-readable booleans + unresolved
 
 - `agent` *(default)* — single agent with tools; `threadlight-deploy`
   generates `AGENTS.md` + Skills + a hosted-agent or ACA-agent container.
-- `workflow` — deterministic multi-step orchestration; `threadlight-deploy`
-  additionally generates `WORKFLOW.md` (executor / phase definitions) and
-  scaffolds a DurableWorkflow container instead of a single agent. Use when
+- `workflow` — deterministic multi-step orchestration; the SPEC adds
+  `WORKFLOW.md` (executor / phase definitions) as the target design, and
+  `threadlight-deploy` generates the MAF Agent container on Responses that
+  follows that phase order through its instructions and HITL tools
+  (workflow-graph generation with typed executors is not shipped). Use when
   the process has fixed phases, long-running waits, retries with explicit
   back-off, or human approvals between stages.
 

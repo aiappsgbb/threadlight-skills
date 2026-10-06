@@ -7,6 +7,36 @@ field.
 
 ## [Unreleased]
 
+### 2.19.2: remove phantom `threadlight-workflow` skill reference; skill-reference CI guard
+
+- **Root cause.** The initial commit (`3e42a382`, 2026-05-26) listed a
+  `threadlight-workflow` skill as a `threadlight-deploy` dependency for SPEC §11e
+  `workflow_model: workflow`. That skill was never authored. The 2026-06-30 router
+  validation found it as Blocker A (`Skill not found`) but only mitigated it with
+  "prefer it when installed, otherwise fall back" prose. That wording still
+  invited agents to search for the skill or tell users to install or publish it.
+  No test checked that referenced skills resolve. The 2.19.x routing and live
+  runs never exercised `workflow_model: workflow`.
+- **Fix.** `threadlight-deploy` drops the row and states its own
+  deterministic behaviour: `workflow_model=workflow` generates the MAF Agent
+  container on Responses. MAF Workflow graph generation (typed executors) is
+  **not shipped** and no other skill provides it. `threadlight-design`
+  and `THREADLIGHT.md` say the same. `threadlight-consumption-iq` now names its
+  own skill correctly. The SPEC § 11e template, the runtime policy rationale and
+  `docs/skill-based-agents.md` no longer promise a generated DurableWorkflow
+  container. Blocker A is marked resolved in the historical findings.
+- **Second phantom.** `threadlight-production-ready` and `threadlight-connect`
+  cited an `azure-rbac` catalog skill that the pinned official catalog
+  (`microsoft/azure-skills` v1.2.79) does not ship. They now point at the
+  `rbac` workflow of the official `microsoft-foundry` skill.
+- **Guard.** `skills/_shared/tests/test_skill_references_resolve.py` fails on any
+  skill reference (tables, "use the X skill", install commands, `skill(...)`,
+  relative `SKILL.md` links, `skills/X/SKILL.md`, a Skill table column) that resolves neither to `skills/`, the official-skills
+  lock, nor the pinned awesome-gbb custom catalog.
+  `tests/blueprint/workflow-model-route.test.js` asserts the
+  `workflow_model: workflow` path names no missing skill and gives no install or
+  request instructions.
+
 ### 2.19.1: official skills lock at the current marketplace release; named escalation outputs
 
 - **Official skills lock bumped** to microsoft/azure-skills `v1.2.79`
