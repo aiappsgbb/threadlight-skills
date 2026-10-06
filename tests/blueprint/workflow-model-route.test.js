@@ -1,5 +1,5 @@
 // 2.19.2 regression: a SPEC with `workflow_model: workflow` used to route
-// threadlight-deploy to a `threadlight-workflow` skill that never existed, so
+// threadlight-deploy to a phantom "workflow" skill that never existed, so
 // agents told users to install it or ask the maintainer to publish it. Follow
 // the real route resolution and check every instruction an agent reads on
 // that path. Text contract only; it does not prove generated runtime behaviour.
