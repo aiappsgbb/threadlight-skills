@@ -22,6 +22,13 @@ LEGACY = {
     "path": "skills/foundry-hosted-agents/SKILL.md",
 }
 DEPLOY_GUIDE = "microsoft-foundry/foundry-agent/deploy/deploy.md"
+PREVIOUS_OFFICIAL = {
+    "repository": "microsoft/azure-skills",
+    "tag": "v1.2.77",
+    "commit": "74f27068b21b85807e35ae69ab3976756b060c03",
+    "path": ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md",
+    "sha256": "54d7725d5f33238cd36fc6c00f468be67ee560d26849f8d32699ac4dd51cba50",
+}
 
 
 def _contract(tmp_path, guidance):
@@ -46,6 +53,14 @@ def test_pin_is_the_locked_official_foundry_deploy_guide():
 def test_new_contracts_validate_with_the_official_pin(tmp_path):
     _contract(tmp_path, copy.deepcopy(presenter.DEPLOYMENT_PIN))
     presenter.load_contract(tmp_path)
+
+
+def test_contracts_written_against_the_previous_official_release_still_validate(tmp_path):
+    """2.19.0 pilots copied the v1.2.77 pin; the deploy guide is byte-identical at the new tag."""
+    assert PREVIOUS_OFFICIAL["sha256"] == presenter.DEPLOYMENT_PIN["sha256"]
+    _contract(tmp_path, dict(PREVIOUS_OFFICIAL))
+    presenter.load_contract(tmp_path)
+    assert PREVIOUS_OFFICIAL in presenter.LEGACY_DEPLOYMENT_PINS
 
 
 def test_frozen_incumbent_legacy_pin_still_validates(tmp_path):
@@ -77,10 +92,10 @@ def test_any_other_guidance_is_rejected(tmp_path, guidance):
 def test_legacy_pins_are_read_only_acceptance_with_reasons():
     data = json.loads((SHARED / "presenter-deployment-pin-legacy.json").read_text())
     assert data["schema"] == "threadlight-presenter-deployment-pin-legacy/v1"
-    assert [entry["guidance"] for entry in data["accepted"]] == [LEGACY]
+    assert [entry["guidance"] for entry in data["accepted"]] == [LEGACY, PREVIOUS_OFFICIAL]
     for entry in data["accepted"]:
         assert "new contracts" in entry["reason"]
-    assert presenter.LEGACY_DEPLOYMENT_PINS == [LEGACY]
+    assert presenter.LEGACY_DEPLOYMENT_PINS == [LEGACY, PREVIOUS_OFFICIAL]
 
 
 def test_docs_name_the_official_guide_and_the_native_sdk_gap():

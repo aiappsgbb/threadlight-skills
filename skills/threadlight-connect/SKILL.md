@@ -333,5 +333,5 @@ consumes, reach for the official
 *Further reading, not a dependency* — Threadlight's guidance stays the
 source of truth for the pilot flow:
 
-- **[`entra-agent-id`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/entra-agent-id/SKILL.md)** — **Entra Agent Identity Blueprints** + the actual OAuth token exchange (OBO / `fmi_path`) this leg's OBO evidence is scaffolded around.
-- **[`microsoft-foundry` RBAC](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/rbac/rbac.md)** (with [`azure-compliance`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/azure-compliance/SKILL.md)) — **least-privilege role** selection + assignment the required-role revalidation checks against.
+- **[`entra-agent-id`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/entra-agent-id/SKILL.md)** — **Entra Agent Identity Blueprints** + the actual OAuth token exchange (OBO / `fmi_path`) this leg's OBO evidence is scaffolded around.
+- **[`microsoft-foundry` RBAC](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/rbac/rbac.md)** (with [`azure-compliance`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/azure-compliance/SKILL.md)) — **least-privilege role** selection + assignment the required-role revalidation checks against.

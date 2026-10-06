@@ -1,7 +1,7 @@
 # Hosted-agent references (Threadlight-owned)
 
 **Authority.** For `azd` deployment of Foundry hosted agents, the official
-[microsoft-foundry deploy guidance](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md)
+[microsoft-foundry deploy guidance](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md)
 in `azure@azure-skills` (pinned in `skills/_shared/official-skills-lock.json`)
 is the default. Load `microsoft-foundry` for it.
 

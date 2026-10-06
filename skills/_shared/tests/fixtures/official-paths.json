@@ -1,6 +1,6 @@
 {
-  "tag": "v1.2.77",
-  "commit": "74f27068b21b85807e35ae69ab3976756b060c03",
+  "tag": "v1.2.79",
+  "commit": "344bd5b3e041445237de09007ef62f4b3c51805d",
   "note": "Every microsoft/azure-skills path linked from a live surface, verified with git cat-file at the tag.",
   "paths": [
     ".github/plugins/azure-cost/skills/cost-analysis",

@@ -22,7 +22,7 @@ CONNECTIONS = (
 )
 BASIC_MODULE = (
     "the capability-host template selected from microsoft-foundry "
-    "references/standard-agent-setup.md (azure-skills v1.2.77)"
+    "references/standard-agent-setup.md (azure-skills v1.2.79)"
 )
 MAX_AGE_SECONDS = 1800
 

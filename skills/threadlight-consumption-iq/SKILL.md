@@ -498,5 +498,5 @@ official **[Azure Skills](https://github.com/microsoft/azure-skills)** catalog.
 *Further reading, not a dependency* — Threadlight's guidance stays the source of
 truth for the pilot flow:
 
-- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — model **quota / capacity** (TPM, PTU) planning that this projection reasons about per resource.
-- **[`azure-cost`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-cost/skills/cost-analysis)** (`azure-cost` plugin: cost-analysis, cost-estimation, cost-optimization) — subscription-wide **cost query, forecast, and optimization**; the platform-native companion to this skill's per-pilot projection.
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — model **quota / capacity** (TPM, PTU) planning that this projection reasons about per resource.
+- **[`azure-cost`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-cost/skills/cost-analysis)** (`azure-cost` plugin: cost-analysis, cost-estimation, cost-optimization) — subscription-wide **cost query, forecast, and optimization**; the platform-native companion to this skill's per-pilot projection.

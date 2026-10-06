@@ -869,6 +869,9 @@ Read the spec and derive the architecture using these deterministic rules:
    put it in `copilot-instructions.md` as behavioral guidelines, e.g.:
    - "When the user asks for X, first use skill A to gather data, then skill B to analyze"
    - "If risk score > threshold, escalate to human review"
+   - Escalation, routing and rejection instructions must name the matched entity
+     (person, party, record) and the rule it met, following the BR-XXX **Output**
+     field, e.g. "Route to EDD and state which related party matched the PEP list"
 
 3. **Human interaction points → dedicated handling:**
    - Each approval/escalation flow from spec § 8 maps to approval logic in the relevant skill
@@ -2266,13 +2269,13 @@ The spec is durable and runtime-agnostic. You can derive different implementatio
 | [**threadlight-safe-check**](../threadlight-safe-check/) | Reads the `deployment_manifest{}` block authored under SPEC § 11c (this skill's responsibility) and gates design / pre-deploy / post-deploy completeness |
 | [**threadlight-deploy/references/observability**](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/references/observability/README.md) | Always layered into deploy from day one — App Insights + OTel telemetry across hosted agents, MCP, ACA jobs, workspace; closes the silent gap where `azd up` returns 0 but AppIn stays empty |
 | [**foundry-iq**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-iq/) | **Default knowledge retrieval pattern** — every SPEC § 7 should declare a Knowledge Base with `Backing service: foundry-iq` unless the process has zero domain documents |
-| [**azure-ai**](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/azure-ai) | Consumes SPEC § 7b AI Services & Model Selection — wires vision / DocIntel / Speech tools |
+| [**azure-ai**](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/azure-ai) | Consumes SPEC § 7b AI Services & Model Selection — wires vision / DocIntel / Speech tools |
 | [**threadlight-workspace-ui**](../threadlight-workspace-ui/) | Consumes SPEC § 8b Workspace UX — generates the operator workspace |
 | [**threadlight-hitl-patterns**](../threadlight-hitl-patterns/) | Consumes SPEC § 8 Action Gates — generates Adaptive Cards + audit trail for the seven canonical gates |
 | [**threadlight-event-triggers**](../threadlight-event-triggers/) | Consumes SPEC § 10b Triggers — generates ACA Job / Function / consumer receivers |
 | [**threadlight-demo-data-factory**](../threadlight-demo-data-factory/) | Consumes SPEC § 11d Demo Data + the `references/data-realism/` industry rules — generates realistic demo data |
 | [**threadlight-mcp-aca**](../threadlight-mcp-aca/SKILL.md) | Consumes SPEC § 5 / § 5b — wraps mocked systems behind MCP |
-| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Consumes SPEC § 9 KPI table — runs continuous evaluation loop |
+| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) | Consumes SPEC § 9 KPI table — runs continuous evaluation loop |
 | [**threadlight-citadel-spoke**](../threadlight-citadel-spoke/SKILL.md) | Consumes SPEC § 11b Governance Posture — opt-in Citadel handoff after initial deploy |
 | [**threadlight-deploy/references/azd-modules**](../threadlight-deploy/references/azd-modules/README.md) | Composable Bicep module library that all module-emitting skills above feed into |
 | [**gbb-pptx**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/gbb-pptx/) | **When a 1-slider PPTX leave-behind is requested** after the deck-led demo (exec brief, steering committee handout, asynchronous follow-up to non-attendees). Complements the deck, not a replacement. |

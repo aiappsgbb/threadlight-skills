@@ -97,16 +97,23 @@ Number all rules BR-XXX. These drive evaluation scenarios and skill logic.
 - **Condition**: [When does this rule apply?]
 - **Action**: [What must happen?]
 - **Exception**: [Any exceptions to the rule?]
+- **Output**: [What the agent's response must state when this rule fires. For escalation, routing or rejection rules, name the matched entity, party or record and the condition it met, e.g. "EDD: related party Ivan Gromov is a PEP (beneficial owner, 30%)"]
 - **KPI** (optional but recommended — see § 9 Business KPIs): [Name of the metric this rule influences, e.g. `auto_decline_rate`]
 
 ### BR-002: [Rule Name]
 - **Condition**:
 - **Action**:
 - **Exception**:
+- **Output**:
 - **KPI**:
 
 > Business rules are the backbone of the spec. Every skill procedure and
 > evaluation scenario should trace back to one or more BR-XXX rules.
+>
+> **Output contract:** when a rule escalates, routes or rejects, its **Output**
+> must name the matched entity, party or record and the condition it met. A
+> generic "escalated to EDD" without the triggering name is not actionable for the
+> reviewer and fails the evaluation case that checks for it.
 >
 > **Continuous evaluation contract:** every BR-XXX should map to at least one
 > measurable KPI in § 9. The KPI is what the `microsoft-foundry` continuous loop

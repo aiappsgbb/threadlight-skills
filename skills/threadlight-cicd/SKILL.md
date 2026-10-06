@@ -313,4 +313,4 @@ to replace it. For first-party depth behind this CI/CD leg, reach for the offici
 reading, not a dependency* — Threadlight's guidance stays the source of truth for
 the pilot flow:
 
-- **[`entra-app-registration`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/entra-app-registration/SKILL.md)** — **Entra app registration** + OAuth 2.0 / MSAL; first-party depth behind the OIDC / Workload-Identity-Federation federated-credential setup this generator scaffolds.
+- **[`entra-app-registration`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/entra-app-registration/SKILL.md)** — **Entra app registration** + OAuth 2.0 / MSAL; first-party depth behind the OIDC / Workload-Identity-Federation federated-credential setup this generator scaffolds.

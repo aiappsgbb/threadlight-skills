@@ -17,7 +17,7 @@ metadata:
   version: "2.0.0"
   provenance: "awesome-gbb@7f1de882 (MIT) — see PROVENANCE.md"
 ---
-> **📦 This skill is for MCP server PRODUCERS (deploying servers to ACA).** If you want to CONSUME an existing MCP server from a Foundry hosted agent, see [threadlight-deploy/references/hosted-agent/maf](../threadlight-deploy/references/hosted-agent/maf/README.md) § MCP Tools or [microsoft-foundry](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) § Learn MCP. If the MCP server should hand work to an ACA Job, use the residual awesome-gbb GBB pattern [foundry-mcp-aca-jobs](https://github.com/aiappsgbb/awesome-gbb/blob/7f1de882d5386e5a27852c91d3a89523eef218d0/skills/foundry-mcp-aca-jobs/SKILL.md) instead (not ported; optional).
+> **📦 This skill is for MCP server PRODUCERS (deploying servers to ACA).** If you want to CONSUME an existing MCP server from a Foundry hosted agent, see [threadlight-deploy/references/hosted-agent/maf](../threadlight-deploy/references/hosted-agent/maf/README.md) § MCP Tools or [microsoft-foundry](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) § Learn MCP. If the MCP server should hand work to an ACA Job, use the residual awesome-gbb GBB pattern [foundry-mcp-aca-jobs](https://github.com/aiappsgbb/awesome-gbb/blob/7f1de882d5386e5a27852c91d3a89523eef218d0/skills/foundry-mcp-aca-jobs/SKILL.md) instead (not ported; optional).
 
 # Foundry MCP ACA Deployment
 
@@ -767,7 +767,7 @@ use — reject-by-default beats sanitizing.
 Easy Auth is an **identity** perimeter, not a **network** one. For regulated
 workloads add, in order: private endpoints + VNET injection, then an APIM front
 door running `validate-jwt` + `rate-limit-by-key`. The runtime-specific topology is
-[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) — out of scope here.
+[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) — out of scope here.
 
 **External ingress is not "unauthenticated."** The non-VNet default here uses
 external ingress with Layer 1 authentication. Do not generalize that default

@@ -588,7 +588,7 @@ Brownfield or regulated estate with an **existing APIM**, NetSec-controlled **VN
 
 **Right when** the customer's NetSec team owns the perimeter and the pilot has to slot in behind it. The skill scores against that perimeter's contract (private endpoints, allowlists, JWT validation) rather than Citadel's.
 
-Remediation skills: [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry), [`threadlight-deploy/references/hosted-agent/maf`](../skills/threadlight-deploy/references/hosted-agent/maf/README.md), [`threadlight-tenant-isolation`](../skills/threadlight-tenant-isolation/SKILL.md).
+Remediation skills: [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry), [`threadlight-deploy/references/hosted-agent/maf`](../skills/threadlight-deploy/references/hosted-agent/maf/README.md), [`threadlight-tenant-isolation`](../skills/threadlight-tenant-isolation/SKILL.md).
 
 > **Hybrid is supported.** `--target hybrid` runs Citadel checks where applicable and AGT checks where Citadel artefacts are missing. Useful for pilots mid-uplift.
 

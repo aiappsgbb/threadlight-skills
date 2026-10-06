@@ -13,6 +13,7 @@ import hashlib
 import importlib.util
 import json
 import re
+import types
 from pathlib import Path
 
 import yaml
@@ -193,3 +194,114 @@ def test_routing_exclusions_keep_every_description_loadable():
         [sys.executable, str(ROOT / "scripts/ci/check-skill-description-length.py")],
         cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def _verify_module():
+    spec = importlib.util.spec_from_file_location("verify_lock", ROOT / "scripts" / "verify_official_skills_lock.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_lock_pins_the_current_marketplace_release():
+    lock = load(LOCK)
+    assert (lock["tag"], lock["commit"]) == ("v1.2.79", "344bd5b3e041445237de09007ef62f4b3c51805d")
+    versions = {name: plugin["version"] for name, plugin in lock["plugins"].items()}
+    assert versions == {"azure@azure-skills": "1.2.79", "azure-cost@azure-skills": "1.0.5",
+                        "foundry-iq-skills@azure-skills": "0.1.10"}
+
+
+def test_build_lock_regenerates_from_fetched_content_not_hand_edits():
+    """The generator derives every hash from fetched bytes and the locked set from the manifest."""
+    mod = _verify_module()
+    skill_md = b"---\nname: s\ndescription: official d\n---\nbody\n"
+    extra = b"guide"
+    base = ".github/plugins"
+    files = {
+        f"{base}/R/.claude-plugin/plugin.json": b'{"name": "p", "version": "9.9.9"}',
+        f"{base}/R/skills/s/SKILL.md": skill_md,
+        f"{base}/R/skills/s/ref/guide.md": extra,
+        f"{base}/Q/.claude-plugin/plugin.json": b'{"name": "q", "version": "1.0.0"}',
+    }
+    listing = {base: ["R", "Q"], f"{base}/R/skills": ["s", "t"], f"{base}/Q/skills": ["u"]}
+
+    class Fake:
+        def resolve(self, tag):
+            return "c" * 40
+
+        def tree(self, commit, path):
+            return hashlib.sha1(path.encode()).hexdigest()
+
+        def read(self, commit, path):
+            return files[path]
+
+        def ls(self, commit, path):
+            return listing[path]
+
+    manifest = {"official": {"tag": "v9"}, "skills": {"x": {
+        "official": [{"plugin": "p@m", "skill": "s"}],
+        "official_partial": [{"plugin": "p@m", "skill": "s", "paths": ["ref/guide.md"]}]}}}
+    template = {"schema": "threadlight-official-skills-lock/v1", "repository": "o/r", "marketplace": "m", "note": "n"}
+    fetcher = Fake()
+    lock = mod.build_lock(manifest, template, fetcher)
+    assert (lock["tag"], lock["commit"]) == ("v9", "c" * 40)
+    entry = lock["plugins"]["p@m"]
+    assert entry["root"] == ".github/plugins/R" and entry["version"] == "9.9.9"
+    s = entry["skills"]["s"]
+    assert s["files"] == {"SKILL.md": hashlib.sha256(skill_md).hexdigest(),
+                          "ref/guide.md": hashlib.sha256(extra).hexdigest()}
+    assert s["description"] == "official d"
+    assert lock["catalog_skill_names"] == {"Q": ["u"], "R": ["s", "t"]}
+    assert mod.verify(lock, fetcher) == []
+
+
+def test_committed_lock_is_exactly_what_the_generator_emits_from_its_own_data(monkeypatch):
+    """Offline round trip: a fetcher serving only the committed lock's recorded
+    objects, driven by build_lock from the manifest, must reproduce the file
+    byte-for-byte. The plugin/skill/file set therefore follows the manifest and
+    the layout follows the generator, not a hand edit."""
+    mod = _verify_module()
+    lock = load(LOCK)
+    manifest = load(MANIFEST)
+    hashes, descriptions, trees, metas = {}, {}, {}, {}
+    for plugin, entry in lock["plugins"].items():
+        root = entry["root"]
+        trees[root] = entry["tree"]
+        metas[root] = {"name": plugin.split("@", 1)[0], "version": entry["version"]}
+        for skill, s in entry["skills"].items():
+            sdir = f"{root}/skills/{skill}"
+            trees[sdir] = s["tree"]
+            descriptions[f"{sdir}/SKILL.md"] = s["description"]
+            for rel, digest in s["files"].items():
+                hashes[f"{sdir}/{rel}"] = digest
+
+    class Digest:
+        def __init__(self, data):
+            self.path = data.decode()
+
+        def hexdigest(self):
+            return hashes[self.path]
+
+    class Fake:
+        def resolve(self, tag):
+            assert tag == lock["tag"]
+            return lock["commit"]
+
+        def tree(self, commit, path):
+            return trees[path]
+
+        def read(self, commit, path):
+            if path.endswith("/.claude-plugin/plugin.json"):
+                root = path[: -len("/.claude-plugin/plugin.json")]
+                return json.dumps(metas.get(root, {"name": root, "version": "0"})).encode()
+            return path.encode()
+
+        def ls(self, commit, path):
+            if path == mod.PLUGINS:
+                return list(lock["catalog_skill_names"])
+            return lock["catalog_skill_names"][path.rsplit("/", 2)[-2]]
+
+    monkeypatch.setattr(mod, "hashlib", types.SimpleNamespace(sha256=Digest))
+    monkeypatch.setattr(mod, "_description", lambda raw: descriptions[raw.decode()])
+    rebuilt = mod.build_lock(manifest, lock, Fake())
+    assert LOCK.read_text(encoding="utf-8") == mod.render_lock(rebuilt)

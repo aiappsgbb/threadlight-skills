@@ -362,4 +362,4 @@ to replace it. For first-party depth behind this evals leg, reach for the offici
 reading, not a dependency* — Threadlight's guidance stays the source of truth for
 the pilot flow:
 
-- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — first-party **batch eval, continuous evaluation, and tracing / observability** surfaces this leg wires (via `microsoft-foundry` + Foundry Continuous Evaluation).
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — first-party **batch eval, continuous evaluation, and tracing / observability** surfaces this leg wires (via `microsoft-foundry` + Foundry Continuous Evaluation).

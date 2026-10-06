@@ -1,4 +1,4 @@
-> **Threadlight-owned reference.** Threadlight-owned Microsoft Agent Framework (MAF) hosted-agent contract. The official [microsoft-foundry deploy guidance](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md) is the authority for `azd` deploy of hosted agents; this reference covers only what it does not: the native-SDK create-definition, env-var contract, `create_version` dedup trap, capability-host gating and the MAF ResponsesHostServer runtime.
+> **Threadlight-owned reference.** Threadlight-owned Microsoft Agent Framework (MAF) hosted-agent contract. The official [microsoft-foundry deploy guidance](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md) is the authority for `azd` deploy of hosted agents; this reference covers only what it does not: the native-SDK create-definition, env-var contract, `create_version` dedup trap, capability-host gating and the MAF ResponsesHostServer runtime.
 >
 > Provenance: ported from `aiappsgbb/awesome-gbb@7f1de882` `skills/foundry-hosted-agents/SKILL.md (+ references/)` (MIT License, Copyright (c) 2026 AI Global Black Belts — Microsoft). See [PROVENANCE.md](PROVENANCE.md). Sibling-skill names were rewritten to Threadlight or official `azure-skills` equivalents; skills without a mapping remain residual awesome-gbb names (see `skills/_shared/skill-dependencies.json`).
 
@@ -80,10 +80,10 @@ operator-collected observations. It performs no Azure calls or repairs.
 | Private Standard/BYO | Verify the account host/subnet and project host with the selected existing BYO connection names. Preserve hosts, connections and stores. |
 
 For a missing Basic project host, stop and request explicit authorization to use
-only the [existing project-host module](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry).
+only the [existing project-host module](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry).
 An unreadable inventory is not absence. A failed, incompatible or BYO host is
 not permission to recreate it; use
-[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) to inspect.
+[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) to inspect.
 `azd deploy` against a pre-existing project does not certify these prerequisites.
 
 The gate also checks project/model scope, actual operator/runtime-path evidence,
@@ -405,7 +405,7 @@ apply HTTP-layer transport timeouts on the underlying client instead.
 > **See also (MAF 1.8.0, experimental):**
 > - `AgentFileStore` — new abstract base class for agent file-management
 >   backends. Re-exported as `from agent_framework import AgentFileStore`.
->   Concrete implementations + usage patterns live in [`foundry-memory`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md) and
+>   Concrete implementations + usage patterns live in [`foundry-memory`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md) and
 >   `microsoft-foundry`. NOT consumed by the hosted-agents runtime patterns
 >   documented in this skill.
 
@@ -458,7 +458,7 @@ from the canonical
 > - **Agent guardrails** (content-safety toggle), **Optimizer**,
 >   and **Memory** remain preview surfaces layered on
 >   top of the GA hosted-agent runtime — see their owning skills
->   ([`foundry-memory`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md)) for details; this skill does
+>   ([`foundry-memory`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/tools/prompt-agent/tool-memory.md)) for details; this skill does
 >   not restate their contracts.
 > - **Routines** is a GA service with a Python `beta.routines` client surface.
 >   See `microsoft-foundry` for client versions, trigger/delivery evidence and
@@ -1965,7 +1965,7 @@ unique build stamp.
   Split on agent version first; after promotion, do a separate model
   rollout.
 - **Pair the canary phase with continuous evaluation** — see the official
-  microsoft-foundry [`foundry-agent/observe/references/continuous-eval.md`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/observe/references/continuous-eval.md). The eval runner's
+  microsoft-foundry [`foundry-agent/observe/references/continuous-eval.md`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/observe/references/continuous-eval.md). The eval runner's
   per-response sampling naturally surfaces v2 quality regressions
   within the canary window.
 - **ACA-side rollout primitives (revisions, ingress weighting) do NOT

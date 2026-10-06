@@ -610,7 +610,7 @@ The spoke connects to the Citadel hub gateway over the network. Three patterns:
 |---------|-------------|-------------------|
 | **Hub-based** | Citadel runs inside the hub VNet | Spoke has direct peering or routes through hub firewall |
 | **Spoke-based** | Citadel runs in a dedicated spoke VNet | Spoke routes via hub firewall → Citadel spoke VNet |
-| **VNet-isolated spoke** (e.g., Foundry-in-VNet from [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry)) | Spoke Foundry account + project sit inside the customer's own private VNet (private endpoints, no public access) | Bidirectional peering spoke ↔ hub VNet **plus** a VNet link from `privatelink.azure-api.net` to the spoke VNet. `microsoft-foundry` Step 8d / 12D auto-creates the spoke side; the hub team runs the emitted reverse-peering command. |
+| **VNet-isolated spoke** (e.g., Foundry-in-VNet from [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry)) | Spoke Foundry account + project sit inside the customer's own private VNet (private endpoints, no public access) | Bidirectional peering spoke ↔ hub VNet **plus** a VNet link from `privatelink.azure-api.net` to the spoke VNet. `microsoft-foundry` Step 8d / 12D auto-creates the spoke side; the hub team runs the emitted reverse-peering command. |
 
 As a spoke owner, verify DNS, routing, and firewall/NSG access to the APIM
 gateway. The platform team owns the hub-side VNet/APIM/private endpoint config.
@@ -626,7 +626,7 @@ gateway. The platform team owns the hub-side VNet/APIM/private endpoint config.
 ### Combining with `microsoft-foundry`
 
 When the Foundry project to be onboarded was deployed by
-[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) (i.e., it lives inside a
+[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) (i.e., it lives inside a
 customer-private VNet with public access disabled), the order of operations
 and auth posture are constrained:
 
@@ -634,7 +634,7 @@ and auth posture are constrained:
 
 1. Run [`threadlight-tenant-isolation`](../threadlight-tenant-isolation/SKILL.md) so all
    subsequent `az` commands land in the intended subscription.
-2. Run [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry). When prompted in
+2. Run [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry). When prompted in
    **Step 8d (Citadel hub integration)**, supply `hubVnetResourceId` and
    `apimDnsZoneResourceId`; the deployment creates the spoke-side peering
    and the `privatelink.azure-api.net` VNet link in the same pass.
@@ -918,7 +918,7 @@ When onboarding a new spoke, request the following from the Citadel platform tea
 - Network routing: private endpoint DNS, firewall rules, VNet peering status
 
 **If the spoke itself sits in a private VNet** (e.g., deployed by
-[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry)), the operator must also
+[`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry)), the operator must also
 hand the hub team the spoke's network identity so the hub side of the
 peering can be created with their RBAC:
 

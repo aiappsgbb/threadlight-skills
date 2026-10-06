@@ -978,8 +978,8 @@ deliberately.**
 - **Author in Git → publish an immutable version.** The editable copy
   lives in source control; the reviewed source is promoted to a
   **versioned Foundry artifact** — a `SkillVersion`, a toolbox version —
-  via [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry)
-  and [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry).
+  via [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry)
+  and [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry).
 - **Reference by a pinned version.** Production agents bind to a specific
   version, never a floating pointer, so "which capabilities ran during
   the incident?" has a single, auditable answer.

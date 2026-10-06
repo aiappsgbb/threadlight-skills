@@ -1387,4 +1387,4 @@ the official **[Azure Skills](https://github.com/microsoft/azure-skills)** catal
 *Further reading, not a dependency* — Threadlight's guidance stays the source of
 truth for the pilot flow:
 
-- **[`azure-reliability`](https://github.com/microsoft/azure-skills/blob/v1.2.77/.github/plugins/azure-skills/skills/azure-reliability/SKILL.md)** — PaaS **reliability posture** (zone redundancy, ZRS storage, health probes, multi-region) that deepens this scorecard's reliability pillar.
+- **[`azure-reliability`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/azure-reliability/SKILL.md)** — PaaS **reliability posture** (zone redundancy, ZRS storage, health probes, multi-region) that deepens this scorecard's reliability pillar.

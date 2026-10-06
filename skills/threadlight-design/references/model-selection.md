@@ -8,7 +8,7 @@ to decide*, not *what exists*:
   `references/speckit-template.md` § 7b. This file does not duplicate it.
 - **The authoritative, always-current model matrix** (families, dated versions,
   regional availability, TPM ceilings) lives in the foundry skill catalog —
-  [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry).
+  [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry).
   Model availability moves faster than this skill ships; when a version or region
   named here looks stale, the catalog wins.
 

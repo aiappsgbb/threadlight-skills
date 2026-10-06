@@ -45,8 +45,8 @@ AgentOps aggregates evidence and never replaces those enforcement controls.
 | Action / tool-call plane — may the agent invoke this named tool at all? | **This skill (AGT)** | Deterministic, in-process, pre-execution by tool name. Argument validation remains the caller's / tool-body's responsibility. |
 | Message / token content — is this text safe to send or show? | [Azure AI Content Safety](https://learn.microsoft.com/azure/ai-services/content-safety/) | A different plane entirely; pair with AGT, don't substitute for it. |
 | Edge auth, rate limiting, product policy | APIM / gateway — see [`threadlight-citadel-spoke`](../../../threadlight-citadel-spoke/SKILL.md) | Gates the HTTP edge; AGT gates inside the tool loop. |
-| Network isolation (VNet, private endpoints) | [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Network plane, not policy plane. |
-| Quality / task-adherence evaluation | [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | AGT governs the safety of actions, not answer quality. |
+| Network isolation (VNet, private endpoints) | [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) | Network plane, not policy plane. |
+| Quality / task-adherence evaluation | [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) | AGT governs the safety of actions, not answer quality. |
 | Telemetry plumbing (App Insights, OTel exporters) | [`threadlight-deploy/references/observability`](../../../threadlight-deploy/references/observability/README.md) | AGT **emits** CloudEvents; this skill owns the pipe they flow through. |
 
 Any workload with both chat content and side-effecting tools needs
@@ -73,7 +73,7 @@ other.
 ## When NOT to use this skill
 
 - **Pure offline eval / batch scoring.** No runtime tool calls fire —
-  use [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) instead.
+  use [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) instead.
 - **Content moderation only** (toxicity, self-harm, jailbreak detection
   at the message level). That's
   [Azure AI Content Safety](https://learn.microsoft.com/azure/ai-services/content-safety/)'s
@@ -397,11 +397,11 @@ shape with `detection_confidence: 0.0`.
 - [`threadlight-deploy/references/hosted-agent/maf`](../../../threadlight-deploy/references/hosted-agent/maf/README.md) —
   primary consumer; deploys the Foundry hosted agent this skill's
   middleware wires into.
-- [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) — quality / task-adherence
+- [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) — quality / task-adherence
   evaluation; complements, does not replace, action governance.
 - [`threadlight-deploy/references/observability`](../../../threadlight-deploy/references/observability/README.md) — owns
   the App Insights pipe `AuditLog.export_cloudevents()` exports to.
-- [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) — network
+- [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) — network
   isolation; a different plane entirely.
 - [`threadlight-citadel-spoke`](../../../threadlight-citadel-spoke/SKILL.md) —
   edge-level auth / rate-limit / product policy via APIM.
