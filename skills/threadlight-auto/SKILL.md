@@ -325,10 +325,17 @@ next to the existing use-case skills.
      only the unconditional policy-dependency readability check above applies.
    `threadlight-auto` owns **no separate framework or protocol default**.
 5. Official companion skills: run `python3 ../_shared/official_skills.py`
-   (offline; it reads `copilot skill list --json`). It compares the installed
+   (offline; it reads `copilot skill list --json`). If this session loads
+   plugins with `copilot --plugin-dir DIR`, forward the same directories
+   (`--plugin-dir DIR`, repeatable, or `THREADLIGHT_PLUGIN_DIRS`); without them
+   the listing omits those plugins and reports false MISSING/DRIFT. It compares the installed
    official skills with the pinned `azure@azure-skills` release. This check
-   **does not stop** the pilot: show each MISSING or DRIFT line verbatim,
-   including its fix and Threadlight fallback, and continue. The presenter
+   **does not stop** the pilot: show each MISSING, DRIFT or ORDER line verbatim,
+   including its fix and Threadlight fallback, and continue. ORDER means the
+   official plugins, or personal skills and other plugins listed earlier,
+   use Copilot's skill-description budget, so threadlight-* skills are not
+   described to the model; tell the user to reinstall the named plugins after
+   threadlight-skills (or disable unused ones). The presenter
    deploy handoff still stops on drift as `docs/presenter-ready.md` describes.
    Exit 0 records `official_skills: "ok"` and exit 1 records `"degraded"`. If
    the `copilot` CLI is unavailable or cannot list skills, the check exits 2
@@ -366,7 +373,7 @@ when ALL conditions hold:
 |---|---|
 | Preflight | `.threadlight/preflight-passed.json` exists AND is `< 24 h` old AND its `foundation_sha256` matches the current Foundation (including `null` while absent) |
 | Design | `specs/SPEC.md` exists AND `sha256(SPEC.md) == auto-state.json[design].artifact_hash` AND no `[NEEDS CLARIFICATION:` markers |
-| Local-test | `specs/SPEC.md` exists AND `src/agent/main.py` runs locally (optional stage; skipped on freshness if SPEC unchanged) |
+| Local-test | `specs/SPEC.md` exists AND `src/agent/container.py` runs locally (optional stage; skipped on freshness if SPEC unchanged) |
 | Deploy | `azure.yaml` + `infra/main.bicep` exist AND `azd env get-values \| grep -q AGENT_FQDN` AND first-listed agent `status: active` via `azd ai agent show` |
 | Safe-check | `tests/postdeploy-manifest.json` has a fresh RFC3339 `checked_at` (`< 24 h` old) and valid JSON with `phase=post-deploy` and `gaps=[]`; `docs/safe-check-post.md` is optional human-readable evidence only |
 | Cost-projection | SPEC § 12 `load_profile{}` is complete (all required keys filled, no `TBD` placeholders) AND `specs/cost-manifest.json.schema_version` starts with `1.` AND `generated_at > AZURE_LAST_DEPLOY_AT` (the planner trusts `specs/cost-manifest.json.generated_at` vs `AZURE_LAST_DEPLOY_AT`; `.threadlight/auto-state.json[cost_projection].passed_at` is recorded for audit/echo only and is not used as a skip gate) |
@@ -398,8 +405,8 @@ Preserve scripts, business HITL and existing Kratos-export ownership.
 | # | Stage | Invokes via Skill tool | Closing report we parse |
 |---|---|---|---|
 | 1 | Design | `threadlight-design` | `specs/SPEC.md` + `specs/manifest.json` + `AGENTS.md` + `skills/*` + `docs/{demo-deck,prep-guide}` — **skipped in Kratos-export mode** (the bundle is already designed) |
-| 2 | Local-test (OPTIONAL) | `threadlight-local-test` | `src/agent/main.py` runs via Pattern 0; smoke test passes |
-| 3 | Deploy | `threadlight-deploy` | `infra/main.bicep` + `azure.yaml` + `src/agent/{main.py,container.py,Dockerfile,pyproject.toml}` + `.azure/<env>/` + `azd up` exits 0 + agent `status: active`. **In Kratos-export mode** `threadlight-deploy` runs enrich/validate only (no regen) + backfills `use-cases/<x>/evals/` |
+| 2 | Local-test (OPTIONAL) | `threadlight-local-test` | `src/agent/container.py` runs via Pattern 0; smoke test passes |
+| 3 | Deploy | `threadlight-deploy` | `infra/main.bicep` + `azure.yaml` + `src/agent/{container.py,Dockerfile,pyproject.toml,.dockerignore}` + `.azure/<env>/` + `azd up` exits 0 + agent `status: active`. **In Kratos-export mode** `threadlight-deploy` runs enrich/validate only (no regen) + backfills `use-cases/<x>/evals/` |
 | 4 | Safe-check (post-deploy) | `threadlight-safe-check` `phase=post-deploy` | `tests/postdeploy-manifest.json` (`checked_at`, `phase=post-deploy`, `gaps=[]`) + behavioral gates green; `docs/safe-check-post.md` is optional human-readable evidence |
 | 5 | Cost-projection (**new**, advisory) | `threadlight-consumption-iq` (`scripts/consumption_iq.py run --all`) | `docs/cost-projection.md` + `specs/cost-manifest.json`. Exit 4 (load profile incomplete) → sets `cost-projection: needs-wizard` in state, surfaces wizard prompt to operator; does NOT block chain. Exit 3 (pricing unavailable, no fixture) → sets `cost-projection: degraded-no-pricing`, warns, continues. Exit 2 (missing prereq, e.g. no SPEC) → same as other missing-prereq cases. Reconciled actuals are an opt-in subphase of this stage — see [§ Reconciled actuals](#cost-projection-stage--optional-reconciled-actuals-subphase-opt-in). |
 | 6 | Invoke | direct `azd ai agent invoke` ×2 | Both demo scenarios from `specs/SPEC.md § Demo Scenarios` succeed |

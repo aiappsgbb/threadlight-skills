@@ -712,6 +712,22 @@ def _check_preflight(workspace: Path, _: dict[str, Any]) -> StageDecision:
     )
 
 
+GOVERNANCE_CONTRACT_REPAIR = "incomplete-governance-contract"
+
+
+def _spec_contract_gaps(workspace: Path) -> list[str]:
+    try:
+        from skills._shared.governance_selection import spec_contract_gaps
+        return spec_contract_gaps(workspace) or []
+    except ImportError:
+        return []
+
+
+def _is_contract_repair(decision: "StageDecision") -> bool:
+    return (decision.name == "design" and decision.decision == "run"
+            and decision.reason.startswith(GOVERNANCE_CONTRACT_REPAIR))
+
+
 def _check_design(workspace: Path, state: dict[str, Any]) -> StageDecision:
     spec = workspace / "specs" / "SPEC.md"
     if not spec.exists():
@@ -727,6 +743,17 @@ def _check_design(workspace: Path, state: dict[str, Any]) -> StageDecision:
             "specs/SPEC.md contains unresolved [NEEDS CLARIFICATION:] markers.",
             artifacts_seen=["specs/SPEC.md"],
             hard_stop_signature="NEEDS CLARIFICATION marker in SPEC.md",
+        )
+
+    gaps = _spec_contract_gaps(workspace)
+    if gaps:
+        return StageDecision(
+            "design",
+            "run",
+            f"{GOVERNANCE_CONTRACT_REPAIR}: SPEC §11a is missing {', '.join(gaps)}. Re-run "
+            "threadlight-design to emit the complete block, then check it with "
+            "`python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>`.",
+            artifacts_seen=["specs/SPEC.md"],
         )
 
     current_hash = _sha256(spec)
@@ -1817,7 +1844,12 @@ def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
         invalid_configuration = True
     for stage in stages:
         probe = {**STAGE_PROBES, **GOVERNANCE_PROBES}[stage]
-        if stage == "govern" and invalid_configuration:
+        if stage == "govern" and invalid_configuration and any(map(_is_contract_repair, decisions)):
+            # Completing SPEC §11a is design work, not an operator hard stop;
+            # execute() blocks if the design run does not repair it.
+            decisions.append(StageDecision(
+                "govern", "run", "Governance contract incomplete; resolved by the design stage first."))
+        elif stage == "govern" and invalid_configuration:
             decisions.append(StageDecision(
                 "govern", "hard_stop", "Governance configuration invalid or unresolved; not verified. Deployment blocked.",
                 hard_stop_signature="invalid-governance-configuration"))
@@ -1922,6 +1954,10 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
         report = decide(workspace, state_path)
         if report["next_action"]["type"] == "hard_stop":
             return {"status": "blocked", "stage": report["next_action"]["stage"], "executed": executed}
+        if "design" in executed and any(
+                d["stage"] == "design" and d["decision"] == "run"
+                and d["reason"].startswith(GOVERNANCE_CONTRACT_REPAIR) for d in report["decisions"]):
+            return {"status": "blocked", "stage": "design", "executed": executed}
         pending = [s for s in report["next_action"]["stages_to_run"] if s not in executed]
         if not pending:
             if (report["presenter_ready"]["enabled"]

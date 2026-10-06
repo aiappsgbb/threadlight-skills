@@ -881,3 +881,34 @@ def test_public_wording_uses_correct_governance_layers_and_no_policy_only_enforc
         "policy bundles, templates, and CI checks do not enforce runtime behavior on their own",
     ):
         assert fragment in combined
+
+
+def _run_contract_validator(tmp_path, spec_text):
+    import subprocess, sys
+    (tmp_path / "specs").mkdir(exist_ok=True)
+    (tmp_path / "specs" / "SPEC.md").write_text(spec_text, encoding="utf-8")
+    script = REPO_ROOT / "skills" / "threadlight-design" / "scripts" / "validate_governance_contract.py"
+    return subprocess.run([sys.executable, str(script), str(tmp_path)],
+                          capture_output=True, text=True, check=False)
+
+
+def test_validator_cli_reports_missing_contract_keys(tmp_path):
+    result = _run_contract_validator(tmp_path, "```yaml\ngovernance:\n  mode: off\n```\n")
+    assert result.returncode == 1, result.stdout + result.stderr
+    for key in ("framework", "tools", "governance.environment_modes", "governance.lifecycle_bindings"):
+        assert key in result.stdout
+
+
+def test_validator_cli_accepts_complete_off_contract(tmp_path):
+    block = ("```yaml\nframework: microsoft-agent-framework\ngovernance:\n  mode: off\n"
+             "  environment_modes: {development: evaluate_only, staging: evaluate_only, "
+             "preproduction: enforce, production: enforce}\n  lifecycle_bindings: []\ntools: []\n```\n")
+    result = _run_contract_validator(tmp_path, block)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "OK" in result.stdout
+
+
+def test_design_skill_requires_complete_contract_and_validator():
+    text = skill_text()
+    assert "scripts/validate_governance_contract.py" in text
+    assert "framework" in text and "tools: []" in text and "lifecycle_bindings: []" in text

@@ -1,0 +1,8 @@
+# Root .dockerignore for the MCP image (build context is the repo root).
+# Allowlist only what src/mcp/Dockerfile copies. A broad context (.venv,
+# .azure, node_modules) makes remote ACR builds fail with
+# "archive/tar: write too long".
+*
+!src/mcp/*.py
+!specs/sample-data/**
+**/__pycache__

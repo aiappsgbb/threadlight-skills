@@ -105,6 +105,31 @@ def _read_source(root, path):
     return data
 
 
+CONTRACT_REQUIRED_KEYS = ("framework", "governance", "tools")
+GOVERNANCE_REQUIRED_KEYS = ("mode", "environment_modes", "lifecycle_bindings")
+
+
+def spec_contract_gaps(root, path=None):
+    """Missing required keys of a parseable SPEC §11a contract, or None.
+
+    None means no SPEC contract (legacy) or a malformed declaration that is not a
+    simple completion task; those keep their existing hard-stop handling.
+    """
+    try:
+        document = spec_contract(root, path)[0]
+    except (ValueError, OSError, UnicodeDecodeError):
+        return None
+    if not isinstance(document, dict) or "governance" not in document:
+        return None
+    if {"governance_mode", "governanceMode"} & document.keys():
+        return None
+    gaps = [key for key in CONTRACT_REQUIRED_KEYS if key not in document]
+    governance = document.get("governance")
+    if isinstance(governance, dict):
+        gaps += [f"governance.{key}" for key in GOVERNANCE_REQUIRED_KEYS if key not in governance]
+    return gaps
+
+
 def discover_contract(root, *, required=True, contract_path=None, manifest_path=None, spec_path=None,
                       current_document=_UNSET, allow_legacy_off=False):
     root = Path(root)

@@ -7,6 +7,86 @@ field.
 
 ## [Unreleased]
 
+### Official Microsoft skills compatibility (live2 E2E defects)
+
+Found by running Threadlight on top of the official azure-skills v1.2.77
+plugins (Copilot CLI, `--plugin-dir`, no awesome-gbb).
+
+- **Generated artifacts (no agent self-repair needed).** The GHCP Dockerfile
+  copies and runs the real `container.py` from an MCR base (Docker Hub anonymous
+  pulls fail in remote ACR builds); `ghcp/references/dockerignore` ships with it.
+  The MAF and `threadlight-mcp-aca` Dockerfiles also use the MCR base. New
+  canonical azd scaffold `ghcp/references/pilot/`: complete Bicep (Foundry
+  account + project with identity, model deployment, ACR, ACA, tags parameter,
+  every role by GUID including the deployer's Foundry User at project scope),
+  `remoteBuild: true` on both services, an allowlist `.dockerignore`, a mock MCP
+  server without the `parents[2]` path walk or eager `getenv` defaults, and a
+  `postdeploy` hook granting the instance identity Foundry User by GUID and
+  publishing `AGENT_FQDN` so the `threadlight-auto` deploy probe recognizes a
+  completed pilot deploy. The GHCP Dockerfile copies the filtered context
+  (`skills/` and `copilot-instructions.md` stay optional) and fails fast only
+  when `container.py` is missing; the deployer role's `principalType` follows
+  `AZURE_PRINCIPAL_TYPE` (default `User`). A missing PyYAML no longer crashes
+  the orchestrator's SPEC contract probe.
+- **`mcp<2`.** Every generated `mcp` pin is upper-bounded: mcp 2.x removes
+  `mcp.server.fastmcp`.
+- **Role GUIDs.** Deploy guidance assigns Foundry User as
+  `53ca6127-db72-4b80-b1b0-d745d6d5456d`; `az` 2.86 does not resolve the name
+  `Azure AI User`.
+- **Routing.** `threadlight-deploy` has an explicit "Platform steps owned by
+  `microsoft-foundry`" section (model deployment, generic hosted-agent
+  create/run/invoke, evaluation); Threadlight keeps SPEC-driven generation,
+  packaging, governance and the safe-check gate.
+- **F1 — official skills via `--plugin-dir`.** `skills/_shared/official_skills.py`
+  reads `--plugin-dir` / `THREADLIGHT_PLUGIN_DIRS` and namespaced
+  `plugin:skill` names, so loaded official skills are no longer reported
+  MISSING/DRIFT.
+- **Install order (routing).** Copilot CLI 1.0.91 describes plugin skills in
+  install order up to a prompt budget and lists the rest by name only. With the
+  official plugins installed first, no `threadlight-*` skill was described and
+  demo/deploy prompts went to `azure-deploy` or no skill (offline routing
+  matrix: 88% official-first vs 100% threadlight-first). The README now
+  installs threadlight-skills first (with the reinstall fix for existing
+  setups), and `official_skills.py` reports `routing_order` and an `ORDER`
+  finding (exit 1) from the `copilot skill list` order. The check also
+  simulates the shared description budget (about 15,000 characters, calibrated
+  on CLI 1.0.91 listings) and reports `ORDER` when personal skills or other
+  plugins listed earlier leave `threadlight-auto`/`-design`/`-deploy` name-only
+  (seen on a real setup with Work IQ, M365 Agents Toolkit and awesome-gbb, no
+  official plugin). Official-named skills from other marketplaces (awesome-gbb
+  `foundry-iq`) no longer count as the official plugin being first. The fix
+  prints one reinstall command per plugin listed earlier, using `owner/repo`
+  for GitHub-direct installs such as awesome-gbb.
+- **F2 — SPEC §11a contract.** A parseable but incomplete governance contract
+  (missing framework/tools/governance keys) now routes back to design
+  (`incomplete-governance-contract`) instead of a govern hard stop; design emits
+  the complete block and validates it with
+  `skills/threadlight-design/scripts/validate_governance_contract.py`. The auto
+  test for a partial `governance: {mode: selective}` block now expects a design
+  repair rather than "invalid, not legacy"; an unparseable selection is still
+  invalid.
+- **Safe check.** Post-deploy recognizes a Foundry hosted-agent channel
+  (`azure.ai.agent` service in `azure.yaml`) as `foundry_hosted_agent` when the
+  Foundry project is deployed, instead of "no matching ACA". `--out` ending in
+  `.json` is the exact output file; otherwise it remains an output directory.
+- **Live Phase 3 contract drift (returns, kyc).** Pre-deploy accepts the
+  canonical pilot scaffold (`project: .` + `docker.path: src/mcp/Dockerfile`)
+  as well as `project: ./src/mcp`, instead of forcing an `azure.yaml` rewrite.
+  Design fails `expected_resource_types` that list child types `az resource
+  list` never returns (`Microsoft.CognitiveServices/accounts/deployments`), and
+  post-deploy fails non-`yes`/`no` selector values instead of silently checking
+  zero selectors. `threadlight-consumption-iq` reads and writes SPEC §12 under
+  both `## § 12` and the template's `## 12.` heading. Pilot
+  `main.parameters.json` maps `mcpImage` to `SERVICE_MCP_IMAGE_NAME` (a
+  re-provision no longer resets the MCP app to the quickstart image) and
+  `modelCapacity` to `AZURE_AI_MODEL_CAPACITY` (default 300K TPM GlobalStandard,
+  billed per token: 50 or less returned 429 for the GHCP runtime's bursts). The
+  mock MCP server logs to stderr so stdout stays a clean stdio JSON-RPC stream.
+  A copied `tests/safe_check.py` needs the plugin's
+  `skills/threadlight-safe-check/references` on `PYTHONPATH` for the governance
+  collector (documented in the safe-check CLI section).
+- Plugin and marketplace version 2.19.0.
+
 ### Hosted-agent ghcp template fixes from the OS1 live E2E
 
 - `ghcp/references/container.py` `_load_mcp_servers()` returns `dict[str, dict]`

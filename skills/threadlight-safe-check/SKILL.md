@@ -179,6 +179,12 @@ python3 tests/safe_check.py --phase pre-deploy    # immediately before azd up
 python3 tests/safe_check.py --phase post-deploy   # immediately after azd up returns 0
 ```
 
+A copied `tests/safe_check.py` cannot find the governance collector next to
+itself. Put the plugin's `skills/threadlight-safe-check/references` directory
+on `PYTHONPATH` (or install the collector package) before running it.
+Otherwise a selected governance binding reports
+`governance: install the governance safe-check collector package`.
+
 Exit codes:
 
 | Code | Meaning |
@@ -194,7 +200,7 @@ Optional flags:
 --rg <name>           # override AZURE_RESOURCE_GROUP env var (post-deploy)
 --subscription <id-or-name> # post-deploy account; defaults to current CLI account
 --manifest <path>     # override default specs/manifest.json
---out <dir>           # override default tests/ output dir
+--out <dir|file.json> # output dir (default tests/); a value ending in .json is the exact output file
 --quiet               # only print final OK / FAIL line + exit code
 ```
 
@@ -401,6 +407,8 @@ For every entry in `deployment_manifest.channels[]`:
 | `web` (workspace) | `GET https://<fqdn>/` returns HTTP 200 (and optionally `/health` returns "ok") |
 | `teams` (bot) | `POST https://<fqdn>/api/messages` with empty body → expect HTTP 401 with `Authorization header not found` (= JWT middleware live) |
 | `email` / `webhook` | n/a (deferred — only logs presence) |
+
+A channel whose `service` is an `azure.ai.agent` service in `azure.yaml` (Foundry hosted agent, e.g. the Foundry playground) has no ACA ingress. It is recorded as `foundry_hosted_agent` when a `Microsoft.CognitiveServices/accounts/projects` resource is deployed; otherwise it is a gap. This is a presence check, not a conversational probe — prove the business case separately with `azd ai agent invoke` and the MCP server logs.
 
 ### Step 5 — scheduled-job cron correctness
 

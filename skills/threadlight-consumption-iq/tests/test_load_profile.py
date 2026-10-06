@@ -226,3 +226,39 @@ def test_serialize_canonical_order():
     )
     assert dc_line is not None
     assert dc_line > max(positions), "declared_constraints must come after all scalar fields"
+
+
+DESIGN_TEMPLATE_SPEC = """# SPEC
+
+## 11. Governance
+
+## 12. Production Readiness
+
+- **sla**: `99.5`
+
+### `load_profile{}` (consumed by `threadlight-consumption-iq`)
+
+```yaml
+load_profile:
+  workload_class: chat-agent
+  peak_concurrent_sessions: 5
+```
+
+## 13. Next
+"""
+
+
+def test_parses_design_template_numbered_heading():
+    """threadlight-design emits `## 12.`; the parser must not require `## § 12`."""
+    profile = _parse_section_12(DESIGN_TEMPLATE_SPEC)
+    assert profile["workload_class"] == "chat-agent"
+    assert profile["peak_concurrent_sessions"] == 5
+
+
+def test_write_back_accepts_design_template_numbered_heading(tmp_path):
+    spec = tmp_path / "SPEC.md"
+    spec.write_text(DESIGN_TEMPLATE_SPEC.replace(
+        "### `load_profile{}` (consumed by `threadlight-consumption-iq`)\n\n```yaml\nload_profile:\n"
+        "  workload_class: chat-agent\n  peak_concurrent_sessions: 5\n```\n", ""), encoding="utf-8")
+    _write_back(spec, "load_profile:\n  workload_class: batch\n")
+    assert _parse_section_12(spec.read_text(encoding="utf-8"))["workload_class"] == "batch"
