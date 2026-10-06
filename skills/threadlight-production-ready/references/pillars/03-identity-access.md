@@ -54,7 +54,7 @@ scoped, and when it is reviewed. The four checks are static (tier 0, fully offli
 Optionally declare `agent-identity.governance.json` at the repo root to supplement
 owner / review metadata per subject id — the analog of `mcp-lock.json` for the
 supply-chain gate. This **amplifies** the platform: remediation points at
-`entra-agent-id`, `threadlight-govern/references/agt-inprocess`, `azure-rbac`, and Entra access reviews / PIM — it
+`entra-agent-id`, `threadlight-govern/references/agt-inprocess`, the `microsoft-foundry` `rbac` workflow, and Entra access reviews / PIM — it
 never replaces them.
 
 ## Common gaps
@@ -78,7 +78,7 @@ never replaces them.
 | Switch KV to RBAC | `threadlight-deploy/references/azd-modules` |
 | Remove client secrets | (manual; document in the report) |
 | Bind a passwordless agent identity (IAM-006) | `entra-agent-id`, `threadlight-govern/references/agt-inprocess` |
-| Scope agent identity least-privilege (IAM-008) | `azure-rbac`, `threadlight-govern/references/agt-inprocess` |
+| Scope agent identity least-privilege (IAM-008) | `microsoft-foundry` (`rbac` workflow), `threadlight-govern/references/agt-inprocess` |
 | Attach owner + lifecycle review (IAM-007 / IAM-009) | `entra-agent-id` (access reviews / PIM) |
 
 ## Why this pillar matters

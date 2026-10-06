@@ -151,7 +151,8 @@ deploys, runs the whole pipeline or replaces the full native/CTK acceptance gate
 `../threadlight-design/references/runtime-policy.json`. The locked default
 route remains `github-copilot-sdk` + `agent` + `invocations`
 (`policy_route: default-agent`). Exception routes are
-`deterministic-workflow` → MAF workflow + Responses,
+`deterministic-workflow` → MAF + Responses (Phase 2 generates the MAF Agent
+container; workflow-graph generation is not shipped — see the Workflow model gate),
 `maf-agent-capabilities` → MAF agent + Responses, and
 `explicit-supported-choice` for operator overrides listed in
 `compatible_combinations` **and** free of that route's `blocked_when`
@@ -249,7 +250,6 @@ Recommended (from `threadlight-design`):
 > | `azure-ai` | If SPEC § 7b selects any vision / DocIntel / Speech model |
 > | `microsoft-foundry` | For post-deployment evaluation AND continuous evaluation: **Plan A** (default) — Foundry's built-in scheduled evaluations (no extra infra). **Plan B** (fallback) — ACA Job cron eval that reads from App Insights and writes to Workbook (use only when Plan A doesn't yet support hosted-agent eval kinds you need). Phase 6 includes the ACA Job ONLY when SPEC § 9 sets `continuous_eval.plan: "B"` |
 > | `threadlight-citadel-spoke` | **Phase 7 (opt-in)** — runs ONLY when SPEC § 11b sets `governance_hub.required: yes` |
-> | `threadlight-workflow` | **Phase 2 alternative** — runs ONLY when SPEC § 11e sets `workflow_model: "workflow"` **AND the skill is installed** (`/skills list`). Generates a MAF Workflow container instead of an Agent container, then Phase 5-6 pick it up. **If it is not installed, do NOT block or hunt for it — fall back to the Phase 2 agent container path (see the Workflow model gate below).** |
 >
 > Use `/skills list` to check availability. If missing, install the official skills from
 > `microsoft/azure-skills` (`azure@azure-skills`, `foundry-iq-skills@azure-skills`) and the
@@ -577,6 +577,13 @@ Core deployment inputs:
 | **Auth** | BYOK (`DefaultAzureCredential` → bearer token) | `DefaultAzureCredential` → `FoundryChatClient` | Same as MAF Agent |
 | **Best for** | Open-ended chat, Q&A, RAG, exploration | Data queries, Toolbox, file generation | **Deterministic multi-phase processes with persona gates** (expense claim, hiring, KYC, contract review) |
 
+> **MAF Workflow column = target design, not generated output.** Threadlight
+> does not ship MAF Workflow (`Workflow` / `Executor` / workflow-graph)
+> templates: workflow-graph generation is **not shipped**. For the
+> `deterministic-workflow` route, Phase 2 generates the **MAF Agent** container
+> (`Agent` + `FoundryChatClient` + `ResponsesHostServer`, Responses) — see the
+> Workflow model gate in Phase 2.
+
 **Decision rules:**
 - **Trust the resolved foundation tuple first.** `specs/foundation.md` is the
   selector authority — the Phase 0 Runtime-policy pre-flight already resolved
@@ -606,6 +613,8 @@ Core deployment inputs:
   deterministic multi-phase processes where the phase order is fixed, persona
   gates control progression, and the orchestrator (not the LLM) decides what
   runs next. This is the MAF equivalent of Zava-style durable orchestration.
+  The generated pilot container is still the MAF Agent container (see the
+  note under the table); the fixed-order graph is recorded as deferred.
 - **Use explicit-supported-choice only when** the operator picked a supported,
   compatible route recorded by design **and** none of that route's
   `blocked_when` capability signals (`workflow_model=workflow`,
@@ -820,21 +829,18 @@ already exist:
 > (resolve the skills root under `use-cases/<x>/skills/`, backfill
 > `use-cases/<x>/evals/`, validate selectors) and resume at Phase 3.
 >
-> **Workflow model gate.** If SPEC § 11e sets `workflow_model: "workflow"`,
-> **prefer** the `threadlight-workflow` skill **when it is installed** (check
-> `/skills list` first). It generates `container.py`, `executors/`,
-> `workflow_graph.py`, `Dockerfile`, and `pyproject.toml` in the same
-> `src/agent/` layout that Phase 5-6 expects; resume at Phase 3 (Validate)
-> after it completes.
->
-> **If `threadlight-workflow` is NOT installed, do NOT stop, retry-loop, or
-> hunt the repo for it — fall back to the Phase 2 agent container path below.**
-> The MAF **Agent** runtime executes the same multi-step logic via agent-driven
-> tool orchestration; only the deterministic workflow-graph optimization (fixed
-> executor order, durable pause points) is deferred, which is acceptable for a
-> pilot. Emit exactly one line noting the fallback (`workflow_model=workflow but
-> threadlight-workflow unavailable → generating agent container instead`) and
-> then proceed with Phase 2 exactly as for the agent path.
+> **Workflow model gate.** If SPEC § 11e sets `workflow_model: "workflow"`
+> (route `deterministic-workflow`), generate the **MAF Agent** container in
+> Phase 2 exactly as for the `maf-agent-capabilities` route: framework
+> `microsoft-agent-framework`, protocol **Responses**, `Agent` +
+> `FoundryChatClient` + `ResponsesHostServer`, same `src/agent/` layout that
+> Phase 5-6 expect. Threadlight does not ship MAF Workflow templates:
+> deterministic workflow-graph generation (fixed executor order, durable pause
+> points) is **not shipped** and is not provided by any other skill. Do not stop,
+> retry-loop or search for another generator. Encode the SPEC phase order and
+> persona gates in the agent instructions, skills and HITL tools, and record in
+> the deploy report one line:
+> `workflow_model=workflow → MAF Agent container (Responses); deterministic workflow graph deferred (not shipped)`.
 >
 > If `workflow_model` is absent or `"agent"`, proceed with Phase 2 below
 > (the existing agent container path — unchanged).
@@ -1041,7 +1047,7 @@ The runtime uses `CopilotClient` + `InvocationAgentServerHost`:
 4. `InvocationAgentServerHost` serves the Invocations protocol (SSE streaming)
 5. Diagnostic HTTP server on import failure (keeps container alive for debugging)
 
-#### MAF variant (when Toolbox or custom @tool needed)
+#### MAF variant (`maf-agent-capabilities` and `deterministic-workflow` routes)
 
 **Copy the reference template** from the `threadlight-deploy/references/hosted-agent/maf` companion
 skill and adapt:

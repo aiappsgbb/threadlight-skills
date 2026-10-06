@@ -120,7 +120,7 @@ included). Deploy's 429 wall is gone.
 Two brand-new, **non-quality** blockers now cap everyone — and *how* each arm meets
 them is the signal:
 
-- **Blocker A — missing `threadlight-workflow` skill** (Phase 3, complex only).
+- **Blocker A — missing `threadlight-workflow` skill (never existed; resolved in 2.19.2)** (Phase 3, complex only).
   `fsi-kyc-aml` classifies as `workflow_model: "workflow"`, so `threadlight-deploy`
   delegated container generation to a `threadlight-workflow` skill that **was never
   authored** (`Skill not found`). The differentiator is **recovery**: `router` and
@@ -153,6 +153,13 @@ them is the signal:
    **prefers** `threadlight-workflow` if installed, else deterministically **falls back
    to the Phase-2 agent-container path** (removes the dangling dependency + mini's
    retry loop) while preserving the workload's domain complexity.
+
+   > **Resolved in 2.19.2 (historical record kept as evidence).** The phantom
+   > `threadlight-workflow` reference was removed: `threadlight-workflow` never existed and is
+   > not shipped. `threadlight-deploy` now always generates the MAF Agent container for
+   > `workflow_model: "workflow"` and states that workflow-graph generation is not
+   > shipped; a CI guard (`skills/_shared/tests/test_skill_references_resolve.py`) fails
+   > on any unresolved skill reference. See CHANGELOG 2.19.2.
 2. **Blocker B** — both pack Phase-4 prompts now **probe the declared protocol** (read
    `azure.yaml` / `azd ai agent show`) and retry on a protocol-version 400, instead of
    hardcoding Invocations.

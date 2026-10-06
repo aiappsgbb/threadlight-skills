@@ -414,7 +414,7 @@ automatically (IAM-009, should-fix). Inspect or refresh the inventory with:
 
 Optionally declare `agent-identity.governance.json` at the repo root to supply
 owner / review metadata per subject id. Remediation points at `entra-agent-id`,
-`threadlight-govern/references/agt-inprocess`, `azure-rbac`, and Entra access reviews / PIM — it amplifies the
+`threadlight-govern/references/agt-inprocess`, the `microsoft-foundry` `rbac` workflow, and Entra access reviews / PIM — it amplifies the
 platform's identity primitives; it does not replace them.
 
 ### EU AI Act evidence pack (Art 9 / 11 / 12 / 14 / 15 / 26 / 27)
@@ -1281,7 +1281,7 @@ lifecycle/review (IAM-009, should-fix).
 | --- | --- |
 | Identity-access pillar | Adds IAM-006..009 for the agent NHI surface (passwordless, owner, least-privilege, lifecycle). |
 | New producer | `scripts/agent_identity.py` — stdlib-only identity discovery (UAMI / federated / app-secret) → `agent-identity.json`, with a `--check` CLI. |
-| Recipes | Four new remediation recipes (IAM-006..009) point at `entra-agent-id`, `threadlight-govern/references/agt-inprocess`, `azure-rbac`, and Entra access reviews / PIM. |
+| Recipes | Four new remediation recipes (IAM-006..009) point at `entra-agent-id`, `threadlight-govern/references/agt-inprocess`, the `microsoft-foundry` `rbac` workflow, and Entra access reviews / PIM. |
 | Governance manifest | Optional `agent-identity.governance.json` supplies owner / review metadata per subject id. |
 | Degrade-safe | A producer error degrades the four findings to `not-verified` — the assessor never crashes on the identity scan. |
 

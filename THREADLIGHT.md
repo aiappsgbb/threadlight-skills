@@ -28,8 +28,9 @@ The architecture is conditional, not universally skill-routed: policy →
 `specs/foundation.md` → consistent SPEC capability signals → generated files.
 The default is GHCP SDK / agent / Invocations; supported MAF agent / Responses
 and workflow / Responses routes have explicit selection conditions. A workflow
-adds `WORKFLOW.md` executor/phase definitions and needs executable workflow
-wiring, not just Markdown. See [runtime loading](docs/skill-based-agents.md#runtime-loading)
+adds `WORKFLOW.md` executor/phase definitions; deploy currently generates the
+MAF Agent container for it, because executable workflow-graph wiring is not
+shipped. See [runtime loading](docs/skill-based-agents.md#runtime-loading)
 for the distinct GHCP/MAF APIs and the local MAF provider-fallback caveat.
 
 The public learning path is [Home](https://aiappsgbb.github.io/threadlight-skills/index.html) /

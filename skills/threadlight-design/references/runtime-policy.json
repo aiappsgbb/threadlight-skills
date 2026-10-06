@@ -91,7 +91,7 @@
       "framework": "microsoft-agent-framework",
       "runtime_shape": "workflow",
       "protocol": "responses",
-      "rationale": "Deterministic multi-phase flows need the MAF workflow runtime."
+      "rationale": "Deterministic multi-phase flows route to MAF + Responses; deploy generates the MAF Agent container (workflow-graph generation is not shipped)."
     },
     {
       "id": "maf-agent-capabilities",

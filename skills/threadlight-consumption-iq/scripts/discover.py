@@ -243,7 +243,7 @@ def discover_resources(
         if "bicep cli not found" in stderr_lower or "az bicep install" in stderr_lower:
             msg = (
                 "bicep CLI not found; install via `az bicep install` "
-                "and re-run the consumption-iq skill"
+                "and re-run the threadlight-consumption-iq skill"
             )
             print(msg, file=sys.stderr)
             raise FileNotFoundError(msg)

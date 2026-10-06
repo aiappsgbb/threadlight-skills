@@ -14,7 +14,7 @@ description: >-
   revalidation, connect-manifest, publish/republish. DO NOT USE FOR:
   customer field mapping; OAuth on-behalf-of exchange (owned by
   `entra-agent-id`); role assignment
-  (`azure-rbac`); red-team scanning (threadlight-redteam); evals
+  (`microsoft-foundry` `rbac` workflow); red-team scanning (threadlight-redteam); evals
   (threadlight-evals); AGT governance (threadlight-govern).
 metadata:
   version: "0.1.0"
