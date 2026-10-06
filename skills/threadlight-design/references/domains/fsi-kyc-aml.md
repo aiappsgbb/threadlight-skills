@@ -28,7 +28,7 @@ These are **suggestions** — confirm with the user and adapt to their specific 
 | **PEP Screening** | All customers | Screen against PEP lists (domestic + foreign) | Must include family members and close associates |
 | **Sanctions Screening** | All customers + all transactions | Screen against OFAC SDN, EU sanctions, UN sanctions | Real-time for transactions, periodic refresh for customers |
 | **Beneficial Ownership** | Entity customers (non-individual) | Identify all beneficial owners with ≥25% ownership | Threshold varies by jurisdiction (10% in some EU states) |
-| **EDD Trigger** | High-risk country, PEP, complex ownership, unusual activity | Escalate to Enhanced Due Diligence | Requires senior approval, additional documentation |
+| **EDD Trigger** | High-risk country, PEP, complex ownership, unusual activity | Escalate to Enhanced Due Diligence; the agent's output must name the matched PEP or related party and the relationship (e.g. beneficial owner, director, family member) that triggered EDD | Requires senior approval, additional documentation |
 | **Periodic Review** | All active customers | Re-verify KYC at intervals: High=1yr, Medium=3yr, Low=5yr | Triggered also by material change events |
 | **SAR Filing** | Suspicious activity detected | File Suspicious Activity Report within 30 days | Cannot notify the customer (tipping off prohibition) |
 | **CTR Filing** | Cash transaction ≥ $10,000 | File Currency Transaction Report | Structuring detection for split transactions |

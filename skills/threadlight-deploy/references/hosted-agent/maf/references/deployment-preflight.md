@@ -40,8 +40,8 @@ proves neither repository isolation nor this expanded permission contract.
 
 | Mode accepted by the gate | Required setup | Missing or incompatible setup |
 |---|---|---|
-| `basic-private` | Private injected AIServices account, project/model, **project** host `Agents`/`Succeeded`, no BYO connection arrays | Empty successful project inventory: obtain explicit authorization for only the [Basic project-host module](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry), using the existing account/project. No account-host creation requirement. |
-| `standard-private` | Account host/subnet plus project host with exact approved BYO names | Stop for the existing [Standard module/lifecycle](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry). Preserve all hosts, connections and stores. Never substitute Basic. |
+| `basic-private` | Private injected AIServices account, project/model, **project** host `Agents`/`Succeeded`, no BYO connection arrays | Empty successful project inventory: obtain explicit authorization for only the [Basic project-host module](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry), using the existing account/project. No account-host creation requirement. |
+| `standard-private` | Account host/subnet plus project host with exact approved BYO names | Stop for the existing [Standard module/lifecycle](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry). Preserve all hosts, connections and stores. Never substitute Basic. |
 | `managed-public` | Selected public/platform-managed azd setup | No additional manual hosts from legacy guidance. Existing BYO configuration requires a mode decision, not silent reuse. |
 
 Private brownfield azd is still private: an `endpoint:` pointer does not establish
@@ -59,7 +59,7 @@ credential-retrieval call or an inference from `AcrPull`.
 
 For verification use only GET, never an idempotent-looking PUT. Retain full
 successful inventories, consume pagination, and read each returned host by its
-actual name. Use the [lifecycle GET shapes](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry);
+actual name. Use the [lifecycle GET shapes](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry);
 retain `id`, `capabilityHostKind`, state and connection names, without credentials.
 403, unsupported API, timeout and partial inventory are **unknown**, not `value: []`.
 Creating/deleting/failed hosts block registration; record the exact scope/error

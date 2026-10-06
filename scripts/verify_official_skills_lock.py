@@ -8,6 +8,9 @@ script by hand before changing the pinned tag.
 
     python3 scripts/verify_official_skills_lock.py                # shallow clone into a temp dir
     python3 scripts/verify_official_skills_lock.py --clone PATH   # reuse a local clone
+    python3 scripts/verify_official_skills_lock.py --clone PATH --write
+        # regenerate the lock at skill-dependencies.json official.tag from the fetched
+        # content (never hand-edit hashes), then verify the written file
 
 Exit 0 when the lock matches, 1 with a list of mismatches otherwise.
 """
@@ -25,6 +28,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "skills" / "_shared" / "official-skills-lock.json"
+MANIFEST = ROOT / "skills" / "_shared" / "skill-dependencies.json"
+PLUGINS = ".github/plugins"
 REMOTE = "https://github.com/microsoft/azure-skills.git"
 
 
@@ -46,6 +51,56 @@ class GitFetcher:
     def read(self, commit: str, path: str) -> bytes:
         return subprocess.run(["git", "-C", str(self.clone), "show", f"{commit}:{path}"], check=True, capture_output=True).stdout
 
+    def ls(self, commit: str, path: str) -> list[str]:
+        return [line.rsplit("/", 1)[-1] for line in self._git("ls-tree", "--name-only", f"{commit}:{path}").splitlines()
+                if self._git("cat-file", "-t", f"{commit}:{path}/{line.rsplit('/', 1)[-1]}").strip() == "tree"]
+
+
+def _description(raw: bytes) -> str:
+    return yaml.safe_load(raw.decode().split("---")[1]).get("description")
+
+
+def build_lock(manifest: dict, template: dict, fetcher) -> dict:
+    """Regenerate the lock at manifest official.tag from fetched objects only.
+
+    The locked skill set and extra files come from the manifest's official and
+    official_partial references; every tree, sha256, description, version and
+    catalog name is read from the fetched release.
+    """
+    tag = manifest["official"]["tag"]
+    commit = fetcher.resolve(tag)
+    roots, catalog = {}, {}
+    for directory in sorted(fetcher.ls(commit, PLUGINS)):
+        root = f"{PLUGINS}/{directory}"
+        meta = json.loads(fetcher.read(commit, f"{root}/.claude-plugin/plugin.json"))
+        roots[meta["name"]] = (root, meta["version"])
+        catalog[directory] = sorted(fetcher.ls(commit, f"{root}/skills"))
+    wanted: dict[str, dict[str, set[str]]] = {}
+    for entry in manifest["skills"].values():
+        for target in entry.get("official", []) + entry.get("official_partial", []):
+            files = wanted.setdefault(target["plugin"], {}).setdefault(target["skill"], {"SKILL.md"})
+            files.update(target.get("paths", []))
+    plugins = {}
+    for plugin in sorted(wanted):
+        root, version = roots[plugin.split("@", 1)[0]]
+        skills = {}
+        for skill in sorted(wanted[plugin]):
+            sdir = f"{root}/skills/{skill}"
+            skills[skill] = {
+                "tree": fetcher.tree(commit, sdir),
+                "files": {rel: hashlib.sha256(fetcher.read(commit, f"{sdir}/{rel}")).hexdigest()
+                          for rel in sorted(wanted[plugin][skill])},
+                "description": _description(fetcher.read(commit, f"{sdir}/SKILL.md")),
+            }
+        plugins[plugin] = {"root": root, "tree": fetcher.tree(commit, root), "version": version, "skills": skills}
+    return {**{k: template[k] for k in ("schema", "repository", "marketplace")},
+            "tag": tag, "commit": commit, "note": template["note"],
+            "plugins": plugins, "catalog_skill_names": catalog}
+
+
+def render_lock(lock: dict) -> str:
+    return json.dumps(lock, indent=2) + "\n"
+
 
 def verify(lock: dict, fetcher) -> list[str]:
     problems: list[str] = []
@@ -65,8 +120,7 @@ def verify(lock: dict, fetcher) -> list[str]:
                 actual = hashlib.sha256(fetcher.read(commit, f"{sdir}/{rel}")).hexdigest()
                 if actual != digest:
                     problems.append(f"{plugin}/{skill}/{rel}: sha256 {actual} != {digest}")
-            front = fetcher.read(commit, f"{sdir}/SKILL.md").decode().split("---")[1]
-            if yaml.safe_load(front).get("description") != s.get("description"):
+            if _description(fetcher.read(commit, f"{sdir}/SKILL.md")) != s.get("description"):
                 problems.append(f"{plugin}/{skill}: description differs")
     return problems
 
@@ -75,14 +129,27 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--clone", type=Path, help="existing local clone of microsoft/azure-skills")
     ap.add_argument("--lock", type=Path, default=LOCK)
+    ap.add_argument("--manifest", type=Path, default=MANIFEST)
+    ap.add_argument("--write", action="store_true",
+                    help="regenerate the lock at the manifest official.tag before verifying")
     args = ap.parse_args(argv)
     lock = json.loads(args.lock.read_text(encoding="utf-8"))
+    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    tag = manifest["official"]["tag"] if args.write else lock["tag"]
+
+    def run(fetcher):
+        nonlocal lock
+        if args.write:
+            lock = build_lock(manifest, lock, fetcher)
+            args.lock.write_text(render_lock(lock), encoding="utf-8")
+        return verify(lock, fetcher)
+
     if args.clone:
-        problems = verify(lock, GitFetcher(args.clone))
+        problems = run(GitFetcher(args.clone))
     else:
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(["git", "clone", "--quiet", "--depth", "1", "--branch", lock["tag"], REMOTE, tmp], check=True)
-            problems = verify(lock, GitFetcher(Path(tmp)))
+            subprocess.run(["git", "clone", "--quiet", "--depth", "1", "--branch", tag, REMOTE, tmp], check=True)
+            problems = run(GitFetcher(Path(tmp)))
     for p in problems:
         print("MISMATCH", p)
     print("OK" if not problems else f"{len(problems)} mismatch(es)", lock["tag"], lock["commit"])

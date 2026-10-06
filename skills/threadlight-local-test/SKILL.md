@@ -143,7 +143,7 @@ python -m threadlight_quickstart --simulator
 > want the side-effect.
 
 > **Every UI turn appends to `<poc-root>/tests/quickstart.jsonl`.**
-> Shape matches what [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry)
+> Shape matches what [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry)
 > consumes — `{ts, query, response}` per row. Run a few Pattern 0
 > demos, then promote the JSONL into your Foundry eval dataset
 > without reshaping. Disable with `THREADLIGHT_QUICKSTART_NO_TRANSCRIPT=1`.

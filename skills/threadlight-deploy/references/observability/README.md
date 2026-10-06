@@ -16,7 +16,7 @@ evidence and never replaces instrumentation or verification of the telemetry pat
 > **Downstream FinOps consumers.** `threadlight-consumption-iq` reads the
 > token metrics and the Log Analytics workspace this reference wires to
 > publish pilot cost actuals and reconciliation. The official
-> [`cost-analysis`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-cost/skills/cost-analysis)
+> [`cost-analysis`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-cost/skills/cost-analysis)
 > skill answers billed cost per resource and deliberately does not claim
 > token-level attribution without a supported metric source.
 

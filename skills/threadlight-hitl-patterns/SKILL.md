@@ -428,5 +428,5 @@ declarations harvested by this skill.
 | [`foundry-teams-bot`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-teams-bot/) | Hosts the bot infrastructure that delivers cards |
 | [`threadlight-workspace-ui`](../threadlight-workspace-ui/) | Renders the same gates inside the operator workspace |
 | [`threadlight-event-triggers`](../threadlight-event-triggers/) | Generates the SLA watcher ACA job |
-| [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Reads the audit trail to compute continuous-loop KPIs |
+| [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) | Reads the audit trail to compute continuous-loop KPIs |
 | [`threadlight-safe-check`](../threadlight-safe-check/) | Verifies the bot + audit trail this skill generates are reachable from SPEC § 8 channels (post-deploy gate) |

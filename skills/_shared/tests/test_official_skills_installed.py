@@ -77,7 +77,7 @@ def test_missing_skill_names_install_command_and_fallback(tmp_path):
     text = official_skills.render(report)
     assert "copilot plugin install azure@azure-skills" in text
     assert "skills/threadlight-deploy/references/hosted-agent/maf" in text
-    assert "v1.2.77" in text
+    assert "v1.2.79" in text
 
 
 def test_drifted_or_shadowing_copy_is_reported_with_its_path(tmp_path):

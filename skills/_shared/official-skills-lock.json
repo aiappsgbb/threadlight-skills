@@ -2,12 +2,14 @@
   "schema": "threadlight-official-skills-lock/v1",
   "repository": "microsoft/azure-skills",
   "marketplace": "azure-skills",
-  "tag": "v1.2.77",
-  "commit": "74f27068b21b85807e35ae69ab3976756b060c03",
+  "tag": "v1.2.79",
+  "commit": "344bd5b3e041445237de09007ef62f4b3c51805d",
   "note": "Generated from skill-dependencies.json. tree = git tree object SHA at commit; files = sha256 of each referenced file; description = SKILL.md frontmatter description at commit; catalog_skill_names = every skill directory per plugin root at commit (collision checks). Verify online with scripts/verify_official_skills_lock.py; CI checks only offline consistency.",
   "plugins": {
     "azure-cost@azure-skills": {
       "root": ".github/plugins/azure-cost",
+      "tree": "4d8091f142d75ce72cd42cafe964fd17e2b3fc38",
+      "version": "1.0.5",
       "skills": {
         "cost-analysis": {
           "tree": "e2bcd6ba7f86f01f7c2ed74a3b7ef22d290ed3fd",
@@ -30,12 +32,12 @@
           },
           "description": "Govern Azure costs with budgets, alerts, tags, and policy restrictions. WHEN: \"Azure budget health\", \"configured budget overrun\", \"list Azure budgets\", \"create Azure budget\", \"budget alerts\", \"budget coverage\", \"missing CostCenter tags\", \"allowed VM SKUs\", \"allowed Azure regions\", \"would this SKU be denied\", \"cost guardrails\". DO NOT USE FOR: planning-target forecasts, bill investigations, pricing, rightsizing, or commitments."
         }
-      },
-      "version": "1.0.5",
-      "tree": "4d8091f142d75ce72cd42cafe964fd17e2b3fc38"
+      }
     },
     "azure@azure-skills": {
       "root": ".github/plugins/azure-skills",
+      "tree": "2cc401fac98d8c49628d6373f5c50621135f2596",
+      "version": "1.2.79",
       "skills": {
         "appinsights-instrumentation": {
           "tree": "c8073c3feba00a1ac15f83a586f85cac7c99721d",
@@ -45,9 +47,9 @@
           "description": "Guidance for instrumenting webapps with Azure Application Insights. Provides telemetry patterns, SDK setup, and configuration references. WHEN: how to instrument app, App Insights SDK, telemetry patterns, what is App Insights, Application Insights guidance, instrumentation examples, APM best practices."
         },
         "azure-ai": {
-          "tree": "88009b2c4e3acfe43034d75a75b3167c6fa73ffa",
+          "tree": "34c27c0761f1a2f730d45ddc1f395c6036723754",
           "files": {
-            "SKILL.md": "d445410cfbeb391a1eaf95fbf951ba08a017b66f9404cd434c534d54f64329b5"
+            "SKILL.md": "cef96f106d3a38f519e2fdcc4d6aba00f597e78075af4541fef6b80260fa4fc5"
           },
           "description": "Use for Azure AI: Search, Speech, OpenAI, Document Intelligence. Helps with search, vector/hybrid search, speech-to-text, text-to-speech, transcription, OCR. WHEN: AI Search, query search, vector search, hybrid search, semantic search, speech-to-text, text-to-speech, transcribe, OCR, convert text to speech."
         },
@@ -73,9 +75,9 @@
           "description": "Execute Azure deployments for ALREADY-PREPARED applications that have existing .azure/deployment-plan.md and infrastructure files. DO NOT use this skill when the user asks to CREATE a new application \u2014 use azure-prepare instead. This skill runs azd up, azd deploy, terraform apply, and az deployment commands with built-in error recovery. Requires .azure/deployment-plan.md from azure-prepare and validated status from azure-validate. WHEN: \"run azd up\", \"run azd deploy\", \"execute deployment\", \"push to production\", \"push to cloud\", \"go live\", \"ship it\", \"bicep deploy\", \"terraform apply\", \"publish to Azure\", \"launch on Azure\". DO NOT USE WHEN: \"create and deploy\", \"build and deploy\", \"create a new app\", \"set up infrastructure\", \"create and deploy to Azure using Terraform\" \u2014 use azure-prepare for these."
         },
         "azure-diagnostics": {
-          "tree": "e042226f48ca3c11ebca65aefb67e82c9f7b2579",
+          "tree": "b183bb7d219aec6e8d423397d47a99dcbd2d9d32",
           "files": {
-            "SKILL.md": "5b763986add6c09a090d0cafec21b8d9c4c24ca7cfe5470b88281e7f1e26f723"
+            "SKILL.md": "346d28f90a806ef20bc3542984eed185cd8dbca153fe59f1c4a3831cd9619707"
           },
           "description": "Debug Azure production issues on Azure using AppLens, Azure Monitor, resource health, and safe triage. WHEN: debug production issues, troubleshoot app service, app service high CPU, app service deployment failure, troubleshoot container apps, troubleshoot functions, troubleshoot AKS, VM RDP, Linux SSH, VM black screen, can't connect to VM, reset VM password, NSG or firewall blocking, kubectl cannot connect, kube-system/CoreDNS failures, pod pending, crashloop, node not ready, upgrade failures, analyze logs, KQL, insights, image pull failures, cold start issues, health probe failures, resource health, root cause of errors, troubleshoot event hubs, troubleshoot service bus, messaging SDK error, AMQP connection failure, message lock lost, service bus dead letter."
         },
@@ -129,12 +131,12 @@
           },
           "description": "Build, deploy, evaluate, optimize, fine-tune, and manage Microsoft Foundry agents, models, and resources end to end. USE FOR: foundry, azd ai agent, azd provision/deploy, hosted agent scaffold/develop/run/deploy/troubleshoot, prompt agent create, create agent, update agent, add tool to agent, invoke agent, agent.yaml, agent insights, pull agent insights, evaluate agent, batch eval, continuous eval, continuous monitoring, agent CI/CD, optimize prompt, improve prompt, prompt optimizer, optimize agent instructions, Agent Optimizer scaffold, dataset curation from traces, deploy model, model fine-tuning (SFT/DPO/RFT), Foundry project, RBAC, role assignment, permissions, quota, capacity, region, deployment failure, AI Services, create Foundry resource, knowledge index, customize deployment, onboard, availability, training-data, grader, distillation, large file upload. DO NOT USE FOR: Azure Functions, App Service, general Azure deploy (use azure-deploy), general Azure prep (use azure-prepare)."
         }
-      },
-      "version": "1.2.77",
-      "tree": "d0ed2393c1cbee0b9b85f5615f4b1c35663a796e"
+      }
     },
     "foundry-iq-skills@azure-skills": {
       "root": ".github/plugins/foundry-iq-skills",
+      "tree": "3886746539ded6f3705962168297055cad119763",
+      "version": "0.1.10",
       "skills": {
         "foundry-iq": {
           "tree": "8347596f680c0a76bf20c60e544a90a8be204a81",
@@ -143,9 +145,7 @@
           },
           "description": "Foundry IQ knowledge bases. WHEN: make local or Blob documents searchable; create/diagnose KBs; triage unsupported connectors or multi-source KB creation/reconfiguration; connect existing KB to agents (including multi-source KBs); create/reuse a Search service; retrieve from an existing knowledge base with citations; no brand words needed. Read its procedure before query/target questions. NOT: other KB providers, repository-file search, classic Azure AI Search index/query/app work, generic agent creation."
         }
-      },
-      "version": "0.1.10",
-      "tree": "3886746539ded6f3705962168297055cad119763"
+      }
     }
   },
   "catalog_skill_names": {

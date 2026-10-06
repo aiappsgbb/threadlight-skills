@@ -957,7 +957,7 @@ declaring victory.
 | [`threadlight-event-triggers`](../threadlight-event-triggers/) | Produces ACA Job / Function / consumer receivers whose deployment status (last 5 executions) safe-check probes |
 | [`threadlight-hitl-patterns`](../threadlight-hitl-patterns/) | Produces the bot + audit trail that safe-check verifies for channel reachability (SPEC § 8) |
 | [`threadlight-workspace-ui`](../threadlight-workspace-ui/) | Produces the operator workspace whose static-site / Easy Auth wiring safe-check probes |
-| [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry) | Runs *after* safe-check passes — quality/behavioural eval is meaningless on a half-deployed surface |
+| [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) | Runs *after* safe-check passes — quality/behavioural eval is meaningless on a half-deployed surface |
 | [`threadlight-tenant-isolation`](../threadlight-tenant-isolation/SKILL.md) | `AZURE_CONFIG_DIR` setup that `safe_check.py` relies on for correct-tenant `az` calls |
 | [`threadlight-deploy/references/azd-modules`](../threadlight-deploy/references/azd-modules/README.md) | Module library and canonical Bicep selector vocabulary the pre-deploy check uses |
 

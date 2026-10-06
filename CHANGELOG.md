@@ -7,6 +7,26 @@ field.
 
 ## [Unreleased]
 
+### 2.19.1: official skills lock at the current marketplace release; named escalation outputs
+
+- **Official skills lock bumped** to microsoft/azure-skills `v1.2.79`
+  (`344bd5b3`): `azure` 1.2.79, `azure-cost` 1.0.5, `foundry-iq-skills` 0.1.10.
+  Under 2.19.0, a current marketplace install reported DEGRADED (version and
+  tree drift against the 1.2.77 lock). `scripts/verify_official_skills_lock.py
+  --write` now regenerates `official-skills-lock.json` from the fetched
+  published content (the manifest's tag, plugin manifests and blob hashes), not
+  by hand. A test pins the committed file to the generator output. Pinned
+  official links, exception evidence (re-verified at the new tag) and the
+  presenter deployment pin move to v1.2.79. The `microsoft-foundry` deploy guide
+  is byte-identical, so presenter contracts written by 2.19.0 against v1.2.77
+  are accepted read-only via `presenter-deployment-pin-legacy.json`.
+- **Escalation outputs name the trigger.** The SPEC template's BR-XXX rules gain
+  an **Output** field. Escalation, routing and rejection rules must name the
+  matched entity or party and the condition it met. The KYC domain's EDD rule
+  requires naming the matched PEP or related party and the relationship. The
+  design stage carries the rule into agent instructions. (Found in the 2.19.0
+  live kyc run: EDD routing was correct but omitted the PEP's name.)
+
 ### Official Microsoft skills compatibility (live2 E2E defects)
 
 Found by running Threadlight on top of the official azure-skills v1.2.77

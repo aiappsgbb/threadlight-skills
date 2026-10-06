@@ -1,7 +1,7 @@
 # Skill & tool supply-chain — governed Foundry artifacts
 
 > **Pillar:** `supply-chain` (9). **Checks:** `SUP-008`, `SUP-009`.
-> **Companion skills:** [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry), [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.77/.github/plugins/azure-skills/skills/microsoft-foundry).
+> **Companion skills:** [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry), [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry).
 
 The container image, the Bicep modules, and the Python dependencies are not
 the only things an agent depends on. The **skills** (reusable capability
