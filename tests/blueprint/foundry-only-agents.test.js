@@ -131,6 +131,8 @@ test('no tracked skill/doc text offers an app-side agent loop except inside a pr
     .split('\n')
     .filter((f) => /\.(md|html|json|ya?ml)$/.test(f))
     .filter((f) => !/(archive|captures|superpowers|history|CHANGELOG)/i.test(f))
+    // The canonical rule file is the prohibition itself (root cause + rule); its content is asserted above.
+    .filter((f) => f !== 'skills/_shared/foundry-only-agents.md')
     .filter((f) => fs.existsSync(path.join(root, f)));
   const offenders = [];
   for (const file of files) {
