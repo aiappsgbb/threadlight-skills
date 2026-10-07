@@ -9,6 +9,7 @@ import sys
 import pytest
 
 from test_threadlight_auto_orchestrator import orch, REPO
+from skills._shared.tests.foundry_package_fixtures import seed_foundry_package
 from skills._shared import governance_readiness as readiness
 from skills._shared.tests.governance_consumer_fixtures import (
     contract, inventory, live_fixture, seed_inventory, write,
@@ -88,6 +89,7 @@ def test_execute_binds_authorized_inputs_not_deploy_outputs(tmp_path, monkeypatc
         else:
             pytest.fail("unexpected worker " + stage)
         return 0
+    seed_foundry_package(root)
     result = orch.execute(root, worker)
     assert result["status"] == ("complete" if change == "outputs" else "blocked"), result
     if change == "outputs":
@@ -124,6 +126,7 @@ def test_interrupted_existing_fqdn_forces_actual_retry_before_probe(tmp_path, mo
                 assert attempt["status"] == "succeeded" and attempt["finished_at"]
                 fresh()
             return 0
+        seed_foundry_package(root)
         result = orch.execute(root, worker)
         assert calls == (["deploy"] if fails else ["deploy", "governance_probe"])
         assert result["status"] == ("blocked" if fails else "complete")
@@ -157,6 +160,7 @@ def test_no_selection_actual_successful_govern_worker_remains_advisory(tmp_path,
         result = subprocess.run([sys.executable, str(REPO / "skills/threadlight-govern/scripts/govern_check.py"),
                                  "--target", str(tmp_path), "--emit", "--json"], capture_output=True, text=True)
         return result.returncode
+    seed_foundry_package(tmp_path)
     result = orch.execute(tmp_path, worker)
     assert result["status"] == "complete", result
     assert calls == ["govern"]
@@ -253,6 +257,7 @@ def test_unselected_deploy_can_scaffold_without_governance_gate(tmp_path, monkey
             (tmp_path / "src").mkdir()
             (tmp_path / "src/agent.py").write_text("# legacy application\n")
         return 0
+    seed_foundry_package(tmp_path)
     result = orch.execute(tmp_path, worker)
     assert result["status"] == "complete", result
     assert calls == ["deploy", "govern"]
@@ -324,6 +329,7 @@ def test_actual_root_and_nested_gate_deploy_fresh_probe_complete(tmp_path, monke
             pytest.fail("unexpected worker " + stage)
         return 0
 
+    seed_foundry_package(root)
     result = orch.execute(root, worker)
     assert result["status"] == "complete", result
     assert calls == ["governed_actions_gate", "deploy", "governance_probe"]
@@ -484,6 +490,7 @@ def test_first_deploy_creates_only_azd_outputs_before_fresh_probe(tmp_path, monk
             pytest.fail("unexpected worker " + stage)
         return 0
 
+    seed_foundry_package(root)
     result = orch.execute(root, worker)
     assert result["status"] == "complete", result
     assert calls == ["governed_actions_gate", "deploy", "governance_probe"]

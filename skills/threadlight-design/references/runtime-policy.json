@@ -8,6 +8,36 @@
     "path": "skills/threadlight-design/references/runtime-policy.json",
     "cross_repository_consumers": false
   },
+  "agent_hosting": {
+    "platform": "microsoft-foundry",
+    "default": "hosted",
+    "allowed_agent_types": [
+      "hosted",
+      "prompt"
+    ],
+    "prompt_requires_all_trivial_criteria": [
+      "exactly-one-model",
+      "no-custom-code-tools",
+      "no-multi-step-orchestration-or-hitl",
+      "no-state-beyond-foundry-thread",
+      "no-skills-provider",
+      "no-custom-middleware-or-telemetry"
+    ],
+    "prompt_requires_field": "trivial_justification",
+    "prohibited": [
+      "voice-agents",
+      "preview-only-capabilities",
+      "app-code-agent-loop"
+    ],
+    "auxiliary_compute_may_host": [
+      "ui",
+      "thin-api-proxy",
+      "mcp-tool-servers",
+      "jobs"
+    ],
+    "overrides_user_instructions": true,
+    "canonical": "skills/_shared/foundry-only-agents.md"
+  },
   "region_policy": {
     "default": "eastus2",
     "eu_residency": [

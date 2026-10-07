@@ -11,6 +11,19 @@ metadata:
 
 # Threadlight Production Ready — paving the path to production
 
+<!-- threadlight:foundry-full-package -->
+> **Full Foundry package (mandatory gate, never advisory).** A run is COMPLETE
+> only when all four parts are evidenced: (1) a real Foundry hosted or prompt agent,
+> with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
+> Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
+> custom rubric derived from the SPEC acceptance criteria, with anchors and a passing
+> threshold; (4) continuous evaluation wired to that agent. Record the evidence in
+> `specs/foundry-package-manifest.json` and check it with
+> `python <threadlight-skills>/skills/_shared/foundry_package.py --workspace <pilot-root>`. Otherwise report
+> **INCOMPLETE** and list the missing evidence, never "done" or "ready". Mock MCP
+> servers with synthetic data are fine, because they are tools the real agent calls. See
+> [`_shared/foundry-only-agents.md`](../_shared/foundry-only-agents.md#full-foundry-package-mandatory-delivery-gate).
+
 ## Enterprise handoff: three areas
 
 The report opens with a presentation-only view of existing findings:

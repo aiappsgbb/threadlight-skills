@@ -39,6 +39,8 @@ def _load_orchestrator():
 
 orch = _load_orchestrator()
 
+from skills._shared.tests.foundry_package_fixtures import seed_foundry_package  # noqa: E402
+
 
 def test_agentops_no_opt_in_skips_even_after_cascade(tmp_path):
     decision = orch._check_agentops(tmp_path, {})
@@ -171,6 +173,7 @@ def test_actual_dag_validates_gates_before_deploy_and_invoke(tmp_path, monkeypat
             write(root, ".threadlight/governance-live.json", {
                 "governance_manifest": fresh, "governance_gaps": []})
         return 0
+    seed_foundry_package(root)
     result = orch.execute(root, worker)
     assert result["status"] == "complete", result
     assert executed[:4] == ["govern", "governed_actions_gate", "deploy", "governance_probe"]
@@ -412,6 +415,7 @@ def test_real_redeploy_replan_requires_new_attempt_proof(tmp_path, monkeypatch, 
         else:
             pytest.fail("Unexpected stage: " + stage)
         return 0
+    seed_foundry_package(root)
     result = orch.execute(root, worker)
     assert attempted == ["deploy", "governance_probe"] + (
         ["safe_check", "cost_projection", "invoke", "evals", "redteam"]
@@ -1879,3 +1883,15 @@ def test_missing_yaml_dependency_does_not_crash_the_design_probe(tmp_path, monke
 
     monkeypatch.setattr(selection, "spec_contract_gaps", no_yaml)
     assert orch._spec_contract_gaps(tmp_path) == []
+
+
+def test_execute_without_full_foundry_package_is_incomplete(tmp_path, monkeypatch):
+    monkeypatch.setattr(orch, "decide", lambda *_a, **_k: {
+        "next_action": {"type": "run", "stages_to_run": []},
+        "decisions": [], "stages": {}, "presenter_ready": {"enabled": False, "ready": True}})
+    result = orch.execute(tmp_path, lambda stage: pytest.fail("unexpected " + stage))
+    assert result["status"] == "incomplete"
+    assert result["stage"] == "foundry_package"
+    assert any("specs/foundry-package-manifest.json" in item for item in result["missing"])
+    seed_foundry_package(tmp_path)
+    assert orch.execute(tmp_path, lambda stage: pytest.fail("unexpected " + stage))["status"] == "complete"

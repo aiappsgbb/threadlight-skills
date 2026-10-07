@@ -4359,6 +4359,24 @@ def _validate_cost_actuals_target_scope(
     return actual_sub, actual_rg, None
 
 
+def _foundry_package_gate(root: Path) -> dict[str, Any]:
+    """Mandatory full Foundry package gate (skills/_shared/foundry-only-agents.md).
+
+    Fails closed: a missing, malformed or uncheckable manifest is INCOMPLETE.
+    """
+    repo = Path(__file__).resolve().parents[3]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    try:
+        from skills._shared.foundry_package import FoundryPackageError, evaluate_workspace
+    except Exception:  # pragma: no cover - standalone copy without skills/_shared
+        return {"status": "INCOMPLETE", "missing": ["skills/_shared/foundry_package.py (gate checker unavailable)"]}
+    try:
+        return evaluate_workspace(root)
+    except FoundryPackageError as exc:
+        return {"status": "INCOMPLETE", "missing": [f"specs/foundry-package-manifest.json malformed: {exc}"]}
+
+
 def _cost_evidence_summary(ctx: RepoContext) -> dict[str, Any]:
     """Summarize reconciled cost evidence for the manifest/report. Never raises."""
     target_scope = _assessment_target_scope_for_ctx(ctx)
@@ -7440,6 +7458,11 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     }[rec]
     cov = manifest["verification_coverage"]
     confidence = _evidence_confidence(cov["percent"])
+    package = manifest.get("foundry_package") or {}
+    if package.get("status") == "COMPLETE":
+        out.append("- **Full Foundry package:** COMPLETE — real Foundry agent, tracing, eval with custom rubric, continuous eval")
+    elif package:
+        out.append("- **Full Foundry package:** INCOMPLETE — missing: " + "; ".join(package.get("missing") or ["unknown"]))
     out.append(f"- **Go-live recommendation:** {rec_label}")
     out.append(f"- **Raw score:** {manifest['score']['raw_percent']}%   **With waivers:** {manifest['score']['with_waivers_percent']}%")
     out.append(f"- **Verification coverage:** {cov['verified']}/{cov['total_scoreable']} checks verified ({cov['percent']}%) — the rest are `not-verified`")
@@ -8151,6 +8174,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     out_manifest["kpi_scorecard"] = _kpi_signals(ctx)
     out_manifest["cost_evidence"] = _cost_evidence_summary(ctx)
+    package = _foundry_package_gate(root)
+    out_manifest["foundry_package"] = package
+    # would_fail_hard_gate stays "any raw must-fix"; the package gate only forces not_ready.
+    if package["status"] != "COMPLETE":
+        if out_manifest["go_live_recommendation"] != "not_ready":
+            out_manifest["foundry_package"]["overrode_recommendation"] = out_manifest["go_live_recommendation"]
+            out_manifest["go_live_recommendation"] = "not_ready"
     out_path = root / args.out
     report_path = root / args.report
     try:
@@ -8220,6 +8250,11 @@ def main(argv: list[str] | None = None) -> int:
             f"with_waivers={out_manifest['score']['with_waivers_percent']}%  "
             f"posture={resolved}  verified={cov['verified']}/{cov['total_scoreable']} ({cov['percent']}%)"
         )
+        package = out_manifest.get("foundry_package") or {}
+        if package.get("status") == "COMPLETE":
+            print("  full Foundry package: COMPLETE")
+        else:
+            print("  full Foundry package: INCOMPLETE — missing: " + "; ".join(package.get("missing") or ["unknown"]))
         print(f"  -> manifest: {out_path}")
         print(f"  -> report:   {report_path}")
         if warnings:

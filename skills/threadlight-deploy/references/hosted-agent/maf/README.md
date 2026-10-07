@@ -451,7 +451,8 @@ from the canonical
 > - **A2A 1.0** is GA; **A2A 0.3** remains preview. This does not imply
 >   that every hosted runtime can expose an incoming A2A endpoint.
 >   See `microsoft-foundry` for the protocol/client/access boundary.
->   **Voice Live** retains its separately documented status in `foundry-voice-live`.
+>   **Voice Live** and voice agents are out of scope for Threadlight and not supported
+>   (see [`foundry-only-agents.md`](../../../../_shared/foundry-only-agents.md)).
 > - **Hosted tracing** (distributed traces / gen_ai spans in App
 >   Insights) is partial GA / preview depending on the exact signal —
 >   see `threadlight-deploy/references/observability` for the current split.
@@ -497,7 +498,7 @@ agents."* — none of the three is region-restricted.
 |----------|----------------|---------|
 | `responses` | `azure-ai-agentserver-responses` | Conversational chatbots, streaming, multi-turn with platform-managed history. This skill's primary pattern. |
 | `invocations` | `azure-ai-agentserver-invocations` | Webhook receivers, non-conversational processing, custom async workflows. |
-| `invocations_ws` | `azure-ai-agentserver-invocations` (same package, WebSocket route) | Bidirectional streaming — real-time voice agents, interactive media. Documented here; **not exercised by this skill's fixture**, which only drives Responses. |
+| `invocations_ws` | `azure-ai-agentserver-invocations` (same package, WebSocket route) | Bidirectional streaming. This is listed for upstream completeness only. Threadlight does not support voice agents or realtime voice; they are out of scope, and this route is never chosen for a pilot. **Not exercised by this skill's fixture**, which only drives Responses. |
 | Activity (auto-bridge) | n/a — platform-managed | Foundry automatically bridges Responses to the Bot Framework Activity protocol for Teams / Microsoft 365 Copilot publishing. No code change on the agent side. Publishing setup itself is out of scope for this skill — see `foundry-teams-bot` / the Teams publishing backlog for that contract. |
 
 Declare the protocols a container serves in the `protocols` list of the

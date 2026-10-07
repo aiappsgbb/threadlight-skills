@@ -15,6 +15,16 @@ the implementation, [THREADLIGHT.md](../THREADLIGHT.md) for exhaustive per-skill
 reference, and [agent operations](agent-operations.md) for the signed/runtime
 governance protocol. None of these documents authorizes a deployment.
 
+> **Foundry-only agents.** The business agent always runs in Microsoft Foundry.
+> It is a **hosted agent** by default (GHCP SDK or MAF container). A **prompt
+> agent** is allowed only when it is trivial: one model, no custom code tools,
+> no multi-step orchestration, no state beyond the thread, and no skills. Voice
+> agents, preview-only Foundry features and any agent loop in application code
+> are not supported. That includes ACA, App Service, Functions, a web app, or
+> direct Responses / Chat Completions tool loops. Container Apps hosts only the
+> UI, a thin proxy, MCP tool servers or jobs. Canonical rule:
+> [`foundry-only-agents.md`](../skills/_shared/foundry-only-agents.md).
+
 ## Two agents and two libraries
 
 A **construction agent** reads catalog `skills/threadlight-*/SKILL.md` files.

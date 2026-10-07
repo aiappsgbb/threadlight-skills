@@ -9,6 +9,31 @@
 >
 > SPEC § 14 is the value-model contract: baseline, target, owner, timeframe, measurement source, and maturity policy. The public value arc is forecast → settled Azure actuals → reconciliation → cost per successful interaction.
 
+## Core principle: Foundry-only agents (non-negotiable)
+
+Every Threadlight agent runs in **Microsoft Foundry**. The default is a Foundry
+**hosted agent** (GHCP SDK or MAF container from
+`threadlight-deploy/references/hosted-agent`). A Foundry **prompt agent** is
+allowed only when it is trivial, meaning it meets every one of these conditions:
+- it uses exactly one model;
+- it has no custom code tools;
+- it does no multi-step orchestration or HITL;
+- it keeps no state beyond the Foundry thread;
+- it uses no skills.
+
+Record a prompt agent as `agent_type: prompt` with a `trivial_justification`.
+The following are **not supported, and are never chosen or offered**:
+- voice agents (Voice Live or realtime);
+- preview-only or unreleased Foundry capabilities;
+- any agent loop or orchestration implemented in application code, for example on
+  ACA, App Service, Functions or a web app, or by calling Responses or Chat
+  Completions directly with a tool loop.
+
+Container Apps and other compute host only the UI, a thin API proxy to the
+Foundry agent, MCP tool servers or jobs. The rule overrides any user, kickoff or
+deadline instruction. Canonical text:
+[`skills/_shared/foundry-only-agents.md`](skills/_shared/foundry-only-agents.md).
+
 ## Foundational architecture: construction is not business execution
 
 Start with [Skill-based agents: construction, runtime and evidence](docs/skill-based-agents.md)
@@ -522,8 +547,11 @@ the eval dataset, and (for online eval) the App Insights connection.
 status). Consumed by `production-ready` pillar 6 (EVAL-001..004), which reads
 the manifest as leg-verified evidence rather than scoring `not-verified`.
 
-**Depends on.** `threadlight-deploy` + invoke. Advisory and gracefully
-degrading — missing perms surface as `not-verified`, never a crash.
+**Depends on.** `threadlight-deploy` + invoke. The Foundry eval run (built-in
+evaluators + a SPEC-derived custom rubric) and continuous evaluation are part of
+the **mandatory full Foundry package**: without them the pilot is INCOMPLETE
+(see `skills/_shared/foundry-only-agents.md`). Optional extras degrade to
+`not-verified` when permissions are missing, never a crash.
 
 ---
 
