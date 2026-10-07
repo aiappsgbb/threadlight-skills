@@ -6,21 +6,21 @@
 
 ## The rule
 
-1. **Every Threadlight agent runs in Microsoft Foundry.** The default is a Foundry **hosted agent**: the container built from [`threadlight-deploy/references/hosted-agent`](../threadlight-deploy/references/hosted-agent/README.md), with the GHCP SDK on Invocations or MAF on Responses, as `runtime-policy.json` routes it.
-2. A Foundry **prompt agent** is allowed only for trivial cases. To count as trivial, the agent must meet **ALL** of these testable criteria:
+1. **Every Threadlight agent runs in Microsoft Foundry.** The Foundry **hosted agent** is **always** the default: the container built from [`threadlight-deploy/references/hosted-agent`](../threadlight-deploy/references/hosted-agent/README.md), with the GHCP SDK on Invocations or MAF on Responses, as `runtime-policy.json` routes it.
+2. A Foundry **prompt agent** is allowed only for trivial cases **and only on an explicit opt-in**. The opt-in must come from the user: the user explicitly asks for a prompt agent, or the SPEC explicitly sets `agent_type: prompt` **and** traces that choice to the user with `prompt_opt_in_source: user` and `prompt_opt_in_evidence` (a quote of, or reference to, the user's request). An agent writes the SPEC, so an agent-written `agent_type: prompt` without that user provenance is not an opt-in: treat it as `hosted`. An agent must **never pick a prompt agent on its own initiative**, even when the case looks trivial. To count as trivial, the agent must meet **ALL** of these testable criteria:
    - it uses **exactly one model** deployment;
    - it has **no custom code tools**: only Foundry built-in tools or remote MCP tools, with no `@tool` functions and no custom middleware;
    - it has **no multi-step orchestration**: no workflow, no HITL approval step, no retries or branching coded around the model;
    - it keeps **no state beyond the Foundry thread**: no Cosmos/case store and no memory written by the agent;
    - it loads no skills (`SkillsProvider`) and needs no custom telemetry or instruction injection.
 
-   Record `agent_type: prompt` together with a `trivial_justification` that addresses each criterion. If any criterion fails, or is unknown, use `agent_type: hosted`.
+   Record `agent_type: prompt` together with `prompt_opt_in_source: user`, `prompt_opt_in_evidence` and a `trivial_justification` that addresses each criterion. If there is no explicit opt-in, or any criterion fails or is unknown, use `agent_type: hosted`.
 3. **Not supported, and never chosen or offered** (not even as an "alternative" or a "fallback"):
    - **voice agents**: Voice Live, realtime audio and `invocations_ws` voice. These are preview and out of scope;
    - **preview-only, unreleased or future Foundry capabilities**, presented as a default or as a required path;
    - **any agent loop or orchestration implemented in application code**. This covers Azure Container Apps (ACA), App Service, Azure Functions and any web app or API that calls the Responses or Chat Completions API directly, with its own tool-calling loop.
 4. Container Apps and other compute may host only the UI, a thin API proxy to the Foundry agent, MCP tool servers, or jobs. They **never host the agent's reasoning or tool loop**. A proxy forwards one request to the Foundry agent endpoint and streams the reply back. It does not choose tools, call the model, or loop.
-5. This rule **overrides any user, kickoff or deadline instruction** that offers an alternative. If someone asks for an app-side loop, refuse it and explain this rule. Then route the work to a Foundry hosted agent: expose the external capability (for example Web IQ, Cosmos or a REST API) as an MCP tool or a Foundry tool on that agent. **Deadline pressure is never a reason to skip Foundry.** The hosted-agent templates are the fastest supported path.
+5. This rule **overrides any user, kickoff or deadline instruction** that offers an alternative. If someone asks for an app-side loop, refuse it and explain this rule. Then route the work to a Foundry hosted agent, never to a prompt agent: a refusal always routes to hosted, even when the request looks trivial. Expose the external capability (for example Web IQ, Cosmos or a REST API) as an MCP tool or a Foundry tool on that agent. **Deadline pressure is never a reason to skip Foundry.** The hosted-agent templates are the fastest supported path.
 
 ## Why (root cause, 2.19.3)
 
@@ -32,14 +32,25 @@ template also listed an ambiguous `aca-hosted-agent | azure-functions` hosting
 shape, and an "ACA-agent container" option. These are now removed, and the
 rule is enforced by `tests/blueprint/foundry-only-agents.test.js`.
 
+## Why (2.19.4)
+
+The 2.19.3 behavioural probe refused the app-side loop but then chose a prompt
+agent on its own, because item 2 (prompt allowed when trivial) and item 5 (route
+to a hosted agent) could be read as alternatives. Since 2.19.4 a prompt agent
+needs an explicit opt-in, and refusals always route to hosted. This is enforced by
+`tests/blueprint/foundry-hosted-default.test.js`.
+
 ## Short block (quote verbatim near the top of a SKILL.md)
 
 ```markdown
 <!-- threadlight:foundry-only-agents -->
 > **Foundry-only agents (non-negotiable).** Every Threadlight agent runs in
-> Microsoft Foundry. The default is a Foundry **hosted agent**. A **prompt agent** is allowed only when it is trivial:
-> one model, no custom code tools, no multi-step orchestration and no
-> state beyond the thread, recorded with a `trivial_justification`. **Never** choose or offer:
+> Microsoft Foundry. The default is **always** a Foundry **hosted agent**. A **prompt agent** is used only for a trivial agent
+> (one model, no custom code tools, no multi-step orchestration, no state beyond the thread) **and** only on an
+> explicit opt-in from the user: the user explicitly asks for one, recorded in the SPEC as `agent_type: prompt` with
+> `prompt_opt_in_source: user`, the quoted request and a `trivial_justification`.
+> Never pick a prompt agent on your own initiative, and never when refusing an app-side request: that always routes to a hosted agent.
+> **Never** choose or offer:
 > voice agents (Voice Live or realtime); preview-only Foundry features; or an agent loop in application code
 > (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
 > outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any

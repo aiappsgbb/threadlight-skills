@@ -11,10 +11,13 @@
 
 ## Core principle: Foundry-only agents (non-negotiable)
 
-Every Threadlight agent runs in **Microsoft Foundry**. The default is a Foundry
-**hosted agent** (GHCP SDK or MAF container from
+Every Threadlight agent runs in **Microsoft Foundry**. The default is **always** a
+Foundry **hosted agent** (GHCP SDK or MAF container from
 `threadlight-deploy/references/hosted-agent`). A Foundry **prompt agent** is
-allowed only when it is trivial, meaning it meets every one of these conditions:
+allowed only on an explicit opt-in from the user (the user explicitly asks for one,
+recorded in the SPEC as `agent_type: prompt` with `prompt_opt_in_source: user`,
+`prompt_opt_in_evidence` and a `trivial_justification`; an agent-written value is not an opt-in) and only when it is
+trivial, meaning it meets every one of these conditions:
 - it uses exactly one model;
 - it has no custom code tools;
 - it does no multi-step orchestration or HITL;
@@ -22,6 +25,8 @@ allowed only when it is trivial, meaning it meets every one of these conditions:
 - it uses no skills.
 
 Record a prompt agent as `agent_type: prompt` with a `trivial_justification`.
+Never pick a prompt agent on your own initiative, and never when refusing an
+app-side request: a refusal always routes to a hosted agent.
 The following are **not supported, and are never chosen or offered**:
 - voice agents (Voice Live or realtime);
 - preview-only or unreleased Foundry capabilities;

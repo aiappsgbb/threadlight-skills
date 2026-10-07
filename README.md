@@ -16,9 +16,14 @@
 > settled Azure actuals → reconciliation → cost per successful interaction.
 >
 > **Foundry-only agents (non-negotiable).** Every agent that Threadlight
-> produces runs in **Microsoft Foundry**. The default is a Foundry **hosted
-> agent**. A **prompt agent** is allowed only for trivial cases: one model, no
-> custom code tools, no multi-step orchestration and no state beyond the thread.
+> produces runs in **Microsoft Foundry**. The default is **always** a Foundry
+> **hosted agent**. A **prompt agent** is allowed only for trivial cases (one
+> model, no custom code tools, no multi-step orchestration, no state beyond the
+> thread) and only on an explicit opt-in: the user explicitly asks for one, recorded
+> in the SPEC as `agent_type: prompt` with `prompt_opt_in_source: user` and a
+> `trivial_justification` (an agent-written value is not an opt-in). Never pick a
+> prompt agent on your own initiative, and never when refusing an app-side request:
+> a refusal always routes to a hosted agent.
 > Voice agents, preview-only Foundry features and any agent loop in application
 > code are **not supported**, and are never chosen or offered. That includes
 > ACA, App Service, Functions, a web app, or direct Responses / Chat Completions

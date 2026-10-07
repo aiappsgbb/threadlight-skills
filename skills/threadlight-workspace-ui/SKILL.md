@@ -20,9 +20,12 @@ metadata:
 
 <!-- threadlight:foundry-only-agents -->
 > **Foundry-only agents (non-negotiable).** Every Threadlight agent runs in
-> Microsoft Foundry. The default is a Foundry **hosted agent**. A **prompt agent** is allowed only when it is trivial:
-> one model, no custom code tools, no multi-step orchestration and no
-> state beyond the thread, recorded with a `trivial_justification`. **Never** choose or offer:
+> Microsoft Foundry. The default is **always** a Foundry **hosted agent**. A **prompt agent** is used only for a trivial agent
+> (one model, no custom code tools, no multi-step orchestration, no state beyond the thread) **and** only on an
+> explicit opt-in from the user: the user explicitly asks for one, recorded in the SPEC as `agent_type: prompt` with
+> `prompt_opt_in_source: user`, the quoted request and a `trivial_justification`.
+> Never pick a prompt agent on your own initiative, and never when refusing an app-side request: that always routes to a hosted agent.
+> **Never** choose or offer:
 > voice agents (Voice Live or realtime); preview-only Foundry features; or an agent loop in application code
 > (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
 > outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
