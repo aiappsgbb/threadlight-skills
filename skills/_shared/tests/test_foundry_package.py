@@ -136,6 +136,26 @@ def test_present_continuous_evaluation_is_still_validated():
     assert any("continuous_evaluation.rule_id" in item for item in result["missing"])
 
 
+@pytest.mark.parametrize("bad", ["enabled", [], 1, True])
+def test_non_object_continuous_evaluation_is_incomplete(bad):
+    value = complete_manifest()
+    value["continuous_evaluation"] = bad
+    result = fp.evaluate(value)
+    assert result["status"] == "INCOMPLETE"
+    assert any("continuous_evaluation (must be an object)" in item for item in result["missing"])
+
+
+def test_null_continuous_evaluation_means_not_recorded():
+    value = complete_manifest()
+    value["continuous_evaluation"] = None
+    assert fp.evaluate(value)["status"] == "COMPLETE"
+
+
+def test_module_docstring_does_not_require_continuous_evaluation():
+    assert "all four items" not in (fp.__doc__ or "")
+    assert "continuous evaluation is optional" in " ".join((fp.__doc__ or "").split()).lower()
+
+
 def test_complete_report_line_does_not_claim_continuous_eval_is_required():
     value = complete_manifest()
     del value["continuous_evaluation"]
