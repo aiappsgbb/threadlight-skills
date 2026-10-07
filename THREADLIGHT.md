@@ -553,9 +553,10 @@ status). Consumed by `production-ready` pillar 6 (EVAL-001..004), which reads
 the manifest as leg-verified evidence rather than scoring `not-verified`.
 
 **Depends on.** `threadlight-deploy` + invoke. The Foundry eval run (built-in
-evaluators + a SPEC-derived custom rubric) and continuous evaluation are part of
-the **mandatory full Foundry package**: without them the pilot is INCOMPLETE
-(see `skills/_shared/foundry-only-agents.md`). Optional extras degrade to
+evaluators + a SPEC-derived custom rubric), executed once against the deployed
+agent, is part of the **mandatory full Foundry package**: without it the pilot is
+INCOMPLETE (see `skills/_shared/foundry-only-agents.md`). Continuous evaluation is
+optional: the GA evaluation rules reject hosted agents and beta schedules are preview. Optional extras degrade to
 `not-verified` when permissions are missing, never a crash.
 
 ---

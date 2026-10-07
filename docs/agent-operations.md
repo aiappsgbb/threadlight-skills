@@ -37,9 +37,9 @@ For the separate opt-in lifecycle adapter, see [AgentOps](#agentops-preview-expl
 > target. Voice agents and preview-only Foundry features are out of scope. See
 > [`foundry-only-agents.md`](../skills/_shared/foundry-only-agents.md).
 > Delivery also requires the mandatory full Foundry package: a real agent,
-> tracing, a Foundry eval with a custom rubric, and continuous evaluation,
-> evidenced in `specs/foundry-package-manifest.json`. Otherwise the result is
-> INCOMPLETE.
+> tracing, and one executed Foundry eval with a custom rubric, evidenced in
+> `specs/foundry-package-manifest.json`. Continuous evaluation is optional (GA
+> evaluation rules reject hosted agents). Otherwise the result is INCOMPLETE.
 
 ## Availability and source
 

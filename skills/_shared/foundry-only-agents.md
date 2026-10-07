@@ -63,7 +63,7 @@ needs an explicit opt-in, and refusals always route to hosted. This is enforced 
 
 A pilot, deploy or production-readiness run is **COMPLETE only when it delivers
 the full Foundry package**. The gate is **mandatory and never advisory or
-optional**. Deadline pressure does not waive it. The package has four parts:
+optional**. Deadline pressure does not waive it. The package has three parts:
 
 1. **A real Foundry hosted or prompt agent.** It must be deployed and invoked
    as a Foundry agent (`agent.kind` is `foundry-hosted` or `foundry-prompt`, with
@@ -72,12 +72,21 @@ optional**. Deadline pressure does not waive it. The package has four parts:
    `fallback_active` is exactly `false`.
 2. **Application Insights connected to the Foundry project**, with at least
    one agent trace visible in **Foundry tracing** (record its `trace_id`).
-3. **A Foundry evaluation run** that uses **built-in evaluators** plus **at
-   least one custom rubric** evaluator. Each rubric is derived from the
-   SPEC **acceptance criteria**, and has scoring anchors, a pass
-   **threshold** and a recorded score at or above that threshold.
-4. **Continuous evaluation** wired to the same agent (an enabled rule,
-   with an `agent_name` that matches the deployed agent).
+3. **One executed, working Foundry evaluation run** against the deployed and invoked
+   agent (GA batch eval: data source `azure_ai_target_completions`, target type
+   `azure_ai_agent` naming the same agent; when `evaluation.target` is recorded the
+   gate checks it). It uses **built-in evaluators** plus **at least one
+   custom rubric** evaluator. Each rubric is derived from the SPEC
+   **acceptance criteria**, and has scoring anchors, a pass **threshold** and a recorded score
+   at or above that threshold.
+
+**Continuous evaluation is optional** (since 2.19.4) and is not part of the
+package. One working eval run to show is enough. The reason: the GA
+`evaluation_rules` API rejects hosted agents with HTTP 400 "Hosted and external
+agents are not supported", and the `beta.schedules` route is preview (out of
+scope under the Foundry-only rule). If a `continuous_evaluation` section is
+recorded anyway, the gate still validates it (a `rule_id`, `enabled: true` and an
+`agent_name` that matches the deployed agent).
 
 Record the evidence in `specs/foundry-package-manifest.json` (schema
 `threadlight-foundry-package/v1`). Then check it with:

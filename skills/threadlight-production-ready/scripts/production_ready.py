@@ -7460,7 +7460,7 @@ def _render_report(manifest: dict, posture: dict, pillar_results_waived: dict[st
     confidence = _evidence_confidence(cov["percent"])
     package = manifest.get("foundry_package") or {}
     if package.get("status") == "COMPLETE":
-        out.append("- **Full Foundry package:** COMPLETE — real Foundry agent, tracing, eval with custom rubric, continuous eval")
+        out.append("- **Full Foundry package:** COMPLETE — real Foundry agent, tracing, executed eval with custom rubric (continuous evaluation optional)")
     elif package:
         out.append("- **Full Foundry package:** INCOMPLETE — missing: " + "; ".join(package.get("missing") or ["unknown"]))
     out.append(f"- **Go-live recommendation:** {rec_label}")

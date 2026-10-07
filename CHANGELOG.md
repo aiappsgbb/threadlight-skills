@@ -40,6 +40,26 @@ field.
   review, three more tests (RED 3/9, then GREEN) require user provenance for a
   SPEC opt-in, refusal→hosted in the docs, and a repository-wide scan that fails
   on prompt offered as "trivial only", "simpler" or a fallback without the opt-in.
+- **Continuous evaluation is optional in the full Foundry package
+  (user-directed).** Root cause: 2.19.3 made continuous evaluation the fourth
+  mandatory part of the package. Wiring it for a hosted agent fails: the GA
+  `evaluation_rules` API returns HTTP 400 "Hosted and external agents are not
+  supported", and the `beta.schedules` route is preview, which the Foundry-only
+  rule puts out of scope. So the gate could not be met with the default agent.
+  Fix: the package now has three parts. The third is one executed, working
+  Foundry eval run against the deployed agent (GA batch eval:
+  `azure_ai_target_completions` with an `azure_ai_agent` target), with built-in
+  evaluators and a SPEC-derived custom rubric. `foundry_package.py` treats
+  `continuous_evaluation` as optional and validates it only when it is recorded.
+  When an `evaluation.target` is recorded, it must be an `azure_ai_agent` that
+  names the same agent. The COMPLETE line no longer claims continuous eval.
+  The canonical rule, the gate block in the deploy, auto, evals and
+  production-ready SKILL.md files, auto stage 7, the README, `THREADLIGHT.md`,
+  `docs/agent-operations.md`, the production-ready report line and pillar 6
+  (Plan B for hosted agents) are updated. Tests:
+  `tests/blueprint/foundry-package-continuous-optional.test.js` (RED 7/7, then
+  GREEN) and four pytest cases in `skills/_shared/tests/test_foundry_package.py`
+  (RED 3 of 4, then GREEN).
 
 ### 2.19.3: Foundry-only agents. A hosted agent is the default, a prompt agent is for trivial cases only, and app-code agent loops are prohibited
 

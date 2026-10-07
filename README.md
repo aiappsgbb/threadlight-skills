@@ -34,8 +34,9 @@
 > **Full Foundry package (mandatory).** A pilot is complete only with a real
 > Foundry agent (no fake or fallback agent), Application Insights with a trace
 > visible in Foundry, a Foundry eval run with built-in evaluators plus a
-> SPEC-derived custom rubric, and continuous evaluation. Otherwise deploy, auto
-> and production-ready report **INCOMPLETE** and list the missing evidence.
+> SPEC-derived custom rubric, executed against the deployed agent. Continuous
+> evaluation is optional (GA evaluation rules reject hosted agents). Otherwise
+> deploy, auto and production-ready report **INCOMPLETE** and list the missing evidence.
 
 ## What is a skill?
 

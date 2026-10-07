@@ -37,11 +37,11 @@ metadata:
 
 <!-- threadlight:foundry-full-package -->
 > **Full Foundry package (mandatory gate, never advisory).** A run is COMPLETE
-> only when all four parts are evidenced: (1) a real Foundry hosted or prompt agent,
+> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent,
 > with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
 > Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
 > custom rubric derived from the SPEC acceptance criteria, with anchors and a passing
-> threshold; (4) continuous evaluation wired to that agent. Record the evidence in
+> threshold, executed against the deployed agent. Continuous evaluation is optional (GA rules reject hosted agents). Record the evidence in
 > `specs/foundry-package-manifest.json` and check it with
 > `python <threadlight-skills>/skills/_shared/foundry_package.py --workspace <pilot-root>`. Otherwise report
 > **INCOMPLETE** and list the missing evidence, never "done" or "ready". Mock MCP
@@ -438,7 +438,7 @@ Preserve scripts, business HITL and existing Kratos-export ownership.
 | 4 | Safe-check (post-deploy) | `threadlight-safe-check` `phase=post-deploy` | `tests/postdeploy-manifest.json` (`checked_at`, `phase=post-deploy`, `gaps=[]`) + behavioral gates green; `docs/safe-check-post.md` is optional human-readable evidence |
 | 5 | Cost-projection (**new**, advisory) | `threadlight-consumption-iq` (`scripts/consumption_iq.py run --all`) | `docs/cost-projection.md` + `specs/cost-manifest.json`. Exit 4 (load profile incomplete) → sets `cost-projection: needs-wizard` in state, surfaces wizard prompt to operator; does NOT block chain. Exit 3 (pricing unavailable, no fixture) → sets `cost-projection: degraded-no-pricing`, warns, continues. Exit 2 (missing prereq, e.g. no SPEC) → same as other missing-prereq cases. Reconciled actuals are an opt-in subphase of this stage — see [§ Reconciled actuals](#cost-projection-stage--optional-reconciled-actuals-subphase-opt-in). |
 | 6 | Invoke | direct `azd ai agent invoke` ×2 | Both demo scenarios from `specs/SPEC.md § Demo Scenarios` succeed |
-| 7 | Evals — Discover (blocking package gate) | `threadlight-evals` (`scripts/evals_check.py`) | `specs/evals-manifest.json` — offline batch (delegates to `microsoft-foundry`), Foundry Continuous Evaluation wiring on live threads, + A/B champion–challenger gate. Consumed by production-ready pillar 6 (EVAL-001..004). The Foundry eval run with a custom rubric and continuous evaluation are part of the mandatory full Foundry package: without them the run ends INCOMPLETE and blocks completion. Optional extras (A/B gate, judge calibration) may still degrade to `not-verified`. |
+| 7 | Evals — Discover (blocking package gate) | `threadlight-evals` (`scripts/evals_check.py`) | `specs/evals-manifest.json` — offline batch (delegates to `microsoft-foundry`), Foundry Continuous Evaluation wiring on live threads, + A/B champion–challenger gate. Consumed by production-ready pillar 6 (EVAL-001..004). One executed Foundry eval run with a custom rubric is part of the mandatory full Foundry package: without it the run ends INCOMPLETE and blocks completion. Continuous evaluation is optional (GA evaluation rules reject hosted agents; beta schedules are preview). Optional extras (A/B gate, judge calibration) may still degrade to `not-verified`. |
 | 8 | Red-team — Discover (advisory) | `threadlight-redteam` (`scripts/redteam_check.py`) | `docs/redteam-report.md` + `specs/redteam-manifest.json` — AI Red Teaming Agent adversarial scan (jailbreak / prompt-injection / exfiltration / harmful-content). Mapped to production-ready pillar 7 (SAFE-101..106). Advisory — never blocks. |
 | before 3 | Govern + mandatory governed-actions gate (when selected) | `threadlight-govern`, `threadlight-governed-actions` | Current binding inventory + strictly validated pre-deploy ledger. Blocks deploy until satisfied. |
 | after 3 | Governance probe (when selected) | `threadlight-safe-check` explicit collector | Current exact binding evidence at `specs/governance-manifest.json`. Blocks all subsequent stages until satisfied; no business-action probing. |

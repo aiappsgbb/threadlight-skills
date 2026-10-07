@@ -21,6 +21,8 @@ def complete_manifest(agent_name: str = "returns-triage") -> dict:
         },
         "evaluation": {
             "eval_run_id": "evalrun_123",
+            "data_source_type": "azure_ai_target_completions",
+            "target": {"type": "azure_ai_agent", "name": agent_name},
             "builtin_evaluators": ["task_adherence", "intent_resolution"],
             "custom_rubric_evaluators": [{
                 "name": "returns-policy-rubric",
