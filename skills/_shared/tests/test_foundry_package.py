@@ -1,8 +1,9 @@
 """Full Foundry package delivery gate (release 2.19.3).
 
 A Threadlight pilot is delivered only with a real Foundry agent, Foundry
-tracing, a Foundry eval run with a SPEC-derived custom rubric, and continuous
-evaluation. Anything less is INCOMPLETE and names the missing evidence.
+tracing and an executed Foundry eval run with a SPEC-derived custom rubric.
+Continuous evaluation is optional since 2.19.4 (validated only when recorded).
+Anything less is INCOMPLETE and names the missing evidence.
 """
 from __future__ import annotations
 
@@ -75,7 +76,6 @@ def test_prompt_agent_requires_trivial_justification():
     ("telemetry", "app_insights_connection_id"), ("telemetry", "trace_id"),
     ("evaluation", "eval_run_id"), ("evaluation", "builtin_evaluators"),
     ("evaluation", "custom_rubric_evaluators"),
-    ("continuous_evaluation", "rule_id"),
 ])
 def test_each_required_evidence_item_is_named_when_missing(section, field):
     value = complete_manifest()
@@ -85,7 +85,7 @@ def test_each_required_evidence_item_is_named_when_missing(section, field):
     assert any(f"{section}.{field}" in item for item in result["missing"]), result["missing"]
 
 
-@pytest.mark.parametrize("section", ["agent", "telemetry", "evaluation", "continuous_evaluation"])
+@pytest.mark.parametrize("section", ["agent", "telemetry", "evaluation"])
 def test_missing_section_is_incomplete(section):
     value = complete_manifest()
     del value[section]
@@ -116,6 +116,64 @@ def test_continuous_evaluation_must_be_enabled_for_the_same_agent():
     assert fp.evaluate(value)["status"] == "INCOMPLETE"
     value = complete_manifest()
     value["continuous_evaluation"]["agent_name"] = "other-agent"
+    assert fp.evaluate(value)["status"] == "INCOMPLETE"
+
+
+def test_continuous_evaluation_is_optional():
+    # 2.19.4: GA evaluation_rules reject hosted agents and beta.schedules is preview.
+    value = complete_manifest()
+    del value["continuous_evaluation"]
+    result = fp.evaluate(value)
+    assert result["status"] == "COMPLETE", result
+    assert result["evidence"]["continuous_evaluation_rule_id"] is None
+
+
+def test_present_continuous_evaluation_is_still_validated():
+    value = complete_manifest()
+    del value["continuous_evaluation"]["rule_id"]
+    result = fp.evaluate(value)
+    assert result["status"] == "INCOMPLETE"
+    assert any("continuous_evaluation.rule_id" in item for item in result["missing"])
+
+
+@pytest.mark.parametrize("bad", ["enabled", [], 1, True])
+def test_non_object_continuous_evaluation_is_incomplete(bad):
+    value = complete_manifest()
+    value["continuous_evaluation"] = bad
+    result = fp.evaluate(value)
+    assert result["status"] == "INCOMPLETE"
+    assert any("continuous_evaluation (must be an object)" in item for item in result["missing"])
+
+
+def test_null_continuous_evaluation_means_not_recorded():
+    value = complete_manifest()
+    value["continuous_evaluation"] = None
+    assert fp.evaluate(value)["status"] == "COMPLETE"
+
+
+def test_module_docstring_does_not_require_continuous_evaluation():
+    assert "all four items" not in (fp.__doc__ or "")
+    assert "continuous evaluation is optional" in " ".join((fp.__doc__ or "").split()).lower()
+
+
+def test_complete_report_line_does_not_claim_continuous_eval_is_required():
+    value = complete_manifest()
+    del value["continuous_evaluation"]
+    line = fp.report_line(fp.evaluate(value))
+    assert line.startswith("COMPLETE")
+    assert "continuous eval)" not in line
+
+
+def test_batch_eval_target_when_recorded_must_be_the_same_foundry_agent():
+    value = complete_manifest()
+    value["evaluation"]["data_source_type"] = "azure_ai_target_completions"
+    value["evaluation"]["target"] = {"type": "azure_ai_agent", "name": "returns-triage"}
+    assert fp.evaluate(value)["status"] == "COMPLETE"
+    value["evaluation"]["target"] = {"type": "azure_openai_model", "name": "gpt-4o"}
+    result = fp.evaluate(value)
+    assert result["status"] == "INCOMPLETE"
+    assert any("evaluation.target" in item for item in result["missing"])
+    value["evaluation"]["target"] = {"type": "azure_ai_agent", "name": "other-agent"}
     assert fp.evaluate(value)["status"] == "INCOMPLETE"
 
 

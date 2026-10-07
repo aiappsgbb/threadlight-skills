@@ -24,6 +24,22 @@
       "no-custom-middleware-or-telemetry"
     ],
     "prompt_requires_field": "trivial_justification",
+    "prompt_requires_explicit_opt_in": true,
+    "prompt_opt_in_sources": [
+      "spec-agent-type-prompt",
+      "explicit-user-request"
+    ],
+    "prompt_opt_in_required_fields": [
+      "trivial_justification",
+      "prompt_opt_in_source",
+      "prompt_opt_in_evidence"
+    ],
+    "prompt_opt_in_source_allowed": [
+      "user"
+    ],
+    "agent_authored_spec_counts_as_opt_in": false,
+    "agent_may_select_prompt_on_own_initiative": false,
+    "refusal_route": "hosted",
     "prohibited": [
       "voice-agents",
       "preview-only-capabilities",

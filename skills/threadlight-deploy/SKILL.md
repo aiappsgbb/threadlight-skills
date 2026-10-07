@@ -23,9 +23,12 @@ metadata:
 
 <!-- threadlight:foundry-only-agents -->
 > **Foundry-only agents (non-negotiable).** Every Threadlight agent runs in
-> Microsoft Foundry. The default is a Foundry **hosted agent**. A **prompt agent** is allowed only when it is trivial:
-> one model, no custom code tools, no multi-step orchestration and no
-> state beyond the thread, recorded with a `trivial_justification`. **Never** choose or offer:
+> Microsoft Foundry. The default is **always** a Foundry **hosted agent**. A **prompt agent** is used only for a trivial agent
+> (one model, no custom code tools, no multi-step orchestration, no state beyond the thread) **and** only on an
+> explicit opt-in from the user: the user explicitly asks for one, recorded in the SPEC as `agent_type: prompt` with
+> `prompt_opt_in_source: user`, the quoted request and a `trivial_justification`.
+> Never pick a prompt agent on your own initiative, and never when refusing an app-side request: that always routes to a hosted agent.
+> **Never** choose or offer:
 > voice agents (Voice Live or realtime); preview-only Foundry features; or an agent loop in application code
 > (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
 > outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
@@ -34,11 +37,11 @@ metadata:
 
 <!-- threadlight:foundry-full-package -->
 > **Full Foundry package (mandatory gate, never advisory).** A run is COMPLETE
-> only when all four parts are evidenced: (1) a real Foundry hosted or prompt agent,
+> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent,
 > with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
 > Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
 > custom rubric derived from the SPEC acceptance criteria, with anchors and a passing
-> threshold; (4) continuous evaluation wired to that agent. Record the evidence in
+> threshold, executed against the deployed agent. Continuous evaluation is optional (GA rules reject hosted agents). Record the evidence in
 > `specs/foundry-package-manifest.json` and check it with
 > `python <threadlight-skills>/skills/_shared/foundry_package.py --workspace <pilot-root>`. Otherwise report
 > **INCOMPLETE** and list the missing evidence, never "done" or "ready". Mock MCP
@@ -236,9 +239,10 @@ that run on Foundry's servers with no custom container. However, these **cannot*
 For any agent that uses **skills, custom middleware, or complex logic**, you MUST use
 `HostedAgentDefinition` with a custom container.
 
-**The hosted agent is the default.** A prompt agent (`PromptAgentDefinition`) is
-allowed only when **all** of these trivial criteria hold, and the SPEC records
-`agent_type: prompt` plus a `trivial_justification`:
+**The hosted agent is always the default.** A prompt agent (`PromptAgentDefinition`) is
+allowed only on an explicit opt-in (the SPEC records `agent_type: prompt` plus a
+`trivial_justification`, or the user explicitly asks for one) and only when **all**
+of these trivial criteria hold. Never pick a prompt agent on your own initiative:
 1. exactly one model;
 2. no custom code tools (only Foundry built-in or MCP tools);
 3. no multi-step orchestration, HITL or workflow;
@@ -2087,8 +2091,10 @@ They support platform-managed MCP tools via `MCPTool`. However, they CANNOT:
 - Inject runtime configuration into instructions (COSMOS_DATABASE, tool-use discipline)
 - Execute complex multi-step orchestration with custom error handling
 
-**Rule of thumb:** If the agent needs `SkillsProvider` or custom middleware → Hosted Agent.
-If it's a simple Q&A agent with built-in tools → Prompt Agent is simpler.
+**Rule of thumb:** Deploy a Hosted Agent. A Prompt Agent is deployed only when the
+SPEC explicitly sets `agent_type: prompt` with a `trivial_justification` (or the user
+explicitly opts in) and every trivial criterion holds. Never pick a prompt agent on your
+own initiative because it looks simpler, and never as the answer to a refused app-side request.
 
 ### Why SkillsProvider instead of hardcoded instructions?
 

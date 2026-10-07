@@ -27,16 +27,19 @@ enforcement; skill instructions alone do not implement those controls.
 For the separate opt-in lifecycle adapter, see [AgentOps](#agentops-preview-explicit-opt-in-bounded-assessment).
 
 > **Foundry-only agents.** The governed agent always runs in Microsoft Foundry.
-> It is a hosted agent by default, or a prompt agent only for trivial cases. The
+> It is always a hosted agent by default. A prompt agent is used only for trivial
+> cases on an explicit opt-in (an explicit user request, recorded in the SPEC with `prompt_opt_in_source: user`);
+> never pick a prompt agent on your own initiative or when refusing a request:
+> a refusal always routes to a hosted agent. The
 > PEP and gateway paths described here wrap that Foundry agent. Container Apps
 > hosts only the UI, a thin proxy, MCP tool servers or jobs. An agent loop
 > implemented in application code is not supported and is never a governance
 > target. Voice agents and preview-only Foundry features are out of scope. See
 > [`foundry-only-agents.md`](../skills/_shared/foundry-only-agents.md).
 > Delivery also requires the mandatory full Foundry package: a real agent,
-> tracing, a Foundry eval with a custom rubric, and continuous evaluation,
-> evidenced in `specs/foundry-package-manifest.json`. Otherwise the result is
-> INCOMPLETE.
+> tracing, and one executed Foundry eval with a custom rubric, evidenced in
+> `specs/foundry-package-manifest.json`. Continuous evaluation is optional (GA
+> evaluation rules reject hosted agents). Otherwise the result is INCOMPLETE.
 
 ## Availability and source
 

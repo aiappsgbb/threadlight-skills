@@ -1,11 +1,12 @@
 """Full Foundry package delivery gate.
 
-A Threadlight pilot is delivered only when all four items are evidenced:
+A Threadlight pilot is delivered only when all three items are evidenced:
 a real Foundry hosted/prompt agent (no app-side loop, no active fallback),
-Application Insights tracing with a trace visible in Foundry, a Foundry eval
-run with built-in evaluators plus a SPEC-derived custom rubric that meets its
-threshold, and continuous evaluation enabled for that same agent. Anything less
-is ``INCOMPLETE``. Mock MCP tool servers with synthetic data are legitimate:
+Application Insights tracing with a trace visible in Foundry, and one executed
+Foundry eval run against that agent with built-in evaluators plus a SPEC-derived
+custom rubric that meets its threshold. Anything less is ``INCOMPLETE``.
+Continuous evaluation is optional (GA evaluation rules reject hosted agents;
+beta schedules are preview); when recorded it must be valid. Mock MCP tool servers with synthetic data are legitimate:
 they are tools called by the real agent, not a substitute for it.
 
 CLI: ``python <threadlight-skills>/skills/_shared/foundry_package.py --workspace <pilot-root>``
@@ -24,7 +25,11 @@ from typing import Any
 SCHEMA = "threadlight-foundry-package/v1"
 MANIFEST_PATH = "specs/foundry-package-manifest.json"
 AGENT_KINDS = ("foundry-hosted", "foundry-prompt")
-SECTIONS = ("agent", "telemetry", "evaluation", "continuous_evaluation")
+SECTIONS = ("agent", "telemetry", "evaluation")
+# Optional since 2.19.4: GA evaluation_rules reject hosted agents (400 "Hosted and
+# external agents are not supported") and beta.schedules is preview. Validated when present.
+OPTIONAL_SECTIONS = ("continuous_evaluation",)
+AGENT_TARGET_TYPE = "azure_ai_agent"
 
 
 class FoundryPackageError(ValueError):
@@ -84,6 +89,11 @@ def evaluate(manifest: Any) -> dict[str, Any]:
         else:
             missing.append(f"{name} (section missing)")
             sections[name] = {}
+    for name in OPTIONAL_SECTIONS:
+        value = manifest.get(name)
+        sections[name] = value if isinstance(value, dict) else {}
+        if value is not None and not isinstance(value, dict):
+            missing.append(f"{name} (must be an object)")
 
     agent = sections["agent"]
     if "agent" in sections and isinstance(manifest.get("agent"), dict):
@@ -118,6 +128,11 @@ def evaluate(manifest: Any) -> dict[str, Any]:
         else:
             for index, rubric in enumerate(rubrics):
                 missing.extend(_rubric_problems(index, rubric))
+        target = evaluation.get("target")
+        if target is not None:
+            if (not isinstance(target, dict) or target.get("type") != AGENT_TARGET_TYPE
+                    or not _text(target.get("name")) or target.get("name") != agent.get("agent_name")):
+                missing.append(f"evaluation.target (must be type {AGENT_TARGET_TYPE!r} naming agent.agent_name)")
 
     if isinstance(manifest.get("continuous_evaluation"), dict):
         continuous = sections["continuous_evaluation"]
@@ -162,7 +177,10 @@ def evaluate_workspace(root: str | Path) -> dict[str, Any]:
 
 def report_line(result: dict[str, Any]) -> str:
     if result.get("status") == "COMPLETE":
-        return "COMPLETE — full Foundry package evidenced (agent, tracing, eval + custom rubric, continuous eval)"
+        line = "COMPLETE — full Foundry package evidenced (agent, tracing, executed eval + custom rubric)"
+        if (result.get("evidence") or {}).get("continuous_evaluation_rule_id"):
+            line += "; optional continuous evaluation also wired"
+        return line
     return "INCOMPLETE — missing: " + "; ".join(result.get("missing") or ["unknown"])
 
 

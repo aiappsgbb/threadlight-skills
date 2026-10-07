@@ -7,6 +7,60 @@ field.
 
 ## [Unreleased]
 
+### 2.19.4: The hosted agent is always the default; a prompt agent needs an explicit opt-in
+
+- **Root cause.** The 2.19.3 behavioural probe refused the app-side container
+  loop as required, but then picked a Foundry **prompt** agent on its own, with
+  a trivial justification, and offered hosted only as a fallback. Rule item 2
+  (a prompt agent is allowed when trivial) and item 5 (refuse and route to a
+  hosted agent) could be read as alternatives, and the `threadlight-deploy`
+  rule of thumb still said a simple Q&A agent is "simpler" as a Prompt Agent.
+- **Fix.** [`skills/_shared/foundry-only-agents.md`](skills/_shared/foundry-only-agents.md)
+  now states that the hosted agent is **always** the default. A prompt agent is
+  used only on an explicit opt-in from the user, recorded in the SPEC as
+  `agent_type: prompt` with `prompt_opt_in_source: user`, `prompt_opt_in_evidence`
+  (the quoted request) and a `trivial_justification`, and every trivial criterion
+  still has to hold. The agent writes the SPEC, so an agent-written `prompt`
+  value without that user provenance is not an opt-in. An agent never picks a prompt agent on its own
+  initiative, and never when refusing an app-side request: a refusal always
+  routes to a hosted agent. The short block in the six SKILL.md files, the
+  `THREADLIGHT.md` core principle, the README, `docs/agent-operations.md`,
+  `docs/skill-based-agents.md`, `docs/basics.html`, the SPEC and foundation
+  templates and the design hosting-shape step all carry the same wording. The
+  deploy rule of thumb no longer recommends a prompt agent as simpler.
+  `runtime-policy.json` `agent_hosting` adds `prompt_requires_explicit_opt_in`,
+  `prompt_opt_in_sources`, `agent_may_select_prompt_on_own_initiative: false`
+  `prompt_opt_in_required_fields`, `prompt_opt_in_source_allowed: ["user"]`,
+  `agent_authored_spec_counts_as_opt_in: false` and `refusal_route: "hosted"`.
+  The README and docs also state that a refusal always routes to hosted. The Cowork design and qualify downloads are
+  rebuilt.
+- **Tests.** `tests/blueprint/foundry-hosted-default.test.js` (RED 6/6 against
+  2.19.3, then GREEN) checks the opt-in wording, the verbatim short-block copies,
+  the templates, the runtime policy and the removed rule of thumb. After code
+  review, three more tests (RED 3/9, then GREEN) require user provenance for a
+  SPEC opt-in, refusal→hosted in the docs, and a repository-wide scan that fails
+  on prompt offered as "trivial only", "simpler" or a fallback without the opt-in.
+- **Continuous evaluation is optional in the full Foundry package
+  (user-directed).** Root cause: 2.19.3 made continuous evaluation the fourth
+  mandatory part of the package. Wiring it for a hosted agent fails: the GA
+  `evaluation_rules` API returns HTTP 400 "Hosted and external agents are not
+  supported", and the `beta.schedules` route is preview, which the Foundry-only
+  rule puts out of scope. So the gate could not be met with the default agent.
+  Fix: the package now has three parts. The third is one executed, working
+  Foundry eval run against the deployed agent (GA batch eval:
+  `azure_ai_target_completions` with an `azure_ai_agent` target), with built-in
+  evaluators and a SPEC-derived custom rubric. `foundry_package.py` treats
+  `continuous_evaluation` as optional and validates it only when it is recorded.
+  When an `evaluation.target` is recorded, it must be an `azure_ai_agent` that
+  names the same agent. The COMPLETE line no longer claims continuous eval.
+  The canonical rule, the gate block in the deploy, auto, evals and
+  production-ready SKILL.md files, auto stage 7, the README, `THREADLIGHT.md`,
+  `docs/agent-operations.md`, the production-ready report line and pillar 6
+  (Plan B for hosted agents) are updated. Tests:
+  `tests/blueprint/foundry-package-continuous-optional.test.js` (RED 7/7, then
+  GREEN) and four pytest cases in `skills/_shared/tests/test_foundry_package.py`
+  (RED 3 of 4, then GREEN).
+
 ### 2.19.3: Foundry-only agents. A hosted agent is the default, a prompt agent is for trivial cases only, and app-code agent loops are prohibited
 
 - **Root cause.** The Reynolds PoC was built in a separate repository. It shipped

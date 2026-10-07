@@ -673,8 +673,10 @@ that integration explicitly in § 5).
 
 ```yaml
 agent_type: hosted  # hosted | prompt. Foundry hosted agent is the default; see _shared/foundry-only-agents.md
-trivial_justification: null  # REQUIRED when agent_type: prompt: one model, no custom code tools,
+trivial_justification: null  # REQUIRED when agent_type: prompt (explicit opt-in only): one model, no custom code tools,
                              # no multi-step orchestration, no state beyond the Foundry thread
+prompt_opt_in_source: null   # REQUIRED when agent_type: prompt: must be `user` (an agent-written value is not an opt-in)
+prompt_opt_in_evidence: null # REQUIRED when agent_type: prompt: quote of, or reference to, the user's explicit request
 workflow_model: agent  # agent | workflow
 
 capability_signals:                     # machine-readable booleans + unresolved markers runtime-policy.json keys on
@@ -692,8 +694,13 @@ capability_signals:                     # machine-readable booleans + unresolved
 
 - `agent` *(default)* — single agent with tools; `threadlight-deploy`
   generates `AGENTS.md` + Skills + a Foundry hosted-agent container.
-- `agent_type` is restricted to `hosted` (default) or `prompt`. Use `prompt`
-  only when every trivial criterion in
+- `agent_type` is restricted to `hosted` (always the default) or `prompt`.
+  `prompt` requires an explicit opt-in from the user, recorded as
+  `prompt_opt_in_source: user` with `prompt_opt_in_evidence` quoting the request.
+  An agent-written `agent_type: prompt` without that user provenance is not an
+  opt-in: treat it as `hosted`. Never pick a prompt agent on your own initiative, and
+  never when refusing an app-side request (that routes to `hosted`). Even with
+  the opt-in, use `prompt` only when every trivial criterion in
   [`foundry-only-agents.md`](../../_shared/foundry-only-agents.md) holds, and
   record `trivial_justification`. An agent loop in application code (ACA, App
   Service, Functions, a web app, or direct Responses / Chat Completions tool
