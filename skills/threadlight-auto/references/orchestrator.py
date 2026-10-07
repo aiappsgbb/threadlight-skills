@@ -1946,6 +1946,19 @@ def decide(workspace: Path, state_path: Path | None = None) -> dict[str, Any]:
     }
 
 
+def foundry_package_status(workspace: Path) -> dict[str, Any]:
+    """Mandatory full Foundry package gate; fails closed when unavailable or malformed."""
+    try:
+        from skills._shared.foundry_package import FoundryPackageError, evaluate_workspace
+    except Exception:  # pragma: no cover - standalone copy without skills/_shared
+        return {"status": "INCOMPLETE",
+                "missing": ["skills/_shared/foundry_package.py (gate checker unavailable)"]}
+    try:
+        return evaluate_workspace(workspace)
+    except FoundryPackageError as exc:
+        return {"status": "INCOMPLETE", "missing": [f"specs/foundry-package-manifest.json malformed: {exc}"]}
+
+
 def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str, Any]:
     """Drive the same DAG with a worker; a zero exit is not gate evidence."""
     executed = []
@@ -1969,6 +1982,10 @@ def execute(workspace: Path, worker, state_path: Path | None = None) -> dict[str
                 for guard in ("govern", "governed_actions_gate", "governance_probe"):
                     if {**STAGE_PROBES, **GOVERNANCE_PROBES}[guard](workspace, {}).decision != "skip":
                         return {"status": "blocked", "stage": guard, "executed": executed}
+            package = foundry_package_status(workspace)
+            if package["status"] != "COMPLETE":
+                return {"status": "incomplete", "stage": "foundry_package",
+                        "missing": package["missing"], "executed": executed}
             return {"status": "complete", "executed": executed}
         stage = pending[0]
         if report["presenter_ready"]["enabled"] and stage in ("deploy", "invoke"):

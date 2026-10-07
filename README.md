@@ -14,6 +14,23 @@
 > SPEC § 14 is the value-model contract: baseline, target, owner, timeframe,
 > measurement source, and maturity policy. Its public arc is forecast →
 > settled Azure actuals → reconciliation → cost per successful interaction.
+>
+> **Foundry-only agents (non-negotiable).** Every agent that Threadlight
+> produces runs in **Microsoft Foundry**. The default is a Foundry **hosted
+> agent**. A **prompt agent** is allowed only for trivial cases: one model, no
+> custom code tools, no multi-step orchestration and no state beyond the thread.
+> Voice agents, preview-only Foundry features and any agent loop in application
+> code are **not supported**, and are never chosen or offered. That includes
+> ACA, App Service, Functions, a web app, or direct Responses / Chat Completions
+> tool loops. Container Apps hosts only the UI, a thin proxy to the Foundry
+> agent, MCP tool servers or jobs. See
+> [`skills/_shared/foundry-only-agents.md`](skills/_shared/foundry-only-agents.md).
+>
+> **Full Foundry package (mandatory).** A pilot is complete only with a real
+> Foundry agent (no fake or fallback agent), Application Insights with a trace
+> visible in Foundry, a Foundry eval run with built-in evaluators plus a
+> SPEC-derived custom rubric, and continuous evaluation. Otherwise deploy, auto
+> and production-ready report **INCOMPLETE** and list the missing evidence.
 
 ## What is a skill?
 

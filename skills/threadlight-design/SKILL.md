@@ -21,6 +21,17 @@ metadata:
 
 # Threadlight Design
 
+<!-- threadlight:foundry-only-agents -->
+> **Foundry-only agents (non-negotiable).** Every Threadlight agent runs in
+> Microsoft Foundry. The default is a Foundry **hosted agent**. A **prompt agent** is allowed only when it is trivial:
+> one model, no custom code tools, no multi-step orchestration and no
+> state beyond the thread, recorded with a `trivial_justification`. **Never** choose or offer:
+> voice agents (Voice Live or realtime); preview-only Foundry features; or an agent loop in application code
+> (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
+> outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
+> user, kickoff or deadline request: refuse and route to a hosted agent. See
+> [`_shared/foundry-only-agents.md`](../_shared/foundry-only-agents.md).
+
 Turn a business process or customer use case into a **durable specification** (SpecKit)
 and then derive **AGENTS.md + Skills** from it — ready for a credible enterprise pilot
 that holds up in front of an industry SME.
@@ -327,9 +338,16 @@ cover**:
    decides where capacity is provisioned and whether an EU-resident pilot can
    run in the primary region. See `references/model-selection.md` for the
    tier / capacity / region decision procedure that fills this block.
-3. **Hosting shape** — `aca-hosted-agent` (default) | `azure-functions` |
-   `aca-job`; plus the `deployment_target` lever (`demo-sandbox` |
-   `customer-pilot` | `production-bound`).
+3. **Hosting shape**: `foundry-hosted-agent` (default) or `foundry-prompt-agent`.
+   The prompt agent is allowed only when every trivial criterion in
+   [`_shared/foundry-only-agents.md`](../_shared/foundry-only-agents.md) holds,
+   recorded as `agent_type` plus `trivial_justification`. Next comes the
+   `deployment_target` lever (`demo-sandbox` | `customer-pilot` |
+   `production-bound`). The agent always runs in Microsoft Foundry. Azure
+   Functions, `aca-job` and Container Apps are only auxiliary compute, for the
+   UI, a thin proxy, MCP tool servers or jobs. They **never** host the agent
+   loop. The legacy value `aca-hosted-agent` in older foundations means
+   `foundry-hosted-agent`.
 4. **Tools & data** — tool binding (`mcp` default), the curated toolbox
    (versioned alongside skills), mock-first for inaccessible systems.
 5. **Identity & RBAC** — user-assigned managed identity, least-privilege,

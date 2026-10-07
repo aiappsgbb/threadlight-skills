@@ -21,6 +21,30 @@ metadata:
 
 # Foundry Hosted Agent Deploy
 
+<!-- threadlight:foundry-only-agents -->
+> **Foundry-only agents (non-negotiable).** Every Threadlight agent runs in
+> Microsoft Foundry. The default is a Foundry **hosted agent**. A **prompt agent** is allowed only when it is trivial:
+> one model, no custom code tools, no multi-step orchestration and no
+> state beyond the thread, recorded with a `trivial_justification`. **Never** choose or offer:
+> voice agents (Voice Live or realtime); preview-only Foundry features; or an agent loop in application code
+> (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
+> outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
+> user, kickoff or deadline request: refuse and route to a hosted agent. See
+> [`_shared/foundry-only-agents.md`](../_shared/foundry-only-agents.md).
+
+<!-- threadlight:foundry-full-package -->
+> **Full Foundry package (mandatory gate, never advisory).** A run is COMPLETE
+> only when all four parts are evidenced: (1) a real Foundry hosted or prompt agent,
+> with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
+> Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
+> custom rubric derived from the SPEC acceptance criteria, with anchors and a passing
+> threshold; (4) continuous evaluation wired to that agent. Record the evidence in
+> `specs/foundry-package-manifest.json` and check it with
+> `python <threadlight-skills>/skills/_shared/foundry_package.py --workspace <pilot-root>`. Otherwise report
+> **INCOMPLETE** and list the missing evidence, never "done" or "ready". Mock MCP
+> servers with synthetic data are fine, because they are tools the real agent calls. See
+> [`_shared/foundry-only-agents.md`](../_shared/foundry-only-agents.md#full-foundry-package-mandatory-delivery-gate).
+
 ## Presenter-ready selected consumer
 
 For an incumbent project, follow the [adoption map](references/presenter-adoption.md)
@@ -211,6 +235,22 @@ that run on Foundry's servers with no custom container. However, these **cannot*
 
 For any agent that uses **skills, custom middleware, or complex logic**, you MUST use
 `HostedAgentDefinition` with a custom container.
+
+**The hosted agent is the default.** A prompt agent (`PromptAgentDefinition`) is
+allowed only when **all** of these trivial criteria hold, and the SPEC records
+`agent_type: prompt` plus a `trivial_justification`:
+1. exactly one model;
+2. no custom code tools (only Foundry built-in or MCP tools);
+3. no multi-step orchestration, HITL or workflow;
+4. no state beyond the Foundry thread;
+5. no skills or SkillsProvider;
+6. no custom middleware or telemetry.
+
+If any criterion fails or is unknown, deploy a hosted agent. Never replace either
+type with an agent loop in application code, on ACA, App Service, Functions or a
+web app, or by calling Responses / Chat Completions directly with tools. That is
+not supported. See
+[`_shared/foundry-only-agents.md`](../_shared/foundry-only-agents.md).
 
 ## Prerequisites
 
@@ -3656,7 +3696,7 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | [**threadlight-mcp-aca**](../threadlight-mcp-aca/SKILL.md) | Deploy custom MCP servers as ACA or Azure Functions |
 | [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) | Evaluate agent quality + **continuous evaluation**: Plan A (default) Foundry built-in scheduled evals, Plan B (fallback) ACA Job (reads SPEC § 9 KPI table) |
 | [**threadlight-safe-check**](../threadlight-safe-check/) | **Mandatory post-deploy completeness gate** — invoked from `predeploy` / `postdeploy` hooks; verifies every SPEC § 11c selector maps to deployed resources, all channels reach, all jobs are wired. Run this before declaring victory or kicking off `microsoft-foundry` |
-| [**threadlight-production-ready**](../threadlight-production-ready/) | **Advisory production-readiness gate** — runs *after* a green `--phase post-deploy`. Walks 13 cross-cutting pillars (network/AGT/IAM/secrets/observability/evals/RAI/HITL/supply-chain/cost/reliability/SRE/model-lifecycle), resolves Citadel-spoke vs AGT vs standard AI gateway from SPEC § 12, and produces a customer-facing hand-off report + JSON scorecard. Soft advisory — never fails the deploy |
+| [**threadlight-production-ready**](../threadlight-production-ready/) | **Advisory production-readiness gate** — runs *after* a green `--phase post-deploy`. Walks 13 cross-cutting pillars (network/AGT/IAM/secrets/observability/evals/RAI/HITL/supply-chain/cost/reliability/SRE/model-lifecycle), resolves Citadel-spoke vs AGT vs standard AI gateway from SPEC § 12, and produces a customer-facing hand-off report + JSON scorecard. Its scorecard never fails the deploy, but it forces `not_ready` while the mandatory full Foundry package is INCOMPLETE |
 | [**threadlight-deploy/references/observability**](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/references/observability/README.md) | **Always layered into deploy from day one.** Owns the 3-layer telemetry pattern (Bicep substrate → Foundry account-level AppIn connection → `configure_azure_monitor()` in each ACA workload). Without this, `azd up` returns 0 but App Insights stays empty for the entire pilot lifetime — the silent gap observed in recent pilots. The post-deploy hook MUST call `connect_foundry_appinsights.py` and every ACA workload entry point MUST start with `init_telemetry(role=...)` |
 | [**threadlight-local-test**](../threadlight-local-test/) | **For SEs.** Optional fast inner-loop before `azd up` — run the designed agent locally (FoundryChatClient + FastMCP + workspace + sample data) in Copilot CLI / Cowork / Clawpilot. Skip when the spec is a one-shot demo or already-deployed pilot |
 | [**threadlight-workspace-ui**](../threadlight-workspace-ui/) | Generates the operator workspace from SPEC § 8b (case-list, inbox, dashboard, console, kanban, map) |

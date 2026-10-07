@@ -58,7 +58,7 @@ instead of silent defaults back-filled during generation.
 | 4 | Policy route | `default-agent` | inferred \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
 | 5 | Capability signals | `requires_toolbox` / `requires_custom_python_tools` / `requires_file_generation` / `latency_sensitive_data_queries` (booleans) + `unresolved_signals` (per-signal unknown marker) | inferred \| defaulted-after-skip \| open-question | § 11e (mirrored verbatim) | Step 2 discovery → `runtime-policy.json` `blocked_when` / `requires_resolved_signals` |
 | 6 | Model + capacity | `gpt-5.4` · region · TPM | provided \| defaulted | § 7b | Step 2 (tier may drop to -mini) |
-| 7 | Hosting shape | `aca-hosted-agent` | provided \| defaulted | § 11c, § 11f | — |
+| 7 | Hosting shape | `foundry-hosted-agent` (`agent_type: hosted`; `prompt` only with `trivial_justification`) | provided \| defaulted | § 11c, § 11e, § 11f | [Foundry-only agents](../../_shared/foundry-only-agents.md) |
 | 8 | Tools & data | `mcp` · mock-first | inferred | § 5b, § 6 | Step 2 (tool contracts) |
 | 9 | Identity & RBAC | UAMI · least-privilege | defaulted | § 11, § 11c | — |
 | 10 | Observability | OTel + App Insights, day one | defaulted | § 12 | — |
@@ -170,9 +170,19 @@ Do **not** use the legacy `GPT-4o` family — `gpt-5.4` supersedes it.
 ## 3. Hosting shape
 
 ```yaml
-hosting: aca-hosted-agent               # aca-hosted-agent | azure-functions | aca-job
+hosting: foundry-hosted-agent           # foundry-hosted-agent (default) | foundry-prompt-agent (trivial only)
+agent_type: hosted  # hosted | prompt
+trivial_justification: null             # REQUIRED when agent_type: prompt (one model, no custom code tools,
+                                        # no multi-step orchestration, no state beyond the Foundry thread)
 deployment_target: demo-sandbox         # demo-sandbox | customer-pilot | production-bound
 ```
+
+> **Foundry-only agents.** The agent always runs in Microsoft Foundry, as
+> described in [`foundry-only-agents.md`](../../_shared/foundry-only-agents.md).
+> Never record voice agents, preview-only Foundry features, or an agent loop in
+> ACA, App Service, Functions or web-app code as a hosting shape. Those are not
+> supported. Functions, ACA jobs and Container Apps are auxiliary compute only:
+> the UI, a thin proxy, MCP tool servers or jobs.
 
 → **Pre-populates** SPEC § 11c (tech stack) and the § 11f `deployment_target`
 lever. `deployment_target` chains into `threadlight-deploy` Phase 1.5.

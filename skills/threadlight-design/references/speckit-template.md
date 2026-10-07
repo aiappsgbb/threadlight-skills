@@ -305,7 +305,7 @@ For each AI capability the agent needs:
   | Code-related multimodal | `gpt-5.3-codex` (2026-02-24) | Diagrams → code |
   | Structured doc extract (passport, invoice, ID) | Document Intelligence v4 prebuilt | Use prebuilt when possible |
   | Custom doc extract | Document Intelligence v4 custom model | Train when prebuilt doesn't fit |
-  | Voice intake | Azure Speech-to-Text (real-time) | n/a |
+  | Recorded-audio transcription (files only) | Azure Speech-to-Text (batch) | Voice agents (Voice Live or realtime) are out of scope and not supported |
 - **Capacity (TPM)**: e.g. `50K` GlobalStandard for `gpt-5.4`, `120K` for `gpt-5.4-mini`, `300K+` for high-volume
 - **Reasoning effort** (for capable models): `minimal` | `low` | `medium` | `high` (default `medium`)
 
@@ -612,7 +612,7 @@ tools:
 | `ai-search` | yes/no | Foundry IQ Knowledge Base backing |
 | `doc-intel` | yes/no | Structured document extraction (passport, invoice, ID — when prebuilt model fits) |
 | `azure-vision` | yes/no | OCR / image analysis (when not using GPT vision) |
-| `azure-speech` | yes/no | Voice intake / TTS responses |
+| `azure-speech` | yes/no | Batch speech-to-text / text-to-speech of files only (voice agents, Voice Live and realtime, are out of scope and not supported) |
 | `event-grid` | yes/no | Pub/sub for trigger events |
 | `service-bus` | yes/no | Reliable queueing for case workflow |
 | `storage-blob` | yes/no | Document upload, large artifacts, dataset hosting |
@@ -672,6 +672,9 @@ that integration explicitly in § 5).
 > `references/runtime-policy.json`'s `blocked_when`).
 
 ```yaml
+agent_type: hosted  # hosted | prompt. Foundry hosted agent is the default; see _shared/foundry-only-agents.md
+trivial_justification: null  # REQUIRED when agent_type: prompt: one model, no custom code tools,
+                             # no multi-step orchestration, no state beyond the Foundry thread
 workflow_model: agent  # agent | workflow
 
 capability_signals:                     # machine-readable booleans + unresolved markers runtime-policy.json keys on
@@ -688,7 +691,14 @@ capability_signals:                     # machine-readable booleans + unresolved
 ```
 
 - `agent` *(default)* — single agent with tools; `threadlight-deploy`
-  generates `AGENTS.md` + Skills + a hosted-agent or ACA-agent container.
+  generates `AGENTS.md` + Skills + a Foundry hosted-agent container.
+- `agent_type` is restricted to `hosted` (default) or `prompt`. Use `prompt`
+  only when every trivial criterion in
+  [`foundry-only-agents.md`](../../_shared/foundry-only-agents.md) holds, and
+  record `trivial_justification`. An agent loop in application code (ACA, App
+  Service, Functions, a web app, or direct Responses / Chat Completions tool
+  loops) is never a valid value. Voice agents and preview-only Foundry features
+  are out of scope.
 - `workflow` — deterministic multi-step orchestration; the SPEC adds
   `WORKFLOW.md` (executor / phase definitions) as the target design, and
   `threadlight-deploy` generates the MAF Agent container on Responses that

@@ -7,6 +7,69 @@ field.
 
 ## [Unreleased]
 
+### 2.19.3: Foundry-only agents. A hosted agent is the default, a prompt agent is for trivial cases only, and app-code agent loops are prohibited
+
+- **Root cause.** The Reynolds PoC was built in a separate repository. It shipped
+  a hand-written agent loop in a Node/Express API on Azure Container Apps. That
+  loop called the Azure OpenAI Responses API directly with function tools,
+  instead of running as a Microsoft Foundry agent. Its kickoff prompt allowed
+  "or an app-side agent loop", and no skill text blocked it. The SPEC/foundation
+  templates also made it ambiguous: they offered an `aca-hosted-agent` default
+  next to `azure-functions` as hosting shapes, and an "ACA-agent container"
+  option. The speckit template also listed `azure-speech` as "Voice intake".
+- **Fix.** A canonical rule now lives in
+  [`skills/_shared/foundry-only-agents.md`](skills/_shared/foundry-only-agents.md).
+  It is also a core principle in `THREADLIGHT.md` and a marked block near the
+  top of `threadlight-deploy`, `-auto`, `-design`, `-qualify`, `-workspace-ui`
+  and `-local-test`. The rule says:
+  - Every agent runs in Microsoft Foundry, and a hosted agent is the default.
+  - A prompt agent is allowed only when all of these testable trivial criteria
+    hold: one model, no custom code tools, no multi-step orchestration, no
+    state beyond the thread, no skills, and no custom middleware.
+  - Voice agents, preview-only features and any app-code agent loop are not
+    supported. That covers ACA, App Service, Functions, a web app, and direct
+    Responses / Chat Completions tool loops.
+  - Container Apps hosts only the UI, a thin proxy, MCP tool servers or jobs.
+  - The rule overrides any user, kickoff or deadline instruction.
+- **Templates and policy.** The SPEC § 11e and foundation § 3 templates now have
+  an `agent_type: hosted  # hosted | prompt` field, plus a
+  `trivial_justification` field. The hosting shape is now
+  `foundry-hosted-agent` (default) or `foundry-prompt-agent`, and
+  `aca-hosted-agent` remains only as a legacy alias. `azure-speech` is now batch
+  STT/TTS only. `runtime-policy.json` gains an `agent_hosting` block. The deploy
+  "Why Hosted Agents" section lists the trivial criteria. The MAF reference marks
+  `invocations_ws` voice and Voice Live as out of scope.
+- **Docs.** README, `docs/agent-operations.md`, `docs/skill-based-agents.md`
+  and `docs/basics.html` describe the Foundry-only architecture.
+- **Guard.** `tests/blueprint/foundry-only-agents.test.js` checks that:
+  - the rule is present in every surface above;
+  - the templates restrict `agent_type` to `hosted` or `prompt`;
+  - the policy block is present;
+  - no tracked skill or doc text offers an app-side agent loop, except inside an
+    explicit prohibition.
+- **Full Foundry package gate (mandatory, blocking).** The same PoC also had no
+  tracing and no Foundry evaluation, and the evals leg was described as
+  "advisory, never blocks". A run is now COMPLETE only when
+  `specs/foundry-package-manifest.json` (`threadlight-foundry-package/v1`)
+  evidences all four of these:
+  - a real Foundry hosted or prompt agent, with no fake or fallback agent;
+  - Application Insights, with a trace visible in Foundry tracing;
+  - a Foundry eval run with built-in evaluators plus at least one custom rubric
+    derived from the SPEC acceptance criteria, with anchors and a passing
+    threshold;
+  - continuous evaluation wired to the same agent.
+
+  The new checker `skills/_shared/foundry_package.py` (exit codes: 0 COMPLETE,
+  3 INCOMPLETE, 2 malformed) is enforced by `threadlight-auto`
+  `execute()`, which returns `status: incomplete` with the missing items, and by
+  `threadlight-production-ready`, which forces `not_ready` and lists the missing
+  items in the report. The deploy, auto, evals and production-ready SKILL.md
+  files and `THREADLIGHT.md` state the gate. Their "advisory, never blocks"
+  wording is removed. Mock MCP servers with synthetic data remain legitimate.
+  The guards are `tests/blueprint/foundry-full-package.test.js`,
+  `skills/_shared/tests/test_foundry_package.py` and
+  `skills/threadlight-production-ready/tests/test_foundry_package_gate.py`.
+
 ### 2.19.2: remove phantom `threadlight-workflow` skill reference; skill-reference CI guard
 
 - **Root cause.** The initial commit (`3e42a382`, 2026-05-26) listed a
