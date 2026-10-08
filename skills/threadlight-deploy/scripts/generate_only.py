@@ -157,13 +157,37 @@ VALUE_WORDS = {
 }
 
 
+PLACEHOLDER_INPUTS = re.compile(
+    r"^\s*(?:none|n/?a|nil|-|—|–|tbd|see\s+below|none\s*/\s*see\s+below|see\s+section\s+6\w*)\s*\.?\s*$", re.I)
+EXPLICIT_NO_INPUTS = re.compile(r"^\s*(?:none|n/?a|nil|-|—|–)\s*\.?\s*$", re.I)
+PLACEHOLDER_WORDS = {"none", "see", "below", "above", "n", "a", "na", "tbd", "nil"}
+TYPE_MAP = {
+    "string": "str", "str": "str", "text": "str", "datetime": "str", "date": "str", "time": "str",
+    "uuid": "str", "id": "str", "enum": "str", "boolean": "bool", "bool": "bool",
+    "integer": "int", "int": "int", "number": "float", "float": "float", "decimal": "float",
+}
+
+
+def _is_placeholder(text: str) -> bool:
+    return not _strip_ticks(text).strip() or bool(PLACEHOLDER_INPUTS.match(_strip_ticks(text)))
+
+
+def _arg_type(raw: str) -> str:
+    raw = raw.strip().strip("`").lower()
+    if raw.endswith("[]") or raw.startswith(("array", "list")):
+        return "list[str]"
+    return TYPE_MAP.get(re.split(r"[\s(|<]", raw)[0] if raw else "", "str")
+
+
 def _prose_args(inputs: str) -> list[dict[str, Any]]:
     """Free-text SPEC inputs ('case + order + amount') -> optional str args."""
     args: list[dict[str, Any]] = []
+    if _is_placeholder(inputs):
+        return args
     text = re.sub(r"\([^)]*\)", "", inputs.lower())
     for token in re.split(r"\s*(?:\+|,|;|/|\band\b)\s*", text):
         words = re.findall(r"[a-z][a-z0-9]*", token)
-        if not words or len(words) > 3:
+        if not words or len(words) > 3 or set(words) <= PLACEHOLDER_WORDS:
             continue
         if len(words) == 1 and words[0] not in VALUE_WORDS and not words[0].endswith("id"):
             name = f"{words[0]}_id"
@@ -175,46 +199,162 @@ def _prose_args(inputs: str) -> list[dict[str, Any]]:
     return args
 
 
+def _ticked_args(inputs: str) -> list[dict[str, Any]]:
+    """Table-cell inputs: `a`, optional `b`, `ids[]`."""
+    required, optional = [], []
+    for m in re.finditer(r"(optional\s+)?`([A-Za-z_][A-Za-z0-9_]*)(\[\])?`", inputs, re.I):
+        arg = {"name": _identifier(m.group(2)), "type": "list[str]" if m.group(3) else "str"}
+        if any(a["name"] == arg["name"] for a in required + optional):
+            continue
+        (optional if m.group(1) else required).append(arg)
+    for arg in optional:
+        arg["optional"] = True
+    return required + optional
+
+
+def _subsection_args(body: str) -> list[dict[str, Any]] | None:
+    """``- **Inputs**:`` as prose (`name: type` required) or a Parameter table. None when absent."""
+    m = re.search(r"^\s*[-*]\s*\*\*(?:Inputs?|Parameters?|Arguments?)\*\*\s*:?(.*?)(?=^\s*[-*]\s*\*\*|^#{2,4}\s|\Z)",
+                  body, re.M | re.S | re.I)
+    if not m:
+        return None
+    text = m.group(1)
+    args: list[dict[str, Any]] = []
+    for table in _tables(text):
+        header = [h.lower() for h in table[0]]
+        i_name = next((i for i, h in enumerate(header) if h in {"parameter", "name", "input", "argument", "field"}), 0)
+        i_type = next((i for i, h in enumerate(header) if "type" in h), None)
+        i_req = next((i for i, h in enumerate(header) if "required" in h), None)
+        for row in table[1:]:
+            name = _identifier(_strip_ticks(row[i_name]).split()[0]) if i_name < len(row) and row[i_name].strip() else ""
+            if not name or name in {a["name"] for a in args}:
+                continue
+            arg = {"name": name, "type": _arg_type(row[i_type]) if i_type is not None and i_type < len(row) else "str"}
+            req = row[i_req].strip().lower() if i_req is not None and i_req < len(row) else "yes"
+            if req in {"no", "n", "false", "optional"}:
+                arg["optional"] = True
+            args.append(arg)
+    if args:
+        return [a for a in args if not a.get("optional")] + [a for a in args if a.get("optional")]
+    for line in [ln for ln in text.splitlines() if not ln.strip().startswith("|")]:
+        for pm in re.finditer(r"`([A-Za-z_][A-Za-z0-9_]*)(\[\])?\s*(?::\s*([A-Za-z_][A-Za-z0-9_\[\]]*))?`([^`,;]*)", line):
+            name = _identifier(pm.group(1))
+            if name in {a["name"] for a in args}:
+                continue
+            arg = {"name": name, "type": "list[str]" if pm.group(2) else _arg_type(pm.group(3) or "str")}
+            if not pm.group(3) and not re.search(r"\b(required|optional)\b", pm.group(4), re.I):
+                continue  # a ticked example value such as `MEM-###`, not a parameter
+            if re.search(r"\boptional\b", pm.group(4), re.I):
+                arg["optional"] = True
+            args.append(arg)
+    if not args:
+        return [] if _is_placeholder(text) else None
+    return [a for a in args if not a.get("optional")] + [a for a in args if a.get("optional")]
+
+
+def _tool_subsections(block: str) -> dict[str, dict[str, Any]]:
+    """``### `tool_name` — BR-...`` subsections of section 6, in order."""
+    found: dict[str, dict[str, Any]] = {}
+    for m in re.finditer(r"^#{3,4}\s+(`?)([A-Za-z_][A-Za-z0-9_]*)\1(?=[\s:—–-]|$)[^\n]*\n(.*?)(?=^#{2,4}\s|\Z)",
+                         block, re.M | re.S):
+        body = m.group(3)
+        # Unticked template headings (``### get_member``) count only with tool bullets.
+        if not m.group(1) and not re.search(r"^\s*[-*]\s*\*\*(?:Inputs?|Parameters?|Arguments?|Description)\*\*",
+                                            body, re.M | re.I):
+            continue
+        desc = re.search(r"^\s*[-*]\s*\*\*Description\*\*\s*:?\s*(.+)$", body, re.M | re.I)
+        inputs = re.search(r"^\s*[-*]\s*\*\*(?:Inputs?|Parameters?|Arguments?)\*\*\s*:?(.*?)(?=^\s*[-*]\s*\*\*|^#{2,4}\s|\Z)",
+                           body, re.M | re.S | re.I)
+        found[_identifier(m.group(2))] = {
+            "args": _subsection_args(body),
+            "no_inputs": bool(inputs and EXPLICIT_NO_INPUTS.match(_strip_ticks(inputs.group(1)))),
+            "description": _strip_ticks(desc.group(1)) if desc else "",
+        }
+    return found
+
+
+def _consequences(spec: str) -> dict[str, str]:
+    """Section 11a ``tools: - id: x / consequence: y`` and section 5b Read/Write column -> read|write."""
+    kinds: dict[str, str] = {}
+    sec5b = re.search(r"^#{2,3}\s*5b\b[^\n]*\n(.*?)(?=^##\s+(?!5b)\d|\Z)", spec, re.M | re.S | re.I)
+    for table in _tables(sec5b.group(1) if sec5b else ""):
+        header = [h.lower().replace(" ", "") for h in table[0]]
+        i_rw = next((i for i, h in enumerate(header) if h in {"read/write", "r/w", "access", "mode"}), None)
+        if i_rw is None or "tool" not in header[0]:
+            continue
+        for row in table[1:]:
+            names = re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", row[0]) or [row[0].strip()]
+            mode = row[i_rw].strip().upper().replace(" ", "") if i_rw < len(row) else ""
+            if names and mode:
+                kinds[_identifier(names[0])] = "read" if mode in {"R", "READ", "READ-ONLY", "RO"} else "write"
+    sec11a = re.search(r"^#{2,4}\s*11a\b[^\n]*\n(.*?)(?=^#{2,4}\s*11[b-z]\b|^##\s+\d|\Z)", spec, re.M | re.S | re.I)
+    if sec11a:
+        for item in re.split(r"^\s*-\s+(?=id:)", sec11a.group(1), flags=re.M)[1:]:
+            ident = re.match(r"id:\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)", item)
+            cons = re.search(r"^\s*consequence:\s*[\"']?([A-Za-z_-]+)", item.split("\n- ", 1)[0], re.M)
+            if ident and cons:
+                kinds[_identifier(ident.group(1))] = "read" if cons.group(1).lower() in {"read", "read-only", "read_only"} else "write"
+    return kinds
+
+
 def tools(spec: str) -> list[dict[str, Any]]:
-    """SPEC section 6 (Tool Contracts) as a typed tool plan, in SPEC order."""
+    """SPEC section 6 (Tool Contracts) as a typed tool plan, in SPEC order.
+
+    Section 6 may be a summary table, ``### `tool` `` subsections, or both. Per-tool
+    ``**Inputs**`` subsections are canonical; table placeholders such as
+    ``none / see below`` never become arguments. Read/write classification uses
+    section 11a ``consequence`` first, then the section 5b Read/Write column,
+    then the section 6 idempotency column, then the tool-name heuristic.
+    """
     block = _section(spec, "6") or _section(spec, "5b")
-    plan: list[dict[str, Any]] = []
+    subsections = _tool_subsections(_section(spec, "6"))
+    consequences = _consequences(spec)
+    rows: dict[str, dict[str, Any]] = {}
     for table in _tables(block):
         header = [h.lower() for h in table[0]]
         if not header or "tool" not in header[0]:
             continue
         idx_input = next((i for i, h in enumerate(header) if "input" in h), 1)
         idx_idem = next((i for i, h in enumerate(header) if "idempot" in h or "failure" in h), None)
+        idx_desc = next((i for i, h in enumerate(header) if "output" in h or "description" in h), idx_input + 1)
         for row in table[1:]:
             names = re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", row[0]) or [row[0].strip()]
             name = _identifier(names[0])
-            if not name or name in {t["name"] for t in plan}:
+            if not name or name in rows:
                 continue
             inputs = row[idx_input] if idx_input < len(row) else ""
-            required, optional = [], []
-            for m in re.finditer(r"(optional\s+)?`([A-Za-z_][A-Za-z0-9_]*)(\[\])?`", inputs, re.I):
-                arg = {"name": _identifier(m.group(2)), "type": "list[str]" if m.group(3) else "str"}
-                if any(a["name"] == arg["name"] for a in required + optional):
-                    continue
-                (optional if m.group(1) else required).append(arg)
-            for arg in optional:
-                arg["optional"] = True
-            args = required + optional or _prose_args(inputs) or [{"name": "query", "type": "str"}]
-            idem = row[idx_idem].lower() if idx_idem is not None and idx_idem < len(row) else ""
-            kind = "read" if ("read-only" in idem or "read only" in idem) else (
-                "read" if not idem and name.startswith(READ_PREFIXES) else "write")
-            verb, _, noun = name.partition("_")
-            nouns = [n for n in (noun or verb).split("_") if n]
-            plan.append({
-                "name": name,
-                "kind": kind,
-                "many": kind == "read" and name.startswith(MANY_PREFIXES),
-                "nouns": nouns,
-                "args": args,
-                "description": _strip_ticks(row[idx_input + 1]) if idx_input + 1 < len(row) else "",
-            })
+            rows[name] = {
+                "args": [] if _is_placeholder(inputs) else (_ticked_args(inputs) or _prose_args(inputs)),
+                "no_inputs": bool(EXPLICIT_NO_INPUTS.match(_strip_ticks(inputs))),
+                "idem": row[idx_idem].lower() if idx_idem is not None and idx_idem < len(row) else "",
+                "description": _strip_ticks(row[idx_desc]) if idx_desc < len(row) else "",
+            }
+    plan: list[dict[str, Any]] = []
+    for name in list(rows) + [n for n in subsections if n not in rows]:
+        row = rows.get(name, {"args": [], "no_inputs": False, "idem": "", "description": ""})
+        sub = subsections.get(name, {})
+        source = sub if sub.get("args") is not None else row
+        args, no_inputs = source["args"], source.get("no_inputs", False) and not source["args"]
+        idem = row["idem"]
+        if name in consequences:
+            kind = consequences[name]
+        elif "read-only" in idem or "read only" in idem:
+            kind = "read"
+        else:
+            kind = "read" if not idem and name.startswith(READ_PREFIXES) else "write"
+        verb, _, noun = name.partition("_")
+        nouns = [n for n in (noun or verb).split("_") if n]
+        plan.append({
+            "name": name,
+            "kind": kind,
+            "many": kind == "read" and name.startswith(MANY_PREFIXES),
+            "nouns": nouns,
+            "args": args,
+            "description": sub.get("description") or row["description"],
+            **({"no_inputs": True} if no_inputs else {}),
+        })
     if not plan:
-        raise WorkspaceError("SPEC section 6 (Tool Contracts) has no tool table")
+        raise WorkspaceError("SPEC section 6 (Tool Contracts) has no tool table or `### `tool`` subsections")
     return plan
 
 
@@ -265,9 +405,9 @@ def design_dataset(project_dir: Path) -> list[dict[str, Any]]:
             row = json.loads(line)
         except json.JSONDecodeError as exc:
             raise WorkspaceError(f"tests/eval_dataset.jsonl line {n}: {exc}") from exc
-        query = row.get("query") or row.get("input")
+        query = row.get("query") or row.get("prompt") or row.get("input")
         if not isinstance(row, dict) or not row.get("id") or not query:
-            raise WorkspaceError(f"tests/eval_dataset.jsonl line {n}: needs 'id' and 'query'")
+            raise WorkspaceError(f"tests/eval_dataset.jsonl line {n}: needs 'id' and 'query' (or 'prompt')")
         rules = row.get("business_rules") or []
         rows.append({
             "id": str(row["id"]),

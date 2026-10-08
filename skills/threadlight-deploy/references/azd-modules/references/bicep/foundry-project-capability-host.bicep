@@ -16,8 +16,8 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-previ
 resource capabilityHost 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview' = {
   parent: project
   name: capabilityHostName
-  properties: {
-    capabilityHostKind: 'Agents'
-  }
+  // ProjectCapabilityHostProperties declares no host-kind property (BCP037): the kind comes
+  // from the account-level host. Basic setup keeps platform-managed stores.
+  properties: {}
 }
 output id string = capabilityHost.id

@@ -357,9 +357,17 @@ is refused with exit 4, because the scaffold is hosted-only.
   the Phase 7 Citadel handoff.
 - **Pins.** Every dependency is pinned with exact `==` versions and locked with
   `--hash=sha256:` lockfiles for the agent, the MCP server and the evals.
+- **Tools.** `src/mcp/server.py` takes each tool's arguments from the SPEC § 6
+  `` ### `tool` `` subsection **Inputs** (table or `` `name: type` required ``
+  prose), falling back to the summary table. Placeholders such as `none` or
+  `see below` never become arguments. Read/write comes from § 11a
+  `consequence:`, then § 5b Read/Write, then the idempotency column, and only
+  then from the tool-name prefix.
 - **Evals.** `evals/eval_dataset.jsonl` reuses threadlight-design's
   `tests/eval_dataset.jsonl` verbatim when present (killer-prompt literals stay
-  identical), otherwise it is derived from the SPEC § 9 scenario table.
+  identical), otherwise it is derived from the SPEC § 9 scenario table. The
+  canonical input field is `query`; rows that use `prompt` (or `input`) are
+  accepted by both the generator and `run_evals.py`.
   `python evals/run_evals.py` runs after deploy as a single command.
   It creates a Foundry eval with built-in evaluators plus a custom score-model
   rubric derived from the SPEC business rules (1–5 anchors, threshold 4).
@@ -379,10 +387,12 @@ these checks:
 - the Foundry package gate exits 3;
 - a secret and personal-target scan finds nothing;
 - the generated offline agent tests pass;
-- `bicep build infra/main.bicep` succeeds;
+- `bicep build infra/main.bicep` succeeds with no BCP037 (unknown property)
+  warning;
 - `docker build` succeeds for both images with an empty temporary
   `DOCKER_CONFIG`, so no credentials are stored and nothing is pushed. Only
-  public base images are used.
+  public base images are used;
+- no `__pycache__` directory or `.pyc`/`.pyo` file exists in the output.
 
 Docker and bicep are reported as `skipped` when unavailable, unless you pass
 `--require-docker` or `--require-bicep`. CI runs the self-check with both
@@ -1718,7 +1728,9 @@ One line per scenario, derived from spec § 9:
 {"id": "S-003", "query": "Process loan: credit score 580, DTI 40%", "expected": "Sent to human review", "business_rules": ["BR-001", "BR-002"], "category": "boundary"}
 ```
 
-Each line maps directly to a scenario row in the spec.
+Each line maps directly to a scenario row in the spec. `query` is the canonical
+input field; `prompt` is accepted as an alias (generate-only and
+`run_evals.py` map it to `query`).
 
 #### `tests/run_evals.py`
 

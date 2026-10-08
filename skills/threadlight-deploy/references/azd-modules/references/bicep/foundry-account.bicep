@@ -69,9 +69,9 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-previ
 // (MID-10 — preemptive next-time) The Foundry account must have its own
 // capabilityHost before any project-level capabilityHost can be created.
 // Without it, project-level capabilityHost provisioning fails with
-// "Foundry Account capabilityHost Not Found". The BCP037 Bicep warning
-// about `capabilityHostKind` is a stale-type false positive — the API
-// accepts it and sets capabilityHostKind: 'Agents' by default.
+// "Foundry Account capabilityHost Not Found". `capabilityHostKind` belongs
+// on the account-level host only; ProjectCapabilityHostProperties does not
+// declare it (BCP037), so the project-level host carries no kind.
 resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityHosts@2025-04-01-preview' = {
   parent: account
   name: 'default'
@@ -84,9 +84,7 @@ resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityH
 resource capabilityHost 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview' = {
   parent: project
   name: 'default'
-  properties: {
-    capabilityHostKind: 'Agents'
-  }
+  properties: {}
   dependsOn: [
     accountCapabilityHost
   ]

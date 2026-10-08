@@ -192,7 +192,16 @@ specify:
 
 Define the tools the agent will use. These are abstract — not bound to any specific runtime.
 
-### [tool_name]
+> **Machine-read contract.** `threadlight-deploy` (including generate-only mode)
+> builds the MCP server from this section. Each `` ### `tool_name` `` subsection's
+> **Inputs** is canonical: one row (or one `` `name: type` required|optional ``
+> item) per real argument. If you also keep a summary table, its input cell must
+> repeat the real argument names; never write `none`, `see below` or `n/a` there.
+> A tool with genuinely no inputs writes `none` (not `see below`).
+> Read/write classification comes from § 5b (Read/Write column) and § 11a
+> (`consequence:`), which win over any name-based guess; keep them consistent.
+
+### `[tool_name]`
 - **Description**: [What does this tool do?]
 - **Used by**: [Which skill/agent uses this]
 - **Inputs**:

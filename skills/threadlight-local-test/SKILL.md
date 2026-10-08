@@ -108,6 +108,14 @@ python3 skills/threadlight-local-test/scripts/project_tools.py \
   only when a real value is known.
 - Every tool in the plan is called, with up to 3 argument candidates. A tool
   that raises or returns an `error` result on every attempt fails the run.
+- Contract failures fail the run before any call (`attempts: 0`): a tool with
+  no declared arguments, placeholder arguments such as `none_id`, or a
+  required `*_id` argument with no value in the sample data or earlier
+  results. The harness never sends `{}` (unless the SPEC explicitly declares
+  the tool's inputs as `none`) or an invented ID; required non-ID
+  values fall back to `"sample"`.
+- It runs with bytecode writing disabled, so the project gains no
+  `__pycache__`.
 - Report: `threadlight-local-test-report/v1` with `pattern: "project-tools"`.
   Exit codes: 0 pass, 1 a tool failed, 2 no generated MCP server.
 

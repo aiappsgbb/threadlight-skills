@@ -7,9 +7,15 @@ sample data (``specs/sample-data``). This replaces Pattern 0 generic CRUD for
 generate-only repos: every tool the hosted agent will call is exercised offline.
 
 Arguments are resolved in this order: a value returned by an earlier call
-(e.g. ``get_order`` -> ``customer_id``), a record in the noun-matched sample
-file, then a literal ``"sample"``. A call is ``ok`` when it returns no
-``error`` key. No network, no Azure login, no LLM.
+(e.g. ``get_order`` -> ``customer_id``), then a record in the noun-matched
+sample file. Only required non-identifier values (e.g. ``decision``) fall back
+to a literal ``"sample"``. A call is ``ok`` when it returns no ``error`` key.
+
+A tool fails without being called when its contract is degenerate: no declared
+arguments, placeholder argument names (``none_id``, ``see_below``) parsed from
+a "none / see below" SPEC cell, a required identifier (``*_id``) that no
+earlier result or sample record provides, or a resolved call of ``{}``.
+No network, no Azure login, no LLM, no bytecode written into the project.
 
 Usage::
 
@@ -27,6 +33,11 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+
+sys.dont_write_bytecode = True
+
+DEGENERATE_NAMES = {"none", "none_id", "see_below", "see_below_id", "none_see_below", "none_see_below_id",
+                    "n_a", "na", "tbd", "nil", "below", "below_id"}
 
 
 def _load_server(project: Path):
@@ -77,8 +88,25 @@ def _collect(context: dict[str, Any], result: Any) -> None:
                     context[key] = value
 
 
-def _arguments(module, tool: dict[str, Any], context: dict[str, Any], attempt: int) -> dict[str, Any]:
+def _is_identifier(name: str) -> bool:
+    return name.endswith(("_id", "_ids")) or name == "id"
+
+
+def _contract_failure(tool: dict[str, Any]) -> str:
+    names = [a["name"] for a in tool.get("args", [])]
+    if not names:
+        if tool.get("no_inputs"):
+            return ""  # the SPEC explicitly declares no inputs (for example "none" or "—")
+        return "no arguments declared in the SPEC section 6 contract"
+    bad = sorted(n for n in names if n.lower() in DEGENERATE_NAMES)
+    if bad:
+        return f"degenerate argument(s) {', '.join(bad)} parsed from a placeholder SPEC input"
+    return ""
+
+
+def _arguments(module, tool: dict[str, Any], context: dict[str, Any], attempt: int) -> tuple[dict[str, Any], str]:
     args: dict[str, Any] = {}
+    unresolved: list[str] = []
     for arg in tool.get("args", []):
         name = arg["name"]
         single = name[:-1] if name.endswith("_ids") else name
@@ -90,9 +118,16 @@ def _arguments(module, tool: dict[str, Any], context: dict[str, Any], attempt: i
         if value is None:
             if arg.get("optional"):
                 continue
+            if _is_identifier(name):
+                unresolved.append(name)
+                continue
             value = ["sample"] if _is_list(arg) else "sample"
         args[name] = value
-    return args
+    if unresolved:
+        return args, f"unresolved required identifier(s) {', '.join(unresolved)}: no earlier result or sample record"
+    if not args and not tool.get("no_inputs"):
+        return args, "empty call: no argument resolved from SPEC sample data"
+    return args, ""
 
 
 def _ok(result: Any) -> bool:
@@ -106,23 +141,35 @@ def run(project: Path) -> dict[str, Any]:
     for tool in _plan(project, module):
         fn = getattr(module, tool["name"], None)
         if not callable(fn):
-            calls.append({"tool": tool["name"], "arguments": {}, "result": {"error": "tool not exported"}, "ok": False})
+            calls.append({"tool": tool["name"], "arguments": {}, "result": {"error": "tool not exported"},
+                          "ok": False, "failure": "tool not exported"})
+            continue
+        failure = _contract_failure(tool)
+        if failure:
+            calls.append({"tool": tool["name"], "arguments": {}, "result": None, "ok": False,
+                          "failure": failure, "attempts": 0})
             continue
         attempts = []
         for attempt in range(3):
-            args = _arguments(module, tool, context, attempt)
-            try:
-                result = fn(**args)
-            except Exception as exc:  # noqa: BLE001 - report, do not crash the harness
-                result = {"error": f"{type(exc).__name__}: {exc}"}
-            attempts.append((args, result))
-            if _ok(result):
+            args, failure = _arguments(module, tool, context, attempt)
+            if failure:
+                result = {"error": failure}
+            else:
+                try:
+                    result = fn(**args)
+                except Exception as exc:  # noqa: BLE001 - report, do not crash the harness
+                    result = {"error": f"{type(exc).__name__}: {exc}"}
+            attempts.append((args, result, failure))
+            if not failure and _ok(result):
                 break
-        args, result = attempts[-1]
-        if _ok(result):
+        args, result, failure = attempts[-1]
+        ok = not failure and _ok(result)
+        if ok:
             _collect(context, result)
-        calls.append({"tool": tool["name"], "arguments": args, "result": result, "ok": _ok(result),
-                      "attempts": len(attempts)})
+        elif not failure:
+            failure = str(result.get("error")) if isinstance(result, dict) else "tool returned an error"
+        calls.append({"tool": tool["name"], "arguments": args, "result": result, "ok": ok,
+                      "failure": failure, "attempts": len(attempts)})
     return {
         "schema": "threadlight-local-test-report/v1",
         "pattern": "project-tools",

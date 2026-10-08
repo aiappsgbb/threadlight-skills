@@ -39,6 +39,8 @@ def _offline_env(tmp_path: Path) -> dict[str, str]:
     env["HOME"] = str(tmp_path / "home")
     env["no_proxy"] = env["NO_PROXY"] = ""
     env["http_proxy"] = env["https_proxy"] = env["HTTP_PROXY"] = env["HTTPS_PROXY"] = "http://127.0.0.1:9"
+    # Shared module-scoped outputs must stay free of __pycache__ (issue #161).
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     return env
 
 
@@ -225,7 +227,7 @@ def test_run_evals_is_one_command_and_offline_safe(generated: Path, tmp_path: Pa
     runner = generated / "evals" / "run_evals.py"
     text = runner.read_text()
     assert "azure_ai_target_completions" in text and "azure_ai_agent" in text
-    assert "TextIOWrapper" in text
+    assert 'reconfigure(encoding="utf-8"' in text
     dry = _run([str(runner), "--dry-run"], tmp_path, cwd=generated)
     assert dry.returncode == 0, dry.stdout + dry.stderr
     payload = json.loads(dry.stdout)
@@ -417,3 +419,252 @@ def test_real_os_errors_exit_2_not_refusal_codes(tmp_path: Path):
     result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
     assert result.returncode == 2, result.stderr
     assert "Traceback" not in result.stderr
+
+
+# --- issue #161: Studio-format SPEC (section 6 headings) end-to-end regression ----
+
+STUDIO_FIXTURE = DEPLOY / "tests" / "fixtures" / "generate-only" / "equipment-booking"
+DEGENERATE_ARGS = {"none_id", "none", "see_below", "see_below_id", "none_see_below"}
+
+
+@pytest.fixture(scope="module")
+def studio(tmp_path_factory) -> Path:
+    tmp = tmp_path_factory.mktemp("studio")
+    project = tmp / "equipment-booking"
+    shutil.copytree(STUDIO_FIXTURE, project)
+    result = _run([str(GENERATOR), "--project", str(project)], tmp)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return project
+
+
+def _plan(project: Path) -> dict[str, dict]:
+    return {t["name"]: t for t in json.loads((project / "specs" / "project-tools.json").read_text())["tools"]}
+
+
+def test_section6_subsection_inputs_become_real_args(studio: Path):
+    plan = _plan(studio)
+    assert [a["name"] for a in plan["get_member"]["args"]] == ["member_id"]
+    assert [a["name"] for a in plan["verify_equipment_availability"]["args"]] == ["equipment_type", "start_at", "end_at"]
+    assert [a["name"] for a in plan["get_booking_request"]["args"]] == ["request_id"]
+    for tool in plan.values():
+        assert not any(a.get("optional") for a in tool["args"]), tool
+        assert not DEGENERATE_ARGS & {a["name"] for a in tool["args"]}, tool
+    assert plan["get_member"]["description"].startswith("Look up a makerspace member")
+
+
+def test_no_placeholder_args_in_generated_server(studio: Path):
+    text = (studio / "src" / "mcp" / "server.py").read_text()
+    assert "none_id" not in text
+    assert "def verify_equipment_availability(equipment_type: str, start_at: str, end_at: str)" in text
+    assert "def get_member(member_id: str)" in text
+
+
+def test_kind_follows_5b_and_11a_not_name_heuristic(studio: Path):
+    plan = _plan(studio)
+    assert {name: t["kind"] for name, t in plan.items()} == {
+        "get_member": "read", "verify_equipment_availability": "read", "get_booking_request": "read"}
+
+
+def test_11a_consequence_overrides_5b(tmp_path: Path):
+    project = tmp_path / "ws"
+    shutil.copytree(STUDIO_FIXTURE, project)
+    spec = project / "specs" / "SPEC.md"
+    spec.write_text(spec.read_text().replace(
+        "  - id: get_booking_request\n    consequence: read",
+        "  - id: get_booking_request\n    consequence: reversible-write"))
+    assert _run([str(GENERATOR), "--project", str(project)], tmp_path).returncode == 0
+    assert _plan(project)["get_booking_request"]["kind"] == "write"
+
+
+def test_placeholder_only_inputs_never_become_none_id(tmp_path: Path):
+    project = tmp_path / "ws"
+    shutil.copytree(FIXTURE, project)
+    spec = project / "specs" / "SPEC.md"
+    spec.write_text(spec.read_text().replace("| `get_customer` | `customer_id` |", "| `get_customer` | none / see below |"))
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    names = [a["name"] for a in _plan(project)["get_customer"]["args"]]
+    assert not DEGENERATE_ARGS & set(names)
+    assert "none_id" not in (project / "src" / "mcp" / "server.py").read_text()
+
+
+def test_studio_harness_calls_tools_with_sample_data_ids(studio: Path, tmp_path: Path):
+    out = tmp_path / "pt.json"
+    result = _run([str(HARNESS), "--project", str(studio), "--report", str(out)], tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = {c["tool"]: c for c in json.loads(out.read_text())["calls"]}
+    assert calls["get_member"]["arguments"] == {"member_id": "MEM-001"}
+    assert calls["get_member"]["result"]["status"] == "active"
+    assert calls["verify_equipment_availability"]["arguments"] == {
+        "equipment_type": "laser_cutter", "start_at": "2030-01-10T09:00:00Z", "end_at": "2030-01-10T11:00:00Z"}
+    assert calls["verify_equipment_availability"]["result"]["slot_id"] == "SLT-001"
+    assert calls["get_booking_request"]["arguments"] == {"request_id": "REQ-001"}
+    assert all(c["arguments"] for c in calls.values())
+
+
+def _harness_with_plan(studio: Path, tmp_path: Path, mutate) -> tuple[int, dict]:
+    project = tmp_path / "copy"
+    shutil.copytree(studio, project, ignore=shutil.ignore_patterns("__pycache__"))
+    plan_path = project / "specs" / "project-tools.json"
+    doc = json.loads(plan_path.read_text())
+    mutate(doc["tools"])
+    plan_path.write_text(json.dumps(doc))
+    out = tmp_path / "pt.json"
+    result = _run([str(HARNESS), "--project", str(project), "--report", str(out)], tmp_path)
+    return result.returncode, json.loads(out.read_text())
+
+
+def test_harness_fails_on_degenerate_args(studio: Path, tmp_path: Path):
+    def mutate(tools):
+        tools[0]["args"] = [{"name": "none_id", "type": "str", "optional": True}]
+    code, report = _harness_with_plan(studio, tmp_path, mutate)
+    assert code == 1
+    call = next(c for c in report["calls"] if c["tool"] == "get_member")
+    assert not call["ok"] and "degenerate" in call["failure"]
+
+
+def test_harness_fails_on_empty_args(studio: Path, tmp_path: Path):
+    def mutate(tools):
+        tools[0]["args"] = []
+    code, report = _harness_with_plan(studio, tmp_path, mutate)
+    assert code == 1
+    call = next(c for c in report["calls"] if c["tool"] == "get_member")
+    assert not call["ok"] and "no arguments" in call["failure"]
+
+
+def test_harness_fails_on_unresolvable_required_id(studio: Path, tmp_path: Path):
+    def mutate(tools):
+        tools[2]["args"] = [{"name": "ticket_id", "type": "str"}]
+    code, report = _harness_with_plan(studio, tmp_path, mutate)
+    assert code == 1
+    call = next(c for c in report["calls"] if c["tool"] == "get_booking_request")
+    assert not call["ok"] and "ticket_id" in call["failure"]
+    assert call["arguments"].get("ticket_id") != "sample"
+
+
+def test_design_prompt_field_is_accepted_as_query(tmp_path: Path):
+    project = tmp_path / "ws"
+    shutil.copytree(STUDIO_FIXTURE, project)
+    (project / "tests").mkdir()
+    (project / "tests" / "eval_dataset.jsonl").write_text(
+        json.dumps({"id": "S-001", "prompt": "Check request REQ-001", "expected": "APPROVE",
+                    "business_rules": ["BR-001"]}) + "\n")
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    row = json.loads((project / "evals" / "eval_dataset.jsonl").read_text().splitlines()[0])
+    assert row["query"] == "Check request REQ-001"
+
+
+def test_run_evals_load_rows_accepts_prompt(studio: Path, tmp_path: Path, monkeypatch):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("gen_run_evals", studio / "evals" / "run_evals.py")
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setattr(sys, "dont_write_bytecode", True)
+    spec.loader.exec_module(module)
+    data = tmp_path / "ds.jsonl"
+    data.write_text(json.dumps({"id": "X", "prompt": "hello"}) + "\n" + json.dumps({"id": "Y", "query": "hi"}) + "\n")
+    rows = module.load_rows({"dataset": str(data)})
+    assert [r["query"] for r in rows] == ["hello", "hi"]
+
+
+def test_pilot_project_capability_host_has_no_bcp037_property():
+    text = (PILOT / "infra" / "main.bicep").read_text()
+    block = re.search(r"resource projectCapabilityHost\b.*?\n}\n", text, re.S)
+    assert block, "projectCapabilityHost resource missing"
+    assert "capabilityHostKind" not in block.group(0)
+    shared = SKILLS / "threadlight-deploy" / "references" / "azd-modules" / "references" / "bicep" / "foundry-project-capability-host.bicep"
+    if shared.is_file():
+        assert "capabilityHostKind" not in shared.read_text()
+
+
+def test_pilot_bicep_builds_without_bcp037(tmp_path: Path):
+    bicep = shutil.which("bicep") or (str(Path.home() / ".azure" / "bin" / "bicep") if (Path.home() / ".azure" / "bin" / "bicep").is_file() else None)
+    if not bicep:
+        pytest.skip("bicep CLI not available")
+    result = subprocess.run([bicep, "build", str(PILOT / "infra" / "main.bicep"), "--outfile", str(tmp_path / "m.json")],
+                            capture_output=True, text=True, timeout=300)
+    assert result.returncode == 0, result.stderr
+    assert "BCP037" not in result.stdout + result.stderr
+
+
+def test_no_bytecode_after_generate_selfcheck_and_harness(studio: Path, tmp_path: Path):
+    _run([str(HARNESS), "--project", str(studio), "--report", str(tmp_path / "pt.json")], tmp_path)
+    _run([str(SELFCHECK), "--project", str(studio), "--report", str(tmp_path / "sc.json"), "--skip-docker", "--skip-bicep"], tmp_path)
+    leaked = [p for p in studio.rglob("*") if p.name == "__pycache__" or p.suffix == ".pyc"]
+    assert not leaked, leaked
+
+
+def test_selfcheck_flags_bytecode(generated: Path, tmp_path: Path):
+    project = tmp_path / "copy"
+    shutil.copytree(generated, project)
+    cache = project / "src" / "mcp" / "__pycache__"
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / "server.cpython-312.pyc").write_bytes(b"\x00")
+    report = tmp_path / "sc.json"
+    result = _run([str(SELFCHECK), "--project", str(project), "--report", str(report), "--skip-docker", "--skip-bicep"], tmp_path)
+    assert result.returncode == 1
+    status = {c["name"]: c["status"] for c in json.loads(report.read_text())["checks"]}
+    assert status["no-bytecode"] == "fail"
+
+
+def test_section6_headings_without_summary_table(tmp_path: Path):
+    project = tmp_path / "ws"
+    shutil.copytree(STUDIO_FIXTURE, project)
+    spec = project / "specs" / "SPEC.md"
+    text = spec.read_text()
+    text = re.sub(r"(## 6\. Tool Contracts\n\n)\|.*?\n\n", r"\1", text, flags=re.S)
+    assert "none / see below" not in text
+    spec.write_text(text)
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    plan = _plan(project)
+    assert list(plan) == ["get_member", "verify_equipment_availability", "get_booking_request"]
+    assert [a["name"] for a in plan["verify_equipment_availability"]["args"]] == ["equipment_type", "start_at", "end_at"]
+    assert plan["verify_equipment_availability"]["kind"] == "read"
+
+
+def _import(path: Path, name: str):
+    import importlib.util
+    sys.dont_write_bytecode = True
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+MEMBER_INPUTS = """- **Inputs**:
+  | Parameter | Type | Required | Description |
+  |-----------|------|----------|-------------|
+  | `member_id` | string | yes | member identifier |
+"""
+
+
+@pytest.mark.parametrize("table", [True, False])
+def test_template_style_unticked_headings_are_tool_subsections(table: bool):
+    gen = _import(GENERATOR, "generate_only_t1")
+    summary = "| Tool | Inputs | Output |\n|---|---|---|\n| `get_member` | none / see below | member |\n\n" if table else ""
+    spec = ("## 6. Tool Contracts\n\n" + summary + "### get_member\n- **Description**: Look up a member\n" + MEMBER_INPUTS
+            + "\n### Notes\nFree text, not a tool.\n\n## 7. Knowledge\n")
+    plan = {t["name"]: t for t in gen.tools(spec)}
+    assert list(plan) == ["get_member"]
+    assert [a["name"] for a in plan["get_member"]["args"]] == ["member_id"]
+
+
+def test_unparseable_subsection_inputs_keep_summary_table_args():
+    gen = _import(GENERATOR, "generate_only_t2")
+    spec = ("## 6. Tool Contracts\n\n| Tool | Inputs | Output |\n|---|---|---|\n| `get_member` | `member_id` | member |\n\n"
+            "### `get_member`\n- **Inputs**:\n  - `member_id` — the member identifier\n- **Output Schema**: x\n\n## 7. K\n")
+    assert [a["name"] for a in gen.tools(spec)[0]["args"]] == ["member_id"]
+
+
+def test_explicit_no_input_tool_is_marked_and_callable_with_empty_args():
+    gen = _import(GENERATOR, "generate_only_t3")
+    spec = ("## 6. Tool Contracts\n\n| Tool | Inputs | Output | Idempotency |\n|---|---|---|---|\n"
+            "| `list_open_cases` | — | cases | read-only |\n| `get_case` | none / see below | case | read-only |\n\n## 7. K\n")
+    plan = {t["name"]: t for t in gen.tools(spec)}
+    assert plan["list_open_cases"]["args"] == [] and plan["list_open_cases"].get("no_inputs") is True
+    assert not plan["get_case"].get("no_inputs")
+    harness = _import(HARNESS, "project_tools_t3")
+    assert harness._contract_failure(plan["list_open_cases"]) == ""
+    assert harness._arguments(None, plan["list_open_cases"], {}, 0) == ({}, "")
+    assert "no arguments" in harness._contract_failure(plan["get_case"])

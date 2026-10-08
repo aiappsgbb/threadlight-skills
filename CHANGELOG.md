@@ -7,6 +7,39 @@ field.
 
 ## [Unreleased]
 
+### 2.20.1: generate-only output aligned with threadlight-design (issue #161)
+
+- **Root cause.** Studio's live run on 2.20.0 showed that generate-only mode
+  read SPEC § 6 only from the summary table. threadlight-design writes § 6 as
+  `` ### `tool` `` subsections, and its table said "Input: none / see below", so
+  every generated tool got a single `none_id` argument. Tools were classified
+  `write` by name, ignoring § 5b (Read/Write) and § 11a (`consequence:`). The
+  eval dataset used `prompt` while deploy expected `query`. The project
+  capability host carried `capabilityHostKind`, which triggers BCP037. The
+  project-tools harness could call a tool with `{}`, and nothing prevented
+  `__pycache__`/`.pyc` files in the generated output.
+- **Fix: § 6 parser.** `generate_only.py` reads arguments from the subsection
+  **Inputs** (table or `` `name: type` required `` prose) with the table as a
+  fallback; unreadable subsection inputs keep the table arguments;
+  template-style unticked headings (`### get_member`) are read when they carry
+  tool bullets; placeholders never become arguments; no tools is an error.
+  Read/write precedence: § 11a, § 5b, idempotency column, then name prefix.
+- **Fix: dataset.** `query` is canonical; `prompt` and `input` are accepted by
+  the generator and by the generated `run_evals.py`.
+- **Fix: BCP037.** The project-level capability host no longer sets
+  `capabilityHostKind` (pilot `main.bicep`, `foundry-account.bicep`,
+  `foundry-project-capability-host.bicep`); the account-level host keeps it.
+  The self-check fails on any BCP037 warning.
+- **Fix: harness.** `project_tools.py` fails a tool with no arguments,
+  placeholder arguments or an unresolved required `*_id`. It sends `{}` only
+  to tools whose SPEC explicitly declares inputs as `none` (`no_inputs`).
+- **Fix: bytecode.** New `no-bytecode` self-check; the generator, harness and
+  self-check run with bytecode writing disabled.
+- **Docs.** The speckit § 6 contract, the deploy generate-only notes and the
+  local-test harness failure modes are updated.
+- **Tests.** End-to-end regression on a Studio-format SPEC (headings-only § 6)
+  in `skills/threadlight-deploy/tests/test_generate_only.py`.
+
 ### 2.20.0: `threadlight-deploy` generate-only mode (deploy-ready repository without a subscription)
 
 - **Root cause.** Threadlight Studio must hand users a complete repository that

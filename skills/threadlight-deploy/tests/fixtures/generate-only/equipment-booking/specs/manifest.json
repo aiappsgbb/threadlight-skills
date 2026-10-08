@@ -1,0 +1,12 @@
+{
+  "name": "equipment-booking-agent",
+  "version": "0.1.0",
+  "speckit": "specs/SPEC.md",
+  "description": "Fabrikam Makerspace equipment booking hosted agent with a mock booking MCP server.",
+  "skills": [{"name": "booking-check"}],
+  "mock_systems": ["Synthetic booking system"],
+  "deployment_manifest": {
+    "module_selectors": {"hosting": "foundry-hosted", "tools": "mcp-aca"},
+    "channels": []
+  }
+}
