@@ -12,6 +12,8 @@ network beyond public base-image pulls:
 * ``bicep-build``                ``bicep build infra/main.bicep`` (skipped when bicep is absent)
 * ``docker-build``               local ``docker build`` of both images with an EMPTY temporary
                                  DOCKER_CONFIG (no stored credentials, image never pushed)
+* ``no-bytecode``                no ``__pycache__`` directory or ``*.pyc`` file in the repo
+                                 (checked last, after every subprocess above has run)
 
 Usage::
 
@@ -193,7 +195,8 @@ def check_agent_tests(project: Path) -> dict[str, str]:
     except ImportError:
         return check("agent-unit-tests", "skipped", "pytest not installed")
     result = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(tests)],
-                            cwd=project, capture_output=True, text=True, timeout=300)
+                            cwd=project, capture_output=True, text=True, timeout=300,
+                            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     status = "pass" if result.returncode == 0 else "fail"
     return check("agent-unit-tests", status, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else result.stderr[-300:])
 
@@ -209,6 +212,9 @@ def check_bicep(project: Path, skip: bool, require: bool) -> dict[str, str]:
                                  str(Path(tmp) / "main.json")], capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         return check("bicep-build", "fail", result.stderr[-600:])
+    if "BCP037" in result.stdout + result.stderr:
+        return check("bicep-build", "fail", "BCP037 (property not allowed by the resource type): "
+                     + (result.stdout + result.stderr)[-600:])
     return check("bicep-build", "pass", "infra/main.bicep compiles")
 
 
@@ -240,6 +246,14 @@ def check_docker(project: Path, skip: bool, require: bool) -> dict[str, str]:
     return check("docker-build", "pass", "; ".join(details))
 
 
+def check_no_bytecode(project: Path) -> dict[str, str]:
+    leaked = sorted(str(p.relative_to(project)) for p in project.rglob("*")
+                    if p.name == "__pycache__" or p.suffix == ".pyc")
+    if leaked:
+        return check("no-bytecode", "fail", "compiled Python artefacts in the repo: " + ", ".join(leaked[:10]))
+    return check("no-bytecode", "pass", "no __pycache__ or .pyc files")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Offline acceptance self-check for a generate_only repo.")
     parser.add_argument("--project", required=True, type=Path)
@@ -259,6 +273,7 @@ def main(argv: list[str] | None = None) -> int:
         check_bicep(project, args.skip_bicep, args.require_bicep),
         check_docker(project, args.skip_docker, args.require_docker),
     ]
+    checks.append(check_no_bytecode(project))
     failed = [c["name"] for c in checks if c["status"] == "fail"]
     report = {"schema": "threadlight-generate-only-selfcheck/v1", "project": project.name,
               "status": "fail" if failed else "pass", "failed": failed, "checks": checks}

@@ -21,16 +21,12 @@ Environment (``azd env get-values`` provides them after deploy):
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
-
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "evals" / "eval-config.json"
@@ -44,7 +40,12 @@ def load_config() -> dict:
 
 def load_rows(cfg: dict) -> list[dict]:
     path = ROOT / cfg.get("dataset", "evals/eval_dataset.jsonl")
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    for row in rows:
+        # threadlight-design writes `prompt`; the eval template reads `query`.
+        if not row.get("query"):
+            row["query"] = row.get("prompt") or row.get("input") or ""
+    return rows
 
 
 def data_source(cfg: dict, rows: list[dict]) -> dict:
@@ -125,6 +126,8 @@ def record(run_id: str, rubric_name: str, score) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Run the SPEC-derived Foundry eval against the hosted agent.")
     parser.add_argument("--dry-run", action="store_true", help="print the eval request offline and exit")
     parser.add_argument("--no-wait", action="store_true", help="create the run and exit without polling")

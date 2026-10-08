@@ -1,0 +1,7 @@
+{
+  "_meta": {"entity": "Member", "synthetic": true},
+  "records": [
+    {"member_id": "MEM-001", "name": "Synthetic Member A", "status": "active", "tier": "pro"},
+    {"member_id": "MEM-002", "name": "Synthetic Member B", "status": "suspended", "tier": "basic"}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "_meta": {"entity": "EquipmentSlot", "synthetic": true},
+  "records": [
+    {"slot_id": "SLT-001", "equipment_type": "laser_cutter", "start_at": "2030-01-10T09:00:00Z", "end_at": "2030-01-10T11:00:00Z", "availability": "available"},
+    {"slot_id": "SLT-002", "equipment_type": "cnc_router", "start_at": "2030-01-10T13:00:00Z", "end_at": "2030-01-10T15:00:00Z", "availability": "booked"}
+  ]
+}

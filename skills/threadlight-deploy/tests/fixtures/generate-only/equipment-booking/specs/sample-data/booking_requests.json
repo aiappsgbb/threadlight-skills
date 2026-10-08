@@ -1,0 +1,7 @@
+{
+  "_meta": {"entity": "BookingRequest", "synthetic": true},
+  "records": [
+    {"request_id": "REQ-001", "member_id": "MEM-001", "equipment_type": "laser_cutter", "status": "pending"},
+    {"request_id": "REQ-002", "member_id": "MEM-002", "equipment_type": "cnc_router", "status": "pending"}
+  ]
+}

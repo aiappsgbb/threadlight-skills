@@ -150,10 +150,12 @@ resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityH
   properties: { capabilityHostKind: 'Agents' }
 }
 
+// ProjectCapabilityHostProperties has no capabilityHostKind (BCP037); the kind is inherited
+// from the account-level host. Basic setup: platform-managed stores, no connections.
 resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview' = {
   parent: project
   name: 'default'
-  properties: { capabilityHostKind: 'Agents' }
+  properties: {}
   dependsOn: [ accountCapabilityHost ]
 }
 
