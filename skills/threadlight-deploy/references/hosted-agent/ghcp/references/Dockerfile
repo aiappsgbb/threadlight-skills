@@ -3,8 +3,9 @@
 # MCR base: ACR Tasks (remote builds) hit Docker Hub anonymous pull limits.
 FROM mcr.microsoft.com/oryx/python:3.12
 WORKDIR /app
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir uv && uv pip install --system --compile-bytecode -r pyproject.toml
+# Exact, sha256-hashed pins resolved from pyproject.toml (see requirements.lock).
+COPY requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 # skills/ and copilot-instructions.md are optional (container.py guards both),
 # so copy the whole context (filtered by .dockerignore) and fail fast only on
 # the required entrypoint.

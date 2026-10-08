@@ -4,5 +4,6 @@
 # "archive/tar: write too long".
 *
 !src/mcp/*.py
+!src/mcp/requirements.lock
 !specs/sample-data/**
 **/__pycache__

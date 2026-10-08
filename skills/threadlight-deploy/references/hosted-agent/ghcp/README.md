@@ -176,8 +176,10 @@ directly, or use `azd ai agent invoke --protocol invocations`. If you need
 
 ## Dockerfile
 
-**Copy** `references/Dockerfile` into your project root, with
-`references/dockerignore` as `.dockerignore`. No changes needed for most agents.
+**Copy** `references/Dockerfile` and `references/requirements.lock` into your
+project root, with `references/dockerignore` as `.dockerignore`. The Dockerfile
+installs the hashed lock with `--require-hashes`, so the build fails if
+`requirements.lock` is missing. No other changes needed for most agents.
 The image uses an MCR base (remote ACR Tasks builds hit Docker Hub anonymous pull
 limits) and its `COPY`/`CMD` name the entrypoint `container.py`; keep that name.
 
@@ -191,7 +193,7 @@ hosted agent on Foundry plus the mock MCP server on Azure Container Apps.
 | `azure.yaml` | `azure.ai.agent` + `containerapp` services, both `remoteBuild: true`; `postdeploy` hook |
 | `infra/main.bicep` | Foundry account + project (system identity), model deployment, ACR, ACA, Log Analytics; every role assigned by GUID, including the deployer's Foundry User (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) at project scope; `tags` parameter |
 | `infra/main.parameters.json` | tags from `THREADLIGHT_OWNER`, `THREADLIGHT_PURPOSE`, `THREADLIGHT_DISPOSABLE` azd env values |
-| `mcp/Dockerfile`, `mcp/server.py` | MCR base, `mcp>=1.10,<2`, `SAMPLE_DATA_DIR` env (no path walk), `tool=` log lines for server-side proof |
+| `mcp/Dockerfile`, `mcp/server.py`, `mcp/requirements.lock` | MCR base, exact hashed `mcp==1.29.1` (`--require-hashes`; mcp 2.x removes `mcp.server.fastmcp`), `SAMPLE_DATA_DIR` env (no path walk), `tool=` log lines for server-side proof |
 | `dockerignore` | allowlist root `.dockerignore` (repo-root build context exceeds the ACR tar limit otherwise) |
 | `hooks/postdeploy.sh` | grants the agent instance identity Foundry User by GUID on account and project |
 

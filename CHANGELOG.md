@@ -7,6 +7,53 @@ field.
 
 ## [Unreleased]
 
+### 2.20.0: `threadlight-deploy` generate-only mode (deploy-ready repository without a subscription)
+
+- **Root cause.** Threadlight Studio must hand users a complete repository that
+  is ready to deploy, produced by a real Threadlight run up to
+  `threadlight-deploy`, but generated in a hosted container with no Azure
+  subscription and no `az`/`azd` login. `threadlight-deploy` had no
+  generate-only mode. Its Phase 5 relied on `azd ai agent init`, which needs a
+  login and writes nothing without it. Phase 2, the Phase 3 checklist and Phase 5
+  also described conflicting layouts (`infra/core` + `agent.yaml` + `src/agent`
+  versus the GHCP pilot scaffold).
+- **Fix: generate-only mode.** `skills/threadlight-deploy/scripts/generate_only.py
+  --project <ws>` runs Phases 0, 1, 2, 3, 5 and 6 offline and deterministically
+  from the vendored templates, with no network.
+  - The GHCP pilot scaffold (`references/hosted-agent/ghcp/references/pilot`) is
+    the only canonical source of `azure.yaml` (inline hosted agent service, no
+    `agent.yaml`) and `infra/`.
+  - It never runs `azd ai agent init`.
+  - It refuses prompt agents and refuses to overwrite existing files without
+    `--force`.
+- **Posture and deferred steps.** The default posture is demo-sandbox
+  (`specs/deployment-posture.md`). T-0, 3.5, the Azure steps of 6.5 and Phase 7
+  Citadel are recorded in `specs/deferred-steps.md`.
+- **Pins and lockfiles.** Dependencies use exact `==` pins with hashed
+  lockfiles for the agent, the MCP server and the evals. The generated repo
+  includes offline agent unit tests.
+- **Evals.** `evals/run_evals.py`, `evals/eval_dataset.jsonl` and
+  `evals/eval-config.json`: Foundry built-in evaluators plus a custom rubric
+  derived from the SPEC, with anchors and a threshold. One command runs them
+  after deploy. An existing design `tests/eval_dataset.jsonl` is reused verbatim.
+- **Manifests.** `specs/foundry-package-manifest.json`
+  (`threadlight-foundry-package/v1`) is schema-valid with unevidenced
+  sections, so `foundry_package.py` exits 3 (INCOMPLETE), never 2. The
+  generator also writes `tests/postdeploy-manifest.json`.
+- **Offline self-check.** `generate_only_selfcheck.py` is the skill acceptance.
+  It validates `azure.yaml` against the vendored azd schema, checks the hosted
+  agent definition, `foundry_package` exit 3 and the agent unit tests, runs
+  `bicep build` and local docker builds (public base images, empty
+  `DOCKER_CONFIG`, no push), and scans for secrets and personal deployment
+  targets. Public constants are not flagged: `.azure/` in ignore files and
+  built-in role definition IDs.
+- **`threadlight-local-test` project-tools harness.**
+  `scripts/project_tools.py` imports the generated MCP server and calls its
+  real tools with the SPEC sample-data IDs, not Pattern 0 generic CRUD.
+  Free-text SPEC inputs become optional ID arguments.
+- **CI.** The new `generate-only-selfcheck` job runs generate → self-check
+  (bicep and docker required) → project-tools on a clean runner with no login.
+
 ### 2.19.4: The hosted agent is always the default; a prompt agent needs an explicit opt-in
 
 - **Root cause.** The 2.19.3 behavioural probe refused the app-side container

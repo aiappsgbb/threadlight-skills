@@ -1,0 +1,4 @@
+azure-ai-projects==2.3.0
+openai==2.54.0
+azure-identity==1.25.3
+requests==2.32.5

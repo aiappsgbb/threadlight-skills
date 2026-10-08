@@ -1,0 +1,12 @@
+{
+  "name": "order-returns-agent",
+  "version": "0.1.0",
+  "speckit": "specs/SPEC.md",
+  "description": "Contoso Retail return triage hosted agent with a mock order MCP server.",
+  "skills": [{"name": "return-decision"}],
+  "mock_systems": ["Synthetic order management", "Synthetic customer history"],
+  "deployment_manifest": {
+    "module_selectors": {"hosting": "foundry-hosted", "tools": "mcp-aca"},
+    "channels": []
+  }
+}
