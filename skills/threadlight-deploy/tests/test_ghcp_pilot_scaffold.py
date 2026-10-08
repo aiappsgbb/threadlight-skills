@@ -69,7 +69,10 @@ def test_mcp_dependency_is_upper_bounded_everywhere():
     for path in (PILOT / "mcp/Dockerfile", DEPLOY_SKILL, MCP_SKILL):
         text = read(path)
         assert not pattern.search(text), f"{path}: pin mcp<2 (mcp 2.x removes mcp.server.fastmcp)"
-    assert "mcp>=1.10,<2" in read(PILOT / "mcp/Dockerfile")
+    dockerfile = read(PILOT / "mcp/Dockerfile")
+    assert "--require-hashes -r requirements.lock" in dockerfile
+    lock = read(PILOT / "mcp/requirements.lock")
+    assert re.search(r"^mcp==1\.\d+\.\d+ \\$", lock, re.M), "pilot MCP lock must pin mcp 1.x exactly"
 
 
 def test_pilot_bicep_is_complete_and_uses_role_guids():

@@ -76,6 +76,7 @@ testing.
 | **0. Quickstart** (default) | `python -m threadlight_quickstart` → MAF `Agent + SkillsProvider` + JSON stub tools + Streamlit UI on `localhost:8501` | **First reach-for after `threadlight-design`.** Closes the design → screen-shareable demo loop to <30 min. Zero Docker, zero MCP server boot, one LLM dep (Foundry project OR AOAI deployment OR GitHub Models via `GITHUB_TOKEN`). |
 | **1. MCP-direct** (CLI ↔ MCP) | Just the PoC's FastMCP server on `localhost:8000`; CLI calls tools natively | You're iterating on **MCP tool implementation** (DB queries, business rules, error handling). The CLI itself is the agent. |
 | **2. Smoke-client** (CLI → Python → Agent) | The PoC's `Agent + FoundryChatClient` invoked via `agent.run_async()` from a smoke script | You're iterating on the **prompt** or the **agent's tool-orchestration** behaviour. Skips the `ResponsesHostServer` HTTP layer. |
+| **project-tools** (offline, no LLM) | `scripts/project_tools.py` imports the generated `src/mcp/server.py` and calls its REAL SPEC § 6 tools with the SPEC sample-data IDs | Acceptance for a [generate-only](../threadlight-deploy/SKILL.md#generate-only-mode) repo, or any repo whose MCP server came from `threadlight-deploy`. Proves the project's own tools work over its own data. It is not Pattern 0 generic CRUD. |
 | **3. Local-stack** (compose) ⚠️ | All of: MCP server + Cosmos emulator + workspace UI on nginx + (optional) Search mock | End-to-end smoke before redeploying. **Linux / Windows x86 only** — Cosmos emulator container is fragile on macOS ARM; use Pattern 0 there. |
 
 Reach for **Pattern 0** first. Drop to **Pattern 1** when you need
@@ -83,6 +84,35 @@ to iterate on the real MCP server. Use **Pattern 2** for headless
 prompt tuning that needs to be driven from the CLI. **Pattern 3** is
 a pre-deploy parity check on platforms where the Cosmos emulator
 container actually works.
+
+---
+
+## Project-tools harness (generate-only acceptance)
+
+`scripts/project_tools.py` is the offline harness for a repository produced by
+`threadlight-deploy` generate-only mode. It needs no LLM, no login and no
+network.
+
+```bash
+python3 skills/threadlight-local-test/scripts/project_tools.py \
+  --project <workspace> --report <workspace>/tests/project-tools-report.json
+```
+
+- It imports the generated `src/mcp/server.py` with `SAMPLE_DATA_DIR` pointing
+  at `specs/sample-data/`, so the calls go to the **project's real tools**.
+- The call plan comes from `specs/project-tools.json`, which records the SPEC
+  § 6 tools in order. Arguments are filled first from earlier results (for
+  example the `customer_id` returned by `get_order`), then from IDs found in
+  the sample data. SPEC inputs written as prose (`case + order + amount`)
+  become optional arguments (`case_id`, `order_id`, `amount`), which are sent
+  only when a real value is known.
+- Every tool in the plan is called, with up to 3 argument candidates. A tool
+  that raises or returns an `error` result on every attempt fails the run.
+- Report: `threadlight-local-test-report/v1` with `pattern: "project-tools"`.
+  Exit codes: 0 pass, 1 a tool failed, 2 no generated MCP server.
+
+This is not Pattern 0: Pattern 0 boots generic CRUD stubs and an LLM. The
+project-tools harness checks the tools that will actually ship.
 
 ---
 
@@ -438,6 +468,8 @@ docker so you can iterate on Python without rebuilding).
 ## What this skill ships
 
 ```
+scripts/
+└── project_tools.py          # project-tools harness (generate-only acceptance)
 references/
 ├── local-stack/
 │   ├── compose.local.yaml        # Cosmos emulator + nginx

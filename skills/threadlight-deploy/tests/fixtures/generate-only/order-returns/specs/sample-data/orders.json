@@ -1,0 +1,8 @@
+{
+  "_meta": {"entity": "Order", "synthetic": true},
+  "records": [
+    {"order_id": "ORD-1001", "customer_id": "CUS-201", "value": 89.99, "delivered_days_ago": 10},
+    {"order_id": "ORD-1002", "customer_id": "CUS-202", "value": 60.0, "delivered_days_ago": 45},
+    {"order_id": "ORD-1003", "customer_id": "CUS-203", "value": 420.0, "delivered_days_ago": 5}
+  ]
+}

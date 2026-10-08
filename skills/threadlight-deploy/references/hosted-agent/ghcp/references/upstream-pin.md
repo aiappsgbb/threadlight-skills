@@ -127,10 +127,10 @@ validation:
     python -m venv .venv
     . .venv/bin/activate
     pip install --quiet \
-      "github-copilot-sdk~=1.0.0" \
+      "github-copilot-sdk==1.0.1" \
       "azure-ai-agentserver-invocations==${PINNED_VERSION:-1.0.0b6}" \
-      "azure-identity~=1.25.3" \
-      "python-dotenv~=1.2.2"
+      "azure-identity==1.25.3" \
+      "python-dotenv==1.2.2"
     python -c "
     from copilot import CopilotClient, PermissionHandler, ProviderConfig
     from copilot.session_events import SessionEventType
@@ -181,8 +181,9 @@ The skill wraps two preview PyPI packages whose release cadences are not
 coordinated:
 
 - `github-copilot-sdk` — `1.0.1` is the current **GA** release; the 0.3.x
-  series and the 1.0.0b1-b4 prereleases are superseded. The `~=1.0.0` cap
-  covers PATCH bumps inside 1.0.x. Breaking changes vs 0.3.x: removed
+  series and the 1.0.0b1-b4 prereleases are superseded. Pinned EXACT
+  (`==1.0.1`) since 2.20.0; `requirements.lock` carries the full
+  sha256-hashed closure the Dockerfile installs with `--require-hashes`. Breaking changes vs 0.3.x: removed
   `SubprocessConfig` wrapper class, removed `auto_start` kwarg on
   `CopilotClient.__init__` (see KI-006). Existing skill code using
   `CopilotClient(SubprocessConfig(...), auto_start=False)` was updated to

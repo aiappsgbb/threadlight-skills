@@ -1,0 +1,8 @@
+{
+  "_meta": {"entity": "Customer", "synthetic": true},
+  "records": [
+    {"customer_id": "CUS-201", "tier": "gold", "fraud_flag": false, "returns_90d": 0},
+    {"customer_id": "CUS-202", "tier": "standard", "fraud_flag": false, "returns_90d": 1},
+    {"customer_id": "CUS-203", "tier": "standard", "fraud_flag": true, "returns_90d": 4}
+  ]
+}

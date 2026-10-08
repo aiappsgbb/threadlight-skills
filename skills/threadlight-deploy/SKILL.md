@@ -310,6 +310,90 @@ guard       SPEC +       runtime     scaffold     (optional)   project    compos
 
 ---
 
+## Generate-only mode
+
+`generate_only: true` produces a **complete, deploy-ready repository with no
+subscription, no login and no network**. It serves Studio-hosted generators and
+any user who will deploy later with their own credentials. It runs offline from
+vendored templates and covers Phase 0 (poly-repo guard), Phase 1 (workspace
+inputs), Phase 2 (repo layout), Phase 3 (validation checklist), Phase 5 (hosted
+agent definition, generated from the pilot instead of `azd ai agent init`) and
+Phase 6 (`infra/`). Phase 4 and every Azure step are deferred. It never runs `azd ai agent init`,
+because that command needs a login and writes nothing without one. It never
+calls az, azd or docker, and creates no Azure resources.
+
+```bash
+python3 skills/threadlight-deploy/scripts/generate_only.py --project <workspace> [--force]
+python3 skills/threadlight-deploy/scripts/generate_only_selfcheck.py \
+  --project <workspace> --report <workspace>/tests/generate-only-selfcheck.json
+python3 skills/threadlight-local-test/scripts/project_tools.py \
+  --project <workspace> --report <workspace>/tests/project-tools-report.json
+```
+
+**Canonical source: one layout, no alternatives.** The GHCP pilot scaffold under
+`references/hosted-agent/ghcp/references/pilot` (`references/pilot`), together
+with its parent runtime files, is the ONLY source in generate-only mode for:
+
+- `azure.yaml`, which holds the hosted agent definition **inline** on the agent
+  service (`host: azure.ai.agent`, `kind: hosted`, `protocols`, `container.resources`);
+- `infra/main.bicep` and `infra/main.parameters.json`;
+- `hooks/postdeploy.sh`;
+- `src/agent/` and `src/mcp/`.
+
+There is no `agent.yaml`, no `src/agent/agent.yaml` and no `infra/core/`. The
+generator refuses to run if any of them already exists. `agent_type: prompt`
+is refused with exit 4, because the scaffold is hosted-only.
+
+| Input (design workspace) | Output |
+|---|---|
+| `specs/SPEC.md`, `specs/manifest.json`, `specs/sample-data/`, `AGENTS.md`, `src/agent/skills/` | `azure.yaml`, `infra/`, `hooks/`, `src/agent/` (runtime + `requirements.lock` + offline `tests/`), `src/mcp/server.py` (real SPEC § 6 tools over the sample data), `evals/` (`run_evals.py`, `eval_dataset.jsonl`, `eval-config.json`, `requirements.lock`), `specs/deployment-posture.md`, `specs/deferred-steps.md`, `specs/project-tools.json`, `specs/foundry-package-manifest.json`, `tests/postdeploy-manifest.json`, `DEPLOY.md` |
+
+**Generated contracts:**
+
+- **Posture.** The default is `demo-sandbox`, written to
+  `specs/deployment-posture.md`.
+- **Deferred steps.** Everything that needs Azure is recorded as deferred in
+  `specs/deferred-steps.md`: T-0, Phase 3.5, the Azure steps of Phase 6.5 and
+  the Phase 7 Citadel handoff.
+- **Pins.** Every dependency is pinned with exact `==` versions and locked with
+  `--hash=sha256:` lockfiles for the agent, the MCP server and the evals.
+- **Evals.** `evals/eval_dataset.jsonl` reuses threadlight-design's
+  `tests/eval_dataset.jsonl` verbatim when present (killer-prompt literals stay
+  identical), otherwise it is derived from the SPEC § 9 scenario table.
+  `python evals/run_evals.py` runs after deploy as a single command.
+  It creates a Foundry eval with built-in evaluators plus a custom score-model
+  rubric derived from the SPEC business rules (1–5 anchors, threshold 4).
+  `--dry-run` prints the eval payload offline.
+- **Foundry package gate.** `specs/foundry-package-manifest.json` is
+  schema-valid `threadlight-foundry-package/v1` with unevidenced sections.
+  `skills/_shared/foundry_package.py` therefore exits **3 (INCOMPLETE)**, never
+  2, until real deploy evidence exists.
+
+**Skill acceptance: the offline self-check.** `generate_only_selfcheck.py` runs
+these checks:
+
+- `azure.yaml` validates against the vendored azd schema;
+- the inline hosted agent definition is present, with no `agent.yaml` or
+  `infra/core`;
+- the lockfiles are pinned and hashed;
+- the Foundry package gate exits 3;
+- a secret and personal-target scan finds nothing;
+- the generated offline agent tests pass;
+- `bicep build infra/main.bicep` succeeds;
+- `docker build` succeeds for both images with an empty temporary
+  `DOCKER_CONFIG`, so no credentials are stored and nothing is pushed. Only
+  public base images are used.
+
+Docker and bicep are reported as `skipped` when unavailable, unless you pass
+`--require-docker` or `--require-bicep`. CI runs the self-check with both
+required.
+
+Deployment is then the user's job, run with their own credentials:
+`azd auth login`, `azd up`, `python evals/run_evals.py`. After that, run the
+deferred steps.
+
+---
+
 ## Phase 0: Poly-Repo Guard (mandatory pre-flight)
 
 **Rule**: each threadlight process gets ONE repo. ONE repo = ONE process = ONE
@@ -1076,8 +1160,10 @@ pilot scaffold in `references/hosted-agent/ghcp/references/pilot` (`azure.yaml`
 with `remoteBuild: true`, complete `infra/main.bicep` with Foundry account +
 project + model + role GUIDs, the MCP server, `.dockerignore` and the
 `hooks/postdeploy.sh` instance-identity grant). Do not hand-write these files.
-Copy `references/Dockerfile` and `references/dockerignore` (as `.dockerignore`)
-next to `container.py`; the entrypoint name stays `container.py`.
+Copy `references/Dockerfile`, `references/requirements.lock` and
+`references/dockerignore` (as `.dockerignore`) next to `container.py`; the
+Dockerfile installs from the hashed `requirements.lock` (`--require-hashes`),
+so the build fails without it. The entrypoint name stays `container.py`.
 
 - Model provider: BYOK with `DefaultAzureCredential` → bearer token
 - Instructions: loaded from `copilot-instructions.md`
@@ -1765,19 +1851,19 @@ Check every file. Mark each ✅ or fix before presenting.
 
 #### `src/agent/` — Hosted agent container
 - [ ] `src/agent/container.py` — exists, matches chosen runtime (GHCP or MAF)
-- [ ] `src/agent/Dockerfile` — uses `mcr.microsoft.com/oryx/python:3.12`, `uv sync`, copies all agent files
+- [ ] `src/agent/Dockerfile` — uses `mcr.microsoft.com/oryx/python:3.12`, copies all agent files; GHCP: `pip install --require-hashes -r requirements.lock` with `src/agent/requirements.lock` present; MAF inline template: `uv sync`
 - [ ] `src/agent/pyproject.toml` — correct deps for chosen variant, `prerelease = "if-necessary-or-explicit"`
 - [ ] `src/agent/copilot-instructions.md` — exists, 500-1500 words, matches AGENTS.md
 - [ ] `src/agent/skills/` — has all skills from AGENTS.md, no extra, no missing
 - [ ] `src/agent/config/` — process configuration from spec (if applicable)
 - [ ] `src/agent/mcp-config.json` — only remote HTTP servers, includes mock MCP endpoints for mocked systems, no unresolved `${ENV_VAR}` placeholders
-- [ ] `src/agent/agent.yaml` — copy of root `agent.yaml` (must be in both locations)
+- [ ] Agent definition — **inline** in `azure.yaml` (agent service entry, `kind: hosted`) as in the GHCP pilot scaffold (`references/pilot`); no separate `agent.yaml` copies to keep in sync
 
 #### `src/mcp/` — MCP server (if mocked systems or Cosmos)
 - [ ] `src/mcp/server.py` — tools match spec § 6 contracts for mocked systems
-- [ ] `src/mcp/data/` — sample data copied from `specs/sample-data/`
+- [ ] Sample data — `src/mcp/Dockerfile` copies `specs/sample-data/` into the image (`SAMPLE_DATA_DIR`), as in `references/pilot/mcp`
 - [ ] `src/mcp/Dockerfile` — builds and runs the MCP server
-- [ ] `src/mcp/requirements.txt` — includes `fastmcp`
+- [ ] `src/mcp/requirements.lock` — `==` pinned, `--hash=sha256:` locked, includes `mcp`
 - [ ] *(Skip this section entirely if no mocked systems and no Cosmos)*
 
 #### `src/bot/` — Teams bot (if Teams needed)
@@ -1793,24 +1879,26 @@ Check every file. Mark each ✅ or fix before presenting.
 
 #### Root config files (MUST be at repo root — azd requires this)
 
-> **`agent.yaml` and `azure.yaml` stay at repo root**, NOT under `src/`.
-> The `azd ai agent` extension and `azd` CLI look for them at the repo root.
-> Only the *source code* (container.py, Dockerfile, skills, etc.) goes under `src/`.
-> The `project: ./src/agent` field in `azure.yaml` tells azd where the Dockerfile is.
+> **`azure.yaml` stays at repo root**, NOT under `src/`. The `azd` CLI and the
+> `azd ai agent` extension look for it there. Only the *source code*
+> (`container.py`, Dockerfile, skills, etc.) goes under `src/`. The
+> `project: ./src/agent` field in `azure.yaml` tells azd where the Dockerfile is.
 >
-> **`agent.yaml` must ALSO be copied to `src/agent/`** — the extension reads it from
-> root for agent creation, but the container build context needs it in the service dir
-> for the hosted agent version to resolve correctly. Keep both in sync.
+> **One agent definition, inline.** The canonical layout is the GHCP pilot
+> scaffold (`references/hosted-agent/ghcp/references/pilot`). The hosted agent
+> is declared once, inline on its `azure.yaml` service entry. Do not
+> also emit `agent.yaml` or `src/agent/agent.yaml`: two definitions drift. If an
+> interactive `azd ai agent init` run produced an `agent.yaml`, fold it into
+> `azure.yaml` and delete the file.
 
-- [ ] `agent.yaml` — `kind: hosted` (top-level), protocols `1.0.0`, resources `{cpu, memory}`, NO `FOUNDRY_PROJECT_ENDPOINT`
-- [ ] `azure.yaml` — `host: azure.ai.agent`, `project: ./src/agent`, model in `config.deployments`, `requiredVersions` for extension
-- [ ] `azure.yaml` — if `src/mcp/` exists: MCP service declared with `host: containerapp`, `project: ./src/mcp`
-- [ ] `deploy-notes.md` — references `azd up`, lists mock systems with swap instructions
+- [ ] `azure.yaml` — inline hosted agent service: `host: azure.ai.agent`, `project: src/agent`, `kind: hosted`, `protocols` (invocations), `container.resources`, `uses: [ai-project]`; `FOUNDRY_PROJECT_ENDPOINT` only on the `azure.ai.project` service, never in the agent's environment
+- [ ] `azure.yaml` — if `src/mcp/` exists: MCP service declared with `host: containerapp` and `docker.path: src/mcp/Dockerfile` (build context = repo root so `specs/sample-data/` is copied)
+- [ ] `deploy-notes.md` / `DEPLOY.md` — references `azd up`, lists mock systems with swap instructions
 
 #### `infra/` — Bicep scaffold
-- [ ] `infra/main.bicep` — exists
+- [ ] `infra/main.bicep` — exists; self-contained pilot orchestrator from `references/pilot/infra` (no `infra/core/` tree), plus Phase 6 `infra/modules/` when the SPEC selects them
 - [ ] `infra/main.parameters.json` — `ENABLE_CAPABILITY_HOST=false`
-- [ ] `infra/core/` — vendored modules present
+- [ ] `bicep build infra/main.bicep` — compiles offline
 - [ ] `infra/bot/` — present if Teams included, absent if not
 
 #### `scripts/` — Hooks
@@ -1819,8 +1907,9 @@ Check every file. Mark each ✅ or fix before presenting.
 #### `tests/` — Eval and smoke test
 - [ ] `tests/invoke_agent.py` — smoke test script
 - [ ] `tests/operation_evidence.py` — copied beside `invoke_agent.py` (its required import)
-- [ ] `tests/eval_dataset.jsonl` — one line per spec § 9 scenario (if spec exists)
-- [ ] `tests/run_evals.py` — invoke+score script (if spec exists)
+- [ ] `evals/eval_dataset.jsonl` — one line per spec § 9 scenario (if spec exists)
+- [ ] `evals/run_evals.py` + `evals/eval-config.json` — Foundry eval: built-in evaluators + SPEC-derived rubric (if spec exists)
+- [ ] `tests/postdeploy-manifest.json` — post-deploy checks for Phase 3.5
 
 #### Global checks
 - [ ] No secrets or API keys in any generated file
@@ -2689,6 +2778,15 @@ self-contained (no network dependency on the template repo).
 
 ### Step 1: Generate the base project
 
+> **Generate-only and canonical layout.** In [generate-only mode](#generate-only-mode)
+> this step does NOT run `azd ai agent init`. `scripts/generate_only.py` writes
+> the skeleton from the vendored GHCP pilot scaffold (`references/pilot`): an
+> `azure.yaml` with the hosted agent defined **inline**, and a self-contained
+> `infra/main.bicep` + `main.parameters.json`. It writes no `agent.yaml` and no
+> `infra/core/`. When the pilot layout is used, the `agent.yaml` and `core/`
+> references below do not apply: environment variables live on the inline
+> agent service in `azure.yaml`. Never mix the two layouts in one repository.
+
 Generate the `azd`-ready skeleton with the **`azd ai agent` extension**
 (`azd ai agent init` — `azure.ai.agents >= 0.1.0-preview`; see
 `references/upstream-pin.md` for the pinned `azd-ai-starter-basic` SHA). The
@@ -3017,6 +3115,11 @@ Conditionally include based on SPEC § 11c selector rows:
 > `infra/modules/`. The stub from Phase 5 stays as the orchestrator;
 > Phase 6 fills it in. **Never overwrite `main.bicep` from scratch in
 > Phase 6** — that drops the agent extension wiring from Phase 5.
+>
+> In generate-only / pilot layout, Phase 5 writes the pilot's self-contained
+> `infra/main.bicep` instead of an `azd ai agent init` stub. Phase 6 extends it
+> the same way (adds `modules/*.bicep` blocks); env vars go on the inline agent
+> service in `azure.yaml`, not in `agent.yaml`.
 
 Generate `infra/main.bicep` as a thin orchestrator that calls each included
 module in order, threads outputs through, and emits the env vars the agent
