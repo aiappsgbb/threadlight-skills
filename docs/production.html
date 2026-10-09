@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Production-ready — shared platform, verified releases, governed actions.</title>
-<meta name="description" content="Build on Citadel or your existing AI platform, validate agent releases, and govern selected business actions in production. Visual architecture, concrete examples and clear ownership.">
+<title>From a working pilot to a controlled release — Threadlight Production</title>
+<meta name="description" content="What a working agent pilot still needs: an operating foundation, a validated release candidate and explicit authority for selected business actions — with the evidence and owners for each decision.">
 <meta name="theme-color" content="#4f6dff">
 
 <meta property="og:type"        content="article">
-<meta property="og:title"       content="Production-ready — shared platform, verified releases, governed actions.">
-<meta property="og:description" content="A shared AI platform. A verified path to release. Active control over selected business actions. Explore how Citadel and Threadlight complement each other.">
+<meta property="og:title"       content="From a working pilot to a controlled release.">
+<meta property="og:description" content="Choose the foundation, validate the candidate, authorize selected actions, and name who owns each piece of evidence. An assessment identifies gaps; it does not certify production.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/production.html">
 <meta property="og:site_name"   content="Threadlight">
 <meta property="og:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
-<meta name="twitter:title"       content="Production-ready — shared platform, verified releases, governed actions.">
-<meta name="twitter:description" content="From useful agents to accountable business workflows. Connect the controls, people and operational evidence around your use case.">
+<meta name="twitter:title"       content="From a working pilot to a controlled release.">
+<meta name="twitter:description" content="Foundation, validated release and governed actions: the decisions, evidence and owners between a pilot and production.">
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-production.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
@@ -26,253 +26,227 @@
 <link rel="stylesheet" href="assets/governed-workflow.css?v=ffa28b69">
 <style>
   /* Page-local layout and contrast; retain the shared Threadlight tokens and navigation. */
-  html { scroll-padding-top: var(--production-scroll-offset, 72px); }
-  .governance-section .why-grid { padding: 0; list-style: none; }
-  .governance-section .why-card { min-width: 0; overflow-wrap: anywhere; }
-  .governance-section .why-card p { color: var(--ink-1); }
+  .chapter-production { --pp-flow: var(--lime); --prose: 70ch; }
+  @media (prefers-color-scheme: light) { .chapter-production { --pp-flow: var(--accent); } }
+  html:has(.chapter-production) { scroll-padding-top: 0; }
+  .chapter-production main [id] { scroll-margin-top: calc(var(--cx-header-height) + var(--cx-index-height) + 18px); }
+  .chapter-production main section[data-toc-id] { scroll-margin-top: calc(var(--cx-header-height) + var(--cx-index-height) - 40px); }
+  html:not(.js) .chapter-production main [id] { scroll-margin-top: 16px; }
+  .skip-link { position: fixed; z-index: 100; top: 8px; left: 8px; padding: 12px 16px; border-radius: 8px;
+    background: var(--bg-1); color: var(--ink-0); border: 2px solid var(--ink-0); transform: translateY(-200%); }
+  .skip-link:focus { transform: none; }
+  .chapter-production .chapter-hero { padding-bottom: 40px; }
+  .chapter-production .chapter-hero h1 { font-size: clamp(40px, 5vw, 72px); max-width: 18ch; }
+  .chapter-production .chapter-hero .lede { max-width: 62ch; }
+  .hero-limit { max-width: 62ch; margin: 18px auto 0; color: var(--ink-1); font-size: 15px; text-align: center; }
+  .hero-limit strong { color: var(--ink-0); }
+  .chapter-production #actions-topic [data-actor-state] { font-size: 12px; }
+  .chapter-production #actions-topic [data-progress-state] { font-size: 12px; }
+  .chapter-production .chapter-section { padding: 72px 0 32px; }
+  .chapter-production .chapter-section + .chapter-section.part-continued { padding-top: 0; }
+  /* One band per part: continuation sections share their part's surface. */
+  .chapter-production .chapter-section { background: var(--bg-0); border-top: 0; }
+  .chapter-production section[data-toc-id] { border-top: 1px solid var(--line); }
+  /* The walkthrough's muted states are tuned for --bg-0, so the action part keeps that surface. */
+  .chapter-production :is(#platform-controls, #evidence-review) { background: var(--bg-1); }
+  .chapter-production #action-architecture { max-width: 1040px; }
+  .chapter-production .section-head { max-width: var(--prose); }
+  .chapter-production .section-head h2 { font-size: clamp(30px, 3.4vw, 46px); }
+  .chapter-production .section-lede, .prose { max-width: var(--prose); }
+  .chapter-production .eyebrow, .chapter-production .visual-label { color: var(--ink-1); }
+  .part-subhead { margin: 48px 0 16px; font: 500 clamp(22px, 2.2vw, 28px)/1.25 var(--serif); color: var(--ink-0); max-width: var(--prose); }
+  .chapter-production .floating-toc, .chapter-production .floating-toc.is-ready { max-width: none; }
+  .floating-toc .cx-index-current { color: var(--ink-0); font-weight: 600; }
+  .floating-toc .cx-index-current:empty { display: none; }
+  .floating-toc .cx-index-current::before { content: "\00b7"; margin-right: 8px; color: var(--ink-2); font-weight: 400; }
+  .chapter-production a:focus-visible, .chapter-production summary:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 3px; }
+
+  /* 1 · three decisions and the reading route */
+  .decision-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; list-style: none; padding: 0; margin: 32px 0 0; }
+  .decision-trio li { min-width: 0; padding: 24px; border: 1px solid var(--line-2); border-top: 3px solid var(--chapter-accent); border-radius: 12px; background: var(--bg-1); }
+  .decision-trio .component-icon { display: block; margin-bottom: 14px; }
+  .decision-trio h3 { margin: 0 0 6px; font: 500 24px/1.2 var(--serif); color: var(--ink-0); }
+  .decision-trio .decision-q { margin: 0 0 14px; font-size: 17px; color: var(--ink-0); }
+  .decision-trio dl { margin: 0; font-size: 14.5px; }
+  .decision-trio dl div { padding: 10px 0; border-top: 1px solid var(--line); }
+  .decision-trio dt { font: 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-1); }
+  .decision-trio dd { margin: 4px 0 0; color: var(--ink-1); }
+  .chapter-route { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; list-style: none; padding: 0; margin: 40px 0 0; counter-reset: route 1; }
+  .chapter-route li { position: relative; min-width: 0; counter-increment: route; }
+  .chapter-route a { display: block; height: 100%; padding: 16px 18px 16px 0; margin-right: 18px; border-top: 2px solid var(--line-2); color: var(--ink-0); text-decoration: none; }
+  .chapter-route a:hover { border-top-color: var(--chapter-accent); }
+  .chapter-route b { display: block; font-size: 15px; }
+  .chapter-route b::before { content: "0" counter(route) " "; font: 12px var(--mono); color: var(--ink-2); }
+  .chapter-route span { display: block; margin-top: 4px; font-size: 14px; color: var(--ink-1); }
+  .route-note { margin: 12px 0 0; font-size: 14px; color: var(--ink-1); max-width: var(--prose); }
+
+  /* 2 · foundation */
+  .foundation-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; list-style: none; padding: 0; margin: 32px 0 20px; }
+  .foundation-options li { min-width: 0; padding: 22px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-1); }
+  .foundation-options li[data-optional] { border-style: dashed; }
+  .foundation-options .option-tag { font: 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-1); }
+  .foundation-options h3 { margin: 10px 0 8px; font-size: 20px; color: var(--ink-0); }
+  .foundation-options p { margin: 0; font-size: 15px; color: var(--ink-1); }
+  .agent-constant { max-width: var(--prose); margin: 24px 0 0; padding: 16px 20px; background: var(--bg-2); border-left: 3px solid var(--chapter-accent); color: var(--ink-1); font-size: 15px; }
+  .agent-constant strong { color: var(--ink-0); }
+  .topic-existing { max-width: var(--prose); padding-left: 18px; border-left: 2px solid var(--line-2); color: var(--ink-1); font-size: 15px; margin: 24px 0; }
+  .topic-existing a, .topic-deeper a, .source-attribution a, .chapter-production .section-lede a, .prose a { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; }
+  .production-example { max-width: var(--prose); padding: 20px 24px; border-left: 3px solid var(--chapter-accent); background: var(--bg-2); margin: 24px 0; }
+  .production-example blockquote { margin: 8px 0 14px; color: var(--ink-0); font: 22px/1.35 var(--serif); }
+  .production-example p { color: var(--ink-1); font-size: 15px; margin: 8px 0; }
+  .visual-label { font: 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+  .topic-mechanism { margin: 28px 0; }
+  .topic-mechanism figcaption { margin-top: 16px; font-size: 14px; color: var(--ink-1); max-width: var(--prose); }
+  .visual-surface { padding: 24px; border: 1px solid var(--line-2); background: var(--bg-1); border-radius: 14px; }
+  .citadel-topology { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(240px, 2.5fr) minmax(120px, 1fr); gap: 28px; align-items: center; }
+  .citadel-consumers, .citadel-models { display: grid; gap: 12px; }
+  .citadel-consumers p, .citadel-models p { margin: 0; padding: 14px; border: 1px solid var(--line-2); background: var(--bg-2); border-radius: 8px; color: var(--ink-0); font-size: 15px; }
+  .citadel-core { position: relative; padding: 24px; border: 2px solid var(--chapter-accent); border-radius: 14px; background: var(--chapter-accent-soft); }
+  .citadel-core p { color: var(--ink-1); font-size: 15px; }
+  .citadel-core b { color: var(--ink-0); }
+  .citadel-core::before, .citadel-core::after { content: "\2192"; position: absolute; top: 45%; font-size: 24px; color: var(--ink-1); }
+  .citadel-core::before { left: -25px; }
+  .citadel-core::after { right: -25px; }
+  .citadel-core h3 { display: flex; align-items: center; gap: 12px; color: var(--ink-0); font: 24px/1.2 var(--serif); margin: 12px 0; }
+  .citadel-services { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+  .citadel-services div { padding-top: 10px; border-top: 1px solid var(--line-2); color: var(--ink-1); font-size: 14px; }
+  .citadel-services b { display: block; color: var(--ink-0); margin-bottom: 6px; }
+  .citadel-services .component-icon { display: block; margin-bottom: 8px; }
+  .production-icons { position: absolute; overflow: hidden; pointer-events: none; }
+  .component-icon { width: 24px; height: 24px; flex: 0 0 24px; color: var(--ink-1); vertical-align: middle; }
+  .source-attribution { display: flex; align-items: flex-start; gap: 10px; color: var(--ink-1); font-size: 14px; margin: 20px 0; }
+  .source-attribution a { overflow-wrap: anywhere; }
+  .topic-deeper { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 28px 0 0; padding-top: 16px; border-top: 1px solid var(--line); }
+  .topic-deeper a { font-size: 15px; }
+  .topic-deeper [data-deep-dive] { font-weight: 650; }
+
+  /* 3 · release */
+  .diagram-scroll { overflow-x: auto; border: 1px solid var(--line-2); border-radius: 12px; padding: 20px; background: var(--bg-1); }
+  .diagram-scroll svg { display: block; width: 100%; min-width: 880px; height: auto; color: var(--ink-0); }
+  .diagram-scroll:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 3px; }
+  .pipe-fig { margin: 8px 0 0; }
+  .pipe-fig figcaption { margin-top: 14px; color: var(--ink-1); font-size: 14px; max-width: var(--prose); }
+  .pp-tag  { font-family: var(--mono); font-size: 13px; letter-spacing: .03em; fill: currentColor; font-weight: 600; }
+  .pp-sub  { font-family: var(--mono); font-size: 11.5px; fill: currentColor; }
+  .pp-note { font-family: var(--mono); font-size: 12px; letter-spacing: .06em; fill: currentColor; }
+  .pp-flow { fill: none; stroke: var(--pp-flow); stroke-width: 2; }
+  .pp-mark { fill: var(--pp-flow); }
+  .pp-gate { fill: var(--chapter-accent-soft); stroke: var(--pp-flow); stroke-width: 2; }
+  .pp-job  { fill: none; stroke: currentColor; stroke-opacity: .55; stroke-width: 1.4; stroke-dasharray: 5 5; }
+  .pipe-mobile { display: none; list-style: none; padding: 0; margin: 0; counter-reset: pipe; }
+  .pipe-mobile li { position: relative; counter-increment: pipe; padding: 0 0 18px 40px; }
+  .pipe-mobile li::before { content: counter(pipe); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%;
+    border: 1.5px solid var(--pp-flow); display: grid; place-items: center; font: 12px var(--mono); color: var(--ink-0); }
+  .pipe-mobile li:not(:last-child)::after { content: ""; position: absolute; left: 13px; top: 30px; bottom: 4px; border-left: 1.5px solid var(--line-2); }
+  .pipe-mobile b { display: block; color: var(--ink-0); font-size: 15px; }
+  .pipe-mobile span { display: block; color: var(--ink-1); font-size: 14px; }
+  .pipe-mobile ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-1); font-size: 14px; }
+  .agentops-contract { max-width: var(--prose); border-left: 3px solid var(--chapter-accent); padding: 18px 22px; background: var(--bg-2); margin: 28px 0; }
+  .agentops-contract p { color: var(--ink-1); margin: 6px 0; font-size: 15px; }
+  .agentops-contract strong { color: var(--ink-0); }
+  .release-review-heading { margin: 32px 0 12px; font-size: 22px; }
+  .release-checks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 16px 0; padding: 0; list-style: none; }
+  .release-checks li { border-top: 2px solid var(--line-2); padding-top: 16px; min-width: 0; }
+  .release-checks h4 { font-size: 18px; margin: 0 0 10px; color: var(--ink-0); }
+  .release-checks p { font-size: 15px; color: var(--ink-1); margin: 0; }
+  .depth { margin: 24px 0 0; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-1); }
+  .depth > summary { cursor: pointer; padding: 16px 20px; color: var(--ink-0); font-weight: 600; font-size: 16px; }
+  .depth > summary span { display: block; font-weight: 400; font-size: 14px; color: var(--ink-1); margin-top: 4px; }
+  .depth > :not(summary) { margin-inline: 20px; }
+  .depth[open] > :last-child { margin-bottom: 20px; }
+  .depth .knob-grid { margin-top: 4px; }
+  .depth .knob p { color: var(--ink-1); }
+
   .governance-section .eyebrow,
   .governance-section .rd-label,
   .governance-section .section-lede a { color: var(--ink-1); }
   .governance-section .section-lede a { text-decoration: underline; text-underline-offset: .18em; }
+  /* 4 · actions */
   .governance-section time, .governance-section code { overflow-wrap: anywhere; }
-  .governance-section .read-deeper { flex-wrap: wrap; align-items: flex-start; }
   .governance-section figure { margin: 0; }
-  .authority-context { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 0 0 24px; padding: 14px 0; border-block: 1px solid var(--line); color: var(--ink-1); font-size: 14px; }
-  .authority-context strong { color: var(--ink-0); }
-  .authority-map { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-1); }
-  .authority-map .am-panel { fill: var(--bg-2); stroke: var(--line-2); stroke-width: 1.5; }
-  .authority-map .am-focus { fill: var(--chapter-accent-soft); stroke: var(--chapter-accent); stroke-width: 2; }
-  .authority-map .am-title { fill: var(--ink-0); font-family: var(--sans); font-size: 20px; font-weight: 650; }
-  .authority-map .am-text { fill: var(--ink-1); font-family: var(--sans); font-size: 14px; }
-  .authority-map .am-label { fill: var(--ink-1); font-family: var(--mono); font-size: 11px; }
-  .authority-map .am-line { fill: none; stroke: var(--ink-2); stroke-width: 1.8; }
-  .authority-map .am-arrow { fill: var(--ink-2); }
-  .authority-mobile { display: none; }
-  .authority-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px 32px; list-style: none; padding: 0; margin: 32px 0 24px; counter-reset: authority; }
-  .authority-steps li { min-width: 0; border-top: 1px solid var(--line); padding-top: 14px; counter-increment: authority; }
-  .authority-steps h3 { margin: 0 0 8px; font-size: 18px; }
-  .authority-steps h3::before { content: "0" counter(authority) " / "; font-family: var(--mono); color: var(--ink-2); font-size: 13px; }
-  .authority-steps p, .authority-scope { font-size: 15px; color: var(--ink-1); margin: 0; }
-  .authority-scope { padding: 18px 22px; border-left: 3px solid var(--chapter-accent); background: var(--bg-2); }
-  .authority-caption { margin: 16px 0 0; color: var(--ink-1); font-size: 14px; }
-  #production-domains .eyebrow, #production-domains .section-lede a { color: var(--ink-1); }
-  #production-domains .section-lede a { text-decoration: underline; text-underline-offset: .2em; }
-  .chapter-production .chapter-hero { padding-bottom: 36px; }
-  .production-map { margin: 32px 0 0; }
-  .production-map a { color: var(--ink-0); text-decoration: none; }
-  .production-map a:hover { border-color: var(--chapter-accent); background: var(--chapter-accent-soft); }
-  .production-map a:focus-visible, .topic-navigation a:focus-visible, .topic-reference > summary:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 4px; }
-  .production-map b { display: block; font-size: 15px; font-weight: 650; }
-  .production-map span { font-size: 14px; color: var(--ink-1); }
-  .return-brief { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; padding: 28px; border: 1px solid var(--line-2); border-left: 3px solid var(--chapter-accent); background: var(--bg-1); border-radius: 12px; }
-  .return-brief blockquote { margin: 8px 0 0; font: clamp(24px, 3vw, 32px)/1.25 var(--serif); color: var(--ink-0); }
-  .return-brief p { margin: 8px 0; color: var(--ink-1); font-size: 15px; }
-  .visual-label { font: 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-1); }
-  .map-foundations { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding-top: 16px; }
-  .map-foundations a { padding: 24px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-1); }
-  .map-foundations a b { font-size: 20px; margin-bottom: 12px; }
-  .map-foundations a span { display: block; margin-top: 12px; }
-  .production-map figcaption, .topic-mechanism figcaption { margin-top: 16px; font-size: 14px; color: var(--ink-1); }
-  #topic-explorer { padding-bottom: 64px; }
-  .topic-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; align-items: start; }
-  .topic-navigation { padding-block: 24px; }
-  .topics-enhanced .topic-navigation { position: sticky; top: var(--production-scroll-offset, 88px); }
-  .topic-nav-label { font: 12px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--ink-1); margin: 0 0 16px; }
-  .topic-tabs { display: grid; gap: 6px; }
-  .topic-tabs a { display: block; border-left: 3px solid var(--line); padding: 14px 16px; color: var(--ink-0); font-size: 15px; font-weight: 600; text-decoration: none; }
-  .topic-tabs a span { display: block; font-size: 12px; font-weight: 400; color: var(--ink-1); margin-top: 4px; }
-  .topic-tabs a:hover { background: var(--bg-2); }
-  .topic-tabs a[aria-selected="true"] { border-color: var(--chapter-accent); background: var(--chapter-accent-soft); border-radius: 0 10px 10px 0; }
-  .topic-reading { min-width: 0; }
-  .topic-panel[hidden], .topic-reference[hidden], .area-navigation[hidden] { display: none; }
-  .agentops-view[hidden] { display: none; }
-  .agentops-view { padding-bottom: 48px; }
-  .agentops-view figure { margin-inline: 0; }
-  .agentops-view .section-head { margin-bottom: 24px; }
-  .agentops-view .chapter-section h2 { font-size: clamp(28px, 3vw, 40px); }
-  .agentops-view .eyebrow, .agentops-view .muted, .agentops-view .rd-label { color: var(--ink-1); }
-  .agentops-view a:not(.btn):not(.gap-link) { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; }
-  .agentops-view code { overflow-wrap: anywhere; }
-  .agentops-view .risk-catalog h4 { margin: 16px 4px; color: var(--ink-0); }
-  .agentops-view .gap-grid { margin-block: 24px; }
-  .agentops-view .gap-flip { display: none; }
-  .agentops-view .gap-card { min-width: 0; }
-  .agentops-view .gap-card h3 { font-size: 21px; }
-  .agentops-view .gap-skill, .agentops-view .sc-posture, .agentops-view .sc-legend,
-  .agentops-view .sc-num, .agentops-view .sc-take, .agentops-view .os-cap { color: var(--ink-1); }
-  .agentops-view .os-label, .agentops-view .sc-name, .agentops-view .sc-title { color: var(--ink-0); }
-  .production-example { padding: 20px 24px; border-left: 3px solid var(--chapter-accent); background: var(--bg-2); margin: 24px 0; }
-  .production-example blockquote { margin: 8px 0 14px; color: var(--ink-0); font: 24px/1.35 var(--serif); }
-  .production-example p { color: var(--ink-1); font-size: 15px; margin: 8px 0; }
-  .citadel-topology { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(240px, 2.5fr) minmax(120px, 1fr); gap: 28px; align-items: center; }
-  .citadel-consumers, .citadel-models { display: grid; gap: 12px; }
-  .citadel-consumers > .visual-label, .citadel-models > .visual-label { grid-column: 1 / -1; }
-  .citadel-consumers p, .citadel-models p { padding: 16px; border: 1px solid var(--line-2); background: var(--bg-2); border-radius: 8px; color: var(--ink-0); }
-  .citadel-core { position: relative; padding: 24px; border: 2px solid var(--chapter-accent); border-radius: 14px; background: var(--chapter-accent-soft); }
-  .citadel-core::before, .citadel-core::after { content: "\2192"; position: absolute; top: 45%; font-size: 24px; color: var(--ink-1); }
-  .citadel-core::before { left: -25px; }
-  .citadel-core::after { right: -25px; }
-  .citadel-core h3 { color: var(--ink-0); font: 28px/1.2 var(--serif); margin: 12px 0; }
-  .citadel-services { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
-  .citadel-services div { padding-top: 10px; border-top: 1px solid var(--line-2); color: var(--ink-1); font-size: 14px; }
-  .citadel-services b { display: block; color: var(--ink-0); margin-bottom: 6px; }
-  .release-paths { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; list-style: none; padding: 0; }
-  .release-paths li { border: 1px solid var(--line-2); border-top: 3px solid var(--chapter-accent); border-radius: 10px; background: var(--bg-1); padding: 20px; min-width: 0; }
-  .release-paths b { display: block; color: var(--ink-0); font-size: 22px; margin: 12px 0; }
-  .release-paths p { color: var(--ink-1); font-size: 15px; }
-  .production-review { padding-block: 48px; border-top: 1px solid var(--line-2); }
-  .diagram-scroll { overflow-x: auto; border: 1px solid var(--line-2); border-radius: 12px; padding: 20px; background: var(--bg-1); }
-  .diagram-scroll svg { display: block; width: 100%; min-width: 880px; height: auto; color: var(--ink-0); }
-  .diagram-scroll figcaption { color: var(--ink-1); }
-  .diagram-scroll a, .topic-proposal a { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; }
-  .diagram-scroll:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 3px; }
-  .agentops-contract { border-left: 3px solid var(--chapter-accent); padding: 18px 22px; background: var(--bg-2); margin: 24px 0; }
-  .agentops-contract p { color: var(--ink-1); margin: 6px 0; font-size: 15px; }
-  .agentops-contract strong { color: var(--ink-0); }
-  .gate-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 24px 0; }
-  .gate-modes > div { border: 1px solid var(--line-2); border-radius: 10px; padding: 20px; background: var(--bg-1); }
-  .gate-modes p { color: var(--ink-1); margin: 8px 0 0; font-size: 15px; }
-  .gate-modes h3 { font-size: 20px; margin: 0; color: var(--ink-0); }
-  .runtime-proof { display: grid; grid-template-columns: 1fr 42px 1fr; gap: 16px; align-items: center; }
-  .runtime-proof article { border: 1px solid var(--line-2); border-radius: 12px; padding: 24px; background: var(--bg-1); }
-  .runtime-proof article:last-child { border: 2px solid var(--chapter-accent); background: var(--chapter-accent-soft); }
-  .runtime-proof h3 { color: var(--ink-0); font-size: 23px; margin: 10px 0; }
-  .runtime-proof p { color: var(--ink-1); font-size: 15px; }
-  .runtime-proof > span { font-size: 28px; text-align: center; color: var(--ink-1); }
-  .area-navigation { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line-2); }
-  .area-navigation p { color: var(--ink-1); font: 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
-  .area-navigation a { display: block; padding: 8px 4px; color: var(--ink-0); font-size: 14px; text-decoration: underline; text-underline-offset: .2em; }
-  .area-navigation a[aria-current] { font-weight: 700; text-decoration-thickness: 2px; }
-  .topic-reading .chapter-section { padding: 24px 0; background: transparent; border-top: 0; }
-  .topic-reading #operating-controls { padding-bottom: 0; }
-  .topic-reading .chapter-section > .wrap { width: 100%; padding-inline: 0; }
-  .topic-reading .topic-subsection { border-top: 1px solid var(--line-2); margin-top: 24px; padding-top: 32px; }
-  .topic-subsection .section-head h3 { font: 32px/1.2 var(--serif); color: var(--ink-0); margin: 0 0 20px; }
-  .topic-subsection .topic-proposal h4 { margin: 0 0 8px; font-size: 20px; }
-  .topic-panel .section-head { max-width: 100%; }
-  .topic-panel .eyebrow { color: var(--ink-1); }
-  .topic-panel h2 { font-size: clamp(28px, 3vw, 40px); }
-  .topic-existing { padding-left: 18px; border-left: 2px solid var(--line-2); color: var(--ink-1); font-size: 15px; margin: 24px 0; }
-  .topic-proposal { margin: 24px 0; }
-  .topic-proposal h3 { margin: 0 0 8px; font-size: 20px; }
-  .topic-proposal p, .topic-owner { font-size: 16px; color: var(--ink-1); }
-  .topic-mechanism { margin: 28px 0; }
-  [data-case-context] { padding-left: 16px; border-left: 2px dashed var(--line-2); }
-  .visual-surface { padding: 24px; border: 1px solid var(--line-2); background: var(--bg-1); border-radius: 14px; }
-  .visual-surface p { color: var(--ink-1); font-size: 14px; margin: 8px 0; }
-  .visual-surface b { color: var(--ink-0); }
-  .access-topology { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 24px; align-items: center; }
-  .topology-agent { border: 2px solid var(--chapter-accent); background: var(--chapter-accent-soft); padding: 22px 16px; border-radius: 12px; text-align: center; }
-  .topology-routes { display: grid; gap: 12px; border-left: 1px solid var(--line-2); padding-left: 24px; }
-  .topology-route { position: relative; display: grid; grid-template-columns: 110px 1fr; gap: 16px; padding: 14px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 8px; font-size: 14px; }
-  .topology-route::before { content: "\2192"; position: absolute; left: -22px; color: var(--ink-1); }
-  .route-destination { color: var(--ink-1); }
-  .route-destination strong { display: block; color: var(--ink-0); }
-  .blocked-route { grid-column: 1 / -1; padding: 12px 16px; border: 1px dashed var(--ink-2); border-radius: 8px; }
-  .model-passport { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  .passport-fields { margin: 12px 0 0; }
-  .passport-fields div { display: grid; grid-template-columns: 90px 1fr; gap: 12px; border-top: 1px solid var(--line-2); padding: 12px 0; font-size: 14px; }
-  .passport-fields dt { color: var(--ink-1); }
-  .passport-fields dd { margin: 0; color: var(--ink-0); }
-  .change-gate { padding: 20px; border-left: 3px solid var(--chapter-accent); background: var(--chapter-accent-soft); border-radius: 0 10px 10px 0; }
-  .change-gate ol { padding-left: 20px; color: var(--ink-0); font-size: 15px; }
-  .change-gate li { margin-top: 12px; padding-left: 4px; }
-  .evaluation-matrix { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
-  .evaluation-matrix caption { text-align: left; color: var(--ink-1); margin-bottom: 16px; }
-  .evaluation-matrix th, .evaluation-matrix td { padding: 14px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line-2); overflow-wrap: anywhere; }
-  .evaluation-matrix thead { background: var(--chapter-accent-soft); color: var(--ink-0); }
-  .evaluation-matrix tbody th { font-weight: 600; color: var(--ink-0); }
-  .evaluation-matrix td { color: var(--ink-1); }
-  .evaluation-matrix .must-not { border-left: 1px dashed var(--line-2); }
-  .release-rule { margin-top: 20px; padding: 14px 16px; background: var(--bg-2); border-left: 3px solid var(--chapter-accent); }
-  .data-lineage { display: grid; grid-template-columns: 1fr 40px 1fr; align-items: center; gap: 12px; }
-  .source-records { display: grid; gap: 12px; }
-  .source-record { padding: 14px 16px; border: 1px solid var(--line-2); background: var(--bg-2); border-radius: 8px; }
-  .source-record.blocked { border-style: dashed; }
-  .source-record .source-state { float: right; font: 11px var(--mono); color: var(--ink-0); margin-left: 8px; padding: 4px 6px; border: 1px solid var(--line-2); }
-  .lineage-arrow { text-align: center; font-size: 28px; color: var(--ink-1); }
-  .context-envelope { padding: 24px; border: 2px solid var(--chapter-accent); border-radius: 12px; background: var(--chapter-accent-soft); }
-  .disclosure-split { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding-top: 20px; border-top: 1px solid var(--line-2); }
-  .risk-catalog { border-block: 1px solid var(--line-2); margin: 28px 0; }
-  .risk-catalog summary { cursor: pointer; padding: 16px 4px; font-weight: 600; color: var(--ink-0); }
-  .risk-catalog summary:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 4px; }
-  .risk-catalog dl { margin: 0; }
-  .risk-catalog dl > div { display: grid; grid-template-columns: 160px 1fr; gap: 20px; border-top: 1px solid var(--line); padding: 16px 4px; font-size: 14px; }
-  .risk-catalog dt { font-weight: 600; color: var(--ink-0); }
-  .risk-catalog dd { margin: 0; color: var(--ink-1); }
-  .risk-catalog dd strong { color: var(--ink-0); }
-  .topic-deeper { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 24px 0; }
-  .topic-deeper a { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; font-size: 15px; }
-  .topic-reference { margin: 16px 0; border: 1px solid var(--line-2); border-radius: 12px; padding: 20px; background: var(--bg-1); }
-  .topic-reference > summary { cursor: pointer; font-size: 18px; color: var(--ink-0); }
-  .topic-reference > summary span { display: block; font-size: 14px; color: var(--ink-1); margin: 6px 0 0 20px; }
-  .case-outcomes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 24px 0; }
-  .case-outcomes p { border-top: 2px solid var(--line-2); padding-top: 12px; margin: 0; }
-  .case-outcomes b, .case-outcomes span { display: block; font-size: 14px; }
-  .case-outcomes span { color: var(--ink-1); margin-top: 6px; }
-  .topic-existing a { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; }
-  .release-review-heading { margin: 28px 0 16px; font-size: 22px; }
-  .release-checks, .closing-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 24px 0; padding: 0; list-style: none; }
-  .release-checks li, .closing-flow p { border-top: 2px solid var(--line-2); padding-top: 16px; }
-  .release-checks h4 { font-size: 18px; margin: 0 0 10px; color: var(--ink-0); }
-  .release-checks p, .closing-flow span { font-size: 15px; color: var(--ink-1); }
-  .closing-flow b, .closing-flow span { display: block; margin-bottom: 8px; }
-  .closing-flow b { color: var(--ink-0); }
-  .action-outcomes { margin: 0; }
-  .action-outcomes > div { display: grid; grid-template-columns: minmax(160px, 1fr) 2fr; gap: 24px; border-top: 1px solid var(--line-2); padding: 16px 0; font-size: 15px; }
-  .action-outcomes dt { color: var(--ink-0); font-weight: 600; }
-  .action-outcomes dd { margin: 0; color: var(--ink-1); }
-  #production-review .eyebrow, #readiness-topic .knob p { color: var(--ink-1); }
-  .production-icons { position: absolute; overflow: hidden; pointer-events: none; }
-  .component-icon { width: 24px; height: 24px; flex: 0 0 24px; color: var(--ink-1); vertical-align: middle; }
-  .citadel-services .component-icon { display: block; margin-bottom: 8px; }
-  .citadel-core h3 { display: flex; align-items: center; gap: 12px; font-size: 24px; }
-  .source-attribution { display: flex; align-items: flex-start; gap: 10px; color: var(--ink-1); font-size: 14px; margin: 20px 0; }
-  .source-attribution a { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; overflow-wrap: anywhere; }
-  .topic-deeper [data-deep-dive] { font-weight: 650; }
+  .action-example { max-width: var(--prose); }
+  .gateway-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 24px 0; }
+  .gateway-pair > div { padding: 20px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-1); }
+  .gateway-pair > div[data-effect-gateway] { border: 2px solid var(--chapter-accent); background: var(--chapter-accent-soft); }
+  .gateway-pair h4 { margin: 8px 0 6px; font-size: 18px; color: var(--ink-0); }
+  .gateway-pair p { margin: 0; font-size: 15px; color: var(--ink-1); }
+  .term-legend { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 12px 0; font-size: 14.5px; }
+  .term-legend dt { font-weight: 650; color: var(--ink-0); }
+  .term-legend dd { margin: 0; color: var(--ink-1); }
+  .wf-provider-details { margin-top: 12px; }
+  .wf-provider-details > summary { cursor: pointer; font-weight: 600; color: var(--ink-0); padding: 6px 0; }
+
+  /* 5 · evidence */
+  .owner-matrix { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 28px 0 0; }
+  .owner-matrix caption { text-align: left; color: var(--ink-1); margin-bottom: 12px; font-size: 14px; }
+  .owner-matrix th, .owner-matrix td { padding: 14px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line-2); overflow-wrap: anywhere; }
+  .owner-matrix thead th { background: var(--chapter-accent-soft); color: var(--ink-0); font: 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .owner-matrix tbody th { font-weight: 600; color: var(--ink-0); width: 24%; }
+  .owner-matrix tbody th small { display: block; font: 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-1); margin-bottom: 4px; }
+  .owner-matrix td { color: var(--ink-1); }
+  .owner-matrix td[data-label="Limit"] { border-left: 1px dashed var(--line-2); }
+  .proof-ladder { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 20px 0 0; counter-reset: proof; }
+  .proof-ladder li { min-width: 0; padding: 18px 16px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-1); counter-increment: proof; }
+  .proof-ladder li:last-child { border: 2px solid var(--chapter-accent); background: var(--chapter-accent-soft); }
+  .proof-ladder b { display: block; color: var(--ink-0); font-size: 16px; margin-bottom: 8px; }
+  .proof-ladder b::before { content: "0" counter(proof) " "; font: 12px var(--mono); color: var(--ink-2); }
+  .proof-ladder p { margin: 6px 0 0; font-size: 14px; color: var(--ink-1); }
+  .proof-ladder p strong { color: var(--ink-0); font-weight: 600; }
+  .evidence-limits { max-width: var(--prose); margin: 24px 0 0; padding: 18px 22px; border-left: 3px solid var(--chapter-accent); background: var(--bg-2); }
+  .evidence-limits p { margin: 6px 0; font-size: 15px; color: var(--ink-1); }
+  .evidence-limits strong { color: var(--ink-0); }
+
+  /* 6 · continue */
+  .next-paths { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; list-style: none; padding: 0; margin: 32px 0 0; }
+  .next-paths li { min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 22px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-1); }
+  .next-paths li[data-primary-path] { grid-column: 1 / -1; border: 2px solid var(--chapter-accent); background: var(--chapter-accent-soft); flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .next-paths h3 { margin: 0; font-size: 19px; color: var(--ink-0); }
+  .next-paths p { margin: 0; font-size: 15px; color: var(--ink-1); }
+  .next-paths li[data-primary-path] > div { flex: 1 1 40ch; }
+  .next-paths a:not(.btn) { color: var(--ink-0); text-decoration: underline; text-underline-offset: .2em; font-weight: 600; margin-top: auto; }
+
+  @media (prefers-reduced-motion: reduce) { .chapter-production a { transition: none; } }
   @media (max-width: 900px) {
-    .topic-layout { display: block; }
-    .topics-enhanced .topic-navigation { position: sticky; top: var(--production-header-offset, 72px); padding: 8px 0; background: var(--bg-1); z-index: 35; }
-    .topics-enhanced .topic-nav-label { display: none; }
-    .topic-tabs { display: flex; overflow-x: auto; padding: 6px; }
-    .topic-tabs a { flex: 0 0 auto; white-space: nowrap; border-left: 0; border-bottom: 3px solid var(--line); }
-    .topics-enhanced .topic-tabs a span { display: none; }
-    .topic-tabs a[aria-selected="true"] { border-radius: 10px 10px 0 0; }
-    .area-navigation { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; padding: 8px 6px 0; }
-    .area-navigation p { display: none; }
-    .area-navigation a { padding: 4px 0; }
+    .decision-trio, .foundation-options, .release-checks, .next-paths { grid-template-columns: 1fr; }
+    .next-paths li[data-primary-path] { grid-column: auto; }
+    .chapter-route { grid-template-columns: 1fr; }
+    .chapter-route a { padding: 12px 0; margin: 0; }
+    .proof-ladder { grid-template-columns: 1fr; }
+    .gateway-pair { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .chapter-production .floating-toc .cx-chapter-links { display: none; }
+    .chapter-production .floating-toc .cx-chapter-index { margin-left: 0; width: 100%; }
+    .chapter-production .floating-toc .cx-chapter-index ol { grid-template-columns: 1fr; }
+    .chapter-production .chapter-section { padding: 48px 0 16px; }
+    .owner-matrix thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .owner-matrix, .owner-matrix tbody, .owner-matrix tr, .owner-matrix th, .owner-matrix td { display: block; width: auto; }
+    .owner-matrix tr { padding: 14px 0; border-bottom: 1px solid var(--line-2); }
+    .owner-matrix tbody th, .owner-matrix td { border: 0; padding: 4px 0; }
+    .owner-matrix tbody th { width: auto; }
+    .owner-matrix caption { display: block; }
+    .owner-matrix td[data-label="Limit"] { border: 0; }
+    .owner-matrix td::before { content: attr(data-label); display: block; font: 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
   }
   @media (max-width: 680px) {
-    .release-checks, .closing-flow, .action-outcomes > div { grid-template-columns: 1fr; gap: 12px; }
-    .citadel-topology, .release-paths { grid-template-columns: 1fr; }
+    .pipe-fig.diagram-scroll { overflow: visible; padding: 18px 16px; }
+    .pipe-fig svg { display: none; }
+    .pipe-mobile { display: block; }
+    .citadel-topology { grid-template-columns: 1fr; }
     .citadel-consumers, .citadel-models { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .citadel-consumers > .visual-label, .citadel-models > .visual-label { grid-column: 1 / -1; }
     .citadel-consumers p, .citadel-models p { padding: 10px; font-size: 13px; overflow-wrap: anywhere; }
     .citadel-core::before { top: -30px; left: 48%; transform: rotate(90deg); }
     .citadel-core::after { top: 100%; right: 46%; transform: rotate(90deg); }
-    .gate-modes, .runtime-proof { grid-template-columns: 1fr; }
-    .runtime-proof > span { transform: rotate(90deg); }
-    .return-brief, .model-passport, .access-topology, .data-lineage, .disclosure-split, .case-outcomes, .map-foundations { grid-template-columns: 1fr; }
-    .return-brief { padding: 20px; gap: 12px; }
+    .citadel-services { grid-template-columns: 1fr; }
     .visual-surface { padding: 16px; }
-    .topology-routes { padding-left: 18px; }
-    .topology-route { grid-template-columns: 80px 1fr; padding: 12px; gap: 8px; }
-    .topology-route::before { left: -18px; }
-    .lineage-arrow { transform: rotate(90deg); }
-    .evaluation-matrix th, .evaluation-matrix td { padding: 12px 6px; font-size: 13px; }
-    .risk-catalog dl > div { grid-template-columns: 1fr; gap: 6px; }
-    .authority-map { display: none; }
-    .authority-mobile { display: grid; gap: 30px; list-style: none; padding: 0; margin: 0; }
-    .authority-mobile li { position: relative; padding: 22px; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 12px; }
-    .authority-mobile li:not(:last-child)::after { content: "\2193"; position: absolute; top: 100%; left: calc(50% - 7px); color: var(--ink-1); font-size: 22px; }
-    .authority-mobile .authority-decision { border-color: var(--chapter-accent); background: var(--chapter-accent-soft); }
-    .authority-mobile h3 { margin: 0 0 6px; font-size: 22px; }
-    .authority-mobile p { margin: 0; color: var(--ink-1); font-size: 15px; }
-    .authority-human { display: block; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-2); font-size: 14px; color: var(--ink-0); }
-    .authority-steps { grid-template-columns: 1fr; gap: 18px; }
+    .term-legend { grid-template-columns: 1fr; gap: 2px; }
+    .term-legend dd { margin-bottom: 8px; }
   }
 </style>
 </head>
 <body class="chapter-page chapter-production chapter-experience">
+<a class="skip-link" href="#main-content">Skip to the chapter</a>
 <svg class="production-icons" width="0" height="0" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <symbol id="production-icon-network" viewBox="0 0 24 24">
@@ -323,714 +297,757 @@
   </nav>
 </header>
 
-<main>
+<aside class="floating-toc" aria-label="Production chapter">
+  <nav class="cx-chapter-links" aria-label="Production parts">
+    <a href="#production-domains">Starting point</a><a href="#platform-controls">Foundation</a><a href="#operating-controls">Validate</a><a href="#effect-authority">Authorize</a><a href="#evidence-review">Evidence</a><a href="#production-review">Continue</a>
+  </nav>
+  <details class="cx-chapter-index"><summary aria-label="In this chapter: all six parts"><span>In this chapter</span><span class="cx-index-current" data-index-current aria-hidden="true"></span></summary><ol>
+    <li><a href="#production-domains">1 · A working pilot is the starting point</a></li><li><a href="#platform-controls">2 · Choose the foundation you will operate</a></li><li><a href="#operating-controls">3 · Validate the candidate before promotion</a></li><li><a href="#effect-authority">4 · Authorize selected actions</a></li><li><a href="#evidence-review">5 · Review the evidence, name the owners</a></li><li><a href="#production-review">6 · Continue from your pilot</a></li>
+  </ol></details>
+</aside>
+
+<main id="main-content" tabindex="-1">
   <!-- ==================== HERO ==================== -->
-  <section class="chapter-hero" id="chapter-top" data-toc-id="chapter-top" data-toc-label="Overview">
+  <section class="chapter-hero" id="chapter-top">
     <div class="wrap wrap-wide">
       <div class="cx-journey">
         <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><span aria-current="page">Production</span></nav>
         <a class="cx-journey-next" href="./governance.html">Next: Governance &amp; AgentOps <span aria-hidden="true">&rarr;</span></a>
       </div>
-      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Production-ready</p>
-      <h1 class="reveal" data-delay="2">From agent potential <em>to operational confidence.</em></h1>
-      <p class="lede reveal" data-delay="3" data-chapter-intro>Share AI services without losing control.
-        Validate changes before go-live. Govern what an agent may actually do once it is running.
-        Explore the three complementary parts, one topic at a time.</p>
+      <p class="eyebrow reveal" data-delay="1"><span class="dot"></span>Production</p>
+      <h1 class="reveal" data-delay="2">From a working pilot <em>to a controlled release.</em></h1>
+      <p class="lede reveal" data-delay="3" data-chapter-intro>See what your pilot still needs: an operating foundation,
+        a validated release candidate, and explicit authority for selected business actions.
+        Understand the evidence &mdash; and who owns the next decision.</p>
+      <p class="hero-limit reveal" data-delay="3"><strong>A readiness assessment identifies gaps.</strong> It does not certify production.</p>
       <div class="cost-cta-row reveal" data-delay="4" style="margin-top:26px;">
-        <a class="btn btn-primary" href="#platform-controls">Explore the topics <span class="arrow">&rarr;</span></a>
-        <a class="btn btn-ghost" href="#start">Assess your pilot <span class="arrow">&rarr;</span></a>
+        <a class="btn btn-primary" href="#production-domains">Read the chapter <span class="arrow" aria-hidden="true">&darr;</span></a>
+        <a class="btn btn-ghost" href="./agent-governance.html#overview">Follow the existing-pilot guide <span class="arrow" aria-hidden="true">&rarr;</span></a>
       </div>
     </div>
   </section>
 
-  <section class="chapter-section" id="production-domains" data-toc-id="production-domains" data-toc-label="Production responsibilities" aria-labelledby="production-domains-heading">
+  <!-- ==================== 1 · STARTING POINT ==================== -->
+  <section class="chapter-section" id="production-domains" data-toc-id="production-domains" data-toc-label="1 · A working pilot is the starting point" aria-labelledby="production-domains-heading">
     <div class="wrap wrap-xl">
       <div class="section-head" id="why">
-        <p class="eyebrow"><span class="dot"></span>Complementary responsibilities</p>
-        <h2 id="production-domains-heading">A shared platform. A verified release. <em>A governed action.</em></h2>
-        <p class="section-lede">A successful demo proves an agent can help. It does not yet answer who pays,
-          which changes are safe to release, or who authorizes a consequential action.
-          These are different problems &mdash; and they need complementary controls.</p>
+        <p class="eyebrow"><span class="dot"></span>01 / Starting point</p>
+        <h2 id="production-domains-heading">A working pilot is <em>the starting point.</em></h2>
+        <p class="section-lede">A successful pilot proves that an agent can help. Before it operates real business work,
+          three separate decisions remain &mdash; and they belong to different people.</p>
       </div>
-      <figure aria-labelledby="ciso-caption" class="diagram-scroll" tabindex="0" data-visual-anchor>
-        <svg class="ciso-pentagon-svg" viewBox="0 0 1080 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Six questions a CISO asks arranged as spokes around a central production-ready core">
-          <defs>
-            <radialGradient id="ciso-core-fill" cx="50%" cy="50%" r="50%">
-              <stop offset="0%"  stop-color="currentColor" stop-opacity="0.28"/>
-              <stop offset="70%" stop-color="currentColor" stop-opacity="0.12"/>
-              <stop offset="100%" stop-color="currentColor" stop-opacity="0.04"/>
-            </radialGradient>
-            <style>
-              .ciso-num    { font-family: var(--mono); font-size: 11px; letter-spacing: .18em; fill: var(--ink-1); }
-              .ciso-q      { font-family: var(--serif); font-size: 17px; fill: var(--ink-0); }
-              .ciso-q-sub  { font-family: var(--mono); font-size: 11.5px; fill: currentColor; }
-              .ciso-core-h { font-family: var(--serif); font-size: 18px; fill: var(--ink-0); }
-              .ciso-core-s { font-family: var(--mono); font-size: 10.5px; letter-spacing: .18em; fill: currentColor; opacity: 0.85; }
-            </style>
-          </defs>
-
-          <!-- 5 spokes from core (540, 190) to each label -->
-          <g class="ciso-spokes" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.2" stroke-dasharray="4 4" fill="none">
-            <line x1="540" y1="190" x2="180" y2="90"/>
-            <line x1="540" y1="190" x2="900" y2="90"/>
-            <line x1="540" y1="190" x2="240" y2="310"/>
-            <line x1="540" y1="190" x2="840" y2="310"/>
-            <line x1="540" y1="190" x2="540" y2="50"/>
-            <line x1="540" y1="190" x2="540" y2="330"/>
-          </g>
-
-          <!-- Core: "Is this production-ready?" -->
-          <g transform="translate(540, 190)">
-            <circle r="90" fill="url(#ciso-core-fill)" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.6"/>
-            <circle r="56" fill="none" stroke="currentColor" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="2 4"/>
-            <text x="0" y="-12" text-anchor="middle" class="ciso-core-s">RELEASE REVIEW</text>
-            <text x="0" y="10" text-anchor="middle" class="ciso-core-h">Which controls</text>
-            <text x="0" y="32" text-anchor="middle" class="ciso-core-h"><tspan font-style="italic">need evidence?</tspan></text>
-          </g>
-
-          <!-- 01 Identity (top-left) -->
-          <g transform="translate(40, 50)">
-            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <circle cx="22" cy="40" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <circle cx="22" cy="40" r="3.5" fill="currentColor"/>
-            <text x="44" y="28" class="ciso-num">01 &middot; IDENTITY</text>
-            <text x="44" y="50" class="ciso-q">Who is it acting as?</text>
-            <text x="44" y="68" class="ciso-q-sub">UAMI? Entra app? OBO?</text>
-          </g>
-
-          <!-- 02 Audit (top-right) -->
-          <g transform="translate(800, 50)">
-            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <rect x="14" y="30" width="16" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <line x1="18" y1="37" x2="26" y2="37" stroke="currentColor" stroke-width="1.4"/>
-            <line x1="18" y1="42" x2="26" y2="42" stroke="currentColor" stroke-width="1.4"/>
-            <line x1="18" y1="47" x2="22" y2="47" stroke="currentColor" stroke-width="1.4"/>
-            <text x="44" y="28" class="ciso-num">02 &middot; AUDIT</text>
-            <text x="44" y="50" class="ciso-q">What &mdash; when &mdash; for whom?</text>
-            <text x="44" y="68" class="ciso-q-sub">Append-only + OTel traces</text>
-          </g>
-
-          <!-- 03 RBAC (bottom-left) -->
-          <g transform="translate(100, 300)">
-            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <path d="M 22 32 L 32 28 L 32 44 Q 32 52 22 56 Q 12 52 12 44 L 12 28 Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <text x="44" y="28" class="ciso-num">03 &middot; RBAC</text>
-            <text x="44" y="50" class="ciso-q">Can it read this index?</text>
-            <text x="44" y="68" class="ciso-q-sub">Keyless RBAC, scoped to agent</text>
-          </g>
-
-          <!-- 04 Telemetry (bottom-right) -->
-          <g transform="translate(740, 300)">
-            <rect width="240" height="80" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <polyline points="12,52 18,42 24,46 30,32 36,38" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <text x="44" y="28" class="ciso-num">04 &middot; TELEMETRY</text>
-            <text x="44" y="50" class="ciso-q">Is it running well?</text>
-            <text x="44" y="68" class="ciso-q-sub">Traces, metrics and alerts</text>
-          </g>
-
-          <!-- 05 Evals (top center) -->
-          <g transform="translate(420, 8)">
-            <rect width="240" height="60" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <circle cx="22" cy="30" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M 17 30 L 21 34 L 28 26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <text x="44" y="22" class="ciso-num">05 &middot; EVALS</text>
-            <text x="44" y="44" class="ciso-q">Did the next deploy regress?</text>
-          </g>
-
-          <!-- 06 Safety / red-team (bottom center) -->
-          <g transform="translate(420, 312)">
-            <rect width="240" height="60" rx="12" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2"/>
-            <circle cx="22" cy="30" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M 16 24 L 28 36 M 28 24 L 16 36" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <text x="44" y="22" class="ciso-num">06 &middot; SAFETY</text>
-            <text x="44" y="44" class="ciso-q">Can it be jailbroken?</text>
-          </g>
-        </svg>
-        <figcaption id="ciso-caption" class="muted" style="text-align:center;margin-top:14px;font-size:13px;letter-spacing:.04em;">
-          Six review questions, different evidence sources. <a href="#quality-controls">Offline checks and evaluations</a>
-          do not establish <a href="#effect-authority">runtime action authority</a> or
-          <a href="#runtime-controls">live service health</a>.
-        </figcaption>
-      </figure>
-<figure class="production-map" aria-labelledby="production-map-caption">
-        <div class="map-foundations">
-<a href="#platform-controls"><b>01 / Platform &amp; Citadel</b><span>Give many use cases a shared, accountable AI foundation.</span><span>Network &middot; telemetry &middot; FinOps &middot; models &middot; use cases</span></a>
-<a href="#operating-controls"><b>02 / AgentOps &amp; release</b><span>Choose the delivery path and verify the candidate before go-live.</span><span>Release models &middot; evaluation &middot; red-team &middot; gates</span></a>
-<a href="#effect-authority"><b>03 / Agent action governance</b><span>Control consequential actions while the agent is in production.</span><span>Business policy &middot; human authority &middot; execution &middot; audit</span></a>
-</div>
-        <figcaption id="production-map-caption">Citadel supplies a shared platform, Threadlight supports delivery and assurance,
-          and the selected action-governance runtime adds active control before business effects.
-          The go-live review brings their evidence together.</figcaption>
-      </figure>
-      <aside class="topic-existing" id="information-controls" aria-label="Separate data and privacy responsibilities">
-        <strong>Data access and privacy remain a separate responsibility.</strong>
-        Application and data owners enforce caller/tenant permissions, minimize what enters prompts, memory and audit,
-        and set retention. A private connection or an approved action does not grant access to every record.
-        These controls are not supplied by the new action-governance runtime.
-        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md#1-what-is-covered-elsewhere">Understand the boundary</a>.
-      </aside>
+      <ol class="decision-trio" aria-label="Three separate decisions" data-visual-anchor>
+        <li>
+          <svg class="component-icon" aria-hidden="true"><use href="#production-icon-package"/></svg>
+          <h3>Release</h3>
+          <p class="decision-q">May this candidate be promoted?</p>
+          <dl>
+            <div><dt>Owner</dt><dd>Application team with DevSecOps.</dd></div>
+            <div><dt>Decided by</dt><dd>Required checks bound to the observed candidate, plus environment approval.</dd></div>
+            <div><dt>Not the same as</dt><dd>Go-live: a release result is not automatic go-live approval.</dd></div>
+          </dl>
+        </li>
+        <li>
+          <svg class="component-icon" aria-hidden="true"><use href="#production-icon-shield"/></svg>
+          <h3>Action authorization</h3>
+          <p class="decision-q">May this specific change happen now?</p>
+          <dl>
+            <div><dt>Owner</dt><dd>Business and policy owners; the runtime enforces.</dd></div>
+            <div><dt>Decided by</dt><dd>Current policy, trusted facts and any required human decision &mdash; before each selected effect.</dd></div>
+            <div><dt>Not the same as</dt><dd>A valid release. Release fitness does not grant runtime authority.</dd></div>
+          </dl>
+        </li>
+        <li>
+          <svg class="component-icon" aria-hidden="true"><use href="#production-icon-person"/></svg>
+          <h3>Business acceptance</h3>
+          <p class="decision-q">Do we go live with this residual risk?</p>
+          <dl>
+            <div><dt>Owner</dt><dd>Business owner, with security and operations.</dd></div>
+            <div><dt>Decided by</dt><dd>Current evidence, open gaps and explicit, scoped acceptances.</dd></div>
+            <div><dt>Not the same as</dt><dd>An assessment, which informs the decision but does not make it.</dd></div>
+          </dl>
+        </li>
+      </ol>
+      <h3 class="part-subhead">The rest of this chapter follows that path.</h3>
+      <ol class="chapter-route" aria-label="Chapter parts">
+        <li><a href="#platform-controls"><b>Foundation</b><span>Choose the platform that will operate the agent.</span></a></li>
+        <li><a href="#operating-controls"><b>Validate</b><span>Check a separate candidate before promotion.</span></a></li>
+        <li><a href="#effect-authority"><b>Authorize</b><span>Control selected business changes at runtime.</span></a></li>
+        <li><a href="#evidence-review"><b>Evidence</b><span>Match each proof to its owner and limit.</span></a></li>
+        <li><a href="#production-review"><b>Continue</b><span>Pick the next step for your pilot.</span></a></li>
+      </ol>
+      <p class="route-note">A reading path, not a mandatory pipeline: evaluation starts before a release,
+        and privacy and operations apply throughout.</p>
     </div>
   </section>
 
-  <div id="topic-explorer" class="wrap wrap-xl">
-    <div class="topic-layout">
-      <nav class="topic-navigation" aria-label="Production topics">
-        <p class="topic-nav-label">Explore an area</p>
-        <div class="topic-tabs">
-<a id="tab-platform" data-topic-tab href="#platform-controls">Platform &amp; Citadel<span>Shared services and accountable use</span></a>
-<a id="tab-operations" data-topic-tab href="#operating-controls">AgentOps &amp; release<span>Delivery paths and pre-go-live assurance</span></a>
-<a id="tab-actions" data-topic-tab href="#effect-authority">Agent action governance<span>Authority for business actions</span></a>
-</div>
-        <nav class="area-navigation" data-area-navigation="platform-topic" aria-label="Platform subsections"><p>In this area</p><a href="#platform-controls">Shared hub</a><a href="#model-controls">Contracts &amp; options</a></nav>
-        <nav class="area-navigation" data-area-navigation="actions-topic" aria-label="Action governance subsections"><p>In this area</p><a href="#effect-authority">Actors &amp; authority</a><a href="#action-architecture">Decision paths</a><a href="#evidence-boundaries">Guided workbook</a></nav>
-        <nav class="area-navigation" data-area-navigation="readiness-topic" aria-label="AgentOps subsections"><p>In this area</p><a href="#operating-controls">Release pipeline</a><a href="#legs">Before go-live</a></nav>
-      </nav>
-      <div class="topic-reading">
-
-<div class="topic-panel" id="platform-topic" data-topic-panel>
-  <section class="chapter-section" id="platform-controls" aria-labelledby="platform-heading">
-    <div class="section-head">
-      <p class="eyebrow">01 / Platform and shared services</p>
-      <h2 id="platform-heading">Many use cases. <em>One accountable AI platform.</em></h2>
-      <p class="section-lede">Citadel provides a shared foundation for model access, network integration,
-        telemetry and FinOps. Teams keep ownership of their agents without rebuilding these services for every project.</p>
-    </div>
-    <p class="source-attribution">
-      <svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg>
-      <span><strong>Compatible with an external project, not maintained by Threadlight.</strong><br>
-        <a href="https://github.com/Azure-Samples/ai-hub-gateway-solution-accelerator/tree/citadel-v1">Azure-Samples/ai-hub-gateway-solution-accelerator</a>
-      </span>
-    </p>
-    <div class="production-example" data-production-example>
-      <span class="visual-label">Example / shared AI capacity</span>
-      <blockquote>Three teams share a model pool. An analytics batch consumes the capacity that customer support needs.</blockquote>
-      <p>Register each use case, set its model and usage policies, and attribute consumption.
-        The platform team can then investigate who used the capacity and make allocation decisions.</p>
-    </div>
-    <figure id="target" class="topic-mechanism" data-visual="citadel-hub" aria-labelledby="citadel-caption">
-      <div class="visual-surface citadel-topology">
-        <div class="citadel-consumers"><span class="visual-label">Registered consumers</span><p>Customer support</p><p>Analytics</p><p>Employee assistant</p></div>
-        <div class="citadel-core"><span class="visual-label">External solution accelerator</span><h3><svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-network"/></svg>Citadel Governance Hub</h3>
-          <p><b>Azure API Management AI gateway.</b> Access Contracts connect each business unit, use case and environment to shared model services.</p>
-          <div class="citadel-services">
-            <div><svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-network"/></svg><b>Network integration</b>Approved routes and private connectivity, according to the chosen profile.</div>
-            <div><svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><b>Model governance</b>Permitted models, identity checks, content policies and usage limits.</div>
-            <div><svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-chart"/></svg><b>Telemetry</b>Log Analytics / Application Insights for model-request and usage signals.</div>
-            <div><svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-cost"/></svg><b>FinOps</b>Consumption attribution for allocation and capacity decisions.</div>
+  <!-- ==================== 2 · FOUNDATION ==================== -->
+  <div id="platform-topic" class="chapter-part">
+  <section class="chapter-section" id="platform-controls" data-toc-id="platform-controls" data-toc-label="2 · Choose the foundation you will operate" aria-labelledby="platform-heading">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow">02 / Foundation</p>
+        <h2 id="platform-heading">Choose the foundation <em>you will operate.</em></h2>
+        <p class="section-lede">The agent itself stays the same: a hosted Foundry agent by default.
+          What you choose is the foundation around it &mdash; how model access, network, identity and consumption are controlled.</p>
+      </div>
+      <ul class="foundation-options" aria-label="Foundation options">
+        <li><span class="option-tag">Simplest start</span><h3>Foundry with native controls</h3>
+          <p>No central model gateway yet. Network, identity and model settings are configured for the project;
+            selected actions can still be enforced on the native host path.</p></li>
+        <li><span class="option-tag">Brownfield estate</span><h3>An existing customer gateway</h3>
+          <p>An established API Management gateway or network perimeter owned by NetSec.
+            The pilot conforms to it instead of introducing a new hub.</p></li>
+        <li data-optional><span class="option-tag">Optional shared hub</span><h3>Citadel Governance Hub</h3>
+          <p>One accountable hub for many use cases. Recommended when the customer already runs,
+            or is provisioning, Citadel.</p></li>
+      </ul>
+      <aside class="topic-existing" id="platform-postures"><strong>Citadel is optional.</strong>
+        Every option still needs explicit network, identity and model configuration.
+        A model gateway governs access to models, not downstream business actions.
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#3-the-three-postures">Compare the three postures</a>.</aside>
+      <h3 class="part-subhead">If many teams share one hub: Citadel.</h3>
+      <p class="source-attribution">
+        <svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg>
+        <span><strong>Compatible with an external project, not maintained by Threadlight.</strong><br>
+          <a href="https://github.com/Azure-Samples/ai-hub-gateway-solution-accelerator/tree/citadel-v1">Azure-Samples/ai-hub-gateway-solution-accelerator</a>
+        </span>
+      </p>
+      <div class="production-example" data-production-example>
+        <span class="visual-label">Example / shared AI capacity</span>
+        <blockquote>Three teams share a model pool. An analytics batch consumes the capacity that customer support needs.</blockquote>
+        <p>Register each use case, set its model and usage policies, and attribute consumption.
+          The platform team can then investigate who used the capacity and make allocation decisions.</p>
+      </div>
+      <figure id="target" class="topic-mechanism" data-visual="citadel-hub" aria-labelledby="citadel-caption">
+        <div class="visual-surface citadel-topology">
+          <div class="citadel-consumers"><span class="visual-label">Registered consumers</span><p>Customer support</p><p>Analytics</p><p>Employee assistant</p></div>
+          <div class="citadel-core"><span class="visual-label">External solution accelerator</span><h3><svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-network"/></svg>Citadel Governance Hub</h3>
+            <p><b>Azure API Management AI gateway.</b> Access Contracts connect each business unit, use case and environment to shared model services.</p>
+            <div class="citadel-services">
+              <div><svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-network"/></svg><b>Network integration</b>Approved routes and private connectivity, according to the chosen profile.</div>
+              <div><svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><b>Model governance</b>Permitted models, identity checks, content policies and usage limits.</div>
+              <div><svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-chart"/></svg><b>Telemetry</b>Log Analytics / Application Insights for model-request and usage signals.</div>
+              <div><svg class="component-icon" data-component-icon aria-hidden="true"><use href="#production-icon-cost"/></svg><b>FinOps</b>Consumption attribution for allocation and capacity decisions.</div>
+            </div>
+            <p><b>Use-case inventory:</b> registered consumers and their contracts, not anonymous shared usage.</p>
           </div>
-          <p><b>Use-case inventory:</b> registered consumers and their contracts, not anonymous shared usage.</p>
+          <div class="citadel-models"><span class="visual-label">Approved backends</span><p>Foundry models</p><p>Configured providers</p><p>Controlled routing</p></div>
         </div>
-        <div class="citadel-models"><span class="visual-label">Approved backends</span><p>Foundry models</p><p>Configured providers</p><p>Controlled routing</p></div>
+        <figcaption id="citadel-caption">Citadel is maintained outside Threadlight. The hub governs configured model traffic;
+          onboarding, telemetry integration and network controls must be configured. It does not authorize every business action or discover every unregistered agent.</figcaption>
+      </figure>
+      <p class="topic-existing" id="model-controls"><strong>A contract, not a shared API key.</strong>
+        Citadel connects a business unit, use case and environment to permitted services and usage policies.
+        Model safeguards do not establish business correctness or authorize downstream writes.</p>
+      <div class="topic-deeper">
+        <a data-deep-dive="foundation" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-governance.md#2-choose-the-foundation-you-will-operate">Foundation options in the technical companion &rarr;</a>
+        <a href="https://github.com/Azure-Samples/ai-hub-gateway-solution-accelerator/tree/citadel-v1">Upstream Citadel architecture</a>
+        <a href="https://aka.ms/foundry-citadel">Citadel blueprint</a>
       </div>
-      <figcaption id="citadel-caption">Citadel is maintained outside Threadlight. The hub governs configured model traffic;
-        onboarding, telemetry integration and network controls must be configured. It does not authorize every business action or discover every unregistered agent.</figcaption>
-    </figure>
-    <p class="topic-existing" id="model-controls"><strong>A contract, not a shared API key.</strong>
-      Citadel connects a business unit, use case and environment to permitted services and usage policies.
-      Model safeguards do not establish business correctness or authorize downstream writes.</p>
-    <aside class="topic-existing" id="platform-postures"><strong>Citadel is optional.</strong>
-      Threadlight can fit a simpler Foundry-native setup or an existing customer gateway.
-      Network, identity and model controls still need explicit configuration.
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#3-the-three-postures">Deployment options</a>.</aside>
-    <div class="topic-deeper">
-      <a data-deep-dive="platform" href="https://github.com/Azure-Samples/ai-hub-gateway-solution-accelerator/tree/citadel-v1">Platform deep dive: upstream architecture &rarr;</a>
-      <a href="https://aka.ms/foundry-citadel">Read the Citadel blueprint &rarr;</a>
     </div>
   </section>
-</div>
 
-<div class="topic-panel" id="readiness-topic" data-topic-panel>
-  <section class="chapter-section" id="operating-controls" aria-labelledby="operating-heading">
-    <div class="section-head">
-      <p class="eyebrow">02 / AgentOps and release</p>
-      <h2 id="operating-heading">Deploy through CI/CD &mdash; <em>not your laptop.</em></h2>
-      <p class="section-lede">From development to production, fit the customer's release model:
-        an authorized operator for the pilot, GitHub Actions or Azure DevOps for controlled delivery.
-        Threadlight generates validation and promotion artifacts; DevSecOps owns permissions, policy and acceptance.
-        A prompt change still needs evaluation, even when the container starts.</p>
+  </div>
+
+  <!-- ==================== 3 · VALIDATE ==================== -->
+  <div id="readiness-topic" class="chapter-part">
+  <section class="chapter-section" id="operating-controls" data-toc-id="operating-controls" data-toc-label="3 · Validate the candidate before promotion" aria-labelledby="operating-heading">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow">03 / Validate &middot; AgentOps &amp; release</p>
+        <h2 id="operating-heading">Validate the candidate <em>before promotion.</em></h2>
+        <p class="section-lede">Use an authorized operator for a pilot and the customer's controlled pipeline &mdash;
+          GitHub Actions or Azure DevOps &mdash; for releases. From development to production, Threadlight provides
+          validation and promotion artifacts and runs the required checks; DevSecOps owns integrations,
+          permissions, policy and acceptance. That is AgentOps: a prompt change still needs evaluation, even when the container starts.</p>
+      </div>
     </div>
   </section>
-  <section class="chapter-section" id="delivery-controls" aria-label="Generated CI/CD pipeline">
-    <figure id="ship" class="pipe-fig diagram-scroll" data-visual="deployment-lifecycle" data-topic-part="mechanism" aria-labelledby="pipe-cap" tabindex="0">
-        <svg class="pipe-svg" viewBox="0 0 1080 272" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verified release: check reviewed source and policy, prepare and observe a separate preproduction candidate, then execute required evaluation, red-team and MCP checks. These three evidence domains are grouped by purpose, not parallel execution. Current accepted evidence and configured production approval admit promotion of the same image; production is observed afterward.">
-          <defs>
-            <style>
-              .pp-tag  { font-family: var(--mono); font-size: 12px; letter-spacing: .03em; fill: currentColor; font-weight: 600; }
-              .pp-sub  { font-family: var(--mono); font-size: 10.5px; fill: currentColor; }
-              .pp-note { font-family: var(--mono); font-size: 11px; fill: currentColor; }
-            </style>
-          </defs>
+  <section class="chapter-section part-continued" id="delivery-controls" aria-label="Verified release sequence">
+    <div class="wrap wrap-xl">
+      <figure id="ship" class="pipe-fig diagram-scroll" data-visual="deployment-lifecycle" aria-labelledby="pipe-cap" tabindex="0">
+        <svg class="pipe-svg" viewBox="0 0 1080 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verified release: check reviewed source and policy, prepare and observe a separate preproduction candidate, then run one validation job that produces evaluation, red-team and MCP evidence. These three evidence domains are grouped by purpose, not parallel execution. Current accepted evidence and configured production approval admit promotion of the same image; production is observed afterward.">
           <use data-component-icon aria-hidden="true" href="#production-icon-branch" x="53" y="14" width="24" height="24"/>
           <use data-component-icon aria-hidden="true" href="#production-icon-shield" x="206" y="14" width="24" height="24"/>
           <use data-component-icon aria-hidden="true" href="#production-icon-package" x="366" y="14" width="24" height="24"/>
           <use data-component-icon aria-hidden="true" href="#production-icon-chart" x="526" y="14" width="24" height="24"/>
 
-          <!-- spine -->
-          <rect x="6"   y="46" width="118" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="65"  y="76" text-anchor="middle" class="pp-tag">COMMIT</text>
+          <rect x="6"   y="46" width="118" height="56" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="65"  y="72" text-anchor="middle" class="pp-tag">COMMIT</text>
           <text x="65"  y="90" text-anchor="middle" class="pp-sub">main / manual</text>
 
-          <rect x="152" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="218" y="76" text-anchor="middle" class="pp-tag">PREFLIGHT</text>
+          <rect x="148" y="46" width="140" height="56" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="218" y="72" text-anchor="middle" class="pp-tag">PREFLIGHT</text>
           <text x="218" y="90" text-anchor="middle" class="pp-sub">policy + adapters</text>
 
-          <rect x="312" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="378" y="76" text-anchor="middle" class="pp-tag">CANDIDATE</text>
+          <rect x="308" y="46" width="140" height="56" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="378" y="72" text-anchor="middle" class="pp-tag">CANDIDATE</text>
           <text x="378" y="90" text-anchor="middle" class="pp-sub">isolated target</text>
 
-          <rect x="472" y="46" width="132" height="52" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
-          <text x="538" y="76" text-anchor="middle" class="pp-tag">OBSERVE</text>
+          <rect x="468" y="46" width="140" height="56" rx="10" fill="currentColor" fill-opacity="0.10" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.4"/>
+          <text x="538" y="72" text-anchor="middle" class="pp-tag">OBSERVE</text>
           <text x="538" y="90" text-anchor="middle" class="pp-sub">version + image</text>
 
-          <!-- forward arrows (lime) -->
-          <g fill="none" stroke="var(--lime)" stroke-width="1.7">
-            <line x1="124" y1="72" x2="150" y2="72"/><path d="M145,67 L154,72 L145,77"/>
-            <line x1="284" y1="72" x2="310" y2="72"/><path d="M305,67 L314,72 L305,77"/>
-            <line x1="444" y1="72" x2="470" y2="72"/><path d="M465,67 L474,72 L465,77"/>
+          <g class="pp-flow">
+            <line x1="124" y1="74" x2="146" y2="74"/><path d="M140,69 L148,74 L140,79"/>
+            <line x1="288" y1="74" x2="306" y2="74"/><path d="M300,69 L308,74 L300,79"/>
+            <line x1="448" y1="74" x2="466" y2="74"/><path d="M460,69 L468,74 L460,79"/>
+            <path d="M608,74 C 640,74 640,128 666,128"/><path d="M660,123 L668,128 L660,133"/>
           </g>
 
-          <!-- fan into gates -->
-          <g fill="none" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.4">
-            <path d="M604,72 C 648,72 648,44 692,44"/>
-            <path d="M604,72 C 648,72 648,124 692,124"/>
-            <path d="M604,72 C 648,72 648,204 692,204"/>
-          </g>
-
-          <!-- three verification gates -->
+          <!-- one validation job; three evidence domains grouped by purpose -->
+          <rect class="pp-job" x="670" y="8" width="214" height="240" rx="14"/>
           <g>
-            <rect x="692" y="18" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
-            <rect x="692" y="18" width="4" height="52" rx="2" fill="var(--lime)"/>
-            <text x="784" y="40" text-anchor="middle" class="pp-tag">EVAL GATE</text>
-            <text x="784" y="56" text-anchor="middle" class="pp-sub">quality thresholds</text>
+            <rect x="688" y="22" width="178" height="54" rx="10" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <rect class="pp-mark" x="688" y="22" width="4" height="54" rx="2"/>
+            <text x="777" y="44" text-anchor="middle" class="pp-tag">EVALUATION</text>
+            <text x="777" y="62" text-anchor="middle" class="pp-sub">quality thresholds</text>
 
-            <rect x="692" y="98" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
-            <rect x="692" y="98" width="4" height="52" rx="2" fill="var(--lime)"/>
-            <text x="784" y="120" text-anchor="middle" class="pp-tag">RED-TEAM GATE</text>
-            <text x="784" y="136" text-anchor="middle" class="pp-sub">attack resistance</text>
+            <rect x="688" y="101" width="178" height="54" rx="10" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <rect class="pp-mark" x="688" y="101" width="4" height="54" rx="2"/>
+            <text x="777" y="123" text-anchor="middle" class="pp-tag">RED-TEAM</text>
+            <text x="777" y="141" text-anchor="middle" class="pp-sub">attack resistance</text>
 
-            <rect x="692" y="178" width="176" height="52" rx="10" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.5"/>
-            <rect x="692" y="178" width="4" height="52" rx="2" fill="var(--lime)"/>
-            <text x="784" y="200" text-anchor="middle" class="pp-tag">MCP GATE</text>
-            <text x="784" y="216" text-anchor="middle" class="pp-sub">supply-chain checks</text>
+            <rect x="688" y="180" width="178" height="54" rx="10" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.4"/>
+            <rect class="pp-mark" x="688" y="180" width="4" height="54" rx="2"/>
+            <text x="777" y="202" text-anchor="middle" class="pp-tag">MCP CHECKS</text>
+            <text x="777" y="220" text-anchor="middle" class="pp-sub">supply chain</text>
           </g>
 
-          <!-- all required domains precede the production gate -->
-          <g fill="none" stroke="var(--lime)" stroke-width="1.7">
-            <path d="M868,44 C 906,44 906,124 944,124"/>
-            <line x1="868" y1="124" x2="944" y2="124"/><path d="M939,119 L948,124 L939,129"/>
-            <path d="M868,204 C 906,204 906,124 944,124"/>
+          <g class="pp-flow">
+            <line x1="884" y1="128" x2="930" y2="128"/><path d="M924,123 L932,128 L924,133"/>
           </g>
 
-          <rect x="944" y="98" width="130" height="76" rx="10" fill="var(--lime)" fill-opacity="0.14" stroke="var(--lime)" stroke-opacity="0.85" stroke-width="1.7"/>
-          <text x="1009" y="120" text-anchor="middle" class="pp-tag">PROD GATE</text>
-          <text x="1009" y="136" text-anchor="middle" class="pp-sub">approve + recheck</text>
-          <text x="1009" y="154" text-anchor="middle" class="pp-sub">promote same image</text>
+          <rect class="pp-gate" x="934" y="88" width="144" height="82" rx="10"/>
+          <text x="1006" y="112" text-anchor="middle" class="pp-tag">PROD GATE</text>
+          <text x="1006" y="132" text-anchor="middle" class="pp-sub">approve + recheck</text>
+          <text x="1006" y="152" text-anchor="middle" class="pp-sub">promote same image</text>
 
-          <text x="784" y="252" text-anchor="middle" class="pp-note">REQUIRED CHECKS BEFORE PRODUCTION</text>
+          <text x="777" y="270" text-anchor="middle" class="pp-note">ONE VALIDATION JOB &#183; THREE EVIDENCE DOMAINS</text>
         </svg>
-        <figcaption id="pipe-cap" class="pipe-cap">
+        <ol class="pipe-mobile" aria-label="Verified release sequence">
+          <li><b>Commit</b><span>Reviewed source and policy, from main or a manual run.</span></li>
+          <li><b>Preflight</b><span>Policy and adapter configuration are checked.</span></li>
+          <li><b>Candidate</b><span>The proposed version is prepared in an isolated preproduction target.</span></li>
+          <li><b>Observe</b><span>The actual version and image are recorded.</span></li>
+          <li><b>One validation job</b><span>Three required evidence domains, grouped by purpose:</span>
+            <ul><li>Evaluation &mdash; quality thresholds</li><li>Red-team &mdash; attack resistance</li><li>MCP checks &mdash; supply chain</li></ul></li>
+          <li><b>PROD GATE</b><span>Owner approval and a current-authority recheck, then promotion of the same image. Production is observed afterward.</span></li>
+        </ol>
+        <figcaption id="pipe-cap">
           Three required evidence domains, one validation job. Promotion into the production environment
           needs current accepted evidence and owner approval; production is observed afterward.
           A failed check does not roll back resources or undo a business effect.
         </figcaption>
       </figure>
-    <div class="agentops-contract" data-producer-boundary>
-      <p><strong>Validate a candidate before production.</strong> Prepare the proposed version in a separate
-        preproduction environment. Evaluation, adversarial testing and MCP supply-chain checks must pass.
-        A validation record binds results to the observed image, reviewed inputs and current run.
-        Missing, expired or changed evidence stops promotion.</p>
-      <p><strong>What runs, what you must connect.</strong> Threadlight executes the reviewed release sequence
-        and required checks. The application team supplies real deployment, target-observation,
-        evaluation and scanner integrations, plus promotion and recovery behavior.
-        Optional native AgentOps runs a bound evaluation; it does not supply every integration.</p>
-      <p><strong>Three separate decisions.</strong> A release result is not automatic go-live approval
-        and does not authorize runtime business actions. Generator and local native verification are
-        <strong>not cloud acceptance</strong>; customer-pipeline execution and real business behavior
-        need separately authorized tests.</p>
-    </div>
-    <div class="knob-head"><h3>Fit the customer's delivery controls</h3></div>
-    <div class="knob-grid">
-      <article class="knob">
-        <div class="knob-flag"><code>Delivery platform</code></div>
-        <p>GitHub Actions or Azure DevOps. Configure separate validation/production identities, scoped permissions and environment reviewers.</p>
-      </article>
-      <article class="knob">
-        <div class="knob-flag"><code>Acceptance policy</code></div>
-        <p>Review datasets, quality thresholds, attack coverage and evidence lifetime. Required checks cannot become warn-only.</p>
-      </article>
-      <article class="knob">
-        <div class="knob-flag"><code>Execution environment</code></div>
-        <p>Select suitable runners; verify DNS, routes and egress. The workload pipeline does not deploy the shared hub.</p>
-      </article>
-    </div>
-    <h3 class="release-review-heading">Evidence before go-live</h3>
-    <ol class="release-checks" id="legs" aria-label="Before go-live">
-      <li><h4>Inspect configuration</h4><p>Review infrastructure, identities, policy and dependencies.
-        Offline checks do not prove a live endpoint works.</p></li>
-      <li id="quality-controls"><h4>Evaluate and red-team</h4><p>Run the candidate on representative and adversarial cases,
-        compare with the baseline and apply agreed thresholds. Finding a script is not running it.</p></li>
-      <li id="runtime-controls"><h4>Verify the deployed candidate</h4><p>Check the actual version, identity and allowed/denied paths
-        with authorized probes. Bind fresh evidence to this deployment; a noop is not business-write proof.</p></li>
-    </ol>
-    <div class="topic-deeper">
-      <a data-deep-dive="agentops" href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/docs/agentops-deep-dive.md">Repository guide: release flow, ownership and limits &rarr;</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/skills/threadlight-cicd/references/release-contract.md">Operator contract and recovery</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/skills/threadlight-cicd/references/github-actions/azd-deploy-prod.yml.tmpl">GitHub Actions template</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/skills/threadlight-cicd/references/azure-devops/azure-pipelines.yml.tmpl">Azure DevOps template</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md">Assessment and go-live reference</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md">Implementation and evidence commands</a>
-    </div>
-  </section>
-</div>
-
-<div class="topic-panel" id="actions-topic" data-topic-panel>
-  <section class="chapter-section governance-section" id="effect-authority" data-toc-id="effect-authority" aria-labelledby="effect-authority-heading">
-    <div class="section-head">
-      <h2 id="effect-authority-heading">Before the agent records <em>a return decision.</em></h2>
-      <p class="section-lede">The gateway checks evidence and any required approval, then calls the real business operation.
-        Evidence is an extra condition, not a substitute for execution.</p>
-    </div>
-    <p class="action-example" id="returns-walkthrough" data-production-example><strong>&ldquo;Can I return this order?&rdquo;</strong>
-      Here the tool actually updates <code>RMA-EXAMPLE</code> and its decision audit, <strong>not a payment</strong>.
-      A payment tool would instead invoke a payment backend.</p>
-    <div id="action-architecture" data-visual="effect-sequence">
-      <h3 class="action-layer-title" id="production-input-proof">Explore five policy scenarios</h3>
-      <!-- governed-flow:start -->
-      <div id="workflow-in-action" data-governed-flow role="region" aria-label="Five policy scenarios">
-        <svg class="wf-symbols" width="0" height="0" aria-hidden="true" focusable="false"><defs><symbol id="wf-icon-stop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m8 8 8 8m0-8-8 8"/></g></symbol></defs></svg>
-        <div class="wf-panel">
-          <div class="wf-tabs" role="tablist" aria-label="Decision scenario" data-flow-controls hidden>
-            <button type="button" role="tab" id="wf-tab-normal" aria-controls="wf-case" data-flow-scenario="normal" aria-selected="true"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-shield"/></svg><span>Allowed</span></button>
-            <button type="button" role="tab" id="wf-tab-invalid" aria-controls="wf-case" data-flow-scenario="invalid" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-stop"/></svg><span>Blocked</span></button>
-            <button type="button" role="tab" id="wf-tab-supervisor" aria-controls="wf-case" data-flow-scenario="supervisor" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-person"/></svg><span>Human review</span></button>
-            <button type="button" role="tab" id="wf-tab-evidence" aria-controls="wf-case" data-flow-scenario="evidence" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-policy"/></svg><span>Signed evidence</span></button>
-            <button type="button" role="tab" id="wf-tab-confirmation" aria-controls="wf-case" data-flow-scenario="confirmation" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-person"/></svg><span>User confirmation</span></button>
-          </div>
-          <div id="wf-case" role="tabpanel" aria-labelledby="wf-tab-normal">
-            <div class="wf-evidence" data-flow-evidence hidden>
-              <p><strong>Policy example: corroborate purchase and amount.</strong>
-                Does the purchase record match this customer and amount?
-                The provider checks the source and returns signed proof to the agent.
-                The agent &mdash; not the provider &mdash; then calls the gateway.</p>
-              <fieldset class="wf-evidence-choices">
-                <legend>Purchase evidence</legend>
-                <label><input type="radio" name="wf-evidence-case" value="valid" data-flow-evidence-case checked><span>Valid proof</span></label>
-                <label><input type="radio" name="wf-evidence-case" value="missing" data-flow-evidence-case><span>Missing proof</span></label>
-                <label><input type="radio" name="wf-evidence-case" value="changed" data-flow-evidence-case><span>Changed inputs</span></label>
-              </fieldset>
-            </div>
-            <div class="wf-playback-head">
-              <p class="wf-story" data-flow-story>Eligible return &mdash; execute the case update, with its decision audit.</p>
-              <div class="wf-transport" role="group" aria-label="Illustration playback" data-flow-controls hidden>
-                <button type="button" data-flow-control="previous" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
-                <button type="button" data-flow-control="play"><svg viewBox="0 0 24 24" data-flow-play-icon data-icon="play" aria-hidden="true"><path d="M8 5 19 12 8 19Z"/></svg><span data-flow-play-label>Play</span></button>
-                <button type="button" data-flow-control="voice" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 5 9H2v6h3l6 4V5Z M15 8a6 6 0 0 1 0 8 M18 5a10 10 0 0 1 0 14"/></svg><span data-flow-voice-label>Voice on</span></button>
-                <button type="button" data-flow-control="next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg><span data-next-label hidden>Approved example</span></button>
-              </div>
-            </div>
-            <div class="wf-narration" data-flow-captions role="region" aria-label="Narration subtitles">
-              <p data-flow-narration>A customer asks to return an order. The gateway invokes a real operation: updating this case and its decision audit, not a payment. Here, the required checks pass, so the decision can proceed without human review.</p>
-            </div>
-            <p class="wf-note" data-flow-audio-note role="status" aria-live="polite"></p>
-            <svg class="wf-diagram" viewBox="0 0 1100 215" role="img" aria-labelledby="wf-map-title wf-map-desc">
-              <title id="wf-map-title">Checks required before a selected business action</title>
-              <desc id="wf-map-desc">The agent proposes. The gateway checks evidence and local policy, obtains audit confirmation from shared services, then calls the business API. The backend commits the conditional decision and business audit. This is a sequence of checks, not a chain of business executors.</desc>
-              <defs>
-                <marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10Z"/></marker>
-              </defs>
-              <g data-edge-layer>
-                <path class="wf-edge" data-flow-edge="proposal:checks" d="M180 94H240" marker-end="url(#wf-arrow)"/>
-                <path class="wf-edge" data-flow-edge="checks:ack" d="M405 94H465" marker-end="url(#wf-arrow)"/>
-                <path class="wf-edge" data-flow-edge="ack:effect" d="M630 94H690" marker-end="url(#wf-arrow)"/>
-                <path class="wf-edge" data-flow-edge="effect:result" d="M855 94H915" marker-end="url(#wf-arrow)"/>
-                <path class="wf-edge" data-flow-edge="checks:deny" d="M325 60V24H465" hidden/>
-                <path class="wf-edge" data-flow-edge="checks:review" d="M325 128V151" hidden/>
-                <path class="wf-edge" data-flow-edge="review:fresh" d="M405 183H465" hidden/>
-                <path class="wf-edge" data-flow-edge="checks:confirm" d="M325 128V151" hidden/>
-                <path class="wf-edge" data-flow-edge="confirm:fresh" d="M405 183H465" hidden/>
-                <path class="wf-edge" data-flow-edge="confirm:ack" d="M405 183H440V115H465" hidden/>
-                <path class="wf-edge" data-flow-edge="fresh:ack" d="M550 156V133" hidden/>
-                <path class="wf-edge" data-flow-edge="ack:deny" d="M550 60V47" hidden/>
-              </g>
-              <g data-node-layer>
-                <g class="wf-node" data-flow-node="proposal" data-used="true" transform="translate(20 60)">
-                  <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-branch" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-number" x="138" y="25" data-flow-number>1</text><text class="wf-label" x="16" y="61" data-proposal-label>Agent proposes</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
-                </g>
-                <g class="wf-node" data-flow-node="checks" data-used="true" transform="translate(245 60)">
-                  <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-number" x="138" y="25" data-flow-number>2</text><text class="wf-label" x="16" y="61">Gateway checks</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
-                </g>
-                <g class="wf-node" data-flow-node="ack" data-used="true" transform="translate(470 60)">
-                  <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-policy" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-number" x="144" y="14" data-flow-number>3</text><text class="wf-label" x="52" y="30" data-authority-label>Audit confirmed</text><text class="wf-detail" x="16" y="61" data-authority-detail>Shared service support</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
-                </g>
-                <g class="wf-node" data-flow-node="effect" data-used="true" transform="translate(695 60)">
-                  <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-store" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-number" x="138" y="25" data-flow-number>4</text><text class="wf-label" x="52" y="30">Backend</text><text class="wf-detail" x="16" y="61">Checks + writes</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
-                </g>
-                <g class="wf-node" data-flow-node="result" data-used="true" transform="translate(920 60)">
-                  <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-policy" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-number" x="138" y="25" data-flow-number>5</text><text class="wf-label" x="16" y="61">Decision + audit</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
-                </g>
-                <g class="wf-node wf-stop" data-flow-node="deny" data-used="false" transform="translate(470 3)">
-                  <rect width="210" height="42" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-stop" x="12" y="9" width="24" height="24"/>
-                  <text class="wf-label" x="45" y="27">No business effect</text><text class="wf-number" x="190" y="17" data-flow-number></text><text class="wf-unused" data-unused-label x="45" y="34">Not used on this path</text>
-                </g>
-                <g class="wf-node" data-flow-node="review" data-used="false" transform="translate(245 156)">
-                  <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-person" x="12" y="15" width="24" height="24"/>
-                  <text class="wf-label" x="43" y="25">Outlook review</text><text class="wf-detail" x="43" y="43">This handoff only</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
-                </g>
-                <g class="wf-node" data-flow-node="confirm" data-used="false" transform="translate(245 156)" hidden>
-                  <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-person" x="12" y="15" width="24" height="24"/>
-                  <text class="wf-label" x="43" y="25">User confirms</text><text class="wf-detail" x="43" y="43">Exact proposal</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
-                </g>
-                <g class="wf-node" data-flow-node="fresh" data-used="false" transform="translate(470 156)">
-                  <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="12" y="15" width="24" height="24"/>
-                  <text class="wf-label" x="43" y="25">Fresh checks</text><text class="wf-detail" x="43" y="43">Same proposal</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
-                </g>
-              </g>
-              <g class="wf-evidence-map" data-evidence-sequence hidden>
-                <g data-evidence-participant="agent" data-evidence-step="proposal present" transform="translate(20 190)">
-                  <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-branch" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-label" x="52" y="30">Agent</text><text class="wf-detail" x="16" y="56" data-proof-agent-label>Presents action + proof</text>
-                </g>
-                <g data-evidence-participant="provider" data-evidence-step="proof" transform="translate(20 10)">
-                  <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-policy" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-label" x="52" y="30">Evidence Provider</text><text class="wf-detail" x="16" y="56">Checks trusted records</text>
-                </g>
-                <g data-evidence-participant="gateway" data-evidence-step="checks ack" transform="translate(430 190)">
-                  <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-shield" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-label" x="52" y="30">Gateway</text><text class="wf-detail" x="16" y="56" data-proof-check-label>Proof, rules + audit</text>
-                </g>
-                <g data-evidence-participant="backend" data-evidence-step="effect result" transform="translate(850 190)">
-                  <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-store" x="16" y="13" width="25" height="25"/>
-                  <text class="wf-label" x="52" y="30">Business system</text><text class="wf-detail" x="16" y="56" data-proof-business-label>Executes the operation</text>
-                </g>
-                <g class="wf-message" data-evidence-message="request" data-message-from="agent" data-message-to="provider" data-evidence-step="proposal">
-                  <line class="wf-edge" x1="60" y1="190" x2="60" y2="83" marker-end="url(#wf-arrow)"/>
-                  <text x="76" y="122">Check facts</text>
-                </g>
-                <g class="wf-message" data-evidence-message="return" data-message-from="provider" data-message-to="agent" data-evidence-step="proof">
-                  <line class="wf-edge" x1="190" y1="78" x2="190" y2="185" marker-end="url(#wf-arrow)"/>
-                  <text x="206" y="153" data-proof-return-label>Expiring proof</text>
-                </g>
-                <g class="wf-message" data-evidence-message="invoke" data-message-from="agent" data-message-to="gateway" data-evidence-step="present">
-                  <line class="wf-edge" x1="220" y1="224" x2="425" y2="224" marker-end="url(#wf-arrow)"/>
-                  <text x="322" y="208" text-anchor="middle" data-proof-call-label>Action + proof</text>
-                </g>
-                <g class="wf-message" data-evidence-message="dispatch" data-message-from="gateway" data-message-to="backend" data-evidence-step="effect">
-                  <line class="wf-edge" x1="630" y1="224" x2="845" y2="224" marker-end="url(#wf-arrow)"/>
-                  <text x="738" y="208" text-anchor="middle">Permitted action</text>
-                </g>
-                <g data-evidence-step="denial-audit deny" hidden>
-                  <path class="wf-edge" d="M530 258V285" marker-end="url(#wf-arrow)"/>
-                  <rect x="430" y="290" width="200" height="44" rx="10"/><use class="wf-icon" aria-hidden="true" href="#wf-icon-stop" x="444" y="300" width="24" height="24"/>
-                  <text class="wf-label" x="480" y="318">No business effect</text>
-                </g>
-              </g>
-            </svg>
-            <ol class="wf-mobile" aria-label="Selected action path">
-              <li data-mobile-node="proposal" data-used="true"><div><strong>Agent proposes</strong><small>In progress</small><span>Next: Gateway checks</span></div></li>
-              <li data-mobile-node="checks" data-used="true"><div><strong>Gateway checks</strong><small>Waiting</small><span>Next: Shared authority checks</span></div></li>
-              <li data-mobile-node="deny" data-used="false"><div><strong>Stop / no effect</strong><small>Not used on this path</small></div></li>
-              <li data-mobile-node="review" data-used="false"><div><strong>Outlook review</strong><small>Not used on this path</small></div></li>
-              <li data-mobile-node="fresh" data-used="false"><div><strong>Fresh checks</strong><small>Not used on this path</small></div></li>
-              <li data-mobile-node="ack" data-used="true"><div><strong>Shared authority checks</strong><small>Waiting</small><span>Next: Backend write</span></div></li>
-              <li data-mobile-node="effect" data-used="true"><div><strong>Backend write</strong><small>Waiting</small><span>Next: Decision + audit</span></div></li>
-              <li data-mobile-node="result" data-used="true"><div><strong>Decision + audit</strong><small>Waiting</small></div></li>
-            </ol>
-            <p class="wf-static-note">The allowed path is shown. A blocked proposal records a denial with no write.
-              Human review waits in Outlook for a verified grant, fresh checks and audit ACK.
-              Signed evidence requires provider-verified purchase proof: missing or changed proof blocks the new effect;
-              valid matching proof still needs policy and backend checks.
-              Requesting-user confirmation is separate from reviewer approval: a matching authenticated user
-              must explicitly choose Approve or Reject in the native Outlook email. Email notification is not MFA
-              or consent. Rejection, expiry or changed inputs blocks the write. This new path is not live evidence.</p>
-            <div class="wf-business-proof" data-flow-proof hidden>
-              <h4>What the purchase certificate actually says</h4>
-              <p class="wf-proof-unavailable" data-proof-unavailable hidden><strong>No certificate issued.</strong>
-                The purchase could not be corroborated. The agent&rsquo;s claim cannot fill the gap.</p>
-              <div data-proof-certified>
-                <p>Illustrative contents of <strong>one signed record</strong>, not a separate token for every check:</p>
-                <dl class="wf-fact-record">
-                  <div><dt>Purchase + customer</dt><dd>The configured purchase snapshot matches the case&rsquo;s customer.</dd></div>
-                  <div><dt>Amount + currency</dt><dd>Amount <strong>40</strong>; the purchase and case have the same currency.</dd></div>
-                  <div><dt>Only this request</dt><dd><code>RMA-EXAMPLE</code>, revision <strong>r7</strong>, exact proposed decision and reason.</dd></div>
-                </dl>
-              </div>
-              <p class="wf-example-limit"><strong>Not every business rule is certified.</strong>
-                Separate return-window and refund-entitlement attestations are <strong>not implemented</strong> here.
-                Case eligibility and risk remain backend checks.</p>
-              <p class="wf-example-limit"><strong>Loan fixture:</strong> income extracted from a document is not corroborated income.
-                A matching payroll record supplies the evidence. Synthetic sources, not a lending workflow.</p>
-            </div>
-            <!-- business-proof:end -->
-            <div class="wf-approval-example" data-flow-approval hidden>
-              <h4>One approval. One exact action. Until expiry.</h4>
-              <p>The person permits this case update, not future decisions or an exception to missing evidence.</p>
-              <dl class="wf-fact-record">
-                <div><dt>Scope</dt><dd>Apply this return decision to <code>RMA-EXAMPLE</code>, revision <strong>r7</strong>, amount <strong>40</strong>.</dd></div>
-                <div><dt>Context</dt><dd>Same caller, arguments, verified facts and policy.</dd></div>
-                <div><dt>Deadline</dt><dd>Request <strong>10:00</strong> &rarr; expires <strong>10:15</strong>, even if approval arrives at 10:04.</dd></div>
-                <div><dt>Permission</dt><dd data-approval-state>Not issued &mdash; waiting for the person</dd></div>
-              </dl>
-              <p class="wf-example-limit">Illustrative <strong>15-minute</strong> deferred configuration.
-                Default: <strong>5 minutes</strong>; configurable up to <strong>60 minutes</strong>,
-                capped by signed policy expiry. Time starts at the request, not the human&rsquo;s reply.</p>
-              <p class="wf-example-limit"><strong>Implemented as a server-held, one-use grant &mdash; not a JWT given to the agent.</strong>
-                The gateway checks and consumes it before dispatch. After expiry or a scope change, execution is blocked;
-                completed-operation replay returns the recorded result, not another write.</p>
-            </div>
-            <!-- human-permission:end -->
-            <div id="user-confirmation" class="wf-confirmation-example" data-flow-confirmation hidden>
-              <h4>The requesting user decides, not a supervisor.</h4>
-              <p><strong>Logic Apps sends an Outlook approval email</strong> to the <strong>original requesting user</strong>,
-                with the exact proposal and <strong>Approve / Reject</strong> buttons.
-                The service independently verifies the native email response and the <strong>matching authenticated user</strong>.
-                Viewing a GET link or email scanners <strong>never approve</strong>.
-                If reviewer approval is also required, both decisions must come from different people.</p>
-              <dl class="wf-fact-record">
-                <div><dt>Exact proposal</dt><dd>Record <code>approve_refund</code> for <code>RMA-EXAMPLE</code>,
-                  revision <strong>r7</strong>, amount <strong>40</strong>.
-                  Reason: &ldquo;Record the eligible recommendation.&rdquo; Cosmos decision + audit, not payment.</dd></div>
-                <div><dt>User decision</dt><dd data-confirmation-state aria-live="polite">No confirmation yet.</dd></div>
-              </dl>
-              <div class="wf-confirmation-choices" role="group" aria-label="Illustrative user decision">
-                <button type="button" data-confirmation-decision="confirmed" disabled>Show confirmed example</button>
-                <button type="button" data-confirmation-decision="rejected" disabled>Show rejected example</button>
-                <button type="button" data-confirmation-decision="expired" disabled>Show expiry example</button>
-                <button type="button" data-confirmation-decision="changed" disabled>Show changed-input example</button>
-              </div>
-              <p class="wf-example-limit">These buttons only advance the illustration. No real identity or consent is collected.
-                The real gateway returns <code>pending_confirmation</code> with confirmation and operation IDs, without an effect.</p>
-              <div class="wf-confirmation-providers">
-                <p><strong>Native email:</strong> choose Approve or Reject in Outlook, outside the agent.
-                  Verified requester consent is not reviewer approval; <strong>email is not MFA</strong>.</p>
-                <p><strong>Optional employee step-up:</strong> Entra authentication context needs verified active, applicable
-                  Conditional Access controls. The context alone is not MFA proof; a new MFA prompt per transaction is not guaranteed.</p>
-                <p><strong>Customer providers:</strong> configurable B2C provider seam, not all implemented.
-                  Initial path: MAF governed gateway; GHCP deferred and local native support is unsupported for this feature.
-                  This illustration is <strong>not live evidence</strong>.</p>
-              </div>
-              <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-governance-deep-dive.md#requesting-user-confirmation">Requesting-user confirmation contract and limits</a>
-              <a href="https://github.com/aiappsgbb/threadlight-skills/blob/86fe2c9288b42046907ade5199060df318d27b10/docs/governed-returns-validation.md#s6-native-requesting-user-approval">September 24: scoped native approval and replay evidence</a>
-            </div>
-            <!-- user-confirmation:end -->
-            <div class="wf-jwt" data-evidence-jwt hidden>
-              <h4>The proof is a signed JSON Web Token (JWT)</h4>
-              <p>It binds the verified facts to this caller, case, revision and exact tool arguments.
-                The agent carries it in MCP <code>_meta["threadlight/evidence"]</code>.
-                It is not an access token or human approval.</p>
-              <p class="wf-proof-transport">Current reference: verification uses authenticated HTTPS; the operational call uses MCP.</p>
-              <details>
-                <summary>Inspect the JWT contract and MCP request</summary>
-                <dl class="wf-jwt-fields">
-                  <div><dt>Signature</dt><dd><code>alg: RS256</code>, <code>typ: threadlight-evidence+jwt</code>, <code>kid</code>: configured key version.</dd></div>
-                  <div><dt>Authority</dt><dd><code>iss</code>, <code>aud</code>: admitted issuer and gateway audience.</dd></div>
-                  <div><dt>Identity</dt><dd><code>tid</code>, <code>holder</code>, <code>holder_client</code>: authenticated workload; <code>sub</code>: business subject.</dd></div>
-                  <div><dt>Exact request</dt><dd><code>case_id</code>, <code>revision</code>: record and version; <code>action</code>, <code>purpose</code>, <code>profile</code>: tool and named verification; <code>arguments_digest</code>: hash of all business arguments.</dd></div>
-                  <div><dt>Verified facts</dt><dd><code>sources</code>: references, revisions and digests; <code>claims</code>: provider-derived results such as <code>purchase_verified: true</code> and <code>amount: 40</code>, not model assertions.</dd></div>
-                  <div><dt>Validity</dt><dd><code>iat</code>, <code>exp</code>, <code>jti</code>: issue time, expiry and token identifier.</dd></div>
-                </dl>
-                <p>Illustrative <code>tools/call</code> parameters; placeholder, not a usable token.
-                  Compact signed form: <code>base64url(header).base64url(payload).base64url(signature)</code>.</p>
-                <pre><code>{
-  "name": "returns_apply_decision",
-  "arguments": {
-    "case_id": "RMA-EXAMPLE",
-    "expected_etag": "\"r7\"",
-    "decision": "approve_refund",
-    "reason": "Record the eligible recommendation."
-  },
-  "_meta": {
-    "threadlight/evidence": "&lt;provider-issued signed JWT&gt;"
-  }
-}</code></pre>
-                <p>The gateway verifies the JWT locally against configured keys. Only verified claims reach policy.
-                  The backend receives <code>X-Evidence-Fingerprint</code>, not the JWT, and still checks current business state.</p>
-              </details>
-            </div>
-            <!-- evidence-jwt:end -->
-            <ol class="wf-progress" data-flow-progress aria-label="Illustration steps" data-flow-controls hidden></ol>
-            <div class="wf-caption-line">
-              <div class="wf-status" data-flow-status role="status" aria-live="polite" aria-atomic="true">
-                <strong data-flow-title>Illustration &middot; 1 / 5</strong> <span class="wf-current-state" data-current-state>In progress</span>
-                <dl class="wf-step-detail">
-                  <div><dt>Actor</dt><dd data-flow-actor>Agent</dd></div>
-                  <div><dt>Action</dt><dd data-flow-action>Propose the exact case action</dd></div>
-                  <div><dt>Output</dt><dd data-flow-output>Exact case request</dd></div>
-                </dl>
-              </div>
-            </div>
-            <div class="wf-footnotes">
-              <p class="wf-note" data-flow-motion></p>
-              <p class="wf-case-note" data-flow-case-note>Authorization receipt first; conditional decision and business audit afterward. This is not a payment.</p>
-            </div>
-          </div>
-        </div>
-        <p id="effect-sequence-caption" class="wf-legend">Illustration only. No model, mailbox or backend is connected. Solid arrows show the selected path, not a live execution.</p>
+      <div class="agentops-contract" data-producer-boundary>
+        <p><strong>Validate a candidate before production.</strong> Prepare the proposed version in a separate
+          preproduction environment. Evaluation, adversarial testing and MCP supply-chain checks must pass.
+          A validation record binds results to the observed image, reviewed inputs and current run.
+          Missing, expired or changed evidence stops promotion.</p>
+        <p><strong>What runs, what you must connect.</strong> Threadlight executes the reviewed release sequence
+          and required checks. The application team supplies real deployment, target-observation,
+          evaluation and scanner integrations, plus promotion and recovery behavior.
+          Optional native AgentOps runs a bound evaluation; it does not supply every integration.</p>
+        <p><strong>A release is one decision.</strong> It is not automatic go-live approval
+          and does not authorize runtime business actions. Generator and local native verification are
+          <strong>not cloud acceptance</strong>; customer-pipeline execution and real business behavior
+          need separately authorized tests.</p>
       </div>
-      <!-- governed-flow:end -->
-    </div>
-    <details class="action-implementation" data-action-implementation>
-      <summary>Who checks, authorizes and records?</summary>
-      <p class="action-boundary">The gateway receives tool calls through <strong>Model Context Protocol (MCP)</strong>
-        and is the <strong>Policy Enforcement Point (PEP)</strong>.
-        <strong>Agent Control Specification (ACS)</strong> evaluates policy; the gateway enforces it.
-        This <strong>effect boundary</strong> controls actions, not wording.</p>
-      <ol class="action-actors" data-action-primary aria-label="Primary business-action path">
-        <li data-action-actor="agent"><svg data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg><strong>Agent <small data-actor-state>In progress</small></strong><span>Obtains evidence and proposes; no database-write or signing credentials.</span></li>
-        <li data-action-actor="gateway"><svg data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><strong>Governed MCP gateway <small data-actor-state>Waiting</small></strong><span>Checks identity, trusted facts, evidence and policy before dispatch.</span></li>
-        <li data-action-actor="business"><svg data-component-icon aria-hidden="true"><use href="#production-icon-store"/></svg><strong>Business API <small data-actor-state>Waiting</small></strong><span>Authorizes independently; its own writer identity commits the decision and audit.</span></li>
+      <h3 class="release-review-heading">Evidence before go-live</h3>
+      <ol class="release-checks" id="legs" aria-label="Before go-live">
+        <li><h4>Inspect configuration</h4><p>Review infrastructure, identities, policy and dependencies.
+          Offline checks do not prove a live endpoint works.</p></li>
+        <li id="quality-controls"><h4>Evaluate and red-team</h4><p>Run the candidate on representative and adversarial cases,
+          compare with the baseline and apply agreed thresholds. Finding a script is not running it.</p></li>
+        <li id="runtime-controls"><h4>Verify the deployed candidate</h4><p>Check the actual version, identity and allowed/denied paths
+          with authorized probes. Bind fresh evidence to this deployment; a noop is not business-write proof.</p></li>
       </ol>
-      <aside class="action-support" data-action-support aria-labelledby="action-support-title">
-        <h3 id="action-support-title">Shared services, not another business executor</h3>
-        <p>Required signed configuration, verified approval and durable audit ACK must be available before the effect.</p>
-        <ul class="action-actors" aria-label="Supporting authority services">
-          <li data-action-actor="control"><svg data-component-icon aria-hidden="true"><use href="#production-icon-policy"/></svg><strong>Control plane <small data-actor-state>Waiting</small></strong><span>Stores approval intents, one-use grants and audit records.</span></li>
-          <li data-action-actor="human"><svg data-component-icon aria-hidden="true"><use href="#production-icon-person"/></svg><strong>Human reviewer <small data-actor-state>Not required</small></strong><span>Decides the exact request in Outlook, not a general override.</span></li>
-        </ul>
-      </aside>
-      <p class="action-status-note">Actor badges describe the illustration, not live services.</p>
-      <p class="action-boundary">These are checks, not a chain of business executors.
-        Authenticated unbound reads go directly to the business API without ACS;
-        the backend rejects unauthorized direct writes.</p>
-      <p class="action-boundary"><strong>Two different gateways.</strong> Citadel/APIM is the <strong>model gateway</strong>.
-        Threadlight&rsquo;s governed gateway controls <strong>selected business effects</strong>.</p>
-    </details>
-    <p class="action-boundary"><strong>Selected actions, not blanket protection.</strong>
-      This assumes trusted host and service code, not protection from a malicious administrator.
-      The independent business API still checks the current case revision; a persuasive answer is not authorization.</p>
-  </section>
-  <section class="chapter-section governance-section" id="evidence-boundaries" aria-labelledby="evidence-boundaries-heading">
-    <h3 id="evidence-boundaries-heading">Build this workflow, one step at a time.</h3>
-    <p class="action-boundary">Start locally, prepare the platform handoff, then authorize a real deployment and human-review exercise.
-      The workbook separates preparation, execution and independently verified evidence.</p>
-    <a class="btn btn-primary" href="./agent-governance.html#overview">Try the guided workbook <span class="arrow" aria-hidden="true">&rarr;</span></a>
-    <div class="topic-deeper">
-      <a data-deep-dive="governance" href="https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md#4-architecture-and-trust-boundaries">Components and trust boundaries &rarr;</a>
-      <a href="https://github.com/aiappsgbb/threadlight-skills/blob/6bd6e72484039ed9db23f641f167f936beb9e072/docs/governed-returns-validation.md#september-15-native-outlook-human-approval-exact-resume-and-replay">Read the dated execution record &rarr;</a>
-    </div>
-  </section>
-</div>
-
+      <details class="depth" data-depth="delivery">
+        <summary>Implementation details: fit the customer's delivery controls<span>Platform, acceptance policy and runners</span></summary>
+        <div class="knob-grid">
+          <article class="knob">
+            <div class="knob-flag"><code>Delivery platform</code></div>
+            <p>GitHub Actions or Azure DevOps. Configure separate validation/production identities, scoped permissions and environment reviewers.</p>
+          </article>
+          <article class="knob">
+            <div class="knob-flag"><code>Acceptance policy</code></div>
+            <p>Review datasets, quality thresholds, attack coverage and evidence lifetime. Required checks cannot become warn-only.</p>
+          </article>
+          <article class="knob">
+            <div class="knob-flag"><code>Execution environment</code></div>
+            <p>Select suitable runners; verify DNS, routes and egress. The workload pipeline does not deploy the shared hub.</p>
+          </article>
+        </div>
+        <p class="topic-deeper">
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/skills/threadlight-cicd/references/release-contract.md">Operator contract and recovery</a>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/skills/threadlight-cicd/references/github-actions/azd-deploy-prod.yml.tmpl">GitHub Actions template</a>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/skills/threadlight-cicd/references/azure-devops/azure-pipelines.yml.tmpl">Azure DevOps template</a>
+        </p>
+      </details>
+      <div class="topic-deeper">
+        <a data-deep-dive="agentops" href="https://github.com/aiappsgbb/threadlight-skills/blob/04331ba8c4764b41ad90722d1022914b239bae2a/docs/agentops-deep-dive.md">Repository guide: release flow, ownership and limits &rarr;</a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-governance.md#3-validate-the-candidate-before-promotion">Release in the technical companion</a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md">Implementation and evidence commands</a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md">Readiness assessment reference</a>
       </div>
     </div>
+  </section>
+
   </div>
-  <section id="production-review" class="wrap wrap-xl production-review" aria-labelledby="chapter-recap">
-    <div class="section-head">
-      <p class="eyebrow">Three complementary responsibilities</p>
-      <h2 id="chapter-recap">From a useful agent to <em>controlled production.</em></h2>
+
+  <!-- ==================== 4 · AUTHORIZE ==================== -->
+  <div id="actions-topic" class="chapter-part">
+  <section class="chapter-section governance-section" id="effect-authority" data-toc-id="effect-authority" data-toc-label="4 · Authorize selected actions" aria-labelledby="effect-authority-heading">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow">04 / Authorize</p>
+        <h2 id="effect-authority-heading">Authorize selected actions <em>before they change records.</em></h2>
+        <p class="section-lede">A validated release does not authorize every action. During operation,
+          selected business changes still need their own policy checks and any required human decision.</p>
+      </div>
+      <p class="production-example" id="returns-walkthrough" data-production-example><span class="visual-label">Example / &ldquo;Can I return this order?&rdquo;</span><br>
+        Here the selected tool actually updates <code>RMA-EXAMPLE</code> and records its decision audit &mdash; <strong>not a payment</strong>.
+        A payment tool would instead invoke a payment backend.</p>
+      <h3 class="part-subhead">Who checks, who decides, who writes.</h3>
+        <ol class="action-actors" data-action-primary aria-label="Primary business-action path">
+          <li data-action-actor="agent"><svg data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg><strong>Agent <small data-actor-state>In progress</small></strong><span>Obtains evidence and proposes; no database-write or signing credentials.</span></li>
+          <li data-action-actor="gateway"><svg data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><strong>Governed MCP gateway <small data-actor-state>Waiting</small></strong><span>Checks identity, trusted facts, evidence and policy before dispatch.</span></li>
+          <li data-action-actor="business"><svg data-component-icon aria-hidden="true"><use href="#production-icon-store"/></svg><strong>Business API <small data-actor-state>Waiting</small></strong><span>Authorizes independently; its own writer identity commits the decision and audit.</span></li>
+        </ol>
+        <aside class="action-support" data-action-support aria-labelledby="action-support-title">
+          <h3 id="action-support-title">Shared services, not another business executor</h3>
+          <p>Required signed configuration, verified approval and durable audit ACK must be available before the effect.</p>
+          <ul class="action-actors" aria-label="Supporting authority services">
+            <li data-action-actor="control"><svg data-component-icon aria-hidden="true"><use href="#production-icon-policy"/></svg><strong>Control plane <small data-actor-state>Waiting</small></strong><span>Stores approval intents, one-use grants and audit records.</span></li>
+            <li data-action-actor="human"><svg data-component-icon aria-hidden="true"><use href="#production-icon-person"/></svg><strong>Human reviewer <small data-actor-state>Not required</small></strong><span>Decides the exact request in Outlook, not a general override.</span></li>
+          </ul>
+        </aside>
+      <p class="action-status-note">Actor badges follow the walkthrough; they describe the illustration, not live services.</p>
+      <h3 class="part-subhead">Two different gateways.</h3>
+      <div class="gateway-pair">
+        <div data-model-gateway><span class="visual-label">Model access</span><h4>Citadel/APIM: the model gateway</h4>
+          <p>Which models a use case may call, with limits and attribution.</p></div>
+        <div data-effect-gateway><span class="visual-label">Business effects</span><h4>Governed MCP gateway</h4>
+          <p>Policy on selected business effects, before the business API is called.</p></div>
+      </div>
+      <p class="action-boundary">Authenticated unbound reads go directly to the business API without ACS;
+        the backend rejects unauthorized direct writes.</p>
+      <p class="prose">The gateway then calls the real business operation: evidence is an extra condition,
+        not a substitute for execution. The walkthrough is not evidence of a live deployment.</p>
+      <div id="action-architecture" data-visual="effect-sequence">
+        <h3 class="action-layer-title" id="production-input-proof">Explore five policy scenarios</h3>
+        <!-- governed-flow:start -->
+        <div id="workflow-in-action" data-governed-flow role="region" aria-label="Five policy scenarios">
+          <svg class="wf-symbols" width="0" height="0" aria-hidden="true" focusable="false"><defs><symbol id="wf-icon-stop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m8 8 8 8m0-8-8 8"/></g></symbol></defs></svg>
+          <div class="wf-panel">
+            <div class="wf-tabs" role="tablist" aria-label="Decision scenario" data-flow-controls hidden>
+              <button type="button" role="tab" id="wf-tab-normal" aria-controls="wf-case" data-flow-scenario="normal" aria-selected="true"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-shield"/></svg><span>Allowed</span></button>
+              <button type="button" role="tab" id="wf-tab-invalid" aria-controls="wf-case" data-flow-scenario="invalid" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#wf-icon-stop"/></svg><span>Blocked</span></button>
+              <button type="button" role="tab" id="wf-tab-supervisor" aria-controls="wf-case" data-flow-scenario="supervisor" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-person"/></svg><span>Human review</span></button>
+              <button type="button" role="tab" id="wf-tab-evidence" aria-controls="wf-case" data-flow-scenario="evidence" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-policy"/></svg><span>Signed evidence</span></button>
+              <button type="button" role="tab" id="wf-tab-confirmation" aria-controls="wf-case" data-flow-scenario="confirmation" aria-selected="false" tabindex="-1"><svg class="wf-icon" aria-hidden="true"><use href="#production-icon-person"/></svg><span>User confirmation</span></button>
+            </div>
+            <div id="wf-case" role="tabpanel" aria-labelledby="wf-tab-normal">
+              <div class="wf-evidence" data-flow-evidence hidden>
+                <p><strong>Policy example: corroborate purchase and amount.</strong>
+                  Does the purchase record match this customer and amount?
+                  The provider checks the source and returns signed proof to the agent.
+                  The agent &mdash; not the provider &mdash; then calls the gateway.</p>
+                <fieldset class="wf-evidence-choices">
+                  <legend>Purchase evidence</legend>
+                  <label><input type="radio" name="wf-evidence-case" value="valid" data-flow-evidence-case checked><span>Valid proof</span></label>
+                  <label><input type="radio" name="wf-evidence-case" value="missing" data-flow-evidence-case><span>Missing proof</span></label>
+                  <label><input type="radio" name="wf-evidence-case" value="changed" data-flow-evidence-case><span>Changed inputs</span></label>
+                </fieldset>
+              </div>
+              <div class="wf-playback-head">
+                <p class="wf-story" data-flow-story>Eligible return &mdash; execute the case update, with its decision audit.</p>
+                <div class="wf-transport" role="group" aria-label="Illustration playback" data-flow-controls hidden>
+                  <button type="button" data-flow-control="previous" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
+                  <button type="button" data-flow-control="play"><svg viewBox="0 0 24 24" data-flow-play-icon data-icon="play" aria-hidden="true"><path d="M8 5 19 12 8 19Z"/></svg><span data-flow-play-label>Play</span></button>
+                  <button type="button" data-flow-control="voice" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 5 9H2v6h3l6 4V5Z M15 8a6 6 0 0 1 0 8 M18 5a10 10 0 0 1 0 14"/></svg><span data-flow-voice-label>Voice on</span></button>
+                  <button type="button" data-flow-control="next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg><span data-next-label hidden>Approved example</span></button>
+                </div>
+              </div>
+              <div class="wf-narration" data-flow-captions role="region" aria-label="Narration subtitles">
+                <p data-flow-narration>A customer asks to return an order. The gateway invokes a real operation: updating this case and its decision audit, not a payment. Here, the required checks pass, so the decision can proceed without human review.</p>
+              </div>
+              <p class="wf-note" data-flow-audio-note role="status" aria-live="polite"></p>
+              <svg class="wf-diagram" viewBox="0 0 1100 215" role="img" aria-labelledby="wf-map-title wf-map-desc">
+                <title id="wf-map-title">Checks required before a selected business action</title>
+                <desc id="wf-map-desc">The agent proposes. The gateway checks evidence and local policy, obtains audit confirmation from shared services, then calls the business API. The backend commits the conditional decision and business audit. This is a sequence of checks, not a chain of business executors.</desc>
+                <defs>
+                  <marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10Z"/></marker>
+                </defs>
+                <g data-edge-layer>
+                  <path class="wf-edge" data-flow-edge="proposal:checks" d="M180 94H240" marker-end="url(#wf-arrow)"/>
+                  <path class="wf-edge" data-flow-edge="checks:ack" d="M405 94H465" marker-end="url(#wf-arrow)"/>
+                  <path class="wf-edge" data-flow-edge="ack:effect" d="M630 94H690" marker-end="url(#wf-arrow)"/>
+                  <path class="wf-edge" data-flow-edge="effect:result" d="M855 94H915" marker-end="url(#wf-arrow)"/>
+                  <path class="wf-edge" data-flow-edge="checks:deny" d="M325 60V24H465" hidden/>
+                  <path class="wf-edge" data-flow-edge="checks:review" d="M325 128V151" hidden/>
+                  <path class="wf-edge" data-flow-edge="review:fresh" d="M405 183H465" hidden/>
+                  <path class="wf-edge" data-flow-edge="checks:confirm" d="M325 128V151" hidden/>
+                  <path class="wf-edge" data-flow-edge="confirm:fresh" d="M405 183H465" hidden/>
+                  <path class="wf-edge" data-flow-edge="confirm:ack" d="M405 183H440V115H465" hidden/>
+                  <path class="wf-edge" data-flow-edge="fresh:ack" d="M550 156V133" hidden/>
+                  <path class="wf-edge" data-flow-edge="ack:deny" d="M550 60V47" hidden/>
+                </g>
+                <g data-node-layer>
+                  <g class="wf-node" data-flow-node="proposal" data-used="true" transform="translate(20 60)">
+                    <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-branch" x="16" y="13" width="25" height="25"/>
+                    <text class="wf-number" x="138" y="25" data-flow-number>1</text><text class="wf-label" x="16" y="61" data-proposal-label>Agent proposes</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
+                  </g>
+                  <g class="wf-node" data-flow-node="checks" data-used="true" transform="translate(245 60)">
+                    <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="16" y="13" width="25" height="25"/>
+                    <text class="wf-number" x="138" y="25" data-flow-number>2</text><text class="wf-label" x="16" y="61">Gateway checks</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
+                  </g>
+                  <g class="wf-node" data-flow-node="ack" data-used="true" transform="translate(470 60)">
+                    <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-policy" x="16" y="13" width="25" height="25"/>
+                    <text class="wf-number" x="144" y="14" data-flow-number>3</text><text class="wf-label" x="52" y="30" data-authority-label>Audit confirmed</text><text class="wf-detail" x="16" y="61" data-authority-detail>Shared service support</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
+                  </g>
+                  <g class="wf-node" data-flow-node="effect" data-used="true" transform="translate(695 60)">
+                    <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-store" x="16" y="13" width="25" height="25"/>
+                    <text class="wf-number" x="138" y="25" data-flow-number>4</text><text class="wf-label" x="52" y="30">Backend</text><text class="wf-detail" x="16" y="61">Checks + writes</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
+                  </g>
+                  <g class="wf-node" data-flow-node="result" data-used="true" transform="translate(920 60)">
+                    <rect width="160" height="68" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-policy" x="16" y="13" width="25" height="25"/>
+                    <text class="wf-number" x="138" y="25" data-flow-number>5</text><text class="wf-label" x="16" y="61">Decision + audit</text><text class="wf-unused" data-unused-label x="14" y="61">Not used on this path</text>
+                  </g>
+                  <g class="wf-node wf-stop" data-flow-node="deny" data-used="false" transform="translate(470 3)">
+                    <rect width="210" height="42" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#wf-icon-stop" x="12" y="9" width="24" height="24"/>
+                    <text class="wf-label" x="45" y="27">No business effect</text><text class="wf-number" x="190" y="17" data-flow-number></text><text class="wf-unused" data-unused-label x="45" y="34">Not used on this path</text>
+                  </g>
+                  <g class="wf-node" data-flow-node="review" data-used="false" transform="translate(245 156)">
+                    <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-person" x="12" y="15" width="24" height="24"/>
+                    <text class="wf-label" x="43" y="25">Outlook review</text><text class="wf-detail" x="43" y="43">This handoff only</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
+                  </g>
+                  <g class="wf-node" data-flow-node="confirm" data-used="false" transform="translate(245 156)" hidden>
+                    <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-person" x="12" y="15" width="24" height="24"/>
+                    <text class="wf-label" x="43" y="25">User confirms</text><text class="wf-detail" x="43" y="43">Exact proposal</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
+                  </g>
+                  <g class="wf-node" data-flow-node="fresh" data-used="false" transform="translate(470 156)">
+                    <rect width="160" height="54" rx="10"/><use class="wf-icon" data-component-icon aria-hidden="true" href="#production-icon-shield" x="12" y="15" width="24" height="24"/>
+                    <text class="wf-label" x="43" y="25">Fresh checks</text><text class="wf-detail" x="43" y="43">Same proposal</text><text class="wf-number" x="145" y="13" data-flow-number></text><text class="wf-unused" data-unused-label x="14" y="43">Not used on this path</text>
+                  </g>
+                </g>
+                <g class="wf-evidence-map" data-evidence-sequence hidden>
+                  <g data-evidence-participant="agent" data-evidence-step="proposal present" transform="translate(20 190)">
+                    <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-branch" x="16" y="13" width="25" height="25"/>
+                    <text class="wf-label" x="52" y="30">Agent</text><text class="wf-detail" x="16" y="56" data-proof-agent-label>Presents action + proof</text>
+                  </g>
+                  <g data-evidence-participant="provider" data-evidence-step="proof" transform="translate(20 10)">
+                    <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-policy" x="16" y="13" width="25" height="25"/>
+                    <text class="wf-label" x="52" y="30">Evidence Provider</text><text class="wf-detail" x="16" y="56">Checks trusted records</text>
+                  </g>
+                  <g data-evidence-participant="gateway" data-evidence-step="checks ack" transform="translate(430 190)">
+                    <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-shield" x="16" y="13" width="25" height="25"/>
+                    <text class="wf-label" x="52" y="30">Gateway</text><text class="wf-detail" x="16" y="56" data-proof-check-label>Proof, rules + audit</text>
+                  </g>
+                  <g data-evidence-participant="backend" data-evidence-step="effect result" transform="translate(850 190)">
+                    <rect width="200" height="68" rx="10"/><use class="wf-icon" aria-hidden="true" href="#production-icon-store" x="16" y="13" width="25" height="25"/>
+                    <text class="wf-label" x="52" y="30">Business system</text><text class="wf-detail" x="16" y="56" data-proof-business-label>Executes the operation</text>
+                  </g>
+                  <g class="wf-message" data-evidence-message="request" data-message-from="agent" data-message-to="provider" data-evidence-step="proposal">
+                    <line class="wf-edge" x1="60" y1="190" x2="60" y2="83" marker-end="url(#wf-arrow)"/>
+                    <text x="76" y="122">Check facts</text>
+                  </g>
+                  <g class="wf-message" data-evidence-message="return" data-message-from="provider" data-message-to="agent" data-evidence-step="proof">
+                    <line class="wf-edge" x1="190" y1="78" x2="190" y2="185" marker-end="url(#wf-arrow)"/>
+                    <text x="206" y="153" data-proof-return-label>Expiring proof</text>
+                  </g>
+                  <g class="wf-message" data-evidence-message="invoke" data-message-from="agent" data-message-to="gateway" data-evidence-step="present">
+                    <line class="wf-edge" x1="220" y1="224" x2="425" y2="224" marker-end="url(#wf-arrow)"/>
+                    <text x="322" y="208" text-anchor="middle" data-proof-call-label>Action + proof</text>
+                  </g>
+                  <g class="wf-message" data-evidence-message="dispatch" data-message-from="gateway" data-message-to="backend" data-evidence-step="effect">
+                    <line class="wf-edge" x1="630" y1="224" x2="845" y2="224" marker-end="url(#wf-arrow)"/>
+                    <text x="738" y="208" text-anchor="middle">Permitted action</text>
+                  </g>
+                  <g data-evidence-step="denial-audit deny" hidden>
+                    <path class="wf-edge" d="M530 258V285" marker-end="url(#wf-arrow)"/>
+                    <rect x="430" y="290" width="200" height="44" rx="10"/><use class="wf-icon" aria-hidden="true" href="#wf-icon-stop" x="444" y="300" width="24" height="24"/>
+                    <text class="wf-label" x="480" y="318">No business effect</text>
+                  </g>
+                </g>
+              </svg>
+              <ol class="wf-mobile" aria-label="Selected action path">
+                <li data-mobile-node="proposal" data-used="true"><div><strong>Agent proposes</strong><small>In progress</small><span>Next: Gateway checks</span></div></li>
+                <li data-mobile-node="checks" data-used="true"><div><strong>Gateway checks</strong><small>Waiting</small><span>Next: Shared authority checks</span></div></li>
+                <li data-mobile-node="deny" data-used="false"><div><strong>Stop / no effect</strong><small>Not used on this path</small></div></li>
+                <li data-mobile-node="review" data-used="false"><div><strong>Outlook review</strong><small>Not used on this path</small></div></li>
+                <li data-mobile-node="fresh" data-used="false"><div><strong>Fresh checks</strong><small>Not used on this path</small></div></li>
+                <li data-mobile-node="ack" data-used="true"><div><strong>Shared authority checks</strong><small>Waiting</small><span>Next: Backend write</span></div></li>
+                <li data-mobile-node="effect" data-used="true"><div><strong>Backend write</strong><small>Waiting</small><span>Next: Decision + audit</span></div></li>
+                <li data-mobile-node="result" data-used="true"><div><strong>Decision + audit</strong><small>Waiting</small></div></li>
+              </ol>
+              <p class="wf-static-note">The allowed path is shown. A blocked proposal records a denial with no write.
+                Human review waits in Outlook for a verified grant, fresh checks and audit ACK.
+                Signed evidence requires provider-verified purchase proof: missing or changed proof blocks the new effect;
+                valid matching proof still needs policy and backend checks.
+                Requesting-user confirmation is separate from reviewer approval: a matching authenticated user
+                must explicitly choose Approve or Reject in the native Outlook email. Email notification is not MFA
+                or consent. Rejection, expiry or changed inputs blocks the write. This new path is not live evidence.</p>
+              <div class="wf-business-proof" data-flow-proof hidden>
+                <h4>What the purchase certificate actually says</h4>
+                <p class="wf-proof-unavailable" data-proof-unavailable hidden><strong>No certificate issued.</strong>
+                  The purchase could not be corroborated. The agent&rsquo;s claim cannot fill the gap.</p>
+                <div data-proof-certified>
+                  <p>Illustrative contents of <strong>one signed record</strong>, not a separate token for every check:</p>
+                  <dl class="wf-fact-record">
+                    <div><dt>Purchase + customer</dt><dd>The configured purchase snapshot matches the case&rsquo;s customer.</dd></div>
+                    <div><dt>Amount + currency</dt><dd>Amount <strong>40</strong>; the purchase and case have the same currency.</dd></div>
+                    <div><dt>Only this request</dt><dd><code>RMA-EXAMPLE</code>, revision <strong>r7</strong>, exact proposed decision and reason.</dd></div>
+                  </dl>
+                </div>
+                <p class="wf-example-limit"><strong>Not every business rule is certified.</strong>
+                  Separate return-window and refund-entitlement attestations are <strong>not implemented</strong> here.
+                  Case eligibility and risk remain backend checks.</p>
+                <p class="wf-example-limit"><strong>Loan fixture:</strong> income extracted from a document is not corroborated income.
+                  A matching payroll record supplies the evidence. Synthetic sources, not a lending workflow.</p>
+              </div>
+              <!-- business-proof:end -->
+              <div class="wf-approval-example" data-flow-approval hidden>
+                <h4>One approval. One exact action. Until expiry.</h4>
+                <p>The person permits this case update, not future decisions or an exception to missing evidence.</p>
+                <dl class="wf-fact-record">
+                  <div><dt>Scope</dt><dd>Apply this return decision to <code>RMA-EXAMPLE</code>, revision <strong>r7</strong>, amount <strong>40</strong>.</dd></div>
+                  <div><dt>Context</dt><dd>Same caller, arguments, verified facts and policy.</dd></div>
+                  <div><dt>Deadline</dt><dd>Request <strong>10:00</strong> &rarr; expires <strong>10:15</strong>, even if approval arrives at 10:04.</dd></div>
+                  <div><dt>Permission</dt><dd data-approval-state>Not issued &mdash; waiting for the person</dd></div>
+                </dl>
+                <p class="wf-example-limit">Illustrative <strong>15-minute</strong> deferred configuration.
+                  Default: <strong>5 minutes</strong>; configurable up to <strong>60 minutes</strong>,
+                  capped by signed policy expiry. Time starts at the request, not the human&rsquo;s reply.</p>
+                <p class="wf-example-limit"><strong>Implemented as a server-held, one-use grant &mdash; not a JWT given to the agent.</strong>
+                  The gateway checks and consumes it before dispatch. After expiry or a scope change, execution is blocked;
+                  completed-operation replay returns the recorded result, not another write.</p>
+              </div>
+              <!-- human-permission:end -->
+              <div id="user-confirmation" class="wf-confirmation-example" data-flow-confirmation hidden>
+                <h4>The requesting user decides, not a supervisor.</h4>
+                <p><strong>Logic Apps sends an Outlook approval email</strong> to the <strong>original requesting user</strong>,
+                  with the exact proposal and <strong>Approve / Reject</strong> buttons.
+                  The service independently verifies the native email response and the <strong>matching authenticated user</strong>.
+                  Viewing a GET link or email scanners <strong>never approve</strong>.
+                  If reviewer approval is also required, both decisions must come from different people.</p>
+                <dl class="wf-fact-record">
+                  <div><dt>Exact proposal</dt><dd>Record <code>approve_refund</code> for <code>RMA-EXAMPLE</code>,
+                    revision <strong>r7</strong>, amount <strong>40</strong>.
+                    Reason: &ldquo;Record the eligible recommendation.&rdquo; Cosmos decision + audit, not payment.</dd></div>
+                  <div><dt>User decision</dt><dd data-confirmation-state aria-live="polite">No confirmation yet.</dd></div>
+                </dl>
+                <div class="wf-confirmation-choices" role="group" aria-label="Illustrative user decision">
+                  <button type="button" data-confirmation-decision="confirmed" disabled>Show confirmed example</button>
+                  <button type="button" data-confirmation-decision="rejected" disabled>Show rejected example</button>
+                  <button type="button" data-confirmation-decision="expired" disabled>Show expiry example</button>
+                  <button type="button" data-confirmation-decision="changed" disabled>Show changed-input example</button>
+                </div>
+                <p class="wf-example-limit">These buttons only advance the illustration. No real identity or consent is collected.
+                  The real gateway returns <code>pending_confirmation</code> with confirmation and operation IDs, without an effect.</p>
+                <details class="wf-provider-details"><summary>Identity providers and limits</summary>
+                <div class="wf-confirmation-providers">
+                  <p><strong>Native email:</strong> choose Approve or Reject in Outlook, outside the agent.
+                    Verified requester consent is not reviewer approval; <strong>email is not MFA</strong>.</p>
+                  <p><strong>Optional employee step-up:</strong> Entra authentication context needs verified active, applicable
+                    Conditional Access controls. The context alone is not MFA proof; a new MFA prompt per transaction is not guaranteed.</p>
+                  <p><strong>Customer providers:</strong> configurable B2C provider seam, not all implemented.
+                    Initial path: MAF governed gateway; GHCP deferred and local native support is unsupported for this feature.
+                    This illustration is <strong>not live evidence</strong>.</p>
+                </div>
+                </details>
+                <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-governance-deep-dive.md#requesting-user-confirmation">Requesting-user confirmation contract and limits</a>
+                <a href="https://github.com/aiappsgbb/threadlight-skills/blob/86fe2c9288b42046907ade5199060df318d27b10/docs/governed-returns-validation.md#s6-native-requesting-user-approval">September 24: scoped native approval and replay evidence</a>
+              </div>
+              <!-- user-confirmation:end -->
+              <div class="wf-jwt" data-evidence-jwt hidden>
+                <h4>The proof is a signed JSON Web Token (JWT)</h4>
+                <p>It binds the verified facts to this caller, case, revision and exact tool arguments.
+                  The agent carries it in MCP <code>_meta["threadlight/evidence"]</code>.
+                  It is not an access token or human approval.</p>
+                <p class="wf-proof-transport">Current reference: verification uses authenticated HTTPS; the operational call uses MCP.</p>
+                <details>
+                  <summary>Inspect the JWT contract and MCP request</summary>
+                  <dl class="wf-jwt-fields">
+                    <div><dt>Signature</dt><dd><code>alg: RS256</code>, <code>typ: threadlight-evidence+jwt</code>, <code>kid</code>: configured key version.</dd></div>
+                    <div><dt>Authority</dt><dd><code>iss</code>, <code>aud</code>: admitted issuer and gateway audience.</dd></div>
+                    <div><dt>Identity</dt><dd><code>tid</code>, <code>holder</code>, <code>holder_client</code>: authenticated workload; <code>sub</code>: business subject.</dd></div>
+                    <div><dt>Exact request</dt><dd><code>case_id</code>, <code>revision</code>: record and version; <code>action</code>, <code>purpose</code>, <code>profile</code>: tool and named verification; <code>arguments_digest</code>: hash of all business arguments.</dd></div>
+                    <div><dt>Verified facts</dt><dd><code>sources</code>: references, revisions and digests; <code>claims</code>: provider-derived results such as <code>purchase_verified: true</code> and <code>amount: 40</code>, not model assertions.</dd></div>
+                    <div><dt>Validity</dt><dd><code>iat</code>, <code>exp</code>, <code>jti</code>: issue time, expiry and token identifier.</dd></div>
+                  </dl>
+                  <p>Illustrative <code>tools/call</code> parameters; placeholder, not a usable token.
+                    Compact signed form: <code>base64url(header).base64url(payload).base64url(signature)</code>.</p>
+                  <pre><code>{
+    "name": "returns_apply_decision",
+    "arguments": {
+      "case_id": "RMA-EXAMPLE",
+      "expected_etag": "\"r7\"",
+      "decision": "approve_refund",
+      "reason": "Record the eligible recommendation."
+    },
+    "_meta": {
+      "threadlight/evidence": "&lt;provider-issued signed JWT&gt;"
+    }
+  }</code></pre>
+                  <p>The gateway verifies the JWT locally against configured keys. Only verified claims reach policy.
+                    The backend receives <code>X-Evidence-Fingerprint</code>, not the JWT, and still checks current business state.</p>
+                </details>
+              </div>
+              <!-- evidence-jwt:end -->
+              <ol class="wf-progress" data-flow-progress aria-label="Illustration steps" data-flow-controls hidden></ol>
+              <div class="wf-caption-line">
+                <div class="wf-status" data-flow-status role="status" aria-live="polite" aria-atomic="true">
+                  <strong data-flow-title>Illustration &middot; 1 / 5</strong> <span class="wf-current-state" data-current-state>In progress</span>
+                  <dl class="wf-step-detail">
+                    <div><dt>Actor</dt><dd data-flow-actor>Agent</dd></div>
+                    <div><dt>Action</dt><dd data-flow-action>Propose the exact case action</dd></div>
+                    <div><dt>Output</dt><dd data-flow-output>Exact case request</dd></div>
+                  </dl>
+                </div>
+              </div>
+              <div class="wf-footnotes">
+                <p class="wf-note" data-flow-motion></p>
+                <p class="wf-case-note" data-flow-case-note>Authorization receipt first; conditional decision and business audit afterward. This is not a payment.</p>
+              </div>
+            </div>
+          </div>
+          <p id="effect-sequence-caption" class="wf-legend">Illustration only. No model, mailbox or backend is connected. Solid arrows show the selected path, not a live execution.</p>
+        </div>
+        <!-- governed-flow:end -->
+      </div>
+      <p class="action-boundary"><strong>Selected actions, not blanket protection.</strong>
+        This assumes trusted host and service code, not protection from a malicious administrator.
+        The independent business API still checks the current case revision; a persuasive answer is not authorization.</p>
+      <details class="depth action-implementation" data-action-implementation>
+        <summary>Implementation details: protocol, policy and terms<span>MCP, PEP, ACS and the governance vocabulary</span></summary>
+        <p class="action-boundary">The gateway receives tool calls through <strong>Model Context Protocol (MCP)</strong>
+          and is the <strong>Policy Enforcement Point (PEP)</strong>.
+          <strong>Agent Control Specification (ACS)</strong> evaluates policy; the gateway enforces it.
+          This <strong>effect boundary</strong> controls actions, not wording. These are checks, not a chain of business executors.</p>
+        <dl class="term-legend">
+          <dt>SAFE</dt><dd>The method for defining business invariants and selecting bindings.</dd>
+          <dt>ACS/Rego</dt><dd>The policy decision point, evaluated locally.</dd>
+          <dt>Agent Hooks</dt><dd>The host/interceptor contract.</dd>
+          <dt>Native host or gateway</dt><dd>The policy enforcement point for a selected binding.</dd>
+          <dt>AGT</dt><dd>The toolkit that packages these pieces.</dd>
+          <dt>ASSERT</dt><dd>Assurance: tests and evidence about what was enforced.</dd>
+        </dl>
+      </details>
+      <div class="topic-deeper">
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-governance.md#4-authorize-selected-actions-before-they-change-records">Actors, gateways and proof limits in the technical companion &rarr;</a>
+      </div>
     </div>
-    <div class="closing-flow">
-      <p><b>Shared platform</b><span>Govern model access, routes and consumption.</span></p>
-      <p id="checks"><b>Verified release</b><span>Evaluate the candidate and review fresh deployment evidence.</span></p>
-      <p><b>Governed actions</b><span>Authorize selected business changes during operation.</span></p>
+  </section>
+  <section class="chapter-section governance-section part-continued" id="evidence-boundaries" aria-labelledby="evidence-boundaries-heading">
+    <div class="wrap wrap-xl">
+      <h3 id="evidence-boundaries-heading" class="part-subhead">Build this workflow on your own pilot, one step at a time.</h3>
+      <p class="action-boundary">Start locally, prepare the platform handoff, then authorize a real deployment and human-review exercise.
+        The guide separates preparation, execution and independently verified evidence.</p>
+      <a class="btn btn-primary" href="./agent-governance.html#overview">Follow the existing-pilot guide <span class="arrow" aria-hidden="true">&rarr;</span></a>
+      <div class="topic-deeper">
+        <a data-deep-dive="governance" href="https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md#4-architecture-and-trust-boundaries">Components and trust boundaries &rarr;</a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/6bd6e72484039ed9db23f641f167f936beb9e072/docs/governed-returns-validation.md#september-15-native-outlook-human-approval-exact-resume-and-replay">Read the dated execution record &rarr;</a>
+      </div>
     </div>
-    <div class="cost-cta-row">
-      <a id="proof" class="btn btn-primary" href="https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md">Explore the technical architecture &rarr;</a>
-      <a id="start" class="btn btn-ghost" href="./funnel.html#scene-cta">Start with a pilot &rarr;</a>
+  </section>
+
+  </div>
+
+  <!-- ==================== 5 · EVIDENCE ==================== -->
+  <section class="chapter-section" id="evidence-review" data-toc-id="evidence-review" data-toc-label="5 · Review the evidence, name the owners" aria-labelledby="evidence-review-heading">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow">05 / Evidence and owners</p>
+        <h2 id="evidence-review-heading">Review the evidence. <em>Name the owners.</em></h2>
+        <p class="section-lede">Six review questions draw on different evidence. Each has an owner &mdash;
+          and a limit on what its proof can show.</p>
+      </div>
+      <table class="owner-matrix" id="checks">
+        <caption>Six review questions, with owner, evidence and limit</caption>
+        <thead><tr><th scope="col">Question</th><th scope="col">Owner</th><th scope="col">Evidence</th><th scope="col">Limit</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><small>Identity</small>Who is the agent acting as?</th>
+            <td data-label="Owner">Platform and identity team</td>
+            <td data-label="Evidence">Managed identity and role assignments observed on the deployed candidate</td>
+            <td data-label="Limit">Proves who calls, not whether an action is allowed</td></tr>
+          <tr><th scope="row"><small>Data access</small>Can it read this record?</th>
+            <td data-label="Owner">Application and data owners</td>
+            <td data-label="Evidence">Caller and tenant permissions enforced at the source; minimization and retention</td>
+            <td data-label="Limit">A private connection or approved action does not grant access to every record</td></tr>
+          <tr><th scope="row"><small>Quality</small>Did the candidate regress?</th>
+            <td data-label="Owner">Application team; business owner sets thresholds</td>
+            <td data-label="Evidence">Evaluation of the observed candidate against the baseline</td>
+            <td data-label="Limit">Execution success is not quality success; offline results are not live health</td></tr>
+          <tr><th scope="row"><small>Safety</small>Can it be manipulated?</th>
+            <td data-label="Owner">Security</td>
+            <td data-label="Evidence">Adversarial run and MCP supply-chain checks on the candidate</td>
+            <td data-label="Limit">Covers the tested attack set only</td></tr>
+          <tr><th scope="row"><small>Action authority</small>May this change happen?</th>
+            <td data-label="Owner">Business and policy owners; the gateway enforces</td>
+            <td data-label="Evidence">Signed policy and enforcement evidence for each selected binding</td>
+            <td data-label="Limit">One enforced binding is not whole-agent governance</td></tr>
+          <tr><th scope="row"><small>Audit &amp; telemetry</small>What happened, when, for whom?</th>
+            <td data-label="Owner">Operations</td>
+            <td data-label="Evidence">Central audit acknowledgement before the effect; traces and alerts</td>
+            <td data-label="Limit">A local spool is not hosted audit proof</td></tr>
+        </tbody>
+      </table>
+      <h3 class="part-subhead">Five kinds of proof. Each shows something different.</h3>
+      <ol class="proof-ladder" aria-label="Kinds of proof">
+        <li><b>Generated artifact</b><p><strong>Shows:</strong> configuration and wiring exist.</p><p><strong>Not:</strong> that anything ran.</p></li>
+        <li><b>Offline inventory</b><p><strong>Shows:</strong> declared policy and bindings.</p><p><strong>Not:</strong> enforcement.</p></li>
+        <li><b>Executed LOCAL-14</b><p><strong>Shows:</strong> selected paths behave locally.</p><p><strong>Not:</strong> hosted behavior.</p></li>
+        <li><b>Native/CTK</b><p><strong>Shows:</strong> native contract conformance on this host.</p><p><strong>Not:</strong> Azure or customer behavior.</p></li>
+        <li><b>Live evidence</b><p><strong>Shows:</strong> fresh observations bound to this deployment.</p><p><strong>Not:</strong> anything beyond what was observed.</p></li>
+      </ol>
+      <div class="evidence-limits">
+        <p><strong>Fresh, not inherited.</strong> The deployed collector proves only <code>governance_probe_noop</code>,
+          not business writes. A new deployment needs fresh evidence; historical records are not inherited by this page or by new deployments.</p>
+        <p><strong>Per binding, not per agent.</strong> One enforced binding is not whole-agent governance.
+          Unbound reads stay usable without ACS; accepting a consequential unbound action must be explicit, current and scoped.</p>
+      </div>
+      <aside class="topic-existing" id="information-controls" aria-label="Separate data and privacy responsibilities">
+        <strong>Data access and privacy remain a separate responsibility.</strong>
+        Application and data owners enforce caller/tenant permissions, minimize what enters prompts, memory and audit,
+        and set retention. These controls are not supplied by the new action-governance runtime.
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md#1-what-is-covered-elsewhere">Understand the boundary</a>.
+      </aside>
+      <div class="topic-deeper">
+        <a data-deep-dive="evidence" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-governance.md#5-review-the-evidence-name-the-owners">Owners and proof kinds in the technical companion &rarr;</a>
+        <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md#operative-path-configuration-to-current-evidence">Stage commands, stops and recovery</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 6 · CONTINUE ==================== -->
+  <section class="chapter-section production-review" id="production-review" data-toc-id="production-review" data-toc-label="6 · Continue from your pilot" aria-labelledby="chapter-recap">
+    <div class="wrap wrap-xl">
+      <div class="section-head">
+        <p class="eyebrow">06 / Continue</p>
+        <h2 id="chapter-recap">Continue from the pilot <em>you already have.</em></h2>
+        <p class="section-lede">You do not restart. Pick the path that matches where your pilot is today.</p>
+      </div>
+      <ul class="next-paths" aria-label="Next steps">
+        <li data-primary-path><div><h3>You have a Threadlight pilot</h3>
+          <p>Five prompts and checkpoints reuse what was already generated: select the protected action, prepare a candidate, verify and promote.</p></div>
+          <a id="start" class="btn btn-primary" href="./agent-governance.html#overview">Follow the existing-pilot guide <span class="arrow" aria-hidden="true">&rarr;</span></a></li>
+        <li><h3>You need the readiness requirements</h3>
+          <p>An advisory assessment lists gaps, owners and evidence freshness. It does not certify production.</p>
+          <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md">Review readiness requirements &rarr;</a></li>
+        <li><h3>You want the technical depth</h3>
+          <p>The companion follows these six parts with owners, proof kinds and the detailed contracts.</p>
+          <a data-deep-dive="companion" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-governance.md">Read the technical companion &rarr;</a>
+          <a id="proof" href="https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md">Explore the action architecture &rarr;</a></li>
+        <li><h3>You are already in production</h3>
+          <p>Changes, fresh evidence, weekly review and unknown outcomes after go-live.</p>
+          <a href="./operate.html">Operate after go-live &rarr;</a></li>
+        <li><h3>You do not have a pilot yet</h3>
+          <p>Start from a brief and build a working pilot first.</p>
+          <a href="./funnel.html#scene-cta">Start with Build &rarr;</a></li>
+      </ul>
     </div>
   </section>
 </main>
@@ -1043,7 +1060,7 @@
 <script src="assets/site.js?v=e4d413b7"></script>
 <script src="assets/site-map.js?v=27594af5"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
-<script src="assets/production.js?v=96331334"></script>
+<script src="assets/production.js?v=e03bf2a6"></script>
 <script src="assets/governed-workflow.js?v=4a69e216"></script>
 </body>
 </html>

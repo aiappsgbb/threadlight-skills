@@ -289,7 +289,7 @@ test('beginner discoverability connects Production to the web and approved Markd
   assert.ok(site.includes('Take your Threadlight pilot to governed production'));
   assert.ok(site.includes('href="./production.html#effect-authority"'));
   const production = read('docs/production.html');
-  assert.ok(production.includes('href="./agent-governance.html#overview">Try the guided workbook'));
+  assert.ok(production.includes('href="./agent-governance.html#overview">Follow the existing-pilot guide'));
   assert.ok(production.includes('blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md'));
 });
 

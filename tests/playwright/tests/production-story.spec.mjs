@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
-test('the executive story moves from shared platform to release to runtime action governance', async ({ page }) => {
+test('the story moves from the starting decisions to foundation, release, actions, evidence and next step', async ({ page }) => {
   await page.goto('/production.html');
-  const sequence = ['#platform-controls', '#operating-controls', '#effect-authority'];
-  expect(await page.locator('.production-map a').evaluateAll(links => links.map(a => a.getAttribute('href')))).toEqual(sequence);
-  expect(await page.locator('[data-topic-tab]').evaluateAll(links => links.map(a => a.getAttribute('href')))).toEqual(sequence);
-  expect(await page.locator('.ciso-pentagon-svg').evaluate(svg => svg.closest('[data-topic-panel]')?.id ?? null)).toBeNull();
-  await expect(page.locator('.posture-trio-svg, .scorecard-preview')).toHaveCount(0);
-  await expect(page.locator('#readiness-topic .ciso-pentagon-svg, #readiness-topic .posture-trio-svg, #readiness-topic .scorecard-preview')).toHaveCount(0);
+  const sequence = ['#platform-controls', '#operating-controls', '#effect-authority', '#evidence-review', '#production-review'];
+  expect(await page.locator('.chapter-route a').evaluateAll(links => links.map(a => a.getAttribute('href')))).toEqual(sequence);
+  expect(await page.locator('.cx-chapter-links a').evaluateAll(links => links.map(a => a.getAttribute('href'))))
+    .toEqual(['#production-domains', ...sequence]);
+  await expect(page.locator('#production-domains .decision-trio > li')).toHaveCount(3);
+  await expect(page.locator('.ciso-pentagon-svg, .posture-trio-svg, .scorecard-preview')).toHaveCount(0);
 });
 
 test('Citadel has its own example and platform diagram, not Threadlight ownership claims', async ({ page }) => {
@@ -25,9 +25,10 @@ test('release routes keep the CI diagram central and keep action enforcement in 
   await page.goto('/production.html#operating-controls');
   await expect(page.locator('#operating-controls')).toContainText('GitHub Actions or Azure DevOps');
   await expect(page.locator('[data-visual="release-paths"]')).toHaveCount(0);
-  await expect(page.locator('.pipe-svg')).toBeVisible();
+  await expect(page.locator('#ship')).toBeVisible();
   await expect(page.locator('#readiness-topic')).toContainText('go-live');
   await expect(page.locator('#readiness-topic [data-visual="runtime-evidence"]')).toHaveCount(0);
+  await expect(page.locator('#platform-controls')).toContainText('hosted Foundry agent by default');
   await expect(page.locator('#effect-authority [data-production-example]')).toContainText('Can I return this order');
 });
 

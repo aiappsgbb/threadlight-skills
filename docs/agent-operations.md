@@ -2,6 +2,9 @@
 
 For the **L200/L300** visual explanation, start with
 [Governance & AgentOps on Pages](https://aiappsgbb.github.io/threadlight-skills/governance.html).
+For the [Production chapter](https://aiappsgbb.github.io/threadlight-skills/production.html)
+(foundation, release, governed actions, evidence and owners), the
+[technical companion](production-governance.md) maps each part to this guide.
 This **L400/L500** operative guide connects implementation contracts, commands,
 artifacts and failure recovery. It does not authorize deployment or replace the
 linked deep source contracts.

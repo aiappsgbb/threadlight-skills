@@ -12,8 +12,7 @@ test('Production explains actors and keeps model access separate from protected 
     await expect(action).toContainText(phrase);
   }
   await expect(page.locator('#workflow-in-action .wf-diagram')).toHaveCount(1);
-  await expect(page.locator('[data-topic-tab][href="#effect-authority"]')).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('link', { name: 'Try the guided workbook', exact: true }).click();
+  await page.locator('#evidence-boundaries').getByRole('link', { name: 'Follow the existing-pilot guide', exact: true }).click();
   await expect(page).toHaveURL(/agent-governance\.html#overview$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Take your Threadlight pilot to governed production');
 });
@@ -48,20 +47,20 @@ test('former web exercise fragments open their exact approved workbook section',
   }
 });
 
-test('leaving the action topic pauses its illustrative playback without changing other topics', async ({ page }) => {
+test('leaving the action part pauses its illustrative playback without changing other parts', async ({ page }) => {
   await page.clock.install();
   await page.goto('/production.html#workflow-in-action');
   const flow = page.locator('#workflow-in-action');
   await flow.getByRole('button', { name: 'Voice on', exact: true }).click();
   await flow.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.locator('[data-topic-tab][href="#operating-controls"]').click();
-  await expect(flow).toBeHidden();
+  await page.locator('a[href="#operating-controls"]:visible').first().click();
+  await expect(flow).not.toBeInViewport();
   await expect(flow).toHaveAttribute('data-playing', 'false');
   const step = await flow.getAttribute('data-step');
   await page.clock.runFor(20000);
   await expect(flow).toHaveAttribute('data-step', step);
   await expect(page.locator('#operating-controls')).toBeVisible();
-  await expect(page.locator('#delivery-controls .pipe-svg')).toBeVisible();
+  await expect(page.locator('#delivery-controls #ship')).toBeVisible();
 });
 
 for (const theme of ['light', 'dark']) {

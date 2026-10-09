@@ -296,16 +296,17 @@ test.describe('Build chapter (funnel.html)', () => {
 });
 
 test.describe('production chapter (production.html)', () => {
-  test('hero: production-ready title and a visual route into three areas', async ({ page }) => {
+  test('hero: a concrete pilot-to-release promise, its limit and a visual route through six parts', async ({ page }) => {
     await page.goto('/production.html');
-    await expect(page).toHaveTitle(/Production-ready/i);
-    await expect(page.locator('#chapter-top h1')).toContainText(/operational confidence/i);
-    await expect(page.locator('#chapter-top')).toContainText(/one topic at a time/i);
+    await expect(page).toHaveTitle(/From a working pilot to a controlled release/i);
+    await expect(page.locator('#chapter-top h1')).toContainText(/From a working pilot.*to a controlled release/i);
+    await expect(page.locator('#chapter-top')).toContainText(/does not certify production/i);
     await expect(page.locator('#chapter-top')).not.toContainText(/so the pilot ships/i);
     await expect(page.locator('#chapter-top')).not.toContainText(/Amber turns green/i);
     await expect(page.locator('#chapter-top .stat-strip')).toHaveCount(0);
-    await expect(page.locator('.production-map')).toBeVisible();
-    await expect(page.getByRole('tab')).toHaveCount(3);
+    await expect(page.locator('.chapter-route a')).toHaveCount(5);
+    await expect(page.locator('#workflow-in-action').getByRole('tab')).toHaveCount(5);
+    await expect(page.locator('[role="tab"]:not(#workflow-in-action [role="tab"])')).toHaveCount(0);
   });
 
   test('the chapter retains navigation anchors without the old assessment appendix', async ({ page }) => {
@@ -313,7 +314,7 @@ test.describe('production chapter (production.html)', () => {
     for (const id of ['chapter-top', 'why', 'checks', 'legs', 'proof', 'target', 'ship', 'start', 'chapter-recap']) {
       await expect(page.locator('#' + id), `production section #${id}`).toHaveCount(1);
     }
-    await expect(page.locator('#checks')).toContainText('Verified release');
+    await expect(page.locator('#checks')).toContainText('Who is the agent acting as?');
     await expect(page.locator('.scorecard-preview, .outcome-band')).toHaveCount(0);
   });
 
@@ -322,6 +323,7 @@ test.describe('production chapter (production.html)', () => {
     await expect(page.locator('main .gap-card')).toHaveCount(0);
     await expect(page.locator('#platform-topic .source-attribution a[href*="Azure-Samples/ai-hub-gateway-solution-accelerator"]')).toHaveCount(1);
     await expect(page.locator('#readiness-topic a[href$="/docs/production-readiness.md"]')).toHaveCount(1);
+    await expect(page.locator('#production-review a[href$="/docs/production-readiness.md"]')).toHaveText(/Review readiness requirements/);
     const governanceReference = page.locator('#actions-topic a[data-deep-dive="governance"]');
     await expect(governanceReference).toHaveCount(1);
     const reference = new URL(await governanceReference.getAttribute('href'));
@@ -333,11 +335,18 @@ test.describe('production chapter (production.html)', () => {
     expect(await document.text()).toMatch(/^## 4\. Architecture and trust boundaries$/m);
   });
 
-  test('the closing links to the technical guide without illustrative metrics or another tutorial', async ({ page }) => {
+  test('the closing routes to real next steps without illustrative metrics or another tutorial', async ({ page }) => {
     await page.goto('/production.html');
     const proof = page.locator('#proof');
     await expect(proof).toHaveAttribute('href', /agent-governance-deep-dive\.md$/);
-    await expect(page.locator('#production-review a')).toHaveCount(2);
+    await expect(page.locator('#start')).toHaveAttribute('href', './agent-governance.html#overview');
+    await expect(page.locator('#start')).toHaveText(/Follow the existing-pilot guide/);
+    expect(await page.locator('#production-review a').evaluateAll(links => links.map(a => a.getAttribute('href')))).toEqual([
+      './agent-governance.html#overview',
+      'https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md',
+      'https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-governance.md',
+      'https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md',
+      './operate.html', './funnel.html#scene-cta']);
     await expect(page.locator('#production-review')).not.toContainText(/91%|0\.0123|EU AI Act|13 pillars/i);
   });
 });

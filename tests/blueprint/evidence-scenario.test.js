@@ -140,10 +140,12 @@ test('public action introduction reaches the example diagram before implementati
   const html = read('docs/production.html');
   const action = html.match(/<section\b[^>]* id="effect-authority"[^>]*>([\s\S]*?)<\/section>/)[1];
   const intro = action.split('<!-- governed-flow:start -->')[0].replace(/<[^>]*>/g, ' ').trim();
-  assert.ok(intro.split(/\s+/).length <= 90, 'At most 90 words before the scenario');
-  assert.match(intro, /return decision/i);
+  // Actors and the two gateways are orientation, so they precede the player; protocol terms stay disclosed.
+  assert.ok(intro.split(/\s+/).length <= 260, 'At most 260 words before the scenario');
+  assert.match(intro, /return decision|updates.*RMA-EXAMPLE/i);
   assert.match(intro, /Can I return this order/);
-  assert.doesNotMatch(intro, /Access to a system|Control plane|Agent Control Specification/);
+  assert.match(intro, /Two different gateways/);
+  assert.doesNotMatch(intro, /Access to a system|Agent Control Specification|Policy Enforcement Point/);
   assert.ok(action.indexOf('data-action-implementation') > action.indexOf('<!-- governed-flow:end -->'));
 });
 
