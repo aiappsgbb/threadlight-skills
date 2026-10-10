@@ -22,7 +22,7 @@ for (const theme of ['light', 'dark']) {
     await page.goto('/production.html#evidence-boundaries');
     await expect.poll(() => target.evaluate(el => {
       const top = el.getBoundingClientRect().top;
-      return top >= document.querySelector('.floating-toc').getBoundingClientRect().bottom - 1 && top < innerHeight;
+      return top >= Math.max(...['.masthead', '.chapter-rail'].map(s => { const b = document.querySelector(s).getBoundingClientRect(); return b.width > innerWidth / 2 ? b.bottom : 0; })) - 1 && top < innerHeight;
     })).toBe(true);
     const guide = target.getByRole('link', { name: 'Follow the existing-pilot guide', exact: true });
     await guide.focus();

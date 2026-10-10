@@ -177,7 +177,7 @@ test('each concise topic keeps its core visual and delegates detail to reference
   // Disclosures hold implementation depth only; orientation (actors, gateways, limits) stays visible.
   const disclosures = [...source.matchAll(/<details\b([^>]*)>/g)].map((match) => match[1]);
   assert.deepEqual(disclosures.map((attrs) => attrs.match(/class="([^"]*)"/)?.[1] ?? ''),
-    ['cx-chapter-index', 'depth', 'wf-provider-details', '', 'depth action-implementation']);
+    ['depth', 'wf-provider-details', '', 'depth action-implementation']);
   assert.match(source, /<details class="depth" data-depth="delivery">\s*<summary>Implementation details/);
   assert.match(source, /<details class="depth action-implementation" data-action-implementation>\s*<summary>Implementation details/);
   assert.ok(source.match(/<div class="wf-jwt" data-evidence-jwt[\s\S]*?<!-- evidence-jwt:end -->/)?.[0].includes('<details>'));
@@ -189,7 +189,7 @@ test('each concise topic keeps its core visual and delegates detail to reference
 test('AgentOps frames the release area as controlled delivery rather than just readiness', () => {
   const source = read('production.html');
   assert.match(text(section(source, 'operating-controls')), /03 \/ Validate .{1,12}AgentOps & release/);
-  assert.match(source, /<nav class="cx-chapter-links"[^>]*>[\s\S]*?href="#operating-controls">Validate</);
+  assert.match(source, /<nav class="chapter-rail"[^>]*>[\s\S]*?href="#operating-controls"><span class="rail-num"[^>]*>03<\/span><span class="rail-name">Validate</);
   const introduction = text(section(source, 'operating-controls'));
   for (const phrase of ['AgentOps', 'development to production', 'DevSecOps', 'prompt', 'policy']) {
     assert.ok(introduction.toLowerCase().includes(phrase.toLowerCase()), phrase);

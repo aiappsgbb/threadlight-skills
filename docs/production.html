@@ -29,8 +29,10 @@
   .chapter-production { --pp-flow: var(--lime); --prose: 70ch; }
   @media (prefers-color-scheme: light) { .chapter-production { --pp-flow: var(--accent); } }
   html:has(.chapter-production) { scroll-padding-top: 0; }
-  .chapter-production main [id] { scroll-margin-top: calc(var(--cx-header-height) + var(--cx-index-height) + 18px); }
-  .chapter-production main section[data-toc-id] { scroll-margin-top: calc(var(--cx-header-height) + var(--cx-index-height) - 40px); }
+  .chapter-production main [id] { scroll-margin-top: calc(var(--cx-header-height) + var(--rail-offset, 0px) + 18px); }
+  .chapter-production main section[data-toc-id] { scroll-margin-top: calc(var(--cx-header-height) + var(--rail-offset, 0px) - 40px); }
+  /* Opaque shared header: content must not show through while scrolling. */
+  .chapter-production .masthead { background: var(--bg-0); backdrop-filter: none; -webkit-backdrop-filter: none; }
   html:not(.js) .chapter-production main [id] { scroll-margin-top: 16px; }
   .skip-link { position: fixed; z-index: 100; top: 8px; left: 8px; padding: 12px 16px; border-radius: 8px;
     background: var(--bg-1); color: var(--ink-0); border: 2px solid var(--ink-0); transform: translateY(-200%); }
@@ -45,20 +47,31 @@
   .chapter-production .chapter-section { padding: 72px 0 32px; }
   .chapter-production .chapter-section + .chapter-section.part-continued { padding-top: 0; }
   /* One band per part: continuation sections share their part's surface. */
-  .chapter-production .chapter-section { background: var(--bg-0); border-top: 0; }
+  /* Reading column beside one sticky chapter rail (the pre-revision reading geometry). */
+  .chapter-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; align-items: start; }
+  .chapter-body { min-width: 0; }
+  .chapter-body > .chapter-part > .chapter-section, .chapter-body > .chapter-section { background: transparent; border-top: 0; }
+  .chapter-body .chapter-section > .wrap { max-width: none; width: auto; padding-inline: 0; margin: 0; }
   .chapter-production section[data-toc-id] { border-top: 1px solid var(--line); }
-  /* The walkthrough's muted states are tuned for --bg-0, so the action part keeps that surface. */
-  .chapter-production :is(#platform-controls, #evidence-review) { background: var(--bg-1); }
-  .chapter-production #action-architecture { max-width: 1040px; }
+  .chapter-production section#production-domains { border-top: 0; }
+  .chapter-rail { position: sticky; top: calc(var(--cx-header-height) + 32px); padding: 40px 0 24px;
+    max-height: calc(100vh - var(--cx-header-height) - 48px); overflow-y: auto; z-index: 30; }
+  .rail-title { margin: 0 0 14px; font: 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-1); }
+  .chapter-rail ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .chapter-rail a { display: grid; grid-template-columns: 28px 1fr; gap: 2px 8px; padding: 10px 12px 10px 14px;
+    border-left: 3px solid var(--line); border-bottom: 0; color: var(--ink-1); text-decoration: none; border-radius: 0 8px 8px 0; }
+  .chapter-rail a:hover { background: var(--bg-2); color: var(--ink-0); }
+  .chapter-rail .rail-num { grid-row: span 2; font: 12px/1.9 var(--mono); color: var(--ink-2); }
+  .chapter-rail .rail-name { font-size: 15px; font-weight: 600; color: var(--ink-0); }
+  .chapter-rail small { font-size: 13px; color: var(--ink-1); }
+  .chapter-rail a[aria-current="location"] { border-left-color: var(--chapter-accent); background: var(--chapter-accent-soft); }
+  .chapter-rail a[aria-current="location"] .rail-num { color: var(--ink-0); }
+  .rail-toggle { display: none; }
   .chapter-production .section-head { max-width: var(--prose); }
   .chapter-production .section-head h2 { font-size: clamp(30px, 3.4vw, 46px); }
   .chapter-production .section-lede, .prose { max-width: var(--prose); }
   .chapter-production .eyebrow, .chapter-production .visual-label { color: var(--ink-1); }
   .part-subhead { margin: 48px 0 16px; font: 500 clamp(22px, 2.2vw, 28px)/1.25 var(--serif); color: var(--ink-0); max-width: var(--prose); }
-  .chapter-production .floating-toc, .chapter-production .floating-toc.is-ready { max-width: none; }
-  .floating-toc .cx-index-current { color: var(--ink-0); font-weight: 600; }
-  .floating-toc .cx-index-current:empty { display: none; }
-  .floating-toc .cx-index-current::before { content: "\00b7"; margin-right: 8px; color: var(--ink-2); font-weight: 400; }
   .chapter-production a:focus-visible, .chapter-production summary:focus-visible { outline: 2px solid var(--ink-0); outline-offset: 3px; }
 
   /* 1 · three decisions and the reading route */
@@ -207,6 +220,23 @@
 
   @media (prefers-reduced-motion: reduce) { .chapter-production a { transition: none; } }
   @media (max-width: 900px) {
+    /* One compact, opaque index bar under the header instead of the rail. */
+    .chapter-layout { display: block; }
+    .chapter-rail { position: relative; top: auto; max-height: none; overflow: visible; padding: 16px 0; }
+    .js .chapter-rail { position: sticky; top: var(--cx-header-height); margin-inline: -32px; padding: 0 32px;
+      background: var(--bg-0); border-bottom: 1px solid var(--line); z-index: 45; }
+    .js .chapter-rail .rail-title { display: none; }
+    .js .rail-toggle { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0;
+      border: 0; background: none; color: var(--ink-1); font: 14px var(--sans); cursor: pointer; text-align: left; }
+    .rail-toggle-current { color: var(--ink-0); font-weight: 600; }
+    .rail-toggle-current::before { content: "\00b7"; margin-right: 10px; color: var(--ink-2); font-weight: 400; }
+    .rail-toggle-icon { margin-left: auto; }
+    .rail-toggle-icon::after { content: "+"; font-size: 18px; color: var(--ink-1); }
+    .chapter-rail[data-open] .rail-toggle-icon::after { content: "\2212"; }
+    .js .chapter-rail:not([data-open]) ol { display: none; }
+    .js .chapter-rail ol { position: absolute; top: 100%; left: 0; right: 0; padding: 8px 22px 14px;
+      background: var(--bg-1); border-bottom: 1px solid var(--line-2); box-shadow: var(--e-1); }
+    .chapter-rail a { padding-block: 8px; }
     .decision-trio, .foundation-options, .release-checks, .next-paths { grid-template-columns: 1fr; }
     .next-paths li[data-primary-path] { grid-column: auto; }
     .chapter-route { grid-template-columns: 1fr; }
@@ -215,10 +245,8 @@
     .gateway-pair { grid-template-columns: 1fr; }
   }
   @media (max-width: 720px) {
-    .chapter-production .floating-toc .cx-chapter-links { display: none; }
-    .chapter-production .floating-toc .cx-chapter-index { margin-left: 0; width: 100%; }
-    .chapter-production .floating-toc .cx-chapter-index ol { grid-template-columns: 1fr; }
     .chapter-production .chapter-section { padding: 48px 0 16px; }
+    .js .chapter-rail { margin-inline: -22px; padding-inline: 22px; }
     .owner-matrix thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     .owner-matrix, .owner-matrix tbody, .owner-matrix tr, .owner-matrix th, .owner-matrix td { display: block; width: auto; }
     .owner-matrix tr { padding: 14px 0; border-bottom: 1px solid var(--line-2); }
@@ -297,15 +325,6 @@
   </nav>
 </header>
 
-<aside class="floating-toc" aria-label="Production chapter">
-  <nav class="cx-chapter-links" aria-label="Production parts">
-    <a href="#production-domains">Starting point</a><a href="#platform-controls">Foundation</a><a href="#operating-controls">Validate</a><a href="#effect-authority">Authorize</a><a href="#evidence-review">Evidence</a><a href="#production-review">Continue</a>
-  </nav>
-  <details class="cx-chapter-index"><summary aria-label="In this chapter: all six parts"><span>In this chapter</span><span class="cx-index-current" data-index-current aria-hidden="true"></span></summary><ol>
-    <li><a href="#production-domains">1 · A working pilot is the starting point</a></li><li><a href="#platform-controls">2 · Choose the foundation you will operate</a></li><li><a href="#operating-controls">3 · Validate the candidate before promotion</a></li><li><a href="#effect-authority">4 · Authorize selected actions</a></li><li><a href="#evidence-review">5 · Review the evidence, name the owners</a></li><li><a href="#production-review">6 · Continue from your pilot</a></li>
-  </ol></details>
-</aside>
-
 <main id="main-content" tabindex="-1">
   <!-- ==================== HERO ==================== -->
   <section class="chapter-hero" id="chapter-top">
@@ -326,6 +345,21 @@
       </div>
     </div>
   </section>
+
+  <div class="chapter-layout wrap wrap-xl">
+  <nav class="chapter-rail" aria-label="Production chapter">
+    <button type="button" class="rail-toggle" aria-expanded="false" aria-controls="chapter-rail-list" hidden><span class="rail-toggle-label">In this chapter</span><span class="rail-toggle-current" data-rail-current>Starting point</span><span class="rail-toggle-icon" aria-hidden="true"></span></button>
+    <p class="rail-title" aria-hidden="true">In this chapter</p>
+    <ol id="chapter-rail-list">
+      <li><a href="#production-domains"><span class="rail-num" aria-hidden="true">01</span><span class="rail-name">Starting point</span><small>Three separate decisions</small></a></li>
+      <li><a href="#platform-controls"><span class="rail-num" aria-hidden="true">02</span><span class="rail-name">Foundation</span><small>Where the agent runs</small></a></li>
+      <li><a href="#operating-controls"><span class="rail-num" aria-hidden="true">03</span><span class="rail-name">Validate</span><small>The release candidate</small></a></li>
+      <li><a href="#effect-authority"><span class="rail-num" aria-hidden="true">04</span><span class="rail-name">Authorize</span><small>Selected business actions</small></a></li>
+      <li><a href="#evidence-review"><span class="rail-num" aria-hidden="true">05</span><span class="rail-name">Evidence</span><small>Owners and proof limits</small></a></li>
+      <li><a href="#production-review"><span class="rail-num" aria-hidden="true">06</span><span class="rail-name">Continue</span><small>Your next step</small></a></li>
+    </ol>
+  </nav>
+  <div class="chapter-body">
 
   <!-- ==================== 1 · STARTING POINT ==================== -->
   <section class="chapter-section" id="production-domains" data-toc-id="production-domains" data-toc-label="1 · A working pilot is the starting point" aria-labelledby="production-domains-heading">
@@ -1050,6 +1084,8 @@
       </ul>
     </div>
   </section>
+  </div>
+  </div>
 </main>
 
 <footer style="padding:48px 32px 64px; border-top:1px solid var(--line); text-align:center; color:var(--ink-3); font-size:13px;">
@@ -1060,7 +1096,7 @@
 <script src="assets/site.js?v=e4d413b7"></script>
 <script src="assets/site-map.js?v=27594af5"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
-<script src="assets/production.js?v=e03bf2a6"></script>
+<script src="assets/production.js?v=404180d9"></script>
 <script src="assets/governed-workflow.js?v=4a69e216"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 // Disclosures are reserved for implementation depth; orientation stays in the reading path.
-const depthOnly = 'main details:not(.cx-chapter-index):not(.depth):not(.wf-provider-details):not([data-evidence-jwt] details)';
+const depthOnly = 'main details:not(.depth):not(.wf-provider-details):not([data-evidence-jwt] details)';
 
 test('Production shares the site navigation without restoring the superseded assessment panels', async ({ page }) => {
   for (const width of [1440, 1024, 390]) {
@@ -33,7 +33,7 @@ test('deep links land below the shared header and chapter index', async ({ page 
     await expect(page.locator(`#${id}`)).toBeVisible();
     await expect.poll(() => page.locator(`#${id}`).evaluate(el => {
       const top = el.getBoundingClientRect().top;
-      return top >= document.querySelector('.floating-toc').getBoundingClientRect().bottom - 1 && top < innerHeight;
+      return top >= Math.max(...['.masthead', '.chapter-rail'].map(s => { const b = document.querySelector(s).getBoundingClientRect(); return b.width > innerWidth / 2 ? b.bottom : 0; })) - 1 && top < innerHeight;
     })).toBe(true);
   }
 });

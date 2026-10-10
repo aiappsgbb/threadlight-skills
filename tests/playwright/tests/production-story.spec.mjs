@@ -5,7 +5,7 @@ test('the story moves from the starting decisions to foundation, release, action
   await page.goto('/production.html');
   const sequence = ['#platform-controls', '#operating-controls', '#effect-authority', '#evidence-review', '#production-review'];
   expect(await page.locator('.chapter-route a').evaluateAll(links => links.map(a => a.getAttribute('href')))).toEqual(sequence);
-  expect(await page.locator('.cx-chapter-links a').evaluateAll(links => links.map(a => a.getAttribute('href'))))
+  expect(await page.locator('.chapter-rail a').evaluateAll(links => links.map(a => a.getAttribute('href'))))
     .toEqual(['#production-domains', ...sequence]);
   await expect(page.locator('#production-domains .decision-trio > li')).toHaveCount(3);
   await expect(page.locator('.ciso-pentagon-svg, .posture-trio-svg, .scorecard-preview')).toHaveCount(0);

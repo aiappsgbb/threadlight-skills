@@ -45,10 +45,14 @@ scroll wide diagrams under up to ~241px of sticky navigation.
    `#start` opens the existing-pilot guide; readiness requirements, the technical
    companion, Operate and Build are labelled by their real destinations.
 
-Navigation reuses the shared chapter index (`.floating-toc` with
-`.cx-chapter-links` and `.cx-chapter-index`): six links on desktop, one compact
-"In this chapter · current part" disclosure on narrow screens. A skip link is
-the first focus stop. Every legacy fragment remains in the document; the player
+Navigation is one chapter index, `nav.chapter-rail`. Above 900px it is a
+sticky left rail beside the reading column (230px + 48px gap, the pre-revision
+reading geometry), with scroll-spy marking the current part via
+`aria-current="location"`. At 900px and below it becomes one compact, opaque
+bar under the header, "In this chapter · current part", whose toggle opens the
+list (Escape closes it). There is no top sticky index bar. The masthead is
+opaque on this page. The scenario player is not width-capped: it renders 1060px
+at 1440 and 1340px at 1920, as at `ba94a00`. A skip link is the first focus stop. Every legacy fragment remains in the document; the player
 keeps `#production-input-proof` and `#user-confirmation` scenario selection.
 Wrappers `#platform-topic`, `#readiness-topic` and `#actions-topic` remain as
 stable part containers (no tab semantics). Disclosures hold implementation depth

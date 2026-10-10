@@ -52,8 +52,8 @@ test('AgentOps history and retained deep links stay inside the Validate part', a
     expect(await page.locator(`#${anchor}`).evaluate(el => el.closest('#readiness-topic')?.id)).toBe('readiness-topic');
   }
   await page.goto('/production.html#quality-controls');
-  await page.locator('.cx-chapter-index summary').click();
-  await page.locator('.cx-chapter-index a[href="#operating-controls"]').click();
+  if (page.viewportSize().width <= 900) await page.locator('.rail-toggle').click();
+  await page.locator('.chapter-rail a[href="#operating-controls"]').click();
   await expect(page).toHaveURL(/#operating-controls$/);
   await page.goBack();
   await expect(page).toHaveURL(/#quality-controls$/);

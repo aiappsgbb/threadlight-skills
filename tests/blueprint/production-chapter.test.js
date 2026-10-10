@@ -46,17 +46,28 @@ test('one continuous chapter replaces mutually exclusive topic tabs', () => {
   assert.equal((source.match(/data-toc-id="/g) || []).length, parts.length, 'only the six parts are indexed');
 });
 
-test('a compact section index and a skip link precede the chapter', () => {
+test('one side-rail index and a skip link precede the chapter', () => {
   const source = read('production.html');
   const body = source.slice(source.indexOf('<body'));
   assert.match(body.slice(0, 2000), /<a class="skip-link" href="#main-content">Skip to the chapter<\/a>/);
   assert.match(source, /<main id="main-content"/);
-  const index = source.match(/<aside class="floating-toc"[^>]*aria-label="Production chapter"[\s\S]*?<\/aside>/)?.[0];
-  assert.ok(index, 'shared chapter index');
-  const links = [...index.matchAll(/<nav class="cx-chapter-links"[\s\S]*?<\/nav>/g)][0][0];
-  assert.deepEqual([...links.matchAll(/href="#([^"]+)"/g)].map((m) => m[1]), parts.map(([id]) => id));
-  assert.match(index, /<details class="cx-chapter-index"><summary[^>]*>/);
-  assert.deepEqual([...index.matchAll(/<li><a href="#([^"]+)"/g)].map((m) => m[1]), parts.map(([id]) => id));
+  // One index only: no top sticky bar and no duplicated desktop disclosure.
+  assert.doesNotMatch(source, /class="floating-toc|cx-chapter-links|cx-chapter-index/);
+  const rails = [...source.matchAll(/<nav class="chapter-rail"[^>]*aria-label="Production chapter"[\s\S]*?<\/nav>/g)];
+  assert.equal(rails.length, 1, 'exactly one chapter index');
+  const rail = rails[0][0];
+  assert.deepEqual([...rail.matchAll(/<a href="#([^"]+)"/g)].map((m) => m[1]), parts.map(([id]) => id));
+  assert.match(rail, /<button[^>]*class="rail-toggle"[^>]*aria-expanded="false"[^>]*aria-controls="chapter-rail-list"[^>]*hidden/);
+  assert.match(source, /<div class="chapter-layout[^"]*">\s*<nav class="chapter-rail"/);
+  // The rail and the reading column sit side by side on desktop.
+  assert.match(source, /\.chapter-layout\s*\{[^}]*grid-template-columns:\s*2\d\dpx minmax\(0, 1fr\)/);
+  assert.match(source, /\.chapter-rail\s*\{[^}]*position:\s*sticky/);
+});
+
+test('the mobile header is opaque and the player is no longer width-capped', () => {
+  const style = read('production.html').match(/<style>([\s\S]*?)<\/style>/)[1];
+  assert.match(style, /\.chapter-production \.masthead\s*\{[^}]*background:\s*var\(--bg-0\)[^}]*backdrop-filter:\s*none/);
+  assert.doesNotMatch(style, /#action-architecture\s*\{[^}]*max-width/);
 });
 
 test('the starting point names three separate decisions before any mechanism', () => {

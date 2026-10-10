@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 const wordCount = locator => locator.evaluate(element => {
   const copy = element.cloneNode(true);
   copy.querySelectorAll('style, script, .wf-mobile, .pipe-mobile, svg [hidden], svg desc, svg title, [data-flow-proof][hidden], [data-flow-approval][hidden], [data-flow-evidence][hidden], [data-flow-confirmation][hidden], [data-evidence-jwt][hidden]').forEach(node => node.remove());
-  copy.querySelectorAll('details:not(.cx-chapter-index) > :not(summary)').forEach(node => node.remove());
+  copy.querySelectorAll('details > :not(summary)').forEach(node => node.remove());
   return copy.textContent.trim().split(/\s+/).length;
 });
 

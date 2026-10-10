@@ -70,16 +70,18 @@ test('authority and evidence are named, readable without a diagram runtime and k
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
     expect(violations).toEqual([]);
   }
-  const next = page.locator(page.viewportSize().width > 720
-    ? '.cx-chapter-links a[href="#evidence-review"]' : '.cx-chapter-index summary');
+  if (page.viewportSize().width <= 900) {
+    await page.locator('.rail-toggle').focus();
+    await page.locator('.rail-toggle').press('Enter');
+  }
+  const next = page.locator('.chapter-rail a[href="#evidence-review"]');
   await next.focus();
   await expect(next).toBeFocused();
   await next.press('Enter');
-  if (page.viewportSize().width <= 720) await page.locator('.cx-chapter-index a[href="#evidence-review"]').press('Enter');
   await expect(page).toHaveURL(/#evidence-review$/);
   await expect.poll(() => page.locator('#evidence-review h2').evaluate((element) => {
     const top = element.getBoundingClientRect().top;
-    return top >= document.querySelector('.floating-toc').getBoundingClientRect().bottom - 1 && top < innerHeight / 2;
+    return top >= Math.max(...['.masthead', '.chapter-rail'].map(s => { const b = document.querySelector(s).getBoundingClientRect(); return b.width > innerWidth / 2 ? b.bottom : 0; })) - 1 && top < innerHeight / 2;
   })).toBe(true);
   await capture(authority, 'effect-authority', testInfo);
   await capture(evidence, 'evidence-boundaries', testInfo);
@@ -142,7 +144,7 @@ test('chapter navigation does not cover part introductions when it resizes', asy
       await page.goto(`/production.html#${id}`);
       await expect.poll(() => page.locator(`#${id} h2, #${id} h3`).first().evaluate(element => {
         const rect = element.getBoundingClientRect();
-        const bars = ['.masthead', '.floating-toc'].map(selector => document.querySelector(selector))
+        const bars = ['.masthead', '.chapter-rail'].map(selector => document.querySelector(selector))
           .filter(bar => {
             const box = bar.getBoundingClientRect();
             return getComputedStyle(bar).display !== 'none' && box.top < rect.bottom
