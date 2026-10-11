@@ -106,7 +106,7 @@ for (const width of [1440, 1920]) {
     await page.goto('/production.html#workflow-in-action');
     const metrics = await page.evaluate(() => ({
       diagram: document.querySelector('#workflow-in-action .wf-diagram').getBoundingClientRect().width,
-      actors: document.querySelector('[data-action-primary]').getBoundingClientRect().width,
+      actors: document.querySelector('.actor-architecture').getBoundingClientRect().width,
       label: Math.min(...[...document.querySelectorAll('#workflow-in-action [data-node-layer] .wf-node:not([data-used="false"]) .wf-label')]
         .map(text => text.getBoundingClientRect().height)),
     }));
@@ -217,4 +217,87 @@ test('part transitions read as chapter openers: wide openers and a generous divi
     expect(divider.below).toBeGreaterThanOrEqual(96);
     expect(divider.span).toBeGreaterThanOrEqual(metrics.column * 0.6);
   }
+});
+
+const luminance = rgb => {
+  const [r, g, b] = rgb.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number).map(v => {
+    const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+for (const scheme of ['light', 'dark']) {
+  test(`decision-card labels are bold, high-contrast labels in ${scheme}`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto('/production.html');
+    const labels = await page.locator('.decision-trio dt').evaluateAll(nodes => nodes.map(node => ({
+      weight: Number(getComputedStyle(node).fontWeight), color: getComputedStyle(node).color,
+      background: getComputedStyle(node.closest('li')).backgroundColor,
+      value: getComputedStyle(node.nextElementSibling).color,
+    })));
+    expect(labels).toHaveLength(9);
+    for (const label of labels) {
+      expect(label.weight).toBeGreaterThanOrEqual(700);
+      expect(contrast(label.color, label.background)).toBeGreaterThanOrEqual(12);
+      expect(contrast(label.color, label.background)).toBeGreaterThanOrEqual(contrast(label.value, label.background));
+    }
+  });
+}
+
+test('actors form one horizontal architecture with arrows and attached shared services at 1440', async ({ page }) => {
+  test.skip(!desktop(page), 'desktop layout');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/production.html#effect-authority');
+  const figure = page.locator('figure.actor-architecture');
+  await expect(figure).toHaveCount(1);
+  await expect(figure.locator('[data-action-primary]')).toHaveCount(1);
+  await expect(figure.locator('[data-action-support]')).toHaveCount(1);
+  const layout = await figure.evaluate(fig => {
+    const box = el => el.getBoundingClientRect();
+    const actors = [...fig.querySelectorAll('[data-action-primary] > li')].map(box);
+    const arrows = [...fig.querySelectorAll('[data-action-primary] > li')].slice(0, -1)
+      .map(li => getComputedStyle(li, '::after').content);
+    const gateway = box(fig.querySelector('[data-action-actor="gateway"]'));
+    const support = box(fig.querySelector('[data-action-support]'));
+    const connector = getComputedStyle(fig.querySelector('[data-action-support]'), '::before');
+    return { actors, arrows, gateway, support, connector: { content: connector.content, height: parseFloat(connector.height) } };
+  });
+  expect(layout.actors).toHaveLength(3);
+  const [agent, gateway, api] = layout.actors;
+  expect(Math.abs(agent.top - gateway.top)).toBeLessThan(4);
+  expect(Math.abs(api.top - gateway.top)).toBeLessThan(4);
+  expect(agent.right).toBeLessThan(gateway.left);
+  expect(gateway.right).toBeLessThan(api.left);
+  expect(gateway.left - agent.right).toBeGreaterThanOrEqual(32);
+  for (const arrow of layout.arrows) expect(arrow).not.toBe('none');
+  // Shared services sit beside the flow (same row), not under it, and stay connected to the gateway.
+  expect(Math.abs(layout.support.top - layout.gateway.top)).toBeLessThan(4);
+  expect(layout.support.left).toBeGreaterThan(api.right);
+  expect(layout.support.bottom - layout.gateway.top).toBeLessThan(560);
+  expect(layout.connector.content).not.toBe('none');
+  expect(layout.connector.height).toBeGreaterThan(8);
+});
+
+test('the two gateways are compared neutrally, on the same dimensions and with equal weight', async ({ page }) => {
+  await page.goto('/production.html#effect-authority');
+  const table = page.locator('table.gateway-compare');
+  await expect(table).toHaveCount(1);
+  await expect(page.locator('.gateway-pair')).toHaveCount(0);
+  const headers = await table.locator('thead th[scope="col"]').allTextContents();
+  expect(headers.slice(-2).map(h => h.trim())).toEqual([
+    'Model gateway (Citadel/APIM)', 'Governed MCP gateway']);
+  expect((await table.locator('tbody th[scope="row"]').allTextContents()).map(h => h.trim()))
+    .toEqual(['Governs', 'Acts', 'Owned by', 'Does not']);
+  await expect(table.locator('caption')).toContainText(/complementary/i);
+  await expect(table.locator('caption')).toContainText(/neither/i);
+  const styles = await table.evaluate(t => {
+    const pick = el => { const c = getComputedStyle(el); return [c.backgroundColor, c.borderTopColor, c.borderTopWidth, c.borderTopStyle, c.fontWeight, c.color].join('|'); };
+    const heads = [...t.querySelectorAll('thead th[scope="col"]')].slice(-2).map(pick);
+    const columns = [...t.querySelectorAll('tbody tr')].map(row => [...row.querySelectorAll('td')].map(pick));
+    return { heads, columns };
+  });
+  expect(styles.heads[0]).toBe(styles.heads[1]);
+  for (const [model, effect] of styles.columns) expect(model).toBe(effect);
+  await expect(table.locator('[data-effect-gateway], [aria-selected], [aria-current]')).toHaveCount(0);
 });

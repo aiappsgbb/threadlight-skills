@@ -146,7 +146,7 @@ test('the return example and diagram precede optional architecture detail', asyn
     const positions = await page.locator('#effect-authority').evaluate(section => ({
       example: section.querySelector('#returns-walkthrough').getBoundingClientRect().top,
       actors: section.querySelector('[data-action-primary]').getBoundingClientRect().top,
-      gateways: section.querySelector('.gateway-pair').getBoundingClientRect().top,
+      gateways: section.querySelector('.gateway-compare').getBoundingClientRect().top,
       tabs: section.querySelector('.wf-panel').getBoundingClientRect().top,
       technical: section.querySelector('[data-action-implementation]').getBoundingClientRect().top,
       scenarioEnd: section.querySelector('#workflow-in-action').getBoundingClientRect().bottom,

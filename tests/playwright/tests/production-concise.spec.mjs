@@ -56,7 +56,7 @@ test('action governance names actors and gateways before the walkthrough and end
     await expect(page.locator('[data-action-support]')).toContainText(component);
   }
   await expect(page.locator('[data-action-primary]')).toBeVisible();
-  await expect(page.locator('.gateway-pair')).toBeVisible();
+  await expect(page.locator('.gateway-compare')).toBeVisible();
   await page.locator('[data-action-implementation] > summary').click();
   await expect(page.locator('#effect-authority')).toContainText('effect boundary');
   await expect(page.locator('#evidence-boundaries')).toContainText('Follow the existing-pilot guide');

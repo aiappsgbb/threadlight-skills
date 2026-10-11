@@ -93,7 +93,7 @@
   .decision-trio .decision-q { margin: 0 0 14px; font-size: 17px; color: var(--ink-0); }
   .decision-trio dl { margin: 0; font-size: 14.5px; }
   .decision-trio dl div { padding: 10px 0; border-top: 1px solid var(--line); }
-  .decision-trio dt { font: 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-1); }
+  .decision-trio dt { font: 700 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-0); }
   .decision-trio dd { margin: 4px 0 0; color: var(--ink-1); }
   .chapter-route { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; list-style: none; padding: 0; margin: 40px 0 0; counter-reset: route 1; }
   .chapter-route li { position: relative; min-width: 0; counter-increment: route; }
@@ -189,16 +189,50 @@
   .governance-section time, .governance-section code { overflow-wrap: anywhere; }
   .governance-section figure { margin: 0; }
   .action-example { max-width: var(--prose); }
-  .gateway-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 24px 0; }
-  .gateway-pair > div { padding: 20px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-1); }
-  .gateway-pair > div[data-effect-gateway] { border: 2px solid var(--chapter-accent); background: var(--chapter-accent-soft); }
-  .gateway-pair h4 { margin: 8px 0 6px; font-size: 18px; color: var(--ink-0); }
-  .gateway-pair p { margin: 0; font-size: 15px; color: var(--ink-1); }
+  .gateway-compare { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 20px 0 24px; font-size: 15px; }
+  .gateway-compare caption { caption-side: top; text-align: left; margin-bottom: 14px; color: var(--ink-1); font-size: 15px; }
+  .gateway-compare th, .gateway-compare td { padding: 14px 18px; text-align: left; vertical-align: top; border: 1px solid var(--line-2); background: var(--bg-1); }
+  .gateway-compare thead td { width: 16%; border: 0; background: transparent; }
+  .gateway-compare thead th { font: 600 17px/1.3 var(--serif); color: var(--ink-0); background: var(--bg-2); }
+  .gateway-compare tbody th { width: 16%; font: 700 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-0); background: var(--bg-2); }
+  .gateway-compare td { color: var(--ink-1); }
   .term-legend { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 12px 0; font-size: 14.5px; }
   .term-legend dt { font-weight: 650; color: var(--ink-0); }
   .term-legend dd { margin: 0; color: var(--ink-1); }
   .wf-provider-details { margin-top: 12px; }
   .wf-provider-details > summary { cursor: pointer; font-weight: 600; color: var(--ink-0); padding: 6px 0; }
+
+  /* Part 4 actors: one horizontal architecture, shared services attached under the gateway. */
+  #actions-topic .actor-architecture { margin: 20px 0 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 64px; row-gap: 44px; }
+  #actions-topic .actor-architecture [data-action-primary] { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; margin: 0; }
+  #actions-topic .actor-architecture [data-action-primary] > li { position: relative; display: flex; flex-direction: column; gap: 10px;
+    padding: 22px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-1); font-size: 15px; }
+  #actions-topic .actor-architecture [data-action-primary] > li::before { font: 700 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-1); }
+  #actions-topic .actor-architecture [data-action-primary] > li[data-action-actor="agent"]::before { content: "Proposes"; }
+  #actions-topic .actor-architecture [data-action-primary] > li[data-action-actor="business"]::before { content: "Commits the write"; }
+  #actions-topic .actor-architecture [data-action-primary] > li[data-action-actor="gateway"] { padding: 22px; border: 2px solid var(--accent); background: var(--accent-soft); }
+  #actions-topic .actor-architecture [data-action-primary] > li[data-action-actor="gateway"]::before { content: "Checks before dispatch"; color: var(--ink-0); }
+  #actions-topic .actor-architecture [data-action-primary] > li:not(:last-child)::after { content: "\2192"; position: absolute; top: 50%; right: -52px;
+    width: 40px; transform: translateY(-50%); text-align: center; font: 28px/1 var(--sans); color: var(--pp-flow); }
+  #actions-topic .actor-architecture [data-action-primary] svg { width: 28px; height: 28px; color: var(--ink-0); }
+  #actions-topic .actor-architecture [data-action-primary] strong { font-size: 18px; }
+  #actions-topic .actor-architecture [data-action-primary] span { color: var(--ink-1); line-height: 1.5; }
+  #actions-topic .actor-architecture .action-support { grid-column: 2; position: relative; margin: 0; padding: 18px 20px; border: 1px dashed var(--line-2); border-radius: 12px; background: var(--bg-1); }
+  #actions-topic .actor-architecture .action-support::before { content: ""; position: absolute; left: 50%; top: -44px; height: 44px; border-left: 2px dashed var(--pp-flow); }
+  #actions-topic .actor-architecture .action-support h3 { font-size: 15px; }
+  @media (min-width: 1280px) {
+    /* Shared services sit beside the flow; a dashed connector runs back to the gateway. */
+    #actions-topic .actor-architecture { grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 48px; padding-top: 56px; align-items: start; }
+    #actions-topic .actor-architecture [data-action-primary] { grid-column: 1 / 4; grid-row: 1; align-items: start; }
+    #actions-topic .actor-architecture [data-action-primary] > li:not(:last-child)::after { right: -46px; }
+    #actions-topic .actor-architecture .action-support { grid-column: 4; grid-row: 1; }
+    #actions-topic .actor-architecture .action-support::before { left: calc(-150% - 96px); right: 50%; top: -26px; height: 26px;
+      border: 2px dashed var(--pp-flow); border-bottom: 0; }
+    #actions-topic .actor-architecture .action-support::after { content: "Supports the gateway"; position: absolute; top: -50px; right: calc(100% + 24px);
+      white-space: nowrap; font: 700 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-1); }
+  }
+  #actions-topic .actor-architecture .action-support .action-actors li { grid-template-columns: 24px minmax(0, 1fr); gap: 2px 12px; padding: 12px 0; }
+  #actions-topic .actor-architecture .action-support .action-actors li span { grid-column: 2; }
 
   /* 5 · evidence */
   .owner-matrix { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 28px 0 0; }
@@ -231,6 +265,12 @@
 
   @media (prefers-reduced-motion: reduce) { .chapter-production a { transition: none; } }
   @media (max-width: 900px) {
+    #actions-topic .actor-architecture { display: block; }
+    #actions-topic .actor-architecture [data-action-primary] { display: flex; flex-direction: column; gap: 44px; }
+    #actions-topic .actor-architecture [data-action-primary] > li:not(:last-child)::after { content: "\2193"; top: auto; bottom: -38px; right: auto; left: 50%; transform: translateX(-50%); }
+    #actions-topic .actor-architecture .action-support { margin-top: 28px; }
+    #actions-topic .actor-architecture .action-support::before { position: static; display: block; height: auto; border: 0; margin-bottom: 8px;
+      content: "Supports the governed MCP gateway"; font: 700 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-1); }
     /* One compact, opaque index bar under the header instead of the rail. */
     .chapter-layout { display: block; }
     .chapter-rail { position: relative; top: auto; max-height: none; overflow: visible; padding: 16px 0; }
@@ -253,7 +293,14 @@
     .chapter-route { grid-template-columns: 1fr; }
     .chapter-route a { padding: 12px 0; margin: 0; }
     .proof-ladder { grid-template-columns: 1fr; }
-    .gateway-pair { grid-template-columns: 1fr; }
+    .gateway-compare thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .gateway-compare, .gateway-compare tbody { display: block; }
+    .gateway-compare caption { display: block; }
+    .gateway-compare tr { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 12px; }
+    .gateway-compare tbody th { grid-column: 1 / -1; width: auto; }
+    .gateway-compare td::before { display: block; margin-bottom: 4px; font: 600 13px var(--sans); color: var(--ink-0); }
+    .gateway-compare td:nth-of-type(1)::before { content: "Model gateway"; }
+    .gateway-compare td:nth-of-type(2)::before { content: "Governed MCP gateway"; }
   }
   @media (max-width: 720px) {
     .chapter-production .chapter-section { padding: 48px 0 16px; }
@@ -664,7 +711,8 @@
       <p class="production-example" id="returns-walkthrough" data-production-example><span class="visual-label">Example / &ldquo;Can I return this order?&rdquo;</span><br>
         Here the selected tool actually updates <code>RMA-EXAMPLE</code> and records its decision audit &mdash; <strong>not a payment</strong>.
         A payment tool would instead invoke a payment backend.</p>
-      <h3 class="part-subhead">Who checks, who decides, who writes.</h3>
+      <h3 class="part-subhead" id="actor-architecture-title">Who checks, who decides, who writes.</h3>
+      <figure class="actor-architecture" data-visual="actor-architecture" aria-labelledby="actor-architecture-title">
         <ol class="action-actors" data-action-primary aria-label="Primary business-action path">
           <li data-action-actor="agent"><svg data-component-icon aria-hidden="true"><use href="#production-icon-branch"/></svg><strong>Agent <small data-actor-state>In progress</small></strong><span>Obtains evidence and proposes; no database-write or signing credentials.</span></li>
           <li data-action-actor="gateway"><svg data-component-icon aria-hidden="true"><use href="#production-icon-shield"/></svg><strong>Governed MCP gateway <small data-actor-state>Waiting</small></strong><span>Checks identity, trusted facts, evidence and policy before dispatch.</span></li>
@@ -678,14 +726,19 @@
             <li data-action-actor="human"><svg data-component-icon aria-hidden="true"><use href="#production-icon-person"/></svg><strong>Human reviewer <small data-actor-state>Not required</small></strong><span>Decides the exact request in Outlook, not a general override.</span></li>
           </ul>
         </aside>
+      </figure>
       <p class="action-status-note">Actor badges follow the walkthrough; they describe the illustration, not live services.</p>
       <h3 class="part-subhead">Two different gateways.</h3>
-      <div class="gateway-pair">
-        <div data-model-gateway><span class="visual-label">Model access</span><h4>Citadel/APIM: the model gateway</h4>
-          <p>Which models a use case may call, with limits and attribution.</p></div>
-        <div data-effect-gateway><span class="visual-label">Business effects</span><h4>Governed MCP gateway</h4>
-          <p>Policy on selected business effects, before the business API is called.</p></div>
-      </div>
+      <table class="gateway-compare">
+        <caption>Different purposes, complementary controls: the model gateway governs model access, the governed MCP gateway governs selected business effects. Neither replaces or outranks the other.</caption>
+        <thead><tr><td></td><th scope="col">Model gateway (Citadel/APIM)</th><th scope="col">Governed MCP gateway</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Governs</th><td>Which models a use case may call, with limits and attribution.</td><td>Policy on selected business effects.</td></tr>
+          <tr><th scope="row">Acts</th><td>On model requests, before they reach a model.</td><td>Before the business API is called for a selected action.</td></tr>
+          <tr><th scope="row">Owned by</th><td>The platform team running the shared AI platform.</td><td>The application team, with business and policy owners.</td></tr>
+          <tr><th scope="row">Does not</th><td>Authorize downstream business writes.</td><td>Govern model access or authenticated unbound reads.</td></tr>
+        </tbody>
+      </table>
       <p class="action-boundary">Authenticated unbound reads go directly to the business API without ACS;
         the backend rejects unauthorized direct writes.</p>
       <p class="prose">The gateway then calls the real business operation: evidence is an extra condition,
