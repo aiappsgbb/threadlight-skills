@@ -94,7 +94,7 @@ test('prompts and verification text remain exact while presentation changes', ()
 test('current presentation snapshots pin the explicit confirmation extension without changing the workbook', () => {
   for (const [file, expected] of [
     // Re-pinned for the continuous Production chapter revision (October 2026).
-    ['docs/production.html', 'e50592e66704bbf532585ba947f0b7edb176de5d'],
+    ['docs/production.html', '5244975f6e7cbe9cba108897aca9686d6c744505'],
     ['docs/assets/governed-workflow.js', '0f6e432b5b331fc441d98cc6728e888b7ef4eb1e'],
     ['docs/first-governed-workflow.md', '1d6ed17fa77e14e22633c5fdf56e7e45b814e312'],
     ['docs/agent-governance-deep-dive.md', '909409fe4c198d31e9f580f5eacd4b61ed50379f'],

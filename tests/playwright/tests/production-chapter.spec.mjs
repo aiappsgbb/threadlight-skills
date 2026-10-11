@@ -183,3 +183,38 @@ test('without JavaScript every part, the index and the pipeline remain usable', 
     await context.close();
   }
 });
+
+test('part transitions read as chapter openers: wide openers and a generous divider at 1440', async ({ page }) => {
+  test.skip(!desktop(page), 'desktop layout');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/production.html');
+  const metrics = await page.evaluate(() => {
+    const column = document.querySelector('.chapter-body').getBoundingClientRect().width;
+    const openers = [...document.querySelectorAll('section[data-toc-id] > .wrap > .section-head')].map(head => ({
+      head: head.getBoundingClientRect().width,
+      lede: head.querySelector('.section-lede').getBoundingClientRect().width,
+      h2: parseFloat(getComputedStyle(head.querySelector('h2')).fontSize),
+    }));
+    const subhead = Math.max(...[...document.querySelectorAll('.part-subhead')].map(el => parseFloat(getComputedStyle(el).fontSize)));
+    const dividers = [...document.querySelectorAll('.part-divider')].map(divider => {
+      const next = divider.nextElementSibling.querySelector('h2') || divider.nextElementSibling;
+      const rules = ['::before', '::after'].map(pseudo => parseFloat(getComputedStyle(divider, pseudo).width));
+      return { above: divider.getBoundingClientRect().top - divider.previousElementSibling.getBoundingClientRect().bottom,
+        below: next.getBoundingClientRect().top - divider.getBoundingClientRect().bottom,
+        span: rules[0] + rules[1] + divider.querySelector('span').getBoundingClientRect().width };
+    });
+    return { column, openers, subhead, dividers };
+  });
+  expect(metrics.openers).toHaveLength(6);
+  for (const opener of metrics.openers) {
+    expect(opener.head).toBeGreaterThanOrEqual(metrics.column * 0.9);
+    expect(opener.lede).toBeGreaterThanOrEqual(metrics.column * 0.75);
+    expect(opener.h2).toBeGreaterThanOrEqual(metrics.subhead * 1.8);
+  }
+  expect(metrics.dividers).toHaveLength(5);
+  for (const divider of metrics.dividers) {
+    expect(divider.above).toBeGreaterThanOrEqual(96);
+    expect(divider.below).toBeGreaterThanOrEqual(96);
+    expect(divider.span).toBeGreaterThanOrEqual(metrics.column * 0.6);
+  }
+});

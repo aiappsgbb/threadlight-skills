@@ -68,11 +68,16 @@
   .chapter-rail a[aria-current="location"] .rail-num { color: var(--ink-0); }
   .rail-toggle { display: none; }
   /* Decorative break between top-level parts only: rule, diamond, rule. */
-  .part-divider { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 56px 0 8px; }
-  .part-divider::before, .part-divider::after { content: ""; flex: 0 1 120px; height: 1px; background: var(--line-2); }
-  .part-divider span { width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid var(--pp-flow);
+  .part-divider { display: flex; align-items: center; gap: 22px; width: min(860px, 100%); margin: 128px auto 0; }
+  .part-divider::before, .part-divider::after { content: ""; flex: 1 1 0; height: 1px; background: var(--line-2); }
+  .part-divider span { flex: none; width: 12px; height: 12px; transform: rotate(45deg); border: 1.5px solid var(--pp-flow);
     background: var(--chapter-accent-soft); }
-  .part-divider + .chapter-part > section[data-toc-id], .part-divider + section[data-toc-id] { border-top: 0; padding-top: 40px; }
+  .part-divider + .chapter-part > section[data-toc-id], .part-divider + section[data-toc-id] { border-top: 0; padding-top: 104px; }
+  /* Top-level part openers use the full reading column; sub-sections keep their smaller scale. */
+  .chapter-production section[data-toc-id] > .wrap > .section-head { max-width: none; margin-bottom: 40px; }
+  .chapter-production section[data-toc-id] > .wrap > .section-head .eyebrow { font-size: 14px; letter-spacing: .18em; color: var(--ink-0); margin-bottom: 20px; }
+  .chapter-production section[data-toc-id] > .wrap > .section-head h2 { font-size: clamp(34px, 3.8vw, 56px); line-height: 1.1; max-width: none; margin-bottom: 22px; }
+  .chapter-production section[data-toc-id] > .wrap > .section-head .section-lede { max-width: none; font-size: clamp(17px, 1.35vw, 21px); line-height: 1.6; }
   .chapter-production .section-head { max-width: var(--prose); }
   .chapter-production .section-head h2 { font-size: clamp(30px, 3.4vw, 46px); }
   .chapter-production .section-lede, .prose { max-width: var(--prose); }
@@ -252,8 +257,9 @@
   }
   @media (max-width: 720px) {
     .chapter-production .chapter-section { padding: 48px 0 16px; }
-    .part-divider { margin: 40px 0 0; }
-    .part-divider + .chapter-part > section[data-toc-id], .part-divider + section[data-toc-id] { padding-top: 32px; }
+    .part-divider { margin: 64px auto 0; gap: 16px; }
+    .part-divider + .chapter-part > section[data-toc-id], .part-divider + section[data-toc-id] { padding-top: 48px; }
+    .chapter-production section[data-toc-id] > .wrap > .section-head { margin-bottom: 28px; }
     .js .chapter-rail { margin-inline: -22px; padding-inline: 22px; }
     .owner-matrix thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     .owner-matrix, .owner-matrix tbody, .owner-matrix tr, .owner-matrix th, .owner-matrix td { display: block; width: auto; }
