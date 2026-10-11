@@ -180,3 +180,15 @@ test('all inbound legacy anchors remain on the page', () => {
     assert.match(source, new RegExp(`id="${id}"`), id);
   }
 });
+
+test('a decorative divider separates each pair of top-level parts, never sub-sections', () => {
+  const source = read('production.html');
+  const dividers = [...source.matchAll(/<div class="part-divider" aria-hidden="true">/g)].map((m) => m.index);
+  assert.equal(dividers.length, parts.length - 1);
+  const starts = parts.map(([id]) => source.search(new RegExp(`<section\\b[^>]*id="${id}"`)));
+  dividers.forEach((at, index) => {
+    assert.ok(at > starts[index] && at < starts[index + 1], `divider ${index + 1} between parts`);
+    const between = source.slice(at, starts[index + 1]);
+    assert.doesNotMatch(between, /<section\b/, 'divider directly precedes the next part');
+  });
+});

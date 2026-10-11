@@ -67,6 +67,12 @@
   .chapter-rail a[aria-current="location"] { border-left-color: var(--chapter-accent); background: var(--chapter-accent-soft); }
   .chapter-rail a[aria-current="location"] .rail-num { color: var(--ink-0); }
   .rail-toggle { display: none; }
+  /* Decorative break between top-level parts only: rule, diamond, rule. */
+  .part-divider { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 56px 0 8px; }
+  .part-divider::before, .part-divider::after { content: ""; flex: 0 1 120px; height: 1px; background: var(--line-2); }
+  .part-divider span { width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid var(--pp-flow);
+    background: var(--chapter-accent-soft); }
+  .part-divider + .chapter-part > section[data-toc-id], .part-divider + section[data-toc-id] { border-top: 0; padding-top: 40px; }
   .chapter-production .section-head { max-width: var(--prose); }
   .chapter-production .section-head h2 { font-size: clamp(30px, 3.4vw, 46px); }
   .chapter-production .section-lede, .prose { max-width: var(--prose); }
@@ -246,6 +252,8 @@
   }
   @media (max-width: 720px) {
     .chapter-production .chapter-section { padding: 48px 0 16px; }
+    .part-divider { margin: 40px 0 0; }
+    .part-divider + .chapter-part > section[data-toc-id], .part-divider + section[data-toc-id] { padding-top: 32px; }
     .js .chapter-rail { margin-inline: -22px; padding-inline: 22px; }
     .owner-matrix thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     .owner-matrix, .owner-matrix tbody, .owner-matrix tr, .owner-matrix th, .owner-matrix td { display: block; width: auto; }
@@ -415,6 +423,8 @@
     </div>
   </section>
 
+  <div class="part-divider" aria-hidden="true"><span></span></div>
+
   <!-- ==================== 2 · FOUNDATION ==================== -->
   <div id="platform-topic" class="chapter-part">
   <section class="chapter-section" id="platform-controls" data-toc-id="platform-controls" data-toc-label="2 · Choose the foundation you will operate" aria-labelledby="platform-heading">
@@ -483,6 +493,8 @@
   </section>
 
   </div>
+
+  <div class="part-divider" aria-hidden="true"><span></span></div>
 
   <!-- ==================== 3 · VALIDATE ==================== -->
   <div id="readiness-topic" class="chapter-part">
@@ -630,6 +642,8 @@
   </section>
 
   </div>
+
+  <div class="part-divider" aria-hidden="true"><span></span></div>
 
   <!-- ==================== 4 · AUTHORIZE ==================== -->
   <div id="actions-topic" class="chapter-part">
@@ -990,6 +1004,8 @@
 
   </div>
 
+  <div class="part-divider" aria-hidden="true"><span></span></div>
+
   <!-- ==================== 5 · EVIDENCE ==================== -->
   <section class="chapter-section" id="evidence-review" data-toc-id="evidence-review" data-toc-label="5 · Review the evidence, name the owners" aria-labelledby="evidence-review-heading">
     <div class="wrap wrap-xl">
@@ -1055,6 +1071,8 @@
       </div>
     </div>
   </section>
+
+  <div class="part-divider" aria-hidden="true"><span></span></div>
 
   <!-- ==================== 6 · CONTINUE ==================== -->
   <section class="chapter-section production-review" id="production-review" data-toc-id="production-review" data-toc-label="6 · Continue from your pilot" aria-labelledby="chapter-recap">
