@@ -12,6 +12,59 @@ initial proposal retained below, not the current page or its publication status.
 
 ## Implementation status
 
+### Continuous Production chapter (October 2026 revision)
+
+**Current page contract; supersedes the three-topic tab navigation below.**
+An accepted read-only editorial review (source `ba94a00`) found the material
+sound but the reading path broken: three mutually exclusive topics hid the
+three decisions and the two gateways, CTAs named destinations they did not open,
+the six-question constellation had no reading order, and mobile readers had to
+scroll wide diagrams under up to ~241px of sticky navigation.
+
+`production.html` is now one continuous chapter, L200/L300, in this order:
+
+1. `#production-domains` — **A working pilot is the starting point.** Three
+   separate decisions: release, action authorization, business acceptance.
+2. `#platform-controls` — **Choose the foundation you will operate.** The agent
+   is a hosted Foundry agent by default; Foundry with native controls, an
+   existing customer gateway or the optional, externally maintained Citadel hub.
+   Citadel's attribution, shared-capacity example and hub figure are unchanged.
+3. `#operating-controls` + `#delivery-controls` — **Validate the candidate
+   before promotion.** The pipeline labels one validation job with three evidence
+   domains (not parallel branches); a vertical text sequence replaces the SVG on
+   narrow screens; light-theme connectors use the accent rather than lime.
+4. `#effect-authority` + `#evidence-boundaries` — **Authorize selected actions
+   before they change records.** The returns example, the five actors and the
+   two gateways precede the unchanged scenario player; protocol vocabulary
+   (MCP/PEP/ACS, SAFE/ACS/Hooks/PEP/AGT/ASSERT) is in a closed disclosure after it.
+5. `#evidence-review` — **Review the evidence. Name the owners.** A six-row
+   question/owner/evidence/limit table (`#checks`) replaces the constellation;
+   five proof kinds (generated artifact, offline inventory, executed LOCAL-14,
+   native/CTK, live evidence) and the data/privacy note (`#information-controls`).
+6. `#production-review` — **Continue from the pilot you already have.**
+   `#start` opens the existing-pilot guide; readiness requirements, the technical
+   companion, Operate and Build are labelled by their real destinations.
+
+Navigation is one chapter index, `nav.chapter-rail`. Above 900px it is a
+sticky left rail beside the reading column (230px + 48px gap, the pre-revision
+reading geometry), with scroll-spy marking the current part via
+`aria-current="location"`. At 900px and below it becomes one compact, opaque
+bar under the header, "In this chapter · current part", whose toggle opens the
+list (Escape closes it). There is no top sticky index bar. The masthead is
+opaque on this page. The scenario player is not width-capped: it renders 1060px
+at 1440 and 1340px at 1920, as at `ba94a00`. A skip link is the first focus stop. Every legacy fragment remains in the document; the player
+keeps `#production-input-proof` and `#user-confirmation` scenario selection.
+Wrappers `#platform-topic`, `#readiness-topic` and `#actions-topic` remain as
+stable part containers (no tab semantics). Disclosures hold implementation depth
+only: delivery controls, protocol terms, identity providers and the JWT contract.
+
+The L400 companion is [production-governance.md](production-governance.md); it
+follows the same six parts and routes to the existing deep dives. The hero states
+the limit: a readiness assessment identifies gaps and does not certify production.
+This is presentation only: no runtime, cloud or live evidence status changed.
+Local rendering, Node contract tests and the Playwright suite were run on the
+branch; GitHub Pages publication is a separate step.
+
 ### Commercial editorial direction
 
 The latest user direction keeps `index.html`, `funnel.html` and `production.html`
@@ -128,7 +181,7 @@ borrow old hosted receipts or alter the byte-frozen workbook/pinned history.
 
 ### Architecture reader and Production-ready visual
 
-**Current concise presentation (supersedes the expanded layout below):** keep
+**Previous concise presentation (superseded by the continuous chapter above; it superseded the expanded layout below):** keep
 the platform → release → active-governance story, but remove every expandable
 panel and reduce the content rather than opening the old detail dumps.
 The public HTML is not a skill catalog or a second technical report.
@@ -300,7 +353,7 @@ Illustrative criteria are not measured results, and proposed boundaries are not
 claims of automatic installation or complete deployed enforcement. The
 grounding workflow assesses supplied evidence; it is not a retrieval engine.
 
-**Current navigation decision:** the user accepted the improved architecture
+**Previous navigation decision (superseded by the continuous chapter above):** the user accepted the improved architecture
 Markdown and selected a single Production page with one topic visible at a time.
 The Markdown is unchanged by this revision. A compact connected map introduces
 the six responsibilities; the topic selector replaces the long chapter contents

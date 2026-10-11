@@ -29,7 +29,7 @@ test('product illustration is static-first with separate pre-effect and business
   assert.match(html, /role="tablist"/);
   assert.match(html, /data-flow-progress/);
   assert.ok((html.match(/data-component-icon/g) || []).length >= 5);
-  assert.match(read('docs/production.html'), /href="\.\/agent-governance\.html#overview"[^>]*>Try the guided workbook/);
+  assert.match(read('docs/production.html'), /href="\.\/agent-governance\.html#overview"[^>]*>Follow the existing-pilot guide/);
   assert.doesNotMatch(read('docs/agent-governance.html'), /data-flow-node=/);
   assert.doesNotMatch(html, /<iframe|<form|<canvas|pass.fail|payment executed/i);
   const inputs = [...html.matchAll(/<input\b[^>]*>/g)].map(match => match[0]);

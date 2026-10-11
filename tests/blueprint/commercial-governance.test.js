@@ -8,10 +8,11 @@ const text = (source) => source.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?
   .replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 test('Production explains active actors and the guided workbook leads to practical work', () => {
-  const copy = text(read('production.html').split('<div class="topic-panel" id="actions-topic" data-topic-panel>')[1]
-    .split('\n      </div>\n    </div>\n  </div>\n  <section id="production-review"')[0]);
+  const page = read('production.html');
+  const copy = text(page.slice(page.indexOf('<section class="chapter-section governance-section" id="effect-authority"'),
+    page.indexOf('<section class="chapter-section" id="evidence-review"')));
   for (const phrase of ['Governed MCP gateway', 'Control plane', 'Human reviewer',
-    'Business API', 'Try the guided workbook', 'not a payment']) {
+    'Business API', 'Follow the existing-pilot guide', 'not a payment']) {
     assert.ok(copy.includes(phrase), phrase);
   }
   assert.doesNotMatch(copy, /4\/4|14 tool calls|8 native responses|NOT PROVED|EXPIRED|CI is not all green|2026-09-|version [457]|Historical|Billing Issue/i);

@@ -237,7 +237,7 @@ for (const theme of ['light', 'dark']) {
     const violations = (await new AxeBuilder({ page }).include(section)
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
     expect(violations).toEqual([]);
-    await expect(page.getByRole('link', { name: 'Try the guided workbook', exact: true }))
+    await expect(page.locator('#evidence-boundaries').getByRole('link', { name: 'Follow the existing-pilot guide', exact: true }))
       .toHaveAttribute('href', './agent-governance.html#overview');
   });
 }
@@ -253,7 +253,7 @@ test('without JavaScript the full path and workbook links remain usable', async 
     await expect(flow.locator('.wf-static-note')).toContainText('blocked proposal records a denial');
     await expect(flow.locator('.wf-static-note')).toContainText('waits in Outlook');
     for (const control of await flow.locator('[data-flow-controls]').all()) await expect(control).toBeHidden();
-    await expect(page.getByRole('link', { name: 'Try the guided workbook', exact: true })).toBeVisible();
+    await expect(page.locator('#evidence-boundaries').getByRole('link', { name: 'Follow the existing-pilot guide', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   } finally {
     await context.close();

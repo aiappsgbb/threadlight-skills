@@ -845,6 +845,7 @@ certify production or replace current selected-binding governance evidence.
 
 ## Read next
 
+- **How this assessment fits the Production chapter (decisions, owners, proof kinds):** [production-governance.md](production-governance.md)
 - **Real endpoint, retrieval and load evidence:** [Connect](../skills/threadlight-connect/SKILL.md), [Ground](../skills/threadlight-ground/SKILL.md) and [Load test](../skills/threadlight-loadtest/SKILL.md) remain separately selected workflows with their own prerequisites and evidence.
 - **Full skill metadata + invocation patterns:** [`skills/threadlight-production-ready/SKILL.md`](../skills/threadlight-production-ready/SKILL.md)
 - **Author SPEC § 12 from scratch:** [`references/spec-section-12-template.md`](../skills/threadlight-production-ready/references/spec-section-12-template.md)

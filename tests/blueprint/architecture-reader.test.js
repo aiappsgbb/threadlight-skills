@@ -60,9 +60,10 @@ test('production groups three complementary areas, keeps privacy cross-cutting a
     assert.ok(page.includes(`href="#${id}"`), id);
   }
   assert.ok(page.indexOf('id="production-domains"') < page.indexOf('id="effect-authority"'));
-  assert.ok(page.indexOf('id="information-controls"') < page.indexOf('id="topic-explorer"'));
+  // Privacy stays a cross-cutting owner responsibility, reviewed with the evidence, not inside action governance.
+  assert.ok(page.indexOf('id="information-controls"') > page.indexOf('id="evidence-review"'));
   assert.match(page, /<aside[^>]*id="information-controls"/);
-  assert.match(page, /data-area-navigation="platform-topic"[^>]*>[\s\S]*?href="#model-controls"[\s\S]*?<\/nav>/);
+  assert.match(page.match(/<section\b[^>]*id="platform-controls"[^>]*>([\s\S]*?)<\/section>/)[1], /id="model-controls"/);
   const action = page.match(/<section\b[^>]*id="effect-authority"[^>]*>([\s\S]*?)<\/section>/)[1];
   for (const phrase of ['current case revision', 'not authorization', 'not a payment',
     'effect boundary', 'independent business API']) {

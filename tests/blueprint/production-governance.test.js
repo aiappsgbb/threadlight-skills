@@ -66,7 +66,7 @@ test('authority section is an accessible ordered contract with distinct identiti
 
 test('concrete action outcomes link to technical evidence without exposing instance status', () => {
   const body = section(read('production.html'), 'evidence-boundaries');
-  for (const phrase of ['Build this workflow', 'Try the guided workbook', 'Start locally',
+  for (const phrase of ['Build this workflow', 'Follow the existing-pilot guide', 'Start locally',
     'human-review exercise', 'independently verified evidence']) {
     assert.ok(text(body).includes(phrase), phrase);
   }
@@ -174,11 +174,13 @@ test('each concise topic keeps its core visual and delegates detail to reference
       }
     }
   }
-  const jwtContract = source.match(/<div class="wf-jwt" data-evidence-jwt[\s\S]*?<!-- evidence-jwt:end -->/)?.[0];
-  assert.ok(jwtContract);
-  const implementation = source.match(/<details[^>]*data-action-implementation[\s\S]*?<\/details>/)?.[0];
-  assert.ok(implementation);
-  assert.doesNotMatch(source.replace(jwtContract, '').replace(implementation, ''), /<(?:details|summary)\b/);
+  // Disclosures hold implementation depth only; orientation (actors, gateways, limits) stays visible.
+  const disclosures = [...source.matchAll(/<details\b([^>]*)>/g)].map((match) => match[1]);
+  assert.deepEqual(disclosures.map((attrs) => attrs.match(/class="([^"]*)"/)?.[1] ?? ''),
+    ['depth', 'wf-provider-details', '', 'depth action-implementation']);
+  assert.match(source, /<details class="depth" data-depth="delivery">\s*<summary>Implementation details/);
+  assert.match(source, /<details class="depth action-implementation" data-action-implementation>\s*<summary>Implementation details/);
+  assert.ok(source.match(/<div class="wf-jwt" data-evidence-jwt[\s\S]*?<!-- evidence-jwt:end -->/)?.[0].includes('<details>'));
   assert.match(source, /Application and data owners/);
   assert.match(source, /not supplied by the new action-governance runtime/);
   assert.match(section(source, 'operating-controls'), /DevSecOps/);
@@ -186,9 +188,8 @@ test('each concise topic keeps its core visual and delegates detail to reference
 
 test('AgentOps frames the release area as controlled delivery rather than just readiness', () => {
   const source = read('production.html');
-  const overview = section(source, 'production-domains');
-  assert.match(text(overview), /02 \/ AgentOps & release/);
-  assert.match(source, /id="tab-operations"[^>]*>AgentOps &amp; release/);
+  assert.match(text(section(source, 'operating-controls')), /03 \/ Validate .{1,12}AgentOps & release/);
+  assert.match(source, /<nav class="chapter-rail"[^>]*>[\s\S]*?href="#operating-controls"><span class="rail-num"[^>]*>03<\/span><span class="rail-name">Validate</);
   const introduction = text(section(source, 'operating-controls'));
   for (const phrase of ['AgentOps', 'development to production', 'DevSecOps', 'prompt', 'policy']) {
     assert.ok(introduction.toLowerCase().includes(phrase.toLowerCase()), phrase);
@@ -202,9 +203,11 @@ test('AgentOps frames the release area as controlled delivery rather than just r
 test('accepted AgentOps visuals remain stable while the current generator enforces verified release', () => {
   const source = read('production.html');
   assert.doesNotMatch(source, /id="(?:readiness-reference|delivery-reference)"/);
-  for (const visual of ['ciso-pentagon-svg', 'pipe-svg', 'wf-diagram']) {
+  for (const visual of ['pipe-svg', 'pipe-mobile', 'wf-diagram', 'owner-matrix']) {
     assert.ok(source.includes(visual), visual);
   }
+  // The six-question constellation was replaced by a readable question/owner/evidence/limit matrix.
+  assert.doesNotMatch(source, /ciso-pentagon-svg/);
   assert.doesNotMatch(source, /class="(?:scorecard-preview|posture-trio-svg)/);
   assert.doesNotMatch(text(source), /all gates green.*ships|hard-block the merge|nothing calls home/i);
   const delivery = text(section(source, 'delivery-controls'));

@@ -71,7 +71,7 @@ parity, and a running host is not proof it consumed its skills.
 | [Basics](https://aiappsgbb.github.io/threadlight-skills/basics.html) | Skills, the two agents, tools and runtime responsibilities |
 | [Build](https://aiappsgbb.github.io/threadlight-skills/funnel.html) | Construction choices and the brief-to-pilot path |
 | [Case study](https://aiappsgbb.github.io/threadlight-skills/case-study.html) | A concrete process, decisions and implementation boundaries |
-| [Production](https://aiappsgbb.github.io/threadlight-skills/production.html) | Governance, readiness and operator-owned deployment |
+| [Production](https://aiappsgbb.github.io/threadlight-skills/production.html) | From a working pilot to a controlled release: foundation, validated release, governed actions, evidence and owners ([technical companion](docs/production-governance.md)) |
 
 For a hands-on starting point, follow
 [Your first governed workflow](docs/first-governed-workflow.md): one returns

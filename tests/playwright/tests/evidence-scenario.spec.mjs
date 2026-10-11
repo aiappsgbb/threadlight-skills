@@ -141,16 +141,23 @@ test('the return example and diagram precede optional architecture detail', asyn
     await page.goto(`/production.html?layout-width=${width}#effect-authority`);
     const detail = page.locator('[data-action-implementation]');
     await expect(detail).not.toHaveAttribute('open', '');
+    // The returns example, actors and the two gateways orient the reader before the player;
+    // protocol vocabulary stays in the closed implementation disclosure after it.
     const positions = await page.locator('#effect-authority').evaluate(section => ({
-      heading: section.querySelector('h2').getBoundingClientRect().bottom,
+      example: section.querySelector('#returns-walkthrough').getBoundingClientRect().top,
+      actors: section.querySelector('[data-action-primary]').getBoundingClientRect().top,
+      gateways: section.querySelector('.gateway-compare').getBoundingClientRect().top,
       tabs: section.querySelector('.wf-panel').getBoundingClientRect().top,
       technical: section.querySelector('[data-action-implementation]').getBoundingClientRect().top,
       scenarioEnd: section.querySelector('#workflow-in-action').getBoundingClientRect().bottom,
     }));
-    expect(positions.tabs - positions.heading).toBeLessThan(width > 700 ? 260 : 380);
+    expect(positions.example).toBeLessThan(positions.actors);
+    expect(positions.actors).toBeLessThan(positions.gateways);
+    expect(positions.gateways).toBeLessThan(positions.tabs);
     expect(positions.technical).toBeGreaterThanOrEqual(positions.scenarioEnd);
+    await expect(page.locator('[data-action-primary]')).toBeVisible();
     await detail.locator('summary').click();
-    await expect(detail.locator('[data-action-primary]')).toBeVisible();
+    await expect(detail.locator('.term-legend')).toBeVisible();
     expect((await new AxeBuilder({ page }).include('#effect-authority')
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
   }

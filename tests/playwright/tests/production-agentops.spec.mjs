@@ -4,8 +4,11 @@ import AxeBuilder from '@axe-core/playwright';
 test('AgentOps keeps the original pipeline and concise checks in one readable area', async ({ page }) => {
   await page.goto('/production.html#operating-controls');
   const area = page.locator('#readiness-topic');
-  await expect(area.locator('details, .posture-trio-svg, .scorecard-preview, [data-agentops-view]')).toHaveCount(0);
-  await expect(area.locator('.pipe-svg')).toBeVisible();
+  await expect(area.locator('.posture-trio-svg, .scorecard-preview, [data-agentops-view]')).toHaveCount(0);
+  // Delivery configuration is implementation depth: one closed disclosure, not the reading path.
+  await expect(area.locator('details')).toHaveCount(1);
+  await expect(area.locator('details.depth')).not.toHaveAttribute('open', '');
+  await expect(area.locator(page.viewportSize().width > 680 ? '.pipe-svg' : '.pipe-mobile')).toBeVisible();
   await expect(area.locator('.release-checks > li')).toHaveCount(3);
   for (const anchor of ['quality-controls', 'runtime-controls']) {
     await expect(area.locator(`#${anchor}`)).toBeVisible();
@@ -24,6 +27,8 @@ test('the release visual separates candidate verification from approved producti
     await expect(deployment).toContainText(boundary);
   }
   await expect(deployment.locator('.pipe-svg')).toContainText('PROD GATE');
+  await expect(deployment.locator('.pipe-svg')).toContainText('ONE VALIDATION JOB');
+  await expect(deployment.locator('.pipe-mobile')).toContainText('One validation job');
   await expect(deployment).not.toContainText(/Soft is the default|soft \| hard|echo|CI RESULT/);
   await expect(deployment).not.toContainText(/all gates green.*ships|hard-block the merge|nothing calls home/i);
   const labelsFit = await deployment.locator('.pipe-svg').evaluate(svg => {
@@ -40,20 +45,21 @@ test('the release visual separates candidate verification from approved producti
   expect(labelsFit, 'release diagram labels fit their existing boxes').toBe(true);
 });
 
-test('AgentOps history and retained deep links keep the relevant subsection selected', async ({ page }) => {
+test('AgentOps history and retained deep links stay inside the Validate part', async ({ page }) => {
   for (const anchor of ['operating-controls', 'legs', 'ship', 'runtime-controls']) {
     await page.goto(`/production.html#${anchor}`);
-    await expect(page.getByRole('tabpanel')).toHaveAttribute('id', 'readiness-topic');
     await expect(page.locator(`#${anchor}`)).toBeVisible();
-    await expect(page.locator('[data-area-navigation="readiness-topic"] a[aria-current="location"]')).toHaveCount(1);
+    expect(await page.locator(`#${anchor}`).evaluate(el => el.closest('#readiness-topic')?.id)).toBe('readiness-topic');
   }
   await page.goto('/production.html#quality-controls');
-  await page.locator('[data-area-navigation="readiness-topic"] a[href="#operating-controls"]').click();
+  if (page.viewportSize().width <= 900) await page.locator('.rail-toggle').click();
+  await page.locator('.chapter-rail a[href="#operating-controls"]').click();
+  await expect(page).toHaveURL(/#operating-controls$/);
   await page.goBack();
   await expect(page).toHaveURL(/#quality-controls$/);
   await page.goForward();
   await expect(page).toHaveURL(/#operating-controls$/);
-  await expect(page.locator('.pipe-svg')).toBeVisible();
+  await expect(page.locator('#ship')).toBeVisible();
 });
 
 test('AgentOps diagrams and checks remain readable without JavaScript', async ({ browser }, testInfo) => {
@@ -64,9 +70,9 @@ test('AgentOps diagrams and checks remain readable without JavaScript', async ({
   try {
     const page = await context.newPage();
     await page.goto('/production.html');
-    await expect(page.locator('.pipe-svg')).toBeVisible();
+    await expect(page.locator(testInfo.project.use.viewport.width > 680 ? '.pipe-svg' : '.pipe-mobile')).toBeVisible();
     await expect(page.locator('.release-checks > li')).toHaveCount(3);
-    await expect(page.locator('main details:not([data-evidence-jwt] details):not([data-action-implementation])')).toHaveCount(0);
+    await expect(page.locator('#readiness-topic details:not(.depth)')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   } finally {
     await context.close();

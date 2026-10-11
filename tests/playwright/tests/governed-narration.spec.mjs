@@ -271,7 +271,8 @@ test('leaving the topic cancels voice and stale completions cannot resume it', a
   const flow = page.locator('[data-governed-flow]');
   await flow.getByRole('button', { name: 'Play', exact: true }).click();
   await page.evaluate(() => { window.staleNarrationEnd = window.testNarration.onended; });
-  await page.locator('[data-topic-tab]').first().click();
+  await page.locator('a[href="#platform-controls"]:visible').first().click();
+  await expect(flow).not.toBeInViewport();
   await expect(flow).toHaveAttribute('data-playing', 'false');
   expect(await page.evaluate(() => window.testNarration.paused)).toBe(true);
   await page.evaluate(() => window.staleNarrationEnd());

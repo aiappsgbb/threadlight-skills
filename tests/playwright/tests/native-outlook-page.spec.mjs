@@ -19,14 +19,13 @@ for (const theme of ['light', 'dark']) {
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
     expect(violations).toEqual([]);
     const target = page.locator('#evidence-boundaries');
-    const link = page.locator('[data-area-navigation="actions-topic"] a[href="#evidence-boundaries"]');
-    await link.focus();
-    await expect(link).toBeFocused();
-    await link.press('Enter');
+    await page.goto('/production.html#evidence-boundaries');
     await expect.poll(() => target.evaluate(el => {
       const top = el.getBoundingClientRect().top;
-      const offset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
-      return top >= offset - 2 && top < innerHeight;
+      return top >= Math.max(...['.masthead', '.chapter-rail'].map(s => { const b = document.querySelector(s).getBoundingClientRect(); return b.width > innerWidth / 2 ? b.bottom : 0; })) - 1 && top < innerHeight;
     })).toBe(true);
+    const guide = target.getByRole('link', { name: 'Follow the existing-pilot guide', exact: true });
+    await guide.focus();
+    await expect(guide).toBeFocused();
   });
 }
