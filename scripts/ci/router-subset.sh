@@ -2,7 +2,7 @@
 # scripts/ci/router-subset.sh
 #
 # Record / set / restore the model-router custom subset on the shared CI
-# Foundry account (aif-shared-gbb-ci). Used by the router-validation matrix to
+# Foundry account. Used by the router-validation matrix to
 # constrain model-router to {gpt-5.4, gpt-5.4-mini} for the experiment, then
 # put the shared deployment back exactly as it was found.
 #
@@ -19,9 +19,10 @@
 # the matrix serializes its own record/set/restore on this shared deployment, so
 # last-writer-wins is acceptable here.)
 set -euo pipefail
-SUB=2c745a8f-9d37-45e3-8506-80797e89735e
-RG=rg-shared-gbb-ci
-ACC=aif-shared-gbb-ci
+# Target comes from the operator's environment; nothing is embedded here.
+SUB="${ROUTER_SUBSCRIPTION_ID:?set ROUTER_SUBSCRIPTION_ID to the approved subscription}"
+RG="${ROUTER_RESOURCE_GROUP:?set ROUTER_RESOURCE_GROUP to the approved resource group}"
+ACC="${ROUTER_ACCOUNT:?set ROUTER_ACCOUNT to the approved Foundry account}"
 DEP=model-router
 API=2025-10-01-preview
 URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.CognitiveServices/accounts/$ACC/deployments/$DEP?api-version=$API"

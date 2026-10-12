@@ -7,6 +7,7 @@ D3 Pilot Bicep must create Foundry account+project with identity, model, tags an
 D4 azure.yaml must use remote ACR builds; a .dockerignore must ship with the build context.
 D5 Platform steps (model deploy, hosted-agent create/run, eval) delegate to microsoft-foundry.
 """
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -91,7 +92,12 @@ def test_pilot_bicep_is_complete_and_uses_role_guids():
     # deployer Foundry User at project scope
     block = re.search(r"scope: project\s*\n.*?roleFoundryUser", bicep, re.S)
     assert block, "deployer needs Foundry User at project scope"
-    assert "ricchi" not in bicep
+    # No personal alias (matched by SHA-256 so the test does not republish it).
+    aliases = {"0674a3040cc01c5d6bc47f63af1df72b37a68af626a0866d35b4d9c47597ed77",
+        "0f447dc02c09d52bc7c21f49147b37ed1914e136b8493da37ab2f9db07d225a7",
+        "f1d654b62242e415e8e2bc42714013e0823eb1772d8112e7bcdf7dbda364e0c5"}
+    words = re.findall(r"[a-z0-9]+", bicep.lower())
+    assert not {hashlib.sha256(w.encode()).hexdigest() for w in words} & aliases
     params = json.loads(read(PILOT / "infra/main.parameters.json"))
     tags = params["parameters"]["tags"]["value"]
     assert set(tags) >= {"owner", "purpose", "disposable"}

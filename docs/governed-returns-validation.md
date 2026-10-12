@@ -1143,7 +1143,7 @@ previous selected configuration: private/keyless Foundry account, original
 injection/subnet, existing successful Basic project host, private ACR, existing
 project-MI pull permission and enabled registry diagnostics. The existing
 account `networkAcls.bypass=AzureServices` remained unchanged. No new roles,
-network opening or `SecurityControl=Ignore` tag was applied to the private group.
+network opening or policy-exemption tag was applied to the private group.
 The bounded pre-attempt Activity Log read exposed no intervening relevant
 configuration write; that is not proof of complete internal platform history.
 
@@ -1753,12 +1753,12 @@ non-exportable RSA-3072 Key Vault key. Actual sign/verify and tampered-digest
 rejection were observed; no local/demo signer was implemented.
 
 Organization policy synchronously changed newly declared public KV/Blob/Cosmos
-resources to PNA Disabled. Activity Logs identified the three network Modify
-rules under `MCAPSGovDeployPolicies`. After explicit user authorization, only
-the **new S3 resource group** received `SecurityControl=Ignore`; the operator
-then restored PNA on those three resources. The policy definitions supported
-that tag exclusion; reading the management-group assignment itself returned
-403 and is not claimed as verified. Cosmos converged after several minutes,
+resources to PNA Disabled. Activity Logs attributed this to three network
+Modify rules of an inherited organization policy set. After explicit user
+authorization, only the **new S3 resource group** received a scoped
+policy-exemption tag supported by those policy definitions; the operator then
+restored PNA on those three resources. Reading the inherited assignment itself
+was denied and is not claimed as verified. Cosmos converged after several minutes,
 without a repeated forcing loop. Entra/RBAC, keyless data access and HTTPS
 settings remained unchanged. The tag is not a catalog default, a general
 production recommendation or evidence of private isolation.

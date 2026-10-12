@@ -236,11 +236,11 @@ already fails it.
 operations. Obtain approval for the exact subscription/account/deployment, model
 pool, capacity, run window, budget and restoration owner. The catalog
 [`router-subset.sh`](../../scripts/ci/router-subset.sh) and
-[`foundry-strong-arm.sh`](../../scripts/ci/foundry-strong-arm.sh) have **hardcoded
-targets**, not target-selection flags. Do not run them against their embedded
-account or assume environment variables override it. An operator must prepare
-and review target-specific copies for the approved target. The commands below
-use that reviewed helper, not the catalog's embedded target.
+[`foundry-strong-arm.sh`](../../scripts/ci/foundry-strong-arm.sh) embed **no
+target**: they refuse to run unless `ROUTER_SUBSCRIPTION_ID` (router subset),
+`ROUTER_RESOURCE_GROUP` and `ROUTER_ACCOUNT` name the approved target, and the
+strong-arm helper uses the Azure CLI's current subscription. Set them only after
+the approval above and review the helpers' constants for that target.
 
 1. Serialize all writers, including other pipelines/operators. Review the helper's
    model version, SKU and capacity constants: `record` saves only routing, not the
@@ -256,7 +256,11 @@ use that reviewed helper, not the catalog's embedded target.
    cancellation/timeout. Do not rely on the last line of a shell recipe running.
 
 ```bash
-ROUTER_HELPER=/absolute/path/to/operator-reviewed/router-subset.sh
+# Approved target only; replace the placeholders before use.
+export ROUTER_SUBSCRIPTION_ID=<approved-subscription-id>
+export ROUTER_RESOURCE_GROUP=<approved-resource-group>
+export ROUTER_ACCOUNT=<approved-foundry-account>
+ROUTER_HELPER=scripts/ci/router-subset.sh
 bash "$ROUTER_HELPER" record
 # STOP unless the record succeeded and the approved before-state was retained.
 bash "$ROUTER_HELPER" set

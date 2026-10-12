@@ -9,6 +9,7 @@ ported runtime behaviour.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -165,7 +166,17 @@ def test_live_surfaces_do_not_tell_users_to_install_awesome_gbb():
     assert not offenders, offenders
 
 
-PERSONAL_ALIAS = re.compile(r"\b(ricchi|fruocco|frocco)\b", re.IGNORECASE)
+# SHA-256 of personal aliases, so this guard does not republish them.
+PERSONAL_ALIAS_SHA256 = {"0674a3040cc01c5d6bc47f63af1df72b37a68af626a0866d35b4d9c47597ed77",
+    "0f447dc02c09d52bc7c21f49147b37ed1914e136b8493da37ab2f9db07d225a7",
+    "f1d654b62242e415e8e2bc42714013e0823eb1772d8112e7bcdf7dbda364e0c5"}
+
+
+def _names_personal_alias(line: str) -> bool:
+    return any(
+        hashlib.sha256(word.encode()).hexdigest() in PERSONAL_ALIAS_SHA256
+        for word in re.findall(r"[a-z0-9]+", line.lower())
+    )
 
 
 def test_ports_carry_no_personal_aliases_or_targets():
@@ -174,7 +185,7 @@ def test_ports_carry_no_personal_aliases_or_targets():
         for path in sorted((SKILLS / root).rglob("*")):
             if path.is_file() and path.suffix in TEXT_SUFFIXES:
                 for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                    if PERSONAL_ALIAS.search(line):
+                    if _names_personal_alias(line):
                         hits.append(f"{path.relative_to(ROOT)}:{number}")
     assert not hits, "Ported content must not name personal aliases:\n" + "\n".join(hits)
 

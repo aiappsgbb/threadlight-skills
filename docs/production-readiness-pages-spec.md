@@ -796,7 +796,7 @@ must distinguish observation time from page-edit time.
 - Office 365 needs actual mailbox consent; `Enabled` connection state did not
   mean authenticated. The notification workflow remains `Disabled` in the
   snapshot. Email/reply/click cannot issue a grant.
-- The S3 `SecurityControl=Ignore` exception was an authorized public lab choice
+- The S3 policy-exemption tag was an authorized public lab choice
   scoped to the new resource group, not production compliance or a recommended
   global default. Do not hide it in fine print or generalize it into a recipe.
 - Keep **no private** targets, principal/tenant/subscription IDs, emails,

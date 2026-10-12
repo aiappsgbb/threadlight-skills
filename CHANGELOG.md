@@ -1897,7 +1897,7 @@ deployment or business live proof is claimed; broader acceptance is separate.
     estate-billed caveat through to the forwarded artefact.
   - **Tests:** +100 unit/golden/discipline tests (rollout, observability,
     hardening, discount, one-pager, emitter, estimate, CLI, two e2e golden
-    fixtures, skill-discipline, no-VF3/no-secrets denylist); new
+    fixtures, skill-discipline, no-customer/no-secrets denylist); new
     `references/fixtures/sample-presales-rollout/` and
     `references/fixtures/sample-presales-topology-rollout/` golden fixtures.
 

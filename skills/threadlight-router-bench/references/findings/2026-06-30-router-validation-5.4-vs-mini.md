@@ -141,6 +141,7 @@ cells and behaved correctly:
 
 ```bash
 # 1. infra + pin (restores shared router on exit via trap)
+export ROUTER_SUBSCRIPTION_ID=<sub> ROUTER_RESOURCE_GROUP=<rg> ROUTER_ACCOUNT=<account>
 bash scripts/ci/foundry-strong-arm.sh
 bash scripts/ci/router-subset.sh record && bash scripts/ci/router-subset.sh set
 # 2. dispatch the 6-cell matrix (2 serialized waves, ~1.5–2h)
@@ -149,7 +150,7 @@ python3 skills/threadlight-router-bench/scripts/router_bench.py validate \
   --ref <branch> --repo aiappsgbb/threadlight-skills --out <outdir>
 bash scripts/ci/router-subset.sh restore        # always
 # 3. score + cold-path
-RID="/subscriptions/<sub>/resourceGroups/rg-shared-gbb-ci/providers/Microsoft.CognitiveServices/accounts/aif-shared-gbb-ci"
+RID="/subscriptions/<sub>/resourceGroups/rg-example-ci/providers/Microsoft.CognitiveServices/accounts/aif-example-ci"
 python3 skills/threadlight-router-bench/scripts/router_bench.py validate \
   --ingest <outdir>/matrix-manifest.json --resource "$RID" --out <outdir>
 python3 skills/threadlight-router-bench/scripts/router_bench.py learn <run_id> \

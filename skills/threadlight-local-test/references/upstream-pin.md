@@ -119,7 +119,7 @@ validation:
     - "ok streamlit chat surface"
 
 last_validated: 2026-08-14
-validated_by: ricchi
+validated_by: maintainers
 known_issues_count: 1
 ---
 
