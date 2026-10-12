@@ -7,7 +7,10 @@ test('all six lifecycle phases explain the work with diagrams rather than prose 
   await expect(diagrams).toHaveCount(6);
   expect(await diagrams.evaluateAll(nodes => nodes.map(node => node.dataset.phaseVisual)))
     .toEqual(['enter', 'build', 'integrate', 'assure', 'ship', 'improve']);
-  for (const diagram of await diagrams.all()) {
+  // Build shows one phase at a time; the rail selects each phase and its diagram.
+  const rail = page.getByRole('navigation', { name: 'Six phases from brief to handoff' });
+  for (const [index, diagram] of (await diagrams.all()).entries()) {
+    await rail.locator('a').nth(index).click();
     await expect(diagram).toBeVisible();
     expect(await diagram.locator('svg').count()).toBeGreaterThanOrEqual(2);
   }
@@ -16,6 +19,7 @@ test('all six lifecycle phases explain the work with diagrams rather than prose 
       .map(p => p.innerText).join(' ').trim().split(/\s+/).length,
   );
   expect(visibleParagraphWords).toBeLessThanOrEqual(320);
+  await page.getByRole('button', { name: /show all six phases/i }).click();
   for (const detail of await page.locator('.phase-reference').all()) {
     await expect(detail).not.toHaveAttribute('open', '');
     await detail.locator(':scope > summary').click();
@@ -29,6 +33,7 @@ test('phase diagrams remain legible and fit narrow screens without horizontal sc
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/funnel.html');
     await expect(page.locator('[data-phase-visual]')).toHaveCount(6);
+    await page.getByRole('button', { name: /show all six phases/i }).click();
     for (const figure of await page.locator('[data-phase-visual]').all()) {
       await figure.scrollIntoViewIfNeeded();
       expect(await figure.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);

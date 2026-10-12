@@ -101,7 +101,7 @@ test('Production chapters have distinguishable names', () => {
   assert.equal(new Set(titles).size, titles.length);
   assert.match(read('docs/agent-governance.html'), /<title>Release guide — /);
   for (const file of fs.readdirSync(path.join(root, 'docs')).filter(name => name.endsWith('.html'))) {
-    assert.doesNotMatch(read(`docs/${file}`), /Production guide|Next: Improve\b/, file);
+    assert.doesNotMatch(read(`docs/${file}`), /Production guide|class="cx-journey-next"[^>]*>Next: Improve\b/, file);
   }
 });
 
@@ -164,4 +164,21 @@ test('deploy SKILL.md keeps its skill prose outside the embedded deploy-notes te
     assert.ok(index > 0, heading);
     assert.equal(inCode[index], false, `${heading} renders as prose`);
   }
+});
+
+test('Build offers an introductory and an expert route and keeps its anchors', () => {
+  const html = read('docs/funnel.html');
+  const hero = html.match(/<section class="scene" id="scene-hero"[\s\S]*?<\/section>/)?.[0] || '';
+  for (const route of ['try', 'expert']) assert.match(html, new RegExp(`id="route-${route}"[^>]*data-build-route="${route}"|data-build-route="${route}"[^>]*id="route-${route}"`));
+  assert.match(hero, /href="#route-try"/);
+  assert.match(hero, /href="#route-expert"/);
+  const expert = html.match(/data-build-route="expert"[\s\S]*?<\/section>|data-build-route="expert"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || '';
+  for (const target of ['WORKSHOP-1H-QUICKSTART.md', 'IDEA-TO-PRODUCTION-WORKBOOK.md', 'THREADLIGHT.md', 'docs/README.md']) assert.ok(expert.includes(target), target);
+  assert.match(html, /data-build-stepper/);
+  assert.match(html, /<script src="assets\/build-stepper\.js\?v=[0-9a-f]+"><\/script>/);
+  for (const id of ['scene-hero', 'scene-funnel', 'scene-show', 'scene-chain', 'phase-integrate', 'scene-prod-ready',
+    'scene-customize', 'phase-improve', 'scene-industries', 'scene-kratos', 'scene-cta']) {
+    assert.equal([...html.matchAll(new RegExp(`\\sid="${id}"`, 'g'))].length, 1, id);
+  }
+  assert.equal([...html.matchAll(/data-phase-visual=/g)].length, 6);
 });

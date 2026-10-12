@@ -48,6 +48,8 @@ ASSETS = {
     "workbook-visuals.css": DOCS / "assets" / "workbook-visuals.css",
     "home-structure.css": DOCS / "assets" / "home-structure.css",
     "glossary.css": DOCS / "assets" / "glossary.css",
+    "build-experience.css": DOCS / "assets" / "build-experience.css",
+    "build-stepper.js": DOCS / "assets" / "build-stepper.js",
     "lifecycle-visuals.css": DOCS / "assets" / "lifecycle-visuals.css",
     "production-experience.css": DOCS / "assets" / "production-experience.css",
     "production-experience.js": DOCS / "assets" / "production-experience.js",
