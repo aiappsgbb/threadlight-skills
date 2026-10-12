@@ -13,7 +13,7 @@ test('Home puts the unchanged demo before optional explanations', async ({ page 
     Boolean(document.querySelector('#reel').compareDocumentPosition(document.querySelector('#how-it-works')) & Node.DOCUMENT_POSITION_FOLLOWING),
   );
   expect(order).toBe(true);
-  await expect(page.locator('header nav a[href="./funnel.html"]')).toHaveText('Build');
+  await expect(page.locator('header nav.nav a[href="./funnel.html"]')).toHaveText('Build');
   await page.locator('.home-context > summary').click();
   await expect(page.locator('#how-it-works .hiw-role')).toHaveCount(3);
 });

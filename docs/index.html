@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Demo — watch a paragraph become a working pilot.</title>
+<title>Threadlight — from a business process to a working pilot on Microsoft Foundry</title>
 <meta name="description" content="An evidence-backed reel of the Threadlight pipeline: one paragraph types in, the agent is specced, validated on your PC, and shown through captured deployment proof — play, pause, scrub, replay, then read the real case study.">
 <meta name="theme-color" content="#4f6dff">
 
 <!-- OpenGraph + Twitter card -->
 <meta property="og:type"        content="website">
-<meta property="og:title"       content="Demo — watch a paragraph become a working pilot.">
+<meta property="og:title"       content="Threadlight — from a business process to a working pilot on Microsoft Foundry">
 <meta property="og:description" content="An evidence-backed reel: paragraph in → specced, validated on your PC, and shown through captured deployment proof. Play, pause, scrub, replay — then open the real case study for the live run.">
 <meta property="og:url"         content="https://aiappsgbb.github.io/threadlight-skills/">
 <meta property="og:site_name"   content="Threadlight">
@@ -17,7 +17,7 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card"        content="summary_large_image">
-<meta name="twitter:title"       content="Demo — watch a paragraph become a working pilot.">
+<meta name="twitter:title"       content="Threadlight — from a business process to a working pilot on Microsoft Foundry">
 <meta name="twitter:description" content="An evidence-backed reel of the Threadlight pipeline: one paragraph types in, the agent is specced, validated on your PC, and shown through captured deployment proof — play, pause, scrub, replay, then read the real case study.">
 <meta name="twitter:image"       content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
 
@@ -830,7 +830,7 @@
     .hiw-role.is-govern .hiw-verb { color: #2c7a2f; border-color: rgba(120,190,70,.55); }
   }
 </style>
-<link rel="stylesheet" href="assets/home-structure.css?v=d1028030">
+<link rel="stylesheet" href="assets/home-structure.css?v=b1ed7236">
 </head>
 <body>
 
@@ -849,9 +849,34 @@
     <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
     <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
   </nav>
+  <details class="home-directory">
+    <summary aria-label="Explore all Threadlight chapters">Explore</summary>
+    <nav class="home-directory-panel" aria-label="All Threadlight chapters">
+      <section class="home-directory-group" data-site-group="basics" aria-labelledby="home-group-basics"><h2 id="home-group-basics">Basics</h2><a href="./basics.html"><strong>Basics</strong><span>Skills for building agents and running business processes</span></a><a href="./glossary.html"><strong>Glossary</strong><span>Plain definitions of the terms used here</span></a></section>
+      <section class="home-directory-group" data-site-group="build" aria-labelledby="home-group-build"><h2 id="home-group-build">Build</h2><a href="./funnel.html"><strong>Build</strong><span>Six phases from brief to handoff</span></a><a href="./blueprint.html"><strong>Blueprint</strong><span>Turn a process brief into a starter plan</span></a><a href="./industries.html"><strong>Industries</strong><span>Find a process in your domain</span></a><a href="./workbook.html"><strong>Workbook</strong><span>Build and check a pilot yourself</span></a></section>
+      <section class="home-directory-group" data-site-group="example" aria-labelledby="home-group-example"><h2 id="home-group-example">Case study</h2><a href="./case-study.html"><strong>Case study</strong><span>Inspect a historical run and its receipts</span></a></section>
+      <section class="home-directory-group" data-site-group="production" aria-labelledby="home-group-production"><h2 id="home-group-production">Production</h2><a href="./production.html"><strong>Production</strong><span>Start here: what go-live needs</span></a><a href="./agent-governance.html"><strong>Release guide</strong><span>Step by step from your pilot</span></a><a href="./operate.html"><strong>Operate</strong><span>Day-2 routines after go-live</span></a><a href="./governance.html"><strong>Governance &amp; AgentOps</strong><span>Controls and runtime evidence</span></a><a href="./customize.html"><strong>Customize</strong><span>Fit a customer environment</span></a><a href="./self-improving.html"><strong>Self-improving CI</strong><span>Evidence to reviewed changes</span></a></section>
+    </nav>
+  </details>
 </header>
 
 <main>
+  <section class="home-what" aria-label="What Threadlight is">
+    <div class="wrap wrap-wide">
+      <p class="home-what-lead"><strong>Threadlight is</strong> a library of skills that GitHub&nbsp;Copilot follows in your repository to turn a business process into a working agent pilot on Microsoft&nbsp;Foundry, then carry it toward production with selected runtime controls and the evidence for each.</p>
+      <dl class="home-what-facts">
+        <div><dt>Who it is for</dt><dd>Microsoft solution engineers and customer teams shaping an agent pilot together.</dd></div>
+        <div><dt>What you need</dt><dd>GitHub Copilot. Design, code generation and local checks can run without an Azure subscription; a live pilot needs an Azure subscription with Microsoft Foundry, where the agent runs as a hosted agent.</dd></div>
+        <div><dt>What it is not</dt><dd>Not an official Microsoft product or support offering: an open-source pattern from Microsoft GBB, provided as is under the MIT License. A readiness assessment identifies gaps; it does not certify production.</dd></div>
+      </dl>
+      <nav class="home-what-links" aria-label="Start here">
+        <a href="./basics.html">Understand the pattern</a>
+        <a href="./workbook.html">Try it hands-on</a>
+        <a href="./production.html">Plan for production</a>
+        <a href="./glossary.html">Glossary</a>
+      </nav>
+    </div>
+  </section>
   <!-- ====================== INTRO ====================== -->
   <section class="scene demo-intro home-intro" aria-labelledby="demo-h">
     <div class="wrap wrap-wide">

@@ -12,6 +12,7 @@
 #
 # Internal working notes (a dated solution review and the Pages narrative
 # spec) stay readable in the repository but are not published as site pages.
+# README.md is the repository's docs index for GitHub; the site has its own Home.
 #
 # NOTE: a custom `exclude` replaces Jekyll's default list, so the standard
 # defaults are re-listed below to avoid accidentally publishing vendor files.
@@ -19,6 +20,7 @@ exclude:
   - superpowers/
   - solution-review-2026-09-15.md
   - production-readiness-pages-spec.md
+  - README.md
   - .sass-cache
   - .jekyll-cache
   - gemfiles

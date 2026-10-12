@@ -47,6 +47,7 @@ ASSETS = {
     "customize-visuals.css": DOCS / "assets" / "customize-visuals.css",
     "workbook-visuals.css": DOCS / "assets" / "workbook-visuals.css",
     "home-structure.css": DOCS / "assets" / "home-structure.css",
+    "glossary.css": DOCS / "assets" / "glossary.css",
     "lifecycle-visuals.css": DOCS / "assets" / "lifecycle-visuals.css",
     "production-experience.css": DOCS / "assets" / "production-experience.css",
     "production-experience.js": DOCS / "assets" / "production-experience.js",

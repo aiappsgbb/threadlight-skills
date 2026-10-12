@@ -368,7 +368,7 @@ def test_supplemental_destinations_cannot_overlap_each_other(tmp_path):
 
 def test_documented_artifacts_are_projections_not_parent_snapshots():
     text = (ROOT / "docs/production-readiness.md").read_text()
-    section = text[text.index("Artifacts are"):text.index("> **What's new")]
+    section = text[text.index("Artifacts are"):text.index("> *Green `safe-check` proves")]
     for term in ("RUNNER_TEMP", "projection", "raw", "journal", "export-status.json"):
         assert term in section
     assert "preserves all\nresource gaps" not in section

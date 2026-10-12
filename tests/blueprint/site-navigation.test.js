@@ -14,7 +14,7 @@ const primary = [
   { slug: 'production', title: 'Production' },
 ];
 const groups = [
-  { id: 'basics', title: 'Basics', entry: 'basics', slugs: ['basics'] },
+  { id: 'basics', title: 'Basics', entry: 'basics', slugs: ['basics', 'glossary'] },
   { id: 'build', title: 'Build', entry: 'funnel', slugs: ['funnel', 'blueprint', 'industries', 'workbook'] },
   { id: 'example', title: 'Case study', entry: 'case-study', slugs: ['case-study'] },
   { id: 'production', title: 'Production', entry: 'production', slugs: ['production', 'agent-governance', 'operate', 'governance', 'customize', 'self-improving'] },

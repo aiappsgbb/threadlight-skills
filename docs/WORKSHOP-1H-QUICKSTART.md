@@ -1,6 +1,6 @@
 # 1-Hour Workshop — Threadlight Quickstart
 
-> **Outcome by minute 60:** both Copilot plugins installed, a retail
+> **Outcome by minute 60:** the Copilot plugins installed, a retail
 > returns-triage PoC **designed from scratch** in the room, running locally
 > against your own Azure OpenAI deployment, killer demo prompts answered live
 > on screen, and `threadlight-deploy` + `azd up` kicked off to Azure —
@@ -77,7 +77,7 @@ If anything's red, fix it now — don't try to fix it inside the runbook.
 |---|---|---|---|
 | **0–5** | Welcome + frame | Walk §1 together: what we'll build and the vocabulary heads-up. | Slide-less; just the doc. |
 | **5–10** | Validate prereqs | Run the T-1h prompt (§2). | Green tool output in Copilot CLI. |
-| **10–15** | Install both plugins | Prompt §4.1. | Plugin list shows both. |
+| **10–15** | Install the plugins | Prompt §4.1. | Plugin list shows threadlight-skills, then the official azure plugins. |
 | **15–30** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` stream to disk. Read them together as they land. *If it's still in demo-deck / sales-kit generation past ~minute 25, interrupt with "skip demo and sales kit, move on" to protect the budget.* | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. Deployment artifacts (Dockerfile, `azure.yaml`, `infra/main.bicep`) come later from `threadlight-deploy` — §6. |
 | **30–40** | Pattern 0 bootstrap | Prompt §4.3 with your AOAI endpoint + deployment. | Two clean exits (`--info`, `--check`). The `--info` table shows the auto-discovered entities and CRUD tools. |
 | **40–55** | Live demo on `localhost:8501` | Prompt §4.4, then paste each killer prompt from `tests/killer-prompts.md` (§4.5) into the browser in order. Watch the trace: SPEC-derived `list_*` / `get_*` / `update_*` tools fire without anyone writing them. | Streamlit chat. One answer per killer prompt — same agent, different signals in, different outcomes per branch. |
@@ -99,9 +99,13 @@ Type each prompt verbatim into Copilot CLI. The skills handle the mechanics
 (plugin installs, `pip install`, env files, process launch). Copilot CLI shows
 every tool call so you can see what's running.
 
-### 4.1 Install both Copilot plugins
+### 4.1 Install the Copilot plugins
 
-> install the awesome-gbb and threadlight-skills plugins from the aiappsgbb org on github, then list my installed copilot plugins to confirm
+> install the threadlight-skills plugin from aiappsgbb/threadlight-skills first, then the official azure, azure-cost and foundry-iq-skills plugins from microsoft/azure-skills, then list my installed copilot plugins to confirm
+
+Install threadlight-skills before other skill-heavy plugins so its skills stay
+visible; see the README's [Install](../README.md#install) section. The optional
+`awesome-gbb` patterns are not needed for this workshop.
 
 ### 4.2 Design the use case live
 
@@ -261,8 +265,8 @@ Then review the broader readiness work:
   deliberate **manual handoff** after a green scorecard, and a **separate
   repo/pipeline** from the central platform — it never touches the Citadel
   hub, shared APIM, or platform networking (those stay `threadlight-citadel-hub`).
-- **Governance / model routing** — `threadlight-citadel-spoke` skill in
-  `awesome-gbb`. Routes model traffic through a shared APIM AI Gateway and
+- **Governance / model routing** — the Threadlight-owned
+  `threadlight-citadel-spoke` skill (optional). Routes model traffic through a shared APIM AI Gateway and
   flips `AZURE_AI_MODEL_DEPLOYMENT_NAME` to the `connectionName/deploymentName`
   form during spoke onboarding.
 - **Pre-deploy gates** — `threadlight-safe-check` validates every resource

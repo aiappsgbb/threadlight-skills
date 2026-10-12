@@ -2,7 +2,7 @@
   // Threadlight Skills — thin, consumer-focused dev box.
   //
   // Opens in GitHub Codespaces (or any devcontainer host) with GitHub Copilot
-  // CLI installed and all 16 threadlight skills wired from this checkout. It is
+  // CLI installed and all threadlight skills wired from this checkout. It is
   // deliberately lightweight: no Python/Node test toolchain and no Azure deploy
   // tooling (azd/az/bicep/Docker). See the "Quickstart in GitHub Codespaces"
   // section of the README for what works here and the known limitations.

@@ -21,7 +21,10 @@ test('chapter redesign preserves shared assets byte for byte', () => {
 
 test('Home leads with the demo rather than the relocated governance reference', () => {
   const html = read('docs/index.html');
-  assert.match(html, /<main>\s*(?:<!--[\s\S]*?-->\s*)*<section class="scene demo-intro home-intro"/);
+  // A short product definition may precede the demo; governance detail may not.
+  assert.match(html, /<main>\s*(?:<!--[\s\S]*?-->\s*)*(?:<section class="home-what"[\s\S]*?<\/section>\s*)?(?:<!--[\s\S]*?-->\s*)*<section class="scene demo-intro home-intro"/);
+  const band = html.match(/<section class="home-what"[\s\S]*?<\/section>/)?.[0] || '';
+  for (const term of ['ACS', 'PEP', 'Agent Hooks', 'ASSERT', 'governance_probe_noop']) assert.ok(!band.includes(term), term);
   assert.doesNotMatch(html, /aria-label="Runtime governance evidence boundary"/);
   for (const file of ['docs/governance.html', 'docs/agent-operations.md']) {
     for (const term of ['SAFE', 'ACS', 'Agent Hooks', 'ASSERT', 'governance_probe_noop']) {

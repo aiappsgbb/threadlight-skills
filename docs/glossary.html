@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Glossary — Threadlight</title>
+<meta name="description" content="Plain definitions of the terms used across Threadlight: skills, hosted agents, Citadel, the policy decision and enforcement points, and the levels of evidence.">
+<meta name="theme-color" content="#0a0d14">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Glossary — Threadlight">
+<meta property="og:description" content="Plain definitions of the terms used across Threadlight, with the limit of what each one proves.">
+<meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/glossary.html">
+<meta property="og:site_name" content="Threadlight">
+<meta property="og:image" content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Glossary — Threadlight">
+<meta name="twitter:description" content="Plain definitions of the terms used across Threadlight, with the limit of what each one proves.">
+<meta name="twitter:image" content="https://aiappsgbb.github.io/threadlight-skills/assets/og/og-home.png">
+<link rel="canonical" href="https://aiappsgbb.github.io/threadlight-skills/glossary.html">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%23a8ff60' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
+<link rel="stylesheet" href="assets/glossary.css?v=a3f24534">
+</head>
+<body class="chapter-page chapter-basics chapter-experience glossary-page">
+<a class="skip-link" href="#main">Skip to the glossary</a>
+<div class="atmosphere" aria-hidden="true"></div>
+<header class="masthead">
+  <div class="brand"><a class="brand-name" href="./index.html"><span class="brand-mark" aria-hidden="true"></span>Threadlight<span>by Microsoft GBB · AI Apps</span></a></div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html">Home</a>
+    <a href="./basics.html" aria-current="location">Basics</a>
+    <a href="./funnel.html">Build</a>
+    <a href="./case-study.html">Case study</a>
+    <a href="./production.html">Production</a>
+  </nav>
+</header>
+<main id="main">
+  <div class="wrap glossary-wrap">
+    <div class="cx-journey">
+      <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./basics.html">Basics</a><span aria-hidden="true">/</span><span aria-current="page">Glossary</span></nav>
+      <a class="cx-journey-next" href="./funnel.html">Next: Build <span aria-hidden="true">→</span></a>
+    </div>
+    <header class="glossary-intro">
+      <h1>Glossary</h1>
+      <p>The words used across these pages, in plain language. Where a term describes evidence, the definition also says what it does <em>not</em> prove.</p>
+      <nav class="glossary-index" aria-label="Glossary sections">
+        <a href="#pattern">The pattern</a>
+        <a href="#foundation">Platform and operations</a>
+        <a href="#governance">Runtime governance</a>
+        <a href="#evidence">Levels of evidence</a>
+      </nav>
+    </header>
+
+    <section class="glossary-group" id="pattern" aria-labelledby="pattern-h">
+      <h2 id="pattern-h">The pattern</h2>
+      <dl>
+        <div><dt id="skill">Skill</dt><dd>A reusable procedure written in Markdown, with optional scripts and references, that an agent loads when a task needs it. Threadlight's engineering skills guide a coding agent such as GitHub Copilot; the agent you build has its own business skills.</dd></div>
+        <div><dt id="spec">SPEC</dt><dd>The design document (<code>specs/SPEC.md</code>) written from your brief: the process, people, tools, data, value model and production posture. Later skills read the SPEC instead of asking again.</dd></div>
+        <div><dt id="foundry">Microsoft Foundry</dt><dd>The Azure platform that hosts the models, the agent, its evaluations and its traces. Every agent Threadlight produces runs in Foundry.</dd></div>
+        <div><dt id="hosted-agent">Hosted agent</dt><dd>The default: the agent's code runs as a container that Microsoft Foundry manages. Threadlight never places the agent loop in application code; web apps and Container Apps only host the user interface, a thin proxy, tool servers or jobs.</dd></div>
+        <div><dt id="prompt-agent">Prompt agent</dt><dd>A Foundry agent defined only by instructions and a model. Allowed only for trivial cases and only on an explicit opt-in by the user, recorded in the SPEC.</dd></div>
+        <div><dt id="mcp">MCP</dt><dd>Model Context Protocol: the open protocol the agent uses to call tools. When a pilot needs its own tool server, Threadlight hosts it on Azure Container Apps.</dd></div>
+        <div><dt id="hitl">Human in the loop (HITL)</dt><dd>A person reviews or approves a step before it takes effect. For a governed action, the approval is authenticated, tied to that exact action and usable once.</dd></div>
+      </dl>
+    </section>
+
+    <section class="glossary-group" id="foundation" aria-labelledby="foundation-h">
+      <h2 id="foundation-h">Platform and operations</h2>
+      <dl>
+        <div><dt id="citadel">Citadel</dt><dd>The AI Citadel governance hub: a shared Azure API Management AI gateway in front of model calls, with access contracts. Optional: recommended when the customer already runs or is provisioning one. It governs access to models, not every downstream action.</dd></div>
+        <div><dt id="spoke">Spoke</dt><dd>A pilot connected to a Citadel hub through an access contract. The pilot keeps its own resources; its model traffic goes through the hub.</dd></div>
+        <div><dt id="otel">OTel</dt><dd>OpenTelemetry, the tracing standard. The agent sends traces to Application Insights so they are visible in Foundry.</dd></div>
+        <div><dt id="agentops">AgentOps</dt><dd>An optional, opt-in preview for operating evidence after go-live: telemetry, evaluations and change records for the deployed agent. A pilot does not need it.</dd></div>
+        <div><dt id="readiness">Readiness assessment</dt><dd>The production-ready skill scores a pilot against 13 pillars and lists each gap with an owner. It identifies gaps; it does not certify production.</dd></div>
+      </dl>
+    </section>
+
+    <section class="glossary-group" id="governance" aria-labelledby="governance-h">
+      <h2 id="governance-h">Runtime governance</h2>
+      <p class="glossary-note">These parts work together only for the actions you select. A policy file, a green test run or one governed action never makes the whole agent governed.</p>
+      <dl>
+        <div><dt id="safe">SAFE</dt><dd>Scope, Anchored decisions, Flow integrity, Escalation: the method used to define the business rules an action must respect and to select which actions to bind. It is a way of specifying, not a runtime component.</dd></div>
+        <div><dt id="binding">Binding</dt><dd>One selected consequential action tied to its policy, approval and audit rules. Evidence is collected per binding and never covers the whole agent.</dd></div>
+        <div><dt id="unbound-read">Unbound read</dt><dd>A read-only tool call outside any binding. It keeps working without a policy decision.</dd></div>
+        <div><dt id="pdp">PDP</dt><dd>Policy decision point: the component that decides whether a bound action is allowed, denied or needs a person.</dd></div>
+        <div><dt id="acs">ACS</dt><dd>Agent Control Specification: the policy engine Threadlight uses as the policy decision point (PDP). It evaluates Rego rules locally through Open Policy Agent (OPA).</dd></div>
+        <div><dt id="pep">PEP</dt><dd>Policy enforcement point: the native host or gateway in front of the action, which actually lets it run or stops it. What it enforces counts, not what a policy file says.</dd></div>
+        <div><dt id="agent-hooks">Agent Hooks</dt><dd>The host and interceptor contract, with its SDK, that lets the host intercept an agent's tool and lifecycle events and consult the PDP.</dd></div>
+        <div><dt id="agt">AGT</dt><dd>Agent Governance Toolkit: a toolkit of governance components Threadlight builds on. It is not an enforcement layer by itself and does not protect every tool automatically.</dd></div>
+        <div><dt id="assert">ASSERT</dt><dd>Assurance: testing the agent's behaviour and evidence. It is not an enforcement engine and does not authorize actions before they run.</dd></div>
+      </dl>
+    </section>
+
+    <section class="glossary-group" id="evidence" aria-labelledby="evidence-h">
+      <h2 id="evidence-h">Levels of evidence</h2>
+      <p class="glossary-note">Each level proves something different. A lower level never stands in for a higher one.</p>
+      <dl>
+        <div><dt id="offline-inventory">Offline inventory</dt><dd>What a static check of the repository finds. It shows what is declared, not what runs.</dd></div>
+        <div><dt id="local-14">LOCAL-14</dt><dd>The local proof suite that runs the actual served application path and checks allow, deny, failure, approval and final-effect outcomes. Local evidence, not live evidence.</dd></div>
+        <div><dt id="ctk">CTK</dt><dd>Conformance Test Kit: the upstream test vectors for the native governance packages, run locally against the unmodified published packages. Local conformance, not live enforcement.</dd></div>
+        <div><dt id="collector">Collector</dt><dd>The hosted probe that checks that a deployed governed path answers. It calls only the reserved <code>governance_probe_noop</code> action, so it proves the path is reachable, not that a business write is governed.</dd></div>
+        <div><dt id="live-evidence">Live evidence</dt><dd>Observed on the deployed environment after this deployment, for the same image, identities and policy. Receipts from earlier runs do not carry over.</dd></div>
+      </dl>
+    </section>
+
+    <p class="glossary-deeper">Implementing governance? The <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-governance-deep-dive.md">governance deep dive</a> defines the same parts at engineering depth.</p>
+  </div>
+</main>
+<footer><div class="left">Threadlight · open guidance, opinionated tools</div><div class="right"><a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></div></footer>
+<script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=306ac7b4"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
+</body>
+</html>

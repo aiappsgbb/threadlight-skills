@@ -13,6 +13,7 @@
         id: 'basics', title: 'Basics', entry: 'basics',
         pages: [
           { slug: 'basics', title: 'Basics', description: 'Skills for building agents and running business processes' },
+          { slug: 'glossary', title: 'Glossary', description: 'Plain definitions of the terms used here' },
         ],
       },
       {
@@ -33,12 +34,12 @@
       {
         id: 'production', title: 'Production', entry: 'production',
         pages: [
-          { slug: 'production', title: 'Production', description: 'Read the architecture, controls and evidence' },
-          { slug: 'agent-governance', title: 'Production guide', description: 'Release a pilot under governance' },
+          { slug: 'production', title: 'Production', description: 'Start here: what go-live needs' },
+          { slug: 'agent-governance', title: 'Release guide', description: 'Step by step from your pilot' },
           { slug: 'operate', title: 'Operate', description: 'Day-2 routines after go-live' },
           { slug: 'governance', title: 'Governance & AgentOps', description: 'Controls and runtime evidence' },
           { slug: 'customize', title: 'Customize', description: 'Fit a customer environment' },
-          { slug: 'self-improving', title: 'Improve', description: 'Evidence to reviewed changes' },
+          { slug: 'self-improving', title: 'Self-improving CI', description: 'Evidence to reviewed changes' },
         ],
       },
     ],

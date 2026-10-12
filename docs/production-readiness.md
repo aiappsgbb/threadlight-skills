@@ -473,47 +473,6 @@ noop-only collection cannot make the canonical business workload fully ready.
 There is no automatic teardown of protected shared services; operators own
 cleanup. Broader acceptance/deployment verification is separate.
 
-> **What's new in v0.3.0** (Nov 2025). The 0.3.0 release closed an
-> adversarial-review smoking gun: 16 critical static checks were
-> regex-searching the concatenated raw text of every `.bicep` file in
-> the repo, so a *comment* like `// virtualNetworks should be used`
-> made `NET-001` pass. 0.3.0 replaces that with `BicepGraph` — a real
-> ARM-graph parser that shells `az bicep build --stdout` and walks the
-> compiled JSON resources (including nested `Microsoft.Resources/
-> deployments` from module references). The 14 most-critical static
-> checks (`NET-001/002/003/004`, `IAM-002/005`, `SEC-001/005/006`,
-> `OBS-001/002`, `REL-006`, `MDL-001`) now answer the question "is the
-> resource *declared*?" instead of "does the word appear *somewhere*?".
->
-> Other 0.3.0 changes:
->
-> - **`bicep` CLI is now a hard prerequisite.** Missing CLI exits 2
->   with `az bicep install` instructions, no silent regex fallback.
-> - **`not-verified` scores 0**, not 2-of-4. A run with all gaps marked
->   "couldn't check" no longer gets a 50% honour score.
-> - **`verification_debt` is a first-class manifest field** — total +
->   per-pillar count of `not-verified` findings, surfaced in the exec
->   summary so the gap "we couldn't check this" no longer hides inside
->   the percent.
-> - **21 unimplemented stubs retired** to `experimental: true`,
->   excluded from scoring unless `--include-experimental` is set.
-> - **5 long-stubbed live probes wired:** OBS-106 (per-account diag
->   settings), OBS-102 (App Insights KQL via `az monitor log-analytics
->   query`), SEC-106 (KV diag coverage), SRE-104 (activity-log alerts),
->   NET-501 (Citadel APIM Access Contract via `TL_CITADEL_HUB_RG`).
-> - **14 new finding IDs:** Defender plans (`GOV-101/102/103`),
->   Secure Score floor (`GOV-104`), Defender recs surfaced
->   (`GOV-105`), Policy (`GOV-201/202/203`), Foundry RBAC + knowledge
->   index PE + thread policy (`MDL-009/010/011`), quota pre-flight
->   (`MDL-110/111`), restore-drill freshness (`REL-007/008`).
-> - **Industrialization:** `--diff`, `--gate-preview` (exit 2 on
->   would-fail-hard-gate), `--remediate <id>` (prints bash recipe),
->   `--include-experimental`, trend CSV append per run, OIDC CI
->   recipe replaces `AZURE_CREDENTIALS`, `azd hook` install script.
->
-> See `CHANGELOG.md` for the full delta. Bicep-only — Terraform is
-> explicitly out of scope in this skill, forever.
-
 > *Green `safe-check` proves a pilot is structurally complete and behaves. It does not prove the customer's CISO, SRE, FinOps and network architect can sign off on it. That conversation needs an evidence-backed artefact — produced in one command, not weeks of tribal-knowledge assembly.*
 
 This page is the long-form companion to the [`threadlight-production-ready`](../skills/threadlight-production-ready/SKILL.md) skill. It explains **what production-readiness means in the threadlight chain**, the **three postures** a pilot can target, the **thirteen cross-cutting pillars** the skill scores, the **status taxonomy** that surfaces what's actually blocking go-live, and the **two moments per pilot lifecycle** when you run it.
@@ -526,7 +485,7 @@ The `threadlight-*` chain ships a working agent in one session: **design → loc
 
 But **"green safe-check" ≠ "production-ready"**. The next conversation — CISO, SRE, FinOps, network architect, data protection — needs an artefact that says:
 
-- **What posture is this in?** Citadel spoke? AGT-only? Standard AI gateway?
+- **What posture is this in?** Citadel spoke? Native selected runtime enforcement without a central model gateway? Standard AI gateway?
 - **What's missing?** Per-pillar gaps with severity.
 - **What would the uplift cost?** Effort estimate + named remediation skill.
 - **Who owns each gap?** Pilot team / customer team / SRE / SecOps.
@@ -557,7 +516,7 @@ The report is **the conversation starter** with the customer's production team. 
 
 A pilot's production posture is **resolved from SPEC § 12** (the production-readiness section of the threadlight SPEC). The skill ships a [`spec-section-12-template.md`](../skills/threadlight-production-ready/references/spec-section-12-template.md) for authoring it. If § 12 is missing, posture falls back to `standard-ai-gateway` and an `RDY-002` finding surfaces "author § 12 before the architecture review."
 
-### 🛡️ Citadel spoke *(default · recommended)*
+### 🛡️ Citadel spoke *(optional · recommended when the customer runs or is provisioning a Citadel hub)*
 
 The customer's **AI Citadel hub** fronts model calls via its configured APIM
 controls and access contracts. Selected native host or tool-gateway enforcement
@@ -567,7 +526,7 @@ is a separate action boundary, requiring its own current policy and evidence.
 downstream action. Correlate its records with selected action-policy and durable
 receipt evidence; do not assume a shared audit chain from topology alone.
 
-**Right when** the customer tenant already has — or is provisioning — Citadel. This is the GBB AI Apps recommended posture for any new pilot.
+**Right when** the customer tenant already has — or is provisioning — Citadel. In that case it is the GBB AI Apps recommended posture. Citadel is optional: a pilot does not need a hub, and without § 12 the resolver falls back to `standard-ai-gateway`.
 
 Remediation skills: [`threadlight-citadel-spoke`](../skills/threadlight-citadel-spoke/SKILL.md), [`threadlight-citadel-hub`](../skills/threadlight-citadel-hub/SKILL.md), [`threadlight-govern/references/agt-inprocess`](../skills/threadlight-govern/references/agt-inprocess/README.md).
 
@@ -590,7 +549,7 @@ Brownfield or regulated estate with an **existing APIM**, NetSec-controlled **VN
 
 Remediation skills: [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry), [`threadlight-deploy/references/hosted-agent/maf`](../skills/threadlight-deploy/references/hosted-agent/maf/README.md), [`threadlight-tenant-isolation`](../skills/threadlight-tenant-isolation/SKILL.md).
 
-> **Hybrid is supported.** `--target hybrid` runs Citadel checks where applicable and AGT checks where Citadel artefacts are missing. Useful for pilots mid-uplift.
+> **Hybrid is supported.** `--target hybrid` runs Citadel checks where applicable and native selected runtime-enforcement checks (CLI target `agt`) where Citadel artefacts are missing. Useful for pilots mid-uplift.
 
 ---
 
@@ -600,7 +559,7 @@ Every pillar has its own [reference doc under `references/pillars/`](https://git
 
 | # | Pillar | What "good" looks like | Primary remediation skill |
 |---|---|---|---|
-| 1 | [`network-posture`](../skills/threadlight-production-ready/references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / AGT / VNet / standard); **data-residency sub-scored** (model region, APIM region, data-plane regions, backups, cross-border support) | `threadlight-citadel-spoke`, `microsoft-foundry` |
+| 1 | [`network-posture`](../skills/threadlight-production-ready/references/pillars/01-network-posture.md) | Resolved posture target met (Citadel spoke / native selected enforcement / VNet / standard); **data-residency sub-scored** (model region, APIM region, data-plane regions, backups, cross-border support) | `threadlight-citadel-spoke`, `microsoft-foundry` |
 | 2 | [`agent-governance`](../skills/threadlight-production-ready/references/pillars/02-agent-governance.md) | Current selected-binding v1 evidence; exact policy/config/deployment and live-proof requirements, not import or policy-file presence | `threadlight-govern`, `threadlight-governed-actions` |
 | 3 | [`identity-access`](../skills/threadlight-production-ready/references/pillars/03-identity-access.md) | Workloads use **managed identity**; **no client secrets**; RBAC least-privilege; Key Vault access via RBAC not access policies; **agent (non-human) identity governed** &mdash; passwordless binding, named owner, least-privilege scope, lifecycle/review (emits `agent-identity.json`) | `threadlight-deploy/references/hosted-agent/maf`, `entra-agent-id`, `threadlight-govern/references/agt-inprocess`, `threadlight-tenant-isolation` |
 | 4 | [`secrets`](../skills/threadlight-production-ready/references/pillars/04-secrets.md) | Key Vault with **soft-delete + purge protection**; no hardcoded secrets in repo; rotation policy declared; control-plane vs data-plane access scoped | `threadlight-deploy/references/azd-modules`, `threadlight-deploy/references/hosted-agent/maf` |
@@ -855,7 +814,7 @@ certify production or replace current selected-binding governance evidence.
 - **Sample CI workflow (PR comments + artefacts):** [`references/ci-github-actions.yml`](../skills/threadlight-production-ready/references/ci-github-actions.yml)
 - **End-to-end workshop (1 hour, includes a production-readiness pass):** [WORKSHOP-1H-QUICKSTART.md](WORKSHOP-1H-QUICKSTART.md)
 - **The whole threadlight chain (technical briefing):** [THREADLIGHT.md](../THREADLIGHT.md)
-- **Foundational skills (Citadel, AGT, Foundry, SRE Agent):** [awesome-gbb](https://aiappsgbb.github.io/awesome-gbb/)
+- **Citadel and in-process AGT:** Threadlight-owned [`threadlight-citadel-hub`](../skills/threadlight-citadel-hub/SKILL.md), [`threadlight-citadel-spoke`](../skills/threadlight-citadel-spoke/SKILL.md) and [`threadlight-govern/references/agt-inprocess`](../skills/threadlight-govern/references/agt-inprocess/README.md). Optional GBB patterns such as SRE Agent stay in [awesome-gbb](https://aiappsgbb.github.io/awesome-gbb/).
 
 ---
 
