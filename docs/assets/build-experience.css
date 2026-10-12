@@ -48,6 +48,10 @@
 
 .build-stepper.is-stepped:not(.show-all) [data-build-phase]:not(.is-active) { display: none; }
 .build-stepper.is-stepped:not(.show-all) .build-panels .phase-scene { padding-block: 0; border-top: 0; }
+/* site.css styles the legacy #scene-chain block with an ID selector (140px padding,
+   tinted background); inside the stepper it must behave like the other phases. */
+.chapter-funnel .build-panels #scene-chain { padding: 28px 0; background: none; border-top: 1px solid var(--line); }
+.build-stepper.is-stepped:not(.show-all) .build-panels #scene-chain { padding-block: 0; border-top: 0; }
 .build-stepper:not(.is-stepped) .phase-next,
 .build-stepper.show-all .phase-next { display: none; }
 
@@ -127,6 +131,8 @@
   .build-panels .phase-reference, .build-panels .phase-diagram { grid-column: 1; grid-row: auto; }
   .chapter-funnel .build-panels .phase-scene { padding: 24px 0; }
   .build-stepper.is-stepped:not(.show-all) .build-panels .phase-scene { padding-top: 16px; }
+  .chapter-funnel .build-panels #scene-chain { padding: 24px 0; }
+  .build-stepper.is-stepped:not(.show-all) .build-panels #scene-chain { padding: 16px 0 0; }
   .chapter-funnel #scene-cta.build-closing { padding: 20px 0 24px; }
   .build-closing-grid { grid-template-columns: 1fr; }
   .build-closing-links { display: flex; flex-wrap: wrap; column-gap: 18px; }

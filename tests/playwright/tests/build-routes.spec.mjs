@@ -103,3 +103,35 @@ test('closing blocks are separated by a divider and gutters on desktop', async (
     }
   }
 });
+
+test('every phase starts at the same offset below the header', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const via of ['rail', 'hash']) {
+    await page.goto('/funnel.html');
+    const rows = [];
+    for (const id of PHASES) {
+      if (via === 'rail') await page.locator(`#scene-funnel a[href="#${id}"]`).click();
+      else await page.goto(`/funnel.html#${id}`);
+      await expect(page.locator(`#${id}`)).toBeVisible();
+      // Wait for smooth scrolling to settle before measuring.
+      await page.waitForFunction(() => new Promise(resolve => {
+        const start = scrollY;
+        setTimeout(() => resolve(scrollY === start), 200);
+      }));
+      rows.push(await page.evaluate(id => {
+        const section = document.getElementById(id).getBoundingClientRect();
+        const first = document.querySelector(`#${id} .phase-copy`).firstElementChild.getBoundingClientRect();
+        const header = Math.max(...['.masthead', '.floating-toc'].map(s => document.querySelector(s)?.getBoundingClientRect().bottom || 0));
+        return { id, gap: first.top - section.top, belowHeader: section.top - header };
+      }, id));
+    }
+    const gaps = rows.map(row => row.gap);
+    expect(Math.max(...gaps) - Math.min(...gaps), `${via}: ${JSON.stringify(rows)}`).toBeLessThanOrEqual(8);
+    const offsets = rows.map(row => row.belowHeader);
+    expect(Math.max(...offsets) - Math.min(...offsets), `${via} offsets: ${JSON.stringify(rows)}`).toBeLessThanOrEqual(20);
+    for (const row of rows) {
+      expect(row.belowHeader, `${via} ${row.id}`).toBeGreaterThanOrEqual(-1);
+      expect(row.belowHeader, `${via} ${row.id}`).toBeLessThanOrEqual(140);
+    }
+  }
+});
