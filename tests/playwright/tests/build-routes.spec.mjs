@@ -79,3 +79,27 @@ test('without JavaScript every phase stays readable', async ({ browser }) => {
     await context.close();
   }
 });
+
+test('closing blocks are separated by a divider and gutters on desktop', async ({ page }) => {
+  for (const width of [1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/funnel.html');
+    const blocks = await page.locator('.build-closing-grid > div').evaluateAll(nodes => nodes.map(node => {
+      const box = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      const content = [...node.children].map(child => child.getBoundingClientRect());
+      return {
+        left: box.left, right: box.right,
+        border: parseFloat(style.borderLeftWidth),
+        contentLeft: Math.min(...content.map(r => r.left)),
+        contentRight: Math.max(...content.map(r => r.right)),
+      };
+    }));
+    expect(blocks).toHaveLength(3);
+    for (let i = 1; i < blocks.length; i++) {
+      expect(blocks[i].border, `divider before block ${i} at ${width}`).toBeGreaterThanOrEqual(1);
+      expect(blocks[i].contentLeft - blocks[i].left, `left gutter of block ${i} at ${width}`).toBeGreaterThanOrEqual(24);
+      expect(blocks[i - 1].right - blocks[i - 1].contentRight, `right gutter of block ${i - 1} at ${width}`).toBeGreaterThanOrEqual(24);
+    }
+  }
+});

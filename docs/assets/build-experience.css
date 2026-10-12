@@ -73,12 +73,12 @@
 /* Closing: next session, other starting points */
 .build-closing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--line-2); }
 .build-closing-grid > div { min-width: 0; padding: 18px 28px 0 0; }
-.build-closing-grid > div + div { padding-left: 28px; border-left: 1px solid var(--line); }
+.build-closing-grid > div + div { padding-left: 28px; border-left: 1px solid var(--line-2); }
 .build-closing-links { margin: 0; padding: 0; list-style: none; }
 .build-closing-links li { border-top: 1px solid var(--line); }
 .build-closing-links a { display: flex; align-items: center; min-height: 44px; color: var(--ink-0); font-size: 14px; border-bottom: 0; }
 .build-closing-links a:hover { color: var(--chapter-accent); }
-.chapter-funnel .build-closing-grid #scene-industries { padding-block: 18px 0; background: none; border-top: 0; min-height: 0; }
+.chapter-funnel .build-closing-grid #scene-industries { padding: 18px 28px 0; background: none; border-top: 0; min-height: 0; }
 .build-closing-item p { color: var(--ink-1); font-size: 14px; line-height: 1.6; margin: 0 0 12px; }
 .build-closing-item h2 { font: 400 22px/1.2 var(--serif); margin: 0 0 8px; color: var(--ink-0); }
 .build-closing-item .btn { padding: 10px 14px; font-size: 13px; }
@@ -96,6 +96,7 @@
   .build-closing-grid { grid-template-columns: 1fr 1fr; }
   .build-closing-lead { grid-column: 1 / -1; }
   .build-closing-grid > div:nth-child(2) { padding-left: 0; border-left: 0; }
+  .chapter-funnel .build-closing-grid #scene-industries { padding-left: 0; }
 }
 @media (max-width: 760px) {
   .build-routes { padding: 0 0 12px; }
@@ -132,7 +133,7 @@
   .build-closing-links li { border-top: 0; }
   .build-closing-grid > div, .build-closing-grid > div + div { padding: 12px 0 0; border-left: 0; }
   .build-closing-grid > div + div { margin-top: 12px; border-top: 1px solid var(--line); }
-  .chapter-funnel .build-closing-grid #scene-industries { padding-block: 12px 0; }
+  .chapter-funnel .build-closing-grid #scene-industries { padding: 12px 0 0; border-top: 1px solid var(--line); }
   .build-panels .phase-copy .console-label { display: none; }
   .chapter-funnel .build-panels .phase-copy h2 { font-size: 28px; }
   .build-stepper-head h2 { font-size: 28px; }
