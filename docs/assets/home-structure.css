@@ -62,16 +62,93 @@
 .home-recap .recap-flow { grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); }
 .home-context .recap-outcomes,
 .home-recap .recap-outcomes { grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
+/* What Threadlight is: the first thing a new reader sees, above the demo. */
+.home-what { padding: clamp(36px, 6vh, 64px) 0 0; position: relative; z-index: 1; }
+.home-what-lead {
+  max-width: 48ch;
+  margin: 0 0 28px;
+  font: 400 clamp(22px, 2.1vw, 30px)/1.3 var(--serif);
+  letter-spacing: -.015em;
+  color: var(--ink-1);
+  text-wrap: balance;
+}
+.home-what-lead strong { font-weight: 400; color: var(--ink-0); }
+.home-what-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  border-block: 1px solid var(--line);
+}
+.home-what-facts > div { min-width: 0; padding: 18px 24px 20px 0; }
+.home-what-facts > div + div { padding-left: 24px; border-left: 1px solid var(--line); }
+.home-what-facts dt { margin: 0 0 6px; color: var(--ink-0); font-size: 14px; font-weight: 600; }
+.home-what-facts dd { margin: 0; color: var(--ink-1); font-size: 15px; line-height: 1.6; }
+.home-what-links { display: flex; flex-wrap: wrap; gap: 4px 28px; padding-top: 14px; }
+.home-what-links a {
+  display: inline-flex; align-items: center; min-height: 44px;
+  color: var(--ink-0); font-size: 15px; font-weight: 500;
+  border-bottom: 0; text-decoration: underline; text-decoration-color: var(--line-2);
+  text-underline-offset: 6px; text-decoration-thickness: 1px;
+}
+.home-what-links a:hover { text-decoration-color: var(--lime); color: var(--ink-0); }
+.home-what-links a:first-child::after { content: "\2192"; display: inline-block; margin-left: 8px; color: var(--lime); text-decoration: none; }
+.home-what-links a:focus-visible,
+.home-directory > summary:focus-visible,
+.home-directory-panel a:focus-visible { outline: 2px solid var(--lime); outline-offset: 4px; }
+.home-what + .scene.home-intro { padding-top: clamp(36px, 6vh, 64px); }
+
+/* Static Explore directory: mirrors docs/assets/site-map.js without scripts. */
+.home-directory { position: relative; margin-left: 8px; }
+.home-directory > summary {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer;
+  padding: 9px 14px; border: 1px solid var(--line-2); border-radius: 6px;
+  font: 12px var(--mono); color: var(--ink-0); list-style: none;
+}
+.home-directory > summary::-webkit-details-marker { display: none; }
+.home-directory > summary::after { content: "+"; font-size: 18px; }
+.home-directory[open] > summary::after { content: "\2212"; }
+.home-directory-panel {
+  position: absolute; right: 0; top: calc(100% + 12px); z-index: 70;
+  width: min(960px, calc(100vw - 48px)); padding: 16px;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;
+  background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 12px;
+  box-shadow: var(--e-2); max-height: 70vh; overflow-y: auto;
+}
+.home-directory-group { min-width: 0; }
+.home-directory-group h2 {
+  margin: 0 0 4px; padding: 8px 12px; border-bottom: 1px solid var(--line);
+  color: var(--ink-2); font: 11px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .08em;
+}
+.home-directory-panel a {
+  display: block; padding: 14px 12px; border: 1px solid transparent; border-radius: 6px;
+  color: var(--ink-0); text-decoration: none;
+}
+.home-directory-panel a:hover { background: var(--accent-soft); border-color: var(--line-2); }
+.home-directory-panel strong { display: block; color: var(--ink-0); font: 500 19px var(--serif); }
+.home-directory-panel span { display: block; color: var(--ink-2); font: 12px/1.5 var(--sans); margin-top: 8px; }
 @media (prefers-color-scheme: light) {
   .home-journey { --home-accent: color-mix(in srgb, var(--lime) 20%, var(--ink-0)); }
+  .home-what-links a:first-child::after { color: color-mix(in srgb, var(--lime) 20%, var(--ink-0)); }
 }
 @media (max-width: 1000px) {
   .home-masthead .nav { gap: 6px 12px; }
+  .home-what-facts { grid-template-columns: 1fr; }
+  .home-what-facts > div,
+  .home-what-facts > div + div { padding: 14px 0; border-left: 0; }
+  .home-what-facts > div + div { border-top: 1px solid var(--line); }
   .home-journey nav a { padding: 24px 18px; grid-template-columns: 36px 1fr; gap: 12px; }
   .home-journey svg { width: 32px; height: 32px; }
 }
+@media (max-width: 720px) {
+  .home-directory { margin-left: 0; position: static; }
+  .home-directory > summary { padding: 8px 10px; font-size: 11px; }
+  .home-directory-panel { right: 12px; top: 100%; width: calc(100% - 24px); grid-template-columns: 1fr; gap: 12px; }
+}
 @media (max-width: 650px) {
   .scene.home-intro { padding-top: 40px; }
+  .home-what { padding-top: 28px; }
+  .home-what-lead { font-size: 21px; margin-bottom: 20px; }
+  .home-what-facts dd { font-size: 14.5px; }
   .home-journey nav { grid-template-columns: 1fr; }
   .home-journey nav a { padding: 24px 0; grid-template-columns: 44px 1fr; }
   .home-journey nav a + a { border-left: 0; border-top: 1px solid var(--line); }

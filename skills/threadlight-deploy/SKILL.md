@@ -1380,7 +1380,7 @@ CMD [".venv/bin/python", "container.py"]
 
 ### 7. `deploy-notes.md` — Deployment Guide
 
-```markdown
+````markdown
 # Deployment Guide
 
 ## Architecture
@@ -1415,6 +1415,7 @@ This agent deploys as a **Microsoft Foundry Hosted Agent** using the
 │  └──────────────────────────────────┘    │
 └─────────────────────────────────────────┘
 ```
+````
 
 ## Prerequisites
 

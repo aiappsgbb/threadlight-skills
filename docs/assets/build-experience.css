@@ -1,0 +1,147 @@
+/* Build chapter: two routes, then one lifecycle phase at a time (Production rail conventions). */
+.chapter-funnel main > section.scene:not(#scene-hero) { min-height: 0; display: block; }
+
+/* Routes */
+.build-routes { padding: 0 0 16px; }
+.build-routes-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border-block: 1px solid var(--line-2); }
+.build-route { min-width: 0; padding: 18px 32px 20px 0; }
+.build-route + .build-route { padding: 18px 0 20px 32px; border-left: 1px solid var(--line-2); }
+.build-route > summary { list-style: none; cursor: default; margin-bottom: 8px; }
+.build-route > summary::-webkit-details-marker { display: none; }
+.build-route > summary .console-label { display: block; }
+.build-route-title { display: block; font: 400 clamp(26px, 2.4vw, 34px)/1.15 var(--serif); letter-spacing: -.02em; color: var(--ink-0); }
+.build-route > p:not(.console-label) { margin: 0 0 14px; max-width: 56ch; color: var(--ink-1); font-size: 15px; line-height: 1.6; }
+.build-route .console-label { margin-bottom: 8px; }
+.build-route-steps { margin: 0 0 14px; padding: 0; list-style: none; counter-reset: route; display: grid; gap: 8px; }
+.build-route-steps li { counter-increment: route; position: relative; padding-left: 28px; color: var(--ink-1); font-size: 15px; line-height: 1.5; }
+.build-route-steps li::before { content: counter(route); position: absolute; left: 0; top: 0; font: 12px/1.9 var(--mono); color: var(--chapter-accent); }
+.build-route-steps strong { color: var(--ink-0); font-weight: 600; }
+.build-route-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.build-route-links { margin: 0 0 14px; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+.build-route-links li { border-top: 1px solid var(--line); min-width: 0; }
+.build-route-links a { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 8px 0; color: var(--ink-0); font-size: 14px; border-bottom: 0; }
+.build-route-links a::after { content: "\2197"; color: var(--ink-2); flex: none; }
+.build-route-links a[href^="./"]::after { content: "\2192"; }
+.build-route-links a[href^="#"]::after { content: "\2193"; }
+.build-route-links a:hover { color: var(--chapter-accent); }
+.build-route-more { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--ink-1); font-size: 14px; border-bottom: 0; }
+.build-route-more:hover { color: var(--ink-0); }
+
+/* Stepper */
+.build-stepper { padding: 28px 0 32px; border-top: 1px solid var(--line); }
+.build-stepper-head { display: flex; align-items: end; justify-content: space-between; gap: 16px 32px; flex-wrap: wrap; margin-bottom: 8px; }
+.build-stepper-head h2 { margin: 0; font: 400 clamp(30px, 3vw, 42px)/1.12 var(--serif); letter-spacing: -.025em; color: var(--ink-0); }
+.build-stepper-head h2 em { color: var(--chapter-accent); }
+.build-stepper .execution-note { max-width: 92ch; margin: 0 0 10px; }
+.build-boundaries { margin-top: 8px; }
+.build-boundaries summary strong { color: var(--ink-0); font-weight: 600; }
+.build-stepper-body { margin-top: 14px; }
+.chapter-funnel .build-panels .phase-scene { min-height: 0; display: block; padding: 28px 0; border-top: 1px solid var(--line); }
+.build-panels .phase-scene > .wrap { max-width: none; padding-inline: 0; }
+.build-panels .phase-layout { grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); gap: 20px 36px; }
+.build-panels .phase-marker { display: none; }
+.build-panels .phase-reference { grid-column: 1; grid-row: 2; margin-top: 0; }
+.build-panels .phase-diagram { grid-column: 2; grid-row: 1 / span 2; }
+.phase-next { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 12px; color: var(--ink-0); font-size: 14px; font-weight: 600; border-bottom: 0; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 6px; }
+.phase-next:hover { text-decoration-color: var(--chapter-accent); color: var(--ink-0); }
+.build-stepper .phase-copy .btn { margin-top: 4px; }
+
+.build-stepper.is-stepped:not(.show-all) [data-build-phase]:not(.is-active) { display: none; }
+.build-stepper.is-stepped:not(.show-all) .build-panels .phase-scene { padding-block: 0; border-top: 0; }
+/* site.css styles the legacy #scene-chain block with an ID selector (140px padding,
+   tinted background); inside the stepper it must behave like the other phases. */
+.chapter-funnel .build-panels #scene-chain { padding: 28px 0; background: none; border-top: 1px solid var(--line); }
+.build-stepper.is-stepped:not(.show-all) .build-panels #scene-chain { padding-block: 0; border-top: 0; }
+.build-stepper:not(.is-stepped) .phase-next,
+.build-stepper.show-all .phase-next { display: none; }
+
+@media (min-width: 761px) {
+  .build-stepper.is-stepped .build-stepper-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; align-items: start; }
+  .build-stepper.is-stepped .phase-rail {
+    position: sticky; top: calc(var(--cx-header-height) + var(--cx-index-height) + 16px);
+    display: grid; grid-template-columns: 1fr; gap: 4px; margin: 0; border: 0;
+  }
+  .build-stepper.is-stepped .phase-rail a {
+    display: grid; grid-template-columns: 28px 1fr; gap: 0 8px; padding: 10px 12px 10px 14px;
+    border: 0; border-left: 3px solid var(--line); border-radius: 0 8px 8px 0; color: var(--ink-1);
+  }
+  .build-stepper.is-stepped .phase-rail a:hover { background: var(--bg-2); }
+  .build-stepper.is-stepped .phase-rail .phase-no { grid-row: span 2; font: 12px/1.9 var(--mono); color: var(--ink-2); }
+  .build-stepper.is-stepped .phase-rail strong { margin: 0; font: 600 15px/1.5 var(--sans); color: var(--ink-0); }
+  .build-stepper.is-stepped .phase-rail small { font-size: 13px; color: var(--ink-1); }
+  .build-stepper.is-stepped .phase-rail a[aria-current="step"] { border-left-color: var(--chapter-accent); background: var(--accent-soft); }
+  .build-stepper.is-stepped .phase-rail a[aria-current="step"] .phase-no { color: var(--ink-0); }
+  .build-stepper.is-stepped.show-all .phase-rail a[aria-current="step"] { border-left-color: var(--line); background: transparent; }
+}
+
+/* Closing: next session, other starting points */
+.build-closing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--line-2); }
+.build-closing-grid > div { min-width: 0; padding: 18px 28px 0 0; }
+.build-closing-grid > div + div { padding-left: 28px; border-left: 1px solid var(--line-2); }
+.build-closing-links { margin: 0; padding: 0; list-style: none; }
+.build-closing-links li { border-top: 1px solid var(--line); }
+.build-closing-links a { display: flex; align-items: center; min-height: 44px; color: var(--ink-0); font-size: 14px; border-bottom: 0; }
+.build-closing-links a:hover { color: var(--chapter-accent); }
+.chapter-funnel .build-closing-grid #scene-industries { padding: 18px 28px 0; background: none; border-top: 0; min-height: 0; }
+.build-closing-item p { color: var(--ink-1); font-size: 14px; line-height: 1.6; margin: 0 0 12px; }
+.build-closing-item h2 { font: 400 22px/1.2 var(--serif); margin: 0 0 8px; color: var(--ink-0); }
+.build-closing-item .btn { padding: 10px 14px; font-size: 13px; }
+.chapter-funnel #scene-cta.build-closing { padding: 20px 0 28px; }
+.chapter-funnel #scene-hero.scene { padding-bottom: 20px; }
+.chapter-funnel #scene-cta.build-closing h2 { font-size: clamp(26px, 2.6vw, 34px); margin-bottom: 10px; }
+.build-closing .btn { padding: 10px 14px; font-size: 13px; }
+.build-closing .hero-cta-row { gap: 10px; }
+.build-closing .journey-resources { gap: 32px; }
+.build-closing .journey-resources h2 { font-size: 22px; margin: 0 0 6px; }
+.build-closing .journey-resources > div { min-width: 0; }
+.build-closing .journey-resources p { font-size: 14px; margin: 0 0 12px; }
+
+@media (max-width: 1000px) {
+  .build-closing-grid { grid-template-columns: 1fr 1fr; }
+  .build-closing-lead { grid-column: 1 / -1; }
+  .build-closing-grid > div:nth-child(2) { padding-left: 0; border-left: 0; }
+  .chapter-funnel .build-closing-grid #scene-industries { padding-left: 0; }
+}
+@media (max-width: 760px) {
+  .build-routes { padding: 0 0 12px; }
+  .build-routes-grid { grid-template-columns: 1fr; }
+  .build-route, .build-route + .build-route { padding: 16px 0; border-left: 0; }
+  .build-route > summary { cursor: pointer; position: relative; padding-right: 32px; margin: 0; }
+  .build-route > summary::after { content: "+"; position: absolute; right: 0; top: 50%; transform: translateY(-50%); font-size: 20px; color: var(--ink-1); }
+  .build-route[open] > summary::after { content: "\2212"; }
+  .build-route[open] > summary { margin-bottom: 10px; }
+  .build-route-title { font-size: 24px; }
+  .build-route + .build-route { border-top: 1px solid var(--line-2); }
+  .build-route-links { grid-template-columns: 1fr 1fr; column-gap: 14px; }
+  .build-route-links a { font-size: 13px; line-height: 1.35; }
+  .build-route > p:not(.console-label) { font-size: 14.5px; }
+  .build-route-actions .btn { flex: 1 1 auto; justify-content: center; padding: 11px 12px; font-size: 13px; }
+  .build-stepper { padding: 20px 0 20px; }
+  .build-stepper-body { margin-top: 18px; }
+  .build-stepper.is-stepped .phase-rail { display: flex; margin: 0 -20px; padding: 0 20px; overflow-x: auto; scroll-snap-type: x proximity; border: 0; gap: 6px; scrollbar-width: none; }
+  .build-stepper.is-stepped .phase-rail::-webkit-scrollbar { display: none; }
+  .build-stepper.is-stepped .phase-rail a { flex: 0 0 auto; scroll-snap-align: start; padding: 8px 12px; border: 1px solid var(--line-2); border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+  .build-stepper.is-stepped .phase-rail a:nth-child(n) { border-left: 1px solid var(--line-2); border-top: 1px solid var(--line-2); }
+  .build-stepper.is-stepped .phase-rail strong { margin: 0; font: 600 14px/1.2 var(--sans); }
+  .build-stepper.is-stepped .phase-rail small { display: none; }
+  .build-stepper.is-stepped .phase-rail .phase-no { color: var(--ink-1); }
+  .build-stepper.is-stepped .phase-rail a[aria-current="step"] .phase-no { color: var(--ink-0); }
+  .build-stepper.is-stepped .phase-rail a[aria-current="step"] { background: var(--accent-soft); border-color: var(--chapter-accent); }
+  .build-panels .phase-layout { grid-template-columns: 1fr; gap: 12px; }
+  .build-panels .phase-reference, .build-panels .phase-diagram { grid-column: 1; grid-row: auto; }
+  .chapter-funnel .build-panels .phase-scene { padding: 24px 0; }
+  .build-stepper.is-stepped:not(.show-all) .build-panels .phase-scene { padding-top: 16px; }
+  .chapter-funnel .build-panels #scene-chain { padding: 24px 0; }
+  .build-stepper.is-stepped:not(.show-all) .build-panels #scene-chain { padding: 16px 0 0; }
+  .chapter-funnel #scene-cta.build-closing { padding: 20px 0 24px; }
+  .build-closing-grid { grid-template-columns: 1fr; }
+  .build-closing-links { display: flex; flex-wrap: wrap; column-gap: 18px; }
+  .build-closing-links li { border-top: 0; }
+  .build-closing-grid > div, .build-closing-grid > div + div { padding: 12px 0 0; border-left: 0; }
+  .build-closing-grid > div + div { margin-top: 12px; border-top: 1px solid var(--line); }
+  .chapter-funnel .build-closing-grid #scene-industries { padding: 12px 0 0; border-top: 1px solid var(--line); }
+  .build-panels .phase-copy .console-label { display: none; }
+  .chapter-funnel .build-panels .phase-copy h2 { font-size: 28px; }
+  .build-stepper-head h2 { font-size: 28px; }
+  .build-stepper-head .btn { width: auto; padding: 9px 12px; font-size: 12px; }
+}

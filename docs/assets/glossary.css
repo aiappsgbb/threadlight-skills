@@ -1,0 +1,64 @@
+/* Glossary — a Read surface on the shared chapter tokens. */
+.glossary-page .brand-name { display: inline-flex; align-items: center; gap: 10px; color: var(--ink-0); text-decoration: none; border-bottom: 0; }
+.glossary-page .brand-name > span:last-child { color: var(--ink-2); }
+.glossary-page .brand-mark { display: block; flex: 0 0 26px; }
+.glossary-page .skip-link {
+  position: fixed; z-index: 100; top: 8px; left: 8px; padding: 12px;
+  background: var(--bg-1); color: var(--ink-0); transform: translateY(-160%);
+}
+.glossary-page .skip-link:focus { transform: none; }
+.glossary-wrap { max-width: 1120px; padding-block: 24px 96px; }
+.glossary-intro { padding: 40px 0 32px; border-bottom: 1px solid var(--line); }
+.glossary-intro h1 {
+  margin: 0 0 18px;
+  font: 400 clamp(44px, 6vw, 80px)/1 var(--serif);
+  letter-spacing: -.03em;
+  color: var(--ink-0);
+}
+.glossary-intro > p { max-width: 62ch; margin: 0; color: var(--ink-1); font-size: 18px; line-height: 1.6; }
+.glossary-intro em { font-style: italic; color: var(--ink-0); }
+.glossary-index { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+.glossary-index a {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 8px 14px;
+  border: 1px solid var(--line-2); border-radius: 6px;
+  color: var(--ink-1); font: 12px/1.4 var(--mono); border-bottom-width: 1px;
+}
+.glossary-index a:hover { color: var(--ink-0); background: var(--accent-soft); }
+.glossary-group { padding-top: 56px; }
+.glossary-group h2 {
+  margin: 0 0 8px;
+  font: 400 clamp(28px, 3vw, 40px)/1.15 var(--serif);
+  letter-spacing: -.02em;
+  color: var(--ink-0);
+}
+.glossary-note { max-width: 70ch; margin: 0 0 8px; color: var(--ink-2); font-size: 15px; line-height: 1.6; }
+.glossary-group dl { margin: 16px 0 0; border-top: 1px solid var(--line); }
+.glossary-group dl > div {
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) minmax(0, 1fr);
+  gap: 8px 40px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+}
+.glossary-group dt {
+  margin: 0;
+  font: 400 22px/1.25 var(--serif);
+  color: var(--ink-0);
+  scroll-margin-top: calc(var(--cx-header-height) + 24px);
+}
+.glossary-group dt:target { color: var(--cx-accent); }
+.glossary-group dl > div:has(dt:target) { background: linear-gradient(90deg, var(--accent-soft), transparent 70%); }
+.glossary-group dd { max-width: 68ch; margin: 0; color: var(--ink-1); font-size: 16px; line-height: 1.65; }
+.glossary-group code,
+.glossary-intro code { font: 13px var(--mono); color: var(--ink-0); overflow-wrap: anywhere; }
+.glossary-deeper { margin: 56px 0 0; color: var(--ink-2); font-size: 15px; }
+.glossary-deeper a { color: var(--ink-0); text-underline-offset: 4px; }
+@media (max-width: 720px) {
+  .glossary-wrap { padding-block: 8px 64px; }
+  .glossary-intro { padding-top: 24px; }
+  .glossary-intro > p { font-size: 16px; }
+  .glossary-group { padding-top: 40px; }
+  .glossary-group dl > div { grid-template-columns: 1fr; gap: 6px; padding: 18px 0; }
+  .glossary-group dt { font-size: 20px; }
+}
+.glossary-page footer .left { color: var(--ink-2); }

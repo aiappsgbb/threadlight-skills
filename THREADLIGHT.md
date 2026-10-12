@@ -682,7 +682,8 @@ handover, model lifecycle) to produce a customer-facing hand-off
 package.
 
 **Posture priority.** Citadel-spoke is the **recommended** enterprise
-target. Selected native ACS/Agent Hooks enforcement is a separate action layer.
+target when the customer already runs or is provisioning a Citadel hub; it is
+optional. Selected native ACS/Agent Hooks enforcement is a separate action layer.
 Standard remote AI
 gateway / VNet is the third-party fallback. The skill resolves the
 actual target from `SPEC § 12 → SPEC § 11b → deployed evidence →
@@ -765,7 +766,7 @@ defines the terms and responsibilities; the
 [operator contract](skills/threadlight-cicd/references/release-contract.md)
 specifies exact adapters, artifacts, acceptance and recovery.
 
-CI/CD **0.5.0** validates a separate preproduction candidate, executes required
+CI/CD **0.6.0** validates a separate preproduction candidate, executes required
 eval/red-team/MCP checks, then admits a protected production job. Promotion
 reuses the same immutable image and rechecks current authority after waits;
 missing, stale or contradictory evidence blocks it. Application-owned adapters,

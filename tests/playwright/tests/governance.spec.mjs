@@ -151,6 +151,8 @@ for (const source of ['/production.html', '/funnel.html', '/self-improving.html'
   test(`${source} leads into the advanced story without footer discovery`, async ({ page }) => {
     await page.goto(source);
     const link = page.locator('main a[href^="./governance.html"]').first();
+    // Build keeps the advanced links in the expert route, which starts closed on narrow screens.
+    if (source === '/funnel.html' && !(await link.isVisible())) await page.locator('#route-expert > summary').click();
     await link.click();
     await expect(page).toHaveURL(/governance\.html(?:#agentops)?$/);
     await expect(page.locator('#agentops')).toContainText('Preview');

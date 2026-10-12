@@ -98,6 +98,7 @@
 </style>
 <link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
 <link rel="stylesheet" href="assets/lifecycle-visuals.css?v=680db55f">
+<link rel="stylesheet" href="assets/build-experience.css?v=b4e933fe">
 </head>
 <body class="chapter-experience chapter-funnel">
 <div class="atmosphere" aria-hidden="true"></div>
@@ -137,9 +138,9 @@
           <p class="eyebrow">Build · follow one brief</p>
           <h1 id="hero-headline">Brief to pilot.<br><em>Then earn the handoff.</em></h1>
           <p data-chapter-intro>A coding agent uses Threadlight skills to turn your brief into a spec and working pilot. Follow this credit-memo example from build to evidence and customer handoff—with a human decision at each boundary.</p>
-          <div class="hero-cta-row">
-            <a class="btn btn-primary" href="./workbook.html">Try the workbook <span class="arrow">→</span></a>
-            <a class="btn btn-ghost" href="./blueprint.html">Choose a starter <span class="arrow">→</span></a>
+          <div class="hero-cta-row" data-route-choice>
+            <a class="btn btn-primary" href="#route-try">I want to try it <span class="arrow">↓</span></a>
+            <a class="btn btn-ghost" href="#route-expert">Advanced workshop <span class="arrow">↓</span></a>
           </div>
         </div>
         <figure class="journey-console" data-visual-anchor aria-labelledby="chain-caption">
@@ -156,6 +157,52 @@
           <div class="console-boundary">Boundary: no self-approval. No loan disbursement.</div>
         </figure>
       </div>
+    </div>
+  </section>
+
+  <section class="build-routes" aria-label="Choose your route">
+    <div class="wrap journey-wrap build-routes-grid">
+      <details class="build-route" id="route-try" data-build-route="try" open>
+        <summary><span class="console-label">Introductory</span><span class="build-route-title" role="heading" aria-level="2">I want to try it</span></summary>
+        <p>Build a first pilot from one paragraph of your process.</p>
+        <ol class="build-route-steps">
+          <li><strong>Install</strong> GitHub Copilot and the threadlight-skills plugin.</li>
+          <li><strong>Describe</strong> your process; the coding agent writes the spec and the pilot.</li>
+          <li><strong>Check</strong> one clean case and one exception locally; no Azure subscription needed yet.</li>
+        </ol>
+        <div class="build-route-actions">
+          <a class="btn btn-primary" href="./workbook.html#prereqs">Start the hands-on workbook <span class="arrow">→</span></a>
+          <a class="btn btn-ghost" href="./blueprint.html">Choose a starter brief <span class="arrow">→</span></a>
+        </div>
+      </details>
+      <details class="build-route" id="route-expert" data-build-route="expert" open>
+        <summary><span class="console-label">Advanced</span><span class="build-route-title" role="heading" aria-level="2">I'm running an advanced workshop</span></summary>
+        <p>Facilitator material, skill contracts and evidence boundaries.</p>
+        <ul class="build-route-links">
+          <li><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/WORKSHOP-1H-QUICKSTART.md">One-hour workshop, prompt by prompt</a></li>
+          <li><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/IDEA-TO-PRODUCTION-WORKBOOK.md">Idea-to-production workbook</a></li>
+          <li><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Skill reference (THREADLIGHT.md)</a></li>
+          <li><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/README.md">Documentation index</a></li>
+          <li><a href="./governance.html">Governance &amp; AgentOps</a></li>
+          <li><a href="./case-study.html">Case study and its receipts</a></li>
+          <li><a href="#build-phases">The six phases, one at a time</a></li>
+        </ul>
+      </details>
+    </div>
+  </section>
+
+  <section class="build-stepper" id="build-phases" aria-labelledby="phases-h" data-build-stepper>
+    <div class="wrap journey-wrap">
+      <div class="build-stepper-head">
+        <h2 id="phases-h">Six phases. <em>One at a time.</em></h2>
+        <button type="button" class="btn btn-ghost" data-show-all aria-pressed="false" hidden>Show all six phases</button>
+      </div>
+      <details class="journey-detail build-boundaries"><summary><strong>Auto plans; the coding agent executes.</strong></summary>
+        <p class="execution-note" data-execution-boundary><strong>Auto plans; the coding agent executes.</strong> These phases are a map, not a mandatory script. <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-auto">threadlight-auto</a> is the planner for eligible guided and advisory stages. Manual handoffs, live probes and cost-bearing work require explicit selection and authorization.</p>
+        <p class="execution-note">The prototype path remains unchanged. Governance is explicit opt-in
+        <a href="./production.html#effect-authority">before selected business effects</a>, not an automatic property of every pilot.</p>
+      </details>
+      <div class="build-stepper-body">
       <nav class="phase-rail" id="scene-funnel" aria-label="Six phases from brief to handoff">
         <a href="#scene-show"><span class="phase-no">01</span><strong data-phase-name>Enter</strong><small>Scope the process</small></a>
         <a href="#scene-chain"><span class="phase-no">02</span><strong data-phase-name>Build</strong><small>Make it runnable</small></a>
@@ -164,13 +211,8 @@
         <a href="#scene-customize"><span class="phase-no">05</span><strong data-phase-name>Ship</strong><small>Accept the handoff</small></a>
         <a href="#phase-improve"><span class="phase-no">06</span><strong data-phase-name>Improve</strong><small>Test the next change</small></a>
       </nav>
-      <p class="execution-note" data-execution-boundary><strong>Auto plans; the coding agent executes.</strong> These phases are a map, not a mandatory script. <a href="https://github.com/aiappsgbb/threadlight-skills/tree/main/skills/threadlight-auto">threadlight-auto</a> is the planner for eligible guided and advisory stages. Manual handoffs, live probes and cost-bearing work require explicit selection and authorization.</p>
-      <p class="execution-note">The prototype path remains unchanged. Governance is explicit opt-in
-        <a href="./production.html#effect-authority">before selected business effects</a>, not an automatic property of every pilot.</p>
-    </div>
-  </section>
-
-  <section class="scene phase-scene" id="scene-show" data-toc-id="scene-show" data-toc-label="01 Enter" aria-labelledby="funnel-h">
+        <div class="build-panels">
+  <section class="scene phase-scene" id="scene-show" data-build-phase data-toc-id="scene-show" data-toc-label="01 Enter" aria-labelledby="funnel-h">
     <div class="wrap journey-wrap phase-layout">
       <div class="phase-marker" aria-hidden="true">01</div>
       <div class="phase-copy">
@@ -178,6 +220,7 @@
         <h2 id="funnel-h">Name the work.<br><em>Draw the line.</em></h2>
         <p class="phase-summary">Decide what the agent prepares and what only a person can approve.</p>
         <a class="btn btn-ghost" href="./downloads/threadlight-qualify.zip">Download Qualify for Cowork (.zip) ↓</a>
+        <a class="phase-next" href="#scene-chain" data-phase-next>Next: Build <span aria-hidden="true">→</span></a>
       </div>
       <figure class="phase-diagram scope-map" data-phase-visual="enter" aria-labelledby="scope-map-caption">
         <figcaption id="scope-map-caption">The scope of the credit-memo pilot</figcaption>
@@ -201,13 +244,14 @@
     </div>
   </section>
 
-  <section class="scene phase-scene" id="scene-chain" data-toc-id="scene-chain" data-toc-label="02 Build" aria-labelledby="chain-h">
+  <section class="scene phase-scene" id="scene-chain" data-build-phase data-toc-id="scene-chain" data-toc-label="02 Build" aria-labelledby="chain-h">
     <div class="wrap journey-wrap phase-layout" id="chain-rail">
       <div class="phase-marker" aria-hidden="true">02</div>
       <div class="phase-copy">
         <p class="console-label">Build / make the contract executable</p>
         <h2 id="chain-h">A spec you can read.<br><em>A pilot you can test.</em></h2>
         <p class="phase-summary">Review the spec, build the scaffold, then exercise a clean case and an exception.</p>
+        <a class="phase-next" href="#phase-integrate" data-phase-next>Next: Integrate <span aria-hidden="true">→</span></a>
       </div>
       <figure class="phase-diagram build-map" data-phase-visual="build" aria-labelledby="build-map-caption">
         <figcaption id="build-map-caption">From a reviewed contract to an exercised pilot</figcaption>
@@ -232,13 +276,14 @@
     </div>
   </section>
 
-  <section class="scene phase-scene" id="phase-integrate" data-toc-id="phase-integrate" data-toc-label="03 Integrate" aria-labelledby="integrate-h">
+  <section class="scene phase-scene" id="phase-integrate" data-build-phase data-toc-id="phase-integrate" data-toc-label="03 Integrate" aria-labelledby="integrate-h">
     <div class="wrap journey-wrap phase-layout">
       <div class="phase-marker" aria-hidden="true">03</div>
       <div class="phase-copy">
         <p class="console-label">Integrate / choose the real boundaries</p>
         <h2 id="integrate-h">Connect the policy.<br><em>Keep the decision human.</em></h2>
         <p class="phase-summary">Connect authorized sources. Keep retrieval, tool access and human decisions as separate boundaries.</p>
+        <a class="phase-next" href="#scene-prod-ready" data-phase-next>Next: Assure <span aria-hidden="true">→</span></a>
       </div>
       <figure class="phase-diagram integration-map" data-phase-visual="integrate" aria-labelledby="integration-map-caption">
         <figcaption id="integration-map-caption">Two data paths. One human decision boundary.</figcaption>
@@ -270,7 +315,7 @@
     </div>
   </section>
 
-  <section class="scene phase-scene" id="scene-prod-ready" data-toc-id="scene-prod-ready" data-toc-label="04 Assure" aria-labelledby="prod-ready-h">
+  <section class="scene phase-scene" id="scene-prod-ready" data-build-phase data-toc-id="scene-prod-ready" data-toc-label="04 Assure" aria-labelledby="prod-ready-h">
     <div class="wrap journey-wrap phase-layout">
       <div class="phase-marker" aria-hidden="true">04</div>
       <div class="phase-copy">
@@ -278,6 +323,7 @@
         <h2 id="prod-ready-h">A passing check<br><em>isn’t go-live.</em></h2>
         <p class="phase-summary">Judge each claim against its evidence. A missing proof never becomes a pass.</p>
         <a class="btn btn-ghost" href="./governance.html">Advanced governance &amp; AgentOps →</a>
+        <a class="phase-next" href="#scene-customize" data-phase-next>Next: Ship <span aria-hidden="true">→</span></a>
       </div>
       <figure class="phase-diagram assurance-map" data-phase-visual="assure" aria-labelledby="assurance-map-caption">
         <figcaption id="assurance-map-caption">Evidence is scoped, not a single green badge</figcaption>
@@ -307,13 +353,14 @@
     </div>
   </section>
 
-  <section class="scene phase-scene" id="scene-customize" data-toc-id="scene-customize" data-toc-label="05 Ship" aria-labelledby="customize-h">
+  <section class="scene phase-scene" id="scene-customize" data-build-phase data-toc-id="scene-customize" data-toc-label="05 Ship" aria-labelledby="customize-h">
     <div class="wrap journey-wrap phase-layout">
       <div class="phase-marker" aria-hidden="true">05</div>
       <div class="phase-copy">
         <p class="console-label">Ship / a deliberate human handoff</p>
         <h2 id="customize-h">Someone owns<br><em>Monday morning.</em></h2>
         <p class="phase-summary">A release needs both an accepted technical boundary and people who own its operation.</p>
+        <a class="phase-next" href="#phase-improve" data-phase-next>Next: Improve <span aria-hidden="true">→</span></a>
       </div>
       <figure class="phase-diagram ownership-map" data-phase-visual="ship" aria-labelledby="ownership-map-caption">
         <figcaption id="ownership-map-caption">The handoff joins delivery and operational ownership</figcaption>
@@ -336,13 +383,14 @@
     </div>
   </section>
 
-  <section class="scene phase-scene" id="phase-improve" data-toc-id="phase-improve" data-toc-label="06 Improve" aria-labelledby="improve-h">
+  <section class="scene phase-scene" id="phase-improve" data-build-phase data-toc-id="phase-improve" data-toc-label="06 Improve" aria-labelledby="improve-h">
     <div class="wrap journey-wrap phase-layout">
       <div class="phase-marker" aria-hidden="true">06</div>
       <div class="phase-copy">
         <p class="console-label">Improve / one observed gap at a time</p>
         <h2 id="improve-h">The next exception<br><em>becomes a test.</em></h2>
         <p class="phase-summary">Turn the missed exception into a reproducible case, then review the change before promotion.</p>
+        <a class="phase-next" href="#scene-cta" data-phase-next>Next: choose your next step <span aria-hidden="true">→</span></a>
       </div>
       <figure class="phase-diagram improvement-map" data-phase-visual="improve" aria-labelledby="improvement-map-caption">
         <figcaption id="improvement-map-caption">One observed gap becomes a reviewed regression test</figcaption>
@@ -367,31 +415,31 @@
     </div>
   </section>
 
-  <section class="scene phase-scene" aria-label="Other starting points">
-    <div class="wrap journey-wrap journey-resources">
-      <div id="scene-industries">
-        <p class="console-label">Change the process, keep the discipline</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene build-closing" id="scene-cta" aria-labelledby="cta-h">
+    <div class="wrap journey-wrap build-closing-grid">
+      <div class="build-closing-lead">
+        <h2 id="cta-h">Take the brief.<br><em>Run your own checks.</em></h2>
+        <ul class="build-closing-links">
+          <li><a href="./workbook.html">Open the hands-on workbook</a></li>
+          <li><a href="./case-study.html">Inspect the historical run</a></li>
+          <li><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Technical briefing ↗</a></li>
+        </ul>
+      </div>
+      <div id="scene-industries" class="build-closing-item">
         <h2 id="ind-h">Start in your domain.</h2>
-        <p>Financial services, retail, telco, manufacturing, healthcare, and energy &amp; utilities have curated starting points. Review their assumptions with a domain expert.</p>
+        <p>Curated starting points in six industries. Review their assumptions with a domain expert.</p>
         <a class="btn btn-ghost" href="./industries.html#library">Browse industry scenarios →</a>
       </div>
-      <div id="scene-kratos">
-        <p class="console-label">A browser-first alternative</p>
+      <div id="scene-kratos" class="build-closing-item">
         <h2 id="kratos-h">Explore with Kratos.</h2>
         <p>Try the conversational surface before choosing a custom build. Treat the demo as exploration, not evidence for your customer deployment.</p>
         <a class="btn btn-ghost" href="https://aka.ms/kratos" target="_blank" rel="noopener">Try Kratos ↗</a>
         <a class="btn btn-ghost" href="https://github.com/kmavrodis/kratos-agent" target="_blank" rel="noopener">Source ↗</a>
-      </div>
-    </div>
-  </section>
-  <section class="scene" id="scene-cta" aria-labelledby="cta-h">
-    <div class="wrap journey-wrap">
-      <p class="console-label">Your next working session</p>
-      <h2 id="cta-h">Take the brief.<br><em>Run your own checks.</em></h2>
-      <div class="hero-cta-row">
-        <a class="btn btn-primary" href="./workbook.html">Open the hands-on workbook →</a>
-        <a class="btn btn-ghost" href="./case-study.html">Inspect the historical run →</a>
-        <a class="btn btn-ghost" href="https://github.com/aiappsgbb/threadlight-skills/blob/main/THREADLIGHT.md">Technical briefing ↗</a>
       </div>
     </div>
   </section>
@@ -411,7 +459,8 @@
   </div>
 </footer>
 <script src="assets/site.js?v=e4d413b7"></script>
-<script src="assets/site-map.js?v=27594af5"></script>
+<script src="assets/site-map.js?v=306ac7b4"></script>
 <script src="assets/chapter-experience.js?v=ece78bab"></script>
+<script src="assets/build-stepper.js?v=3e8b2ab8"></script>
 </body>
 </html>

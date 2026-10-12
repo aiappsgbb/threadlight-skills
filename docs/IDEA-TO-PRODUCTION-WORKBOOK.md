@@ -56,8 +56,8 @@ process — every later prompt stays the same.
 You need these installed and signed in on the machine you'll use:
 
 - **Copilot CLI** — the primary surface. Run it on a **current-generation
-  model**: this workbook assumes **`claude-opus-4.8`** (the default) or
-  **`gpt-5.5`**. The model that drives the chain matters — a weaker coding
+  model**: this workbook was written with **`claude-opus-4.8`** or
+  **`gpt-5.5`**; any current-generation model works. The model that drives the chain matters — a weaker coding
   agent produces a weaker spec and misses its own bugs.
 - **GitHub CLI** (`gh`) — signed in. Used to install the plugins and, in the
   fallback path, to reach GitHub Models.
@@ -117,20 +117,20 @@ worked when…"** checkpoint so you can tell green from broken without guessing.
 ### Step 1 · Install the plugins, launch on a strong model
 
 ```
-install the awesome-gbb and threadlight-skills plugins from the aiappsgbb
-org on github, then list my installed copilot plugins to confirm
+install the threadlight-skills plugin from aiappsgbb/threadlight-skills
+first, then the official azure, azure-cost and foundry-iq-skills plugins
+from microsoft/azure-skills, then list my installed copilot plugins to confirm
 ```
 
 Then launch Copilot CLI on a current-generation model so the inner agent is
 strong enough to spec and self-correct (this is how the real run started):
 
 ```
-copilot --model claude-opus-4.8 --effort high \
-        --plugin-dir ./threadlight-skills --plugin-dir ./awesome-gbb
+copilot --model claude-opus-4.8 --effort high
 ```
 
-**✅ Worked when:** the plugin list shows **both** `threadlight-skills` and
-`awesome-gbb`, and Copilot reports the active model is `claude-opus-4.8`
+**✅ Worked when:** the plugin list shows `threadlight-skills` first, then the
+official `azure` plugins, and Copilot reports the active model is `claude-opus-4.8`
 (or `gpt-5.5`).
 
 ### Step 2 · Design — your paragraph becomes a spec

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Threadlight Skills — devcontainer post-create.
 #
-# Installs GitHub Copilot CLI and wires all 16 threadlight skills from this
+# Installs GitHub Copilot CLI and wires all threadlight skills from this
 # checkout, so a fresh Codespace is ready to explore the pipeline. Safe to
 # re-run (idempotent) and non-fatal: a hiccup here should not fail container
 # creation — it just prints guidance.

@@ -13,7 +13,9 @@ test('Build follows six navigable phases and names execution boundaries', async 
   await expect(page.locator('[data-execution-boundary]')).toContainText('Auto plans');
   await expect(page.locator('[data-execution-boundary]')).toContainText('coding agent executes');
   await expect(page.locator('a[href="./downloads/threadlight-qualify.zip"]')).toBeVisible();
-  await expect(page.locator('main a[href="./governance.html"]').first()).toBeVisible();
+  const governance = page.locator('main a[href="./governance.html"]').first();
+  if (!(await governance.isVisible())) await page.locator('#route-expert > summary').click();
+  await expect(governance).toBeVisible();
   await expect(page.locator('main')).not.toContainText(/Every Threadlight engagement|23-skill|never fails|One prompt\. One session/);
 });
 
