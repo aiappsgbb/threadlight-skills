@@ -141,6 +141,7 @@ cells and behaved correctly:
 
 ```bash
 # 1. infra + pin (restores shared router on exit via trap)
+export ROUTER_SUBSCRIPTION_ID=<sub> ROUTER_RESOURCE_GROUP=<rg> ROUTER_ACCOUNT=<account>
 bash scripts/ci/foundry-strong-arm.sh
 bash scripts/ci/router-subset.sh record && bash scripts/ci/router-subset.sh set
 # 2. dispatch the 6-cell matrix (2 serialized waves, ~1.5–2h)

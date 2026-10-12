@@ -158,6 +158,8 @@ a complex workload needs the model-router to recover quality — via a controlle
 ### Infra prerequisites
 
 ```bash
+# Approved target only (the helpers embed none):
+export ROUTER_SUBSCRIPTION_ID=<approved-subscription-id> ROUTER_RESOURCE_GROUP=<approved-rg> ROUTER_ACCOUNT=<approved-account>
 # Stand up the gpt-5.4 strong-arm deployment (idempotent):
 bash scripts/ci/foundry-strong-arm.sh
 
