@@ -2,7 +2,7 @@
 # scripts/ci/foundry-strong-arm.sh
 #
 # Idempotently create the gpt-5.4 "strong arm" deployment on the shared CI
-# Foundry account (aif-shared-gbb-ci). Used by the router-validation matrix
+# Foundry account. Used by the router-validation matrix
 # (skills/threadlight-router-bench `validate` mode) as the quality ceiling the
 # model-router subset {gpt-5.4, gpt-5.4-mini} is allowed to escalate to.
 #
@@ -16,8 +16,10 @@
 # arm (rounds-factor checks are skipped when the strong arm is absent).
 set -euo pipefail
 
-ACC=aif-shared-gbb-ci
-RG=rg-shared-gbb-ci
+# Target comes from the operator's environment (az CLI's current subscription
+# is used); nothing is embedded here.
+ACC="${ROUTER_ACCOUNT:?set ROUTER_ACCOUNT to the approved Foundry account}"
+RG="${ROUTER_RESOURCE_GROUP:?set ROUTER_RESOURCE_GROUP to the approved resource group}"
 NAME=gpt-5.4
 MODEL=gpt-5.4
 VERSION=2026-03-05         # verified catalog version (westus3/swedencentral)

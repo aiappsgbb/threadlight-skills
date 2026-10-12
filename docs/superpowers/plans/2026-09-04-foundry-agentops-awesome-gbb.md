@@ -165,7 +165,7 @@ validation:
   failure_signatures: []
 
 last_validated: 2026-09-04
-validated_by: ricchi
+validated_by: maintainers
 known_issues_count: 3
 ---
 ```

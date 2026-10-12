@@ -104,7 +104,7 @@ skills/threadlight-router-bench/
 ```
 
 **Fixtures already captured** for this session at
-`/Users/ricchi/.copilot/session-state/af17767c-6e7d-42e8-9d20-04704e10aaf8/files/router-bench-fixture/`:
+`<session-dir>/files/router-bench-fixture/`:
 - `recorded/az-metrics-modelrouter.json`, `recorded/gh-run-jobs.json`, `recorded/run-timing.json`
 - `threadlight-e2e-28437323962/tmp/threadlight-e2e-28437323962/returns-triage/specs/{govern,evals,redteam}-manifest.json`
 
@@ -127,7 +127,7 @@ Task 1 copies these into `references/fixtures/`. They are real outputs of run `2
 cd skills/threadlight-router-bench 2>/dev/null || true
 ROOT="$(git rev-parse --show-toplevel)"
 SK="$ROOT/skills/threadlight-router-bench"
-SRC="/Users/ricchi/.copilot/session-state/af17767c-6e7d-42e8-9d20-04704e10aaf8/files/router-bench-fixture"
+SRC="<session-dir>/files/router-bench-fixture"
 mkdir -p "$SK/scripts" "$SK/references/pricing" "$SK/references/fixtures/legs" "$SK/tests"
 cp "$SRC/recorded/az-metrics-modelrouter.json" "$SK/references/fixtures/az-metrics-modelrouter.json"
 cp "$SRC/recorded/gh-run-jobs.json"            "$SK/references/fixtures/gh-run-jobs.json"
@@ -1514,8 +1514,8 @@ import report as report_mod  # noqa: E402
 import score  # noqa: E402
 
 FOUNDRY_RESOURCE_ID = (
-    "/subscriptions/2c745a8f-9d37-45e3-8506-80797e89735e/resourceGroups/"
-    "rg-shared-gbb-ci/providers/Microsoft.CognitiveServices/accounts/aif-shared-gbb-ci"
+    "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/"
+    "rg-example-ci/providers/Microsoft.CognitiveServices/accounts/aif-example-ci"
 )
 
 
@@ -1714,7 +1714,7 @@ Benchmark **model-router** (candidate) vs a fixed model like **gpt-5.4-mini**
 
 - **`gh`** authenticated to `aiappsgbb/threadlight-skills` (dispatch + download).
 - **`az`** logged in with **Monitoring Reader** on the Foundry resource
-  `aif-shared-gbb-ci` (token metrics). Without it the cost axis fails fast.
+  `aif-example-ci` (token metrics). Without it the cost axis fails fast.
 - model-router must be driven over **`wire_api=completions`** — its Responses v1
   route returns `HTTP 400 operation unsupported`. The baseline keeps its default
   wire. `run` sets this automatically.
@@ -1848,6 +1848,6 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>" || echo "n
 - Every module's `_default_runner` shells out to `gh`/`az`; all unit tests inject a
   fake `runner`/fixtures so the suite needs **no network**.
 - The real integration path (`run`) is exercised manually via the SKILL.md runbook
-  against `aif-shared-gbb-ci`; `_analyze_from_parts` is the unit-tested core.
+  against `aif-example-ci`; `_analyze_from_parts` is the unit-tested core.
 - Price values are **seed/unverified** — keep the `source: "seed"` provenance until
   `prices --refresh` is implemented and run.

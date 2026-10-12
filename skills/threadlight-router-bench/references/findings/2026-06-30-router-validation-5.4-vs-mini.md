@@ -149,7 +149,7 @@ python3 skills/threadlight-router-bench/scripts/router_bench.py validate \
   --ref <branch> --repo aiappsgbb/threadlight-skills --out <outdir>
 bash scripts/ci/router-subset.sh restore        # always
 # 3. score + cold-path
-RID="/subscriptions/<sub>/resourceGroups/rg-shared-gbb-ci/providers/Microsoft.CognitiveServices/accounts/aif-shared-gbb-ci"
+RID="/subscriptions/<sub>/resourceGroups/rg-example-ci/providers/Microsoft.CognitiveServices/accounts/aif-example-ci"
 python3 skills/threadlight-router-bench/scripts/router_bench.py validate \
   --ingest <outdir>/matrix-manifest.json --resource "$RID" --out <outdir>
 python3 skills/threadlight-router-bench/scripts/router_bench.py learn <run_id> \

@@ -88,7 +88,7 @@ test('commercial pages retain private evidence and authority details only in lin
   const body = read('production.html');
   const record = read('governed-returns-validation.md');
   for (const value of ['2026-09-14T10:26:48.991423+00:00', '2026-09-14T12:03:41.859581+00:00',
-    '2026-09-15T11:12:28.719119+00:00', 'SecurityControl=Ignore']) {
+    '2026-09-15T11:12:28.719119+00:00', 'policy-exemption tag']) {
     assert.ok(record.includes(value), value);
     assert.ok(!body.includes(value), value);
   }

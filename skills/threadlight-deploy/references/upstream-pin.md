@@ -143,7 +143,7 @@ validation:
   failure_signatures: []
 
 last_validated: 2026-08-17
-validated_by: ricchi
+validated_by: maintainers
 known_issues_count: 3
 ---
 
@@ -259,7 +259,7 @@ echo "THREADLIGHT_DEPLOY_VALIDATION_PASS"
 |-------|--------|----------|
 | Issue-only validation procedure | ✅ | Human-run script documented for generated-project `azd up` + agent invoke. |
 
-Captured at `last_validated: 2026-05-15` by `ricchi`.
+Captured at `last_validated: 2026-05-15` by the maintainers.
 
 ---
 

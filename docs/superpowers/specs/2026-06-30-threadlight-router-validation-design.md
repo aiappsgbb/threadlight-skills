@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-30
 **Status:** Approved (brainstorming) → ready for implementation plan
-**Owner:** ricchi
+**Owner:** maintainers
 **Related:** PR #60 (`threadlight-router-bench` skill), `docs/superpowers/specs/2026-06-30-threadlight-router-bench-design.md`
 
 ---
@@ -157,7 +157,7 @@ on the same 0–1 scale.
 
 Scripted and documented; idempotent where possible.
 
-1. **`gpt-5.4` deployment** on `aif-shared-gbb-ci` (`rg-shared-gbb-ci`):
+1. **`gpt-5.4` deployment** on `aif-example-ci` (`rg-example-ci`):
    - Quota-check first (premium model; capacity may be constrained, like the
      mini cap of 500 in swedencentral). If quota denies, surface clearly and mark
      the **strong arm unavailable** (the mini-vs-router comparison still runs).

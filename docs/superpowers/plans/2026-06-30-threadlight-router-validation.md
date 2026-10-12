@@ -11,7 +11,7 @@
 **Spec:** `docs/superpowers/specs/2026-06-30-threadlight-router-validation-design.md`
 
 **Grounded environment facts (verified 2026-06-30):**
-- Account: `aif-shared-gbb-ci` / RG `rg-shared-gbb-ci` / sub `2c745a8f-9d37-45e3-8506-80797e89735e`.
+- Account: `aif-example-ci` / RG `rg-example-ci` / sub `00000000-0000-0000-0000-000000000000`.
 - `gpt-5.4` model: name `gpt-5.4`, version `2026-03-05`, format `OpenAI`, sku `GlobalStandard` (westus3 & swedencentral).
 - `gpt-5.4-mini` deployment: model version `2026-03-17`, format `OpenAI`.
 - `model-router` deployment: version `2025-11-18`; **currently no `routing` block** (full default pool) → restore = PUT without `routing`.
@@ -1145,10 +1145,10 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ```bash
 #!/usr/bin/env bash
-# Create the gpt-5.4 strong-arm deployment on aif-shared-gbb-ci (idempotent).
+# Create the gpt-5.4 strong-arm deployment on aif-example-ci (idempotent).
 set -euo pipefail
-ACC=aif-shared-gbb-ci
-RG=rg-shared-gbb-ci
+ACC=aif-example-ci
+RG=rg-example-ci
 NAME=gpt-5.4
 MODEL=gpt-5.4
 VERSION=2026-03-05         # verified catalog version (westus3/swedencentral)
@@ -1207,12 +1207,12 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ```bash
 #!/usr/bin/env bash
-# Record / set / restore the model-router custom subset on aif-shared-gbb-ci.
+# Record / set / restore the model-router custom subset on aif-example-ci.
 # Usage: router-subset.sh record|set|restore
 set -euo pipefail
-SUB=2c745a8f-9d37-45e3-8506-80797e89735e
-RG=rg-shared-gbb-ci
-ACC=aif-shared-gbb-ci
+SUB=00000000-0000-0000-0000-000000000000
+RG=rg-example-ci
+ACC=aif-example-ci
 DEP=model-router
 API=2025-10-01-preview
 URL="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.CognitiveServices/accounts/$ACC/deployments/$DEP?api-version=$API"
@@ -1342,7 +1342,7 @@ Expected: `matrix-manifest.json` with 6 cells (run IDs).
 - [ ] **Step 3: Wait for completion, then ingest + score**
 
 ```bash
-RID="/subscriptions/2c745a8f-9d37-45e3-8506-80797e89735e/resourceGroups/rg-shared-gbb-ci/providers/Microsoft.CognitiveServices/accounts/aif-shared-gbb-ci"
+RID="/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example-ci/providers/Microsoft.CognitiveServices/accounts/aif-example-ci"
 python3 skills/threadlight-router-bench/scripts/router_bench.py validate \
   --ingest /tmp/router-validation/matrix-manifest.json \
   --resource "$RID" --out /tmp/router-validation

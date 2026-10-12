@@ -2022,7 +2022,7 @@ proceeding.
 
 Write the issue body to the session scratch dir (never into the repo):
 
-`/Users/ricchi/.copilot/session-state/4fb2c69e-dfa9-4656-9328-398a3f07983e/files/awesome-gbb-mcp-provenance-issue.md`
+`<session-dir>/files/awesome-gbb-mcp-provenance-issue.md`
 
 Body (standalone-merit; proposes a reusable MCP-provenance primitive for the broader catalog):
 
@@ -2092,7 +2092,7 @@ BODY
 ```bash
 gh issue create --repo aiappsgbb/awesome-gbb \
   --title "Add a reusable MCP provenance/SBOM primitive for Foundry agent repos" \
-  --body-file /Users/ricchi/.copilot/session-state/4fb2c69e-dfa9-4656-9328-398a3f07983e/files/awesome-gbb-mcp-provenance-issue.md
+  --body-file <session-dir>/files/awesome-gbb-mcp-provenance-issue.md
 ```
 
 - [ ] **Step 7: Update the session plan**

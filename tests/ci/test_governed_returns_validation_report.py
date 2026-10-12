@@ -98,7 +98,7 @@ def test_public_hosted_record_preserves_exact_business_and_human_boundaries():
     text = " ".join(REPORT.read_text().split())
     for marker in (
         "S3-HOSTED-ALLOW", "S3-HOSTED-DENY", "S3-PENDING-APPROVAL",
-        "S3-EXPIRED-RESUME", "S3-AUDITED-READ", "SecurityControl=Ignore",
+        "S3-EXPIRED-RESUME", "S3-AUDITED-READ", "policy-exemption tag",
         "3e46f91052d3f22bcaa1897c394075caed767f54585be57725fa93b13096c69d",
         "decision-24b13a1968a7cbc1a0d4105b30c968bb3a52b437d51f56411aba13c7b3ae1cda",
         "53c7b11c83a4436b94732ad1517d8ebe",

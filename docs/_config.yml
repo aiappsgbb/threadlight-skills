@@ -10,10 +10,15 @@
 # — which fails the whole Pages build. Exclude the directory so Jekyll neither
 # publishes nor parses them.
 #
+# Internal working notes (a dated solution review and the Pages narrative
+# spec) stay readable in the repository but are not published as site pages.
+#
 # NOTE: a custom `exclude` replaces Jekyll's default list, so the standard
 # defaults are re-listed below to avoid accidentally publishing vendor files.
 exclude:
   - superpowers/
+  - solution-review-2026-09-15.md
+  - production-readiness-pages-spec.md
   - .sass-cache
   - .jekyll-cache
   - gemfiles

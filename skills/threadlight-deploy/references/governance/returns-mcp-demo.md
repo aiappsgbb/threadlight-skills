@@ -81,7 +81,7 @@ Setting only `AZURE_CONFIG_DIR` is not that contract. Do not copy login caches.
    This proves authenticated runtime behavior, **not private network isolation**.
    Organization policy may override declared PNA. Observe actual resources and
    policy operations; stop for an authorized decision rather than silently
-   changing policy. The S3 operator-authorized `SecurityControl=Ignore` tag was
+   changing policy. The S3 operator-authorized policy-exemption tag was
    local to that new resource group, not a generator default or general recipe.
 3. Materialize the source closure below. For the generated MAF agent, optionally
    select the retained canonical dependency file in `package.json`:

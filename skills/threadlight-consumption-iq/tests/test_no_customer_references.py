@@ -4,11 +4,13 @@ This skill was generalized from a private customer pilot. NOTHING customer-,
 CX-, or journey-specific may leak into the public MIT repo. This test scans
 every committed file under the skill (scripts, references, fixtures, SKILL.md,
 tests) for a denylist of customer / project / journey terms and for obvious
-secret literals. It is the automated enforcement of the "zero VF3 / CX
-references" hard constraint.
+secret literals. It is the automated enforcement of the "zero customer / CX
+references" hard constraint. Identifying names are matched by SHA-256 so the
+guard does not republish them.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -17,10 +19,6 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent
 # Customer / CX / journey terms that must NEVER appear. Lower-cased substring
 # match. Kept deliberately broad — a generic pilot needs none of these.
 FORBIDDEN_TERMS = [
-    "vodafone",
-    "vodafonethree",
-    "vf3",
-    "carl.johnson-gash",
     "customer-journey advisor",
     "journey-advisor",
     "vulnerable customer",
@@ -28,10 +26,19 @@ FORBIDDEN_TERMS = [
     "promise to pay",
     "annual price-rise",
     "collections state",
-    "km1006704",
-    "km1067250",
     "acc-00",          # synthetic account-id pattern from the private repo
 ]
+
+# Customer, programme and person identifiers, as SHA-256 of a normalized token.
+FORBIDDEN_TOKEN_SHA256 = {
+    "c09dee99967309b12c066143a662efd5fc01f4b628d337037dcdf3931c0661bc",
+    "67d236621f94510d80a1b862cb6f472b2e6588c4b6fb2d1d75ef3ab284014247",
+    "81dd6be53aa1f8503067861a9c29ecc0d1b86d554f62e427094ddef352508372",
+    "77055aea8924ace76bb1ec5f6c677c255891dc57e033fda66a18dd2d2116870a",
+}
+
+# Internal knowledge-base article ids from the private pilot.
+KB_ARTICLE = re.compile(r"\bkm\d{7}\b")
 
 # Secret-shaped literals.
 SECRET_PATTERNS = [
@@ -46,6 +53,17 @@ TEXT_SUFFIXES = {
 }
 
 
+def _token_hashes(text: str) -> set[str]:
+    """SHA-256 of every lower-cased token and of its ``.``/``-``/``_`` parts."""
+    hashes: set[str] = set()
+    for raw in re.findall(r"[a-z0-9][a-z0-9._-]*", text.lower()):
+        token = raw.strip("._-")
+        for value in [token, *re.split(r"[._-]+", token)]:
+            if value:
+                hashes.add(hashlib.sha256(value.encode()).hexdigest())
+    return hashes
+
+
 def _files():
     for p in SKILL_ROOT.rglob("*"):
         if not p.is_file():
@@ -58,7 +76,7 @@ def _files():
 
 
 def test_no_customer_or_cx_terms_leak():
-    # This very test file names the forbidden terms; exclude it from its own scan.
+    # This very test file lists the forbidden terms; exclude it from its own scan.
     self_name = Path(__file__).name
     offenders: list[str] = []
     for p in _files():
@@ -68,6 +86,10 @@ def test_no_customer_or_cx_terms_leak():
         for term in FORBIDDEN_TERMS:
             if term in low:
                 offenders.append(f"{p.relative_to(SKILL_ROOT)} :: {term!r}")
+        if _token_hashes(low) & FORBIDDEN_TOKEN_SHA256:
+            offenders.append(f"{p.relative_to(SKILL_ROOT)} :: customer identifier")
+        if KB_ARTICLE.search(low):
+            offenders.append(f"{p.relative_to(SKILL_ROOT)} :: knowledge-base article id")
     assert not offenders, "Customer/CX terms leaked:\n" + "\n".join(offenders)
 
 
