@@ -687,3 +687,22 @@ test("a missing plan says 'Not computed' once, not per milestone", async () => {
   assert.equal(view.proofPath.planned, false);
   assert.ok(view.proofPath.milestones.every((milestone) => milestone.stateLabel === null));
 });
+
+test("an unverified plan never headlines live results, whatever the next step", () => {
+  for (const next of ["invoke", "evals", "safe_check"]) {
+    const decisions = {};
+    for (const stage of ["preflight", "design", "govern", "governed_actions_gate", "deploy", "governance_probe", "safe_check", "cost_projection", "invoke", "agentops", "evals", "redteam"]) {
+      decisions[stage] = { decision: "skip", reason: "Fresh evidence." };
+      if (stage === next) break;
+    }
+    decisions[next] = { decision: "run", reason: "Not yet run." };
+    const view = buildProcessModel(
+      base({
+        plan: plan(decisions),
+        planStatus: { status: "unverified", reason: "unreadable", decidedAt: "2026-08-06T08:30:00.000Z" },
+      }),
+    );
+    assert.doesNotMatch(view.now.headline, /\blive\b|verified|Ready to go live/i, next);
+    assert.equal(view.now.headline, "Progress recorded; live results not re-confirmed", next);
+  }
+});

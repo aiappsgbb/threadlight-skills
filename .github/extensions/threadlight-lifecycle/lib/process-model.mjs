@@ -1035,9 +1035,7 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
     // claim live proof or readiness while freshness cannot be confirmed.
     return {
       ...now,
-      headline: /Proven live|Ready to go live/.test(now.headline)
-        ? "Progress recorded; live results not re-confirmed"
-        : now.headline,
+      headline: "Progress recorded; live results not re-confirmed",
       blockerTone: "attention",
       blocker: [
         now.headline === "Some evidence is out of date" ? now.blocker : null,
