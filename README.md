@@ -491,17 +491,19 @@ order — is in [`docs/KRATOS-BRIDGE.md`](docs/KRATOS-BRIDGE.md).
 
 ## Handing a design to the Agentic Loop
 
-Threadlight and the GBB **Agentic Loop** (with Spec2Cloud) are complementary:
-Threadlight designs the business process and carries it to production evidence;
-the loop builds it. After `threadlight-design`, one command exports the SPEC into
-the loop's `docs/spec.md` shape, keeping every business rule, human gate and
-evaluation scenario traceable:
+Threadlight and the GBB **Foundry Agentic Loop** are complementary: Threadlight
+designs the business process and carries it to production evidence; the loop
+builds it. After `threadlight-design`, one command exports the SPEC as a
+self-contained brief for the loop's SDD mode (published plugin
+`foundry-agentic-loop@awesome-copilot`), keeping every business rule, human gate
+and evaluation scenario traceable:
 
 ```bash
-python3 skills/threadlight-design/scripts/export_agentic_loop_spec.py specs/SPEC.md -o docs/spec.md
+python3 skills/threadlight-design/scripts/export_agentic_loop_spec.py specs/SPEC.md -o docs/threadlight-brief.md
 ```
 
-The export is one-way and marks gaps as `[NEEDS CLARIFICATION: ...]`;
+Legacy `/spec2cloud` workspaces can still export `docs/spec.md` with
+`--target spec2cloud`. The export is one-way and marks gaps as `[NEEDS CLARIFICATION: ...]`;
 `specs/SPEC.md` stays the source of truth. Mapping, worked example and limits:
 [`docs/AGENTIC-LOOP-BRIDGE.md`](docs/AGENTIC-LOOP-BRIDGE.md).
 

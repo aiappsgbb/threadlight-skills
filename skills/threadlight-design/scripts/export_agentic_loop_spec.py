@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Export a Threadlight ``specs/SPEC.md`` as an Agentic Loop ``docs/spec.md``.
+"""Export a Threadlight ``specs/SPEC.md`` for the Agentic Loop build loop.
 
-Agentic Loop / Spec2Cloud runs Specify -> Plan -> Implement -> Verify -> Deploy
-and expects ``./docs/spec.md`` in the lean ``specify`` template shape. This
-exporter writes that shape from an existing Threadlight SPEC so a team can hand
-a Threadlight design to the Agentic Loop build loop without retyping it.
+Two targets:
 
-It is a one-way, deterministic, standard-library projection:
+* ``sdd-brief`` (default): a self-contained brief for the published Foundry
+  Agentic Loop plugin (``foundry-agentic-loop@awesome-copilot``). Its SDD mode
+  runs Specify -> Implement -> Verify -> Deploy from a ``brief``; Specify writes
+  the EARS ``docs/spec.md`` and ``.azure/deployment-plan.md`` itself.
+* ``spec2cloud`` (legacy): ``./docs/spec.md`` in the lean Spec2Cloud ``specify``
+  template shape, for existing five-stage ``/spec2cloud`` workspaces.
+
+Both are one-way, deterministic, standard-library projections:
 
 * business rules become traceable ``FR-xxx`` requirements (``BR-xxx`` kept);
 * human action gates, tool side effects, data models, scenarios, security,
@@ -16,12 +20,13 @@ It is a one-way, deterministic, standard-library projection:
   the sections that are deliberately not carried.
 
 The Threadlight SPEC stays the source of truth. Re-export after changing it.
-This script does not run Agentic Loop, validate its policy layer or deploy.
+This script does not run the Agentic Loop, validate its output or deploy.
 
 Usage::
 
-    python3 export_agentic_loop_spec.py specs/SPEC.md -o docs/spec.md [--force]
-    python3 export_agentic_loop_spec.py specs/SPEC.md            # stdout
+    python3 export_agentic_loop_spec.py specs/SPEC.md -o docs/threadlight-brief.md [--force]
+    python3 export_agentic_loop_spec.py specs/SPEC.md --target spec2cloud -o docs/spec.md
+    python3 export_agentic_loop_spec.py specs/SPEC.md            # brief to stdout
 """
 from __future__ import annotations
 
@@ -448,7 +453,7 @@ def services(spec: Spec) -> list[str]:
     return lines
 
 
-def ai_foundry(spec: Spec) -> list[str]:
+def ai_foundry(spec: Spec, brief: bool = False) -> list[str]:
     lines = ["| Item | Choice | Rationale |", "| --- | --- | --- |"]
     models = [
         (h, b) for h, b in split_sections(spec.sec("ai services"), 3)
@@ -476,7 +481,9 @@ def ai_foundry(spec: Spec) -> list[str]:
     participants = _participants(spec.sec("process overview"))
     agents = [r[0] for r in participants if len(r) > 1 and r[1].lower() == "agent"]
     lines.append(
-        f"| Hosted agent(s) | {cell(', '.join(agents) or spec.title)} | Protocol and framework per Agentic Loop policy |"
+        f"| Hosted agent(s) | {cell(', '.join(agents) or spec.title)} | "
+        + ("Framework and protocol per the Agentic Loop SDD defaults |" if brief
+           else "Protocol and framework per Agentic Loop policy |")
     )
     for heading, body in split_sections(spec.sec("knowledge sources"), 3):
         backing = field(body, "Backing service")
@@ -488,13 +495,15 @@ def ai_foundry(spec: Spec) -> list[str]:
         )
     header, scenarios = table(find_h3(spec.sec("success criteria"), "evaluation scenarios"))
     count = len(scenarios) if header else 0
+    where = ("Users and scenarios", "Goals and non-goals", "Functional requirements and human gates") if brief \
+        else ("§ 3", "§ 2", "§ 4")
     lines.append(
-        f"| Evaluation | {count} scenarios in § 3 plus KPIs in § 2 | Keep every business rule covered |"
+        f"| Evaluation | {count} scenarios in {where[0]} plus KPIs in {where[1]} | Keep every business rule covered |"
         if count
         else f"| Evaluation | {NEEDS.format('evaluation scenarios')} | |"
     )
     rai = field_any(spec.sec("security"), "Responsible AI posture", "Responsible AI", "Human control", "Human decision boundary")
-    lines.append(f"| Guardrails | Content safety plus the human gates in § 4 | {cell(rai)} |")
+    lines.append(f"| Guardrails | Content safety plus the human gates in {where[2]} | {cell(rai)} |")
     return lines
 
 
@@ -552,7 +561,7 @@ def interfaces(spec: Spec) -> list[str]:
     return lines
 
 
-def open_questions(spec: Spec) -> list[str]:
+def open_questions(spec: Spec, brief: bool = False) -> list[str]:
     section = spec.sec("assumptions")
     questions = bullets(find_h3(section, "open questions")) or yaml_list(section, "open_questions")
     assumptions = [
@@ -576,21 +585,49 @@ def open_questions(spec: Spec) -> list[str]:
     lines += [
         "",
         "> Identity, secrets, and deployment targets live in `.azure/deployment-plan.md`,",
-        "> produced by the Agentic Loop plan stage.",
+        "> written by the Agentic Loop Specify phase." if brief else "> produced by the Agentic Loop plan stage.",
     ]
     return lines
 
 
-def provenance(spec: Spec) -> list[str]:
-    lines = [
-        "This file is an export. The Threadlight `specs/SPEC.md` stays the source of truth",
-        "for governance, production readiness and value evidence. Re-export after changing",
-        "the SPEC instead of editing both. The export does not run Agentic Loop, prove its",
-        "policy layer accepted the spec, or deploy anything.",
-        "",
-        "| Threadlight section | Exported to | Keep using |",
-        "| --- | --- | --- |",
-    ]
+BRIEF_SECTIONS = {
+    "§ 1": "Solution",
+    "§ 2": "Goals and non-goals",
+    "§ 3": "Users and scenarios",
+    "§ 4": "Functional requirements and human gates",
+    "§ 5": "Non-functional requirements",
+    "§ 6": "Process flow",
+    "§ 7": "Decisions already taken",
+    "§ 8": "Azure services selected by the design",
+    "§ 9": "Agents, models and grounding",
+    "§ 10": "Data and seed facts",
+    "§ 11": "Tools, integrations and triggers",
+    "§ 12": "Assumptions and open questions",
+}
+
+
+def provenance(spec: Spec, brief: bool = False) -> list[str]:
+    if brief:
+        lines = [
+            "This brief is an export. The Threadlight `specs/SPEC.md` stays the source of truth",
+            "for governance, production readiness and value evidence. Re-export after changing",
+            "the SPEC instead of editing both. The export does not run the Agentic Loop or deploy",
+            "anything. Code the loop generates does not inherit Threadlight's governed runtime;",
+            "verify approvals, signed policy and audit with the Threadlight production path.",
+            "",
+            "| Threadlight section | Carried to | Keep using |",
+            "| --- | --- | --- |",
+        ]
+    else:
+        lines = [
+            "This file is an export. The Threadlight `specs/SPEC.md` stays the source of truth",
+            "for governance, production readiness and value evidence. Re-export after changing",
+            "the SPEC instead of editing both. The export does not run Agentic Loop, prove its",
+            "policy layer accepted the spec, or deploy anything.",
+            "",
+            "| Threadlight section | Exported to | Keep using |",
+            "| --- | --- | --- |",
+        ]
     for heading, _ in spec.h2:
         key = title_key(heading)
         target, owner = None, None
@@ -598,6 +635,8 @@ def provenance(spec: Spec) -> list[str]:
             if keyword in key:
                 target, owner = dest, skill
                 break
+        if brief and target:
+            target = ", ".join(BRIEF_SECTIONS[s.strip()] for s in target.split(","))
         where = target or "not carried"
         keep = f"`{owner}`" if owner else "—"
         lines.append(f"| § {cell(heading)} | {where} | {keep} |")
@@ -634,15 +673,88 @@ def export(text: str) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+def decisions_taken(spec: Spec) -> list[str]:
+    hosting = spec.sec("workflow model")
+    agent_type = yaml_value(hosting, "agent_type") or "hosted"
+    workflow = yaml_value(hosting, "workflow_model") or NEEDS.format("workflow model")
+    lines = [
+        f"- Every agent runs in Microsoft Foundry as a `{agent_type}` agent"
+        + (" (Foundry hosted agent, the Threadlight default)." if agent_type == "hosted" else "."),
+        "- No agent loop in application code: Container Apps hosts only the UI, a thin proxy,",
+        "  MCP tool servers or jobs.",
+        f"- Workflow model: `{workflow}` (Threadlight § 11e).",
+    ]
+    header, rows = table(spec.sec("tech stack"))
+    selected = [row[0].strip("`") for row in rows if header and len(row) >= 2 and row[1].lower().startswith("yes")]
+    if selected:
+        lines.append("- Selected modules: " + ", ".join(f"`{cell(s)}`" for s in selected) + ".")
+    lines.append("- The rules, human gates, scenarios, data and tool side effects in this brief are decided;")
+    lines.append("  change them in the Threadlight SPEC, then re-export.")
+    return lines
+
+
+def left_to_loop(spec: Spec) -> list[str]:
+    return [
+        "- Agent framework and protocol (Copilot SDK or Microsoft Agent Framework), per the SDD defaults.",
+        "- EARS acceptance criteria for every requirement, keeping each `BR-xxx` ID.",
+        "- The frozen implementation contract, at most four workstreams and the verification plan.",
+        "- Region placement and quota, and the RBAC preflight, recorded in `.azure/deployment-plan.md`.",
+        "- azd layout, infrastructure and deployment, after your approval at each checkpoint.",
+        "- Each `[NEEDS CLARIFICATION: ...]` marker: resolve it or record it as an assumption.",
+    ]
+
+
+def export_brief(text: str) -> str:
+    spec = Spec(text)
+    out: list[str] = [
+        f"# {spec.title} — Agentic Loop SDD brief",
+        "",
+        f"> **Source:** Threadlight `specs/SPEC.md`, generated {spec.generated}; exported by",
+        "> `export_agentic_loop_spec.py`. The Threadlight SPEC stays the source of truth.",
+        ">",
+        "> **Use:** `copilot plugin install foundry-agentic-loop@awesome-copilot`, ask Copilot to",
+        "> open the agentic loop, choose SDD and start a build with this whole file as the brief.",
+        "> The Specify phase writes `docs/spec.md` (EARS) and `.azure/deployment-plan.md` from it.",
+        "> Section references (§) point to the Threadlight SPEC.",
+        "",
+    ]
+    sections = [
+        ("Solution", summary),
+        ("Goals and non-goals", goals),
+        ("Users and scenarios", lambda s: ["Use every scenario as an evaluation case with its expected outcome.", ""] + users(s)),
+        ("Functional requirements and human gates",
+         lambda s: ["Write each requirement as EARS acceptance criteria and keep its rule ID.", ""] + requirements(s)),
+        ("Non-functional requirements", nfrs),
+        ("Process flow", architecture),
+        ("Azure services selected by the design", services),
+        ("Agents, models and grounding", lambda s: ai_foundry(s, brief=True)),
+        ("Data and seed facts", data_model),
+        ("Tools, integrations and triggers", interfaces),
+        ("Decisions already taken", decisions_taken),
+        ("Left to the Agentic Loop", left_to_loop),
+        ("Assumptions and open questions", lambda s: open_questions(s, brief=True)),
+        ("Appendix — Threadlight provenance", lambda s: provenance(s, brief=True)),
+    ]
+    for heading, builder in sections:
+        out += [f"## {heading}", ""] + builder(spec) + [""]
+    return "\n".join(out).rstrip() + "\n"
+
+
+TARGETS = {"sdd-brief": export_brief, "spec2cloud": export}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("spec", type=Path, help="Threadlight specs/SPEC.md")
-    parser.add_argument("-o", "--output", type=Path, help="write here (e.g. docs/spec.md); default stdout")
+    parser.add_argument("--target", choices=sorted(TARGETS), default="sdd-brief",
+                        help="sdd-brief (default, foundry-agentic-loop SDD) or spec2cloud (legacy docs/spec.md)")
+    parser.add_argument("-o", "--output", type=Path,
+                        help="write here (docs/threadlight-brief.md, or docs/spec.md for spec2cloud); default stdout")
     parser.add_argument("--force", action="store_true", help="overwrite an existing output file")
     args = parser.parse_args(argv)
     if not args.spec.is_file():
         parser.error(f"SPEC not found: {args.spec}")
-    result = export(args.spec.read_text(encoding="utf-8"))
+    result = TARGETS[args.target](args.spec.read_text(encoding="utf-8"))
     if args.output is None:
         sys.stdout.write(result)
         return 0
