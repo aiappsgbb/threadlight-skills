@@ -7,6 +7,27 @@ field.
 
 ## [Unreleased]
 
+### 2.22.0: Agentic Loop bridge exports an SDD brief for the published plugin
+
+- **Why.** The GBB Agentic Loop now ships as the published
+  [`foundry-agentic-loop`](https://github.com/github/awesome-copilot/tree/main/plugins/foundry-agentic-loop)
+  plugin (`copilot plugin install foundry-agentic-loop@awesome-copilot`). Its SDD
+  mode runs Specify → Implement → Verify → Deploy from a self-contained `brief`,
+  and Specify writes the EARS `docs/spec.md` and `.azure/deployment-plan.md`
+  itself. The five-stage `/spec2cloud` flow is legacy.
+- **Change.** `export_agentic_loop_spec.py` now defaults to `--target sdd-brief`
+  and writes a brief (suggested path `docs/threadlight-brief.md`) whose sections
+  map onto the plugin's SDD spec template (checked at `github/awesome-copilot`
+  `60988c0d`): rules and human gates for EARS, scenarios for evaluation, data and
+  seed facts, tools with side effects, decisions already taken and what is left
+  to the loop. `--target spec2cloud` keeps the previous `docs/spec.md` output
+  byte-identical for legacy workspaces.
+- **Docs.** `docs/AGENTIC-LOOP-BRIDGE.md`, the README section and the
+  `threadlight-design` note describe the new path; worked example
+  `references/agentic-loop-export/returns-triage.brief.md`.
+- **Not verified here:** the brief was not run through the Agentic Loop SDD
+  workflow; tests check shape, determinism and the committed examples only.
+
 ### 2.21.0: official skills at azure-skills v1.2.113; Foundry voice agents on explicit opt-in
 
 - **Official skills lock** regenerated from fetched content at
