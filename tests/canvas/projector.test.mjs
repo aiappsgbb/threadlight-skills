@@ -1725,3 +1725,105 @@ test("readiness proof needs the planner's fresh governance probe, not the manife
     assert.notEqual(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-proof");
   });
 });
+
+async function touchLater(workspace, relativePath, contents = "changed\n") {
+  const { mkdir, utimes, writeFile } = await import("node:fs/promises");
+  const target = path.join(workspace, relativePath);
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, contents);
+  const later = new Date("2026-08-06T08:45:00Z");
+  await utimes(target, later, later);
+}
+
+for (const changed of [
+  "src/agent/main.py",
+  "src/triggers/handler.py",
+  "policies/returns.rego",
+  "infra/modules/app.bicep",
+  "config/settings.json",
+  "pyproject.toml",
+  "requirements.txt",
+  "Dockerfile",
+  "agent.yaml",
+  "tool-registry.json",
+  ".threadlight/governance-probe.json",
+  ".threadlight/governance-package.json",
+]) {
+  test(`a change to planner input ${changed} after the plan makes it out of date`, async () => {
+    await withFixture("complete-pilot", async ({ workspace }) => {
+      await touchLater(workspace, changed);
+      const model = await projectWorkspace(workspace, { now: NOW });
+      assert.equal(model.view.plan.status, "stale", changed);
+      assert.equal(model.view.plan.changedPath, changed);
+      assert.notEqual(
+        findSkill(model, "threadlight-production-ready").evidenceState,
+        "readiness-proof",
+        changed,
+      );
+    });
+  });
+}
+
+test("freshness scanning never follows symlinks or looks inside .azure", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    await touchLater(workspace, "outside/new.py");
+    await symlink("../outside", path.join(workspace, "src-link"));
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(path.join(workspace, "src"), { recursive: true });
+    await symlink("../outside", path.join(workspace, "src", "linked"));
+    await touchLater(workspace, ".azure/dev/config.json");
+    const model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(model.view.plan.status, "current");
+  });
+});
+
+test("pilots without selected governance can be ready on the readiness proof chain", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await rm(path.join(workspace, "specs/governance-manifest.json"));
+    const plan = completePlan();
+    const standard = plan.stages.filter(
+      (stage) => !["govern", "governed_actions_gate", "governance_probe"].includes(stage),
+    );
+    plan.stages = standard;
+    plan.decisions = plan.decisions.filter((decision) => standard.includes(decision.stage));
+    plan.next_action = { type: "run", stages_to_run: [], stages_to_skip: standard };
+    await writeJson(".threadlight/auto-next.json", plan);
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(model.view.plan.status, "current");
+    assert.equal(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-proof");
+  });
+});
+
+test("a governed plan still needs planner-proven governance for readiness", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    const plan = completePlan();
+    Object.assign(plan.decisions.find((decision) => decision.stage === "governance_probe"), {
+      decision: "run",
+      reason: "Mandatory current exact live binding proof required.",
+    });
+    plan.next_action = { type: "run", stages_to_run: ["governance_probe"], stages_to_skip: [] };
+    await writeJson(".threadlight/auto-next.json", plan);
+    const model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-incomplete");
+  });
+});
+
+test("a legacy plan with a pending govern stage does not waive governance for readiness", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    const plan = completePlan();
+    const legacy = plan.stages.filter(
+      (stage) => !["governed_actions_gate", "governance_probe"].includes(stage),
+    );
+    plan.stages = legacy;
+    plan.decisions = plan.decisions.filter((decision) => legacy.includes(decision.stage));
+    Object.assign(plan.decisions.find((decision) => decision.stage === "govern"), {
+      decision: "run",
+      reason: "Binding inventory missing, invalid or changed.",
+    });
+    plan.next_action = { type: "run", stages_to_run: ["govern"], stages_to_skip: [] };
+    await writeJson(".threadlight/auto-next.json", plan);
+    const model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-incomplete");
+  });
+});

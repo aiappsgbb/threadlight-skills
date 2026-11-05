@@ -697,6 +697,29 @@ function controlResult(phases, proofPath) {
   return { state: "todo", text: "not checked yet" };
 }
 
+const GOVERNANCE_GATES = ["govern", "governed_actions_gate", "governance_probe"];
+
+/**
+ * True when a current plan has no selected runtime governance: the planner
+ * used its standard stage list (no governed-actions gate, no live probe). A
+ * legacy "govern" stage in that list must itself have passed freshly.
+ */
+export function planOmitsGovernance(plan, planStatus) {
+  if (
+    planStatus?.status !== "current" ||
+    !isPlainObject(plan) ||
+    !Array.isArray(plan.stages) ||
+    plan.stages.some((stage) => GOVERNANCE_GATES.slice(1).includes(stage))
+  ) {
+    return false;
+  }
+  const govern = (plan.decisions ?? []).find((decision) => decision.stage === "govern");
+  return (
+    !govern ||
+    (govern.decision === "skip" && !STALE_REASON.test(govern.reason ?? ""))
+  );
+}
+
 /** True only when a current plan shows every governance gate passed freshly. */
 export function planProvesGovernance(plan, planStatus) {
   if (planStatus?.status !== "current" || !isPlainObject(plan) || !Array.isArray(plan.decisions)) {

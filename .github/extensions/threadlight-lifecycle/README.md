@@ -26,6 +26,7 @@ An empty workspace shows **Describe your process** with an example brief.
 
 - The loopback server binds only to `127.0.0.1` and uses a per-instance capability token.
 - Artifact reads use an allowlist that excludes `.env` and `.azure/**/.env`. `.threadlight/auto-next.json` is read, never written.
+- To tell whether the plan is out of date, the Canvas compares `decided_at` with the modification times (metadata only, never contents) of the planner's fingerprint inputs: `src/`, `policies/`, `infra/`, `config/`, `azure.yaml`, `agent.yaml`, `tool-registry.json`, `pyproject.toml`, `requirements.txt`, `Dockerfile` and `.threadlight/governance-*.json`. Symlinks are not followed, `.env` files are skipped and `.azure/` is not scanned. A plan older than 24 hours is also out of date.
 - The Canvas never spawns processes. Its actions send validated intents to chat only: `start_pilot`, `advance_plan` (a known `threadlight-auto` stage id), `refresh_plan` (asks chat to run the planner command above), `invoke_skill` (a registered skill id), `inspect_evidence`, `resume_phase` and `prepare_handoff`. Chat explains the step and runs nothing until the user confirms.
 - Evidence is distrusted by default: malformed or forged manifests render as Blocked, offline governance inventory is never shown as proven live, and the legacy `specs/govern-manifest.json` is never read as governance proof.
 

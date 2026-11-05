@@ -11,6 +11,7 @@ import {
   assessPlan,
   buildProcessModel,
   parseSpec,
+  planOmitsGovernance,
   planProvesGovernance,
 } from "./process-model.mjs";
 
@@ -1022,8 +1023,9 @@ async function skillEvidenceState(definition, reader, manifest, projectedSkills,
         // Both: the planner proved the gates freshly AND the manifest the
         // Canvas reads is still valid offline evidence (not stale/failed).
         govern:
-          context.governanceProven &&
-          projectedSkills.get("threadlight-govern")?.status === "prepared"
+          !context.governanceRequired ||
+          (context.governanceProven &&
+            projectedSkills.get("threadlight-govern")?.status === "prepared")
             ? "proven"
             : null,
         evals: evalsValidation?.valid ? evalsValidation.verdict : null,
@@ -1558,6 +1560,15 @@ async function newestPlanInput(reader) {
     }
   }
   let newest = null;
+  const fingerprint =
+    typeof reader.newestFreshnessInput === "function" ? await reader.newestFreshnessInput() : null;
+  if (fingerprint?.truncated) {
+    // Too many files to check within the bound: assume something changed.
+    return { at: new Date(8.64e15), path: fingerprint.path };
+  }
+  if (fingerprint) {
+    newest = { at: fingerprint.at, path: fingerprint.path };
+  }
   for (const relativePath of paths) {
     const metadata = await reader.metadata(relativePath);
     // Files only: a directory's mtime moves with unrelated entries.
@@ -1656,6 +1667,9 @@ export async function projectWorkspace(workspace, options = {}) {
     // Readiness proof needs governance proven by the planner, never by a
     // manifest the Canvas cannot re-validate.
     governanceProven: planProvesGovernance(plan, planStatus),
+    // Only a current plan without governance stages waives the requirement:
+    // those pilots rely on the readiness proof chain (incl. AGT-001).
+    governanceRequired: !planOmitsGovernance(plan, planStatus),
   };
   const projectedSkills = new Map();
 

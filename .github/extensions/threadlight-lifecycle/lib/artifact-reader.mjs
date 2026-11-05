@@ -49,6 +49,28 @@ const ALLOWED_ROOTS = [
   "router-bench-out",
 ];
 
+// Inputs threadlight-auto fingerprints before trusting a gate or deployment
+// (orchestrator.py _gate_fingerprint / _deployment_fingerprint). The Canvas
+// only compares their modification times with the plan's decided_at; it never
+// reads their contents. azd environment inputs under .azure are deliberately
+// not watched because their .env files hold secrets.
+export const FRESHNESS_FILES = Object.freeze([
+  "specs/SPEC.md",
+  "specs/manifest.json",
+  "azure.yaml",
+  "agent.yaml",
+  "tool-registry.json",
+  "pyproject.toml",
+  "requirements.txt",
+  "Dockerfile",
+  "tests/governed-actions-manifest.json",
+  ".threadlight/fixture.json",
+]);
+export const FRESHNESS_PREFIXES = Object.freeze([".threadlight/governance-"]);
+export const FRESHNESS_DIRECTORIES = Object.freeze(["src", "policies", "infra", "config"]);
+const FRESHNESS_PRUNE = new Set([".git", ".pytest_cache", "__pycache__", "build", "dist", "node_modules"]);
+const FRESHNESS_MAX_ENTRIES = 20000;
+
 export class ArtifactAccessError extends Error {
   constructor(relativePath, message) {
     super(`${relativePath}: ${message}`);
@@ -184,7 +206,77 @@ export async function createArtifactReader(workspace) {
     return normalized;
   }
 
+  async function lstatInside(relative) {
+    try {
+      return await lstat(path.join(workspaceReal, relative));
+    } catch (error) {
+      if (isMissing(error) || error?.code === "ENOTDIR") {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   return Object.freeze({
+    /**
+     * Newest modification time among threadlight-auto's fingerprint inputs.
+     * Metadata only (lstat), regular files only, symlinks never followed,
+     * .env files skipped. A tree larger than the bound reports `truncated`.
+     */
+    async newestFreshnessInput() {
+      let newest = null;
+      const consider = (relative, details) => {
+        if (!newest || details.mtime > newest.at) {
+          newest = { at: details.mtime, path: relative };
+        }
+      };
+      for (const relative of FRESHNESS_FILES) {
+        const details = await lstatInside(relative);
+        if (details?.isFile()) consider(relative, details);
+      }
+      const stateDir = await lstatInside(".threadlight");
+      if (stateDir?.isDirectory() && !stateDir.isSymbolicLink()) {
+        for (const entry of await readdir(path.join(workspaceReal, ".threadlight"), { withFileTypes: true })) {
+          const relative = `.threadlight/${entry.name}`;
+          if (
+            entry.isFile() &&
+            entry.name.endsWith(".json") &&
+            FRESHNESS_PREFIXES.some((prefix) => relative.startsWith(prefix))
+          ) {
+            consider(relative, await lstat(path.join(workspaceReal, relative)));
+          }
+        }
+      }
+      let visited = 0;
+      for (const root of FRESHNESS_DIRECTORIES) {
+        const rootDetails = await lstatInside(root);
+        if (!rootDetails?.isDirectory() || rootDetails.isSymbolicLink()) {
+          continue;
+        }
+        const pending = [root];
+        while (pending.length) {
+          const current = pending.pop();
+          for (const entry of await readdir(path.join(workspaceReal, current), { withFileTypes: true })) {
+            if (++visited > FRESHNESS_MAX_ENTRIES) {
+              return { at: null, path: `${root}/`, truncated: true };
+            }
+            const relative = `${current}/${entry.name}`;
+            if (entry.isSymbolicLink()) {
+              continue;
+            }
+            if (entry.isDirectory()) {
+              if (!FRESHNESS_PRUNE.has(entry.name) && !entry.name.endsWith(".egg-info")) {
+                pending.push(relative);
+              }
+            } else if (entry.isFile() && !entry.name.startsWith(".env")) {
+              consider(relative, await lstat(path.join(workspaceReal, relative)));
+            }
+          }
+        }
+      }
+      return newest ? { at: newest.at, path: newest.path, truncated: false } : null;
+    },
+
     async agentOpsRoots(explicitRoots = []) {
       if (!Array.isArray(explicitRoots) || explicitRoots.length > 20000) {
         throw new ArtifactAccessError("agentops.yaml", "invalid explicit root inventory");
