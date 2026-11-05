@@ -62,7 +62,7 @@ these fixture receipts.
 Design, Deploy and Safe Check read
 [`presenter-deployment-pin.json`](../skills/_shared/presenter-deployment-pin.json).
 Copy that exact object to `deployment.guidance`. It selects the official
-[microsoft/azure-skills `microsoft-foundry` hosted-agent deploy guide at release `v1.2.79`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md),
+[microsoft/azure-skills `microsoft-foundry` hosted-agent deploy guide at release `v1.2.113`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md),
 fixed by tag, commit and the file's sha256, which must equal the entry in
 [`official-skills-lock.json`](../skills/_shared/official-skills-lock.json).
 Its relative references, deployment preflight and troubleshooting must be read at
@@ -81,10 +81,10 @@ kept equal to the shared pin by the catalog's technical-guidance test:
 ```json
 {
   "repository": "microsoft/azure-skills",
-  "tag": "v1.2.79",
-  "commit": "344bd5b3e041445237de09007ef62f4b3c51805d",
+  "tag": "v1.2.113",
+  "commit": "3c89228484f4a9241d255ec7c703976d13277c2d",
   "path": ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md",
-  "sha256": "54d7725d5f33238cd36fc6c00f468be67ee560d26849f8d32699ac4dd51cba50"
+  "sha256": "c44eecde5f0e161592a51e2f38e5b13e45897e5dee16c47212bbe5414971cb71"
 }
 ```
 
