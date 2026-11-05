@@ -2,6 +2,7 @@ const token = new URLSearchParams(window.location.search).get("token") ?? "";
 const content = document.querySelector("#content");
 const status = document.querySelector("#status");
 const updated = document.querySelector("#updated");
+const live = document.querySelector("#live");
 const refreshButton = document.querySelector("#refresh");
 const startDialog = document.querySelector("#start-dialog");
 const startForm = document.querySelector("#start-form");
@@ -18,14 +19,15 @@ const STATE_ICONS = Object.freeze({
   ready: "ready",
   prepared: "prepared",
   current: "current",
-  "in-progress": "current",
+  "in-progress": "in-progress",
+  partial: "partial",
+  human: "human",
   waiting: "waiting",
   todo: "todo",
   skipped: "skipped",
   failed: "failed",
   stale: "stale",
   attention: "stale",
-  partial: "prepared",
   unknown: "unknown",
   none: "todo",
 });
@@ -35,6 +37,7 @@ const TONE_ICONS = Object.freeze({
   attention: "stale",
   ready: "ready",
   progress: "current",
+  unknown: "unknown",
   empty: "todo",
 });
 
@@ -42,6 +45,7 @@ const state = {
   model: null,
   technicalOpen: readTechnicalOpen(),
   feedback: null,
+  pending: new Set(),
 };
 
 function readTechnicalOpen() {
@@ -118,32 +122,32 @@ function age(value) {
   return `${Math.round(hours / 24)} days ago`;
 }
 
-function intentButton(intent, label, className, slot) {
+function intentButton(intent, label, className, slot, accessibleName = null) {
   // Feedback belongs to this exact request, so it disappears when the next
   // step changes instead of lingering beside a different action.
   const key = `${slot}|${JSON.stringify(intent)}`;
   const feedback = state.feedback?.key === key ? state.feedback : null;
-  const note = feedback
-    ? `<span class="sent${feedback.error ? " error" : ""}" role="status">${escapeHtml(feedback.text)}</span>`
-    : `<span class="sent" role="status"></span>`;
-  return `<span class="action-row"><button class="${className}" type="button" data-key="${escapeHtml(key)}" data-intent="${escapeHtml(JSON.stringify(intent))}">${escapeHtml(label)}</button>${note}</span>`;
+  const pending = state.pending.has(key);
+  const name = accessibleName ? ` aria-label="${escapeHtml(accessibleName)}"` : "";
+  return `<span class="action-row"><button class="${className}" type="button" data-key="${escapeHtml(key)}" data-intent="${escapeHtml(JSON.stringify(intent))}"${name}${pending ? " disabled" : ""}>${escapeHtml(label)}</button><span class="sent${feedback?.error ? " error" : ""}">${escapeHtml(feedback?.text ?? "")}</span></span>`;
 }
 
 // ---------------------------------------------------------------------------
 // Sections
 // ---------------------------------------------------------------------------
 
-function renderEmpty(view) {
+function renderEmpty() {
   const feedback = state.feedback?.key === "start" ? state.feedback : null;
   return `<section class="empty now" aria-labelledby="pilot-name">
     <h1 id="pilot-name">Describe your process</h1>
     <p class="lede">Threadlight turns a business process into a working agent pilot on Microsoft Foundry, then carries it toward production with selected runtime controls and the evidence for each. Start with the process in your own words.</p>
     <form id="empty-form">
       <label for="pilot-brief">Process brief</label>
-      <textarea id="pilot-brief" name="brief" required maxlength="4000" placeholder="${escapeHtml(EXAMPLE_BRIEF)}"></textarea>
+      <p id="brief-help" class="hint">${escapeHtml(EXAMPLE_BRIEF)}</p>
+      <textarea id="pilot-brief" name="brief" required maxlength="4000" aria-describedby="brief-help"></textarea>
       <span class="action-row">
-        <button class="primary" type="submit">${escapeHtml(view.now.action.label)}</button>
-        <span class="sent${feedback?.error ? " error" : ""}" role="status">${escapeHtml(feedback?.text ?? "")}</span>
+        <button class="primary" type="submit"${state.pending.has("start") ? " disabled" : ""}>Send to chat</button>
+        <span class="sent${feedback?.error ? " error" : ""}">${escapeHtml(feedback?.text ?? "")}</span>
       </span>
     </form>
     <p class="muted">Chat shows what will happen and asks you to confirm before anything is created.</p>
@@ -153,8 +157,9 @@ function renderEmpty(view) {
 function renderNow(view, errors) {
   const now = view.now;
   const blocker = now.blocker
-    ? `<p class="blocker"><strong>In the way:</strong> ${escapeHtml(now.blocker)}</p>`
+    ? `<p class="blocker${now.blockerTone ? ` tone-${escapeHtml(now.blockerTone)}` : ""}"><strong>In the way:</strong> ${escapeHtml(now.blocker)}</p>`
     : "";
+  const why = now.why ? `<p class="why">${escapeHtml(now.why)}</p>` : "";
   let planNote = "";
   if (view.plan.status === "current" && view.plan.decidedAt) {
     planNote = `<p class="plan-note">Next step from Threadlight's plan, computed at ${escapeHtml(clockTime(view.plan.decidedAt))}.</p>`;
@@ -169,6 +174,7 @@ function renderNow(view, errors) {
     <h1 id="pilot-name">${escapeHtml(view.pilot.name)}</h1>
     <p class="now-state s-${escapeHtml(now.tone === "progress" ? "current" : now.tone)}">${icon(TONE_ICONS[now.tone] ?? "current")}<span>${escapeHtml(now.headline)}</span></p>
     ${blocker}
+    ${why}
     ${intentButton(now.action.intent, now.action.label, "primary", "now")}
     ${planNote}
     ${notice}
@@ -196,10 +202,12 @@ function renderProcess(process, description) {
         .map((rule) => {
           const proofs = rule.proofs.length
             ? rule.proofs
-                .map(
-                  (proof) =>
-                    `<li class="proof" title="${escapeHtml(proof.detail ?? "")}">${icon("prepared")}${escapeHtml(proof.label)}</li>`,
-                )
+                .map((proof) => {
+                  const ids = proof.scenarios?.length
+                    ? `<li class="proof-ids">${escapeHtml(proof.scenarios.join(", "))}</li>`
+                    : "";
+                  return `<li class="proof s-${escapeHtml(proof.state)}">${icon(proof.state)}<span>${escapeHtml(proof.label)}</span></li>${ids}`;
+                })
                 .join("")
             : `<li class="proof unproven">${icon("todo")}${escapeHtml(rule.unproven)}</li>`;
           return `<li class="rule"><span><span class="rule-id">${escapeHtml(rule.id)}</span>${escapeHtml(rule.title)}</span><ul class="proofs" aria-label="Proof for ${escapeHtml(rule.id)}">${proofs}</ul></li>`;
@@ -218,7 +226,7 @@ function renderProcess(process, description) {
     ? `<div><h3 class="section-title">How success is measured</h3><ul class="kpis">${process.kpis
         .map(
           (kpi) =>
-            `<li><span>${escapeHtml(kpi.name.replace(/_/g, " "))}</span><span class="target">${escapeHtml(kpi.target || "no target set")}</span></li>`,
+            `<li><span>${kpi.label ? escapeHtml(kpi.label) : `<code>${escapeHtml(kpi.name)}</code>`}</span><span class="target">${escapeHtml(kpi.target || "No target set")}</span><span class="kpi-status">${icon("waiting")}${escapeHtml(kpi.status)}</span></li>`,
         )
         .join("")}</ul></div>`
     : "";
@@ -232,12 +240,32 @@ function renderGate(gate) {
   const label = gate.state === "waiting" ? "Waiting" : gate.stateLabel;
   const text = gate.current ? gate.detail : gate.note;
   const detail = text ? `<span class="gate-detail">${escapeHtml(text)}</span>` : "";
-  return `<li class="gate${gate.current ? " is-current" : ""}"><span>${escapeHtml(gate.title)}</span>${stateTag(gate.current && gate.state !== "failed" ? "current" : gate.state, gate.current && gate.state !== "failed" ? `You are here · ${label}` : label)}${detail}</li>`;
+  const here = gate.current && gate.state !== "failed";
+  return `<li class="gate${gate.current ? " is-current" : ""}"${gate.current ? ' aria-current="step"' : ""}><span>${escapeHtml(gate.title)}</span>${stateTag(here ? "current" : gate.state, here ? `You are here · ${label}` : label)}${detail}</li>`;
+}
+
+// The workspace prerequisite check is a machine/workspace step, not process
+// progress, so it is its own row before the milestones.
+function renderWorkspaceCheck(gate) {
+  if (!gate) {
+    return "";
+  }
+  const here = gate.current && gate.state !== "failed";
+  const stateName = here ? "current" : gate.state;
+  const label = here ? `You are here · ${gate.stateLabel}` : gate.stateLabel;
+  const detail = gate.current && gate.detail ? ` — ${gate.detail}` : "";
+  return `<li class="milestone workspace-check s-${escapeHtml(stateName)}${gate.current ? " has-current" : ""}"${gate.current ? ' aria-current="step"' : ""}>
+    ${icon(stateName)}
+    <div>
+      <div class="milestone-head"><span class="milestone-title">Before you start</span>${stateTag(stateName, label)}</div>
+      <p class="detail">${escapeHtml(gate.title)}${escapeHtml(detail)}</p>
+    </div>
+  </li>`;
 }
 
 function renderProofPath(proofPath) {
   const intro = !proofPath.planned
-    ? `<p class="muted section-title">The steps appear once Threadlight's plan is computed.</p>`
+    ? `<p class="muted section-title">Not computed yet. Refresh the plan to see where each step stands.</p>`
     : proofPath.stale
       ? `<p class="muted section-title">Shown from the last plan; refresh it to be sure.</p>`
       : "";
@@ -258,11 +286,15 @@ function renderProofPath(proofPath) {
       const showDetail = waitingDetail && !gates && !(milestone.state === "waiting" && waitingNamed);
       if (milestone.state === "waiting" && waitingDetail) waitingNamed = true;
       const detail = showDetail ? `<p class="detail">${escapeHtml(waitingDetail)}</p>` : "";
-      const iconName = milestone.state === "current" ? "current" : milestone.state;
-      return `<li class="milestone s-${escapeHtml(milestone.state)}"${milestone.current ? ' aria-current="step"' : ""}>
-        ${icon(iconName)}
+      // aria-current marks only the actual current row: a gate inside, or the
+      // milestone itself when it has no gates (go-live).
+      const selfCurrent = milestone.current && milestone.gates.length === 0;
+      const hasCurrent = milestone.gates.some((gate) => gate.current) || selfCurrent;
+      const tag = milestone.stateLabel ? stateTag(milestone.state, milestone.stateLabel) : "";
+      return `<li class="milestone s-${escapeHtml(milestone.state)}${hasCurrent ? " has-current" : ""}"${selfCurrent ? ' aria-current="step"' : ""}>
+        ${icon(milestone.state)}
         <div>
-          <div class="milestone-head"><span class="milestone-title">${escapeHtml(milestone.title)}</span>${stateTag(milestone.state, milestone.stateLabel)}</div>
+          <div class="milestone-head"><span class="milestone-title">${escapeHtml(milestone.title)}</span>${tag}</div>
           ${detail}${gates}
         </div>
       </li>`;
@@ -271,7 +303,7 @@ function renderProofPath(proofPath) {
   return `<section class="proof-section" aria-labelledby="path-title">
     <h2 id="path-title" class="section-title">Proof path</h2>
     ${intro}
-    <ol class="path-list">${items}</ol>
+    <ol class="path-list">${renderWorkspaceCheck(proofPath.workspaceCheck)}${items}</ol>
   </section>`;
 }
 
@@ -286,15 +318,31 @@ function renderGoLive(goLive) {
       <div class="fact"><dt>Production readiness</dt><dd>
         <span class="value s-${escapeHtml(readiness.state)}">${icon(readiness.state)}<span>${escapeHtml(readiness.label)}</span></span>
         ${readiness.detail ? `<span class="sub">${escapeHtml(readiness.detail)}</span>` : ""}
-        ${readinessAge ? `<span class="sub">${escapeHtml(readinessAge)}</span>` : ""}
+        <span class="sub">${escapeHtml([readiness.source, readinessAge].filter(Boolean).join(" · "))}</span>
       </dd></div>
       <div class="fact"><dt>Running cost</dt><dd>
         <span class="value">${escapeHtml(cost.label)}</span>
         ${cost.detail ? `<span class="sub">${escapeHtml(cost.detail)}</span>` : ""}
-        ${costAge ? `<span class="sub">${escapeHtml(costAge)}</span>` : ""}
+        <span class="sub">${escapeHtml([cost.source, costAge].filter(Boolean).join(" · "))}</span>
       </dd></div>
     </dl>
   </section>`;
+}
+
+const SKILL_STATUS_WORDS = Object.freeze({
+  complete: "Complete",
+  prepared: "Prepared offline",
+  running: "In progress",
+  ready: "Ready to run",
+  blocked: "Waiting on an earlier step",
+  "not-started": "Not started",
+  "not-applicable": "Not needed",
+  failed: "Failed",
+  stale: "Out of date",
+});
+
+function skillWords(status) {
+  return SKILL_STATUS_WORDS[status] ?? String(status ?? "Unknown");
 }
 
 const SKILL_STATUS_STATE = Object.freeze({
@@ -333,10 +381,11 @@ function renderTechnical(view, errors) {
         .map((item, index) => {
           const s = skillState(item.status);
           const verdict = item.evidenceState ? ` · ${item.evidenceState}` : "";
+          const words = `${skillWords(item.status)}${verdict}`;
           const meta = [item.live ? "live check" : "offline", age(item.modifiedAt)]
             .filter(Boolean)
             .join(" · ");
-          return `<li><span class="row-head"><span class="path">${escapeHtml(item.path)}</span>${stateTag(s, `${item.status}${verdict}`)}</span><span class="row-head"><span class="row-meta">${escapeHtml(meta)}</span>${intentButton({ type: "inspect_evidence", phase: item.milestone, evidenceId: item.path }, "Inspect in chat", "quiet", `ev-${index}`)}</span></li>`;
+          return `<li><span class="row-head"><span class="path">${escapeHtml(item.path)}</span>${stateTag(s, words)}</span><span class="row-head"><span class="row-meta">${escapeHtml(meta)}</span>${intentButton({ type: "inspect_evidence", phase: item.milestone, evidenceId: item.path }, "Inspect in chat", "quiet", `ev-${index}`, `Inspect ${item.path} in chat`)}</span></li>`;
         })
         .join("")}</ul></div>`
     : `<p class="muted">No evidence files found yet.</p>`;
@@ -344,14 +393,14 @@ function renderTechnical(view, errors) {
     ? `<div><h3 class="section-title">Optional checks</h3><ul class="rows">${technical.handoffs
         .map(
           (handoff, index) =>
-            `<li><span class="row-head"><code>${escapeHtml(handoff.skillId)}</code>${intentButton({ type: "invoke_skill", skillId: handoff.skillId }, "Ask in chat", "quiet", `ho-${index}`)}</span>${handoff.manifest ? `<span class="row-meta path">${escapeHtml(handoff.manifest)}</span>` : ""}</li>`,
+            `<li><span class="row-head"><code>${escapeHtml(handoff.skillId)}</code>${intentButton({ type: "invoke_skill", skillId: handoff.skillId }, "Ask in chat", "quiet", `ho-${index}`, `Ask in chat about ${handoff.skillId}`)}</span>${handoff.manifest ? `<span class="row-meta path">${escapeHtml(handoff.manifest)}</span>` : ""}</li>`,
         )
         .join("")}</ul></div>`
     : "";
   const skills = `<div><h3 class="section-title">Skills</h3><ul class="rows">${technical.skills
     .map(
       (skill) =>
-        `<li><span class="row-head"><code>${escapeHtml(skill.id)}</code>${stateTag(skillState(skill.status), skill.status)}</span><span class="row-meta">${escapeHtml(skill.label)}${skill.stage ? ` · stage ${escapeHtml(skill.stage)}` : ""}</span></li>`,
+        `<li><span class="row-head"><code>${escapeHtml(skill.id)}</code>${stateTag(skillState(skill.status), skillWords(skill.status))}</span><span class="row-meta">${escapeHtml(skill.label)}${skill.stage ? ` · stage ${escapeHtml(skill.stage)}` : ""}</span></li>`,
     )
     .join("")}</ul></div>`;
   const errorList = errors.length
@@ -365,7 +414,7 @@ function renderTechnical(view, errors) {
   return `<details class="technical" id="technical"${state.technicalOpen ? " open" : ""}>
     <summary>Technical details</summary>
     <div class="technical-body">${errorList}${stageRows}${evidence}${handoffs}${skills}
-      <span class="action-row start-another"><button id="start-another" class="secondary" type="button">Start a different pilot</button><span class="sent" role="status"></span></span>
+      <span class="action-row start-another"><button id="start-another" class="secondary" type="button">Start a different pilot</button><span class="sent"></span></span>
     </div>
   </details>`;
 }
@@ -383,7 +432,7 @@ function render() {
   const errors = Array.isArray(model.errors) ? model.errors : [];
   updated.textContent = view.updatedAt ? `Updated ${clockTime(view.updatedAt)}` : "";
   content.innerHTML = view.empty
-    ? renderEmpty(view)
+    ? renderEmpty()
     : [
         renderNow(view, errors),
         renderProcess(view.process, view.pilot.description),
@@ -413,9 +462,20 @@ async function postIntent(intent) {
   }
 }
 
+function announce(text) {
+  live.textContent = "";
+  // Re-set on the next frame so repeated identical messages are announced.
+  window.requestAnimationFrame(() => {
+    live.textContent = text;
+  });
+}
+
 async function sendFromButton(button) {
   const key = button.dataset.key;
-  const note = button.parentElement?.querySelector(".sent");
+  if (state.pending.has(key)) {
+    return;
+  }
+  state.pending.add(key);
   button.disabled = true;
   try {
     await postIntent(JSON.parse(button.dataset.intent));
@@ -423,12 +483,21 @@ async function sendFromButton(button) {
   } catch (error) {
     state.feedback = { key, text: error.message, error: true };
   } finally {
-    button.disabled = false;
+    state.pending.delete(key);
   }
-  if (note) {
-    note.textContent = state.feedback.text;
-    note.classList.toggle("error", state.feedback.error);
+  // Re-resolve the button: a live refresh may have re-rendered it meanwhile.
+  const current = [...content.querySelectorAll("button[data-key]")].find(
+    (candidate) => candidate.dataset.key === key,
+  );
+  if (current) {
+    current.disabled = false;
+    const note = current.parentElement?.querySelector(".sent");
+    if (note) {
+      note.textContent = state.feedback.text;
+      note.classList.toggle("error", state.feedback.error);
+    }
   }
+  announce(state.feedback.text);
 }
 
 content.addEventListener("click", (event) => {
@@ -458,6 +527,10 @@ content.addEventListener("submit", async (event) => {
   const form = event.target;
   const button = form.querySelector("button[type=submit]");
   const note = form.querySelector(".sent");
+  if (state.pending.has("start")) {
+    return;
+  }
+  state.pending.add("start");
   button.disabled = true;
   try {
     await postIntent({ type: "start_pilot", brief: form.elements.brief.value });
@@ -465,10 +538,12 @@ content.addEventListener("submit", async (event) => {
   } catch (error) {
     state.feedback = { key: "start", text: error.message, error: true };
   } finally {
+    state.pending.delete("start");
     button.disabled = false;
   }
   note.textContent = state.feedback.text;
   note.classList.toggle("error", state.feedback.error);
+  announce(state.feedback.text);
 });
 
 startForm.addEventListener("submit", async (event) => {
@@ -479,6 +554,7 @@ startForm.addEventListener("submit", async (event) => {
     startForm.reset();
     const note = content.querySelector("#start-another")?.nextElementSibling;
     if (note) note.textContent = "New pilot brief sent to chat. Confirm it there.";
+    announce("New pilot brief sent to chat. Confirm it there.");
   } catch (error) {
     dialogBrief.setCustomValidity(error.message);
     dialogBrief.reportValidity();

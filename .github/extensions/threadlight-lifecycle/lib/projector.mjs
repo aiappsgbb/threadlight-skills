@@ -1571,7 +1571,7 @@ async function evidenceRecord(reader, relativePath, now) {
 }
 
 async function buildView({ reader, manifest, phases, projectedSkills, errors, now }) {
-  const [specText, planRead, governanceManifest, governanceContract, cost, readiness, newest] =
+  const [specText, planRead, governanceManifest, governanceContract, cost, readiness, newest, evalsRead] =
     await Promise.all([
       readOptionalText(reader, "specs/SPEC.md"),
       readOptionalJson(reader, PLAN_PATH),
@@ -1580,7 +1580,19 @@ async function buildView({ reader, manifest, phases, projectedSkills, errors, no
       evidenceRecord(reader, "specs/cost-manifest.json", now),
       evidenceRecord(reader, "tests/production-readiness-manifest.json", now),
       newestPlanInput(reader, phases),
+      readOptionalJson(reader, "specs/evals-manifest.json"),
     ]);
+  // Scenario proof uses the projector's validated evals status; the verdict
+  // and pass-rate check only refine a status that already validated.
+  const evalsValue = isPlainObject(evalsRead.value) ? evalsRead.value : {};
+  const evals = {
+    status: projectedSkills.get("threadlight-evals")?.status ?? null,
+    verdict: typeof evalsValue.verdict === "string" ? evalsValue.verdict : null,
+    passRate:
+      typeof evalsValue.capabilities?.latest_pass_rate_ok?.status === "string"
+        ? evalsValue.capabilities.latest_pass_rate_ok.status
+        : null,
+  };
   const plan = planRead.state === "missing" ? null : planRead.value ?? {};
   const planStatus = assessPlan(plan, {
     newestArtifactAt: newest?.at.toISOString() ?? null,
@@ -1595,6 +1607,7 @@ async function buildView({ reader, manifest, phases, projectedSkills, errors, no
     phases,
     governanceText: [governanceManifest, governanceContract].filter(Boolean).join("\n") || null,
     cost,
+    evals,
     readiness: readiness
       ? {
           ...readiness,

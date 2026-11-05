@@ -40,18 +40,18 @@ test("canvas gates equal the planner's stages for the governed example", { skip:
 
     assert.equal(view.plan.status, "current");
     assert.equal(view.proofPath.planned, true);
-    const canvasStages = view.proofPath.milestones.flatMap((milestone) =>
-      milestone.gates.map((gate) => gate.stage),
-    );
+    const allGates = [
+      ...(view.proofPath.workspaceCheck ? [view.proofPath.workspaceCheck] : []),
+      ...view.proofPath.milestones.flatMap((milestone) => milestone.gates),
+    ];
+    const canvasStages = allGates.map((gate) => gate.stage);
     assert.deepEqual(canvasStages, report.stages);
 
     const root =
       report.next_action.type === "hard_stop"
         ? report.next_action.stage
         : report.next_action.stages_to_run[0];
-    const current = view.proofPath.milestones
-      .flatMap((milestone) => milestone.gates)
-      .filter((gate) => gate.current);
+    const current = allGates.filter((gate) => gate.current);
     assert.deepEqual(current.map((gate) => gate.stage), [root]);
     assert.deepEqual(view.now.action.intent, { type: "advance_plan", stage: root });
     assert.equal(model.summary, view.now.headline);

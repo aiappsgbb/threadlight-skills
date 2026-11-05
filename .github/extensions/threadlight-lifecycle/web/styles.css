@@ -311,7 +311,7 @@ textarea::placeholder {
 }
 
 .lede {
-  max-width: 68ch;
+  max-width: 70ch;
 }
 
 /* Now */
@@ -321,7 +321,22 @@ textarea::placeholder {
   gap: 0.75rem;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.why {
+  max-width: 70ch;
+  color: var(--muted);
+}
+
 .now-state {
+  max-width: 70ch;
   display: flex;
   gap: 0.5rem;
   align-items: flex-start;
@@ -334,7 +349,7 @@ textarea::placeholder {
 }
 
 .blocker {
-  max-width: 68ch;
+  max-width: 70ch;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -345,12 +360,13 @@ textarea::placeholder {
   font-weight: 600;
 }
 
-.now.tone-blocked .blocker {
+.blocker.tone-blocked {
   border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
 }
 
-.now.tone-attention .blocker {
-  border-color: color-mix(in srgb, var(--warning) 45%, var(--line));
+.blocker.tone-attention {
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--line));
+  background: color-mix(in srgb, var(--warning) 8%, var(--panel));
 }
 
 .action-row {
@@ -397,7 +413,8 @@ textarea::placeholder {
 .s-prepared,
 .s-partial,
 .s-current,
-.s-in-progress {
+.s-in-progress,
+.s-human {
   color: var(--accent-text);
 }
 
@@ -490,7 +507,7 @@ textarea::placeholder {
   color: var(--muted);
 }
 
-.milestone[aria-current="step"] .milestone-title {
+.milestone.has-current .milestone-title {
   color: var(--accent-text);
 }
 
@@ -590,6 +607,31 @@ textarea::placeholder {
   height: 0.75rem;
 }
 
+.proof.s-proven,
+.proof.s-done {
+  color: var(--success);
+}
+
+.proof.s-failed {
+  color: var(--danger);
+}
+
+.proof.s-stale,
+.proof.s-attention {
+  color: var(--warning);
+}
+
+.proof.s-todo {
+  color: var(--muted);
+}
+
+.proof-ids {
+  align-self: center;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
 .proof.unproven {
   border-style: dashed;
 }
@@ -604,6 +646,24 @@ textarea::placeholder {
 
 .kpis .target,
 .decisions .who {
+  color: var(--muted);
+}
+
+.kpis .kpi-status {
+  display: inline-flex;
+  flex-basis: 100%;
+  gap: 0.3rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.kpis .kpi-status .icon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.milestone.workspace-check .detail {
   color: var(--muted);
 }
 
@@ -781,7 +841,7 @@ dialog label {
   }
 }
 
-.milestone[aria-current="step"] > .icon {
+.milestone.has-current > .icon {
   animation: settle 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -805,12 +865,14 @@ dialog label {
     grid-column: 1 / -1;
   }
 
-  .content > .proof-section {
+  /* Columns follow DOM order: process on the left, then the proof path
+     and go-live on the right. */
+  .content > .process-section {
     grid-column: 1;
     grid-row: 2 / span 2;
   }
 
-  .content > .process-section,
+  .content > .proof-section,
   .content > .golive-section {
     grid-column: 2;
   }

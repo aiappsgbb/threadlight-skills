@@ -1,10 +1,10 @@
 // Playwright fixture: real Canvas server over disposable copies of the governed
 // returns example. Fixture setup may run threadlight-auto's planner; the Canvas
 // itself only reads the committed .threadlight/auto-next.json.
-//   4187  example with a current plan (planner run with --commit)
-//   4188  empty workspace (no SPEC)
-//   4189  example without a plan (never computed)
-//   4190  example whose plan is out of date (SPEC changed after the plan)
+//   +0  example with a current plan (planner run with --commit)
+//   +1  empty workspace (no SPEC)
+//   +2  example without a plan (never computed)
+//   +3  example whose plan is out of date (SPEC changed after the plan)
 import { readdirSync, rmSync } from "node:fs";
 import { mkdir, rm, utimes } from "node:fs/promises";
 import path from "node:path";
@@ -42,6 +42,10 @@ async function serve(port, root) {
   return server;
 }
 
+// CANVAS_FIXTURE_PORT moves all four servers (default 4187..4190), so a run
+// never reuses a fixture server someone else left running on the defaults.
+const BASE_PORT = Number(process.env.CANVAS_FIXTURE_PORT ?? 4187);
+
 const hasPython = pythonAvailable();
 if (!hasPython) {
   console.warn("python3 not found: the 'current plan' fixture will show a missing plan.");
@@ -67,10 +71,10 @@ if (hasPython) {
 }
 
 const servers = [
-  await serve(4187, current.workspace),
-  await serve(4188, emptyRoot),
-  await serve(4189, missing.workspace),
-  await serve(4190, stale.workspace),
+  await serve(BASE_PORT + 0, current.workspace),
+  await serve(BASE_PORT + 1, emptyRoot),
+  await serve(BASE_PORT + 2, missing.workspace),
+  await serve(BASE_PORT + 3, stale.workspace),
 ];
 
 async function shutdown() {

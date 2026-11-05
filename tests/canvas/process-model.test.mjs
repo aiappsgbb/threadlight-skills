@@ -62,7 +62,10 @@ async function exampleSpec() {
 }
 
 function gates(view) {
-  return view.proofPath.milestones.flatMap((milestone) => milestone.gates);
+  return [
+    ...(view.proofPath.workspaceCheck ? [view.proofPath.workspaceCheck] : []),
+    ...view.proofPath.milestones.flatMap((milestone) => milestone.gates),
+  ];
 }
 
 function base(overrides = {}) {
@@ -269,7 +272,11 @@ test("business rules show only derivable proof", async () => {
     byId["BR-003"].proofs.map((proof) => proof.kind),
     ["scenarios", "control", "human"],
   );
-  assert.match(byId["BR-003"].proofs[0].label, /^3 test scenarios$/);
+  assert.equal(byId["BR-003"].proofs[0].label, "3 scenarios · not run yet");
+  assert.equal(byId["BR-003"].proofs[0].state, "todo");
+  assert.deepEqual(byId["BR-003"].proofs[0].scenarios, ["S-002", "S-004", "S-007"]);
+  assert.equal(byId["BR-003"].proofs[1].label, "Runtime control · not checked yet");
+  assert.equal(byId["BR-003"].proofs[2].label, "Human review: Supervisor escalation review");
   assert.deepEqual(
     byId["BR-002"].proofs.map((proof) => proof.kind),
     ["scenarios"],
@@ -474,9 +481,15 @@ test("a prerequisite check root does not erase evidenced design and offline prep
   assert.ok(gates(view).every((gate) => gate.state !== "proven"));
 
   const design = view.proofPath.milestones.find((milestone) => milestone.id === "design");
-  assert.equal(design.current, true);
+  // The workspace check is its own row before the milestones; Design is
+  // simply done and not the current step.
+  assert.equal(view.proofPath.workspaceCheck.stage, "preflight");
+  assert.equal(view.proofPath.workspaceCheck.current, true);
+  assert.ok(design.gates.every((gate) => gate.stage !== "preflight"));
+  assert.equal(design.current, false);
   assert.equal(design.state, "done");
-  assert.notEqual(design.stateLabel, "In progress");
+  assert.equal(design.stateLabel, "Done");
+  assert.match(view.now.why, /Threadlight runs this from chat/);
 });
 
 test("a cascade re-run of a live stage is out of date, never proven", () => {
@@ -521,4 +534,100 @@ test("a stage whose own artifacts are missing never reads as prepared or out of 
     assert.equal(byStage[stage].state, "waiting", stage);
     assert.equal(byStage[stage].waitingOn, "preflight", stage);
   }
+});
+
+function evalsPhase(status) {
+  return skillPhase("evaluate", "threadlight-evals", "evals", status);
+}
+
+test("scenario proof follows evaluation evidence, never the plan alone", async () => {
+  const spec = await exampleSpec();
+  const label = (evals, phases = []) =>
+    buildProcessModel(base({ spec, evals, phases })).process.rules.find(
+      (rule) => rule.id === "BR-002",
+    ).proofs[0];
+
+  assert.deepEqual(
+    { label: label(null).label, state: label(null).state },
+    { label: "2 scenarios · not run yet", state: "todo" },
+  );
+  const offline = label(
+    { status: "complete", verdict: "offline-only", passRate: "pass" },
+  );
+  assert.deepEqual([offline.label, offline.state], ["2 scenarios · passed offline", "done"]);
+  const live = label({ status: "complete", verdict: "comprehensive", passRate: "pass" });
+  assert.deepEqual([live.label, live.state], ["2 scenarios · passed live", "proven"]);
+  const failing = label({ status: "failed", verdict: "partial", passRate: "must-fix" });
+  assert.deepEqual([failing.label, failing.state], ["2 scenarios · evaluation failing", "failed"]);
+  const stale = label({ status: "stale", verdict: "comprehensive", passRate: "pass" });
+  assert.deepEqual([stale.label, stale.state], ["2 scenarios · evaluation out of date", "stale"]);
+  // A complete manifest without a passing pass-rate check is not "passed".
+  const unclear = label({ status: "complete", verdict: "comprehensive", passRate: "not-verified" });
+  assert.equal(unclear.state, "attention");
+  assert.doesNotMatch(unclear.label, /passed/);
+});
+
+test("runtime-control chips follow the governance gate's evidence", async () => {
+  const spec = await exampleSpec();
+  const chip = (status) =>
+    buildProcessModel(
+      base({
+        spec,
+        governanceText: "BR-003",
+        phases: status ? [skillPhase("controls", "threadlight-govern", "govern", status)] : [],
+      }),
+    ).process.rules.find((rule) => rule.id === "BR-003").proofs[1];
+  assert.equal(chip(null).label, "Runtime control · not checked yet");
+  assert.equal(chip("prepared").label, "Runtime control · prepared offline");
+  assert.equal(chip("prepared").state, "prepared");
+  assert.equal(chip("complete").label, "Runtime control · proven live");
+  assert.equal(chip("complete").state, "proven");
+  assert.equal(chip("failed").state, "failed");
+});
+
+test("every Now state says who takes the next step and why", async () => {
+  const spec = await exampleSpec();
+  const missing = buildProcessModel(base({ spec }));
+  assert.match(missing.now.why, /reads files only/);
+  assert.equal(buildProcessModel(base({ manifest: null })).now.why, null);
+  for (const stage of Object.keys(STAGE_CATALOG)) {
+    assert.ok(STAGE_CATALOG[stage].why, stage);
+    assert.doesNotMatch(STAGE_CATALOG[stage].why, /\b\d+\s*(min|minutes|hours|h)\b/, stage);
+  }
+});
+
+test("an out-of-date plan keeps a neutral headline; the blocker carries the warning", async () => {
+  const view = buildProcessModel(
+    base({
+      spec: await exampleSpec(),
+      plan: plan({ deploy: { decision: "run" } }),
+      planStatus: { status: "stale", decidedAt: "2026-08-06T08:30:00.000Z", changedPath: "specs/SPEC.md" },
+    }),
+  );
+  assert.equal(view.now.tone, "progress");
+  assert.equal(view.now.blockerTone, "attention");
+});
+
+test("go-live figures name the proof step that produces them", () => {
+  const view = buildProcessModel(base());
+  assert.equal(view.goLive.readiness.source, "Assessed in “Decide on go-live”");
+  assert.equal(view.goLive.cost.source, "Estimated in “Verify it live”");
+});
+
+test("KPIs keep the SPEC's own wording and say when they are measured", async () => {
+  const spec = await exampleSpec();
+  const kpi = spec.kpis.find((item) => item.name === "restock_a_pct");
+  assert.equal(kpi.target, "60–80% (apparel)");
+  const labelled = parseSpec(
+    "## 9. Success Criteria\n\n### Business KPIs\n\n| BR | KPI Name | Label | Target |\n|---|---|---|---|\n| BR-001 | `restock_a_pct` | Restocked as new | 60–80% |\n",
+  );
+  assert.equal(labelled.kpis[0].label, "Restocked as new");
+  const view = buildProcessModel(base({ spec }));
+  assert.ok(view.process.kpis.every((item) => item.status === "Measured after go-live"));
+});
+
+test("a missing plan says 'Not computed' once, not per milestone", async () => {
+  const view = buildProcessModel(base({ spec: await exampleSpec() }));
+  assert.equal(view.proofPath.planned, false);
+  assert.ok(view.proofPath.milestones.every((milestone) => milestone.stateLabel === null));
 });

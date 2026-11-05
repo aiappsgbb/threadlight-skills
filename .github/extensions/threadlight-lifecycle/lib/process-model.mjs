@@ -23,10 +23,11 @@ export const STAGE_CATALOG = deepFreeze({
     milestone: "design",
     live: false,
     done: "done",
-    title: "Check prerequisites",
+    title: "Workspace check",
     action: "Check the workspace prerequisites",
     need: "This machine and workspace haven't passed the prerequisite check yet.",
     headline: "Getting started — prerequisites not checked yet",
+    why: "Threadlight runs this from chat; it is needed before anything touches Azure.",
   },
   design: {
     milestone: "design",
@@ -36,6 +37,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Finish the process design",
     need: "The process design isn't complete yet.",
     headline: "Process design in progress — nothing is live yet",
+    why: "Threadlight drafts it with you in chat; you review the process before anything is built.",
   },
   govern: {
     milestone: "controls",
@@ -45,6 +47,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Select the runtime controls",
     need: "The runtime controls for this agent haven't been selected and checked offline.",
     headline: "Designed — runtime controls not yet selected",
+    why: "Threadlight prepares the controls from chat; they are needed before the agent can change business records.",
   },
   governed_actions_gate: {
     milestone: "controls",
@@ -54,6 +57,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Validate the governed actions",
     need: "The actions that change business records haven't passed their pre-publish check.",
     headline: "Designed — governed actions not yet validated",
+    why: "Threadlight validates this from chat; publishing stays blocked until it passes.",
   },
   deploy: {
     milestone: "publish",
@@ -63,6 +67,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Publish the agent to Microsoft Foundry",
     need: "The agent hasn't been published to Azure yet.",
     headline: "Designed and prepared offline — not yet live on Azure",
+    why: "Threadlight runs this from chat once you confirm; it creates Azure resources in your subscription.",
   },
   governance_probe: {
     milestone: "publish",
@@ -72,6 +77,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Prove the controls on the live agent",
     need: "The selected controls haven't been proven on the live agent.",
     headline: "Published on Foundry — controls not yet proven live",
+    why: "Threadlight runs this from chat against the staging agent; it proves the controls on the live agent.",
   },
   presenter_package: {
     milestone: "publish",
@@ -81,6 +87,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Verify the presenter package",
     need: "The presenter package hasn't been verified.",
     headline: "Designed — presenter package not yet verified",
+    why: "Threadlight checks this from chat; the demo package must match what will be published.",
   },
   safe_check: {
     milestone: "verify",
@@ -90,6 +97,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Run the post-deploy safety check",
     need: "The live deployment hasn't passed the post-deploy safety check.",
     headline: "Published on Foundry — not yet verified live",
+    why: "Threadlight runs this from chat against the live agent; later checks rely on it.",
   },
   cost_projection: {
     milestone: "verify",
@@ -99,6 +107,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Estimate the running cost",
     need: "There is no current cost estimate for this pilot.",
     headline: "Live and verified — running cost not yet estimated",
+    why: "Threadlight runs this from chat; it reads the design and calls no paid service.",
   },
   invoke: {
     milestone: "verify",
@@ -108,6 +117,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Run the demo scenarios live",
     need: "The demo scenarios haven't been run against the live agent.",
     headline: "Live and verified — demo scenarios not yet run",
+    why: "Threadlight runs the scenarios from chat against the live agent once you confirm.",
   },
   agentops: {
     milestone: "evaluate",
@@ -117,6 +127,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Check agent operations",
     need: "Agent operations evidence is missing or out of date.",
     headline: "Live — agent operations not yet checked",
+    why: "Threadlight runs this from chat for agents you opted in; it reads existing evidence.",
   },
   evals: {
     milestone: "evaluate",
@@ -126,6 +137,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Measure answer quality",
     need: "Answer quality hasn't been measured against the live agent.",
     headline: "Live — answer quality not yet measured",
+    why: "Threadlight runs this from chat against the live agent once you confirm.",
   },
   redteam: {
     milestone: "evaluate",
@@ -135,6 +147,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Probe adversarial safety",
     need: "The live agent hasn't been probed for adversarial safety.",
     headline: "Live — adversarial safety not yet probed",
+    why: "Threadlight runs this from chat against the live agent once you confirm.",
   },
   presenter_ready: {
     milestone: "go-live",
@@ -144,6 +157,7 @@ export const STAGE_CATALOG = deepFreeze({
     action: "Record the presenter acceptance",
     need: "The process owner hasn't recorded the presenter acceptance yet.",
     headline: "Proven live — presenter acceptance pending",
+    why: "You record this yourself; Threadlight cannot replay the business acceptance for you.",
   },
 });
 
@@ -205,6 +219,7 @@ function stageEntry(stage) {
       action: `Continue: ${humanize(stage)}`,
       need: `${humanize(stage)} hasn't passed yet.`,
       headline: `${humanize(stage)} pending`,
+      why: "Threadlight continues this from chat once you confirm.",
     }
   );
 }
@@ -341,11 +356,15 @@ export function parseSpec(text) {
     }));
   const kpis = parseTable(subsectionLines(criteria, /business kpis/i))
     .filter((row) => /^BR-\d+/.test(row.br ?? "") && cleanInline(row["kpi name"]))
-    .map((row) => ({
-      rule: row.br,
-      name: cleanInline(row["kpi name"]),
-      target: cleanInline(row.target),
-    }));
+    .map((row) => {
+      const label = cleanInline(row.label ?? row.description ?? "");
+      return {
+        rule: row.br,
+        name: cleanInline(row["kpi name"]),
+        target: cleanInline(row.target),
+        ...(label ? { label } : {}),
+      };
+    });
 
   return { title, name, description, steps, rules, decisions, scenarios, kpis };
 }
@@ -561,12 +580,14 @@ function buildProofPath({ plan, planStatus, phases, readinessState }) {
       planned: false,
       stale: false,
       root: null,
+      workspaceCheck: null,
       milestones: LIFECYCLE_PHASES.map((phase) => ({
         id: phase.id,
         label: phase.label,
         title: phase.title,
         state: "unknown",
-        stateLabel: MILESTONE_LABELS.unknown,
+        // "Not computed" is said once for the whole path, not per milestone.
+        stateLabel: null,
         current: false,
         gates: [],
       })),
@@ -577,8 +598,14 @@ function buildProofPath({ plan, planStatus, phases, readinessState }) {
   const root = rootStage(plan);
   const rootIndex = root === null ? -1 : plan.stages.indexOf(root);
   const groups = [];
+  let workspaceCheck = null;
   plan.stages.forEach((stage, index) => {
     const gate = gateFor(stage, decisions.get(stage), { root, rootIndex, index, phases });
+    if (BOOTSTRAP_STAGES.has(stage)) {
+      // A machine/workspace check, not process progress: its own row.
+      workspaceCheck = gate;
+      return;
+    }
     const milestone = stageEntry(stage).milestone;
     const last = groups.at(-1);
     if (last && last.id === milestone) {
@@ -618,34 +645,68 @@ function buildProofPath({ plan, planStatus, phases, readinessState }) {
     };
   });
 
-  return { planned: true, stale: planStatus.status === "stale", root, milestones };
+  return { planned: true, stale: planStatus.status === "stale", root, workspaceCheck, milestones };
 }
 
 // ---------------------------------------------------------------------------
 // Process (SPEC) with derivable proof per business rule
 // ---------------------------------------------------------------------------
 
-function buildProcess(spec, governanceText) {
+// Scenario proof comes only from validated evaluation evidence (the
+// projector's evals status plus the manifest's verdict and pass-rate check);
+// a scenario listed in the SPEC is a plan, not a result.
+function scenarioResult(evals) {
+  const status = evals?.status ?? null;
+  if (!status || ["ready", "blocked", "not-started", "not-applicable"].includes(status)) {
+    return { state: "todo", text: "not run yet" };
+  }
+  if (status === "failed") return { state: "failed", text: "evaluation failing" };
+  if (status === "stale") return { state: "stale", text: "evaluation out of date" };
+  if (status === "complete" && evals.passRate === "pass") {
+    return evals.verdict === "comprehensive"
+      ? { state: "proven", text: "passed live" }
+      : { state: "done", text: "passed offline" };
+  }
+  return { state: "attention", text: "evaluation incomplete" };
+}
+
+function controlResult(phases) {
+  const status = findSkill(phases, "threadlight-govern")?.status ?? null;
+  if (status === "complete") return { state: "proven", text: "proven live" };
+  if (status === "prepared") return { state: "prepared", text: "prepared offline" };
+  if (status === "failed") return { state: "failed", text: "failing" };
+  if (status === "stale") return { state: "stale", text: "out of date" };
+  return { state: "todo", text: "not checked yet" };
+}
+
+function buildProcess(spec, governanceText, evals, phases) {
   if (!spec) {
     return null;
   }
   const controls = typeof governanceText === "string" ? governanceText : "";
+  const scenarioState = scenarioResult(evals);
+  const controlState = controlResult(phases);
   const rules = spec.rules.map((rule) => {
     const proofs = [];
     const scenarios = spec.scenarios.filter((scenario) => scenario.rules.includes(rule.id));
     if (scenarios.length > 0) {
       proofs.push({
         kind: "scenarios",
-        label: `${scenarios.length} test scenario${scenarios.length === 1 ? "" : "s"}`,
-        detail: scenarios.map((scenario) => scenario.id).join(", "),
+        state: scenarioState.state,
+        label: `${scenarios.length} scenario${scenarios.length === 1 ? "" : "s"} · ${scenarioState.text}`,
+        scenarios: scenarios.map((scenario) => scenario.id),
       });
     }
     if (new RegExp(`\\b${rule.id}\\b`).test(controls)) {
-      proofs.push({ kind: "control", label: "Runtime control", detail: "Cited by the governance policy" });
+      proofs.push({
+        kind: "control",
+        state: controlState.state,
+        label: `Runtime control · ${controlState.text}`,
+      });
     }
     const decision = spec.decisions.find((item) => item.rules.includes(rule.id));
     if (decision) {
-      proofs.push({ kind: "human", label: "Human review", detail: decision.title });
+      proofs.push({ kind: "human", state: "human", label: `Human review: ${decision.title}` });
     }
     return { ...rule, proofs, unproven: proofs.length === 0 ? "Not yet proven" : null };
   });
@@ -653,7 +714,7 @@ function buildProcess(spec, governanceText) {
     steps: spec.steps,
     rules,
     decisions: spec.decisions,
-    kpis: spec.kpis,
+    kpis: spec.kpis.map((kpi) => ({ ...kpi, status: "Measured after go-live" })),
   };
 }
 
@@ -749,6 +810,13 @@ function progressHeadline(gate) {
 
 // The state names the furthest evidenced progress; the action stays the
 // planner's real next step (which may be an earlier check or re-run).
+function allGates(proofPath) {
+  return [
+    ...(proofPath.workspaceCheck ? [proofPath.workspaceCheck] : []),
+    ...proofPath.milestones.flatMap((milestone) => milestone.gates),
+  ];
+}
+
 function stateHeadline(gates, root) {
   const rootIndex = gates.findIndex((gate) => gate.stage === root);
   let furthest = -1;
@@ -760,45 +828,49 @@ function stateHeadline(gates, root) {
   return furthest > rootIndex ? progressHeadline(gates[furthest]) : stageEntry(root).headline;
 }
 
+const REFRESH_WHY =
+  "Threadlight recomputes the plan from chat; it reads files only and changes nothing in Azure.";
+
 function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
   if (empty) {
     return {
       tone: "empty",
+      blockerTone: null,
       headline: "No pilot in this workspace yet",
       blocker: null,
+      why: null,
       action: { label: "Describe your process", intent: { type: "start_pilot" } },
     };
   }
 
   const refresh = { label: "Refresh the plan", intent: { type: "refresh_plan" } };
-  if (planStatus.status === "missing") {
+  if (planStatus.status === "missing" || planStatus.status === "invalid") {
     return {
-      tone: "attention",
+      tone: "unknown",
+      blockerTone: "attention",
       headline: "Status not computed yet",
-      blocker: "Threadlight hasn't worked out the next step for this workspace yet.",
-      action: refresh,
-    };
-  }
-  if (planStatus.status === "invalid") {
-    return {
-      tone: "attention",
-      headline: "Status not computed yet",
-      blocker: "The saved plan can't be read, so the next step is unknown.",
+      blocker:
+        planStatus.status === "missing"
+          ? "Threadlight hasn't worked out the next step for this workspace yet."
+          : "The saved plan can't be read, so the next step is unknown.",
+      why: REFRESH_WHY,
       action: refresh,
     };
   }
 
   const root = proofPath.root;
   const hardStop = plan.next_action.type === "hard_stop";
-  const gates = proofPath.milestones.flatMap((milestone) => milestone.gates);
+  const gates = allGates(proofPath);
   let now;
   if (root === null && gates.some((gate) => gate.state === "failed" || gate.state === "stale")) {
     // The plan has nothing left to run, but evidence behind a passed stage has
     // since failed or expired: never claim it is proven.
     return {
       tone: "attention",
+      blockerTone: "attention",
       headline: "Some evidence is out of date",
       blocker: "Evidence behind a completed step has expired or failed since the plan was computed.",
+      why: REFRESH_WHY,
       action: refresh,
     };
   }
@@ -807,17 +879,21 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
       readiness.state === "ready"
         ? {
             tone: "ready",
+            blockerTone: null,
             headline: "Ready to go live",
             blocker: null,
+            why: "Threadlight prepares the handoff from chat; you decide when to go live.",
             action: { label: "Prepare the production handoff", intent: { type: "prepare_handoff" } },
           }
         : {
             tone: "progress",
+            blockerTone: null,
             headline: "Proven live — go-live decision pending",
             blocker:
               readiness.state === "none"
                 ? "Production readiness hasn't been assessed yet."
                 : readiness.detail,
+            why: "Threadlight assesses readiness from chat; the go-live decision stays yours.",
             action: {
               label: "Assess production readiness",
               intent: { type: "invoke_skill", skillId: "threadlight-production-ready", phase: "go-live" },
@@ -829,27 +905,33 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
     now = hardStop
       ? {
           tone: "blocked",
+          blockerTone: "blocked",
           headline: `Blocked at “${entry.title}”`,
           blocker: gate?.technical.reason || entry.need,
+          why: entry.why,
           action: { label: `Resolve the block in “${entry.title}”`, intent: { type: "advance_plan", stage: root } },
         }
       : {
           tone: "progress",
+          blockerTone: null,
           headline: stateHeadline(gates, root),
           blocker: entry.need,
+          why: entry.why,
           action: { label: entry.action, intent: { type: "advance_plan", stage: root } },
         };
   }
 
   if (planStatus.status === "stale") {
     const changed = planStatus.changedPath ? ` (${planStatus.changedPath} changed)` : "";
+    // The headline stays the last known state; the blocker carries the warning.
     return {
       ...now,
-      tone: "attention",
+      blockerTone: "attention",
       blocker:
         planStatus.reason === "expired"
           ? "The plan is more than a day old, so live evidence may have expired."
           : `Files changed after the plan was computed${changed}, so the next step may be wrong.`,
+      why: REFRESH_WHY,
       action: refresh,
     };
   }
@@ -912,6 +994,7 @@ export function buildProcessModel({
   governanceText = null,
   cost = null,
   readiness = null,
+  evals = null,
   errors = [],
   generatedAt = null,
 } = {}) {
@@ -941,9 +1024,15 @@ export function buildProcessModel({
       decidedAt: planStatus.decidedAt ?? null,
       changedPath: planStatus.changedPath ?? null,
     },
-    process: buildProcess(spec, governanceText),
+    process: buildProcess(spec, governanceText, evals, phases),
     proofPath,
-    goLive: { readiness: readinessView, cost: buildCost(cost) },
+    goLive: {
+      readiness: { ...readinessView, source: `Assessed in “${phaseMeta("go-live").title}”` },
+      cost: {
+        ...buildCost(cost),
+        source: `Estimated in “${phaseMeta(STAGE_CATALOG.cost_projection.milestone).title}”`,
+      },
+    },
     technical: buildTechnical({ phases, plan, planStatus, errors }),
   };
 }
