@@ -483,9 +483,11 @@ function gateFor(stage, decision, { root, rootIndex, index, phases }) {
     // evidence shows (offline at most; never "proven" from a re-run), and
     // only wait on the root when the stage has no evidence of its own.
     const projected = technical.skillId ? findSkill(phases, technical.skillId) : null;
+    // The planner's own missing-artifact list wins: a stage still missing its
+    // artifacts has no evidence to be prepared or out of date.
     const ownEvidence =
-      technical.artifactsSeen.length > 0 ||
-      ["prepared", "complete"].includes(projected?.status);
+      technical.artifactsMissing.length === 0 &&
+      (technical.artifactsSeen.length > 0 || ["prepared", "complete"].includes(projected?.status));
     const cascade = CASCADE_REASON.test(reason) && technical.artifactsMissing.length === 0;
     if (ownEvidence && cascade) {
       gate.state = entry.live ? "stale" : entry.done;

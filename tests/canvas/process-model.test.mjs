@@ -494,3 +494,31 @@ test("a cascade re-run of a live stage is out of date, never proven", () => {
   assert.equal(safe.state, "stale");
   assert.equal(safe.note, "Will be re-checked");
 });
+
+test("a stage whose own artifacts are missing never reads as prepared or out of date", () => {
+  const view = buildProcessModel(
+    base({
+      plan: plan({
+        preflight: { decision: "run", reason: "No preflight marker; bootstrap must run.", missing: [".threadlight/preflight-passed.json"] },
+        cost_projection: {
+          decision: "run",
+          reason: "specs/cost-manifest.json missing or stale — running threadlight-consumption-iq.",
+          seen: ["specs/SPEC.md"],
+          missing: ["specs/cost-manifest.json"],
+        },
+        safe_check: {
+          decision: "run",
+          reason: "tests/postdeploy-manifest.json missing; safe-check requires manifest evidence, not docs alone.",
+          missing: ["tests/postdeploy-manifest.json"],
+        },
+      }),
+      planStatus: { status: "current", decidedAt: "2026-08-06T08:30:00.000Z" },
+      phases: [skillPhase("verify", "threadlight-safe-check", "safe_check", "stale")],
+    }),
+  );
+  const byStage = Object.fromEntries(gates(view).map((gate) => [gate.stage, gate]));
+  for (const stage of ["cost_projection", "safe_check"]) {
+    assert.equal(byStage[stage].state, "waiting", stage);
+    assert.equal(byStage[stage].waitingOn, "preflight", stage);
+  }
+});
