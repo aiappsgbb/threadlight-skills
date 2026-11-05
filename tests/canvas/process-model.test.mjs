@@ -702,7 +702,7 @@ test("an unverified plan never headlines live results, whatever the next step", 
         planStatus: { status: "unverified", reason: "unreadable", decidedAt: "2026-08-06T08:30:00.000Z" },
       }),
     );
-    assert.doesNotMatch(view.now.headline, /\blive\b|verified|Ready to go live/i, next);
+    assert.doesNotMatch(view.now.headline, /Live and verified|^Live\b|Proven live|Published on Foundry|Ready to go live/, next);
     assert.equal(view.now.headline, "Progress recorded; live results not re-confirmed", next);
   }
 });
