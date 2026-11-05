@@ -32,7 +32,7 @@ test('canonical Foundry-only rule states default, trivial prompt criteria and pr
     /exactly one model/i, /no custom code tools/i, /no multi-step orchestration/i,
     /no state beyond the Foundry thread/i, /trivial_justification/,
   ]) assert.match(rule, criterion);
-  assert.match(rule, /voice agents[^\n]*(Voice Live|realtime)/i);
+  assert.match(rule, /Voice Live[^\n]*(realtime)[^\n]*application code/i);
   assert.match(rule, /preview-only[^\n]*(unreleased|future)/i);
   assert.match(rule, /Not supported[^\n]*never (chosen|offered)/i);
   assert.match(rule, /agent loop or orchestration implemented in application code/i);
@@ -73,7 +73,7 @@ for (const skill of ruleSkills) {
 test('SPEC and foundation templates restrict agent_type to hosted|prompt with trivial justification', () => {
   for (const file of templates) {
     const text = read(file);
-    assert.match(text, /agent_type: hosted\s+#\s*hosted \| prompt/, file);
+    assert.match(text, /agent_type: hosted\s+#\s*hosted \| prompt \| voice/, file);
     assert.match(text, /trivial_justification/, file);
     assert.match(text, /foundry-only-agents\.md/, file);
     assert.doesNotMatch(text, /hosting: aca-hosted-agent/, file);
@@ -83,7 +83,7 @@ test('SPEC and foundation templates restrict agent_type to hosted|prompt with tr
   const speech = spec.split('\n').find((line) => line.includes('`azure-speech`'));
   assert.ok(speech, 'azure-speech module row expected');
   assert.doesNotMatch(speech, /Voice intake/);
-  assert.match(speech, /voice agents[^|]*out of scope/i);
+  assert.match(speech, /voice agents[^|]*agent_type: voice[^|]*opt-in/i);
 });
 
 test('runtime-policy.json pins Foundry hosting: hosted default, prompt trivial-only, prohibitions', () => {
@@ -92,9 +92,9 @@ test('runtime-policy.json pins Foundry hosting: hosted default, prompt trivial-o
   assert.ok(hosting, 'agent_hosting block required');
   assert.equal(hosting.platform, 'microsoft-foundry');
   assert.equal(hosting.default, 'hosted');
-  assert.deepEqual(hosting.allowed_agent_types, ['hosted', 'prompt']);
+  assert.deepEqual(hosting.allowed_agent_types, ['hosted', 'prompt', 'voice']);
   assert.ok(hosting.prompt_requires_all_trivial_criteria.length >= 4);
-  for (const banned of ['voice-agents', 'preview-only-capabilities', 'app-code-agent-loop']) {
+  for (const banned of ['voice-agents-without-explicit-opt-in', 'preview-only-capabilities', 'app-code-agent-loop']) {
     assert.ok(hosting.prohibited.includes(banned), banned);
   }
   assert.deepEqual(hosting.auxiliary_compute_may_host, ['ui', 'thin-api-proxy', 'mcp-tool-servers', 'jobs']);

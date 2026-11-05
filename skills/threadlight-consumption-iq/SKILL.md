@@ -500,3 +500,4 @@ truth for the pilot flow:
 
 - **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — model **quota / capacity** (TPM, PTU) planning that this projection reasons about per resource.
 - **[`azure-cost`](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-cost/skills/cost-analysis)** (`azure-cost` plugin: cost-analysis, cost-estimation, cost-optimization) — subscription-wide **cost query, forecast, and optimization**; the platform-native companion to this skill's per-pilot projection.
+- **[`cost-optimization`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-cost/skills/cost-optimization/SKILL.md)** — **idle or orphaned resources, Reservation and Savings Plan coverage** once the pilot runs; it does not model PAYG-to-PTU break-even.

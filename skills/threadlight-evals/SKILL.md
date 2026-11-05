@@ -23,7 +23,7 @@ metadata:
 
 <!-- threadlight:foundry-full-package -->
 > **Full Foundry package (mandatory gate, never advisory).** A run is COMPLETE
-> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent,
+> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent (or an opted-in voice agent),
 > with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
 > Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
 > custom rubric derived from the SPEC acceptance criteria, with anchors and a passing

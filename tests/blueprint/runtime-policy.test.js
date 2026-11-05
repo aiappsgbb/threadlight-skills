@@ -296,7 +296,7 @@ test('runtime policy file declares the supported selectors, compatible combinati
 test('runtime policy declares contract ownership, regional constraints, and route lifecycle', () => {
   const policy = loadPolicy();
 
-  assert.strictEqual(policy.contract_version, '2.0.0');
+  assert.strictEqual(policy.contract_version, '2.1.0');
   assert.match(policy.last_reviewed, /^\d{4}-\d{2}-\d{2}$/);
   assert.deepStrictEqual(policy.authority, {
     repository: 'aiappsgbb/threadlight-skills',

@@ -64,7 +64,9 @@ or when personal skills and other plugins listed earlier would leave
 | Foundry hosted/prompt agents, toolbox, skills, routines, evals, traces, RBAC, private network | `microsoft-foundry` (official) |
 | azd prepare, validate, deploy | `azure-prepare`, `azure-validate`, `azure-deploy` (official) |
 | Diagnostics, AI services, App Insights | `azure-diagnostics`, `azure-ai`, `appinsights-instrumentation` (official) |
-| Cost | `azure-cost@azure-skills` (official) |
+| Cost analysis, estimation, governance and optimization | `azure-cost@azure-skills` (official: `cost-analysis`, `cost-estimation`, `cost-governance`, `cost-optimization`) |
+| Subscription quotas and usage before provisioning | `azure-quotas` (official, in `azure@azure-skills`) |
+| Advisor recommendations and service retirements | `azure-advisor@azure-skills` (official, separate plugin) |
 
 Where no official skill covers a capability Threadlight needs, Threadlight
 ships its own skill or reference, labelled **Threadlight-owned** with a
@@ -82,7 +84,7 @@ ships its own skill or reference, labelled **Threadlight-owned** with a
 
 The pipeline needs only the official plugins and threadlight-skills. A few
 optional GBB pattern skills outside the pilot path (Teams publishing, AgentOps,
-SRE Agent, backup and alert baselines, Voice Live, PAYG/PTU break-even) remain in
+SRE Agent, backup and alert baselines, PAYG/PTU break-even) remain in
 [awesome-gbb](https://github.com/aiappsgbb/awesome-gbb), labelled
 **GBB pattern, not a Microsoft product skill**; install them only when you need
 that capability. `foundry-iq` exists under the same name in both catalogs; use the
@@ -110,7 +112,12 @@ copilot plugin marketplace add microsoft/azure-skills
 copilot plugin install azure@azure-skills
 copilot plugin install azure-cost@azure-skills         # cost analysis/estimation
 copilot plugin install foundry-iq-skills@azure-skills  # Foundry IQ (preview)
+copilot plugin install azure-advisor@azure-skills      # optional: Advisor recommendations
 ```
+
+The official plugins (v1.2.113) ship `SessionStart` and `PostToolUse` hooks that
+send usage telemetry to Microsoft. To opt out, set
+`AZURE_MCP_COLLECT_TELEMETRY=false` in the environment that starts Copilot.
 
 Already have the official plugins (or other skill-heavy plugins)? Reinstall
 them after threadlight-skills, or disable the ones you do not need in workshops:
@@ -149,7 +156,10 @@ skim them; agents must follow them.
 > `trivial_justification` (an agent-written value is not an opt-in). Never pick a
 > prompt agent on your own initiative, and never when refusing an app-side request:
 > a refusal always routes to a hosted agent.
-> Voice agents, preview-only Foundry features and any agent loop in application
+> A Foundry voice agent (preview) is used only on an explicit user opt-in
+> (`agent_type: voice` with `voice_opt_in_source: user` and
+> `preview_acknowledged: true`), built with the official `microsoft-foundry` skill.
+> Other preview-only Foundry features, Voice Live calls from app code and any agent loop in application
 > code are **not supported**, and are never chosen or offered. That includes
 > ACA, App Service, Functions, a web app, or direct Responses / Chat Completions
 > tool loops. Container Apps hosts only the UI, a thin proxy to the Foundry

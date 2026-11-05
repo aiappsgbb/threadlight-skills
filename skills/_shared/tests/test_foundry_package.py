@@ -71,6 +71,39 @@ def test_prompt_agent_requires_trivial_justification():
     assert fp.evaluate(value)["status"] == "COMPLETE"
 
 
+def _voice(**agent):
+    value = complete_manifest()
+    value["agent"].update({"kind": "foundry-voice", "voice_opt_in_source": "user",
+                           "voice_opt_in_evidence": "User: 'callers must talk to the agent on the phone'",
+                           "preview_acknowledged": True})
+    value["agent"].update(agent)
+    return value
+
+
+def test_opted_in_voice_agent_is_a_delivered_foundry_agent():
+    assert fp.evaluate(_voice())["status"] == "COMPLETE"
+
+
+@pytest.mark.parametrize("override,needle", [
+    ({"voice_opt_in_source": "agent"}, "agent.voice_opt_in_source"),
+    ({"voice_opt_in_source": None}, "agent.voice_opt_in_source"),
+    ({"voice_opt_in_evidence": " "}, "agent.voice_opt_in_evidence"),
+    ({"preview_acknowledged": False}, "agent.preview_acknowledged"),
+    ({"preview_acknowledged": "yes"}, "agent.preview_acknowledged"),
+])
+def test_voice_agent_without_a_user_opt_in_is_incomplete(override, needle):
+    result = fp.evaluate(_voice(**override))
+    assert result["status"] == "INCOMPLETE"
+    assert any(item.startswith(needle) for item in result["missing"]), result["missing"]
+
+
+def test_voice_opt_in_fields_do_not_leak_into_hosted_or_prompt_kinds():
+    value = complete_manifest()
+    assert "voice_opt_in_source" not in value["agent"]
+    assert fp.evaluate(value)["status"] == "COMPLETE"
+    assert "foundry-voice" in fp.AGENT_KINDS
+
+
 @pytest.mark.parametrize("section,field", [
     ("agent", "agent_id"), ("agent", "agent_version"), ("agent", "agent_name"),
     ("telemetry", "app_insights_connection_id"), ("telemetry", "trace_id"),

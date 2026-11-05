@@ -170,12 +170,15 @@ Do **not** use the legacy `GPT-4o` family — `gpt-5.4` supersedes it.
 ## 3. Hosting shape
 
 ```yaml
-hosting: foundry-hosted-agent           # foundry-hosted-agent (always default) | foundry-prompt-agent (trivial + explicit user opt-in only)
-agent_type: hosted  # hosted | prompt
+hosting: foundry-hosted-agent           # foundry-hosted-agent (always default) | foundry-prompt-agent (trivial + explicit user opt-in only) | foundry-voice-agent (preview, explicit user opt-in only)
+agent_type: hosted  # hosted | prompt | voice
 trivial_justification: null             # REQUIRED when agent_type: prompt (one model, no custom code tools,
                                         # no multi-step orchestration, no state beyond the Foundry thread)
 prompt_opt_in_source: null              # REQUIRED when agent_type: prompt: must be `user`
 prompt_opt_in_evidence: null            # REQUIRED when agent_type: prompt: quote of the user's explicit request
+voice_opt_in_source: null               # REQUIRED when agent_type: voice: must be `user`
+voice_opt_in_evidence: null             # REQUIRED when agent_type: voice: quote of the user's spoken-conversation requirement
+preview_acknowledged: null              # REQUIRED when agent_type: voice: must be `true` (Foundry voice agents are preview)
 deployment_target: demo-sandbox         # demo-sandbox | customer-pilot | production-bound
 ```
 
@@ -186,9 +189,14 @@ deployment_target: demo-sandbox         # demo-sandbox | customer-pilot | produc
 > `prompt_opt_in_evidence` and a `trivial_justification`. An agent-written
 > `prompt` value without that user provenance is not an opt-in. Never pick a prompt agent on your own initiative, and
 > never when refusing an app-side request: that routes to a hosted agent.
-> Never record voice agents, preview-only Foundry features, or an agent loop in
-> ACA, App Service, Functions or web-app code as a hosting shape. Those are not
-> supported. Functions, ACA jobs and Container Apps are auxiliary compute only:
+> Record `voice` only when the user explicitly requires a spoken, real-time
+> conversation and accepts the preview: `voice_opt_in_source: user`,
+> `voice_opt_in_evidence` and `preview_acknowledged: true`. An agent-written
+> `agent_type: voice` without that user provenance is not an opt-in. The official
+> `microsoft-foundry` skill (create-voice) builds it; Threadlight generates no
+> voice runtime. Never record other preview-only Foundry features or Voice Live
+> calls from application code. Never record an agent loop in ACA, App Service, Functions or
+> web-app code as a hosting shape. Those are not supported. Functions, ACA jobs and Container Apps are auxiliary compute only:
 > the UI, a thin proxy, MCP tool servers or jobs.
 
 → **Pre-populates** SPEC § 11c (tech stack) and the § 11f `deployment_target`

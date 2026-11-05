@@ -28,8 +28,11 @@ metadata:
 > explicit opt-in from the user: the user explicitly asks for one, recorded in the SPEC as `agent_type: prompt` with
 > `prompt_opt_in_source: user`, the quoted request and a `trivial_justification`.
 > Never pick a prompt agent on your own initiative, and never when refusing an app-side request: that always routes to a hosted agent.
+> A Foundry **voice agent** (preview) is used only when the user explicitly requires one and accepts the preview:
+> `agent_type: voice` with `voice_opt_in_source: user`, the quoted request and `preview_acknowledged: true`,
+> built with the official `microsoft-foundry` skill (create-voice). Never offer it on your own initiative.
 > **Never** choose or offer:
-> voice agents (Voice Live or realtime); preview-only Foundry features; or an agent loop in application code
+> voice without that opt-in, or Voice Live / realtime calls from app code; other preview-only Foundry features; or an agent loop in application code
 > (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
 > outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
 > user, kickoff or deadline request: refuse and route to a hosted agent. See
@@ -37,7 +40,7 @@ metadata:
 
 <!-- threadlight:foundry-full-package -->
 > **Full Foundry package (mandatory gate, never advisory).** A run is COMPLETE
-> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent,
+> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent (or an opted-in voice agent),
 > with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
 > Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
 > custom rubric derived from the SPEC acceptance criteria, with anchors and a passing
@@ -256,6 +259,20 @@ web app, or by calling Responses / Chat Completions directly with tools. That is
 not supported. See
 [`_shared/foundry-only-agents.md`](../_shared/foundry-only-agents.md).
 
+**Voice agent (preview, explicit user opt-in only).** When the SPEC records
+`agent_type: voice` with `voice_opt_in_source: user`, `voice_opt_in_evidence` and
+`preview_acknowledged: true`, Threadlight generates no voice runtime. Hand the
+agent to the official `microsoft-foundry` skill from `azure@azure-skills`:
+[`create-voice.md`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/create-voice.md)
+(Prompt Voice by default, Hosted Voice when the user needs custom code), then its
+`deploy` and `invoke` guides and the voice smoke test. Keep the Threadlight
+evidence path: record `specs/foundry-package-manifest.json` with
+`agent.kind: foundry-voice`, the three opt-in fields, the App Insights trace and a
+transcript-based Foundry eval run with a SPEC-derived rubric. If any opt-in field
+is missing or agent-written, deploy a hosted agent instead. `generate_only` refuses
+`agent_type: voice` with exit 4. Voice Live calls from application code stay
+unsupported.
+
 ## Prerequisites
 
 > **Kratos-export mode (alternative input).** When starting from a Kratos export,
@@ -342,7 +359,7 @@ with its parent runtime files, is the ONLY source in generate-only mode for:
 
 There is no `agent.yaml`, no `src/agent/agent.yaml` and no `infra/core/`. The
 generator refuses to run if any of them already exists. `agent_type: prompt`
-is refused with exit 4, because the scaffold is hosted-only.
+or `agent_type: voice` is refused with exit 4, because the scaffold is hosted-only.
 
 | Input (design workspace) | Output |
 |---|---|
@@ -3840,3 +3857,4 @@ reading, not a dependency* — Threadlight's guidance stays the source of truth 
 the pilot flow:
 
 - **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — first-party `azd`-based **model deployment + hosted-agent create/run**; the platform surface Phase 5's `azd ai agent` scaffold builds on.
+- **[`azure-quotas`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/azure-quotas/SKILL.md)** — subscription **quota and usage** checks by region before `azd provision` (Container Apps, Cosmos DB, compute); Foundry model TPM/PTU quota stays with `microsoft-foundry`.

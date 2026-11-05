@@ -130,6 +130,20 @@ def test_prompt_agent_type_is_refused(tmp_path: Path):
     assert "prompt" in (result.stdout + result.stderr).lower()
 
 
+def test_voice_agent_type_is_refused_and_routed_to_the_official_voice_workflow(tmp_path: Path):
+    project = tmp_path / "p"
+    shutil.copytree(FIXTURE, project)
+    spec = project / "specs" / "SPEC.md"
+    spec.write_text(
+        spec.read_text().replace("agent_type: hosted", "agent_type: voice"), encoding="utf-8"
+    )
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    out = result.stdout + result.stderr
+    assert result.returncode == 4, out
+    assert "voice" in out.lower() and "create-voice" in out and "microsoft-foundry" in out
+    assert not (project / "azure.yaml").exists()
+
+
 def test_generation_is_deterministic_and_refuses_overwrite(generated: Path, tmp_path: Path):
     again = _run([str(GENERATOR), "--project", str(generated)], tmp_path)
     assert again.returncode != 0, "must refuse to overwrite generated files without --force"

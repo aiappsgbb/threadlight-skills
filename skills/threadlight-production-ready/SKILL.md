@@ -13,7 +13,7 @@ metadata:
 
 <!-- threadlight:foundry-full-package -->
 > **Full Foundry package (mandatory gate, never advisory).** A run is COMPLETE
-> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent,
+> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent (or an opted-in voice agent),
 > with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
 > Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
 > custom rubric derived from the SPEC acceptance criteria, with anchors and a passing
@@ -1401,3 +1401,4 @@ the official **[Azure Skills](https://github.com/microsoft/azure-skills)** catal
 truth for the pilot flow:
 
 - **[`azure-reliability`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/azure-reliability/SKILL.md)** — PaaS **reliability posture** (zone redundancy, ZRS storage, health probes, multi-region) that deepens this scorecard's reliability pillar.
+- **[`azure-advisor`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-advisor/skills/azure-advisor/SKILL.md)** (separate `azure-advisor@azure-skills` plugin) — live **Azure Advisor recommendations and service retirements** for the pilot's subscription or resource group; read-only input to a reviewer, not a scorecard finding by itself.

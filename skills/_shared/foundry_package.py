@@ -1,7 +1,8 @@
 """Full Foundry package delivery gate.
 
 A Threadlight pilot is delivered only when all three items are evidenced:
-a real Foundry hosted/prompt agent (no app-side loop, no active fallback),
+a real Foundry hosted/prompt agent, or a voice agent (preview) recorded with the
+user's explicit opt-in (no app-side loop, no active fallback),
 Application Insights tracing with a trace visible in Foundry, and one executed
 Foundry eval run against that agent with built-in evaluators plus a SPEC-derived
 custom rubric that meets its threshold. Anything less is ``INCOMPLETE``.
@@ -24,7 +25,7 @@ from typing import Any
 
 SCHEMA = "threadlight-foundry-package/v1"
 MANIFEST_PATH = "specs/foundry-package-manifest.json"
-AGENT_KINDS = ("foundry-hosted", "foundry-prompt")
+AGENT_KINDS = ("foundry-hosted", "foundry-prompt", "foundry-voice")
 SECTIONS = ("agent", "telemetry", "evaluation")
 # Optional since 2.19.4: GA evaluation_rules reject hosted agents (400 "Hosted and
 # external agents are not supported") and beta.schedules is preview. Validated when present.
@@ -105,6 +106,14 @@ def evaluate(manifest: Any) -> dict[str, Any]:
                 missing.append(f"agent.{field}")
         if kind == "foundry-prompt" and not _text(agent.get("trivial_justification")):
             missing.append("agent.trivial_justification (required for foundry-prompt)")
+        if kind == "foundry-voice":
+            # Foundry voice agents are preview: delivered only on the user's explicit opt-in.
+            if agent.get("voice_opt_in_source") != "user":
+                missing.append("agent.voice_opt_in_source (must be 'user' for foundry-voice)")
+            if not _text(agent.get("voice_opt_in_evidence")):
+                missing.append("agent.voice_opt_in_evidence (quote of the user's request, required for foundry-voice)")
+            if agent.get("preview_acknowledged") is not True:
+                missing.append("agent.preview_acknowledged (must be true for foundry-voice)")
         if agent.get("fallback_active") is not False:
             if agent.get("fallback_active") is True:
                 missing.append("agent.fallback_active (a fallback/fake agent is serving; not delivered)")

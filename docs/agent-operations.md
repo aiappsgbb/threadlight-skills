@@ -37,7 +37,8 @@ For the separate opt-in lifecycle adapter, see [AgentOps](#agentops-preview-expl
 > PEP and gateway paths described here wrap that Foundry agent. Container Apps
 > hosts only the UI, a thin proxy, MCP tool servers or jobs. An agent loop
 > implemented in application code is not supported and is never a governance
-> target. Voice agents and preview-only Foundry features are out of scope. See
+> target. A Foundry voice agent (preview) is used only on an explicit user opt-in
+> with the preview acknowledged; other preview-only Foundry features are out of scope. See
 > [`foundry-only-agents.md`](../skills/_shared/foundry-only-agents.md).
 > Delivery also requires the mandatory full Foundry package: a real agent,
 > tracing, and one executed Foundry eval with a custom rubric, evidenced in
