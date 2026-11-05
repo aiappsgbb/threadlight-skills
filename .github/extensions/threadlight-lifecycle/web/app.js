@@ -163,6 +163,8 @@ function renderNow(view, errors) {
   let planNote = "";
   if (view.plan.status === "current" && view.plan.decidedAt) {
     planNote = `<p class="plan-note">Next step from Threadlight's plan, computed at ${escapeHtml(clockTime(view.plan.decidedAt))}.</p>`;
+  } else if (view.plan.status === "unverified" && view.plan.decidedAt) {
+    planNote = `<p class="plan-note">Next step from Threadlight's plan, computed at ${escapeHtml(clockTime(view.plan.decidedAt))}; recent changes could not be fully checked.</p>`;
   } else if (view.plan.status === "stale" && view.plan.decidedAt) {
     planNote = `<p class="plan-note">The plan below is from ${escapeHtml(clockTime(view.plan.decidedAt))} and may be out of date.</p>`;
   }
@@ -268,7 +270,9 @@ function renderProofPath(proofPath) {
     ? `<p class="muted section-title">Not computed yet. Refresh the plan to see where each step stands.</p>`
     : proofPath.stale
       ? `<p class="muted section-title">Shown from the last plan; refresh it to be sure.</p>`
-      : "";
+      : proofPath.unverified
+        ? `<p class="muted section-title">Shown from the plan; live results are not re-confirmed because recent changes could not be fully checked.</p>`
+        : "";
   // The root blocker is named once; later milestones just say they wait.
   let waitingNamed = false;
   const items = proofPath.milestones

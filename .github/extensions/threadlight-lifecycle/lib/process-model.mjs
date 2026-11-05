@@ -418,7 +418,7 @@ const PLAN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export function assessPlan(
   plan,
-  { newestArtifactAt = null, newestArtifactPath = null, now = null } = {},
+  { newestArtifactAt = null, newestArtifactPath = null, now = null, unverifiable = null } = {},
 ) {
   if (plan === null || plan === undefined) {
     return { status: "missing", decidedAt: null };
@@ -440,6 +440,16 @@ export function assessPlan(
   const current = parseTime(now);
   if (current && current.getTime() - decidedAt.getTime() >= PLAN_MAX_AGE_MS) {
     return { status: "stale", reason: "expired", decidedAt: decidedAt.toISOString(), changedPath: null };
+  }
+  if (unverifiable) {
+    // The freshness walk could not see every input (too many files or some
+    // unreadable). Not a change signal: refreshing would not clear it.
+    return {
+      status: "unverified",
+      reason: unverifiable,
+      decidedAt: decidedAt.toISOString(),
+      changedPath: null,
+    };
   }
   return { status: "current", decidedAt: decidedAt.toISOString() };
 }
@@ -583,7 +593,7 @@ function phaseMeta(id) {
 }
 
 function buildProofPath({ plan, planStatus, phases, readinessState }) {
-  if (!["current", "stale"].includes(planStatus.status)) {
+  if (!["current", "stale", "unverified"].includes(planStatus.status)) {
     return {
       planned: false,
       stale: false,
@@ -653,7 +663,32 @@ function buildProofPath({ plan, planStatus, phases, readinessState }) {
     };
   });
 
-  return { planned: true, stale: planStatus.status === "stale", root, workspaceCheck, milestones };
+  const unverified = planStatus.status === "unverified";
+  if (unverified) {
+    // Without a confirmed-current plan, planner-derived live results are not
+    // re-confirmed here: shown as done, never "proven live".
+    for (const gate of [workspaceCheck, ...milestones.flatMap((milestone) => milestone.gates)]) {
+      if (gate?.state === "proven") {
+        gate.state = "done";
+        gate.stateLabel = STATE_LABELS.done;
+        gate.note = "Live result not re-confirmed";
+      }
+    }
+    for (const milestone of milestones) {
+      if (milestone.state === "proven" || milestone.state === "ready") {
+        milestone.state = "done";
+        milestone.stateLabel = MILESTONE_LABELS.done;
+      }
+    }
+  }
+  return {
+    planned: true,
+    stale: planStatus.status === "stale",
+    unverified,
+    root,
+    workspaceCheck,
+    milestones,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -686,7 +721,7 @@ function controlResult(phases, proofPath) {
   if (status === "failed") return { state: "failed", text: "failing" };
   if (status === "stale") return { state: "stale", text: "out of date" };
   const probe =
-    proofPath.planned && !proofPath.stale
+    proofPath.planned && !proofPath.stale && !proofPath.unverified
       ? allGates(proofPath).find((gate) => gate.stage === "governance_probe")
       : null;
   if (probe?.state === "proven") return { state: "proven", text: "proven live" };
@@ -926,7 +961,7 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
   if (root === null && gates.some((gate) => gate.state === "failed" || gate.state === "stale")) {
     // The plan has nothing left to run, but evidence behind a passed stage has
     // since failed or expired: never claim it is proven.
-    return {
+    now = {
       tone: "attention",
       blockerTone: "attention",
       headline: "Some evidence is out of date",
@@ -934,8 +969,7 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
       why: REFRESH_WHY,
       action: refresh,
     };
-  }
-  if (root === null) {
+  } else if (root === null) {
     now =
       readiness.state === "ready"
         ? {
@@ -996,6 +1030,32 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
           };
   }
 
+  if (planStatus.status === "unverified") {
+    // Keep the planner's real next step (refreshing would not help) but never
+    // claim live proof or readiness while freshness cannot be confirmed.
+    return {
+      ...now,
+      headline: /Proven live|Ready to go live/.test(now.headline)
+        ? "Progress recorded; live results not re-confirmed"
+        : now.headline,
+      blockerTone: "attention",
+      blocker: [
+        now.headline === "Some evidence is out of date" ? now.blocker : null,
+        planStatus.reason === "too-many"
+          ? "Too many files to confirm the plan is current, so live results are not re-confirmed here."
+          : "Some workspace files could not be checked, so the plan may not be current; live results are not re-confirmed here.",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      action:
+        now.action.intent.type === "prepare_handoff"
+          ? {
+              label: "Assess production readiness",
+              intent: { type: "invoke_skill", skillId: "threadlight-production-ready", phase: "go-live" },
+            }
+          : now.action,
+    };
+  }
   if (planStatus.status === "stale") {
     const changed = planStatus.changedPath ? ` (${planStatus.changedPath} changed)` : "";
     // The headline stays the last known state; the blocker carries the warning.
@@ -1047,7 +1107,7 @@ function buildTechnical({ phases, plan, planStatus, errors }) {
       }
     }
   }
-  const planned = ["current", "stale"].includes(planStatus.status);
+  const planned = ["current", "stale", "unverified"].includes(planStatus.status);
   const handoffs = planned && Array.isArray(plan.manual_handoffs)
     ? plan.manual_handoffs
         .filter((handoff) => isPlainObject(handoff) && SKILL_IDS.has(handoff.skill))

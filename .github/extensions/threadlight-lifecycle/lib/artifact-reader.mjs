@@ -68,7 +68,14 @@ export const FRESHNESS_FILES = Object.freeze([
 ]);
 export const FRESHNESS_PREFIXES = Object.freeze([".threadlight/governance-"]);
 export const FRESHNESS_DIRECTORIES = Object.freeze(["src", "policies", "infra", "config"]);
-const FRESHNESS_PRUNE = new Set([".git", ".pytest_cache", "__pycache__", "build", "dist", "node_modules"]);
+// Tool caches and environments: never planner inputs, and large enough
+// (`uv sync` in infra/scripts creates a .venv) to exhaust the bound.
+const FRESHNESS_PRUNE = new Set([
+  ".git", ".pytest_cache", "__pycache__", "build", "dist", "node_modules",
+  ".venv", "venv", ".terraform", ".tox", ".mypy_cache", ".ruff_cache", ".next", ".cache",
+]);
+const SKIPPABLE_WALK_ERRORS = new Set(["ENOENT", "ENOTDIR"]);
+const UNREADABLE_WALK_ERRORS = new Set(["EACCES", "EPERM"]);
 const FRESHNESS_MAX_ENTRIES = 20000;
 
 export class ArtifactAccessError extends Error {
@@ -223,42 +230,69 @@ export async function createArtifactReader(workspace) {
      * Metadata only (lstat), regular files only, symlinks never followed,
      * .env files skipped. A tree larger than the bound reports `truncated`.
      */
-    async newestFreshnessInput() {
+    async newestFreshnessInput({ maxEntries = FRESHNESS_MAX_ENTRIES } = {}) {
       let newest = null;
+      let unverifiable = null;
       const consider = (relative, details) => {
-        if (!newest || details.mtime > newest.at) {
+        if (details && (!newest || details.mtime > newest.at)) {
           newest = { at: details.mtime, path: relative };
         }
       };
+      // Entries can vanish between readdir and lstat (the watcher refreshes on
+      // src changes) or be unreadable: never fail the projection. A vanished
+      // entry is skipped; an unreadable one makes the result unverifiable.
+      const guarded = async (operation) => {
+        try {
+          return await operation();
+        } catch (error) {
+          if (SKIPPABLE_WALK_ERRORS.has(error?.code)) return null;
+          if (UNREADABLE_WALK_ERRORS.has(error?.code)) {
+            unverifiable ??= "unreadable";
+            return null;
+          }
+          throw error;
+        }
+      };
+      const stat = (relative) => guarded(() => lstat(path.join(workspaceReal, relative)));
+      const list = (relative) =>
+        guarded(() => readdir(path.join(workspaceReal, relative), { withFileTypes: true }));
+      const result = () => ({
+        at: newest?.at ?? null,
+        path: newest?.path ?? null,
+        truncated: unverifiable === "too-many",
+        unverifiable,
+      });
+
       for (const relative of FRESHNESS_FILES) {
-        const details = await lstatInside(relative);
+        const details = await stat(relative);
         if (details?.isFile()) consider(relative, details);
       }
-      const stateDir = await lstatInside(".threadlight");
+      const stateDir = await stat(".threadlight");
       if (stateDir?.isDirectory() && !stateDir.isSymbolicLink()) {
-        for (const entry of await readdir(path.join(workspaceReal, ".threadlight"), { withFileTypes: true })) {
+        for (const entry of (await list(".threadlight")) ?? []) {
           const relative = `.threadlight/${entry.name}`;
           if (
             entry.isFile() &&
             entry.name.endsWith(".json") &&
             FRESHNESS_PREFIXES.some((prefix) => relative.startsWith(prefix))
           ) {
-            consider(relative, await lstat(path.join(workspaceReal, relative)));
+            consider(relative, await stat(relative));
           }
         }
       }
       let visited = 0;
       for (const root of FRESHNESS_DIRECTORIES) {
-        const rootDetails = await lstatInside(root);
+        const rootDetails = await stat(root);
         if (!rootDetails?.isDirectory() || rootDetails.isSymbolicLink()) {
           continue;
         }
         const pending = [root];
         while (pending.length) {
           const current = pending.pop();
-          for (const entry of await readdir(path.join(workspaceReal, current), { withFileTypes: true })) {
-            if (++visited > FRESHNESS_MAX_ENTRIES) {
-              return { at: null, path: `${root}/`, truncated: true };
+          for (const entry of (await list(current)) ?? []) {
+            if (++visited > maxEntries) {
+              unverifiable = "too-many";
+              return result();
             }
             const relative = `${current}/${entry.name}`;
             if (entry.isSymbolicLink()) {
@@ -269,12 +303,12 @@ export async function createArtifactReader(workspace) {
                 pending.push(relative);
               }
             } else if (entry.isFile() && !entry.name.startsWith(".env")) {
-              consider(relative, await lstat(path.join(workspaceReal, relative)));
+              consider(relative, await stat(relative));
             }
           }
         }
       }
-      return newest ? { at: newest.at, path: newest.path, truncated: false } : null;
+      return result();
     },
 
     async agentOpsRoots(explicitRoots = []) {

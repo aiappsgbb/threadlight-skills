@@ -1827,3 +1827,64 @@ test("a legacy plan with a pending govern stage does not waive governance for re
     assert.equal(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-incomplete");
   });
 });
+
+for (const cache of [
+  "infra/scripts/.venv/lib/site.py",
+  "src/agent/venv/lib/site.py",
+  "infra/.terraform/providers/x.json",
+  "src/agent/.tox/env.py",
+  "src/agent/.mypy_cache/x.json",
+  "src/agent/.ruff_cache/x.json",
+  "src/workspace/.next/build.js",
+  "src/agent/.cache/x.bin",
+]) {
+  test(`tool cache ${cache} is not a planner input`, async () => {
+    await withFixture("complete-pilot", async ({ workspace }) => {
+      await touchLater(workspace, cache);
+      const model = await projectWorkspace(workspace, { now: NOW });
+      assert.equal(model.view.plan.status, "current", cache);
+    });
+  });
+}
+
+test("too many files makes freshness unverifiable, not permanently changed", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    for (const name of ["a", "b", "c", "d", "e", "f"]) {
+      const { mkdir, writeFile, utimes } = await import("node:fs/promises");
+      await mkdir(path.join(workspace, "src/agent"), { recursive: true });
+      const file = path.join(workspace, "src/agent", `${name}.py`);
+      await writeFile(file, "x\n");
+      await utimes(file, new Date("2026-08-06T08:00:00Z"), new Date("2026-08-06T08:00:00Z"));
+    }
+    const model = await projectWorkspace(workspace, { now: NOW, freshnessMaxEntries: 3 });
+    const view = model.view;
+    assert.equal(view.plan.status, "unverified");
+    assert.match(view.now.blocker, /Too many files to confirm the plan is current/);
+    // Not a dead end: the action is not "Refresh the plan".
+    assert.notDeepEqual(view.now.action.intent, { type: "refresh_plan" });
+    // Gates stay visible, but nothing planner-derived reads as proven or ready.
+    assert.equal(view.proofPath.planned, true);
+    const gates = view.proofPath.milestones.flatMap((milestone) => milestone.gates);
+    assert.ok(gates.length > 0);
+    assert.ok(gates.every((gate) => gate.state !== "proven"));
+    assert.doesNotMatch(view.now.headline, /Proven live|Ready to go live/);
+    assert.notEqual(view.goLive.readiness.label, "Ready to go live");
+    assert.notEqual(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-proof");
+  });
+});
+
+test("unreadable directories in the freshness walk never fail the projection", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    const { mkdir } = await import("node:fs/promises");
+    const locked = path.join(workspace, "src/agent/locked");
+    await mkdir(locked, { recursive: true });
+    await chmod(locked, 0o000);
+    try {
+      const model = await projectWorkspace(workspace, { now: NOW });
+      assert.equal(model.view.plan.status, "unverified");
+      assert.match(model.view.now.blocker, /could not be checked/);
+    } finally {
+      await chmod(locked, 0o755);
+    }
+  });
+});

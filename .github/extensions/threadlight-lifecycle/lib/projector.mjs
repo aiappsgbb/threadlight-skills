@@ -1547,7 +1547,7 @@ const PLAN_INPUTS = Object.freeze([
 const PLAN_PATH = ".threadlight/auto-next.json";
 const SPEC_MAX_BYTES = 2 * 1024 * 1024;
 
-async function newestPlanInput(reader) {
+async function newestPlanInput(reader, { maxEntries } = {}) {
   const paths = new Set(PLAN_INPUTS);
   for (const definition of SKILL_REGISTRY) {
     for (const artifactPath of [
@@ -1561,12 +1561,13 @@ async function newestPlanInput(reader) {
   }
   let newest = null;
   const fingerprint =
-    typeof reader.newestFreshnessInput === "function" ? await reader.newestFreshnessInput() : null;
-  if (fingerprint?.truncated) {
-    // Too many files to check within the bound: assume something changed.
-    return { at: new Date(8.64e15), path: fingerprint.path };
-  }
-  if (fingerprint) {
+    typeof reader.newestFreshnessInput === "function"
+      ? await reader.newestFreshnessInput(maxEntries ? { maxEntries } : {})
+      : null;
+  // A bounded or partly unreadable walk is "unverifiable", never "changed":
+  // refreshing the plan would not clear it, so it must not look like a change.
+  const unverifiable = fingerprint?.unverifiable ?? null;
+  if (fingerprint?.at) {
     newest = { at: fingerprint.at, path: fingerprint.path };
   }
   for (const relativePath of paths) {
@@ -1577,7 +1578,7 @@ async function newestPlanInput(reader) {
       newest = { at: modified, path: metadata.relativePath };
     }
   }
-  return newest;
+  return { newest, unverifiable };
 }
 
 async function readOptionalText(reader, relativePath) {
@@ -1598,16 +1599,17 @@ async function evidenceRecord(reader, relativePath, now) {
   return { value: read.value, checkedAt: timestamp ? timestamp.toISOString() : null };
 }
 
-async function readPlan(reader, now) {
-  const [planRead, newest] = await Promise.all([
+async function readPlan(reader, now, options = {}) {
+  const [planRead, { newest, unverifiable }] = await Promise.all([
     readOptionalJson(reader, PLAN_PATH),
-    newestPlanInput(reader),
+    newestPlanInput(reader, { maxEntries: options.freshnessMaxEntries }),
   ]);
   const plan = planRead.state === "missing" ? null : planRead.value ?? {};
   const planStatus = assessPlan(plan, {
     newestArtifactAt: newest?.at.toISOString() ?? null,
     newestArtifactPath: newest?.path ?? null,
     now: now.toISOString(),
+    unverifiable,
   });
   return { plan, planStatus };
 }
@@ -1661,7 +1663,7 @@ export async function projectWorkspace(workspace, options = {}) {
   const generatedAt = now.toISOString();
   const errors = [];
   const { manifest, manifestInvalid } = await readManifest(reader, errors);
-  const { plan, planStatus } = await readPlan(reader, now);
+  const { plan, planStatus } = await readPlan(reader, now, options);
   const context = {
     hasGovernanceContract: await reader.exists("specs/governance-contract.json"),
     // Readiness proof needs governance proven by the planner, never by a
