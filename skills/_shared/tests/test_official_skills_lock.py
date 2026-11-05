@@ -205,10 +205,10 @@ def _verify_module():
 
 def test_lock_pins_the_current_marketplace_release():
     lock = load(LOCK)
-    assert (lock["tag"], lock["commit"]) == ("v1.2.79", "344bd5b3e041445237de09007ef62f4b3c51805d")
+    assert (lock["tag"], lock["commit"]) == ("v1.2.113", "3c89228484f4a9241d255ec7c703976d13277c2d")
     versions = {name: plugin["version"] for name, plugin in lock["plugins"].items()}
-    assert versions == {"azure@azure-skills": "1.2.79", "azure-cost@azure-skills": "1.0.5",
-                        "foundry-iq-skills@azure-skills": "0.1.10"}
+    assert versions == {"azure@azure-skills": "1.2.113", "azure-cost@azure-skills": "1.0.18",
+                        "foundry-iq-skills@azure-skills": "0.2.8"}
 
 
 def test_build_lock_regenerates_from_fetched_content_not_hand_edits():

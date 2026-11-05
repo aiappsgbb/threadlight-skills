@@ -28,8 +28,11 @@ metadata:
 > explicit opt-in from the user: the user explicitly asks for one, recorded in the SPEC as `agent_type: prompt` with
 > `prompt_opt_in_source: user`, the quoted request and a `trivial_justification`.
 > Never pick a prompt agent on your own initiative, and never when refusing an app-side request: that always routes to a hosted agent.
+> A Foundry **voice agent** (preview) is used only when the user explicitly requires one and accepts the preview:
+> `agent_type: voice` with `voice_opt_in_source: user`, the quoted request and `preview_acknowledged: true`,
+> built with the official `microsoft-foundry` skill (create-voice). Never offer it on your own initiative.
 > **Never** choose or offer:
-> voice agents (Voice Live or realtime); preview-only Foundry features; or an agent loop in application code
+> voice without that opt-in, or Voice Live / realtime calls from app code; other preview-only Foundry features; or an agent loop in application code
 > (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
 > outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
 > user, kickoff or deadline request: refuse and route to a hosted agent. See
@@ -348,7 +351,11 @@ cover**:
    initiative, and never when refusing an app-side request (that routes to a
    hosted agent). Even with the opt-in, every trivial criterion in
    [`_shared/foundry-only-agents.md`](../_shared/foundry-only-agents.md) must hold,
-   recorded as `agent_type` plus `trivial_justification`. Next comes the
+   recorded as `agent_type` plus `trivial_justification`. A
+   `foundry-voice-agent` (`agent_type: voice`, preview) is recorded only when the
+   user explicitly requires a spoken, real-time conversation and accepts the
+   preview (`voice_opt_in_source: user`, `voice_opt_in_evidence`,
+   `preview_acknowledged: true`); never propose it yourself. Next comes the
    `deployment_target` lever (`demo-sandbox` | `customer-pilot` |
    `production-bound`). The agent always runs in Microsoft Foundry. Azure
    Functions, `aca-job` and Container Apps are only auxiliary compute, for the
@@ -2296,13 +2303,13 @@ The spec is durable and runtime-agnostic. You can derive different implementatio
 | [**threadlight-safe-check**](../threadlight-safe-check/) | Reads the `deployment_manifest{}` block authored under SPEC § 11c (this skill's responsibility) and gates design / pre-deploy / post-deploy completeness |
 | [**threadlight-deploy/references/observability**](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/references/observability/README.md) | Always layered into deploy from day one — App Insights + OTel telemetry across hosted agents, MCP, ACA jobs, workspace; closes the silent gap where `azd up` returns 0 but AppIn stays empty |
 | [**foundry-iq**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-iq/) | **Default knowledge retrieval pattern** — every SPEC § 7 should declare a Knowledge Base with `Backing service: foundry-iq` unless the process has zero domain documents |
-| [**azure-ai**](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/azure-ai) | Consumes SPEC § 7b AI Services & Model Selection — wires vision / DocIntel / Speech tools |
+| [**azure-ai**](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-skills/skills/azure-ai) | Consumes SPEC § 7b AI Services & Model Selection — wires vision / DocIntel / Speech tools |
 | [**threadlight-workspace-ui**](../threadlight-workspace-ui/) | Consumes SPEC § 8b Workspace UX — generates the operator workspace |
 | [**threadlight-hitl-patterns**](../threadlight-hitl-patterns/) | Consumes SPEC § 8 Action Gates — generates Adaptive Cards + audit trail for the seven canonical gates |
 | [**threadlight-event-triggers**](../threadlight-event-triggers/) | Consumes SPEC § 10b Triggers — generates ACA Job / Function / consumer receivers |
 | [**threadlight-demo-data-factory**](../threadlight-demo-data-factory/) | Consumes SPEC § 11d Demo Data + the `references/data-realism/` industry rules — generates realistic demo data |
 | [**threadlight-mcp-aca**](../threadlight-mcp-aca/SKILL.md) | Consumes SPEC § 5 / § 5b — wraps mocked systems behind MCP |
-| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) | Consumes SPEC § 9 KPI table — runs continuous evaluation loop |
+| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry) | Consumes SPEC § 9 KPI table — runs continuous evaluation loop |
 | [**threadlight-citadel-spoke**](../threadlight-citadel-spoke/SKILL.md) | Consumes SPEC § 11b Governance Posture — opt-in Citadel handoff after initial deploy |
 | [**threadlight-deploy/references/azd-modules**](../threadlight-deploy/references/azd-modules/README.md) | Composable Bicep module library that all module-emitting skills above feed into |
 | [**gbb-pptx**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/gbb-pptx/) | **When a 1-slider PPTX leave-behind is requested** after the deck-led demo (exec brief, steering committee handout, asynchronous follow-up to non-attendees). Complements the deck, not a replacement. |

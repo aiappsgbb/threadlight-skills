@@ -23,7 +23,7 @@ metadata:
 
 <!-- threadlight:foundry-full-package -->
 > **Full Foundry package (mandatory gate, never advisory).** A run is COMPLETE
-> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent,
+> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent (or an opted-in voice agent),
 > with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
 > Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
 > custom rubric derived from the SPEC acceptance criteria, with anchors and a passing
@@ -375,4 +375,4 @@ to replace it. For first-party depth behind this evals leg, reach for the offici
 reading, not a dependency* — Threadlight's guidance stays the source of truth for
 the pilot flow:
 
-- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — first-party **batch eval, continuous evaluation, and tracing / observability** surfaces this leg wires (via `microsoft-foundry` + Foundry Continuous Evaluation).
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — first-party **batch eval, continuous evaluation, and tracing / observability** surfaces this leg wires (via `microsoft-foundry` + Foundry Continuous Evaluation).

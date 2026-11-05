@@ -21,8 +21,9 @@ governance protocol. None of these documents authorizes a deployment.
 > recorded in the SPEC as `agent_type: prompt` with `prompt_opt_in_source: user`) and only when it is
 > trivial: one model, no custom code tools, no multi-step orchestration, no state
 > beyond the thread, and no skills. Never pick a prompt agent on your own initiative,
-> and never when refusing an app-side request: a refusal always routes to a hosted agent. Voice
-> agents, preview-only Foundry features and any agent loop in application code
+> and never when refusing an app-side request: a refusal always routes to a hosted agent. A
+> Foundry voice agent (preview) is used only on an explicit user opt-in with the preview
+> acknowledged. Other preview-only Foundry features and any agent loop in application code
 > are not supported. That includes ACA, App Service, Functions, a web app, or
 > direct Responses / Chat Completions tool loops. Container Apps hosts only the
 > UI, a thin proxy, MCP tool servers or jobs. Canonical rule:

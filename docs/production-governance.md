@@ -59,7 +59,7 @@ authorize a deployment.
 The governed agent always runs in Microsoft Foundry and is a **hosted agent by
 default**; a prompt agent requires explicit user opt-in. Container Apps hosts only
 UI, thin proxies, MCP tool servers or jobs; app-side agent loops are not a
-governance target and voice agents are out of scope
+governance target, and a voice agent (preview) needs an explicit user opt-in
 ([foundry-only-agents.md](../skills/_shared/foundry-only-agents.md)).
 
 What changes is the foundation around that agent. The readiness skill resolves

@@ -7,6 +7,40 @@ field.
 
 ## [Unreleased]
 
+### 2.21.0: official skills at azure-skills v1.2.113; Foundry voice agents on explicit opt-in
+
+- **Official skills lock** regenerated from fetched content at
+  microsoft/azure-skills `v1.2.113` (`3c892284`): `azure` 1.2.113, `azure-cost`
+  1.0.18, `foundry-iq-skills` 0.2.8. Every residual and Threadlight-owned
+  exception was re-checked at the new tag; none became covered except voice.
+- **Voice skills now default to the official skill.** `foundry-voice-agents` and
+  `foundry-voice-live` map to `microsoft-foundry` create-voice (Prompt Voice and
+  Hosted Voice, added upstream in v1.2.98), partial coverage.
+  `agent-framework-harness` stays residual: the new managed harness is the
+  Foundry Copilot harness for prompt agents, not Agent Framework
+  `create_harness_agent`.
+- **Foundry voice agents are allowed on an explicit user opt-in only**
+  (maintainer decision). They are preview
+  ([Microsoft Learn](https://learn.microsoft.com/azure/foundry/agents/overview#how-voice-based-agents-work)),
+  so the SPEC records `agent_type: voice` with `voice_opt_in_source: user`,
+  `voice_opt_in_evidence` and `preview_acknowledged: true`; an agent never offers
+  one. Threadlight generates no voice runtime: `threadlight-deploy` hands the
+  agent to the official `microsoft-foundry` create-voice, deploy and invoke
+  guides, and `generate_only` refuses `agent_type: voice` with exit 4. The Full
+  Foundry package gate accepts `agent.kind: foundry-voice` only with the three
+  opt-in fields. `runtime-policy.json` contract 2.1.0. Other preview-only
+  capabilities, including the managed Copilot harness, stay excluded.
+- **Presenter deployment pin** follows the changed official deploy guide
+  (new sha256). The v1.2.79 pin used by 2.19.1 to 2.20.x contracts stays accepted
+  read-only in `presenter-deployment-pin-legacy.json`.
+- **New official companions linked**: `azure-quotas` (deploy), `azure-advisor`
+  (production-ready, separate `azure-advisor@azure-skills` plugin) and
+  `cost-optimization` (consumption-iq). The README states the official plugins'
+  `SessionStart`/`PostToolUse` telemetry hooks and the
+  `AZURE_MCP_COLLECT_TELEMETRY=false` opt-out.
+- **Not verified here:** no live Foundry voice agent was created or evaluated;
+  the gate and routing are offline contracts.
+
 ### 2.20.1: generate-only output aligned with threadlight-design (issue #161)
 
 - **Root cause.** Studio's live run on 2.20.0 showed that generate-only mode

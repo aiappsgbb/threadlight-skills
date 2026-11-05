@@ -27,9 +27,14 @@ trivial, meaning it meets every one of these conditions:
 Record a prompt agent as `agent_type: prompt` with a `trivial_justification`.
 Never pick a prompt agent on your own initiative, and never when refusing an
 app-side request: a refusal always routes to a hosted agent.
+A Foundry **voice agent** is preview: it is used only when the user explicitly
+requires a spoken, real-time conversation and accepts the preview (recorded as
+`agent_type: voice` with `voice_opt_in_source: user`, `voice_opt_in_evidence` and
+`preview_acknowledged: true`), and it is built with the official `microsoft-foundry`
+skill (create-voice). Never offer one on your own initiative.
 The following are **not supported, and are never chosen or offered**:
-- voice agents (Voice Live or realtime);
-- preview-only or unreleased Foundry capabilities;
+- voice without that opt-in, or Voice Live / realtime calls from application code;
+- other preview-only or unreleased Foundry capabilities;
 - any agent loop or orchestration implemented in application code, for example on
   ACA, App Service, Functions or a web app, or by calling Responses or Chat
   Completions directly with a tool loop.
@@ -1014,8 +1019,8 @@ deliberately.**
 - **Author in Git → publish an immutable version.** The editable copy
   lives in source control; the reviewed source is promoted to a
   **versioned Foundry artifact** — a `SkillVersion`, a toolbox version —
-  via [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry)
-  and [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry).
+  via [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry)
+  and [`microsoft-foundry`](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry).
 - **Reference by a pinned version.** Production agents bind to a specific
   version, never a floating pointer, so "which capabilities ran during
   the incident?" has a single, auditable answer.

@@ -15,14 +15,16 @@ vendored GHCP pilot scaffold only:
   ``references/generate-only`` (eval lock, runner template).
 
 Every Threadlight agent runs in Microsoft Foundry. The generated agent is a
-Foundry HOSTED agent; ``agent_type: prompt`` in SPEC section 11e is refused
-here (exit 4) because the GHCP pilot scaffold is hosted-only.
+Foundry HOSTED agent; ``agent_type: prompt`` or ``agent_type: voice`` in SPEC
+section 11e is refused here (exit 4) because the GHCP pilot scaffold is
+hosted-only. An opted-in voice agent is built with the official microsoft-foundry
+create-voice workflow instead.
 
 Usage::
 
     python generate_only.py --project <workspace> [--force]
 
-Exit codes: 0 generated, 2 invalid workspace, 4 prompt agent requested,
+Exit codes: 0 generated, 2 invalid workspace, 4 prompt or voice agent requested,
 5 would overwrite generated files (re-run with ``--force``).
 """
 from __future__ import annotations
@@ -60,7 +62,7 @@ DEMO_SANDBOX_POSTURE = {
 
 
 class PromptAgentRefused(Exception):
-    """SPEC asks for a prompt agent; generate-only emits hosted agents only."""
+    """SPEC asks for a prompt or voice agent; generate-only emits hosted agents only."""
 
 
 class OverwriteRefused(Exception):
@@ -729,8 +731,15 @@ def generate(project_dir: Path, force: bool) -> list[str]:
             "which produces a Foundry HOSTED agent only. Set agent_type: hosted, or create the "
             "trivial prompt agent with the threadlight-deploy prompt-agent path (needs a subscription)."
         )
+    if kind == "voice":
+        raise PromptAgentRefused(
+            "SPEC section 11e sets agent_type: voice. Threadlight generates no voice runtime and "
+            "generate_only produces a Foundry HOSTED agent only. Build the opted-in voice agent "
+            "(preview) with the official microsoft-foundry skill from azure@azure-skills: "
+            "foundry-agent/create/create-voice.md, then deploy and invoke (needs a subscription)."
+        )
     if kind != "hosted":
-        raise WorkspaceError(f"SPEC section 11e agent_type must be hosted or prompt, got {kind!r}")
+        raise WorkspaceError(f"SPEC section 11e agent_type must be hosted, prompt or voice, got {kind!r}")
 
     agent = _slug(str(manifest.get("name") or project_dir.name))
     project = agent

@@ -1,8 +1,8 @@
 {
   "schema": "threadlight.runtime-policy/v1",
   "version": 2,
-  "contract_version": "2.0.0",
-  "last_reviewed": "2026-08-17",
+  "contract_version": "2.1.0",
+  "last_reviewed": "2026-11-05",
   "authority": {
     "repository": "aiappsgbb/threadlight-skills",
     "path": "skills/threadlight-design/references/runtime-policy.json",
@@ -13,7 +13,8 @@
     "default": "hosted",
     "allowed_agent_types": [
       "hosted",
-      "prompt"
+      "prompt",
+      "voice"
     ],
     "prompt_requires_all_trivial_criteria": [
       "exactly-one-model",
@@ -39,9 +40,21 @@
     ],
     "agent_authored_spec_counts_as_opt_in": false,
     "agent_may_select_prompt_on_own_initiative": false,
+    "voice_requires_explicit_opt_in": true,
+    "voice_opt_in_required_fields": [
+      "voice_opt_in_source",
+      "voice_opt_in_evidence",
+      "preview_acknowledged"
+    ],
+    "voice_opt_in_source_allowed": [
+      "user"
+    ],
+    "agent_may_select_voice_on_own_initiative": false,
+    "voice_build_route": "azure@azure-skills/microsoft-foundry/foundry-agent/create/create-voice.md",
     "refusal_route": "hosted",
     "prohibited": [
-      "voice-agents",
+      "voice-agents-without-explicit-opt-in",
+      "app-code-voice-live-calls",
       "preview-only-capabilities",
       "app-code-agent-loop"
     ],

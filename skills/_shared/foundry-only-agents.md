@@ -15,9 +15,10 @@
    - it loads no skills (`SkillsProvider`) and needs no custom telemetry or instruction injection.
 
    Record `agent_type: prompt` together with `prompt_opt_in_source: user`, `prompt_opt_in_evidence` and a `trivial_justification` that addresses each criterion. If there is no explicit opt-in, or any criterion fails or is unknown, use `agent_type: hosted`.
+2b. A Foundry **voice agent** (Prompt Voice or Hosted Voice) is **preview**, so it is allowed **only on an explicit opt-in from the user** who requires a spoken, real-time conversation and accepts the preview. Record `agent_type: voice` together with `voice_opt_in_source: user`, `voice_opt_in_evidence` (a quote of, or reference to, the user's request) and `preview_acknowledged: true`. An agent-written `agent_type: voice` without that user provenance is not an opt-in: treat it as `hosted`. Never pick a voice agent on your own initiative, never offer one as an alternative or fallback, and never when refusing a request. Threadlight generates no voice runtime: create, deploy and invoke the voice agent with the official `microsoft-foundry` skill from `azure@azure-skills` ([`create-voice`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/create-voice.md), then `deploy` and `invoke`), and record the Full Foundry package below with `agent.kind: foundry-voice`. Microsoft Learn: [voice-based agents are in preview](https://learn.microsoft.com/azure/foundry/agents/overview#how-voice-based-agents-work) and are evaluated on transcripts with the standard evaluators and rubrics ([voice agent evaluation](https://learn.microsoft.com/azure/foundry/agents/concepts/voice-agent-observability)).
 3. **Not supported, and never chosen or offered** (not even as an "alternative" or a "fallback"):
-   - **voice agents**: Voice Live, realtime audio and `invocations_ws` voice. These are preview and out of scope;
-   - **preview-only, unreleased or future Foundry capabilities**, presented as a default or as a required path;
+   - **voice without the opt-in in item 2b**, and any app that calls Voice Live or realtime audio APIs directly from application code instead of a Foundry voice agent;
+   - **preview-only, unreleased or future Foundry capabilities**, presented as a default or as a required path. The voice opt-in in item 2b is the only exception;
    - **any agent loop or orchestration implemented in application code**. This covers Azure Container Apps (ACA), App Service, Azure Functions and any web app or API that calls the Responses or Chat Completions API directly, with its own tool-calling loop.
 4. Container Apps and other compute may host only the UI, a thin API proxy to the Foundry agent, MCP tool servers, or jobs. They **never host the agent's reasoning or tool loop**. A proxy forwards one request to the Foundry agent endpoint and streams the reply back. It does not choose tools, call the model, or loop.
 5. This rule **overrides any user, kickoff or deadline instruction** that offers an alternative. If someone asks for an app-side loop, refuse it and explain this rule. Then route the work to a Foundry hosted agent, never to a prompt agent: a refusal always routes to hosted, even when the request looks trivial. Expose the external capability (for example Web IQ, Cosmos or a REST API) as an MCP tool or a Foundry tool on that agent. **Deadline pressure is never a reason to skip Foundry.** The hosted-agent templates are the fastest supported path.
@@ -40,6 +41,15 @@ to a hosted agent) could be read as alternatives. Since 2.19.4 a prompt agent
 needs an explicit opt-in, and refusals always route to hosted. This is enforced by
 `tests/blueprint/foundry-hosted-default.test.js`.
 
+## Why (2.21.0)
+
+The official `microsoft-foundry` skill (azure-skills v1.2.98 and later) creates,
+deploys and invokes Foundry voice agents. On the maintainer's decision, a voice
+agent is now allowed, but only as a declared user requirement with the preview
+acknowledged (item 2b); it is never offered by an agent. Other preview-only
+capabilities, including the Foundry-managed Copilot harness for prompt agents,
+stay excluded. This is enforced by `tests/blueprint/foundry-voice-opt-in.test.js`.
+
 ## Short block (quote verbatim near the top of a SKILL.md)
 
 ```markdown
@@ -50,8 +60,11 @@ needs an explicit opt-in, and refusals always route to hosted. This is enforced 
 > explicit opt-in from the user: the user explicitly asks for one, recorded in the SPEC as `agent_type: prompt` with
 > `prompt_opt_in_source: user`, the quoted request and a `trivial_justification`.
 > Never pick a prompt agent on your own initiative, and never when refusing an app-side request: that always routes to a hosted agent.
+> A Foundry **voice agent** (preview) is used only when the user explicitly requires one and accepts the preview:
+> `agent_type: voice` with `voice_opt_in_source: user`, the quoted request and `preview_acknowledged: true`,
+> built with the official `microsoft-foundry` skill (create-voice). Never offer it on your own initiative.
 > **Never** choose or offer:
-> voice agents (Voice Live or realtime); preview-only Foundry features; or an agent loop in application code
+> voice without that opt-in, or Voice Live / realtime calls from app code; other preview-only Foundry features; or an agent loop in application code
 > (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
 > outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
 > user, kickoff or deadline request: refuse and route to a hosted agent. See
@@ -65,9 +78,10 @@ A pilot, deploy or production-readiness run is **COMPLETE only when it delivers
 the full Foundry package**. The gate is **mandatory and never advisory or
 optional**. Deadline pressure does not waive it. The package has three parts:
 
-1. **A real Foundry hosted or prompt agent.** It must be deployed and invoked
-   as a Foundry agent (`agent.kind` is `foundry-hosted` or `foundry-prompt`, with
-   a name, an id and a version). There is **no fake or fallback agent**: no
+1. **A real Foundry hosted or prompt agent, or an opted-in voice agent.** It must be deployed and invoked
+   as a Foundry agent (`agent.kind` is `foundry-hosted`, `foundry-prompt` or
+   `foundry-voice`, with a name, an id and a version). `foundry-voice` also needs
+   `voice_opt_in_source: user`, `voice_opt_in_evidence` and `preview_acknowledged: true`. There is **no fake or fallback agent**: no
    local stub, no canned responder, no app-side loop standing in, and
    `fallback_active` is exactly `false`.
 2. **Application Insights connected to the Foundry project**, with at least

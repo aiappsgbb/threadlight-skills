@@ -314,7 +314,7 @@ For each AI capability the agent needs:
   | Code-related multimodal | `gpt-5.3-codex` (2026-02-24) | Diagrams → code |
   | Structured doc extract (passport, invoice, ID) | Document Intelligence v4 prebuilt | Use prebuilt when possible |
   | Custom doc extract | Document Intelligence v4 custom model | Train when prebuilt doesn't fit |
-  | Recorded-audio transcription (files only) | Azure Speech-to-Text (batch) | Voice agents (Voice Live or realtime) are out of scope and not supported |
+  | Recorded-audio transcription (files only) | Azure Speech-to-Text (batch) | For spoken, real-time conversations use a Foundry voice agent (`agent_type: voice`, preview, explicit user opt-in only), not this row |
 - **Capacity (TPM)**: e.g. `50K` GlobalStandard for `gpt-5.4`, `120K` for `gpt-5.4-mini`, `300K+` for high-volume
 - **Reasoning effort** (for capable models): `minimal` | `low` | `medium` | `high` (default `medium`)
 
@@ -621,7 +621,7 @@ tools:
 | `ai-search` | yes/no | Foundry IQ Knowledge Base backing |
 | `doc-intel` | yes/no | Structured document extraction (passport, invoice, ID — when prebuilt model fits) |
 | `azure-vision` | yes/no | OCR / image analysis (when not using GPT vision) |
-| `azure-speech` | yes/no | Batch speech-to-text / text-to-speech of files only (voice agents, Voice Live and realtime, are out of scope and not supported) |
+| `azure-speech` | yes/no | Batch speech-to-text / text-to-speech of files only (voice agents use `agent_type: voice` with an explicit user opt-in, not this module) |
 | `event-grid` | yes/no | Pub/sub for trigger events |
 | `service-bus` | yes/no | Reliable queueing for case workflow |
 | `storage-blob` | yes/no | Document upload, large artifacts, dataset hosting |
@@ -681,11 +681,14 @@ that integration explicitly in § 5).
 > `references/runtime-policy.json`'s `blocked_when`).
 
 ```yaml
-agent_type: hosted  # hosted | prompt. Foundry hosted agent is the default; see _shared/foundry-only-agents.md
+agent_type: hosted  # hosted | prompt | voice. Foundry hosted agent is the default; see _shared/foundry-only-agents.md
 trivial_justification: null  # REQUIRED when agent_type: prompt (explicit opt-in only): one model, no custom code tools,
                              # no multi-step orchestration, no state beyond the Foundry thread
 prompt_opt_in_source: null   # REQUIRED when agent_type: prompt: must be `user` (an agent-written value is not an opt-in)
 prompt_opt_in_evidence: null # REQUIRED when agent_type: prompt: quote of, or reference to, the user's explicit request
+voice_opt_in_source: null    # REQUIRED when agent_type: voice: must be `user` (an agent-written value is not an opt-in)
+voice_opt_in_evidence: null  # REQUIRED when agent_type: voice: quote of the user's spoken-conversation requirement
+preview_acknowledged: null   # REQUIRED when agent_type: voice: must be `true` (Foundry voice agents are preview)
 workflow_model: agent  # agent | workflow
 
 capability_signals:                     # machine-readable booleans + unresolved markers runtime-policy.json keys on
@@ -703,7 +706,7 @@ capability_signals:                     # machine-readable booleans + unresolved
 
 - `agent` *(default)* — single agent with tools; `threadlight-deploy`
   generates `AGENTS.md` + Skills + a Foundry hosted-agent container.
-- `agent_type` is restricted to `hosted` (always the default) or `prompt`.
+- `agent_type` is restricted to `hosted` (always the default), `prompt` or `voice`.
   `prompt` requires an explicit opt-in from the user, recorded as
   `prompt_opt_in_source: user` with `prompt_opt_in_evidence` quoting the request.
   An agent-written `agent_type: prompt` without that user provenance is not an
@@ -713,8 +716,13 @@ capability_signals:                     # machine-readable booleans + unresolved
   [`foundry-only-agents.md`](../../_shared/foundry-only-agents.md) holds, and
   record `trivial_justification`. An agent loop in application code (ACA, App
   Service, Functions, a web app, or direct Responses / Chat Completions tool
-  loops) is never a valid value. Voice agents and preview-only Foundry features
-  are out of scope.
+  loops) is never a valid value. `voice` (a Foundry voice agent, preview) needs an
+  explicit opt-in from the user who requires a spoken, real-time conversation:
+  `voice_opt_in_source: user`, `voice_opt_in_evidence` and
+  `preview_acknowledged: true`. An agent-written `agent_type: voice` without that
+  user provenance is not an opt-in: treat it as `hosted`. The official
+  `microsoft-foundry` skill (create-voice) builds it. Other preview-only Foundry
+  features are out of scope.
 - `workflow` — deterministic multi-step orchestration; the SPEC adds
   `WORKFLOW.md` (executor / phase definitions) as the target design, and
   `threadlight-deploy` generates the MAF Agent container on Responses that

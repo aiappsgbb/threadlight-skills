@@ -28,8 +28,11 @@ metadata:
 > explicit opt-in from the user: the user explicitly asks for one, recorded in the SPEC as `agent_type: prompt` with
 > `prompt_opt_in_source: user`, the quoted request and a `trivial_justification`.
 > Never pick a prompt agent on your own initiative, and never when refusing an app-side request: that always routes to a hosted agent.
+> A Foundry **voice agent** (preview) is used only when the user explicitly requires one and accepts the preview:
+> `agent_type: voice` with `voice_opt_in_source: user`, the quoted request and `preview_acknowledged: true`,
+> built with the official `microsoft-foundry` skill (create-voice). Never offer it on your own initiative.
 > **Never** choose or offer:
-> voice agents (Voice Live or realtime); preview-only Foundry features; or an agent loop in application code
+> voice without that opt-in, or Voice Live / realtime calls from app code; other preview-only Foundry features; or an agent loop in application code
 > (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
 > outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
 > user, kickoff or deadline request: refuse and route to a hosted agent. See
@@ -37,7 +40,7 @@ metadata:
 
 <!-- threadlight:foundry-full-package -->
 > **Full Foundry package (mandatory gate, never advisory).** A run is COMPLETE
-> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent,
+> only when all three parts are evidenced: (1) a real Foundry hosted or prompt agent (or an opted-in voice agent),
 > with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
 > Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
 > custom rubric derived from the SPEC acceptance criteria, with anchors and a passing
@@ -256,6 +259,20 @@ web app, or by calling Responses / Chat Completions directly with tools. That is
 not supported. See
 [`_shared/foundry-only-agents.md`](../_shared/foundry-only-agents.md).
 
+**Voice agent (preview, explicit user opt-in only).** When the SPEC records
+`agent_type: voice` with `voice_opt_in_source: user`, `voice_opt_in_evidence` and
+`preview_acknowledged: true`, Threadlight generates no voice runtime. Hand the
+agent to the official `microsoft-foundry` skill from `azure@azure-skills`:
+[`create-voice.md`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/create-voice.md)
+(Prompt Voice by default, Hosted Voice when the user needs custom code), then its
+`deploy` and `invoke` guides and the voice smoke test. Keep the Threadlight
+evidence path: record `specs/foundry-package-manifest.json` with
+`agent.kind: foundry-voice`, the three opt-in fields, the App Insights trace and a
+transcript-based Foundry eval run with a SPEC-derived rubric. If any opt-in field
+is missing or agent-written, deploy a hosted agent instead. `generate_only` refuses
+`agent_type: voice` with exit 4. Voice Live calls from application code stay
+unsupported.
+
 ## Prerequisites
 
 > **Kratos-export mode (alternative input).** When starting from a Kratos export,
@@ -342,7 +359,7 @@ with its parent runtime files, is the ONLY source in generate-only mode for:
 
 There is no `agent.yaml`, no `src/agent/agent.yaml` and no `infra/core/`. The
 generator refuses to run if any of them already exists. `agent_type: prompt`
-is refused with exit 4, because the scaffold is hosted-only.
+or `agent_type: voice` is refused with exit 4, because the scaffold is hosted-only.
 
 | Input (design workspace) | Output |
 |---|---|
@@ -3813,10 +3830,10 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | [**threadlight-design**](../threadlight-design/) | Spec out the business process first (produces specs/ + AGENTS.md + skills that this skill consumes) |
 | [**threadlight-deploy/references/hosted-agent/maf**](references/hosted-agent/maf/README.md) | Reference for RBAC, identity model, agent.yaml schema, dependencies, troubleshooting |
 | [**foundry-iq**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-iq/) | **Default for every process** — provisions the AI Search index + Knowledge Agent (consumed in Phase 6 via `foundry-iq-index.bicep`) |
-| [**azure-ai**](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/azure-ai) | Vision / Document Intelligence / Speech models — consumed in Phase 6 when SPEC § 7b selects them |
+| [**azure-ai**](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-skills/skills/azure-ai) | Vision / Document Intelligence / Speech models — consumed in Phase 6 when SPEC § 7b selects them |
 | [**foundry-teams-bot**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-teams-bot/) | Deep dive on Teams bot integration (bot.py, manifest, Bicep, sideloading) |
 | [**threadlight-mcp-aca**](../threadlight-mcp-aca/SKILL.md) | Deploy custom MCP servers as ACA or Azure Functions |
-| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) | Evaluate agent quality + **continuous evaluation**: Plan A (default) Foundry built-in scheduled evals, Plan B (fallback) ACA Job (reads SPEC § 9 KPI table) |
+| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry) | Evaluate agent quality + **continuous evaluation**: Plan A (default) Foundry built-in scheduled evals, Plan B (fallback) ACA Job (reads SPEC § 9 KPI table) |
 | [**threadlight-safe-check**](../threadlight-safe-check/) | **Mandatory post-deploy completeness gate** — invoked from `predeploy` / `postdeploy` hooks; verifies every SPEC § 11c selector maps to deployed resources, all channels reach, all jobs are wired. Run this before declaring victory or kicking off `microsoft-foundry` |
 | [**threadlight-production-ready**](../threadlight-production-ready/) | **Advisory production-readiness gate** — runs *after* a green `--phase post-deploy`. Walks 13 cross-cutting pillars (network/AGT/IAM/secrets/observability/evals/RAI/HITL/supply-chain/cost/reliability/SRE/model-lifecycle), resolves Citadel-spoke vs AGT vs standard AI gateway from SPEC § 12, and produces a customer-facing hand-off report + JSON scorecard. Its scorecard never fails the deploy, but it forces `not_ready` while the mandatory full Foundry package is INCOMPLETE |
 | [**threadlight-deploy/references/observability**](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/references/observability/README.md) | **Always layered into deploy from day one.** Owns the 3-layer telemetry pattern (Bicep substrate → Foundry account-level AppIn connection → `configure_azure_monitor()` in each ACA workload). Without this, `azd up` returns 0 but App Insights stays empty for the entire pilot lifetime — the silent gap observed in recent pilots. The post-deploy hook MUST call `connect_foundry_appinsights.py` and every ACA workload entry point MUST start with `init_telemetry(role=...)` |
@@ -3827,7 +3844,7 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | [**threadlight-demo-data-factory**](../threadlight-demo-data-factory/) | Generates realistic demo data when SPEC § 5 marks any system as `mock` |
 | [**threadlight-deploy/references/hosted-agent/ghcp**](references/hosted-agent/ghcp/README.md) | Canonical runtime implementation companion — deep reference for the `default-agent` route (GHCP SDK + Invocations, container.py template, long-running agents >120s) |
 | [**threadlight-citadel-spoke**](../threadlight-citadel-spoke/SKILL.md) | **Phase 7 (opt-in)** — onboards as a spoke under an AI Governance Hub when SPEC § 11b sets `governance_hub.required: yes` |
-| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry) | AI Gateway (APIM) — use models from another Foundry resource or shared pool |
+| [**microsoft-foundry**](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry) | AI Gateway (APIM) — use models from another Foundry resource or shared pool |
 | [**threadlight-tenant-isolation**](../threadlight-tenant-isolation/SKILL.md) | Per-tenant `AZURE_CONFIG_DIR` / `AZD_CONFIG_DIR` so `azd up` always lands in the right tenant + subscription |
 | [**threadlight-deploy/references/azd-modules**](references/azd-modules/README.md) | `azd` hooks, ACA job deployment, **Composable Bicep Module Library** (the source of every module Phase 6 includes) |
 
@@ -3839,4 +3856,5 @@ to replace it. For first-party depth behind this deploy leg, reach for the offic
 reading, not a dependency* — Threadlight's guidance stays the source of truth for
 the pilot flow:
 
-- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.79/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — first-party `azd`-based **model deployment + hosted-agent create/run**; the platform surface Phase 5's `azd ai agent` scaffold builds on.
+- **[`microsoft-foundry`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md)** — first-party `azd`-based **model deployment + hosted-agent create/run**; the platform surface Phase 5's `azd ai agent` scaffold builds on.
+- **[`azure-quotas`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/azure-quotas/SKILL.md)** — subscription **quota and usage** checks by region before `azd provision` (Container Apps, Cosmos DB, compute); Foundry model TPM/PTU quota stays with `microsoft-foundry`.

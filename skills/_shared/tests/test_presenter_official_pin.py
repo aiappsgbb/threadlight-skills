@@ -29,6 +29,13 @@ PREVIOUS_OFFICIAL = {
     "path": ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md",
     "sha256": "54d7725d5f33238cd36fc6c00f468be67ee560d26849f8d32699ac4dd51cba50",
 }
+PREVIOUS_OFFICIAL_V1279 = {
+    "repository": "microsoft/azure-skills",
+    "tag": "v1.2.79",
+    "commit": "344bd5b3e041445237de09007ef62f4b3c51805d",
+    "path": ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md",
+    "sha256": "54d7725d5f33238cd36fc6c00f468be67ee560d26849f8d32699ac4dd51cba50",
+}
 
 
 def _contract(tmp_path, guidance):
@@ -55,12 +62,16 @@ def test_new_contracts_validate_with_the_official_pin(tmp_path):
     presenter.load_contract(tmp_path)
 
 
-def test_contracts_written_against_the_previous_official_release_still_validate(tmp_path):
-    """2.19.0 pilots copied the v1.2.77 pin; the deploy guide is byte-identical at the new tag."""
-    assert PREVIOUS_OFFICIAL["sha256"] == presenter.DEPLOYMENT_PIN["sha256"]
-    _contract(tmp_path, dict(PREVIOUS_OFFICIAL))
+@pytest.mark.parametrize("previous", [PREVIOUS_OFFICIAL, PREVIOUS_OFFICIAL_V1279])
+def test_contracts_written_against_a_previous_official_release_still_validate(tmp_path, previous):
+    """2.19.0 pilots copied the v1.2.77 pin, 2.19.1-2.20.x pilots the v1.2.79 pin.
+
+    The deploy guide changed at v1.2.113, so both stay read-only accepted with their own sha256.
+    """
+    assert previous["sha256"] != presenter.DEPLOYMENT_PIN["sha256"]
+    _contract(tmp_path, dict(previous))
     presenter.load_contract(tmp_path)
-    assert PREVIOUS_OFFICIAL in presenter.LEGACY_DEPLOYMENT_PINS
+    assert previous in presenter.LEGACY_DEPLOYMENT_PINS
 
 
 def test_frozen_incumbent_legacy_pin_still_validates(tmp_path):
@@ -92,10 +103,10 @@ def test_any_other_guidance_is_rejected(tmp_path, guidance):
 def test_legacy_pins_are_read_only_acceptance_with_reasons():
     data = json.loads((SHARED / "presenter-deployment-pin-legacy.json").read_text())
     assert data["schema"] == "threadlight-presenter-deployment-pin-legacy/v1"
-    assert [entry["guidance"] for entry in data["accepted"]] == [LEGACY, PREVIOUS_OFFICIAL]
+    assert [entry["guidance"] for entry in data["accepted"]] == [LEGACY, PREVIOUS_OFFICIAL, PREVIOUS_OFFICIAL_V1279]
     for entry in data["accepted"]:
         assert "new contracts" in entry["reason"]
-    assert presenter.LEGACY_DEPLOYMENT_PINS == [LEGACY, PREVIOUS_OFFICIAL]
+    assert presenter.LEGACY_DEPLOYMENT_PINS == [LEGACY, PREVIOUS_OFFICIAL, PREVIOUS_OFFICIAL_V1279]
 
 
 def test_docs_name_the_official_guide_and_the_native_sdk_gap():
