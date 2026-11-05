@@ -25,6 +25,7 @@ const STATE_ICONS = Object.freeze({
   failed: "failed",
   stale: "stale",
   attention: "stale",
+  partial: "prepared",
   unknown: "unknown",
   none: "todo",
 });
@@ -229,8 +230,8 @@ function renderProcess(process, description) {
 
 function renderGate(gate) {
   const label = gate.state === "waiting" ? "Waiting" : gate.stateLabel;
-  const detail =
-    gate.current && gate.detail ? `<span class="gate-detail">${escapeHtml(gate.detail)}</span>` : "";
+  const text = gate.current ? gate.detail : gate.note;
+  const detail = text ? `<span class="gate-detail">${escapeHtml(text)}</span>` : "";
   return `<li class="gate${gate.current ? " is-current" : ""}"><span>${escapeHtml(gate.title)}</span>${stateTag(gate.current && gate.state !== "failed" ? "current" : gate.state, gate.current && gate.state !== "failed" ? `You are here · ${label}` : label)}${detail}</li>`;
 }
 

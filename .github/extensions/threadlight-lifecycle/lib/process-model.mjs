@@ -164,6 +164,10 @@ export const STATE_LABELS = deepFreeze({
 const PASSED_STATES = new Set(["done", "prepared", "proven", "skipped"]);
 const DECISIONS = new Set(["run", "skip", "hard_stop"]);
 const NOT_NEEDED = /not opted in|not applicable|not selected|not required|not enabled|disabled/i;
+const CASCADE_REASON = /cascade re-run/i;
+// Workspace bootstrap, not process progress: never defines the process state.
+const BOOTSTRAP_STAGES = new Set(["preflight"]);
+const EVIDENCED_STATES = new Set(["done", "prepared", "proven"]);
 const STALE_REASON = /\bstale\b|out of date|expired|older than|no longer match/i;
 const STAGE_ID = /^[a-z][a-z0-9_]{0,63}$/;
 const STAGE_SKILLS = new Map(
@@ -452,6 +456,7 @@ function gateFor(stage, decision, { root, rootIndex, index, phases }) {
     current: stage === root,
     state: "todo",
     detail: null,
+    note: null,
     waitingOn: null,
     technical,
   };
@@ -473,18 +478,45 @@ function gateFor(stage, decision, { root, rootIndex, index, phases }) {
       gate.state = entry.live ? "prepared" : "in-progress";
     }
     gate.detail = entry.need;
-  } else if (root !== null && index > rootIndex) {
-    gate.state = "waiting";
-    gate.waitingOn = root;
-    gate.detail = `Waiting on “${stageEntry(root).title}”`;
+  } else {
+    // A planned re-run is not lost progress. Keep what the stage's own
+    // evidence shows (offline at most; never "proven" from a re-run), and
+    // only wait on the root when the stage has no evidence of its own.
+    const projected = technical.skillId ? findSkill(phases, technical.skillId) : null;
+    const ownEvidence =
+      technical.artifactsSeen.length > 0 ||
+      ["prepared", "complete"].includes(projected?.status);
+    const cascade = CASCADE_REASON.test(reason) && technical.artifactsMissing.length === 0;
+    if (ownEvidence && cascade) {
+      gate.state = entry.live ? "stale" : entry.done;
+      gate.note = "Will be re-checked";
+    } else if (ownEvidence && STALE_REASON.test(reason)) {
+      gate.state = "stale";
+    } else if (ownEvidence) {
+      gate.state = "prepared";
+      gate.note = entry.live ? "Not yet live" : "Not yet passed";
+    } else if (root !== null && index > rootIndex) {
+      gate.state = "waiting";
+      gate.waitingOn = root;
+      gate.detail = `Waiting on “${stageEntry(root).title}”`;
+    }
   }
   gate.stateLabel = gate.state === "waiting" ? STATE_LABELS.waiting : STATE_LABELS[gate.state];
   return gate;
 }
 
 function milestoneState(gates) {
-  if (gates.some((gate) => gate.current)) {
-    return gates.find((gate) => gate.current).state === "failed" ? "failed" : "current";
+  const current = gates.find((gate) => gate.current);
+  if (current && BOOTSTRAP_STAGES.has(current.stage)) {
+    // A workspace check is the next step, but the milestone reads from its
+    // process gates so existing design work is not shown as "in progress".
+    const process = gates.filter((gate) => !BOOTSTRAP_STAGES.has(gate.stage));
+    if (process.length > 0) {
+      return milestoneState(process);
+    }
+  }
+  if (current) {
+    return current.state === "failed" ? "failed" : "current";
   }
   if (gates.length > 0 && gates.every((gate) => PASSED_STATES.has(gate.state))) {
     if (gates.every((gate) => gate.state === "skipped")) return "skipped";
@@ -492,9 +524,13 @@ function milestoneState(gates) {
     if (gates.some((gate) => gate.state === "prepared")) return "prepared";
     return "done";
   }
-  for (const state of ["failed", "stale", "waiting"]) {
+  for (const state of ["failed", "stale"]) {
     if (gates.some((gate) => gate.state === state)) return state;
   }
+  if (gates.some((gate) => EVIDENCED_STATES.has(gate.state))) {
+    return "partial";
+  }
+  if (gates.some((gate) => gate.state === "waiting")) return "waiting";
   return "todo";
 }
 
@@ -506,6 +542,7 @@ const MILESTONE_LABELS = Object.freeze({
   done: "Done",
   skipped: "Not needed",
   stale: "Out of date",
+  partial: "Partly done",
   waiting: "Waiting",
   todo: "Not started",
   unknown: "Not computed",
@@ -573,7 +610,7 @@ function buildProofPath({ plan, planStatus, phases, readinessState }) {
       title: meta.title,
       state,
       stateLabel: MILESTONE_LABELS[state],
-      current: state === "current" || (state === "failed" && group.gates.some((gate) => gate.current)),
+      current: state === "current" || group.gates.some((gate) => gate.current),
       detail,
       gates: group.gates,
     };
@@ -696,6 +733,31 @@ function buildCost(cost) {
 // Now: state, root blocker and exactly one action
 // ---------------------------------------------------------------------------
 
+function progressHeadline(gate) {
+  const milestone = stageEntry(gate.stage).milestone;
+  if (gate.state === "proven") {
+    return milestone === "publish"
+      ? "Published on Foundry — not yet verified live"
+      : "Live and verified — remaining checks pending";
+  }
+  if (milestone === "design") return "Designed — nothing is live yet";
+  if (milestone === "controls") return "Designed, controls prepared offline — not yet live on Azure";
+  return "Designed and prepared offline — not yet live on Azure";
+}
+
+// The state names the furthest evidenced progress; the action stays the
+// planner's real next step (which may be an earlier check or re-run).
+function stateHeadline(gates, root) {
+  const rootIndex = gates.findIndex((gate) => gate.stage === root);
+  let furthest = -1;
+  gates.forEach((gate, index) => {
+    if (!BOOTSTRAP_STAGES.has(gate.stage) && EVIDENCED_STATES.has(gate.state)) {
+      furthest = index;
+    }
+  });
+  return furthest > rootIndex ? progressHeadline(gates[furthest]) : stageEntry(root).headline;
+}
+
 function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
   if (empty) {
     return {
@@ -771,7 +833,7 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
         }
       : {
           tone: "progress",
-          headline: entry.headline,
+          headline: stateHeadline(gates, root),
           blocker: entry.need,
           action: { label: entry.action, intent: { type: "advance_plan", stage: root } },
         };

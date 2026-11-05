@@ -42,6 +42,18 @@ test.describe("pilot with a computed plan", () => {
     await expect(page.getByText(/computed at \d{1,2}:\d{2}/)).toBeVisible();
   });
 
+  test("existing design and offline work are not reported as just getting started", async ({
+    page,
+  }) => {
+    // The example has a SPEC, governance contract and azure.yaml + infra: the
+    // state must reflect them even when the planner's next step is a
+    // workspace prerequisite check (or a hard stop with bare Python).
+    await expect(page.locator("section.now .now-state")).not.toContainText("Getting started");
+    const design = page.locator(".milestone").first();
+    await expect(design.locator(".milestone-head")).not.toContainText("In progress");
+    await expect(page.locator(".gate", { hasText: "Process design" })).not.toContainText("Waiting");
+  });
+
   test("the proof path marks exactly one milestone as here", async ({ page }) => {
     const path = page.getByRole("list").filter({ has: page.locator(".milestone") }).first();
     await expect(path.locator('[aria-current="step"]')).toHaveCount(1);

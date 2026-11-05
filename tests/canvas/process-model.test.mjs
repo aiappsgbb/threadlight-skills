@@ -424,3 +424,73 @@ test("with nothing left to run, stale or failed evidence never reads as proven",
   assert.notEqual(view.now.headline, "Proven live — go-live decision pending");
   assert.deepEqual(view.now.action.intent, { type: "refresh_plan" });
 });
+
+function skillPhase(id, skillId, stage, status) {
+  return {
+    id,
+    skills: [{ definition: { id: skillId, label: skillId, role: "stage", stage }, status, evidence: [] }],
+  };
+}
+
+test("a prerequisite check root does not erase evidenced design and offline preparation", async () => {
+  const cascade = "Cascade re-run: an earlier stage will re-run; downstream stage must follow.";
+  const view = buildProcessModel(
+    base({
+      spec: await exampleSpec(),
+      plan: plan({
+        preflight: { decision: "run", reason: "No preflight marker; bootstrap must run.", missing: [".threadlight/preflight-passed.json"] },
+        design: { decision: "run", reason: cascade, seen: ["specs/SPEC.md"] },
+        govern: { decision: "run", reason: "Binding inventory missing, invalid or changed." },
+        governed_actions_gate: { decision: "run", reason: "Mandatory pre-deploy gate unverified." },
+        deploy: { decision: "run", reason: "infra + azure.yaml exist but no AGENT_FQDN", seen: ["infra/main.bicep", "azure.yaml"] },
+        governance_probe: { decision: "run" },
+        safe_check: { decision: "run", missing: ["tests/postdeploy-manifest.json"] },
+        cost_projection: { decision: "run", missing: ["specs/cost-manifest.json"] },
+        invoke: { decision: "run" },
+        agentops: { decision: "skip", reason: "AgentOps not opted in." },
+        evals: { decision: "run" },
+        redteam: { decision: "run" },
+      }),
+      planStatus: { status: "current", decidedAt: "2026-08-06T08:30:00.000Z" },
+      phases: [skillPhase("controls", "threadlight-govern", "govern", "prepared")],
+    }),
+  );
+  const byStage = Object.fromEntries(gates(view).map((gate) => [gate.stage, gate]));
+
+  assert.equal(view.now.headline, "Designed and prepared offline — not yet live on Azure");
+  assert.deepEqual(view.now.action.intent, { type: "advance_plan", stage: "preflight" });
+  assert.equal(view.now.action.label, "Check the workspace prerequisites");
+  assert.equal(view.now.blocker, STAGE_CATALOG.preflight.need);
+
+  assert.equal(byStage.preflight.current, true);
+  assert.equal(byStage.design.state, "done");
+  assert.equal(byStage.design.note, "Will be re-checked");
+  assert.equal(byStage.govern.state, "prepared");
+  assert.equal(byStage.governed_actions_gate.state, "waiting");
+  assert.equal(byStage.governed_actions_gate.waitingOn, "preflight");
+  assert.equal(byStage.deploy.state, "prepared");
+  assert.equal(byStage.deploy.note, "Not yet live");
+  assert.equal(byStage.safe_check.state, "waiting");
+  assert.ok(gates(view).every((gate) => gate.state !== "proven"));
+
+  const design = view.proofPath.milestones.find((milestone) => milestone.id === "design");
+  assert.equal(design.current, true);
+  assert.equal(design.state, "done");
+  assert.notEqual(design.stateLabel, "In progress");
+});
+
+test("a cascade re-run of a live stage is out of date, never proven", () => {
+  const cascade = "Cascade re-run: an earlier stage will re-run; downstream stage must follow.";
+  const view = buildProcessModel(
+    base({
+      plan: plan({
+        deploy: { decision: "run", reason: "AGENT_FQDN missing" },
+        safe_check: { decision: "run", reason: cascade, seen: ["tests/postdeploy-manifest.json"] },
+      }),
+      planStatus: { status: "current", decidedAt: "2026-08-06T08:30:00.000Z" },
+    }),
+  );
+  const safe = gates(view).find((gate) => gate.stage === "safe_check");
+  assert.equal(safe.state, "stale");
+  assert.equal(safe.note, "Will be re-checked");
+});

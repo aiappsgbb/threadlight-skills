@@ -395,6 +395,7 @@ textarea::placeholder {
 }
 
 .s-prepared,
+.s-partial,
 .s-current,
 .s-in-progress {
   color: var(--accent-text);
