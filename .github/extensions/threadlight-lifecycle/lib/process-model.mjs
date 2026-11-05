@@ -182,7 +182,11 @@ const CASCADE_REASON = /cascade re-run/i;
 // Workspace bootstrap, not process progress: never defines the process state.
 const BOOTSTRAP_STAGES = new Set(["preflight"]);
 const EVIDENCED_STATES = new Set(["done", "prepared", "proven"]);
-const STALE_REASON = /\bstale\b|out of date|expired|older than|no longer match/i;
+// Includes the presenter's "Recorded evidence validity elapsed; refresh
+// observation" skips (skills/_shared/presenter.py), which the planner emits as
+// `skip` so it does not replay effects: elapsed evidence is not proof.
+const STALE_REASON =
+  /\bstale\b|out of date|expired|older than|no longer match|validity elapsed|\belapsed\b|refresh observation/i;
 const STAGE_ID = /^[a-z][a-z0-9_]{0,63}$/;
 const STAGE_SKILLS = new Map(
   SKILL_REGISTRY.filter((definition) => definition.stage).map((definition) => [
@@ -485,7 +489,11 @@ function gateFor(stage, decision, { root, rootIndex, index, phases }) {
     gate.state = "failed";
     gate.detail = reason || entry.need;
   } else if (decision?.decision === "skip") {
-    gate.state = NOT_NEEDED.test(reason) ? "skipped" : entry.done;
+    gate.state = NOT_NEEDED.test(reason)
+      ? "skipped"
+      : STALE_REASON.test(reason)
+        ? "stale"
+        : entry.done;
     const projected = technical.skillId ? findSkill(phases, technical.skillId) : null;
     if (projected?.status === "failed" || projected?.status === "stale") {
       gate.state = projected.status;
@@ -670,22 +678,52 @@ function scenarioResult(evals) {
   return { state: "attention", text: "evaluation incomplete" };
 }
 
-function controlResult(phases) {
+// Runtime controls are "proven live" only through the planner: a fresh,
+// non-elapsed governance_probe skip in a current plan. A governance manifest
+// on its own is offline evidence and never reads as live proof here.
+function controlResult(phases, proofPath) {
   const status = findSkill(phases, "threadlight-govern")?.status ?? null;
-  if (status === "complete") return { state: "proven", text: "proven live" };
-  if (status === "prepared") return { state: "prepared", text: "prepared offline" };
   if (status === "failed") return { state: "failed", text: "failing" };
   if (status === "stale") return { state: "stale", text: "out of date" };
+  const probe =
+    proofPath.planned && !proofPath.stale
+      ? allGates(proofPath).find((gate) => gate.stage === "governance_probe")
+      : null;
+  if (probe?.state === "proven") return { state: "proven", text: "proven live" };
+  if (probe?.state === "stale") return { state: "stale", text: "out of date" };
+  if (status === "prepared" || status === "complete") {
+    return { state: "prepared", text: "prepared offline" };
+  }
   return { state: "todo", text: "not checked yet" };
 }
 
-function buildProcess(spec, governanceText, evals, phases) {
+/** True only when a current plan shows every governance gate passed freshly. */
+export function planProvesGovernance(plan, planStatus) {
+  if (planStatus?.status !== "current" || !isPlainObject(plan) || !Array.isArray(plan.decisions)) {
+    return false;
+  }
+  if (!plan.stages.includes("governance_probe")) {
+    return false;
+  }
+  return plan.decisions
+    .filter((decision) =>
+      ["govern", "governed_actions_gate", "governance_probe"].includes(decision.stage),
+    )
+    .every(
+      (decision) =>
+        decision.decision === "skip" &&
+        !STALE_REASON.test(decision.reason ?? "") &&
+        !NOT_NEEDED.test(decision.reason ?? ""),
+    );
+}
+
+function buildProcess(spec, governanceText, evals, phases, proofPath) {
   if (!spec) {
     return null;
   }
   const controls = typeof governanceText === "string" ? governanceText : "";
   const scenarioState = scenarioResult(evals);
-  const controlState = controlResult(phases);
+  const controlState = controlResult(phases, proofPath);
   const rules = spec.rules.map((rule) => {
     const proofs = [];
     const scenarios = spec.scenarios.filter((scenario) => scenario.rules.includes(rule.id));
@@ -902,6 +940,9 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
   } else {
     const entry = stageEntry(root);
     const gate = gates.find((candidate) => candidate.stage === root);
+    const expired = gates.filter(
+      (candidate) => !candidate.current && (candidate.state === "stale" || candidate.state === "failed"),
+    );
     now = hardStop
       ? {
           tone: "blocked",
@@ -911,14 +952,25 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
           why: entry.why,
           action: { label: `Resolve the block in “${entry.title}”`, intent: { type: "advance_plan", stage: root } },
         }
-      : {
-          tone: "progress",
-          blockerTone: null,
-          headline: stateHeadline(gates, root),
-          blocker: entry.need,
-          why: entry.why,
-          action: { label: entry.action, intent: { type: "advance_plan", stage: root } },
-        };
+      : expired.length > 0
+        ? {
+            // Evidence behind an earlier step expired or failed: never claim
+            // progress past it, but keep the planner's real next step.
+            tone: "attention",
+            blockerTone: "attention",
+            headline: "Some evidence is out of date",
+            blocker: `Evidence for ${expired.map((item) => `“${item.title}”`).join(", ")} is out of date or failing; refresh it before relying on it.`,
+            why: entry.why,
+            action: { label: entry.action, intent: { type: "advance_plan", stage: root } },
+          }
+        : {
+            tone: "progress",
+            blockerTone: null,
+            headline: stateHeadline(gates, root),
+            blocker: entry.need,
+            why: entry.why,
+            action: { label: entry.action, intent: { type: "advance_plan", stage: root } },
+          };
   }
 
   if (planStatus.status === "stale") {
@@ -1024,7 +1076,7 @@ export function buildProcessModel({
       decidedAt: planStatus.decidedAt ?? null,
       changedPath: planStatus.changedPath ?? null,
     },
-    process: buildProcess(spec, governanceText, evals, phases),
+    process: buildProcess(spec, governanceText, evals, phases, proofPath),
     proofPath,
     goLive: {
       readiness: { ...readinessView, source: `Assessed in “${phaseMeta("go-live").title}”` },

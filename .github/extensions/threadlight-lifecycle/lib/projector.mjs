@@ -7,7 +7,12 @@ import {
   LIFECYCLE_PHASES,
   SKILL_REGISTRY,
 } from "./lifecycle-registry.mjs";
-import { assessPlan, buildProcessModel, parseSpec } from "./process-model.mjs";
+import {
+  assessPlan,
+  buildProcessModel,
+  parseSpec,
+  planProvesGovernance,
+} from "./process-model.mjs";
 
 const COST_ACTUALS_SCHEMA = "threadlight-cost-actuals/v1";
 const COST_RECONCILIATION_SCHEMA = "threadlight-cost-reconciliation/v1";
@@ -609,7 +614,7 @@ const GOVERNANCE_BINDING_STATUSES = new Set([
 // "complete". Complete requires every binding enforced or explicitly unbound,
 // at least one enforced binding and passing live probes. Legacy
 // govern-manifest v2 is provenance only and is never read as enforcement.
-function classifyGovernanceManifest(value) {
+function classifyGovernanceManifest(value, now) {
   if (!isPlainObject(value) || value.schema !== GOVERNANCE_MANIFEST_SCHEMA) {
     return {
       status: "failed",
@@ -634,11 +639,14 @@ function classifyGovernanceManifest(value) {
   ) {
     return { status: "failed", error: null };
   }
-  const liveProven =
-    probes.length > 0 &&
-    bindings.some((binding) => binding.status === "enforced") &&
-    bindings.every((binding) => ["enforced", "unbound"].includes(binding.status));
-  return { status: liveProven ? "complete" : "prepared", error: null };
+  const expiresAt = parseTimestamp(value.policy_bundle?.expires_at);
+  if (expiresAt && expiresAt <= now) {
+    return { status: "stale", error: null };
+  }
+  // A manifest is never live proof on the Canvas: its bindings and probes
+  // can age without changing the file. "Proven live" comes only from the
+  // planner's fresh governance_probe decision (process-model.mjs).
+  return { status: "prepared", error: null };
 }
 
 function validateLegEnvelope(value, contract) {
@@ -958,7 +966,7 @@ async function costEvidenceState(reader, manifest) {
 function readinessEvidenceState(assurance, readiness, safeCheckStatus) {
   if (
     safeCheckStatus !== "complete" ||
-    assurance?.govern !== "complete" ||
+    assurance?.govern !== "proven" ||
     assurance?.evals !== "comprehensive" ||
     assurance?.redteam !== "hardened" ||
     !isPlainObject(readiness) ||
@@ -982,7 +990,7 @@ function readinessEvidenceState(assurance, readiness, safeCheckStatus) {
   return "readiness-proof";
 }
 
-async function skillEvidenceState(definition, reader, manifest, projectedSkills) {
+async function skillEvidenceState(definition, reader, manifest, projectedSkills, context) {
   if (definition.id === "threadlight-consumption-iq") {
     return costEvidenceState(reader, manifest);
   }
@@ -1011,7 +1019,13 @@ async function skillEvidenceState(definition, reader, manifest, projectedSkills)
         : null;
     return readinessEvidenceState(
       {
-        govern: projectedSkills.get("threadlight-govern")?.status ?? null,
+        // Both: the planner proved the gates freshly AND the manifest the
+        // Canvas reads is still valid offline evidence (not stale/failed).
+        govern:
+          context.governanceProven &&
+          projectedSkills.get("threadlight-govern")?.status === "prepared"
+            ? "proven"
+            : null,
         evals: evalsValidation?.valid ? evalsValidation.verdict : null,
         redteam: redteamValidation?.valid ? redteamValidation.verdict : null,
       },
@@ -1376,7 +1390,7 @@ async function projectSkill({
           if (json.verdict === "blocked") status = "failed";
         }
       } else if (jsonExists && jsonPath === "specs/governance-manifest.json") {
-        const classified = classifyGovernanceManifest(json);
+        const classified = classifyGovernanceManifest(json, now);
         status = classified.status;
         if (classified.error) {
           errors.push({ code: "artifact-invalid", path: jsonPath, message: classified.error });
@@ -1474,6 +1488,7 @@ async function projectSkill({
     reader,
     manifest,
     projectedSkills,
+    context,
   );
 
   if (
@@ -1530,21 +1545,23 @@ const PLAN_INPUTS = Object.freeze([
 const PLAN_PATH = ".threadlight/auto-next.json";
 const SPEC_MAX_BYTES = 2 * 1024 * 1024;
 
-async function newestPlanInput(reader, phases) {
+async function newestPlanInput(reader) {
   const paths = new Set(PLAN_INPUTS);
-  for (const phase of phases) {
-    for (const skill of phase.skills) {
-      for (const item of skill.evidence) {
-        if (item.path !== PLAN_PATH) {
-          paths.add(item.path);
-        }
+  for (const definition of SKILL_REGISTRY) {
+    for (const artifactPath of [
+      ...definition.requiredArtifactGroups.flat(),
+      ...definition.optionalArtifacts,
+    ]) {
+      if (artifactPath !== PLAN_PATH) {
+        paths.add(artifactPath);
       }
     }
   }
   let newest = null;
   for (const relativePath of paths) {
     const metadata = await reader.metadata(relativePath);
-    const modified = parseTimestamp(metadata?.modifiedAt);
+    // Files only: a directory's mtime moves with unrelated entries.
+    const modified = metadata?.kind === "file" ? parseTimestamp(metadata.modifiedAt) : null;
     if (modified && (!newest || modified > newest.at)) {
       newest = { at: modified, path: metadata.relativePath };
     }
@@ -1570,16 +1587,28 @@ async function evidenceRecord(reader, relativePath, now) {
   return { value: read.value, checkedAt: timestamp ? timestamp.toISOString() : null };
 }
 
-async function buildView({ reader, manifest, phases, projectedSkills, errors, now }) {
-  const [specText, planRead, governanceManifest, governanceContract, cost, readiness, newest, evalsRead] =
+async function readPlan(reader, now) {
+  const [planRead, newest] = await Promise.all([
+    readOptionalJson(reader, PLAN_PATH),
+    newestPlanInput(reader),
+  ]);
+  const plan = planRead.state === "missing" ? null : planRead.value ?? {};
+  const planStatus = assessPlan(plan, {
+    newestArtifactAt: newest?.at.toISOString() ?? null,
+    newestArtifactPath: newest?.path ?? null,
+    now: now.toISOString(),
+  });
+  return { plan, planStatus };
+}
+
+async function buildView({ reader, manifest, phases, projectedSkills, errors, now, plan, planStatus }) {
+  const [specText, governanceManifest, governanceContract, cost, readiness, evalsRead] =
     await Promise.all([
       readOptionalText(reader, "specs/SPEC.md"),
-      readOptionalJson(reader, PLAN_PATH),
       readOptionalText(reader, "specs/governance-manifest.json"),
       readOptionalText(reader, "specs/governance-contract.json"),
       evidenceRecord(reader, "specs/cost-manifest.json", now),
       evidenceRecord(reader, "tests/production-readiness-manifest.json", now),
-      newestPlanInput(reader, phases),
       readOptionalJson(reader, "specs/evals-manifest.json"),
     ]);
   // Scenario proof uses the projector's validated evals status; the verdict
@@ -1593,12 +1622,6 @@ async function buildView({ reader, manifest, phases, projectedSkills, errors, no
         ? evalsValue.capabilities.latest_pass_rate_ok.status
         : null,
   };
-  const plan = planRead.state === "missing" ? null : planRead.value ?? {};
-  const planStatus = assessPlan(plan, {
-    newestArtifactAt: newest?.at.toISOString() ?? null,
-    newestArtifactPath: newest?.path ?? null,
-    now: now.toISOString(),
-  });
   return buildProcessModel({
     spec: parseSpec(specText),
     manifest: isPlainObject(manifest) ? manifest : null,
@@ -1627,8 +1650,12 @@ export async function projectWorkspace(workspace, options = {}) {
   const generatedAt = now.toISOString();
   const errors = [];
   const { manifest, manifestInvalid } = await readManifest(reader, errors);
+  const { plan, planStatus } = await readPlan(reader, now);
   const context = {
     hasGovernanceContract: await reader.exists("specs/governance-contract.json"),
+    // Readiness proof needs governance proven by the planner, never by a
+    // manifest the Canvas cannot re-validate.
+    governanceProven: planProvesGovernance(plan, planStatus),
   };
   const projectedSkills = new Map();
 
@@ -1647,7 +1674,16 @@ export async function projectWorkspace(workspace, options = {}) {
   }
 
   const phases = buildPhases(projectedSkills);
-  const view = await buildView({ reader, manifest, phases, projectedSkills, errors, now });
+  const view = await buildView({
+    reader,
+    manifest,
+    phases,
+    projectedSkills,
+    errors,
+    now,
+    plan,
+    planStatus,
+  });
   return {
     workspace,
     generatedAt,

@@ -580,10 +580,66 @@ test("runtime-control chips follow the governance gate's evidence", async () => 
   assert.equal(chip(null).label, "Runtime control · not checked yet");
   assert.equal(chip("prepared").label, "Runtime control · prepared offline");
   assert.equal(chip("prepared").state, "prepared");
-  assert.equal(chip("complete").label, "Runtime control · proven live");
-  assert.equal(chip("complete").state, "proven");
+  // Even a "complete" governance skill alone never reads as proven live.
+  assert.equal(chip("complete").state, "prepared");
+  assert.doesNotMatch(chip("complete").label, /proven live/);
   assert.equal(chip("failed").state, "failed");
 });
+
+test("runtime controls are proven live only by a fresh planner governance probe", async () => {
+  const spec = await exampleSpec();
+  const chip = (probe, planStatus = { status: "current", decidedAt: DECIDED_AT }) =>
+    buildProcessModel(
+      base({
+        spec,
+        governanceText: "BR-003",
+        plan: plan({ governance_probe: probe }),
+        planStatus,
+        phases: [skillPhase("controls", "threadlight-govern", "govern", "prepared")],
+      }),
+    ).process.rules.find((rule) => rule.id === "BR-003").proofs[1];
+  const fresh = chip({ decision: "skip", reason: "Exact live binding proof is current." });
+  assert.deepEqual([fresh.state, fresh.label], ["proven", "Runtime control · proven live"]);
+  const elapsed = chip({
+    decision: "skip",
+    reason: "Presenter deployment: Recorded evidence validity elapsed; refresh observation, not the underlying effect.",
+  });
+  assert.equal(elapsed.state, "stale");
+  const stalePlan = chip(
+    { decision: "skip", reason: "Exact live binding proof is current." },
+    { status: "stale", decidedAt: DECIDED_AT, changedPath: "specs/SPEC.md" },
+  );
+  assert.notEqual(stalePlan.state, "proven");
+});
+
+test("a skip whose recorded evidence validity elapsed is out of date, never proven live", () => {
+  const elapsed =
+    "Presenter deployment: Recorded evidence validity elapsed; refresh observation, not the underlying effect.";
+  const stages = [...GOVERNED, "presenter_ready"];
+  const view = buildProcessModel(
+    base({
+      plan: plan(
+        {
+          deploy: { decision: "skip", reason: elapsed },
+          invoke: { decision: "skip", reason: elapsed.replace("deployment", "journey") },
+          presenter_ready: { decision: "run", reason: "Process owner must supply presenter check: human; no automatic business replay." },
+        },
+        { stages },
+      ),
+      planStatus: { status: "current", decidedAt: DECIDED_AT },
+    }),
+  );
+  const byStage = Object.fromEntries(gates(view).map((gate) => [gate.stage, gate]));
+  assert.equal(byStage.deploy.state, "stale");
+  assert.equal(byStage.invoke.state, "stale");
+  assert.ok(gates(view).filter((gate) => gate.state === "proven").every((gate) => !["deploy", "invoke"].includes(gate.stage)));
+  assert.equal(view.now.headline, "Some evidence is out of date");
+  assert.doesNotMatch(view.now.headline, /Proven live/);
+  assert.match(view.now.blocker, /Publish the agent/);
+  // The planner's real next step is kept as the one action.
+  assert.deepEqual(view.now.action.intent, { type: "advance_plan", stage: "presenter_ready" });
+});
+
 
 test("every Now state says who takes the next step and why", async () => {
   const spec = await exampleSpec();

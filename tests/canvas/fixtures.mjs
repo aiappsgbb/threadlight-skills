@@ -243,6 +243,43 @@ export function governanceManifest(overrides = {}) {
   };
 }
 
+const GOVERNED_STAGES = [
+  "preflight",
+  "design",
+  "govern",
+  "governed_actions_gate",
+  "deploy",
+  "governance_probe",
+  "safe_check",
+  "cost_projection",
+  "invoke",
+  "agentops",
+  "evals",
+  "redteam",
+];
+
+/**
+ * A threadlight-auto plan (.threadlight/auto-next.json) in which every
+ * governed stage passed, decided shortly after the fixture evidence.
+ */
+export function completePlan() {
+  return {
+    stages: GOVERNED_STAGES,
+    dependencies: {},
+    manual_handoffs: [],
+    decisions: GOVERNED_STAGES.map((stage) => ({
+      stage,
+      decision: "skip",
+      reason: stage === "agentops" ? "AgentOps not opted in." : `${stage} evidence is current.`,
+      artifacts_seen: [],
+      artifacts_missing: [],
+      hard_stop_signature: null,
+    })),
+    next_action: { type: "run", stages_to_run: [], stages_to_skip: GOVERNED_STAGES },
+    decided_at: "2026-08-06T08:30:00+00:00",
+  };
+}
+
 export function assuranceManifest(kind, overrides = {}) {
   const spec = ASSURANCE_SPECS[kind];
   if (!spec) {
@@ -382,6 +419,7 @@ export async function createWorkspaceFixture(name) {
     ...assuranceManifest("redteam"),
   });
   await fixture.writeJson("specs/governance-manifest.json", governanceManifest());
+  await fixture.writeJson(".threadlight/auto-next.json", completePlan());
   await fixture.writeJson("tests/production-readiness-manifest.json", {
     checked_at: "2026-08-06T08:00:00Z",
     go_live_recommendation: "ready",
