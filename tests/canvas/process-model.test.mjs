@@ -370,3 +370,57 @@ test("every catalogued action is a valid chat intent", () => {
     assert.doesNotThrow(() => validateIntent({ type: "advance_plan", stage }), stage);
   }
 });
+
+test("a plan older than the planner's 24-hour freshness window is out of date", () => {
+  const result = assessPlan(plan({}), {
+    newestArtifactAt: "2026-08-06T08:00:00Z",
+    now: "2026-08-07T08:30:00Z",
+  });
+  assert.equal(result.status, "stale");
+  assert.equal(result.reason, "expired");
+
+  const view = buildProcessModel(base({ plan: plan({}), planStatus: result }));
+  assert.deepEqual(view.now.action.intent, { type: "refresh_plan" });
+  assert.match(view.now.blocker, /more than a day old/);
+  assert.equal(
+    assessPlan(plan({}), { now: "2026-08-07T08:29:00Z" }).status,
+    "current",
+  );
+});
+
+test("a plan without one decision per stage, or with an inconsistent next action, is invalid", () => {
+  assert.equal(assessPlan({ ...plan({}), decisions: [] }, {}).status, "invalid");
+  const duplicated = plan({});
+  duplicated.decisions.push({ ...duplicated.decisions[0] });
+  assert.equal(assessPlan(duplicated, {}).status, "invalid");
+  const hidden = plan({ govern: { decision: "hard_stop", reason: "x" } });
+  assert.equal(assessPlan({ ...hidden, next_action: { type: "run", stages_to_run: [] } }, {}).status, "invalid");
+  assert.equal(
+    assessPlan({ ...hidden, next_action: { type: "hard_stop", stage: "deploy" } }, {}).status,
+    "invalid",
+  );
+  assert.equal(assessPlan(hidden, {}).status, "current");
+});
+
+test("with nothing left to run, stale or failed evidence never reads as proven", () => {
+  const view = buildProcessModel(
+    base({
+      plan: plan({}),
+      planStatus: { status: "current", decidedAt: "2026-08-06T08:30:00.000Z" },
+      phases: [
+        {
+          id: "verify",
+          skills: [
+            {
+              definition: { id: "threadlight-safe-check", label: "Verify", role: "stage", stage: "safe_check" },
+              status: "stale",
+              evidence: [],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  assert.notEqual(view.now.headline, "Proven live — go-live decision pending");
+  assert.deepEqual(view.now.action.intent, { type: "refresh_plan" });
+});

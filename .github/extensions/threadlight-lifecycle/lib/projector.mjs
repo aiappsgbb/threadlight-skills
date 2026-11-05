@@ -1585,6 +1585,7 @@ async function buildView({ reader, manifest, phases, projectedSkills, errors, no
   const planStatus = assessPlan(plan, {
     newestArtifactAt: newest?.at.toISOString() ?? null,
     newestArtifactPath: newest?.path ?? null,
+    now: now.toISOString(),
   });
   return buildProcessModel({
     spec: parseSpec(specText),

@@ -32,7 +32,7 @@ export const STAGE_CATALOG = deepFreeze({
     milestone: "design",
     live: false,
     done: "done",
-    title: "Design the process",
+    title: "Process design",
     action: "Finish the process design",
     need: "The process design isn't complete yet.",
     headline: "Process design in progress — nothing is live yet",
@@ -41,7 +41,7 @@ export const STAGE_CATALOG = deepFreeze({
     milestone: "controls",
     live: false,
     done: "prepared",
-    title: "Select runtime controls",
+    title: "Control selection",
     action: "Select the runtime controls",
     need: "The runtime controls for this agent haven't been selected and checked offline.",
     headline: "Designed — runtime controls not yet selected",
@@ -59,7 +59,7 @@ export const STAGE_CATALOG = deepFreeze({
     milestone: "publish",
     live: true,
     done: "proven",
-    title: "Publish on Microsoft Foundry",
+    title: "Publish the agent",
     action: "Publish the agent to Microsoft Foundry",
     need: "The agent hasn't been published to Azure yet.",
     headline: "Designed and prepared offline — not yet live on Azure",
@@ -358,12 +358,17 @@ function isValidPlan(plan) {
     return false;
   }
   const stages = new Set(plan.stages);
+  if (stages.size !== plan.stages.length) {
+    return false;
+  }
+  // The planner writes exactly one decision per stage, in stage order.
   if (
     !Array.isArray(plan.decisions) ||
+    plan.decisions.length !== plan.stages.length ||
     !plan.decisions.every(
-      (decision) =>
+      (decision, index) =>
         isPlainObject(decision) &&
-        stages.has(decision.stage) &&
+        decision.stage === plan.stages[index] &&
         DECISIONS.has(decision.decision),
     )
   ) {
@@ -373,13 +378,21 @@ function isValidPlan(plan) {
   if (!isPlainObject(next) || !["run", "hard_stop"].includes(next.type)) {
     return false;
   }
-  if (next.type === "hard_stop" && !stages.has(next.stage)) {
+  const firstHardStop = plan.decisions.find((decision) => decision.decision === "hard_stop");
+  if (next.type === "hard_stop" ? next.stage !== firstHardStop?.stage : firstHardStop) {
     return false;
   }
   return parseTime(plan.decided_at) !== null;
 }
 
-export function assessPlan(plan, { newestArtifactAt = null, newestArtifactPath = null } = {}) {
+// threadlight-auto skips live stages only while their evidence is younger than
+// FRESHNESS_SECONDS (24 h); an older plan may hide expired evidence.
+const PLAN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export function assessPlan(
+  plan,
+  { newestArtifactAt = null, newestArtifactPath = null, now = null } = {},
+) {
   if (plan === null || plan === undefined) {
     return { status: "missing", decidedAt: null };
   }
@@ -392,9 +405,14 @@ export function assessPlan(plan, { newestArtifactAt = null, newestArtifactPath =
   if (newest && newest.getTime() > decidedAt.getTime() + 2000) {
     return {
       status: "stale",
+      reason: "changed",
       decidedAt: decidedAt.toISOString(),
       changedPath: newestArtifactPath,
     };
+  }
+  const current = parseTime(now);
+  if (current && current.getTime() - decidedAt.getTime() >= PLAN_MAX_AGE_MS) {
+    return { status: "stale", reason: "expired", decidedAt: decidedAt.toISOString(), changedPath: null };
   }
   return { status: "current", decidedAt: decidedAt.toISOString() };
 }
@@ -481,7 +499,7 @@ function milestoneState(gates) {
 }
 
 const MILESTONE_LABELS = Object.freeze({
-  current: "You are here",
+  current: "In progress",
   failed: "Blocked",
   proven: "Proven live",
   prepared: "Prepared offline",
@@ -708,7 +726,18 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
 
   const root = proofPath.root;
   const hardStop = plan.next_action.type === "hard_stop";
+  const gates = proofPath.milestones.flatMap((milestone) => milestone.gates);
   let now;
+  if (root === null && gates.some((gate) => gate.state === "failed" || gate.state === "stale")) {
+    // The plan has nothing left to run, but evidence behind a passed stage has
+    // since failed or expired: never claim it is proven.
+    return {
+      tone: "attention",
+      headline: "Some evidence is out of date",
+      blocker: "Evidence behind a completed step has expired or failed since the plan was computed.",
+      action: refresh,
+    };
+  }
   if (root === null) {
     now =
       readiness.state === "ready"
@@ -732,9 +761,7 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
           };
   } else {
     const entry = stageEntry(root);
-    const gate = proofPath.milestones
-      .flatMap((milestone) => milestone.gates)
-      .find((candidate) => candidate.stage === root);
+    const gate = gates.find((candidate) => candidate.stage === root);
     now = hardStop
       ? {
           tone: "blocked",
@@ -755,7 +782,10 @@ function buildNow({ empty, planStatus, proofPath, plan, readiness }) {
     return {
       ...now,
       tone: "attention",
-      blocker: `Files changed after the plan was computed${changed}, so the next step may be wrong.`,
+      blocker:
+        planStatus.reason === "expired"
+          ? "The plan is more than a day old, so live evidence may have expired."
+          : `Files changed after the plan was computed${changed}, so the next step may be wrong.`,
       action: refresh,
     };
   }
@@ -843,6 +873,7 @@ export function buildProcessModel({
     now: buildNow({ empty, planStatus, proofPath, plan, readiness: readinessView }),
     plan: {
       status: planStatus.status,
+      reason: planStatus.reason ?? null,
       decidedAt: planStatus.decidedAt ?? null,
       changedPath: planStatus.changedPath ?? null,
     },

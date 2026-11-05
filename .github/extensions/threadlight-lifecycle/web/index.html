@@ -5,50 +5,55 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Threadlight Lifecycle Canvas pilot steering workspace."
+      content="Where a Threadlight pilot stands, what is in the way, and the one next step."
     />
-    <title>Threadlight Lifecycle Canvas</title>
+    <title>Threadlight pilot</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app-shell" aria-labelledby="canvas-title">
-      <header class="app-header">
-        <div>
-          <p class="eyebrow">THREADLIGHT LIFECYCLE</p>
-          <h1 id="canvas-title">Start and steer a pilot</h1>
-        </div>
-        <button id="refresh" class="secondary" type="button">Refresh</button>
+    <svg class="icon-sprite" aria-hidden="true" focusable="false">
+      <symbol id="i-proven" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.8 8.2l2.1 2.1 4.3-4.6" class="ink" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-done" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-prepared" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.75a6.25 6.25 0 010 12.5z" fill="currentColor"/></symbol>
+      <symbol id="i-current" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3" fill="currentColor"/></symbol>
+      <symbol id="i-waiting" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2.4 2.2"/><path d="M8 4.8V8l2.2 1.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+      <symbol id="i-todo" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-skipped" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 8h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+      <symbol id="i-failed" viewBox="0 0 16 16"><path d="M5.2 1.5h5.6l3.7 3.7v5.6l-3.7 3.7H5.2l-3.7-3.7V5.2z" fill="currentColor"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" class="ink" stroke-width="1.6" stroke-linecap="round"/></symbol>
+      <symbol id="i-stale" viewBox="0 0 16 16"><path d="M8 1.6l6.6 11.6a.8.8 0 01-.7 1.2H2.1a.8.8 0 01-.7-1.2z" fill="currentColor"/><path d="M8 6v3.6" class="ink" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.8" r=".95" class="ink-fill"/></symbol>
+      <symbol id="i-ready" viewBox="0 0 16 16"><path d="M3.5 14.5V2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M3.5 2.5h8.6l-1.8 2.9 1.8 2.9H3.5z" fill="currentColor"/></symbol>
+      <symbol id="i-unknown" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1.6 2.4"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13.2 6.2A5.4 5.4 0 003.4 4.6M2.8 9.8a5.4 5.4 0 009.8 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M13.6 2.6v3.8H9.8M2.4 13.4V9.6h3.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-mark" viewBox="0 0 16 16"><path d="M2 12.5C5 12.5 6 3.5 9 3.5s3.2 5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="2.4" cy="12.4" r="1.6" fill="currentColor"/></symbol>
+    </svg>
+
+    <div class="app">
+      <header class="app-bar">
+        <p class="app-name">
+          <svg class="icon" aria-hidden="true"><use href="#i-mark"/></svg>
+          Threadlight pilot
+        </p>
+        <p id="updated" class="updated"></p>
+        <button id="refresh" class="icon-button" type="button" aria-label="Reload from the workspace">
+          <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>
+        </button>
       </header>
 
-      <p id="status" class="muted" role="status">Loading workspace.</p>
+      <p id="status" class="load-status" role="status">Loading the workspace…</p>
 
-      <nav id="phase-nav" class="phase-nav" aria-label="Pilot lifecycle"></nav>
-
-      <section class="overview surface" aria-labelledby="overview-title">
-        <div class="section-header">
-          <div>
-            <p class="eyebrow">Current outcome</p>
-            <h2 id="overview-title">Current outcome</h2>
-          </div>
-          <button id="start-pilot" class="primary" type="button">Start a pilot</button>
-        </div>
-        <div id="phase-summary" class="phase-summary"></div>
-      </section>
-
-      <section id="phase-detail" class="phase-detail" aria-live="polite"></section>
-    </main>
+      <main id="content" class="content" aria-labelledby="pilot-name" hidden></main>
+    </div>
 
     <dialog id="start-dialog" aria-labelledby="start-title">
       <form id="start-form" method="dialog">
-        <h2 id="start-title">Start a pilot</h2>
-        <label for="pilot-brief">Pilot brief</label>
-        <textarea id="pilot-brief" name="brief" required maxlength="4000"></textarea>
+        <h2 id="start-title">Start a different pilot</h2>
+        <p class="hint">Chat will confirm before anything is created.</p>
+        <label for="dialog-brief">Process brief</label>
+        <textarea id="dialog-brief" name="brief" required maxlength="4000"></textarea>
         <div class="dialog-actions">
+          <button id="send-brief" class="primary" type="submit" value="default">Send to chat</button>
           <button id="cancel-brief" class="secondary" type="button">Cancel</button>
-          <button id="send-brief" class="primary" type="submit" value="default">
-            Send to chat
-          </button>
         </div>
       </form>
     </dialog>
