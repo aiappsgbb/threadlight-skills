@@ -1,93 +1,203 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-test.beforeEach(async ({ page }) => {
-  await page.goto("/?token=canvas-test");
-});
+const TOKEN = "?token=canvas-test";
+const PORT = Number(process.env.CANVAS_FIXTURE_PORT ?? 4187);
+const EMPTY = `http://127.0.0.1:${PORT + 1}/${TOKEN}`;
+const MISSING_PLAN = `http://127.0.0.1:${PORT + 2}/${TOKEN}`;
+const STALE_PLAN = `http://127.0.0.1:${PORT + 3}/${TOKEN}`;
 
-test("declares an inline favicon for self-contained loopback loads", async ({
-  page,
-}) => {
-  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
-    "href",
-    /^data:/,
-  );
-});
-
-test("shows six outcome phase buttons while hiding technical skill names", async ({
-  page,
-}) => {
-  const phases = [
-    "Design",
-    "Build / Deploy",
-    "Discover",
-    "Protect / Govern",
-    "Improve",
-    "Handoff",
-  ];
-
-  for (const phase of phases) {
-    await expect(page.getByRole("button", { name: phase })).toBeVisible();
-  }
-  await expect(page.getByText("threadlight-design")).toHaveCount(0);
-});
-
-test("posts a start pilot brief to chat", async ({ page }) => {
-  await page.getByRole("button", { name: "Start a pilot" }).click();
-  await expect(page.getByRole("dialog", { name: "Start a pilot" })).toBeVisible();
-  await page
-    .getByLabel("Pilot brief")
-    .fill("Pilot governed returns triage with evidence-led handoff.");
-
-  const intentResponse = page.waitForResponse(
-    (response) =>
-      response.url().includes("/api/intent") && response.status() === 202,
-  );
-  await page.getByRole("button", { name: "Send to chat" }).click();
-  await intentResponse;
-
-  await expect(page.getByRole("status")).toContainText(
-    "Intent sent to chat for confirmation.",
-  );
-});
-
-test("cancels an empty start pilot dialog without sending intent", async ({
-  page,
-}) => {
-  const intentRequests = [];
+async function intentRequests(page) {
+  const sent = [];
   page.on("request", (request) => {
     if (request.url().includes("/api/intent")) {
-      intentRequests.push(request);
+      sent.push(request.postDataJSON());
+    }
+  });
+  return sent;
+}
+
+async function severeAxeViolations(page) {
+  const results = await new AxeBuilder({ page }).analyze();
+  return results.violations.filter((violation) =>
+    ["critical", "serious"].includes(violation.impact),
+  );
+}
+
+test.describe("pilot with a computed plan", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`/${TOKEN}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Returns Triage");
+  });
+
+  test("declares an inline favicon for self-contained loopback loads", async ({ page }) => {
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:/);
+  });
+
+  test("Now names one primary action and no start-a-pilot competitor", async ({ page }) => {
+    const now = page.locator("section.now");
+    await expect(now.locator("button.primary")).toHaveCount(1);
+    await expect(now.locator("button.primary")).not.toHaveText(/start a pilot/i);
+    await expect(now.locator(".blocker")).toContainText("In the way:");
+    await expect(page.getByText(/Updated \d{1,2}:\d{2}/)).toBeVisible();
+    await expect(page.getByText(/computed at \d{1,2}:\d{2}/)).toBeVisible();
+  });
+
+  test("existing design and offline work are not reported as just getting started", async ({
+    page,
+  }) => {
+    // The example has a SPEC, governance contract and azure.yaml + infra: the
+    // state must reflect them even when the planner's next step is a
+    // workspace prerequisite check (or a hard stop with bare Python).
+    await expect(page.locator("section.now .now-state")).not.toContainText("Getting started");
+    const design = page.locator(".milestone").first();
+    await expect(design.locator(".milestone-head")).not.toContainText("In progress");
+    await expect(page.locator(".gate", { hasText: "Process design" })).not.toContainText("Waiting");
+  });
+
+  test("the proof path marks exactly one current step", async ({ page }) => {
+    const path = page.getByRole("list").filter({ has: page.locator(".milestone") }).first();
+    await expect(page.locator('[aria-current="step"]')).toHaveCount(1);
+    // The workspace check is its own row; no milestone mixes Done with "You are here".
+    for (const milestone of await page.locator(".milestone:not(.workspace-check)").all()) {
+      const head = await milestone.locator(".milestone-head").innerText();
+      if (/Done/.test(head)) {
+        await expect(milestone).not.toContainText("You are here");
+      }
+    }
+    await expect(page.getByText(/You are here/)).toHaveCount(1);
+    for (const title of ["Design the process", "Publish on Microsoft Foundry", "Decide on go-live"]) {
+      await expect(path.locator(".milestone-title", { hasText: title })).toBeVisible();
     }
   });
 
-  await page.getByRole("button", { name: "Start a pilot" }).click();
-  const dialog = page.getByRole("dialog", { name: "Start a pilot" });
-  await expect(dialog).toBeVisible();
+  test("shows the process in the owner's words with rule proof", async ({ page }) => {
+    await expect(page.getByRole("heading", { name: "The process" })).toBeVisible();
+    await expect(page.getByText("Escalate high-value or high-risk cases")).toBeVisible();
+    const proof = page.getByRole("list", { name: "Proof for BR-003" });
+    await expect(proof).toContainText(/3 scenarios · (not run yet|passed|evaluation)/);
+    await expect(proof.getByText(/S-002, S-004, S-007/)).toBeVisible();
+    await expect(proof).toContainText("Human review: Supervisor escalation review");
+    await expect(page.getByText("Measured after go-live").first()).toBeVisible();
+    await expect(page.getByText("restock_a_pct")).toBeVisible();
+    await expect(page.locator(".decisions").getByText("Supervisor escalation review")).toBeVisible();
+  });
 
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await page.waitForTimeout(100);
+  test("sends the primary action and keeps the state visible", async ({ page }) => {
+    const sent = await intentRequests(page);
+    const now = page.locator("section.now");
+    const headline = await now.locator(".now-state").innerText();
+    const response = page.waitForResponse(
+      (candidate) => candidate.url().includes("/api/intent") && candidate.status() === 202,
+    );
+    await now.locator("button.primary").click();
+    await response;
 
-  await expect(dialog).toBeHidden();
-  expect(intentRequests).toHaveLength(0);
+    await expect(now.locator(".action-row .sent").first()).toHaveText(
+      "Sent to chat. Confirm it there.",
+    );
+    await expect(now.locator(".now-state")).toHaveText(headline);
+    expect(sent).toHaveLength(1);
+    expect(["advance_plan", "refresh_plan"]).toContain(sent[0].type);
+  });
+
+  test("a double click sends one request and the next step says who and why", async ({ page }) => {
+    const sent = await intentRequests(page);
+    const now = page.locator("section.now");
+    await expect(now.locator(".why")).toContainText(/Threadlight|You record/);
+    await now.locator("button.primary").dblclick();
+    await expect(page.locator("#live")).toHaveText("Sent to chat. Confirm it there.");
+    expect(sent).toHaveLength(1);
+    await expect(page.locator('[role="status"]')).toHaveCount(1);
+  });
+
+  test("go-live figures name the step that produces them", async ({ page }) => {
+    await expect(page.getByText("Assessed in “Decide on go-live”")).toBeVisible();
+    await expect(page.getByText("Estimated in “Verify it live”")).toBeVisible();
+  });
+
+  test("wide layout reads in DOM order: Now, process, proof path", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const now = await page.locator("section.now").boundingBox();
+    const process = await page.locator(".process-section").boundingBox();
+    const path = await page.locator(".proof-section").boundingBox();
+    expect(now.y).toBeLessThan(process.y);
+    expect(process.x).toBeLessThan(path.x);
+  });
+
+  test("technical details stay collapsed until asked and persist across reloads", async ({
+    page,
+  }) => {
+    await expect(page.getByText("threadlight-design", { exact: true })).toBeHidden();
+    await page.getByText("Technical details").click();
+    await expect(page.getByText("threadlight-design", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Inspect specs/SPEC.md in chat" }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Reload from the workspace" }).click();
+    await expect(page.locator("details.technical")).toHaveAttribute("open", "");
+  });
+
+  test("starting a different pilot uses the dialog and can be cancelled", async ({ page }) => {
+    const sent = await intentRequests(page);
+    await page.getByText("Technical details").click();
+    await page.getByRole("button", { name: "Start a different pilot" }).click();
+    const dialog = page.getByRole("dialog", { name: "Start a different pilot" });
+    await expect(dialog).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+    expect(sent).toHaveLength(0);
+  });
+
+  test("has no critical or serious axe violations", async ({ page }) => {
+    await page.getByText("Technical details").click();
+    expect(await severeAxeViolations(page)).toEqual([]);
+  });
+
+  test("does not overflow the side panel", async ({ page }) => {
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
 });
 
-test("reveals technical skill details only after explicit disclosure", async ({
-  page,
-}) => {
-  await page.getByRole("button", { name: "Design" }).click();
-  await expect(page.getByText("threadlight-design")).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Show technical details" }).click();
-
-  await expect(page.getByText("threadlight-design")).toBeVisible();
+test.describe("empty workspace", () => {
+  test("asks to describe the process and sends the brief to chat", async ({ page }) => {
+    const sent = await intentRequests(page);
+    await page.goto(EMPTY);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Describe your process");
+    const brief = page.getByRole("textbox", { name: "Process brief" });
+    await expect(page.getByText(/^Example: When a customer asks to return/)).toBeVisible();
+    await expect(brief).toHaveAttribute("aria-describedby", "brief-help");
+    await brief.fill("Triage supplier invoices against purchase orders.");
+    await page.getByRole("button", { name: "Send to chat" }).click();
+    await expect(page.locator("section.now .sent")).toHaveText("Sent to chat. Confirm it there.");
+    expect(sent).toEqual([
+      { type: "start_pilot", brief: "Triage supplier invoices against purchase orders." },
+    ]);
+    expect(await severeAxeViolations(page)).toEqual([]);
+  });
 });
 
-test("has no critical or serious axe violations", async ({ page }) => {
-  const results = await new AxeBuilder({ page }).analyze();
-  const severeViolations = results.violations.filter((violation) =>
-    ["critical", "serious"].includes(violation.impact),
-  );
+test.describe("plan not computed or out of date", () => {
+  test("a missing plan offers Refresh the plan", async ({ page }) => {
+    const sent = await intentRequests(page);
+    await page.goto(MISSING_PLAN);
+    await expect(page.locator("section.now")).toContainText("Status not computed yet");
+    await expect(page.locator(".proof-section").getByText("Not computed", { exact: false })).toHaveCount(1);
+    await page.getByRole("button", { name: "Refresh the plan" }).click();
+    await expect(page.locator("section.now .sent")).toHaveText("Sent to chat. Confirm it there.");
+    expect(sent).toEqual([{ type: "refresh_plan" }]);
+  });
 
-  expect(severeViolations).toEqual([]);
+  test("an out-of-date plan says so and still shows the last gates", async ({ page }) => {
+    await page.goto(STALE_PLAN);
+    await expect(page.locator("section.now .blocker")).toContainText(
+      "Files changed after the plan was computed",
+    );
+    await expect(page.getByRole("button", { name: "Refresh the plan" })).toBeVisible();
+    await expect(page.getByText("Shown from the last plan; refresh it to be sure.")).toBeVisible();
+  });
 });

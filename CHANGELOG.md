@@ -7,6 +7,37 @@ field.
 
 ## [Unreleased]
 
+### 2.23.0: Lifecycle Canvas rebuilt for the process owner
+
+- **Why.** A review of the Copilot App canvas scored 16/40: on the complete
+  returns-triage example it reported "0/6 phases complete", looked for the legacy
+  `specs/govern-manifest.json`, placed governance after deploy, repeated one root
+  blocker 13 times across five tabs and never showed the next action.
+- **Single source for the gate chain.** The canvas now reads `threadlight-auto`'s
+  committed plan (`.threadlight/auto-next.json`, written by
+  `orchestrator.py --commit`) instead of a parallel stage list. It still spawns no
+  process: a missing or out-of-date plan (older than its inputs or 24 hours) offers
+  **Refresh the plan**, a new chat intent that asks to rerun the planner.
+- **Surface for the process owner** (side panel first): **Now** (state in process
+  language, the one root blocker, one named next action); **The process** from
+  `specs/SPEC.md` (steps, business rules with only derivable proof, human
+  decisions, KPIs); **Proof path** (planner gates with "you are here", one
+  "waiting on" instead of repeated blockers); **Go-live and value** (readiness,
+  cost estimate, freshness); technical details collapsed. Empty workspaces start
+  with "Describe your process".
+- **Honest states.** A planner re-run cascade keeps evidenced progress visible
+  ("will be re-checked"); a stage still missing its artifacts is waiting; offline
+  artifacts never read as proven live. The workspace prerequisite check is its own
+  "Before you start" row. Rule proof chips follow evaluation and governance
+  evidence ("2 scenarios · not run yet", "passed offline", "passed live") and never
+  claim a pass without a result. Registry fixes: current
+  `specs/governance-manifest.json`, govern and governed-actions before deploy,
+  scaffold files no longer count as running.
+- **Accessibility.** Status uses text and shape, not colour alone; dark-mode
+  primary contrast passes AA; ordered-list semantics for the proof path.
+- **Not verified here:** the canvas was tested with the loopback fixture in
+  Chromium, not inside the Copilot App panel.
+
 ### 2.22.0: Agentic Loop bridge exports an SDD brief for the published plugin
 
 - **Why.** The GBB Agentic Loop now ships as the published

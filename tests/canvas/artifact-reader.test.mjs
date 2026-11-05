@@ -447,3 +447,26 @@ test("reader treats a directory-valued azd env file as absent evidence", async (
     assert.equal(await reader.readAzdEnvValue(".azure/dev", "AGENT_FQDN"), null);
   });
 });
+
+test("freshness walk skips entries that vanish or are unreadable", async () => {
+  const { createArtifactReader } = await import(
+    "../../.github/extensions/threadlight-lifecycle/lib/artifact-reader.mjs"
+  );
+  const { mkdtemp, mkdir, writeFile, chmod: chmodPath, rm: remove } = await import("node:fs/promises");
+  const pathModule = await import("node:path");
+  const { fileURLToPath: toPath } = await import("node:url");
+  const root = await mkdtemp(pathModule.join(toPath(new URL("./", import.meta.url)), ".tmp-freshness-"));
+  try {
+    await mkdir(pathModule.join(root, "src/a"), { recursive: true });
+    await writeFile(pathModule.join(root, "src/a/x.py"), "x\n");
+    await mkdir(pathModule.join(root, "src/locked"));
+    await chmodPath(pathModule.join(root, "src/locked"), 0o000);
+    const reader = await createArtifactReader(root);
+    const result = await reader.newestFreshnessInput();
+    assert.equal(result.path, "src/a/x.py");
+    assert.equal(result.unverifiable, "unreadable");
+    await chmodPath(pathModule.join(root, "src/locked"), 0o755);
+  } finally {
+    await remove(root, { recursive: true, force: true });
+  }
+});

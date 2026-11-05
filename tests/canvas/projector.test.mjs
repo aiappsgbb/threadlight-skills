@@ -9,7 +9,9 @@ import { projectWorkspace } from "../../.github/extensions/threadlight-lifecycle
 import { createIntentBroker } from "../../.github/extensions/threadlight-lifecycle/lib/intents.mjs";
 import {
   assuranceManifest,
+  completePlan,
   createWorkspaceFixture,
+  governanceManifest,
   legEnvelope,
   producerLegEnvelope,
 } from "./fixtures.mjs";
@@ -261,6 +263,8 @@ test("empty workspace is ready to start pilot design", async () => {
 
     assert.equal(findPhase(model, "design").status, "ready");
     assert.deepEqual(model.primaryAction, { type: "start_pilot" });
+    assert.equal(model.view.empty, true);
+    assert.equal(model.view.now.action.label, "Describe your process");
   });
 });
 
@@ -277,12 +281,10 @@ test("design-only workspace runs design and leaves event triggers not applicable
 test("deploy-blocked workspace waits for verified deployment evidence", async () => {
   await withFixture("deploy-blocked", async ({ workspace }) => {
     const model = await projectWorkspace(workspace, { now: NOW });
-    const phase = findPhase(model, "build-deploy");
-
-    assert.notEqual(phase.status, "complete");
-    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.notEqual(findPhase(model, "publish").status, "complete");
+    assert.equal(findSkill(model, "threadlight-deploy").status, "prepared");
     assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
-    assert.match(phase.blockers.join("\n"), /Verify the deployment/);
+    assert.match(findPhase(model, "verify").blockers.join("\n"), /Verify the deployment is waiting for Publish to the sandbox/);
   });
 });
 
@@ -292,7 +294,7 @@ test("deploy requires a real AGENT_FQDN assignment, not a commented env line", a
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-deploy").status, "prepared");
     assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
   });
 });
@@ -303,7 +305,7 @@ test("deploy requires a non-empty AGENT_FQDN assignment", async () => {
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-deploy").status, "prepared");
     assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
   });
 });
@@ -314,7 +316,7 @@ test("deploy requires a non-empty AGENT_FQDN assignment after unquoting", async 
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-deploy").status, "prepared");
     assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
   });
 });
@@ -325,7 +327,7 @@ test("deploy ignores inline comments after an empty AGENT_FQDN assignment", asyn
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-deploy").status, "prepared");
     assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
   });
 });
@@ -336,7 +338,7 @@ test("deploy stays incomplete when multiple azd env directories exist", async ()
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-deploy").status, "prepared");
     assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
   });
 });
@@ -349,7 +351,7 @@ test("deploy treats symlinked azd roots as untrusted evidence instead of throwin
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-deploy").status, "prepared");
     assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
   });
 });
@@ -361,7 +363,7 @@ test("deploy stays incomplete when azd env discovery includes a symlinked env di
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+    assert.equal(findSkill(model, "threadlight-deploy").status, "prepared");
     assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
   });
 });
@@ -380,12 +382,12 @@ test("invalid design manifest reports only the parse failure", async () => {
   });
 });
 
-test("partial assurance keeps discovery running and governance ready", async () => {
+test("partial assurance keeps evaluation running and controls ready", async () => {
   await withFixture("partial-assurance", async ({ workspace }) => {
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findPhase(model, "discover").status, "running");
-    assert.equal(findPhase(model, "protect-govern").status, "ready");
+    assert.equal(findPhase(model, "evaluate").status, "running");
+    assert.equal(findPhase(model, "controls").status, "ready");
   });
 });
 
@@ -397,19 +399,79 @@ test("stale assurance marks threadlight evals stale", async () => {
   });
 });
 
-test("partial governance evidence keeps govern skill running", async () => {
+test("offline-only governance inventory is prepared, never complete", async () => {
   await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
-    await writeJson(
-      "specs/govern-manifest.json",
-      assuranceManifest("govern", {
-        verdict: "partial",
-        not_verified: ["JWT policy"],
-      }),
-    );
+    await writeJson("specs/governance-manifest.json", governanceManifest({ live_probes: [] }));
+    // The planner would not pass the live probe for offline-only inventory.
+    const plan = completePlan();
+    Object.assign(plan.decisions.find((decision) => decision.stage === "governance_probe"), {
+      decision: "run",
+      reason: "Mandatory current exact live binding proof required.",
+    });
+    plan.next_action = { type: "run", stages_to_run: ["governance_probe"], stages_to_skip: [] };
+    await writeJson(".threadlight/auto-next.json", plan);
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findSkill(model, "threadlight-govern").status, "running");
+    assert.equal(findSkill(model, "threadlight-govern").status, "prepared");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("unverified or bypassable governance bindings never read as proven", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    const unverified = governanceManifest();
+    unverified.bindings[1].status = "unverified";
+    await writeJson("specs/governance-manifest.json", unverified);
+    let model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-govern").status, "prepared");
+
+    const bypassable = governanceManifest();
+    bypassable.bindings[1].status = "bypassable";
+    await writeJson("specs/governance-manifest.json", bypassable);
+    model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-govern").status, "failed");
+  });
+});
+
+test("legacy govern-manifest v2 is provenance only and never governance proof", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await rm(path.join(workspace, "specs/governance-manifest.json"));
+    await writeJson("specs/govern-manifest.json", {
+      schema: "threadlight-govern-manifest/v2",
+      verdict: "governed",
+    });
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.notEqual(findSkill(model, "threadlight-govern").status, "complete");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("a governance manifest with a legacy schema renders failed", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await writeJson("specs/governance-manifest.json", {
+      schema: "threadlight-govern-manifest/v2",
+      verdict: "governed",
+    });
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+
+    assert.equal(findSkill(model, "threadlight-govern").status, "failed");
+    assert.ok(
+      model.errors.some(
+        (error) =>
+          error.path === "specs/governance-manifest.json" &&
+          /legacy or unknown schemas are not enforcement/.test(error.message),
+      ),
+    );
   });
 });
 
@@ -424,7 +486,7 @@ test("canonical failed production readiness blocks handoff", async () => {
     const model = await projectWorkspace(workspace, { now: NOW });
 
     assert.equal(findSkill(model, "threadlight-production-ready").status, "failed");
-    assert.notEqual(findPhase(model, "handoff").status, "complete");
+    assert.notEqual(findPhase(model, "go-live").status, "complete");
   });
 });
 
@@ -432,11 +494,16 @@ test("complete pilot projects all phases complete without errors", async () => {
   await withFixture("complete-pilot", async ({ workspace }) => {
     const model = await projectWorkspace(workspace, { now: NOW });
 
+    // The committed plan passed every gate, so go-live rests on the planner's
+    // fresh governance probe. Controls stay "running" in the skill projection:
+    // a manifest alone is only prepared offline.
     assert.equal(findSkill(model, "threadlight-auto").status, "running");
+    assert.deepEqual(model.view.now.action.intent, { type: "prepare_handoff" });
+    assert.equal(model.view.goLive.readiness.label, "Ready to go live");
     assert.equal(findSkill(model, "threadlight-production-ready").status, "complete");
     assert.deepEqual(
       model.phases.map((phase) => phase.status),
-      ["complete", "complete", "complete", "complete", "complete", "complete"],
+      ["complete", "running", "complete", "complete", "complete", "complete"],
     );
     assert.deepEqual(model.errors, []);
   });
@@ -542,7 +609,7 @@ test("safe-check stays incomplete and readiness proof stays incomplete when post
       findSkill(model, "threadlight-production-ready").evidenceState,
       "readiness-incomplete",
     );
-    assert.notEqual(findPhase(model, "handoff").status, "complete");
+    assert.notEqual(findPhase(model, "go-live").status, "complete");
   });
 });
 
@@ -762,10 +829,11 @@ test("stale safe-check proof only blocks readiness proof and handoff, not later 
     assert.equal(findSkill(model, "threadlight-consumption-iq").status, "complete");
     assert.equal(findSkill(model, "threadlight-evals").status, "complete");
     assert.equal(findSkill(model, "threadlight-redteam").status, "complete");
-    assert.equal(findSkill(model, "threadlight-govern").status, "complete");
-    assert.equal(findPhase(model, "discover").status, "complete");
-    assert.equal(findPhase(model, "protect-govern").status, "complete");
-    assert.equal(findPhase(model, "handoff").status, "blocked");
+    // A valid manifest is offline evidence on the Canvas; live proof comes from the plan.
+    assert.equal(findSkill(model, "threadlight-govern").status, "prepared");
+    assert.equal(findPhase(model, "evaluate").status, "complete");
+    assert.equal(findPhase(model, "controls").status, "running");
+    assert.equal(findPhase(model, "go-live").status, "blocked");
   });
 });
 
@@ -814,47 +882,6 @@ async function assertInvalidAssurance({
     );
   });
 }
-
-test("govern assurance manifests require the exact capability contract", async () => {
-  await assertInvalidAssurance({
-    skillId: "threadlight-govern",
-    path: "specs/govern-manifest.json",
-    manifest: assuranceManifest("govern", { capabilities: {} }),
-    expectedMessage: /missing capabilities/i,
-  });
-  await assertInvalidAssurance({
-    skillId: "threadlight-govern",
-    path: "specs/govern-manifest.json",
-    manifest: assuranceManifest("govern", {
-      capabilities: {
-        policy_artefact_present: { status: "pass" },
-      },
-    }),
-    expectedMessage: /missing capabilities/i,
-  });
-  await assertInvalidAssurance({
-    skillId: "threadlight-govern",
-    path: "specs/govern-manifest.json",
-    manifest: assuranceManifest("govern", {
-      capabilities: {
-        ...assuranceManifest("govern").capabilities,
-        unexpected_capability: { status: "pass" },
-      },
-    }),
-    expectedMessage: /unsupported capabilities/i,
-  });
-  await assertInvalidAssurance({
-    skillId: "threadlight-govern",
-    path: "specs/govern-manifest.json",
-    manifest: assuranceManifest("govern", {
-      capabilities: {
-        ...assuranceManifest("govern").capabilities,
-        policy_tests_present: { status: true },
-      },
-    }),
-    expectedMessage: /invalid status/i,
-  });
-});
 
 test("evals assurance manifests require the exact capability contract", async () => {
   await assertInvalidAssurance({
@@ -944,13 +971,14 @@ test("redteam assurance manifests require the exact capability contract", async 
 
 test("producer-like assurance manifests keep readiness proof intact", async () => {
   await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
-    await writeJson("specs/govern-manifest.json", assuranceManifest("govern"));
+    await writeJson("specs/governance-manifest.json", governanceManifest());
     await writeJson("specs/evals-manifest.json", assuranceManifest("evals"));
     await writeJson("specs/redteam-manifest.json", assuranceManifest("redteam"));
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findSkill(model, "threadlight-govern").status, "complete");
+    // A valid manifest is offline evidence on the Canvas; live proof comes from the plan.
+    assert.equal(findSkill(model, "threadlight-govern").status, "prepared");
     assert.equal(findSkill(model, "threadlight-evals").status, "complete");
     assert.equal(findSkill(model, "threadlight-redteam").status, "complete");
     assert.equal(
@@ -962,12 +990,6 @@ test("producer-like assurance manifests keep readiness proof intact", async () =
 
 test("assurance manifests accept timezone-qualified ISO timestamps with a space separator", async () => {
   await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
-    await writeJson(
-      "specs/govern-manifest.json",
-      assuranceManifest("govern", {
-        captured_at: "2026-08-06 08:00:00+00:00",
-      }),
-    );
     await writeJson(
       "specs/evals-manifest.json",
       assuranceManifest("evals", {
@@ -984,7 +1006,8 @@ test("assurance manifests accept timezone-qualified ISO timestamps with a space 
 
     const model = await projectWorkspace(workspace, { now: NOW });
 
-    assert.equal(findSkill(model, "threadlight-govern").status, "complete");
+    // A valid manifest is offline evidence on the Canvas; live proof comes from the plan.
+    assert.equal(findSkill(model, "threadlight-govern").status, "prepared");
     assert.equal(findSkill(model, "threadlight-evals").status, "complete");
     assert.equal(findSkill(model, "threadlight-redteam").status, "complete");
     assert.equal(
@@ -1001,7 +1024,7 @@ test("deploy treats unreadable .azure roots as absent evidence instead of throwi
       await chmod(azureRoot, 0o000);
       const model = await projectWorkspace(workspace, { now: NOW });
 
-      assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+      assert.equal(findSkill(model, "threadlight-deploy").status, "prepared");
       assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
     } finally {
       await chmod(azureRoot, 0o755).catch(() => {});
@@ -1016,7 +1039,7 @@ test("deploy treats unreadable azd env directories as absent evidence instead of
       await chmod(envDir, 0o000);
       const model = await projectWorkspace(workspace, { now: NOW });
 
-      assert.equal(findSkill(model, "threadlight-deploy").status, "running");
+      assert.equal(findSkill(model, "threadlight-deploy").status, "prepared");
       assert.equal(findSkill(model, "threadlight-safe-check").status, "blocked");
     } finally {
       await chmod(envDir, 0o755).catch(() => {});
@@ -1055,7 +1078,7 @@ test("threadlight-production-ready does not claim readiness proof when safe-chec
       findSkill(model, "threadlight-production-ready").evidenceState,
       "readiness-incomplete",
     );
-    assert.notEqual(findPhase(model, "handoff").status, "complete");
+    assert.notEqual(findPhase(model, "go-live").status, "complete");
   });
 });
 
@@ -1249,11 +1272,11 @@ test("a stale partial envelope renders stale with a manual rerun action", async 
 
   assert.equal(skill.status, "stale");
   assert.ok(
-    findPhase(model, "discover").nextActions.some(
+    findPhase(model, "evaluate").nextActions.some(
       (intent) =>
         intent.type === "invoke_skill" &&
         intent.skillId === "threadlight-ground" &&
-        intent.phase === "discover",
+        intent.phase === "evaluate",
     ),
     "stale partial evidence offers the named manual skill rerun",
   );
@@ -1572,7 +1595,7 @@ test("a malformed advisory leg does not disturb its phase status", async () => {
   // changing the phase roll-up.
   await withFixture("empty", async ({ workspace, writeJson }) => {
     const baseline = await projectWorkspace(workspace, { now: NOW });
-    const discoverBefore = findPhase(baseline, "discover").status;
+    const discoverBefore = findPhase(baseline, "evaluate").status;
 
     await writeJson(
       "specs/ground-manifest.json",
@@ -1581,7 +1604,7 @@ test("a malformed advisory leg does not disturb its phase status", async () => {
     const model = await projectWorkspace(workspace, { now: NOW });
 
     assert.equal(findSkill(model, "threadlight-ground").status, "failed");
-    assert.equal(findPhase(model, "discover").status, discoverBefore);
+    assert.equal(findPhase(model, "evaluate").status, discoverBefore);
   });
 });
 
@@ -1604,7 +1627,7 @@ test("advisory live legs do not disturb complete-pilot phase completion", async 
     const model = await projectWorkspace(workspace, { now: NOW });
     assert.deepEqual(
       model.phases.map((phase) => phase.status),
-      ["complete", "complete", "complete", "complete", "complete", "complete"],
+      ["complete", "running", "complete", "complete", "complete", "complete"],
     );
     // The advisory legs are present in their phases but sit at `ready`.
     assert.equal(findSkill(model, "threadlight-connect").status, "ready");
@@ -1615,7 +1638,7 @@ test("advisory live legs do not disturb complete-pilot phase completion", async 
 test("a projected advisory next intent brokers a named manual-invocation prompt", async () => {
   await withFixture("complete-pilot", async ({ workspace }) => {
     const model = await projectWorkspace(workspace, { now: NOW });
-    const discover = findPhase(model, "discover");
+    const discover = findPhase(model, "evaluate");
 
     // The projector surfaces the advisory legs as skill-named invoke_skill
     // intents — not a generic resume_phase.
@@ -1626,7 +1649,7 @@ test("a projected advisory next intent brokers a named manual-invocation prompt"
     assert.deepEqual(connect, {
       type: "invoke_skill",
       skillId: "threadlight-connect",
-      phase: "discover",
+      phase: "evaluate",
     });
 
     // Brokering that projected intent asks chat to invoke the exact named skill
@@ -1650,5 +1673,218 @@ test("a projected advisory next intent brokers a named manual-invocation prompt"
       /do not auto-run any command, tool, or live action/,
     );
     assert.match(sent[0].prompt, /Explain the proposed next action in chat/);
+  });
+});
+
+test("a live governance manifest is capped at prepared offline in the canvas", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    const model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-govern").status, "prepared");
+  });
+});
+
+test("an expired policy bundle makes governance evidence out of date", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    const expired = governanceManifest();
+    expired.policy_bundle = { ...expired.policy_bundle, expires_at: "2026-08-01T00:00:00Z" };
+    await writeJson("specs/governance-manifest.json", expired);
+    const model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-govern").status, "stale");
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+  });
+});
+
+test("readiness proof needs the planner's fresh governance probe, not the manifest alone", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await rm(path.join(workspace, ".threadlight/auto-next.json"));
+    let model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+    assert.notEqual(model.view.goLive.readiness.label, "Ready to go live");
+
+    const plan = JSON.parse(JSON.stringify(completePlan()));
+    plan.decisions.find((decision) => decision.stage === "governance_probe").reason =
+      "Presenter deployment: Recorded evidence validity elapsed; refresh observation, not the underlying effect.";
+    await writeJson(".threadlight/auto-next.json", plan);
+    model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(
+      findSkill(model, "threadlight-production-ready").evidenceState,
+      "readiness-incomplete",
+    );
+
+    await writeJson(".threadlight/auto-next.json", completePlan());
+    model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-proof");
+    // A plan older than the planner's 24 h window proves nothing.
+    model = await projectWorkspace(workspace, { now: new Date("2026-08-07T09:00:00Z") });
+    assert.notEqual(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-proof");
+  });
+});
+
+async function touchLater(workspace, relativePath, contents = "changed\n") {
+  const { mkdir, utimes, writeFile } = await import("node:fs/promises");
+  const target = path.join(workspace, relativePath);
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, contents);
+  const later = new Date("2026-08-06T08:45:00Z");
+  await utimes(target, later, later);
+}
+
+for (const changed of [
+  "src/agent/main.py",
+  "src/triggers/handler.py",
+  "policies/returns.rego",
+  "infra/modules/app.bicep",
+  "config/settings.json",
+  "pyproject.toml",
+  "requirements.txt",
+  "Dockerfile",
+  "agent.yaml",
+  "tool-registry.json",
+  ".threadlight/governance-probe.json",
+  ".threadlight/governance-package.json",
+]) {
+  test(`a change to planner input ${changed} after the plan makes it out of date`, async () => {
+    await withFixture("complete-pilot", async ({ workspace }) => {
+      await touchLater(workspace, changed);
+      const model = await projectWorkspace(workspace, { now: NOW });
+      assert.equal(model.view.plan.status, "stale", changed);
+      assert.equal(model.view.plan.changedPath, changed);
+      assert.notEqual(
+        findSkill(model, "threadlight-production-ready").evidenceState,
+        "readiness-proof",
+        changed,
+      );
+    });
+  });
+}
+
+test("freshness scanning never follows symlinks or looks inside .azure", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    await touchLater(workspace, "outside/new.py");
+    await symlink("../outside", path.join(workspace, "src-link"));
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(path.join(workspace, "src"), { recursive: true });
+    await symlink("../outside", path.join(workspace, "src", "linked"));
+    await touchLater(workspace, ".azure/dev/config.json");
+    const model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(model.view.plan.status, "current");
+  });
+});
+
+test("pilots without selected governance can be ready on the readiness proof chain", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    await rm(path.join(workspace, "specs/governance-manifest.json"));
+    const plan = completePlan();
+    const standard = plan.stages.filter(
+      (stage) => !["govern", "governed_actions_gate", "governance_probe"].includes(stage),
+    );
+    plan.stages = standard;
+    plan.decisions = plan.decisions.filter((decision) => standard.includes(decision.stage));
+    plan.next_action = { type: "run", stages_to_run: [], stages_to_skip: standard };
+    await writeJson(".threadlight/auto-next.json", plan);
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(model.view.plan.status, "current");
+    assert.equal(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-proof");
+  });
+});
+
+test("a governed plan still needs planner-proven governance for readiness", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    const plan = completePlan();
+    Object.assign(plan.decisions.find((decision) => decision.stage === "governance_probe"), {
+      decision: "run",
+      reason: "Mandatory current exact live binding proof required.",
+    });
+    plan.next_action = { type: "run", stages_to_run: ["governance_probe"], stages_to_skip: [] };
+    await writeJson(".threadlight/auto-next.json", plan);
+    const model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-incomplete");
+  });
+});
+
+test("a legacy plan with a pending govern stage does not waive governance for readiness", async () => {
+  await withFixture("complete-pilot", async ({ workspace, writeJson }) => {
+    const plan = completePlan();
+    const legacy = plan.stages.filter(
+      (stage) => !["governed_actions_gate", "governance_probe"].includes(stage),
+    );
+    plan.stages = legacy;
+    plan.decisions = plan.decisions.filter((decision) => legacy.includes(decision.stage));
+    Object.assign(plan.decisions.find((decision) => decision.stage === "govern"), {
+      decision: "run",
+      reason: "Binding inventory missing, invalid or changed.",
+    });
+    plan.next_action = { type: "run", stages_to_run: ["govern"], stages_to_skip: [] };
+    await writeJson(".threadlight/auto-next.json", plan);
+    const model = await projectWorkspace(workspace, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-incomplete");
+  });
+});
+
+for (const cache of [
+  "infra/scripts/.venv/lib/site.py",
+  "src/agent/venv/lib/site.py",
+  "infra/.terraform/providers/x.json",
+  "src/agent/.tox/env.py",
+  "src/agent/.mypy_cache/x.json",
+  "src/agent/.ruff_cache/x.json",
+  "src/workspace/.next/build.js",
+  "src/agent/.cache/x.bin",
+]) {
+  test(`tool cache ${cache} is not a planner input`, async () => {
+    await withFixture("complete-pilot", async ({ workspace }) => {
+      await touchLater(workspace, cache);
+      const model = await projectWorkspace(workspace, { now: NOW });
+      assert.equal(model.view.plan.status, "current", cache);
+    });
+  });
+}
+
+test("too many files makes freshness unverifiable, not permanently changed", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    for (const name of ["a", "b", "c", "d", "e", "f"]) {
+      const { mkdir, writeFile, utimes } = await import("node:fs/promises");
+      await mkdir(path.join(workspace, "src/agent"), { recursive: true });
+      const file = path.join(workspace, "src/agent", `${name}.py`);
+      await writeFile(file, "x\n");
+      await utimes(file, new Date("2026-08-06T08:00:00Z"), new Date("2026-08-06T08:00:00Z"));
+    }
+    const model = await projectWorkspace(workspace, { now: NOW, freshnessMaxEntries: 3 });
+    const view = model.view;
+    assert.equal(view.plan.status, "unverified");
+    assert.match(view.now.blocker, /Too many files to confirm the plan is current/);
+    // Not a dead end: the action is not "Refresh the plan".
+    assert.notDeepEqual(view.now.action.intent, { type: "refresh_plan" });
+    // Gates stay visible, but nothing planner-derived reads as proven or ready.
+    assert.equal(view.proofPath.planned, true);
+    const gates = view.proofPath.milestones.flatMap((milestone) => milestone.gates);
+    assert.ok(gates.length > 0);
+    assert.ok(gates.every((gate) => gate.state !== "proven"));
+    assert.doesNotMatch(view.now.headline, /Proven live|Ready to go live/);
+    assert.notEqual(view.goLive.readiness.label, "Ready to go live");
+    assert.notEqual(findSkill(model, "threadlight-production-ready").evidenceState, "readiness-proof");
+  });
+});
+
+test("unreadable directories in the freshness walk never fail the projection", async () => {
+  await withFixture("complete-pilot", async ({ workspace }) => {
+    const { mkdir } = await import("node:fs/promises");
+    const locked = path.join(workspace, "src/agent/locked");
+    await mkdir(locked, { recursive: true });
+    await chmod(locked, 0o000);
+    try {
+      const model = await projectWorkspace(workspace, { now: NOW });
+      assert.equal(model.view.plan.status, "unverified");
+      assert.match(model.view.now.blocker, /could not be checked/);
+    } finally {
+      await chmod(locked, 0o755);
+    }
   });
 });

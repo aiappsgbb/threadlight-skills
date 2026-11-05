@@ -12,27 +12,6 @@ const REDTEAM_FINDING_IDS = [
 ];
 
 const ASSURANCE_SPECS = {
-  govern: {
-    schema: "threadlight-govern-manifest/v2",
-    verdict: "governed",
-    capabilities: [
-      "policy_artefact_present",
-      "policy_schema_valid",
-      "policy_versioned",
-      "policy_default_deny",
-      "sensitive_action_rules_present",
-      "policy_tests_present",
-      "ci_gate_present",
-      "attestation_present",
-      "attestation_fresh",
-      "asi_reference_present",
-    ],
-    extras: {
-      must_fix: [],
-      should_fix: [],
-      not_verified: [],
-    },
-  },
   evals: {
     schema: "threadlight-evals-manifest/v1",
     verdict: "comprehensive",
@@ -230,6 +209,77 @@ export function producerLegEnvelope(options = {}) {
   return { ...envelope, ...payloadBySchema[envelope.schema] };
 }
 
+/**
+ * specs/governance-manifest.json (threadlight-governance-manifest/v1) with a
+ * live-proven write binding and explicitly unbound reads. `overrides` replace
+ * top-level keys (e.g. `{ live_probes: [] }` for offline-only inventory).
+ */
+export function governanceManifest(overrides = {}) {
+  return {
+    schema: "threadlight-governance-manifest/v1",
+    agent: { runtime: "microsoft-agent-framework", version: "1.0.0", image_digest: null },
+    policy_bundle: { id: "orders-write-v1", version: "1", digest: "sha256:abc", signature_verified: true, expires_at: null },
+    enforcement: { adapter: "agent-hooks", mode: "enforce" },
+    coverage: {
+      tools_total: 2,
+      tools_bound: 1,
+      tools_bypassable: 0,
+      tools_enforced: 1,
+      tools_observed: 0,
+      tools_unbound: 1,
+      tools_unsupported: 0,
+      tools_unverified: 0,
+    },
+    bindings: [
+      { binding_id: "binding.orders_read", tool_id: "orders_read", status: "unbound", mode: "evaluate_only" },
+      { binding_id: "binding.orders_write", tool_id: "orders_write", status: "enforced", mode: "enforce" },
+    ],
+    live_probes: [
+      { probe_id: "probe-1", binding_id: "binding.orders_write", status: "pass" },
+    ],
+    gaps: [],
+    offline_evidence: [],
+    ...overrides,
+  };
+}
+
+const GOVERNED_STAGES = [
+  "preflight",
+  "design",
+  "govern",
+  "governed_actions_gate",
+  "deploy",
+  "governance_probe",
+  "safe_check",
+  "cost_projection",
+  "invoke",
+  "agentops",
+  "evals",
+  "redteam",
+];
+
+/**
+ * A threadlight-auto plan (.threadlight/auto-next.json) in which every
+ * governed stage passed, decided shortly after the fixture evidence.
+ */
+export function completePlan() {
+  return {
+    stages: GOVERNED_STAGES,
+    dependencies: {},
+    manual_handoffs: [],
+    decisions: GOVERNED_STAGES.map((stage) => ({
+      stage,
+      decision: "skip",
+      reason: stage === "agentops" ? "AgentOps not opted in." : `${stage} evidence is current.`,
+      artifacts_seen: [],
+      artifacts_missing: [],
+      hard_stop_signature: null,
+    })),
+    next_action: { type: "run", stages_to_run: [], stages_to_skip: GOVERNED_STAGES },
+    decided_at: "2026-08-06T08:30:00+00:00",
+  };
+}
+
 export function assuranceManifest(kind, overrides = {}) {
   const spec = ASSURANCE_SPECS[kind];
   if (!spec) {
@@ -363,14 +413,13 @@ export async function createWorkspaceFixture(name) {
   }
 
   await fixture.writeJson("specs/sample-data/orders.json", [{ id: "order-1" }]);
-  await fixture.writeString("src/bot/index.js", "export default {};\n");
+  await fixture.writeJson("src/bot/cards/card_registry.json", { cards: [] });
   await fixture.writeString("src/workspace/index.html", "<main>Orders</main>\n");
   await fixture.writeJson("specs/redteam-manifest.json", {
     ...assuranceManifest("redteam"),
   });
-  await fixture.writeJson("specs/govern-manifest.json", {
-    ...assuranceManifest("govern"),
-  });
+  await fixture.writeJson("specs/governance-manifest.json", governanceManifest());
+  await fixture.writeJson(".threadlight/auto-next.json", completePlan());
   await fixture.writeJson("tests/production-readiness-manifest.json", {
     checked_at: "2026-08-06T08:00:00Z",
     go_live_recommendation: "ready",

@@ -41,12 +41,12 @@ test("broker submits visible chat intent prompt", async () => {
 
   const result = await broker.submit({
     type: "resume_phase",
-    phase: "build-deploy",
+    phase: "publish",
   });
 
   assert.deepEqual(result, {
     accepted: true,
-    intent: { type: "resume_phase", phase: "build-deploy" },
+    intent: { type: "resume_phase", phase: "publish" },
   });
   assert.equal(sent.length, 1);
   assert.deepEqual(Object.keys(sent[0]), ["prompt"]);
@@ -61,14 +61,14 @@ test("invoke_skill names an allowlisted skill and keeps optional context", () =>
   const intent = validateIntent({
     type: "invoke_skill",
     skillId: "threadlight-connect",
-    phase: "discover",
+    phase: "evaluate",
     artifact: "specs/connect-manifest.json",
   });
 
   assert.deepEqual(intent, {
     type: "invoke_skill",
     skillId: "threadlight-connect",
-    phase: "discover",
+    phase: "evaluate",
     artifact: "specs/connect-manifest.json",
   });
 });
@@ -149,7 +149,7 @@ test("broker names the exact skill and asks chat to invoke it manually", async (
   const result = await broker.submit({
     type: "invoke_skill",
     skillId: "threadlight-upgrade",
-    phase: "improve",
+    phase: "go-live",
   });
 
   assert.deepEqual(result, {
@@ -157,7 +157,7 @@ test("broker names the exact skill and asks chat to invoke it manually", async (
     intent: {
       type: "invoke_skill",
       skillId: "threadlight-upgrade",
-      phase: "improve",
+      phase: "go-live",
     },
   });
   assert.equal(sent.length, 1);
@@ -174,5 +174,63 @@ test("broker names the exact skill and asks chat to invoke it manually", async (
     /do not auto-run any command, tool, or live action/,
   );
   // The existing confirmation-gate suffix is preserved.
+  assert.match(sent[0].prompt, /Explain the proposed next action in chat/);
+});
+
+test("legacy phase ids are no longer valid intent phases", () => {
+  for (const phase of ["build-deploy", "discover", "protect-govern", "improve", "handoff"]) {
+    assert.throws(
+      () => validateIntent({ type: "resume_phase", phase }),
+      IntentValidationError,
+      phase,
+    );
+  }
+});
+
+test("refresh_plan carries no fields and asks chat to recompute the plan", async () => {
+  assert.deepEqual(validateIntent({ type: "refresh_plan" }), { type: "refresh_plan" });
+  assert.throws(
+    () => validateIntent({ type: "refresh_plan", command: "rm -rf ." }),
+    IntentValidationError,
+  );
+
+  const sent = [];
+  const broker = createIntentBroker({ send: async (payload) => sent.push(payload) });
+  await broker.submit({ type: "refresh_plan" });
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].prompt, /"type": "refresh_plan"/);
+  assert.match(
+    sent[0].prompt,
+    /skills\/threadlight-auto\/references\/orchestrator\.py --workspace \. --commit/,
+  );
+  assert.match(sent[0].prompt, /\.threadlight\/auto-next\.json/);
+  assert.match(sent[0].prompt, /after the user confirms/);
+  assert.match(sent[0].prompt, /Explain the proposed next action in chat/);
+});
+
+test("advance_plan accepts only threadlight-auto stage ids", async () => {
+  assert.deepEqual(validateIntent({ type: "advance_plan", stage: "safe_check" }), {
+    type: "advance_plan",
+    stage: "safe_check",
+  });
+  for (const stage of ["deploy; rm -rf /", "unknown_stage", "", 7]) {
+    assert.throws(
+      () => validateIntent({ type: "advance_plan", stage }),
+      IntentValidationError,
+      String(stage),
+    );
+  }
+  assert.throws(
+    () => validateIntent({ type: "advance_plan", stage: "deploy", force: true }),
+    IntentValidationError,
+  );
+
+  const sent = [];
+  const broker = createIntentBroker({ send: async (payload) => sent.push(payload) });
+  await broker.submit({ type: "advance_plan", stage: "governance_probe" });
+  assert.match(sent[0].prompt, /"stage": "governance_probe"/);
+  assert.match(sent[0].prompt, /threadlight-auto/);
+  assert.match(sent[0].prompt, /after the user confirms/);
   assert.match(sent[0].prompt, /Explain the proposed next action in chat/);
 });

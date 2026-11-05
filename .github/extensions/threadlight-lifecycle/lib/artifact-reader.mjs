@@ -13,7 +13,8 @@ const ALLOWED_FILES = new Set([
   "specs/cost-reconciliation-manifest.json",
   "specs/evals-manifest.json",
   "specs/redteam-manifest.json",
-  "specs/govern-manifest.json",
+  "specs/governance-manifest.json",
+  "specs/governance-contract.json",
   "specs/agentops-manifest.json",
   "specs/connect-manifest.json",
   "specs/ground-manifest.json",
@@ -22,7 +23,9 @@ const ALLOWED_FILES = new Set([
   "qualification/sizing-manifest.json",
   "tests/production-readiness-manifest.json",
   "tests/postdeploy-manifest.json",
+  "tests/governed-actions-manifest.json",
   ".threadlight/auto-state.json",
+  ".threadlight/auto-next.json",
   ".threadlight/preflight-passed.json",
   "azure-pipelines.yml",
   "docs/safe-check-post.md",
@@ -30,6 +33,7 @@ const ALLOWED_FILES = new Set([
   "docs/cost-reconciliation-report.md",
   "docs/redteam-report.md",
   "docs/production-readiness-report.md",
+  "docs/invoke-results.md",
 ]);
 
 const ALLOWED_ROOTS = [
@@ -38,10 +42,41 @@ const ALLOWED_ROOTS = [
   "src/bot",
   "src/triggers",
   "src/workspace",
+  "src/mcp",
+  "infra/citadel-access-contracts",
   ".github/workflows",
   "docs/threadlight-customize",
   "router-bench-out",
 ];
+
+// Inputs threadlight-auto fingerprints before trusting a gate or deployment
+// (orchestrator.py _gate_fingerprint / _deployment_fingerprint). The Canvas
+// only compares their modification times with the plan's decided_at; it never
+// reads their contents. azd environment inputs under .azure are deliberately
+// not watched because their .env files hold secrets.
+export const FRESHNESS_FILES = Object.freeze([
+  "specs/SPEC.md",
+  "specs/manifest.json",
+  "azure.yaml",
+  "agent.yaml",
+  "tool-registry.json",
+  "pyproject.toml",
+  "requirements.txt",
+  "Dockerfile",
+  "tests/governed-actions-manifest.json",
+  ".threadlight/fixture.json",
+]);
+export const FRESHNESS_PREFIXES = Object.freeze([".threadlight/governance-"]);
+export const FRESHNESS_DIRECTORIES = Object.freeze(["src", "policies", "infra", "config"]);
+// Tool caches and environments: never planner inputs, and large enough
+// (`uv sync` in infra/scripts creates a .venv) to exhaust the bound.
+const FRESHNESS_PRUNE = new Set([
+  ".git", ".pytest_cache", "__pycache__", "build", "dist", "node_modules",
+  ".venv", "venv", ".terraform", ".tox", ".mypy_cache", ".ruff_cache", ".next", ".cache",
+]);
+const SKIPPABLE_WALK_ERRORS = new Set(["ENOENT", "ENOTDIR"]);
+const UNREADABLE_WALK_ERRORS = new Set(["EACCES", "EPERM"]);
+const FRESHNESS_MAX_ENTRIES = 20000;
 
 export class ArtifactAccessError extends Error {
   constructor(relativePath, message) {
@@ -178,7 +213,104 @@ export async function createArtifactReader(workspace) {
     return normalized;
   }
 
+  async function lstatInside(relative) {
+    try {
+      return await lstat(path.join(workspaceReal, relative));
+    } catch (error) {
+      if (isMissing(error) || error?.code === "ENOTDIR") {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   return Object.freeze({
+    /**
+     * Newest modification time among threadlight-auto's fingerprint inputs.
+     * Metadata only (lstat), regular files only, symlinks never followed,
+     * .env files skipped. A tree larger than the bound reports `truncated`.
+     */
+    async newestFreshnessInput({ maxEntries = FRESHNESS_MAX_ENTRIES } = {}) {
+      let newest = null;
+      let unverifiable = null;
+      const consider = (relative, details) => {
+        if (details && (!newest || details.mtime > newest.at)) {
+          newest = { at: details.mtime, path: relative };
+        }
+      };
+      // Entries can vanish between readdir and lstat (the watcher refreshes on
+      // src changes) or be unreadable: never fail the projection. A vanished
+      // entry is skipped; an unreadable one makes the result unverifiable.
+      const guarded = async (operation) => {
+        try {
+          return await operation();
+        } catch (error) {
+          if (SKIPPABLE_WALK_ERRORS.has(error?.code)) return null;
+          if (UNREADABLE_WALK_ERRORS.has(error?.code)) {
+            unverifiable ??= "unreadable";
+            return null;
+          }
+          throw error;
+        }
+      };
+      const stat = (relative) => guarded(() => lstat(path.join(workspaceReal, relative)));
+      const list = (relative) =>
+        guarded(() => readdir(path.join(workspaceReal, relative), { withFileTypes: true }));
+      const result = () => ({
+        at: newest?.at ?? null,
+        path: newest?.path ?? null,
+        truncated: unverifiable === "too-many",
+        unverifiable,
+      });
+
+      for (const relative of FRESHNESS_FILES) {
+        const details = await stat(relative);
+        if (details?.isFile()) consider(relative, details);
+      }
+      const stateDir = await stat(".threadlight");
+      if (stateDir?.isDirectory() && !stateDir.isSymbolicLink()) {
+        for (const entry of (await list(".threadlight")) ?? []) {
+          const relative = `.threadlight/${entry.name}`;
+          if (
+            entry.isFile() &&
+            entry.name.endsWith(".json") &&
+            FRESHNESS_PREFIXES.some((prefix) => relative.startsWith(prefix))
+          ) {
+            consider(relative, await stat(relative));
+          }
+        }
+      }
+      let visited = 0;
+      for (const root of FRESHNESS_DIRECTORIES) {
+        const rootDetails = await stat(root);
+        if (!rootDetails?.isDirectory() || rootDetails.isSymbolicLink()) {
+          continue;
+        }
+        const pending = [root];
+        while (pending.length) {
+          const current = pending.pop();
+          for (const entry of (await list(current)) ?? []) {
+            if (++visited > maxEntries) {
+              unverifiable = "too-many";
+              return result();
+            }
+            const relative = `${current}/${entry.name}`;
+            if (entry.isSymbolicLink()) {
+              continue;
+            }
+            if (entry.isDirectory()) {
+              if (!FRESHNESS_PRUNE.has(entry.name) && !entry.name.endsWith(".egg-info")) {
+                pending.push(relative);
+              }
+            } else if (entry.isFile() && !entry.name.startsWith(".env")) {
+              consider(relative, await stat(relative));
+            }
+          }
+        }
+      }
+      return result();
+    },
+
     async agentOpsRoots(explicitRoots = []) {
       if (!Array.isArray(explicitRoots) || explicitRoots.length > 20000) {
         throw new ArtifactAccessError("agentops.yaml", "invalid explicit root inventory");
