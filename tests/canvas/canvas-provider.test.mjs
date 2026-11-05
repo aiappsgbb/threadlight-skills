@@ -93,6 +93,19 @@ test("provider exposes refresh and prepare_intent actions in order", () => {
   assert.equal(Object.hasOwn(canvas, "title"), false);
 });
 
+test("open input accepts milestone ids and keeps legacy phase ids for compatibility", () => {
+  const { canvas } = createHarness();
+  const allowed = canvas.inputSchema.properties.phase.enum;
+
+  for (const id of ["design", "controls", "publish", "verify", "evaluate", "go-live"]) {
+    assert.ok(allowed.includes(id), id);
+  }
+  for (const legacy of ["build-deploy", "discover", "protect-govern", "improve", "handoff"]) {
+    assert.ok(allowed.includes(legacy), legacy);
+  }
+  assert.match(canvas.description, /business process/i);
+});
+
 test("supported open projects workspace and closes its loopback server and watcher", async () => {
   const { canvas, projected, servers, watchers, closeEvents } = createHarness();
 

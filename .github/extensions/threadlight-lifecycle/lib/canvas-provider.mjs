@@ -1,14 +1,11 @@
 import { createIntentBroker } from "./intents.mjs";
 import { createLoopbackServer } from "./http-server.mjs";
+import { LIFECYCLE_PHASES } from "./lifecycle-registry.mjs";
 
-const PHASES = [
-  "design",
-  "build-deploy",
-  "discover",
-  "protect-govern",
-  "improve",
-  "handoff",
-];
+// Milestone ids, plus the pre-2.23 phase ids so existing callers keep opening
+// the Canvas (the value is advisory; the Canvas always opens on "Now").
+const LEGACY_PHASES = ["build-deploy", "discover", "protect-govern", "improve", "handoff"];
+const PHASES = [...LIFECYCLE_PHASES.map(({ id }) => id), ...LEGACY_PHASES];
 
 const OPEN_INPUT_SCHEMA = {
   type: "object",
@@ -55,12 +52,12 @@ export function createLifecycleCanvas({
     id: "threadlight-lifecycle",
     displayName: "Threadlight Lifecycle",
     description:
-      "Start and inspect a Threadlight pilot by outcome without needing skill names.",
+      "Follow a business process from design to a working agent pilot on Microsoft Foundry: where it stands, what blocks it, and the one next step.",
     inputSchema: OPEN_INPUT_SCHEMA,
     actions: [
       {
         name: "refresh",
-        description: "Refresh the Threadlight lifecycle workspace projection.",
+        description: "Re-read the workspace artifacts and the committed threadlight-auto plan.",
         inputSchema: NO_INPUT_SCHEMA,
         handler: async ({ instanceId }) => {
           const instance = requireInstance(instances, instanceId);

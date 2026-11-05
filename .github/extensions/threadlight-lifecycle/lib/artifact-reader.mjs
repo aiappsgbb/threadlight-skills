@@ -13,7 +13,8 @@ const ALLOWED_FILES = new Set([
   "specs/cost-reconciliation-manifest.json",
   "specs/evals-manifest.json",
   "specs/redteam-manifest.json",
-  "specs/govern-manifest.json",
+  "specs/governance-manifest.json",
+  "specs/governance-contract.json",
   "specs/agentops-manifest.json",
   "specs/connect-manifest.json",
   "specs/ground-manifest.json",
@@ -22,7 +23,9 @@ const ALLOWED_FILES = new Set([
   "qualification/sizing-manifest.json",
   "tests/production-readiness-manifest.json",
   "tests/postdeploy-manifest.json",
+  "tests/governed-actions-manifest.json",
   ".threadlight/auto-state.json",
+  ".threadlight/auto-next.json",
   ".threadlight/preflight-passed.json",
   "azure-pipelines.yml",
   "docs/safe-check-post.md",
@@ -30,6 +33,7 @@ const ALLOWED_FILES = new Set([
   "docs/cost-reconciliation-report.md",
   "docs/redteam-report.md",
   "docs/production-readiness-report.md",
+  "docs/invoke-results.md",
 ]);
 
 const ALLOWED_ROOTS = [
@@ -38,6 +42,8 @@ const ALLOWED_ROOTS = [
   "src/bot",
   "src/triggers",
   "src/workspace",
+  "src/mcp",
+  "infra/citadel-access-contracts",
   ".github/workflows",
   "docs/threadlight-customize",
   "router-bench-out",

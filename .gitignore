@@ -17,3 +17,6 @@ docs/skills.html
 # Isolated exact-pin runtime validation and local pytest scratch.
 .governance-pin-venv/
 .governance-validation/
+
+# Canvas test workspaces (created and removed by tests/canvas)
+tests/canvas/.tmp-*/

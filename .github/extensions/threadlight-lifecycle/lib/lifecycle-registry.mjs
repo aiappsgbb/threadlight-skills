@@ -35,6 +35,9 @@ export function skill(
     completionMode: options.completionMode ?? "artifact-complete",
     completionArtifact: options.completionArtifact ?? null,
     freshnessHours: options.freshnessHours ?? null,
+    // threadlight-auto planner stage this skill owns (null when the skill is
+    // not a planner gate). The plan, not this registry, decides gate order.
+    stage: options.stage ?? null,
     affectsPhaseStatus: options.affectsPhaseStatus ?? true,
     nextIntent: Object.freeze({
       ...(options.nextIntent ?? { type: "resume_phase", phase }),
@@ -129,22 +132,25 @@ export const LEG_ENVELOPE_CONTRACTS = deepFreeze({
   },
 });
 
+// Process-language milestones, in the order a pilot is proven. Each groups
+// one or more threadlight-auto planner stages (see process-model.mjs).
 export const LIFECYCLE_PHASES = Object.freeze([
-  Object.freeze({ id: "design", label: "Design", view: "design" }),
-  Object.freeze({
-    id: "build-deploy",
-    label: "Build / Deploy",
-    view: "run",
-  }),
-  Object.freeze({ id: "discover", label: "Discover", view: "assurance" }),
-  Object.freeze({
-    id: "protect-govern",
-    label: "Protect / Govern",
-    view: "assurance",
-  }),
-  Object.freeze({ id: "improve", label: "Improve", view: "generic" }),
-  Object.freeze({ id: "handoff", label: "Handoff", view: "handoff" }),
+  Object.freeze({ id: "design", label: "Design", title: "Design the process" }),
+  Object.freeze({ id: "controls", label: "Controls", title: "Select runtime controls" }),
+  Object.freeze({ id: "publish", label: "Publish", title: "Publish on Microsoft Foundry" }),
+  Object.freeze({ id: "verify", label: "Verify", title: "Verify it live" }),
+  Object.freeze({ id: "evaluate", label: "Evaluate", title: "Measure quality and safety" }),
+  Object.freeze({ id: "go-live", label: "Go-live", title: "Decide on go-live" }),
 ]);
+
+function advisory(id, phase, label, requiredArtifactGroups, options = {}) {
+  return skill(id, phase, label, requiredArtifactGroups, {
+    role: "advisory",
+    affectsPhaseStatus: false,
+    ...options,
+    nextIntent: { type: "invoke_skill", skillId: id, phase },
+  });
+}
 
 export const SKILL_REGISTRY = Object.freeze([
   skill(
@@ -155,9 +161,8 @@ export const SKILL_REGISTRY = Object.freeze([
     {
       role: "entry",
       // No-repo entry point: qualification/sizing precedes the repo, so it is
-      // advisory and never gates the Design phase.
+      // advisory and never gates the Design milestone.
       affectsPhaseStatus: false,
-      completionMode: "artifact-complete",
       nextIntent: { type: "invoke_skill", skillId: "threadlight-qualify", phase: "design" },
     },
   ),
@@ -166,6 +171,7 @@ export const SKILL_REGISTRY = Object.freeze([
     "design",
     "Define the pilot",
     [artifactGroup("specs/SPEC.md"), artifactGroup("specs/manifest.json")],
+    { stage: "design" },
   ),
   skill(
     "threadlight-demo-data-factory",
@@ -187,11 +193,11 @@ export const SKILL_REGISTRY = Object.freeze([
       prerequisiteSkills: ["threadlight-design"],
     },
   ),
-  skill(
+  advisory(
     "threadlight-hitl-patterns",
     "design",
-    "Design human decisions",
-    [artifactGroup("src/bot")],
+    "Design human approval cards",
+    [artifactGroup("src/bot/cards/card_registry.json")],
     {
       applicability: "human-approval",
       prerequisiteSkills: ["threadlight-design"],
@@ -209,19 +215,42 @@ export const SKILL_REGISTRY = Object.freeze([
   ),
   skill(
     "threadlight-auto",
-    "build-deploy",
-    "Drive the pilot lifecycle",
-    [artifactGroup(".threadlight/auto-state.json")],
+    "design",
+    "Plan and drive the pilot lifecycle",
+    [artifactGroup(".threadlight/auto-next.json")],
     {
       role: "orchestrator",
       completionMode: "artifact-running",
       affectsPhaseStatus: false,
+      optionalArtifacts: [".threadlight/auto-state.json"],
       prerequisiteSkills: ["threadlight-design"],
     },
   ),
   skill(
+    "threadlight-govern",
+    "controls",
+    "Select runtime controls",
+    [artifactGroup("specs/governance-manifest.json")],
+    {
+      stage: "govern",
+      optionalArtifacts: ["specs/governance-contract.json"],
+      prerequisiteSkills: ["threadlight-design"],
+    },
+  ),
+  skill(
+    "threadlight-governed-actions",
+    "controls",
+    "Validate governed actions",
+    [artifactGroup("tests/governed-actions-manifest.json")],
+    {
+      stage: "governed_actions_gate",
+      applicability: "governance-contract",
+      prerequisiteSkills: ["threadlight-govern"],
+    },
+  ),
+  skill(
     "threadlight-local-test",
-    "build-deploy",
+    "publish",
     "Run the local inner loop",
     [],
     {
@@ -232,20 +261,49 @@ export const SKILL_REGISTRY = Object.freeze([
   ),
   skill(
     "threadlight-deploy",
-    "build-deploy",
-    "Deploy to the sandbox",
+    "publish",
+    "Publish to the sandbox",
     [artifactGroup("azure.yaml"), artifactGroup("infra/main.bicep")],
     {
-      optionalArtifacts: ["docs/safe-check-post.md"],
-      prerequisiteSkills: ["threadlight-design"],
+      stage: "deploy",
+      prerequisiteSkills: ["threadlight-design", "threadlight-governed-actions"],
     },
+  ),
+  advisory(
+    "threadlight-citadel-hub",
+    "publish",
+    "Stand up the AI governance hub",
+    [],
+    { completionMode: "manual", applicability: "governance-hub" },
+  ),
+  advisory(
+    "threadlight-citadel-spoke",
+    "publish",
+    "Connect to the AI governance hub",
+    [artifactGroup("infra/citadel-access-contracts")],
+    { applicability: "governance-hub", prerequisiteSkills: ["threadlight-design"] },
+  ),
+  advisory(
+    "threadlight-mcp-aca",
+    "publish",
+    "Host mock systems as MCP servers",
+    [artifactGroup("src/mcp")],
+    { applicability: "aca-mcp", prerequisiteSkills: ["threadlight-design"] },
+  ),
+  advisory(
+    "threadlight-tenant-isolation",
+    "publish",
+    "Isolate Azure tenants per shell",
+    [],
+    { completionMode: "manual" },
   ),
   skill(
     "threadlight-safe-check",
-    "build-deploy",
+    "verify",
     "Verify the deployment",
     [artifactGroup("tests/postdeploy-manifest.json")],
     {
+      stage: "safe_check",
       freshnessHours: 24,
       optionalArtifacts: ["docs/safe-check-post.md"],
       prerequisiteSkills: ["threadlight-deploy"],
@@ -253,102 +311,77 @@ export const SKILL_REGISTRY = Object.freeze([
   ),
   skill(
     "threadlight-consumption-iq",
-    "discover",
+    "verify",
     "Project consumption",
     [artifactGroup("specs/cost-manifest.json")],
     {
+      stage: "cost_projection",
       optionalArtifacts: ["docs/cost-projection.md"],
       prerequisiteSkills: ["threadlight-safe-check"],
     },
   ),
   skill(
+    "threadlight-agentops",
+    "evaluate",
+    "Inspect per-agent operations",
+    [artifactGroup("specs/agentops-manifest.json")],
+    {
+      stage: "agentops",
+      applicability: "agentops-opt-in",
+      role: "advisory",
+      affectsPhaseStatus: false,
+      freshnessHours: 24,
+      prerequisiteSkills: ["threadlight-safe-check"],
+      nextIntent: { type: "invoke_skill", skillId: "threadlight-agentops", phase: "evaluate" },
+    },
+  ),
+  skill(
     "threadlight-evals",
-    "discover",
+    "evaluate",
     "Measure quality",
     [artifactGroup("specs/evals-manifest.json")],
     {
+      stage: "evals",
       freshnessHours: 24,
       prerequisiteSkills: ["threadlight-safe-check"],
     },
   ),
   skill(
     "threadlight-redteam",
-    "discover",
+    "evaluate",
     "Probe adversarial safety",
     [artifactGroup("specs/redteam-manifest.json")],
     {
+      stage: "redteam",
       optionalArtifacts: ["docs/redteam-report.md"],
       freshnessHours: 24,
       prerequisiteSkills: ["threadlight-safe-check"],
     },
   ),
-  skill(
+  advisory(
     "threadlight-connect",
-    "discover",
+    "evaluate",
     "Bind real integrations",
     [artifactGroup("specs/connect-manifest.json")],
-    {
-      // Advisory live leg: manual invocation only, never gates the phase.
-      role: "advisory",
-      affectsPhaseStatus: false,
-      freshnessHours: 24,
-      prerequisiteSkills: ["threadlight-safe-check"],
-      nextIntent: { type: "invoke_skill", skillId: "threadlight-connect", phase: "discover" },
-    },
+    { freshnessHours: 24, prerequisiteSkills: ["threadlight-safe-check"] },
   ),
-  skill(
+  advisory(
     "threadlight-ground",
-    "discover",
+    "evaluate",
     "Prove grounding & ACLs",
     [artifactGroup("specs/ground-manifest.json")],
-    {
-      role: "advisory",
-      affectsPhaseStatus: false,
-      freshnessHours: 24,
-      prerequisiteSkills: ["threadlight-safe-check"],
-      nextIntent: { type: "invoke_skill", skillId: "threadlight-ground", phase: "discover" },
-    },
+    { freshnessHours: 24, prerequisiteSkills: ["threadlight-safe-check"] },
   ),
-  skill(
+  advisory(
     "threadlight-loadtest",
-    "discover",
+    "evaluate",
     "Load-test the pilot",
     [artifactGroup("specs/load-manifest.json")],
-    {
-      role: "advisory",
-      affectsPhaseStatus: false,
-      freshnessHours: 24,
-      prerequisiteSkills: ["threadlight-safe-check"],
-      nextIntent: { type: "invoke_skill", skillId: "threadlight-loadtest", phase: "discover" },
-    },
-  ),
-  skill(
-    "threadlight-govern",
-    "protect-govern",
-    "Verify runtime governance",
-    [artifactGroup("specs/govern-manifest.json")],
-    {
-      freshnessHours: 24,
-      prerequisiteSkills: ["threadlight-safe-check"],
-    },
-  ),
-  skill(
-    "threadlight-agentops",
-    "improve",
-    "Inspect per-agent operations",
-    [artifactGroup("specs/agentops-manifest.json")],
-    {
-      applicability: "agentops-opt-in",
-      role: "advisory",
-      affectsPhaseStatus: false,
-      freshnessHours: 24,
-      prerequisiteSkills: ["threadlight-safe-check"],
-      nextIntent: { type: "invoke_skill", skillId: "threadlight-agentops", phase: "improve" },
-    },
+    { freshnessHours: 24, prerequisiteSkills: ["threadlight-safe-check"] },
   ),
   skill(
     "threadlight-router-bench",
-    "improve",
+    "evaluate",
     "Learn from completed runs",
     [artifactGroup("router-bench-out")],
     {
@@ -356,21 +389,8 @@ export const SKILL_REGISTRY = Object.freeze([
     },
   ),
   skill(
-    "threadlight-upgrade",
-    "improve",
-    "Track upgrade drift",
-    [artifactGroup("specs/upgrade-manifest.json")],
-    {
-      role: "advisory",
-      affectsPhaseStatus: false,
-      freshnessHours: 24,
-      prerequisiteSkills: ["threadlight-safe-check"],
-      nextIntent: { type: "invoke_skill", skillId: "threadlight-upgrade", phase: "improve" },
-    },
-  ),
-  skill(
     "threadlight-production-ready",
-    "handoff",
+    "go-live",
     "Assess production readiness",
     [artifactGroup("tests/production-readiness-manifest.json")],
     {
@@ -380,7 +400,7 @@ export const SKILL_REGISTRY = Object.freeze([
   ),
   skill(
     "threadlight-cicd",
-    "handoff",
+    "go-live",
     "Prepare the production pipeline",
     [
       artifactGroup(
@@ -394,11 +414,18 @@ export const SKILL_REGISTRY = Object.freeze([
   ),
   skill(
     "threadlight-customize",
-    "handoff",
+    "go-live",
     "Prepare customer onboarding",
     [artifactGroup("docs/threadlight-customize/customer-profile.md")],
     {
       prerequisiteSkills: ["threadlight-production-ready"],
     },
+  ),
+  advisory(
+    "threadlight-upgrade",
+    "go-live",
+    "Track upgrade drift",
+    [artifactGroup("specs/upgrade-manifest.json")],
+    { freshnessHours: 24, prerequisiteSkills: ["threadlight-safe-check"] },
   ),
 ]);

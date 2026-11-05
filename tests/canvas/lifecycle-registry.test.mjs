@@ -17,6 +17,17 @@ const NEW_ADVISORY_LEGS = new Set([
   "threadlight-upgrade",
 ]);
 
+// Platform and design helpers that are optional for a given pilot: they are
+// listed for technical detail and can be invoked by name, but never gate a
+// milestone (threadlight-auto's plan decides the gates).
+const ADVISORY_PLATFORM_SKILLS = new Set([
+  "threadlight-hitl-patterns",
+  "threadlight-citadel-hub",
+  "threadlight-citadel-spoke",
+  "threadlight-mcp-aca",
+  "threadlight-tenant-isolation",
+]);
+
 const LEG_SCHEMA_PATHS = {
   "specs/connect-manifest.json":
     "../../skills/threadlight-connect/references/connect-manifest.schema.json",
@@ -74,12 +85,17 @@ test("registry exposes the exact lifecycle skill ids", () => {
     "threadlight-production-ready",
     "threadlight-cicd",
     "threadlight-customize",
+    "threadlight-governed-actions",
+    "threadlight-citadel-hub",
+    "threadlight-citadel-spoke",
+    "threadlight-mcp-aca",
+    "threadlight-tenant-isolation",
   ]);
 
   const actualIds = SKILL_REGISTRY.map((skill) => skill.id);
 
-  assert.equal(actualIds.length, 23);
-  assert.equal(new Set(actualIds).size, 23);
+  assert.equal(actualIds.length, 28);
+  assert.equal(new Set(actualIds).size, 28);
   assert.deepEqual(new Set(actualIds), expectedIds);
 });
 
@@ -88,11 +104,11 @@ test("registry exposes the exact phase order and memberships", () => {
     LIFECYCLE_PHASES.map(({ id }) => id),
     [
       "design",
-      "build-deploy",
-      "discover",
-      "protect-govern",
-      "improve",
-      "handoff",
+      "controls",
+      "publish",
+      "verify",
+      "evaluate",
+      "go-live",
     ],
   );
 
@@ -112,7 +128,13 @@ test("registry preserves the exact prerequisite contracts", () => {
     ["threadlight-workspace-ui", ["threadlight-design"]],
     ["threadlight-auto", ["threadlight-design"]],
     ["threadlight-local-test", ["threadlight-design"]],
-    ["threadlight-deploy", ["threadlight-design"]],
+    ["threadlight-govern", ["threadlight-design"]],
+    ["threadlight-governed-actions", ["threadlight-govern"]],
+    ["threadlight-deploy", ["threadlight-design", "threadlight-governed-actions"]],
+    ["threadlight-citadel-hub", []],
+    ["threadlight-citadel-spoke", ["threadlight-design"]],
+    ["threadlight-mcp-aca", ["threadlight-design"]],
+    ["threadlight-tenant-isolation", []],
     ["threadlight-safe-check", ["threadlight-deploy"]],
     ["threadlight-connect", ["threadlight-safe-check"]],
     ["threadlight-consumption-iq", ["threadlight-safe-check"]],
@@ -120,7 +142,6 @@ test("registry preserves the exact prerequisite contracts", () => {
     ["threadlight-redteam", ["threadlight-safe-check"]],
     ["threadlight-ground", ["threadlight-safe-check"]],
     ["threadlight-loadtest", ["threadlight-safe-check"]],
-    ["threadlight-govern", ["threadlight-safe-check"]],
     ["threadlight-router-bench", ["threadlight-evals"]],
     ["threadlight-agentops", ["threadlight-safe-check"]],
     ["threadlight-upgrade", ["threadlight-safe-check"]],
@@ -156,11 +177,11 @@ test("qualify is a no-repo Design entry that does not gate the phase", () => {
 test("new live legs are advisory manual handoffs in their phases", () => {
   const byId = new Map(SKILL_REGISTRY.map((s) => [s.id, s]));
   const expectedPhase = {
-    "threadlight-agentops": "improve",
-    "threadlight-connect": "discover",
-    "threadlight-ground": "discover",
-    "threadlight-loadtest": "discover",
-    "threadlight-upgrade": "improve",
+    "threadlight-agentops": "evaluate",
+    "threadlight-connect": "evaluate",
+    "threadlight-ground": "evaluate",
+    "threadlight-loadtest": "evaluate",
+    "threadlight-upgrade": "go-live",
   };
   for (const [id, phase] of Object.entries(expectedPhase)) {
     const skill = byId.get(id);
@@ -177,7 +198,7 @@ test("new live legs are advisory manual handoffs in their phases", () => {
 test("new advisory legs + qualify next intents name their own skill", () => {
   // Every next intent must pass the intent validator (proving it is a real,
   // permission-gated chat intent) — there is no automatic live/tool action.
-  for (const id of [...NEW_ADVISORY_LEGS, "threadlight-qualify"]) {
+  for (const id of [...NEW_ADVISORY_LEGS, ...ADVISORY_PLATFORM_SKILLS, "threadlight-qualify"]) {
     const skill = SKILL_REGISTRY.find((s) => s.id === id);
     assert.ok(skill, `${id} registered`);
     // Declarative payload names its own skill id (and phase context).
@@ -200,7 +221,11 @@ test("new advisory legs + qualify next intents name their own skill", () => {
 });
 
 test("existing phase skills keep their resume_phase next intents unchanged", () => {
-  const named = new Set([...NEW_ADVISORY_LEGS, "threadlight-qualify"]);
+  const named = new Set([
+    ...NEW_ADVISORY_LEGS,
+    ...ADVISORY_PLATFORM_SKILLS,
+    "threadlight-qualify",
+  ]);
   const existing = SKILL_REGISTRY.filter((skill) => !named.has(skill.id));
 
   assert.equal(existing.length, 17);
@@ -220,7 +245,7 @@ test("existing phase skills keep their resume_phase next intents unchanged", () 
 
 test("AgentOps is per-agent opt-in and does not replace assurance owners", () => {
   const definition = SKILL_REGISTRY.find(({ id }) => id === "threadlight-agentops");
-  assert.equal(definition.phase, "improve");
+  assert.equal(definition.phase, "evaluate");
   assert.equal(definition.applicability, "agentops-opt-in");
   assert.deepEqual(definition.requiredArtifactGroups, [["specs/agentops-manifest.json"]]);
   assert.equal(definition.freshnessHours, 24);
@@ -232,5 +257,62 @@ test("skills remain declarative and have no command handlers", () => {
   for (const skill of SKILL_REGISTRY) {
     assert.equal(Object.hasOwn(skill, "command"), false, skill.id);
     assert.equal(Object.hasOwn(skill, "handler"), false, skill.id);
+  }
+});
+
+test("govern reads the real governance manifest, never the legacy govern manifest", () => {
+  const govern = SKILL_REGISTRY.find(({ id }) => id === "threadlight-govern");
+  assert.deepEqual(govern.requiredArtifactGroups, [["specs/governance-manifest.json"]]);
+  const paths = SKILL_REGISTRY.flatMap((skill) => [
+    ...skill.requiredArtifactGroups.flat(),
+    ...skill.optionalArtifacts,
+  ]);
+  assert.equal(paths.includes("specs/govern-manifest.json"), false);
+});
+
+test("governed actions gate is registered with its real manifest", () => {
+  const gate = SKILL_REGISTRY.find(({ id }) => id === "threadlight-governed-actions");
+  assert.equal(gate.phase, "controls");
+  assert.deepEqual(gate.requiredArtifactGroups, [["tests/governed-actions-manifest.json"]]);
+  assert.equal(gate.stage, "governed_actions_gate");
+});
+
+test("human-approval design is tied to approval cards, not any bot folder", () => {
+  const hitl = SKILL_REGISTRY.find(({ id }) => id === "threadlight-hitl-patterns");
+  assert.deepEqual(hitl.requiredArtifactGroups, [["src/bot/cards/card_registry.json"]]);
+});
+
+test("registry stage ids map onto threadlight-auto stages in milestone order", () => {
+  const byStage = Object.fromEntries(
+    SKILL_REGISTRY.filter((skill) => skill.stage).map((skill) => [skill.stage, skill.id]),
+  );
+  assert.deepEqual(byStage, {
+    design: "threadlight-design",
+    govern: "threadlight-govern",
+    governed_actions_gate: "threadlight-governed-actions",
+    deploy: "threadlight-deploy",
+    safe_check: "threadlight-safe-check",
+    cost_projection: "threadlight-consumption-iq",
+    agentops: "threadlight-agentops",
+    evals: "threadlight-evals",
+    redteam: "threadlight-redteam",
+  });
+  const order = LIFECYCLE_PHASES.map(({ id }) => id);
+  const milestoneIndex = (id) =>
+    order.indexOf(SKILL_REGISTRY.find((skill) => skill.id === id).phase);
+  // Real governed chain: design -> govern -> gate -> deploy -> safe-check -> evals.
+  const chain = [
+    "threadlight-design",
+    "threadlight-govern",
+    "threadlight-governed-actions",
+    "threadlight-deploy",
+    "threadlight-safe-check",
+    "threadlight-evals",
+  ];
+  for (let index = 1; index < chain.length; index += 1) {
+    assert.ok(
+      milestoneIndex(chain[index - 1]) <= milestoneIndex(chain[index]),
+      `${chain[index - 1]} before ${chain[index]}`,
+    );
   }
 });

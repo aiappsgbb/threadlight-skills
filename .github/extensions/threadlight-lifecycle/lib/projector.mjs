@@ -7,6 +7,7 @@ import {
   LIFECYCLE_PHASES,
   SKILL_REGISTRY,
 } from "./lifecycle-registry.mjs";
+import { assessPlan, buildProcessModel, parseSpec } from "./process-model.mjs";
 
 const COST_ACTUALS_SCHEMA = "threadlight-cost-actuals/v1";
 const COST_RECONCILIATION_SCHEMA = "threadlight-cost-reconciliation/v1";
@@ -19,6 +20,7 @@ const READINESS_REQUIRED_BOOLEANS = Object.freeze([
 ]);
 
 const ACTIONABLE_PHASE_STATUSES = new Set([
+  "prepared",
   "ready",
   "blocked",
   "failed",
@@ -62,7 +64,7 @@ function hasTrait(manifest, trait) {
   );
 }
 
-function isSkillApplicable(definition, manifest, manifestInvalid) {
+function isSkillApplicable(definition, manifest, manifestInvalid, context = {}) {
   if (definition.applicability === "always") {
     return true;
   }
@@ -84,6 +86,12 @@ function isSkillApplicable(definition, manifest, manifestInvalid) {
       const selectors = moduleSelectors(manifest);
       return isYes(selectors["workspace-ui"]);
     }
+    case "aca-mcp":
+      return isYes(moduleSelectors(manifest)["aca-mcp"]);
+    case "governance-hub":
+      return manifest?.governance_hub?.required === true;
+    case "governance-contract":
+      return context.hasGovernanceContract === true;
     case "event-trigger": {
       const selectors = moduleSelectors(manifest);
       return (
@@ -292,7 +300,6 @@ const ASSURANCE_REDTEAM_FINDING_IDS = new Set([
   "SAFE-105",
   "SAFE-106",
 ]);
-const ASSURANCE_AGT_PROFILES = new Set(["auto", "v3_7", "v4_preview", "none"]);
 const ASSURANCE_REDTEAM_ASR_KEYS = new Set([
   "jailbreak",
   "prompt_injection",
@@ -301,22 +308,6 @@ const ASSURANCE_REDTEAM_ASR_KEYS = new Set([
   "harmful_content",
 ]);
 const ASSURANCE_CONTRACTS = Object.freeze({
-  "specs/govern-manifest.json": Object.freeze({
-    schema: "threadlight-govern-manifest/v2",
-    knownVerdicts: new Set(["governed", "partial", "ungoverned"]),
-    requiredCapabilities: new Set([
-      "policy_artefact_present",
-      "policy_schema_valid",
-      "policy_versioned",
-      "policy_default_deny",
-      "sensitive_action_rules_present",
-      "policy_tests_present",
-      "ci_gate_present",
-      "attestation_present",
-      "attestation_fresh",
-      "asi_reference_present",
-    ]),
-  }),
   "specs/evals-manifest.json": Object.freeze({
     schema: "threadlight-evals-manifest/v1",
     knownVerdicts: new Set(["comprehensive", "partial", "offline-only", "none"]),
@@ -465,28 +456,6 @@ function validateAssuranceCapabilities(manifestPath, capabilities, contract) {
   return null;
 }
 
-function validateGovernAssurance(manifestPath, value, contract) {
-  if (
-    "freshness_window_days" in value &&
-    !isNonNegativeInteger(value.freshness_window_days)
-  ) {
-    return `${manifestPath.split("/").at(-1)} has invalid 'freshness_window_days'`;
-  }
-  if (
-    "agt_profile" in value &&
-    (typeof value.agt_profile !== "string" ||
-      !ASSURANCE_AGT_PROFILES.has(value.agt_profile))
-  ) {
-    return `${manifestPath.split("/").at(-1)} has invalid 'agt_profile'`;
-  }
-  for (const field of ["must_fix", "should_fix", "not_verified"]) {
-    if (field in value && !isStringArray(value[field])) {
-      return `${manifestPath.split("/").at(-1)} has invalid '${field}' (must be list of strings)`;
-    }
-  }
-  return validateAssuranceCapabilities(manifestPath, value.capabilities, contract);
-}
-
 function validateEvalsAssurance(manifestPath, value, contract) {
   if (
     "freshness_window_days" in value &&
@@ -614,16 +583,62 @@ function validateAssuranceManifest(manifestPath, value) {
       "missing or invalid 'capabilities' (must be object)",
     );
   }
-  const validator = manifestPath === "specs/govern-manifest.json"
-    ? validateGovernAssurance
-    : manifestPath === "specs/evals-manifest.json"
-      ? validateEvalsAssurance
-      : validateRedteamAssurance;
+  const validator = manifestPath === "specs/evals-manifest.json"
+    ? validateEvalsAssurance
+    : validateRedteamAssurance;
   const validationError = validator(manifestPath, value, contract);
   if (validationError) {
     return { valid: false, reason: validationError };
   }
   return { valid: true, verdict: value.verdict, capturedAt };
+}
+
+const GOVERNANCE_MANIFEST_SCHEMA = "threadlight-governance-manifest/v1";
+const GOVERNANCE_BINDING_STATUSES = new Set([
+  "enforced",
+  "observed",
+  "unbound",
+  "unsupported",
+  "unverified",
+  "bypassable",
+]);
+
+// Conservative Canvas reading of specs/governance-manifest.json. The Python
+// consumer (skills/_shared/governance_readiness.assess) and threadlight-auto's
+// plan stay authoritative; the Canvas only refuses to call offline inventory
+// "complete". Complete requires every binding enforced or explicitly unbound,
+// at least one enforced binding and passing live probes. Legacy
+// govern-manifest v2 is provenance only and is never read as enforcement.
+function classifyGovernanceManifest(value) {
+  if (!isPlainObject(value) || value.schema !== GOVERNANCE_MANIFEST_SCHEMA) {
+    return {
+      status: "failed",
+      error: `governance-manifest.json schema expected ${JSON.stringify(GOVERNANCE_MANIFEST_SCHEMA)}; legacy or unknown schemas are not enforcement.`,
+    };
+  }
+  const bindings = value.bindings;
+  const probes = value.live_probes;
+  if (
+    !Array.isArray(bindings) ||
+    !Array.isArray(probes) ||
+    !bindings.every(
+      (binding) => isPlainObject(binding) && GOVERNANCE_BINDING_STATUSES.has(binding.status),
+    ) ||
+    !probes.every((probe) => isPlainObject(probe) && ["pass", "fail"].includes(probe.status))
+  ) {
+    return { status: "failed", error: "governance-manifest.json bindings or live_probes are malformed." };
+  }
+  if (
+    bindings.some((binding) => binding.status === "bypassable") ||
+    probes.some((probe) => probe.status === "fail")
+  ) {
+    return { status: "failed", error: null };
+  }
+  const liveProven =
+    probes.length > 0 &&
+    bindings.some((binding) => binding.status === "enforced") &&
+    bindings.every((binding) => ["enforced", "unbound"].includes(binding.status));
+  return { status: liveProven ? "complete" : "prepared", error: null };
 }
 
 function validateLegEnvelope(value, contract) {
@@ -943,7 +958,7 @@ async function costEvidenceState(reader, manifest) {
 function readinessEvidenceState(assurance, readiness, safeCheckStatus) {
   if (
     safeCheckStatus !== "complete" ||
-    assurance?.govern !== "governed" ||
+    assurance?.govern !== "complete" ||
     assurance?.evals !== "comprehensive" ||
     assurance?.redteam !== "hardened" ||
     !isPlainObject(readiness) ||
@@ -973,7 +988,7 @@ async function skillEvidenceState(definition, reader, manifest, projectedSkills)
   }
   if (definition.id === "threadlight-production-ready") {
     const [govern, evals, redteam, readiness, postdeploy] = await Promise.all([
-      readOptionalJson(reader, "specs/govern-manifest.json"),
+      readOptionalJson(reader, "specs/governance-manifest.json"),
       readOptionalJson(reader, "specs/evals-manifest.json"),
       readOptionalJson(reader, "specs/redteam-manifest.json"),
       readOptionalJson(reader, "tests/production-readiness-manifest.json"),
@@ -986,10 +1001,6 @@ async function skillEvidenceState(definition, reader, manifest, projectedSkills)
       return undefined;
     }
     const safeCheckStatus = projectedSkills.get("threadlight-safe-check")?.status ?? null;
-    const governValidation =
-      govern.state === "present"
-        ? validateAssuranceManifest("specs/govern-manifest.json", govern.value)
-        : null;
     const evalsValidation =
       evals.state === "present"
         ? validateAssuranceManifest("specs/evals-manifest.json", evals.value)
@@ -1000,7 +1011,7 @@ async function skillEvidenceState(definition, reader, manifest, projectedSkills)
         : null;
     return readinessEvidenceState(
       {
-        govern: governValidation?.valid ? governValidation.verdict : null,
+        govern: projectedSkills.get("threadlight-govern")?.status ?? null,
         evals: evalsValidation?.valid ? evalsValidation.verdict : null,
         redteam: redteamValidation?.valid ? redteamValidation.verdict : null,
       },
@@ -1155,7 +1166,7 @@ function aggregatePhaseStatus(skills) {
   if (statuses.includes("complete")) {
     return "running";
   }
-  if (statuses.includes("running")) {
+  if (statuses.includes("running") || statuses.includes("prepared")) {
     return "running";
   }
   if (statuses.includes("ready")) {
@@ -1204,6 +1215,7 @@ async function projectSkill({
   projectedSkills,
   errors,
   now,
+  context,
 }) {
   let agentOpsRoots = null;
   if (definition.applicability === "agentops-opt-in") {
@@ -1238,7 +1250,7 @@ async function projectSkill({
       return { definition, status: "not-applicable", evidence: [], blockers: [] };
     }
   }
-  if (!isSkillApplicable(definition, manifest, manifestInvalid)) {
+  if (!isSkillApplicable(definition, manifest, manifestInvalid, context)) {
     return {
       definition,
       status: "not-applicable",
@@ -1363,6 +1375,12 @@ async function projectSkill({
           if (now - timestamp >= Math.min(hours, definition.freshnessHours) * 3_600_000) status = "stale";
           if (json.verdict === "blocked") status = "failed";
         }
+      } else if (jsonExists && jsonPath === "specs/governance-manifest.json") {
+        const classified = classifyGovernanceManifest(json);
+        status = classified.status;
+        if (classified.error) {
+          errors.push({ code: "artifact-invalid", path: jsonPath, message: classified.error });
+        }
       } else if (jsonExists && legContract) {
         // Live-leg artifact: only project from its status once the safe common
         // envelope validates. A malformed manifest renders `failed` + a
@@ -1430,12 +1448,14 @@ async function projectSkill({
     status = statusWithFreshness(status, definition, timestamp, now, jsonPath);
   }
 
+  // azure.yaml + infra/main.bicep are a scaffold: prepared offline, not live
+  // until a single azd environment carries a real AGENT_FQDN.
   if (
     definition.id === "threadlight-deploy" &&
     status === "complete" &&
     !(await hasDeployCompletionEvidence(reader))
   ) {
-    status = "running";
+    status = "prepared";
   }
 
   if (
@@ -1495,30 +1515,95 @@ function buildPhases(projectedSkills) {
   });
 }
 
-function choosePrimaryAction(phases) {
-  const design = phases.find((phase) => phase.id === "design");
-  if (design?.status === "ready") {
-    return { type: "start_pilot" };
-  }
+// Inputs that threadlight-auto's planner reads; a change newer than the
+// plan's decided_at means the committed plan may name the wrong next step.
+const PLAN_INPUTS = Object.freeze([
+  "specs/SPEC.md",
+  "specs/manifest.json",
+  "specs/governance-contract.json",
+  ".threadlight/preflight-passed.json",
+  ".threadlight/auto-state.json",
+  "docs/invoke-results.md",
+  "azure.yaml",
+  "infra/main.bicep",
+]);
+const PLAN_PATH = ".threadlight/auto-next.json";
+const SPEC_MAX_BYTES = 2 * 1024 * 1024;
 
+async function newestPlanInput(reader, phases) {
+  const paths = new Set(PLAN_INPUTS);
   for (const phase of phases) {
-    if (
-      ACTIONABLE_PHASE_STATUSES.has(phase.status) &&
-      phase.nextActions.length > 0
-    ) {
-      return phase.nextActions[0];
+    for (const skill of phase.skills) {
+      for (const item of skill.evidence) {
+        if (item.path !== PLAN_PATH) {
+          paths.add(item.path);
+        }
+      }
     }
   }
-
-  return { type: "prepare_handoff" };
+  let newest = null;
+  for (const relativePath of paths) {
+    const metadata = await reader.metadata(relativePath);
+    const modified = parseTimestamp(metadata?.modifiedAt);
+    if (modified && (!newest || modified > newest.at)) {
+      newest = { at: modified, path: metadata.relativePath };
+    }
+  }
+  return newest;
 }
 
-function summarize(phases, errors) {
-  if (errors.length > 0) {
-    return `${errors.length} errors`;
+async function readOptionalText(reader, relativePath) {
+  const metadata = await reader.metadata(relativePath);
+  if (!metadata || metadata.kind !== "file" || metadata.size > SPEC_MAX_BYTES) {
+    return null;
   }
-  const completeCount = phases.filter((phase) => phase.status === "complete").length;
-  return `${completeCount}/${LIFECYCLE_PHASES.length} phases complete`;
+  return reader.readText(relativePath);
+}
+
+async function evidenceRecord(reader, relativePath, now) {
+  const read = await readOptionalJson(reader, relativePath);
+  if (read.state !== "present") {
+    return null;
+  }
+  const metadata = await reader.metadata(relativePath);
+  const timestamp = evidenceTimestamp(read.value, metadata, relativePath, now);
+  return { value: read.value, checkedAt: timestamp ? timestamp.toISOString() : null };
+}
+
+async function buildView({ reader, manifest, phases, projectedSkills, errors, now }) {
+  const [specText, planRead, governanceManifest, governanceContract, cost, readiness, newest] =
+    await Promise.all([
+      readOptionalText(reader, "specs/SPEC.md"),
+      readOptionalJson(reader, PLAN_PATH),
+      readOptionalText(reader, "specs/governance-manifest.json"),
+      readOptionalText(reader, "specs/governance-contract.json"),
+      evidenceRecord(reader, "specs/cost-manifest.json", now),
+      evidenceRecord(reader, "tests/production-readiness-manifest.json", now),
+      newestPlanInput(reader, phases),
+    ]);
+  const plan = planRead.state === "missing" ? null : planRead.value ?? {};
+  const planStatus = assessPlan(plan, {
+    newestArtifactAt: newest?.at.toISOString() ?? null,
+    newestArtifactPath: newest?.path ?? null,
+  });
+  return buildProcessModel({
+    spec: parseSpec(specText),
+    manifest: isPlainObject(manifest) ? manifest : null,
+    plan,
+    planStatus,
+    phases,
+    governanceText: [governanceManifest, governanceContract].filter(Boolean).join("\n") || null,
+    cost,
+    readiness: readiness
+      ? {
+          ...readiness,
+          evidenceState:
+            projectedSkills.get("threadlight-production-ready")?.evidenceState ?? null,
+        }
+      : null,
+    errors,
+    generatedAt: now.toISOString(),
+  });
 }
 
 export async function projectWorkspace(workspace, options = {}) {
@@ -1528,6 +1613,9 @@ export async function projectWorkspace(workspace, options = {}) {
   const generatedAt = now.toISOString();
   const errors = [];
   const { manifest, manifestInvalid } = await readManifest(reader, errors);
+  const context = {
+    hasGovernanceContract: await reader.exists("specs/governance-contract.json"),
+  };
   const projectedSkills = new Map();
 
   for (const definition of SKILL_REGISTRY) {
@@ -1539,17 +1627,20 @@ export async function projectWorkspace(workspace, options = {}) {
       projectedSkills,
       errors,
       now,
+      context,
     });
     projectedSkills.set(definition.id, projected);
   }
 
   const phases = buildPhases(projectedSkills);
+  const view = await buildView({ reader, manifest, phases, projectedSkills, errors, now });
   return {
     workspace,
     generatedAt,
-    summary: summarize(phases, errors),
+    summary: view.now.headline,
     phases,
-    primaryAction: choosePrimaryAction(phases),
+    primaryAction: view.now.action.intent,
+    view,
     errors,
   };
 }
