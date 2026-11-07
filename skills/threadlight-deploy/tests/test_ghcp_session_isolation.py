@@ -129,7 +129,12 @@ class _Request:
         self.state = types.SimpleNamespace(invocation_id=invocation, session_id=session or "container-wide-session")
 
     async def json(self):
+        if isinstance(self._body, bytes):
+            return json.loads(self._body)
         return self._body
+
+    async def body(self):
+        return self._body if isinstance(self._body, bytes) else json.dumps(self._body).encode()
 
 
 def _invoke(module, text, *, session=None, stream=True):
@@ -233,3 +238,26 @@ def test_new_conversation_does_not_disturb_the_real_multi_turn_session(runtime):
 def test_generated_eval_config_starts_a_new_conversation_per_row():
     gen = (Path(__file__).resolve().parents[1] / "scripts" / "generate_only.py").read_text()
     assert '"new_conversation": True' in gen
+
+
+# --- `azd ai agent invoke <agent> "<text>"` sends a plain-text body -----------------
+# e4 live run: the positional form returned HTTP 400 (the container wanted JSON).
+
+@pytest.mark.parametrize("raw", [b"Triage RMA-7 please", "Triage RMA-7 please".encode("utf-8")])
+def test_plain_text_body_is_the_input(runtime, raw):
+    answers = _answers(_invoke_body(runtime, raw))
+    assert answers and answers[-1].endswith("turn 1|seen: Triage RMA-7 please")
+
+
+@pytest.mark.parametrize("raw", [b'"Triage RMA-7 please"', b'{"message": "Triage RMA-7 please"}'])
+def test_json_string_or_message_field_is_the_input(runtime, raw):
+    answers = _answers(_invoke_body(runtime, raw))
+    assert answers and answers[-1].endswith("turn 1|seen: Triage RMA-7 please")
+
+
+@pytest.mark.parametrize("raw", [b"", b"   ", b"{}", b'{"input": ""}', b"[1, 2]", b"\xff\xfe"])
+def test_empty_or_unusable_body_is_still_rejected(runtime, raw):
+    async def run():
+        return await runtime.handle_invoke(_Request(raw))
+    response = asyncio.run(run())
+    assert response.status_code == 400

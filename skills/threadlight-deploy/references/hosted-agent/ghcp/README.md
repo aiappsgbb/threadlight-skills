@@ -354,6 +354,10 @@ azd ai agent invoke "<agent-name>" '{"input": "Say hello in one short sentence."
   --timeout 180
 ```
 
+- The reference `container.py` also accepts plain text, so the short form
+  `azd ai agent invoke "<agent-name>" "Say hello in one short sentence."` works
+  too (it returned HTTP 400 before the 2026-11-07 fix). Accepted bodies: a JSON
+  object with `input` (or `message`), a JSON string, or plain UTF-8 text
 - `--protocol invocations` selects the Invocations protocol (the CLI
   defaults to `responses` otherwise)
 - `--output raw` (or `-o raw`) dumps the unmodified server response

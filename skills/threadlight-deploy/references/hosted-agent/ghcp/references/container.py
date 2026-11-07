@@ -369,22 +369,40 @@ async def _final_answer_response(input_text: str, session_key: str = ""):
             unsubscribe()
 
 
+async def _read_invocation(request: Request) -> tuple[dict[str, Any], str]:
+    """The request body as ``(options, input_text)``.
+
+    Accepted: a JSON object with ``input`` (or ``message``), a JSON string, or
+    plain UTF-8 text. ``azd ai agent invoke <agent> "<text>"`` sends the text as
+    is; it returned HTTP 400 when only JSON objects were accepted.
+    """
+    raw = await request.body()
+    text = raw.decode("utf-8").strip()  # UnicodeDecodeError is a ValueError
+    try:
+        data = json.loads(text) if text else None
+    except json.JSONDecodeError:
+        data = text
+    if isinstance(data, str):
+        data = {"input": data}
+    if not isinstance(data, dict):
+        raise ValueError("body is not text or a JSON object")
+    input_text = data.get("input") if data.get("input") is not None else data.get("message")
+    if not isinstance(input_text, str) or not input_text.strip():
+        raise ValueError('missing or empty "input" field')
+    return data, input_text
+
+
 @app.invoke_handler
 async def handle_invoke(request: Request) -> Response:
     try:
-        data = await request.json()
-        if not isinstance(data, dict):
-            raise ValueError("body is not a JSON object")
-        input_text = data.get("input")
-        if not isinstance(input_text, str) or not input_text.strip():
-            raise ValueError('missing or empty "input" field')
-    except (json.JSONDecodeError, ValueError):
+        data, input_text = await _read_invocation(request)
+    except ValueError:
         return JSONResponse(
             status_code=400,
             content={
                 "error": "invalid_request",
                 "message": (
-                    'Request body must be a JSON object with a non-empty "input" string, '
+                    'Request body must be plain text or a JSON object with a non-empty "input" string, '
                     'e.g. {"input": "What can you help me with?"}'
                 ),
             },
