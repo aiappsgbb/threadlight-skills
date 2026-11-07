@@ -237,6 +237,12 @@ registers a tool with the same name and arguments, backed in this order:
 | knowledge | § 6 **Backed by** names Foundry IQ, a knowledge base or AI Search | Read-only local search over `specs/knowledge/*.md`, returning clause ids for citation. A labelled stand-in, not Foundry IQ |
 | sample-data adapter | otherwise | Reads filter the matching entity by the given ids; writes store the arguments on the in-memory record |
 
+When `specs/knowledge/*.md` exists but § 6 declares no knowledge tool, Pattern 0
+also registers the read-only `knowledge_search(query)` over that corpus, so the
+agent reads the policy instead of trying a skill script. `threadlight-deploy`
+`generate_only` serves the same tool from the generated MCP server and lists it
+in `specs/deferred-steps.md` until Foundry IQ is provisioned.
+
 **Approvals.** Read tools (§ 11a `consequence: read`, § 5b `R`, knowledge
 tools, else a read verb in the name) are registered with
 `approval_mode="never_require"`. Write tools use `always_require`: nothing
@@ -250,6 +256,9 @@ approves them implicitly.
   runs the same agent and prints a JSON report. Every pending approval is
   **rejected** (no effect; the model sees the rejection and finishes its
   answer) unless the operator names that tool with `--approve-tool <tool>`.
+  A rejection reaches the model with a note that nothing was recorded and that
+  it must still state its recommended decision; an empty reply after a
+  rejection gets one follow-up asking for that decision.
   This up-front policy can never approve skill scripts (`run_skill_script`);
   only a human click can.
 
