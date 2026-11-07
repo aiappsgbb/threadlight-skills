@@ -27,6 +27,7 @@ from pathlib import Path
 import streamlit as st
 
 from threadlight_quickstart.agent_wiring import build_agent
+from threadlight_quickstart.approvals import continue_turn, pending_from_error
 from threadlight_quickstart.discover import PoCLayoutError, discover
 from threadlight_quickstart.simulator import PromptCursor, load_simulator_prompts
 
@@ -46,15 +47,19 @@ def _build(root: str):
     return layout, agent, stores, prompts
 
 
-async def _stream_response(agent, prompt: str, placeholder) -> str:
+async def _stream_response(agent, prompt: str, placeholder, pending_out: list | None = None) -> str:
     """Stream `agent.run(prompt, stream=True)` into the placeholder.
 
     Returns the full concatenated text so callers can persist a
-    transcript row.
+    transcript row. A native approval pause is reported as an error and,
+    when ``pending_out`` is given, appended there so the page can ask a
+    human to approve or reject it.
     """
     chunks: list[str] = []
+    updates: list = []
     try:
         async for update in agent.run(prompt, stream=True):
+            updates.append(update)
             text = getattr(update, "text", None) or ""
             if text:
                 chunks.append(text)
@@ -63,7 +68,53 @@ async def _stream_response(agent, prompt: str, placeholder) -> str:
     except Exception as exc:  # noqa: BLE001
         msg = f"_error: {type(exc).__name__}: {exc}_"
         placeholder.markdown(msg)
+        if pending_out is not None:
+            pending = pending_from_error(prompt, updates, exc)
+            if pending is not None:
+                pending_out.append(pending)
         return msg
+
+
+def _verdict(turn, shown: int) -> str:
+    """What actually happened to the calls the human was shown, from the recorded decisions."""
+    decisions = turn.decisions[:shown]
+    approved = [d["tool"] for d in decisions if d.get("approved")]
+    rejected = [d["tool"] for d in decisions if not d.get("approved")]
+    parts = []
+    if approved:
+        parts.append("approved by you: " + ", ".join(approved))
+    if rejected:
+        parts.append("rejected: " + ", ".join(rejected))
+    return "; ".join(parts) or "no decision recorded"
+
+
+def _approval_panel(agent, layout) -> None:
+    """Show a paused write (or script) call and resume the turn with the human's decision."""
+    pending = st.session_state.get("pending")
+    if pending is None:
+        return
+    with st.chat_message("assistant"):
+        st.warning("Human approval needed before this call runs:")
+        for row in pending.describe():
+            st.code(f"{row['tool']}({row['arguments']})", language="text")
+        approve, reject = st.columns(2)
+        decision = None
+        if approve.button("✅ Approve and continue", use_container_width=True):
+            decision = True
+        if reject.button("⛔ Reject", use_container_width=True):
+            decision = False
+    if decision is None:
+        return
+    st.session_state.pending = None
+    turn = asyncio.run(continue_turn(agent, pending, approved=decision))
+    verdict = _verdict(turn, len(pending.requests))
+    text = turn.text or f"_error: {turn.error}_"
+    response = f"_{verdict}_\n\n{text}"
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    if turn.pending is not None:
+        st.session_state.pending = turn.pending
+    _append_transcript(layout.root, f"[{verdict}]", response)
+    st.rerun()
 
 
 def _append_transcript(root: Path, query: str, response: str) -> None:
@@ -159,12 +210,14 @@ def main():
     _sidebar(layout, stores, prompts, simulator_on)
 
     st.title("🧵 Threadlight — Pattern 0")
-    st.caption("MAF Agent + SkillsProvider + JSON stub tools — no Docker, no MCP server.")
+    st.caption("MAF Agent + SkillsProvider + the SPEC's own tools over sample data — no Docker, no MCP server. "
+               "Write tools wait for your approval.")
 
     # Render history
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+    _approval_panel(agent, layout)
 
     # Simulator next-prompt button
     queued: str | None = None
@@ -187,9 +240,16 @@ def main():
             st.markdown(prompt)
         with st.chat_message("assistant"):
             placeholder = st.empty()
-            response = asyncio.run(_stream_response(agent, prompt, placeholder))
-        st.session_state.messages.append({"role": "assistant", "content": response})
+            pending: list = []
+            response = asyncio.run(_stream_response(agent, prompt, placeholder, pending))
         _append_transcript(layout.root, prompt, response)
+        if pending:
+            response = ("⏸ **Waiting for your approval.** The agent wants to run a tool that needs approval; "
+                        "nothing has been recorded yet. Approve or reject it below.")
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        if pending:
+            st.session_state.pending = pending[0]
+            st.rerun()
 
 
 main()

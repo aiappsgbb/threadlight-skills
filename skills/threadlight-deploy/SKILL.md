@@ -361,9 +361,47 @@ There is no `agent.yaml`, no `src/agent/agent.yaml` and no `infra/core/`. The
 generator refuses to run if any of them already exists. `agent_type: prompt`
 or `agent_type: voice` is refused with exit 4, because the scaffold is hosted-only.
 
+#### Ownership between threadlight-design and threadlight-deploy
+
+The workshop chain is design, then `generate_only.py` **without `--force`**.
+Ownership is explicit, so the deploy step never discards design code:
+
+| Owner | Files |
+|---|---|
+| threadlight-design | `specs/` (SPEC, foundation, sample data, knowledge), `AGENTS.md`, `src/agent/skills/`, design `tests/`, and optionally `src/mcp/server.py`: the mock MCP tool logic with its safeguards (filters, field allow-lists, validation, required citations) |
+| threadlight-deploy (generate-only) | everything in the output table below, plus the MCP **packaging**: `src/mcp/Dockerfile`, the hashed `src/mcp/requirements.lock` and, when design owns `server.py`, the entry point `src/mcp/threadlight_mcp_entry.py` |
+
+- **Adopt, never rewrite.** A `src/mcp/server.py` without the generate-only
+  marker is design-owned. The generator keeps it byte-identical and writes
+  `src/mcp/threadlight_mcp_entry.py`, which imports the design's SPEC § 6
+  functions unchanged and serves them with the pinned `mcp` SDK
+  (`from mcp.server.fastmcp import FastMCP`, `mcp==1.29.1` in the lock). It also
+  answers `logging/setLevel`. The Dockerfile runs the entry point. The adoption
+  is recorded in `specs/mcp-adoption.json` (owner, sha256, tools).
+- **Deploy contract for the design server** (otherwise **exit 6**, nothing
+  written): every non-knowledge SPEC § 6 tool is a module-level function, and
+  every import that runs at import time (including class, loop, `with`, `try`
+  and `match` bodies) is the standard library or a package the hashed
+  `src/mcp/requirements.lock` installs (`mcp` and its pinned dependencies such
+  as `pydantic`, `starlette`, `anyio`, `httpx`). Imports inside functions,
+  `if TYPE_CHECKING:` blocks and the `try` body of a `try/except ImportError`
+  fallback are allowed; the fallback branch is still checked.
+- **Packaging a design run left behind** (`src/mcp/Dockerfile`,
+  `pyproject.toml`, `requirements.txt` or an unhashed lock, for example an
+  unpinned `fastmcp>=2.10`) is replaced by the pinned packaging. The original
+  text is kept in `specs/mcp-adoption.json` under `replaced_design_packaging`.
+- **`--force`** only rewrites files generate-only owns. Exit 5 still refuses to
+  overwrite earlier generate-only output; the design `server.py` is never in
+  that list.
+- **Knowledge tools.** A SPEC § 6 tool whose **Backed by** names Foundry IQ, a
+  knowledge base or AI Search is not expected in the design server. Until
+  `threadlight-ground` provisions the knowledge base, the MCP server answers it
+  read-only from the packaged `specs/knowledge/*.md` (a labelled local
+  stand-in, not Foundry IQ evidence).
+
 | Input (design workspace) | Output |
 |---|---|
-| `specs/SPEC.md`, `specs/manifest.json`, `specs/sample-data/`, `AGENTS.md`, `src/agent/skills/` | `azure.yaml`, `infra/`, `hooks/`, `src/agent/` (runtime + `requirements.lock` + offline `tests/`), `src/mcp/server.py` (real SPEC § 6 tools over the sample data), `evals/` (`run_evals.py`, `eval_dataset.jsonl`, `eval-config.json`, `requirements.lock`), `specs/deployment-posture.md`, `specs/deferred-steps.md`, `specs/project-tools.json`, `specs/foundry-package-manifest.json`, `tests/postdeploy-manifest.json`, `DEPLOY.md` |
+| `specs/SPEC.md`, `specs/manifest.json`, `specs/sample-data/`, `AGENTS.md`, `src/agent/skills/`, optional `specs/foundation.md`, `specs/knowledge/`, design-owned `src/mcp/server.py` | `azure.yaml`, `infra/`, `hooks/`, `src/agent/` (runtime + `requirements.lock` + offline `tests/`), `src/mcp/server.py` (real SPEC § 6 tools over the sample data, only when design wrote none) or `src/mcp/threadlight_mcp_entry.py` (serves the adopted design server), `src/mcp/Dockerfile` + `requirements.lock`, `specs/mcp-adoption.json` (when adopting), `evals/` (`run_evals.py`, `eval_dataset.jsonl`, `eval-config.json`, `requirements.lock`), `specs/deployment-posture.md`, `specs/deferred-steps.md`, `specs/project-tools.json`, `specs/foundry-package-manifest.json`, `tests/postdeploy-manifest.json`, `DEPLOY.md` |
 
 **Generated contracts:**
 
@@ -374,6 +412,21 @@ or `agent_type: voice` is refused with exit 4, because the scaffold is hosted-on
   the Phase 7 Citadel handoff.
 - **Pins.** Every dependency is pinned with exact `==` versions and locked with
   `--hash=sha256:` lockfiles for the agent, the MCP server and the evals.
+- **Model.** `infra/main.parameters.json` sets `modelName`/`modelVersion` from
+  the design (`specs/foundation.md` § 2 `model.default` + `version`, else the
+  SPEC § 7b **Model + version** line) as `${AZURE_AI_MODEL_NAME=<model>}` and
+  `${AZURE_AI_MODEL_VERSION=<version>}`, so the template default
+  (`gpt-5.4-mini`) applies only when the design names no model. A model without
+  a version is a deferred step.
+- **Selected modules not provisioned.** The pilot `infra/main.bicep` provisions
+  Foundry, ACR, the identity, App Insights and the MCP Container App only. Any
+  other SPEC § 11c module marked `yes` (for example `ai-search`, `storage-blob`,
+  `foundry-iq-index`) is listed as **not provisioned** in
+  `specs/deferred-steps.md`, `DEPLOY.md` and the post-deploy manifest gaps, with
+  `threadlight-ground` as the next step. Generate-only does not invent that
+  infrastructure.
+- **MCP protocol.** Generated servers and the adoption entry point answer
+  `logging/setLevel` (camelCase, see `threadlight-mcp-aca`).
 - **Tools.** `src/mcp/server.py` takes each tool's arguments from the SPEC § 6
   `` ### `tool` `` subsection **Inputs** (table or `` `name: type` required ``
   prose), falling back to the summary table. Placeholders such as `none` or
@@ -1927,7 +1980,7 @@ Check every file. Mark each ✅ or fix before presenting.
 
 #### `infra/` — Bicep scaffold
 - [ ] `infra/main.bicep` — exists; self-contained pilot orchestrator from `references/pilot/infra` (no `infra/core/` tree), plus Phase 6 `infra/modules/` when the SPEC selects them
-- [ ] `infra/main.parameters.json` — `ENABLE_CAPABILITY_HOST=false`
+- [ ] No capability host is created for hosted agents: no `capabilityHosts` resource in `infra/`, and `ENABLE_CAPABILITY_HOST=false` wherever an `azd ai agent init` template exposes that parameter
 - [ ] `bicep build infra/main.bicep` — compiles offline
 - [ ] `infra/bot/` — present if Teams included, absent if not
 
@@ -2357,13 +2410,20 @@ The scaffold's `infra/main.parameters.json` includes these critical parameters:
 | Parameter | Default | Purpose |
 |-----------|---------|---------|
 | `ENABLE_HOSTED_AGENTS` | `false` (set to `true` by extension preprovision hook) | Enables hosted agent infrastructure (ACR, agent capabilities) |
-| `ENABLE_CAPABILITY_HOST` | **`false`** | **MUST be false for refreshed preview.** Capability hosts were removed — setting `true` causes provisioning errors. |
+| `ENABLE_CAPABILITY_HOST` | **`false`** | **MUST be false.** Hosted agents no longer use a capability host; Microsoft Learn says to remove capability host creation from provisioning scripts ([migrate hosted agents](https://learn.microsoft.com/azure/foundry/agents/how-to/migrate-hosted-agent-preview)). The pilot `infra/main.bicep` creates none. |
 | `ENABLE_MONITORING` | `true` | Creates Application Insights + Log Analytics |
 | `USE_EXISTING_AI_PROJECT` | `false` | Set `true` to point at existing Foundry project |
 
-> **⚠️ `ENABLE_CAPABILITY_HOST=false` is mandatory.** The refreshed preview removed
-> capability host creation. The old default was `true` (for initial preview). If your
-> Bicep still defaults to `true`, provisioning will fail or create unnecessary resources.
+> **⚠️ `ENABLE_CAPABILITY_HOST=false` is mandatory.** The current hosted-agent backend
+> provisions its own infrastructure: "You no longer need to create an account-level
+> capability host" and "Remove capability host creation steps from provisioning scripts"
+> ([Microsoft Learn: migrate hosted agents](https://learn.microsoft.com/azure/foundry/agents/how-to/migrate-hosted-agent-preview)).
+> Capability hosts remain only for a bring-your-own-resources (standard) agent setup
+> ([capability hosts](https://learn.microsoft.com/azure/foundry/agents/concepts/capability-hosts)).
+> The old default was `true` (for initial preview). If your Bicep still defaults to
+> `true`, provisioning will fail or create unnecessary resources. The pilot
+> `infra/main.bicep` dropped its capability hosts on 2026-11-07 to follow this
+> guidance; that change has not yet been re-proven by a live deploy.
 >
 > **⚠️ MIGRATION: Delete existing CapabilityHosts.** If the Foundry account had a previous
 > initial preview deployment, an old CapabilityHost resource may still exist. Its presence
@@ -2399,8 +2459,16 @@ The scaffold's `infra/main.parameters.json` includes these critical parameters:
 Not all regions support hosted agents. If you get `"The requested experience is not
 available for this subscription"` during `azd deploy`, try a different region.
 
-**Known working regions (April 2026):** `northcentralus`, `eastus`, `swedencentral`, `canadacentral`, `australiaeast`
-**Known failing regions:** `eastus2` (returned "experience not available" in testing)
+East US 2 is in the documented hosted-agent region list, as are East US, North
+Central US, Sweden Central, Canada Central, Australia East and West US 3
+([Microsoft Learn: hosted agents, region availability](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#region-availability),
+checked 2026-11-07). It is also the `runtime-policy.json` default region. An
+April 2026 field test saw "experience not available" in `eastus2`. The cause
+was not established; this skill's migration note above (field experience, not
+documented on Learn) links that error to a leftover initial-preview capability
+host, so check that before switching region.
+Model availability and quota are separate per region: confirm both before
+`azd up`.
 
 > Always check [Region availability](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#region-availability)
 > for the latest supported regions.
@@ -3768,7 +3836,7 @@ This index distills the deploy-time failure modes seen across 10 from-scratch pi
 | **Hosted agent returns `server_error`/`model:""` on every smoke; AppIn 0 rows; container looks healthy in `azd ai agent show`** | `container.py` calls raw `configure_azure_monitor()` as the first line of `main()` with no try/except. When the platform fails to auto-inject `APPLICATIONINSIGHTS_CONNECTION_STRING` (e.g. AppIn account-level connection persisted with `credentials: null` — see next row), the SDK raises `ValueError` and the container crashes before `ResponsesHostServer` binds. Foundry runtime then sees no agent → `server_error`. **The agent itself is fine.** | Wrap telemetry init in `_init_telemetry()` helper that no-ops on missing env / SDK ImportError / SDK exception. NEVER call `configure_azure_monitor()` raw at module/main scope. See the threadlight-deploy observability reference (`references/observability`), gap rows O-011 / O-012 for the full forensic and reference template. |
 | **AppInsights connection PUT returns 400 ValidationError on `authType: AAD`; ApiKey fallback returns 200 but GET shows `credentials: null` (silent server-side drop)** | Platform gap on account-RP scope `2025-10-01-preview` in some regions (correlation IDs available). Connection persists with `isDefault: true` but no usable secret → platform never auto-injects `APPLICATIONINSIGHTS_CONNECTION_STRING` into hosted agents | **No code workaround exists today.** Ship the agent with guarded `_init_telemetry()` (preceding row) so it functions without telemetry. File a support ticket with the correlation IDs. If AppIn telemetry is non-negotiable, pivot region (`eastus` / `northcentralus` are the best initial bets — verify auto-injection works BEFORE committing to a redeploy) |
 | **`template.kind` validation error** | **agent.yaml uses wrong schema — `template:` nesting is for `agent.manifest.yaml` (samples only)** | **Use ContainerAgent schema: `kind: hosted` at top level, NOT `template.kind`. Schema: `ContainerAgent.yaml`** |
-| **"Experience not available" on create_version** | **Region does not support hosted agents OR `ENABLE_CAPABILITY_HOST=true` (removed in refreshed preview)** | **Set `ENABLE_CAPABILITY_HOST=false` in `main.parameters.json`. Try `northcentralus`, `eastus`, `swedencentral`. Avoid `eastus2`.** |
+| **"Experience not available" on create_version** | **Region does not support hosted agents OR a capability host still exists / `ENABLE_CAPABILITY_HOST=true` (removed for hosted agents)** | **Set `ENABLE_CAPABILITY_HOST=false`, delete a leftover initial-preview capability host, and pick a region from the [documented list](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#region-availability) (it includes `eastus2`, `eastus`, `northcentralus`, `swedencentral`).** |
 | **Agent 401 on `storage/history`** | **Agent's Entra identity missing `Azure AI User` on project scope, OR RBAC not yet propagated (5-15 min for new SPs)** | **Assign `Foundry User` (role GUID `53ca6127-db72-4b80-b1b0-d745d6d5456d`) to BOTH `instance_identity` AND `blueprint` principal IDs on Foundry account + project. Wait 15 min, then redeploy to force new session.** |
 | **401 PermissionDenied on agent invoke (caller)** | **Calling user/principal missing `Azure AI User` on Foundry account + project** | **Assign `Foundry User` (role GUID `53ca6127-db72-4b80-b1b0-d745d6d5456d`) to your principal on both account and project scope** |
 | **`{{chat}}` literal in env vars** | **Mustache `{{template}}` syntax in agent.yaml `environment_variables` is NOT expanded by the azd extension** | **Use literal model deployment names (e.g., `gpt-5.4`) or `__PLACEHOLDER__` tokens** |

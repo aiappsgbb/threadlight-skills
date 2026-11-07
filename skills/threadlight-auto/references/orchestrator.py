@@ -919,6 +919,16 @@ def _check_safe_check(workspace: Path, _: dict[str, Any]) -> StageDecision:
             f"{POSTDEPLOY_MANIFEST} is unreadable or malformed; safe-check evidence is not trustworthy.",
             artifacts_seen=seen,
         )
+    if manifest_data.get("phase") == "pending-deploy":
+        # threadlight-deploy generate-only writes this placeholder before any
+        # deploy; it records that nothing was verified, so it is not evidence.
+        return StageDecision(
+            "safe_check",
+            "run",
+            f"{POSTDEPLOY_MANIFEST} is a generate-only placeholder (phase pending-deploy), "
+            "not post-deploy evidence; run threadlight-safe-check after the deploy.",
+            artifacts_missing=[POSTDEPLOY_MANIFEST],
+        )
     if manifest_data.get("phase") != "post-deploy":
         return StageDecision(
             "safe_check",

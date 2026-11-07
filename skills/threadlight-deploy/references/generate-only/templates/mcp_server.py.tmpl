@@ -8,6 +8,7 @@ Foundry hosted agent; it never hosts the agent's reasoning or tool loop.
 import json
 import os
 import pathlib
+import re
 import sys
 from typing import Any, Optional
 
@@ -122,6 +123,14 @@ def _write(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
     if record_id not in _WRITES:
         _WRITES[record_id] = {"status": "recorded", "tool": tool, "id": record_id, "arguments": arguments}
     return _WRITES[record_id]
+
+
+{{KNOWLEDGE_SNIPPET}}
+
+@mcp._mcp_server.set_logging_level()
+async def _set_logging_level(level) -> None:
+    """MCP ``logging/setLevel`` (camelCase): accepted; tool calls are logged to stderr."""
+    return None
 
 
 {{TOOL_FUNCTIONS}}

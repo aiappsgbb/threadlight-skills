@@ -706,3 +706,41 @@ test("an unverified plan never headlines live results, whatever the next step", 
     assert.equal(view.now.headline, "Progress recorded; live results not re-confirmed", next);
   }
 });
+
+test("a generate-only pending-deploy placeholder is not verification evidence", () => {
+  const placeholder = {
+    id: "verify",
+    skills: [{
+      definition: { id: "threadlight-safe-check", label: "threadlight-safe-check", role: "stage", stage: "safe_check" },
+      status: "blocked",
+      evidenceState: "placeholder",
+      evidence: [],
+    }],
+  };
+  const view = buildProcessModel(
+    base({
+      plan: plan({
+        deploy: {
+          decision: "run",
+          reason: "infra + azure.yaml exist but no AGENT_FQDN in azd env — `azd up` hasn't completed.",
+          seen: ["infra/main.bicep", "azure.yaml"],
+        },
+        // An older planner listed the placeholder as seen evidence.
+        safe_check: {
+          decision: "run",
+          reason: "tests/postdeploy-manifest.json phase must be post-deploy; re-running threadlight-safe-check.",
+          seen: ["tests/postdeploy-manifest.json"],
+        },
+        cost_projection: { decision: "run", reason: "specs/cost-manifest.json missing.", missing: ["specs/cost-manifest.json"] },
+        invoke: { decision: "run", reason: "No invocation evidence yet.", missing: ["tests/invoke-report.json"] },
+      }, { stages: ["preflight", "design", "deploy", "safe_check", "cost_projection", "invoke"] }),
+      planStatus: { status: "current", decidedAt: "2026-08-06T08:30:00.000Z" },
+      phases: [placeholder],
+    }),
+  );
+  const safe = gates(view).find((gate) => gate.stage === "safe_check");
+  assert.equal(safe.state, "waiting");
+  assert.equal(safe.waitingOn, "deploy");
+  const verify = view.proofPath.milestones.find((milestone) => milestone.gates.some((g) => g.stage === "safe_check"));
+  assert.notEqual(verify.stateLabel, "Partly done");
+});

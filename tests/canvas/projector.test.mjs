@@ -1888,3 +1888,21 @@ test("unreadable directories in the freshness walk never fail the projection", a
     }
   });
 });
+
+test("a generate-only pending-deploy placeholder never counts as post-deploy evidence", async () => {
+  await withFixture("deploy-blocked", async ({ workspace, writeJson }) => {
+    await writeJson("tests/postdeploy-manifest.json", {
+      schema: "threadlight-postdeploy-manifest/v1",
+      phase: "pending-deploy",
+      generate_only: true,
+      gaps: ["not deployed: generate_only run without a subscription"],
+    });
+
+    const model = await projectWorkspace(workspace, { now: NOW });
+    const safe = findSkill(model, "threadlight-safe-check");
+
+    assert.equal(safe.evidenceState, "placeholder");
+    assert.deepEqual(safe.evidence.map((item) => item.path), []);
+    assert.ok(!["complete", "prepared", "running", "failed"].includes(safe.status), safe.status);
+  });
+});

@@ -1,0 +1,11 @@
+{
+  "name": "returns-triage",
+  "version": "0.1.0",
+  "speckit": "specs/SPEC.md",
+  "description": "Synthetic returns triage hosted agent whose mock MCP server was written by threadlight-design.",
+  "skills": [{"name": "case-intake"}],
+  "deployment_manifest": {
+    "module_selectors": {"hosting": "foundry-hosted", "tools": "mcp-aca"},
+    "channels": []
+  }
+}

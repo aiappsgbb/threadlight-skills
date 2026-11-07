@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
-"""Sync tests/killer-prompts.md → azure.yaml STARTER_{1,2,3}_TITLE/PROMPT env vars.
+"""Sync tests/killer-prompts.md -> agent.yaml STARTER_{1,2,3}_TITLE/PROMPT env vars.
 
 Emitted by the `threadlight-design` skill alongside `tests/killer-prompts.md`.
 Wired into `threadlight-deploy` Phase 6.7 ("Live MVP Walkthrough" back-fill)
-so the deployed agent's home surface (Teams chip / Workspace starter pill /
-Foundry playground prompt) picks up evolution of the wow-prompts on the
+so the deployed hosted agent's home surface (Teams chip / Workspace starter
+pill / Foundry playground prompt) picks up evolution of the wow-prompts on the
 next `azd up` without hand-editing the deploy manifest.
 
-Idempotent. Parses the K1/K2/K3 rows from the killer-prompts markdown table,
-writes a single `# region: killer-prompts (managed by refresh_killer_prompts.py)`
-block in azure.yaml. Re-running with no source change is a no-op.
+Per the threadlight-design "Target file clarification": STARTER_* env vars live
+in `agent.yaml` (the ContainerAgent definition's `environment_variables:` block),
+NOT `azure.yaml`. This script therefore targets `agent.yaml`.
+
+Idempotent. Parses the K1/K2/K3 rows from the killer-prompts markdown table and
+rewrites the block between the region markers in agent.yaml. Re-running with no
+source change is a no-op.
 
 Usage:
     python infra/scripts/refresh_killer_prompts.py
     python infra/scripts/refresh_killer_prompts.py --check       # exit 1 if drift
-    python infra/scripts/refresh_killer_prompts.py --max-prompts 5
-
-The Teams chip-rendering limit on titles is ~30 chars; over-length titles
-are truncated and a warning is printed (but the run does not fail).
+    python infra/scripts/refresh_killer_prompts.py --max-prompts 3
 """
 
 from __future__ import annotations
@@ -29,9 +30,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SOURCE = REPO_ROOT / "tests" / "killer-prompts.md"
-TARGET = REPO_ROOT / "azure.yaml"
-REGION_BEGIN = "# region: killer-prompts (managed by refresh_killer_prompts.py)"
-REGION_END = "# endregion: killer-prompts"
+TARGET = REPO_ROOT / "agent.yaml"
+REGION_BEGIN = "  # region: killer-prompts (managed by refresh_killer_prompts.py)"
+REGION_END = "  # endregion: killer-prompts"
 TITLE_LIMIT = 30
 
 
@@ -58,23 +59,24 @@ def derive_title(prompt: str, br: str) -> str:
         candidate = br.strip()
     if len(candidate) > TITLE_LIMIT:
         print(f"WARN: title over {TITLE_LIMIT} chars, truncating: {candidate!r}")
-        candidate = candidate[:TITLE_LIMIT - 1] + "…"
+        candidate = candidate[: TITLE_LIMIT - 1] + "…"
     return candidate
 
 
 def render_region(rows: list[tuple[str, str]], max_prompts: int) -> str:
-    """Render the env-var block that lives between region markers in azure.yaml."""
+    """Render the env-var block that lives between region markers in agent.yaml."""
     lines = [REGION_BEGIN]
     for idx, (title, prompt) in enumerate(rows[:max_prompts], start=1):
         safe_prompt = prompt.replace('"', '\\"')
-        lines.append(f'        STARTER_{idx}_TITLE: "{title}"')
-        lines.append(f'        STARTER_{idx}_PROMPT: "{safe_prompt}"')
+        safe_title = title.replace('"', '\\"')
+        lines.append(f'  STARTER_{idx}_TITLE: "{safe_title}"')
+        lines.append(f'  STARTER_{idx}_PROMPT: "{safe_prompt}"')
     lines.append(REGION_END)
     return "\n".join(lines)
 
 
 def splice(yaml_text: str, region: str) -> str:
-    """Replace existing managed region; append (with indent context) if absent."""
+    """Replace existing managed region; error if markers absent."""
     pattern = re.compile(
         rf"{re.escape(REGION_BEGIN)}.*?{re.escape(REGION_END)}",
         re.DOTALL,
@@ -82,11 +84,11 @@ def splice(yaml_text: str, region: str) -> str:
     if pattern.search(yaml_text):
         return pattern.sub(region, yaml_text)
     sys.exit(
-        "ERROR: azure.yaml is missing the killer-prompts region markers. "
-        "Add the following two lines (indented under the agent service env block) "
+        "ERROR: agent.yaml is missing the killer-prompts region markers. "
+        "Add the following two lines (indented under environment_variables:) "
         "before re-running:\n"
-        f"  {REGION_BEGIN}\n"
-        f"  {REGION_END}"
+        f"{REGION_BEGIN}\n"
+        f"{REGION_END}"
     )
 
 
@@ -101,6 +103,11 @@ def main(argv: list[str] | None = None) -> int:
         sys.exit(f"ERROR: no K1/K2/K3 rows found in {SOURCE}")
 
     region = render_region(rows, args.max_prompts)
+    if not TARGET.exists():
+        sys.exit(
+            f"ERROR: {TARGET.name} not found. Run threadlight-deploy first; it generates the hosted-agent "
+            "definition that carries the killer-prompts region markers."
+        )
     current = TARGET.read_text(encoding="utf-8")
     updated = splice(current, region)
 
@@ -108,11 +115,11 @@ def main(argv: list[str] | None = None) -> int:
         if updated != current:
             print(f"DRIFT: {TARGET.relative_to(REPO_ROOT)} is out of sync with {SOURCE.relative_to(REPO_ROOT)}")
             return 1
-        print("OK: azure.yaml matches killer-prompts.md")
+        print("OK: agent.yaml matches killer-prompts.md")
         return 0
 
     if updated == current:
-        print("no-op: azure.yaml already in sync")
+        print("no-op: agent.yaml already in sync")
         return 0
 
     TARGET.write_text(updated, encoding="utf-8")

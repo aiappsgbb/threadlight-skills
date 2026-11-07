@@ -41,6 +41,8 @@ const ACTIONABLE_SKILL_STATUSES = new Set([
   "stale",
 ]);
 
+const POSTDEPLOY_PATH = "tests/postdeploy-manifest.json";
+
 function hasItems(value) {
   return Array.isArray(value) && value.length > 0;
 }
@@ -1276,6 +1278,25 @@ async function projectSkill({
   }
 
   const { requiredEvidence, evidence } = await collectEvidence(reader, definition);
+  // threadlight-deploy generate-only writes a `pending-deploy` placeholder so the
+  // post-deploy contract has a home; it records that nothing was verified and
+  // must never read as verification evidence.
+  let placeholder = false;
+  if (definition.id === "threadlight-safe-check" && requiredEvidence.length > 0) {
+    try {
+      const candidate = await reader.readJson(POSTDEPLOY_PATH);
+      placeholder = isPlainObject(candidate) && candidate.phase === "pending-deploy";
+    } catch (error) {
+      if (!isArtifactParseError(error)) {
+        throw error;
+      }
+    }
+    if (placeholder) {
+      requiredEvidence.splice(0, requiredEvidence.length,
+        ...requiredEvidence.filter((item) => item.path !== POSTDEPLOY_PATH));
+      evidence.splice(0, evidence.length, ...evidence.filter((item) => item.path !== POSTDEPLOY_PATH));
+    }
+  }
   const incompletePrerequisiteId = definition.prerequisiteSkills.find((skillId) => {
     const prerequisite = projectedSkills.get(skillId);
     return (
@@ -1507,6 +1528,7 @@ async function projectSkill({
     status,
     ...(agentOpsRoots !== null ? { evidenceState: "manifest-observed" } : {}),
     ...(evidenceState !== undefined ? { evidenceState } : {}),
+    ...(placeholder ? { evidenceState: "placeholder" } : {}),
     evidence,
     blockers: incompletePrerequisite
       ? [

@@ -14,7 +14,8 @@ to a literal ``"sample"``. A call is ``ok`` when it returns no ``error`` key.
 A tool fails without being called when its contract is degenerate: no declared
 arguments, placeholder argument names (``none_id``, ``see_below``) parsed from
 a "none / see below" SPEC cell, a required identifier (``*_id``) that no
-earlier result or sample record provides, or a resolved call of ``{}``.
+earlier result or sample record provides, or a resolved call of ``{}``
+(unless every declared argument is optional, as for a paged list).
 No network, no Azure login, no LLM, no bytecode written into the project.
 
 Usage::
@@ -30,6 +31,7 @@ import importlib.util
 import inspect
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,7 +46,13 @@ def _load_server(project: Path):
     server = project / "src" / "mcp" / "server.py"
     if not server.is_file():
         raise FileNotFoundError(f"{server} missing (run threadlight-deploy generate_only first)")
+    # When threadlight-design owns server.py, the deploy-owned entry serves its
+    # tools (unchanged) plus any knowledge stand-in: call what the image runs.
+    entry = project / "src" / "mcp" / "threadlight_mcp_entry.py"
+    if entry.is_file():
+        server = entry
     os.environ["SAMPLE_DATA_DIR"] = str(project / "specs" / "sample-data")
+    os.environ["KNOWLEDGE_DIR"] = str(project / "specs" / "knowledge")
     spec = importlib.util.spec_from_file_location("threadlight_project_mcp_server", server)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -66,11 +74,38 @@ def _is_list(arg: dict[str, Any]) -> bool:
     return str(arg.get("type", "")).startswith("list")
 
 
+def _singular(token: str) -> str:
+    return token[:-1] if len(token) > 3 and token.endswith("s") and not token.endswith("ss") else token
+
+
+def _sample_files(tool: str) -> list[tuple[str, list[dict]]]:
+    """Sample-data files ranked by noun overlap with the tool name (design-owned servers)."""
+    nouns = {_singular(t) for t in tool.lower().split("_")}
+    ranked = []
+    for path in sorted(Path(os.environ["SAMPLE_DATA_DIR"]).glob("*.json")):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        rows = doc.get("records") if isinstance(doc, dict) else doc
+        rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+        tokens = {_singular(t) for t in path.stem.lower().split("_")}
+        ranked.append((-len(nouns & tokens), path.stem, rows))
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return [(stem, rows) for _, stem, rows in ranked]
+
+
 def _sample_value(module, tool: str, arg: dict[str, Any], skip: int = 0) -> Any:
     name = arg["name"]
     field = name[:-1] if name.endswith("_ids") else name
     seen = 0
-    for _, rows in module._files_for(tool):
+    files = module._files_for(tool) if hasattr(module, "_files_for") else _sample_files(tool)
+    if not hasattr(module, "_files_for") and _is_identifier(name) and not any(
+            field in row for _, rows in files for row in rows):
+        # Design-owned servers key records by ``id`` (e.g. ``rma_id`` -> returns.json ``id``).
+        field = "id"
+        files = files[:1]
+    for _, rows in files:
         for row in rows:
             if field in row and row[field] not in (None, "") and isinstance(row[field], (str, int, float)):
                 if seen == skip:
@@ -104,7 +139,29 @@ def _contract_failure(tool: dict[str, Any]) -> str:
     return ""
 
 
-def _arguments(module, tool: dict[str, Any], context: dict[str, Any], attempt: int) -> tuple[dict[str, Any], str]:
+ALLOWED = re.compile(r"one of \[([^\]]*)\]")
+
+
+def _enum_override(tool: dict[str, Any], result: Any) -> dict[str, Any]:
+    """``{"error": "invalid_<arg>", "message": "... one of ['a', 'b']"}`` -> ``{<arg>: 'a'}``.
+
+    Design-owned servers validate enumerations (for example ``decision``); the
+    harness then retries with the first value the server itself declares valid
+    instead of the literal "sample" fallback.
+    """
+    if not isinstance(result, dict) or not str(result.get("error", "")).startswith("invalid_"):
+        return {}
+    arg = str(result["error"])[len("invalid_"):]
+    found = ALLOWED.search(str(result.get("message", "")))
+    names = {a["name"] for a in tool.get("args", [])}
+    values = re.findall(r"'([^']+)'|\"([^\"]+)\"", found.group(1)) if found else []
+    if arg not in names or not values:
+        return {}
+    return {arg: next(v for pair in values for v in pair if v)}
+
+
+def _arguments(module, tool: dict[str, Any], context: dict[str, Any], attempt: int,
+               overrides: dict[str, Any] | None = None) -> tuple[dict[str, Any], str]:
     args: dict[str, Any] = {}
     unresolved: list[str] = []
     for arg in tool.get("args", []):
@@ -123,9 +180,11 @@ def _arguments(module, tool: dict[str, Any], context: dict[str, Any], attempt: i
                 continue
             value = ["sample"] if _is_list(arg) else "sample"
         args[name] = value
+    args.update(overrides or {})
     if unresolved:
         return args, f"unresolved required identifier(s) {', '.join(unresolved)}: no earlier result or sample record"
-    if not args and not tool.get("no_inputs"):
+    only_optional = bool(tool.get("args")) and all(a.get("optional") for a in tool["args"])
+    if not args and not tool.get("no_inputs") and not only_optional:
         return args, "empty call: no argument resolved from SPEC sample data"
     return args, ""
 
@@ -150,8 +209,9 @@ def run(project: Path) -> dict[str, Any]:
                           "failure": failure, "attempts": 0})
             continue
         attempts = []
+        overrides: dict[str, Any] = {}
         for attempt in range(3):
-            args, failure = _arguments(module, tool, context, attempt)
+            args, failure = _arguments(module, tool, context, attempt, overrides)
             if failure:
                 result = {"error": failure}
             else:
@@ -162,6 +222,7 @@ def run(project: Path) -> dict[str, Any]:
             attempts.append((args, result, failure))
             if not failure and _ok(result):
                 break
+            overrides.update(_enum_override(tool, result))
         args, result, failure = attempts[-1]
         ok = not failure and _ok(result)
         if ok:

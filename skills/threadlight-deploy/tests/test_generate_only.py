@@ -582,10 +582,9 @@ def test_run_evals_load_rows_accepts_prompt(studio: Path, tmp_path: Path, monkey
 
 
 def test_pilot_project_capability_host_has_no_bcp037_property():
-    text = (PILOT / "infra" / "main.bicep").read_text()
-    block = re.search(r"resource projectCapabilityHost\b.*?\n}\n", text, re.S)
-    assert block, "projectCapabilityHost resource missing"
-    assert "capabilityHostKind" not in block.group(0)
+    # The pilot creates no capability host (hosted agents no longer need one);
+    # the shared BYO-resources module still must not set capabilityHostKind.
+    assert "capabilityHosts" not in (PILOT / "infra" / "main.bicep").read_text()
     shared = SKILLS / "threadlight-deploy" / "references" / "azd-modules" / "references" / "bicep" / "foundry-project-capability-host.bicep"
     if shared.is_file():
         assert "capabilityHostKind" not in shared.read_text()

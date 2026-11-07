@@ -188,7 +188,7 @@ pilot and a demo that collapses under the first SME question.
 Every PoC, regardless of mode, MUST have:
 - ✅ **Keyless auth** (`DefaultAzureCredential`) — no API keys
 - ✅ **At least one MCP server** (mock or real) — agent must have callable tools
-- ✅ **Mock MCP server** for inaccessible systems — FastMCP backed by sample data, customer swaps endpoint later
+- ✅ **Mock MCP server** for inaccessible systems — FastMCP (`mcp.server.fastmcp`) backed by sample data, customer swaps endpoint later; see *Ownership between threadlight-design and threadlight-deploy* below
 - ✅ **SpecKit spec** with assumptions documented in § 13
 - ✅ **`specs/foundation.md`** — the up-front technical decision record (framework, model + region + capacity, hosting, tools, identity, observability) that Step 0 locks and Step 3 pre-populates the SPEC from. **From-scratch path**; skipped on Kratos-export (already designed), house-defaulted in Fast-PoC.
 - ✅ **AGENTS.md + skills** derived from spec
@@ -198,6 +198,33 @@ Every PoC, regardless of mode, MUST have:
 - ✅ **`specs/experience.html`** — bespoke cinematic customer journey (**optional — on request**; **see Step 6 § 8**). Generate when the user asks for a "cinematic", "experience", or "journey", or when spec § 13 sets `experience: true`. Skip otherwise.
 - ✅ **`tests/killer-prompts.md`** — 5–10 ranked wow-prompts wired into `STARTER_{1,2,3}_TITLE/PROMPT` env vars (see Step 6 § 11). Mandatory under the same condition as the deck.
 - ✅ **`specs/demo-rehearsal.md`** — beat-by-beat run-of-show (T-24h / T-15min / T-5min / T-0) with backup paths (see Step 6 § 12). Mandatory under the same condition as the deck.
+
+#### Ownership between threadlight-design and threadlight-deploy
+
+The workshop chain is design, then `threadlight-deploy` generate-only
+**without `--force`**. Design owns the business content; deploy owns the
+packaging and infrastructure, and adopts the design's mock server unchanged:
+
+- **Design writes** `specs/` (including `specs/knowledge/*.md` for SPEC § 7
+  documents), `AGENTS.md`, `src/agent/skills/`, the design tests and,
+  optionally, `src/mcp/server.py`: the mock MCP tool logic with its safeguards.
+- **Mock server contract.** Write each non-knowledge SPEC § 6 tool as a
+  module-level function with the SPEC name. At import time use only the
+  standard library, `from mcp.server.fastmcp import FastMCP` (the pinned
+  `mcp==1.29.1` that deploy locks with hashes) or packages that lock installs
+  (for example `pydantic`, `httpx`); import any other framework lazily inside a
+  function or as a `try/except ImportError` fallback. Read `SAMPLE_DATA_DIR` for the data directory.
+  Knowledge-base tools (Foundry IQ) stay out of the server.
+- **Design does not write `src/mcp/Dockerfile`**, `pyproject.toml`,
+  `requirements*.txt` or a lock for the server, and never an unpinned
+  dependency such as `fastmcp>=2.10`. Deploy generates the Dockerfile, the
+  hashed `requirements.lock` and `src/mcp/threadlight_mcp_entry.py`, which
+  serves the design's functions as they are. To try the tools before deploy,
+  use Pattern 0 (`threadlight-local-test`), which calls the same functions in
+  process.
+- Deploy refuses (exit 6, nothing written) a server that misses a SPEC § 6
+  tool or imports an unpinned package at module level, and never rewrites it.
+  See `threadlight-deploy` § generate-only mode.
 
 > [!IMPORTANT]
 > **Fast-PoC skips Step 1.5 (Audience & Presentation Context).** Audience

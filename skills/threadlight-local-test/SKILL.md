@@ -122,8 +122,12 @@ python3 skills/threadlight-local-test/scripts/project_tools.py \
 - Report: `threadlight-local-test-report/v1` with `pattern: "project-tools"`.
   Exit codes: 0 pass, 1 a tool failed, 2 no generated MCP server.
 
-This is not Pattern 0: Pattern 0 boots generic CRUD stubs and an LLM. The
-project-tools harness checks the tools that will actually ship.
+This is not Pattern 0: Pattern 0 boots an LLM over in-process tools. The
+project-tools harness checks, without an LLM, the tools that will actually
+ship. When threadlight-design owns `src/mcp/server.py`, it calls the
+deploy-owned `src/mcp/threadlight_mcp_entry.py` that serves it. A required
+enumeration the server rejects (`invalid_<arg>` with "one of [...]") is retried
+once with the first value the server itself declares valid.
 
 ---
 
@@ -156,7 +160,9 @@ server, or a real Cosmos.
 
 > **No Docker. No Cosmos emulator. No MCP server boot.** Pattern 0
 > replaces all three with an in-memory dict-of-records loaded from
-> `specs/sample-data/<entity>.json` and three CRUD tools per entity
+> `specs/sample-data/<entity>.json`. When `specs/SPEC.md` declares tools in
+> § 6, the agent gets those **SPEC § 6 tool names** (see *How the tools come
+> from your SPEC*); otherwise it falls back to three CRUD tools per entity
 > (`list_<entity>`, `get_<entity>`, `update_<entity>`).
 
 ### The bootstrap (one-time per PoC)
@@ -173,6 +179,14 @@ echo .env.local >> .gitignore
 # 3) Sanity-check the wiring without a live LLM round-trip (<5s)
 python -m threadlight_quickstart --check
 ```
+
+`--check` also prints the instructions source (`AGENTS.md` or defaults) and
+every SPEC § 6 tool with its backing and approval mode.
+
+> **Public PyPI blocked?** On a corporate laptop the install can fail before
+> anything runs. Use the package mirror or proxy your organisation approves for
+> that one install (for example `pip install --index-url <approved-mirror> ...`);
+> do not change global pip/uv configuration or disable security controls.
 
 ### The loop (every time)
 
@@ -209,7 +223,42 @@ python -m threadlight_quickstart --simulator
 
 ### How the tools come from your SPEC
 
-For every `specs/sample-data/<entity>.json` discovered, Pattern 0
+**Instructions.** The agent runs with the project's own `AGENTS.md` (the same
+instructions the hosted agent gets) plus a short Pattern 0 suffix: tools answer
+from synthetic sample data, never invent ids or clauses, writes wait for human
+approval. Without `AGENTS.md` it uses the generic Pattern 0 defaults.
+
+**SPEC § 6 tool names.** For every tool in `specs/SPEC.md` § 6 Pattern 0
+registers a tool with the same name and arguments, backed in this order:
+
+| Backing | When | Behaviour |
+|---|---|---|
+| design server | `src/mcp/server.py` defines a function with that name | Imported unchanged (lazy framework imports never run), so its safeguards apply: field allow-lists, validation, required citations |
+| knowledge | § 6 **Backed by** names Foundry IQ, a knowledge base or AI Search | Read-only local search over `specs/knowledge/*.md`, returning clause ids for citation. A labelled stand-in, not Foundry IQ |
+| sample-data adapter | otherwise | Reads filter the matching entity by the given ids; writes store the arguments on the in-memory record |
+
+**Approvals.** Read tools (§ 11a `consequence: read`, § 5b `R`, knowledge
+tools, else a read verb in the name) are registered with
+`approval_mode="never_require"`. Write tools use `always_require`: nothing
+approves them implicitly.
+
+- **Streamlit:** a paused write (or skill script) shows the tool and
+  arguments with **Approve and continue** / **Reject** buttons; the turn
+  resumes with your decision, and the reply states what was approved or
+  rejected from the recorded decisions. A human may approve a skill script here.
+- **Headless:** `python -m threadlight_quickstart --ask "<prompt>"` (repeatable)
+  runs the same agent and prints a JSON report. Every pending approval is
+  **rejected** (no effect; the model sees the rejection and finishes its
+  answer) unless the operator names that tool with `--approve-tool <tool>`.
+  This up-front policy can never approve skill scripts (`run_skill_script`);
+  only a human click can.
+
+Use `--ask` to rehearse the killer prompts before the workshop. Pattern 0
+results check prompt behaviour against the design's own tools and policy text;
+they are not evidence of the deployed agent.
+
+**CRUD fallback.** Without a SPEC § 6 tool list, for every
+`specs/sample-data/<entity>.json` discovered, Pattern 0
 registers three MAF `@tool`-decorated callables backed by an
 in-memory `InMemoryStore`:
 
@@ -265,7 +314,10 @@ references/quickstart/
 │   ├── cli.py                     # argparse: --check, --info, --simulator, --port
 │   ├── discover.py                # walks up cwd for the canonical PoC layout
 │   ├── agent_wiring.py            # Agent + SkillsProvider + tool registration
-│   ├── stub_tools.py              # InMemoryStore + CRUD tool factory
+│   ├── stub_tools.py              # InMemoryStore + CRUD tool factory (fallback)
+│   ├── spec_tools.py              # SPEC § 6 tools: design server, knowledge, adapters
+│   ├── knowledge.py               # read-only search over specs/knowledge/*.md
+│   ├── approvals.py               # explicit approve/reject; headless --ask policy
 │   ├── simulator.py               # demo-prompt cursor
 │   └── ui_streamlit.py            # the Streamlit chat page
 ├── .env.local.example             # env-var template

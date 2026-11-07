@@ -1,0 +1,4 @@
+{"_meta": {"entity": "returns", "synthetic": true}, "records": [
+  {"id": "RMA-001", "customer_id": "CUST-01", "item_name": "Trail jacket", "refund_amount": 89.0, "status": "in_triage"},
+  {"id": "RMA-002", "customer_id": "CUST-02", "item_name": "Wool coat", "refund_amount": 640.0, "status": "in_triage"}
+]}
