@@ -55,7 +55,9 @@ def data_source(cfg: dict, rows: list[dict]) -> dict:
         "type": "azure_ai_target_completions",
         "source": {"type": "file_content", "content": [{"item": row} for row in rows]},
         # Invocations-protocol hosted agent: the freeform template is the /invocations body.
-        "input_messages": cfg.get("input_messages", {"input": "{{item.query}}"}),
+        # "stream": false returns only the final answer text (the SSE stream is
+        # 200-300 KB per case: judge 429s and a 413 on result upload).
+        "input_messages": cfg.get("input_messages", {"input": "{{item.query}}", "stream": False}),
         "target": target,
     }
 
@@ -115,6 +117,32 @@ def _get(obj, key, default=None):
     return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
 
 
+def _transient(exc: Exception) -> bool:
+    # openai.APIConnectionError / APITimeoutError wrap DNS and reset errors.
+    name = type(exc).__name__
+    return isinstance(exc, (ConnectionError, TimeoutError, OSError)) or "Connection" in name or "Timeout" in name
+
+
+def poll_run(client, run, eval_id: str, *, sleep=time.sleep, interval: float = 10, max_failures: int = 6):
+    """Wait for a terminal run status; a transient network error (DNS, reset) is retried.
+
+    The run keeps going server-side, so a lost poll must not end the script.
+    ``max_failures`` consecutive errors re-raise the last one.
+    """
+    failures = 0
+    while _get(run, "status") not in TERMINAL:
+        sleep(min(interval * 2 ** failures, 120))
+        try:
+            run = client.evals.runs.retrieve(run_id=run.id, eval_id=eval_id)
+            failures = 0
+        except Exception as exc:  # noqa: BLE001 - only transient network errors are retried
+            failures += 1
+            if not _transient(exc) or failures >= max_failures:
+                raise
+            print(json.dumps({"poll_retry": failures, "error": type(exc).__name__}), file=sys.stderr)
+    return run
+
+
 def record(run_id: str, rubric_name: str, score) -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     evaluation = manifest.setdefault("evaluation", {})
@@ -156,9 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.no_wait:
         record(run.id, cfg["custom_rubric_evaluators"][0]["name"], None)
         return 0
-    while _get(run, "status") not in TERMINAL:
-        time.sleep(10)
-        run = client.evals.runs.retrieve(run_id=run.id, eval_id=ev.id)
+    run = poll_run(client, run, ev.id)
     rubric_name = cfg["custom_rubric_evaluators"][0]["name"]
     scores = []
     for item in client.evals.runs.output_items.list(run_id=run.id, eval_id=ev.id):

@@ -200,6 +200,25 @@ async def _ensure_session() -> None:
 # SSE Streaming Handler
 # ---------------------------------------------------------------------------
 
+def _event_payload(event) -> dict | None:
+    """Serialise one SDK event without letting a bad field abort the SSE stream.
+
+    github-copilot-sdk 1.0.x ``to_dict()`` raises AssertionError on some usage
+    fields (e.g. ``timeToFirstTokenMs``); in the 2026-11-07 live deploy that
+    killed the stream mid-response. Message events keep their text.
+    """
+    try:
+        return event.to_dict()
+    except Exception as exc:  # noqa: BLE001
+        event_type = getattr(getattr(event, "type", None), "value", str(getattr(event, "type", "")))
+        logger.warning("Skipping unserialisable %s event: %s", event_type, type(exc).__name__)
+        if event_type in ("assistant.message", "assistant.message_delta"):
+            data = getattr(event, "data", None)
+            content = getattr(data, "content", None) or getattr(data, "delta_content", None) or ""
+            return {"type": event_type, "data": {"content": content}}
+        return None
+
+
 async def _stream_response(invocation_id: str, input_text: str):
     """Stream CopilotClient events as SSE."""
     await _ensure_session()
@@ -223,9 +242,55 @@ async def _stream_response(invocation_id: str, input_text: str):
             if isinstance(item, Exception):
                 yield f"data: {json.dumps({'type': 'error', 'message': str(item)})}\n\n".encode()
                 break
-            yield f"data: {json.dumps(item.to_dict())}\n\n".encode()
+            payload = _event_payload(item)
+            if payload is not None:
+                yield f"data: {json.dumps(payload)}\n\n".encode()
 
         yield f"event: done\ndata: {json.dumps({'invocation_id': invocation_id})}\n\n".encode()
+    finally:
+        unsubscribe()
+
+
+_HEARTBEAT_SECONDS = 15
+
+
+async def _final_answer_response(input_text: str):
+    """Non-streaming mode (``"stream": false``): emit only the final answer text.
+
+    Used by Foundry evaluations: the full SSE event stream is 200-300 KB per
+    case, which exhausted the judge model's TPM (429) and exceeded the eval
+    result size limit (413). Newline heartbeats keep the connection alive
+    while the agent works; they are whitespace for the evaluators.
+    """
+    await _ensure_session()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def on_event(event):
+        if event.type == SessionEventType.SESSION_IDLE:
+            queue.put_nowait(None)
+        elif event.type == SessionEventType.SESSION_ERROR:
+            queue.put_nowait(RuntimeError(getattr(event.data, "message", "error")))
+        elif getattr(event.type, "value", "") == "assistant.message":
+            queue.put_nowait(getattr(getattr(event, "data", None), "content", None) or "")
+
+    unsubscribe = _session.on(on_event)
+    final = ""
+    try:
+        await _session.send(input_text)
+        while True:
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_SECONDS)
+            except asyncio.TimeoutError:
+                yield b"\n"
+                continue
+            if item is None:
+                break
+            if isinstance(item, Exception):
+                final = f"Error: {item}"
+                break
+            if item.strip():
+                final = item
+        yield (final or "Error: the agent returned no answer.").encode("utf-8")
     finally:
         unsubscribe()
 
@@ -249,6 +314,12 @@ async def handle_invoke(request: Request) -> Response:
                     'e.g. {"input": "What can you help me with?"}'
                 ),
             },
+        )
+    if data.get("stream") is False:
+        return StreamingResponse(
+            _final_answer_response(input_text),
+            media_type="text/plain; charset=utf-8",
+            headers={"Cache-Control": "no-cache"},
         )
     return StreamingResponse(
         _stream_response(request.state.invocation_id, input_text),

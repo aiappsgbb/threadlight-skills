@@ -397,7 +397,16 @@ Ownership is explicit, so the deploy step never discards design code:
   knowledge base or AI Search is not expected in the design server. Until
   `threadlight-ground` provisions the knowledge base, the MCP server answers it
   read-only from the packaged `specs/knowledge/*.md` (a labelled local
-  stand-in, not Foundry IQ evidence).
+  stand-in, not Foundry IQ evidence). When `specs/knowledge/*.md` exists but
+  § 6 declares no knowledge tool, the MCP server also exposes the read-only
+  `knowledge_search(query)` (the same name Pattern 0 uses) and
+  `specs/deferred-steps.md` lists it until Foundry IQ is provisioned.
+- **Image layout.** `src/mcp/Dockerfile` mirrors the repo layout
+  (`/app/src/mcp`, `/app/specs/sample-data`, `/app/specs/knowledge`), so a design
+  server that resolves repo-relative paths (`Path(__file__).parents[2]`) works
+  in the image. The generated offline tests replay that layout and import the
+  server under it; a flat `/app` copy raised `IndexError` in the 2026-11-07
+  live deploy.
 
 | Input (design workspace) | Output |
 |---|---|
@@ -418,6 +427,27 @@ Ownership is explicit, so the deploy step never discards design code:
   `${AZURE_AI_MODEL_VERSION=<version>}`, so the template default
   (`gpt-5.4-mini`) applies only when the design names no model. A model without
   a version is a deferred step.
+- **Capacity.** `modelCapacity` is GlobalStandard units (1 unit = 1,000 TPM,
+  [Learn](https://learn.microsoft.com/azure/foundry/openai/how-to/automate-quota-deployments)),
+  derived from `specs/foundation.md` § 2 `capacity_tpm` (`50K`, `1M`,
+  `400000`) as `${AZURE_AI_MODEL_CAPACITY=<units>}`. Without a value, or below
+  300 units, it uses 300: the GHCP runtime and the evaluation judge share the
+  deployment and 50 units returned 429 in live runs. A raise is a
+  `specs/deferred-steps.md` row with the `azd env set` command to follow the
+  foundation exactly.
+- **Pilot RBAC and telemetry.** The pilot `infra/main.bicep` grants the deployer
+  Foundry User at project scope and at account scope (evaluations invoke the
+  judge model on the account,
+  [Learn](https://learn.microsoft.com/azure/foundry/observability/how-to/evaluation-permissions)),
+  and creates the project's App Insights connection so Foundry injects
+  `APPLICATIONINSIGHTS_CONNECTION_STRING` into the hosted agent
+  ([Learn](https://learn.microsoft.com/azure/foundry/agents/how-to/configure-hosted-agent-telemetry)).
+- **Selected governance.** generate_only does not build a governance package.
+  When SPEC § 11a selects governance (any mode but `off`), the bound tools are
+  listed as **not packaged** in `specs/deferred-steps.md`, `DEPLOY.md` and the
+  post-deploy gaps, and `threadlight-safe-check` reports
+  `governance: selected-governance-not-packaged` until `threadlight-govern`
+  builds it. An invalid contract is disclosed too; it is never treated as off.
 - **Selected modules not provisioned.** The pilot `infra/main.bicep` provisions
   Foundry, ACR, the identity, App Insights and the MCP Container App only. Any
   other SPEC § 11c module marked `yes` (for example `ai-search`, `storage-blob`,
@@ -441,6 +471,10 @@ Ownership is explicit, so the deploy step never discards design code:
   `python evals/run_evals.py` runs after deploy as a single command.
   It creates a Foundry eval with built-in evaluators plus a custom score-model
   rubric derived from the SPEC business rules (1–5 anchors, threshold 4).
+  The target input is `{"input": "{{item.query}}", "stream": false}`: the GHCP
+  runtime then returns only the final answer text (the full SSE stream caused
+  judge 429s and a 413 on result upload). A transient network error while
+  polling is retried; the run continues server-side.
   `--dry-run` prints the eval payload offline.
 - **Foundry package gate.** `specs/foundry-package-manifest.json` is
   schema-valid `threadlight-foundry-package/v1` with unevidenced sections.
@@ -456,7 +490,9 @@ these checks:
 - the lockfiles are pinned and hashed;
 - the Foundry package gate exits 3;
 - a secret and personal-target scan finds nothing;
-- the generated offline agent tests pass;
+- the generated offline agent tests pass, including the MCP image-layout
+  checks (Dockerfile paths mirror the repo, `parents[N]` stays inside the
+  image, and the server imports under the replayed layout);
 - `bicep build infra/main.bicep` succeeds with no BCP037 (unknown property)
   warning;
 - `docker build` succeeds for both images with an empty temporary

@@ -97,8 +97,13 @@ Then adapt `_load_mcp_servers()` for your MCP server configuration.
 The template provides:
 1. `_init_byok()` / `_get_provider()` — BYOK auth with `DefaultAzureCredential`
 2. `_ensure_session()` — Creates/resumes `CopilotClient` session with provider, skills, MCP
-3. `_stream_response()` — Subscribes to session events, yields SSE
-4. `handle_invoke()` — `@app.invoke_handler` that returns `StreamingResponse`
+3. `_stream_response()` — Subscribes to session events, yields SSE. An event
+   whose SDK `to_dict()` fails (github-copilot-sdk 1.0.x usage fields) is
+   skipped or reduced to its text by `_event_payload()` instead of ending the stream
+4. `_final_answer_response()` — `{"input": "...", "stream": false}` returns only
+   the final answer as `text/plain` (newline heartbeats while the agent works).
+   Foundry evaluations use it: the full SSE stream is 200-300 KB per case
+5. `handle_invoke()` — `@app.invoke_handler` that returns `StreamingResponse`
 
 ```
 container.py → CopilotClient + InvocationAgentServerHost → port 8088
@@ -191,7 +196,7 @@ hosted agent on Foundry plus the mock MCP server on Azure Container Apps.
 | File | Contract |
 |---|---|
 | `azure.yaml` | `azure.ai.agent` + `containerapp` services, both `remoteBuild: true`; `postdeploy` hook |
-| `infra/main.bicep` | Foundry account + project (system identity), model deployment, ACR, ACA, Log Analytics; every role assigned by GUID, including the deployer's Foundry User (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) at project scope; `tags` parameter |
+| `infra/main.bicep` | Foundry account + project (system identity), model deployment, ACR, ACA, Log Analytics; every role assigned by GUID, including the deployer's Foundry User (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) at project scope and at account scope (Foundry evaluations call the judge model on the account endpoint); the App Insights project connection (category `AppInsights`) that makes Foundry inject `APPLICATIONINSIGHTS_CONNECTION_STRING` into the hosted agent; `tags` parameter |
 | `infra/main.parameters.json` | tags from `THREADLIGHT_OWNER`, `THREADLIGHT_PURPOSE`, `THREADLIGHT_DISPOSABLE` azd env values |
 | `mcp/Dockerfile`, `mcp/server.py`, `mcp/requirements.lock` | MCR base, exact hashed `mcp==1.29.1` (`--require-hashes`; mcp 2.x removes `mcp.server.fastmcp`), `SAMPLE_DATA_DIR` env (no path walk), `tool=` log lines for server-side proof |
 | `dockerignore` | allowlist root `.dockerignore` (repo-root build context exceeds the ACR tar limit otherwise) |
@@ -842,8 +847,9 @@ Reader** on the project's managed identity) automatically as part of
 | **Immediate post-grant SSE `model.call_failure` 401 / `transient_auth_error`** | Instance grants are correct but role-assignment propagation has not completed | Inspect the full event stream and retry the same JSON positional `azd ai agent invoke` path with bounded 15-second backoff (max six); accept recovered assistant output later in the stream. A 401 that never recovers after both grants is a hard FAIL |
 | **"responses protocol not declared" (bot 400)** | `azure.yaml`'s agent service only declares `invocations` but bot/CLI calls via Responses API (`oai.responses.create()`) | **Dual protocols don't work** — `InvocationAgentServerHost` only serves `/invocations`; the `/responses` path returns 404 even if a second protocol entry is declared. **Fix:** Rewrite the bot to POST directly to the Invocations SSE endpoint (or use `azd ai agent invoke --protocol invocations`) and parse `assistant.message` + `assistant.message_delta` events. **Alternative:** Use MAF runtime (ResponsesHostServer) which natively serves responses. |
 | **`azd deploy` 403 Forbidden `ERROR CODE: UserError`** | Deploying user has only control-plane roles (subscription/RG `Owner`/`Contributor`), no Foundry data-plane role on the project | Assign `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) or `Foundry Project Manager` at `AZURE_AI_PROJECT_ID` scope, wait ~60 s, rerun `azd deploy` — see § "Deploying user" |
+| **Foundry eval run `failed`: 401 `lacks the required data action Microsoft.CognitiveServices/accounts/OpenAI/evals/write`** | The identity that runs `evals/run_evals.py` has Foundry User at project scope only; the evaluation invokes the judge model on the account endpoint | The pilot `infra/main.bicep` also grants the deployer Foundry User at **account** scope (`deployerFoundryUserAccount`). For another identity assign `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) on the Foundry account ([Learn](https://learn.microsoft.com/azure/foundry/observability/how-to/evaluation-permissions)) |
 | **ACR push 403 / RBAC error** | Deploying user lacks `AcrPush` on the target ACR | Assign `AcrPush` on the ACR, or use the guided `azd ai agent init --deploy-mode container` path, which wires the registry automatically (Azure/azure-dev #8981) |
-| **Evals show no telemetry** | AppInsights not connected to Foundry account | Create `AppInsights` connection on the **account** (not project). Category: `AppInsights`, target: ARM resource ID, metadata: `ApiType: Azure`. `APPLICATIONINSIGHTS_CONNECTION_STRING` is reserved — platform injects it. |
+| **Evals or traces show no telemetry** | Project monitoring not configured: no App Insights connection on the Foundry **project** | The pilot `infra/main.bicep` creates it (`projectAppInsights`: category `AppInsights`, target the App Insights resource ID, metadata `ApiType: Azure`); in the portal it is Agents > Traces > Connect. One connection of this category per project. `APPLICATIONINSIGHTS_CONNECTION_STRING` is reserved — Foundry injects it only when project monitoring is configured ([Learn](https://learn.microsoft.com/azure/foundry/agents/how-to/configure-hosted-agent-telemetry)). |
 | **Agent traces missing** | Agent identity lacks telemetry RBAC | Assign `Monitoring Metrics Publisher` on AppInsights to the agent identity (from `azd ai agent show`). Project MI needs `Log Analytics Data Reader` on Log Analytics workspace. |
 | **gpt-4.1 encrypted content error** | gpt-4.1 deprecated, doesn't support encrypted content required by GHCP SDK | Default to `gpt-5.4-mini` or `gpt-5.4`. Update `AZURE_AI_MODEL_DEPLOYMENT_NAME` in `azure.yaml` / azd env. |
 | **`azd deploy` says "deployed in <1s" and nothing ships** | Copied a stripped-down `azure.yaml` missing the `services:` block | Use the canonical `references/yaml/azure.yaml` verbatim — see § "azure.yaml (unified GA deployment)" |
