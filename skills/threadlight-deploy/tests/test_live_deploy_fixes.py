@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import contextlib
 import enum
 import json
 import logging
@@ -165,15 +166,15 @@ def test_stream_false_returns_only_the_final_answer_text():
 
     session = Session()
 
-    async def ensure():
-        return None
+    @contextlib.asynccontextmanager
+    async def conversation(_key):
+        yield session
 
     ns = _container_functions(
         "_final_answer_response",
         SessionEventType=types.SimpleNamespace(SESSION_IDLE=_Type.IDLE, SESSION_ERROR=_Type.ERROR),
-        _ensure_session=ensure,
+        _conversation=conversation,
     )
-    ns["_session"] = session
 
     async def collect():
         return b"".join([chunk async for chunk in ns["_final_answer_response"]("Triage RMA-002")])

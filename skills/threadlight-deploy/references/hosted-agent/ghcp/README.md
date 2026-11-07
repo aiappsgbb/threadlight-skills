@@ -96,7 +96,13 @@ Then adapt `_load_mcp_servers()` for your MCP server configuration.
 
 The template provides:
 1. `_init_byok()` / `_get_provider()` — BYOK auth with `DefaultAzureCredential`
-2. `_ensure_session()` — Creates/resumes `CopilotClient` session with provider, skills, MCP
+2. `_conversation()` — one `CopilotClient` per container and one Copilot session per
+   Foundry `agent_session_id` (same id continues the conversation, a different id
+   never sees it); without an id each invocation gets a fresh session, closed
+   afterwards. Cached sessions are LRU-bounded (`COPILOT_MAX_SESSIONS`, default 16),
+   recreated after 45 minutes (fresh BYOK token) and serialised per session. The
+   container-wide `FOUNDRY_AGENT_SESSION_ID` is not a conversation key: sharing one
+   session made every eval row join one conversation in the 2026-11-07 live run
 3. `_stream_response()` — Subscribes to session events, yields SSE. An event
    whose SDK `to_dict()` fails (github-copilot-sdk 1.0.x usage fields) is
    skipped or reduced to its text by `_event_payload()` instead of ending the stream
@@ -838,7 +844,7 @@ Reader** on the project's managed identity) automatically as part of
 | **Agent crashes on startup** | Missing `azure-ai-agentserver-invocations` | Add to dependencies, use `prerelease = "if-necessary-or-explicit"` |
 | **Gateway timeout (502/504)** | Using Responses protocol for long queries | Switch to Invocations protocol |
 | **Token expired during long query** | BYOK token static per session | Token has ~1h validity; for longer sessions, create new session |
-| **Token expired during eval runs** | Long eval runs (many scenarios) exhaust the BYOK token | Refresh the provider token per invocation: call `_get_provider()` fresh before each `_ensure_session()`, or create a new session every ~30 min |
+| **Token expired during eval runs** | Long eval runs (many scenarios) exhaust the BYOK token | The reference mints a fresh provider token for every new Copilot session, uses a fresh session per invocation without `agent_session_id`, and recreates a cached session after 45 minutes |
 | **Container can't resolve packages** | pip doesn't handle pre-release deps | Use `uv` with pre-release settings in `[tool.uv]` |
 | **Missing `[tool.setuptools] packages = []`** | uv resolution fails without it | Add to pyproject.toml (see `references/pyproject.toml`) |
 | **CognitiveServices API version wrong** | Using old `2024-10-01` | Use `2025-10-01-preview` for agent management APIs |

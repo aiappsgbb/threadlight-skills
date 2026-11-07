@@ -25,6 +25,8 @@ import os
 import pathlib
 import sys
 import time
+from collections import OrderedDict
+from contextlib import asynccontextmanager
 from typing import Any
 
 from starlette.requests import Request
@@ -132,68 +134,139 @@ def _load_mcp_servers() -> dict[str, dict] | None:
 # ---------------------------------------------------------------------------
 # Session Management
 # ---------------------------------------------------------------------------
+# One CopilotClient per container, one Copilot session per FOUNDRY session.
+#
+# The caller's ``agent_session_id`` query parameter selects the conversation:
+# the same id continues it, a different id never sees it. Without one, each
+# invocation gets a fresh session that is closed afterwards. The container-wide
+# ``FOUNDRY_AGENT_SESSION_ID`` is deliberately NOT a conversation key: one
+# shared session made every Foundry evaluation row join the same conversation
+# in the 2026-11-07 live run (21 s -> 135 s per row, earlier rows visible to
+# later ones). Cached sessions are bounded (``COPILOT_MAX_SESSIONS``, LRU) and
+# recreated after ``_SESSION_MAX_AGE_SECONDS`` so a BYOK bearer token minted at
+# creation never outlives its validity. Turns in one session are serialised.
 
 app = InvocationAgentServerHost()
 
 _client: CopilotClient | None = None
-_session = None
+_client_lock = asyncio.Lock()
 _skills_dir = str(BASE_DIR / "skills")
+_MAX_SESSIONS = max(1, int(os.environ.get("COPILOT_MAX_SESSIONS", "") or "16"))
+_SESSION_MAX_AGE_SECONDS = 45 * 60
+_sessions: "OrderedDict[str, tuple[Any, float]]" = OrderedDict()
+_session_locks: dict[str, asyncio.Lock] = {}
+_sessions_lock = asyncio.Lock()
 
 
-async def _ensure_session() -> None:
-    """Create or resume a CopilotClient session. Lazy — runs once per worker."""
-    global _client, _session
-    if _session is not None:
-        return
+async def _ensure_client() -> CopilotClient:
+    """Start the CopilotClient once per worker."""
+    global _client
+    async with _client_lock:
+        if _client is not None:
+            return _client
+        github_token = os.environ.get("GITHUB_TOKEN", "")
+        if _get_provider():
+            # BYOK mode: Foundry model via Managed Identity, no token needed.
+            client = CopilotClient()
+        elif github_token:
+            # Copilot mode: GitHub-hosted models via personal/app token.
+            client = CopilotClient(github_token=github_token)
+        else:
+            raise RuntimeError(
+                "No auth configured. Set FOUNDRY_PROJECT_ENDPOINT + "
+                "AZURE_AI_MODEL_DEPLOYMENT_NAME (BYOK Foundry) or GITHUB_TOKEN (GHCP)."
+            )
+        await client.start()
+        logger.info("CopilotClient started (mode=%s)", "BYOK" if _BYOK_ENDPOINT else "GITHUB_TOKEN")
+        _client = client
+        return client
 
-    session_id = os.environ.get("FOUNDRY_AGENT_SESSION_ID", "")
 
-    provider = _get_provider()
-    github_token = os.environ.get("GITHUB_TOKEN", "")
-
-    if provider:
-        # BYOK mode: Foundry model via Managed Identity, no token needed.
-        _client = CopilotClient()
-    elif github_token:
-        # Copilot mode: GitHub-hosted models via personal/app token.
-        _client = CopilotClient(github_token=github_token)
-    else:
-        raise RuntimeError(
-            "No auth configured. Set FOUNDRY_PROJECT_ENDPOINT + "
-            "AZURE_AI_MODEL_DEPLOYMENT_NAME (BYOK Foundry) or GITHUB_TOKEN (GHCP)."
-        )
-
-    await _client.start()
-    logger.info("CopilotClient started (mode=%s)", "BYOK" if provider else "GITHUB_TOKEN")
-
+def _session_kwargs() -> dict[str, Any]:
+    """Session options; mints a fresh BYOK provider token for every new session."""
     kwargs: dict[str, Any] = {
         "on_permission_request": PermissionHandler.approve_all,
         "streaming": True,
         "working_directory": str(pathlib.Path.home()),
-        "provider": provider,
+        "provider": _get_provider(),
         "model": _MODEL or None,
     }
-
     instructions = _load_instructions()
     if instructions:
         kwargs["system_message"] = {"mode": "replace", "content": instructions}
-
     if pathlib.Path(_skills_dir).is_dir():
         kwargs["skill_directories"] = [_skills_dir]
-
     mcp = _load_mcp_servers()
     if mcp:
         kwargs["mcp_servers"] = mcp
+    return kwargs
 
+
+async def _close_session(session) -> None:
+    close = getattr(session, "disconnect", None)
+    if close is None:
+        return
     try:
-        if session_id:
-            _session = await _client.resume_session(session_id, **kwargs)
-            logger.info("Resumed session: %s", session_id)
-        else:
-            raise Exception("no session_id")
+        await close()
+    except Exception as exc:  # noqa: BLE001 - cleanup must not fail the caller
+        logger.warning("Copilot session cleanup failed: %s", type(exc).__name__)
+
+
+async def _keyed_session(client: CopilotClient, key: str):
+    """Cached session for ``key`` (caller holds the key's lock), creating it if needed."""
+    stale = None
+    async with _sessions_lock:
+        entry = _sessions.get(key)
+        if entry is not None and time.time() - entry[1] < _SESSION_MAX_AGE_SECONDS:
+            _sessions.move_to_end(key)
+            return entry[0]
+        if entry is not None:
+            stale = _sessions.pop(key)[0]
+    if stale is not None:
+        await _close_session(stale)
+    try:
+        session = await client.resume_session(key, **_session_kwargs())
+        logger.info("Resumed Copilot session for Foundry session %s", key)
     except Exception:
-        _session = await _client.create_session(**kwargs)
-        logger.info("Created new session")
+        session = await client.create_session(**_session_kwargs())
+        logger.info("Created Copilot session for Foundry session %s", key)
+    evicted = []
+    async with _sessions_lock:
+        _sessions[key] = (session, time.time())
+        for old_key in list(_sessions):
+            if len(_sessions) <= _MAX_SESSIONS:
+                break
+            lock = _session_locks.get(old_key)
+            if old_key == key or (lock is not None and lock.locked()):
+                continue  # never close a session in the middle of a turn
+            evicted.append(_sessions.pop(old_key)[0])
+            _session_locks.pop(old_key, None)
+    for old in evicted:
+        await _close_session(old)
+    return session
+
+
+@asynccontextmanager
+async def _conversation(session_key: str):
+    """Yield the Copilot session for one turn of ``session_key`` (fresh when empty)."""
+    client = await _ensure_client()
+    if not session_key:
+        session = await client.create_session(**_session_kwargs())
+        try:
+            yield session
+        finally:
+            await _close_session(session)
+        return
+    async with _sessions_lock:
+        lock = _session_locks.setdefault(session_key, asyncio.Lock())
+    async with lock:
+        yield await _keyed_session(client, session_key)
+
+
+def _session_key(request: Request) -> str:
+    """The caller's Foundry ``agent_session_id``; empty means a fresh conversation."""
+    params = getattr(request, "query_params", None) or {}
+    return str(params.get("agent_session_id") or "").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -219,42 +292,42 @@ def _event_payload(event) -> dict | None:
         return None
 
 
-async def _stream_response(invocation_id: str, input_text: str):
+async def _stream_response(invocation_id: str, input_text: str, session_key: str = ""):
     """Stream CopilotClient events as SSE."""
-    await _ensure_session()
-    queue: asyncio.Queue = asyncio.Queue()
+    async with _conversation(session_key) as session:
+        queue: asyncio.Queue = asyncio.Queue()
 
-    def on_event(event):
-        if event.type == SessionEventType.SESSION_IDLE:
-            queue.put_nowait(None)
-        elif event.type == SessionEventType.SESSION_ERROR:
-            queue.put_nowait(RuntimeError(getattr(event.data, "message", "error")))
-        else:
-            queue.put_nowait(event)
+        def on_event(event):
+            if event.type == SessionEventType.SESSION_IDLE:
+                queue.put_nowait(None)
+            elif event.type == SessionEventType.SESSION_ERROR:
+                queue.put_nowait(RuntimeError(getattr(event.data, "message", "error")))
+            else:
+                queue.put_nowait(event)
 
-    unsubscribe = _session.on(on_event)
-    try:
-        await _session.send(input_text)
-        while True:
-            item = await queue.get()
-            if item is None:
-                break
-            if isinstance(item, Exception):
-                yield f"data: {json.dumps({'type': 'error', 'message': str(item)})}\n\n".encode()
-                break
-            payload = _event_payload(item)
-            if payload is not None:
-                yield f"data: {json.dumps(payload)}\n\n".encode()
+        unsubscribe = session.on(on_event)
+        try:
+            await session.send(input_text)
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                if isinstance(item, Exception):
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(item)})}\n\n".encode()
+                    break
+                payload = _event_payload(item)
+                if payload is not None:
+                    yield f"data: {json.dumps(payload)}\n\n".encode()
 
-        yield f"event: done\ndata: {json.dumps({'invocation_id': invocation_id})}\n\n".encode()
-    finally:
-        unsubscribe()
+            yield f"event: done\ndata: {json.dumps({'invocation_id': invocation_id})}\n\n".encode()
+        finally:
+            unsubscribe()
 
 
 _HEARTBEAT_SECONDS = 15
 
 
-async def _final_answer_response(input_text: str):
+async def _final_answer_response(input_text: str, session_key: str = ""):
     """Non-streaming mode (``"stream": false``): emit only the final answer text.
 
     Used by Foundry evaluations: the full SSE event stream is 200-300 KB per
@@ -262,37 +335,37 @@ async def _final_answer_response(input_text: str):
     result size limit (413). Newline heartbeats keep the connection alive
     while the agent works; they are whitespace for the evaluators.
     """
-    await _ensure_session()
-    queue: asyncio.Queue = asyncio.Queue()
+    async with _conversation(session_key) as session:
+        queue: asyncio.Queue = asyncio.Queue()
 
-    def on_event(event):
-        if event.type == SessionEventType.SESSION_IDLE:
-            queue.put_nowait(None)
-        elif event.type == SessionEventType.SESSION_ERROR:
-            queue.put_nowait(RuntimeError(getattr(event.data, "message", "error")))
-        elif getattr(event.type, "value", "") == "assistant.message":
-            queue.put_nowait(getattr(getattr(event, "data", None), "content", None) or "")
+        def on_event(event):
+            if event.type == SessionEventType.SESSION_IDLE:
+                queue.put_nowait(None)
+            elif event.type == SessionEventType.SESSION_ERROR:
+                queue.put_nowait(RuntimeError(getattr(event.data, "message", "error")))
+            elif getattr(event.type, "value", "") == "assistant.message":
+                queue.put_nowait(getattr(getattr(event, "data", None), "content", None) or "")
 
-    unsubscribe = _session.on(on_event)
-    final = ""
-    try:
-        await _session.send(input_text)
-        while True:
-            try:
-                item = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_SECONDS)
-            except asyncio.TimeoutError:
-                yield b"\n"
-                continue
-            if item is None:
-                break
-            if isinstance(item, Exception):
-                final = f"Error: {item}"
-                break
-            if item.strip():
-                final = item
-        yield (final or "Error: the agent returned no answer.").encode("utf-8")
-    finally:
-        unsubscribe()
+        unsubscribe = session.on(on_event)
+        final = ""
+        try:
+            await session.send(input_text)
+            while True:
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_SECONDS)
+                except asyncio.TimeoutError:
+                    yield b"\n"
+                    continue
+                if item is None:
+                    break
+                if isinstance(item, Exception):
+                    final = f"Error: {item}"
+                    break
+                if item.strip():
+                    final = item
+            yield (final or "Error: the agent returned no answer.").encode("utf-8")
+        finally:
+            unsubscribe()
 
 
 @app.invoke_handler
@@ -315,14 +388,15 @@ async def handle_invoke(request: Request) -> Response:
                 ),
             },
         )
+    session_key = _session_key(request)
     if data.get("stream") is False:
         return StreamingResponse(
-            _final_answer_response(input_text),
+            _final_answer_response(input_text, session_key),
             media_type="text/plain; charset=utf-8",
             headers={"Cache-Control": "no-cache"},
         )
     return StreamingResponse(
-        _stream_response(request.state.invocation_id, input_text),
+        _stream_response(request.state.invocation_id, input_text, session_key),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
