@@ -360,3 +360,30 @@ def test_model_capacity_derives_from_foundation_tpm(tmp_path: Path, value, units
     assert ("Model capacity" in deferred) is raised
     if raised:
         assert "50K TPM" in deferred and "1,000 TPM" in deferred and "AZURE_AI_MODEL_CAPACITY" in deferred
+
+
+# --- 2b. The governed GHCP adapter has the same SDK serialisation guard -------------
+
+GOVERNED_GHCP = DEPLOY / "references" / "governance" / "ghcp-container.py"
+
+
+def test_governed_ghcp_adapter_degrades_unserialisable_message_events():
+    tree = ast.parse(GOVERNED_GHCP.read_text(encoding="utf-8"))
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_message_payload"]
+    assert nodes, "governed ghcp-container.py must define module-level _message_payload"
+    ns = {"LOGGER": logging.getLogger("governed-ghcp-test")}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(GOVERNED_GHCP), "exec"), ns)
+    payload = ns["_message_payload"]
+    assert payload(_BadEvent(_Type.MESSAGE, "Decision: approve_refund")) == {
+        "type": "assistant.message", "data": {"content": "Decision: approve_refund"}}
+
+    class Good:
+        type = _Type.MESSAGE
+
+        def to_dict(self):
+            return {"type": "assistant.message", "data": {"content": "ok"}}
+
+    assert payload(Good()) == {"type": "assistant.message", "data": {"content": "ok"}}
+    source = GOVERNED_GHCP.read_text(encoding="utf-8")
+    assert "canonical(event.to_dict())" not in source
+    assert "canonical(_message_payload(event))" in source
