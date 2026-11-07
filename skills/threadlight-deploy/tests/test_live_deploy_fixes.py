@@ -189,7 +189,7 @@ def test_stream_false_returns_only_the_final_answer_text():
 def test_eval_config_requests_non_streaming_final_answer(tmp_path: Path):
     project = _generate(tmp_path, "order-returns")
     cfg = json.loads((project / "evals" / "eval-config.json").read_text())
-    assert cfg["input_messages"] == {"input": "{{item.query}}", "stream": False}
+    assert cfg["input_messages"] == {"input": "{{item.query}}", "stream": False, "new_conversation": True}
     dry = _run([str(project / "evals" / "run_evals.py"), "--dry-run"], tmp_path, cwd=project)
     assert dry.returncode == 0, dry.stderr
     assert json.loads(dry.stdout)["data_source"]["input_messages"]["stream"] is False

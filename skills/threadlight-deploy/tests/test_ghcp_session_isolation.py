@@ -200,3 +200,36 @@ def test_concurrent_turns_in_one_session_are_serialised(runtime):
 
     results = sorted(asyncio.run(both()), key=lambda r: r.split("|")[1])
     assert results[0].split("|")[1] == "turn 1" and results[1].split("|")[1] == "turn 2"
+
+
+# --- Foundry evaluation: every row is its own conversation --------------------------
+# The 2026-11-07 e4 live run: the eval sent all 28 rows with ONE agent_session_id
+# (latency 31 s -> 140 s). Learn documents no per-row session control for
+# azure_ai_target_completions; the freeform invocations body is forwarded to the
+# container untouched, so run_evals sends "new_conversation": true per row.
+
+def _invoke_body(module, body, *, session=None):
+    async def run():
+        response = await module.handle_invoke(_Request(body, session))
+        return b"".join([chunk async for chunk in response.body_iterator]).decode()
+    return asyncio.run(run())
+
+
+def test_new_conversation_isolates_rows_that_share_one_foundry_session(runtime):
+    rows = [_invoke_body(runtime, {"input": f"Row {n}", "stream": False, "new_conversation": True},
+                         session="eval-shared").strip() for n in (1, 2, 3)]
+    assert all(r.endswith(f"turn 1|seen: Row {n}") for n, r in zip((1, 2, 3), rows)), rows
+    assert "eval-shared" not in runtime._sessions
+    assert all(s.closed for s in runtime._client.created)
+
+
+def test_new_conversation_does_not_disturb_the_real_multi_turn_session(runtime):
+    _invoke_body(runtime, {"input": "Triage RMA-1", "stream": False}, session="user-chat")
+    _invoke_body(runtime, {"input": "eval row", "stream": False, "new_conversation": True}, session="user-chat")
+    follow = _invoke_body(runtime, {"input": "and the refund?", "stream": False}, session="user-chat").strip()
+    assert follow.endswith("turn 2|seen: Triage RMA-1 / and the refund?")
+
+
+def test_generated_eval_config_starts_a_new_conversation_per_row():
+    gen = (Path(__file__).resolve().parents[1] / "scripts" / "generate_only.py").read_text()
+    assert '"new_conversation": True' in gen

@@ -56,8 +56,10 @@ def data_source(cfg: dict, rows: list[dict]) -> dict:
         "source": {"type": "file_content", "content": [{"item": row} for row in rows]},
         # Invocations-protocol hosted agent: the freeform template is the /invocations body.
         # "stream": false returns only the final answer text (the SSE stream is
-        # 200-300 KB per case: judge 429s and a 413 on result upload).
-        "input_messages": cfg.get("input_messages", {"input": "{{item.query}}", "stream": False}),
+        # 200-300 KB per case: judge 429s and a 413 on result upload);
+        # "new_conversation": true keeps rows from sharing one conversation.
+        "input_messages": cfg.get("input_messages",
+                                  {"input": "{{item.query}}", "stream": False, "new_conversation": True}),
         "target": target,
     }
 

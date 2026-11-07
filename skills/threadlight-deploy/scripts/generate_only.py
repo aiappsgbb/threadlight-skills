@@ -1110,8 +1110,10 @@ def build_eval_config(agent: str, rules: dict[str, str], scen: list[dict[str, An
         "target": {"type": "azure_ai_agent", "name": agent},
         # The hosted agent's "stream": false mode returns only the final answer
         # text; the full SSE stream exhausted the judge's TPM (429) and the
-        # eval result size limit (413) in live runs.
-        "input_messages": {"input": "{{item.query}}", "stream": False},
+        # eval result size limit (413) in live runs. "new_conversation": true
+        # makes every row its own conversation: the Foundry eval sent all rows
+        # with one agent_session_id in the 2026-11-07 live run.
+        "input_messages": {"input": "{{item.query}}", "stream": False, "new_conversation": True},
         "dataset": "evals/eval_dataset.jsonl",
         "builtin_evaluators": [
             {

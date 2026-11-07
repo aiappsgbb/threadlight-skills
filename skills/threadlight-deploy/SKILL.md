@@ -475,9 +475,16 @@ Ownership is explicit, so the deploy step never discards design code:
   `python evals/run_evals.py` runs after deploy as a single command.
   It creates a Foundry eval with built-in evaluators plus a custom score-model
   rubric derived from the SPEC business rules (1–5 anchors, threshold 4).
-  The target input is `{"input": "{{item.query}}", "stream": false}`: the GHCP
-  runtime then returns only the final answer text (the full SSE stream caused
-  judge 429s and a 413 on result upload). A transient network error while
+  The target input is
+  `{"input": "{{item.query}}", "stream": false, "new_conversation": true}`: the
+  GHCP runtime then returns only the final answer text (the full SSE stream
+  caused judge 429s and a 413 on result upload) and answers every row in a fresh
+  conversation. The Foundry eval sent all rows with one `agent_session_id` in
+  the 2026-11-07 live run, and Microsoft Learn documents no per-row session
+  setting for `azure_ai_target_completions`; the freeform invocations body is
+  forwarded to the container untouched
+  ([targets](https://learn.microsoft.com/azure/foundry/observability/how-to/cloud-evaluation-targets#hosted-agent-invocations-protocol),
+  [sessions](https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-sessions)). A transient network error while
   polling is retried; the run continues server-side.
   `--dry-run` prints the eval payload offline.
 - **Foundry package gate.** `specs/foundry-package-manifest.json` is

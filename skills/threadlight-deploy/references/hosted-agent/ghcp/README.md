@@ -102,7 +102,9 @@ The template provides:
    afterwards. Cached sessions are LRU-bounded (`COPILOT_MAX_SESSIONS`, default 16),
    recreated after 45 minutes (fresh BYOK token) and serialised per session. The
    container-wide `FOUNDRY_AGENT_SESSION_ID` is not a conversation key: sharing one
-   session made every eval row join one conversation in the 2026-11-07 live run
+   session made every eval row join one conversation in the 2026-11-07 live run.
+   A body with `"new_conversation": true` (what `evals/run_evals.py` sends per
+   row) always gets a fresh session and leaves the caller's session untouched
 3. `_stream_response()` — Subscribes to session events, yields SSE. An event
    whose SDK `to_dict()` fails (github-copilot-sdk 1.0.x usage fields) is
    skipped or reduced to its text by `_event_payload()` instead of ending the stream

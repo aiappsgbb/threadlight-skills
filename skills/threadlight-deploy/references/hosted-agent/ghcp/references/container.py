@@ -142,7 +142,8 @@ def _load_mcp_servers() -> dict[str, dict] | None:
 # ``FOUNDRY_AGENT_SESSION_ID`` is deliberately NOT a conversation key: one
 # shared session made every Foundry evaluation row join the same conversation
 # in the 2026-11-07 live run (21 s -> 135 s per row, earlier rows visible to
-# later ones). Cached sessions are bounded (``COPILOT_MAX_SESSIONS``, LRU) and
+# later ones). A body with ``"new_conversation": true`` always gets a fresh,
+# closed-after-use session. Cached sessions are bounded (``COPILOT_MAX_SESSIONS``, LRU) and
 # recreated after ``_SESSION_MAX_AGE_SECONDS`` so a BYOK bearer token minted at
 # creation never outlives its validity. Turns in one session are serialised.
 
@@ -388,7 +389,12 @@ async def handle_invoke(request: Request) -> Response:
                 ),
             },
         )
-    session_key = _session_key(request)
+    # "new_conversation": true (sent per row by evals/run_evals.py) starts a fresh
+    # conversation even when the caller reuses one agent_session_id: the
+    # Foundry eval sent all rows with one session id in the 2026-11-07 live run.
+    # The platform forwards invocations bodies untouched, so this never affects
+    # sandbox routing, and the caller's ongoing session is left as it was.
+    session_key = "" if data.get("new_conversation") is True else _session_key(request)
     if data.get("stream") is False:
         return StreamingResponse(
             _final_answer_response(input_text, session_key),
