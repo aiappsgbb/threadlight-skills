@@ -1,0 +1,5 @@
+[project]
+name = "returns-mcp"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["fastmcp>=2.10"]

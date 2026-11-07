@@ -25,11 +25,21 @@ Usage::
     python generate_only.py --project <workspace> [--force]
 
 Exit codes: 0 generated, 2 invalid workspace, 4 prompt or voice agent requested,
-5 would overwrite generated files (re-run with ``--force``).
+5 would overwrite generated files (re-run with ``--force``), 6 a design-owned
+file (``src/mcp/server.py`` written by threadlight-design) does not meet the
+deploy contract.
+
+Ownership: threadlight-design may write ``src/mcp/server.py`` (tool logic and
+safeguards). generate_only adopts it unchanged, serves it through the
+deploy-owned ``src/mcp/threadlight_mcp_entry.py`` with the pinned ``mcp`` SDK,
+and owns only the MCP packaging (Dockerfile, requirements.lock). ``--force``
+only ever rewrites files generate_only owns.
 """
 from __future__ import annotations
 
 import argparse
+import ast
+import hashlib
 import json
 import pprint
 import re
@@ -49,6 +59,14 @@ BUILTIN_EVALUATORS = ("builtin.task_adherence", "builtin.intent_resolution", "bu
 RUBRIC_THRESHOLD = 4
 READ_PREFIXES = ("get_", "list_", "query_", "search_", "find_", "lookup_", "fetch_", "check_", "read_")
 MANY_PREFIXES = ("list_", "query_", "search_", "find_")
+# SPEC section 6 ``**Backed by**`` values that name a knowledge base, not an MCP system.
+KNOWLEDGE_BACKING = re.compile(r"foundry[\s-]*iq|knowledge[\s-]*base|ai[\s-]*search|search[\s-]*index", re.I)
+# SPEC section 11c modules that the pilot infra/main.bicep provisions (plus the
+# always-created Foundry account/project, ACR and UAMI).
+PILOT_MODULES = {"aca-mcp", "app-insights"}
+# Top-level imports a design-owned server.py may use: the stdlib plus the
+# pinned ``mcp`` SDK from src/mcp/requirements.lock.
+ALLOWED_THIRD_PARTY = {"mcp"}
 
 DEMO_SANDBOX_POSTURE = {
     "networking": "public",
@@ -75,6 +93,10 @@ class OverwriteRefused(Exception):
 
 class WorkspaceError(Exception):
     pass
+
+
+class DesignContractError(Exception):
+    """A design-owned file exists but does not meet the deploy contract."""
 
 
 # --------------------------------------------------------------------------- SPEC parsing
@@ -267,10 +289,12 @@ def _tool_subsections(block: str) -> dict[str, dict[str, Any]]:
         desc = re.search(r"^\s*[-*]\s*\*\*Description\*\*\s*:?\s*(.+)$", body, re.M | re.I)
         inputs = re.search(r"^\s*[-*]\s*\*\*(?:Inputs?|Parameters?|Arguments?)\*\*\s*:?(.*?)(?=^\s*[-*]\s*\*\*|^#{2,4}\s|\Z)",
                            body, re.M | re.S | re.I)
+        backed = re.search(r"^\s*[-*]\s*\*\*Backed\s+by\*\*\s*:?\s*(.+)$", body, re.M | re.I)
         found[_identifier(m.group(2))] = {
             "args": _subsection_args(body),
             "no_inputs": bool(inputs and EXPLICIT_NO_INPUTS.match(_strip_ticks(inputs.group(1)))),
             "description": _strip_ticks(desc.group(1)) if desc else "",
+            "knowledge": bool(backed and KNOWLEDGE_BACKING.search(backed.group(1))),
         }
     return found
 
@@ -340,6 +364,8 @@ def tools(spec: str) -> list[dict[str, Any]]:
         idem = row["idem"]
         if name in consequences:
             kind = consequences[name]
+        elif sub.get("knowledge"):
+            kind = "read"  # a knowledge-base search is a read unless section 11a says otherwise
         elif "read-only" in idem or "read only" in idem:
             kind = "read"
         else:
@@ -354,6 +380,7 @@ def tools(spec: str) -> list[dict[str, Any]]:
             "args": args,
             "description": sub.get("description") or row["description"],
             **({"no_inputs": True} if no_inputs else {}),
+            **({"knowledge": True} if sub.get("knowledge") and kind == "read" else {}),
         })
     if not plan:
         raise WorkspaceError("SPEC section 6 (Tool Contracts) has no tool table or `### `tool`` subsections")
@@ -422,6 +449,91 @@ def design_dataset(project_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
+# --------------------------------------------------------------------------- design inputs
+
+def design_model(project_dir: Path, spec: str) -> tuple[str, str] | None:
+    """(model, version) chosen by threadlight-design: foundation.md section 2, else SPEC 7b."""
+    foundation = project_dir / "specs" / "foundation.md"
+    if foundation.is_file():
+        text = foundation.read_text(encoding="utf-8")
+        block = re.search(r"^model:\s*\n((?:[ \t]+.*\n?)+)", text, re.M)
+        if block:
+            name = re.search(r"^\s+(?:default|name):\s*[\"']?([A-Za-z0-9._-]+)", block.group(1), re.M)
+            version = re.search(r"^\s+version:\s*[\"']?([0-9][0-9A-Za-z._-]*)", block.group(1), re.M)
+            if name:
+                return name.group(1), version.group(1) if version else ""
+    m = re.search(r"\*\*Model(?:\s*\+\s*version)?\*\*\s*:?\s*`([A-Za-z0-9._-]+)`\s*(?:\(([0-9][0-9A-Za-z._-]*)\))?",
+                  _section(spec, "7b"))
+    if m:
+        return m.group(1), m.group(2) or ""
+    return None
+
+
+def selected_modules(spec: str) -> list[str]:
+    """SPEC section 11c module selectors marked ``yes``."""
+    chosen: list[str] = []
+    for table in _tables(_section(spec, "11c")):
+        header = [h.lower() for h in table[0]]
+        i_sel = next((i for i, h in enumerate(header) if "selected" in h), None)
+        if i_sel is None:
+            continue
+        for row in table[1:]:
+            if i_sel < len(row) and row[i_sel].strip().strip("*").lower().startswith("yes"):
+                chosen.append(_strip_ticks(row[0]).strip("* "))
+    return chosen
+
+
+def _top_level_imports(tree: ast.Module) -> set[str]:
+    """Modules imported when server.py is imported (not lazily inside functions)."""
+    names: set[str] = set()
+
+    def visit(nodes: list[ast.stmt]) -> None:
+        for node in nodes:
+            if isinstance(node, ast.Import):
+                names.update(a.name.split(".")[0] for a in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names.add(node.module.split(".")[0])
+            elif isinstance(node, (ast.If, ast.Try, ast.With)):
+                for field in ("body", "orelse", "finalbody"):
+                    visit(getattr(node, field, []) or [])
+                for handler in getattr(node, "handlers", []) or []:
+                    visit(handler.body)
+    visit(tree.body)
+    return names
+
+
+def adopt_design_server(server: Path, plan: list[dict[str, Any]]) -> dict[str, Any]:
+    """Validate a threadlight-design ``src/mcp/server.py`` against the deploy contract."""
+    text = server.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(text)
+    except SyntaxError as exc:
+        raise DesignContractError(f"src/mcp/server.py (threadlight-design) does not parse: {exc}") from exc
+    defined = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    mcp_tools = [t["name"] for t in plan if not t.get("knowledge")]
+    missing = [name for name in mcp_tools if name not in defined]
+    if missing:
+        raise DesignContractError(
+            "src/mcp/server.py was written by threadlight-design but does not define the SPEC section 6 "
+            f"tool function(s) {', '.join(missing)} at module level. Fix the design server (or the SPEC) "
+            "and re-run; generate_only never rewrites design-owned code."
+        )
+    stdlib = set(sys.stdlib_module_names) | {"__future__"}
+    unpinned = sorted(n for n in _top_level_imports(tree) if n not in stdlib and n not in ALLOWED_THIRD_PARTY)
+    if unpinned:
+        raise DesignContractError(
+            "src/mcp/server.py (threadlight-design) imports " + ", ".join(unpinned) + " at module level, but "
+            "the deployed image installs only the hashed src/mcp/requirements.lock (pinned `mcp`). Import "
+            "FastMCP from `mcp.server.fastmcp` or import it lazily inside a function, then re-run."
+        )
+    return {
+        "owner": "threadlight-design",
+        "path": "src/mcp/server.py",
+        "sha256": hashlib.sha256(server.read_bytes()).hexdigest(),
+        "tools": [t["name"] for t in plan if t["name"] in defined],
+    }
+
+
 # --------------------------------------------------------------------------- rendering
 
 def _py_type(arg: dict[str, Any]) -> str:
@@ -429,25 +541,67 @@ def _py_type(arg: dict[str, Any]) -> str:
     return f"Optional[{base}] = None" if arg.get("optional") else base
 
 
+def _tool_function(t: dict[str, Any]) -> str:
+    sig = ", ".join(f"{a['name']}: {_py_type(a)}" for a in t["args"])
+    call = ", ".join(f'"{a["name"]}": {a["name"]}' for a in t["args"])
+    doc = (t["description"] or f"{t['kind']} tool from SPEC section 6").replace('"""', "'")
+    helper = "_knowledge" if t.get("knowledge") else ("_read" if t["kind"] == "read" else "_write")
+    return (
+        f"@mcp.tool()\ndef {t['name']}({sig}) -> dict:\n"
+        f'    """{doc}"""\n'
+        f'    return {helper}("{t["name"]}", {{{call}}})\n'
+    )
+
+
+def _knowledge_snippet(plan: list[dict[str, Any]]) -> str:
+    if not any(t.get("knowledge") for t in plan):
+        return ""
+    return (GEN / "templates" / "knowledge_standin.py.snippet").read_text(encoding="utf-8")
+
+
 def render_mcp_server(project: str, plan: list[dict[str, Any]]) -> str:
     table = {t["name"]: {"kind": t["kind"], "many": t["many"], "nouns": t["nouns"]} for t in plan}
-    funcs = []
-    for t in plan:
-        sig = ", ".join(f"{a['name']}: {_py_type(a)}" for a in t["args"])
-        call = ", ".join(f'"{a["name"]}": {a["name"]}' for a in t["args"])
-        doc = (t["description"] or f"{t['kind']} tool from SPEC section 6").replace('"""', "'")
-        helper = "_read" if t["kind"] == "read" else "_write"
-        funcs.append(
-            f"@mcp.tool()\ndef {t['name']}({sig}) -> dict:\n"
-            f'    """{doc}"""\n'
-            f'    return {helper}("{t["name"]}", {{{call}}})\n'
-        )
     text = (GEN / "templates" / "mcp_server.py.tmpl").read_text(encoding="utf-8")
     return (
         text.replace("{{PROJECT_NAME}}", project)
         .replace("{{TOOLS_TABLE}}", pprint.pformat(table, indent=4, sort_dicts=False))
-        .replace("{{TOOL_FUNCTIONS}}", "\n\n".join(funcs))
+        .replace("{{KNOWLEDGE_SNIPPET}}", _knowledge_snippet(plan))
+        .replace("{{TOOL_FUNCTIONS}}", "\n\n".join(_tool_function(t) for t in plan))
     )
+
+
+def render_mcp_entry(project: str, design_tools: list[str], standins: list[dict[str, Any]]) -> str:
+    text = (GEN / "templates" / "mcp_entry.py.tmpl").read_text(encoding="utf-8")
+    return (
+        text.replace("{{PROJECT_NAME}}", project)
+        .replace("{{DESIGN_TOOLS}}", json.dumps(design_tools))
+        .replace("{{KNOWLEDGE_TOOLS}}", json.dumps([t["name"] for t in standins]))
+        .replace("{{KNOWLEDGE_SNIPPET}}", _knowledge_snippet(standins))
+        .replace("{{KNOWLEDGE_FUNCTIONS}}", "\n\n".join(_tool_function(t) for t in standins))
+    )
+
+
+def render_dockerignore(knowledge: bool) -> str:
+    """The pilot root .dockerignore (an allowlist), plus the knowledge corpus when the image copies it."""
+    text = (PILOT / "dockerignore").read_text(encoding="utf-8")
+    if knowledge:
+        text = text.replace("!specs/sample-data/**\n", "!specs/sample-data/**\n!specs/knowledge/**\n")
+    return text
+
+
+def render_mcp_dockerfile(entry: str, knowledge: bool) -> str:
+    """The pilot MCP Dockerfile, plus the knowledge corpus and the right entry point."""
+    text = (PILOT / "mcp" / "Dockerfile").read_text(encoding="utf-8")
+    header = f"# {MARKER} from references/pilot/mcp/Dockerfile.\n"
+    if knowledge:
+        text = text.replace(
+            "COPY specs/sample-data/ /app/sample-data/\n",
+            "COPY specs/sample-data/ /app/sample-data/\n"
+            "# Knowledge stand-in corpus until the SPEC knowledge base is provisioned.\n"
+            "COPY specs/knowledge/ /app/knowledge/\n",
+        ).replace("ENV SAMPLE_DATA_DIR=/app/sample-data ", "ENV SAMPLE_DATA_DIR=/app/sample-data KNOWLEDGE_DIR=/app/knowledge ")
+    text = text.replace('CMD ["python", "server.py"]', f'CMD ["python", "{entry}"]')
+    return header + text
 
 
 def render_azure_yaml(project: str, agent: str, description: str) -> str:
@@ -490,7 +644,31 @@ posture:
 """ + "\n".join(f"| {k} | {v} |" for k, v in DEMO_SANDBOX_POSTURE.items()) + "\n"
 
 
-def render_deferred(project: str) -> str:
+def _unprovisioned_rows(unprovisioned: list[str], standins: list[str]) -> str:
+    if not unprovisioned:
+        return ""
+    tools = ", ".join(f"`{n}`" for n in standins) or "none"
+    return (
+        f"| SPEC § 11c modules {', '.join(f'`{m}`' for m in unprovisioned)} | not provisioned | "
+        "Selected in SPEC § 11c, but generate-only uses the pilot `infra/main.bicep`, which does not "
+        "create them. Provision them and the knowledge base with `threadlight-ground` (Foundry IQ) or "
+        "`threadlight-production-ready` after `azd up`. Until then the knowledge tool(s) "
+        f"{tools} answer from a read-only local stand-in over `specs/knowledge/` served by the MCP "
+        "server, which is not Foundry IQ evidence. |\n"
+    )
+
+
+def _model_row(model: tuple[str, str] | None) -> str:
+    if model is None:
+        return ("| Model | defaulted | No model in `specs/foundation.md` § 2 or SPEC § 7b: the pilot default "
+                "in `infra/main.bicep` is used. Set `AZURE_AI_MODEL_NAME`/`AZURE_AI_MODEL_VERSION` if needed. |\n")
+    if not model[1]:
+        return (f"| Model version | deferred | The design chose `{model[0]}` without a version: "
+                "`azd env set AZURE_AI_MODEL_VERSION <version>` before `azd up`. |\n")
+    return ""
+
+
+def render_deferred(project: str, extra: str = "") -> str:
     return f"""# Deferred deploy steps — {project}
 
 <!-- {MARKER} -->
@@ -508,14 +686,26 @@ deploys this repo with their own credentials.
 | Phase 6.5 Azure steps (deploy, smoke invoke, App Insights trace, Foundry eval run) | deferred | `azd up`, then `python evals/run_evals.py`; record agent id, trace id and eval run id in `specs/foundry-package-manifest.json`. |
 | Phase 7 Citadel / gateway onboarding | deferred | Only if the posture requires Citadel; run `threadlight-citadel-spoke` after deploy. |
 | Post-deploy tests (`tests/postdeploy-manifest.json`) | deferred | Phase stays `pending-deploy` until a real deploy refreshes it. |
-
+{extra}
 Nothing here is evidence of a deployment. `skills/_shared/foundry_package.py`
 reports this workspace as `INCOMPLETE` (exit 3) until the deferred evidence exists.
 """
 
 
-def render_deploy_md(project: str, agent: str, plan: list[dict[str, Any]]) -> str:
+def render_deploy_md(project: str, agent: str, plan: list[dict[str, Any]], unprovisioned: list[str] | None = None,
+                     adopted: bool = False) -> str:
     tool_list = ", ".join(f"`{t['name']}`" for t in plan)
+    notes = ""
+    if adopted:
+        notes += ("\n**MCP server ownership.** `src/mcp/server.py` was written by threadlight-design and is "
+                  "deployed unchanged; `src/mcp/threadlight_mcp_entry.py`, `Dockerfile` and `requirements.lock` "
+                  "are the deploy-owned packaging (see `specs/mcp-adoption.json`).\n")
+    if unprovisioned:
+        notes += ("\n**Not provisioned here.** SPEC § 11c selects "
+                  + ", ".join(f"`{m}`" for m in unprovisioned)
+                  + ", which `infra/main.bicep` does not create. Knowledge tools answer from a local stand-in "
+                  "over `specs/knowledge/` until `threadlight-ground` provisions the knowledge base. See "
+                  "`specs/deferred-steps.md`.\n")
     return f"""# Deploy {project}
 
 <!-- {MARKER} -->
@@ -525,7 +715,7 @@ plus a mock MCP tool server on Azure Container Apps (`src/mcp`, tools: {tool_lis
 The Container App hosts only the MCP tool server; the agent's reasoning and tool
 loop run in Foundry. Generated offline with `generate_only: true`; see
 `specs/deferred-steps.md` for what still needs your subscription.
-
+{notes}
 ## Prerequisites
 
 - Azure Developer CLI with the `azure.ai.agents` extension, Azure CLI, Python 3.12.
@@ -633,8 +823,14 @@ def test_azure_yaml_declares_inline_hosted_agent():
 
 
 def test_mcp_server_exposes_spec_tools():
-    tree = ast.parse((ROOT / "src" / "mcp" / "server.py").read_text(encoding="utf-8"))
-    names = {{n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}}
+    # src/mcp/server.py plus, when threadlight-design owns server.py, the
+    # deploy-owned entry that serves it (and any knowledge stand-in).
+    names = set()
+    for rel in ("server.py", "threadlight_mcp_entry.py"):
+        path = ROOT / "src" / "mcp" / rel
+        if path.is_file():
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            names |= {{n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}}
     assert set(TOOLS) <= names
 '''
 
@@ -764,6 +960,30 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         json.dumps({k: s[k] for k in ("id", "query", "expected", "business_rules", "category")}) + "\n"
         for s in scen
     )
+    # Ownership: threadlight-design owns src/mcp/server.py when it wrote one (no
+    # generate-only marker); generate_only then adopts it unchanged and owns only
+    # the packaging around it. See SKILL.md "Ownership between design and deploy".
+    server_path = project_dir / "src" / "mcp" / "server.py"
+    adoption = None
+    if server_path.is_file() and MARKER not in server_path.read_text(encoding="utf-8"):
+        adoption = adopt_design_server(server_path, plan)
+    knowledge_tools = [t for t in plan if t.get("knowledge")]
+    standins = [t for t in knowledge_tools if not adoption or t["name"] not in adoption["tools"]]
+    has_corpus = (project_dir / "specs" / "knowledge").is_dir() and any((project_dir / "specs" / "knowledge").glob("*.md"))
+    unprovisioned = [m for m in selected_modules(spec) if m not in PILOT_MODULES]
+    model = design_model(project_dir, spec)
+    deferred_extra = _unprovisioned_rows(unprovisioned, [t["name"] for t in standins]) + _model_row(model)
+    if standins and not has_corpus:
+        deferred_extra += ("| Knowledge corpus | missing | SPEC § 6 knowledge tool(s) "
+                           + ", ".join(f"`{t['name']}`" for t in standins)
+                           + " have no `specs/knowledge/*.md` to answer from; they return no match until the "
+                           "knowledge base exists. |\n")
+    params = json.loads((PILOT / "infra" / "main.parameters.json").read_text(encoding="utf-8"))
+    if model:
+        params["parameters"]["modelName"] = {"value": f"${{AZURE_AI_MODEL_NAME={model[0]}}}"}
+        params["parameters"]["modelVersion"] = {
+            "value": f"${{AZURE_AI_MODEL_VERSION={model[1]}}}" if model[1] else "${AZURE_AI_MODEL_VERSION}"}
+
     postdeploy = {
         "schema": "threadlight-postdeploy-manifest/v1",
         "phase": "pending-deploy",
@@ -777,14 +997,16 @@ def generate(project_dir: Path, force: bool) -> list[str]:
             "not deployed: generate_only run without a subscription",
             "no agent invocation, App Insights trace or Foundry eval run recorded",
             "deferred: T-0, Phase 3.5, Phase 6.5 Azure steps, Phase 7 Citadel (see specs/deferred-steps.md)",
+            *([f"not provisioned: SPEC 11c modules {', '.join(unprovisioned)} (knowledge tools use a local "
+               "stand-in over specs/knowledge until threadlight-ground runs)"] if unprovisioned else []),
         ],
     }
 
     text_outputs: dict[str, str] = {
         "azure.yaml": render_azure_yaml(project, agent, description),
-        ".dockerignore": (PILOT / "dockerignore").read_text(encoding="utf-8"),
+        ".dockerignore": render_dockerignore(bool(standins) and has_corpus),
         "hooks/postdeploy.sh": (PILOT / "hooks" / "postdeploy.sh").read_text(encoding="utf-8"),
-        "infra/main.parameters.json": (PILOT / "infra" / "main.parameters.json").read_text(encoding="utf-8"),
+        "infra/main.parameters.json": json.dumps(params, indent=2) + "\n",
         "src/agent/container.py": (GHCP / "container.py").read_text(encoding="utf-8"),
         "src/agent/Dockerfile": (GHCP / "Dockerfile").read_text(encoding="utf-8"),
         "src/agent/.dockerignore": (GHCP / "dockerignore").read_text(encoding="utf-8"),
@@ -792,25 +1014,55 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "src/agent/requirements.lock": (GHCP / "requirements.lock").read_text(encoding="utf-8"),
         "src/agent/copilot-instructions.md": instructions,
         "src/agent/tests/test_agent_package.py": render_agent_tests(plan, skills),
-        "src/mcp/server.py": render_mcp_server(project, plan),
-        "src/mcp/Dockerfile": (PILOT / "mcp" / "Dockerfile").read_text(encoding="utf-8"),
+        "src/mcp/Dockerfile": render_mcp_dockerfile(
+            "threadlight_mcp_entry.py" if adoption else "server.py", bool(standins) and has_corpus),
         "src/mcp/requirements.lock": (PILOT / "mcp" / "requirements.lock").read_text(encoding="utf-8"),
         "evals/eval_dataset.jsonl": dataset,
         "evals/eval-config.json": json.dumps(cfg, indent=2) + "\n",
         "evals/run_evals.py": (GEN / "templates" / "run_evals.py.tmpl").read_text(encoding="utf-8"),
         "evals/requirements.lock": (GEN / "locks" / "evals.requirements.lock").read_text(encoding="utf-8"),
         "specs/deployment-posture.md": render_posture(project),
-        "specs/deferred-steps.md": render_deferred(project),
+        "specs/deferred-steps.md": render_deferred(project, deferred_extra),
         "specs/project-tools.json": json.dumps({"generated_by": MARKER, "tools": plan}, indent=2) + "\n",
         "specs/foundry-package-manifest.json": json.dumps(build_foundry_manifest(agent, cfg), indent=2) + "\n",
         "tests/postdeploy-manifest.json": json.dumps(postdeploy, indent=2) + "\n",
-        "DEPLOY.md": render_deploy_md(project, agent, plan),
+        "DEPLOY.md": render_deploy_md(project, agent, plan, unprovisioned, adopted=bool(adoption)),
     }
+    if adoption:
+        text_outputs["src/mcp/threadlight_mcp_entry.py"] = render_mcp_entry(project, adoption["tools"], standins)
+    else:
+        text_outputs["src/mcp/server.py"] = render_mcp_server(project, plan)
     hooks_text = text_outputs["hooks/postdeploy.sh"]
     text_outputs["hooks/postdeploy.sh"] = hooks_text.replace("__AGENT_NAME__", agent)
     binary_outputs = {"infra/main.bicep": (PILOT / "infra" / "main.bicep").read_bytes()}
 
-    existing = sorted(p for p in [*text_outputs, *binary_outputs] if (project_dir / p).exists())
+    # Packaging a design run left in src/mcp (for example an unpinned pyproject or a
+    # Dockerfile without --require-hashes) is deploy-owned: it is replaced by the
+    # pinned packaging, and its original text is kept in specs/mcp-adoption.json.
+    replaced = []
+    for rel in MCP_PACKAGING:
+        path = project_dir / rel
+        if path.is_file() and not _generated_packaging(rel, path):
+            original = path.read_text(encoding="utf-8", errors="replace")
+            replaced.append({
+                "path": rel,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "reason": _packaging_reason(rel, original),
+                "original_text": original,
+            })
+    replaced_paths = {r["path"] for r in replaced}
+    if adoption or replaced:
+        text_outputs["specs/mcp-adoption.json"] = json.dumps({
+            "schema": "threadlight-mcp-adoption/v1",
+            "generated_by": MARKER,
+            "server": adoption or {"owner": "threadlight-deploy", "path": "src/mcp/server.py"},
+            "entry": "src/mcp/threadlight_mcp_entry.py" if adoption else "src/mcp/server.py",
+            "knowledge_standin_tools": [t["name"] for t in standins],
+            "replaced_design_packaging": replaced,
+        }, indent=2) + "\n"
+
+    existing = sorted(p for p in [*text_outputs, *binary_outputs]
+                      if (project_dir / p).exists() and p not in replaced_paths)
     if existing and not force:
         raise OverwriteRefused(existing)
     for stale in ("agent.yaml", "src/agent/agent.yaml"):
@@ -822,6 +1074,8 @@ def generate(project_dir: Path, force: bool) -> list[str]:
     if (project_dir / "infra" / "core").exists():
         raise WorkspaceError("infra/core exists (azd ai agent init layout); remove it, the pilot uses infra/main.bicep")
 
+    for rel in replaced_paths - set(text_outputs):
+        (project_dir / rel).unlink()
     for rel, content in text_outputs.items():
         dest = project_dir / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -835,6 +1089,28 @@ def generate(project_dir: Path, force: bool) -> list[str]:
     return sorted([*text_outputs, *binary_outputs])
 
 
+MCP_PACKAGING = ("src/mcp/Dockerfile", "src/mcp/requirements.lock", "src/mcp/pyproject.toml",
+                 "src/mcp/requirements.txt")
+
+
+def _generated_packaging(rel: str, path: Path) -> bool:
+    """True when the file came from generate_only (marker, or a verbatim pilot copy)."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if MARKER in text:
+        return True
+    pilot = PILOT / "mcp" / Path(rel).name
+    return pilot.is_file() and pilot.read_text(encoding="utf-8") == text
+
+
+def _packaging_reason(rel: str, text: str) -> str:
+    if rel.endswith("Dockerfile"):
+        why = "installs dependencies without --require-hashes" if "--require-hashes" not in text else "not the pilot image"
+        return f"design-written Dockerfile {why}; replaced by the pinned pilot Dockerfile"
+    if re.search(r"(>=|~=|<|\^|\*)|\"[A-Za-z0-9_.-]+\"", text) and "==" not in text:
+        return "design-written dependency file with unpinned requirements; replaced by the hashed requirements.lock"
+    return "design-written dependency file; deploy owns MCP packaging through the hashed requirements.lock"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--project", required=True, type=Path, help="design workspace to complete in place")
@@ -845,6 +1121,9 @@ def main(argv: list[str] | None = None) -> int:
     except PromptAgentRefused as exc:
         print(f"generate_only: refused: {exc}", file=sys.stderr)
         return 4
+    except DesignContractError as exc:
+        print(f"generate_only: design-owned file does not meet the deploy contract: {exc}", file=sys.stderr)
+        return 6
     except OverwriteRefused as exc:
         print(
             "generate_only: refusing to overwrite generated files (re-run with --force): "

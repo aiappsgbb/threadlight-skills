@@ -361,9 +361,43 @@ There is no `agent.yaml`, no `src/agent/agent.yaml` and no `infra/core/`. The
 generator refuses to run if any of them already exists. `agent_type: prompt`
 or `agent_type: voice` is refused with exit 4, because the scaffold is hosted-only.
 
+#### Ownership between threadlight-design and threadlight-deploy
+
+The workshop chain is design, then `generate_only.py` **without `--force`**.
+Ownership is explicit, so the deploy step never discards design code:
+
+| Owner | Files |
+|---|---|
+| threadlight-design | `specs/` (SPEC, foundation, sample data, knowledge), `AGENTS.md`, `src/agent/skills/`, design `tests/`, and optionally `src/mcp/server.py`: the mock MCP tool logic with its safeguards (filters, field allow-lists, validation, required citations) |
+| threadlight-deploy (generate-only) | everything in the output table below, plus the MCP **packaging**: `src/mcp/Dockerfile`, the hashed `src/mcp/requirements.lock` and, when design owns `server.py`, the entry point `src/mcp/threadlight_mcp_entry.py` |
+
+- **Adopt, never rewrite.** A `src/mcp/server.py` without the generate-only
+  marker is design-owned. The generator keeps it byte-identical and writes
+  `src/mcp/threadlight_mcp_entry.py`, which imports the design's SPEC § 6
+  functions unchanged and serves them with the pinned `mcp` SDK
+  (`from mcp.server.fastmcp import FastMCP`, `mcp==1.29.1` in the lock). It also
+  answers `logging/setLevel`. The Dockerfile runs the entry point. The adoption
+  is recorded in `specs/mcp-adoption.json` (owner, sha256, tools).
+- **Deploy contract for the design server** (otherwise **exit 6**, nothing
+  written): every non-knowledge SPEC § 6 tool is a module-level function, and
+  module-level imports are the standard library or `mcp` only. Import any other
+  framework lazily inside a function; the image installs only the hashed lock.
+- **Packaging a design run left behind** (`src/mcp/Dockerfile`,
+  `pyproject.toml`, `requirements.txt` or an unhashed lock, for example an
+  unpinned `fastmcp>=2.10`) is replaced by the pinned packaging. The original
+  text is kept in `specs/mcp-adoption.json` under `replaced_design_packaging`.
+- **`--force`** only rewrites files generate-only owns. Exit 5 still refuses to
+  overwrite earlier generate-only output; the design `server.py` is never in
+  that list.
+- **Knowledge tools.** A SPEC § 6 tool whose **Backed by** names Foundry IQ, a
+  knowledge base or AI Search is not expected in the design server. Until
+  `threadlight-ground` provisions the knowledge base, the MCP server answers it
+  read-only from the packaged `specs/knowledge/*.md` (a labelled local
+  stand-in, not Foundry IQ evidence).
+
 | Input (design workspace) | Output |
 |---|---|
-| `specs/SPEC.md`, `specs/manifest.json`, `specs/sample-data/`, `AGENTS.md`, `src/agent/skills/` | `azure.yaml`, `infra/`, `hooks/`, `src/agent/` (runtime + `requirements.lock` + offline `tests/`), `src/mcp/server.py` (real SPEC § 6 tools over the sample data), `evals/` (`run_evals.py`, `eval_dataset.jsonl`, `eval-config.json`, `requirements.lock`), `specs/deployment-posture.md`, `specs/deferred-steps.md`, `specs/project-tools.json`, `specs/foundry-package-manifest.json`, `tests/postdeploy-manifest.json`, `DEPLOY.md` |
+| `specs/SPEC.md`, `specs/manifest.json`, `specs/sample-data/`, `AGENTS.md`, `src/agent/skills/`, optional `specs/foundation.md`, `specs/knowledge/`, design-owned `src/mcp/server.py` | `azure.yaml`, `infra/`, `hooks/`, `src/agent/` (runtime + `requirements.lock` + offline `tests/`), `src/mcp/server.py` (real SPEC § 6 tools over the sample data, only when design wrote none) or `src/mcp/threadlight_mcp_entry.py` (serves the adopted design server), `src/mcp/Dockerfile` + `requirements.lock`, `specs/mcp-adoption.json` (when adopting), `evals/` (`run_evals.py`, `eval_dataset.jsonl`, `eval-config.json`, `requirements.lock`), `specs/deployment-posture.md`, `specs/deferred-steps.md`, `specs/project-tools.json`, `specs/foundry-package-manifest.json`, `tests/postdeploy-manifest.json`, `DEPLOY.md` |
 
 **Generated contracts:**
 
@@ -374,6 +408,21 @@ or `agent_type: voice` is refused with exit 4, because the scaffold is hosted-on
   the Phase 7 Citadel handoff.
 - **Pins.** Every dependency is pinned with exact `==` versions and locked with
   `--hash=sha256:` lockfiles for the agent, the MCP server and the evals.
+- **Model.** `infra/main.parameters.json` sets `modelName`/`modelVersion` from
+  the design (`specs/foundation.md` § 2 `model.default` + `version`, else the
+  SPEC § 7b **Model + version** line) as `${AZURE_AI_MODEL_NAME=<model>}` and
+  `${AZURE_AI_MODEL_VERSION=<version>}`, so the template default
+  (`gpt-5.4-mini`) applies only when the design names no model. A model without
+  a version is a deferred step.
+- **Selected modules not provisioned.** The pilot `infra/main.bicep` provisions
+  Foundry, ACR, the identity, App Insights and the MCP Container App only. Any
+  other SPEC § 11c module marked `yes` (for example `ai-search`, `storage-blob`,
+  `foundry-iq-index`) is listed as **not provisioned** in
+  `specs/deferred-steps.md`, `DEPLOY.md` and the post-deploy manifest gaps, with
+  `threadlight-ground` as the next step. Generate-only does not invent that
+  infrastructure.
+- **MCP protocol.** Generated servers and the adoption entry point answer
+  `logging/setLevel` (camelCase, see `threadlight-mcp-aca`).
 - **Tools.** `src/mcp/server.py` takes each tool's arguments from the SPEC § 6
   `` ### `tool` `` subsection **Inputs** (table or `` `name: type` required ``
   prose), falling back to the summary table. Placeholders such as `none` or

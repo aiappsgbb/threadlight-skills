@@ -1,0 +1,4 @@
+{"_meta": {"entity": "customers", "synthetic": true}, "records": [
+  {"id": "CUST-01", "name": "Ada Example", "email": "ada@example.com", "email_masked": "a***@example.com", "loyalty_tier": "gold", "account_status": "active"},
+  {"id": "CUST-02", "name": "Bo Example", "email": "bo@example.com", "email_masked": "b***@example.com", "loyalty_tier": "silver", "account_status": "active"}
+]}
