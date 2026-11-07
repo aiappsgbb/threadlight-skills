@@ -21,10 +21,12 @@ class Model(FunctionInvocationLayer, BaseChatClient):
         self.outputs = iter(outputs)
         self.requests = []
         self.tools = []
+        self.options = {}
 
     def _inner_get_response(self, *, messages, stream, options, **kwargs):
         self.requests.append(list(messages))
         self.tools = options.get("tools", [])
+        self.options = dict(options)
         contents = next(self.outputs)
         if stream:
             async def updates():

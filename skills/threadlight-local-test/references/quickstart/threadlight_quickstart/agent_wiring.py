@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .discover import PoCLayout
+from .spec_tools import build_spec_tools
 from .stub_tools import InMemoryStore, build_stub_tools
 
 log = logging.getLogger(__name__)
@@ -43,6 +44,28 @@ sample data — never invent record IDs, always list or get first.
 When you mutate data with `update_*`, mention what changed so the
 operator can see the demo land. Reply concisely.
 """
+
+
+_PATTERN0_SUFFIX = """\
+
+---
+Pattern 0 local demo (added by threadlight_quickstart): the tools named above
+answer from the PoC's synthetic sample data in memory (reset every launch), and
+the knowledge tool searches the packaged specs/knowledge files. Never invent
+record ids or policy clauses: look them up first. Write tools wait for
+human approval; if an approval is rejected, say what was not recorded and
+finish the answer.
+"""
+
+
+def build_instructions(layout: PoCLayout) -> str:
+    """The project's own AGENTS.md (the deployed agent's instructions) plus local safe defaults."""
+    agents_md = layout.root / "AGENTS.md"
+    if agents_md.is_file():
+        text = agents_md.read_text(encoding="utf-8").strip()
+        if text:
+            return text + "\n" + _PATTERN0_SUFFIX
+    return _DEFAULT_INSTRUCTIONS
 
 
 def build_chat_client():
@@ -205,6 +228,17 @@ def _apply_overrides(
     return [*tools, *added]
 
 
+def build_spec_wiring(layout: PoCLayout, stores: dict[str, InMemoryStore]):
+    """SPEC section 6 tools (``[]`` when the SPEC declares none) and their wiring report."""
+    try:
+        from agent_framework import FunctionTool, tool  # type: ignore[import-not-found]
+    except ImportError:
+        from .stub_tools import _identity_decorator as tool  # type: ignore[assignment]
+        FunctionTool = None  # type: ignore[assignment]
+    sample_dir = layout.sample_data_files[0].parent if layout.sample_data_files else layout.root / "specs" / "sample-data"
+    return build_spec_tools(layout.root, sample_dir, stores, tool, FunctionTool)
+
+
 def build_agent(
     layout: PoCLayout,
     *,
@@ -221,13 +255,18 @@ def build_agent(
 
     client = chat_client if chat_client is not None else build_chat_client()
     tools, stores = build_stub_tools(layout.sample_data_files)
+    spec_tools, _ = build_spec_wiring(layout, stores)
+    if spec_tools:
+        # SPEC section 6 names replace the generic CRUD triple, so skills that
+        # call e.g. `returns_get_case` or the knowledge tool resolve locally.
+        tools = spec_tools
     tools = _apply_overrides(layout, tools, stores)
     skills_provider, skill_count = _build_skills_provider(layout.skills_dir)
     context_providers = [skills_provider] if skills_provider is not None else []
 
     agent = Agent(
         client=client,
-        instructions=instructions or _DEFAULT_INSTRUCTIONS,
+        instructions=instructions or build_instructions(layout),
         tools=tools,
         context_providers=context_providers,
         middleware=[RequireResolvedApprovals()],

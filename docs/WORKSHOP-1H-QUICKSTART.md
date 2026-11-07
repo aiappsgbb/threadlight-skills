@@ -60,6 +60,11 @@ in the session:
   **deployment name** copy-pastable. The skill uses `DefaultAzureCredential`
   (Entra), not an API key — no secret handling.
 - **Git** + an editor of your choice.
+- **Python packages reachable.** Pattern 0 installs `agent-framework` and
+  `streamlit` from PyPI. Corporate laptops often block public PyPI: test one
+  install the day before, and if it is blocked use the approved package
+  mirror or proxy your organisation provides, for that install only. Do not
+  change global pip/uv settings or disable security controls in the room.
 
 ### T-1h — first thing in the room
 
@@ -79,8 +84,8 @@ If anything's red, fix it now — don't try to fix it inside the runbook.
 | **5–10** | Validate prereqs | Run the T-1h prompt (§2). | Green tool output in Copilot CLI. |
 | **10–15** | Install the plugins | Prompt §4.1. | Plugin list shows threadlight-skills, then the official azure plugins. |
 | **15–30** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` stream to disk. Read them together as they land. *If it's still in demo-deck / sales-kit generation past ~minute 25, interrupt with "skip demo and sales kit, move on" to protect the budget.* | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. Deployment artifacts (Dockerfile, `azure.yaml`, `infra/main.bicep`) come later from `threadlight-deploy` — §6. |
-| **30–40** | Pattern 0 bootstrap | Prompt §4.3 with your AOAI endpoint + deployment. | Two clean exits (`--info`, `--check`). The `--info` table shows the auto-discovered entities and CRUD tools. |
-| **40–55** | Live demo on `localhost:8501` | Prompt §4.4, then paste each killer prompt from `tests/killer-prompts.md` (§4.5) into the browser in order. Watch the trace: SPEC-derived `list_*` / `get_*` / `update_*` tools fire without anyone writing them. | Streamlit chat. One answer per killer prompt — same agent, different signals in, different outcomes per branch. |
+| **30–40** | Pattern 0 bootstrap | Prompt §4.3 with your AOAI endpoint + deployment. | Two clean exits (`--info`, `--check`). `--check` shows the project's `AGENTS.md` as instructions and the SPEC § 6 tools with their backing (design mock server, local policy search) and approval mode. |
+| **40–55** | Live demo on `localhost:8501` | Prompt §4.4, then paste each killer prompt from `tests/killer-prompts.md` (§4.5) into the browser in order. Watch the trace: the SPEC's own tools (for example `returns_get_case`, `return_policy_search`) fire against the sample data and policy text. When the agent wants to record a recommendation, approve or reject it in the page. | Streamlit chat. One answer per killer prompt — same agent, different signals in, different outcomes per branch. |
 | **55–60** | Kick off approved `threadlight-deploy` + `azd up` + Q&A | Run §6 after scope/budget approval. Keep the **Azure Portal resource group view** alongside Copilot CLI. Point to the separate governance/readiness follow-up, not a governed-by-deployment claim. | Deployment progress; smoke testing may finish after the hour. |
 
 `threadlight-deploy` + `azd up` is the **longest single step** (15–25 min
@@ -127,6 +132,16 @@ time for `azd up` to also run.
 
 Auth is `DefaultAzureCredential` — no API key. The `az login` from §2 is what
 gets used.
+
+Pattern 0 runs the design's `AGENTS.md`, the SPEC § 6 tool names (the
+design's mock server functions, with their safeguards) and a read-only local
+search over `specs/knowledge/` for the policy tool. Write tools wait for a
+human decision. To rehearse without the browser:
+
+> run the killer prompts from ~/Repos/workshop/returns-triage/tests/killer-prompts.md headlessly with python -m threadlight_quickstart --ask, one --ask per prompt, and summarise the decisions and any rejected approvals
+
+Headless runs reject every pending write unless you name the tool with
+`--approve-tool`, so nothing is recorded without your say-so.
 
 ### 4.4 Launch the local agent
 
@@ -207,6 +222,13 @@ fill in live while `azd` runs.
 ### 6.3 Deploy
 
 > use the threadlight-deploy skill to azd up ~/Repos/workshop/returns-triage to azure
+
+The skill first runs generate-only on the design workspace, without `--force`.
+It keeps the design's `src/mcp/server.py` byte-identical and adds only the
+pinned packaging around it. SPEC § 11c modules the pilot infrastructure does
+not create (for example AI Search and the Foundry IQ knowledge base) are listed
+as not provisioned in `specs/deferred-steps.md`; until `threadlight-ground`
+runs, the policy tool answers from the packaged `specs/knowledge/` text.
 
 Provisions the resource group, creates the Foundry account + project, builds
 and deploys the MCP Container App, builds the hosted-agent container remotely,

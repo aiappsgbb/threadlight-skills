@@ -15,11 +15,14 @@ class ApprovalRequiredError(RuntimeError):
 
 def require_resolved_approvals(response: ResponseT) -> ResponseT:
     if response.user_input_requests:
-        raise ApprovalRequiredError(
+        error = ApprovalRequiredError(
             "approval_required: this host cannot resolve pending user approval. "
             "Use an approval-capable host or an explicitly reviewed tool policy; "
             "do not treat this turn as a completed report."
         )
+        # Approval-capable hosts (approvals.py) resume the turn from here.
+        error.response = response
+        raise error
     return response
 
 

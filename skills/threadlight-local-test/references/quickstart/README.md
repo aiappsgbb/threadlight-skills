@@ -29,7 +29,11 @@ python -m threadlight_quickstart --simulator  # pre-load the demo-script prompts
 
 | File / dir | Purpose | Required? |
 |---|---|---|
-| `specs/sample-data/<entity>.json` | One JSON array per entity → in-memory store + CRUD tools | **Yes** (≥ 1 entity) |
+| `specs/sample-data/<entity>.json` | One JSON array per entity → in-memory store (+ CRUD tools when the SPEC lists no tools) | **Yes** (≥ 1 entity) |
+| `AGENTS.md` | The agent's instructions (plus a short Pattern 0 safety suffix) | No (generic defaults) |
+| `specs/SPEC.md` § 6 | Tool names, arguments, read/write and knowledge backing → same-name local tools | No (CRUD fallback) |
+| `src/mcp/server.py` | Design mock server: its § 6 functions are called unchanged | No (sample-data adapters) |
+| `specs/knowledge/*.md` | Read-only local search for § 6 knowledge-base tools | No |
 | `src/agent/skills/<name>/SKILL.md` | Wired into `SkillsProvider` for progressive disclosure | No (agent runs without) |
 | `tests/demo-prompts.txt` | One prompt per line; simulator source | No |
 | `specs/prep-guide.html` | Fallback simulator source (regex on `<strong>Type this:</strong>`) | No |
@@ -59,15 +63,19 @@ runner is installed; business-tool policies are unchanged.
 
 `build_agent()` installs `RequireResolvedApprovals`: remaining
 `user_input_requests` raise `ApprovalRequiredError` (`approval_required`) before
-being mistaken for report text, including streaming. The existing Streamlit
-error path displays and records the error; headless callers must fail the turn
-rather than parse it as JSON. `--check` tests discovery/stub CRUD only, not model
+being mistaken for report text, including streaming. The Streamlit page then
+shows the paused call with **Approve and continue** / **Reject**, and
+`approvals.py` resumes the turn with that human decision. `--ask "<prompt>"`
+runs headless and rejects every pending approval unless the operator names the
+tool with `--approve-tool`; skill scripts are never approved that way. Other
+headless callers must fail the turn rather than parse it as JSON. `--check`
+tests discovery, the SPEC tool wiring and the in-memory store only, not model
 consumption. See the [shared contract](../../../_shared/maf-skill-approval.md).
 
 Offline regression (real native MAF dispatch, deterministic model, no Azure):
 
 ```bash
-PYTHONPATH=. python -m pytest tests/test_skill_approval.py -q
+PYTHONPATH=. python -m pytest tests/test_skill_approval.py tests/test_spec_fidelity.py -q
 ```
 
 ## Try the fixture without a real PoC
@@ -94,7 +102,10 @@ quickstart/
 │   ├── cli.py                      # argparse + dispatch
 │   ├── discover.py                 # auto-find specs/sample-data/, src/agent/skills/
 │   ├── agent_wiring.py             # Agent + SkillsProvider + tool registration
-│   ├── stub_tools.py               # in-memory store + CRUD tool factory
+│   ├── stub_tools.py               # in-memory store + CRUD tool factory (fallback)
+│   ├── spec_tools.py               # SPEC § 6 tools: design server, knowledge, adapters
+│   ├── knowledge.py                # read-only search over specs/knowledge/*.md
+│   ├── approvals.py                # explicit approve/reject; headless --ask policy
 │   ├── simulator.py                # demo-prompt cursor
 │   └── ui_streamlit.py             # Streamlit chat page
 ├── .env.local.example              # env-var template

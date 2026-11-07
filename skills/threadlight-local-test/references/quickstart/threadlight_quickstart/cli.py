@@ -6,6 +6,7 @@ Subcommands (positional + flags):
   --check              wire discover → agent → 1 tool call; no UI; exit
   --simulator          start with the prompt simulator pre-loaded
   --info               print the discovered layout and exit (no LLM)
+  --ask PROMPT         headless turn(s) with explicit approval handling; JSON report
 
 All commands honour ``--root <path>`` to override discover start dir.
 
@@ -68,6 +69,26 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=8501,
         help="Port for the Streamlit UI (default: 8501).",
+    )
+    p.add_argument(
+        "--ask",
+        action="append",
+        default=None,
+        metavar="PROMPT",
+        help=(
+            "Headless: run PROMPT (repeatable) through the same agent as the UI and print "
+            "a JSON report. Pending approvals are rejected unless named with --approve-tool."
+        ),
+    )
+    p.add_argument(
+        "--approve-tool",
+        action="append",
+        default=[],
+        metavar="TOOL",
+        help=(
+            "Operator approval, given up front, for this write tool in --ask runs "
+            "(repeatable). Skill scripts are never approved this way."
+        ),
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
@@ -158,13 +179,16 @@ def _check(layout) -> int:
     first_name = next(iter(stores))
     store = stores[first_name]
     rows = store.list_all()
-    print(f"✅ Stub tools wired — {len(tools)} tool(s) registered across {len(stores)} entity store(s).")
+    print(f"✅ In-memory stores wired — {len(stores)} entity store(s) "
+          f"({len(tools)} generic CRUD tool(s), used only when the SPEC lists no tools).")
     print(f"   store '{first_name}' has {len(rows)} record(s).")
     if rows:
         sample = rows[0]
         keys = ", ".join(sorted(sample.keys())[:6])
         suffix = "…" if len(sample) > 6 else ""
         print(f"   first record id={sample.get('id')!r} fields=[{keys}{suffix}]")
+
+    _print_spec_wiring(layout, stores)
 
     # Exercise update + reset so the snapshot semantics are verified.
     first_id = next(iter(store.records))
@@ -184,6 +208,44 @@ def _check(layout) -> int:
             "`pip install -e <quickstart-dir>` before launching the UI."
         )
     return 0
+
+
+def _print_spec_wiring(layout, stores) -> None:
+    from .agent_wiring import build_spec_wiring
+
+    agents_md = layout.root / "AGENTS.md"
+    print(f"✅ Instructions: {'project AGENTS.md + Pattern 0 safe defaults' if agents_md.is_file() else 'Pattern 0 defaults (no AGENTS.md)'}")
+    _, wiring = build_spec_wiring(layout, stores)
+    if not wiring:
+        print("ℹ️  No SPEC section 6 tools found: the agent uses generic list_/get_/update_ CRUD tools.")
+        return
+    print(f"✅ SPEC section 6 tools wired ({len(wiring)}), replacing generic CRUD:")
+    for row in wiring:
+        print(f"   - {row['tool']:<32} {row['kind']:<5} {row['source']} · approval: {row['approval']}")
+
+
+def _ask(layout, prompts: list[str], approve_tools: list[str]) -> int:
+    import json
+
+    from .agent_wiring import build_agent
+    from .approvals import run_turn
+
+    async def run_all():
+        turns = []
+        for prompt in prompts:
+            agent, _ = build_agent(layout)
+            try:
+                result = await run_turn(agent, prompt, approve_tools=approve_tools)
+                turns.append({"prompt": prompt, "text": result.text, "decisions": result.decisions,
+                              "error": result.error})
+            except Exception as exc:  # noqa: BLE001 - report every prompt
+                turns.append({"prompt": prompt, "text": "", "decisions": [],
+                              "error": f"{type(exc).__name__}: {exc}"})
+        return turns
+
+    turns = asyncio.run(run_all())
+    print(json.dumps({"schema": "threadlight-quickstart-ask/v1", "turns": turns}, default=str))
+    return 1 if any(t["error"] for t in turns) else 0
 
 
 def _streamlit(layout, *, port: int, simulator: bool) -> int:
@@ -227,6 +289,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _info(layout)
     if args.check:
         return _check(layout)
+    if args.ask:
+        return _ask(layout, args.ask, args.approve_tool)
     return _streamlit(layout, port=args.port, simulator=args.simulator)
 
 

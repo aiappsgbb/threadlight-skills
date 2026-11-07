@@ -455,3 +455,36 @@ test('Agentic Loop bridge is discoverable, one-way and honest about its proof', 
   assert.match(read('skills/threadlight-design/SKILL.md'), /AGENTIC-LOOP-BRIDGE\.md/);
   assert.match(read('CHANGELOG.md'), /Agentic Loop/);
 });
+
+test('workshop design-to-deploy chain documents ownership, Learn-verified hosting facts and a faithful local demo', () => {
+  const deploy = read('skills/threadlight-deploy/SKILL.md');
+  const design = read('skills/threadlight-design/SKILL.md');
+  const local = read('skills/threadlight-local-test/SKILL.md');
+  const workshop = read(docs.workshop);
+  const flat = (text) => text.replace(/\s+/g, ' ');
+  // Ownership boundary is stated on both sides of the handoff.
+  for (const text of [deploy, design]) {
+    const t = flat(text);
+    assert.match(t, /Ownership between threadlight-design and threadlight-deploy/);
+    assert.ok(t.includes('threadlight_mcp_entry.py'), 'entry point named');
+    assert.ok(t.includes('mcp.server.fastmcp'), 'pinned SDK import named');
+  }
+  assert.match(flat(deploy), /exit (code )?6/);
+  assert.match(flat(design), /does not write `?src\/mcp\/Dockerfile`?/);
+  // Hosted-agent facts follow Microsoft Learn, not stale field notes.
+  assert.ok(deploy.includes('learn.microsoft.com/azure/foundry/agents/how-to/migrate-hosted-agent-preview'));
+  assert.doesNotMatch(deploy, /Known failing regions:\*\* `eastus2`/);
+  assert.doesNotMatch(deploy, /Avoid `eastus2`/);
+  assert.match(flat(deploy), /East US 2 is in the documented hosted-agent region list/);
+  assert.match(flat(deploy), /SPEC § 11c modules? .*not provisioned/);
+  // Pattern 0 runs the design's instructions, tools and knowledge with explicit approvals.
+  const l = flat(local);
+  for (const marker of ['AGENTS.md', 'SPEC § 6 tool names', 'specs/knowledge', '--ask', '--approve-tool',
+    'never_require', 'always_require']) assert.ok(l.includes(marker), marker);
+  // The workshop guide covers blocked public PyPI honestly, without internal identifiers.
+  const w = flat(workshop);
+  assert.match(w, /public PyPI/);
+  assert.match(w, /approved (internal )?package (mirror|proxy)/);
+  assert.doesNotMatch(workshop, /packagefeedproxy|pkgs\.dev\.azure\.com/);
+  assert.match(w, /without `--force`/);
+});
