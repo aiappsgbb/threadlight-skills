@@ -7,6 +7,34 @@ field.
 
 ## [Unreleased]
 
+### 2.24.0: workshop chain works end to end (design → local test → deploy)
+
+- **Why.** A Copilot CLI run of the 1-hour workshop prompts on 2.23.0 found two
+  blockers: `threadlight-deploy` generate-only refused (exit 5) after
+  `threadlight-design`, and with `--force` overwrote the design's MCP server and
+  its safeguards; Pattern 0 ignored the project's `AGENTS.md`, exposed only
+  generic CRUD tools and no policy search, so killer prompts stopped on an
+  approval request (K2 and K3 passed 1 of 3 runs).
+- **Deploy adopts the design's MCP server.** `src/mcp/server.py` stays
+  byte-identical; generate-only adds the pinned entry point, hashed lock and
+  Dockerfile and records the adoption in `specs/mcp-adoption.json`. A design
+  server missing a SPEC § 6 tool or importing an unpinned package is refused with
+  exit 6. Generated servers answer `logging/setLevel`. The model comes from
+  `specs/foundation.md`. AI Search, Blob storage and the Foundry IQ knowledge base
+  selected in § 11c are listed as not provisioned instead of silently missing.
+- **Pattern 0 follows the design.** It runs `AGENTS.md`, the SPEC § 6 tool names
+  (backed by the design server's functions or the sample data), a read-only
+  search over `specs/knowledge/`, and human approval for writes only (Streamlit
+  Approve/Reject; headless `--ask` rejects unless `--approve-tool` names the tool).
+- **Learn-aligned hosting guidance.** The hosted-agent pilot no longer creates a
+  capability host ([migration guide](https://learn.microsoft.com/azure/foundry/agents/how-to/migrate-hosted-agent-preview));
+  East US 2 is listed for hosted agents ([regions](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#region-availability)).
+- **Smaller fixes.** The killer-prompts keeper script targets `agent.yaml`; the
+  generate-only `pending-deploy` placeholder no longer counts as verification
+  evidence in the planner or the canvas; the workshop guide covers blocked PyPI.
+- **Not verified here:** no live `azd up` (the capability-host removal is not yet
+  proven live), no Docker builds and no real-model killer-prompt run.
+
 ### 2.23.0: Lifecycle Canvas rebuilt for the process owner
 
 - **Why.** A review of the Copilot App canvas scored 16/40: on the complete
