@@ -10,6 +10,11 @@ the SAME name, backed in this order:
    section 6 backs the tool with a knowledge base (Foundry IQ / AI Search);
 3. ``adapter``   – a generic read/write adapter over the in-memory sample data.
 
+When ``specs/knowledge/*.md`` exists but section 6 declares no knowledge tool,
+Pattern 0 also registers the read-only ``knowledge.TOOL_NAME``
+(``knowledge_search``) so the agent can read the policy instead of trying a
+skill script. threadlight-deploy generate_only serves the same tool name.
+
 Read tools never need approval. Write tools (section 11a ``consequence``, the
 section 5b Read/Write column, else the tool-name prefix) are registered with
 ``approval_mode="always_require"``: a human approves each call (Streamlit
@@ -207,6 +212,10 @@ def build_spec_tools(
         return [], []
     design = _load_design_server(root, sample_dir)
     knowledge_dir = root / "specs" / "knowledge"
+    if (knowledge_dir.is_dir() and any(knowledge_dir.glob("*.md")) and not any(t["knowledge"] for t in plan)
+            and knowledge.TOOL_NAME not in {t["name"] for t in plan}):
+        plan.append({"name": knowledge.TOOL_NAME, "description": knowledge.TOOL_DESCRIPTION, "kind": "read",
+                     "knowledge": True, "args": [{"name": "query", "type": "string", "required": True}]})
     tools: list[Any] = []
     wiring: list[dict[str, Any]] = []
     for spec_tool in plan:

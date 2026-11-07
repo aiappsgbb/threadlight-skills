@@ -153,6 +153,23 @@ def canonical(value):
         return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
 
 
+def _message_payload(event):
+    """Serialise an assistant message event; a failing SDK ``to_dict()`` keeps the text.
+
+    github-copilot-sdk 1.0.x ``to_dict()`` can raise AssertionError on usage
+    fields (``timeToFirstTokenMs``); in the 2026-11-07 live deploy that ended
+    the ungoverned stream. Here it would end the invocation as agent_unavailable.
+    """
+    try:
+        return event.to_dict()
+    except Exception as exc:  # noqa: BLE001
+        event_type = getattr(getattr(event, "type", None), "value", str(getattr(event, "type", "")))
+        LOGGER.warning("Reducing unserialisable %s event to its text: %s", event_type, type(exc).__name__)
+        data = getattr(event, "data", None)
+        content = getattr(data, "content", None) or getattr(data, "delta_content", None) or ""
+        return {"type": event_type, "data": {"content": content}}
+
+
 class McpRelay:
         """The pinned SDK hook changes _meta, NOT headers. Bridge only on loopback.
 
@@ -432,7 +449,7 @@ def build_host(config, *, bootstrap_gate=None, **host_options):
                         if event.type == SessionEventType.SESSION_ERROR:
                             raise RuntimeError("agent_unavailable")
                         if event.type.value in ("assistant.message", "assistant.message_delta"):
-                            yield b"data: " + canonical(event.to_dict()) + b"\n\n"
+                            yield b"data: " + canonical(_message_payload(event)) + b"\n\n"
                 yield b"event: done\ndata: " + canonical({"invocation_id": invocation_id}) + b"\n\n"
             except Exception:
                 yield b'data: {"type":"error","message":"agent_unavailable"}\n\n'

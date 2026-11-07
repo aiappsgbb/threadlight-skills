@@ -25,6 +25,8 @@ import os
 import pathlib
 import sys
 import time
+from collections import OrderedDict
+from contextlib import asynccontextmanager
 from typing import Any
 
 from starlette.requests import Request
@@ -132,126 +134,325 @@ def _load_mcp_servers() -> dict[str, dict] | None:
 # ---------------------------------------------------------------------------
 # Session Management
 # ---------------------------------------------------------------------------
+# One CopilotClient per container, one Copilot session per FOUNDRY session.
+#
+# The caller's ``agent_session_id`` query parameter selects the conversation:
+# the same id continues it, a different id never sees it. Without one, each
+# invocation gets a fresh session that is closed afterwards. The container-wide
+# ``FOUNDRY_AGENT_SESSION_ID`` is deliberately NOT a conversation key: one
+# shared session made every Foundry evaluation row join the same conversation
+# in the 2026-11-07 live run (21 s -> 135 s per row, earlier rows visible to
+# later ones). A body with ``"new_conversation": true`` always gets a fresh
+# session too.
+#
+# Lifecycle (github-copilot-sdk keeps transcripts on disk until
+# ``client.delete_session(id)``; ``disconnect()`` only frees memory):
+# * fresh / new_conversation sessions: disconnect, then delete from disk;
+# * keyed sessions use the Foundry session id as the Copilot session id
+#   (``create_session(session_id=key)``), so ``resume_session(key)`` restores
+#   the conversation. The in-memory cache is LRU-bounded
+#   (``COPILOT_MAX_SESSIONS``) and a session is reopened after
+#   ``_SESSION_MAX_AGE_SECONDS`` so a BYOK bearer token minted at creation never
+#   outlives its validity; both only disconnect and keep the transcript on disk.
+# * at most ``COPILOT_MAX_DORMANT_SESSIONS`` (default 4x the cache) evicted
+#   transcripts stay on disk; the oldest beyond that are deleted.
+# Turns in one session are serialised.
 
 app = InvocationAgentServerHost()
 
 _client: CopilotClient | None = None
-_session = None
+_client_lock = asyncio.Lock()
 _skills_dir = str(BASE_DIR / "skills")
+_MAX_SESSIONS = max(1, int(os.environ.get("COPILOT_MAX_SESSIONS", "") or "16"))
+_SESSION_MAX_AGE_SECONDS = 45 * 60
+_MAX_DORMANT_SESSIONS = max(0, int(os.environ.get("COPILOT_MAX_DORMANT_SESSIONS", "") or str(4 * _MAX_SESSIONS)))
+_dormant: "OrderedDict[str, None]" = OrderedDict()
+_sessions: "OrderedDict[str, tuple[Any, float]]" = OrderedDict()
+_session_locks: dict[str, asyncio.Lock] = {}
+_sessions_lock = asyncio.Lock()
 
 
-async def _ensure_session() -> None:
-    """Create or resume a CopilotClient session. Lazy — runs once per worker."""
-    global _client, _session
-    if _session is not None:
-        return
+async def _ensure_client() -> CopilotClient:
+    """Start the CopilotClient once per worker."""
+    global _client
+    async with _client_lock:
+        if _client is not None:
+            return _client
+        github_token = os.environ.get("GITHUB_TOKEN", "")
+        if _get_provider():
+            # BYOK mode: Foundry model via Managed Identity, no token needed.
+            client = CopilotClient()
+        elif github_token:
+            # Copilot mode: GitHub-hosted models via personal/app token.
+            client = CopilotClient(github_token=github_token)
+        else:
+            raise RuntimeError(
+                "No auth configured. Set FOUNDRY_PROJECT_ENDPOINT + "
+                "AZURE_AI_MODEL_DEPLOYMENT_NAME (BYOK Foundry) or GITHUB_TOKEN (GHCP)."
+            )
+        await client.start()
+        logger.info("CopilotClient started (mode=%s)", "BYOK" if _BYOK_ENDPOINT else "GITHUB_TOKEN")
+        _client = client
+        return client
 
-    session_id = os.environ.get("FOUNDRY_AGENT_SESSION_ID", "")
 
-    provider = _get_provider()
-    github_token = os.environ.get("GITHUB_TOKEN", "")
-
-    if provider:
-        # BYOK mode: Foundry model via Managed Identity, no token needed.
-        _client = CopilotClient()
-    elif github_token:
-        # Copilot mode: GitHub-hosted models via personal/app token.
-        _client = CopilotClient(github_token=github_token)
-    else:
-        raise RuntimeError(
-            "No auth configured. Set FOUNDRY_PROJECT_ENDPOINT + "
-            "AZURE_AI_MODEL_DEPLOYMENT_NAME (BYOK Foundry) or GITHUB_TOKEN (GHCP)."
-        )
-
-    await _client.start()
-    logger.info("CopilotClient started (mode=%s)", "BYOK" if provider else "GITHUB_TOKEN")
-
+def _session_kwargs() -> dict[str, Any]:
+    """Session options; mints a fresh BYOK provider token for every new session."""
     kwargs: dict[str, Any] = {
         "on_permission_request": PermissionHandler.approve_all,
         "streaming": True,
         "working_directory": str(pathlib.Path.home()),
-        "provider": provider,
+        "provider": _get_provider(),
         "model": _MODEL or None,
     }
-
     instructions = _load_instructions()
     if instructions:
         kwargs["system_message"] = {"mode": "replace", "content": instructions}
-
     if pathlib.Path(_skills_dir).is_dir():
         kwargs["skill_directories"] = [_skills_dir]
-
     mcp = _load_mcp_servers()
     if mcp:
         kwargs["mcp_servers"] = mcp
+    return kwargs
 
+
+async def _delete_transcript(session_id: str) -> None:
+    """Best-effort ``client.delete_session``: removes the transcript from disk."""
+    if _client is None or not session_id:
+        return
     try:
-        if session_id:
-            _session = await _client.resume_session(session_id, **kwargs)
-            logger.info("Resumed session: %s", session_id)
-        else:
-            raise Exception("no session_id")
+        await _client.delete_session(session_id)
+    except Exception as exc:  # noqa: BLE001 - cleanup must not fail the caller
+        logger.warning("Copilot session delete failed for %s: %s", session_id, type(exc).__name__)
+
+
+async def _close_session(session, *, delete: bool) -> None:
+    """Disconnect; with ``delete`` also remove the on-disk transcript (best-effort)."""
+    close = getattr(session, "disconnect", None)
+    if close is not None:
+        try:
+            await close()
+        except Exception as exc:  # noqa: BLE001 - cleanup must not fail the caller
+            logger.warning("Copilot session disconnect failed: %s", type(exc).__name__)
+    if delete:
+        await _delete_transcript(str(getattr(session, "session_id", "") or ""))
+
+
+async def _keyed_session(client: CopilotClient, key: str):
+    """Cached session for ``key`` (caller holds the key's lock), creating it if needed."""
+    stale = None
+    async with _sessions_lock:
+        entry = _sessions.get(key)
+        if entry is not None and time.time() - entry[1] < _SESSION_MAX_AGE_SECONDS:
+            _sessions.move_to_end(key)
+            return entry[0]
+        if entry is not None:
+            stale = _sessions.pop(key)[0]
+    if stale is not None:
+        await _close_session(stale, delete=False)  # reopened below with a fresh token
+    try:
+        session = await client.resume_session(key, **_session_kwargs())
+        logger.info("Resumed Copilot session for Foundry session %s", key)
     except Exception:
-        _session = await _client.create_session(**kwargs)
-        logger.info("Created new session")
+        session = await client.create_session(session_id=key, **_session_kwargs())
+        logger.info("Created Copilot session for Foundry session %s", key)
+    evicted = []
+    async with _sessions_lock:
+        _dormant.pop(key, None)
+        _sessions[key] = (session, time.time())
+        for old_key in list(_sessions):
+            if len(_sessions) <= _MAX_SESSIONS:
+                break
+            lock = _session_locks.get(old_key)
+            if old_key == key or (lock is not None and lock.locked()):
+                continue  # never close a session in the middle of a turn
+            evicted.append(_sessions.pop(old_key)[0])
+            _session_locks.pop(old_key, None)
+            _dormant[old_key] = None
+        expired = []
+        while len(_dormant) > _MAX_DORMANT_SESSIONS:
+            expired.append(_dormant.popitem(last=False)[0])
+    for old in evicted:
+        await _close_session(old, delete=False)  # transcript kept: resume_session(key) restores it
+    for old_key in expired:
+        await _delete_transcript(old_key)
+    return session
+
+
+@asynccontextmanager
+async def _conversation(session_key: str):
+    """Yield the Copilot session for one turn of ``session_key`` (fresh when empty)."""
+    client = await _ensure_client()
+    if not session_key:
+        session = await client.create_session(**_session_kwargs())
+        try:
+            yield session
+        finally:
+            await _close_session(session, delete=True)
+        return
+    async with _sessions_lock:
+        lock = _session_locks.setdefault(session_key, asyncio.Lock())
+    async with lock:
+        yield await _keyed_session(client, session_key)
+
+
+def _session_key(request: Request) -> str:
+    """The caller's Foundry ``agent_session_id``; empty means a fresh conversation."""
+    params = getattr(request, "query_params", None) or {}
+    return str(params.get("agent_session_id") or "").strip()
 
 
 # ---------------------------------------------------------------------------
 # SSE Streaming Handler
 # ---------------------------------------------------------------------------
 
-async def _stream_response(invocation_id: str, input_text: str):
-    """Stream CopilotClient events as SSE."""
-    await _ensure_session()
-    queue: asyncio.Queue = asyncio.Queue()
+def _event_payload(event) -> dict | None:
+    """Serialise one SDK event without letting a bad field abort the SSE stream.
 
-    def on_event(event):
-        if event.type == SessionEventType.SESSION_IDLE:
-            queue.put_nowait(None)
-        elif event.type == SessionEventType.SESSION_ERROR:
-            queue.put_nowait(RuntimeError(getattr(event.data, "message", "error")))
-        else:
-            queue.put_nowait(event)
-
-    unsubscribe = _session.on(on_event)
+    github-copilot-sdk 1.0.x ``to_dict()`` raises AssertionError on some usage
+    fields (e.g. ``timeToFirstTokenMs``); in the 2026-11-07 live deploy that
+    killed the stream mid-response. Message events keep their text.
+    """
     try:
-        await _session.send(input_text)
-        while True:
-            item = await queue.get()
-            if item is None:
-                break
-            if isinstance(item, Exception):
-                yield f"data: {json.dumps({'type': 'error', 'message': str(item)})}\n\n".encode()
-                break
-            yield f"data: {json.dumps(item.to_dict())}\n\n".encode()
+        return event.to_dict()
+    except Exception as exc:  # noqa: BLE001
+        event_type = getattr(getattr(event, "type", None), "value", str(getattr(event, "type", "")))
+        logger.warning("Skipping unserialisable %s event: %s", event_type, type(exc).__name__)
+        if event_type in ("assistant.message", "assistant.message_delta"):
+            data = getattr(event, "data", None)
+            content = getattr(data, "content", None) or getattr(data, "delta_content", None) or ""
+            return {"type": event_type, "data": {"content": content}}
+        return None
 
-        yield f"event: done\ndata: {json.dumps({'invocation_id': invocation_id})}\n\n".encode()
-    finally:
-        unsubscribe()
+
+async def _stream_response(invocation_id: str, input_text: str, session_key: str = ""):
+    """Stream CopilotClient events as SSE."""
+    async with _conversation(session_key) as session:
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def on_event(event):
+            if event.type == SessionEventType.SESSION_IDLE:
+                queue.put_nowait(None)
+            elif event.type == SessionEventType.SESSION_ERROR:
+                queue.put_nowait(RuntimeError(getattr(event.data, "message", "error")))
+            else:
+                queue.put_nowait(event)
+
+        unsubscribe = session.on(on_event)
+        try:
+            await session.send(input_text)
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                if isinstance(item, Exception):
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(item)})}\n\n".encode()
+                    break
+                payload = _event_payload(item)
+                if payload is not None:
+                    yield f"data: {json.dumps(payload)}\n\n".encode()
+
+            yield f"event: done\ndata: {json.dumps({'invocation_id': invocation_id})}\n\n".encode()
+        finally:
+            unsubscribe()
+
+
+_HEARTBEAT_SECONDS = 15
+
+
+async def _final_answer_response(input_text: str, session_key: str = ""):
+    """Non-streaming mode (``"stream": false``): emit only the final answer text.
+
+    Used by Foundry evaluations: the full SSE event stream is 200-300 KB per
+    case, which exhausted the judge model's TPM (429) and exceeded the eval
+    result size limit (413). Newline heartbeats keep the connection alive
+    while the agent works; they are whitespace for the evaluators.
+    """
+    async with _conversation(session_key) as session:
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def on_event(event):
+            if event.type == SessionEventType.SESSION_IDLE:
+                queue.put_nowait(None)
+            elif event.type == SessionEventType.SESSION_ERROR:
+                queue.put_nowait(RuntimeError(getattr(event.data, "message", "error")))
+            elif getattr(event.type, "value", "") == "assistant.message":
+                queue.put_nowait(getattr(getattr(event, "data", None), "content", None) or "")
+
+        unsubscribe = session.on(on_event)
+        final = ""
+        try:
+            await session.send(input_text)
+            while True:
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_SECONDS)
+                except asyncio.TimeoutError:
+                    yield b"\n"
+                    continue
+                if item is None:
+                    break
+                if isinstance(item, Exception):
+                    final = f"Error: {item}"
+                    break
+                if item.strip():
+                    final = item
+            yield (final or "Error: the agent returned no answer.").encode("utf-8")
+        finally:
+            unsubscribe()
+
+
+async def _read_invocation(request: Request) -> tuple[dict[str, Any], str]:
+    """The request body as ``(options, input_text)``.
+
+    Accepted: a JSON object with ``input`` (or ``message``), a JSON string, or
+    plain UTF-8 text. ``azd ai agent invoke <agent> "<text>"`` sends the text as
+    is; it returned HTTP 400 when only JSON objects were accepted.
+    """
+    raw = await request.body()
+    text = raw.decode("utf-8").strip()  # UnicodeDecodeError is a ValueError
+    try:
+        data = json.loads(text) if text else None
+    except json.JSONDecodeError:
+        data = text
+    if not isinstance(data, dict):
+        # A JSON string is the input; any other non-object JSON (42, true,
+        # null, [1, 2]) is plain text that happens to parse as JSON.
+        data = {"input": data if isinstance(data, str) else text}
+    input_text = data.get("input") if data.get("input") is not None else data.get("message")
+    if not isinstance(input_text, str) or not input_text.strip():
+        raise ValueError('missing or empty "input" field')
+    return data, input_text
 
 
 @app.invoke_handler
 async def handle_invoke(request: Request) -> Response:
     try:
-        data = await request.json()
-        if not isinstance(data, dict):
-            raise ValueError("body is not a JSON object")
-        input_text = data.get("input")
-        if not isinstance(input_text, str) or not input_text.strip():
-            raise ValueError('missing or empty "input" field')
-    except (json.JSONDecodeError, ValueError):
+        data, input_text = await _read_invocation(request)
+    except ValueError:
         return JSONResponse(
             status_code=400,
             content={
                 "error": "invalid_request",
                 "message": (
-                    'Request body must be a JSON object with a non-empty "input" string, '
+                    'Request body must be plain text or a JSON object with a non-empty "input" string, '
                     'e.g. {"input": "What can you help me with?"}'
                 ),
             },
         )
+    # "new_conversation": true (sent per row by evals/run_evals.py) starts a fresh
+    # conversation even when the caller reuses one agent_session_id: the
+    # Foundry eval sent all rows with one session id in the 2026-11-07 live run.
+    # The platform forwards invocations bodies untouched, so this never affects
+    # sandbox routing, and the caller's ongoing session is left as it was.
+    session_key = "" if data.get("new_conversation") is True else _session_key(request)
+    if data.get("stream") is False:
+        return StreamingResponse(
+            _final_answer_response(input_text, session_key),
+            media_type="text/plain; charset=utf-8",
+            headers={"Cache-Control": "no-cache"},
+        )
     return StreamingResponse(
-        _stream_response(request.state.invocation_id, input_text),
+        _stream_response(request.state.invocation_id, input_text, session_key),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )

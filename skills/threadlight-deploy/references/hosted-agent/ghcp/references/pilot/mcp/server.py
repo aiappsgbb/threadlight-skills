@@ -11,9 +11,9 @@ import sys
 from mcp.server.fastmcp import FastMCP
 
 _HERE = pathlib.Path(__file__).resolve().parent
-# In the container this file lives at /app/server.py, so never derive the data
-# directory from parents[2] (IndexError there). Use the env var, else the
-# local repo layout, else the container layout.
+# The image mirrors the repo layout (/app/src/mcp/server.py), but never derive
+# the data directory from a fixed parent depth. Use the env var, else the
+# repo layout, else a flat sample-data folder next to this file.
 _DATA = pathlib.Path(
     os.getenv("SAMPLE_DATA_DIR")
     or next(

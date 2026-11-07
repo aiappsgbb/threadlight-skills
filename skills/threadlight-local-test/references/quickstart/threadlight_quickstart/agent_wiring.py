@@ -42,7 +42,9 @@ set of CRUD-shaped tools backed by an in-memory store of the PoC's
 sample data — never invent record IDs, always list or get first.
 
 When you mutate data with `update_*`, mention what changed so the
-operator can see the demo land. Reply concisely.
+operator can see the demo land. If a write is rejected, nothing was
+recorded: still state your recommended decision and say it was not
+recorded. Reply concisely.
 """
 
 
@@ -53,8 +55,9 @@ Pattern 0 local demo (added by threadlight_quickstart): the tools named above
 answer from the PoC's synthetic sample data in memory (reset every launch), and
 the knowledge tool searches the packaged specs/knowledge files. Never invent
 record ids or policy clauses: look them up first. Write tools wait for
-human approval; if an approval is rejected, say what was not recorded and
-finish the answer.
+human approval; if an approval is rejected, nothing was recorded: still state
+your recommended decision with the business rule(s) and clause ids, say that it
+was not recorded, and finish the answer. Never end a turn without the decision.
 """
 
 

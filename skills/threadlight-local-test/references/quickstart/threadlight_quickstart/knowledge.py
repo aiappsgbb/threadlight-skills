@@ -11,6 +11,12 @@ import re
 from pathlib import Path
 from typing import Any
 
+# Name of the read-only search Pattern 0 adds when specs/knowledge/*.md exists but
+# SPEC section 6 declares no knowledge tool. threadlight-deploy generate_only
+# exposes the same tool name from the generated MCP server.
+TOOL_NAME = "knowledge_search"
+TOOL_DESCRIPTION = ("Read-only search over the policy and reference documents in specs/knowledge; "
+                    "returns matching clauses with their ids to cite.")
 CLAUSE = re.compile(r"\b([A-Z]{1,6}-\d+(?:\.\d+)*)\b")
 BACKING = "local stand-in: specs/knowledge (Pattern 0; Foundry IQ in production)"
 

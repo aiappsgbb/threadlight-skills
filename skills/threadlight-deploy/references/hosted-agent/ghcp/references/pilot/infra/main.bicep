@@ -24,7 +24,7 @@ param location string = resourceGroup().location
 @description('Extra tags (for example owner, purpose, disposable). Merged with azd-env-name.')
 param tags object = {}
 
-@description('Deployer principal object ID (azd sets AZURE_PRINCIPAL_ID). Gets Foundry User at project scope.')
+@description('Deployer principal object ID (azd sets AZURE_PRINCIPAL_ID). Gets Foundry User at project and account scope.')
 param principalId string = ''
 
 @allowed([ 'User', 'ServicePrincipal', 'Group' ])
@@ -193,6 +193,42 @@ resource deployerFoundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01
   }
 }
 
+// Foundry evaluations (`python evals/run_evals.py`) invoke the judge model
+// deployment on the ACCOUNT endpoint (POST /openai/evals). A project-only
+// grant returned 401 "lacks ... OpenAI/evals/write" in the 2026-11-07 live run.
+// Learn: "If an evaluation invokes a model deployment, assign Foundry User at
+// the Foundry account scope" and "Run agent evaluations with the Azure
+// Developer CLI: your identity, Foundry User, the Foundry resource"
+// (https://learn.microsoft.com/azure/foundry/observability/how-to/evaluation-permissions).
+resource deployerFoundryUserAccount 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
+  scope: account
+  name: guid(account.id, principalId, roleFoundryUser)
+  properties: {
+    principalId: principalId
+    principalType: principalType
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleFoundryUser)
+  }
+}
+
+// Foundry injects APPLICATIONINSIGHTS_CONNECTION_STRING into hosted agents only
+// when monitoring is configured on the project
+// (https://learn.microsoft.com/azure/foundry/agents/how-to/configure-hosted-agent-telemetry).
+// This is the AppInsights project connection the portal "Traces > Connect"
+// button creates; a project allows one connection of this category. Shape:
+// https://learn.microsoft.com/azure/templates/microsoft.cognitiveservices/accounts/projects/connections
+resource projectAppInsights 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = {
+  parent: project
+  name: appi.name
+  properties: {
+    category: 'AppInsights'
+    target: appi.id
+    authType: 'ApiKey'
+    isSharedToAll: true
+    credentials: { key: appi.properties.ConnectionString }
+    metadata: { ApiType: 'Azure', ResourceId: appi.id }
+  }
+}
+
 var projectEndpoint = 'https://${account.properties.customSubDomainName}.services.ai.azure.com/api/projects/${project.name}'
 output AZURE_RESOURCE_GROUP string = resourceGroup().name
 output FOUNDRY_PROJECT_ENDPOINT string = projectEndpoint
@@ -206,3 +242,6 @@ output AZURE_CONTAINER_REGISTRY_NAME string = acr.name
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.properties.loginServer
 output MCP_SERVER_FQDN string = mcp.properties.configuration.ingress.fqdn
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = appi.properties.ConnectionString
+// Read by scripts/record_deploy_evidence.py (telemetry evidence for the Foundry package gate).
+output APPLICATIONINSIGHTS_RESOURCE_ID string = appi.id
+output AZURE_AI_APPINSIGHTS_CONNECTION_ID string = projectAppInsights.id

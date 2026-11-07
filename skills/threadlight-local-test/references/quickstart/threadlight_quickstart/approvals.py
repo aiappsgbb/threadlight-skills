@@ -8,6 +8,11 @@ that tool with ``--approve-tool``, and that up-front policy can never approve
 skill tools (``NEVER_AUTO_APPROVE``). A rejection performs no effect; the model
 sees the rejection and finishes its answer, and each decision is reported with
 the turn.
+
+A rejection is followed by an explicit note that nothing was recorded and that
+the model must still state its recommended decision. In live workshop runs the
+model sometimes ended the turn with no text after a rejected write; such an
+empty answer gets exactly one follow-up asking for the decision.
 """
 from __future__ import annotations
 
@@ -16,9 +21,18 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_framework import AgentResponse, Message
+from agent_framework import AgentResponse, Content, Message
 
 NEVER_AUTO_APPROVE = frozenset({"run_skill_script", "load_skill", "read_skill_resource"})
+REJECTION_NOTE = (
+    "Human approval rejected {tools}: nothing was recorded and no effect happened. Still give your "
+    "recommended decision with the business rule(s) and clause ids that support it, say that it was not "
+    "recorded, and finish the answer."
+)
+DECISION_NUDGE = (
+    "Your previous reply was empty. A requested write was rejected, so nothing was recorded. State your "
+    "recommended decision now, with the business rule(s) and clause ids, and say it was not recorded."
+)
 
 
 @dataclass
@@ -73,11 +87,16 @@ def _responses(pending: PendingApproval, decide) -> tuple[Message, list[dict[str
         approved = bool(decide(info))
         contents.append(request.to_function_approval_response(approved=approved))
         decisions.append({**info, "approved": approved})
+    rejected = [d["tool"] for d in decisions if not d["approved"]]
+    if rejected:
+        contents.append(Content.from_text(REJECTION_NOTE.format(tools=", ".join(rejected))))
     return Message("user", contents), decisions
 
 
-async def _drive(agent, messages: list[Any], decide, max_rounds: int) -> TurnResult:
+async def _drive(agent, messages: list[Any], decide, max_rounds: int,
+                 rejected_before: bool = False) -> TurnResult:
     decisions: list[dict[str, Any]] = []
+    nudged = False
     for _ in range(max_rounds):
         try:
             response = await agent.run(messages)
@@ -90,6 +109,11 @@ async def _drive(agent, messages: list[Any], decide, max_rounds: int) -> TurnRes
             answer, made = _responses(pending, decide)
             decisions.extend(made)
             messages = [*pending.messages, answer]
+            continue
+        rejected = rejected_before or any(not d["approved"] for d in decisions)
+        if rejected and not nudged and not (response.text or "").strip():
+            nudged = True
+            messages = [*messages, *response.messages, Message("user", [DECISION_NUDGE])]
             continue
         return TurnResult(text=response.text, decisions=decisions)
     return TurnResult(text="", decisions=decisions, error="approval_loop: too many approval rounds")
@@ -110,6 +134,6 @@ async def continue_turn(agent, pending: PendingApproval, *, approved: bool, max_
     """
     answer, decisions = _responses(pending, lambda _info: approved)
     # A later request in the same turn is returned as a new pending decision.
-    result = await _drive(agent, [*pending.messages, answer], None, max_rounds)
+    result = await _drive(agent, [*pending.messages, answer], None, max_rounds, rejected_before=not approved)
     return TurnResult(text=result.text, decisions=[*decisions, *result.decisions], error=result.error,
                       pending=result.pending)

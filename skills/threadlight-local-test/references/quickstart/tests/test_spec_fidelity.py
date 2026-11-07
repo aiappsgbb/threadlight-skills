@@ -347,3 +347,79 @@ def test_ui_verdict_comes_from_recorded_decisions():
 
     turn = TurnResult(text="x", decisions=[{"tool": "a", "approved": True}, {"tool": "b", "approved": False}])
     assert _verdict(turn, 2) == "approved by you: a; rejected: b"
+
+
+# --- live workshop regressions (2026-11-07) ---------------------------------------
+
+def _all_text(model, index):
+    parts = []
+    for message in model.requests[index]:
+        for content in message.contents:
+            parts.append(str(getattr(content, "text", "") or getattr(content, "result", "") or ""))
+    return " ".join(parts)
+
+
+def test_instructions_require_a_decision_after_a_rejected_write(tmp_path):
+    layout = _project(tmp_path)
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    instructions = model.options["instructions"]
+    assert "recommended decision" in instructions and "rejected" in instructions
+
+
+def test_rejection_tells_the_model_to_still_state_its_decision(tmp_path):
+    from threadlight_quickstart.approvals import run_turn
+
+    layout = _project(tmp_path)
+    model = Model(outputs(
+        call("returns_record_recommendation", rma_id="RMA-001", decision="approve_refund", citations=["RP-2.1"]),
+    ))
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    turn = asyncio.run(run_turn(agent, "Triage RMA-001"))
+    assert [(d["tool"], d["approved"]) for d in turn.decisions] == [("returns_record_recommendation", False)]
+    seen = _all_text(model, -1)
+    assert "returns_record_recommendation" in seen and "not recorded" in seen
+    assert "recommended decision" in seen
+
+
+def test_empty_answer_after_rejection_is_nudged_once_for_the_decision(tmp_path):
+    from threadlight_quickstart.approvals import run_turn
+
+    layout = _project(tmp_path)
+    model = Model([
+        call("returns_record_recommendation", rma_id="RMA-001", decision="approve_refund", citations=["RP-2.1"]),
+        [Content.from_text("")],
+        [Content.from_text("Recommended decision: approve_refund (BR-001, RP-2.1). Not recorded: rejected.")],
+    ])
+    agent, stores = agent_wiring.build_agent(layout, chat_client=model)
+    turn = asyncio.run(run_turn(agent, "Triage RMA-001"))
+    assert turn.text.startswith("Recommended decision: approve_refund")
+    assert "recommendation" not in stores["returns"].get("RMA-001")
+    assert "recommended decision" in _all_text(model, -1)
+
+
+def test_corpus_without_spec_knowledge_tool_gets_knowledge_search(tmp_path):
+    from threadlight_quickstart import knowledge
+
+    layout = _project(tmp_path)
+    spec = tmp_path / "specs" / "SPEC.md"
+    text = spec.read_text()
+    spec.write_text(text.replace("- **Backed by**: Return-policy knowledge base (Foundry IQ)",
+                                 "- **Backed by**: Returns case store (mock)"))
+    assert knowledge.TOOL_NAME == "knowledge_search"
+    model = Model(outputs(call("knowledge_search", query="RP-4.1 value ceiling")))
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    result = asyncio.run(agent.run("What is the value ceiling?"))
+    assert not result.user_input_requests
+    modes = {t.name: t.approval_mode for t in model.tools}
+    assert modes["knowledge_search"] == "never_require"
+    assert "RP-4.1" in " ".join(str(r) for r in _results(model))
+
+
+def test_no_extra_knowledge_search_when_spec_has_a_knowledge_tool(tmp_path):
+    layout = _project(tmp_path)
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert "knowledge_search" not in {t.name for t in model.tools}
