@@ -209,10 +209,11 @@ packaging and infrastructure, and adopts the design's mock server unchanged:
   documents), `AGENTS.md`, `src/agent/skills/`, the design tests and,
   optionally, `src/mcp/server.py`: the mock MCP tool logic with its safeguards.
 - **Mock server contract.** Write each non-knowledge SPEC § 6 tool as a
-  module-level function with the SPEC name. At module level import only the
-  standard library or `from mcp.server.fastmcp import FastMCP` (the pinned
-  `mcp==1.29.1` that deploy locks with hashes); import any other framework
-  lazily inside a function. Read `SAMPLE_DATA_DIR` for the data directory.
+  module-level function with the SPEC name. At import time use only the
+  standard library, `from mcp.server.fastmcp import FastMCP` (the pinned
+  `mcp==1.29.1` that deploy locks with hashes) or packages that lock installs
+  (for example `pydantic`, `httpx`); import any other framework lazily inside a
+  function or as a `try/except ImportError` fallback. Read `SAMPLE_DATA_DIR` for the data directory.
   Knowledge-base tools (Foundry IQ) stay out of the server.
 - **Design does not write `src/mcp/Dockerfile`**, `pyproject.toml`,
   `requirements*.txt` or a lock for the server, and never an unpinned

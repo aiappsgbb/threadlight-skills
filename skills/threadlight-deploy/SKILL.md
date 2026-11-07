@@ -380,8 +380,12 @@ Ownership is explicit, so the deploy step never discards design code:
   is recorded in `specs/mcp-adoption.json` (owner, sha256, tools).
 - **Deploy contract for the design server** (otherwise **exit 6**, nothing
   written): every non-knowledge SPEC § 6 tool is a module-level function, and
-  module-level imports are the standard library or `mcp` only. Import any other
-  framework lazily inside a function; the image installs only the hashed lock.
+  every import that runs at import time (including class, loop, `with`, `try`
+  and `match` bodies) is the standard library or a package the hashed
+  `src/mcp/requirements.lock` installs (`mcp` and its pinned dependencies such
+  as `pydantic`, `starlette`, `anyio`, `httpx`). Imports inside functions,
+  `if TYPE_CHECKING:` blocks and the `try` body of a `try/except ImportError`
+  fallback are allowed; the fallback branch is still checked.
 - **Packaging a design run left behind** (`src/mcp/Dockerfile`,
   `pyproject.toml`, `requirements.txt` or an unhashed lock, for example an
   unpinned `fastmcp>=2.10`) is replaced by the pinned packaging. The original

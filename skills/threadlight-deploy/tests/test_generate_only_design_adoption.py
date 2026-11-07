@@ -209,6 +209,41 @@ def test_unpinned_import_in_any_import_time_block_is_refused(tmp_path: Path, wra
     assert not (project / "azure.yaml").exists()
 
 
+@pytest.mark.parametrize("extra", [
+    "from pydantic import Field\nimport anyio\nimport httpx\nfrom starlette.requests import Request\nimport jwt\n",
+    "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import requests\n",
+    "import typing\nif typing.TYPE_CHECKING:\n    from fastmcp import FastMCP\n",
+    "try:\n    import orjson as _json\nexcept ImportError:\n    import json as _json\n",
+    "try:\n    from fastmcp import FastMCP\nexcept (ModuleNotFoundError, ValueError):\n    from mcp.server.fastmcp import FastMCP\n",
+])
+def test_pinned_lock_packages_and_guarded_imports_are_adopted(tmp_path: Path, extra: str):
+    project = tmp_path / "p"
+    shutil.copytree(FIXTURE, project)
+    server = project / "src" / "mcp" / "server.py"
+    server.write_text(server.read_text().replace("import copy\n", "import copy\n" + extra, 1))
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("extra", [
+    "import requests\n",
+    # The fallback branch of an optional import is still checked.
+    "try:\n    import orjson\nexcept ImportError:\n    import requests\n",
+    # A try that does not guard ImportError is not an optional import.
+    "try:\n    import requests\nexcept ValueError:\n    pass\n",
+])
+def test_unpinned_imports_outside_guards_are_still_refused(tmp_path: Path, extra: str):
+    project = tmp_path / "p"
+    shutil.copytree(FIXTURE, project)
+    server = project / "src" / "mcp" / "server.py"
+    server.write_text(server.read_text().replace("import copy\n", "import copy\n" + extra, 1))
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert result.returncode == 6, result.stdout + result.stderr
+    assert "requests" in result.stderr
+    # The message names what the image really installs.
+    assert "pydantic" in result.stderr and "mcp" in result.stderr and "starlette" in result.stderr
+
+
 def test_lazy_imports_in_functions_and_lambdas_stay_allowed(tmp_path: Path):
     project = tmp_path / "p"
     shutil.copytree(FIXTURE, project)

@@ -64,9 +64,24 @@ KNOWLEDGE_BACKING = re.compile(r"foundry[\s-]*iq|knowledge[\s-]*base|ai[\s-]*sea
 # SPEC section 11c modules that the pilot infra/main.bicep provisions (plus the
 # always-created Foundry account/project, ACR and UAMI).
 PILOT_MODULES = {"aca-mcp", "app-insights"}
-# Top-level imports a design-owned server.py may use: the stdlib plus the
-# pinned ``mcp`` SDK from src/mcp/requirements.lock.
-ALLOWED_THIRD_PARTY = {"mcp"}
+# Distribution -> import names where they differ (conservative; anything not
+# listed imports under its normalized distribution name).
+DIST_IMPORTS = {
+    "pyjwt": {"jwt"}, "python-dotenv": {"dotenv"}, "python-multipart": {"multipart", "python_multipart"},
+    "attrs": {"attr", "attrs"}, "rpds-py": {"rpds"}, "cffi": {"cffi", "_cffi_backend"},
+}
+
+
+def lock_imports(lock: Path) -> dict[str, str]:
+    """Import name -> distribution for every package the hashed lock installs."""
+    names: dict[str, str] = {}
+    for line in lock.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==", line)
+        if m:
+            dist = m.group(1).lower().replace("_", "-")
+            for name in DIST_IMPORTS.get(dist, {dist.replace("-", "_").replace(".", "_")}):
+                names[name] = dist
+    return names
 
 DEMO_SANDBOX_POSTURE = {
     "networking": "public",
@@ -483,17 +498,39 @@ def selected_modules(spec: str) -> list[str]:
     return chosen
 
 
+def _is_type_checking(test: ast.expr) -> bool:
+    return (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+        and isinstance(test.value, ast.Name) and test.value.id == "typing")
+
+
+def _guards_import_error(handler: ast.ExceptHandler) -> bool:
+    kinds = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+    return any(isinstance(k, ast.Name) and k.id in {"ImportError", "ModuleNotFoundError"} for k in kinds)
+
+
 def _top_level_imports(tree: ast.Module) -> set[str]:
     """Modules imported when server.py is imported.
 
     Every statement that can run at import time counts (module body, class
-    bodies, if/for/while/with/try/try*/match blocks). Only function and lambda
-    bodies are lazy and skipped. Conservative: a dead branch still counts.
+    bodies, if/for/while/with/try/try*/match blocks). Skipped: function and
+    lambda bodies (lazy), ``if TYPE_CHECKING:`` bodies (never run), and the
+    ``try`` body of an optional import whose handler catches ImportError or
+    ModuleNotFoundError (its except branch is still checked). Conservative: a
+    dead branch still counts.
     """
     names: set[str] = set()
 
     def visit(node: ast.AST) -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            return
+        if isinstance(node, ast.If) and _is_type_checking(node.test):
+            for child in node.orelse:
+                visit(child)
+            return
+        if isinstance(node, ast.Try) and any(_guards_import_error(h) for h in node.handlers):
+            for child in [*node.handlers, *node.orelse, *node.finalbody]:
+                visit(child)
             return
         if isinstance(node, ast.Import):
             names.update(a.name.split(".")[0] for a in node.names)
@@ -522,12 +559,15 @@ def adopt_design_server(server: Path, plan: list[dict[str, Any]]) -> dict[str, A
             "and re-run; generate_only never rewrites design-owned code."
         )
     stdlib = set(sys.stdlib_module_names) | {"__future__"}
-    unpinned = sorted(n for n in _top_level_imports(tree) if n not in stdlib and n not in ALLOWED_THIRD_PARTY)
+    installed = lock_imports(PILOT / "mcp" / "requirements.lock")
+    unpinned = sorted(n for n in _top_level_imports(tree) if n not in stdlib and n not in installed)
     if unpinned:
         raise DesignContractError(
-            "src/mcp/server.py (threadlight-design) imports " + ", ".join(unpinned) + " at module level, but "
-            "the deployed image installs only the hashed src/mcp/requirements.lock (pinned `mcp`). Import "
-            "FastMCP from `mcp.server.fastmcp` or import it lazily inside a function, then re-run."
+            "src/mcp/server.py (threadlight-design) imports " + ", ".join(unpinned) + " at import time, but "
+            "the deployed image installs only the hashed src/mcp/requirements.lock: "
+            + ", ".join(sorted(set(installed.values()))) + ", plus the standard library. Import FastMCP "
+            "from `mcp.server.fastmcp`, or move the import inside a function, an `if TYPE_CHECKING:` block "
+            "or a try/except ImportError fallback, then re-run."
         )
     return {
         "owner": "threadlight-design",
