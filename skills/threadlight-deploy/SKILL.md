@@ -445,9 +445,13 @@ Ownership is explicit, so the deploy step never discards design code:
 - **Selected governance.** generate_only does not build a governance package.
   When SPEC § 11a selects governance (any mode but `off`), the bound tools are
   listed as **not packaged** in `specs/deferred-steps.md`, `DEPLOY.md` and the
-  post-deploy gaps, and `threadlight-safe-check` reports
-  `governance: selected-governance-not-packaged` until `threadlight-govern`
-  builds it. An invalid contract is disclosed too; it is never treated as off.
+  post-deploy gaps. `threadlight-safe-check` reports
+  `governance: selected-governance-not-packaged` in both `--phase pre-deploy`
+  and `--phase post-deploy`, with or without the native governance packages
+  installed, until `threadlight-govern` builds it. Post-deploy also reports
+  `governance: no explicit signed safe probe configuration; not verified`.
+  Both are expected for a generate_only pilot with selected governance. An
+  invalid contract is disclosed too; it is never treated as off.
 - **Selected modules not provisioned.** The pilot `infra/main.bicep` provisions
   Foundry, ACR, the identity, App Insights and the MCP Container App only. Any
   other SPEC § 11c module marked `yes` (for example `ai-search`, `storage-blob`,

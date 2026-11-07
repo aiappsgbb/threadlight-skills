@@ -105,6 +105,12 @@ def check(project, document, *, manifest_path=None):
         gaps.append("governance: governance-contract-invalid-or-conflicting")
         return result
     try:
+        # Selected governance with no package at all (e.g. a generate_only repo)
+        # is named before any native package import, so the gap reads the same
+        # in every phase and Python environment.
+        package_path = contained(project, ".threadlight/governance-package.json")
+        if not package_path.exists():
+            raise ValueError("selected-governance-not-packaged")
         import yaml
         from govern_bundle.policy_bundle import PIN_FILE, verify_bundle, validate_native_manifest
         from govern_control_plane.models import SignedBundle, parse
@@ -116,11 +122,6 @@ def check(project, document, *, manifest_path=None):
             result["auxiliary_modules"] = ["registry-pull.bicep"]
         document = {k: document[k] for k in ("framework", "governance", "tools")}
         contract = gen.validate_contract(document)
-        package_path = contained(project, ".threadlight/governance-package.json")
-        if not package_path.exists():
-            # Selected governance with no package at all (e.g. a generate_only
-            # repo): name it, rather than a generic invalid package.
-            raise ValueError("selected-governance-not-packaged")
         package = read(package_path)
         packaged = gen.validate_contract(package["contract"])
         if packaged != contract or package["framework"] != document["framework"]:
