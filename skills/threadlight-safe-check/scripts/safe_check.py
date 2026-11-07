@@ -638,6 +638,12 @@ def _legacy_governance_unselected(repo, data, manifest_path):
 
 
 def _governance_static(repo, data, *, manifest_path=None):
+    # The selection loader imports `skills._shared.*`. Run from an installed
+    # catalog with cwd = the pilot and no PYTHONPATH, that import failed and a
+    # valid selected contract was reported as invalid (2026-11-07 live run).
+    catalog = Path(__file__).resolve().parents[3]
+    if (catalog / "skills" / "_shared").is_dir() and str(catalog) not in sys.path:
+        sys.path.insert(0, str(catalog))
     try:
         from governance_references.governance_static import check
     except ImportError:

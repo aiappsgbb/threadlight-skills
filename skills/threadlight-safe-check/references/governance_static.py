@@ -116,7 +116,12 @@ def check(project, document, *, manifest_path=None):
             result["auxiliary_modules"] = ["registry-pull.bicep"]
         document = {k: document[k] for k in ("framework", "governance", "tools")}
         contract = gen.validate_contract(document)
-        package = read(contained(project, ".threadlight/governance-package.json"))
+        package_path = contained(project, ".threadlight/governance-package.json")
+        if not package_path.exists():
+            # Selected governance with no package at all (e.g. a generate_only
+            # repo): name it, rather than a generic invalid package.
+            raise ValueError("selected-governance-not-packaged")
+        package = read(package_path)
         packaged = gen.validate_contract(package["contract"])
         if packaged != contract or package["framework"] != document["framework"]:
             raise ValueError("packaged-contract-runtime-or-required-controls-changed")
