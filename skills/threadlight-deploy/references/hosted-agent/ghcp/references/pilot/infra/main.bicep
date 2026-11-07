@@ -3,9 +3,12 @@
 //
 // Copy to `infra/main.bicep` together with `main.parameters.json`. It is
 // complete for a demo-sandbox pilot. Do not hand-add the Foundry account,
-// project, model, capability hosts or role assignments: they are already here.
+// project, model or role assignments: they are already here. It creates no
+// capability host (see the note above the model deployment).
 // Live-proven shape (westus3, gpt-5.4-mini GlobalStandard, azd 1.35 +
-// azure.ai.agents extension, remote ACR builds).
+// azure.ai.agents extension, remote ACR builds) while it still created
+// capability hosts. They were removed on 2026-11-07 to follow Microsoft Learn;
+// that change has not been re-proven live yet.
 //
 // Every role assignment uses the role-definition GUID, because display names
 // drift. "Azure AI User" is now shown as "Foundry User", and
@@ -143,21 +146,11 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-previ
   properties: { displayName: environmentName, description: 'Threadlight pilot' }
 }
 
-// The account-level capability host must exist before the project-level one.
-resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityHosts@2025-04-01-preview' = {
-  parent: account
-  name: 'default'
-  properties: { capabilityHostKind: 'Agents' }
-}
-
-// ProjectCapabilityHostProperties has no capabilityHostKind (BCP037); the kind is inherited
-// from the account-level host. Basic setup: platform-managed stores, no connections.
-resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview' = {
-  parent: project
-  name: 'default'
-  properties: {}
-  dependsOn: [ accountCapabilityHost ]
-}
+// No capability hosts: the current hosted-agent backend provisions its own
+// infrastructure, and Microsoft Learn says to remove capability host creation
+// from provisioning scripts
+// (https://learn.microsoft.com/azure/foundry/agents/how-to/migrate-hosted-agent-preview).
+// Create capability hosts only for a bring-your-own-resources (standard) setup.
 
 resource model 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
   parent: account
