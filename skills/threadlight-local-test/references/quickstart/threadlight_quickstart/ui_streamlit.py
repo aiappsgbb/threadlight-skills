@@ -75,6 +75,19 @@ async def _stream_response(agent, prompt: str, placeholder, pending_out: list | 
         return msg
 
 
+def _verdict(turn, shown: int) -> str:
+    """What actually happened to the calls the human was shown, from the recorded decisions."""
+    decisions = turn.decisions[:shown]
+    approved = [d["tool"] for d in decisions if d.get("approved")]
+    rejected = [d["tool"] for d in decisions if not d.get("approved")]
+    parts = []
+    if approved:
+        parts.append("approved by you: " + ", ".join(approved))
+    if rejected:
+        parts.append("rejected: " + ", ".join(rejected))
+    return "; ".join(parts) or "no decision recorded"
+
+
 def _approval_panel(agent, layout) -> None:
     """Show a paused write (or script) call and resume the turn with the human's decision."""
     pending = st.session_state.get("pending")
@@ -94,14 +107,13 @@ def _approval_panel(agent, layout) -> None:
         return
     st.session_state.pending = None
     turn = asyncio.run(continue_turn(agent, pending, approved=decision))
-    verdict = "approved" if decision else "rejected"
-    tools = ", ".join(d["tool"] for d in turn.decisions[:len(pending.requests)])
+    verdict = _verdict(turn, len(pending.requests))
     text = turn.text or f"_error: {turn.error}_"
-    response = f"_{verdict} by you: {tools}_\n\n{text}"
+    response = f"_{verdict}_\n\n{text}"
     st.session_state.messages.append({"role": "assistant", "content": response})
     if turn.pending is not None:
         st.session_state.pending = turn.pending
-    _append_transcript(layout.root, f"[approval {verdict}] {tools}", response)
+    _append_transcript(layout.root, f"[{verdict}]", response)
     st.rerun()
 
 

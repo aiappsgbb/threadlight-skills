@@ -65,9 +65,10 @@ runner is installed; business-tool policies are unchanged.
 `user_input_requests` raise `ApprovalRequiredError` (`approval_required`) before
 being mistaken for report text, including streaming. The Streamlit page then
 shows the paused call with **Approve and continue** / **Reject**, and
-`approvals.py` resumes the turn with that human decision. `--ask "<prompt>"`
-runs headless and rejects every pending approval unless the operator names the
-tool with `--approve-tool`; skill scripts are never approved that way. Other
+`approvals.py` resumes the turn with that human decision (a human may approve a
+skill script there). `--ask "<prompt>"` runs headless and rejects every pending
+approval unless the operator names the tool with `--approve-tool`; that
+up-front policy can never approve skill scripts. Other
 headless callers must fail the turn rather than parse it as JSON. `--check`
 tests discovery, the SPEC tool wiring and the in-memory store only, not model
 consumption. See the [shared contract](../../../_shared/maf-skill-approval.md).

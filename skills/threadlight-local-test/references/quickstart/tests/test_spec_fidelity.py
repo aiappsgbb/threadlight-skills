@@ -306,3 +306,44 @@ def test_knowledge_search_cites_paragraph_clauses(tmp_path):
     assert hit["citations"][0]["clause_id"] == "RP-3.2"
     assert "photo" in hit["citations"][0]["text"]
     assert knowledge.search(tmp_path, "unrelated zebra")["citations"] == []
+
+
+def test_human_can_approve_a_skill_script_but_headless_policy_cannot(tmp_path):
+    from threadlight_quickstart.approvals import PendingApproval, continue_turn, run_turn
+
+    layout = _project(tmp_path)
+    skill = tmp_path / "src" / "agent" / "skills" / "case-intake"
+    (skill / "scripts").mkdir()
+    (skill / "scripts" / "note.py").write_text("print('ran')\n")
+    script_call = call("run_skill_script", skill_name="case-intake", script_name="scripts/note.py")
+
+    model = Model(outputs(script_call))
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    headless = asyncio.run(run_turn(agent, "go", approve_tools={"run_skill_script"}))
+    assert [(d["tool"], d["approved"]) for d in headless.decisions] == [("run_skill_script", False)]
+
+    model = Model(outputs(script_call))
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+
+    async def human():
+        try:
+            await agent.run("go")
+        except RuntimeError as exc:
+            from threadlight_quickstart.approvals import pending_from_error
+            pending = pending_from_error("go", [], exc)
+        assert isinstance(pending, PendingApproval)
+        return await continue_turn(agent, pending, approved=True)
+
+    turn = asyncio.run(human())
+    assert [(d["tool"], d["approved"]) for d in turn.decisions] == [("run_skill_script", True)]
+
+
+def test_ui_verdict_comes_from_recorded_decisions():
+    from threadlight_quickstart.approvals import TurnResult
+    pytest.importorskip("streamlit")
+    import os
+    os.environ.pop("THREADLIGHT_QUICKSTART_ROOT", None)
+    from threadlight_quickstart.ui_streamlit import _verdict
+
+    turn = TurnResult(text="x", decisions=[{"tool": "a", "approved": True}, {"tool": "b", "approved": False}])
+    assert _verdict(turn, 2) == "approved by you: a; rejected: b"

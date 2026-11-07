@@ -484,21 +484,24 @@ def selected_modules(spec: str) -> list[str]:
 
 
 def _top_level_imports(tree: ast.Module) -> set[str]:
-    """Modules imported when server.py is imported (not lazily inside functions)."""
+    """Modules imported when server.py is imported.
+
+    Every statement that can run at import time counts (module body, class
+    bodies, if/for/while/with/try/try*/match blocks). Only function and lambda
+    bodies are lazy and skipped. Conservative: a dead branch still counts.
+    """
     names: set[str] = set()
 
-    def visit(nodes: list[ast.stmt]) -> None:
-        for node in nodes:
-            if isinstance(node, ast.Import):
-                names.update(a.name.split(".")[0] for a in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                names.add(node.module.split(".")[0])
-            elif isinstance(node, (ast.If, ast.Try, ast.With)):
-                for field in ("body", "orelse", "finalbody"):
-                    visit(getattr(node, field, []) or [])
-                for handler in getattr(node, "handlers", []) or []:
-                    visit(handler.body)
-    visit(tree.body)
+    def visit(node: ast.AST) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            return
+        if isinstance(node, ast.Import):
+            names.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            names.add(node.module.split(".")[0])
+        for child in ast.iter_child_nodes(node):
+            visit(child)
+    visit(tree)
     return names
 
 
@@ -1051,6 +1054,15 @@ def generate(project_dir: Path, force: bool) -> list[str]:
                 "original_text": original,
             })
     replaced_paths = {r["path"] for r in replaced}
+    # A re-run (for example with --force) no longer sees the design packaging it
+    # replaced earlier: keep those preserved originals in the record.
+    record_path = project_dir / "specs" / "mcp-adoption.json"
+    if record_path.is_file():
+        try:
+            earlier = json.loads(record_path.read_text(encoding="utf-8")).get("replaced_design_packaging") or []
+        except (ValueError, AttributeError):
+            earlier = []
+        replaced = [r for r in earlier if isinstance(r, dict) and r.get("path") not in replaced_paths] + replaced
     if adoption or replaced:
         text_outputs["specs/mcp-adoption.json"] = json.dumps({
             "schema": "threadlight-mcp-adoption/v1",

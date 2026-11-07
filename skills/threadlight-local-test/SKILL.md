@@ -242,14 +242,16 @@ tools, else a read verb in the name) are registered with
 `approval_mode="never_require"`. Write tools use `always_require`: nothing
 approves them implicitly.
 
-- **Streamlit:** a paused write shows the tool and arguments with
-  **Approve and continue** / **Reject** buttons; the turn resumes with your
-  decision.
+- **Streamlit:** a paused write (or skill script) shows the tool and
+  arguments with **Approve and continue** / **Reject** buttons; the turn
+  resumes with your decision, and the reply states what was approved or
+  rejected from the recorded decisions. A human may approve a skill script here.
 - **Headless:** `python -m threadlight_quickstart --ask "<prompt>"` (repeatable)
   runs the same agent and prints a JSON report. Every pending approval is
   **rejected** (no effect; the model sees the rejection and finishes its
   answer) unless the operator names that tool with `--approve-tool <tool>`.
-  Skill scripts (`run_skill_script`) are never approved this way.
+  This up-front policy can never approve skill scripts (`run_skill_script`);
+  only a human click can.
 
 Use `--ask` to rehearse the killer prompts before the workshop. Pattern 0
 results check prompt behaviour against the design's own tools and policy text;

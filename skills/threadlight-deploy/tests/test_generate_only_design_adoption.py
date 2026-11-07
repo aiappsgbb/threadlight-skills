@@ -134,9 +134,14 @@ def test_rerun_keeps_design_server_and_force_only_touches_generated_files(adopte
     again = _run([str(GENERATOR), "--project", str(adopted)], tmp_path)
     assert again.returncode == 5, again.stdout + again.stderr
     assert "src/mcp/server.py" not in again.stderr
+    before = json.loads((adopted / "specs" / "mcp-adoption.json").read_text())["replaced_design_packaging"]
+    assert before
     forced = _run([str(GENERATOR), "--project", str(adopted), "--force"], tmp_path)
     assert forced.returncode == 0, forced.stderr
     assert _sha(adopted / "src" / "mcp" / "server.py") == _sha(FIXTURE / "src" / "mcp" / "server.py")
+    # The preserved original design packaging survives a --force re-run.
+    after = json.loads((adopted / "specs" / "mcp-adoption.json").read_text())["replaced_design_packaging"]
+    assert after == before
 
 
 def test_generated_tests_selfcheck_and_harness_pass_on_adopted_repo(adopted: Path, tmp_path: Path):
@@ -183,6 +188,34 @@ def test_design_server_with_unpinned_top_level_import_is_refused(tmp_path: Path)
     assert result.returncode == 6, result.stdout + result.stderr
     assert "fastmcp" in result.stderr and "requirements.lock" in result.stderr
     assert not (project / "azure.yaml").exists()
+
+
+@pytest.mark.parametrize("wrapper", [
+    "class _Boot:\n    import fastmcp\n",
+    "for _ in range(1):\n    import fastmcp\n",
+    "while False:\n    import fastmcp\n",
+    "match 1:\n    case 1:\n        import fastmcp\n",
+    "try:\n    pass\nexcept* ValueError:\n    import fastmcp\n",
+    "if True:\n    class _Inner:\n        from fastmcp import FastMCP\n",
+])
+def test_unpinned_import_in_any_import_time_block_is_refused(tmp_path: Path, wrapper: str):
+    project = tmp_path / "p"
+    shutil.copytree(FIXTURE, project)
+    server = project / "src" / "mcp" / "server.py"
+    server.write_text(server.read_text() + "\n\n" + wrapper)
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert result.returncode == 6, result.stdout + result.stderr
+    assert "fastmcp" in result.stderr
+    assert not (project / "azure.yaml").exists()
+
+
+def test_lazy_imports_in_functions_and_lambdas_stay_allowed(tmp_path: Path):
+    project = tmp_path / "p"
+    shutil.copytree(FIXTURE, project)
+    server = project / "src" / "mcp" / "server.py"
+    server.write_text(server.read_text() + "\n\nclass _Lazy:\n    def boot(self):\n        import fastmcp\n"
+                      "\n_lazy = lambda: __import__('fastmcp')\n")
+    assert _run([str(GENERATOR), "--project", str(project)], tmp_path).returncode == 0
 
 
 # --- claim (c): selected knowledge modules are flagged, not silently dropped ------

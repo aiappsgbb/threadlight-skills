@@ -1,11 +1,13 @@
 """Resolve native MAF approvals explicitly instead of dead-ending a turn.
 
 Pattern 0 keeps human approval for SPEC write tools and skill scripts. A host
-either asks a human (Streamlit buttons) or, when headless, applies an explicit
+either asks a human (Streamlit buttons: the human may approve or reject any
+shown call, including a skill script) or, when headless, applies an explicit
 operator policy: every pending request is REJECTED unless the operator named
-that tool with ``--approve-tool``. Skill scripts are never approved here. A
-rejection performs no effect; the model sees the rejection and finishes its
-answer, and the decision is reported with the turn.
+that tool with ``--approve-tool``, and that up-front policy can never approve
+skill tools (``NEVER_AUTO_APPROVE``). A rejection performs no effect; the model
+sees the rejection and finishes its answer, and each decision is reported with
+the turn.
 """
 from __future__ import annotations
 
@@ -68,7 +70,7 @@ def pending_from_error(prompt: str | list[Any], updates: Iterable[Any], exc: Bas
 def _responses(pending: PendingApproval, decide) -> tuple[Message, list[dict[str, Any]]]:
     contents, decisions = [], []
     for request, info in zip(pending.requests, pending.describe()):
-        approved = bool(decide(info)) and info["tool"] not in NEVER_AUTO_APPROVE
+        approved = bool(decide(info))
         contents.append(request.to_function_approval_response(approved=approved))
         decisions.append({**info, "approved": approved})
     return Message("user", contents), decisions
@@ -96,11 +98,16 @@ async def _drive(agent, messages: list[Any], decide, max_rounds: int) -> TurnRes
 async def run_turn(agent, prompt: str, *, approve_tools: Iterable[str] = (), max_rounds: int = 4) -> TurnResult:
     """Headless turn: reject every pending approval unless the operator named the tool."""
     allowed = set(approve_tools) - NEVER_AUTO_APPROVE
-    return await _drive(agent, _user(prompt), lambda info: info["tool"] in allowed, max_rounds)
+    return await _drive(
+        agent, _user(prompt),
+        lambda info: info["tool"] in allowed and info["tool"] not in NEVER_AUTO_APPROVE, max_rounds)
 
 
 async def continue_turn(agent, pending: PendingApproval, *, approved: bool, max_rounds: int = 4) -> TurnResult:
-    """Resume a paused turn with the human's decision for the shown requests."""
+    """Resume a paused turn with the human's decision for the shown requests.
+
+    This is the human path: the decision applies as given, skill scripts included.
+    """
     answer, decisions = _responses(pending, lambda _info: approved)
     # A later request in the same turn is returned as a new pending decision.
     result = await _drive(agent, [*pending.messages, answer], None, max_rounds)
