@@ -475,3 +475,25 @@ def test_deploy_evidence_helper_is_documented_and_wired(tmp_path: Path):
     bicep = (PILOT / "infra" / "main.bicep").read_text()
     assert "output AZURE_AI_APPINSIGHTS_CONNECTION_ID string = projectAppInsights.id" in bicep
     assert "output APPLICATIONINSIGHTS_RESOURCE_ID string = appi.id" in bicep
+
+
+# --- 11. Structured `expected` from the design dataset stays JSON -------------------
+# e4 live run: evals/eval_dataset.jsonl carried expected as a Python dict repr
+# ("{'decision': 'approve_refund', ...}") because design_dataset() used str().
+
+def test_structured_expected_is_serialised_as_json(tmp_path: Path):
+    expected = {"decision": "approve_refund", "anchors": ["RMA-001", "RP-2.1"], "must_cite": True}
+
+    def dataset(project: Path) -> None:
+        tests = project / "tests"
+        tests.mkdir(exist_ok=True)
+        rows = [{"id": "S-001", "input": "Triage RMA-001", "expected": expected, "business_rules": ["BR-001"]},
+                {"id": "S-002", "query": "Triage RMA-002", "expected": "escalate_to_supervisor"}]
+        (tests / "eval_dataset.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+    project = _generate(tmp_path, "order-returns", dataset)
+    rows = [json.loads(line) for line in (project / "evals" / "eval_dataset.jsonl").read_text().splitlines()]
+    assert isinstance(rows[0]["expected"], str)
+    assert json.loads(rows[0]["expected"]) == expected
+    assert "'decision'" not in rows[0]["expected"] and "True" not in rows[0]["expected"]
+    assert rows[1]["expected"] == "escalate_to_supervisor"

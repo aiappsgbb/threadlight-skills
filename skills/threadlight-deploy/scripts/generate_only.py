@@ -463,7 +463,9 @@ def design_dataset(project_dir: Path) -> list[dict[str, Any]]:
         rows.append({
             "id": str(row["id"]),
             "query": str(query),
-            "expected": str(row.get("expected", "")),
+            # Structured expectations stay JSON text (str() wrote a Python repr).
+            "expected": expected if isinstance(expected := row.get("expected", ""), str)
+            else json.dumps(expected, ensure_ascii=False),
             "business_rules": [str(r) for r in rules] if isinstance(rules, list) else _expand_rule_ids(str(rules)),
             "category": str(row.get("category") or "functional"),
             "scenario": str(row.get("scenario", "")),
