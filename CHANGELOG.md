@@ -7,6 +7,38 @@ field.
 
 ## [Unreleased]
 
+### 2.25.0: workshop pilot deploys and evaluates live with no hand edits
+
+- **Why.** A live `azd up` of the 2.24.0 workshop pilot reached the Full Foundry
+  package only after six hand edits (MCP image layout, agent runtime, eval config,
+  evaluation role, App Insights connection, manifest fields). Each was turned into a
+  generator or reference fix and re-proven live on an internal subscription: three
+  further live runs, the last with zero edits to generated files.
+- **Deploy (generate-only and GHCP pilot).** The MCP image mirrors the repository
+  layout the design server expects, and generated tests import it under that layout.
+  The pilot Bicep grants the deployer Foundry User at account scope for evaluations
+  ([evaluation permissions](https://learn.microsoft.com/azure/foundry/observability/how-to/evaluation-permissions))
+  and creates the project's App Insights connection
+  ([hosted-agent telemetry](https://learn.microsoft.com/azure/foundry/agents/how-to/configure-hosted-agent-telemetry)).
+  Model capacity follows `specs/foundation.md` (1 unit = 1,000 TPM) with a safe
+  minimum. A generated `scripts/record_deploy_evidence.py` fills the agent, trace and
+  App Insights fields of the package manifest.
+- **Hosted agent runtime.** One Copilot session per Foundry session instead of one
+  per container; eval rows send `"new_conversation": true` and `"stream": false`;
+  plain-text invocation bodies work, so `azd ai agent invoke <agent> "<text>"` no
+  longer returns 400; unserialisable SDK events no longer end a stream (also in the
+  governed adapter).
+- **Local test (Pattern 0).** After a rejected write the agent still states its
+  decision; a read-only `knowledge_search` covers `specs/knowledge/` when the SPEC
+  names no knowledge tool.
+- **Safe-check.** An unpackaged selected governance is reported as
+  `selected-governance-not-packaged` in both phases, with or without the native
+  packages installed.
+- **Live result (final run, returns-triage):** killer prompts 5/5 with HTTP 200,
+  business-rules rubric 4.57 vs threshold 4, flat per-row latency, package gate
+  COMPLETE. Expected safe-check gaps remain: AI Search and Storage (deferred to
+  `threadlight-ground`) and selected governance not packaged (`threadlight-govern`).
+
 ### 2.24.0: workshop chain works end to end (design → local test → deploy)
 
 - **Why.** A Copilot CLI run of the 1-hour workshop prompts on 2.23.0 found two
