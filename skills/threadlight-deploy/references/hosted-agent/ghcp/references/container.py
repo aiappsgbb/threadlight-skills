@@ -142,10 +142,21 @@ def _load_mcp_servers() -> dict[str, dict] | None:
 # ``FOUNDRY_AGENT_SESSION_ID`` is deliberately NOT a conversation key: one
 # shared session made every Foundry evaluation row join the same conversation
 # in the 2026-11-07 live run (21 s -> 135 s per row, earlier rows visible to
-# later ones). A body with ``"new_conversation": true`` always gets a fresh,
-# closed-after-use session. Cached sessions are bounded (``COPILOT_MAX_SESSIONS``, LRU) and
-# recreated after ``_SESSION_MAX_AGE_SECONDS`` so a BYOK bearer token minted at
-# creation never outlives its validity. Turns in one session are serialised.
+# later ones). A body with ``"new_conversation": true`` always gets a fresh
+# session too.
+#
+# Lifecycle (github-copilot-sdk keeps transcripts on disk until
+# ``client.delete_session(id)``; ``disconnect()`` only frees memory):
+# * fresh / new_conversation sessions: disconnect, then delete from disk;
+# * keyed sessions use the Foundry session id as the Copilot session id
+#   (``create_session(session_id=key)``), so ``resume_session(key)`` restores
+#   the conversation. The in-memory cache is LRU-bounded
+#   (``COPILOT_MAX_SESSIONS``) and a session is reopened after
+#   ``_SESSION_MAX_AGE_SECONDS`` so a BYOK bearer token minted at creation never
+#   outlives its validity; both only disconnect and keep the transcript on disk.
+# * at most ``COPILOT_MAX_DORMANT_SESSIONS`` (default 4x the cache) evicted
+#   transcripts stay on disk; the oldest beyond that are deleted.
+# Turns in one session are serialised.
 
 app = InvocationAgentServerHost()
 
@@ -154,6 +165,8 @@ _client_lock = asyncio.Lock()
 _skills_dir = str(BASE_DIR / "skills")
 _MAX_SESSIONS = max(1, int(os.environ.get("COPILOT_MAX_SESSIONS", "") or "16"))
 _SESSION_MAX_AGE_SECONDS = 45 * 60
+_MAX_DORMANT_SESSIONS = max(0, int(os.environ.get("COPILOT_MAX_DORMANT_SESSIONS", "") or str(4 * _MAX_SESSIONS)))
+_dormant: "OrderedDict[str, None]" = OrderedDict()
 _sessions: "OrderedDict[str, tuple[Any, float]]" = OrderedDict()
 _session_locks: dict[str, asyncio.Lock] = {}
 _sessions_lock = asyncio.Lock()
@@ -203,14 +216,26 @@ def _session_kwargs() -> dict[str, Any]:
     return kwargs
 
 
-async def _close_session(session) -> None:
-    close = getattr(session, "disconnect", None)
-    if close is None:
+async def _delete_transcript(session_id: str) -> None:
+    """Best-effort ``client.delete_session``: removes the transcript from disk."""
+    if _client is None or not session_id:
         return
     try:
-        await close()
+        await _client.delete_session(session_id)
     except Exception as exc:  # noqa: BLE001 - cleanup must not fail the caller
-        logger.warning("Copilot session cleanup failed: %s", type(exc).__name__)
+        logger.warning("Copilot session delete failed for %s: %s", session_id, type(exc).__name__)
+
+
+async def _close_session(session, *, delete: bool) -> None:
+    """Disconnect; with ``delete`` also remove the on-disk transcript (best-effort)."""
+    close = getattr(session, "disconnect", None)
+    if close is not None:
+        try:
+            await close()
+        except Exception as exc:  # noqa: BLE001 - cleanup must not fail the caller
+            logger.warning("Copilot session disconnect failed: %s", type(exc).__name__)
+    if delete:
+        await _delete_transcript(str(getattr(session, "session_id", "") or ""))
 
 
 async def _keyed_session(client: CopilotClient, key: str):
@@ -224,15 +249,16 @@ async def _keyed_session(client: CopilotClient, key: str):
         if entry is not None:
             stale = _sessions.pop(key)[0]
     if stale is not None:
-        await _close_session(stale)
+        await _close_session(stale, delete=False)  # reopened below with a fresh token
     try:
         session = await client.resume_session(key, **_session_kwargs())
         logger.info("Resumed Copilot session for Foundry session %s", key)
     except Exception:
-        session = await client.create_session(**_session_kwargs())
+        session = await client.create_session(session_id=key, **_session_kwargs())
         logger.info("Created Copilot session for Foundry session %s", key)
     evicted = []
     async with _sessions_lock:
+        _dormant.pop(key, None)
         _sessions[key] = (session, time.time())
         for old_key in list(_sessions):
             if len(_sessions) <= _MAX_SESSIONS:
@@ -242,8 +268,14 @@ async def _keyed_session(client: CopilotClient, key: str):
                 continue  # never close a session in the middle of a turn
             evicted.append(_sessions.pop(old_key)[0])
             _session_locks.pop(old_key, None)
+            _dormant[old_key] = None
+        expired = []
+        while len(_dormant) > _MAX_DORMANT_SESSIONS:
+            expired.append(_dormant.popitem(last=False)[0])
     for old in evicted:
-        await _close_session(old)
+        await _close_session(old, delete=False)  # transcript kept: resume_session(key) restores it
+    for old_key in expired:
+        await _delete_transcript(old_key)
     return session
 
 
@@ -256,7 +288,7 @@ async def _conversation(session_key: str):
         try:
             yield session
         finally:
-            await _close_session(session)
+            await _close_session(session, delete=True)
         return
     async with _sessions_lock:
         lock = _session_locks.setdefault(session_key, asyncio.Lock())
@@ -382,10 +414,10 @@ async def _read_invocation(request: Request) -> tuple[dict[str, Any], str]:
         data = json.loads(text) if text else None
     except json.JSONDecodeError:
         data = text
-    if isinstance(data, str):
-        data = {"input": data}
     if not isinstance(data, dict):
-        raise ValueError("body is not text or a JSON object")
+        # A JSON string is the input; any other non-object JSON (42, true,
+        # null, [1, 2]) is plain text that happens to parse as JSON.
+        data = {"input": data if isinstance(data, str) else text}
     input_text = data.get("input") if data.get("input") is not None else data.get("message")
     if not isinstance(input_text, str) or not input_text.strip():
         raise ValueError('missing or empty "input" field')

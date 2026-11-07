@@ -45,9 +45,9 @@ class _Event:
 
 
 class FakeSession:
-    def __init__(self, session_id):
+    def __init__(self, session_id, history=None):
         self.session_id = session_id
-        self.history: list[str] = []
+        self.history: list[str] = history if history is not None else []
         self.handlers = []
         self.closed = False
 
@@ -69,21 +69,37 @@ class FakeSession:
 
 
 class FakeClient:
+    """Mirrors github-copilot-sdk: transcripts persist on disk until delete_session()."""
+
     def __init__(self, *args, **kwargs):
         self.ids = itertools.count(1)
         self.created: list[FakeSession] = []
+        self.resumed: list[FakeSession] = []
+        self.disk: dict[str, list[str]] = {}
+        self.deleted: list[str] = []
         self.started = False
 
     async def start(self):
         self.started = True
 
-    async def create_session(self, **kwargs):
-        session = FakeSession(f"copilot-{next(self.ids)}")
+    async def create_session(self, *, session_id=None, **kwargs):
+        sid = session_id or f"copilot-{next(self.ids)}"
+        assert sid not in self.disk, "create_session must not reuse a stored id"
+        self.disk[sid] = []
+        session = FakeSession(sid, self.disk[sid])
         self.created.append(session)
         return session
 
     async def resume_session(self, session_id, **kwargs):
-        raise RuntimeError("unknown session")
+        if session_id not in self.disk:
+            raise RuntimeError("unknown session")
+        session = FakeSession(session_id, self.disk[session_id])
+        self.resumed.append(session)
+        return session
+
+    async def delete_session(self, session_id):
+        self.disk.pop(session_id)
+        self.deleted.append(session_id)
 
 
 @pytest.fixture
@@ -178,16 +194,47 @@ def test_no_session_id_gets_a_fresh_session_per_invocation_and_closes_it(runtime
     # The container-wide FOUNDRY_AGENT_SESSION_ID never pools unrelated callers.
     client = runtime._client
     assert len(client.created) == 2 and all(s.closed for s in client.created)
+    # Fresh sessions are deleted from disk, not just disconnected.
+    assert sorted(client.deleted) == sorted(s.session_id for s in client.created) and not client.disk
 
 
 def test_session_cache_is_bounded_and_evicted_sessions_are_closed(runtime):
     for key in ("s1", "s2", "s3"):
         _invoke(runtime, f"hello {key}", session=key, stream=False)
-    created = {s.session_id: s for s in runtime._client.created}
+    client = runtime._client
+    created = {s.session_id: s for s in client.created}
+    # Keyed sessions use the Foundry session id as the Copilot session id.
+    assert set(created) == {"s1", "s2", "s3"}
     assert list(runtime._sessions) == ["s2", "s3"]
-    assert created["copilot-1"].closed and not created["copilot-2"].closed and not created["copilot-3"].closed
+    assert created["s1"].closed and not created["s2"].closed and not created["s3"].closed
+    # Eviction keeps the transcript on disk so the conversation can resume.
+    assert "s1" in client.disk and "s1" not in client.deleted
+
+
+def test_resume_after_eviction_restores_history(runtime):
+    for key in ("s1", "s2", "s3"):
+        _invoke(runtime, f"hello {key}", session=key, stream=False)
     again = _invoke(runtime, "back again", session="s1", stream=False).strip()
-    assert again.endswith("turn 1|seen: back again")
+    assert again.endswith("turn 2|seen: hello s1 / back again")
+    assert [s.session_id for s in runtime._client.resumed] == ["s1"]
+
+
+def test_resume_after_ttl_refresh_restores_history(runtime, monkeypatch):
+    _invoke(runtime, "first", session="ttl", stream=False)
+    monkeypatch.setattr(runtime, "_SESSION_MAX_AGE_SECONDS", -1)
+    again = _invoke(runtime, "second", session="ttl", stream=False).strip()
+    assert again.endswith("turn 2|seen: first / second")
+    assert runtime._client.created[0].closed and "ttl" not in runtime._client.deleted
+
+
+def test_dormant_transcripts_on_disk_are_bounded(runtime):
+    keys = [f"k{n}" for n in range(12)]
+    for key in keys:
+        _invoke(runtime, f"hello {key}", session=key, stream=False)
+    client = runtime._client
+    # Two cached + at most _MAX_DORMANT_SESSIONS dormant transcripts stay on disk.
+    assert len(client.disk) <= 2 + runtime._MAX_DORMANT_SESSIONS
+    assert client.deleted and client.deleted[0] == "k0"
 
 
 def test_streaming_still_degrades_unserialisable_events(runtime):
@@ -255,9 +302,15 @@ def test_json_string_or_message_field_is_the_input(runtime, raw):
     assert answers and answers[-1].endswith("turn 1|seen: Triage RMA-7 please")
 
 
-@pytest.mark.parametrize("raw", [b"", b"   ", b"{}", b'{"input": ""}', b"[1, 2]", b"\xff\xfe"])
+@pytest.mark.parametrize("raw", [b"", b"   ", b"{}", b'{"input": ""}', b"\xff\xfe"])
 def test_empty_or_unusable_body_is_still_rejected(runtime, raw):
     async def run():
         return await runtime.handle_invoke(_Request(raw))
     response = asyncio.run(run())
     assert response.status_code == 400
+
+
+@pytest.mark.parametrize("raw", [b"42", b"true", b"null", b"[1, 2]"])
+def test_plain_text_that_parses_as_non_object_json_is_still_the_input(runtime, raw):
+    answers = _answers(_invoke_body(runtime, raw))
+    assert answers and answers[-1].endswith("turn 1|seen: " + raw.decode())

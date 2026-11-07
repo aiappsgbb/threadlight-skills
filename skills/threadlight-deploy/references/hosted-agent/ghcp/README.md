@@ -98,9 +98,14 @@ The template provides:
 1. `_init_byok()` / `_get_provider()` — BYOK auth with `DefaultAzureCredential`
 2. `_conversation()` — one `CopilotClient` per container and one Copilot session per
    Foundry `agent_session_id` (same id continues the conversation, a different id
-   never sees it); without an id each invocation gets a fresh session, closed
-   afterwards. Cached sessions are LRU-bounded (`COPILOT_MAX_SESSIONS`, default 16),
-   recreated after 45 minutes (fresh BYOK token) and serialised per session. The
+   never sees it); without an id each invocation gets a fresh session that is
+   disconnected and then deleted from disk (`client.delete_session`). Keyed
+   sessions use the Foundry id as the Copilot session id, so
+   `resume_session(id)` restores the conversation after LRU eviction
+   (`COPILOT_MAX_SESSIONS`, default 16) or the 45-minute reopen (fresh BYOK
+   token); those only disconnect and keep the transcript on disk, at most
+   `COPILOT_MAX_DORMANT_SESSIONS` (default 4x the cache) of them, oldest deleted
+   first. Turns are serialised per session. The
    container-wide `FOUNDRY_AGENT_SESSION_ID` is not a conversation key: sharing one
    session made every eval row join one conversation in the 2026-11-07 live run.
    A body with `"new_conversation": true` (what `evals/run_evals.py` sends per
@@ -358,6 +363,7 @@ azd ai agent invoke "<agent-name>" '{"input": "Say hello in one short sentence."
   `azd ai agent invoke "<agent-name>" "Say hello in one short sentence."` works
   too (it returned HTTP 400 before the 2026-11-07 fix). Accepted bodies: a JSON
   object with `input` (or `message`), a JSON string, or plain UTF-8 text
+  (including text such as `42` or `[1, 2]` that parses as other JSON)
 - `--protocol invocations` selects the Invocations protocol (the CLI
   defaults to `responses` otherwise)
 - `--output raw` (or `-o raw`) dumps the unmodified server response
