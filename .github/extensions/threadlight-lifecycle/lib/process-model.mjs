@@ -524,6 +524,7 @@ function gateFor(stage, decision, { root, rootIndex, index, phases }) {
     // artifacts has no evidence to be prepared or out of date.
     const ownEvidence =
       technical.artifactsMissing.length === 0 &&
+      projected?.evidenceState !== "placeholder" &&
       (technical.artifactsSeen.length > 0 || ["prepared", "complete"].includes(projected?.status));
     const cascade = CASCADE_REASON.test(reason) && technical.artifactsMissing.length === 0;
     if (ownEvidence && cascade) {

@@ -808,6 +808,22 @@ def test_safe_check_non_green_postdeploy_manifest_with_fresh_doc_runs(tmp_path):
     assert "gaps" in decision.reason
 
 
+def test_safe_check_generate_only_placeholder_is_missing_evidence(tmp_path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "postdeploy-manifest.json").write_text(
+        json.dumps({"schema": "threadlight-postdeploy-manifest/v1", "phase": "pending-deploy",
+                    "generate_only": True, "gaps": ["not deployed"]}),
+        encoding="utf-8",
+    )
+
+    decision = orch._check_safe_check(tmp_path, {})
+
+    assert decision.decision == "run"
+    assert decision.artifacts_seen == []
+    assert decision.artifacts_missing == ["tests/postdeploy-manifest.json"]
+    assert "placeholder" in decision.reason
+
+
 def test_safe_check_requires_postdeploy_manifest_to_match_current_deployment_manifest(tmp_path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "safe-check-post.md").write_text("# green\n", encoding="utf-8")
