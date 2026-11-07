@@ -824,7 +824,7 @@ deploys this repo with their own credentials.
 |---|---|---|
 | T-0 deployment target | deferred | Confirm or replace the defaulted `demo-sandbox` posture in `specs/deployment-posture.md`. |
 | Phase 3.5 live preflight (quota, region, RBAC, policy) | deferred | `azd auth login`, then check model quota and Foundry User/Owner rights in the target subscription. |
-| Phase 6.5 Azure steps (deploy, smoke invoke, App Insights trace, Foundry eval run) | deferred | `azd up`, then `python evals/run_evals.py`; record agent id, trace id and eval run id in `specs/foundry-package-manifest.json`. |
+| Phase 6.5 Azure steps (deploy, smoke invoke, App Insights trace, Foundry eval run) | deferred | `azd up`, `azd ai agent invoke`, then `python scripts/record_deploy_evidence.py` (agent id/version, App Insights connection, trace id) and `python evals/run_evals.py` (eval run id, rubric score) fill `specs/foundry-package-manifest.json`. |
 | Phase 7 Citadel / gateway onboarding | deferred | Only if the posture requires Citadel; run `threadlight-citadel-spoke` after deploy. |
 | Post-deploy tests (`tests/postdeploy-manifest.json`) | deferred | Phase stays `pending-deploy` until a real deploy refreshes it. |
 {extra}
@@ -894,6 +894,19 @@ azd up
 
 Images build remotely in ACR (`remoteBuild: true`), so no local Docker daemon or
 registry login is required.
+
+## Record deploy evidence
+
+```sh
+azd ai agent invoke {agent} "<a killer prompt from tests/eval_dataset.jsonl>"
+python scripts/record_deploy_evidence.py --trace-id <Trace ID printed above>
+```
+
+It reads the agent id and version (`azd ai agent show`), the project's App
+Insights connection (azd output `AZURE_AI_APPINSIGHTS_CONNECTION_ID`) and the
+trace id (`--trace-id`, else the latest `invoke_agent` request for the agent in
+App Insights) into `specs/foundry-package-manifest.json`. It never invents a
+value: anything it cannot read stays null and it exits 3.
 
 ## Evaluate after deploy (one command)
 
@@ -1309,6 +1322,8 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "evals/eval_dataset.jsonl": dataset,
         "evals/eval-config.json": json.dumps(cfg, indent=2) + "\n",
         "evals/run_evals.py": (GEN / "templates" / "run_evals.py.tmpl").read_text(encoding="utf-8"),
+        "scripts/record_deploy_evidence.py": (GEN / "templates" / "record_deploy_evidence.py.tmpl").read_text(
+            encoding="utf-8"),
         "evals/requirements.lock": (GEN / "locks" / "evals.requirements.lock").read_text(encoding="utf-8"),
         "specs/deployment-posture.md": render_posture(project),
         "specs/deferred-steps.md": render_deferred(project, deferred_extra),
@@ -1385,6 +1400,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         dest.write_bytes(content)
     (project_dir / "hooks" / "postdeploy.sh").chmod(0o755)
     (project_dir / "evals" / "run_evals.py").chmod(0o755)
+    (project_dir / "scripts" / "record_deploy_evidence.py").chmod(0o755)
     return sorted([*text_outputs, *binary_outputs])
 
 

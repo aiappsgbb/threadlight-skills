@@ -410,7 +410,7 @@ Ownership is explicit, so the deploy step never discards design code:
 
 | Input (design workspace) | Output |
 |---|---|
-| `specs/SPEC.md`, `specs/manifest.json`, `specs/sample-data/`, `AGENTS.md`, `src/agent/skills/`, optional `specs/foundation.md`, `specs/knowledge/`, design-owned `src/mcp/server.py` | `azure.yaml`, `infra/`, `hooks/`, `src/agent/` (runtime + `requirements.lock` + offline `tests/`), `src/mcp/server.py` (real SPEC § 6 tools over the sample data, only when design wrote none) or `src/mcp/threadlight_mcp_entry.py` (serves the adopted design server), `src/mcp/Dockerfile` + `requirements.lock`, `specs/mcp-adoption.json` (when adopting), `evals/` (`run_evals.py`, `eval_dataset.jsonl`, `eval-config.json`, `requirements.lock`), `specs/deployment-posture.md`, `specs/deferred-steps.md`, `specs/project-tools.json`, `specs/foundry-package-manifest.json`, `tests/postdeploy-manifest.json`, `DEPLOY.md` |
+| `specs/SPEC.md`, `specs/manifest.json`, `specs/sample-data/`, `AGENTS.md`, `src/agent/skills/`, optional `specs/foundation.md`, `specs/knowledge/`, design-owned `src/mcp/server.py` | `azure.yaml`, `infra/`, `hooks/`, `src/agent/` (runtime + `requirements.lock` + offline `tests/`), `src/mcp/server.py` (real SPEC § 6 tools over the sample data, only when design wrote none) or `src/mcp/threadlight_mcp_entry.py` (serves the adopted design server), `src/mcp/Dockerfile` + `requirements.lock`, `specs/mcp-adoption.json` (when adopting), `evals/` (`run_evals.py`, `eval_dataset.jsonl`, `eval-config.json`, `requirements.lock`), `scripts/record_deploy_evidence.py`, `specs/deployment-posture.md`, `specs/deferred-steps.md`, `specs/project-tools.json`, `specs/foundry-package-manifest.json`, `tests/postdeploy-manifest.json`, `DEPLOY.md` |
 
 **Generated contracts:**
 
@@ -487,6 +487,12 @@ Ownership is explicit, so the deploy step never discards design code:
   [sessions](https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-sessions)). A transient network error while
   polling is retried; the run continues server-side.
   `--dry-run` prints the eval payload offline.
+- **Deploy evidence.** After `azd up` and an `azd ai agent invoke`,
+  `python scripts/record_deploy_evidence.py [--trace-id <id>]` records the agent
+  id/version (`azd ai agent show`), the project's App Insights connection (azd
+  output `AZURE_AI_APPINSIGHTS_CONNECTION_ID`) and a trace id (the invoke's
+  `Trace ID`, else the latest `invoke_agent` request in App Insights). It never
+  invents a value; anything unread stays null and it exits 3.
 - **Foundry package gate.** `specs/foundry-package-manifest.json` is
   schema-valid `threadlight-foundry-package/v1` with unevidenced sections.
   `skills/_shared/foundry_package.py` therefore exits **3 (INCOMPLETE)**, never

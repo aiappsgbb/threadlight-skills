@@ -242,3 +242,6 @@ output AZURE_CONTAINER_REGISTRY_NAME string = acr.name
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.properties.loginServer
 output MCP_SERVER_FQDN string = mcp.properties.configuration.ingress.fqdn
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = appi.properties.ConnectionString
+// Read by scripts/record_deploy_evidence.py (telemetry evidence for the Foundry package gate).
+output APPLICATIONINSIGHTS_RESOURCE_ID string = appi.id
+output AZURE_AI_APPINSIGHTS_CONNECTION_ID string = projectAppInsights.id

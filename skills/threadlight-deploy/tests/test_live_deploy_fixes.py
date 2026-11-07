@@ -388,3 +388,90 @@ def test_governed_ghcp_adapter_degrades_unserialisable_message_events():
     source = GOVERNED_GHCP.read_text(encoding="utf-8")
     assert "canonical(event.to_dict())" not in source
     assert "canonical(_message_payload(event))" in source
+
+
+# --- 10. Deploy evidence is recorded by a generated helper, not by hand -------------
+# e4 live run: agent_id/version, app_insights_connection_id and trace_id stayed
+# null in specs/foundry-package-manifest.json until the operator filled them.
+
+PROJECT_ID = ("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-x/providers/"
+              "Microsoft.CognitiveServices/accounts/ais-x/projects/proj-x")
+APPI_ID = ("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-x/providers/"
+           "Microsoft.Insights/components/appi-x")
+
+
+def _evidence_module(project: Path):
+    import importlib.util
+    path = project / "scripts" / "record_deploy_evidence.py"
+    assert path.is_file(), "generate_only must emit scripts/record_deploy_evidence.py"
+    spec = importlib.util.spec_from_file_location("record_deploy_evidence_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _fake_cli(calls, *, show=None, rows=None):
+    env = {"AZURE_AI_PROJECT_ID": PROJECT_ID,
+           "AZURE_AI_APPINSIGHTS_CONNECTION_ID": PROJECT_ID + "/connections/appi-x",
+           "APPLICATIONINSIGHTS_RESOURCE_ID": APPI_ID}
+    show = show if show is not None else {"id": "returns-triage:3", "name": "returns-triage", "version": "3",
+                                          "agent_guid": "11111111-2222-3333-4444-555555555555"}
+    rows = rows if rows is not None else [["f80c03bba5aff2938ae369538df47c13"]]
+
+    def run(cmd):
+        calls.append(cmd)
+        if cmd[:3] == ["azd", "env", "get-values"]:
+            return json.dumps(env)
+        if cmd[:4] == ["azd", "ai", "agent", "show"]:
+            return json.dumps(show)
+        if cmd[:4] == ["az", "monitor", "app-insights", "query"]:
+            return json.dumps({"tables": [{"rows": rows}]})
+        raise AssertionError(cmd)
+    return run
+
+
+def test_deploy_evidence_helper_fills_the_manifest(tmp_path: Path):
+    project = _generate(tmp_path, "order-returns")
+    module = _evidence_module(project)
+    calls: list = []
+    module.run = _fake_cli(calls)
+    assert module.main([]) == 0
+    manifest = json.loads((project / "specs" / "foundry-package-manifest.json").read_text())
+    assert manifest["agent"]["agent_id"] == "11111111-2222-3333-4444-555555555555"
+    assert manifest["agent"]["agent_version"] == "3"
+    assert manifest["telemetry"]["app_insights_connection_id"] == PROJECT_ID + "/connections/appi-x"
+    assert manifest["telemetry"]["trace_id"] == "f80c03bba5aff2938ae369538df47c13"
+    query = next(c for c in calls if c[:2] == ["az", "monitor"])
+    assert APPI_ID in query and "invoke_agent" in " ".join(query)
+    assert any(c[:4] == ["azd", "ai", "agent", "show"] and manifest["agent"]["agent_name"] in c for c in calls)
+
+
+def test_deploy_evidence_helper_prefers_an_explicit_trace_id(tmp_path: Path):
+    project = _generate(tmp_path, "order-returns")
+    module = _evidence_module(project)
+    calls: list = []
+    module.run = _fake_cli(calls)
+    assert module.main(["--trace-id", "abcdef0123456789abcdef0123456789"]) == 0
+    manifest = json.loads((project / "specs" / "foundry-package-manifest.json").read_text())
+    assert manifest["telemetry"]["trace_id"] == "abcdef0123456789abcdef0123456789"
+    assert not any(c[:2] == ["az", "monitor"] for c in calls)
+
+
+def test_deploy_evidence_helper_never_invents_missing_values(tmp_path: Path):
+    project = _generate(tmp_path, "order-returns")
+    module = _evidence_module(project)
+    module.run = _fake_cli([], rows=[])
+    before = json.loads((project / "specs" / "foundry-package-manifest.json").read_text())
+    assert module.main([]) == 3
+    after = json.loads((project / "specs" / "foundry-package-manifest.json").read_text())
+    assert after["telemetry"]["trace_id"] is None
+    assert after["agent"]["agent_id"] == "11111111-2222-3333-4444-555555555555"
+    assert before["evaluation"] == after["evaluation"]
+
+
+def test_deploy_evidence_helper_is_documented_and_wired(tmp_path: Path):
+    project = _generate(tmp_path, "order-returns")
+    assert "python scripts/record_deploy_evidence.py" in (project / "DEPLOY.md").read_text()
+    bicep = (PILOT / "infra" / "main.bicep").read_text()
+    assert "output AZURE_AI_APPINSIGHTS_CONNECTION_ID string = projectAppInsights.id" in bicep
+    assert "output APPLICATIONINSIGHTS_RESOURCE_ID string = appi.id" in bicep
