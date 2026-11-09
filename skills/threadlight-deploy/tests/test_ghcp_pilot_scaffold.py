@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+from deploy_skill_corpus import read_corpus
+
 ROOT = Path(__file__).resolve().parents[3]
 REFS = ROOT / "skills/threadlight-deploy/references/hosted-agent/ghcp/references"
 PILOT = REFS / "pilot"
@@ -67,8 +69,8 @@ def test_pilot_mcp_server_has_no_path_walk_and_lazy_defaults():
 
 def test_mcp_dependency_is_upper_bounded_everywhere():
     pattern = re.compile(r"mcp>=1\.10(?![\d.]*,<2)")
-    for path in (PILOT / "mcp/Dockerfile", DEPLOY_SKILL, MCP_SKILL):
-        text = read(path)
+    for path, text in ((PILOT / "mcp/Dockerfile", read(PILOT / "mcp/Dockerfile")),
+                       (DEPLOY_SKILL, read_corpus()), (MCP_SKILL, read(MCP_SKILL))):
         assert not pattern.search(text), f"{path}: pin mcp<2 (mcp 2.x removes mcp.server.fastmcp)"
     dockerfile = read(PILOT / "mcp/Dockerfile")
     assert "--require-hashes -r requirements.lock" in dockerfile
@@ -115,7 +117,7 @@ def test_pilot_azure_yaml_remote_builds_and_postdeploy_hook():
 
 
 def test_deploy_skill_never_assigns_foundry_roles_by_name():
-    text = read(DEPLOY_SKILL)
+    text = read_corpus()
     offenders = [
         line for line in text.splitlines()
         if "role assignment create" in line and re.search(r"--role ['\"]Azure AI (User|Developer)", line)

@@ -174,7 +174,11 @@ def test_every_referenced_skill_resolves_to_a_real_source():
 
 
 def test_deploy_never_asks_for_an_uninstalled_workflow_skill():
-    text = (ROOT / "skills" / "threadlight-deploy" / "SKILL.md").read_text(encoding="utf-8")
+    deploy = ROOT / "skills" / "threadlight-deploy"
+    text = (deploy / "SKILL.md").read_text(encoding="utf-8")
+    # The core links references moved out of it verbatim; none may name the phantom skill.
+    for ref in sorted((deploy / "references").glob("*.md")):
+        assert "threadlight-workflow" not in ref.read_text(encoding="utf-8"), ref.name
     assert "threadlight-workflow" not in text
     gate = text[text.index("**Workflow model gate.**"):]
     gate = gate[: gate.index("Create these files in the project root")]

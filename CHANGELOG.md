@@ -7,6 +7,24 @@ field.
 
 ## [Unreleased]
 
+### 2.31.0: lean threadlight-deploy core skill with situational references
+
+- **Deploy skill split.** `skills/threadlight-deploy/SKILL.md` drops from 3,991
+  to under 900 lines. The core keeps the path every run needs: Foundry-only and
+  full-package gates, selected governance entry, runtime-policy pre-flight,
+  analysis, the phase sequence, the post-deploy gate, the failure-mode index and
+  companion skills. Situational material (generate-only contracts, posture gate
+  details, Phase 2 templates, validation checklist, post-deploy gate steps,
+  architecture reference, showroom, Teams, azd project, module composer, demo
+  seed, prep-guide walkthrough, Citadel handoff, gotchas) moved verbatim into
+  `skills/threadlight-deploy/references/*.md`, each linked from the core with a
+  "read when" pointer. Only relative links were rebased.
+- **Content filtering.** The hand-written RAI policy recipe is replaced by a
+  pointer to the official `microsoft-foundry` guardrails references.
+- **Guard test.** A new test keeps the core under the 900-line ceiling and checks
+  that every referenced `references/*.md` exists and links back to the skill.
+  Contract tests that read moved statements now read the reference file.
+
 ### 2.30.0: safe-check post-deploy stops flagging deliberate pilot deferrals
 
 - **Deferred resources.** A Fast-PoC pilot deliberately skips AI Search and Blob
@@ -18,6 +36,7 @@ field.
   `agent` service is now matched to the hosted agent through the manifest's
   declared host, so it no longer reports "no matching ACA" when `azure.yaml`
   names the agent after the process.
+||||||| parent of fd3d7442 (2.31.0: split threadlight-deploy SKILL.md into core + references)
 ### 2.29.0: awesome-gbb ports stay Threadlight-owned; orphaned MCP fixture helpers removed
 
 - **Ownership kept.** `threadlight-citadel-hub`, `threadlight-citadel-spoke`,

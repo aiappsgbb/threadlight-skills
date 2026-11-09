@@ -59,6 +59,7 @@ const spec = {
 const workflowPath = [
   ['required skills table', between(deploy, '| Skill or reference | When Needed |', '## Workflow')],
   ['1d runtime variant', between(deploy, '#### 1d. Choose runtime variant', '#### 1e.')],
+  ['1d runtime variant table', read('skills/threadlight-deploy/references/runtime-variants.md')],
   ['Workflow model gate', between(deploy, '**Workflow model gate.**', 'Create these files in the project root')],
   ['design workflow_model selector', between(design, 'workflow_model: agent', 'The trait matrix')],
   ['design classification', between(design, '**Both are valid.**', 'The\n   > choice affects')],

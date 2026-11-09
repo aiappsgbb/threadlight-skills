@@ -457,7 +457,9 @@ test('Agentic Loop bridge is discoverable, one-way and honest about its proof', 
 });
 
 test('workshop design-to-deploy chain documents ownership, Learn-verified hosting facts and a faithful local demo', () => {
-  const deploy = read('skills/threadlight-deploy/SKILL.md');
+  // Generate-only ownership and hosting facts moved from the core SKILL.md into references.
+  const deploy = ['SKILL.md', 'references/generate-only-mode.md', 'references/architecture-reference.md']
+    .map((file) => read(`skills/threadlight-deploy/${file}`)).join('\n');
   const design = read('skills/threadlight-design/SKILL.md');
   const local = read('skills/threadlight-local-test/SKILL.md');
   const workshop = read(docs.workshop);

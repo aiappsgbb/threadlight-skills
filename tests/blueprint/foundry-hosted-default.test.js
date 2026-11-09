@@ -31,6 +31,15 @@ const shortBlock = () => {
   return body.slice(0, body.indexOf('\n```'));
 };
 
+// Core SKILL.md plus the references moved out of it verbatim (marked "moved out of the core").
+const readDeployCorpus = () => {
+  const core = read('skills/threadlight-deploy/SKILL.md');
+  const refs = [...new Set([...core.matchAll(/\]\((references\/[^)#\s/]+\.md)/g)].map((m) => m[1]))]
+    .map((rel) => read(`skills/threadlight-deploy/${rel}`))
+    .filter((text) => text.includes('moved out of the core'));
+  return [core, ...refs].join('\n');
+};
+
 test('canonical rule: hosted is ALWAYS the default; prompt only by explicit opt-in', () => {
   const rule = collapse(read(canonicalPath));
   assert.match(rule, /hosted agent\*\* is \*\*always\*\* the default/i);
@@ -87,7 +96,7 @@ test('design and deploy skills never suggest prompt as the simpler self-chosen o
   const design = collapse(read('skills/threadlight-design/SKILL.md'));
   assert.match(design, /Hosting shape[^.]{0,200}always[^.]{0,40}`foundry-hosted-agent`/i);
   assert.match(design, OPT_IN);
-  const deploy = read('skills/threadlight-deploy/SKILL.md');
+  const deploy = readDeployCorpus();
   assert.doesNotMatch(deploy, /Prompt Agent is simpler/i);
   assert.match(collapse(deploy), OPT_IN);
 });
