@@ -200,9 +200,10 @@ Define the tools the agent will use. These are abstract — not bound to any spe
 > A tool with genuinely no inputs writes `none` (not `see below`).
 > Read/write classification comes from § 5b (Read/Write column) and § 11a
 > (`consequence:`), which win over any name-based guess; keep them consistent.
-> Without them, a **Side Effects** bullet that declares an effect (anything
-> but `none`, `no state changes`, `no writes`, `read-only` and similar) makes
-> the tool a write. Give each tool its own level-3 heading with the tool name in
+> Without them, a **Side Effects** bullet makes the tool a write unless it is
+> exactly `none`, `no state changes`, `no writes`, `read-only` or similar
+> (optionally with a qualifier such as `(read-only lookup)`); any further
+> clause, such as "None; issues a refund", is a declared effect. Give each tool its own level-3 heading with the tool name in
 > backticks (two names separated by `/` when they share one contract): in a recommend-only
 > pilot every § 6 heading or tool-table row that is not a parseable tool
 > contract is a gap.

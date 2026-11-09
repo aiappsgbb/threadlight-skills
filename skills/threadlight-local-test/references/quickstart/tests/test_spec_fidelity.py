@@ -563,3 +563,16 @@ def test_ambiguous_or_declared_effects_need_approval(tmp_path, effects):
     agent, _ = agent_wiring.build_agent(layout, chat_client=model)
     asyncio.run(agent.run("hello"))
     assert {t.name: t.approval_mode for t in model.tools}["returns_get_case"] == "always_require"
+
+
+@pytest.mark.parametrize("effects", ["None; issues a refund to the customer", "No side effects except charging the card"])
+def test_no_effect_opener_with_a_clause_needs_approval(tmp_path, effects):
+    layout = _project(tmp_path, server=False)
+    spec = UNCLASSIFIED_SPEC.replace("- **Backed by**: Returns case store (mock)\n\n### `customer_get_profile`",
+                                     f"- **Side Effects**: {effects}\n- **Backed by**: Returns case store (mock)\n\n"
+                                     "### `customer_get_profile`", 1)
+    (tmp_path / "specs" / "SPEC.md").write_text(spec)
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert {t.name: t.approval_mode for t in model.tools}["returns_get_case"] == "always_require"

@@ -170,15 +170,16 @@ def _subsection_args(body: str) -> list[dict[str, Any]] | None:
 _IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 _NAME_LIST = re.compile(rf"(`?){_IDENT}\1(?:\s*(?:/|,|&|\band\b)\s*(`?){_IDENT}\2)*")
 _TOOL_BULLETS = re.compile(r"^\s*[-*]\s*\*\*(?:Inputs?|Parameters?|Arguments?|Description)\*\*", re.M | re.I)
-# "No effect" phrasings at the start of a Side Effects bullet; a mutation verb in
-# the rest ("None; marks the case reserved") still declares an effect, and any
-# other text ("Calls the OMS API (read)") is treated as a declared effect.
+# A Side Effects bullet means "no effect" only when it is EXACTLY one of these
+# openers plus optional pure qualifiers ("(read-only lookup)") and final
+# punctuation. Any further clause ("None; issues a refund", "Read-only except
+# it closes the case", "No writes to the DB; posts to Teams") is a declared
+# effect, and so is any other text ("Calls the OMS API (read)"): fail closed.
+_NO_EFFECT_OPENER = (r"(?:none|n/?a|nil|no\s+side[\s-]*effects?|no\s+state[\s-]*changes?|no\s+writes?"
+                     r"|no\s+mutations?|no\s+changes?|read[\s-]*only|-|—|–)")
+_PURE_QUALIFIER = r"(?:read[\s-]*only|read|only|lookup|query|search|fetch|retrieval|get|list|idempotent|safe)"
 _NO_SIDE_EFFECTS = re.compile(
-    r"^\s*(?:none|n/?a|nil|no\s+side[\s-]*effects?|no\s+state[\s-]*changes?|no\s+writes?|no\s+mutations?"
-    r"|no\s+changes?|read[\s-]*only|-|—|–)(?=\W|$)", re.I)
-_MUTATION = re.compile(
-    r"\b(?:writ\w*|updat\w*|creat\w*|delet\w*|remov\w*|insert\w*|sets?|stor\w*|persist\w*|mark\w*|send\w*|sent"
-    r"|reserv\w*|lock\w*|modif\w*|chang\w*|mutat\w*|record\w*|publish\w*|append\w*|replac\w*|cancel\w*)\b", re.I)
+    rf"\s*{_NO_EFFECT_OPENER}\s*(?:\(\s*{_PURE_QUALIFIER}(?:[\s-]+{_PURE_QUALIFIER})*\s*\)\s*)?\.?\s*", re.I)
 
 
 def _heading_names(heading: str) -> tuple[list[str], bool]:
@@ -217,8 +218,7 @@ def declared_side_effects(text: str) -> str:
     text = _strip_ticks(text)
     if not text:
         return ""
-    m = _NO_SIDE_EFFECTS.match(text)
-    return "" if m and not _MUTATION.search(text[m.end():]) else text
+    return "" if _NO_SIDE_EFFECTS.fullmatch(text) else text
 
 
 def _tool_subsections(block: str) -> dict[str, dict[str, Any]]:

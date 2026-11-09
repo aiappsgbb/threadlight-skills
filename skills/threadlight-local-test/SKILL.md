@@ -248,9 +248,11 @@ in `specs/deferred-steps.md` until Foundry IQ is provisioned.
 `skills/_shared/spec_tool_contracts.py`, checked by a repository test). Read
 tools (§ 11a `consequence: read`, § 5b `R`, knowledge tools, else a read verb as the first or second name token, such as `get_case`
 or `returns_get_case`) are registered with `approval_mode="never_require"`; a
-§ 6 **Side Effects** that declares an effect (anything but `none`, `n/a`,
-`no state changes`, `no writes`, `read-only` and similar) makes any tool without
-a § 11a/§ 5b classification a write. Write tools use
+§ 6 **Side Effects** that declares an effect makes any tool without a
+§ 11a/§ 5b classification a write. Only a bullet that is exactly `none`,
+`n/a`, `no side effects`, `no state changes`, `no writes`, `read-only` or
+similar, optionally with a qualifier such as `(read-only lookup)`, means no
+effect; any further clause ("None; issues a refund") is an effect. Write tools use
 `always_require`: nothing approves them implicitly.
 
 **Recommend-only pilots.** When `specs/manifest.json` declares

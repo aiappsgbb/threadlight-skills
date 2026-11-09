@@ -75,3 +75,40 @@ def test_governed_example_plan_is_unchanged():
         ("oms_get_order", "read", False), ("returns_get_case", "read", False),
         ("returns_list_open", "read", False), ("customer_get_profile", "read", False),
         ("returns_apply_decision", "write", False)]
+
+
+# --- Fail closed: a no-effect opener followed by any further clause is an effect ---
+# Review 2026-11-09: the verb list let "None; issues a refund" through as a read.
+
+@pytest.mark.parametrize("text", [
+    "No state change; emails the customer",
+    "No writes to the DB; posts a message to Teams",
+    "No changes; submits the claim",
+    "Read-only except it closes the case",
+    "None; issues a refund to the customer",
+    "No side effects except charging the card",
+    "None, but notifies the supervisor",
+    "None: pages the on-call engineer",
+    "No writes — triggers a webhook",
+    "Read-only besides logging the decision",
+    "No side effects other than an audit entry",
+    "None apart from a cache refresh",
+    "Read-only; however it flags the case",
+    "None and archives the file",
+    "None (no refund)",
+])
+def test_opener_plus_any_clause_is_a_declared_effect(text):
+    assert declared_side_effects(text) == text
+    assert _kind("returns_get_case", text) == "write"
+
+
+@pytest.mark.parametrize("text", [
+    "None", "None.", "N/A", "n/a.", "No side effects (read-only lookup)", "Read-only.", "-", "—",
+    "No state changes (lookup only).", "None (read-only)",
+])
+def test_clean_openers_are_no_effect(text):
+    assert declared_side_effects(text) == ""
+
+
+def test_name_fallback_cannot_hide_a_refund():
+    assert _kind("case_lookup_and_refund", "None; issues a refund") == "write"
