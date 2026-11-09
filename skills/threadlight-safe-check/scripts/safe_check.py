@@ -566,6 +566,23 @@ def _presenter_deployment_gaps(repo, data, *, packaged=False):
 FOUNDRY_PROJECT_TYPE = "Microsoft.CognitiveServices/accounts/projects"
 
 
+_DEFERRED_ROW = re.compile(
+    r"^\|\s*SPEC § 11c modules (?P<mods>[^|]+?)\s*\|\s*not provisioned\s*\|", re.MULTILINE)
+
+
+def _recorded_deferred_types(root: Path | None) -> set[str]:
+    """Resource types threadlight-deploy recorded as not provisioned in specs/deferred-steps.md."""
+    try:
+        text = (Path(root) / "specs" / "deferred-steps.md").read_text(encoding="utf-8")
+    except (OSError, TypeError):
+        return set()
+    types: set[str] = set()
+    for row in _DEFERRED_ROW.finditer(text):
+        for module in re.findall(r"`([a-z0-9-]+)`", row.group("mods")):
+            types.update(SELECTOR_TO_RESOURCE_TYPES.get(module, []))
+    return types
+
+
 def _azure_yaml_service_hosts(root: Path | None) -> dict[str, str]:
     """Map azd service name -> host from azure.yaml (empty when absent/unreadable)."""
     try:
@@ -760,9 +777,15 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
                    "-o", "json")
     deployed_bots = json.loads(bots_raw or "[]")
 
+    # A type deploy itself recorded as "not provisioned" is reported as deferred,
+    # not as a deployment failure; anything else missing stays a gap.
+    recorded_deferred = _recorded_deferred_types(
+        _repo_root_for_manifest(manifest_path, repo_root))
     missing_types = sorted(expected_types - deployed_types)
+    deferred_types = [t for t in missing_types if t in recorded_deferred]
     for t in missing_types:
-        gaps.append(f"missing resource type: {t}")
+        if t not in recorded_deferred:
+            gaps.append(f"missing resource type: {t}")
 
     for selector in selectors:
         if selector not in ACA_ROLE_KEYWORDS:
@@ -1124,6 +1147,11 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
     channel_results: list[dict[str, Any]] = []
     service_hosts = _azure_yaml_service_hosts(
         _repo_root_for_manifest(manifest_path, repo_root))
+    # Design manifests name services generically ("agent"); azure.yaml may name the
+    # same hosted agent after the process. Fall back to the manifest's declared host.
+    for svc_entry in dm.get("services", []) or []:
+        if isinstance(svc_entry, dict) and svc_entry.get("name") and svc_entry.get("host"):
+            service_hosts.setdefault(str(svc_entry["name"]), str(svc_entry["host"]))
     for ch in channels:
         ch_type = ch.get("type", "").lower()
         ch_name = ch.get("name", "?")
@@ -1214,6 +1242,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         "parent_target": parent_target,
         "checked_selectors": sorted(selectors),
         "deployed_resource_types": sorted(deployed_types),
+        "deferred_resource_types": deferred_types,
         "image_probe": image_probe_results,
         "job_health": job_health_results,
         "appin_health": appin_health_results,

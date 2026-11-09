@@ -7,6 +7,17 @@ field.
 
 ## [Unreleased]
 
+### 2.30.0: safe-check post-deploy stops flagging deliberate pilot deferrals
+
+- **Deferred resources.** A Fast-PoC pilot deliberately skips AI Search and Blob
+  (Foundry IQ is left to `threadlight-ground`), and threadlight-deploy records
+  that in `specs/deferred-steps.md`. Post-deploy safe-check now lists those types
+  under `deferred_resource_types` instead of reporting "missing resource type"
+  gaps; any other missing type is still a gap.
+- **Foundry playground channel.** A channel bound to the design's generic
+  `agent` service is now matched to the hosted agent through the manifest's
+  declared host, so it no longer reports "no matching ACA" when `azure.yaml`
+  names the agent after the process.
 ### 2.29.0: awesome-gbb ports stay Threadlight-owned; orphaned MCP fixture helpers removed
 
 - **Ownership kept.** `threadlight-citadel-hub`, `threadlight-citadel-spoke`,
@@ -30,6 +41,7 @@ field.
   no hand edits, longer run); avoid Fusion High for this chain. The note says it
   is not a benchmark.
 ||||||| parent of 09b87617 (2.30.0: keep awesome-gbb ports Threadlight-owned; drop orphaned MCP fixture helpers)
+||||||| parent of 3db00c82 (2.31.0: safe-check post-deploy honours recorded deferrals and the design agent alias)
 
 ### 2.27.0: smaller payload: uncited planning history moved to git history
 
