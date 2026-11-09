@@ -126,7 +126,34 @@ report says:
 ORDER, MISSING and DRIFT make the report `DEGRADED` (exit 1). Do not start the
 design until it is OK, or the prompts may not reach the Threadlight skills.
 
-### 2.3 T-1h — first thing in the room
+### 2.3 Model choice
+
+The timings above were measured with Claude Opus 5.5 at medium reasoning. You
+may use **Copilot Fusion** instead of pinning one model:
+[Copilot Fusion](https://docs.github.com/en/copilot/concepts/models/copilot-fusion)
+is a runtime router that picks the models and execution pattern for each
+request. It is generally available in Copilot CLI and the GitHub Copilot app.
+**Fusion Standard** is available on every Copilot plan and suits the guided
+steps; **Fusion High** (and Fusion Max) are available on Copilot Pro+,
+Copilot Max, Copilot Business and Copilot Enterprise, for harder steps such as
+a design that needs rework.
+
+- **Copilot CLI:** enter `/model` and choose **Copilot Fusion** with an effort
+  level, or start with `copilot --model fusion --fusion-tier standard`
+  ([Choosing a model in Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/choose-a-model)).
+  If your CLI version does not accept `--fusion-tier`, use `/model`.
+- **Copilot app:** click the model below the prompt box, turn the
+  **Copilot Fusion** switch on and choose the effort level
+  ([Choosing a model in the Copilot app](https://docs.github.com/en/copilot/how-tos/github-copilot-app/choose-a-model)).
+
+The Threadlight chain has not been measured with Copilot Fusion: expect
+different timings and results, and make no claim about AI credits. Fusion
+bills each model it uses at that model's rate, and Fusion High or Max can use
+more than one model per task. Per the docs, Copilot Fusion works separately from
+subagents and doesn't start them, and edits made by a draft it discards are not
+undone automatically, so review the workspace before you commit it.
+
+### 2.4 T-1h — first thing in the room
 
 Run the preflight (§2.2) on the demo laptop, then open Copilot CLI and prompt:
 
@@ -143,7 +170,7 @@ The budget below uses the measured times, with the upper bound for design.
 | Minute | Block | What we do | Outcome on screen |
 |---|---|---|---|
 | **0–5** | Welcome + frame | Walk §1 together: what we'll build and the vocabulary heads-up. | Slide-less; just the doc. |
-| **5–8** | Preflight + check the setup | Run the skill-order preflight (§2.2), then the T-1h prompt (§2.3). Plugins, logins and the AOAI deployment were prepared before the session. | `OK` from the preflight; green tool output in Copilot CLI. |
+| **5–8** | Preflight + check the setup | Run the skill-order preflight (§2.2), then the T-1h prompt (§2.4). Plugins, logins and the AOAI deployment were prepared before the session. | `OK` from the preflight; green tool output in Copilot CLI. |
 | **8–27** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` land. *If it's still in demo-deck / sales-kit generation past ~minute 22, interrupt with "skip demo and sales kit, move on".* **Fallback:** at minute 27, if the design is not finished, switch to the pre-designed workspace (§2.1) and continue. | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. |
 | **27–33** | Pattern 0 + live demo | Prompts §4.3 and §4.4, then paste the killer prompts (§4.5) into `localhost:8501`. Watch the SPEC's own read tools (for example `returns_get_case`, `return_policy_search`) fire against the sample data and policy text. The agent proposes the decision with citations; recording it is your action, not the agent's (recommend-only pilot). | Streamlit chat: one cited recommendation per killer prompt. |
 | **33–37** | Generate the deploy package | Prompt §6.3 up to generate-only (Dockerfiles, `azure.yaml`, `infra/main.bicep`, evals). | `DEPLOY.md` and `specs/deferred-steps.md` on disk. |

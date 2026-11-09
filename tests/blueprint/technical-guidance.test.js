@@ -530,3 +530,21 @@ test('workshop starts with the installed-plugin skill-order preflight and explai
   const runbook = text.slice(text.indexOf('## 3. Minute-by-minute runbook'));
   assert.ok(runbook.indexOf('Preflight') > 0 && runbook.indexOf('Preflight') < runbook.indexOf('Design the use case live'));
 });
+
+test('workshop model note offers Copilot Fusion honestly, as documented', () => {
+  const text = read(docs.workshop);
+  const w = text.replace(/\s+/g, ' ');
+  assert.match(text, /^### 2\.\d+ Model choice/m);
+  for (const marker of ['Copilot Fusion', 'Fusion Standard', 'Fusion High',
+    'docs.github.com/en/copilot/concepts/models/copilot-fusion',
+    'docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/choose-a-model',
+    '/model', '--model fusion --fusion-tier standard', 'Copilot Fusion** switch']) {
+    assert.ok(w.includes(marker), marker);
+  }
+  // Measured with Opus 5.5; never measured with Fusion; no savings claim.
+  assert.match(w, /measured with Claude Opus 5\.5/);
+  assert.match(w, /has not been measured with Copilot Fusion/);
+  assert.match(w, /Copilot Pro\+, Copilot Max, Copilot Business and Copilot Enterprise/);
+  assert.doesNotMatch(w, /(saves?|saving|cheaper|fewer) (AI )?credits/i);
+  assert.match(w, /does not start subagents|doesn't start (them|subagents)/);
+});
