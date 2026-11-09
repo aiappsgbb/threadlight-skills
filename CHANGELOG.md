@@ -7,6 +7,36 @@ field.
 
 ## [Unreleased]
 
+### 2.26.0: workshop readiness: recommend-only Fast-PoC, honest runbook, Copilot Fusion note
+
+- **Recommend-only Fast-PoC.** A Fast-PoC design now records
+  `"action_mode": "recommend-only"`: SPEC § 6 exposes only read tools, § 11a
+  governance is `mode: off` with reads unbound, and recording the decision is a
+  human step in § 8. The design validator, generate-only (exit 6 on a write),
+  Pattern 0, safe-check, the threadlight-auto planner and the canvas treat it the
+  same way, so a workshop pilot no longer shows `selected-governance-not-packaged`
+  or runs a consequential write without enforcement. Full mode and the Production
+  path keep the governance interview.
+- **Workshop runbook.** `docs/WORKSHOP-1H-QUICKSTART.md` now carries the measured
+  minute budget (dated, model named, "will vary"), a before-the-session checklist,
+  a fallback to a prepared design, a mandatory skill-order preflight with the
+  installed `official_skills.py`, and a model note for
+  [Copilot Fusion](https://docs.github.com/en/copilot/concepts/models/copilot-fusion).
+- **Hosted GHCP runtime.** A new conversation no longer logs a resume traceback;
+  a real resume failure is retried once and then returned as a clear error
+  instead of silently starting an empty conversation.
+- **Fixes.** The case-study proof figure stays in the first mobile viewport with
+  wider fallback fonts; the canvas workspace-watcher tests wait for readiness and
+  conditions instead of sleeping; safe-check reports record the workspace path
+  relative to the report.
+- **Live check (2026-11-09, Copilot Fusion Standard, fruocco internal
+  subscription):** a fresh Fast-PoC design came out recommend-only (≈11 min);
+  generate-only and `azd up` with no hand edits; killer prompts HTTP 200 with
+  recommendations only (no write tool registered); business-rules rubric 4.39 vs
+  threshold 4; package gate COMPLETE; safe-check gaps only for the deferred AI
+  Search and Storage modules. The CLI reported ≈19 AI credits for design plus live
+  deploy and eval with Fusion Standard; one run, not a benchmark.
+
 ### 2.25.0: workshop pilot deploys and evaluates live with no hand edits
 
 - **Why.** A live `azd up` of the 2.24.0 workshop pilot reached the Full Foundry
