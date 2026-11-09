@@ -29,7 +29,7 @@ field.
   wider fallback fonts; the canvas workspace-watcher tests wait for readiness and
   conditions instead of sleeping; safe-check reports record the workspace path
   relative to the report.
-- **Live check (2026-11-09, Copilot Fusion Standard, fruocco internal
+- **Live check (2026-11-09, Copilot Fusion Standard, internal test
   subscription):** a fresh Fast-PoC design came out recommend-only (≈11 min);
   generate-only and `azd up` with no hand edits; killer prompts HTTP 200 with
   recommendations only (no write tool registered); business-rules rubric 4.39 vs
