@@ -100,6 +100,15 @@ function isSkillApplicable(definition, manifest, manifestInvalid, context = {}) 
       return manifest?.governance_hub?.required === true;
     case "governance-contract":
       return context.hasGovernanceContract === true;
+    case "runtime-controls":
+      // threadlight-design Fast-PoC pilots are recommend-only: the agent
+      // proposes, a person records, governance is not selected. Existing
+      // governance artifacts keep the step visible.
+      return (
+        manifest?.action_mode !== "recommend-only" ||
+        context.hasGovernanceContract === true ||
+        context.hasGovernanceManifest === true
+      );
     case "event-trigger": {
       const selectors = moduleSelectors(manifest);
       return (
@@ -1688,6 +1697,7 @@ export async function projectWorkspace(workspace, options = {}) {
   const { plan, planStatus } = await readPlan(reader, now, options);
   const context = {
     hasGovernanceContract: await reader.exists("specs/governance-contract.json"),
+    hasGovernanceManifest: await reader.exists("specs/governance-manifest.json"),
     // Readiness proof needs governance proven by the planner, never by a
     // manifest the Canvas cannot re-validate.
     governanceProven: planProvesGovernance(plan, planStatus),

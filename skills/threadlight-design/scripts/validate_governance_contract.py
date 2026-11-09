@@ -4,7 +4,10 @@
 Usage: python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>
 
 Exit 0: the explicit contract is complete and valid (or the SPEC declares none).
-Exit 1: the contract is incomplete or invalid; missing keys are listed.
+Exit 1: the contract is incomplete or invalid; missing keys are listed. A
+recommend-only workspace (``"action_mode": "recommend-only"`` in
+specs/manifest.json, the Fast-PoC default) also fails on any SPEC § 6 or § 11a
+tool that is not an unbound read, or on a governance mode other than ``off``.
 This is an offline input-contract check, not runtime governance evidence.
 """
 
@@ -17,6 +20,7 @@ REPO = Path(__file__).resolve().parents[3]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from skills._shared.action_mode import is_recommend_only, recommend_only_gaps  # noqa: E402
 from skills._shared.governance import GovernanceContractError, validate_governance_contract  # noqa: E402
 from skills._shared.governance_selection import spec_contract, spec_contract_gaps  # noqa: E402
 
@@ -50,7 +54,17 @@ def main(argv: list[str]) -> int:
     except (GovernanceContractError, ValueError) as exc:
         print(f"FAIL: SPEC §11a governance contract invalid: {exc}")
         return 1
-    print(f"OK: SPEC §11a governance contract complete (mode={document['governance']['mode']}).")
+    try:
+        recommend_only = is_recommend_only(workspace)
+        action_gaps = recommend_only_gaps(workspace)
+    except ValueError as exc:
+        print(f"FAIL: {exc}")
+        return 1
+    if action_gaps:
+        print("FAIL: recommend-only workspace is not consistent:\n  - " + "\n  - ".join(action_gaps))
+        return 1
+    suffix = ", action_mode=recommend-only" if recommend_only else ""
+    print(f"OK: SPEC §11a governance contract complete (mode={document['governance']['mode']}{suffix}).")
     return 0
 
 

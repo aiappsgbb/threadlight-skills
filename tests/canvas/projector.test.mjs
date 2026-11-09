@@ -1906,3 +1906,34 @@ test("a generate-only pending-deploy placeholder never counts as post-deploy evi
     assert.ok(!["complete", "prepared", "running", "failed"].includes(safe.status), safe.status);
   });
 });
+
+// Recommend-only pilots (threadlight-design Fast-PoC): the agent proposes and a
+// person records, with governance not selected. Runtime controls are not a
+// pending step for such a pilot; a governance manifest still shows them.
+async function markRecommendOnly(workspacePath) {
+  const { readFile, writeFile } = await import("node:fs/promises");
+  const manifestPath = path.join(workspacePath, "specs/manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, mode: "fast-poc", action_mode: "recommend-only" }));
+}
+
+test("recommend-only pilot does not ask for runtime controls", async () => {
+  await withFixture("design-only", async ({ workspace: workspacePath }) => {
+    const before = await projectWorkspace(workspacePath, { now: NOW });
+    assert.notEqual(findSkill(before, "threadlight-govern").status, "not-applicable");
+    await markRecommendOnly(workspacePath);
+    const model = await projectWorkspace(workspacePath, { now: NOW });
+    assert.equal(findSkill(model, "threadlight-govern").status, "not-applicable");
+    assert.equal(findSkill(model, "threadlight-governed-actions").status, "not-applicable");
+  });
+});
+
+test("recommend-only pilot with a governance manifest still shows its controls", async () => {
+  await withFixture("design-only", async ({ workspace: workspacePath }) => {
+    const { writeFile } = await import("node:fs/promises");
+    await markRecommendOnly(workspacePath);
+    await writeFile(path.join(workspacePath, "specs/governance-manifest.json"), JSON.stringify(governanceManifest()));
+    const model = await projectWorkspace(workspacePath, { now: NOW });
+    assert.notEqual(findSkill(model, "threadlight-govern").status, "not-applicable");
+  });
+});

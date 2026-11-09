@@ -442,6 +442,16 @@ Ownership is explicit, so the deploy step never discards design code:
   and creates the project's App Insights connection so Foundry injects
   `APPLICATIONINSIGHTS_CONNECTION_STRING` into the hosted agent
   ([Learn](https://learn.microsoft.com/azure/foundry/agents/how-to/configure-hosted-agent-telemetry)).
+- **Recommend-only pilot.** A threadlight-design Fast-PoC declares
+  `"action_mode": "recommend-only"` in `specs/manifest.json`: the agent
+  proposes each decision and a person records it, governance is not selected
+  (SPEC § 11a `mode: off`, reads unbound). generate_only packages it with no
+  write tool and no governance gap, and says so in `DEPLOY.md` and
+  `specs/deferred-steps.md`. A recommend-only SPEC that still exposes a write
+  tool (SPEC § 6 or § 11a) or selects a binding is refused with exit 6 and
+  nothing written, because it would deploy an unbound or unpackaged
+  consequential write. Letting the agent write is the Production path
+  (Full-mode design, `threadlight-govern`).
 - **Selected governance.** generate_only does not build a governance package.
   When SPEC § 11a selects governance (any mode but `off`), the bound tools are
   listed as **not packaged** in `specs/deferred-steps.md`, `DEPLOY.md` and the

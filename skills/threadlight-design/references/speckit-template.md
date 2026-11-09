@@ -587,6 +587,46 @@ tools:
   in `production-bound`, but it does not make an enforcement claim and any
   consequential or unknown unbound tool still needs acceptance.
 
+#### Fast-PoC (recommend-only) variant
+
+A Fast-PoC exposes read tools only: the agent proposes the decision with
+citations and a person records or applies it (SPEC § 8). Governance is not
+selected and every read stays unbound; `specs/manifest.json` carries
+`"action_mode": "recommend-only"`. Adding a write tool is the Production path
+(Full-mode design, then `threadlight-govern`), never an unbound write.
+
+- **Action mode**: `recommend-only` (governance not selected; reads unbound;
+  no consequential tool is exposed)
+
+```yaml
+framework: github-copilot-sdk
+
+governance:
+  mode: off
+  environment_modes:
+    development: evaluate_only
+    staging: evaluate_only
+    preproduction: enforce
+    production: enforce
+  lifecycle_bindings: []
+
+tools:
+  - id: returns_get_case
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: [least-privilege]
+    requires: []
+  - id: return_policy_search
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: [least-privilege]
+    requires: []
+```
+
 ### 11b. AI Governance Hub Posture (opt-in spoke)
 
 > **INPUT CONTRACT for the optional governance-hub spoke handoff in

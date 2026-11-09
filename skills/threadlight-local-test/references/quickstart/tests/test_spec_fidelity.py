@@ -423,3 +423,52 @@ def test_no_extra_knowledge_search_when_spec_has_a_knowledge_tool(tmp_path):
     agent, _ = agent_wiring.build_agent(layout, chat_client=model)
     asyncio.run(agent.run("hello"))
     assert "knowledge_search" not in {t.name for t in model.tools}
+
+
+# --- Recommend-only pilots (threadlight-design Fast-PoC) -----------------------------
+# specs/manifest.json "action_mode": "recommend-only": the agent proposes the
+# decision with citations; recording it stays a human action, so Pattern 0
+# exposes no write tool, even if a stale SPEC or the generic CRUD still has one.
+
+READ_ONLY_SPEC = SPEC.replace(SPEC[SPEC.index("### `returns_record_recommendation`"):SPEC.index("### `return_policy_search`")], "")
+
+
+def _recommend_only(tmp_path, spec=READ_ONLY_SPEC):
+    layout = _project(tmp_path)
+    (tmp_path / "specs" / "SPEC.md").write_text(spec)
+    (tmp_path / "specs" / "manifest.json").write_text(json.dumps(
+        {"name": "returns-triage", "mode": "fast-poc", "action_mode": "recommend-only"}))
+    return discover(tmp_path)
+
+
+def test_recommend_only_pilot_exposes_only_read_tools(tmp_path):
+    layout = _recommend_only(tmp_path)
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    skill_tools = {"load_skill", "read_skill_resource", "run_skill_script"}
+    modes = {t.name: t.approval_mode for t in model.tools if t.name not in skill_tools}
+    assert set(modes) == {"returns_get_case", "customer_get_profile", "return_policy_search"}
+    assert set(modes.values()) == {"never_require"}
+    instructions = model.options["instructions"]
+    assert "recommend-only" in instructions and "Write tools wait for human approval" not in instructions
+
+
+def test_recommend_only_withholds_a_write_tool_left_in_the_spec(tmp_path):
+    layout = _recommend_only(tmp_path, SPEC)
+    model = Model(outputs())
+    agent, stores = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert "returns_record_recommendation" not in {t.name for t in model.tools}
+    _, wiring = agent_wiring.build_spec_wiring(layout, stores)
+    withheld = [row for row in wiring if row["tool"] == "returns_record_recommendation"]
+    assert withheld and "recommend-only" in withheld[0]["source"] and withheld[0]["approval"] == "not exposed"
+
+
+def test_recommend_only_without_spec_tools_drops_generic_update_tools(tmp_path):
+    layout = _recommend_only(tmp_path, "# SpecKit: no tools yet\n")
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    names = {t.name for t in model.tools}
+    assert names and not [n for n in names if n.startswith("update_")]

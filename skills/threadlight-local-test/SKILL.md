@@ -248,6 +248,13 @@ tools, else a read verb in the name) are registered with
 `approval_mode="never_require"`. Write tools use `always_require`: nothing
 approves them implicitly.
 
+**Recommend-only pilots.** When `specs/manifest.json` declares
+`"action_mode": "recommend-only"` (the threadlight-design Fast-PoC default),
+Pattern 0 registers no write tool: the agent proposes the decision with its
+citations and a person records it. A write tool still listed in SPEC § 6 is
+withheld and shown in `--check` as `not exposed`; generic `update_*` tools are
+dropped too. The agent's instructions say the pilot is recommend-only.
+
 - **Streamlit:** a paused write (or skill script) shows the tool and
   arguments with **Approve and continue** / **Reject** buttons; the turn
   resumes with your decision, and the reply states what was approved or

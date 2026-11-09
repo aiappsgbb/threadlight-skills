@@ -19,10 +19,16 @@ Read tools never need approval. Write tools (section 11a ``consequence``, the
 section 5b Read/Write column, else the tool-name prefix) are registered with
 ``approval_mode="always_require"``: a human approves each call (Streamlit
 buttons or ``--approve-tool``), and nothing approves them implicitly.
+
+A recommend-only pilot (``"action_mode": "recommend-only"`` in
+``specs/manifest.json``, the threadlight-design Fast-PoC default) gets no write
+tool at all: the agent proposes the decision and a person records it. A write
+tool still listed in section 6 is withheld and reported as such.
 """
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
 import os
 import re
@@ -199,6 +205,18 @@ def _load_design_server(root: Path, sample_dir: Path):
     return module
 
 
+RECOMMEND_ONLY = "recommend-only"
+
+
+def is_recommend_only(root: Path) -> bool:
+    """True when ``specs/manifest.json`` declares ``"action_mode": "recommend-only"``."""
+    try:
+        manifest = json.loads((root / "specs" / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(manifest, dict) and manifest.get("action_mode") == RECOMMEND_ONLY
+
+
 def build_spec_tools(
     root: Path, sample_dir: Path, stores: dict[str, InMemoryStore], tool_factory: Callable[..., Any],
     function_tool: Callable[..., Any] | None = None,
@@ -218,7 +236,14 @@ def build_spec_tools(
                      "knowledge": True, "args": [{"name": "query", "type": "string", "required": True}]})
     tools: list[Any] = []
     wiring: list[dict[str, Any]] = []
+    recommend_only = is_recommend_only(root)
     for spec_tool in plan:
+        if recommend_only and spec_tool["kind"] != "read":
+            log.warning("Recommend-only pilot: write tool %s withheld from the agent", spec_tool["name"])
+            wiring.append({"tool": spec_tool["name"], "kind": spec_tool["kind"],
+                           "source": "withheld (recommend-only pilot: a person records the decision)",
+                           "approval": "not exposed"})
+            continue
         mode = "never_require" if spec_tool["kind"] == "read" else "always_require"
         description = spec_tool["description"] or f"{spec_tool['kind']} tool from SPEC section 6"
         fn = getattr(design, spec_tool["name"], None) if design is not None else None

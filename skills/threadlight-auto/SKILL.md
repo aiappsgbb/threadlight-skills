@@ -201,7 +201,12 @@ canaries to clear a gate. Its receipts cannot certify another tool, lifecycle
 point, agent or deployment. Unproven business bindings remain blocked.
 
 For an explicitly off or unbound-only valid contract no governance stages are
-scheduled. Without selected bindings, the existing consequential-action advisory
+scheduled. A recommend-only pilot (`"action_mode": "recommend-only"` in
+`specs/manifest.json`, the threadlight-design Fast-PoC default) is that case:
+the agent proposes, a person records. If such a pilot still exposes a
+consequential tool, the `design` stage runs again with the reason
+`recommend-only design exposes a consequential tool`.
+Without selected bindings, the existing consequential-action advisory
 handoff remains available with the following wording:
 
 | Key | Recommendation |

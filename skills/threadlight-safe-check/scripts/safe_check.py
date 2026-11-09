@@ -412,6 +412,7 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
     gaps.extend(_presenter_deployment_gaps(repo, data, packaged=True))
     governance = _governance_static(repo, data, manifest_path=manifest_path)
     gaps.extend(governance.get("gaps", []))
+    gaps.extend(_action_mode_gaps(repo))
     extra = {"repo": str(repo), **({"governance_health": governance} if governance else {})}
 
     if data.get("delivery_profile") == "presenter-ready":
@@ -635,6 +636,26 @@ def _legacy_governance_unselected(repo, data, manifest_path):
         return True
     except (OSError, ValueError):
         return False
+
+
+def _action_mode_gaps(repo) -> list[str]:
+    """A recommend-only pilot (Fast-PoC) must expose no consequential tool.
+
+    Recommend-only means the agent proposes and a person records, with
+    governance not selected (SPEC 11a ``mode: off``); a write tool there would
+    run unbound. Pilots without ``action_mode`` are unaffected.
+    """
+    catalog = Path(__file__).resolve().parents[3]
+    if (catalog / "skills" / "_shared").is_dir() and str(catalog) not in sys.path:
+        sys.path.insert(0, str(catalog))
+    try:
+        from skills._shared.action_mode import recommend_only_gaps
+    except ImportError:
+        return []
+    try:
+        return recommend_only_gaps(Path(repo))
+    except ValueError as exc:
+        return [f"action-mode: {exc}"]
 
 
 def _governance_static(repo, data, *, manifest_path=None):
@@ -1169,6 +1190,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
     effective_mcp_config = _load_effective_mcp_config(resolved_root)
     binding_gaps = integration_binding_gaps(integrations, effective_mcp_config)
     gaps.extend(binding_gaps)
+    gaps.extend(_action_mode_gaps(resolved_root))
     integration_binding_results = {
         "integrations_declared": len(integrations) if isinstance(integrations, list) else 0,
         "mcp_config_present": bool(effective_mcp_config),

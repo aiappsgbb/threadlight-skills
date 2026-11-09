@@ -33,6 +33,10 @@ This is **not automatically a governed Foundry agent**. You'll spec a retail ret
 process from scratch with Copilot CLI, watch that markdown specification
 become an MCP-backed agent answering live triage prompts on `localhost:8501`,
 and leave with a one-prompt recipe to stand the same agent up in Azure.
+The pilot is **recommend-only**: the agent proposes the decision with its
+policy citations, and recording or applying it stays a human action. It has no
+write tool, so there is no unenforced write to govern in the hour; agent writes
+with runtime governance are the Production path (§6.5).
 Model-backed local demos and cloud smoke tests require approved identity,
 target and spend; neither proves production readiness or selected-action enforcement.
 
@@ -85,7 +89,7 @@ If anything's red, fix it now — don't try to fix it inside the runbook.
 | **10–15** | Install the plugins | Prompt §4.1. | Plugin list shows threadlight-skills, then the official azure plugins. |
 | **15–30** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` stream to disk. Read them together as they land. *If it's still in demo-deck / sales-kit generation past ~minute 25, interrupt with "skip demo and sales kit, move on" to protect the budget.* | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. Deployment artifacts (Dockerfile, `azure.yaml`, `infra/main.bicep`) come later from `threadlight-deploy` — §6. |
 | **30–40** | Pattern 0 bootstrap | Prompt §4.3 with your AOAI endpoint + deployment. | Two clean exits (`--info`, `--check`). `--check` shows the project's `AGENTS.md` as instructions and the SPEC § 6 tools with their backing (design mock server, local policy search) and approval mode. |
-| **40–55** | Live demo on `localhost:8501` | Prompt §4.4, then paste each killer prompt from `tests/killer-prompts.md` (§4.5) into the browser in order. Watch the trace: the SPEC's own tools (for example `returns_get_case`, `return_policy_search`) fire against the sample data and policy text. When the agent wants to record a recommendation, approve or reject it in the page. | Streamlit chat. One answer per killer prompt — same agent, different signals in, different outcomes per branch. |
+| **40–55** | Live demo on `localhost:8501` | Prompt §4.4, then paste each killer prompt from `tests/killer-prompts.md` (§4.5) into the browser in order. Watch the trace: the SPEC's own tools (for example `returns_get_case`, `return_policy_search`) fire against the sample data and policy text. The agent proposes the decision with citations; recording it is your action, not the agent's (recommend-only pilot). | Streamlit chat. One answer per killer prompt — same agent, different signals in, different outcomes per branch. |
 | **55–60** | Kick off approved `threadlight-deploy` + `azd up` + Q&A | Run §6 after scope/budget approval. Keep the **Azure Portal resource group view** alongside Copilot CLI. Point to the separate governance/readiness follow-up, not a governed-by-deployment claim. | Deployment progress; smoke testing may finish after the hour. |
 
 `threadlight-deploy` + `azd up` is the **longest single step** (15–25 min
@@ -117,10 +121,12 @@ visible; see the README's [Install](../README.md#install) section. The optional
 > use the threadlight-design skill in fast-PoC mode to design a retail returns-triage process in ~/Repos/workshop/returns-triage — answer its setup questions interactively as it asks them, and skip browser previews of any generated demo or sales-kit HTML
 
 Fast-PoC asks 2–3 essentials, assumes sensible defaults, and produces
-everything in one pass. It's the right mode here because returns-triage is a
-**basic scenario** (read-only routing, no heavy compliance weight) — for a
-regulated, multi-phase, or consequential use case the skill triages first and
-steers you to Full mode instead. The live design conversation **is** the demo —
+everything in one pass. Returns triage touches refunds, so the skill may name
+that signal and offer Full mode; for the workshop, keep Fast-PoC. A Fast-PoC is
+**recommend-only**: SPEC § 6 lists read tools only, SPEC § 11a records
+governance as not selected (`mode: off`, reads unbound), and the would-be
+"record the recommendation" write becomes a human step in SPEC § 8. The killer
+prompts and evals expect a cited recommendation, not a stored record. The live design conversation **is** the demo —
 attendees see the branches and entities get picked, not handed pre-baked.
 Design stops at the **spec + agent code**; the azd scaffold (Dockerfile,
 azure.yaml, infra/main.bicep) is `threadlight-deploy`'s job in §6, when there's
@@ -135,13 +141,14 @@ gets used.
 
 Pattern 0 runs the design's `AGENTS.md`, the SPEC § 6 tool names (the
 design's mock server functions, with their safeguards) and a read-only local
-search over `specs/knowledge/` for the policy tool. Write tools wait for a
-human decision. To rehearse without the browser:
+search over `specs/knowledge/` for the policy tool. In a recommend-only pilot
+there is no write tool to approve: `--check` lists read tools only. To rehearse
+without the browser:
 
-> run the killer prompts from ~/Repos/workshop/returns-triage/tests/killer-prompts.md headlessly with python -m threadlight_quickstart --ask, one --ask per prompt, and summarise the decisions and any rejected approvals
+> run the killer prompts from ~/Repos/workshop/returns-triage/tests/killer-prompts.md headlessly with python -m threadlight_quickstart --ask, one --ask per prompt, and summarise the proposed decisions and their citations
 
-Headless runs reject every pending write unless you name the tool with
-`--approve-tool`, so nothing is recorded without your say-so.
+Each answer should end with a proposed decision, the business rule and the
+policy clause, and say that a person records it.
 
 ### 4.4 Launch the local agent
 
@@ -225,7 +232,9 @@ fill in live while `azd` runs.
 
 The skill first runs generate-only on the design workspace, without `--force`.
 It keeps the design's `src/mcp/server.py` byte-identical and adds only the
-pinned packaging around it. SPEC § 11c modules the pilot infrastructure does
+pinned packaging around it. A recommend-only pilot is packaged without a write tool and without a
+governance gap; generate-only refuses (exit 6) a recommend-only SPEC that still
+exposes a write. SPEC § 11c modules the pilot infrastructure does
 not create (for example AI Search and the Foundry IQ knowledge base) are listed
 as not provisioned in `specs/deferred-steps.md`; until `threadlight-ground`
 runs, the policy tool answers from the packaged `specs/knowledge/` text.

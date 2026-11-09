@@ -583,6 +583,58 @@ def _governance_rows(selection: dict[str, Any] | None) -> str:
             "a bound write unenforced needs an explicit, current and scoped acceptance. |\n")
 
 
+def recommend_only(project_dir: Path, plan: list[dict[str, Any]], governance: dict[str, Any] | None) -> bool:
+    """True for a recommend-only pilot (threadlight-design Fast-PoC); refuses an inconsistent one.
+
+    ``"action_mode": "recommend-only"`` in specs/manifest.json means the agent
+    proposes and a person records. A write tool in SPEC section 6, a
+    consequential SPEC 11a tool or a selected binding would deploy an unbound or
+    unpackaged consequential write, so generate_only refuses (exit 6) before
+    writing anything instead of packaging it.
+    """
+    root = DEPLOY.parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    try:
+        from skills._shared.action_mode import is_recommend_only, recommend_only_gaps
+    except ImportError:
+        try:
+            mode = json.loads((project_dir / "specs" / "manifest.json").read_text(encoding="utf-8")).get("action_mode")
+        except (OSError, ValueError, AttributeError):
+            mode = None
+        if mode != "recommend-only":
+            return False
+        gaps: list[str] = []
+    else:
+        try:
+            if not is_recommend_only(project_dir):
+                return False
+            gaps = recommend_only_gaps(project_dir)
+        except ValueError as exc:
+            raise DesignContractError(str(exc)) from exc
+    writes = [t["name"] for t in plan if t["kind"] != "read"]
+    gaps += [f"SPEC section 6 write tool {name}" for name in writes if not any(name in g for g in gaps)]
+    if governance is not None and not any("mode" in g for g in gaps):
+        gaps.append("SPEC 11a governance is selected or invalid (a recommend-only pilot records `mode: off`)")
+    if gaps:
+        raise DesignContractError(
+            "specs/manifest.json declares action_mode recommend-only (the agent proposes, a person records), "
+            "but the design would deploy a consequential tool: " + "; ".join(gaps) + ". Move the write to a "
+            "human step in SPEC section 8 and drop it from section 6, 11a and src/mcp/server.py, or take the "
+            "Production path (Full-mode design with threadlight-govern) and remove action_mode. Nothing was written."
+        )
+    return True
+
+
+_RECOMMEND_ONLY_ROW = (
+    "| Action mode (`recommend-only`) | by design | The agent proposes each decision with its citations; "
+    "no write tool is deployed, and a person records or applies the outcome (SPEC § 8). Governance is not "
+    "selected (SPEC § 11a `mode: off`, reads unbound), so `threadlight-safe-check` has no governance gap to "
+    "report. Letting the agent write is the Production path: Full-mode design, `threadlight-govern`, governed "
+    "deploy. |\n"
+)
+
+
 def selected_modules(spec: str) -> list[str]:
     """SPEC section 11c module selectors marked ``yes``."""
     chosen: list[str] = []
@@ -836,9 +888,16 @@ reports this workspace as `INCOMPLETE` (exit 3) until the deferred evidence exis
 
 
 def render_deploy_md(project: str, agent: str, plan: list[dict[str, Any]], unprovisioned: list[str] | None = None,
-                     adopted: bool = False, governance: dict[str, Any] | None = None) -> str:
+                     adopted: bool = False, governance: dict[str, Any] | None = None,
+                     recommend_only: bool = False) -> str:
     tool_list = ", ".join(f"`{t['name']}`" for t in plan)
     notes = ""
+    if recommend_only:
+        notes += ("\n**Recommend-only pilot.** The agent proposes each decision with its citations; this "
+                  "deployment has no write tool and a person records or applies the outcome (SPEC § 8). "
+                  "Governance is not selected (SPEC § 11a `mode: off`, reads unbound). Letting the agent write "
+                  "is the Production path (Full-mode design, `threadlight-govern`). See "
+                  "`specs/deferred-steps.md`.\n")
     if governance and governance["status"] == "selected":
         notes += ("\n**Selected governance is not packaged.** SPEC § 11a selects governance (mode "
                   f"`{governance['mode']}`), but generate_only does not build the governance package, so its "
@@ -1263,8 +1322,10 @@ def generate(project_dir: Path, force: bool) -> list[str]:
     model = design_model(project_dir, spec)
     capacity, capacity_row = model_capacity(design_capacity_tpm(project_dir))
     governance = governance_selection(project_dir)
+    recommends_only = recommend_only(project_dir, plan, governance)
     deferred_extra = (_unprovisioned_rows(unprovisioned, [t["name"] for t in standins]) + _model_row(model)
-                      + capacity_row + _governance_rows(governance))
+                      + capacity_row + _governance_rows(governance)
+                      + (_RECOMMEND_ONLY_ROW if recommends_only else ""))
     if implicit_knowledge:
         deferred_extra += (f"| Knowledge search `{KNOWLEDGE_TOOL}` | local stand-in | SPEC § 6 declares no "
                            "knowledge tool, but `specs/knowledge/*.md` exists: the MCP server exposes the "
@@ -1333,6 +1394,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "specs/foundry-package-manifest.json": json.dumps(build_foundry_manifest(agent, cfg), indent=2) + "\n",
         "tests/postdeploy-manifest.json": json.dumps(postdeploy, indent=2) + "\n",
         "DEPLOY.md": render_deploy_md(project, agent, plan, unprovisioned, adopted=bool(adoption),
+                                      recommend_only=recommends_only,
                                       governance=governance),
     }
     if adoption:

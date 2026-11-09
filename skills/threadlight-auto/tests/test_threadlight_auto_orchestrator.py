@@ -1911,3 +1911,42 @@ def test_execute_without_full_foundry_package_is_incomplete(tmp_path, monkeypatc
     assert any("specs/foundry-package-manifest.json" in item for item in result["missing"])
     seed_foundry_package(tmp_path)
     assert orch.execute(tmp_path, lambda stage: pytest.fail("unexpected " + stage))["status"] == "complete"
+
+
+# --- Recommend-only pilots (threadlight-design Fast-PoC) ------------------------
+# "action_mode": "recommend-only": the agent proposes, a person records, and
+# governance is not selected. The planner adds no govern stage and no
+# governed-actions handoff, and sends an inconsistent design back to design.
+
+_RO_READ = ("  - id: {0}\n    consequence: read\n    policy_binding: none\n    enforcement_path: none\n"
+            "    intervention_points: []\n    safe_principles: [least-privilege]\n    requires: []\n")
+
+
+def _recommend_only_workspace(root, *, write=False):
+    tools = ["returns_get_case", "return_policy_search"]
+    entries = "".join(_RO_READ.format(t) for t in tools)
+    if write:
+        entries += _RO_READ.format("returns_record_recommendation").replace("consequence: read", "consequence: write")
+    (root / "specs").mkdir()
+    (root / "specs/SPEC.md").write_text(
+        "## 6. Tool Contracts\n\n" + "".join(f"### `{t}`\n- **Side Effects**: none\n\n" for t in tools)
+        + "## 11a. Runtime Governance Contract\n```yaml\nframework: github-copilot-sdk\ngovernance:\n  mode: off\n"
+        "  environment_modes: {development: evaluate_only, staging: evaluate_only, "
+        "preproduction: enforce, production: enforce}\n  lifecycle_bindings: []\ntools:\n" + entries + "```\n")
+    (root / "specs/manifest.json").write_text(json.dumps(
+        {"name": "returns-triage", "mode": "fast-poc", "action_mode": "recommend-only"}))
+
+
+def test_recommend_only_pilot_plans_no_governance_stages(tmp_path):
+    _recommend_only_workspace(tmp_path)
+    stages = orch._stages_for(tmp_path)
+    assert "govern" not in stages and "governed_actions_gate" not in stages and "governance_probe" not in stages
+    assert orch.detect_consequential_actions(tmp_path) is False
+    assert orch._check_design(tmp_path, {}).decision == "skip"
+
+
+def test_inconsistent_recommend_only_design_routes_back_to_design(tmp_path):
+    _recommend_only_workspace(tmp_path, write=True)
+    decision = orch._check_design(tmp_path, {})
+    assert decision.decision == "run"
+    assert "recommend-only" in decision.reason and "returns_record_recommendation" in decision.reason
