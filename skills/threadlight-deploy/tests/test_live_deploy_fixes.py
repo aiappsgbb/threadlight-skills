@@ -114,7 +114,8 @@ def test_generated_layout_test_catches_the_flat_live_layout(tmp_path: Path):
 
 def _container_functions(*names: str, **namespace):
     tree = ast.parse(CONTAINER.read_text(encoding="utf-8"))
-    nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
+    nodes = [n for n in tree.body
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name in names]
     assigns = [n for n in tree.body if isinstance(n, ast.Assign)
                and any(isinstance(t, ast.Name) and t.id.startswith("_HEARTBEAT") for t in n.targets)]
     assert {n.name for n in nodes} == set(names)
@@ -171,7 +172,7 @@ def test_stream_false_returns_only_the_final_answer_text():
         yield session
 
     ns = _container_functions(
-        "_final_answer_response",
+        "_final_answer_response", "_final_answer_session", "SessionResumeError",
         SessionEventType=types.SimpleNamespace(SESSION_IDLE=_Type.IDLE, SESSION_ERROR=_Type.ERROR),
         _conversation=conversation,
     )
