@@ -102,10 +102,12 @@ function isSkillApplicable(definition, manifest, manifestInvalid, context = {}) 
       return context.hasGovernanceContract === true;
     case "runtime-controls":
       // threadlight-design Fast-PoC pilots are recommend-only: the agent
-      // proposes, a person records, governance is not selected. Existing
-      // governance artifacts keep the step visible.
+      // proposes, a person records, governance is not selected. Only a current
+      // plan that corroborates a consistent recommend-only design hides the
+      // step; the manifest flag alone and existing governance artifacts keep it.
       return (
         manifest?.action_mode !== "recommend-only" ||
+        context.recommendOnlyCorroborated !== true ||
         context.hasGovernanceContract === true ||
         context.hasGovernanceManifest === true
       );
@@ -1687,6 +1689,21 @@ async function buildView({ reader, manifest, phases, projectedSkills, errors, no
   });
 }
 
+/**
+ * True when a current threadlight-auto plan shows a consistent recommend-only
+ * design: no governance stage was planned (``mode: off``), and the planner
+ * skipped the design stage, so it did not send the design back for a
+ * recommend-only gap (``recommend-only design exposes a consequential tool``)
+ * or any other reason. Anything else keeps runtime controls visible.
+ */
+function planCorroboratesRecommendOnly(plan, planStatus) {
+  if (!planOmitsGovernance(plan, planStatus) || plan.stages.includes("govern")) {
+    return false;
+  }
+  const design = (plan.decisions ?? []).find((decision) => decision?.stage === "design");
+  return design?.decision === "skip" && !/recommend-only/i.test(design.reason ?? "");
+}
+
 export async function projectWorkspace(workspace, options = {}) {
   const now =
     options.now instanceof Date ? options.now : new Date(options.now ?? Date.now());
@@ -1704,6 +1721,7 @@ export async function projectWorkspace(workspace, options = {}) {
     // Only a current plan without governance stages waives the requirement:
     // those pilots rely on the readiness proof chain (incl. AGT-001).
     governanceRequired: !planOmitsGovernance(plan, planStatus),
+    recommendOnlyCorroborated: planCorroboratesRecommendOnly(plan, planStatus),
   };
   const projectedSkills = new Map();
 
