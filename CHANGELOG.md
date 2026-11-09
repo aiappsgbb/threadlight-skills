@@ -7,6 +7,15 @@ field.
 
 ## [Unreleased]
 
+### 2.28.0: workshop model choice backed by a small measured comparison
+
+- **Copilot Fusion guidance.** `docs/WORKSHOP-1H-QUICKSTART.md` § 2.3 now reports
+  a small comparison on the returns-triage brief (two design runs and one live
+  deploy per setting). Use Claude Opus 5.5 at medium for design; Fusion
+  Standard is a reasonable deploy choice when credits are short (same live chain,
+  no hand edits, longer run); avoid Fusion High for this chain. The note says it
+  is not a benchmark.
+
 ### 2.27.0: smaller payload: uncited planning history moved to git history
 
 - **Design history trimmed.** `docs/superpowers/` kept 44 dated specs and plans

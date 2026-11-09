@@ -541,10 +541,15 @@ test('workshop model note offers Copilot Fusion honestly, as documented', () => 
     '/model', '--model fusion --fusion-tier standard', 'Copilot Fusion** switch']) {
     assert.ok(w.includes(marker), marker);
   }
-  // Measured with Opus 5.5; never measured with Fusion; no savings claim.
+  // A small measured comparison: Opus for design, Fusion Standard acceptable for deploy, not High.
   assert.match(w, /measured with Claude Opus 5\.5/);
-  assert.match(w, /has not been measured with Copilot Fusion/);
+  assert.match(w, /small comparison/i);
+  assert.match(w, /two design runs per setting and one live deploy run per setting/);
+  assert.match(w, /\*\*Design:\*\* use Claude Opus 5\.5 at medium/);
+  assert.match(w, /\*\*Deploy:\*\* Fusion Standard[^.]*completed the same live chain/);
+  assert.match(w, /Fusion High[^.]*slower[^.]*more AI credits than Opus/);
+  assert.match(w, /not a benchmark/i);
+  assert.doesNotMatch(w, /has not been measured with Copilot Fusion/);
   assert.match(w, /Copilot Pro\+, Copilot Max, Copilot Business and Copilot Enterprise/);
-  assert.doesNotMatch(w, /(saves?|saving|cheaper|fewer) (AI )?credits/i);
   assert.match(w, /does not start subagents|doesn't start (them|subagents)/);
 });
