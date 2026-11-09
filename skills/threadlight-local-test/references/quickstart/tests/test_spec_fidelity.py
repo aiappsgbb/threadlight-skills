@@ -525,3 +525,41 @@ def test_side_effect_and_plain_heading_writes_need_approval(tmp_path, extra, nam
     agent, _ = agent_wiring.build_agent(layout, chat_client=model)
     asyncio.run(agent.run("hello"))
     assert {t.name: t.approval_mode for t in model.tools}[name] == "always_require"
+
+
+# --- Legacy / `tools: []` SPECs: no § 11a or § 5b classification ------------------
+# Lookups named `<noun>_<readverb>_...` stay reads and "no effect" phrasings are
+# not side effects, so Pattern 0 neither asks for approval nor mutates the store.
+
+UNCLASSIFIED_SPEC = SPEC[:SPEC.index("## 11a.")]
+
+
+@pytest.mark.parametrize("effects", ["No state changes", "No writes", "read-only", "None", "No side effects"])
+def test_unclassified_lookups_stay_reads(tmp_path, effects):
+    layout = _project(tmp_path, server=False)
+    spec = UNCLASSIFIED_SPEC.replace("- **Backed by**: Returns case store (mock)\n\n### `customer_get_profile`",
+                                     f"- **Side Effects**: {effects}\n- **Backed by**: Returns case store (mock)\n\n"
+                                     "### `customer_get_profile`", 1)
+    (tmp_path / "specs" / "SPEC.md").write_text(spec)
+    model = Model(outputs(call("returns_get_case", rma_id="RMA-002")))
+    agent, stores = agent_wiring.build_agent(layout, chat_client=model)
+    before = dict(stores["returns"].get("RMA-002"))
+    result = asyncio.run(agent.run("Load RMA-002"))
+    modes = {t.name: t.approval_mode for t in model.tools}
+    assert modes["returns_get_case"] == "never_require" and modes["customer_get_profile"] == "never_require"
+    assert modes["returns_record_recommendation"] == "always_require"
+    assert not result.user_input_requests
+    assert stores["returns"].get("RMA-002") == before, "a lookup must use the read adapter"
+
+
+@pytest.mark.parametrize("effects", ["Calls the OMS API (read)", "Marks the case reserved."])
+def test_ambiguous_or_declared_effects_need_approval(tmp_path, effects):
+    layout = _project(tmp_path, server=False)
+    spec = UNCLASSIFIED_SPEC.replace("- **Backed by**: Returns case store (mock)\n\n### `customer_get_profile`",
+                                     f"- **Side Effects**: {effects}\n- **Backed by**: Returns case store (mock)\n\n"
+                                     "### `customer_get_profile`", 1)
+    (tmp_path / "specs" / "SPEC.md").write_text(spec)
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert {t.name: t.approval_mode for t in model.tools}["returns_get_case"] == "always_require"

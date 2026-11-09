@@ -5,7 +5,8 @@ consistency check (``action_mode.py``) reads the same plan and classification,
 so a tool the deploy would serve is never invisible to the check.
 Read/write classification: SPEC section 11a ``consequence`` first, then the
 section 5b Read/Write column, then declared section 6 side effects, then the
-section 6 idempotency column, then the tool-name prefix.
+section 6 idempotency column, then a read verb as the first or second name
+token (``get_case``, ``returns_get_case``).
 """
 from __future__ import annotations
 
@@ -169,7 +170,15 @@ def _subsection_args(body: str) -> list[dict[str, Any]] | None:
 _IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 _NAME_LIST = re.compile(rf"(`?){_IDENT}\1(?:\s*(?:/|,|&|\band\b)\s*(`?){_IDENT}\2)*")
 _TOOL_BULLETS = re.compile(r"^\s*[-*]\s*\*\*(?:Inputs?|Parameters?|Arguments?|Description)\*\*", re.M | re.I)
-_NO_SIDE_EFFECTS = re.compile(r"^\s*(?:none|n/?a|nil|no\s+side[\s-]*effects?|read[\s-]*only|-|—|–)\b", re.I)
+# "No effect" phrasings at the start of a Side Effects bullet; a mutation verb in
+# the rest ("None; marks the case reserved") still declares an effect, and any
+# other text ("Calls the OMS API (read)") is treated as a declared effect.
+_NO_SIDE_EFFECTS = re.compile(
+    r"^\s*(?:none|n/?a|nil|no\s+side[\s-]*effects?|no\s+state[\s-]*changes?|no\s+writes?|no\s+mutations?"
+    r"|no\s+changes?|read[\s-]*only|-|—|–)(?=\W|$)", re.I)
+_MUTATION = re.compile(
+    r"\b(?:writ\w*|updat\w*|creat\w*|delet\w*|remov\w*|insert\w*|sets?|stor\w*|persist\w*|mark\w*|send\w*|sent"
+    r"|reserv\w*|lock\w*|modif\w*|chang\w*|mutat\w*|record\w*|publish\w*|append\w*|replac\w*|cancel\w*)\b", re.I)
 
 
 def _heading_names(heading: str) -> tuple[list[str], bool]:
@@ -206,7 +215,10 @@ def _bullet(body: str, label: str) -> str:
 def declared_side_effects(text: str) -> str:
     """The section 6 ``**Side Effects**`` text when it declares an effect, else ``""``."""
     text = _strip_ticks(text)
-    return "" if not text or _NO_SIDE_EFFECTS.match(text) else text
+    if not text:
+        return ""
+    m = _NO_SIDE_EFFECTS.match(text)
+    return "" if m and not _MUTATION.search(text[m.end():]) else text
 
 
 def _tool_subsections(block: str) -> dict[str, dict[str, Any]]:
@@ -254,6 +266,16 @@ def _consequences(spec: str) -> dict[str, str]:
             if ident and cons:
                 kinds[_identifier(ident.group(1))] = "read" if cons.group(1).lower() in {"read", "read-only", "read_only"} else "write"
     return kinds
+
+
+def _verb_in(name: str, prefixes: tuple[str, ...]) -> bool:
+    """``name`` starts with a verb of ``prefixes`` or has it as its second token (``returns_get_case``)."""
+    tokens = name.split("_")
+    return name.startswith(prefixes) or (len(tokens) >= 2 and f"{tokens[1]}_" in prefixes)
+
+
+def _reads_by_name(name: str) -> bool:
+    return _verb_in(name, READ_PREFIXES)
 
 
 def tools(spec: str) -> list[dict[str, Any]]:
@@ -304,7 +326,7 @@ def tools(spec: str) -> list[dict[str, Any]]:
         elif "read-only" in idem or "read only" in idem:
             kind = "read"
         else:
-            kind = "read" if not idem and name.startswith(READ_PREFIXES) else "write"
+            kind = "read" if not idem and _reads_by_name(name) else "write"
         verb, _, noun = name.partition("_")
         nouns = [n for n in (noun or verb).split("_") if n]
         plan.append({
