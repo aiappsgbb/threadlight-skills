@@ -404,6 +404,13 @@ The probe records every checked resource under `image_probe[]` in
 `postdeploy-manifest.json` so a non-placeholder image is auditable
 later (you can grep "PLACEHOLDER" across past gates).
 
+A missing `expected_resource_types` entry is a gap, except when
+`specs/deferred-steps.md` has the row threadlight-deploy writes for it
+(`| SPEC § 11c modules … | not provisioned | …`). Those types are listed under
+`deferred_resource_types` instead: the pilot did not provision them on purpose
+(for example AI Search and Blob for Foundry IQ, left to `threadlight-ground`),
+and the knowledge tools still use the local stand-in. This is not grounding evidence.
+
 ### Step 4 — channel reachability
 
 For every entry in `deployment_manifest.channels[]`:
@@ -414,7 +421,7 @@ For every entry in `deployment_manifest.channels[]`:
 | `teams` (bot) | `POST https://<fqdn>/api/messages` with empty body → expect HTTP 401 with `Authorization header not found` (= JWT middleware live) |
 | `email` / `webhook` | n/a (deferred — only logs presence) |
 
-A channel whose `service` is an `azure.ai.agent` service in `azure.yaml` (Foundry hosted agent, e.g. the Foundry playground) has no ACA ingress. It is recorded as `foundry_hosted_agent` when a `Microsoft.CognitiveServices/accounts/projects` resource is deployed; otherwise it is a gap. This is a presence check, not a conversational probe — prove the business case separately with `azd ai agent invoke` and the MCP server logs.
+A channel whose `service` is an `azure.ai.agent` service in `azure.yaml`, or in the manifest's own `deployment_manifest.services[]` when `azure.yaml` names the agent after the process (Foundry hosted agent, e.g. the Foundry playground), has no ACA ingress. It is recorded as `foundry_hosted_agent` when a `Microsoft.CognitiveServices/accounts/projects` resource is deployed; otherwise it is a gap. This is a presence check, not a conversational probe — prove the business case separately with `azd ai agent invoke` and the MCP server logs.
 
 ### Step 5 — scheduled-job cron correctness
 
