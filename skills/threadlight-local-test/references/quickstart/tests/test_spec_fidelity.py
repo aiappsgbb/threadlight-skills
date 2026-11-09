@@ -60,6 +60,10 @@ SPEC = textwrap.dedent("""\
 
     ```yaml
     tools:
+      - id: returns_get_case
+        consequence: read
+      - id: customer_get_profile
+        consequence: read
       - id: returns_record_recommendation
         consequence: write
     ```
@@ -423,3 +427,152 @@ def test_no_extra_knowledge_search_when_spec_has_a_knowledge_tool(tmp_path):
     agent, _ = agent_wiring.build_agent(layout, chat_client=model)
     asyncio.run(agent.run("hello"))
     assert "knowledge_search" not in {t.name for t in model.tools}
+
+
+# --- Recommend-only pilots (threadlight-design Fast-PoC) -----------------------------
+# specs/manifest.json "action_mode": "recommend-only": the agent proposes the
+# decision with citations; recording it stays a human action, so Pattern 0
+# exposes no write tool, even if a stale SPEC or the generic CRUD still has one.
+
+READ_ONLY_SPEC = SPEC.replace(SPEC[SPEC.index("### `returns_record_recommendation`"):SPEC.index("### `return_policy_search`")], "")
+
+
+def _recommend_only(tmp_path, spec=READ_ONLY_SPEC):
+    layout = _project(tmp_path)
+    (tmp_path / "specs" / "SPEC.md").write_text(spec)
+    (tmp_path / "specs" / "manifest.json").write_text(json.dumps(
+        {"name": "returns-triage", "mode": "fast-poc", "action_mode": "recommend-only"}))
+    return discover(tmp_path)
+
+
+def test_recommend_only_pilot_exposes_only_read_tools(tmp_path):
+    layout = _recommend_only(tmp_path)
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    skill_tools = {"load_skill", "read_skill_resource", "run_skill_script"}
+    modes = {t.name: t.approval_mode for t in model.tools if t.name not in skill_tools}
+    assert set(modes) == {"returns_get_case", "customer_get_profile", "return_policy_search"}
+    assert set(modes.values()) == {"never_require"}
+    instructions = model.options["instructions"]
+    assert "recommend-only" in instructions and "Write tools wait for human approval" not in instructions
+
+
+def test_recommend_only_withholds_a_write_tool_left_in_the_spec(tmp_path):
+    layout = _recommend_only(tmp_path, SPEC)
+    model = Model(outputs())
+    agent, stores = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert "returns_record_recommendation" not in {t.name for t in model.tools}
+    _, wiring = agent_wiring.build_spec_wiring(layout, stores)
+    withheld = [row for row in wiring if row["tool"] == "returns_record_recommendation"]
+    assert withheld and "recommend-only" in withheld[0]["source"] and withheld[0]["approval"] == "not exposed"
+
+
+def test_recommend_only_without_spec_tools_drops_generic_update_tools(tmp_path):
+    layout = _recommend_only(tmp_path, "# SpecKit: no tools yet\n")
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    names = {t.name for t in model.tools}
+    assert names and not [n for n in names if n.startswith("update_")]
+
+
+# --- § 6 classification shared with threadlight-deploy (_spec_tool_contracts.py) ---
+# A read-named tool that declares a side effect is a write, and plain
+# `### tool_name` headings are tools, exactly as generate_only reads them.
+
+SIDE_EFFECT_TOOL = (
+    "### `get_and_reserve_case`\n"
+    "- **Description**: fetch a case and reserve it for this agent.\n"
+    "- **Inputs**:\n"
+    "  | Parameter | Type | Required | Description |\n"
+    "  |-----------|------|----------|-------------|\n"
+    "  | rma_id | string | yes | `RMA-NNN` |\n"
+    "- **Side Effects**: marks the case reserved.\n\n"
+)
+PLAIN_HEADING_WRITE = (
+    "### returns_apply_decision\n"
+    "- **Description**: persist the outcome on the case.\n"
+    "- **Inputs**: `rma_id: string (required)`, `decision: string (required)`\n"
+    "- **Side Effects**: writes the case.\n\n"
+)
+
+
+def _with_tools(spec, extra):
+    return spec.replace("### `return_policy_search`", extra + "### `return_policy_search`")
+
+
+@pytest.mark.parametrize("extra, name", [(SIDE_EFFECT_TOOL, "get_and_reserve_case"),
+                                         (PLAIN_HEADING_WRITE, "returns_apply_decision")])
+def test_recommend_only_withholds_side_effect_and_plain_heading_writes(tmp_path, extra, name):
+    layout = _recommend_only(tmp_path, _with_tools(READ_ONLY_SPEC, extra))
+    model = Model(outputs())
+    agent, stores = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert name not in {t.name for t in model.tools}
+    _, wiring = agent_wiring.build_spec_wiring(layout, stores)
+    row = next(r for r in wiring if r["tool"] == name)
+    assert row["kind"] == "write" and row["approval"] == "not exposed"
+
+
+@pytest.mark.parametrize("extra, name", [(SIDE_EFFECT_TOOL, "get_and_reserve_case"),
+                                         (PLAIN_HEADING_WRITE, "returns_apply_decision")])
+def test_side_effect_and_plain_heading_writes_need_approval(tmp_path, extra, name):
+    layout = _project(tmp_path)
+    (tmp_path / "specs" / "SPEC.md").write_text(_with_tools(SPEC, extra))
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert {t.name: t.approval_mode for t in model.tools}[name] == "always_require"
+
+
+# --- Legacy / `tools: []` SPECs: no § 11a or § 5b classification ------------------
+# Lookups named `<noun>_<readverb>_...` stay reads and "no effect" phrasings are
+# not side effects, so Pattern 0 neither asks for approval nor mutates the store.
+
+UNCLASSIFIED_SPEC = SPEC[:SPEC.index("## 11a.")]
+
+
+@pytest.mark.parametrize("effects", ["No state changes", "No writes", "read-only", "None", "No side effects"])
+def test_unclassified_lookups_stay_reads(tmp_path, effects):
+    layout = _project(tmp_path, server=False)
+    spec = UNCLASSIFIED_SPEC.replace("- **Backed by**: Returns case store (mock)\n\n### `customer_get_profile`",
+                                     f"- **Side Effects**: {effects}\n- **Backed by**: Returns case store (mock)\n\n"
+                                     "### `customer_get_profile`", 1)
+    (tmp_path / "specs" / "SPEC.md").write_text(spec)
+    model = Model(outputs(call("returns_get_case", rma_id="RMA-002")))
+    agent, stores = agent_wiring.build_agent(layout, chat_client=model)
+    before = dict(stores["returns"].get("RMA-002"))
+    result = asyncio.run(agent.run("Load RMA-002"))
+    modes = {t.name: t.approval_mode for t in model.tools}
+    assert modes["returns_get_case"] == "never_require" and modes["customer_get_profile"] == "never_require"
+    assert modes["returns_record_recommendation"] == "always_require"
+    assert not result.user_input_requests
+    assert stores["returns"].get("RMA-002") == before, "a lookup must use the read adapter"
+
+
+@pytest.mark.parametrize("effects", ["Calls the OMS API (read)", "Marks the case reserved."])
+def test_ambiguous_or_declared_effects_need_approval(tmp_path, effects):
+    layout = _project(tmp_path, server=False)
+    spec = UNCLASSIFIED_SPEC.replace("- **Backed by**: Returns case store (mock)\n\n### `customer_get_profile`",
+                                     f"- **Side Effects**: {effects}\n- **Backed by**: Returns case store (mock)\n\n"
+                                     "### `customer_get_profile`", 1)
+    (tmp_path / "specs" / "SPEC.md").write_text(spec)
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert {t.name: t.approval_mode for t in model.tools}["returns_get_case"] == "always_require"
+
+
+@pytest.mark.parametrize("effects", ["None; issues a refund to the customer", "No side effects except charging the card"])
+def test_no_effect_opener_with_a_clause_needs_approval(tmp_path, effects):
+    layout = _project(tmp_path, server=False)
+    spec = UNCLASSIFIED_SPEC.replace("- **Backed by**: Returns case store (mock)\n\n### `customer_get_profile`",
+                                     f"- **Side Effects**: {effects}\n- **Backed by**: Returns case store (mock)\n\n"
+                                     "### `customer_get_profile`", 1)
+    (tmp_path / "specs" / "SPEC.md").write_text(spec)
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert {t.name: t.approval_mode for t in model.tools}["returns_get_case"] == "always_require"

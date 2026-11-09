@@ -185,6 +185,12 @@ on `PYTHONPATH` (or install the collector package) before running it.
 Otherwise a selected governance binding reports
 `governance: install the governance safe-check collector package`.
 
+A recommend-only pilot (`"action_mode": "recommend-only"` in
+`specs/manifest.json`, the threadlight-design Fast-PoC default) records
+governance as not selected, so it has no `governance:` gap. Pre-deploy and
+post-deploy report `action-mode: ...` instead when such a pilot still exposes a
+consequential tool in SPEC § 6 or § 11a (it would run unbound).
+
 Exit codes:
 
 | Code | Meaning |

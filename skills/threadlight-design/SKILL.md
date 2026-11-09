@@ -145,7 +145,7 @@ Clarify → Discover → SpecKit (CHECKPOINT — stop/resume here)
 | Mode | When | Flow |
 |------|------|------|
 | **Full** | Anything **non-basic** — production-bound work, stakeholder/SME review, regulated domains, consequential actions, case lifecycles, multi-phase workflows, or a workshop-deploy prelude | Full discovery → triage (Step 1.5) → checkpoint → review → Phase B |
-| **Fast-PoC** | **Basic scenarios only** — simple demos / rapid prototypes with no regulatory or PII weight, read-only (or trivially reversible) actions, and a conversational / single-step shape | Essential questions → assume defaults → generate everything in one pass |
+| **Fast-PoC** | **Basic scenarios only** — simple demos / rapid prototypes with no regulatory or PII weight, read-only (or trivially reversible) actions, and a conversational / single-step shape. Always **recommend-only**: the agent gets read tools only (see *Fast-PoC is recommend-only*) | Essential questions → assume defaults → generate everything in one pass |
 
 To activate fast-PoC mode the user says "quick PoC", "fast demo", or similar —
 **but Fast-PoC is only appropriate for basic scenarios.** Run the complexity
@@ -176,7 +176,7 @@ the user one triage question, naming the signal you detected — for example:
 > case-based}** process. Running **Full mode** adds a short triage round
 > (Step 1.5: audience, posture, lifecycle) that materially improves the
 > result. Proceed in Full mode, or force Fast-PoC anyway (neutral defaults,
-> recorded in SPEC § 12)?
+> recorded in SPEC § 12; recommend-only: the agent proposes, a person records)?
 
 **Default to Full mode** for non-basic scenarios; the user can override and
 force Fast-PoC, in which case the silent-default § 12 callout (see Step 3)
@@ -225,6 +225,45 @@ packaging and infrastructure, and adopts the design's mock server unchanged:
 - Deploy refuses (exit 6, nothing written) a server that misses a SPEC § 6
   tool or imports an unpinned package at module level, and never rewrites it.
   See `threadlight-deploy` § generate-only mode.
+
+#### Fast-PoC is recommend-only
+
+A Fast-PoC runs design, Pattern 0 and `threadlight-deploy` generate-only
+without `threadlight-govern`, so it must not expose a tool that changes
+anything. **The agent proposes the decision with its citations; a person
+records or applies it.** This holds even when the operator forces Fast-PoC on a
+consequential process (refunds, approvals, case updates):
+
+- **SPEC § 6 lists read tools only** (lookups plus the knowledge search). There
+  is **no write tool** for the agent: the would-be write (for example
+  "record the triage recommendation on the case") becomes a human step in
+  **SPEC § 8** (who records it, where, with which fields: the workspace/HITL
+  screen if one is generated, otherwise a documented manual step), and a
+  § 13 note names it as the first **Production path** addition.
+- **SPEC § 11a records governance as not selected:** `mode: off`,
+  `lifecycle_bindings: []`, and every tool `consequence: read`,
+  `policy_binding: none`, `enforcement_path: none`, `intervention_points: []`.
+  Reads stay unbound (no ACS). State it in one line above the block, for
+  example: **Action mode**: `recommend-only` (governance not selected; reads
+  unbound; no consequential tool is exposed).
+- **`specs/manifest.json` carries `"action_mode": "recommend-only"`** and no
+  write traits (`reversible-writes`, `actions-in-external-systems`).
+  Pattern 0, `threadlight-deploy`, `threadlight-safe-check`,
+  `threadlight-auto` and the lifecycle canvas read this flag.
+- **`src/mcp/server.py` defines no write tool function**, AGENTS.md and the
+  skills tell the agent to propose and to say who records the outcome (never
+  "recorded", never a record id), and `tests/killer-prompts.md` plus
+  `tests/eval_dataset.jsonl` expect a cited recommendation, not a stored write.
+- Run `python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>`:
+  for a recommend-only workspace it also fails on any SPEC § 6 or § 11a tool
+  that is not an unbound read, or on a mode other than `off`.
+
+This is never an unbound consequential write and never a selected-but-unpackaged
+binding. Letting the agent write is the **Production path**: re-run the design
+in **Full mode** (the governance interview below classifies and binds the
+write), then `threadlight-govern` and the governed deploy. Full mode keeps
+today's behaviour: `action_mode` is omitted or `act`, and every consequential
+tool goes through the governance interview.
 
 > [!IMPORTANT]
 > **Fast-PoC skips Step 1.5 (Audience & Presentation Context).** Audience
@@ -768,7 +807,7 @@ Must include all sections from the template:
 10. **Trigger & Run Model** — how/when the process executes, volume, SLA
 10b. **Triggers (Receiver contract)** — receiver type, idempotency key, dedup window, dead-letter rule. **INPUT CONTRACT for `threadlight-event-triggers`.** *Required for event-driven and scheduled processes.*
 11. **Security, Compliance & Governance** — PII, auth, retention, regulatory, audit
-11a. **Runtime Governance Contract** — `governance.mode: off | selective | comprehensive`, fixed `environment_modes` (`development`/`staging` = `evaluate_only`, `preproduction`/`production` = `enforce`), lifecycle bindings, and per-tool records (`id`, `consequence`, `policy_binding`, `enforcement_path`, `intervention_points`, `safe_principles`, `requires`). **INPUT CONTRACT for runtime governance design.** Validate the machine-readable block against `references/governance-contract.schema.json`. Legacy string tools remain accepted only as explicit `unknown/unbound` placeholders, `comprehensive` rejects unsupported provider-hosted consequential/unknown tools, and `production-bound` unbound consequential/unknown tools require an acceptance record (`owner`, `justification`, `review_date`, `expiry`). **Always emit the complete block — `framework`, `governance` (`mode`, `environment_modes`, `lifecycle_bindings`) and `tools` — even for `mode: off` (`lifecycle_bindings: []`, `tools: []` or the structured tool list).** A partial block (for example `governance:` alone) makes `threadlight-auto` route back to design (`incomplete-governance-contract`). Before handing off, run `python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>` (repository checkout only; in Cowork, check the block against `references/governance-contract.schema.json`) and fix every reported gap.
+11a. **Runtime Governance Contract** — Fast-PoC emits the recommend-only variant from the template (`mode: off`, read tools only; see *Fast-PoC is recommend-only*). `governance.mode: off | selective | comprehensive`, fixed `environment_modes` (`development`/`staging` = `evaluate_only`, `preproduction`/`production` = `enforce`), lifecycle bindings, and per-tool records (`id`, `consequence`, `policy_binding`, `enforcement_path`, `intervention_points`, `safe_principles`, `requires`). **INPUT CONTRACT for runtime governance design.** Validate the machine-readable block against `references/governance-contract.schema.json`. Legacy string tools remain accepted only as explicit `unknown/unbound` placeholders, `comprehensive` rejects unsupported provider-hosted consequential/unknown tools, and `production-bound` unbound consequential/unknown tools require an acceptance record (`owner`, `justification`, `review_date`, `expiry`). **Always emit the complete block — `framework`, `governance` (`mode`, `environment_modes`, `lifecycle_bindings`) and `tools` — even for `mode: off` (`lifecycle_bindings: []`, `tools: []` or the structured tool list).** A partial block (for example `governance:` alone) makes `threadlight-auto` route back to design (`incomplete-governance-contract`). Before handing off, run `python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>` (repository checkout only; in Cowork, check the block against `references/governance-contract.schema.json`) and fix every reported gap.
 11b. **Governance Posture (AI Governance Hub spoke — opt-in)** — `governance_hub.required` flag + spoke artifacts needed. **INPUT CONTRACT for the optional governance-hub spoke handoff in `threadlight-deploy`.** *Required for every regulated process.*
 11c. **Tech Stack (Module selectors)** — Bicep module on/off list (cosmos, search, doc-intel, speech, event-grid, service-bus, foundry-iq-index, etc.). **INPUT CONTRACT for the `threadlight-deploy/references/azd-modules` Bicep module library and the composer in `threadlight-deploy`.** *Required for every process.*
 
@@ -2233,6 +2272,7 @@ must catch its own mistakes.
 - [ ] **Workspace streaming endpoint exists** — `POST /api/invoke-stream` SSE endpoint present in `src/workspace/main.py`. Frontend uses `ReadableStream` progressive rendering with tool-call status badges. Fallback to `/api/invoke` on error.
 - [ ] No hardcoded secrets, API keys, or personal data in any file
 - [ ] Assumptions in spec § 13 are flagged clearly (especially fast-PoC defaults)
+- [ ] **Fast-PoC is recommend-only** — `specs/manifest.json` has `"action_mode": "recommend-only"`, SPEC § 6 and `src/mcp/server.py` expose no write tool, SPEC § 11a is `mode: off` with every tool an unbound read, the would-be write is a human step in SPEC § 8, and killer prompts/evals expect a cited recommendation (no record id). `validate_governance_contract.py` passes.
 - [ ] **SPEC § 14 Value Model has the correct structural shape** — `## 14. Value Model` heading present, with `value_model:` / `maturity_policy:` / `success_event:` / `baseline:` / `accounting:` all present under `value_model.cost`, matching `references/speckit-template.md § 14` (see `references/value-model-schema.md` for the full field list). **No numeric or decision field was invented** — every `maturity_policy`/`success_event`/`baseline`/`accounting` leaf is either blank (Fast-PoC, or Full with an unanswered § 13 open question) or an explicit, operator-provided value; `success_event.name`/`trace_attribute`/`success_values` in particular must be **operator-confirmed** in Full mode, never inferred from a BR-XXX business rule or invented to look complete; never a value copied from `examples/returns-triage-governed/specs/SPEC.md § 14` or otherwise guessed to look "complete".
 
 **If any check fails:** fix it before presenting the output to the user. Do not

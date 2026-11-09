@@ -200,6 +200,13 @@ Define the tools the agent will use. These are abstract — not bound to any spe
 > A tool with genuinely no inputs writes `none` (not `see below`).
 > Read/write classification comes from § 5b (Read/Write column) and § 11a
 > (`consequence:`), which win over any name-based guess; keep them consistent.
+> Without them, a **Side Effects** bullet makes the tool a write unless it is
+> exactly `none`, `no state changes`, `no writes`, `read-only` or similar
+> (optionally with a qualifier such as `(read-only lookup)`); any further
+> clause, such as "None; issues a refund", is a declared effect. Give each tool its own level-3 heading with the tool name in
+> backticks (two names separated by `/` when they share one contract): in a recommend-only
+> pilot every § 6 heading or tool-table row that is not a parseable tool
+> contract is a gap.
 
 ### `[tool_name]`
 - **Description**: [What does this tool do?]
@@ -586,6 +593,46 @@ tools:
   `expiry`, both recorded as quoted RFC3339 timestamps. `off` is still allowed
   in `production-bound`, but it does not make an enforcement claim and any
   consequential or unknown unbound tool still needs acceptance.
+
+#### Fast-PoC (recommend-only) variant
+
+A Fast-PoC exposes read tools only: the agent proposes the decision with
+citations and a person records or applies it (SPEC § 8). Governance is not
+selected and every read stays unbound; `specs/manifest.json` carries
+`"action_mode": "recommend-only"`. Adding a write tool is the Production path
+(Full-mode design, then `threadlight-govern`), never an unbound write.
+
+- **Action mode**: `recommend-only` (governance not selected; reads unbound;
+  no consequential tool is exposed)
+
+```yaml
+framework: github-copilot-sdk
+
+governance:
+  mode: off
+  environment_modes:
+    development: evaluate_only
+    staging: evaluate_only
+    preproduction: enforce
+    production: enforce
+  lifecycle_bindings: []
+
+tools:
+  - id: returns_get_case
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: [least-privilege]
+    requires: []
+  - id: return_policy_search
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: [least-privilege]
+    requires: []
+```
 
 ### 11b. AI Governance Hub Posture (opt-in spoke)
 

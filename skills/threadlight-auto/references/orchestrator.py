@@ -723,6 +723,16 @@ def _spec_contract_gaps(workspace: Path) -> list[str]:
         return []
 
 
+def _recommend_only_gaps(workspace: Path) -> list[str]:
+    try:
+        from skills._shared.action_mode import recommend_only_gaps
+        return recommend_only_gaps(workspace)
+    except ImportError:
+        return []
+    except ValueError as exc:
+        return [f"action-mode: {exc}"]
+
+
 def _is_contract_repair(decision: "StageDecision") -> bool:
     return (decision.name == "design" and decision.decision == "run"
             and decision.reason.startswith(GOVERNANCE_CONTRACT_REPAIR))
@@ -754,6 +764,20 @@ def _check_design(workspace: Path, state: dict[str, Any]) -> StageDecision:
             "threadlight-design to emit the complete block, then check it with "
             "`python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>`.",
             artifacts_seen=["specs/SPEC.md"],
+        )
+
+    action_gaps = _recommend_only_gaps(workspace)
+    if action_gaps:
+        # A recommend-only pilot (Fast-PoC) runs without threadlight-govern, so a
+        # consequential tool there would run unbound: design must remove it.
+        return StageDecision(
+            "design",
+            "run",
+            "recommend-only design exposes a consequential tool: " + "; ".join(action_gaps)
+            + ". Re-run threadlight-design (move the write to a human step in SPEC § 8, or take the "
+            "Production path in Full mode) and check it with "
+            "`python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>`.",
+            artifacts_seen=["specs/SPEC.md", "specs/manifest.json"],
         )
 
     current_hash = _sha256(spec)

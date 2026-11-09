@@ -243,10 +243,24 @@ agent reads the policy instead of trying a skill script. `threadlight-deploy`
 `generate_only` serves the same tool from the generated MCP server and lists it
 in `specs/deferred-steps.md` until Foundry IQ is provisioned.
 
-**Approvals.** Read tools (§ 11a `consequence: read`, § 5b `R`, knowledge
-tools, else a read verb in the name) are registered with
-`approval_mode="never_require"`. Write tools use `always_require`: nothing
-approves them implicitly.
+**Approvals.** Pattern 0 parses and classifies SPEC § 6 exactly like
+`threadlight-deploy` (a byte-identical copy of
+`skills/_shared/spec_tool_contracts.py`, checked by a repository test). Read
+tools (§ 11a `consequence: read`, § 5b `R`, knowledge tools, else a read verb as the first or second name token, such as `get_case`
+or `returns_get_case`) are registered with `approval_mode="never_require"`; a
+§ 6 **Side Effects** that declares an effect makes any tool without a
+§ 11a/§ 5b classification a write. Only a bullet that is exactly `none`,
+`n/a`, `no side effects`, `no state changes`, `no writes`, `read-only` or
+similar, optionally with a qualifier such as `(read-only lookup)`, means no
+effect; any further clause ("None; issues a refund") is an effect. Write tools use
+`always_require`: nothing approves them implicitly.
+
+**Recommend-only pilots.** When `specs/manifest.json` declares
+`"action_mode": "recommend-only"` (the threadlight-design Fast-PoC default),
+Pattern 0 registers no write tool: the agent proposes the decision with its
+citations and a person records it. A write tool still listed in SPEC § 6 is
+withheld and shown in `--check` as `not exposed`; generic `update_*` tools are
+dropped too. The agent's instructions say the pilot is recommend-only.
 
 - **Streamlit:** a paused write (or skill script) shows the tool and
   arguments with **Approve and continue** / **Reject** buttons; the turn

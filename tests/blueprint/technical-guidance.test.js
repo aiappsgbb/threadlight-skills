@@ -488,3 +488,63 @@ test('workshop design-to-deploy chain documents ownership, Learn-verified hostin
   assert.doesNotMatch(workshop, /packagefeedproxy|pkgs\.dev\.azure\.com/);
   assert.match(w, /without `--force`/);
 });
+
+test('workshop runbook uses the measured minute budget, pre-session prep and a fallback path', () => {
+  const text = read(docs.workshop);
+  const w = text.replace(/\s+/g, ' ');
+  // Measured on 2026-11-06/07, Copilot CLI 1.0.105, Opus 5.5 medium, returns-triage.
+  for (const marker of ['2026-11-06', 'Copilot CLI 1.0.105', 'Opus 5.5', 'medium']) {
+    assert.ok(w.includes(marker), marker);
+  }
+  for (const [step, range] of [['threadlight-design', '16–19 min'], ['Pattern 0', '4–6 min'],
+    ['generate-only', '1–4 min'], ['azd up', '~5 min'], ['eval', '15–20 min'], ['live', '~33 min']]) {
+    assert.ok(w.includes(step) && w.includes(range), `${step} ${range}`);
+  }
+  assert.match(w, /will vary/i);
+  assert.match(text, /^## \d+\. Before the session/m);
+  for (const marker of ['az login', 'azd auth login', 'plugin', 'pre-designed workspace', 'pre-provision']) {
+    assert.ok(w.includes(marker), marker);
+  }
+  assert.match(w, /[Ff]allback/);
+  assert.match(w, /eval[^.]*after the session/i);
+  assert.match(w, /before Q&A/i);
+  // The old promise that everything fits the hour is gone.
+  assert.doesNotMatch(w, /15–25 min depending on region/);
+  assert.doesNotMatch(w, /still inside the hour/);
+});
+
+test('workshop starts with the installed-plugin skill-order preflight and explains each status', () => {
+  const text = read(docs.workshop);
+  const w = text.replace(/\s+/g, ' ');
+  assert.match(text, /^### 2\.\d+ Preflight: skill order \(mandatory first step\)/m);
+  // Works from an installed plugin: the path comes from the runtime's own skill listing.
+  assert.ok(w.includes('copilot skill list --json'), 'path discovery via copilot skill list');
+  assert.ok(w.includes('skills/_shared/official_skills.py'), 'installed script path');
+  assert.ok(w.includes('~/.copilot/installed-plugins/'), 'documented install location');
+  for (const status of ['OK', 'ORDER', 'MISSING', 'DRIFT', 'NOTE', 'UNCHECKED']) {
+    assert.match(w, new RegExp(`\\*\\*${status}\\*\\*`), status);
+  }
+  assert.ok(w.includes('copilot plugin disable'), 'disable option');
+  assert.ok(w.includes('docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference'));
+  // It is the first thing in the room, before the design.
+  const runbook = text.slice(text.indexOf('## 3. Minute-by-minute runbook'));
+  assert.ok(runbook.indexOf('Preflight') > 0 && runbook.indexOf('Preflight') < runbook.indexOf('Design the use case live'));
+});
+
+test('workshop model note offers Copilot Fusion honestly, as documented', () => {
+  const text = read(docs.workshop);
+  const w = text.replace(/\s+/g, ' ');
+  assert.match(text, /^### 2\.\d+ Model choice/m);
+  for (const marker of ['Copilot Fusion', 'Fusion Standard', 'Fusion High',
+    'docs.github.com/en/copilot/concepts/models/copilot-fusion',
+    'docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/choose-a-model',
+    '/model', '--model fusion --fusion-tier standard', 'Copilot Fusion** switch']) {
+    assert.ok(w.includes(marker), marker);
+  }
+  // Measured with Opus 5.5; never measured with Fusion; no savings claim.
+  assert.match(w, /measured with Claude Opus 5\.5/);
+  assert.match(w, /has not been measured with Copilot Fusion/);
+  assert.match(w, /Copilot Pro\+, Copilot Max, Copilot Business and Copilot Enterprise/);
+  assert.doesNotMatch(w, /(saves?|saving|cheaper|fewer) (AI )?credits/i);
+  assert.match(w, /does not start subagents|doesn't start (them|subagents)/);
+});

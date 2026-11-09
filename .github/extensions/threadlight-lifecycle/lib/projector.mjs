@@ -100,6 +100,17 @@ function isSkillApplicable(definition, manifest, manifestInvalid, context = {}) 
       return manifest?.governance_hub?.required === true;
     case "governance-contract":
       return context.hasGovernanceContract === true;
+    case "runtime-controls":
+      // threadlight-design Fast-PoC pilots are recommend-only: the agent
+      // proposes, a person records, governance is not selected. Only a current
+      // plan that corroborates a consistent recommend-only design hides the
+      // step; the manifest flag alone and existing governance artifacts keep it.
+      return (
+        manifest?.action_mode !== "recommend-only" ||
+        context.recommendOnlyCorroborated !== true ||
+        context.hasGovernanceContract === true ||
+        context.hasGovernanceManifest === true
+      );
     case "event-trigger": {
       const selectors = moduleSelectors(manifest);
       return (
@@ -1678,6 +1689,21 @@ async function buildView({ reader, manifest, phases, projectedSkills, errors, no
   });
 }
 
+/**
+ * True when a current threadlight-auto plan shows a consistent recommend-only
+ * design: no governance stage was planned (``mode: off``), and the planner
+ * skipped the design stage, so it did not send the design back for a
+ * recommend-only gap (``recommend-only design exposes a consequential tool``)
+ * or any other reason. Anything else keeps runtime controls visible.
+ */
+function planCorroboratesRecommendOnly(plan, planStatus) {
+  if (!planOmitsGovernance(plan, planStatus) || plan.stages.includes("govern")) {
+    return false;
+  }
+  const design = (plan.decisions ?? []).find((decision) => decision?.stage === "design");
+  return design?.decision === "skip" && !/recommend-only/i.test(design.reason ?? "");
+}
+
 export async function projectWorkspace(workspace, options = {}) {
   const now =
     options.now instanceof Date ? options.now : new Date(options.now ?? Date.now());
@@ -1688,12 +1714,14 @@ export async function projectWorkspace(workspace, options = {}) {
   const { plan, planStatus } = await readPlan(reader, now, options);
   const context = {
     hasGovernanceContract: await reader.exists("specs/governance-contract.json"),
+    hasGovernanceManifest: await reader.exists("specs/governance-manifest.json"),
     // Readiness proof needs governance proven by the planner, never by a
     // manifest the Canvas cannot re-validate.
     governanceProven: planProvesGovernance(plan, planStatus),
     // Only a current plan without governance stages waives the requirement:
     // those pilots rely on the readiness proof chain (incl. AGT-001).
     governanceRequired: !planOmitsGovernance(plan, planStatus),
+    recommendOnlyCorroborated: planCorroboratesRecommendOnly(plan, planStatus),
   };
   const projectedSkills = new Map();
 

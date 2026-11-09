@@ -78,6 +78,9 @@ class FakeClient:
         self.disk: dict[str, list[str]] = {}
         self.deleted: list[str] = []
         self.started = False
+        self.resume_calls: list[str] = []
+        self.resume_failures: list[Exception] = []  # raised (in order) before a resume succeeds
+        self.metadata_calls: list[str] = []
 
     async def start(self):
         self.started = True
@@ -90,9 +93,16 @@ class FakeClient:
         self.created.append(session)
         return session
 
+    async def get_session_metadata(self, session_id):
+        self.metadata_calls.append(session_id)
+        return {"sessionId": session_id} if session_id in self.disk else None
+
     async def resume_session(self, session_id, **kwargs):
+        self.resume_calls.append(session_id)
+        if self.resume_failures:
+            raise self.resume_failures.pop(0)
         if session_id not in self.disk:
-            raise RuntimeError("unknown session")
+            raise RuntimeError(f"Session not found: {session_id}")
         session = FakeSession(session_id, self.disk[session_id])
         self.resumed.append(session)
         return session
@@ -314,3 +324,59 @@ def test_empty_or_unusable_body_is_still_rejected(runtime, raw):
 def test_plain_text_that_parses_as_non_object_json_is_still_the_input(runtime, raw):
     answers = _answers(_invoke_body(runtime, raw))
     assert answers and answers[-1].endswith("turn 1|seen: " + raw.decode())
+
+
+# --- Resume vs create: "not found" is the normal path, other failures are loud ------
+# Live logs showed a full SDK traceback ("Session not found") for every new
+# Foundry session, and any resume failure silently started an empty conversation.
+
+def test_new_session_is_created_without_a_failing_resume(runtime, caplog):
+    caplog.set_level("INFO")
+    _invoke(runtime, "Triage RMA-1", session="brand-new", stream=False)
+    client = runtime._client
+    assert client.metadata_calls == ["brand-new"]
+    assert client.resume_calls == [], "a new key must not trigger a failing resume_session"
+    assert [s.session_id for s in client.created] == ["brand-new"]
+    assert not [r for r in caplog.records if r.exc_info], "no traceback for the normal new-session path"
+    assert not [r for r in caplog.records if r.levelname in ("WARNING", "ERROR")]
+
+
+def test_without_metadata_lookup_not_found_is_a_quiet_create(runtime, caplog, monkeypatch):
+    caplog.set_level("INFO")
+    monkeypatch.delattr(FakeClient, "get_session_metadata")
+    answer = _invoke(runtime, "Triage RMA-1", session="older-sdk", stream=False).strip()
+    assert answer.endswith("turn 1|seen: Triage RMA-1")
+    assert not [r for r in caplog.records if r.exc_info or r.levelname in ("WARNING", "ERROR")]
+
+
+def test_transient_resume_error_is_retried_once_and_history_kept(runtime, caplog, monkeypatch):
+    for key in ("s1", "s2", "s3"):
+        _invoke(runtime, f"hello {key}", session=key, stream=False)
+    caplog.set_level("INFO")
+    runtime._client.resume_failures = [ConnectionResetError("socket closed")]
+    again = _invoke(runtime, "back again", session="s1", stream=False).strip()
+    assert again.endswith("turn 2|seen: hello s1 / back again")
+    assert runtime._client.resume_calls == ["s1", "s1"]
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert warnings and "ConnectionResetError" in warnings[0].getMessage()
+    assert not [r for r in caplog.records if r.exc_info]
+
+
+@pytest.mark.parametrize("stream", [True, False])
+def test_persistent_resume_error_is_surfaced_not_replaced_by_an_empty_conversation(runtime, caplog, stream):
+    for key in ("s1", "s2", "s3"):
+        _invoke(runtime, f"hello {key}", session=key, stream=False)
+    caplog.set_level("INFO")
+    client = runtime._client
+    created_before = len(client.created)
+    client.resume_failures = [TimeoutError("cli busy"), TimeoutError("cli busy")]
+    out = _invoke(runtime, "back again", session="s1", stream=stream)
+    assert len(client.created) == created_before, "must not silently start an empty conversation"
+    assert client.disk["s1"] == ["hello s1"], "stored history is untouched"
+    assert "could not resume" in out.lower() and "TimeoutError" in out
+    if stream:
+        assert "event: done" in out
+    assert any(r.levelname == "ERROR" and "TimeoutError" in r.getMessage() for r in caplog.records)
+    # The next turn (error cleared) resumes the same history.
+    again = _invoke(runtime, "retry", session="s1", stream=False).strip()
+    assert again.endswith("turn 2|seen: hello s1 / retry")

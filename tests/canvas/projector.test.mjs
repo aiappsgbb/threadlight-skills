@@ -1906,3 +1906,127 @@ test("a generate-only pending-deploy placeholder never counts as post-deploy evi
     assert.ok(!["complete", "prepared", "running", "failed"].includes(safe.status), safe.status);
   });
 });
+
+// Recommend-only pilots (threadlight-design Fast-PoC): the agent proposes and a
+// person records, with governance not selected. Runtime controls read as "not
+// needed" only when a current plan corroborates a consistent recommend-only
+// design (no governance stage, design not sent back); the manifest flag alone
+// never hides them.
+const RECOMMEND_ONLY_SPEC = [
+  "# SpecKit: Returns Triage",
+  "",
+  "## 6. Tool Contracts",
+  "",
+  "### `returns_get_case`",
+  "- **Description**: fetch one return case.",
+  "- **Side Effects**: none",
+  "",
+  "## 11. Security",
+  "",
+  "### 11a. Runtime Governance Contract",
+  "",
+  "- **Action mode**: `recommend-only` (governance not selected; reads unbound)",
+  "",
+  "```yaml",
+  "framework: github-copilot-sdk",
+  "governance:",
+  "  mode: off",
+  "  environment_modes: {development: evaluate_only, staging: evaluate_only, preproduction: enforce, production: enforce}",
+  "  lifecycle_bindings: []",
+  "tools:",
+  "  - id: returns_get_case",
+  "    consequence: read",
+  "    policy_binding: none",
+  "    enforcement_path: none",
+  "    intervention_points: []",
+  "    safe_principles: [least-privilege]",
+  "    requires: []",
+  "```",
+  "",
+].join("\n");
+
+// threadlight-auto's standard stage list: no govern stage for `mode: off`.
+const STANDARD_STAGES = ["preflight", "design", "deploy", "safe_check", "cost_projection", "invoke",
+  "agentops", "evals", "redteam"];
+
+function recommendOnlyPlan(designDecision = { decision: "skip", reason: "specs/SPEC.md unchanged since last run (hash match)." }) {
+  return {
+    stages: STANDARD_STAGES,
+    dependencies: {},
+    manual_handoffs: [],
+    decisions: STANDARD_STAGES.map((stage) => ({
+      stage,
+      decision: "skip",
+      reason: `${stage} evidence is current.`,
+      artifacts_seen: [],
+      artifacts_missing: [],
+      hard_stop_signature: null,
+      ...(stage === "design" ? designDecision : {}),
+    })),
+    next_action: { type: "run", stages_to_run: [], stages_to_skip: STANDARD_STAGES },
+    decided_at: "2026-08-06T08:30:00+00:00",
+  };
+}
+
+async function recommendOnlyFixture({ writeJson, writeString }, plan) {
+  await writeString("specs/SPEC.md", RECOMMEND_ONLY_SPEC);
+  await writeJson("specs/manifest.json", {
+    name: "returns-triage",
+    mode: "fast-poc",
+    action_mode: "recommend-only",
+    traits: [],
+    deployment_manifest: { module_selectors: {}, scheduled_jobs: [] },
+  });
+  if (plan) {
+    await writeJson(".threadlight/auto-next.json", plan);
+  }
+}
+
+test("consistent recommend-only pilot does not ask for runtime controls", async () => {
+  await withFixture("design-only", async (fixture) => {
+    const before = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.notEqual(findSkill(before, "threadlight-govern").status, "not-applicable");
+    await recommendOnlyFixture(fixture, recommendOnlyPlan());
+    const model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(model.view.plan.status, "current");
+    assert.equal(findSkill(model, "threadlight-govern").status, "not-applicable");
+    assert.equal(findSkill(model, "threadlight-governed-actions").status, "not-applicable");
+  });
+});
+
+test("recommend-only flag without a current plan keeps runtime controls visible", async () => {
+  await withFixture("design-only", async (fixture) => {
+    await recommendOnlyFixture(fixture, null);
+    const model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.notEqual(findSkill(model, "threadlight-govern").status, "not-applicable");
+  });
+});
+
+test("inconsistent recommend-only design keeps runtime controls visible", async () => {
+  await withFixture("design-only", async (fixture) => {
+    await recommendOnlyFixture(fixture, recommendOnlyPlan({
+      decision: "run",
+      reason: "recommend-only design exposes a consequential tool: action-mode: recommend-only pilot exposes "
+        + "SPEC § 6 tool returns_apply_decision that SPEC § 11a does not classify as a read.",
+    }));
+    const model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.notEqual(findSkill(model, "threadlight-govern").status, "not-applicable");
+  });
+});
+
+test("recommend-only flag with a governed plan keeps runtime controls visible", async () => {
+  await withFixture("design-only", async (fixture) => {
+    await recommendOnlyFixture(fixture, completePlan());
+    const model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.notEqual(findSkill(model, "threadlight-govern").status, "not-applicable");
+  });
+});
+
+test("recommend-only pilot with a governance manifest still shows its controls", async () => {
+  await withFixture("design-only", async (fixture) => {
+    await recommendOnlyFixture(fixture, recommendOnlyPlan());
+    await fixture.writeJson("specs/governance-manifest.json", governanceManifest());
+    const model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.notEqual(findSkill(model, "threadlight-govern").status, "not-applicable");
+  });
+});

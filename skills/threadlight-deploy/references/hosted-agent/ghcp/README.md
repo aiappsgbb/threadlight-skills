@@ -109,7 +109,16 @@ The template provides:
    container-wide `FOUNDRY_AGENT_SESSION_ID` is not a conversation key: sharing one
    session made every eval row join one conversation in the 2026-11-07 live run.
    A body with `"new_conversation": true` (what `evals/run_evals.py` sends per
-   row) always gets a fresh session and leaves the caller's session untouched
+   row) always gets a fresh session and leaves the caller's session untouched.
+   Opening a keyed session first asks `client.get_session_metadata(id)` (O(1)
+   lookup in `github-copilot-sdk` 1.0.x): no stored session means a plain
+   `create_session` with one INFO line, so a new Foundry session no longer
+   triggers a failing `resume_session` and its SDK "Session not found"
+   traceback. A stored session that fails to resume is retried once (WARNING
+   with the error class); if it still fails the turn returns a clear
+   `Could not resume conversation ...` error (SSE `error` event, or `Error: ...`
+   text with `"stream": false`) and the history stays on disk. It is never
+   silently replaced by an empty conversation; the next turn tries again
 3. `_stream_response()` — Subscribes to session events, yields SSE. An event
    whose SDK `to_dict()` fails (github-copilot-sdk 1.0.x usage fields) is
    skipped or reduced to its text by `_event_payload()` instead of ending the stream
