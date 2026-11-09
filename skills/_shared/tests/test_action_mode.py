@@ -96,3 +96,79 @@ def test_section6_tool_missing_from_contract_is_a_gap(tmp_path):
     gaps = action_mode.recommend_only_gaps(_workspace(tmp_path, spec))
     assert gaps == ["action-mode: recommend-only pilot exposes SPEC § 6 tool returns_apply_refund "
                     "that SPEC § 11a does not classify as a read"]
+
+
+# --- SPEC § 6 is read with the deploy parser and fails closed (review 2026-11-09) ---
+# The first version only saw backticked headings and rows: plain `### tool`
+# headings (examples/returns-triage-governed) returned [], so a § 6 write passed.
+
+def _spec_with_section6(section6: str, contract_reads=("returns_get_case",)) -> str:
+    return (
+        "# SpecKit\n\n## 6. Tool Contracts\n\n" + section6 + "\n## 7. Knowledge Sources\n\nnone\n\n"
+        "### 11a. Runtime Governance Contract\n\n```yaml\nframework: github-copilot-sdk\n\ngovernance:\n"
+        "  mode: off\n  environment_modes:\n    development: evaluate_only\n    staging: evaluate_only\n"
+        "    preproduction: enforce\n    production: enforce\n  lifecycle_bindings: []\n\ntools:\n"
+        + "".join(READ_TOOL.format(name=n) for n in contract_reads) + "```\n"
+    )
+
+
+def _gaps_for(tmp_path, section6, contract_reads=("returns_get_case",)):
+    return action_mode.recommend_only_gaps(_workspace(tmp_path, _spec_with_section6(section6, contract_reads)))
+
+
+def test_plain_heading_write_is_a_gap(tmp_path):
+    section6 = ("### returns_get_case\n- **Description**: fetch a case.\n- **Inputs**: `rma_id: string (required)`\n"
+                "- **Side Effects**: none\n\n"
+                "### returns_apply_decision\n- **Description**: persist the outcome.\n"
+                "- **Inputs**: `rma_id, decision`\n- **Side Effects**: writes the case.\n")
+    gaps = _gaps_for(tmp_path, section6)
+    assert any("returns_apply_decision" in g for g in gaps), gaps
+    assert not any("returns_get_case" in g for g in gaps), gaps
+
+
+def test_unticked_table_row_write_is_a_gap(tmp_path):
+    section6 = ("| Tool | Inputs | Description |\n|---|---|---|\n"
+                "| returns_get_case | rma_id | fetch a case |\n"
+                "| returns_apply_decision | rma_id, decision | persist the outcome |\n")
+    gaps = _gaps_for(tmp_path, section6)
+    assert any("returns_apply_decision" in g for g in gaps), gaps
+    assert not any("returns_get_case" in g for g in gaps), gaps
+
+
+@pytest.mark.parametrize("heading", ["### `returns_get_case` / `returns_record_outcome`",
+                                     "### returns_get_case / returns_record_outcome"])
+def test_multi_name_heading_names_every_tool(tmp_path, heading):
+    section6 = heading + "\n- **Description**: fetch a case, or record the outcome.\n- **Inputs**: `rma_id`\n"
+    gaps = _gaps_for(tmp_path, section6)
+    assert any("returns_record_outcome" in g for g in gaps), gaps
+    assert not any("returns_get_case" in g for g in gaps), gaps
+
+
+def test_read_prefixed_tool_with_side_effects_is_a_gap_even_if_contract_says_read(tmp_path):
+    section6 = ("### `get_and_reserve_case`\n- **Description**: fetch a case and reserve it.\n"
+                "- **Inputs**: `rma_id: string (required)`\n- **Side Effects**: marks the case reserved.\n")
+    gaps = _gaps_for(tmp_path, section6, contract_reads=("get_and_reserve_case",))
+    assert any("get_and_reserve_case" in g and "side effect" in g.lower() for g in gaps), gaps
+
+
+def test_unparseable_section6_entry_fails_closed(tmp_path):
+    section6 = ("### `returns_get_case`\n- **Description**: fetch a case.\n- **Inputs**: `rma_id`\n\n"
+                "### Record the decision on the case\n- **Description**: stores the outcome.\n")
+    gaps = _gaps_for(tmp_path, section6)
+    assert any("Record the decision on the case" in g for g in gaps), gaps
+
+
+def test_governed_example_section6_is_parsed():
+    spec = (REPO / "examples" / "returns-triage-governed" / "specs" / "SPEC.md").read_text()
+    names = action_mode.section6_tools(spec)
+    assert {"oms_get_order", "returns_get_case", "returns_list_open", "customer_get_profile",
+            "returns_apply_decision"} <= set(names), names
+
+
+def test_deploy_uses_the_shared_section6_parser():
+    sys.path.insert(0, str(REPO / "skills" / "threadlight-deploy" / "scripts"))
+    import generate_only
+    from skills._shared import spec_tool_contracts
+
+    assert generate_only._tool_subsections is spec_tool_contracts._tool_subsections
+    assert generate_only._consequences is spec_tool_contracts._consequences

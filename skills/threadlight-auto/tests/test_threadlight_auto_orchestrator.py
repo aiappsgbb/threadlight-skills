@@ -1950,3 +1950,13 @@ def test_inconsistent_recommend_only_design_routes_back_to_design(tmp_path):
     decision = orch._check_design(tmp_path, {})
     assert decision.decision == "run"
     assert "recommend-only" in decision.reason and "returns_record_recommendation" in decision.reason
+
+
+def test_recommend_only_plain_heading_write_routes_back_to_design(tmp_path):
+    _recommend_only_workspace(tmp_path)
+    spec = tmp_path / "specs/SPEC.md"
+    spec.write_text(spec.read_text().replace(
+        "## 11a.", "### returns_apply_decision\n- **Description**: persist the outcome.\n"
+        "- **Side Effects**: writes the case.\n\n## 11a."))
+    decision = orch._check_design(tmp_path, {})
+    assert decision.decision == "run" and "returns_apply_decision" in decision.reason

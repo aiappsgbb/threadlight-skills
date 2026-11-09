@@ -66,3 +66,14 @@ def test_predeploy_report_does_not_record_an_absolute_workspace_path(tmp_path):
     text = output.read_text()
     assert str(tmp_path) not in text
     assert json.loads(text)["repo"] == ".."
+
+
+def test_plain_heading_write_in_section6_is_an_action_mode_gap(tmp_path):
+    path = _project(tmp_path)
+    spec = tmp_path / "specs" / "SPEC.md"
+    spec.write_text(spec.read_text().replace(
+        "## 11. Security",
+        "### returns_apply_decision\n- **Description**: persist the outcome.\n- **Side Effects**: writes the case.\n\n"
+        "## 11. Security"))
+    gaps = _gaps(tmp_path, path)
+    assert [g for g in gaps if g.startswith("action-mode") and "returns_apply_decision" in g], gaps

@@ -119,3 +119,15 @@ def test_workshop_expects_a_recommendation_not_a_recorded_write():
     assert "recommend-only" in text
     assert "approve or reject it in the page" not in text
     assert re.search(r"proposes? the decision", text)
+
+
+def test_validator_rejects_a_plain_heading_write_in_a_recommend_only_workspace(tmp_path):
+    workspace = _workspace(tmp_path, write=False)
+    spec = workspace / "specs" / "SPEC.md"
+    spec.write_text(spec.read_text().replace(
+        "## 11. Security",
+        "### returns_apply_decision\n- **Description**: persist the outcome.\n- **Side Effects**: writes the case.\n\n"
+        "## 11. Security"))
+    result = _validate(workspace)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "returns_apply_decision" in result.stdout

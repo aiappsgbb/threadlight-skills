@@ -13,16 +13,12 @@ This is an offline design-consistency check, not runtime evidence.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 RECOMMEND_ONLY = "recommend-only"
 ACT = "act"
 ACTION_MODES = frozenset({RECOMMEND_ONLY, ACT})
 
-_SECTION6 = re.compile(r"^##\s*6\b[^\n]*\n(.*?)(?=^##\s+(?!6\b)\S|\Z)", re.M | re.S)
-_TOOL_HEADING = re.compile(r"^#{3,4}\s+`([A-Za-z_][A-Za-z0-9_]*)`", re.M)
-_TABLE_TOOL = re.compile(r"^\|\s*`([A-Za-z_][A-Za-z0-9_]*)`", re.M)
 
 
 def read_action_mode(workspace: Path) -> str | None:
@@ -47,14 +43,10 @@ def is_recommend_only(workspace: Path) -> bool:
 
 
 def section6_tools(spec: str) -> list[str]:
-    """Tool names SPEC § 6 exposes to the agent (``### `name` `` headings and table rows)."""
-    match = _SECTION6.search(spec)
-    block = match.group(1) if match else ""
-    names: list[str] = []
-    for name in [*_TOOL_HEADING.findall(block), *_TABLE_TOOL.findall(block)]:
-        if name not in names:
-            names.append(name)
-    return names
+    """Tool names SPEC § 6 exposes, parsed exactly as threadlight-deploy builds its MCP tool plan."""
+    from skills._shared.spec_tool_contracts import section6_inventory
+
+    return [tool["name"] for tool in section6_inventory(spec)["tools"]]
 
 
 def recommend_only_gaps(workspace: Path) -> list[str]:
@@ -91,8 +83,21 @@ def recommend_only_gaps(workspace: Path) -> list[str]:
             gaps.append(f"action-mode: recommend-only pilot exposes consequential tool {tool_id} "
                         f"({tool.get('consequence', 'unknown')}); move it to a human step (SPEC § 8) "
                         "or take the Production path with governance")
-    for name in section6_tools(spec_path.read_text(encoding="utf-8")):
-        if name not in reads and not any(name in gap for gap in gaps):
+    from skills._shared.spec_tool_contracts import section6_inventory
+
+    inventory = section6_inventory(spec_path.read_text(encoding="utf-8"))
+    for entry in inventory["unparsed"]:
+        # Fail closed: an entry the deploy parser cannot read could be a write.
+        gaps.append(f"action-mode: recommend-only pilot has a SPEC § 6 {entry} that is not a parseable "
+                    "tool contract; write it as `### `tool_name`` with its bullets, or move it out of § 6")
+    for tool in inventory["tools"]:
+        name = tool["name"]
+        if any(f" {name} " in f"{gap} " for gap in gaps):
+            continue
+        if tool["kind"] != "read" or name not in reads:
             gaps.append(f"action-mode: recommend-only pilot exposes SPEC § 6 tool {name} "
                         "that SPEC § 11a does not classify as a read")
+        elif tool.get("side_effects"):
+            gaps.append(f"action-mode: recommend-only pilot exposes SPEC § 6 tool {name} that declares a "
+                        f"side effect ({tool['side_effects'][:80]}); move it to a human step (SPEC § 8)")
     return gaps
