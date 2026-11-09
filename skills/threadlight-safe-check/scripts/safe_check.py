@@ -403,6 +403,14 @@ def _azure_yaml_builds(azure_text: str, src: str) -> bool:
                 or re.search(rf"^\s*path:\s*['\"]?(?:\./)?{s}/Dockerfile['\"]?\s*(?:#.*)?$", azure_text, re.MULTILINE))
 
 
+def _report_relative(repo: Path, out_path: Path) -> str:
+    """Workspace path as seen from the report, so no absolute home path lands in the pilot repo."""
+    try:
+        return Path(os.path.relpath(Path(repo).resolve(), Path(out_path).resolve().parent)).as_posix()
+    except ValueError:  # different drives on Windows
+        return Path(repo).name
+
+
 def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
     data = _load_manifest(manifest_path)
     dm = data["deployment_manifest"]
@@ -413,7 +421,7 @@ def phase_predeploy(repo: Path, manifest_path: Path, out_path: Path) -> int:
     governance = _governance_static(repo, data, manifest_path=manifest_path)
     gaps.extend(governance.get("gaps", []))
     gaps.extend(_action_mode_gaps(repo))
-    extra = {"repo": str(repo), **({"governance_health": governance} if governance else {})}
+    extra = {"repo": _report_relative(repo, out_path), **({"governance_health": governance} if governance else {})}
 
     if data.get("delivery_profile") == "presenter-ready":
         # This consumer validates its selected layout, not legacy Bicep/agent.yaml assumptions.

@@ -54,3 +54,15 @@ def test_recommend_only_pilot_exposing_a_write_is_an_action_mode_gap(tmp_path):
     gaps = _gaps(tmp_path, _project(tmp_path, write=True))
     assert [g for g in gaps if g.startswith("action-mode") and "returns_record_recommendation" in g], gaps
     assert not [g for g in gaps if g.startswith("governance")], gaps
+
+
+def test_predeploy_report_does_not_record_an_absolute_workspace_path(tmp_path):
+    """The report is written into the pilot repo; an absolute home path trips the
+    generate-only self-check secret scan (live run 2026-11-09)."""
+    path = _project(tmp_path)
+    output = tmp_path / "tests" / "safe-check-predeploy-manifest.json"
+    output.parent.mkdir()
+    safe_check.phase_predeploy(tmp_path, path, output)
+    text = output.read_text()
+    assert str(tmp_path) not in text
+    assert json.loads(text)["repo"] == ".."
