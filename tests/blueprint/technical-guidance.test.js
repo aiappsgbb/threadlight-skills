@@ -512,3 +512,21 @@ test('workshop runbook uses the measured minute budget, pre-session prep and a f
   assert.doesNotMatch(w, /15–25 min depending on region/);
   assert.doesNotMatch(w, /still inside the hour/);
 });
+
+test('workshop starts with the installed-plugin skill-order preflight and explains each status', () => {
+  const text = read(docs.workshop);
+  const w = text.replace(/\s+/g, ' ');
+  assert.match(text, /^### 2\.\d+ Preflight: skill order \(mandatory first step\)/m);
+  // Works from an installed plugin: the path comes from the runtime's own skill listing.
+  assert.ok(w.includes('copilot skill list --json'), 'path discovery via copilot skill list');
+  assert.ok(w.includes('skills/_shared/official_skills.py'), 'installed script path');
+  assert.ok(w.includes('~/.copilot/installed-plugins/'), 'documented install location');
+  for (const status of ['OK', 'ORDER', 'MISSING', 'DRIFT', 'NOTE', 'UNCHECKED']) {
+    assert.match(w, new RegExp(`\\*\\*${status}\\*\\*`), status);
+  }
+  assert.ok(w.includes('copilot plugin disable'), 'disable option');
+  assert.ok(w.includes('docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference'));
+  // It is the first thing in the room, before the design.
+  const runbook = text.slice(text.indexOf('## 3. Minute-by-minute runbook'));
+  assert.ok(runbook.indexOf('Preflight') > 0 && runbook.indexOf('Preflight') < runbook.indexOf('Design the use case live'));
+});

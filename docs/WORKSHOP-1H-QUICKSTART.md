@@ -64,14 +64,14 @@ These are single measurements. Your timings will vary with the model,
 network, region, quota and how long the design conversation runs. So prepare
 everything that is not the demo **before** the session.
 
-### T-24h — on every laptop that will drive the demo
+### 2.1 T-24h — on every laptop that will drive the demo
 
 - **Tools signed in:** Python 3.13 (3.10+ works for the Pattern 0 package per
   its `pyproject.toml`, but the rest of the chain pins 3.13), Git, GitHub CLI,
   Copilot CLI, Azure CLI with `az login` and Azure Developer CLI with
   `azd auth login`, both in the tenant you will deploy to.
 - **Plugins installed** in the right order (§4.1): threadlight-skills first,
-  then the official Azure plugins.
+  then the official Azure plugins, and the preflight (§2.2) reports `OK`.
 - **Azure OpenAI deployment** you can reach: have the **endpoint URL** and the
   **deployment name** copy-pastable. Pattern 0 uses `DefaultAzureCredential`
   (Entra), not an API key.
@@ -90,9 +90,45 @@ everything that is not the demo **before** the session.
   `azd provision` on the fallback workspace) so the in-room `azd up` only
   builds and deploys. Delete it when the workshop is over.
 
-### T-1h — first thing in the room
+### 2.2 Preflight: skill order (mandatory first step)
 
-Open Copilot CLI on the demo laptop and prompt:
+Run this right after installing the plugins, and again first thing in the
+room. Copilot CLI describes plugin skills within a prompt budget, in install
+order; when other skill-heavy plugins come first, the `threadlight-*` skills
+are listed by name only and workshop prompts can route to other skills
+(observed by Threadlight on CLI 1.0.91, see the README
+[install order](../README.md#companion-skills-official-first)). The installed
+plugin ships a checker. This one-liner finds it through the skills Copilot
+actually loads, whatever the install location
+(`~/.copilot/installed-plugins/<marketplace>/<plugin>` or
+`~/.copilot/installed-plugins/_direct/<source-id>`, per the
+[CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference#file-locations)):
+
+```bash
+python3 "$(copilot skill list --json | python3 -c 'import json, pathlib, sys
+rows = [r for r in json.load(sys.stdin) if r["name"].split(":")[-1] == "threadlight-auto"]
+print(pathlib.Path(rows[0]["path"]).parents[1] / "skills/_shared/official_skills.py" if rows else "threadlight-skills-not-installed")')"
+```
+
+If Python reports `can't open file '.../threadlight-skills-not-installed'`,
+threadlight-skills is not installed: do §4.1 first. Otherwise act on what the
+report says:
+
+| Status | Meaning | What to do |
+|---|---|---|
+| **OK** (exit 0) | Threadlight skills keep their descriptions; the pinned official skills resolve. | Continue. |
+| **ORDER** | Official plugins, or other plugins and personal skills listed before threadlight-skills, fill the description budget. | Run the printed fix: reinstall the named plugins **after** threadlight-skills, or disable the ones the workshop does not need with `copilot plugin disable <name>` (re-enable later with `copilot plugin enable <name>`). Personal skills in `~/.copilot/skills` count too. Start a new Copilot CLI session and re-run until ORDER is gone. |
+| **MISSING** | A pinned official skill is not installed or is disabled. | Run the printed `copilot plugin install` command. |
+| **DRIFT** | A different copy (for example an old personal copy) shadows the pinned official skill. | Update or remove that copy as printed. |
+| **NOTE** | Pinned content, resolved from a non-plugin copy. | Informational. |
+| **UNCHECKED** (exit 2) | `copilot skill list --json` could not run. | Check that `copilot` is on PATH and signed in, then re-run. |
+
+ORDER, MISSING and DRIFT make the report `DEGRADED` (exit 1). Do not start the
+design until it is OK, or the prompts may not reach the Threadlight skills.
+
+### 2.3 T-1h — first thing in the room
+
+Run the preflight (§2.2) on the demo laptop, then open Copilot CLI and prompt:
 
 > verify python 3.13, gh, az, azd and copilot CLI are installed and signed in, and tell me which tenant az is pointed at
 
@@ -107,8 +143,8 @@ The budget below uses the measured times, with the upper bound for design.
 | Minute | Block | What we do | Outcome on screen |
 |---|---|---|---|
 | **0–5** | Welcome + frame | Walk §1 together: what we'll build and the vocabulary heads-up. | Slide-less; just the doc. |
-| **5–8** | Check the setup | Run the T-1h prompt (§2). Plugins, logins and the AOAI deployment were prepared before the session. | Green tool output in Copilot CLI. |
-| **8–27** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` land. *If it's still in demo-deck / sales-kit generation past ~minute 22, interrupt with "skip demo and sales kit, move on".* **Fallback:** at minute 27, if the design is not finished, switch to the pre-designed workspace (§2) and continue. | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. |
+| **5–8** | Preflight + check the setup | Run the skill-order preflight (§2.2), then the T-1h prompt (§2.3). Plugins, logins and the AOAI deployment were prepared before the session. | `OK` from the preflight; green tool output in Copilot CLI. |
+| **8–27** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` land. *If it's still in demo-deck / sales-kit generation past ~minute 22, interrupt with "skip demo and sales kit, move on".* **Fallback:** at minute 27, if the design is not finished, switch to the pre-designed workspace (§2.1) and continue. | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. |
 | **27–33** | Pattern 0 + live demo | Prompts §4.3 and §4.4, then paste the killer prompts (§4.5) into `localhost:8501`. Watch the SPEC's own read tools (for example `returns_get_case`, `return_policy_search`) fire against the sample data and policy text. The agent proposes the decision with citations; recording it is your action, not the agent's (recommend-only pilot). | Streamlit chat: one cited recommendation per killer prompt. |
 | **33–37** | Generate the deploy package | Prompt §6.3 up to generate-only (Dockerfiles, `azure.yaml`, `infra/main.bicep`, evals). | `DEPLOY.md` and `specs/deferred-steps.md` on disk. |
 | **37–42** | Start `azd up` before Q&A | After scope/budget approval (§6.1), run `azd up` (§6.3). Keep the **Azure Portal resource group view** alongside Copilot CLI. | Provisioning and remote build progress. |
@@ -131,7 +167,8 @@ every tool call so you can see what's running.
 > install the threadlight-skills plugin from aiappsgbb/threadlight-skills first, then the official azure, azure-cost and foundry-iq-skills plugins from microsoft/azure-skills, then list my installed copilot plugins to confirm
 
 Install threadlight-skills before other skill-heavy plugins so its skills stay
-visible; see the README's [Install](../README.md#install) section. The optional
+visible; see the README's [Install](../README.md#install) section. Then run the
+preflight (§2.2) and act on its report. The optional
 `awesome-gbb` patterns are not needed for this workshop.
 
 ### 4.2 Design the use case live
