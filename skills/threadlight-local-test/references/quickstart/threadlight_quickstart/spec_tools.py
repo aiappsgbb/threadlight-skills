@@ -15,8 +15,9 @@ Pattern 0 also registers the read-only ``knowledge.TOOL_NAME``
 (``knowledge_search``) so the agent can read the policy instead of trying a
 skill script. threadlight-deploy generate_only serves the same tool name.
 
-Read tools never need approval. Write tools (section 11a ``consequence``, the
-section 5b Read/Write column, else the tool-name prefix) are registered with
+Read tools never need approval. Write tools (classified exactly like
+threadlight-deploy: section 11a ``consequence``, the section 5b Read/Write
+column, a declared section 6 side effect, else the tool-name prefix) are registered with
 ``approval_mode="always_require"``: a human approves each call (Streamlit
 buttons or ``--approve-tool``), and nothing approves them implicitly.
 
@@ -36,91 +37,37 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from . import _spec_tool_contracts as contracts
 from . import knowledge
 from .stub_tools import InMemoryStore
 
 log = logging.getLogger(__name__)
 
-READ_PREFIXES = ("get", "list", "query", "search", "find", "lookup", "fetch", "check", "read")
-KNOWLEDGE_BACKING = re.compile(r"foundry[\s-]*iq|knowledge[\s-]*base|ai[\s-]*search|search[\s-]*index", re.I)
 JSON_TYPES = {"string": "string", "str": "string", "text": "string", "int": "integer", "integer": "integer",
               "number": "number", "float": "number", "decimal": "number", "bool": "boolean", "boolean": "boolean"}
 
 
-def _section(spec: str, number: str) -> str:
-    m = re.search(rf"^##\s+{re.escape(number)}\b[^\n]*\n(.*?)(?=^##\s|\Z)", spec, re.M | re.S)
-    return m.group(1) if m else ""
-
-
-def _rows(block: str) -> list[list[str]]:
-    rows = []
-    for line in block.splitlines():
-        line = line.strip()
-        if line.startswith("|"):
-            cells = [c.strip() for c in line.strip("|").split("|")]
-            if not all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
-                rows.append(cells)
-    return rows
-
-
-def _consequences(spec: str) -> dict[str, str]:
-    kinds: dict[str, str] = {}
-    for row in _rows(_section(spec, "5b")):
-        names = re.findall(r"`([A-Za-z_]\w*)`", row[0])
-        modes = [c.upper() for c in row[1:] if c.strip().upper() in {"R", "W", "READ", "WRITE", "R/W"}]
-        if names and modes:
-            kinds[names[0]] = "read" if modes[0] in {"R", "READ"} else "write"
-    sec11a = re.search(r"^#{2,4}\s*11a\b[^\n]*\n(.*?)(?=^#{2,4}\s*11[b-z]\b|^##\s+\d|\Z)", spec, re.M | re.S)
-    if sec11a:
-        for item in re.split(r"^\s*-\s+(?=id:)", sec11a.group(1), flags=re.M)[1:]:
-            ident = re.match(r"id:\s*[\"']?([A-Za-z_]\w*)", item)
-            cons = re.search(r"^\s*consequence:\s*[\"']?([A-Za-z_-]+)", item, re.M)
-            if ident and cons:
-                kinds[ident.group(1)] = "read" if cons.group(1).lower().startswith("read") else "write"
-    return kinds
-
-
 def parse_spec_tools(spec: str) -> list[dict[str, Any]]:
-    """SPEC section 6 as ``[{name, description, args, kind, knowledge}]`` in SPEC order."""
-    block = _section(spec, "6")
-    kinds = _consequences(spec)
-    plan: dict[str, dict[str, Any]] = {}
-    for m in re.finditer(r"^#{3,4}\s+`([A-Za-z_]\w*)`[^\n]*\n(.*?)(?=^#{2,4}\s|\Z)", block, re.M | re.S):
-        name, body = m.group(1), m.group(2)
-        desc = re.search(r"^\s*[-*]\s*\*\*Description\*\*\s*:?\s*(.+)$", body, re.M | re.I)
-        backed = re.search(r"^\s*[-*]\s*\*\*Backed\s+by\*\*\s*:?\s*(.+)$", body, re.M | re.I)
-        args = []
-        table = _rows(body)
-        if table and "param" in table[0][0].lower():
-            header = [h.lower() for h in table[0]]
-            i_type = next((i for i, h in enumerate(header) if "type" in h), 1)
-            i_req = next((i for i, h in enumerate(header) if "required" in h), None)
-            for row in table[1:]:
-                arg = re.sub(r"[^\w]", "", row[0])
-                if not arg:
-                    continue
-                raw = row[i_type].strip("` ").lower() if i_type < len(row) else "string"
-                required = i_req is None or (i_req < len(row) and row[i_req].strip().lower().startswith("y"))
-                args.append({"name": arg, "type": raw, "required": required})
-        plan[name] = {"name": name, "description": (desc.group(1).strip() if desc else ""), "args": args,
-                      "knowledge": bool(backed and KNOWLEDGE_BACKING.search(backed.group(1)))}
-    for row in _rows(block):
-        names = re.findall(r"`([A-Za-z_]\w*)`", row[0])
-        if names and names[0] not in plan and "tool" not in row[0].lower():
-            ticked = re.findall(r"`([A-Za-z_]\w*)`", row[1]) if len(row) > 1 else []
-            plan[names[0]] = {"name": names[0], "description": row[-1].strip("` "), "knowledge": False,
-                              "args": [{"name": a, "type": "string", "required": True} for a in ticked]}
-    for tool in plan.values():
-        if tool["name"] in kinds:
-            tool["kind"] = kinds[tool["name"]]
-        elif tool["knowledge"] or tool["name"].split("_")[0] in READ_PREFIXES or any(
-                part in READ_PREFIXES for part in tool["name"].split("_")[1:2]):
-            tool["kind"] = "read"
-        else:
-            tool["kind"] = "write"
-        if tool["knowledge"] and tool["kind"] != "read":
-            tool["knowledge"] = False
-    return list(plan.values())
+    """SPEC section 6 as ``[{name, description, args, kind, knowledge}]`` in SPEC order.
+
+    Parsing and read/write classification are threadlight-deploy's own
+    (``_spec_tool_contracts.py``, a byte-identical copy of
+    ``skills/_shared/spec_tool_contracts.py``): a tool Pattern 0 shows as a read
+    is a read in the deployed MCP server too, and a declared side effect makes
+    a read-named tool a write.
+    """
+    try:
+        plan = contracts.tools(spec)
+    except contracts.SpecToolsError:
+        return []
+    return [{
+        "name": tool["name"],
+        "description": tool.get("description", ""),
+        "kind": tool["kind"],
+        "knowledge": bool(tool.get("knowledge")),
+        "args": [{"name": arg["name"], "type": arg.get("type", "str"), "required": not arg.get("optional")}
+                 for arg in tool.get("args") or []],
+    } for tool in plan]
 
 
 def _schema(args: list[dict[str, Any]]) -> dict[str, Any]:

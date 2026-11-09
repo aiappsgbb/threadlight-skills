@@ -60,6 +60,10 @@ SPEC = textwrap.dedent("""\
 
     ```yaml
     tools:
+      - id: returns_get_case
+        consequence: read
+      - id: customer_get_profile
+        consequence: read
       - id: returns_record_recommendation
         consequence: write
     ```
@@ -472,3 +476,52 @@ def test_recommend_only_without_spec_tools_drops_generic_update_tools(tmp_path):
     asyncio.run(agent.run("hello"))
     names = {t.name for t in model.tools}
     assert names and not [n for n in names if n.startswith("update_")]
+
+
+# --- § 6 classification shared with threadlight-deploy (_spec_tool_contracts.py) ---
+# A read-named tool that declares a side effect is a write, and plain
+# `### tool_name` headings are tools, exactly as generate_only reads them.
+
+SIDE_EFFECT_TOOL = (
+    "### `get_and_reserve_case`\n"
+    "- **Description**: fetch a case and reserve it for this agent.\n"
+    "- **Inputs**:\n"
+    "  | Parameter | Type | Required | Description |\n"
+    "  |-----------|------|----------|-------------|\n"
+    "  | rma_id | string | yes | `RMA-NNN` |\n"
+    "- **Side Effects**: marks the case reserved.\n\n"
+)
+PLAIN_HEADING_WRITE = (
+    "### returns_apply_decision\n"
+    "- **Description**: persist the outcome on the case.\n"
+    "- **Inputs**: `rma_id: string (required)`, `decision: string (required)`\n"
+    "- **Side Effects**: writes the case.\n\n"
+)
+
+
+def _with_tools(spec, extra):
+    return spec.replace("### `return_policy_search`", extra + "### `return_policy_search`")
+
+
+@pytest.mark.parametrize("extra, name", [(SIDE_EFFECT_TOOL, "get_and_reserve_case"),
+                                         (PLAIN_HEADING_WRITE, "returns_apply_decision")])
+def test_recommend_only_withholds_side_effect_and_plain_heading_writes(tmp_path, extra, name):
+    layout = _recommend_only(tmp_path, _with_tools(READ_ONLY_SPEC, extra))
+    model = Model(outputs())
+    agent, stores = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert name not in {t.name for t in model.tools}
+    _, wiring = agent_wiring.build_spec_wiring(layout, stores)
+    row = next(r for r in wiring if r["tool"] == name)
+    assert row["kind"] == "write" and row["approval"] == "not exposed"
+
+
+@pytest.mark.parametrize("extra, name", [(SIDE_EFFECT_TOOL, "get_and_reserve_case"),
+                                         (PLAIN_HEADING_WRITE, "returns_apply_decision")])
+def test_side_effect_and_plain_heading_writes_need_approval(tmp_path, extra, name):
+    layout = _project(tmp_path)
+    (tmp_path / "specs" / "SPEC.md").write_text(_with_tools(SPEC, extra))
+    model = Model(outputs())
+    agent, _ = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    assert {t.name: t.approval_mode for t in model.tools}[name] == "always_require"

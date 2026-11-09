@@ -243,10 +243,14 @@ agent reads the policy instead of trying a skill script. `threadlight-deploy`
 `generate_only` serves the same tool from the generated MCP server and lists it
 in `specs/deferred-steps.md` until Foundry IQ is provisioned.
 
-**Approvals.** Read tools (§ 11a `consequence: read`, § 5b `R`, knowledge
-tools, else a read verb in the name) are registered with
-`approval_mode="never_require"`. Write tools use `always_require`: nothing
-approves them implicitly.
+**Approvals.** Pattern 0 parses and classifies SPEC § 6 exactly like
+`threadlight-deploy` (a byte-identical copy of
+`skills/_shared/spec_tool_contracts.py`, checked by a repository test). Read
+tools (§ 11a `consequence: read`, § 5b `R`, knowledge tools, else a name that
+starts with a read verb such as `get_`) are registered with
+`approval_mode="never_require"`; a § 6 **Side Effects** other than `none` makes
+any tool without a § 11a/§ 5b classification a write. Write tools use
+`always_require`: nothing approves them implicitly.
 
 **Recommend-only pilots.** When `specs/manifest.json` declares
 `"action_mode": "recommend-only"` (the threadlight-design Fast-PoC default),
