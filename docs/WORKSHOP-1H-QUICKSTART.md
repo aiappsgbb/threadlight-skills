@@ -1,11 +1,10 @@
 # 1-Hour Workshop — Threadlight Quickstart
 
-> **Outcome by minute 60:** the Copilot plugins installed, a retail
-> returns-triage PoC **designed from scratch** in the room, running locally
-> against your own Azure OpenAI deployment, killer demo prompts answered live
-> on screen, and `threadlight-deploy` + `azd up` kicked off to Azure —
-> the longest single step, but still inside the hour, with provisioning
-> progress visible in the Azure Portal while you wrap up Q&A.
+> **Outcome by minute 60:** a retail returns-triage PoC **designed live** in
+> the room (or the prepared design if that overruns), running locally against
+> your own Azure OpenAI deployment with killer prompts answered on screen, the
+> deploy package generated, and `azd up` running or finished. The Foundry
+> evaluation and the evidence record finish **after the session**.
 
 The workshop runs through **Copilot CLI prompts** — the skills do the work
 (installs, env files, process management, deploys). You watch the tool calls
@@ -16,7 +15,7 @@ fly past; you don't type shell commands.
 ## Contents
 
 1. [What we'll build](#1-what-well-build)
-2. [Pre-flight checklists](#2-pre-flight-checklists)
+2. [Before the session](#2-before-the-session)
 3. [Minute-by-minute runbook](#3-minute-by-minute-runbook)
 4. [Prompt appendix](#4-prompt-appendix)
 5. [Recovery prompts](#5-recovery-prompts)
@@ -48,33 +47,54 @@ engineer building and shipping a PoC — is what you're doing in this hour.
 
 ---
 
-## 2. Pre-flight checklists
+## 2. Before the session
 
-### T-24h — verify before the workshop
+The whole chain does not fit in one hour. Measured on 2026-11-06/07 with
+Copilot CLI 1.0.105, Claude Opus 5.5 (medium reasoning) and this
+returns-triage scenario:
 
-You'll need the following installed and signed in on the laptop you'll use
-in the session:
+| Step | Measured |
+|---|---|
+| `threadlight-design` Fast-PoC (questions, SPEC, skills, data, prompts) | 16–19 min |
+| `threadlight-local-test` Pattern 0 setup + killer prompts | 4–6 min |
+| `threadlight-deploy` generate-only | 1–4 min |
+| Live: `azd up` (~5 min) + cloud killer prompts + Foundry eval of 28 rows (15–20 min) + evidence record | ~33 min |
 
-- **Python 3.13.** (3.10+ works for the Pattern 0 package per its
-  `pyproject.toml`, but the rest of the chain pins 3.13.)
-- **GitHub CLI** and signed in.
-- **Azure CLI** and signed in to a tenant where you have an AOAI deployment.
-- **Copilot CLI** — this is the primary surface for the workshop.
+These are single measurements. Your timings will vary with the model,
+network, region, quota and how long the design conversation runs. So prepare
+everything that is not the demo **before** the session.
+
+### T-24h — on every laptop that will drive the demo
+
+- **Tools signed in:** Python 3.13 (3.10+ works for the Pattern 0 package per
+  its `pyproject.toml`, but the rest of the chain pins 3.13), Git, GitHub CLI,
+  Copilot CLI, Azure CLI with `az login` and Azure Developer CLI with
+  `azd auth login`, both in the tenant you will deploy to.
+- **Plugins installed** in the right order (§4.1): threadlight-skills first,
+  then the official Azure plugins.
 - **Azure OpenAI deployment** you can reach: have the **endpoint URL** and the
-  **deployment name** copy-pastable. The skill uses `DefaultAzureCredential`
-  (Entra), not an API key — no secret handling.
-- **Git** + an editor of your choice.
+  **deployment name** copy-pastable. Pattern 0 uses `DefaultAzureCredential`
+  (Entra), not an API key.
 - **Python packages reachable.** Pattern 0 installs `agent-framework` and
   `streamlit` from PyPI. Corporate laptops often block public PyPI: test one
   install the day before, and if it is blocked use the approved package
   mirror or proxy your organisation provides, for that install only. Do not
   change global pip/uv settings or disable security controls in the room.
+- **Deployment approval** for the subscription, resource group, identity, model
+  cost and cleanup owner (§6.1).
+- **Fallback workspace.** Run the design once (§4.2) and commit the result as a
+  **pre-designed workspace** (for example a branch or a zip of
+  `~/Repos/workshop/returns-triage`). If the live design overruns, the room
+  continues from it.
+- **Optional: pre-provision** the Azure environment the day before (§6.2, then
+  `azd provision` on the fallback workspace) so the in-room `azd up` only
+  builds and deploys. Delete it when the workshop is over.
 
 ### T-1h — first thing in the room
 
 Open Copilot CLI on the demo laptop and prompt:
 
-> verify python 3.13, gh, az and copilot CLI are installed and signed in, and tell me which tenant az is pointed at
+> verify python 3.13, gh, az, azd and copilot CLI are installed and signed in, and tell me which tenant az is pointed at
 
 If anything's red, fix it now — don't try to fix it inside the runbook.
 
@@ -82,23 +102,21 @@ If anything's red, fix it now — don't try to fix it inside the runbook.
 
 ## 3. Minute-by-minute runbook
 
+The budget below uses the measured times, with the upper bound for design.
+
 | Minute | Block | What we do | Outcome on screen |
 |---|---|---|---|
 | **0–5** | Welcome + frame | Walk §1 together: what we'll build and the vocabulary heads-up. | Slide-less; just the doc. |
-| **5–10** | Validate prereqs | Run the T-1h prompt (§2). | Green tool output in Copilot CLI. |
-| **10–15** | Install the plugins | Prompt §4.1. | Plugin list shows threadlight-skills, then the official azure plugins. |
-| **15–30** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` stream to disk. Read them together as they land. *If it's still in demo-deck / sales-kit generation past ~minute 25, interrupt with "skip demo and sales kit, move on" to protect the budget.* | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. Deployment artifacts (Dockerfile, `azure.yaml`, `infra/main.bicep`) come later from `threadlight-deploy` — §6. |
-| **30–40** | Pattern 0 bootstrap | Prompt §4.3 with your AOAI endpoint + deployment. | Two clean exits (`--info`, `--check`). `--check` shows the project's `AGENTS.md` as instructions and the SPEC § 6 tools with their backing (design mock server, local policy search) and approval mode. |
-| **40–55** | Live demo on `localhost:8501` | Prompt §4.4, then paste each killer prompt from `tests/killer-prompts.md` (§4.5) into the browser in order. Watch the trace: the SPEC's own tools (for example `returns_get_case`, `return_policy_search`) fire against the sample data and policy text. The agent proposes the decision with citations; recording it is your action, not the agent's (recommend-only pilot). | Streamlit chat. One answer per killer prompt — same agent, different signals in, different outcomes per branch. |
-| **55–60** | Kick off approved `threadlight-deploy` + `azd up` + Q&A | Run §6 after scope/budget approval. Keep the **Azure Portal resource group view** alongside Copilot CLI. Point to the separate governance/readiness follow-up, not a governed-by-deployment claim. | Deployment progress; smoke testing may finish after the hour. |
+| **5–8** | Check the setup | Run the T-1h prompt (§2). Plugins, logins and the AOAI deployment were prepared before the session. | Green tool output in Copilot CLI. |
+| **8–27** | Design the use case live | Prompt §4.2. Watch Copilot CLI invoke `threadlight-design` Fast-PoC, answer its setup questions live, and watch `specs/SPEC.md`, `AGENTS.md`, `src/agent/skills/`, `specs/sample-data/`, and `tests/killer-prompts.md` land. *If it's still in demo-deck / sales-kit generation past ~minute 22, interrupt with "skip demo and sales kit, move on".* **Fallback:** at minute 27, if the design is not finished, switch to the pre-designed workspace (§2) and continue. | A fresh `returns-triage` PoC: SPEC + AGENTS.md, agent skill folders, JSON sample-data, killer demo prompts. |
+| **27–33** | Pattern 0 + live demo | Prompts §4.3 and §4.4, then paste the killer prompts (§4.5) into `localhost:8501`. Watch the SPEC's own read tools (for example `returns_get_case`, `return_policy_search`) fire against the sample data and policy text. The agent proposes the decision with citations; recording it is your action, not the agent's (recommend-only pilot). | Streamlit chat: one cited recommendation per killer prompt. |
+| **33–37** | Generate the deploy package | Prompt §6.3 up to generate-only (Dockerfiles, `azure.yaml`, `infra/main.bicep`, evals). | `DEPLOY.md` and `specs/deferred-steps.md` on disk. |
+| **37–42** | Start `azd up` before Q&A | After scope/budget approval (§6.1), run `azd up` (§6.3). Keep the **Azure Portal resource group view** alongside Copilot CLI. | Provisioning and remote build progress. |
+| **42–60** | Q&A, then cloud smoke test | Q&A while `azd up` runs (~5 min measured). When it finishes, run the killer prompts against the cloud agent (§6.4). Point to the Production path (§6.5): governance is a separate track. | Cloud answers on screen; the Foundry eval (15–20 min) and the evidence record run **after the session**. |
 
-`threadlight-deploy` + `azd up` is the **longest single step** (15–25 min
-depending on region and remote-build cache state); only its kickoff is budgeted
-inside this hour. Completion and cloud smoke testing may extend beyond minute 60.
-The Copilot CLI shows tool calls; the **Azure Portal resource group view**
-shows provisioning progress in real time — keep both visible. The agent
-is reachable for cloud-side smoke tests (§6.4) once the hosted-agent
-container finishes building.
+If the hour is shorter than planned, cut in this order: the cloud smoke test
+(run it after the session), then the live design (use the pre-designed
+workspace from minute 8).
 
 ---
 
@@ -207,9 +225,9 @@ install it (~3 min). Say no — the artifact doesn't need a real render.
 
 ## 6. Deploy to Azure: `azd up`
 
-Kick this off in the closing minutes of the workshop (or run standalone
-after the session). The Copilot CLI surface is the same as the rest of
-the workshop — prompts in, tool calls flying past. **Keep the Azure Portal
+Generate the package at minute 33 and start `azd up` before Q&A (§3); the
+Foundry evaluation runs after the session. The Copilot CLI surface is the same
+as the rest of the workshop — prompts in, tool calls flying past. **Keep the Azure Portal
 resource group view open in a second tab** so you can watch provisioning
 fill in live while `azd` runs.
 
@@ -228,9 +246,15 @@ fill in live while `azd` runs.
 
 ### 6.3 Deploy
 
+Generate the package first (measured 1–4 min):
+
+> use the threadlight-deploy skill in generate-only mode on ~/Repos/workshop/returns-triage, without --force, then stop and show me DEPLOY.md
+
+Then start the deployment (measured `azd up` ~5 min):
+
 > use the threadlight-deploy skill to azd up ~/Repos/workshop/returns-triage to azure
 
-The skill first runs generate-only on the design workspace, without `--force`.
+The skill runs generate-only on the design workspace, without `--force`.
 It keeps the design's `src/mcp/server.py` byte-identical and adds only the
 pinned packaging around it. A recommend-only pilot is packaged without a write tool and without a
 governance gap; generate-only refuses (exit 6) a recommend-only SPEC that still
@@ -243,13 +267,21 @@ Provisions the resource group, creates the Foundry account + project, builds
 and deploys the MCP Container App, builds the hosted-agent container remotely,
 and resolves `${SERVICE_MCP_FQDN}` into the agent environment.
 
-Expect ~3 min of `threadlight-tenant-isolation` handshake (tenant index lookup,
-subscription assertion, `AZURE_CONFIG_DIR` setup) **before** provisioning
-actually starts. That's the safety gate, not a hang.
+If the skill first runs the `threadlight-tenant-isolation` handshake (tenant
+index lookup, subscription assertion, `AZURE_CONFIG_DIR` setup) before
+provisioning starts, that's the safety gate, not a hang.
 
 ### 6.4 Smoke test
 
 > run the killer prompts from ~/Repos/workshop/returns-triage/tests/killer-prompts.md against the deployed returns-triage agent — same prompts, now hitting the cloud agent over the Invocations protocol
+
+After the session, run the Foundry evaluation (28 rows measured at 15–20 min)
+and record the evidence:
+
+> in ~/Repos/workshop/returns-triage, follow DEPLOY.md to record the deploy evidence (scripts/record_deploy_evidence.py with the trace id) and run python evals/run_evals.py, then summarise the eval run id, the rubric score and anything still missing
+
+When you are done, delete the resource group you created (or hand it to its
+cleanup owner); do not leave the pilot running unattended.
 
 ### 6.5 Selected-binding governance and production follow-ups
 

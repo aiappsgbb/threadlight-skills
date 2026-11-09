@@ -488,3 +488,27 @@ test('workshop design-to-deploy chain documents ownership, Learn-verified hostin
   assert.doesNotMatch(workshop, /packagefeedproxy|pkgs\.dev\.azure\.com/);
   assert.match(w, /without `--force`/);
 });
+
+test('workshop runbook uses the measured minute budget, pre-session prep and a fallback path', () => {
+  const text = read(docs.workshop);
+  const w = text.replace(/\s+/g, ' ');
+  // Measured on 2026-11-06/07, Copilot CLI 1.0.105, Opus 5.5 medium, returns-triage.
+  for (const marker of ['2026-11-06', 'Copilot CLI 1.0.105', 'Opus 5.5', 'medium']) {
+    assert.ok(w.includes(marker), marker);
+  }
+  for (const [step, range] of [['threadlight-design', '16–19 min'], ['Pattern 0', '4–6 min'],
+    ['generate-only', '1–4 min'], ['azd up', '~5 min'], ['eval', '15–20 min'], ['live', '~33 min']]) {
+    assert.ok(w.includes(step) && w.includes(range), `${step} ${range}`);
+  }
+  assert.match(w, /will vary/i);
+  assert.match(text, /^## \d+\. Before the session/m);
+  for (const marker of ['az login', 'azd auth login', 'plugin', 'pre-designed workspace', 'pre-provision']) {
+    assert.ok(w.includes(marker), marker);
+  }
+  assert.match(w, /[Ff]allback/);
+  assert.match(w, /eval[^.]*after the session/i);
+  assert.match(w, /before Q&A/i);
+  // The old promise that everything fits the hour is gone.
+  assert.doesNotMatch(w, /15–25 min depending on region/);
+  assert.doesNotMatch(w, /still inside the hour/);
+});
