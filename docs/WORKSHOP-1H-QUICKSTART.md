@@ -133,10 +133,9 @@ may use **Copilot Fusion** instead of pinning one model:
 [Copilot Fusion](https://docs.github.com/en/copilot/concepts/models/copilot-fusion)
 is a runtime router that picks the models and execution pattern for each
 request. It is generally available in Copilot CLI and the GitHub Copilot app.
-**Fusion Standard** is available on every Copilot plan and suits the guided
-steps; **Fusion High** (and Fusion Max) are available on Copilot Pro+,
-Copilot Max, Copilot Business and Copilot Enterprise, for harder steps such as
-a design that needs rework.
+**Fusion Standard** is available on every Copilot plan; **Fusion High** (and
+Fusion Max) are available on Copilot Pro+, Copilot Max, Copilot Business and
+Copilot Enterprise. The comparison below shows where each fits this chain.
 
 - **Copilot CLI:** enter `/model` and choose **Copilot Fusion** with an effort
   level, or start with `copilot --model fusion --fusion-tier standard`
@@ -146,9 +145,24 @@ a design that needs rework.
   **Copilot Fusion** switch on and choose the effort level
   ([Choosing a model in the Copilot app](https://docs.github.com/en/copilot/how-tos/github-copilot-app/choose-a-model)).
 
-The Threadlight chain has not been measured with Copilot Fusion: expect
-different timings and results, and make no claim about AI credits. Fusion
-bills each model it uses at that model's rate, and Fusion High or Max can use
+We ran a small comparison on the returns-triage brief in November 2026: two
+design runs per setting and one live deploy run per setting, all on the same
+laptop. It is not a benchmark, and AI credit totals depend on your plan and
+the models Fusion picks, so treat the numbers as an order of magnitude.
+
+| Step | Claude Opus 5.5, medium | Fusion Standard | Fusion High |
+|---|---|---|---|
+| Design | ~17 min, ~600 credits; both designs clean | ~18 min, ~20 credits; thinner evals, some wrong expected outcomes, deploy-owned files that stop generate-only | ~60 min, ~1,800–2,750 credits; deploy-owned files |
+| Live deploy of the same design | 33 min, ~400 credits | 48 min, ~25 credits | not run |
+
+- **Design:** use Claude Opus 5.5 at medium. This is where the pilot's quality is
+  decided, and the Fusion Standard designs needed rework before deploy.
+- **Deploy:** Fusion Standard is a reasonable choice when credits are short: it
+  completed the same live chain (killer prompts, Foundry evaluation, package
+  gate) with no hand edits, at the cost of a longer run.
+- Avoid Fusion High for this chain: it was slower and used more AI credits than Opus.
+
+Fusion bills each model it uses at that model's rate, and Fusion High or Max can use
 more than one model per task. Per the docs, Copilot Fusion works separately from
 subagents and doesn't start them, and edits made by a draft it discards are not
 undone automatically, so review the workspace before you commit it.
