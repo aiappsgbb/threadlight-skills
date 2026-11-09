@@ -7,6 +7,15 @@ field.
 
 ## [Unreleased]
 
+### 2.27.0: smaller payload: uncited planning history moved to git history
+
+- **Design history trimmed.** `docs/superpowers/` kept 44 dated specs and plans
+  (about 36.5k lines) that shipped with every plugin install. Only the six
+  records that current skills, tests or docs still cite remain; the rest live in
+  git history, and `docs/superpowers/README.md` points to the last commit that
+  holds them all. A blueprint test now fails if an uncited record is added back.
+  No skill, generator or runtime behaviour changes.
+
 ### 2.26.0: workshop readiness: recommend-only Fast-PoC, honest runbook, Copilot Fusion note
 
 - **Recommend-only Fast-PoC.** A Fast-PoC design now records
