@@ -3,7 +3,7 @@
 - **Status:** threadlight-owned. Threadlight maintains this copy; it is not synchronised with the source.
 - **Source:** `aiappsgbb/awesome-gbb` commit [`7f1de882d5386e5a27852c91d3a89523eef218d0`](https://github.com/aiappsgbb/awesome-gbb/tree/7f1de882d5386e5a27852c91d3a89523eef218d0/skills/foundry-mcp-aca), path `skills/foundry-mcp-aca/`, source version 2.0.0.
 - **Why ported:** no skill in the official `azure@azure-skills` plugin (microsoft/azure-skills `v1.2.77`, commit `74f27068b21b85807e35ae69ab3976756b060c03`) covers MCP servers on Azure Container Apps; the evidence is recorded in `skills/_shared/skill-dependencies.json`.
-- **Changes at port:** renamed; frontmatter rewritten (Threadlight-owned name, description and routing); sibling-skill references rewritten to Threadlight or official azure-skills equivalents; the awesome-gbb CI consumer fixture (`test-fixture/`, bound to awesome-gbb CI resources) was not ported. Since 2.30.0 its ownership/cleanup helpers (`references/python/fixture_ownership.py`, `references/bash/fixture_cleanup_guard.sh`) are not shipped either: only that fixture executed them.
+- **Changes at port:** renamed; frontmatter rewritten (Threadlight-owned name, description and routing); sibling-skill references rewritten to Threadlight or official azure-skills equivalents; the awesome-gbb CI consumer fixture (`test-fixture/`, bound to awesome-gbb CI resources) was not ported. Since 2.29.0 its ownership/cleanup helpers (`references/python/fixture_ownership.py`, `references/bash/fixture_cleanup_guard.sh`) are not shipped either: only that fixture executed them.
 
 ## Licence of the source
 
