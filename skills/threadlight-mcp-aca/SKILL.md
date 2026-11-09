@@ -14,7 +14,7 @@ description: >-
   foundry-mcp-aca-jobs), local MCP development, general Azure deploy (use
   azure-deploy).
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
   provenance: "awesome-gbb@7f1de882 (MIT) — see PROVENANCE.md"
 ---
 > **📦 This skill is for MCP server PRODUCERS (deploying servers to ACA).** If you want to CONSUME an existing MCP server from a Foundry hosted agent, see [threadlight-deploy/references/hosted-agent/maf](../threadlight-deploy/references/hosted-agent/maf/README.md) § MCP Tools or [microsoft-foundry](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry) § Learn MCP. If the MCP server should hand work to an ACA Job, use the residual awesome-gbb GBB pattern [foundry-mcp-aca-jobs](https://github.com/aiappsgbb/awesome-gbb/blob/7f1de882d5386e5a27852c91d3a89523eef218d0/skills/foundry-mcp-aca-jobs/SKILL.md) instead (not ported; optional).
@@ -407,26 +407,9 @@ Azure Functions use HTTP Streamable transport by default.
 
 Build a custom Docker image with your MCP tools and deploy as ACA.
 
-**CI fixture cleanup:** shared infrastructure is never the teardown target.
-The fixture uses
-[`fixture_ownership.py`](references/python/fixture_ownership.py) to record
-pre-create absence and a unique run tag, capture the exact app receipt, and
-delete only that app after a fresh ownership/context check. The
-[`failure guard`](references/bash/fixture_cleanup_guard.sh) runs cleanup on
-intermediate shell failures without masking their exit status. Unknown creates
-are reconciled by exact ID, not replayed. Image/deployment artifacts without
-proven custody remain explicit inventory residuals; a prefix is not ownership
-and a shared registry/repository must not be deleted to clean one image.
-The cleanup fix has offline transport/shell coverage. A scoped manual check
-on 2026-09-25 exercised the real helper with one new UUID-tagged MCR-placeholder
-app through `azd provision`: the app was removed, and the separately proven
-owned deployment-history record was deleted without touching shared resources.
-No image was built or pushed. An unclassified post-delete 404 was not treated
-as absence; a later typed ARM read confirmed removal. The helper now records
-and re-observes that ambiguous post-delete response within its existing bound,
-without reissuing DELETE. This is not proof of the full MCP `azd up`/auth flow;
-the revised fixture still needs that live run before release. Pattern 25
-separates functional CI results from cleanup reporting, not from safety.
+**Teardown:** shared infrastructure is never the teardown target. Delete only
+resources this deployment created and can prove it owns (exact resource ID,
+not a name prefix); never delete a shared registry or repository to clean one image.
 
 ### Example: Playwright MCP on ACA
 

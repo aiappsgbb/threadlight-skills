@@ -386,3 +386,15 @@ def test_live_prose_pointers_to_ported_references_name_an_existing_section():
                 if not ok:
                     broken.append(f"{rel}:{n} no heading for '{(m.group(3) or m.group(4))[:60]}' in {target.relative_to(SKILLS)}")
     assert not broken, broken
+
+
+def test_ported_skills_ship_no_helpers_for_unported_upstream_ci_fixtures():
+    """The awesome-gbb MCP-on-ACA CI consumer fixture was not ported, so the
+    ownership/cleanup helpers only that fixture executed have no Threadlight caller."""
+    mcp = SKILLS / "threadlight-mcp-aca"
+    assert not (mcp / "references/python/fixture_ownership.py").exists()
+    assert not (mcp / "references/bash/fixture_cleanup_guard.sh").exists()
+    assert "CI fixture cleanup" not in (mcp / "SKILL.md").read_text(encoding="utf-8")
+    for root in PORTED_SKILLS.values():
+        for path in _port_text_files(root):
+            assert "GITHUB_WORKSPACE" not in path.read_text(encoding="utf-8", errors="replace"), path

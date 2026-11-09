@@ -7,6 +7,20 @@ field.
 
 ## [Unreleased]
 
+### 2.29.0: awesome-gbb ports stay Threadlight-owned; orphaned MCP fixture helpers removed
+
+- **Ownership kept.** `threadlight-citadel-hub`, `threadlight-citadel-spoke`,
+  `threadlight-tenant-isolation` and `threadlight-mcp-aca` stay Threadlight-owned
+  ports, not pointers to awesome-gbb: the dependency policy keeps Threadlight
+  running on `azure@azure-skills` plus threadlight-skills only, and
+  `test_threadlight_owned_ports.py` enforces that routing. A diff against the
+  current awesome-gbb sources showed only the port-time renames and Threadlight
+  fixes, so no other content was removed.
+- **Removed.** `threadlight-mcp-aca` no longer ships `fixture_ownership.py` and
+  `fixture_cleanup_guard.sh`. Only the awesome-gbb CI consumer fixture executed
+  them, and that fixture was never ported. The SKILL.md paragraph that described
+  it is replaced by the general teardown rule (skill version 2.0.1).
+- Plugin and marketplace version 2.30.0.
 ### 2.28.0: workshop model choice backed by a small measured comparison
 
 - **Copilot Fusion guidance.** `docs/WORKSHOP-1H-QUICKSTART.md` § 2.3 now reports
@@ -15,6 +29,7 @@ field.
   Standard is a reasonable deploy choice when credits are short (same live chain,
   no hand edits, longer run); avoid Fusion High for this chain. The note says it
   is not a benchmark.
+||||||| parent of 09b87617 (2.30.0: keep awesome-gbb ports Threadlight-owned; drop orphaned MCP fixture helpers)
 
 ### 2.27.0: smaller payload: uncited planning history moved to git history
 
