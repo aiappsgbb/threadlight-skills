@@ -45,6 +45,15 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
+// Core SKILL.md plus the references moved out of it verbatim (marked "moved out of the core").
+const readDeployCorpus = () => {
+  const core = read('skills/threadlight-deploy/SKILL.md');
+  const refs = [...new Set([...core.matchAll(/\]\((references\/[^)#\s/]+\.md)/g)].map((m) => m[1]))]
+    .map((rel) => read(`skills/threadlight-deploy/${rel}`))
+    .filter((text) => text.includes('moved out of the core'));
+  return [core, ...refs].join('\n');
+};
+
 function loadPolicy() {
   return JSON.parse(fs.readFileSync(policyPath, 'utf8'));
 }
@@ -464,8 +473,9 @@ test('threadlight-deploy and threadlight-auto reach the design skill via ../thre
   const repoRootForm = 'skills/threadlight-design/references/runtime-policy.json';
   for (const consumerPath of ['skills/threadlight-deploy/SKILL.md', 'skills/threadlight-auto/SKILL.md']) {
     const content = read(consumerPath);
+    const scanned = consumerPath === 'skills/threadlight-deploy/SKILL.md' ? readDeployCorpus() : content;
     assert.ok(
-      !content.includes(repoRootForm),
+      !scanned.includes(repoRootForm),
       `${consumerPath} must reach threadlight-design via ../threadlight-design, not the repo-root form \`${repoRootForm}\``,
     );
     assert.ok(

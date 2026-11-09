@@ -36,6 +36,7 @@ PROSE_EXEMPTIONS = {"extension"}
 DOCUMENTS_REMOVED_COMMANDS = {
     SKILL_DIR / "references" / "azd-cli-contract.md",
     SKILL_DIR / "SKILL.md",
+    SKILL_DIR / "references" / "module-composer.md",  # Phase 6 Step 6, moved out of SKILL.md
     REPO_ROOT / "CHANGELOG.md",  # a changelog must be able to name what it removed
     Path(__file__).resolve(),  # this file names the removed command to test for it
 }

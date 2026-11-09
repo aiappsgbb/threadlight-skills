@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from deploy_skill_corpus import read_corpus, read_reference
+
 DEPLOY = Path(__file__).resolve().parents[1]
 SKILLS = DEPLOY.parent
 REPO = SKILLS.parent
@@ -355,9 +357,13 @@ def test_skill_documents_generate_only_mode():
 def test_phase3_checklist_matches_pilot_layout():
     text = (DEPLOY / "SKILL.md").read_text()
     phase3 = re.search(r"^## Phase 3: Validate.*?(?=^## Phase 4)", text, re.M | re.S).group(0)
-    assert "src/agent/agent.yaml` — copy of root" not in phase3
-    assert "infra/core/` — vendored modules present" not in phase3
-    assert "references/pilot" in phase3
+    # The Phase 3 output checklist moved verbatim to references/validation-checklist.md.
+    checklist = read_reference("validation-checklist.md")
+    for section in (phase3, checklist):
+        assert "src/agent/agent.yaml` — copy of root" not in section
+        assert "infra/core/` — vendored modules present" not in section
+    assert "references/validation-checklist.md" in phase3
+    assert "references/pilot" in checklist
 
 
 def test_local_test_skill_documents_project_tools_harness():
@@ -419,7 +425,7 @@ def test_prose_tool_inputs_become_typed_optional_args(tmp_path: Path):
 
 def test_ghcp_copy_instructions_include_requirements_lock():
     readme = (DEPLOY / "references" / "hosted-agent" / "ghcp" / "README.md").read_text(encoding="utf-8")
-    skill = (DEPLOY / "SKILL.md").read_text(encoding="utf-8")
+    skill = read_corpus()
     assert re.search(r"Copy\*\* `references/Dockerfile` and `references/requirements\.lock`", readme)
     assert re.search(r"Copy `references/Dockerfile`, `references/requirements\.lock`", skill)
     assert "`uv sync`, copies all agent files" not in skill

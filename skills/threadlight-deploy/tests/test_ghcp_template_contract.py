@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from deploy_skill_corpus import read_corpus
+
 ROOT = Path(__file__).resolve().parents[3]
 GHCP = ROOT / "skills/threadlight-deploy/references/hosted-agent/ghcp"
 CONTAINER = GHCP / "references/container.py"
@@ -76,7 +78,7 @@ def test_mcp_server_docs_do_not_claim_list_is_accepted():
     readme = README.read_text(encoding="utf-8")
     assert "list[dict] or dict[str, dict]" not in readme
     assert re.search(r"mcp_servers=\{", readme), "README session example must use the dict form"
-    assert "mcp_servers=[...]" not in SKILL.read_text(encoding="utf-8")
+    assert "mcp_servers=[...]" not in read_corpus()
 
 
 @pytest.fixture
@@ -155,7 +157,7 @@ def test_deployer_project_role_is_in_the_deploy_flow():
         for row in troubleshooting.splitlines()
     ), "troubleshooting must map the deploy-time 403 UserError to the project-scope role"
 
-    skill = SKILL.read_text(encoding="utf-8")
+    skill = read_corpus()
     steps = skill.split("## Deploy Steps", 1)[1].split("\n## ", 1)[0]
     deploy_cmd = steps.index("azd up")
     role_step = steps.find(FOUNDRY_USER_ROLE_ID)
@@ -164,7 +166,7 @@ def test_deployer_project_role_is_in_the_deploy_flow():
 
 
 def test_generated_pilot_smoke_copies_helper_and_sets_evidence_file():
-    text = SKILL.read_text(encoding="utf-8")
+    text = read_corpus()
     start = text.index("#### `tests/invoke_agent.py`")
     section = text[start:text.index("\n---", start)]
     assert "operation_evidence.py" in section

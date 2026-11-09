@@ -11,6 +11,7 @@ import uuid
 import tomllib
 
 import pytest
+from deploy_skill_corpus import read_reference
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "skills/threadlight-govern/tests"))
@@ -74,9 +75,12 @@ def test_maf_gateway_dependency_and_skill_contract():
     assert "httpcore==1.0.9" in project["project"]["dependencies"]
     skill = (ROOT / "skills/threadlight-deploy/SKILL.md").read_text()
     assert 'version: "1.9.0"' in skill
-    assert "maf-gateway-container.py" in skill
-    assert "OBO is not provided by this app-only path" in skill
-    assert "no mixed local/gateway bindings" in skill
+    # The MAF gateway-only rules moved verbatim to references/selected-governance.md.
+    governance = read_reference("selected-governance.md")
+    assert "references/selected-governance.md" in skill
+    assert "maf-gateway-container.py" in governance
+    assert "OBO is not provided by this app-only path" in governance
+    assert "no mixed local/gateway bindings" in governance
     collector = ROOT / "skills/threadlight-safe-check"
     package = tomllib.loads((collector / "pyproject.toml").read_text())
     assert package["project"]["version"] == "0.5.0"

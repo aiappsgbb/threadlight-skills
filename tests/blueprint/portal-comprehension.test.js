@@ -148,21 +148,27 @@ test('Install guidance and stale facts are consistent', () => {
 });
 
 test('deploy SKILL.md keeps its skill prose outside the embedded deploy-notes template', () => {
-  const lines = read('skills/threadlight-deploy/SKILL.md').split('\n');
-  const inCode = [];
-  let open = null;
-  for (const line of lines) {
-    const match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-    if (!match) { inCode.push(Boolean(open)); continue; }
-    if (!open) open = match[1];
-    else if (match[1][0] === open[0] && match[1].length >= open.length && !match[2].trim()) open = null;
-    inCode.push(true);
-  }
-  assert.equal(open, null);
-  for (const heading of ['## Prerequisites', '## Deploy Steps', '## Deploy-time failure-mode index (signature → action)']) {
-    const index = lines.indexOf(heading);
-    assert.ok(index > 0, heading);
-    assert.equal(inCode[index], false, `${heading} renders as prose`);
+  // The deploy-notes template moved with Phase 2 into references/phase-2-artifacts.md.
+  for (const [file, headings] of [
+    ['skills/threadlight-deploy/SKILL.md', ['## Prerequisites', '## Deploy-time failure-mode index (signature → action)']],
+    ['skills/threadlight-deploy/references/phase-2-artifacts.md', ['## Prerequisites', '## Deploy Steps']],
+  ]) {
+    const lines = read(file).split('\n');
+    const inCode = [];
+    let open = null;
+    for (const line of lines) {
+      const match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+      if (!match) { inCode.push(Boolean(open)); continue; }
+      if (!open) open = match[1];
+      else if (match[1][0] === open[0] && match[1].length >= open.length && !match[2].trim()) open = null;
+      inCode.push(true);
+    }
+    assert.equal(open, null, file);
+    for (const heading of headings) {
+      const index = lines.indexOf(heading);
+      assert.ok(index > 0, `${file}: ${heading}`);
+      assert.equal(inCode[index], false, `${file}: ${heading} renders as prose`);
+    }
   }
 });
 

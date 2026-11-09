@@ -1,0 +1,220 @@
+# Phase 6.7: Seller prep-guide live walkthrough
+
+> Part of the [`threadlight-deploy`](../SKILL.md) skill, moved out of the core
+> SKILL.md verbatim (relative links rebased). Read it when `specs/prep-guide.html` exists and the Phase 3.5 gate passed.
+
+## Phase 6.7: Update Seller Prep-Guide with Live MVP Walkthrough (when applicable)
+
+**Trigger**: `specs/prep-guide.html` exists in the repo **AND** the Phase 3.5
+post-deploy completeness gate passed (i.e., `tests/postdeploy-manifest.json`
+exists with `gaps: []`).
+
+**Skip silently** when:
+- `specs/prep-guide.html` is absent (deploy was run on a repo that didn't
+  go through `threadlight-design`, or the seller prep-guide was deliberately
+  not generated). This phase is **additive-only** — it never fails the deploy.
+- The post-deploy gate did not pass. Resolve the gap first; back-filling a
+  walkthrough that points at a half-deployed PoC is worse than no walkthrough.
+
+> **Why this phase exists.** `threadlight-design` writes the
+> "Demo Script (high-level)" section of `specs/prep-guide.html` deploy-agnostic
+> by construction (no FQDNs, no commands). That's correct — the seller may
+> open the prep-guide in Cowork before any infra exists. But the seller still
+> needs the **concrete** walkthrough once the PoC is live: the workspace URL
+> to open, the Teams package to sideload, the exact prompts to type, the
+> reset / eval / smoke commands. Phase 6.7 closes that loop in one shot,
+> immediately after `azd up` returns clean.
+>
+> **Recent "what was missing?" data point.** A pilot shipped with a complete
+> `prep-guide.html` Demo Script and a passing post-deploy gate, but the
+> seller had to hand-correlate `azd env get-values | grep FQDN`, the eval
+> dataset, and the bot package path on the morning of the demo. Phase 6.7
+> removes that scramble.
+
+### Step 1 — Decide whether to run
+
+```bash
+test -f specs/prep-guide.html || { echo "skip: no prep-guide.html"; exit 0; }
+test -f tests/postdeploy-manifest.json || { echo "skip: no postdeploy-manifest"; exit 0; }
+jq -e '.gaps == []' tests/postdeploy-manifest.json > /dev/null \
+  || { echo "skip: post-deploy gaps non-empty"; exit 0; }
+```
+
+### Step 2 — Gather concrete artifacts
+
+Pull from the artifacts already produced by Phase 3.5 + Phase 5 + Phase 6.5:
+
+| What | From | How |
+|---|---|---|
+| Workspace UI FQDN | `tests/deployed-containerapps.json` | `jq -r '.[] \| select(.name \| contains("workspace")) \| .fqdn'` |
+| Bot Container App name | `tests/deployed-containerapps.json` | `jq -r '.[] \| select(.name \| contains("bot")) \| .name'` |
+| Teams sideload package | repo path | `src/bot/copilot_package.zip` (built by Phase 4 / `build_teams_manifest.py`) |
+| Cron jobs + schedules | `tests/deployed-jobs.json` | `jq -r '.[] \| "\(.name) (\(.schedule))"'` |
+| Mock MCP FQDN (if seeded) | `tests/deployed-containerapps.json` | `jq -r '.[] \| select(.name \| contains("mcp")) \| .fqdn'` |
+| Reset / seed command | repo path | `python scripts/seed_data.py --reset` (when Phase 6.5 ran) |
+| Eval command | repo path | `python tests/run_evals.py` |
+| Smoke-test command | repo path | `INVOCATION_EVIDENCE_FILE="$(mktemp -d)/invocation-evidence.jsonl" python tests/invoke_agent.py "<prompt>"` (new path per run) |
+| Sample queries (3–5) | `specs/SPEC.md` § 9 | grep `S-\d+ .*happy` rows OR read `tests/eval_dataset.jsonl` and pick the first 3–5 happy-path inputs verbatim |
+| Resource group | `azd env get-value AZURE_RESOURCE_GROUP` | for the appendix |
+| Foundry project endpoint | `azd env get-value AZURE_AI_PROJECT_ENDPOINT` | for the appendix |
+
+> **Sample queries are not optional.** If `tests/eval_dataset.jsonl` is empty
+> or SPEC § 9 has no happy-path scenarios, the back-fill **cannot proceed** —
+> the seller would be left with "open the workspace" and no idea what to type.
+> Halt, log the gap, and ask the user to either fix § 9 or run
+> `threadlight-demo-data-factory` to regenerate the dataset.
+
+### Step 3 — Replace the placeholder, or append if absent
+
+Open `specs/prep-guide.html` and choose ONE of two strategies:
+
+**Strategy A (preferred — design v1.3.0+).** If the file contains a
+`<section id="demo-entrypoint">` placeholder block (emitted by
+`threadlight-design` v1.3.0+), **replace** that entire block in place
+with the populated walkthrough below. This keeps the seller's prep-guide
+top-to-bottom flow intact (the placeholder appears at the top of the
+file, where sellers expect the entrypoint info).
+
+**Strategy B (legacy — design v1.2.x).** If no `id="demo-entrypoint"`
+placeholder exists, **append** the walkthrough section immediately after
+the existing `<section id="demo-script">` (or, if the file uses no `id`
+attributes, after the `<h2>Demo Script</h2>` sibling block — older
+prep-guides may use `<h2>Demo Script (high-level)</h2>`; match either).
+**Never overwrite** the existing Demo Script — its acts already contain
+the literal **Type this: / What you'll see: / Say:** prompts the seller
+will run (generated by `threadlight-design` 1.2.0+); this phase only adds
+the **runtime appendix** the seller needs once the PoC is actually
+deployed (workspace URL, Teams sideload steps, the same prompts as a
+copy-paste list, and reset/eval/smoke commands).
+
+**In both strategies**, wrap the populated walkthrough in
+`<details class="se-only">` (per `threadlight-design` v1.3.0+
+Cross-cutting Pattern 3 — SE-only audience-collapsible). The seller's
+default view stays clean; one click on the orange `[SA only]` pill
+reveals the live URLs + commands when they need them.
+
+> **Why we re-print the prompts here.** The design-side acts narrate the
+> demo flow with one prompt per act + the expected response. The
+> walkthrough's prompt list is a flat copy-paste convenience for the
+> seller (and a smoke-test contract for `tests/run_evals.py`). When the
+> two diverge — design-side has a paraphrased prompt, eval dataset has
+> the literal one — **the eval dataset wins**. Phase 6.7 quietly logs a
+> warning and prefers `tests/eval_dataset.jsonl`.
+
+Section shape (Strategy A — replaces placeholder):
+
+```html
+<section id="demo-entrypoint">
+  <details class="se-only">
+    <summary>
+      <span class="audience-pill">SA only</span>
+      <strong>Live MVP Walkthrough</strong>
+      <span class="hint">workspace URL · sideload · commands · ~5 min</span>
+      <span class="chev">▸</span>
+    </summary>
+    <div class="se-body">
+      <p class="callout-warning">
+        Generated <time>{ISO-8601 timestamp}</time> from
+        <code>tests/postdeploy-manifest.json</code>. Re-run
+        <code>threadlight-deploy</code> Phase 6.7 after any redeploy to refresh.
+      </p>
+
+      <h3>1. Open the workspace</h3>
+      <p>URL: <a href="https://{workspace-fqdn}/">{workspace-fqdn}</a></p>
+
+      <h3>2. Sideload the Teams app (one-time, per tenant)</h3>
+      <ol>
+        <li>Download <code>src/bot/copilot_package.zip</code> from the repo.</li>
+        <li>Teams Admin Center → Manage apps → Upload → select the zip.</li>
+        <li>Bot Container App: <code>{bot-name}</code> (already wired to
+            Azure Bot Service).</li>
+      </ol>
+
+      <h3>3. Run these prompts (in order)</h3>
+      <ol>
+        {for each sample query, in BR-order}
+        <li><code>{query verbatim from eval_dataset.jsonl or SPEC § 9}</code>
+            <br><small>demonstrates <strong>BR-{NNN}</strong></small></li>
+      </ol>
+
+      <h3>4. Scheduled jobs you can mention</h3>
+      <ul>
+        {for each row in tests/deployed-jobs.json}
+        <li><code>{job-name}</code> — runs <code>{cron}</code></li>
+      </ul>
+
+      <h3>5. Reset / re-run / score</h3>
+      <pre><code># Reset demo data to a clean state
+python scripts/seed_data.py --reset
+
+# Re-score the demo against the eval dataset
+python tests/run_evals.py
+
+# One-off smoke check (new write-once evidence path per run)
+INVOCATION_EVIDENCE_FILE="$(mktemp -d)/invocation-evidence.jsonl" python tests/invoke_agent.py "{first sample query}"</code></pre>
+
+      <h3>Appendix — environment</h3>
+      <ul>
+        <li>Resource group: <code>{rg-name}</code></li>
+        <li>Foundry project endpoint: <code>{project-endpoint}</code></li>
+        <li>Mock MCP endpoint: <code>{mcp-fqdn}</code> <em>(internal — only
+            relevant if the customer asks about backend wiring)</em></li>
+      </ul>
+    </div>
+  </details>
+</section>
+```
+
+For Strategy B (legacy — no `id="demo-entrypoint"` placeholder), use the
+same `<details class="se-only">` wrapper but inside a freshly appended
+`<section id="live-mvp-walkthrough">`. The `<details>` wrapping rule is
+the same; only the outer section name + insertion point differ.
+
+> **Cross-link to design v1.3.0.** The `id="demo-entrypoint"` placeholder
+> is one of three structural placeholders that `threadlight-design`
+> v1.3.0+ emits in `prep-guide.html`. The other two —
+> `id="mvp-capabilities"` (channels / sample data shape / tool surface)
+> and `id="ms-services-map"` (commercial Azure / M365 services map) —
+> are populated by `threadlight-design` itself from the SPEC and
+> deployment_manifest. Phase 6.7 only owns the **demo-entrypoint**
+> placeholder; do not touch the other two.
+
+**Idempotency**: if a populated `<details class="se-only">` block already
+exists inside `<section id="demo-entrypoint">` (re-deploy case),
+**replace** the inner `<details>` block in place (do not append a second
+one). Same rule applies inside `<section id="live-mvp-walkthrough">`
+under Strategy B. This makes Phase 6.7 safe to re-run after every
+`azd deploy`.
+
+### Step 4 — Verify
+
+After write, re-open the file and assert:
+
+- [ ] **Strategy A**: exactly one populated `<details class="se-only">` block exists inside `<section id="demo-entrypoint">`, OR **Strategy B**: exactly one `<section id="live-mvp-walkthrough">` exists with a `<details class="se-only">` wrapper inside
+- [ ] Workspace URL resolves to a `containerapps.io` FQDN (sanity-check
+      against `tests/deployed-containerapps.json`)
+- [ ] Sample-query block has ≥ 3 entries, each tagged with a BR-XXX that
+      exists in SPEC § 3
+- [ ] Reset / eval / smoke command paths exist on disk (`scripts/seed_data.py`
+      only required when Phase 6.5 ran; tolerate absence with a `<!-- skipped:
+      no seed_data.py -->` comment instead of a broken link)
+- [ ] The original `<section id="demo-script">` (or "Demo Script" `<h2>`) is
+      still present and unmodified — Phase 6.7 only owns the demo-entrypoint
+      placeholder (Strategy A) or appends a sibling (Strategy B)
+- [ ] **Strategy A only**: the other two design v1.3.0+ structural placeholders — `<section id="mvp-capabilities">` and `<section id="ms-services-map">` — are still present and untouched (those belong to `threadlight-design`, not Phase 6.7)
+
+> **Internal-only banner stays.** The "INTERNAL / MICROSOFT CONFIDENTIAL"
+> banner at the top of `specs/prep-guide.html` already covers the new
+> section. Do not add a second banner; do not weaken the existing one.
+
+### Step 5 — Tell the user
+
+Print one line at the end of Phase 6.7, regardless of skip/run:
+
+```
+Phase 6.7: prep-guide live walkthrough → <appended | refreshed | skipped: {reason}>
+```
+
+The seller opens `specs/prep-guide.html` in a browser and now has a single
+file containing both the offline-friendly narrative (from `threadlight-design`)
+and the live-deploy walkthrough (from this phase).
