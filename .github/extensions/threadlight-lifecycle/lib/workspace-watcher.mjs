@@ -27,6 +27,8 @@ export async function watchWorkspace(
   onChange,
   {
     debounceMs = 150,
+    // Diagnostics: called with { target, filename, ignored } for every file-system event.
+    onEvent = () => {},
     onError = (error) =>
       queueMicrotask(() => {
         throw error;
@@ -155,7 +157,9 @@ export async function watchWorkspace(
   }
 
   async function schedule(target, filename) {
-    if (await shouldIgnoreEvent(target, filename)) {
+    const ignored = await shouldIgnoreEvent(target, filename);
+    onEvent({ target, filename: filename == null ? null : filename.toString(), ignored });
+    if (ignored) {
       return;
     }
     clearTimeout(timer);

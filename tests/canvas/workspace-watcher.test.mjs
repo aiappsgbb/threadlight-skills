@@ -1,32 +1,101 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, rename, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
 import { watchWorkspace } from "../../.github/extensions/threadlight-lifecycle/lib/workspace-watcher.mjs";
 
 const SCRATCH_ROOT = path.resolve(".test-workspaces");
+// Generous bound: only reached on a real failure, never on the happy path.
+const WAIT_TIMEOUT_MS = 15_000;
+const DEBOUNCE_MS = 40;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForRefreshCount(getCount, expected, timeoutMs = 2_000) {
+// Poll a condition with a bounded timeout instead of sleeping a fixed time:
+// a loaded runner only makes this slower, never wrong.
+async function waitFor(condition, describe, timeoutMs = WAIT_TIMEOUT_MS) {
   const startedAt = Date.now();
-  while (getCount() < expected) {
+  while (!condition()) {
     if (Date.now() - startedAt >= timeoutMs) {
-      assert.fail(
-        `Timed out waiting for ${expected} refresh(es); received ${getCount()}`,
-      );
+      assert.fail(`Timed out after ${timeoutMs} ms waiting for ${describe()}`);
     }
     await delay(10);
   }
 }
 
-async function waitForRefreshAndSettle(getCount, expected, debounceMs = 40) {
-  await waitForRefreshCount(getCount, expected);
-  await delay(debounceMs * 2);
-  assert.equal(getCount(), expected);
+// Watch a scratch workspace and record every refresh and file-system event.
+async function observe(root, { debounceMs = DEBOUNCE_MS } = {}) {
+  const state = { refreshes: 0, events: [], errors: [], watcher: null, baseline: 0 };
+  state.watcher = await watchWorkspace(
+    root,
+    async () => {
+      state.refreshes += 1;
+    },
+    {
+      debounceMs,
+      onEvent: (event) => state.events.push(event),
+      onError: async (error) => {
+        state.errors.push(error);
+      },
+    },
+  );
+  state.baseline = (await ready(state, root)).refreshes;
+  return state;
+}
+
+// Wait until no event or refresh has happened for a few debounce windows, so a
+// debounced refresh that is still pending cannot land after the caller's check.
+async function settle(state, debounceMs = DEBOUNCE_MS) {
+  const quietMs = debounceMs * 4;
+  let seen = -1;
+  let quietSince = Date.now();
+  await waitFor(() => {
+    const now = state.events.length + state.refreshes;
+    if (now !== seen) {
+      seen = now;
+      quietSince = Date.now();
+    }
+    return Date.now() - quietSince >= quietMs;
+  }, () => `the watcher to settle (${state.events.length} events, ${state.refreshes} refreshes)`);
+}
+
+// fs.watch can start delivering events a little after it returns (macOS
+// FSEvents under load). Touch a probe until its event arrives, then settle, so
+// every test acts on a live watcher and starts from a quiet baseline.
+async function ready(state, root) {
+  const probe = path.join(root, ".watch-probe");
+  let attempt = 0;
+  await waitFor(() => {
+    if (state.events.some((e) => e.filename === ".watch-probe")) {
+      return true;
+    }
+    if (attempt++ % 20 === 0) {
+      void writeFile(probe, `${attempt}\n`);
+    }
+    return false;
+  }, () => "the watcher to report its probe file");
+  await settle(state);
+  await rm(probe, { force: true });
+  await settle(state);
+  return { refreshes: state.refreshes, mark: state.events.length };
+}
+
+async function waitForRefreshes(state, atLeast) {
+  await waitFor(
+    () => state.refreshes >= atLeast,
+    () => `${atLeast} refresh(es); received ${state.refreshes}`,
+  );
+}
+
+// Under load an editor save can reach the watcher as several events further
+// apart than the debounce window; each may legitimately publish a refresh.
+async function splitWrite(file, content) {
+  await truncate(file);
+  await delay(DEBOUNCE_MS * 3);
+  await appendFile(file, content);
 }
 
 async function createScratchWorkspace(name) {
@@ -40,111 +109,88 @@ async function createScratchWorkspace(name) {
 
 test("workspace watcher attaches newly created roots before publishing debounced refreshes", async () => {
   const root = await createScratchWorkspace("workspace-watcher");
-  let watcher;
-  let refreshes = 0;
+  const staging = await createScratchWorkspace("workspace-watcher-staging");
+  let state;
 
   try {
-    watcher = await watchWorkspace(
-      root,
-      async () => {
-        refreshes += 1;
-      },
-      { debounceMs: 40 },
-    );
+    state = await observe(root);
+    // One atomic rename: the root watcher sees a single new `specs` entry.
+    await writeFile(path.join(staging, "SPEC.md"), "# Pilot\n");
+    await writeFile(path.join(staging, "manifest.json"), "{}\n");
+    await rename(staging, path.join(root, "specs"));
+    await waitForRefreshes(state, state.baseline + 1);
+    await settle(state);
+    assert.equal(state.refreshes, state.baseline + 1, "one debounced refresh for one burst");
 
-    await mkdir(path.join(root, "specs"));
-    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
-    await writeFile(path.join(root, "specs", "manifest.json"), "{}\n");
-    await waitForRefreshCount(() => refreshes, 1);
-    // Any duplicate callback from this burst is due within one debounce window.
-    await delay(80);
-
-    assert.equal(refreshes, 1);
-
+    // The refresh attached `specs`, so a later edit inside it is seen.
+    const before = state.refreshes;
     await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n\nUpdated\n");
-    await waitForRefreshCount(() => refreshes, 2);
-
-    assert.equal(refreshes, 2);
+    await waitForRefreshes(state, before + 1);
+    assert.ok(state.events.some((e) => e.target === path.join(root, "specs") && !e.ignored));
+    assert.deepEqual(state.errors, []);
   } finally {
-    watcher?.close();
+    state?.watcher.close();
     await rm(root, { recursive: true, force: true });
+    await rm(staging, { recursive: true, force: true });
   }
 });
 
 test("workspace watcher refreshes Improve and Handoff evidence", async () => {
   const root = await createScratchWorkspace("workspace-watcher-evidence");
-  let watcher;
-  let refreshes = 0;
+  let state;
 
   try {
-    watcher = await watchWorkspace(
-      root,
-      async () => {
-        refreshes += 1;
-      },
-      { debounceMs: 40 },
-    );
+    state = await observe(root);
 
     await mkdir(path.join(root, "tests"));
     await mkdir(path.join(root, "router-bench-out"));
-    await waitForRefreshCount(() => refreshes, 1);
-    await delay(80);
+    await waitForRefreshes(state, state.baseline + 1);
+    await settle(state);
 
-    await writeFile(
-      path.join(root, "tests", "production-readiness-manifest.json"),
-      "{}\n",
-    );
-    await waitForRefreshCount(() => refreshes, 2);
+    let before = state.refreshes;
+    await writeFile(path.join(root, "tests", "production-readiness-manifest.json"), "{}\n");
+    await waitForRefreshes(state, before + 1);
+    await settle(state);
 
-    await writeFile(
-      path.join(root, "router-bench-out", "learnings-1.md"),
-      "# Learnings\n",
-    );
-    await waitForRefreshCount(() => refreshes, 3);
-
-    assert.equal(refreshes, 3);
+    before = state.refreshes;
+    await writeFile(path.join(root, "router-bench-out", "learnings-1.md"), "# Learnings\n");
+    await waitForRefreshes(state, before + 1);
+    assert.deepEqual(state.errors, []);
   } finally {
-    watcher?.close();
+    state?.watcher.close();
     await rm(root, { recursive: true, force: true });
   }
 });
 
 test("workspace watcher refreshes when azd env evidence appears under .azure", async () => {
   const root = await createScratchWorkspace("workspace-watcher-azure-env");
-  let watcher;
-  let refreshes = 0;
-  const debounceMs = 40;
+  let state;
 
   try {
-    watcher = await watchWorkspace(
-      root,
-      async () => {
-        refreshes += 1;
-      },
-      { debounceMs },
-    );
+    state = await observe(root);
 
     await mkdir(path.join(root, ".azure"));
-    await waitForRefreshAndSettle(() => refreshes, 1, debounceMs);
+    await waitForRefreshes(state, state.baseline + 1);
+    await settle(state);
 
+    let before = state.refreshes;
     await mkdir(path.join(root, ".azure", "dev"));
-    await waitForRefreshAndSettle(() => refreshes, 2, debounceMs);
+    await waitForRefreshes(state, before + 1);
+    await settle(state);
 
-    await writeFile(
-      path.join(root, ".azure", "dev", ".env"),
-      "AGENT_FQDN=threadlight-dev.example.com\n",
-    );
-    await waitForRefreshCount(() => refreshes, 3);
+    const env = path.join(root, ".azure", "dev", ".env");
+    before = state.refreshes;
+    await writeFile(env, "AGENT_FQDN=threadlight-dev.example.com\n");
+    await waitForRefreshes(state, before + 1);
+    await settle(state);
 
-    await writeFile(
-      path.join(root, ".azure", "dev", ".env"),
-      "AGENT_FQDN=threadlight-prod.example.com\n",
-    );
-    await waitForRefreshCount(() => refreshes, 4);
-
-    assert.equal(refreshes, 4);
+    before = state.refreshes;
+    await splitWrite(env, "AGENT_FQDN=threadlight-prod.example.com\n");
+    await waitForRefreshes(state, before + 1);
+    assert.ok(state.events.some((e) => e.target === path.join(root, ".azure", "dev") && !e.ignored));
+    assert.deepEqual(state.errors, []);
   } finally {
-    watcher?.close();
+    state?.watcher.close();
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -152,33 +198,33 @@ test("workspace watcher refreshes when azd env evidence appears under .azure", a
 test("workspace watcher ignores symlinked .azure roots", async () => {
   const root = await createScratchWorkspace("workspace-watcher-azure-symlink");
   const external = await createScratchWorkspace("workspace-watcher-azure-external");
-  let watcher;
-  let refreshes = 0;
+  let state;
 
   try {
     await mkdir(path.join(external, "dev"), { recursive: true });
     await symlink(external, path.join(root, ".azure"));
 
-    watcher = await watchWorkspace(
-      root,
-      async () => {
-        refreshes += 1;
-      },
-      { debounceMs: 40 },
+    state = await observe(root);
+    await settle(state);
+    const baseline = state.refreshes;
+    const mark = state.events.length;
+
+    await writeFile(path.join(external, "dev", ".env"), "AGENT_FQDN=threadlight-dev.example.com\n");
+    // A watched sentinel proves the watcher is live; await its own event.
+    await writeFile(path.join(root, "sentinel.txt"), "x\n");
+    await waitFor(
+      () => state.events.slice(mark).some((e) => e.filename === "sentinel.txt"),
+      () => "the sentinel event",
     );
+    await waitForRefreshes(state, baseline + 1);
+    await settle(state);
 
-    await delay(120);
-    const baseline = refreshes;
-
-    await writeFile(
-      path.join(external, "dev", ".env"),
-      "AGENT_FQDN=threadlight-dev.example.com\n",
-    );
-    await delay(120);
-
-    assert.equal(refreshes, baseline);
+    const later = state.events.slice(mark);
+    assert.ok(later.every((e) => !e.target.startsWith(external)), "no watcher follows the .azure symlink");
+    assert.ok(later.every((e) => e.filename === "sentinel.txt"), JSON.stringify(later));
+    assert.deepEqual(state.errors, []);
   } finally {
-    watcher?.close();
+    state?.watcher.close();
     await rm(root, { recursive: true, force: true });
     await rm(external, { recursive: true, force: true });
   }
@@ -186,55 +232,42 @@ test("workspace watcher ignores symlinked .azure roots", async () => {
 
 test("workspace watcher ignores .azure files and still watches other roots", async () => {
   const root = await createScratchWorkspace("workspace-watcher-azure-file");
-  let watcher;
-  let refreshes = 0;
-  const errors = [];
-  const debounceMs = 40;
+  let state;
 
   try {
     await writeFile(path.join(root, ".azure"), "not a directory\n");
     await mkdir(path.join(root, "specs"));
     await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
 
-    watcher = await watchWorkspace(
-      root,
-      async () => {
-        refreshes += 1;
-      },
-      {
-        debounceMs,
-        onError: async (error) => {
-          errors.push(error);
-        },
-      },
-    );
-
-    await delay(120);
-    const baseline = refreshes;
+    state = await observe(root);
+    await settle(state);
+    const baseline = state.refreshes;
+    const mark = state.events.length;
 
     await writeFile(path.join(root, ".azure"), "still not a directory\n");
-    await delay(120);
+    await waitFor(
+      () => state.events.slice(mark).some((e) => e.filename === ".azure"),
+      () => "the .azure file event",
+    );
+    await settle(state);
+    const azureEvents = state.events.slice(mark);
+    assert.ok(azureEvents.every((e) => e.filename === ".azure" && e.ignored), JSON.stringify(azureEvents));
+    assert.equal(state.refreshes, baseline, "an ignored event never schedules a refresh");
+    assert.deepEqual(state.errors, []);
 
-    assert.equal(refreshes, baseline);
-    assert.deepEqual(errors, []);
-
-    await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n\nUpdated\n");
-    await waitForRefreshAndSettle(() => refreshes, baseline + 1, debounceMs);
-
-    assert.deepEqual(errors, []);
-    assert.equal(refreshes, baseline + 1);
+    await splitWrite(path.join(root, "specs", "SPEC.md"), "# Pilot\n\nUpdated\n");
+    await waitForRefreshes(state, baseline + 1);
+    await settle(state);
+    assert.deepEqual(state.errors, []);
   } finally {
-    watcher?.close();
+    state?.watcher.close();
     await rm(root, { recursive: true, force: true });
   }
 });
 
 test("workspace watcher ignores unreadable .azure roots and still watches other roots", async () => {
   const root = await createScratchWorkspace("workspace-watcher-azure-unreadable");
-  let watcher;
-  let refreshes = 0;
-  const errors = [];
-  const debounceMs = 40;
+  let state;
 
   try {
     await mkdir(path.join(root, ".azure"));
@@ -242,40 +275,24 @@ test("workspace watcher ignores unreadable .azure roots and still watches other 
     await mkdir(path.join(root, "specs"));
     await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
 
-    watcher = await watchWorkspace(
-      root,
-      async () => {
-        refreshes += 1;
-      },
-      {
-        debounceMs,
-        onError: async (error) => {
-          errors.push(error);
-        },
-      },
-    );
-
-    await delay(120);
-    const baseline = refreshes;
+    state = await observe(root);
+    await settle(state);
+    const baseline = state.refreshes;
     await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n\nUpdated\n");
-    await waitForRefreshCount(() => refreshes, baseline + 1);
-    await delay(debounceMs * 2);
+    await waitForRefreshes(state, baseline + 1);
+    await settle(state);
 
-    assert.deepEqual(errors, []);
-    assert.ok(refreshes >= baseline + 1);
+    assert.deepEqual(state.errors, []);
   } finally {
     await chmod(path.join(root, ".azure"), 0o755).catch(() => {});
-    watcher?.close();
+    state?.watcher.close();
     await rm(root, { recursive: true, force: true });
   }
 });
 
 test("workspace watcher ignores unreadable azd env directories and still watches other roots", async () => {
   const root = await createScratchWorkspace("workspace-watcher-azure-env-unreadable");
-  let watcher;
-  let refreshes = 0;
-  const errors = [];
-  const debounceMs = 40;
+  let state;
 
   try {
     await mkdir(path.join(root, ".azure", "dev"), { recursive: true });
@@ -283,30 +300,17 @@ test("workspace watcher ignores unreadable azd env directories and still watches
     await mkdir(path.join(root, "specs"));
     await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n");
 
-    watcher = await watchWorkspace(
-      root,
-      async () => {
-        refreshes += 1;
-      },
-      {
-        debounceMs,
-        onError: async (error) => {
-          errors.push(error);
-        },
-      },
-    );
-
-    await delay(120);
-    const baseline = refreshes;
+    state = await observe(root);
+    await settle(state);
+    const baseline = state.refreshes;
     await writeFile(path.join(root, "specs", "SPEC.md"), "# Pilot\n\nUpdated\n");
-    await waitForRefreshCount(() => refreshes, baseline + 1);
-    await delay(debounceMs * 2);
+    await waitForRefreshes(state, baseline + 1);
+    await settle(state);
 
-    assert.deepEqual(errors, []);
-    assert.ok(refreshes >= baseline + 1);
+    assert.deepEqual(state.errors, []);
   } finally {
     await chmod(path.join(root, ".azure", "dev"), 0o755).catch(() => {});
-    watcher?.close();
+    state?.watcher.close();
     await rm(root, { recursive: true, force: true });
   }
 });

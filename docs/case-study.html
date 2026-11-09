@@ -707,6 +707,14 @@
   .cs-wiz-menu-btn, .cs-wiz-jump { min-height: 44px; }
   @media (max-width: 760px) {
     #chapter-top .hero-inner { grid-template-columns: 1fr; gap: 8px; }
+    /* The proof follows the headline so it stays in the first viewport whatever
+       the system font metrics (wide runner fonts pushed it under the wizard nav). */
+    #chapter-top .cs-opening-story { display: contents; }
+    #chapter-top .hero-headline { order: 1; }
+    #chapter-top .cs-opening-proof { order: 2; margin-top: 6px; }
+    #chapter-top .hero-sub { order: 3; margin-top: 6px; }
+    #chapter-top .hero-cta-row { order: 4; }
+    #chapter-top .hero-tag { order: 5; }
     #chapter-top .hero-headline { font-size: 2.5rem; max-width: 17ch; margin-bottom: 4px; }
     #chapter-top .hero-sub { font-size: .94rem; line-height: 1.55; }
     #chapter-top .hero-cta-row { margin-top: 8px; }
