@@ -323,6 +323,36 @@ def test_foundation_rejects_invalid_selected_existing_key(key_id):
         module("generate").validate_infrastructure(config)
 
 
+@pytest.mark.parametrize("tags", [[], {"owner": 1}, {"": "x"}, {"k" * 513: "x"}, {"owner": "x" * 257},
+                                  {f"t{i}": "v" for i in range(41)}])
+def test_foundation_rejects_invalid_resource_tags(tags):
+    config = private_foundation_configuration()
+    config["existing_key_id"] = "https://fixture-vault.vault.azure.net/keys/policy/" + "a" * 32
+    config["tags"] = tags
+    with pytest.raises(ValueError, match="invalid_resource_tags"):
+        module("generate").validate_infrastructure(config)
+
+
+def test_foundation_tags_every_governance_resource(tmp_path):
+    config = private_foundation_configuration()
+    config["existing_key_id"] = "https://fixture-vault.vault.azure.net/keys/policy/" + "a" * 32
+    config["tags"] = {"owner": "team", "disposition": "keep-until-2026-12-01"}
+    project = tmp_path / "pilot"
+    project.mkdir()
+    module("generate").foundation(project, contract(), configuration=config)
+    bicep = (project / "infra/governance.bicep").read_text()
+    import re
+    blocks = re.findall(r"^resource \w+ '(Microsoft\.[A-Za-z]+/[A-Za-z]+)@[^']+' = (?:if \([^)]*\) )?\{(.*?)^\}",
+                        bicep, re.M | re.S)
+    taggable = {"Microsoft.ManagedIdentity/userAssignedIdentities", "Microsoft.Storage/storageAccounts",
+                "Microsoft.DocumentDB/databaseAccounts", "Microsoft.KeyVault/vaults",
+                "Microsoft.App/containerApps", "Microsoft.Network/privateEndpoints"}
+    selected = [(kind, body) for kind, body in blocks if kind in taggable]
+    assert len(selected) >= 10
+    assert all("tags:" in body for _, body in selected), [k for k, b in selected if "tags:" not in b]
+    assert "config.?tags" in bicep
+
+
 def test_foundation_preserves_versioned_existing_key(tmp_path):
     config = private_foundation_configuration()
     config["existing_key_id"] = "https://fixture-vault.vault.azure.net/keys/policy/" + "a" * 32
@@ -1423,3 +1453,13 @@ async def main():
     print("PORTABLE_NATIVE_REMOTE_ACK_PASS: Task8 saved before effect; local-only directory denied")
 asyncio.run(main())
 '''
+
+
+def test_gateway_startup_probe_tolerates_signed_policy_bootstrap():
+    """Live 2026-11-10: the gateway fetches/verifies the signed bundle and loads ACS before
+    listening; ACA's default liveness killed it (connection refused) before it served."""
+    source = (REFERENCES / "governance.bicep").read_text()
+    gateway = source[source.index("resource gatewayApp"):]
+    gateway = gateway[:gateway.index("\n}\n")]
+    assert "type: 'Startup'" in gateway and "tcpSocket: { port: 8000 }" in gateway
+    assert "failureThreshold: 36" in gateway

@@ -1,5 +1,5 @@
 ARG PYTHON_IMAGE
-FROM --platform=linux/amd64 ${PYTHON_IMAGE}
+FROM ${PYTHON_IMAGE}
 ARG PYTHON_IMAGE
 RUN python -c "import re,sys; assert re.fullmatch(r'.+@sha256:[a-f0-9]{64}', sys.argv[1]); assert sys.version_info[:2] == (3,12)" "$PYTHON_IMAGE"
 WORKDIR /app/repo

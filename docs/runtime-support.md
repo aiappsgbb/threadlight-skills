@@ -9,7 +9,7 @@ scoped, one-use decision.
 
 | Profile | Supplied enforcement | Human review |
 |---|---|---|
-| GitHub Copilot SDK / Invocations | Selected tools through the governed MCP gateway; no local Agent Hooks mode | Inline gateway approval. Deferred native-session resume is rejected with `ghcp_deferred_approval_resume_unsupported` |
+| GitHub Copilot SDK / Invocations | Selected tools through the governed MCP gateway; no local Agent Hooks mode | Inline gateway approval, or signed `approval_mode: deferred`: the host relay emits a host-owned `governance_pending` SSE frame (no effect) and a **new invocation** resumes the original operation with `governance_operation_id`; a selector, not consent. No same-session resume (each invocation is a new Copilot session). Requesting-user confirmation stays MAF-only |
 | MAF / Responses, local hooks | Selected native tool/output boundaries through Agent Hooks and ACS | Inline native approval; do not infer deferred gateway resume from this profile |
 | MAF / Responses, governed gateway | Selected MCP actions through the authenticated gateway | Supplied deferred review can resume the **same native session** and operation; current authority is consumed once |
 | No enforcement selected | Existing unbound behavior | A UI or release gate does not add action authorization |
@@ -21,7 +21,8 @@ not automatically generated. Invalid selected configuration never means off.
 
 Sources: [runtime selector](../skills/threadlight-design/references/runtime-policy.json),
 [governance generator](../skills/threadlight-deploy/references/governance/generate.py),
-[MAF gateway host](../skills/threadlight-deploy/references/governance/maf-gateway-container.py).
+[MAF gateway host](../skills/threadlight-deploy/references/governance/maf-gateway-container.py),
+[GHCP gateway host](../skills/threadlight-deploy/references/governance/ghcp-container.py).
 
 ## Channel and authority
 

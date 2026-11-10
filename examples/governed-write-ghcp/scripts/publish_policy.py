@@ -15,7 +15,7 @@ private key. It uses the portable control plane's own ``ControlPlane.publish`` a
   bundle, which is published exactly once. A sign-only envelope is never live
   authority: runtime readiness reads the published final envelope.
 
-All inputs come from environment variables so the job definition holds no files:
+The mode can also come from TL_MODE. All other inputs come from environment variables so the job definition holds no files:
 TL_TENANT_ID, TL_KEY_ID (versioned), TL_POLICY_ID, TL_POLICY_VERSION,
 TL_CONTENT_DIGEST, TL_EXPIRES_AT (ISO UTC), TL_BLOB_URL, TL_BLOB_CONTAINER.
 """
@@ -70,8 +70,12 @@ async def run(mode):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("publish", "sign-only"), required=True)
-    asyncio.run(run(parser.parse_args().mode))
+    parser.add_argument("--mode", choices=("publish", "sign-only"), default=os.environ.get("TL_MODE"),
+                        help="defaults to TL_MODE (job runners cannot always pass option arguments)")
+    mode = parser.parse_args().mode
+    if mode not in ("publish", "sign-only"):
+        parser.error("--mode or TL_MODE must be publish or sign-only")
+    asyncio.run(run(mode))
 
 
 if __name__ == "__main__":

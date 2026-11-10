@@ -46,7 +46,10 @@ when changing the 300-second default (maximum 3600, additionally capped by polic
 expiry). The generated host returns a pending operation instead of blocking for
 human input; use the [operator review and exact resume protocol](../../../threadlight-govern/references/gateway/README.md#deferred-human-decisions-explicit-signed-opt-in).
 No review UI, Entra client or grant is created implicitly. GHCP deferred mode
-is rejected until its client can resume the operation; inline mode is unchanged.
+uses the generated relay's resume adapter (new invocation, same
+`governance_operation_id`, host-owned `governance_pending` frame); see the
+[governed-write workshop kit](../../../../examples/governed-write-ghcp/README.md).
+Inline mode is unchanged.
 
 ### Requesting-user confirmation
 

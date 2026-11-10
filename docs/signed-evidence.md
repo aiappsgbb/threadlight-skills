@@ -66,7 +66,7 @@ business writer credential or a bypass route.
 | Selected MCP gateway actions | JWT verification before native ACS and before transmission |
 | MAF gateway-only client | Automatic, inline approval and existing deferred exact resume |
 | GHCP registered gateway relay | Automatic and existing inline approval; metadata bound to the host ticket |
-| GHCP deferred approval | Still rejected by generation; no resume implementation is implied |
+| GHCP deferred approval | Generated since the governed-write workshop kit: pending result plus `governance_operation_id` resume in a new invocation. Signed evidence on that path is not separately tested |
 | Canonical returns native local hooks | Existing `trusted_context_provider`, read receipts and Cosmos controls unchanged; no new JWT seam |
 | Unbound reads / tools without the requirement | Existing behavior; no ACS added to reads |
 | Arbitrary URLs, provider-hosted tools, Copilot internal loop | Not covered |
