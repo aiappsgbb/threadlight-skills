@@ -493,11 +493,11 @@ recognition (live: "RMA, W05C"). The agent then finds no case, records
 nothing and asks for the exact id; it does not guess a nearby case. Say the id
 letter by letter with "dash", and repeat it the same way if asked.
 
-**Interrupting is safe.** Live, the caller interrupted the escalation turn
+**Interrupting the agent.** Live, the caller interrupted the escalation turn
 after the pending record had been sent; the next answer carried a pending
 record again, the governance store held one new approval request for one
-operation, and nothing was written. If the interrupted answer could not send the record, the host sends
-it on the caller's next response.
+operation, and nothing was written. If the interrupted answer could not send
+the record, the host sends it on the caller's next response (unit-tested).
 
 **Unknown outcome: never retry.** If the agent says the outcome is unknown (live: the business API was cold
 because a redeploy had reset it to zero replicas, and it committed after the
