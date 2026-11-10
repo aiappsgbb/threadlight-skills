@@ -346,6 +346,7 @@ test.describe('production chapter (production.html)', () => {
       'https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md',
       'https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-governance.md',
       'https://github.com/aiappsgbb/threadlight-skills/blob/979772904624ad873969cb6f84388f4a6f3f587b/docs/agent-governance-deep-dive.md',
+      'https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-production-ready/SKILL.md#pilot-value-page-process-owner-and-sponsor',
       './operate.html', './funnel.html#scene-cta']);
     await expect(page.locator('#production-review')).not.toContainText(/91%|0\.0123|EU AI Act|13 pillars/i);
   });
