@@ -842,6 +842,27 @@ record them separately.
 """
 
 
+def _voice_governed_md(agent: str, tool: str) -> str:
+    return f"""
+### Voice + governed write (one pilot)
+
+When the governance package is built (`threadlight-govern`, then
+`references/governance/generate.py generate`), the governed GHCP host keeps this
+voice front-end: `compose` keeps `invocations_ws` next to Invocations and pins
+the Voice Live Bridge agentserver. Each spoken turn runs the same governed
+invocation as text, so `{tool}` still goes through the gateway: allow, deny, or
+an escalation that returns `pending_approval` with no effect. The host (not the
+model) keeps the call's `governance_pending` record; after the Approver decides
+(`threadlight-review-action`), the caller asks to complete it in the same call
+and the host gives the exact original arguments and operation id back as a
+**host record** (not an approval): the gateway re-checks policy, facts, identity
+and expiry and consumes the one-use grant before the effect. Barge-in stops the
+speech but never cancels a governed turn in flight (that would make the write an
+unknown outcome); the unheard answer is carried into the next turn. Facilitator
+script: `docs/WORKSHOP-1H-QUICKSTART.md` § 6.6.
+"""
+
+
 def render_deploy_md(project: str, agent: str, plan: list[dict[str, Any]], unprovisioned: list[str] | None = None,
                      adopted: bool = False, governance: dict[str, Any] | None = None,
                      recommend_only: bool = False, voice: dict[str, str] | None = None,
@@ -950,7 +971,8 @@ python <threadlight-skills>/skills/_shared/foundry_package.py --workspace .
 
 Exit 3 (`INCOMPLETE`) is expected until the agent id, trace id and a passing
 eval run are recorded.
-""" + (_voice_deploy_md(agent, voice) if voice else "")
+""" + (_voice_deploy_md(agent, voice) if voice else "") + (
+        _voice_governed_md(agent, gateway_write) if voice and gateway_write else "")
 
 
 CONTAINER_LAYOUT_TESTS = r'''

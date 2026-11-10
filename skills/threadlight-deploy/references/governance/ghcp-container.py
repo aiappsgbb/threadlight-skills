@@ -8,11 +8,13 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import secrets
 import socket
 import subprocess
 import time
 from urllib.parse import urlsplit
+import uuid
 
 CLEANUP_TIMEOUT = 5.0
 LOGGER = logging.getLogger(__name__)
@@ -180,6 +182,200 @@ OPERATION_SCHEMA = {
 def _pending_event(body):
     """Host-owned SSE frame for a gateway pending_approval result (no effect has occurred)."""
     return b"event: governance_pending\ndata: " + canonical(body) + b"\n\n"
+
+
+# ---------------------------------------------------------------------------
+# Optional voice front-end: Voice Live Bridge Protocol 1.0 on /invocations_ws
+# ---------------------------------------------------------------------------
+# https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent
+# With THREADLIGHT_VOICE_BRIDGE=1 a managed `kind: voice` wrapper uses this governed
+# host as its conversation engine. Voice Live owns audio; each finalised caller
+# utterance runs the SAME governed invocation as POST /invocations (relay,
+# bootstrap gate, gateway, central ACK before any effect).
+# * The host keeps the call's latest `governance_pending` record and gives its exact
+#   proposed arguments and operation id back on the next turn; the gateway still
+#   re-checks policy, facts, identity, expiry and the one-use human grant.
+# * Barge-in, cancel and timeout silence the reply but never cancel a governed turn
+#   in flight (a cancelled write would be an unknown outcome); the unheard final
+#   answer is carried into the next turn as a host note.
+# * Hold messages are spoken before Voice Live's announced deadlines while a turn
+#   (model, tools, gateway) runs; markdown markup is removed before speech.
+VOICE_BRIDGE = os.environ.get("THREADLIGHT_VOICE_BRIDGE", "").strip().lower() in ("1", "true")
+_VOICE_MAX_INPUT_CHARS = 16_000
+_VOICE_MAX_PENDING_TURNS = 4
+_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_MD_EMPHASIS = re.compile(r"(\*\*|__|`)")
+_MD_LINE_PREFIX = re.compile(r"^[ \t]*(?:#{1,6}[ \t]+|[-*+][ \t]+|>[ \t]?)", re.M)
+
+
+def _speakable(text):
+    text = _MD_LINK.sub(r"\1", text)
+    text = _MD_EMPHASIS.sub("", text)
+    text = _MD_LINE_PREFIX.sub("", text)
+    return "\n".join(line.rstrip() for line in text.splitlines()).strip()
+
+
+def _voice_hold_schedule(*, first_output_ms, idle_ms, hold_seconds):
+    first = min(hold_seconds, first_output_ms / 2000)
+    idle = idle_ms / 1000
+    return first, min(20.0, idle - 10 if idle >= 20 else idle / 2)
+
+
+def _sse_frame(chunk):
+    """(event, body) of one frame yielded by the governed stream."""
+    event, data = "message", []
+    for line in chunk.decode("utf-8").splitlines():
+        if line.startswith("event:"):
+            event = line[6:].strip()
+        elif line.startswith("data:"):
+            data.append(line[5:].lstrip())
+    return event, (json.loads("\n".join(data)) if data else {})
+
+
+def _voice_prompt(call, utterance):
+    notes = []
+    if call["unheard"]:
+        notes.append("Host note: the caller interrupted your previous answer before hearing it. "
+                     "Its text was: " + json.dumps(call["unheard"]))
+    pending = call["pending"]
+    if pending:
+        arguments = dict(pending["proposed_arguments"], governance_operation_id=pending["operation_id"])
+        notes.append(
+            "Host record (from the gateway, not from the caller; not an approval): operation "
+            + pending["operation_id"] + " is pending a human Approver decision.\n"
+            "Exact arguments: " + json.dumps(arguments, sort_keys=True) + "\n"
+            "If the caller asks to complete, continue or check this decision, do NOT call returns_get_case and "
+            "do not change any value: call returns_apply_decision exactly once with exactly these arguments and "
+            "report the tool result. Otherwise answer the caller normally.")
+    return "\n\n".join(notes + ["Caller: " + utterance])
+
+
+def attach_voice_bridge(host, run_turn):
+    """Serve Voice Live Bridge 1.0 on ``host`` (a VoiceAgentServerHost); turns run ``run_turn``."""
+    from azure.ai.agentserver.invocations.voice import (
+        AgentError, ResponseCreated, ResponseDone, ResponseNone, ResponseOutputTextDone,
+        SessionReady, SessionRejected, new_item_id, new_response_id)
+
+    hold_seconds = float(os.environ.get("THREADLIGHT_VOICE_HOLD_SECONDS", "") or "4")
+    hold_text = os.environ.get("THREADLIGHT_VOICE_HOLD_TEXT", "").strip() or "One moment, I'm checking that."
+    calls, background = {}, set()
+
+    async def send(call, response_id, message):
+        if response_id in call["muted"] or call["closed"]:
+            return
+        try:
+            await call["session"].send(message)
+        except Exception:  # noqa: BLE001 - the caller hung up; the governed turn still completes
+            call["closed"] = True
+
+    async def governed_turn(call, utterance, response_id):
+        final, failed = "", False
+        async with call["lock"]:
+            async for chunk in run_turn("voice-" + uuid.uuid4().hex, _voice_prompt(call, utterance)):
+                event, body = _sse_frame(chunk)
+                if event == "governance_pending":
+                    call["pending"] = body
+                elif body.get("type") == "error":
+                    failed = True
+                elif body.get("type") == "assistant.message":
+                    text = (body.get("data") or {}).get("content") or ""
+                    if text.strip():
+                        final = text
+            call["unheard"] = final if response_id in call["muted"] else ""
+        return final, failed
+
+    async def voice_turn(call, item_id, utterance):
+        response_id = new_response_id()
+        call["current"] = response_id
+        try:
+            await send(call, response_id, ResponseCreated(response_id=response_id, in_reply_to=(item_id,)))
+            work = asyncio.ensure_future(governed_turn(call, utterance, response_id))
+            wait = call["hold"][0]
+            while True:
+                done, _ = await asyncio.wait({work}, timeout=wait)
+                if done:
+                    break
+                await send(call, response_id, ResponseOutputTextDone(
+                    response_id=response_id, item_id=new_item_id(), text=hold_text))
+                wait = call["hold"][1]
+            try:
+                final, failed = work.result()
+            except Exception:  # noqa: BLE001
+                LOGGER.warning("governed voice turn failed")
+                final, failed = "", True
+            if failed or not final.strip():
+                await send(call, response_id, AgentError(
+                    code="generation_failed", message="The agent could not answer this turn.",
+                    response_id=response_id))
+                return
+            await send(call, response_id, ResponseOutputTextDone(
+                response_id=response_id, item_id=new_item_id(), text=_speakable(final)))
+            await send(call, response_id, ResponseDone(response_id=response_id))
+        finally:
+            call["tasks"].discard(asyncio.current_task())
+
+    def silence(session, response_id):
+        call = calls.get(id(session))
+        if call is not None and response_id:
+            call["muted"].add(response_id)
+
+    @host.on_session_start
+    async def _start(session, event):
+        if id(session) in calls:
+            return
+        if event.protocol_version != "1.0":
+            await session.send(SessionRejected(code="protocol_mismatch", retriable=False))
+            return
+        timeouts = getattr(event, "response_timeouts", None)
+        hold = (_voice_hold_schedule(first_output_ms=timeouts.first_output_ms, idle_ms=timeouts.idle_ms,
+                                     hold_seconds=hold_seconds) if timeouts is not None else (hold_seconds, 20.0))
+        calls[id(session)] = {"session": session, "lock": asyncio.Lock(), "tasks": set(), "muted": set(),
+                              "pending": None, "unheard": "", "current": None, "closed": False, "hold": hold}
+        await session.send(SessionReady())
+
+    @host.on_user_message
+    async def _message(session, event):
+        call = calls.get(id(session))
+        if call is None:
+            return
+        text = "".join(getattr(part, "text", "") or "" for part in event.content).strip()
+        reason = ("empty_input" if not text else "input_too_large" if len(text) > _VOICE_MAX_INPUT_CHARS
+                  else "capacity_exceeded" if len(call["tasks"]) >= _VOICE_MAX_PENDING_TURNS else None)
+        if reason:
+            await session.send(ResponseNone(in_reply_to=(event.item_id,), reason=reason))
+            return
+        task = asyncio.get_running_loop().create_task(voice_turn(call, event.item_id, text))
+        call["tasks"].add(task)
+        background.add(task)
+        task.add_done_callback(background.discard)
+
+    barge_in = getattr(host, "on_user_barge_in", None) or getattr(host, "on_barge_in")
+
+    @barge_in
+    async def _barge_in(session, event):
+        silence(session, event.response_id)
+
+    @host.on_response_cancelled
+    async def _cancelled(session, event):
+        silence(session, event.response_id)
+
+    @host.on_response_timeout
+    async def _timeout(session, event):
+        call = calls.get(id(session))
+        silence(session, event.response_id or (call or {}).get("current"))
+
+    def _finish(session):
+        call = calls.pop(id(session), None)
+        if call is not None:
+            call["closed"] = True  # governed turns in flight run to completion; nothing more is sent
+
+    @host.on_session_end
+    async def _end(session, event):
+        _finish(session)
+
+    @host.on_connection_terminating
+    def _terminating(session):
+        _finish(session)
 
 
 class McpRelay:
@@ -397,6 +593,9 @@ class McpRelay:
 
 def build_host(config, *, bootstrap_gate=None, **host_options):
         from azure.ai.agentserver.invocations import InvocationAgentServerHost
+        if VOICE_BRIDGE:
+            # Same Invocations host plus the typed Voice Live Bridge routes.
+            from azure.ai.agentserver.invocations.voice import VoiceAgentServerHost as InvocationAgentServerHost
         from azure.identity.aio import DefaultAzureCredential
         from copilot import CopilotClient, PermissionHandler, ProviderConfig
         from copilot.session_events import SessionEventType
@@ -525,6 +724,8 @@ def build_host(config, *, bootstrap_gate=None, **host_options):
                 return JSONResponse({"error": "invalid_request"}, 400)
             return StreamingResponse(stream(request.state.invocation_id, data["input"]),
                                      media_type="text/event-stream")
+        if VOICE_BRIDGE:
+            attach_voice_bridge(host, stream)
         return host
 
 

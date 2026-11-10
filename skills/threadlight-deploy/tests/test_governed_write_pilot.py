@@ -141,3 +141,28 @@ def test_safe_check_reports_the_unpackaged_binding_but_no_action_mode_gap(tmp_pa
     assert not [g for g in report["gaps"] if g.startswith("action-mode")], report["gaps"]
     # Invalid or unpackaged selected configuration is not off: the governance gap stays.
     assert [g for g in report["gaps"] if g.startswith("governance")], report["gaps"]
+
+
+def test_governed_write_pilot_with_an_opted_in_voice_front_end(tmp_path):
+    """One pilot, text + voice + the governed write: design -> deploy without hand edits."""
+    import yaml
+    project = _project(tmp_path)
+    spec_path = project / "specs" / "SPEC.md"
+    spec = spec_path.read_text()
+    assert spec.count("agent_type: hosted\n") >= 1
+    spec_path.write_text(spec.replace("agent_type: hosted\n", (
+        "agent_type: hosted\nvoice_frontend: hosted-voice\nvoice_opt_in_source: user\n"
+        'voice_opt_in_evidence: "Facilitator: callers speak to the governed returns agent (preview accepted)"\n'
+        "preview_acknowledged: true\n"), 1))
+    result = _generate(project, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    services = yaml.safe_load((project / "azure.yaml").read_text())["services"]
+    agent = next(s for s in services.values() if s.get("kind") == "hosted")
+    wrapper = next(s for s in services.values() if s.get("kind") == "voice")
+    assert wrapper["conversationEngine"] == {"type": "hosted_agent", "name": agent["name"]}
+    assert ("invocations_ws", "1.0.0") in {(p["protocol"], p["version"]) for p in agent["protocols"]}
+    entry = (project / "src" / "mcp" / "threadlight_mcp_entry.py").read_text()
+    assert WRITE not in json.loads(re.search(r"^DESIGN_TOOLS: list\[str\] = (\[.*\])$", entry, re.M).group(1))
+    deploy_md = re.sub(r"\s+", " ", (project / "DEPLOY.md").read_text())
+    assert "governed-write" in deploy_md and "Voice front-end" in deploy_md
+    assert "governance_pending" in deploy_md and "host record" in deploy_md.lower()

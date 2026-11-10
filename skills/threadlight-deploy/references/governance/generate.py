@@ -753,9 +753,7 @@ def generate(project, document, *, configuration=None):
                 if count != 1:
                     raise ValueError("hosted_cohort_template_mismatch")
         if document["framework"] == "github-copilot-sdk":
-            pyproject = pyproject.replace('  "agent-framework-core==1.14.0",', '  "github-copilot-sdk==1.0.1",')
-            pyproject = "\n".join(line for line in pyproject.splitlines()
-                                  if "agent-framework-foundry" not in line) + "\n"
+            pyproject = ghcp_pyproject(pyproject, voice=voice_front_end(service))
         if (agent / "pyproject.toml").exists():
             pyproject = merge_dependencies((agent / "pyproject.toml").read_text(), pyproject)
         (target / "pyproject.toml").write_text(pyproject)
@@ -906,6 +904,30 @@ RUN python -m pip install --no-cache-dir ./vendor/control-plane
     return text
 
 
+VOICE_AGENTSERVER = {"azure-ai-agentserver-invocations": "1.3.0", "azure-ai-agentserver-core": "2.3.0"}
+
+
+def voice_front_end(service):
+    """True when threadlight-deploy opted this hosted agent into the Hosted Voice front-end."""
+    env = service.get("environmentVariables") or []
+    values = ({e.get("name"): str(e.get("value")) for e in env if isinstance(e, dict)} if isinstance(env, list)
+              else {k: str(v) for k, v in (service.get("env") or {}).items()})
+    return (values.get("THREADLIGHT_VOICE_BRIDGE") == "1"
+            and (service.get("metadata") or {}).get("voiceLiveCompatible") == "true")
+
+
+def ghcp_pyproject(pyproject, *, voice):
+    """GHCP agent dependencies; an opted-in voice front-end needs the Voice Live Bridge 1.0 agentserver."""
+    pyproject = pyproject.replace('  "agent-framework-core==1.14.0",', '  "github-copilot-sdk==1.0.1",')
+    pyproject = "\n".join(line for line in pyproject.splitlines() if "agent-framework-foundry" not in line) + "\n"
+    if voice:
+        for name, version in VOICE_AGENTSERVER.items():
+            pyproject, count = re.subn(re.escape(name) + r'==[^"\s]+', name + "==" + version, pyproject)
+            if count != 1:
+                raise ValueError("voice_agentserver_template_mismatch")
+    return pyproject
+
+
 def write_dockerfile(target, *, agent=False, gateway=False):
     text = dockerfile_text(agent=agent, gateway=gateway)
     (target / "Dockerfile").write_text(text)
@@ -946,8 +968,12 @@ def compose(project, azure, config, framework):
         service["environmentVariables"] = list(entries.values())
     else:
         service.setdefault("env", {}).update(values)
-    service["protocols"] = [{"protocol": "responses" if framework == "microsoft-agent-framework"
-                            else "invocations", "version": "2.0.0"}]
+    protocols = [{"protocol": "responses" if framework == "microsoft-agent-framework"
+                  else "invocations", "version": "2.0.0"}]
+    if framework == "github-copilot-sdk" and voice_front_end(service):
+        # Keep the opted-in Hosted Voice front-end (Voice Live Bridge 1.0) next to Invocations.
+        protocols.append({"protocol": "invocations_ws", "version": "1.0.0"})
+    service["protocols"] = protocols
     azure["infra"] = {"provider": "bicep", "path": "./infra"}
     (project / "azure.yaml").write_text(yaml.safe_dump(azure, sort_keys=False))
     # Existing two-file consumers retain synchronized env declarations; do not create a new legacy authority.
