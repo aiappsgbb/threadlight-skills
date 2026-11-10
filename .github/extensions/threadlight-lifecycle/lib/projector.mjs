@@ -1648,7 +1648,7 @@ async function readPlan(reader, now, options = {}) {
 }
 
 async function buildView({ reader, manifest, phases, projectedSkills, errors, now, plan, planStatus }) {
-  const [specText, governanceManifest, governanceContract, cost, readiness, evalsRead] =
+  const [specText, governanceManifest, governanceContract, cost, readiness, evalsRead, valuePage] =
     await Promise.all([
       readOptionalText(reader, "specs/SPEC.md"),
       readOptionalText(reader, "specs/governance-manifest.json"),
@@ -1656,6 +1656,7 @@ async function buildView({ reader, manifest, phases, projectedSkills, errors, no
       evidenceRecord(reader, "specs/cost-manifest.json", now),
       evidenceRecord(reader, "tests/production-readiness-manifest.json", now),
       readOptionalJson(reader, "specs/evals-manifest.json"),
+      valuePageRecord(reader, now),
     ]);
   // Scenario proof uses the projector's validated evals status; the verdict
   // and pass-rate check only refine a status that already validated.
@@ -1684,9 +1685,21 @@ async function buildView({ reader, manifest, phases, projectedSkills, errors, no
             projectedSkills.get("threadlight-production-ready")?.evidenceState ?? null,
         }
       : null,
+    valuePage,
     errors,
     generatedAt: now.toISOString(),
   });
+}
+
+async function valuePageRecord(reader, now) {
+  const read = await readOptionalJson(reader, "specs/pilot-value.json");
+  if (read.state === "missing") {
+    return null;
+  }
+  if (read.state !== "present") {
+    return { value: null, checkedAt: null };
+  }
+  return evidenceRecord(reader, "specs/pilot-value.json", now);
 }
 
 /**

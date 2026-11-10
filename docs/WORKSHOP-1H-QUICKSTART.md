@@ -486,3 +486,21 @@ Then review the broader readiness work:
   hosted-agent + MCP without changing app code.
 - **End-to-end automation** — `threadlight-auto` orchestrates the full
   design → local-test → deploy → safe-check → evals pipeline as one prompt.
+
+### 6.7 Close with the pilot value page
+
+End the session with the page the process owner keeps: what the pilot showed,
+in business language. From the pilot folder, run:
+
+```bash
+python <threadlight-skills>/skills/threadlight-production-ready/scripts/pilot_value.py --workspace .
+```
+
+Open `docs/pilot-value.html`. It reads only the evidence the pilot already
+produced (Foundry eval score against the business rules, showcase-scenario
+results recorded in `docs/invoke-results.md`, post-deploy safety check, cost,
+business case, SPEC targets) and labels each item Measured, Calculated,
+Estimate, Target or **Not measured yet**. Right after a one-hour workshop most
+cost and business lines will say "Not measured yet"; that list is the agenda
+for the follow-up, not a gap to fill by hand. The page is a decision aid, not a
+go-live verdict.

@@ -146,6 +146,8 @@ test('calls to action describe their real destinations', () => {
   assert.match(review, /id="start"[^>]*href="\.\/agent-governance\.html#overview"/);
   assert.match(review, /href="\.\/funnel\.html#scene-cta"/);
   assert.match(review, /href="\.\/operate\.html"/);
+  assert.match(text(review), /You need to decide whether to continue/);
+  assert.match(review, /blob\/main\/skills\/threadlight-production-ready\/SKILL\.md#pilot-value-page-process-owner-and-sponsor/);
 });
 
 test('every part links to its Markdown depth and the companion exists', () => {

@@ -555,3 +555,19 @@ test('workshop model note offers Copilot Fusion honestly, as documented', () => 
   assert.match(w, /Copilot Pro\+, Copilot Max, Copilot Business and Copilot Enterprise/);
   assert.match(w, /does not start subagents|doesn't start (them|subagents)/);
 });
+
+test('pilot value page closes the workshop and is documented without overclaiming', () => {
+  const flatten = (value) => value.replace(/\s+/g, ' ');
+  const workshop = flatten(read(docs.workshop));
+  assert.match(workshop, /### 6\.7 Close with the pilot value page/);
+  assert.ok(workshop.includes('skills/threadlight-production-ready/scripts/pilot_value.py'));
+  assert.match(workshop, /Not measured yet/);
+  assert.match(workshop, /not a go-live verdict/i);
+  const readiness = flatten(read(docs.readiness));
+  assert.ok(readiness.includes('pilot_value.py'));
+  assert.ok(readiness.includes('specs/pilot-value.json'));
+  assert.match(readiness, /never (?:shown|labelled) as measured/i);
+  const canvas = flatten(read('.github/extensions/threadlight-lifecycle/README.md'));
+  assert.match(canvas, /Pilot value page/);
+  assert.ok(canvas.includes('specs/pilot-value.json'));
+});

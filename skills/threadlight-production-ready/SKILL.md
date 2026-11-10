@@ -3,10 +3,11 @@ name: threadlight-production-ready
 description: >-
   Use when a pilot needs production-readiness review, CISO or customer
   architecture handoff, current runtime-binding evidence, missing live proof,
-  remediation ownership or an explicit CI readiness gate. Not for deployment,
-  runtime implementation, model evaluation or hub provisioning.
+  remediation ownership or an explicit CI readiness gate, or a post-pilot
+  value page for the process owner and sponsor (pilot_value.py). Not for
+  deployment, runtime implementation, model evaluation or hub provisioning.
 metadata:
-  version: "0.15.1"
+  version: "0.16.0"
 ---
 
 # Threadlight Production Ready — paving the path to production
@@ -517,7 +518,8 @@ Exit codes:
 threadlight-production-ready/
 ├── SKILL.md                              (this file)
 ├── scripts/
-│   └── production_ready.py               (catalog CLI; shared validators + sibling helpers)
+│   ├── production_ready.py               (catalog CLI; shared validators + sibling helpers)
+│   └── pilot_value.py                    (post-pilot value page; reads evidence only)
 └── references/
     ├── spec-section-12-template.md       (how to author SPEC § 12)
     ├── report-template.md                (markdown report skeleton)
@@ -860,6 +862,40 @@ every other finding in this skill.
 The report is the customer-facing artefact. It's intentionally
 dense — designed to land in a deck, an SRT, a CISO review, and a CAB
 ticket without further editing.
+
+## Pilot value page (process owner and sponsor)
+
+After a pilot, the people who decide whether to continue need one page in
+business language, not the readiness report. `scripts/pilot_value.py` builds it
+from evidence other Threadlight steps already wrote. It reads files only: no
+Azure call, no recomputation, and it never edits an input.
+
+```sh
+python <threadlight-skills>/skills/threadlight-production-ready/scripts/pilot_value.py --workspace <pilot-root>
+```
+
+It writes `docs/pilot-value.html` (self-contained, no script, printable),
+`docs/pilot-value.md` and `specs/pilot-value.json` (summary shown by the
+Lifecycle Canvas under "Go-live and value"). The page answers five questions:
+does it handle cases correctly, did the showcase scenarios work live, is it
+running on Microsoft Foundry, what does a successful interaction cost, and is
+the business case there.
+
+| Input | Shown as |
+|---|---|
+| `specs/foundry-package-manifest.json` (eval run, rubric score and bar; delivery checked with `_shared/foundry_package.py`) | Measured |
+| `tests/killer-prompts.md` + `docs/invoke-results.md` (one `PASS`/`FAIL` per `K<n>` line) | Measured per scenario; no recorded result stays not measured |
+| `tests/postdeploy-manifest.json` (`phase: post-deploy`), `tests/production-readiness-manifest.json` | Measured |
+| `specs/cost-reconciliation-manifest.json` through `_cost_evidence_summary` (the KPI-003 reader: digest-pinned, re-derived) | Measured cost per successful interaction and spend; monthly pace is Calculated |
+| `specs/cost-manifest.json` | Estimate; its per-interaction forecast never fills the measured cost |
+| `qualification/roi.md` (threadlight-qualify) | Estimate |
+| SPEC § 9 Business KPIs table | Target, with "Measured: Not measured yet" |
+
+Every item carries one label: Measured, Calculated, Estimate, Target or
+**Not measured yet**. A missing, unreadable or unverified input renders as
+"Not measured yet" with the step that produces it; nothing is filled in. The
+page is a decision aid, not a go-live verdict: the readiness review and the
+Canvas proof chain remain the gate.
 
 ## Posture target resolution
 

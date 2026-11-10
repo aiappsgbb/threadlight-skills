@@ -7,6 +7,26 @@ field.
 
 ## [Unreleased]
 
+### 2.38.0: pilot value page for the process owner and sponsor
+
+- **`threadlight-production-ready/scripts/pilot_value.py`** (skill 0.16.0)
+  writes `docs/pilot-value.html` (self-contained, printable, no script),
+  `docs/pilot-value.md` and `specs/pilot-value.json` from evidence the pilot
+  already produced: the Foundry eval score against its bar and the delivery
+  check, showcase-scenario results from `docs/invoke-results.md`, the
+  post-deploy safety check, the readiness review, the reconciled cost per
+  successful interaction (through the KPI-003 reader, so a tampered or stale
+  bundle is not relayed), measured spend and its monthly pace, the cost
+  forecast, `qualification/roi.md` and the SPEC business KPI targets. Every
+  item is labelled Measured, Calculated, Estimate, Target or Not measured yet;
+  a forecast never fills a measured figure and a missing input is never filled.
+  It reads only and changes no input.
+- **Lifecycle Canvas:** "Go-live and value" shows a **Pilot value page** fact
+  from `specs/pilot-value.json` (validated schema, counts and page path; a
+  forged summary renders as unreadable).
+- **Docs:** workshop closing segment 6.7, readiness guide subsection and a
+  "decide whether to continue" path on the Production page.
+
 ### 2.37.0: App Insights project connection moves to an idempotent postprovision hook
 
 - **Root cause (service-side, eastus2, 2026-11-10).** Every Foundry
