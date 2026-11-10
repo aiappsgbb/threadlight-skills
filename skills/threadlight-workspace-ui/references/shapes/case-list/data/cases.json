@@ -1,0 +1,217 @@
+{
+  "schema": "threadlight-workspace-cases/v1",
+  "_meta": {
+    "note": "Synthetic sample data for the case-list reference. Fictional company, people and identifiers. Replace with specs/sample-data or your agent's read API.",
+    "generated_by": "threadlight-workspace-ui reference"
+  },
+  "workspace": {
+    "process_name": "Returns triage",
+    "agent_name": "Returns Triage Agent",
+    "company": "Contoso Outdoor (fictional)",
+    "accent": "#0d7c66",
+    "currency": "EUR",
+    "as_of": "2026-03-04T10:00:00Z"
+  },
+  "config": {
+    "writeback_url": null,
+    "actionable_statuses": ["awaiting_review"],
+    "review_command": {
+      "control_plane_url": "https://<control-plane-host>",
+      "scope": "api://<CONTROL_API_ID>/.default",
+      "tenant": "<TENANT_ID>",
+      "client_id": "<REVIEW_CLIENT_ID>",
+      "role": "Approver"
+    }
+  },
+  "actions": [
+    { "id": "accept", "label": "Accept recommendation", "br": "BR-001", "needsReason": false, "hint": "Sends the recommendation to the agent's writeback endpoint" },
+    { "id": "edit", "label": "Change decision", "br": "BR-002", "needsReason": true },
+    { "id": "escalate", "label": "Escalate to supervisor", "br": "BR-003", "needsReason": true, "destructive": true }
+  ],
+  "cases": [
+    {
+      "id": "RT-1042",
+      "customer": "Giulia Ferri",
+      "item": "Trail running jacket",
+      "status": "pending_approval",
+      "amount": 640.0,
+      "decision": "refund",
+      "risk": "high",
+      "owner": "Supervisor queue",
+      "opened_at": "2026-03-03T15:12:00Z",
+      "sla_due": "2026-03-04T10:06:00Z",
+      "etag": "\"0x8DC2A1F00000001\"",
+      "pending_file": "pending-RT-1042.json",
+      "pending": {
+        "status": "pending_approval",
+        "operation_id": "op-rt1042-0001",
+        "proposed_arguments": {
+          "case_id": "RT-1042",
+          "decision": "refund",
+          "expected_etag": "\"0x8DC2A1F00000001\"",
+          "reason": "Damaged on arrival; photos match carrier report. Refund exceeds EUR 500 so a supervisor must approve."
+        },
+        "review_context": {
+          "action": "returns_apply_decision",
+          "scope": "returns",
+          "tenant": "00000000-0000-0000-0000-000000000000",
+          "subject": "00000000-0000-0000-0000-000000000001",
+          "client": "00000000-0000-0000-0000-000000000002"
+        }
+      },
+      "recommendation": {
+        "summary": "Refund EUR 640: item damaged in transit, evidence consistent.",
+        "confidence": 0.86,
+        "evidence": [
+          { "id": "ev-1", "type": "document", "title": "Customer photos", "body": "Three photos show a torn seam and water staining on the outer shell." },
+          { "id": "ev-2", "type": "transaction", "title": "Order 55-1042", "body": "Paid EUR 640 on 2026-02-20; delivered 2026-03-01; carrier logged a wet parcel." }
+        ],
+        "citations": [
+          { "id": "BR-003", "source": "Returns policy", "text": "Refunds above EUR 500 require supervisor approval before they are applied." }
+        ]
+      },
+      "reasoning": [
+        { "tool": "get_order", "text": "Loaded order 55-1042 and its delivery events." },
+        { "tool": "get_return_photos", "text": "Checked the three uploaded photos against the damage taxonomy." },
+        { "tool": "returns_apply_decision", "text": "Proposed the refund; the governed gateway returned pending_approval (no effect yet)." }
+      ],
+      "audit": [
+        { "id": "a-1042-1", "ts": "2026-03-03T15:12:00Z", "actor": "Customer portal", "actorKind": "system", "action": "case-opened", "target": "RT-1042", "details": "Return request created." },
+        { "id": "a-1042-2", "ts": "2026-03-03T15:14:30Z", "actor": "Returns Triage Agent", "actorKind": "agent", "action": "agent-emit", "target": "RT-1042", "details": "Proposed refund; gateway returned pending_approval op-rt1042-0001.", "br": "BR-003" }
+      ]
+    },
+    {
+      "id": "RT-1043",
+      "customer": "Marco Bellini",
+      "item": "Camping stove",
+      "status": "awaiting_review",
+      "amount": 89.9,
+      "decision": "exchange",
+      "risk": "low",
+      "owner": "Ana R.",
+      "opened_at": "2026-03-04T08:40:00Z",
+      "sla_due": "2026-03-04T16:40:00Z",
+      "recommendation": {
+        "summary": "Exchange: igniter fault covered by warranty, replacement in stock.",
+        "confidence": 0.78,
+        "evidence": [
+          { "id": "ev-3", "type": "document", "title": "Customer description", "body": "Igniter clicks but does not light after two uses." },
+          { "id": "ev-4", "type": "policy", "title": "Warranty terms", "body": "Manufacturing faults within 24 months qualify for exchange." }
+        ],
+        "citations": [
+          { "id": "BR-002", "source": "Returns policy", "text": "Prefer exchange over refund when the same item is in stock." }
+        ]
+      },
+      "reasoning": [
+        { "tool": "get_order", "text": "Order 55-1043 delivered 2026-02-27." },
+        { "tool": "check_stock", "text": "Same SKU in stock at the central warehouse." }
+      ],
+      "audit": [
+        { "id": "a-1043-1", "ts": "2026-03-04T08:40:00Z", "actor": "Customer portal", "actorKind": "system", "action": "case-opened", "target": "RT-1043", "details": "Return request created." }
+      ]
+    },
+    {
+      "id": "RT-1044",
+      "customer": "Sofia Conti",
+      "item": "Two-person tent",
+      "status": "awaiting_review",
+      "amount": 249.0,
+      "decision": "refund",
+      "risk": "medium",
+      "owner": "Ana R.",
+      "opened_at": "2026-03-04T07:05:00Z",
+      "sla_due": "2026-03-04T15:05:00Z",
+      "recommendation": {
+        "summary": "Refund EUR 249: unused, returned inside the 30-day window.",
+        "confidence": 0.91,
+        "evidence": [
+          { "id": "ev-5", "type": "transaction", "title": "Order 55-1044", "body": "Delivered 2026-02-25; return started 2026-03-04." }
+        ],
+        "citations": [
+          { "id": "BR-001", "source": "Returns policy", "text": "Unused items returned within 30 days are refunded in full." }
+        ]
+      },
+      "reasoning": [
+        { "tool": "get_order", "text": "Within the 30-day window." }
+      ],
+      "audit": []
+    },
+    {
+      "id": "RT-1039",
+      "customer": "Luca Moretti",
+      "item": "Hiking boots",
+      "status": "escalated",
+      "amount": 179.0,
+      "decision": "reject",
+      "risk": "high",
+      "owner": "Supervisor queue",
+      "opened_at": "2026-03-02T11:00:00Z",
+      "sla_due": "2026-03-05T11:00:00Z",
+      "recommendation": {
+        "summary": "Reject: third return this quarter with wear inconsistent with the claim.",
+        "confidence": 0.62,
+        "evidence": [
+          { "id": "ev-6", "type": "other", "title": "Return history", "body": "Two refunds in the last 60 days on the same account." }
+        ],
+        "citations": [
+          { "id": "BR-004", "source": "Returns policy", "text": "Repeat returns with signs of use are escalated to a supervisor." }
+        ]
+      },
+      "reasoning": [
+        { "tool": "get_customer_history", "text": "Found two prior refunds in 60 days." }
+      ],
+      "audit": [
+        { "id": "a-1039-1", "ts": "2026-03-02T11:20:00Z", "actor": "Ana R. (analyst)", "actorKind": "human", "action": "escalated", "target": "RT-1039", "details": "Escalated for supervisor review.", "reason": "Repeat-return pattern needs supervisor judgement.", "br": "BR-004" }
+      ]
+    },
+    {
+      "id": "RT-1036",
+      "customer": "Elena Russo",
+      "item": "Down sleeping bag",
+      "status": "approved",
+      "amount": 520.0,
+      "decision": "refund",
+      "risk": "medium",
+      "owner": "Supervisor queue",
+      "opened_at": "2026-03-01T09:30:00Z",
+      "sla_due": "2026-03-02T09:30:00Z",
+      "recommendation": {
+        "summary": "Refund EUR 520: zip failure confirmed by repair partner.",
+        "confidence": 0.88,
+        "evidence": [
+          { "id": "ev-7", "type": "document", "title": "Repair partner report", "body": "Zip slider broken; not repairable." }
+        ],
+        "citations": [
+          { "id": "BR-003", "source": "Returns policy", "text": "Refunds above EUR 500 require supervisor approval before they are applied." }
+        ]
+      },
+      "reasoning": [],
+      "audit": [
+        { "id": "a-1036-1", "ts": "2026-03-01T10:02:00Z", "actor": "Returns Triage Agent", "actorKind": "agent", "action": "agent-emit", "target": "RT-1036", "details": "Proposed refund; gateway returned pending_approval op-rt1036-0001.", "br": "BR-003" },
+        { "id": "a-1036-2", "ts": "2026-03-01T13:40:00Z", "actor": "Control plane (recorded by threadlight-review-action)", "actorKind": "system", "action": "approve", "target": "RT-1036", "details": "Approver decision recorded for op-rt1036-0001; the agent resumed and the write completed.", "br": "BR-003" }
+      ]
+    },
+    {
+      "id": "RT-1031",
+      "customer": "Paolo Gallo",
+      "item": "Trekking poles",
+      "status": "rejected",
+      "amount": 64.5,
+      "decision": "reject",
+      "risk": "low",
+      "owner": "Ana R.",
+      "opened_at": "2026-02-27T14:00:00Z",
+      "sla_due": "2026-02-28T14:00:00Z",
+      "recommendation": {
+        "summary": "Reject: outside the 30-day window and no fault reported.",
+        "confidence": 0.94,
+        "evidence": [],
+        "citations": [
+          { "id": "BR-001", "source": "Returns policy", "text": "Unused items returned within 30 days are refunded in full." }
+        ]
+      },
+      "reasoning": [],
+      "audit": []
+    }
+  ]
+}

@@ -34,6 +34,8 @@ name: python-pytest
 #     env-setup runbook generator — deterministic, secret-free, no network)
 #   - skills/threadlight-customize/tests/        (fork-and-customize final
 #     leg — instructions-only: version + structure + no-secrets/anonymization)
+#   - skills/threadlight-workspace-ui/tests/     (shape availability index vs
+#     shipped files + offline static-server smoke of runnable shapes)
 #   - skills/threadlight-router-bench/tests/     (offline self-improvement cold-
 #     path: learn single-run CI learnings + bench cost scorecard; gh/az calls
 #     are dependency-injected with fixture runners — deterministic, no network)
@@ -285,6 +287,11 @@ jobs:
         run: python -m pytest skills/threadlight-cicd/tests/ -v
       - name: Run threadlight-customize tests
         run: python -m pytest skills/threadlight-customize/tests/ -v
+      - name: Run threadlight-workspace-ui tests
+        # Shape availability index vs files on disk, referenced paths, and an
+        # offline static-server smoke of each runnable shape (plus node --check
+        # when node is present). Stdlib-only, no browser, no network.
+        run: python -m pytest skills/threadlight-workspace-ui/tests/ -v
       - name: Run threadlight-router-bench tests
         # Offline self-improvement cold-path: learn (single-run CI learnings) +
         # bench (cost scorecard). Deterministic, stdlib-only, no Azure/gh network

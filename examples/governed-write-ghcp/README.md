@@ -121,6 +121,11 @@ python scripts/invoke.py $E --evidence replay.jsonl --resume pending.json   # sa
 python scripts/demo_capacity.py cool --resource-group <rg> --apps <control> <gateway> <business> <mcp>
 ```
 
+`threadlight-review-action` shows the exact proposal, asks for a typed
+confirmation and then opens the system browser for the Approver's own sign-in;
+set `BROWSER="open -a 'Microsoft Edge' %s"` (macOS) to choose the browser. Run it
+in a terminal the Approver can see.
+
 What to point at: the allow returns an `audit_id`; the deny records nothing
 (`policy_deny`); the escalation returns `pending_approval` with **no effect** and
 the host (not the model) emits `event: governance_pending`; the Approver signs in
