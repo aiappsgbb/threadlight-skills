@@ -343,3 +343,21 @@ def test_spoken_text_drops_markdown_markup_but_keeps_the_words(runtime):
         "Proposed: approve_refund\nDisposition: restock_a\n\nWhy\nwithin the 30-day window\n"
         "see return policy and RP-1")
     assert runtime._speakable("approve_refund and restock_a stay as words") == "approve_refund and restock_a stay as words"
+
+
+def test_a_second_cancel_for_the_same_response_does_not_interrupt_the_abort(runtime):
+    # Voice Live can send user.barge_in and then response.cancelled for one response.
+    with TestClient(runtime.app) as client, client.websocket_connect("/invocations_ws") as ws:
+        _start(ws)
+        _say(ws, "hang", 1)
+        created = ws.receive_json()
+        assert runtime._client.hanging.wait(5)
+        ws.send_json({"type": "user.barge_in", "id": "m_barge", "ts": TS,
+                      "response_id": created["response_id"], "heard_text": ""})
+        ws.send_json({"type": "response.cancelled", "id": "m_cancel", "ts": TS,
+                      "response_id": created["response_id"], "heard_text": ""})
+        _say(ws, "next", 2)
+        frames = _turn(ws)
+        _end(ws)
+    assert [f["type"] for f in frames] == ["response.created", "response.output_text.done", "response.done"]
+    assert frames[1]["text"].endswith("seen: hang / next")

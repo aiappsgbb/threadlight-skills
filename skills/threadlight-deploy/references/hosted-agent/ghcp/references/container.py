@@ -715,8 +715,19 @@ async def _voice_turn(bridge_session, call: _VoiceCall, item_id: str, input_text
                         answer = work.result()
                     except asyncio.CancelledError:
                         work.cancel()
-                        await asyncio.gather(work, return_exceptions=True)
-                        await _abort_turn(copilot_session)
+
+                        async def settle() -> None:
+                            await asyncio.gather(work, return_exceptions=True)
+                            await _abort_turn(copilot_session)
+
+                        # A second cancel (barge-in then response.cancelled) must not cut the
+                        # abort short: the next turn would then see this turn's late idle.
+                        cleanup = asyncio.ensure_future(settle())
+                        while not cleanup.done():
+                            try:
+                                await asyncio.shield(cleanup)
+                            except asyncio.CancelledError:
+                                continue
                         raise
             except asyncio.CancelledError:
                 raise
@@ -745,6 +756,8 @@ async def _voice_turn(bridge_session, call: _VoiceCall, item_id: str, input_text
 
 def _cancel_response(call: _VoiceCall, response_id: str | None, item_ids=()) -> None:
     for item_id, task in list(call.tasks.items()):
+        if task.cancelling():
+            continue
         if item_id in (item_ids or ()) or (response_id and call.current_item == item_id
                                            and call.current_response == response_id):
             task.cancel()
