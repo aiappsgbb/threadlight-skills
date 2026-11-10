@@ -7,6 +7,41 @@ field.
 
 ## [Unreleased]
 
+### 2.35.0: governed-write workshop kit with a live governed write on GHCP
+
+- **`governed-write` action mode.** A third design mode between the
+  recommend-only Fast-PoC and the Production path: reads stay unbound and
+  exactly one consequential tool is bound to the governed MCP gateway
+  (`pre_tool_call`, signed policy, decision receipt, idempotency). Human approval
+  is selected in the signed registry (`approval_mode: deferred`,
+  `approval_requirement: policy`), so an ACS allow stays autonomous and only an
+  escalation needs a person. `skills/_shared/action_mode.py`
+  (`governed_write_gaps`) checks SPEC § 6/§ 11a consistency, the recorded
+  policy rules, downstream service and governance foundation; design,
+  generate-only (the bound write never becomes a directly callable mock
+  effect), safe-check, threadlight-auto (routes the binding through
+  threadlight-govern), Pattern 0 and the lifecycle canvas honour it.
+- **GHCP deferred approval.** The generated GHCP relay is now a resume adapter:
+  for gateway tools marked deferred it adds the `governance_operation_id`
+  selector, forwards it as the original `Idempotency-Key`, validates
+  `pending_approval` results and emits a host-owned
+  `event: governance_pending` SSE frame. `generate.py` no longer rejects GHCP
+  deferred mode; requesting-user confirmation stays MAF-only.
+- **Workshop kit** `examples/governed-write-ghcp/`: SPEC, four Rego business
+  rules with a native ACS test, synthetic case pool, pilot MCP read server,
+  business authority Bicep, policy build, publisher job, seeding, invocation,
+  warm/cool and Entra scripts, plus the facilitator runbook.
+  `docs/WORKSHOP-1H-QUICKSTART.md` gains an optional governance segment.
+- **Live evidence (S8).** On 2026-11-10 a Foundry hosted GHCP agent showed a
+  model-driven allow, a gateway deny, pending approval with no effect, an
+  Approver decision, the resumed write and an unchanged replay, recorded in
+  `docs/governed-returns-validation.md` with its limits (operator-recorded
+  delegated approval, one binding, public-authenticated nonproduction).
+- **Generator fixes found live.** Optional `tags` and `min_replicas` (0-2,
+  default 1) in the foundation configuration; a gateway startup probe so ACA
+  does not kill it while it verifies the signed bundle; `returns-mcp.Dockerfile`
+  builds in ACR remote builds (no `FROM --platform=... ${ARG}`); the Entra
+  script sets the required `idtyp` optional claim.
 ### 2.34.0: pilot MCP Container App scales to zero by default
 
 - **No always-on MCP replica.** The GHCP pilot infra (`main.bicep`) exposes
@@ -25,6 +60,7 @@ field.
   0 replicas, K1 passed in 68 s (cold) and K2–K6 passed in 43–55 s; all MCP tool
   calls succeeded.
 - **Regression test.** `test_mcp_container_app_scales_to_zero_by_default_with_warm_opt_in`.
+||||||| parent of 96019b07 (2.34.0: governed-write workshop kit with a live governed write on GHCP)
 
 ### 2.33.0: opt-in voice front-end on the GHCP hosted agent (Foundry Hosted Voice, preview)
 
