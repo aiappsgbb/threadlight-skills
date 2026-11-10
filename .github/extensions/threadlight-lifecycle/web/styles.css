@@ -390,6 +390,11 @@ textarea::placeholder {
   font-size: 0.8125rem;
 }
 
+.action-mode {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
 .notice {
   display: flex;
   gap: 0.5rem;

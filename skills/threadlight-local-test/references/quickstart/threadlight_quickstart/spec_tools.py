@@ -24,7 +24,11 @@ buttons or ``--approve-tool``), and nothing approves them implicitly.
 A recommend-only pilot (``"action_mode": "recommend-only"`` in
 ``specs/manifest.json``, the threadlight-design Fast-PoC default) gets no write
 tool at all: the agent proposes the decision and a person records it. A write
-tool still listed in section 6 is withheld and reported as such.
+tool still listed in section 6 is withheld and reported as such. A governed-write
+pilot (``"action_mode": "governed-write"``, the workshop governed write) is
+treated the same way: its one write runs only through the governed tool gateway
+after deploy, so Pattern 0 withholds it instead of running an ungoverned local
+effect.
 """
 from __future__ import annotations
 
@@ -153,15 +157,36 @@ def _load_design_server(root: Path, sample_dir: Path):
 
 
 RECOMMEND_ONLY = "recommend-only"
+GOVERNED_WRITE = "governed-write"
+WITHHELD = {
+    RECOMMEND_ONLY: "withheld (recommend-only pilot: a person records the decision)",
+    GOVERNED_WRITE: "withheld (governed-write pilot: runs only through the governed tool gateway after deploy)",
+}
+
+
+def action_mode(root: Path) -> str | None:
+    """``action_mode`` from ``specs/manifest.json``, or None."""
+    try:
+        manifest = json.loads((root / "specs" / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    mode = manifest.get("action_mode") if isinstance(manifest, dict) else None
+    return mode if isinstance(mode, str) else None
 
 
 def is_recommend_only(root: Path) -> bool:
     """True when ``specs/manifest.json`` declares ``"action_mode": "recommend-only"``."""
-    try:
-        manifest = json.loads((root / "specs" / "manifest.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    return isinstance(manifest, dict) and manifest.get("action_mode") == RECOMMEND_ONLY
+    return action_mode(root) == RECOMMEND_ONLY
+
+
+def is_governed_write(root: Path) -> bool:
+    """True when ``specs/manifest.json`` declares ``"action_mode": "governed-write"``."""
+    return action_mode(root) == GOVERNED_WRITE
+
+
+def withholds_writes(root: Path) -> bool:
+    """Pattern 0 exposes no write tool: recommend-only, or governed-write (no local gateway)."""
+    return action_mode(root) in WITHHELD
 
 
 def build_spec_tools(
@@ -183,12 +208,11 @@ def build_spec_tools(
                      "knowledge": True, "args": [{"name": "query", "type": "string", "required": True}]})
     tools: list[Any] = []
     wiring: list[dict[str, Any]] = []
-    recommend_only = is_recommend_only(root)
+    pilot_mode = action_mode(root)
     for spec_tool in plan:
-        if recommend_only and spec_tool["kind"] != "read":
-            log.warning("Recommend-only pilot: write tool %s withheld from the agent", spec_tool["name"])
-            wiring.append({"tool": spec_tool["name"], "kind": spec_tool["kind"],
-                           "source": "withheld (recommend-only pilot: a person records the decision)",
+        if pilot_mode in WITHHELD and spec_tool["kind"] != "read":
+            log.warning("%s pilot: write tool %s withheld from the agent", pilot_mode, spec_tool["name"])
+            wiring.append({"tool": spec_tool["name"], "kind": spec_tool["kind"], "source": WITHHELD[pilot_mode],
                            "approval": "not exposed"})
             continue
         mode = "never_require" if spec_tool["kind"] == "read" else "always_require"

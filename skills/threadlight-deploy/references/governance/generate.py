@@ -508,8 +508,6 @@ def validate_bundle_contract(bundle, document, config, registry=None):
                 raise ValueError("signed_registry_confirmation_timeout_mismatch")
         if ("signed-evidence" in tool["requires"]) != (action.evidence_requirement is not None):
             raise ValueError("signed_registry_evidence_requirement_mismatch")
-        if document["framework"] == "github-copilot-sdk" and action.approval_mode == "deferred":
-            raise ValueError("ghcp_deferred_approval_resume_unsupported")
         post = tool["policy_binding"] if "post_tool_call" in tool["intervention_points"] else None
         if action.policy_binding != tool["policy_binding"] or action.post_policy_binding != post:
             raise ValueError("signed_registry_contract_binding_mismatch")

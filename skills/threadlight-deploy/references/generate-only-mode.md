@@ -123,6 +123,19 @@ Ownership is explicit, so the deploy step never discards design code:
   nothing written, because it would deploy an unbound or unpackaged
   consequential write. Letting the agent write is the Production path
   (Full-mode design, `threadlight-govern`).
+- **Governed-write pilot (workshop).** `"action_mode": "governed-write"` binds
+  exactly one SPEC § 6 write to the governed tool gateway (SPEC § 11a
+  `mode: selective`); every other tool is an unbound read. generate_only
+  packages it as selected governance (below) and keeps the bound write out of
+  the mock MCP server, `specs/project-tools.json` (listed under
+  `governed_gateway_tools`), `expected_tools` and the generated tests: the
+  write runs only through the governed gateway, never as a directly callable
+  mock effect. `DEPLOY.md` and `specs/deferred-steps.md` state that it is not
+  live until the shared governance foundation exists, `threadlight-govern`
+  builds the signed policy bundle and the binding is registered. A
+  governed-write SPEC that is not consistent (an unbound or second write,
+  missing gateway requirements, missing policy rules, downstream service or
+  foundation record) is refused with exit 6 and nothing written.
 - **Selected governance.** generate_only does not build a governance package.
   When SPEC § 11a selects governance (any mode but `off`), the bound tools are
   listed as **not packaged** in `specs/deferred-steps.md`, `DEPLOY.md` and the

@@ -212,6 +212,110 @@ def test_deferred_mcp_client_returns_pending_and_resumes_with_the_same_operation
     asyncio.run(run())
 
 
+def ghcp_relay_module():
+    import importlib.util
+    path = Path(__file__).resolve().parents[2] / "threadlight-deploy/references/governance/ghcp-container.py"
+    spec = importlib.util.spec_from_file_location("deferred_ghcp_relay", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_ghcp_relay_returns_host_owned_pending_and_resumes_the_same_operation(tmp_path):
+    """GHCP deferred review: no effect while pending, one effect after one-use human grant."""
+    async def run():
+        import httpx
+        module = ghcp_relay_module()
+        h = await harness(
+            tmp_path, requirement="policy",
+            decision='{"decision": "escalate"} if input.policy_target.value.amount > 100 else := {"decision": "allow"}')
+        app = gateway("server").create_app(h.dispatcher)
+        pending_events = []
+
+        async def call(http, invocation, arguments, *, call_id="c1"):
+            relay = module.McpRelay(
+                gateway_url="https://gateway.example/mcp", scope="api://gateway/.default",
+                credential=Credential(h.cp.token()), invocation_id=invocation, tools=["refund"],
+                http=http, on_pending=pending_events.append)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app()),
+                                        base_url="http://relay") as client:
+                headers = {"X-Threadlight-Relay": relay.secret, "MCP-Protocol-Version": "2025-03-26"}
+                listed = await client.post("/mcp", headers=headers, json={
+                    "jsonrpc": "2.0", "id": 0, "method": "tools/list", "params": {}})
+                schema = listed.json()["result"]["tools"][0]["inputSchema"]
+                ticket = await relay.pre_mcp({
+                    "serverName": "threadlight-governed", "toolName": "refund", "toolCallId": call_id,
+                    "sessionId": "s1", "arguments": arguments}, {})
+                response = await client.post("/mcp", headers=headers, json={
+                    "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                        "name": "refund", "arguments": arguments, "_meta": ticket["metaToUse"]}})
+                assert response.status_code == 200, response.text
+                return schema, response.json()["result"].get("structuredContent") or {}
+
+        try:
+            async with app.router.lifespan_context(app), httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=app)) as http:
+                schema, low = await call(http, "inv-0", {"amount": 5})
+                assert low["status"] == "completed" and len(h.calls) == 1
+                assert schema["properties"]["governance_operation_id"]["maxLength"] == 128
+                assert pending_events == []
+
+                _, first = await call(http, "inv-1", {"amount": 500})
+                assert first["status"] == "pending_approval" and len(h.calls) == 1
+                assert pending_events == [first]
+                control_module("review").validate_pending_review(first)
+                assert (await h.cp.post(
+                    "decide", human=True, intent=first["approval_intent"],
+                    approved=True, approving_role="Approver")).status_code == 200
+
+                resume = {"amount": 500, "governance_operation_id": first["operation_id"]}
+                _, resumed = await call(http, "inv-2", resume)
+                assert resumed == {"status": "completed", "result": {"status": "refunded"}}
+                assert len(h.calls) == 2 and json.loads(h.calls[1].content) == {"amount": 500}
+                _, replay = await call(http, "inv-3", resume, call_id="c9")
+                assert replay == resumed and len(h.calls) == 2
+                _, changed = await call(http, "inv-4", {**resume, "amount": 600})
+                assert changed.get("status") != "completed" and len(h.calls) == 2
+                assert len(pending_events) == 1
+        finally:
+            await h.close()
+    asyncio.run(run())
+
+
+def test_ghcp_relay_rejects_operation_selector_on_non_deferred_action(tmp_path):
+    async def run():
+        import httpx
+        module = ghcp_relay_module()
+        document = registry()
+        h = await GatewayHarness().initialize(tmp_path, document=document)
+        app = gateway("server").create_app(h.dispatcher)
+        try:
+            async with app.router.lifespan_context(app), httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=app)) as http:
+                relay = module.McpRelay(
+                    gateway_url="https://gateway.example/mcp", scope="api://gateway/.default",
+                    credential=Credential(h.cp.token()), invocation_id="inv", tools=["refund"], http=http)
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app()),
+                                            base_url="http://relay") as client:
+                    headers = {"X-Threadlight-Relay": relay.secret}
+                    listed = await client.post("/mcp", headers=headers, json={
+                        "jsonrpc": "2.0", "id": 0, "method": "tools/list", "params": {}})
+                    tool = listed.json()["result"]["tools"][0]
+                    assert "governance_operation_id" not in tool["inputSchema"].get("properties", {})
+                    arguments = {"amount": 5, "governance_operation_id": "x" * 64}
+                    ticket = await relay.pre_mcp({
+                        "serverName": "threadlight-governed", "toolName": "refund", "toolCallId": "c1",
+                        "sessionId": "s1", "arguments": arguments}, {})
+                    response = await client.post("/mcp", headers=headers, json={
+                        "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                            "name": "refund", "arguments": arguments, "_meta": ticket["metaToUse"]}})
+                    assert response.json()["result"].get("structuredContent", {}).get("status") != "completed"
+                    assert h.calls == []
+        finally:
+            await h.close()
+    asyncio.run(run())
+
+
 def test_deferred_health_requires_nonblocking_approval_protocol(tmp_path):
     async def run():
         h = await harness(tmp_path)

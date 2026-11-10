@@ -391,6 +391,21 @@ def test_governed_ghcp_adapter_degrades_unserialisable_message_events():
     assert "canonical(_message_payload(event))" in source
 
 
+def test_governed_ghcp_pending_frame_is_host_owned_sse():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("governed_ghcp_frame", GOVERNED_GHCP)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    body = {"status": "pending_approval", "operation_id": "a" * 64}
+    frame = module._pending_event(body)
+    assert frame.startswith(b"event: governance_pending\ndata: ") and frame.endswith(b"\n\n")
+    assert json.loads(frame.split(b"data: ", 1)[1]) == body
+    assert module.OPERATION_SCHEMA["maxLength"] == 128
+    source = GOVERNED_GHCP.read_text(encoding="utf-8")
+    assert "on_pending=lambda body: queue.put_nowait" in source
+    assert "yield _pending_event(event[1])" in source
+
+
 # --- 10. Deploy evidence is recorded by a generated helper, not by hand -------------
 # e4 live run: agent_id/version, app_insights_connection_id and trace_id stayed
 # null in specs/foundry-package-manifest.json until the operator filled them.

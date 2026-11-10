@@ -77,7 +77,10 @@ DEFERRED_REQUIRED_CASES = {
     "test_deferred_window_above_service_limit_rejects_before_writes",
     "test_policy_condition_cannot_weaken_an_always_required_approval",
     "test_bind_cannot_change_the_frozen_review_window",
-    "test_ghcp_cannot_select_deferred_mode_without_a_resume_adapter",
+    "test_ghcp_deferred_policy_review_generates_and_binds_with_its_resume_adapter",
+    "test_ghcp_deferred_cannot_weaken_an_always_required_approval",
+    "test_ghcp_relay_returns_host_owned_pending_and_resumes_the_same_operation",
+    "test_ghcp_relay_rejects_operation_selector_on_non_deferred_action",
 }
 
 

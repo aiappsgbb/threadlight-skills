@@ -1,0 +1,12 @@
+{
+  "name": "governed-write-ghcp",
+  "version": "0.1.0",
+  "speckit": "specs/SPEC.md",
+  "description": "Workshop reference: a GHCP hosted agent records one governed return decision through the governed tool gateway; every other tool is an unbound read.",
+  "action_mode": "governed-write",
+  "traits": ["api-integration", "human-approval", "case-based", "on-demand"],
+  "business_rules_count": 4,
+  "runtime": {
+    "framework": "github-copilot-sdk"
+  }
+}

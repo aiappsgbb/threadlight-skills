@@ -733,6 +733,16 @@ def _recommend_only_gaps(workspace: Path) -> list[str]:
         return [f"action-mode: {exc}"]
 
 
+def _governed_write_gaps(workspace: Path) -> list[str]:
+    try:
+        from skills._shared.action_mode import governed_write_gaps
+        return governed_write_gaps(workspace)
+    except ImportError:
+        return []
+    except ValueError as exc:
+        return [f"action-mode: {exc}"]
+
+
 def _is_contract_repair(decision: "StageDecision") -> bool:
     return (decision.name == "design" and decision.decision == "run"
             and decision.reason.startswith(GOVERNANCE_CONTRACT_REPAIR))
@@ -776,6 +786,20 @@ def _check_design(workspace: Path, state: dict[str, Any]) -> StageDecision:
             "recommend-only design exposes a consequential tool: " + "; ".join(action_gaps)
             + ". Re-run threadlight-design (move the write to a human step in SPEC § 8, or take the "
             "Production path in Full mode) and check it with "
+            "`python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>`.",
+            artifacts_seen=["specs/SPEC.md", "specs/manifest.json"],
+        )
+
+    governed_gaps = _governed_write_gaps(workspace)
+    if governed_gaps:
+        # A governed-write pilot binds exactly one write to the governed tool
+        # gateway (threadlight-govern packages it); anything else goes back to design.
+        return StageDecision(
+            "design",
+            "run",
+            "governed-write design is not consistent: " + "; ".join(governed_gaps)
+            + ". Re-run threadlight-design (one gateway-bound write, every other tool an unbound read, "
+            "policy rules, downstream service and governance foundation recorded) and check it with "
             "`python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>`.",
             artifacts_seen=["specs/SPEC.md", "specs/manifest.json"],
         )

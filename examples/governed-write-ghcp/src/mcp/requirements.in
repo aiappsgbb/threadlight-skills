@@ -1,0 +1,4 @@
+mcp==1.29.1
+azure-cosmos==4.16.1
+azure-identity==1.25.3
+aiohttp==3.14.3

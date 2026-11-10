@@ -1119,6 +1119,22 @@ function buildTechnical({ phases, plan, planStatus, errors }) {
   return { skills, evidence, handoffs, errors: Array.isArray(errors) ? errors : [] };
 }
 
+// specs/manifest.json `action_mode` as declared by threadlight-design. A label
+// only: whether the design is consistent is checked by the planner and
+// safe-check, never inferred here.
+const ACTION_MODE_LABELS = {
+  "recommend-only": "Recommend-only: the agent proposes, a person records",
+  "governed-write": "Governed write: one write through the governed tool gateway, every other tool reads",
+  act: "Acts: tools as the design declares them",
+};
+
+function buildActionMode(manifest) {
+  const mode = isPlainObject(manifest) ? manifest.action_mode : undefined;
+  return typeof mode === "string" && Object.hasOwn(ACTION_MODE_LABELS, mode)
+    ? { mode, label: ACTION_MODE_LABELS[mode] }
+    : null;
+}
+
 export function buildProcessModel({
   spec = null,
   manifest = null,
@@ -1150,7 +1166,7 @@ export function buildProcessModel({
   return {
     empty,
     updatedAt: generatedAt,
-    pilot: { name, description },
+    pilot: { name, description, actionMode: buildActionMode(manifest) },
     now: buildNow({ empty, planStatus, proofPath, plan, readiness: readinessView }),
     plan: {
       status: planStatus.status,

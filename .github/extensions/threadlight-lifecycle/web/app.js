@@ -174,6 +174,7 @@ function renderNow(view, errors) {
       : "";
   return `<section class="now tone-${escapeHtml(now.tone)}" aria-labelledby="pilot-name">
     <h1 id="pilot-name">${escapeHtml(view.pilot.name)}</h1>
+    ${view.pilot.actionMode ? `<p class="action-mode">${escapeHtml(view.pilot.actionMode.label)}</p>` : ""}
     <p class="now-state s-${escapeHtml(now.tone === "progress" ? "current" : now.tone)}">${icon(TONE_ICONS[now.tone] ?? "current")}<span>${escapeHtml(now.headline)}</span></p>
     ${blocker}
     ${why}

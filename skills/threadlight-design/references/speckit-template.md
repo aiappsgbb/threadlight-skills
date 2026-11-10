@@ -205,7 +205,7 @@ Define the tools the agent will use. These are abstract — not bound to any spe
 > (optionally with a qualifier such as `(read-only lookup)`); any further
 > clause, such as "None; issues a refund", is a declared effect. Give each tool its own level-3 heading with the tool name in
 > backticks (two names separated by `/` when they share one contract): in a recommend-only
-> pilot every § 6 heading or tool-table row that is not a parseable tool
+> or governed-write pilot every § 6 heading or tool-table row that is not a parseable tool
 > contract is a gap.
 
 ### `[tool_name]`
@@ -632,6 +632,64 @@ tools:
     intervention_points: []
     safe_principles: [least-privilege]
     requires: []
+```
+
+#### Workshop governed-write variant
+
+One write shown live through the governed tool gateway; every other tool stays
+an unbound read. `specs/manifest.json` carries `"action_mode": "governed-write"`.
+The contract never requires `approval`: escalation approval is selected in the
+signed gateway registry (`approval_mode: deferred`, `approval_requirement: policy`).
+
+- **Action mode**: `governed-write` (one write through the governed tool
+  gateway; every other tool is an unbound read)
+- **Policy rules** (`returns-recommendation-write-v1`, implemented in Rego by `threadlight-govern`):
+  - `BR-001` allow: in-window return under EUR 250 with a cited RP clause.
+  - `BR-002` deny: outside the return window or without a cited clause.
+  - `BR-003` escalate: refund above EUR 250; a person approves with
+    `threadlight-review-action` (or the Outlook approval opt-in).
+- **Downstream service**: `POST /cases/{rma_id}/recommendation` (idempotency
+  key `rma_id`) and `GET /cases/{rma_id}/recommendation` (outcome); it
+  authorizes the gateway identity separately.
+- **Governance foundation**: the shared control plane, gateway, Key Vault
+  signing key and Cosmos audit/approvals exist before deploy (deployed once
+  per tenant by the facilitator); the gateway gets a central audit ACK before
+  the effect.
+
+```yaml
+framework: github-copilot-sdk
+
+governance:
+  mode: selective
+  environment_modes:
+    development: evaluate_only
+    staging: evaluate_only
+    preproduction: enforce
+    production: enforce
+  lifecycle_bindings: []
+
+tools:
+  - id: returns_get_case
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: [least-privilege]
+    requires: []
+  - id: return_policy_search
+    consequence: read
+    policy_binding: none
+    enforcement_path: none
+    intervention_points: []
+    safe_principles: [least-privilege]
+    requires: []
+  - id: returns_record_recommendation
+    consequence: write
+    policy_binding: returns-recommendation-write-v1
+    enforcement_path: governed-tool-gateway
+    intervention_points: [pre_tool_call]
+    safe_principles: [scope, audit]
+    requires: [authorization, signed-policy-bundle, decision-receipt, idempotency-or-transaction]
 ```
 
 ### 11b. AI Governance Hub Posture (opt-in spoke)

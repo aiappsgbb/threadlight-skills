@@ -191,6 +191,14 @@ governance as not selected, so it has no `governance:` gap. Pre-deploy and
 post-deploy report `action-mode: ...` instead when such a pilot still exposes a
 consequential tool in SPEC § 6 or § 11a (it would run unbound).
 
+A governed-write pilot (`"action_mode": "governed-write"`, the workshop
+governed write) selects governance for exactly one write bound to the governed
+tool gateway. It keeps the usual `governance:` gaps until the governance
+package and binding exist (selected configuration is never treated as off),
+and reports `action-mode: governed-write ...` when the design is not
+consistent: an unbound or second write, a bound read, missing gateway
+requirements, or missing policy rules, downstream service or foundation record.
+
 Exit codes:
 
 | Code | Meaning |

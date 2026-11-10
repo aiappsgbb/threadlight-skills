@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .discover import PoCLayout
-from .spec_tools import build_spec_tools, is_recommend_only
+from .spec_tools import build_spec_tools, is_governed_write, is_recommend_only, withholds_writes
 from .stub_tools import InMemoryStore, build_stub_tools
 
 log = logging.getLogger(__name__)
@@ -74,15 +74,33 @@ anything was recorded, and never end a turn without the decision.
 """
 
 
+_GOVERNED_WRITE_SUFFIX = """\
+
+---
+Pattern 0 local demo (added by threadlight_quickstart): the tools named above
+answer from the PoC's synthetic sample data in memory (reset every launch), and
+the knowledge tool searches the packaged specs/knowledge files. Never invent
+record ids or policy clauses: look them up first. This pilot is governed-write:
+its one write runs only through the governed tool gateway after deploy, so
+locally you have no write tools. Propose the decision with the business rule(s)
+and clause ids, and say that the deployed agent records it through the
+governed gateway. Never claim that anything was recorded, and never end a turn
+without the decision.
+"""
+
+
 def build_instructions(layout: PoCLayout) -> str:
     """The project's own AGENTS.md (the deployed agent's instructions) plus local safe defaults."""
-    suffix = _RECOMMEND_ONLY_SUFFIX if is_recommend_only(layout.root) else _PATTERN0_SUFFIX
+    if is_governed_write(layout.root):
+        suffix = _GOVERNED_WRITE_SUFFIX
+    else:
+        suffix = _RECOMMEND_ONLY_SUFFIX if is_recommend_only(layout.root) else _PATTERN0_SUFFIX
     agents_md = layout.root / "AGENTS.md"
     if agents_md.is_file():
         text = agents_md.read_text(encoding="utf-8").strip()
         if text:
             return text + "\n" + suffix
-    if suffix is _RECOMMEND_ONLY_SUFFIX:
+    if suffix is not _PATTERN0_SUFFIX:
         return _DEFAULT_INSTRUCTIONS.split("\n\nWhen you mutate", 1)[0] + "\n" + suffix
     return _DEFAULT_INSTRUCTIONS
 
@@ -279,7 +297,7 @@ def build_agent(
         # SPEC section 6 names replace the generic CRUD triple, so skills that
         # call e.g. `returns_get_case` or the knowledge tool resolve locally.
         tools = spec_tools
-    elif is_recommend_only(layout.root):
+    elif withholds_writes(layout.root):
         tools = [t for t in tools if not str(getattr(t, "name", "")).startswith("update_")]
     tools = _apply_overrides(layout, tools, stores)
     skills_provider, skill_count = _build_skills_provider(layout.skills_dir)
