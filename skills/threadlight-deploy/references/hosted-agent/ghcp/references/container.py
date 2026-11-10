@@ -625,7 +625,14 @@ async def _abort_turn(session) -> None:
     if abort is None:
         return
     idle = asyncio.Event()
-    unsubscribe = session.on(lambda event: idle.set() if event.type == SessionEventType.SESSION_IDLE else None)
+
+    def on_event(event):
+        # github-copilot-sdk 1.0.x emits `abort`, then the aborted turn's `session.idle`.
+        # Wait for that idle: if it arrived after we unsubscribed, it would end the NEXT turn.
+        if event.type == SessionEventType.SESSION_IDLE:
+            idle.set()
+
+    unsubscribe = session.on(on_event)
     try:
         await abort()
         await asyncio.wait_for(idle.wait(), timeout=_VOICE_ABORT_WAIT_SECONDS)

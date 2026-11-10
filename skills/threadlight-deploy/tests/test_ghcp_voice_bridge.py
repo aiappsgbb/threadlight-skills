@@ -41,7 +41,7 @@ class _Type:
         self.value = value
 
 
-IDLE, ERROR, MESSAGE = (_Type(v) for v in ("session.idle", "session.error", "assistant.message"))
+IDLE, ERROR, MESSAGE, ABORT = (_Type(v) for v in ("session.idle", "session.error", "assistant.message", "abort"))
 
 
 class _Event:
@@ -83,14 +83,18 @@ class FakeSession:
             while not self.aborted and time.monotonic() < deadline:
                 await asyncio.sleep(0.01)
             return
-        await asyncio.sleep(0)
+        await asyncio.sleep(0.5 if text == "next" else 0)  # a model turn is never instant
         answer = f"{self.session_id}|turn {len(self.history)}|seen: {' / '.join(self.history)}"
         self._emit(_Event(MESSAGE, "Let me check."), _Event(MESSAGE, answer), _Event(IDLE))
 
     async def abort(self):
         self.aborted = True
         self.client.aborts.append(self.session_id)
-        self._emit(_Event(IDLE))
+        # Real github-copilot-sdk order (probed 2026-11-10): `abort`, then `session.idle` of the
+        # aborted turn shortly after. A handler that stops at `abort` lets that late idle end the
+        # NEXT turn with an empty answer.
+        self._emit(_Event(ABORT))
+        asyncio.get_running_loop().call_later(0.2, self._emit, _Event(IDLE))
 
     async def disconnect(self):
         self.closed = True
@@ -282,10 +286,13 @@ def test_barge_in_aborts_the_copilot_turn_and_sends_no_further_output(runtime):
         deadline = time.monotonic() + 5
         while not runtime._client.aborts and time.monotonic() < deadline:
             time.sleep(0.01)
+        started = time.monotonic()
         _say(ws, "next", 2)
         frames = _turn(ws)
+        elapsed = time.monotonic() - started
         _end(ws)
     assert runtime._client.aborts
+    assert elapsed < 3, f"the next turn waited {elapsed:.1f}s for the aborted turn to settle"
     assert all(f.get("response_id") != created["response_id"] for f in frames)
     assert [f["type"] for f in frames] == ["response.created", "response.output_text.done", "response.done"]
     assert frames[1]["text"].endswith("seen: hang / next")
