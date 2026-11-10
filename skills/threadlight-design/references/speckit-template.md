@@ -733,9 +733,11 @@ trivial_justification: null  # REQUIRED when agent_type: prompt (explicit opt-in
                              # no multi-step orchestration, no state beyond the Foundry thread
 prompt_opt_in_source: null   # REQUIRED when agent_type: prompt: must be `user` (an agent-written value is not an opt-in)
 prompt_opt_in_evidence: null # REQUIRED when agent_type: prompt: quote of, or reference to, the user's explicit request
-voice_opt_in_source: null    # REQUIRED when agent_type: voice: must be `user` (an agent-written value is not an opt-in)
-voice_opt_in_evidence: null  # REQUIRED when agent_type: voice: quote of the user's spoken-conversation requirement
-preview_acknowledged: null   # REQUIRED when agent_type: voice: must be `true` (Foundry voice agents are preview)
+voice_opt_in_source: null    # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: must be `user` (an agent-written value is not an opt-in)
+voice_opt_in_evidence: null  # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: quote of the user's spoken-conversation requirement
+preview_acknowledged: null   # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: must be `true` (Foundry voice agents are preview)
+voice_frontend: none          # none | hosted-voice. Opt-in voice front-end (Foundry Hosted Voice, preview) on the hosted agent; item 2c
+voice_name: null              # optional with voice_frontend: hosted-voice: Azure voice, e.g. it-IT-ElsaNeural (default en-US-AvaNeural)
 workflow_model: agent  # agent | workflow
 
 capability_signals:                     # machine-readable booleans + unresolved markers runtime-policy.json keys on
@@ -770,6 +772,13 @@ capability_signals:                     # machine-readable booleans + unresolved
   user provenance is not an opt-in: treat it as `hosted`. The official
   `microsoft-foundry` skill (create-voice) builds it. Other preview-only Foundry
   features are out of scope.
+- `voice_frontend: hosted-voice` keeps `agent_type: hosted` and adds a spoken
+  front-end (Foundry Hosted Voice, preview): a managed `kind: voice` wrapper uses
+  the GHCP hosted agent as its conversation engine, so tools and governance stay
+  in the text agent. It needs the same user opt-in fields as `voice`; an
+  agent-written `voice_frontend` is not an opt-in and the agent stays text-only.
+  Default `none`. See item 2c of
+  [`foundry-only-agents.md`](../../_shared/foundry-only-agents.md).
 - `workflow` — deterministic multi-step orchestration; the SPEC adds
   `WORKFLOW.md` (executor / phase definitions) as the target design, and
   `threadlight-deploy` generates the MAF Agent container on Responses that

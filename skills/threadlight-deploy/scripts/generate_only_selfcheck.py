@@ -6,6 +6,7 @@ network beyond public base-image pulls:
 
 * ``azure-yaml-schema``          azure.yaml validates against the vendored azd schema
 * ``hosted-agent-definition``    one inline Foundry hosted agent, no agent.yaml / infra/core
+                                 (plus, only when opted in, its managed ``kind: voice`` wrapper)
 * ``foundry-package-incomplete`` skills/_shared/foundry_package.py exits 3 (never 2)
 * ``secret-scan``                no keys, tokens, non-allowlisted GUIDs, emails or personal paths
 * ``agent-unit-tests``           generated offline agent tests pass
@@ -94,9 +95,48 @@ def check_schema(project: Path) -> dict[str, str]:
         pass
     validator = jsonschema.Draft201909Validator(schema, **kwargs)
     errors = sorted(validator.iter_errors(doc), key=lambda e: list(e.path))
+    # A managed `kind: voice` wrapper is codeless: the official Hosted Voice sample
+    # declares no `project`, which the vendored azd core schema still requires for
+    # every azure.ai.agent service. Accept exactly that gap for voice wrappers.
+    wrappers = {name for name, svc in ((doc or {}).get("services") or {}).items()
+                if isinstance(svc, dict) and svc.get("host") == "azure.ai.agent"
+                and svc.get("kind") in VOICE_KINDS}
+    errors = [e for e in errors if not (len(e.path) == 2 and list(e.path)[0] == "services"
+                                         and list(e.path)[1] in wrappers
+                                         and e.message == "'project' is a required property")]
     if errors:
         return check("azure-yaml-schema", "fail", "; ".join(f"{list(e.path)}: {e.message}" for e in errors[:5]))
     return check("azure-yaml-schema", "pass", f"validated against {SCHEMA.name}")
+
+
+VOICE_KINDS = ("voice", "prompt-voice")
+VOICE_WRAPPER_FORBIDDEN = ("model", "modelType", "instructions", "tools", "protocols", "project",
+                           "codeConfiguration", "environmentVariables", "env", "docker", "language", "image")
+
+
+def _voice_wrapper_problems(key: str, svc: dict, hosted: dict[str, dict]) -> list[str]:
+    """A Hosted Voice wrapper must reference the generated hosted target, which must speak the Bridge."""
+    problems = []
+    engine = svc.get("conversationEngine") or {}
+    target_key = engine.get("name")
+    if engine.get("type") != "hosted_agent" or target_key not in hosted:
+        return [f"{key}: conversationEngine must be hosted_agent naming the hosted service"]
+    if target_key not in (svc.get("uses") or []):
+        problems.append(f"{key}: uses must include {target_key}")
+    if svc.get("name") == hosted[target_key].get("name"):
+        problems.append(f"{key}: wrapper and target need distinct agent names")
+    problems += [f"{key}: {field} belongs to the hosted target" for field in VOICE_WRAPPER_FORBIDDEN if field in svc]
+    target = hosted[target_key]
+    protocols = {(p.get("protocol"), str(p.get("version"))) for p in target.get("protocols") or []}
+    if ("invocations_ws", "1.0.0") not in protocols:
+        problems.append(f"{target_key}: voice target must declare invocations_ws 1.0.0")
+    if (target.get("metadata") or {}) != {"voiceLiveCompatible": "true", "bridgeProtocolVersion": "1.0"}:
+        problems.append(f"{target_key}: voice target metadata must set voiceLiveCompatible and bridgeProtocolVersion")
+    env = {e.get("name"): str(e.get("value")) for e in target.get("environmentVariables") or []
+           if isinstance(e, dict)}
+    if env.get("THREADLIGHT_VOICE_BRIDGE") != "1":
+        problems.append(f"{target_key}: voice target must set THREADLIGHT_VOICE_BRIDGE=1")
+    return problems
 
 
 def check_hosted(project: Path) -> dict[str, str]:
@@ -106,9 +146,15 @@ def check_hosted(project: Path) -> dict[str, str]:
     except Exception as exc:  # noqa: BLE001
         return check("hosted-agent-definition", "fail", str(exc))
     services = doc.get("services") or {}
-    agents = {k: v for k, v in services.items() if isinstance(v, dict) and v.get("host") == "azure.ai.agent"}
+    every = {k: v for k, v in services.items() if isinstance(v, dict) and v.get("host") == "azure.ai.agent"}
+    wrappers = {k: v for k, v in every.items() if v.get("kind") in VOICE_KINDS}
+    agents = {k: v for k, v in every.items() if k not in wrappers}
     if len(agents) != 1:
         problems.append(f"expected exactly one azure.ai.agent service, found {len(agents)}")
+    if len(wrappers) > 1:
+        problems.append(f"expected at most one voice wrapper, found {len(wrappers)}")
+    for key, svc in wrappers.items():
+        problems += _voice_wrapper_problems(key, svc, agents)
     for key, svc in agents.items():
         cfg = svc.get("config") or {}
         if (cfg.get("kind") or svc.get("kind")) != "hosted":

@@ -61,20 +61,20 @@ packages:
     upstream_changelog: https://pypi.org/project/github-copilot-sdk/#history
   - name: azure-ai-agentserver-invocations
     source: pypi
-    version: "1.0.0b6"
+    version: "1.3.0"
     upstream_changelog: https://pypi.org/project/azure-ai-agentserver-invocations/#history
   - name: azure-ai-agentserver-core
     source: pypi
-    version: "2.0.0b7"
+    version: "2.3.0"
     upstream_changelog: https://pypi.org/project/azure-ai-agentserver-core/#history
     notes: |
-      Transitive dep of azure-ai-agentserver-invocations (which declares
-      `azure-ai-agentserver-core>=2.0.0b7`, UNBOUNDED-UPPER). Pinned EXACTLY to
-      `==2.0.0b7` in references/pyproject.toml to stop a future core b8+ from
-      silently breaking fresh container builds. Grounded: a stale probe on
-      invocations b4 + core b7 crash-looped with
-      `ImportError: cannot import name 'CHAT_ISOLATION_KEY'` (2026-07-04). The
-      current b6 + b7 combo is proven healthy live.
+      Transitive dep of azure-ai-agentserver-invocations 1.3.0 (which declares
+      `azure-ai-agentserver-core>=2.3.0,<3.0.0`). Pinned EXACTLY in
+      references/pyproject.toml so a core minor release cannot silently change
+      fresh container builds. History: a stale invocations b4 + core b7 probe
+      crash-looped with `ImportError: cannot import name 'CHAT_ISOLATION_KEY'`
+      (2026-07-04); b6 + b7 was the pin until the voice front-end moved to
+      1.3.0 + 2.3.0 (typed `azure.ai.agentserver.invocations.voice` host).
   - name: azure-identity
     source: pypi
     version: "1.25.3"
@@ -128,7 +128,7 @@ validation:
     . .venv/bin/activate
     pip install --quiet \
       "github-copilot-sdk==1.0.1" \
-      "azure-ai-agentserver-invocations==${PINNED_VERSION:-1.0.0b6}" \
+      "azure-ai-agentserver-invocations==${PINNED_VERSION:-1.3.0}" \
       "azure-identity==1.25.3" \
       "python-dotenv==1.2.2"
     python -c "
@@ -192,18 +192,19 @@ coordinated:
   `from copilot import CopilotClient, PermissionHandler, ProviderConfig` +
   `from copilot.session_events import SessionEventType` (not the previous
   `copilot.session` / `copilot.generated.session_events` submodule paths).
-- `azure-ai-agentserver-invocations` — `1.0.0b6` is the latest public
-  beta (no GA release yet); pinned exact (`==`) because the cap pattern
-  doesn't apply across pre-release boundaries. Matches the official
-  sample's `requirements.txt` (`azure-ai-agentserver-invocations==1.0.0b6`).
+- `azure-ai-agentserver-invocations` — `1.3.0` (GA) pinned exact (`==`).
+  It keeps `InvocationAgentServerHost` for the text path and adds the typed
+  `VoiceAgentServerHost` (Voice Live Bridge Protocol 1.0 on `/invocations_ws`)
+  used only when the voice front-end is opted in.
 - `azure-ai-agentserver-core` — transitive dep of `-invocations`, which
-  declares `azure-ai-agentserver-core>=2.0.0b7` (UNBOUNDED-UPPER). The
-  reference `pyproject.toml` now pins it EXACT (`==2.0.0b7`) so a future
-  core `b8+` that renames a symbol cannot silently break fresh container
-  builds. Grounded 2026-07-04: a stale `invocations b4 + core b7` probe
-  crash-looped with `ImportError: cannot import name 'CHAT_ISOLATION_KEY'`
-  (HTTP 424 before body-parse); the current `b6 + b7` combo is proven
-  healthy live.
+  declares `azure-ai-agentserver-core>=2.3.0,<3.0.0`. The
+  reference `pyproject.toml` pins it EXACT (`==2.3.0`) so a core release
+  that renames a symbol cannot silently break fresh container builds.
+  History: a stale `invocations b4 + core b7` probe crash-looped with
+  `ImportError: cannot import name 'CHAT_ISOLATION_KEY'` (2026-07-04,
+  HTTP 424 before body-parse); `b6 + b7` was the live-proven pin until the
+  voice front-end moved to `1.3.0 + 2.3.0`. Re-prove the text path live after
+  this bump; local tests do not.
 
 ## GA deploy-model migration (v2.0.0, this refresh)
 

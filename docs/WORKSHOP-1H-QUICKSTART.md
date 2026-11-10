@@ -361,6 +361,23 @@ and record the evidence:
 When you are done, delete the resource group you created (or hand it to its
 cleanup owner); do not leave the pilot running unattended.
 
+### 6.4b Optional: talk to the agent (voice front-end, preview)
+
+Only when a participant **explicitly asks** for a spoken demo and accepts that
+Foundry voice agents are **preview**: the deployed text agent can get a managed
+voice wrapper ([Microsoft Learn](https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent)).
+Voice Live does speech in and out; the same hosted agent, with the same MCP
+tools, does the reasoning. Check that the region supports
+[voice-based agents](https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#supported-regions).
+Budget about 10 minutes after the text smoke test.
+
+> in ~/Repos/workshop/returns-triage, the user explicitly wants to talk to the agent and accepts the voice preview: record in specs/SPEC.md § 11e voice_frontend: hosted-voice with voice_opt_in_source: user, voice_opt_in_evidence quoting this request and preview_acknowledged: true, regenerate with threadlight-deploy generate_only (--force), azd deploy, then run the official microsoft-foundry smoke_test_voice.py against returns-triage-agent-voice and summarise transcript and audio evidence
+
+Then open the voice playground for `returns-triage-agent-voice` in the Foundry
+portal and ask a killer prompt out loud. The smoke test proves the wrapper reaches
+the agent and returns transcript and audio; what you hear (recognition quality,
+barge-in, latency) is your own observation, not validated evidence.
+
 ### 6.5 Selected-binding governance and production follow-ups
 
 The deployed/smoke-tested pilot is the workshop endpoint, not a governance pass.

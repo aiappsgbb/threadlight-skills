@@ -145,6 +145,51 @@ def agent_type(spec: str) -> str:
     return m.group(1).lower() if m else "hosted"
 
 
+VOICE_DEFAULT_NAME = "en-US-AvaNeural"
+
+
+def _spec_scalar(spec: str, key: str) -> str | None:
+    """Top-level ``key: value`` from SPEC YAML; quoted values keep a ``#``, comments are dropped."""
+    m = re.search(rf"^\s*{key}:[ \t]*(.*)$", spec, re.M)
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    if raw[:1] in ("'", '"'):
+        end = raw.find(raw[0], 1)
+        value = raw[1:end] if end > 0 else raw[1:]
+    else:
+        value = raw.split(" #", 1)[0].strip()
+    return None if value.lower() in ("", "null", "~", "none") else value
+
+
+def voice_frontend(spec: str) -> tuple[dict[str, str] | None, str | None]:
+    """SPEC 11e ``voice_frontend`` as ``(voice config, None)`` or ``(None, ignore reason)``.
+
+    Foundry Hosted Voice is preview, so it needs the same explicit, preview-acknowledged
+    user opt-in as ``agent_type: voice`` (skills/_shared/foundry-only-agents.md item 2c).
+    An agent-written or incomplete opt-in is not an opt-in: the agent stays text-only.
+    """
+    requested = (_spec_scalar(spec, "voice_frontend") or "none").lower()
+    if requested in ("none", "false", "off"):
+        return None, None
+    if requested != "hosted-voice":
+        raise WorkspaceError(f"SPEC section 11e voice_frontend must be none or hosted-voice, got {requested!r}")
+    missing = []
+    if (_spec_scalar(spec, "voice_opt_in_source") or "").lower() != "user":
+        missing.append("voice_opt_in_source: user")
+    if not _spec_scalar(spec, "voice_opt_in_evidence"):
+        missing.append("voice_opt_in_evidence")
+    if (_spec_scalar(spec, "preview_acknowledged") or "").lower() != "true":
+        missing.append("preview_acknowledged: true")
+    if missing:
+        return None, ("voice_frontend ignored: hosted-voice needs an explicit user opt-in ("
+                      + ", ".join(missing) + "); the agent was generated text-only")
+    name = _spec_scalar(spec, "voice_name") or VOICE_DEFAULT_NAME
+    if not re.fullmatch(r"[a-z]{2,3}-[A-Z]{2}-[A-Za-z0-9:]+", name):
+        raise WorkspaceError(f"SPEC section 11e voice_name must be an Azure voice name like {VOICE_DEFAULT_NAME}")
+    return {"voice_name": name}, None
+
+
 def business_rules(spec: str) -> dict[str, str]:
     rules: dict[str, str] = {}
     for m in re.finditer(r"^#{2,4}\s*(BR-\d+)\s*[:\-—]\s*(.+)$", spec, re.M):
@@ -577,7 +622,26 @@ def render_mcp_dockerfile(entry: str, knowledge: bool) -> str:
     return header + text
 
 
-def render_azure_yaml(project: str, agent: str, description: str) -> str:
+_VOICE_TARGET_PROTOCOLS = (
+    "      - protocol: invocations\n        version: 2.0.0\n",
+    "      - protocol: invocations\n        version: 2.0.0\n"
+    "      # Voice Live Bridge Protocol 1.0 for the opt-in Hosted Voice wrapper.\n"
+    "      - protocol: invocations_ws\n        version: 1.0.0\n"
+    "    metadata:\n      voiceLiveCompatible: \"true\"\n      bridgeProtocolVersion: \"1.0\"\n",
+)
+_VOICE_TARGET_ENV = (
+    "      - name: MCP_SERVER_FQDN\n        value: ${MCP_SERVER_FQDN}\n",
+    "      - name: MCP_SERVER_FQDN\n        value: ${MCP_SERVER_FQDN}\n"
+    "      - name: THREADLIGHT_VOICE_BRIDGE\n        value: \"1\"\n",
+)
+_VOICE_REQUIRED_VERSIONS = (
+    "requiredVersions:\n  extensions:\n    azure.ai.agents: '>=1.0.0-beta.4'\n",
+    "requiredVersions:\n  # Public-preview voice services need azd 1.32.0+ and a voice-capable agents extension.\n"
+    "  azd: '>=1.32.0'\n  extensions:\n    azure.ai.agents: '>=1.0.0-beta.13'\n",
+)
+
+
+def render_azure_yaml(project: str, agent: str, description: str, voice: dict[str, str] | None = None) -> str:
     text = (PILOT / "azure.yaml").read_text(encoding="utf-8")
     body = text[text.index("name: __PROJECT_NAME__"):]
     header = (
@@ -586,6 +650,14 @@ def render_azure_yaml(project: str, agent: str, description: str) -> str:
         "# The hosted agent is defined INLINE below (no agent.yaml). Keep\n"
         "# `remoteBuild: true`: images build in ACR, no local Docker login needed.\n"
     )
+    if voice:
+        for old, new in (_VOICE_TARGET_PROTOCOLS, _VOICE_TARGET_ENV, _VOICE_REQUIRED_VERSIONS):
+            if body.count(old) != 1:
+                raise WorkspaceError("pilot azure.yaml changed shape; cannot add the opt-in voice front-end")
+            body = body.replace(old, new)
+        wrapper = (PILOT / "voice.azure.yaml").read_text(encoding="utf-8").replace(
+            "__VOICE_NAME__", voice["voice_name"])
+        body = body.replace("\nhooks:\n", "\n" + wrapper + "\nhooks:\n", 1)
     desc = json.dumps(description or f"{agent} Foundry hosted agent")
     return header + (
         body.replace("__PROJECT_NAME__", project)
@@ -665,9 +737,41 @@ reports this workspace as `INCOMPLETE` (exit 3) until the deferred evidence exis
 """
 
 
+def _voice_deploy_md(agent: str, voice: dict[str, str]) -> str:
+    return f"""
+## Voice front-end (Foundry Hosted Voice, preview)
+
+SPEC § 11e opts in `voice_frontend: hosted-voice` (user opt-in, preview
+acknowledged). `azd up` also deploys `{agent}-voice`, a managed `kind: voice`
+wrapper that uses `{agent}` as its conversation engine through Voice Live Bridge
+Protocol 1.0 on `/invocations_ws` (`THREADLIGHT_VOICE_BRIDGE=1` in
+`src/agent/container.py`). Voice Live owns audio, speech recognition,
+turn-taking and synthesis (voice `{voice["voice_name"]}`); model, instructions,
+tools and MCP stay in `{agent}`. Voice agents are **preview** and need a
+[supported region](https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#supported-regions),
+azd 1.32.0+ and a voice-capable `azure.ai.agents` extension.
+`azd ai agent invoke` does not open voice sessions.
+
+Run the official managed-voice smoke test from the `microsoft-foundry` skill
+(`azure@azure-skills`, `foundry-agent/create/scripts/smoke_test_voice.py`):
+
+```sh
+python <microsoft-foundry>/foundry-agent/create/scripts/smoke_test_voice.py \\
+  --endpoint "$AZURE_AI_PROJECT_ENDPOINT" --agent-name {agent}-voice \\
+  --text "In one short sentence, what can you help me with?" --timeout 180
+```
+
+It proves authentication, the wrapper-to-agent Bridge path and a completed
+response with transcript and synthesized audio. Microphone input, real speech
+recognition, turn-taking, barge-in, voice quality and perceived latency are
+**not validated** by it: test them in the Foundry portal voice playground and
+record them separately.
+"""
+
+
 def render_deploy_md(project: str, agent: str, plan: list[dict[str, Any]], unprovisioned: list[str] | None = None,
                      adopted: bool = False, governance: dict[str, Any] | None = None,
-                     recommend_only: bool = False) -> str:
+                     recommend_only: bool = False, voice: dict[str, str] | None = None) -> str:
     tool_list = ", ".join(f"`{t['name']}`" for t in plan)
     notes = ""
     if recommend_only:
@@ -767,7 +871,7 @@ python <threadlight-skills>/skills/_shared/foundry_package.py --workspace .
 
 Exit 3 (`INCOMPLETE`) is expected until the agent id, trace id and a passing
 eval run are recorded.
-"""
+""" + (_voice_deploy_md(agent, voice) if voice else "")
 
 
 CONTAINER_LAYOUT_TESTS = r'''
@@ -933,6 +1037,17 @@ def test_azure_yaml_declares_inline_hosted_agent():
     assert not (ROOT / "agent.yaml").exists() and not (AGENT / "agent.yaml").exists()
 
 
+def test_voice_front_end_is_consistent_when_opted_in():
+    text = (ROOT / "azure.yaml").read_text(encoding="utf-8")
+    if "kind: voice" not in text:
+        assert "THREADLIGHT_VOICE_BRIDGE" not in text and "invocations_ws" not in text
+        return
+    for term in ("protocol: invocations_ws", 'voiceLiveCompatible: "true"', 'bridgeProtocolVersion: "1.0"',
+                 "name: THREADLIGHT_VOICE_BRIDGE", "type: hosted_agent"):
+        assert term in text, term
+    assert "VoiceAgentServerHost" in (AGENT / "container.py").read_text(encoding="utf-8")
+
+
 def test_mcp_server_exposes_spec_tools():
     # src/mcp/server.py plus, when threadlight-design owns server.py, the
     # deploy-owned entry that serves it (and any knowledge stand-in).
@@ -1063,6 +1178,9 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         )
     if kind != "hosted":
         raise WorkspaceError(f"SPEC section 11e agent_type must be hosted, prompt or voice, got {kind!r}")
+    voice, voice_ignored = voice_frontend(spec)
+    if voice_ignored:
+        print(f"generate_only: {voice_ignored}", file=sys.stderr)
 
     agent = _slug(str(manifest.get("name") or project_dir.name))
     project = agent
@@ -1153,11 +1271,15 @@ def generate(project_dir: Path, force: bool) -> list[str]:
               if governance and governance["status"] == "selected" else []),
             *(["governance contract invalid or unvalidated (SPEC 11a); safe-check fails until it is fixed"]
               if governance and governance["status"] != "selected" else []),
+            *([f"voice front-end (preview) not verified: run the official microsoft-foundry smoke_test_voice.py "
+               f"against {agent}-voice after deploy; audio quality, barge-in and latency stay unvalidated "
+               "until measured"] if voice else []),
+            *([voice_ignored] if voice_ignored else []),
         ],
     }
 
     text_outputs: dict[str, str] = {
-        "azure.yaml": render_azure_yaml(project, agent, description),
+        "azure.yaml": render_azure_yaml(project, agent, description, voice),
         ".dockerignore": render_dockerignore(bool(standins) and has_corpus),
         "hooks/postdeploy.sh": (PILOT / "hooks" / "postdeploy.sh").read_text(encoding="utf-8"),
         "infra/main.parameters.json": json.dumps(params, indent=2) + "\n",
@@ -1184,7 +1306,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "tests/postdeploy-manifest.json": json.dumps(postdeploy, indent=2) + "\n",
         "DEPLOY.md": render_deploy_md(project, agent, plan, unprovisioned, adopted=bool(adoption),
                                       recommend_only=recommends_only,
-                                      governance=governance),
+                                      governance=governance, voice=voice),
     }
     if adoption:
         text_outputs["src/mcp/threadlight_mcp_entry.py"] = render_mcp_entry(project, adoption["tools"], standins)

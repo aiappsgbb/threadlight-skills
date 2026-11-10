@@ -38,7 +38,10 @@ For the separate opt-in lifecycle adapter, see [AgentOps](#agentops-preview-expl
 > hosts only the UI, a thin proxy, MCP tool servers or jobs. An agent loop
 > implemented in application code is not supported and is never a governance
 > target. A Foundry voice agent (preview) is used only on an explicit user opt-in
-> with the preview acknowledged; other preview-only Foundry features are out of scope. See
+> with the preview acknowledged. The same opt-in can instead add a voice front-end
+> (Foundry Hosted Voice, explicit opt-in only) to the GHCP hosted agent: a managed `kind: voice` wrapper
+> uses the hosted agent, with its tools and governance, as its conversation
+> engine. Other preview-only Foundry features are out of scope. See
 > [`foundry-only-agents.md`](../skills/_shared/foundry-only-agents.md).
 > Delivery also requires the mandatory full Foundry package: a real agent,
 > tracing, and one executed Foundry eval with a custom rubric, evidenced in

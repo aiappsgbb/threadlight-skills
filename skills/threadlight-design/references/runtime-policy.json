@@ -1,7 +1,7 @@
 {
   "schema": "threadlight.runtime-policy/v1",
   "version": 2,
-  "contract_version": "2.1.0",
+  "contract_version": "2.2.0",
   "last_reviewed": "2026-11-05",
   "authority": {
     "repository": "aiappsgbb/threadlight-skills",
@@ -51,6 +51,22 @@
     ],
     "agent_may_select_voice_on_own_initiative": false,
     "voice_build_route": "azure@azure-skills/microsoft-foundry/foundry-agent/create/create-voice.md",
+    "voice_frontend_values": [
+      "none",
+      "hosted-voice"
+    ],
+    "voice_frontend_default": "none",
+    "voice_frontend_requires_agent_type": "hosted",
+    "voice_frontend_runtimes": [
+      "ghcp"
+    ],
+    "voice_frontend_opt_in_required_fields": [
+      "voice_opt_in_source",
+      "voice_opt_in_evidence",
+      "preview_acknowledged"
+    ],
+    "agent_may_select_voice_frontend_on_own_initiative": false,
+    "voice_frontend_build_route": "threadlight-deploy generate_only: managed kind: voice wrapper + GHCP Voice Live Bridge 1.0 on /invocations_ws",
     "refusal_route": "hosted",
     "prohibited": [
       "voice-agents-without-explicit-opt-in",

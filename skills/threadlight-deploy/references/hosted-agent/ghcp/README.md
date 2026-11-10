@@ -195,7 +195,8 @@ directly, or use `azd ai agent invoke --protocol invocations`. If you need
 **Notes:**
 - `github-copilot-sdk` provides `CopilotClient`, session management, event types
 - `azure-ai-agentserver-invocations` provides `InvocationAgentServerHost`
-- `azure-ai-agentserver-core` pinned EXACT (`==2.0.0b7`) — it's a transitive dep of `-invocations` declared as `>=2.0.0b7` (unbounded upper); the exact pin stops a future core `b8+` from silently breaking fresh container builds
+- `azure-ai-agentserver-invocations==1.3.0` provides `InvocationAgentServerHost` and, for the opt-in voice front-end, `VoiceAgentServerHost`
+- `azure-ai-agentserver-core` pinned EXACT (`==2.3.0`) — a transitive dep of `-invocations` (`>=2.3.0,<3.0.0`); the exact pin stops a core minor release from silently changing fresh container builds
 - `azure-identity` pinned to avoid pulling beta versions
 - `prerelease = "if-necessary-or-explicit"` needed for beta agentserver package
 
@@ -229,6 +230,66 @@ Replace `__PROJECT_NAME__`, `__AGENT_NAME__` and `__AGENT_DESCRIPTION__`. Copy
 `.dockerignore`. No local Docker daemon or registry login is needed.
 
 ---
+
+## Optional voice front-end (Foundry Hosted Voice, preview)
+
+[Microsoft Learn: use a hosted agent as the conversation engine in a voice-based agent](https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent).
+A managed `kind: voice` wrapper (Voice Live) owns microphone audio, speech
+recognition, turn detection, synthesis and playback interruption. It talks to
+this hosted agent through **Voice Live Bridge Protocol 1.0** on `/invocations_ws`
+and sends the caller's finalised text as `user.message`. The agent answers with
+the final message of one turn of the **same** Copilot session logic as
+`/invocations`, so the model, instructions, skills, MCP tools and any
+governance stay here; the wrapper carries none of them.
+
+It is generated only on an explicit, preview-acknowledged user opt-in (SPEC § 11e
+`voice_frontend: hosted-voice` with `voice_opt_in_source: user`,
+`voice_opt_in_evidence`, `preview_acknowledged: true`; item 2c of
+[`foundry-only-agents.md`](../../../../_shared/foundry-only-agents.md)).
+`generate_only.py` then emits:
+
+- on the hosted target: a second protocol `invocations_ws` `1.0.0`, metadata
+  `voiceLiveCompatible: "true"` and `bridgeProtocolVersion: "1.0"`, and
+  `THREADLIGHT_VOICE_BRIDGE=1`, which makes `container.py` serve the Bridge with
+  the typed `VoiceAgentServerHost` from `azure-ai-agentserver-invocations==1.3.0`
+  (it still serves `/invocations` for text);
+- a `<agent>-voice` service: `kind: voice`, `uses: [ai-project, <agent>]`,
+  `conversationEngine: {type: hosted_agent, name: <agent>}`, 24 kHz PCM audio,
+  server VAD, `azure-speech` transcription and the SPEC `voice_name`
+  (`references/pilot/voice.azure.yaml`);
+- `requiredVersions` azd `>=1.32.0` and `azure.ai.agents` `>=1.0.0-beta.13`.
+
+Bridge behaviour in `container.py`:
+
+| Bridge event | Container behaviour |
+|---|---|
+| `session.start` (`protocol_version` `1.0`) | `session.ready`; another version gets `session.rejected` `protocol_mismatch`; no Copilot client gets `startup_failed` |
+| `user.message` | `response.created`, then one Copilot turn; only the final assistant message is sent as `response.output_text.done`, then `response.done` |
+| empty or oversized text, too many queued turns | `response.none` (`empty_input`, `input_too_large`, `capacity_exceeded`) |
+| failed turn | `error` with the `response_id` (`generation_failed` or `empty_answer`) |
+| `user.barge_in`, `response.cancelled`, `response.timeout` | cancel the active turn and `abort()` the Copilot turn; no further output for that response |
+| `session.end`, disconnect | cancel turns, close the call's Copilot session and delete its transcript |
+
+One voice call is one Copilot conversation keyed per WebSocket (never the
+container-wide `FOUNDRY_AGENT_SESSION_ID`); a reconnect starts a new conversation.
+`heard_text` from a barge-in is not written back into the Copilot transcript.
+Tool-heavy turns may hit Voice Live's response timeouts (`first_output_ms`, 30 s in
+the official samples), because only the final answer is spoken.
+
+Proof boundaries:
+
+- `skills/threadlight-deploy/tests/test_ghcp_voice_bridge.py` drives the real
+  Voice host with a fake Copilot client: local Bridge handling only.
+- After deploy, run the official `microsoft-foundry` managed-voice smoke test
+  (`foundry-agent/create/scripts/smoke_test_voice.py`, see
+  [voice-agent-smoke-test.md](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/voice-agent-smoke-test.md)) against `<agent>-voice`. It proves the
+  wrapper-to-agent path and a completed response with transcript and audio.
+- Microphone capture, speech-recognition quality, turn-taking, barge-in, voice
+  quality and latency are **not validated** by either; measure them (Foundry
+  voice playground or a real call) before claiming them.
+- The MAF runtime has no Bridge handler: a voice front-end on MAF is not
+  generated. Voice agents are preview and region-limited
+  ([supported regions](https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#supported-regions)).
 
 ## BYOK Authentication Deep Dive
 
