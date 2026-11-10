@@ -853,6 +853,9 @@ tools and MCP stay in `{agent}`. Voice agents are **preview** and need a
 azd 1.32.0+ and a voice-capable `azure.ai.agents` extension. Extension 1.0.0
 refuses to package `kind: voice` unless its alpha feature is on, so run
 `export AZD_ALPHA_ENABLE_AGENTS_VOICE=true` before `azd up` / `azd deploy`.
+After every new agent version, redeploy the voice wrapper too
+(`azd deploy {agent}-voice`): its `conversationEngine` pins the agent version
+deployed with it, and an older version fails with `startup_failed`.
 `azd ai agent invoke` does not open voice sessions. While a turn with tool calls
 runs, the agent speaks a short hold message before Voice Live's first-output
 deadline (`THREADLIGHT_VOICE_HOLD_TEXT`, from SPEC `voice_hold_text`).
@@ -891,7 +894,7 @@ and the host gives the exact original arguments and operation id back as a
 and expiry and consumes the one-use grant before the effect. Barge-in stops the
 speech but never cancels a governed turn in flight (that would make the write an
 unknown outcome); the unheard answer is carried into the next turn. Facilitator
-script: `docs/WORKSHOP-1H-QUICKSTART.md` § 6.6.
+script: `docs/WORKSHOP-1H-QUICKSTART.md` § 6.6b.
 """
 
 

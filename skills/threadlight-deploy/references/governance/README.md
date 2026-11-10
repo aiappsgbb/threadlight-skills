@@ -661,6 +661,34 @@ production or used to bypass the existing restricted/private requirements.
    a signature without the authority: runtime Key Vault verification remains
    mandatory and fails closed.
 
+## GHCP voice front-end (Hosted Voice, preview)
+
+When the generated pilot opted into `voice_frontend: hosted-voice`, the agent
+service carries `THREADLIGHT_VOICE_BRIDGE=1`, `voiceLiveCompatible` metadata and
+a `<agent>-voice` wrapper. `compose` keeps `invocations_ws` 1.0.0 next to
+Invocations and the GHCP agent pins `azure-ai-agentserver-invocations==1.3.0`
+and `-core==2.3.0` (dropping the MAF-only `-responses`, which pins core below
+2.2). `ghcp-container.py` then serves Voice Live Bridge 1.0 with
+`attach_voice_bridge`:
+
+- each caller utterance runs the same governed `stream` invocation as
+  `POST /invocations` (relay, bootstrap gate, gateway, receipt ACK before effect);
+- a `governance_pending` result is sent to the caller as unspoken application
+  data (`response.output_data.done`), so the Approver's
+  `threadlight-review-action --pending` gets the exact record;
+- the host keeps that record for the call and, on the next turn, gives the exact
+  proposed arguments and operation id back as a **host record** (not an
+  approval); the gateway re-checks and consumes the one-use grant;
+- barge-in, cancellation and timeout silence the reply but never cancel a
+  governed turn in flight (a cancelled write would be an unknown outcome); the
+  unheard answer is carried into the next turn;
+- hold messages are spoken before Voice Live's announced deadlines; long
+  identifiers are not read aloud.
+
+Redeploy the voice wrapper after every new agent version: `conversationEngine`
+pins the version deployed with it. Live run and timings:
+[workshop § 6.6b](../../../../docs/WORKSHOP-1H-QUICKSTART.md#66b-advanced-optional-text-voice-and-the-governed-write-on-one-pilot).
+
 ## GHCP invocation cleanup
 
 Every acquired resource has independent bounded cleanup, including partial

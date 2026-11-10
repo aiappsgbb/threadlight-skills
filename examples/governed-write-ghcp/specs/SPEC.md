@@ -93,7 +93,7 @@ tools:
 
 ```yaml
 agent_type: hosted
-voice_frontend: none  # hosted-voice adds the spoken front-end (preview; explicit user opt-in, see docs/WORKSHOP-1H-QUICKSTART.md § 6.6)
+voice_frontend: none  # hosted-voice adds the spoken front-end (preview; explicit user opt-in, see docs/WORKSHOP-1H-QUICKSTART.md § 6.6b)
 voice_opt_in_source: null
 voice_opt_in_evidence: null
 preview_acknowledged: null

@@ -7,6 +7,37 @@ field.
 
 ## [Unreleased]
 
+### 2.39.0: one pilot with text, voice and the governed write (Hosted Voice on the governed GHCP host)
+
+- **Governed voice bridge.** With `THREADLIGHT_VOICE_BRIDGE=1` the governed GHCP
+  host (`references/governance/ghcp-container.py`) also serves Voice Live Bridge
+  1.0. Each spoken turn runs the same governed invocation as `POST /invocations`.
+  A `governance_pending` result reaches the caller as unspoken application data
+  (`response.output_data.done`), so `threadlight-review-action` gets the exact
+  record; the host keeps it for the call and gives the original arguments and
+  operation id back as a host record for the resume. Barge-in never cancels a
+  governed turn in flight (that would make the write an unknown outcome); long
+  identifiers are not read aloud.
+- **Generator wiring.** Governance `compose` keeps `invocations_ws` and the voice
+  wrapper; the voiced GHCP agent pins `azure-ai-agentserver-invocations==1.3.0`
+  and `-core==2.3.0` and drops the MAF-only `-responses` (core below 2.2).
+  `generate_only` adopts a design-owned MCP server's exact, sha256-hashed
+  `requirements.lock` instead of replacing it, skips `specs/sample-data` when the
+  design has none, and the pilot Bicep passes `RETURNS_COSMOS_URL` to the MCP
+  server, so the governed-write kit generates from `specs/` and `AGENTS.md`
+  without hand edits (the kit's agent instructions moved to `AGENTS.md`, its
+  SPEC gained § 9 scenarios and § 11e). The generated DEPLOY guide says to
+  redeploy the voice wrapper after every new agent version.
+- **Docs.** Workshop § 6.6b facilitator script with live timings, governance
+  runbook section and kit README voice variant.
+- **Live (2026-11-10, eastus2, nonproduction):** spoken request (synthetic TTS
+  audio, no human voice) -> `pending_approval` with no effect -> Approver decision
+  -> spoken resume -> one recorded decision and audit; official
+  `microsoft-foundry` voice smoke passed against the governed wrapper.
+- **Not verified:** real human speech, barge-in during a governed turn, venue
+  latency; operator-side image builds for publisher, business, control plane,
+  gateway and the agent still use a separate operator azd project.
+
 ### 2.38.0: pilot value page for the process owner and sponsor
 
 - **`threadlight-production-ready/scripts/pilot_value.py`** (skill 0.16.0)

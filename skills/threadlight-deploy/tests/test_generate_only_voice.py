@@ -106,6 +106,8 @@ def test_opted_in_deploy_guide_names_the_official_smoke_test_and_the_preview(voi
     assert "not validated" in guide.lower()
     # azure.ai.agents 1.0.0 refuses `kind: voice` packaging without this alpha flag (live 2026-11-10).
     assert "AZD_ALPHA_ENABLE_AGENTS_VOICE=true" in guide
+    # conversationEngine pins the agent version deployed with the wrapper (live 2026-11-10: startup_failed).
+    assert "redeploy the voice wrapper" in " ".join(guide.split()).lower()
     gaps = json.loads((project / "tests" / "postdeploy-manifest.json").read_text())["gaps"]
     assert any("voice" in gap for gap in gaps)
 
