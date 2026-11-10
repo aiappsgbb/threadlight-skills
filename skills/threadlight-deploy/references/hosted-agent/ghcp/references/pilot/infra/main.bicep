@@ -218,21 +218,10 @@ resource deployerFoundryUserAccount 'Microsoft.Authorization/roleAssignments@202
 // Foundry injects APPLICATIONINSIGHTS_CONNECTION_STRING into hosted agents only
 // when monitoring is configured on the project
 // (https://learn.microsoft.com/azure/foundry/agents/how-to/configure-hosted-agent-telemetry).
-// This is the AppInsights project connection the portal "Traces > Connect"
-// button creates; a project allows one connection of this category. Shape:
-// https://learn.microsoft.com/azure/templates/microsoft.cognitiveservices/accounts/projects/connections
-resource projectAppInsights 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = {
-  parent: project
-  name: appi.name
-  properties: {
-    category: 'AppInsights'
-    target: appi.id
-    authType: 'ApiKey'
-    isSharedToAll: true
-    credentials: { key: appi.properties.ConnectionString }
-    metadata: { ApiType: 'Azure', ResourceId: appi.id }
-  }
-}
+// The AppInsights project connection (one per project) is created by
+// hooks/postprovision.sh, not here: on 2026-11-10 in eastus2 every connection
+// write returned 500 although the service saved it, and ARM retried the PUT
+// until the deployment was cancelled. The hook writes once and checks a read-back.
 
 var projectEndpoint = 'https://${account.properties.customSubDomainName}.services.ai.azure.com/api/projects/${project.name}'
 output AZURE_RESOURCE_GROUP string = resourceGroup().name
@@ -249,4 +238,5 @@ output MCP_SERVER_FQDN string = mcp.properties.configuration.ingress.fqdn
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = appi.properties.ConnectionString
 // Read by scripts/record_deploy_evidence.py (telemetry evidence for the Foundry package gate).
 output APPLICATIONINSIGHTS_RESOURCE_ID string = appi.id
-output AZURE_AI_APPINSIGHTS_CONNECTION_ID string = projectAppInsights.id
+// The hook records the actual connection id; this is the name it creates.
+output AZURE_AI_APPINSIGHTS_CONNECTION_ID string = '${project.id}/connections/${appi.name}'

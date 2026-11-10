@@ -233,14 +233,17 @@ def test_pilot_bicep_grants_deployer_foundry_user_at_account_scope():
     assert FOUNDRY_USER in text
 
 
-def test_pilot_bicep_connects_app_insights_to_the_project():
+def test_pilot_connects_app_insights_to_the_project_in_a_postprovision_hook():
+    # 2026-11-10 eastus2: every Foundry connection write returned 500 although the
+    # service saved it, and ARM retried the Bicep connection PUT until cancelled.
+    # The connection is made by an idempotent hook that tolerates that case.
     text = (PILOT / "infra" / "main.bicep").read_text()
-    block = re.search(r"resource projectAppInsights 'Microsoft\.CognitiveServices/accounts/projects/connections@[^']+' = \{(.*?)\n\}",
-                      text, re.S)
-    assert block, "App Insights project connection is missing"
-    body = block.group(1)
-    assert "parent: project" in body and "category: 'AppInsights'" in body and "target: appi.id" in body
+    assert "Microsoft.CognitiveServices/accounts/projects/connections@" not in text
     assert "configure-hosted-agent-telemetry" in text
+    assert "output AZURE_AI_APPINSIGHTS_CONNECTION_ID string = '${project.id}/connections/${appi.name}'" in text
+    hook = (PILOT / "hooks" / "postprovision.sh").read_text()
+    assert "category\": \"AppInsights" in hook or '"category": "AppInsights"' in hook
+    assert "configure-hosted-agent-telemetry" in hook
 
 
 # --- 6. Selected governance is disclosed, never silently dropped --------------------
@@ -489,7 +492,7 @@ def test_deploy_evidence_helper_is_documented_and_wired(tmp_path: Path):
     project = _generate(tmp_path, "order-returns")
     assert "python scripts/record_deploy_evidence.py" in (project / "DEPLOY.md").read_text()
     bicep = (PILOT / "infra" / "main.bicep").read_text()
-    assert "output AZURE_AI_APPINSIGHTS_CONNECTION_ID string = projectAppInsights.id" in bicep
+    assert "output AZURE_AI_APPINSIGHTS_CONNECTION_ID string = '${project.id}/connections/${appi.name}'" in bicep
     assert "output APPLICATIONINSIGHTS_RESOURCE_ID string = appi.id" in bicep
 
 

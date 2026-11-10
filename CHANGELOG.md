@@ -7,6 +7,30 @@ field.
 
 ## [Unreleased]
 
+### 2.37.0: App Insights project connection moves to an idempotent postprovision hook
+
+- **Root cause (service-side, eastus2, 2026-11-10).** Every Foundry
+  `connections/write` returned `500 InternalServerError` even though the service
+  saved the connection. This held for account and project scope, for
+  `AppInsights` and `CustomKeys`, and with API versions 2025-04-01-preview and
+  2025-06-01, including on a new account without a project. The same call in
+  westus3 returned 200. ARM retried the PUT indefinitely, so `azd up` hung until
+  it was cancelled. The pilot connection already matched the official
+  foundry-samples connection and the `azd-ai-starter-basic` template, so the
+  template shape was not the cause.
+- **Deterministic deploy.** The pilot `infra/main.bicep` no longer declares the
+  connection. A new `hooks/postprovision.sh` (wired in `azure.yaml`,
+  `continueOnError: false`) reuses an existing connection or writes it once. On
+  an error it accepts the connection only if a read-back shows it saved;
+  otherwise it fails with the service error. The connection string is sent from
+  a private temp file and never printed. The `AZURE_AI_APPINSIGHTS_CONNECTION_ID`
+  output is now the deterministic name, and the hook records the real id.
+- **Docs.** Deploy failure mode F-23, a GHCP README row, generate-only notes and
+  WORKSHOP-1H-QUICKSTART §5.6 (recovery for packages generated earlier).
+- **Tests.** `test_appinsights_connection_hook.py` runs the hook against a fake
+  `az`/`azd` (created, error but saved, error and nothing saved, already present,
+  wiring). The pilot Bicep test now asserts that no connection resource is
+  declared.
 ### 2.36.0: runnable case-list workspace shape; human sign-in approval evidence on GHCP
 
 - **`threadlight-workspace-ui` (#134).** `references/shapes/case-list/` is now a
@@ -22,6 +46,7 @@ field.
   by the Approver's own interactive browser sign-in through
   `threadlight-review-action`, then resumed with one receipt-bound effect and an
   unchanged replay (`docs/governed-returns-validation.md`).
+||||||| parent of 05221959 (2.36.0: App Insights project connection moves to an idempotent postprovision hook)
 
 ### 2.35.0: governed-write workshop kit with a live governed write on GHCP
 

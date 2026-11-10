@@ -51,6 +51,13 @@ services:
         memory: 2Gi
 
 hooks:
+  # Connects App Insights to the Foundry project (project monitoring). A hook,
+  # not Bicep, because a connection write can fail while the service saves it.
+  postprovision:
+    posix:
+      shell: sh
+      run: sh hooks/postprovision.sh
+      continueOnError: false
   # Grants the agent INSTANCE identity Foundry User (by role GUID) on the
   # Foundry account and project after every deploy. Idempotent.
   postdeploy:

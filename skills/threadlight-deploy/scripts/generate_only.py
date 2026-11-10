@@ -1369,6 +1369,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "azure.yaml": render_azure_yaml(project, agent, description, voice),
         ".dockerignore": render_dockerignore(bool(standins) and has_corpus),
         "hooks/postdeploy.sh": (PILOT / "hooks" / "postdeploy.sh").read_text(encoding="utf-8"),
+        "hooks/postprovision.sh": (PILOT / "hooks" / "postprovision.sh").read_text(encoding="utf-8"),
         "infra/main.parameters.json": json.dumps(params, indent=2) + "\n",
         "src/agent/container.py": (GHCP / "container.py").read_text(encoding="utf-8"),
         "src/agent/Dockerfile": (GHCP / "Dockerfile").read_text(encoding="utf-8"),
@@ -1462,6 +1463,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(content)
     (project_dir / "hooks" / "postdeploy.sh").chmod(0o755)
+    (project_dir / "hooks" / "postprovision.sh").chmod(0o755)
     (project_dir / "evals" / "run_evals.py").chmod(0o755)
     (project_dir / "scripts" / "record_deploy_evidence.py").chmod(0o755)
     return sorted([*text_outputs, *binary_outputs])
