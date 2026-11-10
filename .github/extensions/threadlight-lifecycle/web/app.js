@@ -312,6 +312,18 @@ function renderProofPath(proofPath) {
   </section>`;
 }
 
+function renderValuePage(value) {
+  if (!value) {
+    return "";
+  }
+  const valueAge = value.checkedAt ? `Generated ${age(value.checkedAt)}` : "";
+  return `<div class="fact"><dt>Pilot value page</dt><dd>
+        <span class="value">${escapeHtml(value.label)}</span>
+        ${value.detail ? `<span class="sub">${escapeHtml(value.detail)}</span>` : ""}
+        ${valueAge ? `<span class="sub">${escapeHtml(valueAge)}</span>` : ""}
+      </dd></div>`;
+}
+
 function renderGoLive(goLive) {
   const readiness = goLive.readiness;
   const cost = goLive.cost;
@@ -330,6 +342,7 @@ function renderGoLive(goLive) {
         ${cost.detail ? `<span class="sub">${escapeHtml(cost.detail)}</span>` : ""}
         <span class="sub">${escapeHtml([cost.source, costAge].filter(Boolean).join(" · "))}</span>
       </dd></div>
+      ${renderValuePage(goLive.value)}
     </dl>
   </section>`;
 }

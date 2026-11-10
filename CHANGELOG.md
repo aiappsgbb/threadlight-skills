@@ -7,6 +7,7 @@ field.
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 ### 2.37.0: App Insights project connection moves to an idempotent postprovision hook
 
 - **Root cause (service-side, eastus2, 2026-11-10).** Every Foundry
@@ -31,6 +32,29 @@ field.
   `az`/`azd` (created, error but saved, error and nothing saved, already present,
   wiring). The pilot Bicep test now asserts that no connection resource is
   declared.
+||||||| parent of 8e0d6c55 (2.36.0: pilot value page for the process owner and sponsor)
+=======
+### 2.37.0: pilot value page for the process owner and sponsor
+
+- **`threadlight-production-ready/scripts/pilot_value.py`** (skill 0.16.0)
+  writes `docs/pilot-value.html` (self-contained, printable, no script),
+  `docs/pilot-value.md` and `specs/pilot-value.json` from evidence the pilot
+  already produced: the Foundry eval score against its bar and the delivery
+  check, showcase-scenario results from `docs/invoke-results.md`, the
+  post-deploy safety check, the readiness review, the reconciled cost per
+  successful interaction (through the KPI-003 reader, so a tampered or stale
+  bundle is not relayed), measured spend and its monthly pace, the cost
+  forecast, `qualification/roi.md` and the SPEC business KPI targets. Every
+  item is labelled Measured, Calculated, Estimate, Target or Not measured yet;
+  a forecast never fills a measured figure and a missing input is never filled.
+  It reads only and changes no input.
+- **Lifecycle Canvas:** "Go-live and value" shows a **Pilot value page** fact
+  from `specs/pilot-value.json` (validated schema, counts and page path; a
+  forged summary renders as unreadable).
+- **Docs:** workshop closing segment 6.7, readiness guide subsection and a
+  "decide whether to continue" path on the Production page.
+
+>>>>>>> 8e0d6c55 (2.36.0: pilot value page for the process owner and sponsor)
 ### 2.36.0: runnable case-list workspace shape; human sign-in approval evidence on GHCP
 
 - **`threadlight-workspace-ui` (#134).** `references/shapes/case-list/` is now a
@@ -46,7 +70,12 @@ field.
   by the Approver's own interactive browser sign-in through
   `threadlight-review-action`, then resumed with one receipt-bound effect and an
   unchanged replay (`docs/governed-returns-validation.md`).
+<<<<<<< HEAD
 ||||||| parent of 05221959 (2.36.0: App Insights project connection moves to an idempotent postprovision hook)
+||||||| parent of 8e0d6c55 (2.36.0: pilot value page for the process owner and sponsor)
+=======
+||||||| parent of 32c40b4f (2.36.0: pilot value page for the process owner and sponsor)
+>>>>>>> 8e0d6c55 (2.36.0: pilot value page for the process owner and sponsor)
 
 ### 2.35.0: governed-write workshop kit with a live governed write on GHCP
 

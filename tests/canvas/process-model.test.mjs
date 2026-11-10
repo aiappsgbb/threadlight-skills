@@ -744,3 +744,36 @@ test("a generate-only pending-deploy placeholder is not verification evidence", 
   const verify = view.proofPath.milestones.find((milestone) => milestone.gates.some((g) => g.stage === "safe_check"));
   assert.notEqual(verify.stateLabel, "Partly done");
 });
+
+test("pilot value page summary is relayed, never invented", () => {
+  const summary = {
+    schema: "threadlight-pilot-value/v1",
+    generated_at: "2026-08-06T08:00:00Z",
+    page: "docs/pilot-value.html",
+    counts: { measured: 2, calculated: 0, estimate: 1, target: 8, not_measured: 5 },
+  };
+  const generated = buildProcessModel(
+    base({ valuePage: { value: summary, checkedAt: "2026-08-06T08:00:00.000Z" } }),
+  );
+  assert.equal(generated.goLive.value.state, "generated");
+  assert.equal(generated.goLive.value.label, "2 measured · 1 estimate · 5 not measured yet");
+  assert.equal(generated.goLive.value.page, "docs/pilot-value.html");
+  assert.equal(generated.goLive.value.checkedAt, "2026-08-06T08:00:00.000Z");
+
+  const none = buildProcessModel(base());
+  assert.equal(none.goLive.value.state, "none");
+  assert.equal(none.goLive.value.label, "Not generated yet");
+  assert.equal(none.goLive.value.page, null);
+
+  for (const forged of [
+    { ...summary, schema: "something-else/v1" },
+    { ...summary, counts: { ...summary.counts, measured: -1 } },
+    { ...summary, counts: { ...summary.counts, estimate: 1.5 } },
+    { ...summary, page: "../../etc/passwd" },
+    { invalid: true },
+  ]) {
+    const view = buildProcessModel(base({ valuePage: { value: forged, checkedAt: null } }));
+    assert.equal(view.goLive.value.state, "invalid", JSON.stringify(forged));
+    assert.equal(view.goLive.value.page, null);
+  }
+});

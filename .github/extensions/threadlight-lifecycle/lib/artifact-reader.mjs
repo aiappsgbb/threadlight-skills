@@ -20,6 +20,7 @@ const ALLOWED_FILES = new Set([
   "specs/ground-manifest.json",
   "specs/load-manifest.json",
   "specs/upgrade-manifest.json",
+  "specs/pilot-value.json",
   "qualification/sizing-manifest.json",
   "tests/production-readiness-manifest.json",
   "tests/postdeploy-manifest.json",

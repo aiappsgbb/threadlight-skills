@@ -889,6 +889,53 @@ function buildCost(cost) {
   };
 }
 
+const PILOT_VALUE_SCHEMA = "threadlight-pilot-value/v1";
+const PILOT_VALUE_PAGE = "docs/pilot-value.html";
+const PILOT_VALUE_COUNTS = ["measured", "calculated", "estimate", "target", "not_measured"];
+
+// Relays the pilot value page summary written by threadlight-production-ready's
+// pilot_value.py. It is a pointer to a sponsor-facing page, never proof: a
+// forged or malformed summary renders as unreadable and links nothing.
+function buildValuePage(valuePage) {
+  if (!valuePage) {
+    return {
+      state: "none",
+      label: "Not generated yet",
+      detail: "After the pilot, generate the pilot value page. It only reads existing evidence.",
+      page: null,
+      checkedAt: null,
+    };
+  }
+  const value = valuePage.value;
+  const counts = isPlainObject(value) ? value.counts : null;
+  const valid =
+    isPlainObject(value) &&
+    value.schema === PILOT_VALUE_SCHEMA &&
+    value.page === PILOT_VALUE_PAGE &&
+    isPlainObject(counts) &&
+    PILOT_VALUE_COUNTS.every((key) => Number.isInteger(counts[key]) && counts[key] >= 0);
+  if (!valid) {
+    return {
+      state: "invalid",
+      label: "Summary could not be read",
+      detail: "specs/pilot-value.json is not a valid value page summary. Generate it again.",
+      page: null,
+      checkedAt: null,
+    };
+  }
+  const parts = [`${counts.measured} measured`];
+  if (counts.calculated > 0) parts.push(`${counts.calculated} calculated`);
+  if (counts.estimate > 0) parts.push(`${counts.estimate} ${counts.estimate === 1 ? "estimate" : "estimates"}`);
+  if (counts.not_measured > 0) parts.push(`${counts.not_measured} not measured yet`);
+  return {
+    state: "generated",
+    label: parts.join(" · "),
+    detail: `For the process owner and sponsor: ${PILOT_VALUE_PAGE}`,
+    page: PILOT_VALUE_PAGE,
+    checkedAt: valuePage.checkedAt ?? null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Now: state, root blocker and exactly one action
 // ---------------------------------------------------------------------------
@@ -1145,6 +1192,7 @@ export function buildProcessModel({
   cost = null,
   readiness = null,
   evals = null,
+  valuePage = null,
   errors = [],
   generatedAt = null,
 } = {}) {
@@ -1182,6 +1230,7 @@ export function buildProcessModel({
         ...buildCost(cost),
         source: `Estimated in “${phaseMeta(STAGE_CATALOG.cost_projection.milestone).title}”`,
       },
+      value: buildValuePage(valuePage),
     },
     technical: buildTechnical({ phases, plan, planStatus, errors }),
   };

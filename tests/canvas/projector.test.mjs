@@ -2062,3 +2062,21 @@ test("recommend-only pilot shows its action mode; an absent mode shows none", as
     assert.match(model.view.pilot.actionMode.label, /a person records/);
   });
 });
+
+test("projector reads the pilot value page summary", async () => {
+  await withFixture("pilot-value", async (fixture) => {
+    let model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(model.view.goLive.value.state, "none");
+    await fixture.writeJson("specs/pilot-value.json", {
+      schema: "threadlight-pilot-value/v1",
+      generated_at: "2026-08-06T08:00:00Z",
+      page: "docs/pilot-value.html",
+      counts: { measured: 3, calculated: 1, estimate: 2, target: 4, not_measured: 1 },
+    });
+    model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(model.view.goLive.value.label, "3 measured · 1 calculated · 2 estimates · 1 not measured yet");
+    await fixture.writeString("specs/pilot-value.json", "{not json");
+    model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(model.view.goLive.value.state, "invalid");
+  });
+});

@@ -670,6 +670,21 @@ The manifest declares `schema_version: "1.0"`; inspect its `tool_version` and th
 pinned source when interpreting scoring. The schema label alone is not a promise
 that historical scoring semantics still apply.
 
+### Pilot value page (sponsor view)
+
+The readiness report is written for architects and security reviewers. For the
+process owner and business sponsor who decide whether to continue, run
+`scripts/pilot_value.py --workspace <pilot-root>`. It reads only existing
+evidence (Foundry eval run, showcase-scenario results, safety check, readiness
+manifest, reconciled cost, cost forecast, `qualification/roi.md`, SPEC business
+KPIs) and writes `docs/pilot-value.html`, `docs/pilot-value.md` and
+`specs/pilot-value.json`. Each item is labelled Measured, Calculated, Estimate,
+Target or Not measured yet. The measured cost per successful interaction comes
+from the same verified reconciliation reader as KPI-003; a forecast or planning
+figure is never shown as measured, and a missing input stays "Not measured
+yet". The page is a decision aid, not a go-live verdict. See the
+[skill section](../skills/threadlight-production-ready/SKILL.md#pilot-value-page-process-owner-and-sponsor).
+
 ---
 
 ## 9. CLI cheatsheet
