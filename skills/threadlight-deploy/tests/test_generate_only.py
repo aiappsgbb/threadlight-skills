@@ -239,6 +239,19 @@ def test_eval_config_has_builtins_and_spec_rubric(generated: Path):
     assert {"S-001", "S-003", "BR-003"} <= set(rubric["derived_from_acceptance_criteria"])
 
 
+def test_spec_rubric_prompt_carries_full_rule_text_not_only_titles(generated: Path):
+    # Live 2026-11-10: a title-only prompt ("BR-005: ... never record") made the
+    # judge score 7 correct answers 1 for naming the human who records, which
+    # the rule body requires.
+    prompt = json.loads((generated / "evals" / "eval-config.json").read_text())[
+        "custom_rubric_evaluators"][0]["system_prompt"]
+    assert "BR-002: Auto-refund value cap" in prompt
+    assert "Order value above $150." in prompt
+    assert "Send to human review regardless of value." in prompt
+    assert "full rule text" in prompt
+    assert "**" not in prompt
+
+
 def test_run_evals_is_one_command_and_offline_safe(generated: Path, tmp_path: Path):
     runner = generated / "evals" / "run_evals.py"
     text = runner.read_text()

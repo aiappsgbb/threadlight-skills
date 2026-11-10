@@ -154,6 +154,28 @@ def business_rules(spec: str) -> dict[str, str]:
     return dict(sorted(rules.items(), key=lambda kv: int(kv[0].split("-")[1])))
 
 
+def business_rule_bodies(spec: str) -> dict[str, list[str]]:
+    """Bullet text under each ``### BR-nnn`` heading, unwrapped, KPI lines dropped."""
+    bodies: dict[str, list[str]] = {}
+    pattern = r"^#{2,4}[ \t]*(BR-\d+)[ \t]*[:\-—][^\n]*\n(.*?)(?=^#{1,6}\s|^---\s*$|\Z)"
+    for m in re.finditer(pattern, spec, re.M | re.S):
+        items: list[str] = []
+        for line in m.group(2).replace("**", "").splitlines():
+            text = line.strip()
+            if not text:
+                continue
+            if text.startswith(("- ", "* ")):
+                items.append(text[2:].strip())
+            elif items:
+                items[-1] += " " + text
+            else:
+                items.append(text)
+        items = [i for i in items if not i.lower().startswith("kpi")]
+        if items:
+            bodies.setdefault(m.group(1), items)
+    return bodies
+
+
 def _expand_rule_ids(text: str) -> list[str]:
     ids: list[str] = []
     for m in re.finditer(r"BR-(\d+)((?:\s*[,/]\s*\d+)*)", text):
@@ -924,9 +946,19 @@ def test_mcp_server_exposes_spec_tools():
 ''' + CONTAINER_LAYOUT_TESTS
 
 
-def build_eval_config(agent: str, rules: dict[str, str], scen: list[dict[str, Any]]) -> dict[str, Any]:
+def build_eval_config(
+    agent: str,
+    rules: dict[str, str],
+    scen: list[dict[str, Any]],
+    bodies: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    bodies = bodies or {}
     rule_ids = sorted({r for s in scen for r in s["business_rules"]} | set(rules), key=lambda r: int(r.split("-")[1]))
-    rule_text = "\n".join(f"- {rid}: {rules.get(rid, '(see SPEC section 3)')}" for rid in rule_ids)
+    rule_text = "\n".join(
+        f"- {rid}: {rules.get(rid, '(see SPEC section 3)')}"
+        + "".join(f"\n    {item}" for item in bodies.get(rid, []))
+        for rid in rule_ids
+    )
     anchors = [
         "1: Wrong outcome or violates a business rule (e.g. auto-approves a case a rule sends to review).",
         "2: Outcome partly wrong or no business rule cited.",
@@ -962,7 +994,8 @@ def build_eval_config(agent: str, rules: dict[str, str], scen: list[dict[str, An
                 "anchors": anchors,
                 "derived_from_acceptance_criteria": [s["id"] for s in scen] + rule_ids,
                 "system_prompt": (
-                    "You grade a business agent's answer against its SPEC. Business rules:\n"
+                    "You grade a business agent's answer against its SPEC. Judge compliance "
+                    "against the full rule text below; a rule title is only a label. Business rules:\n"
                     f"{rule_text}\n\nScoring anchors:\n" + "\n".join(anchors)
                     + "\nReturn only the integer score."
                 ),
@@ -1060,7 +1093,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         if instructions_src.is_file()
         else f"# {agent}\n\nFollow specs/SPEC.md. Cite the business rule that fired in every decision.\n"
     )
-    cfg = build_eval_config(agent, rules, scen)
+    cfg = build_eval_config(agent, rules, scen, business_rule_bodies(spec))
     dataset = "".join(
         json.dumps({k: s[k] for k in ("id", "query", "expected", "business_rules", "category")}) + "\n"
         for s in scen

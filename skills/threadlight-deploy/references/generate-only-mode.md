@@ -140,7 +140,10 @@ Ownership is explicit, so the deploy step never discards design code:
   accepted by both the generator and `run_evals.py`.
   `python evals/run_evals.py` runs after deploy as a single command.
   It creates a Foundry eval with built-in evaluators plus a custom score-model
-  rubric derived from the SPEC business rules (1–5 anchors, threshold 4).
+  rubric derived from the SPEC business rules (1–5 anchors, threshold 4). The
+  judge prompt carries each `### BR-nnn` rule's full bullet text (Condition,
+  Action, Exception, Output; KPI lines dropped), not only its title: a
+  title-only prompt scored correct hand-off answers 1 in a live run.
   The target input is
   `{"input": "{{item.query}}", "stream": false, "new_conversation": true}`: the
   GHCP runtime then returns only the final answer text (the full SSE stream
