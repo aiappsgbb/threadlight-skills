@@ -7,6 +7,26 @@ field.
 
 ## [Unreleased]
 
+### 2.39.1: second live run of the governed voice demo on the post-review build
+
+- **Live (2026-11-10, eastus2, nonproduction, synthetic TTS audio, no human
+  voice):** the 2.39.0 review fixes ran on a new agent version (v3) with a new
+  signed policy (v3) and a redeployed voice wrapper. The official
+  `microsoft-foundry` voice smoke passed; spoken request -> `pending_approval`
+  with no effect -> Approver decision -> spoken resume -> one recorded decision
+  and audit carrying the v3 policy digest.
+- **Interruption:** the caller interrupted the escalation turn after the pending
+  record had been sent; the next answer carried a pending record again, the
+  governance store held one new approval request and nothing was written.
+- **Speech recognition:** a spoken case id that lost its dashes ("RMA, W05C")
+  found no case; the agent recorded nothing and asked for the exact id.
+- **Workshop § 6.6b:** timings are now ranges over three spoken calls (pending
+  record 11-54 s after the end of speech; resume 10-12 s), plus "spell the case
+  id", the interruption result and the `--gateway-url .../mcp` note for
+  `demo_capacity.py warm`.
+- **Not verified:** real human speech, an interruption before the pending record
+  was sent (unit tests only), audio quality, venue latency.
+
 ### 2.39.0: one pilot with text, voice and the governed write (Hosted Voice on the governed GHCP host)
 
 - **Governed voice bridge.** With `THREADLIGHT_VOICE_BRIDGE=1` the governed GHCP

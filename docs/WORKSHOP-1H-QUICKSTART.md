@@ -470,16 +470,17 @@ voice wrapper** too: `conversationEngine` pins the version deployed with it,
 and the old version fails with `startup_failed`. Check with the official
 `smoke_test_voice.py` against `<agent>-voice`.
 
-**During the session** (measured live on 2026-11-10, eastus2; spoken input was
-synthetic text-to-speech (TTS) audio from a script, no human voice):
+**During the session** (measured live on 2026-11-10, eastus2, three spoken
+calls on two agent versions; spoken input was synthetic text-to-speech (TTS)
+audio from a script, no human voice; ranges are min-max across those calls):
 
 | Beat | What the room sees | Measured |
 |---|---|---|
-| `demo_capacity.py warm ... --agent <agent>` | services and agent ready (pass `--agent`, the default names the kit agent) | about 3 min (190 s) |
-| Speak: "Triage return case RMA-W04-C and record your decision." | the agent says one moment, then that nothing is recorded and a human Approver must decide | hold message 4.6 s, answer complete 20 s after the end of speech |
-| Pending record | the client receives the host's exact `pending_approval` record as unspoken data (`response.invocation.delta`); show it in the [case-list workspace](../skills/threadlight-workspace-ui/references/shapes/case-list/README.md) (pending card, reviewer command, no Approve button) | arrived 14 s after the end of speech |
+| `demo_capacity.py warm ... --agent <agent>` | services and agent ready (pass `--agent`, the default names the kit agent; `--gateway-url` ends in `/mcp`, otherwise the gateway check waits on a wrong URL) | about 3 min (190 s) |
+| Speak: "Triage return case R-M-A dash W zero four dash C and record your decision." | the agent says one moment, then that nothing is recorded and a human Approver must decide | hold message 4.4-28 s, answer complete 17-61 s after the end of speech (the slow call waited 20 s before Voice Live opened the response) |
+| Pending record | the client receives the host's exact `pending_approval` record as unspoken data (`response.invocation.delta`); show it in the [case-list workspace](../skills/threadlight-workspace-ui/references/shapes/case-list/README.md) (pending card, reviewer command, no Approve button) | arrived 11-54 s after the end of speech |
 | Approver | `threadlight-review-action --pending <saved record> ...` signed in as themselves | 1.2 s for the recorded decision itself (sign-in time not measured) |
-| Speak: "The supervisor has approved it. Please complete that decision now." | the host gives the exact original arguments and operation id back as a host record; the agent says it was recorded | 12 s after the end of speech; whole call 53 s |
+| Speak: "The supervisor has approved it. Please complete that decision now." | the host gives the exact original arguments and operation id back as a host record; the agent says it was recorded | 10-12 s after the end of speech; whole call 53-92 s |
 | `demo_capacity.py cool` | everything back to zero replicas | - |
 
 What to point at: the escalation is decided by the gateway, not by the voice;
@@ -487,13 +488,25 @@ nothing is written until the Approver decides; the resume re-checks policy,
 facts and identity and consumes the grant once. If you ask to complete before
 the Approver decides, the agent answers that it is still pending.
 
+**Spell the case id.** Spoken identifiers can lose their dashes in speech
+recognition (live: "RMA, W05C"). The agent then finds no case, records
+nothing and asks for the exact id; it does not guess a nearby case. Say the id
+letter by letter with "dash", and repeat it the same way if asked.
+
+**Interrupting is safe.** Live, the caller interrupted the escalation turn
+after the pending record had been sent; the next answer carried a pending
+record again, the governance store held one new approval request for one
+operation, and nothing was written. If the interrupted answer could not send the record, the host sends
+it on the caller's next response.
+
 **Unknown outcome: never retry.** If the agent says the outcome is unknown (live: the business API was cold
 because a redeploy had reset it to zero replicas, and it committed after the
 gateway's bounded call), the write may have happened. Reconcile
 from the business case and audit records, then warm and use the next case set.
 
 Not validated here: speech recognition of real human voices, accents and noisy
-rooms, barge-in during a governed turn, perceived latency on venue networks.
+rooms, an interruption before the pending record was sent (covered by unit
+tests only), audio quality, perceived latency on venue networks.
 
 Then review the broader readiness work:
 
