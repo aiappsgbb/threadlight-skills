@@ -22,7 +22,7 @@ test('canonical rule adds the hosted-voice front-end with the same user opt-in',
   assert.match(rule, /tools[^.]{0,80}(governance|MCP)[^.]{0,80}(stay|remain) in the (hosted|text) agent/i);
   assert.ok(rule.includes(LEARN));
   assert.match(rule, /items 2b and 2c are the only exceptions/i);
-  assert.match(rule, /Why \(2\.32\.0\)/);
+  assert.match(rule, /Why \(2\.33\.0\)/);
 });
 
 test('runtime-policy.json encodes the voice front-end opt-in', () => {

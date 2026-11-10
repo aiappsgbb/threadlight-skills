@@ -51,7 +51,7 @@ acknowledged (item 2b); it is never offered by an agent. Other preview-only
 capabilities, including the Foundry-managed Copilot harness for prompt agents,
 stay excluded. This is enforced by `tests/blueprint/foundry-voice-opt-in.test.js`.
 
-## Why (2.32.0)
+## Why (2.33.0)
 
 Foundry now documents a voice-based agent that uses an existing hosted agent as
 its conversation engine (Hosted Voice, preview). That keeps the Threadlight
