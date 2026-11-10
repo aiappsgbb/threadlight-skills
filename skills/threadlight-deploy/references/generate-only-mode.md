@@ -187,7 +187,8 @@ Ownership is explicit, so the deploy step never discards design code:
 - **Deploy evidence.** After `azd up` and an `azd ai agent invoke`,
   `python scripts/record_deploy_evidence.py [--trace-id <id>]` records the agent
   id/version (`azd ai agent show`), the project's App Insights connection (azd
-  output `AZURE_AI_APPINSIGHTS_CONNECTION_ID`) and a trace id (the invoke's
+  env `AZURE_AI_APPINSIGHTS_CONNECTION_ID`, recorded by the `postprovision`
+  hook that creates the connection) and a trace id (the invoke's
   `Trace ID`, else the latest `invoke_agent` request in App Insights). It never
   invents a value; anything unread stays null and it exits 3.
 - **Foundry package gate.** `specs/foundry-package-manifest.json` is
