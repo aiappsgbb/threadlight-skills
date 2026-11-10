@@ -175,6 +175,15 @@ Run the preflight (§2.2) on the demo laptop, then open Copilot CLI and prompt:
 
 If anything's red, fix it now — don't try to fix it inside the runbook.
 
+If you deploy the cloud agent ahead of the session (fallback workspace), its MCP
+Container App scales to zero by default, with no always-on cost. A few minutes
+before showing cloud answers, warm it:
+
+> in ~/Repos/workshop/returns-triage run azd env set MCP_MIN_REPLICAS 1 and then azd provision
+
+After the session, set it back with `azd env set MCP_MIN_REPLICAS 0` and run
+`azd provision` again, so no replica stays on.
+
 ---
 
 ## 3. Minute-by-minute runbook
@@ -350,6 +359,13 @@ index lookup, subscription assertion, `AZURE_CONFIG_DIR` setup) before
 provisioning starts, that's the safety gate, not a hang.
 
 ### 6.4 Smoke test
+
+The MCP Container App scales to zero by default (`MCP_MIN_REPLICAS=0`), so
+nothing stays on between demos. The first killer prompt after idle waits for a
+replica to start. In a live run on 2026-11-10, K1 took 68 s cold against 43–55 s
+warm, and every tool call succeeded. To avoid that wait on screen, run
+`azd env set MCP_MIN_REPLICAS 1` and `azd provision` a few minutes before the
+demo. Afterwards, run `azd env set MCP_MIN_REPLICAS 0` and `azd provision` again.
 
 > run the killer prompts from ~/Repos/workshop/returns-triage/tests/killer-prompts.md against the deployed returns-triage agent — same prompts, now hitting the cloud agent over the Invocations protocol
 

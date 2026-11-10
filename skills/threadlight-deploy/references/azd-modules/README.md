@@ -1387,13 +1387,17 @@ request arrives**. This is efficient for production but confusing during
 deploy testing — you deploy, curl the endpoint, get a timeout, and think
 the deploy failed when it's actually just cold-starting.
 
-**For pilots and deploy testing:** use `minReplicas: 1` so the container
-starts immediately after deploy. Switch to `0` for production when you
-want cost savings.
+**Default is `0`, exposed as a parameter.** Pilots and demos should not leave
+an always-on replica behind. The GHCP pilot infra wires `mcpMinReplicas`
+(default `0`) to `${MCP_MIN_REPLICAS=0}`: before a live demo run
+`azd env set MCP_MIN_REPLICAS 1` and `azd provision` to keep one replica
+warm, then set `MCP_MIN_REPLICAS 0` and provision again. While testing a
+scaled-to-zero deploy, retry the first request instead of assuming failure.
 
 ```bicep
+param mcpMinReplicas int = 0   // azd env MCP_MIN_REPLICAS; 1 only while demoing
 scale: {
-  minReplicas: 1   // 1 for pilots/testing, 0 for production cost savings
+  minReplicas: mcpMinReplicas
   maxReplicas: 3
 }
 ```

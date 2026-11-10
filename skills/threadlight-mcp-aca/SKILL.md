@@ -436,7 +436,7 @@ The three lines this template prevents from going wrong: `transport="streamable-
 
 ## Bicep: ACA for MCP Server
 
-> **MUST:** Copy verbatim from [`references/bicep/mcp-aca.bicep`](references/bicep/mcp-aca.bicep). Do NOT redefine inline — the validator enforces single-source-of-truth. That file is the canonical ACA module with external ingress on `:8080`, UAMI for ACR pull (A2), `transport: 'http'` (not deprecated `'auto'`), and liveness + startup probes on `/health` (without them, cold-start tool calls 502 until the first scrape). `minReplicas: 1` avoids the cold-start hit on every demo.
+> **MUST:** Copy verbatim from [`references/bicep/mcp-aca.bicep`](references/bicep/mcp-aca.bicep). Do NOT redefine inline — the validator enforces single-source-of-truth. That file is the canonical ACA module with external ingress on `:8080`, UAMI for ACR pull (A2), `transport: 'http'` (not deprecated `'auto'`), and liveness + startup probes on `/health` (without them, cold-start tool calls 502 until the first scrape). `minReplicas` is a parameter defaulting to `0` (scale to zero, no always-on cost); pass `1` (for example `azd env set MCP_MIN_REPLICAS 1`) only to keep a demo warm, then set it back to `0`.
 
 VNet injection is intentionally out of scope here — see `microsoft-foundry` SKILL for private topology. External ingress is required when the Foundry hosted agent (which runs in Foundry's infra, not your VNet) calls the MCP.
 
@@ -813,7 +813,7 @@ CI-tested.
 |-------|-------|-----|
 | MCP tools not appearing in agent | Server returns 400/404 on protocol methods | Requests must return HTTP 200; notifications must return HTTP 202 |
 | `logging/setLevel` returns -32601 Method not found | Server didn't implement the optional logging capability OR used wrong casing | Either implement the method per [MCP spec § Logging](https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/logging) (camelCase `setLevel`) and declare `capabilities.logging`, or simply omit the capability — Foundry's MCP client tolerates servers that don't expose logging. |
-| MCP connection timeout | ACA not started (cold start) | Runtime retries automatically; set `minReplicas: 1` for always-on |
+| MCP connection timeout | ACA scaled to zero (cold start) | Retry the first call; for a live demo warm it with `azd env set MCP_MIN_REPLICAS 1` + `azd provision`, then set it back to `0` |
 | `invalid_payload` error | `${ENV_VAR}` in mcp-config.json not resolved → empty URL | Only include MCP servers with deployed endpoints. Remove entries with unresolved env vars. |
 | Tools listed but calls fail | Tool call timeout (>100s) | Optimize tool implementation or increase ACA resources |
 | **`FastMCP` server starts but returns 000/timeout on port** | `MCP.run()` with no args defaults to `stdio` transport (reads stdin, never binds HTTP port). ACA health probe fails, container marked unhealthy. | **🛑 DO NOT use bare `MCP.run()` on ACA — it defaults to stdio.** **DO use** `MCP.run(transport="streamable-http", host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))`. Note: `transport="streamable-http"` (with the dash) matches the canonical examples elsewhere in this SKILL; the legacy bare `http` transport name is stale. |
