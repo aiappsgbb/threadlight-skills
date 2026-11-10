@@ -234,7 +234,8 @@ When the SPEC keeps `agent_type: hosted` and records `voice_frontend: hosted-voi
 with the same three opt-in fields, `generate_only` adds a managed `kind: voice`
 wrapper (`<agent>-voice`) that uses the GHCP hosted agent as its conversation
 engine over Voice Live Bridge 1.0 on `invocations_ws`; tools and governance stay
-in the hosted agent. After `azd up`, run the official `microsoft-foundry`
+in the hosted agent. Export `AZD_ALPHA_ENABLE_AGENTS_VOICE=true` before deploying
+(azure.ai.agents 1.0.0 gates `kind: voice`). After `azd up`, run the official `microsoft-foundry`
 `smoke_test_voice.py` against the wrapper. Barge-in, audio quality and latency are
 not validated by it. Details: [GHCP README](references/hosted-agent/ghcp/README.md#optional-voice-front-end-foundry-hosted-voice-preview).
 

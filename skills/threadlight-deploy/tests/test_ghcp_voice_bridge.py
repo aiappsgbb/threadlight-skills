@@ -77,6 +77,8 @@ class FakeSession:
         if text == "boom":
             self._emit(_Event(ERROR, "model failed"))
             return
+        if text == "slow tool turn":
+            await asyncio.sleep(1.2)  # e.g. MCP tool calls before the final answer
         if text == "hang":
             self.client.hanging.set()
             deadline = time.monotonic() + 10
@@ -160,10 +162,10 @@ def runtime(monkeypatch):
     return _load(monkeypatch, voice=True)
 
 
-def _start(ws, version="1.0"):
+def _start(ws, version="1.0", idle_ms=30000):
     ws.send_json({"type": "session.start", "id": "m_start", "ts": TS, "protocol_version": version,
                   "reconnect": False,
-                  "response_timeouts": {"first_output_ms": 30000, "idle_ms": 30000, "max_duration_ms": 120000}})
+                  "response_timeouts": {"first_output_ms": 30000, "idle_ms": idle_ms, "max_duration_ms": 120000}})
     return ws.receive_json()
 
 
@@ -303,3 +305,41 @@ def test_text_invocations_still_work_on_the_voice_host(runtime):
         reply = client.post("/invocations?agent_session_id=s1", json={"input": "hi", "stream": False})
     assert reply.status_code == 200
     assert reply.text.endswith("|turn 1|seen: hi")
+
+
+def test_a_slow_turn_speaks_hold_messages_before_voice_live_deadlines(monkeypatch):
+    # Live 2026-11-10: an MCP tool turn on the deployed agent failed with
+    # `response_timeout:first_output` because only the final answer was sent.
+    monkeypatch.setenv("THREADLIGHT_VOICE_HOLD_SECONDS", "0.3")
+    monkeypatch.setenv("THREADLIGHT_VOICE_HOLD_TEXT", "Un momento, controllo.")
+    runtime = _load(monkeypatch, voice=True)
+    with TestClient(runtime.app) as client, client.websocket_connect("/invocations_ws") as ws:
+        _start(ws, idle_ms=1000)
+        _say(ws, "slow tool turn", 1)
+        frames = _turn(ws)
+        _end(ws)
+    kinds = [f["type"] for f in frames]
+    assert kinds[0] == "response.created" and kinds[-1] == "response.done"
+    spoken = [f for f in frames if f["type"] == "response.output_text.done"]
+    holds, final = spoken[:-1], spoken[-1]
+    assert len(holds) >= 2, kinds
+    assert all(h["text"] == "Un momento, controllo." for h in holds)
+    assert final["text"].endswith("|turn 1|seen: slow tool turn")
+    assert len({f["item_id"] for f in spoken}) == len(spoken), "each spoken message is its own output item"
+    assert {f["response_id"] for f in frames} == {frames[0]["response_id"]}
+
+
+def test_hold_messages_follow_the_deadlines_announced_in_session_start(runtime):
+    assert runtime._voice_hold_schedule(first_output_ms=30000, idle_ms=30000, hold_seconds=4) == (4, 20)
+    assert runtime._voice_hold_schedule(first_output_ms=3000, idle_ms=2000, hold_seconds=4) == (1.5, 1.0)
+
+
+def test_spoken_text_drops_markdown_markup_but_keeps_the_words(runtime):
+    # Live 2026-11-10: the text-first answer reached Voice Live as markdown
+    # ("Proposed: **approve_refund**  \nDisposition: ...", "[policy](https://...)").
+    text = ("Proposed: **approve_refund**  \nDisposition: `restock_a`\n\n## Why\n- within the **30-day** window\n"
+            "* see [return policy](https://example.invalid/policy) and __RP-1__")
+    assert runtime._speakable(text) == (
+        "Proposed: approve_refund\nDisposition: restock_a\n\nWhy\nwithin the 30-day window\n"
+        "see return policy and RP-1")
+    assert runtime._speakable("approve_refund and restock_a stay as words") == "approve_refund and restock_a stay as words"

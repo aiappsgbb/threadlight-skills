@@ -25,6 +25,7 @@ voice_opt_in_source: user
 voice_opt_in_evidence: "User: the returns desk must also answer by voice (preview accepted)"
 preview_acknowledged: true
 voice_name: it-IT-ElsaNeural
+voice_hold_text: "Un momento, sto controllando."
 """
 
 
@@ -58,6 +59,7 @@ def test_opted_in_target_speaks_voice_live_bridge_and_keeps_invocations(voiced):
     assert target["metadata"] == {"voiceLiveCompatible": "true", "bridgeProtocolVersion": "1.0"}
     env = {e["name"]: e["value"] for e in target["environmentVariables"]}
     assert env["THREADLIGHT_VOICE_BRIDGE"] == "1"
+    assert env["THREADLIGHT_VOICE_HOLD_TEXT"] == "Un momento, sto controllando."
 
 
 def test_opted_in_wrapper_is_a_managed_voice_service_with_the_target_as_engine(voiced):
@@ -102,6 +104,8 @@ def test_opted_in_deploy_guide_names_the_official_smoke_test_and_the_preview(voi
     assert "smoke_test_voice.py" in guide and "microsoft-foundry" in guide
     assert "preview" in guide.lower()
     assert "not validated" in guide.lower()
+    # azure.ai.agents 1.0.0 refuses `kind: voice` packaging without this alpha flag (live 2026-11-10).
+    assert "AZD_ALPHA_ENABLE_AGENTS_VOICE=true" in guide
     gaps = json.loads((project / "tests" / "postdeploy-manifest.json").read_text())["gaps"]
     assert any("voice" in gap for gap in gaps)
 

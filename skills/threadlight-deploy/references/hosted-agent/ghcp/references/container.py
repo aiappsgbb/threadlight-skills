@@ -30,6 +30,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import sys
 import time
 import uuid
@@ -566,7 +567,14 @@ async def handle_invoke(request: Request) -> Response:
 #   transcript is deleted at session.end or disconnect. A reconnect on a new
 #   WebSocket starts a new conversation.
 # * Only the final assistant message is spoken (intermediate "Let me check"
-#   messages and tool events are not), as response.output_text.done.
+#   messages and tool events are not), as response.output_text.done, with
+#   markdown markup removed (the agent's instructions are written for text).
+# * Voice Live fails a response with `response_timeout:first_output` when no
+#   output arrives before the deadlines it announces in session.start
+#   (first_output_ms / idle_ms; 30 s each in the 2026-11-10 live run). A turn
+#   with MCP tool calls easily takes longer, so while the turn runs the
+#   container speaks a short hold message (THREADLIGHT_VOICE_HOLD_TEXT) as its
+#   own output item before each deadline, then the final answer.
 # * Turns in a call run in arrival order. user.barge_in, response.cancelled
 #   and response.timeout cancel the active turn and abort the Copilot turn; no
 #   further output is sent for that response. heard_text is not written back:
@@ -575,6 +583,29 @@ async def handle_invoke(request: Request) -> Response:
 _VOICE_MAX_INPUT_CHARS = 16_000
 _VOICE_MAX_PENDING_TURNS = 4
 _VOICE_ABORT_WAIT_SECONDS = 5
+_VOICE_HOLD_SECONDS = float(os.environ.get("THREADLIGHT_VOICE_HOLD_SECONDS", "") or "4")
+_VOICE_HOLD_TEXT = os.environ.get("THREADLIGHT_VOICE_HOLD_TEXT", "").strip() or "One moment, I'm checking that."
+
+
+_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_MD_EMPHASIS = re.compile(r"(\*\*|__|`)")
+_MD_LINE_PREFIX = re.compile(r"^[ \t]*(?:#{1,6}[ \t]+|[-*+][ \t]+|>[ \t]?)", re.M)
+
+
+def _speakable(text: str) -> str:
+    """Drop markdown markup (links, emphasis, code ticks, headings, bullets) before speech; keep the words."""
+    text = _MD_LINK.sub(r"\1", text)
+    text = _MD_EMPHASIS.sub("", text)
+    text = _MD_LINE_PREFIX.sub("", text)
+    return "\n".join(line.rstrip() for line in text.splitlines()).strip()
+
+
+def _voice_hold_schedule(*, first_output_ms: int, idle_ms: int, hold_seconds: float) -> tuple[float, float]:
+    """(first hold delay, repeat interval) in seconds, inside Voice Live's announced deadlines."""
+    first = min(hold_seconds, first_output_ms / 2000)
+    idle = idle_ms / 1000
+    repeat = min(20.0, idle - 10 if idle >= 20 else idle / 2)
+    return first, repeat
 
 
 class _VoiceCall:
@@ -585,6 +616,7 @@ class _VoiceCall:
         self.tasks: dict[str, asyncio.Task] = {}
         self.current_item: str | None = None
         self.current_response: str | None = None
+        self.hold_first, self.hold_repeat = _VOICE_HOLD_SECONDS, 20.0
 
 
 _voice_calls: dict[int, _VoiceCall] = {}
@@ -670,9 +702,20 @@ async def _voice_turn(bridge_session, call: _VoiceCall, item_id: str, input_text
             await bridge_session.send(ResponseCreated(response_id=response_id, in_reply_to=(item_id,)))
             try:
                 async with _conversation(call.key) as copilot_session:
+                    work = asyncio.ensure_future(_final_answer(copilot_session, input_text))
                     try:
-                        answer = await _final_answer(copilot_session, input_text)
+                        wait = call.hold_first
+                        while True:
+                            done, _ = await asyncio.wait({work}, timeout=wait)
+                            if done:
+                                break
+                            await bridge_session.send(ResponseOutputTextDone(
+                                response_id=response_id, item_id=new_item_id(), text=_VOICE_HOLD_TEXT))
+                            wait = call.hold_repeat
+                        answer = work.result()
                     except asyncio.CancelledError:
+                        work.cancel()
+                        await asyncio.gather(work, return_exceptions=True)
                         await _abort_turn(copilot_session)
                         raise
             except asyncio.CancelledError:
@@ -688,7 +731,7 @@ async def _voice_turn(bridge_session, call: _VoiceCall, item_id: str, input_text
                     code="empty_answer", message="The agent returned no answer.", response_id=response_id))
                 return
             await bridge_session.send(ResponseOutputTextDone(
-                response_id=response_id, item_id=new_item_id(), text=answer))
+                response_id=response_id, item_id=new_item_id(), text=_speakable(answer)))
             await bridge_session.send(ResponseDone(response_id=response_id))
     except asyncio.CancelledError:
         logger.info("Voice turn cancelled")
@@ -741,7 +784,13 @@ if VOICE_BRIDGE:
             logger.error("Voice session start failed: %s", type(exc).__name__)
             await bridge_session.send(SessionRejected(code="startup_failed", retriable=True))
             return
-        _voice_calls[id(bridge_session)] = _VoiceCall(bridge_session)
+        call = _VoiceCall(bridge_session)
+        timeouts = getattr(event, "response_timeouts", None)
+        if timeouts is not None:
+            call.hold_first, call.hold_repeat = _voice_hold_schedule(
+                first_output_ms=timeouts.first_output_ms, idle_ms=timeouts.idle_ms,
+                hold_seconds=_VOICE_HOLD_SECONDS)
+        _voice_calls[id(bridge_session)] = call
         await bridge_session.send(SessionReady())
 
     @app.on_user_message

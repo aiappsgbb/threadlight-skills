@@ -257,14 +257,22 @@ It is generated only on an explicit, preview-acknowledged user opt-in (SPEC § 1
   `conversationEngine: {type: hosted_agent, name: <agent>}`, 24 kHz PCM audio,
   server VAD, `azure-speech` transcription and the SPEC `voice_name`
   (`references/pilot/voice.azure.yaml`);
-- `requiredVersions` azd `>=1.32.0` and `azure.ai.agents` `>=1.0.0-beta.13`.
+- `requiredVersions` azd `>=1.32.0` and `azure.ai.agents` `>=1.0.0-beta.13`;
+- with SPEC `voice_hold_text`, `THREADLIGHT_VOICE_HOLD_TEXT` (hold message in the
+  voice's language; default English).
+
+`azure.ai.agents` 1.0.0 refuses to package the wrapper with
+`preview feature "agents.voice" is disabled` unless
+`AZD_ALPHA_ENABLE_AGENTS_VOICE=true` is exported before `azd deploy` (observed
+2026-11-10; Learn states that public-preview voice options need no private-preview
+variable, so this extension gate is not documented there).
 
 Bridge behaviour in `container.py`:
 
 | Bridge event | Container behaviour |
 |---|---|
 | `session.start` (`protocol_version` `1.0`) | `session.ready`; another version gets `session.rejected` `protocol_mismatch`; no Copilot client gets `startup_failed` |
-| `user.message` | `response.created`, then one Copilot turn; only the final assistant message is sent as `response.output_text.done`, then `response.done` |
+| `user.message` | `response.created`, then one Copilot turn; while it runs, a hold message (`THREADLIGHT_VOICE_HOLD_TEXT`) as its own `response.output_text.done` item before each Voice Live deadline; then the final assistant message, markdown markup removed, and `response.done` |
 | empty or oversized text, too many queued turns | `response.none` (`empty_input`, `input_too_large`, `capacity_exceeded`) |
 | failed turn | `error` with the `response_id` (`generation_failed` or `empty_answer`) |
 | `user.barge_in`, `response.cancelled`, `response.timeout` | cancel the active turn and `abort()` the Copilot turn; no further output for that response |
@@ -273,8 +281,13 @@ Bridge behaviour in `container.py`:
 One voice call is one Copilot conversation keyed per WebSocket (never the
 container-wide `FOUNDRY_AGENT_SESSION_ID`); a reconnect starts a new conversation.
 `heard_text` from a barge-in is not written back into the Copilot transcript.
-Tool-heavy turns may hit Voice Live's response timeouts (`first_output_ms`, 30 s in
-the official samples), because only the final answer is spoken.
+Voice Live fails a response with `response_timeout:first_output` when no output
+arrives before the `first_output_ms` / `idle_ms` deadlines it announces in
+`session.start` (30 s each in the live run). A returns-triage turn with MCP tool
+calls hit exactly that on 2026-11-10, so the container speaks the hold message
+after `THREADLIGHT_VOICE_HOLD_SECONDS` (default 4 s, at most half of
+`first_output_ms`) and again before each `idle_ms` deadline. `max_duration_ms`
+(120 s announced) still caps a turn.
 
 Proof boundaries:
 

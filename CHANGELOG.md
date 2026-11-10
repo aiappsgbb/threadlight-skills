@@ -34,8 +34,19 @@ field.
 - **Docs.** GHCP README voice section with proof boundaries, deploy skill,
   generate-only mode, operations guide, Pages basics, and an optional
   preview-labelled voice segment in the 1-hour workshop.
-- **Not verified here:** audio quality, speech recognition, barge-in and latency.
-  The MAF runtime has no Bridge handler.
+- **Live findings folded in (2026-11-10, eastus2).** `azure.ai.agents` 1.0.0
+  needs `AZD_ALPHA_ENABLE_AGENTS_VOICE=true` to package `kind: voice`; a turn with
+  MCP tool calls failed with `response_timeout:first_output`, so the container now
+  speaks a hold message (`THREADLIGHT_VOICE_HOLD_TEXT`, SPEC `voice_hold_text`)
+  before Voice Live's announced deadlines; spoken text drops markdown markup; an
+  aborted Copilot turn is settled on its `session.idle` so it cannot end the next turn.
+- **Live evidence:** official `microsoft-foundry` `smoke_test_voice.py` passed
+  against the generated wrapper, and TTS-generated spoken questions (including an
+  RMA triage with MCP tools) returned the expected decision as synthesized audio.
+- **Not verified:** perceived audio quality, recognition of real human speech,
+  barge-in through Voice Live and production latency. The MAF runtime has no
+  Bridge handler.
+
 ### 2.32.0: generated SPEC rubric judges the full business-rule text
 
 - **Rubric prompt.** `generate_only.py` now puts each `### BR-nnn` rule's

@@ -25,7 +25,9 @@ Live metadata to it, and adds a managed `kind: voice` wrapper `<agent>-voice`
 that uses it as its conversation engine ([Microsoft Learn](https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent)). Without
 a complete user opt-in it generates the agent text-only, prints why and records
 the gap. The self-check accepts exactly one such wrapper and fails one that
-carries model, tools, protocols or code. Prove it after deploy with the official
+carries model, tools, protocols or code. Deploy with
+`AZD_ALPHA_ENABLE_AGENTS_VOICE=true` exported (azure.ai.agents 1.0.0 gates
+`kind: voice`). Prove it after deploy with the official
 `microsoft-foundry` `smoke_test_voice.py`; barge-in, audio quality and latency
 remain not validated until measured. See the
 [GHCP README](hosted-agent/ghcp/README.md#optional-voice-front-end-foundry-hosted-voice-preview).

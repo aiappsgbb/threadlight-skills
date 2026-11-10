@@ -371,7 +371,7 @@ tools, does the reasoning. Check that the region supports
 [voice-based agents](https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#supported-regions).
 Budget about 10 minutes after the text smoke test.
 
-> in ~/Repos/workshop/returns-triage, the user explicitly wants to talk to the agent and accepts the voice preview: record in specs/SPEC.md § 11e voice_frontend: hosted-voice with voice_opt_in_source: user, voice_opt_in_evidence quoting this request and preview_acknowledged: true, regenerate with threadlight-deploy generate_only (--force), azd deploy, then run the official microsoft-foundry smoke_test_voice.py against returns-triage-agent-voice and summarise transcript and audio evidence
+> in ~/Repos/workshop/returns-triage, the user explicitly wants to talk to the agent and accepts the voice preview: record in specs/SPEC.md § 11e voice_frontend: hosted-voice with voice_opt_in_source: user, voice_opt_in_evidence quoting this request and preview_acknowledged: true, regenerate with threadlight-deploy generate_only (--force), export AZD_ALPHA_ENABLE_AGENTS_VOICE=true and azd deploy, then run the official microsoft-foundry smoke_test_voice.py against returns-triage-agent-voice and summarise transcript and audio evidence
 
 Then open the voice playground for `returns-triage-agent-voice` in the Foundry
 portal and ask a killer prompt out loud. The smoke test proves the wrapper reaches

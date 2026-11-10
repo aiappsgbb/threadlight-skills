@@ -47,6 +47,7 @@ test('SPEC and foundation templates carry voice_frontend off by default', () => 
     const text = read(file);
     assert.match(text, /voice_frontend: none\s+#\s*none \| hosted-voice/, file);
     assert.match(text, /voice_name: null/, file);
+    assert.match(text, /voice_hold_text: null/, file);
     assert.match(text, /REQUIRED when agent_type: voice or voice_frontend: hosted-voice/, file);
   }
 });
@@ -64,6 +65,9 @@ test('deploy skill and GHCP README document the generated voice front-end and it
   }
   const readme = collapse(read('skills/threadlight-deploy/references/hosted-agent/ghcp/README.md'));
   assert.match(readme, /THREADLIGHT_VOICE_BRIDGE/);
+  assert.match(readme, /THREADLIGHT_VOICE_HOLD_TEXT/);
+  assert.match(readme, /response_timeout:first_output/);
+  assert.match(readme, /AZD_ALPHA_ENABLE_AGENTS_VOICE=true/);
   assert.match(readme, /MAF[^.]{0,80}not (supported|generated)/i);
   assert.ok(readme.includes(LEARN));
 });

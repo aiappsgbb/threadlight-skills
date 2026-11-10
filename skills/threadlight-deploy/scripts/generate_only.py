@@ -187,7 +187,11 @@ def voice_frontend(spec: str) -> tuple[dict[str, str] | None, str | None]:
     name = _spec_scalar(spec, "voice_name") or VOICE_DEFAULT_NAME
     if not re.fullmatch(r"[a-z]{2,3}-[A-Z]{2}-[A-Za-z0-9:]+", name):
         raise WorkspaceError(f"SPEC section 11e voice_name must be an Azure voice name like {VOICE_DEFAULT_NAME}")
-    return {"voice_name": name}, None
+    hold = _spec_scalar(spec, "voice_hold_text")
+    if hold is not None and (len(hold) > 200 or any(c in hold for c in '"\\\n$')):
+        raise WorkspaceError("SPEC section 11e voice_hold_text must be one short sentence without quotes, "
+                             "backslashes or $")
+    return {"voice_name": name, "hold_text": hold or ""}, None
 
 
 def business_rules(spec: str) -> dict[str, str]:
@@ -651,7 +655,10 @@ def render_azure_yaml(project: str, agent: str, description: str, voice: dict[st
         "# `remoteBuild: true`: images build in ACR, no local Docker login needed.\n"
     )
     if voice:
-        for old, new in (_VOICE_TARGET_PROTOCOLS, _VOICE_TARGET_ENV, _VOICE_REQUIRED_VERSIONS):
+        env = _VOICE_TARGET_ENV
+        if voice.get("hold_text"):
+            env = (env[0], env[1] + f'      - name: THREADLIGHT_VOICE_HOLD_TEXT\n        value: "{voice["hold_text"]}"\n')
+        for old, new in (_VOICE_TARGET_PROTOCOLS, env, _VOICE_REQUIRED_VERSIONS):
             if body.count(old) != 1:
                 raise WorkspaceError("pilot azure.yaml changed shape; cannot add the opt-in voice front-end")
             body = body.replace(old, new)
@@ -749,8 +756,12 @@ Protocol 1.0 on `/invocations_ws` (`THREADLIGHT_VOICE_BRIDGE=1` in
 turn-taking and synthesis (voice `{voice["voice_name"]}`); model, instructions,
 tools and MCP stay in `{agent}`. Voice agents are **preview** and need a
 [supported region](https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#supported-regions),
-azd 1.32.0+ and a voice-capable `azure.ai.agents` extension.
-`azd ai agent invoke` does not open voice sessions.
+azd 1.32.0+ and a voice-capable `azure.ai.agents` extension. Extension 1.0.0
+refuses to package `kind: voice` unless its alpha feature is on, so run
+`export AZD_ALPHA_ENABLE_AGENTS_VOICE=true` before `azd up` / `azd deploy`.
+`azd ai agent invoke` does not open voice sessions. While a turn with tool calls
+runs, the agent speaks a short hold message before Voice Live's first-output
+deadline (`THREADLIGHT_VOICE_HOLD_TEXT`, from SPEC `voice_hold_text`).
 
 Run the official managed-voice smoke test from the `microsoft-foundry` skill
 (`azure@azure-skills`, `foundry-agent/create/scripts/smoke_test_voice.py`):
