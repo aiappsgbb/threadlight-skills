@@ -35,6 +35,8 @@ GOVERNED_GHCP = Path(__file__).resolve().parents[1] / "references" / "governance
 TS = "2026-11-10T00:00:00Z"
 PENDING = {
     "status": "pending_approval",
+    "approval_intent": {"opaque": "host-owned intent the Approver's tool validates"},
+    "review_context": {"action": "returns_apply_decision"},
     "operation_id": "op-" + "a" * 61,
     "proposed_arguments": {"case_id": "RMA-W05-C", "expected_etag": "\"0a00\"",
                            "decision": "escalate_to_supervisor", "reason": "750 EUR above limit"},
@@ -135,7 +137,9 @@ def test_a_voice_turn_is_one_governed_invocation_and_speaks_only_its_final_answe
         _end(ws)
     assert [f["type"] for f in frames] == ["response.created", "response.output_text.done", "response.done"]
     assert frames[1]["text"] == "Answer to: hello"
-    assert turns.prompts == ["Caller: hello"]
+    assert len(turns.prompts) == 1 and turns.prompts[0].endswith("\n\nCaller: hello")
+    voice_note = turns.prompts[0].split("\n\n")[0]
+    assert "spoken" in voice_note and "operation_id" in voice_note and "audit_id" in voice_note
 
 
 def test_protocol_mismatch_is_rejected(bridge):
@@ -176,7 +180,7 @@ def test_pending_records_never_cross_calls(bridge):
             _say(ws, "complete it", 1)
             _turn(ws)
             _end(ws)
-    assert turns.prompts[1] == "Caller: complete it"
+    assert "Host record" not in turns.prompts[1] and turns.prompts[1].endswith("Caller: complete it")
 
 
 def test_barge_in_silences_but_never_cancels_a_governed_turn(bridge):
@@ -289,5 +293,23 @@ def test_voiced_governed_ghcp_agent_pins_the_voice_capable_agentserver(tmp_path)
     plain = generate.ghcp_pyproject(template, voice=False)
     assert '"azure-ai-agentserver-invocations==1.3.0"' in voiced and '"azure-ai-agentserver-core==2.3.0"' in voiced
     assert '"azure-ai-agentserver-invocations==1.2.0b1"' in plain and '"azure-ai-agentserver-core==2.1.0"' in plain
+    # responses 2.2.0b1 requires core < 2.2.0 (live 2026-11-10); the GHCP Invocations host never imports it.
+    assert "azure-ai-agentserver-responses" not in voiced
     for text in (voiced, plain):
         assert '"github-copilot-sdk==1.0.1"' in text and "agent-framework" not in text
+
+
+def test_the_exact_pending_record_reaches_the_caller_as_unspoken_application_data(bridge):
+    """Voice analogue of the host-owned `event: governance_pending` SSE frame: the
+    Approver's threadlight-review-action needs the exact record (approval_intent)."""
+    _, app, _ = bridge
+    with TestClient(app) as client, client.websocket_connect("/invocations_ws") as ws:
+        _start(ws)
+        _say(ws, "please escalate RMA-W05-C", 1)
+        frames = _turn(ws)
+        _end(ws)
+    kinds = [f["type"] for f in frames]
+    assert kinds == ["response.created", "response.output_data.done", "response.output_text.done", "response.done"]
+    data = frames[1]
+    assert data["data"] == PENDING and data["response_id"] == frames[0]["response_id"]
+    assert "approval_intent" not in frames[2]["text"]

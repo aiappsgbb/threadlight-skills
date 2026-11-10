@@ -921,6 +921,9 @@ def ghcp_pyproject(pyproject, *, voice):
     pyproject = pyproject.replace('  "agent-framework-core==1.14.0",', '  "github-copilot-sdk==1.0.1",')
     pyproject = "\n".join(line for line in pyproject.splitlines() if "agent-framework-foundry" not in line) + "\n"
     if voice:
+        # agentserver-responses (MAF only) pins core < 2.2.0; the GHCP Invocations host never imports it.
+        pyproject = "\n".join(line for line in pyproject.splitlines()
+                              if "azure-ai-agentserver-responses" not in line) + "\n"
         for name, version in VOICE_AGENTSERVER.items():
             pyproject, count = re.subn(re.escape(name) + r'==[^"\s]+', name + "==" + version, pyproject)
             if count != 1:

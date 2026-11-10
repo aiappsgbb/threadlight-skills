@@ -192,6 +192,9 @@ def _pending_event(body):
 # host as its conversation engine. Voice Live owns audio; each finalised caller
 # utterance runs the SAME governed invocation as POST /invocations (relay,
 # bootstrap gate, gateway, central ACK before any effect).
+# * A `governance_pending` record is sent to the caller as unspoken Bridge application
+#   data (`response.output_data.done`, delivered as `response.invocation.delta`), so the
+#   Approver gets the exact record that threadlight-review-action needs.
 # * The host keeps the call's latest `governance_pending` record and gives its exact
 #   proposed arguments and operation id back on the next turn; the gateway still
 #   re-checks policy, facts, identity, expiry and the one-use human grant.
@@ -232,8 +235,12 @@ def _sse_frame(chunk):
     return event, (json.loads("\n".join(data)) if data else {})
 
 
+_VOICE_NOTE = ("Host note: this is a spoken call. Do not read long identifiers aloud (operation_id, "
+               "expected_etag, audit_id); say that they are recorded. Keep answers to one or two short sentences.")
+
+
 def _voice_prompt(call, utterance):
-    notes = []
+    notes = [_VOICE_NOTE]
     if call["unheard"]:
         notes.append("Host note: the caller interrupted your previous answer before hearing it. "
                      "Its text was: " + json.dumps(call["unheard"]))
@@ -253,7 +260,7 @@ def _voice_prompt(call, utterance):
 def attach_voice_bridge(host, run_turn):
     """Serve Voice Live Bridge 1.0 on ``host`` (a VoiceAgentServerHost); turns run ``run_turn``."""
     from azure.ai.agentserver.invocations.voice import (
-        AgentError, ResponseCreated, ResponseDone, ResponseNone, ResponseOutputTextDone,
+        AgentError, ResponseCreated, ResponseDone, ResponseNone, ResponseOutputDataDone, ResponseOutputTextDone,
         SessionReady, SessionRejected, new_item_id, new_response_id)
 
     hold_seconds = float(os.environ.get("THREADLIGHT_VOICE_HOLD_SECONDS", "") or "4")
@@ -275,6 +282,10 @@ def attach_voice_bridge(host, run_turn):
                 event, body = _sse_frame(chunk)
                 if event == "governance_pending":
                     call["pending"] = body
+                    # The exact host record for the Approver's threadlight-review-action, as unspoken
+                    # application data (the voice analogue of the `event: governance_pending` SSE frame).
+                    await send(call, response_id, ResponseOutputDataDone(
+                        response_id=response_id, item_id=new_item_id(), data=body))
                 elif body.get("type") == "error":
                     failed = True
                 elif body.get("type") == "assistant.message":

@@ -171,3 +171,19 @@ def test_pilot_mcp_server_never_writes_logs_to_stdout():
     text = read(PILOT / "mcp/server.py")
     for call in re.findall(r"print\((.*)\)", text):
         assert "file=sys.stderr" in call, call
+
+
+def test_pilot_mcp_reads_an_optional_business_cosmos_without_hand_edits():
+    """Governed-write kit step 1 used to edit the generated Bicep by hand (live 2026-11-10):
+    the design-owned MCP reader needs its identity and the business Cosmos endpoint."""
+    bicep = read(PILOT / "infra/main.bicep")
+    assert re.search(r"^param returnsCosmosUrl string = ''$", bicep, re.M)
+    for needle in ("{ name: 'AZURE_CLIENT_ID', value: uami.properties.clientId }",
+                   "{ name: 'RETURNS_COSMOS_URL', value: returnsCosmosUrl }",
+                   "{ name: 'RETURNS_COSMOS_DATABASE', value: 'returns' }",
+                   "{ name: 'RETURNS_COSMOS_CONTAINER', value: 'returns-cases' }",
+                   "empty(returnsCosmosUrl) ? [] :",
+                   "output MCP_IDENTITY_PRINCIPAL_ID string = uami.properties.principalId"):
+        assert needle in bicep, needle
+    params = json.loads(read(PILOT / "infra/main.parameters.json"))["parameters"]
+    assert params["returnsCosmosUrl"] == {"value": "${RETURNS_COSMOS_URL=}"}

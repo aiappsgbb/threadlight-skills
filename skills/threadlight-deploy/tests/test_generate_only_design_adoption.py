@@ -303,3 +303,40 @@ def test_pilot_bicep_creates_no_capability_hosts():
     text = (PILOT / "infra" / "main.bicep").read_text()
     assert "capabilityHosts" not in text
     assert re.search(r"migrate-hosted-agent-preview", text)
+
+
+# --- a design-owned server with its own exact, hashed lock (governed-write kit) -----
+# Live 2026-11-10: the example's Cosmos-reading server.py was adopted, but its hashed
+# requirements.lock (azure-cosmos, azure-identity) was replaced by the pilot lock and
+# the Dockerfile copied a specs/sample-data/ directory the design does not have.
+
+KIT = DEPLOY.parents[1] / "examples" / "governed-write-ghcp"
+
+
+def _kit_project(tmp_path: Path) -> Path:
+    project = tmp_path / "kit"
+    shutil.copytree(KIT, project, ignore=shutil.ignore_patterns("governance", "infra", "scripts", "tests", "README.md"))
+    return project
+
+
+def test_exact_hashed_design_lock_is_adopted_with_the_server(tmp_path: Path):
+    project = _kit_project(tmp_path)
+    original = (KIT / "src" / "mcp" / "requirements.lock").read_text()
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (project / "src" / "mcp" / "requirements.lock").read_text() == original
+    record = json.loads((project / "specs" / "mcp-adoption.json").read_text())
+    assert record["design_lock"]["path"] == "src/mcp/requirements.lock"
+    assert record["design_lock"]["sha256"] == hashlib.sha256(original.encode()).hexdigest()
+    assert "src/mcp/requirements.lock" not in {r["path"] for r in record["replaced_design_packaging"]}
+    docker = (project / "src" / "mcp" / "Dockerfile").read_text()
+    assert "--require-hashes" in docker and "specs/sample-data/" not in docker
+
+
+def test_unhashed_or_mcp_mismatched_design_lock_is_still_replaced(tmp_path: Path):
+    project = _kit_project(tmp_path)
+    lock = project / "src" / "mcp" / "requirements.lock"
+    lock.write_text(lock.read_text().replace("mcp==1.29.1", "mcp==1.30.0", 1))
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert lock.read_text() == (PILOT / "mcp" / "requirements.lock").read_text()

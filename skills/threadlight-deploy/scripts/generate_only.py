@@ -79,8 +79,12 @@ DIST_IMPORTS = {
 
 def lock_imports(lock: Path) -> dict[str, str]:
     """Import name -> distribution for every package the hashed lock installs."""
+    return lock_imports_text(lock.read_text(encoding="utf-8"))
+
+
+def lock_imports_text(text: str) -> dict[str, str]:
     names: dict[str, str] = {}
-    for line in lock.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         m = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==", line)
         if m:
             dist = m.group(1).lower().replace("_", "-")
@@ -582,7 +586,31 @@ def _top_level_imports(tree: ast.Module) -> set[str]:
     return names
 
 
-def adopt_design_server(server: Path, plan: list[dict[str, Any]]) -> dict[str, Any]:
+def design_lock(project_dir: Path) -> str | None:
+    """A design-owned ``src/mcp/requirements.lock`` the image can install as is, else None.
+
+    Adopted only when every requirement is an exact ``==`` pin with at least one
+    sha256 hash, no other hash algorithm appears, and it pins the same ``mcp`` as the
+    pilot lock (the generated entry point relies on it). Anything else is replaced
+    by the pilot lock and preserved in specs/mcp-adoption.json, as before.
+    """
+    path = project_dir / "src" / "mcp" / "requirements.lock"
+    if not path.is_file() or _generated_packaging("src/mcp/requirements.lock", path):
+        return None
+    text = path.read_text(encoding="utf-8")
+    pilot_mcp = re.search(r"^mcp==\S+", (PILOT / "mcp" / "requirements.lock").read_text(encoding="utf-8"), re.M)
+    if re.search(r"--hash=(?!sha256:)", text) or not pilot_mcp or not re.search(
+            rf"^{re.escape(pilot_mcp.group(0))}(\s|$)", text, re.M):
+        return None
+    blocks = re.split(r"\n(?=[A-Za-z0-9])", text.strip())
+    requirements = [b for b in blocks if not b.startswith("#")]
+    if not requirements or any(not re.match(r"^[A-Za-z0-9][A-Za-z0-9._\[\]-]*==\S+", b)
+                               or "--hash=sha256:" not in b for b in requirements):
+        return None
+    return text
+
+
+def adopt_design_server(server: Path, plan: list[dict[str, Any]], extra_lock: str | None = None) -> dict[str, Any]:
     """Validate a threadlight-design ``src/mcp/server.py`` against the deploy contract."""
     text = server.read_text(encoding="utf-8")
     try:
@@ -600,6 +628,8 @@ def adopt_design_server(server: Path, plan: list[dict[str, Any]]) -> dict[str, A
         )
     stdlib = set(sys.stdlib_module_names) | {"__future__"}
     installed = lock_imports(PILOT / "mcp" / "requirements.lock")
+    if extra_lock:
+        installed |= lock_imports_text(extra_lock)
     unpinned = sorted(n for n in _top_level_imports(tree) if n not in stdlib and n not in installed)
     if unpinned:
         raise DesignContractError(
@@ -672,9 +702,11 @@ def render_dockerignore(knowledge: bool) -> str:
     return text
 
 
-def render_mcp_dockerfile(entry: str, knowledge: bool) -> str:
+def render_mcp_dockerfile(entry: str, knowledge: bool, sample_data: bool = True) -> str:
     """The pilot MCP Dockerfile, plus the knowledge corpus and the right entry point."""
     text = (PILOT / "mcp" / "Dockerfile").read_text(encoding="utf-8")
+    if not sample_data:  # a design server with its own data source ships no sample data
+        text = text.replace("COPY specs/sample-data/ /app/specs/sample-data/\n", "")
     header = f"# {MARKER} from references/pilot/mcp/Dockerfile.\n"
     if knowledge:
         text = text.replace(
@@ -1327,9 +1359,10 @@ def generate(project_dir: Path, force: bool) -> list[str]:
     # gateway; the mock MCP server, its tests and the tool harness never serve it.
     served = [t for t in plan if t["name"] != gateway_write]
     server_path = project_dir / "src" / "mcp" / "server.py"
-    adoption = None
+    adoption = adopted_lock = None
     if server_path.is_file() and MARKER not in server_path.read_text(encoding="utf-8"):
-        adoption = adopt_design_server(server_path, served)
+        adopted_lock = design_lock(project_dir)
+        adoption = adopt_design_server(server_path, served, adopted_lock)
     knowledge_tools = [t for t in plan if t.get("knowledge")]
     standins = [t for t in knowledge_tools if not adoption or t["name"] not in adoption["tools"]]
     unprovisioned = [m for m in selected_modules(spec) if m not in PILOT_MODULES]
@@ -1401,8 +1434,9 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "src/agent/copilot-instructions.md": instructions,
         "src/agent/tests/test_agent_package.py": render_agent_tests(served, skills),
         "src/mcp/Dockerfile": render_mcp_dockerfile(
-            "threadlight_mcp_entry.py" if adoption else "server.py", bool(standins) and has_corpus),
-        "src/mcp/requirements.lock": (PILOT / "mcp" / "requirements.lock").read_text(encoding="utf-8"),
+            "threadlight_mcp_entry.py" if adoption else "server.py", bool(standins) and has_corpus,
+            sample_data=(project_dir / "specs" / "sample-data").is_dir()),
+        "src/mcp/requirements.lock": adopted_lock or (PILOT / "mcp" / "requirements.lock").read_text(encoding="utf-8"),
         "evals/eval_dataset.jsonl": dataset,
         "evals/eval-config.json": json.dumps(cfg, indent=2) + "\n",
         "evals/run_evals.py": (GEN / "templates" / "run_evals.py.tmpl").read_text(encoding="utf-8"),
@@ -1433,6 +1467,8 @@ def generate(project_dir: Path, force: bool) -> list[str]:
     replaced = []
     for rel in MCP_PACKAGING:
         path = project_dir / rel
+        if adopted_lock and rel == "src/mcp/requirements.lock":
+            continue
         if path.is_file() and not _generated_packaging(rel, path):
             original = path.read_text(encoding="utf-8", errors="replace")
             replaced.append({
@@ -1459,10 +1495,14 @@ def generate(project_dir: Path, force: bool) -> list[str]:
             "entry": "src/mcp/threadlight_mcp_entry.py" if adoption else "src/mcp/server.py",
             "knowledge_standin_tools": [t["name"] for t in standins],
             "replaced_design_packaging": replaced,
+            **({"design_lock": {"path": "src/mcp/requirements.lock", "owner": "threadlight-design",
+                                "sha256": hashlib.sha256(adopted_lock.encode("utf-8")).hexdigest()}}
+               if adopted_lock else {}),
         }, indent=2) + "\n"
 
     existing = sorted(p for p in [*text_outputs, *binary_outputs]
-                      if (project_dir / p).exists() and p not in replaced_paths)
+                      if (project_dir / p).exists() and p not in replaced_paths
+                      and not (adopted_lock and p == "src/mcp/requirements.lock"))
     if existing and not force:
         raise OverwriteRefused(existing)
     for stale in ("agent.yaml", "src/agent/agent.yaml"):
