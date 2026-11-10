@@ -14,6 +14,7 @@ def test_signed_evidence_documents_transport_consent_sources_and_limits():
         "GHCP deferred", "native local", "immediate revocation",
     ):
         assert text in doc
+    assert "Still rejected by generation" not in doc
     for relative in (
         "skills/threadlight-govern/references/gateway/README.md",
         "skills/threadlight-deploy/references/governance/README.md",

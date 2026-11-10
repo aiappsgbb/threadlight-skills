@@ -453,6 +453,68 @@ def recommend_only(project_dir: Path, plan: list[dict[str, Any]], governance: di
     return True
 
 
+def governed_write(project_dir: Path, plan: list[dict[str, Any]], governance: dict[str, Any] | None) -> str | None:
+    """The one gateway-bound write of a governed-write pilot (workshop); refuses an inconsistent one.
+
+    ``"action_mode": "governed-write"`` means exactly one SPEC section 6 write is
+    bound to the governed tool gateway (SPEC 11a ``mode: selective``) and every
+    other tool is an unbound read. generate_only packages it like any selected
+    governance (no governance package is built here) and keeps the bound write
+    out of the mock MCP server: the write runs only through the governed
+    gateway. An inconsistent design is refused (exit 6) before anything is
+    written, never deployed as an unbound or second write.
+    """
+    root = DEPLOY.parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    try:
+        from skills._shared.action_mode import governed_write_gaps, governed_write_tool, is_governed_write
+    except ImportError:
+        try:
+            mode = json.loads((project_dir / "specs" / "manifest.json").read_text(encoding="utf-8")).get("action_mode")
+        except (OSError, ValueError, AttributeError):
+            mode = None
+        if mode != "governed-write":
+            return None
+        raise DesignContractError(
+            "specs/manifest.json declares action_mode governed-write, but skills/_shared is not available to "
+            "validate it. Run generate_only from the complete catalog. Nothing was written.")
+    try:
+        if not is_governed_write(project_dir):
+            return None
+        gaps = governed_write_gaps(project_dir)
+        tool = governed_write_tool(project_dir)
+    except ValueError as exc:
+        raise DesignContractError(str(exc)) from exc
+    writes = [t["name"] for t in plan if t["kind"] != "read" and t["name"] != tool]
+    gaps += [f"SPEC section 6 write tool {name}" for name in writes if not any(name in g for g in gaps)]
+    if (governance is None or governance.get("status") != "selected") and not any("mode" in g for g in gaps):
+        gaps.append("SPEC 11a governance is not a valid selected contract (a governed-write pilot records "
+                    "`mode: selective`)")
+    if gaps or tool is None:
+        raise DesignContractError(
+            "specs/manifest.json declares action_mode governed-write (exactly one write through the governed "
+            "tool gateway, every other tool an unbound read), but the design is not consistent: "
+            + "; ".join(gaps or ["no single bound write"]) + ". Fix SPEC section 6 and 11a with threadlight-design "
+            "(`validate_governance_contract.py`), or choose recommend-only. Nothing was written."
+        )
+    return tool
+
+
+def _governed_write_row(tool: str) -> str:
+    return (
+        f"| Action mode (`governed-write`) | not live | `{tool}` is the one write, bound to the governed tool "
+        "gateway (SPEC § 11a `mode: selective`); every other tool is an unbound read. The mock MCP server does "
+        "not serve it: the write runs only through the authenticated governed MCP gateway, which calls the "
+        "downstream service when the signed policy allows it (an escalate waits for a person, for example "
+        "`threadlight-review-action`) and gets a central audit ACK before the effect. Before the write is live: "
+        "the shared governance foundation (control plane, gateway, Key Vault signing key, Cosmos "
+        "audit/approvals; deployed once per tenant by the facilitator) must exist, `threadlight-govern` must "
+        "build the signed policy bundle from the SPEC § 11a policy rules, and the binding must be registered "
+        "with the gateway. Until then the agent has read tools only. |\n"
+    )
+
+
 _RECOMMEND_ONLY_ROW = (
     "| Action mode (`recommend-only`) | by design | The agent proposes each decision with its citations; "
     "no write tool is deployed, and a person records or applies the outcome (SPEC § 8). Governance is not "
@@ -782,9 +844,15 @@ record them separately.
 
 def render_deploy_md(project: str, agent: str, plan: list[dict[str, Any]], unprovisioned: list[str] | None = None,
                      adopted: bool = False, governance: dict[str, Any] | None = None,
-                     recommend_only: bool = False, voice: dict[str, str] | None = None) -> str:
+                     recommend_only: bool = False, voice: dict[str, str] | None = None,
+                     gateway_write: str | None = None) -> str:
     tool_list = ", ".join(f"`{t['name']}`" for t in plan)
     notes = ""
+    if gateway_write:
+        notes += (f"\n**Governed-write pilot** (action mode `governed-write`). `{gateway_write}` is the one "
+                  "write, bound to the governed tool gateway; the mock MCP server does not serve it. It is not "
+                  "live until the shared governance foundation exists, `threadlight-govern` builds the signed "
+                  "policy bundle and the binding is registered with the gateway. See `specs/deferred-steps.md`.\n")
     if recommend_only:
         notes += ("\n**Recommend-only pilot.** The agent proposes each decision with its citations; this "
                   "deployment has no write tool and a person records or applies the outcome (SPEC § 8). "
@@ -1230,20 +1298,25 @@ def generate(project_dir: Path, force: bool) -> list[str]:
     # Ownership: threadlight-design owns src/mcp/server.py when it wrote one (no
     # generate-only marker); generate_only then adopts it unchanged and owns only
     # the packaging around it. See SKILL.md "Ownership between design and deploy".
+    governance = governance_selection(project_dir)
+    recommends_only = recommend_only(project_dir, plan, governance)
+    gateway_write = governed_write(project_dir, plan, governance)
+    # The bound write of a governed-write pilot is routed to the governed tool
+    # gateway; the mock MCP server, its tests and the tool harness never serve it.
+    served = [t for t in plan if t["name"] != gateway_write]
     server_path = project_dir / "src" / "mcp" / "server.py"
     adoption = None
     if server_path.is_file() and MARKER not in server_path.read_text(encoding="utf-8"):
-        adoption = adopt_design_server(server_path, plan)
+        adoption = adopt_design_server(server_path, served)
     knowledge_tools = [t for t in plan if t.get("knowledge")]
     standins = [t for t in knowledge_tools if not adoption or t["name"] not in adoption["tools"]]
     unprovisioned = [m for m in selected_modules(spec) if m not in PILOT_MODULES]
     model = design_model(project_dir, spec)
     capacity, capacity_row = model_capacity(design_capacity_tpm(project_dir))
-    governance = governance_selection(project_dir)
-    recommends_only = recommend_only(project_dir, plan, governance)
     deferred_extra = (_unprovisioned_rows(unprovisioned, [t["name"] for t in standins]) + _model_row(model)
                       + capacity_row + _governance_rows(governance)
-                      + (_RECOMMEND_ONLY_ROW if recommends_only else ""))
+                      + (_RECOMMEND_ONLY_ROW if recommends_only else "")
+                      + (_governed_write_row(gateway_write) if gateway_write else ""))
     if implicit_knowledge:
         deferred_extra += (f"| Knowledge search `{KNOWLEDGE_TOOL}` | local stand-in | SPEC § 6 declares no "
                            "knowledge tool, but `specs/knowledge/*.md` exists: the MCP server exposes the "
@@ -1269,7 +1342,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "agent_name": agent,
         "agent_kind": "foundry-hosted",
         "deployment_manifest": manifest.get("deployment_manifest") or {},
-        "expected_tools": [t["name"] for t in plan],
+        "expected_tools": [t["name"] for t in served],
         "scenarios": [s["id"] for s in scen],
         "gaps": [
             "not deployed: generate_only run without a subscription",
@@ -1286,6 +1359,9 @@ def generate(project_dir: Path, force: bool) -> list[str]:
                f"against {agent}-voice after deploy; audio quality, barge-in and latency stay unvalidated "
                "until measured"] if voice else []),
             *([voice_ignored] if voice_ignored else []),
+            *([f"governed-write: {gateway_write} is routed to the governed tool gateway and not served by the "
+               "mock MCP server; not live until the governance foundation, signed policy and binding exist"]
+              if gateway_write else []),
         ],
     }
 
@@ -1300,7 +1376,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "src/agent/pyproject.toml": pyproject,
         "src/agent/requirements.lock": (GHCP / "requirements.lock").read_text(encoding="utf-8"),
         "src/agent/copilot-instructions.md": instructions,
-        "src/agent/tests/test_agent_package.py": render_agent_tests(plan, skills),
+        "src/agent/tests/test_agent_package.py": render_agent_tests(served, skills),
         "src/mcp/Dockerfile": render_mcp_dockerfile(
             "threadlight_mcp_entry.py" if adoption else "server.py", bool(standins) and has_corpus),
         "src/mcp/requirements.lock": (PILOT / "mcp" / "requirements.lock").read_text(encoding="utf-8"),
@@ -1312,17 +1388,18 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "evals/requirements.lock": (GEN / "locks" / "evals.requirements.lock").read_text(encoding="utf-8"),
         "specs/deployment-posture.md": render_posture(project),
         "specs/deferred-steps.md": render_deferred(project, deferred_extra),
-        "specs/project-tools.json": json.dumps({"generated_by": MARKER, "tools": plan}, indent=2) + "\n",
+        "specs/project-tools.json": json.dumps({"generated_by": MARKER, "tools": served, **(
+            {"governed_gateway_tools": [gateway_write]} if gateway_write else {})}, indent=2) + "\n",
         "specs/foundry-package-manifest.json": json.dumps(build_foundry_manifest(agent, cfg), indent=2) + "\n",
         "tests/postdeploy-manifest.json": json.dumps(postdeploy, indent=2) + "\n",
-        "DEPLOY.md": render_deploy_md(project, agent, plan, unprovisioned, adopted=bool(adoption),
+        "DEPLOY.md": render_deploy_md(project, agent, served, unprovisioned, adopted=bool(adoption),
                                       recommend_only=recommends_only,
-                                      governance=governance, voice=voice),
+                                      governance=governance, voice=voice, gateway_write=gateway_write),
     }
     if adoption:
         text_outputs["src/mcp/threadlight_mcp_entry.py"] = render_mcp_entry(project, adoption["tools"], standins)
     else:
-        text_outputs["src/mcp/server.py"] = render_mcp_server(project, plan)
+        text_outputs["src/mcp/server.py"] = render_mcp_server(project, served)
     hooks_text = text_outputs["hooks/postdeploy.sh"]
     text_outputs["hooks/postdeploy.sh"] = hooks_text.replace("__AGENT_NAME__", agent)
     binary_outputs = {"infra/main.bicep": (PILOT / "infra" / "main.bicep").read_bytes()}

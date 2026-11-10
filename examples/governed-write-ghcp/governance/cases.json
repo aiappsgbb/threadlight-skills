@@ -1,0 +1,141 @@
+{
+  "schema": "threadlight-governed-write-cases/v1",
+  "note": "Synthetic demo cases (at most 16: the business API's configured case allowlist bound). One set (A ordinary, B ineligible, C high value) per workshop run; a decided case is never reset or deleted.",
+  "cases": [
+    {
+      "case_id": "RMA-W01-A",
+      "customer_id": "CUST-W01-A",
+      "amount": 120,
+      "currency": "EUR",
+      "eligible": true,
+      "high_risk": false,
+      "reason_code": "damaged_on_arrival"
+    },
+    {
+      "case_id": "RMA-W01-B",
+      "customer_id": "CUST-W01-B",
+      "amount": 80,
+      "currency": "EUR",
+      "eligible": false,
+      "high_risk": false,
+      "reason_code": "outside_return_window"
+    },
+    {
+      "case_id": "RMA-W01-C",
+      "customer_id": "CUST-W01-C",
+      "amount": 750,
+      "currency": "EUR",
+      "eligible": true,
+      "high_risk": false,
+      "reason_code": "premium_item_defect"
+    },
+    {
+      "case_id": "RMA-W02-A",
+      "customer_id": "CUST-W02-A",
+      "amount": 120,
+      "currency": "EUR",
+      "eligible": true,
+      "high_risk": false,
+      "reason_code": "damaged_on_arrival"
+    },
+    {
+      "case_id": "RMA-W02-B",
+      "customer_id": "CUST-W02-B",
+      "amount": 80,
+      "currency": "EUR",
+      "eligible": false,
+      "high_risk": false,
+      "reason_code": "outside_return_window"
+    },
+    {
+      "case_id": "RMA-W02-C",
+      "customer_id": "CUST-W02-C",
+      "amount": 750,
+      "currency": "EUR",
+      "eligible": true,
+      "high_risk": false,
+      "reason_code": "premium_item_defect"
+    },
+    {
+      "case_id": "RMA-W03-A",
+      "customer_id": "CUST-W03-A",
+      "amount": 120,
+      "currency": "EUR",
+      "eligible": true,
+      "high_risk": false,
+      "reason_code": "damaged_on_arrival"
+    },
+    {
+      "case_id": "RMA-W03-B",
+      "customer_id": "CUST-W03-B",
+      "amount": 80,
+      "currency": "EUR",
+      "eligible": false,
+      "high_risk": false,
+      "reason_code": "outside_return_window"
+    },
+    {
+      "case_id": "RMA-W03-C",
+      "customer_id": "CUST-W03-C",
+      "amount": 750,
+      "currency": "EUR",
+      "eligible": true,
+      "high_risk": false,
+      "reason_code": "premium_item_defect"
+    },
+    {
+      "case_id": "RMA-W04-A",
+      "customer_id": "CUST-W04-A",
+      "amount": 120,
+      "currency": "EUR",
+      "eligible": true,
+      "high_risk": false,
+      "reason_code": "damaged_on_arrival"
+    },
+    {
+      "case_id": "RMA-W04-B",
+      "customer_id": "CUST-W04-B",
+      "amount": 80,
+      "currency": "EUR",
+      "eligible": false,
+      "high_risk": false,
+      "reason_code": "outside_return_window"
+    },
+    {
+      "case_id": "RMA-W04-C",
+      "customer_id": "CUST-W04-C",
+      "amount": 750,
+      "currency": "EUR",
+      "eligible": true,
+      "high_risk": false,
+      "reason_code": "premium_item_defect"
+    },
+    {
+      "case_id": "RMA-W05-A",
+      "customer_id": "CUST-W05-A",
+      "amount": 120,
+      "currency": "EUR",
+      "eligible": true,
+      "high_risk": false,
+      "reason_code": "damaged_on_arrival"
+    },
+    {
+      "case_id": "RMA-W05-B",
+      "customer_id": "CUST-W05-B",
+      "amount": 80,
+      "currency": "EUR",
+      "eligible": false,
+      "high_risk": false,
+      "reason_code": "outside_return_window"
+    },
+    {
+      "case_id": "RMA-W05-C",
+      "customer_id": "CUST-W05-C",
+      "amount": 750,
+      "currency": "EUR",
+      "eligible": true,
+      "high_risk": false,
+      "reason_code": "premium_item_defect"
+    }
+  ]
+}

@@ -206,6 +206,11 @@ scheduled. A recommend-only pilot (`"action_mode": "recommend-only"` in
 the agent proposes, a person records. If such a pilot still exposes a
 consequential tool, the `design` stage runs again with the reason
 `recommend-only design exposes a consequential tool`.
+A governed-write pilot (`"action_mode": "governed-write"`) selects governance
+for its one gateway-bound write, so the governance stages are scheduled and
+`threadlight-govern` packages that binding; an inconsistent governed-write
+design runs `design` again with the reason
+`governed-write design is not consistent`.
 Without selected bindings, the existing consequential-action advisory
 handoff remains available with the following wording:
 

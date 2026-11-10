@@ -576,3 +576,33 @@ def test_no_effect_opener_with_a_clause_needs_approval(tmp_path, effects):
     agent, _ = agent_wiring.build_agent(layout, chat_client=model)
     asyncio.run(agent.run("hello"))
     assert {t.name: t.approval_mode for t in model.tools}["returns_get_case"] == "always_require"
+
+
+# --- Governed-write pilots (workshop: one governed write) ----------------------------
+# specs/manifest.json "action_mode": "governed-write": the one write runs only
+# through the governed tool gateway after deploy. Pattern 0 has no gateway, so,
+# as for recommend-only, it withholds the write instead of running it as an
+# ungoverned local effect, and tells the agent so.
+
+def _governed_write(tmp_path, spec=SPEC):
+    layout = _project(tmp_path)
+    (tmp_path / "specs" / "SPEC.md").write_text(spec)
+    (tmp_path / "specs" / "manifest.json").write_text(json.dumps(
+        {"name": "returns-triage", "mode": "fast-poc", "action_mode": "governed-write"}))
+    return discover(tmp_path)
+
+
+def test_governed_write_pilot_withholds_the_bound_write_locally(tmp_path):
+    layout = _governed_write(tmp_path)
+    model = Model(outputs())
+    agent, stores = agent_wiring.build_agent(layout, chat_client=model)
+    asyncio.run(agent.run("hello"))
+    skill_tools = {"load_skill", "read_skill_resource", "run_skill_script"}
+    modes = {t.name: t.approval_mode for t in model.tools if t.name not in skill_tools}
+    assert "returns_record_recommendation" not in modes and set(modes.values()) == {"never_require"}
+    _, wiring = agent_wiring.build_spec_wiring(layout, stores)
+    row = next(r for r in wiring if r["tool"] == "returns_record_recommendation")
+    assert "governed-write" in row["source"] and "gateway" in row["source"] and row["approval"] == "not exposed"
+    instructions = model.options["instructions"]
+    assert "governed-write" in instructions and "governed tool gateway" in instructions
+    assert "Write tools wait for human approval" not in instructions

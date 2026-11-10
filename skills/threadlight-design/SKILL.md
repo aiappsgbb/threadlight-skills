@@ -276,6 +276,47 @@ tool goes through the governance interview.
 > demo defaults. Override later in SPEC § 1 / § 11f / § 13."_ Downstream
 > skills key off this so silent defaults stay auditable.
 
+#### Governed-write pilot (workshop)
+
+To show **one governed write live** in a workshop on the default GHCP runtime
+(`github-copilot-sdk`; `microsoft-agent-framework` is also accepted, gateway
+only), the operator may choose `"action_mode": "governed-write"` in
+`specs/manifest.json` instead of recommend-only. It is not the Production path
+and makes no claim about the rest of the agent:
+
+- **SPEC § 6** lists exactly one write tool with its declared **Side Effects**;
+  every other tool is a read with no side effect.
+- **SPEC § 11a** is `mode: selective`, `lifecycle_bindings: []`, the fixed
+  `environment_modes` (`preproduction`/`production` = `enforce`). Every tool is
+  an unbound read except that **exactly one** consequential tool, classified
+  (`write`, `external-egress` or `irreversible`, never `unknown`), with a
+  `policy_binding`, `enforcement_path: governed-tool-gateway`,
+  `intervention_points` including `pre_tool_call`, and `requires` including
+  `authorization`, `signed-policy-bundle`, `decision-receipt` and
+  `idempotency-or-transaction`. No local hooks. The contract never requires `approval`
+  (or `human-approval-record`, or `approval_required: true`): human approval is
+  selected in the signed gateway registry as `approval_mode: deferred`,
+  `approval_requirement: policy`, so an ACS allow stays autonomous and only an
+  ACS escalate waits for a person (`threadlight-review-action`, delegated
+  `Governance.Approve`, or the native Outlook approval opt-in). A contract that
+  requires `approval` cannot be weakened to policy.
+- Above the block, record: **Action mode** (`governed-write`), **Policy rules**
+  (the 3-4 business rules the Rego policy implements, one sub-item each,
+  covering allow, deny and escalate), **Downstream service** (the separately
+  authorizing service the gateway calls: an idempotent POST for the effect and
+  a GET outcome endpoint) and **Governance foundation** (the shared control
+  plane, gateway, Key Vault signing key and Cosmos audit/approvals exist before
+  deploy, deployed once per tenant by the facilitator; the gateway gets a
+  central audit ACK before the effect). Use the template's *Workshop
+  governed-write variant*.
+- The write runs only through the authenticated governed MCP gateway after
+  `threadlight-govern` builds the signed policy and binding; Pattern 0 and the
+  generate-only mock MCP server never run it directly.
+- `python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>`
+  fails on a second or unbound write, a bound read, a missing gateway
+  requirement, a contract approval token, an unparsed § 6 entry or a missing
+  policy rule, downstream service or foundation record.
+
 ---
 
 ### Runtime capability probe (run before Phase A)
@@ -807,7 +848,7 @@ Must include all sections from the template:
 10. **Trigger & Run Model** — how/when the process executes, volume, SLA
 10b. **Triggers (Receiver contract)** — receiver type, idempotency key, dedup window, dead-letter rule. **INPUT CONTRACT for `threadlight-event-triggers`.** *Required for event-driven and scheduled processes.*
 11. **Security, Compliance & Governance** — PII, auth, retention, regulatory, audit
-11a. **Runtime Governance Contract** — Fast-PoC emits the recommend-only variant from the template (`mode: off`, read tools only; see *Fast-PoC is recommend-only*). `governance.mode: off | selective | comprehensive`, fixed `environment_modes` (`development`/`staging` = `evaluate_only`, `preproduction`/`production` = `enforce`), lifecycle bindings, and per-tool records (`id`, `consequence`, `policy_binding`, `enforcement_path`, `intervention_points`, `safe_principles`, `requires`). **INPUT CONTRACT for runtime governance design.** Validate the machine-readable block against `references/governance-contract.schema.json`. Legacy string tools remain accepted only as explicit `unknown/unbound` placeholders, `comprehensive` rejects unsupported provider-hosted consequential/unknown tools, and `production-bound` unbound consequential/unknown tools require an acceptance record (`owner`, `justification`, `review_date`, `expiry`). **Always emit the complete block — `framework`, `governance` (`mode`, `environment_modes`, `lifecycle_bindings`) and `tools` — even for `mode: off` (`lifecycle_bindings: []`, `tools: []` or the structured tool list).** A partial block (for example `governance:` alone) makes `threadlight-auto` route back to design (`incomplete-governance-contract`). Before handing off, run `python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>` (repository checkout only; in Cowork, check the block against `references/governance-contract.schema.json`) and fix every reported gap.
+11a. **Runtime Governance Contract** — Fast-PoC emits the recommend-only variant from the template (`mode: off`, read tools only; see *Fast-PoC is recommend-only*). A workshop governed-write pilot emits the *Workshop governed-write variant* (`mode: selective`, exactly one gateway-bound write; see *Governed-write pilot (workshop)*). `governance.mode: off | selective | comprehensive`, fixed `environment_modes` (`development`/`staging` = `evaluate_only`, `preproduction`/`production` = `enforce`), lifecycle bindings, and per-tool records (`id`, `consequence`, `policy_binding`, `enforcement_path`, `intervention_points`, `safe_principles`, `requires`). **INPUT CONTRACT for runtime governance design.** Validate the machine-readable block against `references/governance-contract.schema.json`. Legacy string tools remain accepted only as explicit `unknown/unbound` placeholders, `comprehensive` rejects unsupported provider-hosted consequential/unknown tools, and `production-bound` unbound consequential/unknown tools require an acceptance record (`owner`, `justification`, `review_date`, `expiry`). **Always emit the complete block — `framework`, `governance` (`mode`, `environment_modes`, `lifecycle_bindings`) and `tools` — even for `mode: off` (`lifecycle_bindings: []`, `tools: []` or the structured tool list).** A partial block (for example `governance:` alone) makes `threadlight-auto` route back to design (`incomplete-governance-contract`). Before handing off, run `python3 skills/threadlight-design/scripts/validate_governance_contract.py <workspace>` (repository checkout only; in Cowork, check the block against `references/governance-contract.schema.json`) and fix every reported gap.
 11b. **Governance Posture (AI Governance Hub spoke — opt-in)** — `governance_hub.required` flag + spoke artifacts needed. **INPUT CONTRACT for the optional governance-hub spoke handoff in `threadlight-deploy`.** *Required for every regulated process.*
 11c. **Tech Stack (Module selectors)** — Bicep module on/off list (cosmos, search, doc-intel, speech, event-grid, service-bus, foundry-iq-index, etc.). **INPUT CONTRACT for the `threadlight-deploy/references/azd-modules` Bicep module library and the composer in `threadlight-deploy`.** *Required for every process.*
 

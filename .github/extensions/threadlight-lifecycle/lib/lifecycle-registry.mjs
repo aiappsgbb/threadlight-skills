@@ -233,7 +233,8 @@ export const SKILL_REGISTRY = Object.freeze([
     [artifactGroup("specs/governance-manifest.json")],
     {
       stage: "govern",
-      // Not a pending step for a recommend-only pilot (no consequential tool).
+      // Not a pending step for a recommend-only pilot (no consequential tool);
+      // a governed-write pilot keeps it (its one write is bound here).
       applicability: "runtime-controls",
       optionalArtifacts: ["specs/governance-contract.json"],
       prerequisiteSkills: ["threadlight-design"],

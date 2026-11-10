@@ -35,7 +35,8 @@ and leave with a one-prompt recipe to stand the same agent up in Azure.
 The pilot is **recommend-only**: the agent proposes the decision with its
 policy citations, and recording or applying it stays a human action. It has no
 write tool, so there is no unenforced write to govern in the hour; agent writes
-with runtime governance are the Production path (§6.5).
+with runtime governance are the Production path (§6.5). A facilitator can show
+one governed write live on a pre-deployed kit (§6.6).
 Model-backed local demos and cloud smoke tests require approved identity,
 target and spend; neither proves production readiness or selected-action enforcement.
 
@@ -198,9 +199,11 @@ The budget below uses the measured times, with the upper bound for design.
 | **27–33** | Pattern 0 + live demo | Prompts §4.3 and §4.4, then paste the killer prompts (§4.5) into `localhost:8501`. Watch the SPEC's own read tools (for example `returns_get_case`, `return_policy_search`) fire against the sample data and policy text. The agent proposes the decision with citations; recording it is your action, not the agent's (recommend-only pilot). | Streamlit chat: one cited recommendation per killer prompt. |
 | **33–37** | Generate the deploy package | Prompt §6.3 up to generate-only (Dockerfiles, `azure.yaml`, `infra/main.bicep`, evals). | `DEPLOY.md` and `specs/deferred-steps.md` on disk. |
 | **37–42** | Start `azd up` before Q&A | After scope/budget approval (§6.1), run `azd up` (§6.3). Keep the **Azure Portal resource group view** alongside Copilot CLI. | Provisioning and remote build progress. |
-| **42–60** | Q&A, then cloud smoke test | Q&A while `azd up` runs (~5 min measured). When it finishes, run the killer prompts against the cloud agent (§6.4). Point to the Production path (§6.5): governance is a separate track. | Cloud answers on screen; the Foundry eval (15–20 min) and the evidence record run **after the session**. |
+| **42–50** | Governance segment (optional, facilitator) | While `azd up` runs, show ONE governed write on the facilitator's pre-deployed governed-write pilot (§6.6): allow, gateway deny, pending approval with no effect, Approver decision, resumed write, replay with no extra effect. Participants' pilots stay recommend-only. | Four results on screen: `audit_id`, `policy_deny`, `pending_approval`, same `audit_id` on replay. |
+| **50–60** | Q&A, then cloud smoke test | When `azd up` finishes, run the killer prompts against the cloud agent (§6.4). Point to the Production path (§6.5) for governing your own pilot. | Cloud answers on screen; the Foundry eval (15–20 min) and the evidence record run **after the session**. |
 
-If the hour is shorter than planned, cut in this order: the cloud smoke test
+If the hour is shorter than planned, cut in this order: the governance segment
+(it needs the facilitator's pre-deployed kit), the cloud smoke test
 (run it after the session), then the live design (use the pre-designed
 workspace from minute 8).
 
@@ -413,6 +416,24 @@ Use the [L400/L500 operative guide](agent-operations.md) for the separate
    Collect fresh deployment-bound evidence; `governance_probe_noop` proves only
    its reserved noop. Business bindings remain live-unverified until separately
    proved. Do not use another `azd up` after binding as a readiness shortcut.
+
+### 6.6 Governance segment: one governed write live (facilitator)
+
+The [governed-write workshop kit](../examples/governed-write-ghcp/README.md) is
+a GHCP pilot in the `governed-write` action mode: reads stay unbound, and one
+write (`returns_apply_decision`) goes only through the authenticated gateway
+with four Rego business rules and deferred human approval. The facilitator
+deploys the shared governance foundation and this pilot **once, before** the
+workshop (its README has the runbook), then during the session:
+
+1. `demo_capacity.py warm` (services and a tool-free agent ping).
+2. Run the four beats with `invoke.py`; the Approver decides with
+   `threadlight-review-action` signed in as themselves.
+3. `demo_capacity.py cool`, so nothing stays always on.
+
+It was executed live on 2026-11-10 ([S8](governed-returns-validation.md#s8-governed-write-on-ghcp-workshop-kit)).
+That evidence is for that deployment and that one binding; it is not a
+governance pass for participants' pilots or whole-agent governance.
 
 Then review the broader readiness work:
 

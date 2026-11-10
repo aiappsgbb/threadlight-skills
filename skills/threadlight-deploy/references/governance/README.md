@@ -46,7 +46,10 @@ when changing the 300-second default (maximum 3600, additionally capped by polic
 expiry). The generated host returns a pending operation instead of blocking for
 human input; use the [operator review and exact resume protocol](../../../threadlight-govern/references/gateway/README.md#deferred-human-decisions-explicit-signed-opt-in).
 No review UI, Entra client or grant is created implicitly. GHCP deferred mode
-is rejected until its client can resume the operation; inline mode is unchanged.
+uses the generated relay's resume adapter (new invocation, same
+`governance_operation_id`, host-owned `governance_pending` frame); see the
+[governed-write workshop kit](../../../../examples/governed-write-ghcp/README.md).
+Inline mode is unchanged.
 
 ### Requesting-user confirmation
 
@@ -740,6 +743,14 @@ Docker/ASGI tests are not live Azure durability or effect-closure evidence.
 `runtime`, `enable_gateway`, `control_plane_app_id`, `gateway_app_id`,
 `human_clients`, `approver_subjects`, `auditor_subjects`, `approver_roles`,
 and `network`. No secrets, connection strings or signing material.
+
+Optional: `tags` (string map, at most 40) is applied to every governance
+resource for owner/purpose/disposition tracking; `min_replicas` (0, 1 or 2,
+default 1) sets the control-plane and gateway minimum. Use 0 only for
+demo/workshop foundations that are warmed before use: a cold gateway or
+downstream can turn a committed effect into an `outcome_unknown` result.
+The gateway has a startup probe because it verifies the signed bundle and
+loads ACS before it listens.
 
 The existing ACR must use classic RBAC: `AcrPull` is scoped to that registry,
 and each app names its own UAMI in its registry configuration. ABAC repositories

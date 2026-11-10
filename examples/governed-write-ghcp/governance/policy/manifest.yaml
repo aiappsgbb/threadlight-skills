@@ -1,0 +1,21 @@
+agent_control_specification_version: "0.3.1-beta"
+metadata:
+  name: governed-write-returns
+  description: One governed write (returns_apply_decision) with four business rules; reads stay unbound.
+policies:
+  returns-write:
+    type: rego
+    query: data.threadlight.governed_write.pre_tool_call
+    data:
+      - governed_write.rego
+      - cases.rego
+intervention_points:
+  pre_tool_call:
+    policy_target: "$.tool_call.args"
+    policy_target_kind: tool_args
+    tool_name_from: "$.tool_call.name"
+    policy:
+      id: returns-write
+tools:
+  returns_apply_decision:
+    consequence: write

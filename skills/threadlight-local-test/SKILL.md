@@ -262,6 +262,13 @@ citations and a person records it. A write tool still listed in SPEC § 6 is
 withheld and shown in `--check` as `not exposed`; generic `update_*` tools are
 dropped too. The agent's instructions say the pilot is recommend-only.
 
+**Governed-write pilots.** When `specs/manifest.json` declares
+`"action_mode": "governed-write"` (the workshop governed write), the one
+write runs only through the governed tool gateway after deploy. Pattern 0 has
+no gateway, so it withholds that write exactly like recommend-only (shown in
+`--check` as `not exposed`) instead of running it as an ungoverned local
+effect, and the agent's instructions say so.
+
 - **Streamlit:** a paused write (or skill script) shows the tool and
   arguments with **Approve and continue** / **Reject** buttons; the turn
   resumes with your decision, and the reply states what was approved or

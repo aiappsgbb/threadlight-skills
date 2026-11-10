@@ -16,6 +16,11 @@ var publicAuthenticatedProof = config.network.posture == 'public-authenticated-p
   ? (contains(['staging', 'preproduction'], config.environment) && config.network.proof_only == true && (contains(config.network, 'preserve_resources') ? (config.network.preserve_resources == true && config.network.cleanup_required == false) : config.network.cleanup_required == true))
   : false
 var prefix = config.prefix
+// Optional lifecycle tags from infrastructure configuration (validated by generate.py).
+var tags = config.?tags ?? {}
+// 0 scales the control plane and gateway to zero when idle: cold start before the first call
+// (the bounded downstream call can then report outcome_unknown); warm them before use.
+var minReplicas = config.?min_replicas ?? 1
 var probesEnabled = contains(config, 'probe_observability')
   ? (config.probe_observability.enabled == true && contains(['staging', 'preproduction'], config.environment))
   : false
@@ -36,27 +41,33 @@ var gatewayUrl = 'https://${gatewayName}.${environment.properties.defaultDomain}
 resource controlIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${prefix}-control'
   location: location
+  tags: tags
 }
 resource gatewayIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${prefix}-gateway'
   location: location
+  tags: tags
 }
 resource downstreamIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${prefix}-downstream'
   location: location
+  tags: tags
 }
 resource publisherIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${prefix}-publisher'
   location: location
+  tags: tags
 }
 resource fixtureIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (probesEnabled) {
   name: '${prefix}-probe-fixture'
   location: location
+  tags: tags
 }
 
 resource storage 'Microsoft.Storage/storageAccounts@2025-01-01' = {
   name: config.storage_name
   location: location
+  tags: tags
   kind: 'StorageV2'
   sku: { name: 'Standard_LRS' }
   properties: {
@@ -98,6 +109,7 @@ resource immutable 'Microsoft.Storage/storageAccounts/blobServices/containers/im
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2025-04-15' = {
   name: config.cosmos_name
   location: location
+  tags: tags
   kind: 'GlobalDocumentDB'
   properties: {
     databaseAccountOfferType: 'Standard'
@@ -271,6 +283,7 @@ resource nativeProbeMetadata 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssig
 resource vault 'Microsoft.KeyVault/vaults@2024-11-01' = {
   name: config.vault_name
   location: location
+  tags: tags
   properties: {
     tenantId: config.tenant_id
     sku: { family: 'A', name: 'standard' }
@@ -404,6 +417,7 @@ var privateServices = privateRequired ? [
 resource privateEndpoints 'Microsoft.Network/privateEndpoints@2024-05-01' = [for service in privateServices: {
   name: '${prefix}-${service.name}-pe'
   location: location
+  tags: tags
   properties: {
     subnet: { id: config.network.private_endpoint_subnet_id }
     privateLinkServiceConnections: [{
@@ -450,7 +464,7 @@ var ingress = {
 resource controlApp 'Microsoft.App/containerApps@2025-01-01' = if (phase == 'services') {
   name: controlName
   location: location
-  tags: { 'azd-service-name': 'govern-control-plane' }
+  tags: union(tags, { 'azd-service-name': 'govern-control-plane' })
   identity: { type: 'UserAssigned', userAssignedIdentities: { '${controlIdentity.id}': {} } }
   properties: {
     managedEnvironmentId: environment.id
@@ -473,7 +487,7 @@ resource controlApp 'Microsoft.App/containerApps@2025-01-01' = if (phase == 'ser
         // Authenticated semantic readiness is a REQUIRED post-provision gate.
         probes: [{ type: 'Liveness', tcpSocket: { port: 8000 }, initialDelaySeconds: 10 }]
       }]
-      scale: { minReplicas: 1, maxReplicas: 2 }
+      scale: { minReplicas: minReplicas, maxReplicas: 2 }
     }
   }
   dependsOn: [controlDocuments, metadataReaders, catalogRead, verifyAssignments, registryPull]
@@ -481,7 +495,7 @@ resource controlApp 'Microsoft.App/containerApps@2025-01-01' = if (phase == 'ser
 resource gatewayApp 'Microsoft.App/containerApps@2025-01-01' = if (phase == 'services' && config.enable_gateway) {
   name: gatewayName
   location: location
-  tags: { 'azd-service-name': 'govern-gateway' }
+  tags: union(tags, { 'azd-service-name': 'govern-gateway' })
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${gatewayIdentity.id}': {}, '${downstreamIdentity.id}': {} }
@@ -502,9 +516,14 @@ resource gatewayApp 'Microsoft.App/containerApps@2025-01-01' = if (phase == 'ser
           { name: 'TL_GOV_SERVICE', value: 'gateway' }
           { name: 'GATEWAY_CONFIG_JSON', value: string(gatewayConfig) }
         ]
-        probes: [{ type: 'Readiness', httpGet: { path: '/health', port: 8000 }, initialDelaySeconds: 10 }]
+        // Startup fetches and Key Vault-verifies the signed bundle and loads ACS before
+        // listening; tolerate that (up to 180 s) instead of ACA's default liveness kill.
+        probes: [
+          { type: 'Startup', tcpSocket: { port: 8000 }, periodSeconds: 5, failureThreshold: 36 }
+          { type: 'Readiness', httpGet: { path: '/health', port: 8000 }, initialDelaySeconds: 10 }
+        ]
       }]
-      scale: { minReplicas: 1, maxReplicas: 2 }
+      scale: { minReplicas: minReplicas, maxReplicas: 2 }
     }
   }
   dependsOn: [gatewayDocuments, metadataReaders, verifyAssignments, registryPull, controlApp]

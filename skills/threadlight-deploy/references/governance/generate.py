@@ -508,8 +508,6 @@ def validate_bundle_contract(bundle, document, config, registry=None):
                 raise ValueError("signed_registry_confirmation_timeout_mismatch")
         if ("signed-evidence" in tool["requires"]) != (action.evidence_requirement is not None):
             raise ValueError("signed_registry_evidence_requirement_mismatch")
-        if document["framework"] == "github-copilot-sdk" and action.approval_mode == "deferred":
-            raise ValueError("ghcp_deferred_approval_resume_unsupported")
         post = tool["policy_binding"] if "post_tool_call" in tool["intervention_points"] else None
         if action.policy_binding != tool["policy_binding"] or action.post_policy_binding != post:
             raise ValueError("signed_registry_contract_binding_mismatch")
@@ -1369,6 +1367,16 @@ def validate_infrastructure(config):
             raise ValueError("provided_entra_application_ids_required")
     if config["control_plane_app_id"] == config["gateway_app_id"]:
         raise ValueError("separate_service_audiences_required")
+    tags = config.get("tags", {})
+    # Optional ARM tags for lifecycle/ownership (owner, purpose, disposition); never secrets.
+    if (not isinstance(tags, dict) or len(tags) > 40 or any(
+            not isinstance(k, str) or not isinstance(v, str) or not 0 < len(k) <= 512 or len(v) > 256
+            for k, v in tags.items())):
+        raise ValueError("invalid_resource_tags")
+    # 0 = scale to zero between uses (workshop kits; warm before a demo), default 1.
+    if "min_replicas" in config and (type(config["min_replicas"]) is not int
+                                     or config["min_replicas"] not in (0, 1, 2)):
+        raise ValueError("invalid_min_replicas")
     if config.get("acr_authorization") != "rbac":
         raise ValueError("abac_registry_requires_repository_scoped_pull_module")
     if not re.fullmatch(RESOURCE + r"Microsoft.ContainerRegistry/registries/[^/]+", config["acr_id"]):

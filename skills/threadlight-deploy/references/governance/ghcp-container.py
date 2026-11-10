@@ -170,6 +170,18 @@ def _message_payload(event):
         return {"type": event_type, "data": {"content": content}}
 
 
+OPERATION_ARGUMENT = "governance_operation_id"
+OPERATION_SCHEMA = {
+    "type": "string", "minLength": 1, "maxLength": 128,
+    "description": "Resume an existing pending operation; this reference is not approval.",
+}
+
+
+def _pending_event(body):
+    """Host-owned SSE frame for a gateway pending_approval result (no effect has occurred)."""
+    return b"event: governance_pending\ndata: " + canonical(body) + b"\n\n"
+
+
 class McpRelay:
         """The pinned SDK hook changes _meta, NOT headers. Bridge only on loopback.
 
@@ -183,7 +195,7 @@ class McpRelay:
         context; the complete resulting header set is then frozen for transmission.
         """
         def __init__(self, *, gateway_url, scope, credential, invocation_id, tools, http,
-                     bootstrap_gate=None):
+                     bootstrap_gate=None, on_pending=None):
             self.url, self.scope, self.credential = gateway_url, scope, credential
             self.http = copy(http)
             self._outbound = ContextVar("threadlight_relay_wire", default=None)
@@ -197,6 +209,8 @@ class McpRelay:
             self.invocation_id, self.tools = invocation_id, frozenset(tools)
             self.secret = secrets.token_urlsafe(32)
             self.tickets = {}
+            # Deferred tools learned from the authenticated gateway inventory.
+            self.on_pending, self.resumable = on_pending, set()
 
         async def _authorize(self):
             if self.bootstrap_gate is not None:
@@ -281,6 +295,38 @@ class McpRelay:
             self.tickets[key] = body
             return {"metaToUse": {**(event.get("_meta") or {}), "threadlight/call": key}}
 
+        def _observe(self, method, operation, response, output):
+            """Expose deferred resume and surface pending results; never alter an effect result."""
+            if response.status_code != 200 or method not in ("tools/list", "tools/call"):
+                return output
+            if not response.headers.get("Content-Type", "").startswith("application/json"):
+                if method == "tools/call" and b"pending_approval" in output:
+                    raise ValueError("unsupported_pending_transport")
+                return output
+            document = json.loads(output)
+            result = document.get("result")
+            if not isinstance(result, dict):
+                return output
+            if method == "tools/list":
+                for tool in result.get("tools", []):
+                    if (tool.get("name") in self.tools
+                            and (tool.get("_meta") or {}).get("threadlight.approval_mode") == "deferred"):
+                        properties = tool.setdefault("inputSchema", {}).setdefault("properties", {})
+                        if OPERATION_ARGUMENT in properties:
+                            raise ValueError("reserved_operation_argument")
+                        properties[OPERATION_ARGUMENT] = deepcopy(OPERATION_SCHEMA)
+                        self.resumable.add(tool["name"])
+                return canonical(document)
+            body = result.get("structuredContent")
+            if isinstance(body, dict) and body.get("status") == "pending_approval":
+                from govern_control_plane.review import validate_pending_review
+                validate_pending_review(body)
+                if result.get("isError") or body["operation_id"] != operation:
+                    raise ValueError("invalid_pending_result")
+                if self.on_pending is not None:
+                    self.on_pending(deepcopy(body))
+            return output
+
         def app(self):
             from starlette.applications import Starlette
             from starlette.responses import JSONResponse, Response
@@ -301,12 +347,19 @@ class McpRelay:
                     if method not in ("initialize", "notifications/initialized", "ping", "tools/list", "tools/call"):
                         raise ValueError()
                     headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+                    operation = None
                     if method == "tools/call":
                         params = document["params"]
                         key = params.get("_meta", {}).get("threadlight/call")
                         if (not key or self.tickets.get(key) != hashlib.sha256(canonical([
                                 params["name"], params.get("arguments", {})])).digest()):
                             return JSONResponse({"error": "invalid_call_identity"}, 403)
+                        if params["name"] in self.resumable and OPERATION_ARGUMENT in params.get("arguments", {}):
+                            # A selector for the ORIGINAL operation, never consent: the gateway
+                            # rebinds principal, action, arguments, policy, facts and the grant.
+                            from govern_control_plane.models import Identifier, parse
+                            key = parse(Identifier, canonical(params["arguments"].pop(OPERATION_ARGUMENT)))
+                        operation = key
                         headers["Idempotency-Key"] = key
                         headers["X-Correlation-ID"] = key
                         from govern_control_plane.attestations import EVIDENCE_ARGUMENT, EVIDENCE_META
@@ -332,7 +385,8 @@ class McpRelay:
                                 if len(output) > 65536:
                                     raise ValueError()
                             await self._authorize()
-                            return Response(bytes(output), status_code=response.status_code,
+                            output = self._observe(method, operation, response, bytes(output))
+                            return Response(output, status_code=response.status_code,
                                             media_type=response.headers.get("Content-Type", "application/json"))
                     finally:
                         self._outbound.reset(marker)
@@ -396,11 +450,13 @@ def build_host(config, *, bootstrap_gate=None, **host_options):
                 model_token = await credential.get_token("https://ai.azure.com/.default")
                 if bootstrap_gate is not None:
                     await bootstrap_gate.authorize()
+                queue = asyncio.Queue()
                 relay = McpRelay(
                     gateway_url=os.environ["GOVERNED_TOOL_GATEWAY_URL"], scope=config["gateway_scope"],
                     credential=credential, invocation_id=invocation_id,
                     tools=routed["threadlight-governed"]["tools"], http=http,
-                    bootstrap_gate=bootstrap_gate)
+                    bootstrap_gate=bootstrap_gate,
+                    on_pending=lambda body: queue.put_nowait(("governance_pending", body)))
                 sock = socket.socket()
                 sock.bind(("127.0.0.1", 0))
                 port = sock.getsockname()[1]
@@ -431,7 +487,6 @@ def build_host(config, *, bootstrap_gate=None, **host_options):
                     on_permission_request=PermissionHandler.approve_all,
                     enable_config_discovery=False,
                 )
-                queue = asyncio.Queue()
                 def event_received(event):
                     queue.put_nowait(event)
                 unsubscribe = session.on(event_received)
@@ -444,6 +499,9 @@ def build_host(config, *, bootstrap_gate=None, **host_options):
                     await session.send(prompt)
                     while True:
                         event = await queue.get()
+                        if isinstance(event, tuple):
+                            yield _pending_event(event[1])
+                            continue
                         if event.type == SessionEventType.SESSION_IDLE:
                             break
                         if event.type == SessionEventType.SESSION_ERROR:

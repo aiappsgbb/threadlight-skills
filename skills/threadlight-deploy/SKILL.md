@@ -319,7 +319,9 @@ for the canonical source, the GHCP pilot scaffold under
 **inline** in `azure.yaml`, no `agent.yaml`, no `infra/core/`), the design/deploy
 ownership and adoption rules (exit 4, 5 and 6), the generated contracts
 (`specs/deployment-posture.md`, `specs/deferred-steps.md`, pins, model and
-capacity, pilot RBAC and telemetry, recommend-only, selected governance, evals,
+capacity, pilot RBAC and telemetry, recommend-only, governed-write
+(`"action_mode": "governed-write"`: the one bound write is routed to the governed
+gateway, never served by the mock MCP server), selected governance, evals,
 deploy evidence, Foundry package gate exit 3) and the offline self-check.
 
 Deployment is then the user's job, run with their own credentials:

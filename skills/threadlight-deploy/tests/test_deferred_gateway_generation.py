@@ -70,12 +70,33 @@ def test_bind_cannot_change_the_frozen_review_window(tmp_path):
     assert snapshot(project) == before
 
 
-def test_ghcp_cannot_select_deferred_mode_without_a_resume_adapter(tmp_path):
+def policy_deferred(registry):
+    registry["actions"][0].update(
+        approval_mode="deferred", approval_requirement="policy",
+        approval_roles=["Approver"], approval_timeout_seconds=900)
+
+
+def test_ghcp_deferred_policy_review_generates_and_binds_with_its_resume_adapter(tmp_path):
+    """Governed-write: one GHCP write, ACS allow autonomous, ACS escalate resumable."""
+    from test_governance_quality import package as ghcp_package
+    data = inputs(tmp_path, framework="github-copilot-sdk", registry_change=policy_deferred)
+    project, document, config, deployment, _ = data
+    config["approval_max_seconds"] = 900
+    deployment["infrastructure"]["approval_max_seconds"] = 900
+    generator = ghcp_package(data)
+    assert generator.bind(project, document, configuration=deployment)["status"] == "bound-unverified"
+    bound = json.loads((project / ".threadlight/governance-deployment.json").read_text())
+    assert bound["bindings"]["gateway_config"]["approval_max_seconds"] == 900
+    host = (project / "src/agent/container.py").read_text()
+    assert "governance_operation_id" in host and "governance_pending" in host
+
+
+def test_ghcp_deferred_cannot_weaken_an_always_required_approval(tmp_path):
     project, document, config, _, _ = inputs(
-        tmp_path, framework="github-copilot-sdk", requires=["approval"], registry_change=deferred)
+        tmp_path, framework="github-copilot-sdk", requires=["approval"], registry_change=policy_deferred)
     config["approval_max_seconds"] = 900
     before = snapshot(project)
-    with pytest.raises(ValueError, match="ghcp_deferred_approval_resume_unsupported"):
+    with pytest.raises(ValueError, match="signed_registry_contract_approval_mismatch"):
         module("generate").generate(project, document, configuration=config)
     assert snapshot(project) == before
 

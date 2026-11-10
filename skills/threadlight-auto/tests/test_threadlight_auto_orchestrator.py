@@ -1960,3 +1960,51 @@ def test_recommend_only_plain_heading_write_routes_back_to_design(tmp_path):
         "- **Side Effects**: writes the case.\n\n## 11a."))
     decision = orch._check_design(tmp_path, {})
     assert decision.decision == "run" and "returns_apply_decision" in decision.reason
+
+
+# --- Governed-write pilots (workshop: one governed write) -------------------------
+# "action_mode": "governed-write": one write bound to the governed tool gateway,
+# every other tool an unbound read. Unlike recommend-only, governance is
+# selected, so the planner routes the binding through threadlight-govern; an
+# inconsistent design goes back to design.
+
+_GW_BOUND = ("  - id: returns_record_recommendation\n    consequence: write\n"
+             "    policy_binding: returns-recommendation-write-v1\n    enforcement_path: governed-tool-gateway\n"
+             "    intervention_points: [pre_tool_call]\n    safe_principles: [scope, audit]\n"
+             "    requires: [authorization, signed-policy-bundle, decision-receipt, idempotency-or-transaction]\n")
+_GW_NOTES = ("- **Policy rules** (`returns-recommendation-write-v1`):\n  - `BR-001` allow: in window.\n"
+             "  - `BR-002` deny: out of window.\n  - `BR-003` escalate: above EUR 250.\n"
+             "- **Downstream service**: `POST /recommendations` and `GET /recommendations/{rma_id}`.\n"
+             "- **Governance foundation**: shared control plane, gateway, Key Vault key, Cosmos audit/approvals.\n\n")
+
+
+def _governed_write_workspace(root, *, bound=True):
+    reads = ["returns_get_case", "return_policy_search"]
+    write = _GW_BOUND if bound else _RO_READ.format("returns_record_recommendation").replace(
+        "consequence: read", "consequence: write")
+    (root / "specs").mkdir()
+    (root / "specs/SPEC.md").write_text(
+        "## 6. Tool Contracts\n\n" + "".join(f"### `{t}`\n- **Side Effects**: none\n\n" for t in reads)
+        + "### `returns_record_recommendation`\n- **Side Effects**: sets the recommendation\n\n"
+        + "## 11a. Runtime Governance Contract\n" + _GW_NOTES + "```yaml\nframework: github-copilot-sdk\n"
+        f"governance:\n  mode: {'selective' if bound else 'off'}\n"
+        "  environment_modes: {development: evaluate_only, staging: evaluate_only, "
+        "preproduction: enforce, production: enforce}\n  lifecycle_bindings: []\ntools:\n"
+        + "".join(_RO_READ.format(t) for t in reads) + write + "```\n")
+    (root / "specs/manifest.json").write_text(json.dumps(
+        {"name": "returns-triage", "mode": "fast-poc", "action_mode": "governed-write"}))
+
+
+def test_governed_write_pilot_routes_its_binding_through_govern(tmp_path):
+    _governed_write_workspace(tmp_path)
+    stages = orch._stages_for(tmp_path)
+    assert "govern" in stages and "governed_actions_gate" in stages
+    assert orch._check_design(tmp_path, {}).decision == "skip"
+
+
+def test_inconsistent_governed_write_design_routes_back_to_design(tmp_path):
+    _governed_write_workspace(tmp_path, bound=False)
+    decision = orch._check_design(tmp_path, {})
+    assert decision.decision == "run"
+    assert "governed-write design is not consistent" in decision.reason
+    assert "returns_record_recommendation" in decision.reason

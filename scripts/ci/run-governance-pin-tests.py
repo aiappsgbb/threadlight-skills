@@ -77,7 +77,10 @@ DEFERRED_REQUIRED_CASES = {
     "test_deferred_window_above_service_limit_rejects_before_writes",
     "test_policy_condition_cannot_weaken_an_always_required_approval",
     "test_bind_cannot_change_the_frozen_review_window",
-    "test_ghcp_cannot_select_deferred_mode_without_a_resume_adapter",
+    "test_ghcp_deferred_policy_review_generates_and_binds_with_its_resume_adapter",
+    "test_ghcp_deferred_cannot_weaken_an_always_required_approval",
+    "test_ghcp_relay_returns_host_owned_pending_and_resumes_the_same_operation",
+    "test_ghcp_relay_rejects_operation_selector_on_non_deferred_action",
 }
 
 
@@ -249,6 +252,10 @@ def verify_gateway_junit(path):
         "test_citadel_native_confirmation_and_reviewer_both_bind_effective_generation",
         "test_citadel_native_assembler_and_mixed_generation_fail_closed",
         "test_citadel_native_example_builds_three_bundles_without_authority",
+        "test_final_bundle_registry_selects_policy_deferred_review",
+        *(f"test_four_business_rules_under_native_acs[{case}]" for case in (
+            "RMA-W01-A-approve_refund-expected0", "RMA-W01-B-approve_refund-expected3",
+            "RMA-W01-C-escalate_to_supervisor-expected5", "RMA-UNKNOWN-approve_refund-expected7")),
     }
     if not required <= names:
         raise RuntimeError("required native gateway controls did not run")
@@ -402,6 +409,7 @@ for record in records:
     run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_gateway.py",
          "skills/threadlight-govern/tests/test_citadel.py",
          "skills/threadlight-govern/tests/test_operator_recovery.py",
+         "examples/governed-write-ghcp/tests/test_policy.py",
          "-k", "not test_citadel_native_returns_producer_authenticates_and_records_once",
          "-q", f"--junitxml={report}", "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
     count = verify_gateway_junit(report)

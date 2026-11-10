@@ -326,8 +326,15 @@ of the old lease. `outcome_unknown` requires reconciliation; do not retry with
 a fresh operation ID to bypass it.
 
 This is **not OBO**, not a Teams/browser frontend deployment, and not a payment
-connector. GHCP generation rejects deferred mode until its own resume adapter
-exists; its inline approval path is unchanged.
+connector. The generated GHCP relay is the second resume adapter: for tools the
+authenticated gateway marks `threadlight.approval_mode: deferred` it adds the
+optional `governance_operation_id` selector to the model-visible schema, strips it
+before forwarding and sends it as the original `Idempotency-Key`. A
+`pending_approval` result is validated and also emitted by the **host** as an
+`event: governance_pending` SSE frame, so the reviewer's `pending.json` never
+depends on model output. Each GHCP invocation is a new Copilot session: resume
+happens in a new invocation with the exact original arguments. Its inline
+approval path is unchanged; requesting-user confirmation remains MAF-only.
 
 #### Execute an operator review
 

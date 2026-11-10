@@ -50,6 +50,7 @@ def test_supported_resume_route_is_not_contradicted_by_legacy_blocker_text():
 def test_support_matrix_distinguishes_ui_from_native_human_resume():
     guide = (ROOT / "docs/runtime-support.md").read_text()
     for required in ("GitHub Copilot SDK", "MAF", "Outlook", "Teams",
-                     "not an approval grant", "ghcp_deferred_approval_resume_unsupported",
+                     "not an approval grant", "governance_operation_id", "governance_pending",
                      "3,600", "same native session"):
         assert required in guide
+    assert "ghcp_deferred_approval_resume_unsupported" not in guide

@@ -668,17 +668,20 @@ def _action_mode_gaps(repo) -> list[str]:
 
     Recommend-only means the agent proposes and a person records, with
     governance not selected (SPEC 11a ``mode: off``); a write tool there would
-    run unbound. Pilots without ``action_mode`` are unaffected.
+    run unbound. A governed-write pilot (workshop) binds exactly one write to the
+    governed tool gateway and keeps every other tool an unbound read; its
+    selected binding still gets the usual ``governance:`` gaps. Pilots without
+    ``action_mode`` are unaffected.
     """
     catalog = Path(__file__).resolve().parents[3]
     if (catalog / "skills" / "_shared").is_dir() and str(catalog) not in sys.path:
         sys.path.insert(0, str(catalog))
     try:
-        from skills._shared.action_mode import recommend_only_gaps
+        from skills._shared.action_mode import governed_write_gaps, recommend_only_gaps
     except ImportError:
         return []
     try:
-        return recommend_only_gaps(Path(repo))
+        return recommend_only_gaps(Path(repo)) + governed_write_gaps(Path(repo))
     except ValueError as exc:
         return [f"action-mode: {exc}"]
 

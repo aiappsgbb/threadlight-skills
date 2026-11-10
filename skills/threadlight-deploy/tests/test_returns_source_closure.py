@@ -55,3 +55,12 @@ def test_public_source_export_is_readable_by_native_nonroot_uid_under_private_um
             assert mode in (0o644, 0o755), path.relative_to(package)
     assert stat.S_IMODE(private.stat().st_mode) == 0o700
     assert stat.S_IMODE(secret.stat().st_mode) == 0o600
+
+
+def test_returns_dockerfile_builds_in_acr_tasks_remote_build():
+    """Live 2026-11-10: ACR Tasks' dependency scanner rejects `FROM --platform=... ${ARG}`
+    ("unable to understand line"); the platform comes from the build, not the FROM line."""
+    from pathlib import Path
+    dockerfile = (Path(__file__).resolve().parents[1] / "references/governance/returns-mcp.Dockerfile").read_text()
+    first = next(line for line in dockerfile.splitlines() if line.startswith("FROM "))
+    assert first == "FROM ${PYTHON_IMAGE}"

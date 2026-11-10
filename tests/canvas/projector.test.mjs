@@ -2030,3 +2030,35 @@ test("recommend-only pilot with a governance manifest still shows its controls",
     assert.notEqual(findSkill(model, "threadlight-govern").status, "not-applicable");
   });
 });
+
+// Governed-write pilots (workshop): one write bound to the governed tool
+// gateway, every other tool an unbound read. The canvas shows the action mode
+// and keeps runtime controls, even next to a plan that omits governance.
+test("governed-write pilot shows its action mode and keeps runtime controls", async () => {
+  await withFixture("design-only", async (fixture) => {
+    await fixture.writeString("specs/SPEC.md", RECOMMEND_ONLY_SPEC);
+    await fixture.writeJson("specs/manifest.json", {
+      name: "returns-triage",
+      mode: "fast-poc",
+      action_mode: "governed-write",
+      traits: [],
+      deployment_manifest: { module_selectors: {}, scheduled_jobs: [] },
+    });
+    await fixture.writeJson(".threadlight/auto-next.json", recommendOnlyPlan());
+    const model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(model.view.pilot.actionMode.mode, "governed-write");
+    assert.match(model.view.pilot.actionMode.label, /governed tool gateway/);
+    assert.notEqual(findSkill(model, "threadlight-govern").status, "not-applicable");
+  });
+});
+
+test("recommend-only pilot shows its action mode; an absent mode shows none", async () => {
+  await withFixture("design-only", async (fixture) => {
+    const before = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(before.view.pilot.actionMode, null);
+    await recommendOnlyFixture(fixture, recommendOnlyPlan());
+    const model = await projectWorkspace(fixture.workspace, { now: NOW });
+    assert.equal(model.view.pilot.actionMode.mode, "recommend-only");
+    assert.match(model.view.pilot.actionMode.label, /a person records/);
+  });
+});
