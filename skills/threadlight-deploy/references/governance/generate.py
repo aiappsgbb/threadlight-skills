@@ -1373,6 +1373,10 @@ def validate_infrastructure(config):
             not isinstance(k, str) or not isinstance(v, str) or not 0 < len(k) <= 512 or len(v) > 256
             for k, v in tags.items())):
         raise ValueError("invalid_resource_tags")
+    # 0 = scale to zero between uses (workshop kits; warm before a demo), default 1.
+    if "min_replicas" in config and (type(config["min_replicas"]) is not int
+                                     or config["min_replicas"] not in (0, 1, 2)):
+        raise ValueError("invalid_min_replicas")
     if config.get("acr_authorization") != "rbac":
         raise ValueError("abac_registry_requires_repository_scoped_pull_module")
     if not re.fullmatch(RESOURCE + r"Microsoft.ContainerRegistry/registries/[^/]+", config["acr_id"]):

@@ -252,6 +252,10 @@ def verify_gateway_junit(path):
         "test_citadel_native_confirmation_and_reviewer_both_bind_effective_generation",
         "test_citadel_native_assembler_and_mixed_generation_fail_closed",
         "test_citadel_native_example_builds_three_bundles_without_authority",
+        "test_final_bundle_registry_selects_policy_deferred_review",
+        *(f"test_four_business_rules_under_native_acs[{case}]" for case in (
+            "RMA-W01-A-approve_refund-expected0", "RMA-W01-B-approve_refund-expected3",
+            "RMA-W01-C-escalate_to_supervisor-expected5", "RMA-UNKNOWN-approve_refund-expected7")),
     }
     if not required <= names:
         raise RuntimeError("required native gateway controls did not run")
@@ -405,6 +409,7 @@ for record in records:
     run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_gateway.py",
          "skills/threadlight-govern/tests/test_citadel.py",
          "skills/threadlight-govern/tests/test_operator_recovery.py",
+         "examples/governed-write-ghcp/tests/test_policy.py",
          "-k", "not test_citadel_native_returns_producer_authenticates_and_records_once",
          "-q", f"--junitxml={report}", "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
     count = verify_gateway_junit(report)

@@ -8,6 +8,7 @@ made literal.
 | Sample | What it shows | Captured |
 |---|---|---|
 | [`returns-triage-governed/`](./returns-triage-governed) | A returns-triage agent built end-to-end on a private Citadel hub: spec → network-isolated IaC → generated skills → a **committed governance policy** (linted + CI-gated) → readiness scorecard. | 2026-07-07 |
+| [`governed-write-ghcp/`](./governed-write-ghcp) | Workshop kit: a GHCP hosted agent in the `governed-write` action mode, one write through the governed gateway with four Rego rules and deferred human approval, plus the facilitator runbook and scripts. Executed live once (see its README for the scope). | 2026-11-10 |
 
 ## Sanitization
 

@@ -30,8 +30,9 @@ def resume_prompt(pending):
         raise ValueError("not_a_pending_approval_record")
     arguments = dict(pending["proposed_arguments"], governance_operation_id=pending["operation_id"])
     return ("The human Approver has decided operation " + pending["operation_id"] + ". "
-            "Call returns_apply_decision exactly once with exactly these arguments and nothing else, "
-            "then report the tool result: " + json.dumps(arguments, sort_keys=True))
+            "Do NOT call returns_get_case and do not change any value: keep this original expected_etag "
+            "even if the case has changed since. Call returns_apply_decision exactly once with exactly these "
+            "arguments and nothing else, then report the tool result: " + json.dumps(arguments, sort_keys=True))
 
 
 def frames(lines):

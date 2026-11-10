@@ -18,6 +18,9 @@ var publicAuthenticatedProof = config.network.posture == 'public-authenticated-p
 var prefix = config.prefix
 // Optional lifecycle tags from infrastructure configuration (validated by generate.py).
 var tags = config.?tags ?? {}
+// 0 scales the control plane and gateway to zero when idle: cold start before the first call
+// (the bounded downstream call can then report outcome_unknown); warm them before use.
+var minReplicas = config.?min_replicas ?? 1
 var probesEnabled = contains(config, 'probe_observability')
   ? (config.probe_observability.enabled == true && contains(['staging', 'preproduction'], config.environment))
   : false
@@ -484,7 +487,7 @@ resource controlApp 'Microsoft.App/containerApps@2025-01-01' = if (phase == 'ser
         // Authenticated semantic readiness is a REQUIRED post-provision gate.
         probes: [{ type: 'Liveness', tcpSocket: { port: 8000 }, initialDelaySeconds: 10 }]
       }]
-      scale: { minReplicas: 1, maxReplicas: 2 }
+      scale: { minReplicas: minReplicas, maxReplicas: 2 }
     }
   }
   dependsOn: [controlDocuments, metadataReaders, catalogRead, verifyAssignments, registryPull]
@@ -520,7 +523,7 @@ resource gatewayApp 'Microsoft.App/containerApps@2025-01-01' = if (phase == 'ser
           { type: 'Readiness', httpGet: { path: '/health', port: 8000 }, initialDelaySeconds: 10 }
         ]
       }]
-      scale: { minReplicas: 1, maxReplicas: 2 }
+      scale: { minReplicas: minReplicas, maxReplicas: 2 }
     }
   }
   dependsOn: [gatewayDocuments, metadataReaders, verifyAssignments, registryPull, controlApp]

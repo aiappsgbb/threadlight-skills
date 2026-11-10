@@ -744,6 +744,14 @@ Docker/ASGI tests are not live Azure durability or effect-closure evidence.
 `human_clients`, `approver_subjects`, `auditor_subjects`, `approver_roles`,
 and `network`. No secrets, connection strings or signing material.
 
+Optional: `tags` (string map, at most 40) is applied to every governance
+resource for owner/purpose/disposition tracking; `min_replicas` (0, 1 or 2,
+default 1) sets the control-plane and gateway minimum. Use 0 only for
+demo/workshop foundations that are warmed before use: a cold gateway or
+downstream can turn a committed effect into an `outcome_unknown` result.
+The gateway has a startup probe because it verifies the signed bundle and
+loads ACS before it listens.
+
 The existing ACR must use classic RBAC: `AcrPull` is scoped to that registry,
 and each app names its own UAMI in its registry configuration. ABAC repositories
 require a separately reviewed repository-scoped module and are rejected.

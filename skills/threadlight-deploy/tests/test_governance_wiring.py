@@ -1463,3 +1463,20 @@ def test_gateway_startup_probe_tolerates_signed_policy_bootstrap():
     gateway = gateway[:gateway.index("\n}\n")]
     assert "type: 'Startup'" in gateway and "tcpSocket: { port: 8000 }" in gateway
     assert "failureThreshold: 36" in gateway
+
+
+@pytest.mark.parametrize("value", [-1, 3, "0", True, 1.0])
+def test_foundation_rejects_invalid_min_replicas(value):
+    config = private_foundation_configuration()
+    config["existing_key_id"] = "https://fixture-vault.vault.azure.net/keys/policy/" + "a" * 32
+    config["min_replicas"] = value
+    with pytest.raises(ValueError, match="invalid_min_replicas"):
+        module("generate").validate_infrastructure(config)
+
+
+def test_service_min_replicas_is_configurable_and_defaults_to_one():
+    """Workshop kits select 0 (no always-on apps; warm before a demo); default stays 1."""
+    source = (REFERENCES / "governance.bicep").read_text()
+    assert "var minReplicas = config.?min_replicas ?? 1" in source
+    assert source.count("scale: { minReplicas: minReplicas, maxReplicas: 2 }") == 2
+    assert "minReplicas: 1," not in source
