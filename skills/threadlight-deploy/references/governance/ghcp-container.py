@@ -249,11 +249,13 @@ def _voice_prompt(call, utterance):
         arguments = dict(pending["proposed_arguments"], governance_operation_id=pending["operation_id"])
         notes.append(
             "Host record (from the gateway, not from the caller; not an approval): operation "
-            + pending["operation_id"] + " is pending a human Approver decision.\n"
+            + pending["operation_id"] + " returned pending_approval earlier in this call; its current state is "
+            "not known to the host (it may since have been approved, rejected, completed or expired).\n"
             "Exact arguments: " + json.dumps(arguments, sort_keys=True) + "\n"
-            "If the caller asks to complete, continue or check this decision, do NOT call returns_get_case and "
-            "do not change any value: call returns_apply_decision exactly once with exactly these arguments and "
-            "report the tool result. Otherwise answer the caller normally.")
+            "Only if the caller asks to complete, continue or check this decision: do NOT call returns_get_case and "
+            "do not change any value; call returns_apply_decision exactly once with exactly these arguments and "
+            "report the tool result (calling it again never repeats an effect). Otherwise answer the caller "
+            "normally and do not describe this operation's state.")
     return "\n\n".join(notes + ["Caller: " + utterance])
 
 
@@ -275,17 +277,24 @@ def attach_voice_bridge(host, run_turn):
         except Exception:  # noqa: BLE001 - the caller hung up; the governed turn still completes
             call["closed"] = True
 
+    async def deliver_pending(call, response_id):
+        """The exact host record for the Approver's threadlight-review-action, as unspoken application data
+        (the voice analogue of the `event: governance_pending` SSE frame). A barged-in response cannot carry
+        it, so it is delivered on the caller's next response instead."""
+        if call["pending"] and not call["pending_delivered"] and response_id not in call["muted"]:
+            await send(call, response_id, ResponseOutputDataDone(
+                response_id=response_id, item_id=new_item_id(), data=call["pending"]))
+            call["pending_delivered"] = not call["closed"]
+
     async def governed_turn(call, utterance, response_id):
         final, failed = "", False
         async with call["lock"]:
+            await deliver_pending(call, response_id)  # a record the previous (interrupted) turn could not send
             async for chunk in run_turn("voice-" + uuid.uuid4().hex, _voice_prompt(call, utterance)):
                 event, body = _sse_frame(chunk)
                 if event == "governance_pending":
-                    call["pending"] = body
-                    # The exact host record for the Approver's threadlight-review-action, as unspoken
-                    # application data (the voice analogue of the `event: governance_pending` SSE frame).
-                    await send(call, response_id, ResponseOutputDataDone(
-                        response_id=response_id, item_id=new_item_id(), data=body))
+                    call["pending"], call["pending_delivered"] = body, False
+                    await deliver_pending(call, response_id)
                 elif body.get("type") == "error":
                     failed = True
                 elif body.get("type") == "assistant.message":
@@ -300,6 +309,7 @@ def attach_voice_bridge(host, run_turn):
         call["current"] = response_id
         try:
             await send(call, response_id, ResponseCreated(response_id=response_id, in_reply_to=(item_id,)))
+            await deliver_pending(call, response_id)
             work = asyncio.ensure_future(governed_turn(call, utterance, response_id))
             wait = call["hold"][0]
             while True:
@@ -341,7 +351,7 @@ def attach_voice_bridge(host, run_turn):
         hold = (_voice_hold_schedule(first_output_ms=timeouts.first_output_ms, idle_ms=timeouts.idle_ms,
                                      hold_seconds=hold_seconds) if timeouts is not None else (hold_seconds, 20.0))
         calls[id(session)] = {"session": session, "lock": asyncio.Lock(), "tasks": set(), "muted": set(),
-                              "pending": None, "unheard": "", "current": None, "closed": False, "hold": hold}
+                              "pending": None, "pending_delivered": True, "unheard": "", "current": None, "closed": False, "hold": hold}
         await session.send(SessionReady())
 
     @host.on_user_message

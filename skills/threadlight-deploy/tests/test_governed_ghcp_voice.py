@@ -78,6 +78,9 @@ class FakeGovernedTurns:
             yield _message("Recorded **approve_refund**, audit_id `aud-1`.")
             self.finished.append("write")
         elif "escalate" in caller:
+            if "slowly" in caller:
+                while not self.release.is_set():
+                    await asyncio.sleep(0.02)
             yield b"event: governance_pending\ndata: " + json.dumps(PENDING).encode() + b"\n\n"
             yield _message("Nothing is recorded yet: a human Approver must decide operation " + PENDING["operation_id"])
         elif "fail" in caller:
@@ -313,3 +316,35 @@ def test_the_exact_pending_record_reaches_the_caller_as_unspoken_application_dat
     data = frames[1]
     assert data["data"] == PENDING and data["response_id"] == frames[0]["response_id"]
     assert "approval_intent" not in frames[2]["text"]
+
+
+def test_a_barged_in_escalation_still_delivers_its_pending_record_on_the_next_response(bridge):
+    _, app, turns = bridge
+    with TestClient(app) as client, client.websocket_connect("/invocations_ws") as ws:
+        _start(ws)
+        _say(ws, "please escalate slowly", 1)
+        created = ws.receive_json()
+        ws.send_json({"type": "user.barge_in", "id": "m_b", "ts": TS,
+                      "response_id": created["response_id"], "heard_text": ""})
+        time.sleep(0.2)
+        turns.release.set()
+        _say(ws, "what happened?", 2)
+        frames = _turn(ws)
+        _end(ws)
+    data = [f for f in frames if f["type"] == "response.output_data.done"]
+    assert len(data) == 1 and data[0]["data"] == PENDING
+    assert data[0]["response_id"] != created["response_id"]
+
+
+def test_the_host_record_never_claims_the_operation_is_still_pending(bridge):
+    _, app, turns = bridge
+    with TestClient(app) as client, client.websocket_connect("/invocations_ws") as ws:
+        _start(ws)
+        _say(ws, "please escalate RMA-W05-C", 1)
+        _turn(ws)
+        _say(ws, "thanks, anything else?", 2)
+        _turn(ws)
+        _end(ws)
+    note = turns.prompts[1]
+    assert "is pending" not in note
+    assert "current state is not known to the host" in note and "never repeats an effect" in note

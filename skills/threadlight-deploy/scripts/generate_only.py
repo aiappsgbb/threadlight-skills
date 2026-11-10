@@ -627,9 +627,8 @@ def adopt_design_server(server: Path, plan: list[dict[str, Any]], extra_lock: st
             "and re-run; generate_only never rewrites design-owned code."
         )
     stdlib = set(sys.stdlib_module_names) | {"__future__"}
-    installed = lock_imports(PILOT / "mcp" / "requirements.lock")
-    if extra_lock:
-        installed |= lock_imports_text(extra_lock)
+    # The image installs exactly one lock: an adopted design lock replaces the pilot lock.
+    installed = lock_imports_text(extra_lock) if extra_lock else lock_imports(PILOT / "mcp" / "requirements.lock")
     unpinned = sorted(n for n in _top_level_imports(tree) if n not in stdlib and n not in installed)
     if unpinned:
         raise DesignContractError(
@@ -709,10 +708,11 @@ def render_mcp_dockerfile(entry: str, knowledge: bool, sample_data: bool = True)
         text = text.replace("COPY specs/sample-data/ /app/specs/sample-data/\n", "")
     header = f"# {MARKER} from references/pilot/mcp/Dockerfile.\n"
     if knowledge:
+        anchor = "COPY src/mcp/ /app/src/mcp/\n"
+        assert text.count(anchor) == 1, "pilot MCP Dockerfile changed shape"
         text = text.replace(
-            "COPY specs/sample-data/ /app/specs/sample-data/\n",
-            "COPY specs/sample-data/ /app/specs/sample-data/\n"
-            "# Knowledge stand-in corpus until the SPEC knowledge base is provisioned.\n"
+            anchor,
+            anchor + "# Knowledge stand-in corpus until the SPEC knowledge base is provisioned.\n"
             "COPY specs/knowledge/ /app/specs/knowledge/\n",
         ).replace("ENV SAMPLE_DATA_DIR=/app/specs/sample-data ",
                   "ENV SAMPLE_DATA_DIR=/app/specs/sample-data KNOWLEDGE_DIR=/app/specs/knowledge ")

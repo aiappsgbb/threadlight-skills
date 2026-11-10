@@ -340,3 +340,27 @@ def test_unhashed_or_mcp_mismatched_design_lock_is_still_replaced(tmp_path: Path
     result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
     assert lock.read_text() == (PILOT / "mcp" / "requirements.lock").read_text()
+
+
+def test_an_adopted_design_lock_is_the_only_import_authority(tmp_path: Path):
+    import re as _re
+    project = _kit_project(tmp_path)
+    lock = project / "src" / "mcp" / "requirements.lock"
+    # A valid hashed design lock that does not install python-dotenv (the pilot lock does).
+    lock.write_text(_re.sub(r"(?ms)^python-dotenv==.*?(?=^[a-z0-9])", "", lock.read_text()))
+    assert "python-dotenv==" not in lock.read_text() and "python-dotenv==" in (PILOT / "mcp" / "requirements.lock").read_text()
+    server = project / "src" / "mcp" / "server.py"
+    server.write_text(server.read_text().replace("import os\n", "import os\nimport dotenv\n", 1))
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert result.returncode == 6, result.stdout + result.stderr
+    assert "dotenv" in result.stderr
+
+
+def test_knowledge_corpus_is_copied_even_without_sample_data():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("gen_only_under_test", GENERATOR)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    text = module.render_mcp_dockerfile("threadlight_mcp_entry.py", True, sample_data=False)
+    assert "COPY specs/knowledge/ /app/specs/knowledge/" in text
+    assert "specs/sample-data/ /app" not in text
