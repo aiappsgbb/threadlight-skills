@@ -7,6 +7,46 @@ field.
 
 ## [Unreleased]
 
+### 2.33.0: opt-in voice front-end on the GHCP hosted agent (Foundry Hosted Voice, preview)
+
+- **Voice front-end, same agent.** Foundry documents a voice-based agent that
+  uses an existing hosted agent as its conversation engine
+  ([Microsoft Learn](https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent)).
+  With `THREADLIGHT_VOICE_BRIDGE=1` the GHCP `container.py` now serves Voice Live
+  Bridge Protocol 1.0 on `/invocations_ws` through the typed `VoiceAgentServerHost`:
+  `session.start` -> `session.ready`, each `user.message` runs one turn of the same
+  Copilot session logic and returns its final answer as `response.output_text.done`
+  + `response.done`; barge-in, cancel and timeout abort the Copilot turn; one call
+  is one conversation, deleted at `session.end`. `/invocations` is unchanged.
+- **Opt-in gate.** SPEC § 11e `voice_frontend: hosted-voice` needs the same user
+  opt-in as `agent_type: voice` (`voice_opt_in_source: user`,
+  `voice_opt_in_evidence`, `preview_acknowledged: true`); item 2c in
+  `foundry-only-agents.md`, `runtime-policy.json` contract 2.2.0, design
+  templates. An incomplete or agent-written opt-in generates the agent text-only
+  and records why.
+- **Generator.** `generate_only` adds `invocations_ws` 1.0.0 and the Voice Live
+  metadata to the hosted target, a managed `kind: voice` wrapper `<agent>-voice`
+  with `conversationEngine` (no model, tools or code on it), azd `>=1.32.0`, and a
+  DEPLOY.md section with the official `microsoft-foundry` `smoke_test_voice.py`.
+  The self-check accepts exactly that wrapper.
+- **Dependencies.** `azure-ai-agentserver-invocations` 1.0.0b6 -> 1.3.0 and
+  `azure-ai-agentserver-core` 2.0.0b7 -> 2.3.0 (GA), hashed lock regenerated.
+- **Docs.** GHCP README voice section with proof boundaries, deploy skill,
+  generate-only mode, operations guide, Pages basics, and an optional
+  preview-labelled voice segment in the 1-hour workshop.
+- **Live findings folded in (2026-11-10, eastus2).** `azure.ai.agents` 1.0.0
+  needs `AZD_ALPHA_ENABLE_AGENTS_VOICE=true` to package `kind: voice`; a turn with
+  MCP tool calls failed with `response_timeout:first_output`, so the container now
+  speaks a hold message (`THREADLIGHT_VOICE_HOLD_TEXT`, SPEC `voice_hold_text`)
+  before Voice Live's announced deadlines; spoken text drops markdown markup; an
+  aborted Copilot turn is settled on its `session.idle` so it cannot end the next turn.
+- **Live evidence:** official `microsoft-foundry` `smoke_test_voice.py` passed
+  against the generated wrapper, and TTS-generated spoken questions (including an
+  RMA triage with MCP tools) returned the expected decision as synthesized audio.
+- **Not verified:** perceived audio quality, recognition of real human speech,
+  barge-in through Voice Live and production latency. The MAF runtime has no
+  Bridge handler.
+
 ### 2.32.0: generated SPEC rubric judges the full business-rule text
 
 - **Rubric prompt.** `generate_only.py` now puts each `### BR-nnn` rule's

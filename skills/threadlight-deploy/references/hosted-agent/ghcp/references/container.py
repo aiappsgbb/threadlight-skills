@@ -10,6 +10,13 @@ Two auth modes, selected automatically from environment variables:
   * GitHub Copilot model: ``GITHUB_TOKEN`` set -> uses GitHub-hosted models.
     Fallback path; useful for local dev or quickstarts.
 
+Optional voice front-end (Foundry Hosted Voice, preview): with
+``THREADLIGHT_VOICE_BRIDGE=1`` the same container also serves Voice Live Bridge
+Protocol 1.0 on ``/invocations_ws``, so a managed ``kind: voice`` wrapper can
+use this agent as its conversation engine. Voice Live owns audio; this file
+maps ``user.message`` text onto the same Copilot conversation logic. Off by
+default; the generator sets it only on an explicit user opt-in.
+
 Usage:
     Copy this file as ``main.py`` in your agent project root.
     Adapt ``_load_mcp_servers()`` for your MCP server configuration
@@ -23,8 +30,10 @@ import json
 import logging
 import os
 import pathlib
+import re
 import sys
 import time
+import uuid
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from typing import Any
@@ -158,7 +167,18 @@ def _load_mcp_servers() -> dict[str, dict] | None:
 #   transcripts stay on disk; the oldest beyond that are deleted.
 # Turns in one session are serialised.
 
-app = InvocationAgentServerHost()
+VOICE_BRIDGE = os.environ.get("THREADLIGHT_VOICE_BRIDGE", "").strip().lower() in ("1", "true")
+
+if VOICE_BRIDGE:
+    # Same Invocations host plus the typed Voice Live Bridge routes
+    # (/invocations_ws and /voice_conversation_engine).
+    from azure.ai.agentserver.invocations.voice import (
+        AgentError, ResponseCreated, ResponseDone, ResponseNone, ResponseOutputTextDone,
+        SessionReady, SessionRejected, VoiceAgentServerHost, new_item_id, new_response_id,
+    )
+    app = VoiceAgentServerHost()
+else:
+    app = InvocationAgentServerHost()
 
 _client: CopilotClient | None = None
 _client_lock = asyncio.Lock()
@@ -530,6 +550,307 @@ async def handle_invoke(request: Request) -> Response:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Voice Live Bridge Protocol 1.0 (opt-in Foundry Hosted Voice front-end)
+# ---------------------------------------------------------------------------
+# https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent
+# The managed `kind: voice` wrapper (Voice Live) owns microphone audio, speech
+# recognition, turn detection, synthesis and playback interruption. It sends
+# finalised caller text here as `user.message`; the reply is the final answer
+# of one turn of the SAME Copilot session logic as /invocations (tools, MCP,
+# skills and any governance stay in this text agent).
+#
+# * One voice call (one Bridge WebSocket) = one Copilot conversation, keyed by
+#   a per-call id; never the container-wide FOUNDRY_AGENT_SESSION_ID. The call
+#   transcript is deleted at session.end or disconnect. A reconnect on a new
+#   WebSocket starts a new conversation.
+# * Only the final assistant message is spoken (intermediate "Let me check"
+#   messages and tool events are not), as response.output_text.done, with
+#   markdown markup removed (the agent's instructions are written for text).
+# * Voice Live fails a response with `response_timeout:first_output` when no
+#   output arrives before the deadlines it announces in session.start
+#   (first_output_ms / idle_ms; 30 s each in the 2026-11-10 live run). A turn
+#   with MCP tool calls easily takes longer, so while the turn runs the
+#   container speaks a short hold message (THREADLIGHT_VOICE_HOLD_TEXT) as its
+#   own output item before each deadline, then the final answer.
+# * Turns in a call run in arrival order. user.barge_in, response.cancelled
+#   and response.timeout cancel the active turn and abort the Copilot turn; no
+#   further output is sent for that response. heard_text is not written back:
+#   the Copilot transcript keeps the full answer.
+
+_VOICE_MAX_INPUT_CHARS = 16_000
+_VOICE_MAX_PENDING_TURNS = 4
+_VOICE_ABORT_WAIT_SECONDS = 5
+_VOICE_HOLD_SECONDS = float(os.environ.get("THREADLIGHT_VOICE_HOLD_SECONDS", "") or "4")
+_VOICE_HOLD_TEXT = os.environ.get("THREADLIGHT_VOICE_HOLD_TEXT", "").strip() or "One moment, I'm checking that."
+
+
+_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_MD_EMPHASIS = re.compile(r"(\*\*|__|`)")
+_MD_LINE_PREFIX = re.compile(r"^[ \t]*(?:#{1,6}[ \t]+|[-*+][ \t]+|>[ \t]?)", re.M)
+
+
+def _speakable(text: str) -> str:
+    """Drop markdown markup (links, emphasis, code ticks, headings, bullets) before speech; keep the words."""
+    text = _MD_LINK.sub(r"\1", text)
+    text = _MD_EMPHASIS.sub("", text)
+    text = _MD_LINE_PREFIX.sub("", text)
+    return "\n".join(line.rstrip() for line in text.splitlines()).strip()
+
+
+def _voice_hold_schedule(*, first_output_ms: int, idle_ms: int, hold_seconds: float) -> tuple[float, float]:
+    """(first hold delay, repeat interval) in seconds, inside Voice Live's announced deadlines."""
+    first = min(hold_seconds, first_output_ms / 2000)
+    idle = idle_ms / 1000
+    repeat = min(20.0, idle - 10 if idle >= 20 else idle / 2)
+    return first, repeat
+
+
+class _VoiceCall:
+    def __init__(self, bridge_session) -> None:
+        self.bridge_session = bridge_session  # held so id() is never reused while registered
+        self.key = f"voice-{uuid.uuid4().hex}"
+        self.lock = asyncio.Lock()
+        self.tasks: dict[str, asyncio.Task] = {}
+        self.current_item: str | None = None
+        self.current_response: str | None = None
+        self.hold_first, self.hold_repeat = _VOICE_HOLD_SECONDS, 20.0
+
+
+_voice_calls: dict[int, _VoiceCall] = {}
+_voice_cleanups: set[asyncio.Task] = set()
+
+
+async def _final_answer(session, input_text: str) -> str:
+    """Run one Copilot turn and return its final assistant message."""
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def on_event(event):
+        if event.type == SessionEventType.SESSION_IDLE:
+            queue.put_nowait(None)
+        elif event.type == SessionEventType.SESSION_ERROR:
+            queue.put_nowait(RuntimeError(getattr(event.data, "message", "error")))
+        elif getattr(event.type, "value", "") == "assistant.message":
+            queue.put_nowait(getattr(getattr(event, "data", None), "content", None) or "")
+
+    unsubscribe = session.on(on_event)
+    final = ""
+    try:
+        await session.send(input_text)
+        while True:
+            item = await queue.get()
+            if item is None:
+                return final
+            if isinstance(item, Exception):
+                raise item
+            if item.strip():
+                final = item
+    finally:
+        unsubscribe()
+
+
+async def _abort_turn(session) -> None:
+    """Abort an interrupted Copilot turn and wait for it to settle (best-effort)."""
+    abort = getattr(session, "abort", None)
+    if abort is None:
+        return
+    idle = asyncio.Event()
+
+    def on_event(event):
+        # github-copilot-sdk 1.0.x emits `abort`, then the aborted turn's `session.idle`.
+        # Wait for that idle: if it arrived after we unsubscribed, it would end the NEXT turn.
+        if event.type == SessionEventType.SESSION_IDLE:
+            idle.set()
+
+    unsubscribe = session.on(on_event)
+    try:
+        await abort()
+        await asyncio.wait_for(idle.wait(), timeout=_VOICE_ABORT_WAIT_SECONDS)
+    except Exception as exc:  # noqa: BLE001 - an interrupted turn must not fail the call
+        logger.warning("Copilot turn abort did not settle: %s", type(exc).__name__)
+    finally:
+        unsubscribe()
+
+
+async def _end_conversation(key: str) -> None:
+    """Drop a finished call's Copilot session from the cache and delete its transcript."""
+    async with _sessions_lock:
+        lock = _session_locks.get(key)
+    if lock is not None:
+        await lock.acquire()
+    try:
+        async with _sessions_lock:
+            entry = _sessions.pop(key, None)
+            _session_locks.pop(key, None)
+            _dormant.pop(key, None)
+    finally:
+        if lock is not None:
+            lock.release()
+    if entry is not None:
+        await _close_session(entry[0], delete=True)
+    else:
+        await _delete_transcript(key)
+
+
+async def _voice_turn(bridge_session, call: _VoiceCall, item_id: str, input_text: str) -> None:
+    try:
+        async with call.lock:
+            response_id = new_response_id()
+            call.current_item, call.current_response = item_id, response_id
+            await bridge_session.send(ResponseCreated(response_id=response_id, in_reply_to=(item_id,)))
+            try:
+                async with _conversation(call.key) as copilot_session:
+                    work = asyncio.ensure_future(_final_answer(copilot_session, input_text))
+                    try:
+                        wait = call.hold_first
+                        while True:
+                            done, _ = await asyncio.wait({work}, timeout=wait)
+                            if done:
+                                break
+                            await bridge_session.send(ResponseOutputTextDone(
+                                response_id=response_id, item_id=new_item_id(), text=_VOICE_HOLD_TEXT))
+                            wait = call.hold_repeat
+                        answer = work.result()
+                    except asyncio.CancelledError:
+                        work.cancel()
+
+                        async def settle() -> None:
+                            await asyncio.gather(work, return_exceptions=True)
+                            await _abort_turn(copilot_session)
+
+                        # A second cancel (barge-in then response.cancelled) must not cut the
+                        # abort short: the next turn would then see this turn's late idle.
+                        cleanup = asyncio.ensure_future(settle())
+                        while not cleanup.done():
+                            try:
+                                await asyncio.shield(cleanup)
+                            except asyncio.CancelledError:
+                                continue
+                        raise
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - reported to Voice Live as a response error
+                logger.warning("Voice turn failed: %s", type(exc).__name__)
+                await bridge_session.send(AgentError(
+                    code="generation_failed", message="The agent could not answer this turn.",
+                    response_id=response_id))
+                return
+            if not answer.strip():
+                await bridge_session.send(AgentError(
+                    code="empty_answer", message="The agent returned no answer.", response_id=response_id))
+                return
+            await bridge_session.send(ResponseOutputTextDone(
+                response_id=response_id, item_id=new_item_id(), text=_speakable(answer)))
+            await bridge_session.send(ResponseDone(response_id=response_id))
+    except asyncio.CancelledError:
+        logger.info("Voice turn cancelled")
+    except Exception as exc:  # noqa: BLE001 - transport closed while sending
+        logger.warning("Voice turn could not be delivered: %s", type(exc).__name__)
+    finally:
+        if call.current_item == item_id:
+            call.current_item = call.current_response = None
+        call.tasks.pop(item_id, None)
+
+
+def _cancel_response(call: _VoiceCall, response_id: str | None, item_ids=()) -> None:
+    for item_id, task in list(call.tasks.items()):
+        if task.cancelling():
+            continue
+        if item_id in (item_ids or ()) or (response_id and call.current_item == item_id
+                                           and call.current_response == response_id):
+            task.cancel()
+
+
+def _finish_call(bridge_session) -> None:
+    """Cancel a call's turns and delete its conversation once they settle."""
+    call = _voice_calls.pop(id(bridge_session), None)
+    if call is None:
+        return
+    tasks = list(call.tasks.values())
+    for task in tasks:
+        task.cancel()
+
+    async def cleanup() -> None:
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await _end_conversation(call.key)
+
+    task = asyncio.get_running_loop().create_task(cleanup())
+    _voice_cleanups.add(task)
+    task.add_done_callback(_voice_cleanups.discard)
+
+
+if VOICE_BRIDGE:
+
+    @app.on_session_start
+    async def _voice_session_start(bridge_session, event) -> None:
+        if id(bridge_session) in _voice_calls:
+            logger.warning("Ignoring duplicate session.start")
+            return
+        if event.protocol_version != "1.0":
+            await bridge_session.send(SessionRejected(code="protocol_mismatch", retriable=False))
+            return
+        try:
+            await _ensure_client()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Voice session start failed: %s", type(exc).__name__)
+            await bridge_session.send(SessionRejected(code="startup_failed", retriable=True))
+            return
+        call = _VoiceCall(bridge_session)
+        timeouts = getattr(event, "response_timeouts", None)
+        if timeouts is not None:
+            call.hold_first, call.hold_repeat = _voice_hold_schedule(
+                first_output_ms=timeouts.first_output_ms, idle_ms=timeouts.idle_ms,
+                hold_seconds=_VOICE_HOLD_SECONDS)
+        _voice_calls[id(bridge_session)] = call
+        await bridge_session.send(SessionReady())
+
+    @app.on_user_message
+    async def _voice_user_message(bridge_session, event) -> None:
+        call = _voice_calls.get(id(bridge_session))
+        if call is None:
+            logger.warning("user.message before session.ready; ignored")
+            return
+        text = "".join(getattr(part, "text", "") or "" for part in event.content).strip()
+        reason = None
+        if not text:
+            reason = "empty_input"
+        elif len(text) > _VOICE_MAX_INPUT_CHARS:
+            reason = "input_too_large"
+        elif len(call.tasks) >= _VOICE_MAX_PENDING_TURNS:
+            reason = "capacity_exceeded"
+        if reason:
+            await bridge_session.send(ResponseNone(in_reply_to=(event.item_id,), reason=reason))
+            return
+        call.tasks[event.item_id] = asyncio.get_running_loop().create_task(
+            _voice_turn(bridge_session, call, event.item_id, text))
+
+    @app.on_user_barge_in
+    async def _voice_barge_in(bridge_session, event) -> None:
+        call = _voice_calls.get(id(bridge_session))
+        if call is not None:
+            _cancel_response(call, event.response_id)
+
+    @app.on_response_cancelled
+    async def _voice_response_cancelled(bridge_session, event) -> None:
+        call = _voice_calls.get(id(bridge_session))
+        if call is not None:
+            _cancel_response(call, event.response_id)
+
+    @app.on_response_timeout
+    async def _voice_response_timeout(bridge_session, event) -> None:
+        call = _voice_calls.get(id(bridge_session))
+        if call is not None:
+            _cancel_response(call, event.response_id, event.item_ids or ())
+
+    @app.on_session_end
+    async def _voice_session_end(bridge_session, event) -> None:
+        _finish_call(bridge_session)
+
+    @app.on_connection_terminating
+    def _voice_connection_terminating(bridge_session) -> None:
+        _finish_call(bridge_session)
 
 
 # ---------------------------------------------------------------------------

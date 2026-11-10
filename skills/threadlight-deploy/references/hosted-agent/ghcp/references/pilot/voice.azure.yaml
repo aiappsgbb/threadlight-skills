@@ -1,0 +1,39 @@
+  # Opt-in Foundry Hosted Voice wrapper (preview). Generated only on an explicit,
+  # preview-acknowledged user opt-in (SPEC 11e `voice_frontend: hosted-voice`).
+  # Voice Live owns audio, speech recognition, turn-taking and synthesis; the
+  # hosted target above stays the conversation engine (model, instructions,
+  # tools, MCP and governance). Keep model, instructions, tools, protocols and
+  # code OFF this service.
+  # https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent
+  __AGENT_NAME__-voice:
+    host: azure.ai.agent
+    kind: voice
+    name: __AGENT_NAME__-voice
+    uses:
+      - ai-project
+      - __AGENT_NAME__
+    conversationEngine:
+      type: hosted_agent
+      name: __AGENT_NAME__
+    store: false
+    audio:
+      input:
+        format:
+          type: audio/pcm
+          rate: 24000
+        turnDetection:
+          type: server_vad
+          threshold: 0.5
+          prefixPaddingMs: 300
+          silenceDurationMs: 500
+        transcription:
+          model: azure-speech
+      output:
+        format:
+          type: audio/pcm
+          rate: 24000
+        voice:
+          type: azure-standard
+          name: __VOICE_NAME__
+    outputModalities:
+      - audio

@@ -43,7 +43,7 @@ test('short block in every rule SKILL.md carries the voice opt-in', () => {
 test('runtime-policy.json encodes voice as an opt-in agent type built by the official skill', () => {
   const policy = JSON.parse(read('skills/threadlight-design/references/runtime-policy.json'));
   const hosting = policy.agent_hosting;
-  assert.equal(policy.contract_version, '2.1.0');
+  assert.equal(policy.contract_version, '2.2.0');
   assert.deepEqual(hosting.allowed_agent_types, ['hosted', 'prompt', 'voice']);
   assert.equal(hosting.default, 'hosted');
   assert.equal(hosting.voice_requires_explicit_opt_in, true);

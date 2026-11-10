@@ -17,6 +17,21 @@ There is no `agent.yaml`, no `src/agent/agent.yaml` and no `infra/core/`. The
 generator refuses to run if any of them already exists. `agent_type: prompt`
 or `agent_type: voice` is refused with exit 4, because the scaffold is hosted-only.
 
+An opted-in **voice front-end** is the exception that stays hosted: with
+`voice_frontend: hosted-voice` and the user opt-in fields (`voice_opt_in_source: user`,
+`voice_opt_in_evidence`, `preview_acknowledged: true`) in SPEC § 11e, the
+generator keeps the hosted agent, adds `invocations_ws` `1.0.0` and the Voice
+Live metadata to it, and adds a managed `kind: voice` wrapper `<agent>-voice`
+that uses it as its conversation engine ([Microsoft Learn](https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent)). Without
+a complete user opt-in it generates the agent text-only, prints why and records
+the gap. The self-check accepts exactly one such wrapper and fails one that
+carries model, tools, protocols or code. Deploy with
+`AZD_ALPHA_ENABLE_AGENTS_VOICE=true` exported (azure.ai.agents 1.0.0 gates
+`kind: voice`). Prove it after deploy with the official
+`microsoft-foundry` `smoke_test_voice.py`; barge-in, audio quality and latency
+remain not validated until measured. See the
+[GHCP README](hosted-agent/ghcp/README.md#optional-voice-front-end-foundry-hosted-voice-preview).
+
 #### Ownership between threadlight-design and threadlight-deploy
 
 The workshop chain is design, then `generate_only.py` **without `--force`**.

@@ -176,9 +176,12 @@ trivial_justification: null             # REQUIRED when agent_type: prompt (one 
                                         # no multi-step orchestration, no state beyond the Foundry thread)
 prompt_opt_in_source: null              # REQUIRED when agent_type: prompt: must be `user`
 prompt_opt_in_evidence: null            # REQUIRED when agent_type: prompt: quote of the user's explicit request
-voice_opt_in_source: null               # REQUIRED when agent_type: voice: must be `user`
-voice_opt_in_evidence: null             # REQUIRED when agent_type: voice: quote of the user's spoken-conversation requirement
-preview_acknowledged: null              # REQUIRED when agent_type: voice: must be `true` (Foundry voice agents are preview)
+voice_opt_in_source: null               # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: must be `user`
+voice_opt_in_evidence: null             # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: quote of the user's spoken-conversation requirement
+preview_acknowledged: null              # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: must be `true` (Foundry voice agents are preview)
+voice_frontend: none                    # none | hosted-voice. Opt-in voice front-end (Foundry Hosted Voice, preview) on the hosted agent; item 2c
+voice_name: null                        # optional with voice_frontend: hosted-voice: Azure voice, e.g. it-IT-ElsaNeural (default en-US-AvaNeural)
+voice_hold_text: null                   # optional with voice_frontend: hosted-voice: hold message spoken during slow tool turns, in the voice's language
 deployment_target: demo-sandbox         # demo-sandbox | customer-pilot | production-bound
 ```
 
