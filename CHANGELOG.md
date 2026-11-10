@@ -7,6 +7,20 @@ field.
 
 ## [Unreleased]
 
+### 2.32.0: generated SPEC rubric judges the full business-rule text
+
+- **Rubric prompt.** `generate_only.py` now puts each `### BR-nnn` rule's
+  bullet text (Condition, Action, Exception, Output; KPI lines dropped) into the
+  `spec_business_rules_rubric` judge prompt, not only the rule title, and tells
+  the judge that a title is only a label. In the 2026-11-10 live returns-triage
+  regression the title "Cite, propose, and hand off — never record" made the
+  judge score 7 of 18 correct answers 1 because they named the human who records
+  the decision, which the rule body requires. Mean 3.389 failed the threshold of
+  4 and left the Foundry package INCOMPLETE. With the fix, the same design,
+  agent version and dataset scored 4.222 (all 18 rows at 4 or 5) and the package
+  gate reported COMPLETE. Table-form rules without a body keep their title.
+- **Regression test.** `test_spec_rubric_prompt_carries_full_rule_text_not_only_titles`.
+
 ### 2.31.0: lean threadlight-deploy core skill with situational references
 
 - **Deploy skill split.** `skills/threadlight-deploy/SKILL.md` drops from 3,991
