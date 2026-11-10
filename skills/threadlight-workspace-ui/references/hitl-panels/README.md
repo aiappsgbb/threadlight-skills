@@ -74,17 +74,19 @@ demos; the same contract drives a real Cosmos-backed deployment.
 
 ## What's intentionally NOT here
 
-- **Case-list / inbox / dashboard / etc. are shape-level**; their
-  references live in `references/shapes/<shape>/`. The HITL panels
-  drop INTO them.
+- **Case-list / inbox / dashboard / etc. are shape-level**. Only
+  `references/shapes/case-list/` ships a runnable shape today (it loads
+  byte-identical copies of these panels from its `components/`); the
+  other shapes are generated from the spec (see `references/shapes/README.md`).
+  The HITL panels drop INTO them.
 - **The Teams adaptive-card side** of human-in-loop lives in
   `threadlight-hitl-patterns` (a different skill). The two are
   designed to share the same data contract above so an action gated
   via Teams shows up in the workspace audit-viewer with no extra
   translation.
 - **No framework rebuild** — these are intentionally vanilla. If the
-  customer wants React, point them at
-  `references/framework-rebuild.md` for the port recipe.
+  customer wants React, point them at the "Framework mapping" section of
+  `references/shapes/case-list/README.md`.
 
 ## Verified-against
 

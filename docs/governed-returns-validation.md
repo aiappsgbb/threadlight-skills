@@ -63,13 +63,26 @@ run a replay in which the model re-read the case and substituted the new ETag
 was refused with `idempotency_conflict` and no effect; the stricter resume
 prompt then returned the original outcome.
 
+**Human sign-in follow-up (16:10 UTC, same deployment).** A fresh escalation
+(another 750 EUR case) went `pending_approval` with no effect. The Approver ran
+the packaged `threadlight-review-action`: the exact proposal was shown, the
+typed confirmation was entered, and the person **signed in interactively in the
+browser** as themselves (delegated `Governance.Approve`). Result
+`approved: true, execution: not-started`. The resumed invocation produced one
+central allow receipt and, under a second later, one business decision/audit
+bound to that receipt; the approval record moved to `consumed` with the human
+as approver and role `Approver`. A replay returned the same `audit_id` with
+unchanged receipt, operation and audit counts and case ETag. One caveat: the
+review terminal was not visible to the person, so at their request the operator
+agent typed the terminal confirmation phrase; the interactive sign-in and
+consent were the person's own.
+
 **Limits and findings, stated plainly.**
 
-- The approval was recorded by the operator agent with the Approver's own
-  delegated Azure CLI token through the same `review.decide` protocol as
-  `threadlight-review-action`, not by a person clicking in a browser. It proves
-  the authority path, not genuine human presence. The native Outlook channel
-  was not used.
+- In the first two runs the approval was recorded by the operator agent with
+  the Approver's own delegated Azure CLI token through the same `review.decide`
+  protocol, not by an interactive sign-in; the follow-up above adds the
+  interactive human sign-in. The native Outlook channel was not used.
 - First call of the day: the scale-to-zero business API committed the write
   about 26 s after the allow receipt; the gateway's bounded downstream call had
   already timed out, the operation stayed `pending` and the agent reported an

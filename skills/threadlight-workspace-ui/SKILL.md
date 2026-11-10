@@ -113,20 +113,21 @@ either drop into their preferred stack or rebuild faithfully.
 
 ```
 src/workspace/
-├── index.html                # Single-file reference (vanilla HTML+CSS+JS)
+├── index.html                # Shell (vanilla HTML+CSS+JS, no build step)
 ├── workspace.css             # Themed for the process
-├── workspace.js              # Filter / detail / action toolbar logic
-├── seed-data.js              # Loaded from specs/sample-data/ at build
-├── README.md                 # How to rebuild in React/Angular/Vue/Blazor
-└── components/               # Same components, broken out for copy-paste
-    ├── case-list.html
-    ├── detail-pane.html
+├── workspace.js              # Filter / sort / detail / panel wiring
+├── data/cases.json           # Converted from specs/sample-data/ (threadlight-workspace-cases/v1)
+├── README.md                 # Data contract + how to rebuild in React/Angular/Vue/Blazor
+└── components/               # The three HITL panels, byte-identical to references/hitl-panels/
+    ├── decision-pane.html
     ├── action-toolbar.html
     └── audit-viewer.html
 ```
 
-The reference is **opinionated** — one polished implementation per workspace
-shape — not a flexible framework.
+The reference is **opinionated** — one implementation per workspace shape —
+not a flexible framework. Only shapes marked *runnable reference* in the
+[shape availability index](#shape-availability-index) ship these files today;
+the rest are generated from the spec into the same layout.
 
 > **Kratos-export mode.** A **Kratos-exported project** (`src/hosted-agent/` +
 > `use-cases/<x>/`, trimmed `infra/` — see
@@ -175,7 +176,29 @@ copy these three files first, then style them per process accent.
 
 ## Workspace shapes (the catalog)
 
-Each shape has its own polished reference. Pick one (driven by spec § 8b).
+Pick one shape (driven by spec § 8b). The catalog below defines each shape's
+anatomy and visual rules; the index says which shapes ship copyable files.
+
+### Shape availability index
+
+<!-- threadlight:shape-index -->
+| Shape | Availability | Reference | Entrypoint |
+|-------|--------------|-----------|------------|
+| `case-list` | runnable reference | `references/shapes/case-list/` | `index.html` |
+| `inbox` | not shipped — generate from spec | — | — |
+| `dashboard` | not shipped — generate from spec | — | — |
+| `console` | not shipped — generate from spec | — | — |
+| `kanban` | not shipped — generate from spec | — | — |
+| `map` | not shipped — generate from spec | — | — |
+| `chat` | not shipped — generate from spec | — | — |
+<!-- /threadlight:shape-index -->
+
+`case-list` is the runnable reference: queue + detail pane, the three HITL
+panels wired in, a `pending_approval` card that shows the
+`threadlight-review-action` command instead of approving, and a documented
+`data/cases.json` contract (see `references/shapes/case-list/README.md`).
+The other shapes have no template in this skill; Step 2 defines how to
+generate them and how to report that.
 
 ### `case-list`
 
@@ -402,8 +425,26 @@ only via Teams cards (see `threadlight-hitl-patterns`)".
 
 ### Step 2: Pick the shape's reference
 
-Copy `references/shapes/{shape}/` into `src/workspace/`. Each shape ships a
-polished, customer-grade vanilla HTML+CSS+JS implementation.
+Look the shape up in the [shape availability index](#shape-availability-index)
+and follow the matching path:
+
+- **Runnable reference** (today only `case-list`): copy
+  `references/shapes/{shape}/` into `src/workspace/` and serve it once
+  (`python3 -m http.server` in that folder) before tailoring, to confirm it
+  loads its data and panels.
+- **Not shipped**: there is no template to copy. Generate the shape from the
+  spec into the same layout (see "Output artifacts"): start from the
+  `case-list` shell, data loader and detail pane, rebuild the center zone to
+  the shape's anatomy and visual rules in the catalog above, copy the three
+  `references/hitl-panels/` files into `components/` unchanged, and keep the
+  `case-list` approval boundary (show the reviewer command for
+  `pending_approval`, never approve in the page).
+
+Record the path in `src/workspace/README.md` and in the hand-off report:
+"copied from the `<shape>` runnable reference" or "generated from the spec;
+no shipped `<shape>` reference". Never describe a generated shape as reused
+or copied from a reference, and never copy a README-only folder as if it were
+an implementation.
 
 ### Step 3: Tailor
 
@@ -424,8 +465,12 @@ Replace tokens in the copied files:
 
 ### Step 4: Wire to mock data
 
-`workspace.js` loads `specs/sample-data/*.json` at startup and renders the
-case list / inbox / dashboard / etc. from real-shaped data.
+Convert `specs/sample-data/*.json` into `data/cases.json` (schema
+`threadlight-workspace-cases/v1`, documented in
+`references/shapes/case-list/README.md`). `workspace.js` loads it at startup
+and renders the case list / inbox / dashboard / etc. from real-shaped data.
+Items held by the governed gateway carry its `pending_approval` result
+(`operation_id`, `proposed_arguments`, `review_context`).
 
 > The customer's real backend will replace these JSON files with API calls
 > in their framework rebuild. The shape contract — which fields are present,
@@ -433,7 +478,8 @@ case list / inbox / dashboard / etc. from real-shaped data.
 
 ### Step 5: Generate framework-mapping README
 
-Generate `src/workspace/README.md` with:
+Generate `src/workspace/README.md` (start from the "Framework mapping"
+section of `references/shapes/case-list/README.md`) with:
 
 - One paragraph per major framework (React, Angular, Vue, Blazor) explaining:
   - Which file maps to which component in their framework
@@ -452,7 +498,8 @@ this workspace:
 **State model (in-memory + URL session anchor)**
 
 Generate the workspace as a stateless front-end backed by an in-memory
-store rebuilt from `specs/sample-data/*.json` on page load. Persist a
+store rebuilt from `data/cases.json` (converted from `specs/sample-data/*.json`)
+on page load. Persist a
 single anchor — the demo's "session" — in the URL query string:
 
 ```
@@ -513,6 +560,11 @@ the data-access boundary should do this once.
 
 ```
 ✅ index.html parses (HTMLParser)
+✅ Served from a static server (`python3 -m http.server`): index.html,
+   workspace.css/js, data/cases.json and components/*.html all return 200
+✅ components/*.html are byte-identical to references/hitl-panels/
+✅ A pending_approval item shows the reviewer command; no control in the
+   page records an approval
 ✅ All filter pills clickable
 ✅ Detail pane opens on case selection
 ✅ Each toolbar button shows the right action gate behavior (links to
@@ -619,9 +671,9 @@ as `index.html` ` not as a follow-up:
 ```
 src/workspace/
 +- index.html                # the workspace SPA (single page)
-+- seed-data.js              # generated from sample-data
-+- components/               # reusable HTML partials (if extracted)
-+- assets/                   # css/js/images (no CDN)
++- workspace.css / workspace.js
++- data/cases.json           # converted from sample-data
++- components/               # the three HITL panels
 +- Dockerfile                # MANDATORY ` see template below
 +- nginx.conf                # MANDATORY ` see template below
 +- .dockerignore             # excludes node_modules, dist/, screenshots/
@@ -633,10 +685,9 @@ Minimal `Dockerfile` (nginx-alpine, ~12 MB, sub-second cold start):
 # src/workspace/Dockerfile
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY index.html  /usr/share/nginx/html/
-COPY seed-data.js /usr/share/nginx/html/
+COPY index.html workspace.css workspace.js /usr/share/nginx/html/
+COPY data/       /usr/share/nginx/html/data/
 COPY components/ /usr/share/nginx/html/components/
-COPY assets/    /usr/share/nginx/html/assets/
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost/ || exit 1
 ```
@@ -719,7 +770,7 @@ front-end engineer can extrapolate from there.
 
 | Stack | Entry point | State | Routing |
 |-------|-------------|-------|---------|
-| **React** | `src/workspace.tsx` reads `seed-data.js` JSON; one root component matches `index.html` shape | Redux Toolkit / Zustand / TanStack Query | React Router |
+| **React** | `src/workspace.tsx` reads `data/cases.json`; one root component matches `index.html` shape | Redux Toolkit / Zustand / TanStack Query | React Router |
 | **Angular** | `WorkspaceComponent` ≈ `index.html` body; child components ≈ `components/*.html` | NgRx or signals | Angular Router |
 | **Vue 3** | `WorkspaceView.vue` SFC matches `index.html` body | Pinia | Vue Router |
 | **Blazor (Server / WASM)** | `Workspace.razor` page; child Razor components | built-in `[Parameter]` flow | Blazor router |
@@ -757,21 +808,16 @@ the workspace and the cinematic feel like the same product:
 | `references/hitl-panels/decision-pane.html` | Agent recommendation + evidence + citations panel |
 | `references/hitl-panels/action-toolbar.html` | BR-XXX-derived action gates with reason capture |
 | `references/hitl-panels/audit-viewer.html` | Immutable audit log drawer with CSV/PDF export |
-| `references/shapes/case-list/` | Polished case-list reference |
-| `references/shapes/inbox/` | Polished inbox reference |
-| `references/shapes/dashboard/` | Polished dashboard reference |
-| `references/shapes/console/` | Polished console reference |
-| `references/shapes/kanban/` | Polished kanban reference |
-| `references/shapes/map/` | Polished map reference |
+| `references/shapes/README.md` | Shape availability (mirrors the index above) |
+| `references/shapes/case-list/` | Runnable case-list reference: `index.html`, `workspace.css`, `workspace.js`, `data/cases.json`, `components/` |
+| `references/shapes/case-list/README.md` | Run instructions, `data/cases.json` contract, approval boundary, framework mapping |
 | `references/palettes.md` | Per-process accent color palette catalog |
-| `references/framework-rebuild.md` | Detailed React/Angular/Vue/Blazor port notes |
 
-> The HITL panel templates are shipped in this commit and are
-> production-grade vanilla HTML/CSS/JS. The shapes/ subdirectories are
-> seeded as empty placeholders; each gets fleshed out as the corresponding
-> future pilots land customer-grade references. Future pilots will canonize
-> `case-list/`, `console/` (or `kanban/`), `dashboard/` (and possibly
-> `map/`), and `inbox/`.
+> The HITL panels and the `case-list` shape are runnable references
+> (`tests/test_workspace_shapes.py` serves a copy and checks its assets).
+> `inbox`, `dashboard`, `console`, `kanban`, `map` and `chat` ship no
+> template: generate them from the spec as described in Step 2 and say so in
+> the hand-off. A shape is added to the index only when its folder runs.
 
 ---
 

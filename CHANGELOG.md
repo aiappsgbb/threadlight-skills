@@ -7,6 +7,22 @@ field.
 
 ## [Unreleased]
 
+### 2.36.0: runnable case-list workspace shape; human sign-in approval evidence on GHCP
+
+- **`threadlight-workspace-ui` (#134).** `references/shapes/case-list/` is now a
+  runnable vanilla HTML/CSS/JS queue with a detail pane, the three HITL panels
+  and a JSON data contract that includes the governed gateway's
+  `pending_approval` record. A pending item shows its operation and the
+  `threadlight-review-action` command; the page never approves or records a
+  governed decision itself. SKILL.md gains an availability index: the other
+  five shapes are not shipped and are generated from the spec, and the hand-off
+  must say so instead of claiming reuse. A new test suite checks the referenced
+  paths, serves the shape and syntax-checks its scripts.
+- **S8 human sign-in follow-up.** A fresh escalation on the GHCP kit was approved
+  by the Approver's own interactive browser sign-in through
+  `threadlight-review-action`, then resumed with one receipt-bound effect and an
+  unchanged replay (`docs/governed-returns-validation.md`).
+
 ### 2.35.0: governed-write workshop kit with a live governed write on GHCP
 
 - **`governed-write` action mode.** A third design mode between the

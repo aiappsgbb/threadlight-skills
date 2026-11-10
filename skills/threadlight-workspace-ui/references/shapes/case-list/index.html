@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>__PROCESS_NAME__ workspace</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="workspace.css">
+</head>
+<body>
+  <a class="ws-skip" href="#case-table">Skip to case list</a>
+
+  <header class="ws-topbar">
+    <div class="ws-identity">
+      <span class="ws-mark" aria-hidden="true"></span>
+      <div>
+        <div class="ws-agent" data-bind="agent_name">__AGENT_NAME__</div>
+        <div class="ws-process" data-bind="process_name">__PROCESS_NAME__</div>
+      </div>
+    </div>
+    <label class="ws-search">
+      <span class="ws-visually-hidden">Search cases</span>
+      <input id="search" type="search" placeholder="Search id, customer, item" autocomplete="off">
+    </label>
+    <div class="ws-topbar-actions">
+      <span class="ws-source" data-bind="source">data/cases.json</span>
+      <button type="button" class="ws-btn" id="reload">Reload data</button>
+      <button type="button" class="ws-btn" id="open-audit" disabled>Audit log</button>
+    </div>
+  </header>
+
+  <div class="ws-banner" id="banner" role="alert" hidden></div>
+
+  <main class="ws-main">
+    <nav class="ws-rail" aria-label="Case filters">
+      <h2 class="ws-rail-title">Status</h2>
+      <ul class="ws-filters" id="filters" role="list"></ul>
+      <h2 class="ws-rail-title">Risk</h2>
+      <ul class="ws-filters" id="risk-filters" role="list"></ul>
+    </nav>
+
+    <section class="ws-list" aria-labelledby="list-title" data-testid="case-list">
+      <div class="ws-list-head">
+        <h1 id="list-title">Cases</h1>
+        <span class="ws-count" id="count" aria-live="polite"></span>
+      </div>
+      <div class="ws-table-wrap">
+        <table class="ws-table" id="case-table" tabindex="-1">
+          <thead>
+            <tr>
+              <th scope="col" aria-sort="none"><button type="button" data-sort="id">Case</button></th>
+              <th scope="col" aria-sort="none"><button type="button" data-sort="status">Status</button></th>
+              <th scope="col" aria-sort="none" class="ws-num"><button type="button" data-sort="amount">Amount</button></th>
+              <th scope="col" aria-sort="none"><button type="button" data-sort="decision">Decision</button></th>
+              <th scope="col" aria-sort="none" class="ws-hide-narrow"><button type="button" data-sort="risk">Risk</button></th>
+              <th scope="col" aria-sort="none" class="ws-hide-narrow"><button type="button" data-sort="sla_due">SLA</button></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <p class="ws-empty" id="empty" hidden>No cases match these filters.</p>
+      </div>
+    </section>
+
+    <section class="ws-detail" id="detail" aria-labelledby="detail-title" data-testid="detail-pane">
+      <div class="ws-detail-empty" id="detail-empty">
+        <h2>Select a case</h2>
+        <p>Pick a case to see the agent's recommendation, evidence and the next step.</p>
+      </div>
+
+      <div id="detail-body" hidden>
+        <header class="ws-summary">
+          <div class="ws-summary-top">
+            <h2 id="detail-title" tabindex="-1"></h2>
+            <span class="ws-badge" id="detail-status"></span>
+          </div>
+          <dl class="ws-fields" id="detail-fields"></dl>
+        </header>
+
+        <section class="ws-pending" id="pending" hidden aria-labelledby="pending-title">
+          <h3 id="pending-title">Approval required</h3>
+          <p class="ws-pending-lead">
+            The governed gateway held this write. Nothing has changed yet.
+            This workspace cannot approve it: an authorised reviewer records the
+            decision with <code>threadlight-review-action</code>, signed in as themselves.
+          </p>
+          <dl class="ws-fields" id="pending-fields"></dl>
+          <table class="ws-args">
+            <caption>Proposed arguments</caption>
+            <tbody id="pending-args"></tbody>
+          </table>
+          <fieldset class="ws-decision-choice">
+            <legend>Reviewer decision to put in the command</legend>
+            <label><input type="radio" name="review-decision" value="approve" checked> approve</label>
+            <label><input type="radio" name="review-decision" value="reject"> reject</label>
+          </fieldset>
+          <pre class="ws-command" id="pending-command" tabindex="0" aria-label="Review command"></pre>
+          <div class="ws-command-actions">
+            <button type="button" class="ws-btn" id="copy-command">Copy command</button>
+            <span class="ws-copy-status" id="copy-status" role="status" aria-live="polite"></span>
+          </div>
+          <p class="ws-pending-note">
+            Copying the command records nothing. Run it with the exact pending result
+            saved privately from the host (<code id="pending-file"></code>), not with this
+            display copy. The agent's later resume verifies and consumes the recorded decision.
+          </p>
+        </section>
+
+        <div id="decision-slot"></div>
+
+        <details class="ws-trace">
+          <summary>Show why: agent reasoning</summary>
+          <ol id="reasoning"></ol>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <div id="audit-slot"></div>
+
+  <script src="workspace.js"></script>
+</body>
+</html>
