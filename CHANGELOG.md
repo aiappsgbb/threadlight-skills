@@ -66,7 +66,6 @@ field.
   by the Approver's own interactive browser sign-in through
   `threadlight-review-action`, then resumed with one receipt-bound effect and an
   unchanged replay (`docs/governed-returns-validation.md`).
-||||||| parent of 05221959 (2.36.0: App Insights project connection moves to an idempotent postprovision hook)
 
 ### 2.35.0: governed-write workshop kit with a live governed write on GHCP
 
@@ -121,7 +120,6 @@ field.
   0 replicas, K1 passed in 68 s (cold) and K2–K6 passed in 43–55 s; all MCP tool
   calls succeeded.
 - **Regression test.** `test_mcp_container_app_scales_to_zero_by_default_with_warm_opt_in`.
-||||||| parent of 96019b07 (2.34.0: governed-write workshop kit with a live governed write on GHCP)
 
 ### 2.33.0: opt-in voice front-end on the GHCP hosted agent (Foundry Hosted Voice, preview)
 
@@ -206,7 +204,6 @@ field.
   `agent` service is now matched to the hosted agent through the manifest's
   declared host, so it no longer reports "no matching ACA" when `azure.yaml`
   names the agent after the process.
-||||||| parent of fd3d7442 (2.31.0: split threadlight-deploy SKILL.md into core + references)
 ### 2.29.0: awesome-gbb ports stay Threadlight-owned; orphaned MCP fixture helpers removed
 
 - **Ownership kept.** `threadlight-citadel-hub`, `threadlight-citadel-spoke`,
@@ -229,8 +226,6 @@ field.
   Standard is a reasonable deploy choice when credits are short (same live chain,
   no hand edits, longer run); avoid Fusion High for this chain. The note says it
   is not a benchmark.
-||||||| parent of 09b87617 (2.30.0: keep awesome-gbb ports Threadlight-owned; drop orphaned MCP fixture helpers)
-||||||| parent of 3db00c82 (2.31.0: safe-check post-deploy honours recorded deferrals and the design agent alias)
 
 ### 2.27.0: smaller payload: uncited planning history moved to git history
 
