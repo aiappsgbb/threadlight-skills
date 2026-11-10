@@ -12,7 +12,8 @@
 //     ACA UAMI needs AcrPull on the ACR)
 //   - Liveness + startup probes on /health — without these, cold-start tool
 //     calls return 502 until the first health scrape
-//   - minReplicas: 1 — avoid the cold-start hit on every demo
+//   - minReplicas defaults to 0 (scale to zero, no always-on cost); pass 1
+//     (MCP_MIN_REPLICAS=1) only to keep a demo warm, then set it back to 0
 //
 // NOT in this module: VNet injection. If your agent runs in a private
 // topology, see microsoft-foundry SKILL for the network shape. External
@@ -28,6 +29,10 @@ param location string = resourceGroup().location
 
 @description('Container app environment ID')
 param containerAppEnvironmentId string
+
+@description('Minimum replicas. 0 scales to zero when idle; 1 keeps a warm replica for a live demo (always-on cost).')
+@minValue(0)
+param minReplicas int = 0
 
 @description('Container image (in the ACR; pulled with the UAMI below)')
 param image string
@@ -98,7 +103,7 @@ resource mcpAca 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        minReplicas: 1
+        minReplicas: minReplicas
         maxReplicas: 3
       }
     }

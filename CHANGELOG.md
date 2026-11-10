@@ -7,6 +7,25 @@ field.
 
 ## [Unreleased]
 
+### 2.34.0: pilot MCP Container App scales to zero by default
+
+- **No always-on MCP replica.** The GHCP pilot infra (`main.bicep`) exposes
+  `mcpMinReplicas` (default `0`, max 2), mapped to `${MCP_MIN_REPLICAS=0}` in
+  `main.parameters.json`. It replaces the hard-coded `minReplicas: 1`. The
+  canonical `threadlight-mcp-aca` module gains the same `minReplicas` parameter
+  (default `0`). To keep a demo warm, run `azd env set MCP_MIN_REPLICAS 1`
+  with `azd provision`, then set it back to `0`.
+- **Docs.** `gotchas.md`, `azd-extension-sdk.md`, the `azd-modules` README, the
+  `threadlight-mcp-aca` skill and `WORKSHOP-1H-QUICKSTART.md` (warm-up before the
+  demo, reset afterwards) now describe the cold-start trade-off. They drop the
+  unmeasured "200-500s" claim.
+- **Live check (2026-11-10, eastus2).** The regenerated infra set
+  `minReplicas` to 0 on the deployed MCP app through `azd provision`, and
+  `azd provision --preview` with `MCP_MIN_REPLICAS=1` showed `0 => 1`. With
+  0 replicas, K1 passed in 68 s (cold) and K2–K6 passed in 43–55 s; all MCP tool
+  calls succeeded.
+- **Regression test.** `test_mcp_container_app_scales_to_zero_by_default_with_warm_opt_in`.
+
 ### 2.33.0: opt-in voice front-end on the GHCP hosted agent (Foundry Hosted Voice, preview)
 
 - **Voice front-end, same agent.** Foundry documents a voice-based agent that

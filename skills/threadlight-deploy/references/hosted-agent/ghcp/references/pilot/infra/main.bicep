@@ -33,6 +33,11 @@ param principalType string = 'User'
 @description('Placeholder image for the MCP container app. `azd deploy mcp` replaces it.')
 param mcpImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 
+@description('MCP container app minimum replicas. 0 (default) scales to zero when idle: no always-on cost, but the first tool call after idle waits for a cold start. Set 1 (azd env set MCP_MIN_REPLICAS 1) only to keep a warm replica for a live demo, then set it back to 0.')
+@minValue(0)
+@maxValue(2)
+param mcpMinReplicas int = 0
+
 param modelName string = 'gpt-5.4-mini'
 param modelVersion string = '2026-03-17'
 
@@ -117,7 +122,7 @@ resource mcp 'Microsoft.App/containerApps@2024-03-01' = {
         resources: { cpu: json('0.5'), memory: '1Gi' }
         env: [ { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString } ]
       } ]
-      scale: { minReplicas: 1, maxReplicas: 2 }
+      scale: { minReplicas: mcpMinReplicas, maxReplicas: 2 }
     }
   }
 }

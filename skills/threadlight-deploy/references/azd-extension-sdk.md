@@ -58,7 +58,10 @@ services:
 > **MCP ACA also needs:**
 > - Shared UAMI assigned (for `DefaultAzureCredential` inside the MCP server)
 > - `AcrPull` role on the ACR for the UAMI (so ACA can pull the container image)
-> - `minReplicas: 1` in Bicep (cold start from scale-to-0 adds 200-500s latency)
+> - `minReplicas` as a parameter defaulting to 0 (scale to zero, no always-on
+>   cost). For a live demo, warm it with `azd env set MCP_MIN_REPLICAS 1` and
+>   `azd provision`, then set it back to 0; the first call after idle waits for
+>   a cold start.
 
 ### Install the extension
 

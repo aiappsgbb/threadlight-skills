@@ -700,3 +700,29 @@ def test_explicit_no_input_tool_is_marked_and_callable_with_empty_args():
     assert harness._contract_failure(plan["list_open_cases"]) == ""
     assert harness._arguments(None, plan["list_open_cases"], {}, 0) == ({}, "")
     assert "no arguments" in harness._contract_failure(plan["get_case"])
+
+
+def test_mcp_container_app_scales_to_zero_by_default_with_warm_opt_in(generated: Path):
+    # No always-on Container Apps by default: the MCP ACA scales to zero and a
+    # demo opts into a warm replica with `azd env set MCP_MIN_REPLICAS 1`.
+    bicep = (generated / "infra" / "main.bicep").read_text()
+    assert re.search(r"^param mcpMinReplicas int = 0$", bicep, re.M)
+    assert "scale: { minReplicas: mcpMinReplicas, maxReplicas: 2 }" in bicep
+    assert not re.search(r"minReplicas:\s*1\b", bicep)
+    params = json.loads((generated / "infra" / "main.parameters.json").read_text())["parameters"]
+    assert params["mcpMinReplicas"] == {"value": "${MCP_MIN_REPLICAS=0}"}
+    canonical = (SKILLS / "threadlight-mcp-aca" / "references" / "bicep" / "mcp-aca.bicep").read_text()
+    assert re.search(r"^param minReplicas int = 0$", canonical, re.M)
+    assert not re.search(r"minReplicas:\s*1\b", canonical)
+    for doc in (
+        DEPLOY / "references" / "gotchas.md",
+        DEPLOY / "references" / "azd-extension-sdk.md",
+        DEPLOY / "references" / "azd-modules" / "README.md",
+        SKILLS / "threadlight-mcp-aca" / "SKILL.md",
+    ):
+        text = doc.read_text()
+        assert "MCP_MIN_REPLICAS" in text, doc
+        assert "200-500s" not in text, doc
+    workshop = (REPO / "docs" / "WORKSHOP-1H-QUICKSTART.md").read_text()
+    assert "azd env set MCP_MIN_REPLICAS 1" in workshop
+    assert "azd env set MCP_MIN_REPLICAS 0" in workshop
