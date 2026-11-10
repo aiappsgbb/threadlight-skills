@@ -449,6 +449,52 @@ It was executed live on 2026-11-10 ([S8](governed-returns-validation.md#s8-gover
 That evidence is for that deployment and that one binding; it is not a
 governance pass for participants' pilots or whole-agent governance.
 
+### 6.6b Advanced (optional): text, voice and the governed write on one pilot
+
+One pilot, three entry points, one governed write: the facilitator speaks to
+the governed agent, the high-value decision waits for a person, the Approver
+decides, and the caller completes it in the same call. Voice is **preview**:
+run this only when the facilitator explicitly wants it. Prepare it before the
+session; it is not a participant exercise.
+
+**Before the session.** In the kit's `specs/SPEC.md` § 11e set
+`voice_frontend: hosted-voice` with `voice_opt_in_source: user`,
+`voice_opt_in_evidence` and `preview_acknowledged: true`, then follow the
+[kit runbook](../examples/governed-write-ghcp/README.md) with
+`export AZD_ALPHA_ENABLE_AGENTS_VOICE=true` for every `azd` command (the
+`azure.ai.agents` extension refuses `kind: voice` without it). The governance
+package keeps the voice front-end: the governed GHCP host serves the Bridge on
+`invocations_ws`, the `<agent>-voice` wrapper uses it as conversation engine.
+Every time the agent gets a new version (a new signed policy), **redeploy the
+voice wrapper** too: `conversationEngine` pins the version deployed with it,
+and the old version fails with `startup_failed`. Check with the official
+`smoke_test_voice.py` against `<agent>-voice`.
+
+**During the session** (measured live on 2026-11-10, eastus2; spoken input was
+synthetic text-to-speech (TTS) audio from a script, no human voice):
+
+| Beat | What the room sees | Measured |
+|---|---|---|
+| `demo_capacity.py warm ... --agent <agent>` | services and agent ready (pass `--agent`, the default names the kit agent) | about 3 min (190 s) |
+| Speak: "Triage return case RMA-W04-C and record your decision." | the agent says one moment, then that nothing is recorded and a human Approver must decide | hold message 4.6 s, answer complete 20 s after the end of speech |
+| Pending record | the client receives the host's exact `pending_approval` record as unspoken data (`response.invocation.delta`); show it in the [case-list workspace](../skills/threadlight-workspace-ui/references/shapes/case-list/README.md) (pending card, reviewer command, no Approve button) | arrived 14 s after the end of speech |
+| Approver | `threadlight-review-action --pending <saved record> ...` signed in as themselves | 1.2 s for the recorded decision itself (sign-in time not measured) |
+| Speak: "The supervisor has approved it. Please complete that decision now." | the host gives the exact original arguments and operation id back as a host record; the agent says it was recorded | 12 s after the end of speech; whole call 53 s |
+| `demo_capacity.py cool` | everything back to zero replicas | - |
+
+What to point at: the escalation is decided by the gateway, not by the voice;
+nothing is written until the Approver decides; the resume re-checks policy,
+facts and identity and consumes the grant once. If you ask to complete before
+the Approver decides, the agent answers that it is still pending.
+
+**Unknown outcome: never retry.** If the agent says the outcome is unknown (live: the business API was cold
+because a redeploy had reset it to zero replicas, and it committed after the
+gateway's bounded call), the write may have happened. Reconcile
+from the business case and audit records, then warm and use the next case set.
+
+Not validated here: speech recognition of real human voices, accents and noisy
+rooms, barge-in during a governed turn, perceived latency on venue networks.
+
 Then review the broader readiness work:
 
 - **Production-readiness hand-off** — `threadlight-production-ready` is the

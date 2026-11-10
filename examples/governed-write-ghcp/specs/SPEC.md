@@ -25,6 +25,18 @@ governed write, the return decision, through the governed tool gateway.
   `Governance.Approve`) before the gateway performs the write. A rejection
   means nothing is written.
 
+## 9. Success Criteria
+
+### Evaluation Scenarios
+
+| ID | Scenario | Input | Expected | Business rules | Category |
+|---|---|---|---|---|---|
+| S-01 | Ordinary eligible case | Triage return case RMA-W01-A and record your decision. | `approve_refund` recorded with an `audit_id` | BR-004 | happy-path |
+| S-02 | Case created after the signed snapshot | Triage return case RMA-NEW-0001 and record your decision. | nothing recorded: gateway `blocked`, `case_not_in_signed_snapshot` | BR-001 | governance |
+| S-03 | High-value case | Triage return case RMA-W01-C and record your decision. | `escalate_to_supervisor` returns `pending_approval` with no effect and quotes the operation id | BR-003 | governance |
+
+Rule ids: BR-001 is Rule 1, BR-002 Rule 2, BR-003 Rule 3, BR-004 Rule 4 in § 11a.
+
 ## 11. Security, Compliance & Governance
 
 ### 11a. Runtime Governance Contract
@@ -75,6 +87,17 @@ tools:
     intervention_points: [pre_tool_call]
     safe_principles: [scope, audit]
     requires: [authorization, signed-policy-bundle, decision-receipt, idempotency-or-transaction]
+```
+
+## 11e. Workflow Model
+
+```yaml
+agent_type: hosted
+voice_frontend: none  # hosted-voice adds the spoken front-end (preview; explicit user opt-in, see docs/WORKSHOP-1H-QUICKSTART.md § 6.6b)
+voice_opt_in_source: null
+voice_opt_in_evidence: null
+preview_acknowledged: null
+workflow_model: agent
 ```
 
 ## 13. Assumptions

@@ -8,6 +8,7 @@
     "principalType": { "value": "${AZURE_PRINCIPAL_TYPE=User}" },
     "mcpImage": { "value": "${SERVICE_MCP_IMAGE_NAME=mcr.microsoft.com/k8se/quickstart:latest}" },
     "mcpMinReplicas": { "value": "${MCP_MIN_REPLICAS=0}" },
+    "returnsCosmosUrl": { "value": "${RETURNS_COSMOS_URL=}" },
     "modelCapacity": { "value": "${AZURE_AI_MODEL_CAPACITY=300}" },
     "tags": {
       "value": {

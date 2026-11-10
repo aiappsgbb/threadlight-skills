@@ -89,3 +89,30 @@ test('docs operations spine and Pages basics mention the opt-in voice front-end'
     assert.match(text, /voice front-end[^.]{0,200}(opt-in|explicit)/i, file);
   }
 });
+
+test('workshop has an advanced facilitator segment: text + voice + governed write on one pilot', () => {
+  const text = read('docs/WORKSHOP-1H-QUICKSTART.md');
+  const section = text.split(/^### 6\.6b Advanced \(optional\): text, voice and the governed write on one pilot/m)[1];
+  assert.ok(section, 'missing § 6.6b');
+  const body = collapse(section.split(/^###? /m)[0]);
+  for (const term of ['voice_frontend: hosted-voice', 'AZD_ALPHA_ENABLE_AGENTS_VOICE=true', 'pending_approval',
+    'threadlight-review-action', 'case-list', 'response.invocation.delta', 'demo_capacity.py warm', '--agent',
+    'redeploy the voice wrapper', 'smoke_test_voice.py']) {
+    assert.ok(body.includes(term), term);
+  }
+  assert.match(body, /measured live on 2026-11-10/i);
+  assert.match(body, /synthetic[^.]{0,60}(TTS|text-to-speech)/i);
+  assert.match(body, /not (a )?human voice|no human voice/i);
+  assert.match(body, /\d+\s?s\b/);
+  assert.match(body, /unknown outcome[^.]{0,120}(never retry|reconcile)/i);
+});
+
+test('governance runbook and kit README document the governed voice bridge', () => {
+  const gov = collapse(read('skills/threadlight-deploy/references/governance/README.md'));
+  for (const term of ['THREADLIGHT_VOICE_BRIDGE', 'invocations_ws', 'response.output_data.done', 'host record', 'barge-in']) {
+    assert.ok(gov.includes(term), `governance README: ${term}`);
+  }
+  const kit = collapse(read('examples/governed-write-ghcp/README.md'));
+  assert.match(kit, /voice_frontend: hosted-voice/);
+  assert.match(kit, /WORKSHOP-1H-QUICKSTART\.md#66b/);
+});

@@ -138,6 +138,19 @@ itself (in the live run it chose `deny_refund` instead of approving an
 ineligible case). That is model behavior, not governance; the gateway deny is
 shown with the case created **after** the signed snapshot (`RMA-NEW-0001`).
 
+## Optional: the same pilot by voice (preview)
+
+Set `voice_frontend: hosted-voice` and the user opt-in fields in
+[`specs/SPEC.md`](specs/SPEC.md) § 11e before generating, export
+`AZD_ALPHA_ENABLE_AGENTS_VOICE=true` for the `azd` commands, and the same
+runbook adds a managed voice wrapper whose spoken turns run the same governed
+write. Facilitator script and live timings:
+[workshop § 6.6b](../../docs/WORKSHOP-1H-QUICKSTART.md#66b-advanced-optional-text-voice-and-the-governed-write-on-one-pilot).
+`generate_only` now produces this pilot from `specs/` and `AGENTS.md` (the agent
+instructions) without hand edits: the design-owned MCP server keeps its own
+hashed `requirements.lock`, and the pilot Bicep takes the business Cosmos endpoint
+from `RETURNS_COSMOS_URL`.
+
 ## Known limits and operator notes
 
 - **Cold start = unknown outcome.** Scale-to-zero services are not warm enough

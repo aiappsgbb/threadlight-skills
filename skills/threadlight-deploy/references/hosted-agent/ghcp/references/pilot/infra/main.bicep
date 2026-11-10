@@ -33,6 +33,9 @@ param principalType string = 'User'
 @description('Placeholder image for the MCP container app. `azd deploy mcp` replaces it.')
 param mcpImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 
+@description('Optional business Cosmos endpoint read by a design-owned MCP server (governed-write kit). Empty: no data-source settings.')
+param returnsCosmosUrl string = ''
+
 @description('MCP container app minimum replicas. 0 (default) scales to zero when idle: no always-on cost, but the first tool call after idle waits for a cold start. Set 1 (azd env set MCP_MIN_REPLICAS 1) only to keep a warm replica for a live demo, then set it back to 0.')
 @minValue(0)
 @maxValue(2)
@@ -120,7 +123,13 @@ resource mcp 'Microsoft.App/containerApps@2024-03-01' = {
         name: 'mcp'
         image: mcpImage
         resources: { cpu: json('0.5'), memory: '1Gi' }
-        env: [ { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString } ]
+        env: concat([ { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString } ],
+          empty(returnsCosmosUrl) ? [] : [
+            { name: 'AZURE_CLIENT_ID', value: uami.properties.clientId }
+            { name: 'RETURNS_COSMOS_URL', value: returnsCosmosUrl }
+            { name: 'RETURNS_COSMOS_DATABASE', value: 'returns' }
+            { name: 'RETURNS_COSMOS_CONTAINER', value: 'returns-cases' }
+          ])
       } ]
       scale: { minReplicas: mcpMinReplicas, maxReplicas: 2 }
     }
@@ -235,6 +244,7 @@ output AZURE_AI_MODEL_DEPLOYMENT_NAME string = model.name
 output AZURE_CONTAINER_REGISTRY_NAME string = acr.name
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.properties.loginServer
 output MCP_SERVER_FQDN string = mcp.properties.configuration.ingress.fqdn
+output MCP_IDENTITY_PRINCIPAL_ID string = uami.properties.principalId
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = appi.properties.ConnectionString
 // Read by scripts/record_deploy_evidence.py (telemetry evidence for the Foundry package gate).
 output APPLICATIONINSIGHTS_RESOURCE_ID string = appi.id
