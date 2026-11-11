@@ -160,3 +160,16 @@ def test_a_runaway_turn_hits_the_total_deadline_even_with_keepalives():
     assert out["error_class"] == "deadline"
     assert out["client_ms"] <= 150_000
     assert http.response.closed
+
+
+def test_read_timeout_inside_the_stream_is_a_timeout_not_a_stream_error():
+    """Live 2026-11-11: requests wraps a stalled stream's read timeout as ConnectionError('... Read timed out.')."""
+    class ConnectionError(Exception):
+        pass
+
+    class Stalled(_Response):
+        def iter_lines(self, decode_unicode=True):
+            yield 'data: {"type": "assistant.turn_start", "data": {}}'
+            raise ConnectionError("HTTPSConnectionPool(host='x', port=443): Read timed out.")
+
+    assert ha.invoke_once(_Http(Stalled(200)), "u", "t", "p", "s")["error_class"] == "timeout"

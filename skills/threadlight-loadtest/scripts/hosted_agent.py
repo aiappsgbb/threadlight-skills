@@ -225,8 +225,8 @@ def invoke_once(http: Any, url: str, token: str, prompt: str, session_id: str, *
     except _Deadline:
         out["error_class"] = "deadline"
     except Exception as exc:  # noqa: BLE001
-        out["error_class"] = out["error_class"] or ("timeout" if "timeout" in type(exc).__name__.lower()
-                                                    else "stream_error")
+        timed_out = "timeout" in type(exc).__name__.lower() or "timed out" in str(exc).lower()
+        out["error_class"] = out["error_class"] or ("timeout" if timed_out else "stream_error")
     finally:
         close = getattr(response, "close", None)
         if close:
