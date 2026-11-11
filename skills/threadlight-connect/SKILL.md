@@ -17,7 +17,7 @@ description: >-
   (`microsoft-foundry` rbac); red-team scanning (threadlight-redteam); evals
   (threadlight-evals); AGT governance (threadlight-govern).
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Threadlight Connect — swap the mock, prove the real
