@@ -105,9 +105,21 @@ def test_opener_plus_any_clause_is_a_declared_effect(text):
 @pytest.mark.parametrize("text", [
     "None", "None.", "N/A", "n/a.", "No side effects (read-only lookup)", "Read-only.", "-", "—",
     "No state changes (lookup only).", "None (read-only)",
+    # threadlight-design Fast-PoC wording (2026-11-09 returns-triage): a trailing
+    # clause made only of pure qualifiers adds no effect.
+    "none; read only.", "None, read-only.", "None; read-only lookup",
 ])
 def test_clean_openers_are_no_effect(text):
     assert declared_side_effects(text) == ""
+
+
+@pytest.mark.parametrize("text", [
+    "none; read only except it closes the case", "None; read only, then posts to Teams",
+    "None, reads and reserves the order",
+])
+def test_pure_trailing_clause_cannot_hide_an_effect(text):
+    assert declared_side_effects(text) == text
+    assert _kind("returns_get_case", text) == "write"
 
 
 def test_name_fallback_cannot_hide_a_refund():

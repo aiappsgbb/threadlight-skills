@@ -557,6 +557,9 @@ opt-in and provenance requirements, not a paid run. For performance evidence
 deployed pilot), run the separately approved, budget-capped
 [load test](../skills/threadlight-loadtest/SKILL.md#hosted-agent-performance-evidence-latency-waterfall);
 it is live evidence for latency and cost only, not for governance or isolation.
+For network isolation, promote the pilot with the
+[private profile](../skills/threadlight-deploy/references/private-profile.md):
+its live record covers private networking only, not governance of actions.
 
 Use [Self-improving](https://aiappsgbb.github.io/threadlight-skills/self-improving.html)
 for finished-run diagnostics and plan-only upgrades, and

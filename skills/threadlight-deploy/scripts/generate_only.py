@@ -52,7 +52,10 @@ HERE = Path(__file__).resolve().parent
 DEPLOY = HERE.parent
 GHCP = DEPLOY / "references" / "hosted-agent" / "ghcp" / "references"
 PILOT = GHCP / "pilot"
+PRIVATE_INFRA = PILOT / "infra-private"
 GEN = DEPLOY / "references" / "generate-only"
+PROFILES = ("fast-poc", "private")
+MODEL_GATEWAYS = ("none", "apim")
 if str(DEPLOY.parent.parent) not in sys.path:
     sys.path.insert(0, str(DEPLOY.parent.parent))
 
@@ -550,6 +553,14 @@ def _governed_write_row(tool: str) -> str:
     )
 
 
+_PRIVATE_ROW = (
+    "| Private network (`--profile private`) | generated | Public network access is off: `azd provision` runs "
+    "from the laptop, but `azd deploy`, invocations, evidence and evaluations run inside the VNet "
+    "(`scripts/private/vnet_run.py` or Bastion). Verify with `threadlight-safe-check --phase post-deploy`. "
+    "Not covered: egress allow-listing (NAT gateway, no firewall), DR, budgets, Defender. |\n"
+)
+
+
 _RECOMMEND_ONLY_ROW = (
     "| Action mode (`recommend-only`) | by design | The agent proposes each decision with its citations; "
     "no write tool is deployed, and a person records or applies the outcome (SPEC § 8). Governance is not "
@@ -770,8 +781,24 @@ _VOICE_REQUIRED_VERSIONS = (
 )
 
 
+_PRIVATE_ENV = (
+    "      - name: MCP_SERVER_FQDN\n        value: ${MCP_SERVER_FQDN}\n",
+    "      - name: MCP_SERVER_FQDN\n        value: ${MCP_SERVER_FQDN}\n"
+    "      # Private profile: model calls through the API Management gateway when set (empty: project endpoint).\n"
+    "      - name: MODEL_GATEWAY_URL\n        value: ${MODEL_GATEWAY_URL}\n",
+)
+_PRIVATE_HOOKS = (
+    "hooks:\n",
+    "hooks:\n"
+    "  # Private profile: ACR remote-build access and the operator host key (control plane only).\n"
+    "  preprovision:\n    posix:\n      shell: sh\n      run: sh hooks/preprovision.sh\n      continueOnError: false\n",
+)
+_PRIVATE_POSTPROVISION = ("      run: sh hooks/postprovision.sh\n",
+                          "      run: sh hooks/postprovision.sh && sh hooks/acr-connection.sh\n")
+
+
 def render_azure_yaml(project: str, agent: str, description: str, voice: dict[str, str] | None = None,
-                      builtin_tools: str | None = None) -> str:
+                      builtin_tools: str | None = None, profile: str = "fast-poc") -> str:
     text = (PILOT / "azure.yaml").read_text(encoding="utf-8")
     body = text[text.index("name: __PROJECT_NAME__"):]
     header = (
@@ -797,6 +824,12 @@ def render_azure_yaml(project: str, agent: str, description: str, voice: dict[st
             raise WorkspaceError("pilot azure.yaml changed shape; cannot add copilot_builtin_tools")
         body = body.replace(anchor, anchor + "      # SPEC 11e copilot_builtin_tools (user opt-in)\n"
                             f"      - name: THREADLIGHT_BUILTIN_TOOLS\n        value: \"{builtin_tools}\"\n")
+    if profile == "private":
+        for old, new in (_PRIVATE_ENV, _PRIVATE_POSTPROVISION):
+            if body.count(old) != 1:
+                raise WorkspaceError("pilot azure.yaml changed shape; cannot apply the private profile")
+            body = body.replace(old, new)
+        body = body.replace("\n" + _PRIVATE_HOOKS[0], "\n" + _PRIVATE_HOOKS[1], 1)
     desc = json.dumps(description or f"{agent} Foundry hosted agent")
     return header + (
         body.replace("__PROJECT_NAME__", project)
@@ -805,27 +838,50 @@ def render_azure_yaml(project: str, agent: str, description: str, voice: dict[st
     )
 
 
-def render_posture(project: str) -> str:
-    rows = "\n".join(f"  {k}: {v}" for k, v in DEMO_SANDBOX_POSTURE.items())
+PRIVATE_POSTURE = {
+    "networking": "private (Foundry, ACR, App Insights ingestion, MCP and model gateway on private endpoints/VNet)",
+    "replicas": "single",
+    "model_pinning": "ga-pinned",
+    "retention": "90d",
+    "defender": "off (SecurityControl=Ignore tag)",
+    "cost_alerts": "none",
+    "dr": "none",
+}
+
+
+def render_posture(project: str, profile: str = "fast-poc", gateway: str = "none") -> str:
+    if profile == "private":
+        posture, target, source = PRIVATE_POSTURE, "customer-pilot", "provided"
+        lead = ("Generated with `--profile private`: the same pilot as the Fast-PoC, packaged for a\n"
+                "private network. `networking: private` is what `threadlight-safe-check --phase\n"
+                "post-deploy` verifies (public network access off, approved private endpoints, linked\n"
+                "private DNS, internal Container Apps environment). Replicas, retention, Defender,\n"
+                "budgets and DR are still pilot values: decide them before production.")
+        extra = f"profile: private\nmodel_gateway: {gateway}\n"
+    else:
+        posture, target, source = DEMO_SANDBOX_POSTURE, "demo-sandbox", "defaulted-after-skip"
+        lead = ("Generate-only run: nobody answered the T-0 deployment-target question, so the\n"
+                "posture is defaulted to the least-commitment target. Re-run T-0 before a real\n"
+                "deploy if the target is not a disposable demo sandbox.")
+        extra = ""
+    rows = "\n".join(f"  {k}: {v}" for k, v in posture.items())
     return f"""# Deployment posture — {project}
 
 <!-- {MARKER} -->
 
-Generate-only run: nobody answered the T-0 deployment-target question, so the
-posture is defaulted to the least-commitment target. Re-run T-0 before a real
-deploy if the target is not a disposable demo sandbox.
+{lead}
 
 ```yaml
-deployment_target: demo-sandbox
-source: defaulted-after-skip
+deployment_target: {target}
+source: {source}
 decided_at: generate-only
-posture:
+{extra}posture:
 {rows}
 ```
 
-| Control | demo-sandbox value |
+| Control | {target} value |
 |---|---|
-""" + "\n".join(f"| {k} | {v} |" for k, v in DEMO_SANDBOX_POSTURE.items()) + "\n"
+""" + "\n".join(f"| {k} | {v} |" for k, v in posture.items()) + "\n"
 
 
 def _unprovisioned_rows(unprovisioned: list[str], standins: list[str]) -> str:
@@ -873,6 +929,100 @@ deploys this repo with their own credentials.
 {extra}
 Nothing here is evidence of a deployment. `skills/_shared/foundry_package.py`
 reports this workspace as `INCOMPLETE` (exit 3) until the deferred evidence exists.
+"""
+
+
+def _private_deploy_md(project: str, agent: str, gateway: str) -> str:
+    gateway_note = (
+        "`THREADLIGHT_MODEL_GATEWAY=apim` puts Azure API Management Standard v2 in front of the model: "
+        "inbound only through its private endpoint, outbound through VNet integration to the Foundry "
+        "private endpoint. The agent sends `MODEL_GATEWAY_URL`; the gateway validates the agent's "
+        "Microsoft Entra token and calls Foundry with its own managed identity. Standard v2 is a recurring "
+        "charge (list price about USD 0.96 per hour in East US 2, November 2026): delete it after a test "
+        "with `az apim delete` if the pilot doesn't need it."
+        if gateway == "apim" else
+        "No model gateway (`THREADLIGHT_MODEL_GATEWAY=none`): the agent calls the Foundry private endpoint. "
+        "Set `apim` and re-provision to add the API Management gateway. A non-Azure gateway is the same "
+        "pattern: point `MODEL_GATEWAY_URL` (ending in `/openai/v1`) at a pass-through route to the project "
+        "endpoint that serves streaming `/openai/v1/responses` with a Microsoft Entra token for "
+        "`https://ai.azure.com`; it is not generated or proven here."
+    )
+    return f"""
+## Private network (`--profile private`)
+
+Same agent, MCP server, evals and design as the Fast-PoC; only the
+infrastructure and how you reach it change.
+
+| | Fast-PoC | Private |
+|---|---|---|
+| Foundry account | public endpoint | `publicNetworkAccess: Disabled`, private endpoint, hosted-agent VNet injection |
+| Container registry | Basic, public | Premium, private endpoint; public endpoint Deny-by-default (see below) |
+| MCP server | public Container App | internal Container Apps environment on the VNet |
+| App Insights | public ingestion | ingestion only through an Azure Monitor Private Link Scope |
+| Model route | project endpoint | project private endpoint, or the API Management gateway |
+| Where you deploy from | laptop | laptop provisions; deploy, invoke and evaluate **from inside the network** |
+
+### 1. Provision from the laptop (control plane only)
+
+```sh
+azd env new {project}-priv
+azd env set AZURE_LOCATION eastus2
+azd env set THREADLIGHT_OWNER "<your alias>"
+azd env set THREADLIGHT_PURPOSE "pilot"
+azd env set THREADLIGHT_DISPOSABLE "true"
+azd env set THREADLIGHT_MODEL_GATEWAY {gateway}
+azd provision
+```
+
+`hooks/preprovision.sh` creates the operator host key under `~/.ssh` and limits
+the registry's public endpoint to the region's `AzureContainerRegistry`
+service-tag prefixes. Why: `azd` remote builds run as ACR quick builds, which
+can't reach a registry whose `publicNetworkAccess` is Disabled unless they run on
+a dedicated agent pool, and `azd` doesn't select one
+([ACR private endpoints](https://learn.microsoft.com/azure/container-registry/container-registry-private-endpoints)).
+Your laptop and everyone else stay denied; pulls use the private endpoint. Set
+`THREADLIGHT_ACR_BUILD_ACCESS=none` to turn the public endpoint off when images
+are built inside the network.
+
+{gateway_note}
+
+### 2. Deploy, invoke and evaluate from inside the network
+
+With public access off, Foundry data-plane calls fail from the internet
+([Learn](https://learn.microsoft.com/azure/foundry/agents/how-to/virtual-networks)).
+`scripts/private/vnet_run.py` drives the in-VNet operator host through Azure Run
+Command (a control-plane call: no public IP, no open port, no VPN). The host
+signs in with its own managed identity.
+
+```sh
+python scripts/private/vnet_run.py status
+python scripts/private/vnet_run.py sync
+python scripts/private/vnet_run.py run "azd deploy --no-prompt"
+python scripts/private/vnet_run.py run "azd ai agent invoke {agent} '<a killer prompt>'"
+python scripts/private/vnet_run.py run "python3 scripts/record_deploy_evidence.py"
+python scripts/private/vnet_run.py run "python3 -m venv .venv && .venv/bin/pip install -q --require-hashes -r evals/requirements.lock && .venv/bin/python evals/run_evals.py"
+python scripts/private/vnet_run.py get specs/foundry-package-manifest.json
+```
+
+For an interactive shell (workshop), open the VM in the Azure portal and use
+**Connect > Bastion** (Bastion Developer: free, browser only, one VM at a time,
+[select regions](https://learn.microsoft.com/azure/bastion/bastion-sku-comparison#regional-availability)),
+user `azureuser`, key `~/.ssh/threadlight-<env>-ops`. For CI, run the same
+commands on a self-hosted runner in the VNet.
+
+### 3. Verify the network (laptop, control plane)
+
+```sh
+python <threadlight-skills>/skills/threadlight-safe-check/scripts/safe_check.py --phase post-deploy
+```
+
+With `networking: private` in `specs/deployment-posture.md` it fails on any
+resource with `publicNetworkAccess` enabled, a missing or unapproved private
+endpoint, an unlinked private DNS zone or an external Container Apps environment.
+
+**Not covered here:** hosted-agent egress goes out through the NAT gateway
+without an allow-list (add Azure Firewall with the documented endpoints for
+production); budgets, Defender, DR and replicas keep pilot values.
 """
 
 
@@ -939,7 +1089,7 @@ script: `docs/WORKSHOP-1H-QUICKSTART.md` § 6.6b.
 def render_deploy_md(project: str, agent: str, plan: list[dict[str, Any]], unprovisioned: list[str] | None = None,
                      adopted: bool = False, governance: dict[str, Any] | None = None,
                      recommend_only: bool = False, voice: dict[str, str] | None = None,
-                     gateway_write: str | None = None) -> str:
+                     gateway_write: str | None = None, private_gateway: str | None = None) -> str:
     tool_list = ", ".join(f"`{t['name']}`" for t in plan)
     notes = ""
     if gateway_write:
@@ -1045,7 +1195,8 @@ python <threadlight-skills>/skills/_shared/foundry_package.py --workspace .
 
 Exit 3 (`INCOMPLETE`) is expected until the agent id, trace id and a passing
 eval run are recorded.
-""" + (_voice_deploy_md(agent, voice) if voice else "") + (
+""" + (_private_deploy_md(project, agent, private_gateway) if private_gateway else "") + (
+        _voice_deploy_md(agent, voice) if voice else "") + (
         _voice_governed_md(agent, gateway_write) if voice and gateway_write else "")
 
 
@@ -1330,7 +1481,14 @@ def build_foundry_manifest(agent: str, cfg: dict[str, Any]) -> dict[str, Any]:
 
 # --------------------------------------------------------------------------- main
 
-def generate(project_dir: Path, force: bool) -> list[str]:
+def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway: str = "none") -> list[str]:
+    if profile not in PROFILES:
+        raise WorkspaceError(f"--profile must be one of {', '.join(PROFILES)}, got {profile!r}")
+    if gateway not in MODEL_GATEWAYS:
+        raise WorkspaceError(f"--model-gateway must be one of {', '.join(MODEL_GATEWAYS)}, got {gateway!r}")
+    if gateway != "none" and profile != "private":
+        raise WorkspaceError("--model-gateway apim needs --profile private (the gateway is private-network only)")
+    private = profile == "private"
     spec_path = project_dir / "specs" / "SPEC.md"
     manifest_path = project_dir / "specs" / "manifest.json"
     if not spec_path.is_file() or not manifest_path.is_file():
@@ -1428,7 +1586,11 @@ def generate(project_dir: Path, force: bool) -> list[str]:
                            + ", ".join(f"`{t['name']}`" for t in standins)
                            + " have no `specs/knowledge/*.md` to answer from; they return no match until the "
                            "knowledge base exists. |\n")
-    params = json.loads((PILOT / "infra" / "main.parameters.json").read_text(encoding="utf-8"))
+    infra_src = PRIVATE_INFRA if private else PILOT / "infra"
+    params = json.loads((infra_src / "main.parameters.json").read_text(encoding="utf-8"))
+    if private:
+        params["parameters"]["modelGateway"] = {"value": f"${{THREADLIGHT_MODEL_GATEWAY={gateway}}}"}
+        deferred_extra += _PRIVATE_ROW
     params["parameters"]["modelCapacity"] = {"value": f"${{AZURE_AI_MODEL_CAPACITY={capacity}}}"}
     if model:
         params["parameters"]["modelName"] = {"value": f"${{AZURE_AI_MODEL_NAME={model[0]}}}"}
@@ -1461,6 +1623,9 @@ def generate(project_dir: Path, force: bool) -> list[str]:
             *([voice_ignored] if voice_ignored else []),
             *([builtin_ignored] if builtin_ignored else []),
             *([f"Copilot CLI built-in tools enabled by SPEC 11e opt-in: {builtin_tools}"] if builtin_tools else []),
+            *(["private network profile: public network access is off; deploy, invoke and evaluate from inside the "
+               "VNet (scripts/private/vnet_run.py) and verify the network with threadlight-safe-check post-deploy"]
+              if private else []),
             *([f"governed-write: {gateway_write} is routed to the governed tool gateway and not served by the "
                "mock MCP server; not live until the governance foundation, signed policy and binding exist"]
               if gateway_write else []),
@@ -1468,7 +1633,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
     }
 
     text_outputs: dict[str, str] = {
-        "azure.yaml": render_azure_yaml(project, agent, description, voice, builtin_tools),
+        "azure.yaml": render_azure_yaml(project, agent, description, voice, builtin_tools, profile),
         ".dockerignore": render_dockerignore(bool(standins) and has_corpus),
         "hooks/postdeploy.sh": (PILOT / "hooks" / "postdeploy.sh").read_text(encoding="utf-8"),
         "hooks/postprovision.sh": (PILOT / "hooks" / "postprovision.sh").read_text(encoding="utf-8"),
@@ -1490,7 +1655,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "scripts/record_deploy_evidence.py": (GEN / "templates" / "record_deploy_evidence.py.tmpl").read_text(
             encoding="utf-8"),
         "evals/requirements.lock": (GEN / "locks" / "evals.requirements.lock").read_text(encoding="utf-8"),
-        "specs/deployment-posture.md": render_posture(project),
+        "specs/deployment-posture.md": render_posture(project, profile, gateway),
         "specs/deferred-steps.md": render_deferred(project, deferred_extra),
         "specs/project-tools.json": json.dumps({"generated_by": MARKER, "tools": served, **(
             {"governed_gateway_tools": [gateway_write]} if gateway_write else {})}, indent=2) + "\n",
@@ -1498,15 +1663,20 @@ def generate(project_dir: Path, force: bool) -> list[str]:
         "tests/postdeploy-manifest.json": json.dumps(postdeploy, indent=2) + "\n",
         "DEPLOY.md": render_deploy_md(project, agent, served, unprovisioned, adopted=bool(adoption),
                                       recommend_only=recommends_only,
-                                      governance=governance, voice=voice, gateway_write=gateway_write),
+                                      governance=governance, voice=voice, gateway_write=gateway_write,
+                                      private_gateway=gateway if private else None),
     }
+    if private:
+        text_outputs.update(_private_outputs())
     if adoption:
         text_outputs["src/mcp/threadlight_mcp_entry.py"] = render_mcp_entry(project, adoption["tools"], standins)
     else:
         text_outputs["src/mcp/server.py"] = render_mcp_server(project, served)
     hooks_text = text_outputs["hooks/postdeploy.sh"]
     text_outputs["hooks/postdeploy.sh"] = hooks_text.replace("__AGENT_NAME__", agent)
-    binary_outputs = {"infra/main.bicep": (PILOT / "infra" / "main.bicep").read_bytes()}
+    binary_outputs = {"infra/main.bicep": (infra_src / "main.bicep").read_bytes()}
+    stale_private = [] if private else [rel for rel in _private_outputs()
+                                        if _is_stale_private(project_dir / rel, rel)]
 
     # Packaging a design run left in src/mcp (for example an unpinned pyproject or a
     # Dockerfile without --require-hashes) is deploy-owned: it is replaced by the
@@ -1563,6 +1733,8 @@ def generate(project_dir: Path, force: bool) -> list[str]:
 
     for rel in replaced_paths - set(text_outputs):
         (project_dir / rel).unlink()
+    for rel in stale_private:
+        (project_dir / rel).unlink()
     for rel, content in text_outputs.items():
         dest = project_dir / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1575,7 +1747,25 @@ def generate(project_dir: Path, force: bool) -> list[str]:
     (project_dir / "hooks" / "postprovision.sh").chmod(0o755)
     (project_dir / "evals" / "run_evals.py").chmod(0o755)
     (project_dir / "scripts" / "record_deploy_evidence.py").chmod(0o755)
+    for rel in text_outputs:
+        if private and rel.endswith((".sh", "vnet_run.py")):
+            (project_dir / rel).chmod(0o755)
     return sorted([*text_outputs, *binary_outputs])
+
+
+def _private_outputs() -> dict[str, str]:
+    """Files only the private profile writes (infra modules, hooks, operator transport)."""
+    out = {f"infra/modules/{m.name}": m.read_text(encoding="utf-8")
+           for m in sorted((PRIVATE_INFRA / "modules").glob("*.bicep"))}
+    for hook in sorted((PRIVATE_INFRA / "hooks").glob("*.sh")):
+        out[f"hooks/{hook.name}"] = hook.read_text(encoding="utf-8")
+    out["scripts/private/vnet_run.py"] = (GEN / "templates" / "vnet_run.py.tmpl").read_text(encoding="utf-8")
+    return out
+
+
+def _is_stale_private(path: Path, rel: str) -> bool:
+    """A private-profile file left by an earlier run, unchanged since: safe to remove for fast-poc."""
+    return path.is_file() and path.read_text(encoding="utf-8", errors="replace") == _private_outputs()[rel]
 
 
 MCP_PACKAGING = ("src/mcp/Dockerfile", "src/mcp/requirements.lock", "src/mcp/pyproject.toml",
@@ -1604,9 +1794,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--project", required=True, type=Path, help="design workspace to complete in place")
     parser.add_argument("--force", action="store_true", help="overwrite previously generated files")
+    parser.add_argument("--profile", default="fast-poc",
+                        help="fast-poc (default, public endpoints) or private (VNet, private endpoints)")
+    parser.add_argument("--model-gateway", default="none",
+                        help="private profile only: none (default) or apim (API Management model gateway)")
     args = parser.parse_args(argv)
     try:
-        written = generate(args.project.resolve(), args.force)
+        written = generate(args.project.resolve(), args.force, args.profile, args.model_gateway)
     except PromptAgentRefused as exc:
         print(f"generate_only: refused: {exc}", file=sys.stderr)
         return 4

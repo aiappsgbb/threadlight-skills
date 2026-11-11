@@ -46,6 +46,8 @@ ALLOWED_GUIDS = {
     "7f951dda-4ed3-4680-a7ca-43fe172d538d",  # AcrPull
     "b93aa761-3e63-49ed-ac28-beffa264f7ac",  # Foundry/Cognitive Services role used by the pilot
     "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd",  # Cognitive Services OpenAI User (agent identity)
+    "b24988ac-6180-42a0-ab88-20f7382dd24c",  # Contributor (private profile operator host, own resource group)
+    "f58310d9-a9f6-439a-9e8d-f62e7b41a168",  # Role Based Access Control Administrator (conditioned)
 }
 SECRET_PATTERNS = {
     "guid": re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"),
@@ -56,7 +58,8 @@ SECRET_PATTERNS = {
     "connection-secret": re.compile(r"(?i)(SharedAccessKey|InstrumentationKey|client_secret)\s*[=:]\s*['\"]?[A-Za-z0-9+/=_\-]{16,}"),
     "email": re.compile(r"\b[A-Za-z0-9._%+-]+@(?!example\.(?:com|org)\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
     "azd-env-dir": re.compile(r"(^|[\s\"'/])\.azure/"),
-    "personal-path": re.compile(r"/(?:Users|home)/[A-Za-z0-9._-]+/"),
+    # azureuser is the operator VM's admin account (private profile), not a person.
+    "personal-path": re.compile(r"/(?:Users|home)/(?!azureuser/)[A-Za-z0-9._-]+/"),
 }
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".pytest_cache"}
 TEXT_SUFFIXES = {".py", ".md", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".bicep", ".sh", ".txt",

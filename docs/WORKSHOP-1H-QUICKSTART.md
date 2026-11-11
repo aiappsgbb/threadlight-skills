@@ -20,6 +20,7 @@ fly past; you don't type shell commands.
 4. [Prompt appendix](#4-prompt-appendix)
 5. [Recovery prompts](#5-recovery-prompts)
 6. [Deploy to Azure: `azd up`](#6-deploy-to-azure-azd-up)
+7. [Follow-up session: from demo to production (private network)](#7-follow-up-session-from-demo-to-production-private-network)
 
 ---
 
@@ -606,3 +607,34 @@ Estimate, Target or **Not measured yet**. Right after a one-hour workshop most
 cost and business lines will say "Not measured yet"; that list is the agenda
 for the follow-up, not a gap to fill by hand. The page is a decision aid, not a
 go-live verdict.
+
+## 7. Follow-up session: from demo to production (private network)
+
+For customers who come back asking "can we run this privately?". Same pilot,
+no rewriting: only infrastructure and the way you reach it change. Plan about
+90 minutes of wall-clock time (provisioning the private Container Apps
+environment alone took 21 minutes live) and start provisioning before the talk.
+
+1. **Promote** (laptop, offline):
+   `python <threadlight-skills>/skills/threadlight-deploy/scripts/generate_only.py --project . --force --profile private --model-gateway apim`.
+   Show `git diff --stat`: only `infra/`, `azure.yaml`, hooks,
+   `scripts/private/`, posture and docs change.
+2. **Provision** (laptop): `azd env new <name>-priv`, `azd env set AZURE_LOCATION eastus2`,
+   `azd provision`. Everything is control plane; nothing needs the VNet yet.
+3. **Deploy from inside the network**: `python scripts/private/vnet_run.py sync`,
+   then `run "azd deploy --no-prompt"`. Explain why: with public access off,
+   Foundry refuses data-plane calls from the internet; the operator VM has no
+   public IP and is driven through Run Command. People can open it with
+   **Connect > Bastion** (Bastion Developer, free).
+4. **Prove it** (laptop): invoke from outside (403 "Public access is disabled"),
+   then the killer prompts through `vnet_run.py run "azd ai agent invoke ..."`,
+   then `safe_check.py --phase post-deploy` (private-network check).
+5. **Close** with the checklist in
+   [production-readiness.md](production-readiness.md#from-fast-poc-to-private-what-changes)
+   and what is still open (egress firewall, the customer's own gateway, telemetry
+   spans, budgets, DR).
+
+Cost: API Management Standard v2 is a recurring charge (list price about
+USD 0.96 per hour in East US 2, November 2026): delete it after the session if
+the pilot doesn't need it. The rest is small (Premium registry, private
+endpoints, NAT gateway, a B2s VM).

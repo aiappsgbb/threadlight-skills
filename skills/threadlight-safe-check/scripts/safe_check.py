@@ -227,6 +227,132 @@ def integration_binding_gaps(integrations: Any, mcp_config: Any) -> list[str]:
     return gaps
 
 
+# Resource types whose data plane must be private in the `private` profile, and
+# the ARM property that says so. Key Vault, Storage, AI Search and Cosmos DB are
+# checked when a pilot selects them (the base GHCP pilot creates none of them).
+PRIVATE_DATA_PLANES = {
+    "microsoft.cognitiveservices/accounts": "publicNetworkAccess",
+    "microsoft.containerregistry/registries": "publicNetworkAccess",
+    "microsoft.keyvault/vaults": "publicNetworkAccess",
+    "microsoft.storage/storageaccounts": "publicNetworkAccess",
+    "microsoft.search/searchservices": "publicNetworkAccess",
+    "microsoft.documentdb/databaseaccounts": "publicNetworkAccess",
+    "microsoft.apimanagement/service": "publicNetworkAccess",
+}
+NEEDS_PRIVATE_ENDPOINT = set(PRIVATE_DATA_PLANES) | {"microsoft.insights/privatelinkscopes"}
+
+
+def network_posture(repo: Path | None) -> str:
+    """``private`` when specs/deployment-posture.md records private networking, else ``public``."""
+    if repo is None:
+        return "public"
+    path = Path(repo) / "specs" / "deployment-posture.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return "public"
+    return "private" if re.search(r"^\s*networking:\s*private\b", text, re.M) else "public"
+
+
+def private_network_gaps(resources: list[dict], endpoints: list[dict],
+                         zone_links: dict[str, list[str]]) -> tuple[list[str], list[dict]]:
+    """Gaps for a private deployment, from ARM reads. Pure and total.
+
+    ``resources``: ``{id, name, type, properties}``; ``endpoints``: private endpoints as
+    ``{name, targets: [{id, status}], zones: [zone ids]}``; ``zone_links``: zone id ->
+    linked VNet ids. A container registry may keep its public endpoint only when it is
+    Deny-by-default with explicit IP rules (the ACR Tasks prefixes `azd` remote builds need).
+    """
+    gaps: list[str] = []
+    results: list[dict] = []
+    by_target: dict[str, list[dict]] = {}
+    for pe in endpoints or []:
+        for target in pe.get("targets") or []:
+            by_target.setdefault(str(target.get("id", "")).lower(), []).append({**pe, "status": target.get("status")})
+    for res in resources or []:
+        rtype = str(res.get("type", "")).lower()
+        name = res.get("name", "?")
+        props = res.get("properties") or {}
+        entry: dict[str, Any] = {"name": name, "type": res.get("type"), "status": "OK"}
+        problems: list[str] = []
+        if rtype in PRIVATE_DATA_PLANES:
+            pna = props.get(PRIVATE_DATA_PLANES[rtype])
+            entry["publicNetworkAccess"] = pna
+            if rtype == "microsoft.containerregistry/registries" and pna == "Enabled":
+                rules = (props.get("networkRuleSet") or {})
+                if rules.get("defaultAction") == "Deny" and rules.get("ipRules"):
+                    entry["note"] = (f"public endpoint Deny-by-default with {len(rules['ipRules'])} IP rule(s) "
+                                     "(ACR Tasks prefixes for azd remote builds)")
+                else:
+                    problems.append("publicNetworkAccess Enabled without a Deny-by-default IP allow-list")
+            elif pna != "Disabled":
+                problems.append(f"publicNetworkAccess={pna!r} (expected 'Disabled')")
+            if rtype == "microsoft.cognitiveservices/accounts" and not any(
+                    (n or {}).get("scenario") == "agent" and (n or {}).get("subnetArmId")
+                    for n in props.get("networkInjections") or []):
+                problems.append("no hosted-agent network injection (networkInjections scenario 'agent')")
+        if rtype == "microsoft.insights/components":
+            ingestion = props.get("publicNetworkAccessForIngestion")
+            entry["publicNetworkAccessForIngestion"] = ingestion
+            if ingestion != "Disabled":
+                problems.append(f"public ingestion publicNetworkAccessForIngestion={ingestion!r}")
+        if rtype == "microsoft.app/managedenvironments":
+            internal = bool((props.get("vnetConfiguration") or {}).get("internal"))
+            entry["internal"] = internal
+            if not internal:
+                problems.append("Container Apps environment is not internal")
+        if rtype in NEEDS_PRIVATE_ENDPOINT:
+            pes = by_target.get(str(res.get("id", "")).lower(), [])
+            entry["private_endpoints"] = [p.get("name") for p in pes]
+            if not pes:
+                problems.append("no private endpoint")
+            elif not any(p.get("status") == "Approved" for p in pes):
+                problems.append("private endpoint connection not Approved")
+            for pe in pes:
+                if not pe.get("zones"):
+                    problems.append(f"private endpoint {pe.get('name')!r} has no DNS zone group")
+                for zone in pe.get("zones") or []:
+                    if not zone_links.get(zone):
+                        problems.append(f"private DNS zone {zone.rsplit('/', 1)[-1]} is not linked to a VNet")
+        if problems:
+            entry["status"] = "GAP"
+            entry["problems"] = problems
+            gaps.extend(f"private-network {name!r} ({res.get('type')}): {p}" for p in problems)
+        if rtype in NEEDS_PRIVATE_ENDPOINT or rtype in ("microsoft.insights/components",
+                                                         "microsoft.app/managedenvironments"):
+            results.append(entry)
+    return gaps, results
+
+
+def _collect_private_network(scoped_az, rg: str) -> tuple[list[dict], list[dict], dict[str, list[str]]]:
+    """ARM reads for private_network_gaps (control plane only; works from outside the VNet)."""
+    ids = json.loads(scoped_az("resource", "list", "-g", rg, "--query", "[].{id:id,type:type}", "-o", "json") or "[]")
+    wanted = NEEDS_PRIVATE_ENDPOINT | {"microsoft.insights/components", "microsoft.app/managedenvironments"}
+    resources = []
+    for item in ids:
+        if str(item.get("type", "")).lower() in wanted:
+            resources.append(json.loads(scoped_az(
+                "resource", "show", "--ids", item["id"],
+                "--query", "{id:id,name:name,type:type,properties:properties}", "-o", "json") or "{}"))
+    raw = json.loads(scoped_az(
+        "network", "private-endpoint", "list", "-g", rg, "--query",
+        "[].{name:name,targets:privateLinkServiceConnections[].{id:privateLinkServiceId,"
+        "status:privateLinkServiceConnectionState.status}}", "-o", "json") or "[]")
+    endpoints, zone_links = [], {}
+    for pe in raw:
+        zones = json.loads(scoped_az(
+            "network", "private-endpoint", "dns-zone-group", "list", "-g", rg, "--endpoint-name", pe["name"],
+            "--query", "[].privateDnsZoneConfigs[].privateDnsZoneId", "-o", "json") or "[]")
+        endpoints.append({**pe, "zones": zones})
+        for zone in zones:
+            if zone not in zone_links:
+                parts = zone.split("/")
+                zone_links[zone] = json.loads(scoped_az(
+                    "network", "private-dns", "link", "vnet", "list", "-g", parts[4], "-z", parts[-1],
+                    "--query", "[?virtualNetworkLinkState=='Completed'].virtualNetwork.id", "-o", "json") or "[]")
+    return resources, endpoints, zone_links
+
+
 def _load_effective_mcp_config(repo: Path) -> dict[str, Any]:
     """Load the effective MCP server config from the first candidate path that
     parses. Returns ``{}`` when none is present or valid — a missing config
@@ -1078,8 +1204,31 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
     # crashed; analyst typed real case id; agent said "not found";
     # 90 minutes lost diagnosing.
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # G9.8 — Private network (private_network_health), private profile only.
+    # specs/deployment-posture.md `networking: private` (generate_only
+    # --profile private): every data plane private, approved private endpoints,
+    # linked private DNS, internal Container Apps environment, hosted-agent
+    # VNet injection. Control-plane reads, so it runs from the laptop.
+    # ------------------------------------------------------------------
+    posture = network_posture(_repo_root_for_manifest(manifest_path, repo_root))
+    private_network_results: list[dict[str, Any]] | dict[str, Any]
+    if posture == "private":
+        try:
+            pn_gaps, private_network_results = private_network_gaps(*_collect_private_network(scoped_az, rg))
+        except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError, IndexError) as exc:
+            pn_gaps, private_network_results = [f"private-network probe failed: {str(exc)[:200]}"], []
+        gaps.extend(pn_gaps)
+    else:
+        private_network_results = {"status": "not_required_by_posture", "networking": posture}
+
     cosmos_firewall_health_results: list[dict[str, Any]] = []
-    if "cosmos-db" in selectors:
+    if "cosmos-db" in selectors and posture == "private":
+        cosmos_firewall_health_results.append({
+            "status": "covered_by_private_network",
+            "note": "networking: private — Cosmos DB must have publicNetworkAccess Disabled (G9.8).",
+        })
+    elif "cosmos-db" in selectors:
         try:
             cosmos_raw = scoped_az(
                 "cosmosdb", "list", "-g", rg,
@@ -1251,6 +1400,7 @@ def phase_postdeploy(manifest_path: Path, out_path: Path,
         "appin_health": appin_health_results,
         "bot_auth_health": bot_auth_health_results,
         "cosmos_firewall_health": cosmos_firewall_health_results,
+        "private_network_health": private_network_results,
         "integration_binding": integration_binding_results,
         "channels": channel_results,
         "scheduled_jobs": job_results,

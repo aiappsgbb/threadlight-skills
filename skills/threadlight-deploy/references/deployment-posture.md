@@ -56,7 +56,7 @@ Default posture per target (each row tagged as **supported-now** today vs
 
 | Posture row        | demo-sandbox          | customer-pilot                  | production-bound                          | supported-now? |
 |--------------------|-----------------------|---------------------------------|-------------------------------------------|----------------|
-| Networking         | public                | public                          | private-required                          | public ✓ / private-required = **deferred** (needs `threadlight-deploy/references/azd-modules` VNet work) |
+| Networking         | public                | public                          | private-required                          | public ✓ / private ✓ for the GHCP pilot via `generate_only.py --profile private` ([private-profile.md](private-profile.md)); other runtimes **deferred** |
 | Replicas           | single                | single                          | ha-min-replicas                           | ✓ (verify per-module) |
 | Model pinning      | preview-ok            | ga-pinned                       | ga-pinned                                 | ✓ (via `__MODEL_VERSION__`) |
 | Retention          | 90d                   | 90d                             | regulated-7y or customer-defined          | ✓ (Log Analytics retention param) |
@@ -100,7 +100,7 @@ failure mode this gate exists to prevent:
   `az cognitiveservices usage list` for the selected model in the chosen
   region
 - **Public ingress vs private networking** — choose now, not at provision
-  time. Private requires VNet + Private Endpoints (deferred today)
+  time. Private = `generate_only.py --profile private` (GHCP pilot; [private-profile.md](private-profile.md))
 - **Secrets / API-key exception** — if any, requires Key Vault and
   breaks the keyless mandate; record explicitly in posture file
 - **Owner / on-call contact** — recorded for production-bound handoff
@@ -121,7 +121,7 @@ source: provided  # or: inferred | defaulted-after-skip | open-question
 chosen_at: 2026-05-23T14:02:00Z
 operator: alex@partner.example
 overrides:
-  networking: private-required   # status: deferred
+  networking: private-required   # status: supported-now for the GHCP pilot (--profile private)
   replicas: ha-min-replicas       # status: supported-now
   retention: regulated-7y         # status: supported-now
   model_pinning: ga-pinned        # status: supported-now

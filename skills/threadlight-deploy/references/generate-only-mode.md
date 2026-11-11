@@ -61,6 +61,11 @@ Ownership is explicit, so the deploy step never discards design code:
   `pyproject.toml`, `requirements.txt` or an unhashed lock, for example an
   unpinned `fastmcp>=2.10`) is replaced by the pinned packaging. The original
   text is kept in `specs/mcp-adoption.json` under `replaced_design_packaging`.
+- **`--profile private`** (with `--force` on an already generated Fast-PoC)
+  swaps only the infrastructure and packaging: `infra/` from
+  `pilot/infra-private`, the private hooks and `scripts/private/vnet_run.py`.
+  Design files, the agent runtime, the MCP server and the evals stay
+  byte-identical. See [`private-profile.md`](private-profile.md).
 - **`--force`** only rewrites files generate-only owns. Exit 5 still refuses to
   overwrite earlier generate-only output; the design `server.py` is never in
   that list.

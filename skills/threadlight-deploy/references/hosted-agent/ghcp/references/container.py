@@ -258,13 +258,26 @@ _BYOK_ENDPOINT = ""
 _MODEL = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "") or os.getenv("MODEL_DEPLOYMENT_NAME", "")
 
 
-def _init_byok() -> bool:
-    """Initialise the BYOK credential. Returns False if BYOK is not configured."""
-    global _BYOK_CREDENTIAL, _BYOK_ENDPOINT
-    endpoint = (
+def _model_base_url() -> str:
+    """Where model calls go: the customer's model gateway when set, else the project endpoint.
+
+    ``MODEL_GATEWAY_URL`` (private profile with an API Management gateway) is a
+    pass-through route to the same project endpoint, so the token audience and the
+    Responses wire format stay the same. It must end in ``/openai/v1``: with
+    ``type="azure"`` the SDK keeps only the origin of any other base URL. Unset
+    or empty: the Fast-PoC behaviour.
+    """
+    gateway = os.getenv("MODEL_GATEWAY_URL", "").strip().rstrip("/")
+    return gateway or (
         os.getenv("FOUNDRY_PROJECT_ENDPOINT", "").strip().rstrip("/")
         or os.getenv("AZURE_AI_PROJECT_ENDPOINT", "").strip().rstrip("/")
     )
+
+
+def _init_byok() -> bool:
+    """Initialise the BYOK credential. Returns False if BYOK is not configured."""
+    global _BYOK_CREDENTIAL, _BYOK_ENDPOINT
+    endpoint = _model_base_url()
     if not endpoint or not _MODEL:
         return False
     try:
