@@ -168,7 +168,7 @@ def test_stream_false_returns_only_the_final_answer_text():
     session = Session()
 
     @contextlib.asynccontextmanager
-    async def conversation(_key):
+    async def conversation(_key, _call_id=""):
         yield session
 
     ns = _container_functions(

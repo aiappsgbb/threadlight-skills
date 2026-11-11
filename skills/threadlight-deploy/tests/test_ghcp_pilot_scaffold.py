@@ -22,6 +22,7 @@ MCP_SKILL = ROOT / "skills/threadlight-mcp-aca/SKILL.md"
 AUTO_SKILL = ROOT / "skills/threadlight-auto/SKILL.md"
 MAF_DOCKERFILE = ROOT / "skills/threadlight-deploy/references/hosted-agent/maf/references/docker/Dockerfile"
 FOUNDRY_USER = "53ca6127-db72-4b80-b1b0-d745d6d5456d"
+OPENAI_USER = "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd"  # Cognitive Services OpenAI User
 
 
 def read(path):
@@ -112,7 +113,7 @@ def test_pilot_azure_yaml_remote_builds_and_postdeploy_hook():
     assert "host: azure.ai.agent" in yaml_text and "host: containerapp" in yaml_text
     assert "hooks/postdeploy.sh" in yaml_text
     hook = read(PILOT / "hooks/postdeploy.sh")
-    assert FOUNDRY_USER in hook and "instance_identity" in hook
+    assert OPENAI_USER in hook and "instance_identity" in hook
     assert "--role \"Azure AI User\"" not in hook and "--role 'Azure AI User'" not in hook
 
 
@@ -187,3 +188,17 @@ def test_pilot_mcp_reads_an_optional_business_cosmos_without_hand_edits():
         assert needle in bicep, needle
     params = json.loads(read(PILOT / "infra/main.parameters.json"))["parameters"]
     assert params["returnsCosmosUrl"] == {"value": "${RETURNS_COSMOS_URL=}"}
+
+
+def test_postdeploy_grants_the_agent_identity_least_privilege_inference_only():
+    # Live 2026-11-11 (docs/agent-operations.md "Identity model"): the GHCP BYOK
+    # call POST {project}/openai/v1/responses needs only OpenAI/responses/write,
+    # and Cognitive Services OpenAI User at ACCOUNT scope was sufficient. Foundry
+    # User adds agent management, listkeys and connection listsecrets.
+    hook = read(PILOT / "hooks/postdeploy.sh")
+    code = "\n".join(l for l in hook.splitlines() if not l.lstrip().startswith("#"))
+    assert OPENAI_USER in code
+    assert FOUNDRY_USER not in code, "the agent identity must not get Foundry User by default"
+    grant = re.search(r'for scope in ([^;]+); do', code)
+    assert grant and "ACCOUNT_SCOPE" in grant.group(1) and "PROJECT_SCOPE" not in grant.group(1)
+    assert "--new-session" in hook, "document that a session that already saw a 401 keeps failing"

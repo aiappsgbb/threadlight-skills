@@ -140,6 +140,114 @@ def _load_mcp_servers() -> dict[str, dict] | None:
     return servers or None
 
 
+def _toolbox_enabled() -> bool:
+    return bool(os.environ.get("TOOLBOX_NAME", "").strip())
+
+
+class _ToolboxBridge:
+    """Minimal MCP (streamable HTTP, JSON-RPC) client for one Foundry toolbox request.
+
+    Bridges toolbox tools into Copilot SDK custom tools instead of handing the
+    toolbox to the SDK's native MCP client: through the toolbox the native client
+    rejected every result because the proxy returns ``structuredContent: null``
+    (live, 2026-11-11). Learn shows the same bridge pattern for the Copilot SDK
+    (https://learn.microsoft.com/azure/foundry/agents/how-to/tools/toolbox).
+
+    The agent authenticates with its own agent identity (``https://ai.azure.com``).
+    Per-user tools (``AgentOnBehalfOfUser`` / ``UserEntraToken`` connections) also
+    need the platform's per-request ``x-agent-foundry-call-id``: the toolbox
+    resolves the caller from it. It is forwarded unchanged, never parsed, logged
+    or reused across requests
+    (https://learn.microsoft.com/azure/foundry/agents/how-to/tools/tool-authentication).
+    """
+
+    def __init__(self, url: str, token: str, call_id: str) -> None:
+        self.url = url
+        self.headers = {"Authorization": f"Bearer {token}", "Accept": "application/json, text/event-stream",
+                        "Content-Type": "application/json"}
+        if call_id:
+            self.headers["x-agent-foundry-call-id"] = call_id
+        self._id = 0
+
+    async def _rpc(self, http, method: str, params: dict | None = None, *, notify: bool = False) -> dict:
+        body: dict[str, Any] = {"jsonrpc": "2.0", "method": method, "params": params or {}}
+        if not notify:
+            self._id += 1
+            body["id"] = self._id
+        async with http.post(self.url, json=body, headers=self.headers) as resp:
+            if "mcp-session-id" in resp.headers:
+                self.headers["mcp-session-id"] = resp.headers["mcp-session-id"]
+            text = await resp.text()
+            if notify:
+                return {}
+            if resp.status >= 400:
+                raise RuntimeError(f"toolbox HTTP {resp.status}")
+        messages = [text] if not text.lstrip().startswith(("event:", "data:")) else [
+            line[5:].strip() for line in text.splitlines() if line.startswith("data:")]
+        for raw in messages:
+            msg = json.loads(raw) if raw else {}
+            if msg.get("id") == body.get("id"):
+                if "error" in msg:
+                    raise RuntimeError(str(msg["error"].get("message", msg["error"]))[:500])
+                return msg.get("result") or {}
+        raise RuntimeError(f"toolbox: no JSON-RPC result for {method}")
+
+    async def _session(self, http) -> None:
+        await self._rpc(http, "initialize", {"protocolVersion": "2025-03-26", "capabilities": {},
+                                             "clientInfo": {"name": "threadlight-ghcp", "version": "1"}})
+        await self._rpc(http, "notifications/initialized", notify=True)
+
+    async def list_tools(self) -> list[dict]:
+        import aiohttp
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as http:
+            await self._session(http)
+            return (await self._rpc(http, "tools/list")).get("tools") or []
+
+    async def call_tool(self, name: str, arguments: dict) -> str:
+        import aiohttp
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as http:
+            await self._session(http)
+            result = await self._rpc(http, "tools/call", {"name": name, "arguments": arguments or {}})
+        if result.get("structuredContent") is not None:
+            return json.dumps(result["structuredContent"])
+        return "\n".join(c.get("text", "") for c in result.get("content") or [] if c.get("type") == "text")
+
+
+async def _toolbox_tools(call_id: str) -> list:
+    """Copilot SDK tools for the configured toolbox (empty when not configured)."""
+    name = os.environ.get("TOOLBOX_NAME", "").strip()
+    if not name or not _BYOK_ENDPOINT or not _BYOK_CREDENTIAL:
+        return []
+    from copilot.tools import Tool, ToolResult
+
+    if not call_id:
+        logger.warning("toolbox: request without x-agent-foundry-call-id; per-user tools cannot resolve the caller")
+    token = _BYOK_CREDENTIAL.get_token("https://ai.azure.com/.default").token
+    url = f"{_BYOK_ENDPOINT}/toolboxes/{name}/mcp?api-version=v1"
+    bridge = _ToolboxBridge(url, token, call_id)
+    try:
+        listed = await bridge.list_tools()
+    except Exception as exc:  # noqa: BLE001 - a failing toolbox must not fail the turn
+        logger.warning("toolbox: tools/list failed: %s", str(exc)[:300])
+        return []
+
+    def make(original: str, schema: dict | None, description: str):
+        async def handler(invocation):
+            try:
+                # One bridge (one MCP session) per call: parallel tool calls never share state.
+                text = await _ToolboxBridge(url, token, call_id).call_tool(original, invocation.arguments or {})
+                return ToolResult(text_result_for_llm=text)
+            except Exception as exc:  # noqa: BLE001
+                return ToolResult(text_result_for_llm=f"tool error: {exc}", result_type="failure", error=str(exc)[:300])
+        safe = re.sub(r"[^A-Za-z0-9_-]", "_", original)[:64]
+        return Tool(name=safe, description=description or original, handler=handler,
+                    parameters=schema or {"type": "object", "properties": {}}, skip_permission=True)
+
+    tools = [make(t["name"], t.get("inputSchema"), t.get("description", "")) for t in listed if t.get("name")]
+    logger.info("toolbox: %d tool(s) bridged", len(tools))
+    return tools
+
+
 # ---------------------------------------------------------------------------
 # Session Management
 # ---------------------------------------------------------------------------
@@ -357,11 +465,15 @@ async def _keyed_session(client: CopilotClient, key: str):
 
 
 @asynccontextmanager
-async def _conversation(session_key: str):
+async def _conversation(session_key: str, call_id: str = ""):
     """Yield the Copilot session for one turn of ``session_key`` (fresh when empty)."""
     client = await _ensure_client()
     if not session_key:
-        session = await client.create_session(**_session_kwargs())
+        kwargs = _session_kwargs()
+        tools = await _toolbox_tools(call_id) if _toolbox_enabled() else []
+        if tools:
+            kwargs["tools"] = tools
+        session = await client.create_session(**kwargs)
         try:
             yield session
         finally:
@@ -402,10 +514,10 @@ def _event_payload(event) -> dict | None:
         return None
 
 
-async def _stream_response(invocation_id: str, input_text: str, session_key: str = ""):
+async def _stream_response(invocation_id: str, input_text: str, session_key: str = "", call_id: str = ""):
     """Stream CopilotClient events as SSE."""
     try:
-        async with _conversation(session_key) as session:
+        async with _conversation(session_key, call_id) as session:
             async for chunk in _stream_session(session, invocation_id, input_text):
                 yield chunk
     except SessionResumeError as exc:
@@ -446,7 +558,7 @@ async def _stream_session(session, invocation_id: str, input_text: str):
 _HEARTBEAT_SECONDS = 15
 
 
-async def _final_answer_response(input_text: str, session_key: str = ""):
+async def _final_answer_response(input_text: str, session_key: str = "", call_id: str = ""):
     """Non-streaming mode (``"stream": false``): emit only the final answer text.
 
     Used by Foundry evaluations: the full SSE event stream is 200-300 KB per
@@ -455,7 +567,7 @@ async def _final_answer_response(input_text: str, session_key: str = ""):
     while the agent works; they are whitespace for the evaluators.
     """
     try:
-        async with _conversation(session_key) as session:
+        async with _conversation(session_key, call_id) as session:
             async for chunk in _final_answer_session(session, input_text):
                 yield chunk
     except SessionResumeError as exc:
@@ -539,14 +651,19 @@ async def handle_invoke(request: Request) -> Response:
     # The platform forwards invocations bodies untouched, so this never affects
     # sandbox routing, and the caller's ongoing session is left as it was.
     session_key = "" if data.get("new_conversation") is True else _session_key(request)
+    # The toolbox call id is per request: a toolbox turn always uses a fresh
+    # session so no session keeps a previous request's caller context.
+    call_id = str(getattr(request.state, "call_id", "") or "")
+    if _toolbox_enabled():
+        session_key = ""
     if data.get("stream") is False:
         return StreamingResponse(
-            _final_answer_response(input_text, session_key),
+            _final_answer_response(input_text, session_key, call_id),
             media_type="text/plain; charset=utf-8",
             headers={"Cache-Control": "no-cache"},
         )
     return StreamingResponse(
-        _stream_response(request.state.invocation_id, input_text, session_key),
+        _stream_response(request.state.invocation_id, input_text, session_key, call_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )

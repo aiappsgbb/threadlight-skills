@@ -45,6 +45,7 @@ ALLOWED_GUIDS = {
     "53ca6127-db72-4b80-b1b0-d745d6d5456d",  # Azure AI User
     "7f951dda-4ed3-4680-a7ca-43fe172d538d",  # AcrPull
     "b93aa761-3e63-49ed-ac28-beffa264f7ac",  # Foundry/Cognitive Services role used by the pilot
+    "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd",  # Cognitive Services OpenAI User (agent identity)
 }
 SECRET_PATTERNS = {
     "guid": re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"),
