@@ -7,6 +7,47 @@ field.
 
 ## [Unreleased]
 
+### 2.47.0: path to production, the same pilot on a private network
+
+- **Why.** Customers who see the Fast-PoC ask next how to run it privately,
+  behind their own gateway, without starting over.
+- **`generate_only.py --profile private [--model-gateway apim]`** re-packages a
+  design workspace, or an already generated Fast-PoC with `--force`. Design
+  files, agent runtime, MCP server and evals stay byte-identical; only `infra/`
+  (from the new `pilot/infra-private`), `azure.yaml` (one variable, two hooks),
+  hooks, `scripts/private/vnet_run.py`, posture and docs change. Foundry public
+  access off with hosted-agent VNet injection, private endpoints and DNS, ACR
+  Premium, internal Container Apps environment for MCP, App Insights through a
+  private link scope, optional API Management Standard v2 model gateway (private
+  in and out), project identity and project capability host for evaluations in a
+  VNet, an operator VM driven by Run Command plus Bastion Developer
+  ([private-profile.md](skills/threadlight-deploy/references/private-profile.md)).
+- **ACR and `azd` remote build.** Quick builds can't reach a registry with public
+  access Disabled without an agent pool, which `azd` doesn't select; the registry
+  keeps a Deny-by-default public endpoint open only to the region's ACR Tasks
+  service-tag prefixes (`THREADLIGHT_ACR_BUILD_ACCESS=none` turns it off).
+- **Runtime.** `MODEL_GATEWAY_URL` (empty in the Fast-PoC) routes model calls
+  through the gateway; it ends in `/openai/v1` because github-copilot-sdk 1.0.1
+  keeps only the origin of any other Azure base URL.
+- **Safe-check.** With `networking: private`, post-deploy checks public network
+  access, approved private endpoints, linked private DNS, App Insights ingestion,
+  the internal Container Apps environment and agent network injection.
+- **Spec parser.** A side-effect bullet like "none; read only." is no effect (a
+  trailing clause of pure qualifiers only); the 2026-11-09 Fast-PoC design was
+  refused before this fix.
+- **Live (2026-11-11, internal nonproduction subscription, East US 2):** the
+  2026-11-09 returns-triage Fast-PoC promoted with no hand edits. From inside the
+  VNet: `azd deploy`, killer prompts K1-K3 correct, every model call through
+  the private APIM (17 requests, all 200), Foundry evaluation rubric 18/18
+  (mean 4.06-4.11 over two runs, threshold 4), package gate COMPLETE. From the
+  laptop: Foundry 403, APIM refused, MCP no public DNS; safe-check private-network
+  check 6/6. After rebasing on 2.43.0 the gateway was deleted and the direct
+  private-endpoint route was re-proven: K1-K3 correct, package gate COMPLETE;
+  evaluation 3.72 (two citation rows judged 1, no errors), re-run 4.06.
+- **Not proven:** egress allow-listing (NAT, no firewall), a non-Azure gateway,
+  the Developer gateway tier, peering or custom DNS, Key Vault/Storage/AI Search
+  private endpoints (checked, not generated). Request spans did not reach App
+  Insights under the private-only link scope (log records did).
 ### 2.46.0: GHCP pilots expose only their SPEC tools (no Copilot CLI built-ins by default)
 
 - **Fix (#192):** a Copilot SDK session also exposes the CLI built-ins (a local

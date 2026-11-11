@@ -101,6 +101,17 @@ def test_gateway_url_keeps_the_openai_v1_suffix(private):
     assert "serviceUrl: projectEndpoint" in apim
 
 
+def test_operator_host_may_grant_every_role_the_hooks_grant(private):
+    jump = (private / "infra" / "modules" / "jumpbox.bicep").read_text()
+    hook = (private / "hooks" / "postdeploy.sh").read_text()
+    granted = set(re.findall(r"ROLE_[A-Z_]+=([0-9a-f-]{36})", hook))
+    assert granted, "postdeploy.sh grants a role by GUID"
+    allowed = re.search(r"var grantable = '([^']+)'", jump).group(1)
+    names = dict(re.findall(r"var (role\w+) = '([0-9a-f-]{36})'", jump))
+    for guid in granted:
+        assert any(names.get(n) == guid for n in re.findall(r"\$\{(\w+)\}", allowed)), guid
+
+
 def test_acr_public_endpoint_is_off_unless_build_prefixes_are_given(private):
     main = (private / "infra" / "main.bicep").read_text()
     assert "empty(acrBuildAllowedPrefixes) ? 'Disabled' : 'Enabled'" in main

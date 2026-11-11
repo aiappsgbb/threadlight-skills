@@ -99,11 +99,15 @@ went into the catalog and was regenerated, never edited in the generated repo.
   APIM (17 requests, all 200, in the APIM metrics).
 - Foundry evaluation from inside the VNet: 18 rows, business-rules rubric
   18/18 (mean 4.11, threshold 4), coherence 18/18, task adherence and intent
-  resolution 17/18.
+  resolution 17/18; package gate COMPLETE.
+- After rebasing on 2.43.0 (least-privilege agent identity), the gateway was
+  deleted and the same environment re-proven on the direct private-endpoint
+  route: K1-K3 correct, package gate COMPLETE. Its first evaluation scored 3.72
+  (two citation rows judged 1, both answered without errors), the re-run 4.06.
 - From the laptop: Foundry 403 "Public access is disabled", APIM refused the
   public client, MCP host has no public DNS. Safe-check private-network check:
-  6 resources OK; remaining gaps were the design's deferred AI Search and
-  Storage.
+  6 resources OK with the gateway, 5 after deleting it; remaining gaps were the
+  design's deferred AI Search and Storage.
 
 **Not proven:** egress allow-listing (NAT gateway without a firewall), a
 non-Azure gateway, the Developer-tier gateway, custom DNS or hub-spoke peering,

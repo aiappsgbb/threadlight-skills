@@ -8,8 +8,9 @@
 // https://learn.microsoft.com/azure/bastion/bastion-sku-comparison
 // The VM identity deploys with azd (`azd auth login --managed-identity`): it
 // gets Contributor on this resource group, Foundry User on the account, and a
-// role-assignment right restricted by condition to the three roles azd and the
-// postdeploy hook grant (Foundry User, AcrPull, Container Registry Repository Reader).
+// role-assignment right restricted by condition to the roles azd and the
+// postdeploy hook grant (Cognitive Services OpenAI User, Foundry User, AcrPull,
+// Container Registry Repository Reader).
 param location string
 param token string
 param tags object
@@ -25,7 +26,8 @@ var roleRbacAdmin = 'f58310d9-a9f6-439a-9e8d-f62e7b41a168'
 var roleFoundryUser = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
 var roleAcrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var roleAcrRepositoryReader = 'b93aa761-3e63-49ed-ac28-beffa264f7ac'
-var grantable = '{${roleFoundryUser}, ${roleAcrPull}, ${roleAcrRepositoryReader}}'
+var roleOpenAiUser = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+var grantable = '{${roleOpenAiUser}, ${roleFoundryUser}, ${roleAcrPull}, ${roleAcrRepositoryReader}}'
 var rbacCondition = '((!(ActionMatches{\'Microsoft.Authorization/roleAssignments/write\'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals ${grantable})) AND ((!(ActionMatches{\'Microsoft.Authorization/roleAssignments/delete\'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals ${grantable}))'
 
 var cloudInit = '''#cloud-config

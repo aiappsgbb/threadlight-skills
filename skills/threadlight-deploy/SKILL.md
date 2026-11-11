@@ -307,9 +307,7 @@ calls az, azd or docker, and creates no Azure resources.
 
 ```bash
 python3 skills/threadlight-deploy/scripts/generate_only.py --project <workspace> [--force]
-# Same pilot, private network (see references/private-profile.md):
-python3 skills/threadlight-deploy/scripts/generate_only.py --project <workspace> --force \
-  --profile private [--model-gateway apim]
+python3 skills/threadlight-deploy/scripts/generate_only.py --project <workspace> --force --profile private [--model-gateway apim]
 python3 skills/threadlight-deploy/scripts/generate_only_selfcheck.py \
   --project <workspace> --report <workspace>/tests/generate-only-selfcheck.json
 python3 skills/threadlight-local-test/scripts/project_tools.py \
@@ -326,9 +324,7 @@ capacity, pilot RBAC and telemetry, recommend-only, governed-write
 (`"action_mode": "governed-write"`: the one bound write is routed to the governed
 gateway, never served by the mock MCP server), selected governance, evals,
 deploy evidence, Foundry package gate exit 3) and the offline self-check.
-For the `private` profile (public network access off, private endpoints,
-internal MCP, optional API Management model gateway, in-VNet operator host)
-read [`references/private-profile.md`](references/private-profile.md).
+Private network (same pilot): [`references/private-profile.md`](references/private-profile.md).
 
 Deployment is then the user's job, run with their own credentials:
 `azd auth login`, `azd up`, `python evals/run_evals.py`. After that, run the
