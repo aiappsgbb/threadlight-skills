@@ -812,7 +812,11 @@ into the session. `container.py` then:
   `UserEntraToken` connections ([toolbox authentication](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/tool-authentication));
 - starts a fresh Copilot session for every toolbox turn, so no session keeps a
   previous request's caller;
-- registers the toolbox tools as Copilot SDK tools through `_ToolboxBridge`.
+- does not expose tools whose `_meta.tool_configuration.require_approval` is
+  `always`: the toolbox does not block those calls and this runtime has no
+  approval step ([toolbox approval](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/use-toolbox-hosted-agent));
+- registers the other toolbox tools as Copilot SDK tools through `_ToolboxBridge`
+  (the session's permission handler still applies).
   Handing the toolbox to the SDK's native MCP client failed live: the toolbox
   returns `structuredContent: null` and the client rejected every result.
 

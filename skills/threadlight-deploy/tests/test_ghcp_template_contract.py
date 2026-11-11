@@ -245,3 +245,14 @@ def test_toolbox_mode_uses_a_fresh_session_per_request():
     assert re.search(r"if _toolbox_enabled\(\):\s*\n\s*session_key = \"\"", source), (
         "a toolbox turn must not reuse a session that holds a previous request's caller context")
     assert "TOOLBOX_NAME" in README.read_text(encoding="utf-8")
+
+
+def test_toolbox_tools_requiring_approval_are_not_exposed_and_permissions_stay_on():
+    # Learn: the toolbox does not block tools/call when require_approval is
+    # "always"; the runtime must enforce it. The pilot has no approval UI, so
+    # such tools are never registered (fail closed).
+    tree = ast.parse(CONTAINER.read_text(encoding="utf-8"))
+    fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "_toolbox_tools")
+    source = ast.get_source_segment(CONTAINER.read_text(encoding="utf-8"), fn)
+    assert "require_approval" in source and '"always"' in source
+    assert "skip_permission=True" not in source

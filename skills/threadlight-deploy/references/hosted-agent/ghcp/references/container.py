@@ -241,9 +241,20 @@ async def _toolbox_tools(call_id: str) -> list:
                 return ToolResult(text_result_for_llm=f"tool error: {exc}", result_type="failure", error=str(exc)[:300])
         safe = re.sub(r"[^A-Za-z0-9_-]", "_", original)[:64]
         return Tool(name=safe, description=description or original, handler=handler,
-                    parameters=schema or {"type": "object", "properties": {}}, skip_permission=True)
+                    parameters=schema or {"type": "object", "properties": {}})
 
-    tools = [make(t["name"], t.get("inputSchema"), t.get("description", "")) for t in listed if t.get("name")]
+    def needs_approval(tool: dict) -> bool:
+        config = ((tool.get("_meta") or {}).get("tool_configuration") or {})
+        return str(config.get("require_approval", "never")).lower() == "always"
+
+    # The toolbox does not block tools/call for require_approval "always"; the
+    # runtime must. This runtime has no approval step, so those tools are not
+    # exposed (https://learn.microsoft.com/azure/foundry/agents/how-to/tools/use-toolbox-hosted-agent).
+    held = [t.get("name") for t in listed if needs_approval(t)]
+    if held:
+        logger.warning("toolbox: %d tool(s) need approval and are not exposed: %s", len(held), held)
+    tools = [make(t["name"], t.get("inputSchema"), t.get("description", ""))
+             for t in listed if t.get("name") and not needs_approval(t)]
     logger.info("toolbox: %d tool(s) bridged", len(tools))
     return tools
 
