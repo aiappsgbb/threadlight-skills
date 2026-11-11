@@ -60,3 +60,10 @@ def test_unknown_or_wildcard_builtins_are_rejected(tmp_path, value):
     _, result = _generate(tmp_path, OPT_IN.replace("web_fetch, view", value))
     assert result.returncode != 0
     assert "copilot_builtin_tools" in result.stdout + result.stderr
+
+
+def test_search_builtin_is_accepted_under_both_runtime_names(tmp_path):
+    """The pinned 1.0.1 runtime called the search tool `rg` live; a newer runtime lists `grep`."""
+    project, result = _generate(tmp_path, OPT_IN.replace("web_fetch, view", "rg, grep"))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _env(project)["THREADLIGHT_BUILTIN_TOOLS"] == "rg,grep"

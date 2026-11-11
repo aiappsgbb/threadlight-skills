@@ -797,7 +797,7 @@ preview_acknowledged: null   # REQUIRED when agent_type: voice or voice_frontend
 voice_frontend: none          # none | hosted-voice. Opt-in voice front-end (Foundry Hosted Voice, preview) on the hosted agent; item 2c
 voice_name: null              # optional with voice_frontend: hosted-voice: Azure voice, e.g. it-IT-ElsaNeural (default en-US-AvaNeural)
 voice_hold_text: null          # optional with voice_frontend: hosted-voice: hold message spoken during slow tool turns, in the voice's language
-copilot_builtin_tools: none    # none, or Copilot CLI built-ins by name (web_fetch, view, glob, grep, bash, create, edit, sql, task); GHCP agents otherwise get only their MCP tools and skills
+copilot_builtin_tools: none    # none, or Copilot CLI built-ins by name (web_fetch, view, glob, grep or rg, bash, create, edit, sql, task); GHCP agents otherwise get only their MCP tools and skills
 copilot_builtin_tools_opt_in_source: null  # REQUIRED with copilot_builtin_tools: must be `user`
 copilot_builtin_tools_reason: null         # REQUIRED with copilot_builtin_tools: why the process needs it, e.g. "read the public returns policy page"
 workflow_model: agent  # agent | workflow

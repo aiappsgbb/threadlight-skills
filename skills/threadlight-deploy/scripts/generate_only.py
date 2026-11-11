@@ -168,7 +168,8 @@ def _spec_scalar(spec: str, key: str) -> str | None:
 
 # Copilot CLI built-ins a SPEC may opt into by name (#192). The GHCP container
 # otherwise allows only MCP/custom tools and `skill`.
-COPILOT_BUILTIN_TOOLS = frozenset({"web_fetch", "view", "glob", "grep", "bash", "create", "edit", "sql", "task"})
+# `rg` and `grep` are the search tool under different Copilot CLI runtimes (1.0.1 live: rg).
+COPILOT_BUILTIN_TOOLS = frozenset({"web_fetch", "view", "glob", "grep", "rg", "bash", "create", "edit", "sql", "task"})
 
 
 def copilot_builtin_tools(spec: str) -> tuple[str | None, str | None]:
