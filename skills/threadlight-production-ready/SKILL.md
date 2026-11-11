@@ -433,7 +433,8 @@ platform's identity primitives; it does not replace them.
 
 ### EU AI Act evidence pack (Art 9 / 11 / 12 / 14 / 15 / 26 / 27)
 
-The EU AI Act's high-risk obligations land in 2026. A terminal aggregator,
+Regulation (EU) 2026/1744 moved the EU AI Act high-risk requirements to 2 December 2027 (Annex III)
+and 2 August 2028 (Annex I); Article 50 transparency applies from 2 August 2026. A terminal aggregator,
 `scripts/ai_act_evidence.py`, maps the artifacts this skill and its siblings
 **already produce** onto seven articles and emits a **tenant-local, offline**
 evidence pack — it never calls Azure and never fabricates coverage. It reads the
@@ -452,6 +453,29 @@ Three files land in `docs/compliance/`: `ai-act-evidence.json` (the machine map)
 `--check` to exit 3 when a load-bearing article (Art 11 / 12 / 15) is a gap. It
 amplifies Foundry's own governance outputs into regulator-facing evidence; it is
 an engineering aid, not legal advice. See `references/eu-ai-act-mapping.md`.
+
+#### Customer handoff bundle
+
+`scripts/compliance_handoff.py --root . --out docs/compliance` reuses that article
+map, the post-deploy safe-check, the Foundry eval run and showcase results read by
+`pilot_value.py`, and the governance validation, and writes
+`customer-handoff.md` / `customer-handoff.json` next to the pack. It lists:
+
+- **classification questions** (AI system, provider or deployer, Article 5 screen,
+  Annex I / Annex III, Article 6(3) assessment, profiling, interaction with people,
+  Article 27 scope). They stay `Open` until the customer's reviewer records answers in
+  `specs/ai-act-classification.json` (`reviewed_by`, `reviewed_at`, `answers`);
+  Threadlight never infers them;
+- **obligations** (Articles 4, 9, 11, 12, 13, 14, 15, 26, 26(6) log retention, 27,
+  50(1), and 50(2) when the SPEC selects a voice front-end) with the evidence found,
+  its path and normalized-text SHA-256, and an open item when evidence is missing.
+  States are `evidence-present`, `partial`, `recorded-by-reviewer` and `open`;
+- the **Microsoft vs customer split** for a PaaS agent from Microsoft's
+  [AI agent shared responsibility model](https://learn.microsoft.com/azure/security/fundamentals/shared-responsibility-ai-agent).
+
+It cites the regulation on EUR-Lex (2024/1689 and the 2026/1744 amendment) and
+states that it does not state or certify compliance. Log retention under the
+deployer's control and Article 50(1) disclosure are never inferred offline.
 
 ## CLI
 

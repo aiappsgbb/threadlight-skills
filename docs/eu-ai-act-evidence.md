@@ -85,6 +85,32 @@ when a load-bearing article — the technical file (Art 11), record-keeping
 `--check` permits `partial`; exit `0` is not a compliance pass. An unusable root
 or unwritable output exits `2`.
 
+## Customer handoff bundle
+
+When the customer's legal, risk or compliance team takes over, ask for the
+handoff bundle:
+
+> `"Use threadlight-production-ready to write the EU AI Act customer handoff bundle for this pilot."`
+
+`scripts/compliance_handoff.py` writes `customer-handoff.md` and
+`customer-handoff.json` next to the three files above. It adds what the article
+map alone does not carry:
+
+| Section | What it holds |
+| --- | --- |
+| Classification questions | AI system, provider or deployer, Article 5 screen, Annex I / Annex III, Article 6(3) assessment, profiling, interaction with people, Article 27 scope. `Open` until the customer's reviewer records answers in `specs/ai-act-classification.json`; never inferred. |
+| Obligations | Articles 4, 9, 11, 12, 13, 14, 15, 26, 26(6) log retention (at least six months), 27 and 50(1); 50(2) when the SPEC selects a voice front-end. Each lists the evidence found (path, normalized-text SHA-256), including the post-deploy safe-check and the Foundry eval run, and an open item when evidence is missing. |
+| Microsoft and customer responsibilities | The PaaS-agent column of Microsoft's [AI agent shared responsibility model](https://learn.microsoft.com/azure/security/fundamentals/shared-responsibility-ai-agent), with where Threadlight evidence sits for each row. |
+
+Dates follow [Regulation (EU) 2024/1689](https://eur-lex.europa.eu/eli/reg/2024/1689/oj)
+as amended by [Regulation (EU) 2026/1744](https://eur-lex.europa.eu/eli/reg/2026/1744/oj):
+high-risk requirements from 2 December 2027 (Annex III) and 2 August 2028
+(Annex I), Article 50 from 2 August 2026. The bundle states that it does not
+state or certify compliance; log retention under the deployer's control and the
+Article 50(1) disclosure are never inferred offline. Microsoft Purview Compliance
+Manager also offers an [EU AI Act assessment template](https://learn.microsoft.com/purview/compliance-manager-assessments#assessments-for-ai-regulations)
+(premium) for the customer's own compliance tracking.
+
 ## What this is — and isn't
 
 This amplifies the platform. It turns Azure AI Foundry's own eval, red-team,

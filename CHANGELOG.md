@@ -7,6 +7,28 @@ field.
 
 ## [Unreleased]
 
+### 2.41.0: EU AI Act customer handoff bundle (evidence and open items, never a compliance claim)
+
+- **`threadlight-production-ready/scripts/compliance_handoff.py`:** writes
+  `docs/compliance/customer-handoff.md` / `.json` plus the existing article map. It
+  reuses `ai_act_evidence.py` (governance validation, scorecard, SBOM, identity,
+  evals, red team) and `pilot_value.py` (Foundry eval run, showcase scenarios), and
+  reads the post-deploy safe-check.
+- **Classification questions** (AI system, provider or deployer, Article 5,
+  Annex I / III, Article 6(3), profiling, interaction, Article 27 scope) stay open
+  until the customer's reviewer records answers in `specs/ai-act-classification.json`.
+- **Obligations** (Articles 4, 9, 11, 12, 13, 14, 15, 26, 26(6) log retention, 27,
+  50(1), 50(2) for a voice front-end): evidence with path and SHA-256, states
+  `evidence-present` / `partial` / `recorded-by-reviewer` / `open`, an open item
+  for each gap. Log retention and the Article 50(1) disclosure are never inferred.
+- **Microsoft vs customer split:** PaaS-agent column of Microsoft's AI agent shared
+  responsibility model, with where Threadlight evidence sits per row.
+- **Dates corrected:** Regulation (EU) 2026/1744 moved high-risk requirements to
+  2 December 2027 (Annex III) and 2 August 2028 (Annex I); the skill no longer says
+  they land in 2026. Both regulations cited on EUR-Lex (text checked 2026-11-11).
+- **Verified:** offline unit tests (`tests/test_compliance_handoff.py`, RED first).
+  No legal review; the bundle does not state or certify compliance.
+
 ### 2.40.0: one agent with skills or several agents, a recorded design decision
 
 - **`threadlight-design` discovery question 10 (Agent topology):** asks whether
