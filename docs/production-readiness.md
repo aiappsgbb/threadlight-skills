@@ -686,6 +686,15 @@ figure is never shown as measured, and a missing input stays "Not measured
 yet". The page is a decision aid, not a go-live verdict. See the
 [skill section](../skills/threadlight-production-ready/SKILL.md#pilot-value-page-process-owner-and-sponsor).
 
+### EU AI Act customer handoff (compliance reviewers)
+
+`scripts/compliance_handoff.py --root <pilot-root>` writes
+`docs/compliance/customer-handoff.md` and `.json` from the same evidence plus the
+EU AI Act article map: classification questions only the customer's reviewer
+answers, obligations with their evidence and open items, and the Microsoft vs
+customer split for a PaaS agent. It presents evidence and open items and never
+states compliance. See [EU AI Act evidence pack](eu-ai-act-evidence.md#customer-handoff-bundle).
+
 ---
 
 ## 9. CLI cheatsheet

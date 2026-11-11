@@ -86,3 +86,29 @@ files:
 This amplifies the platform: it turns Foundry's own eval, red-team,
 observability, and identity outputs into regulator-facing evidence. It does not
 replace a conformity assessment, and it does not replace any platform primitive.
+
+## Customer handoff bundle
+
+[`compliance_handoff.py`](../scripts/compliance_handoff.py) builds on this map. It
+writes the three files above plus `customer-handoff.md` and `customer-handoff.json`:
+classification questions answered only by the customer's reviewer
+(`specs/ai-act-classification.json`), obligations for providers and deployers with
+their evidence and open items, and the PaaS-agent column of Microsoft's
+[AI agent shared responsibility model](https://learn.microsoft.com/azure/security/fundamentals/shared-responsibility-ai-agent).
+Extra sources it reads: `tests/postdeploy-manifest.json` (safe-check),
+`specs/foundry-package-manifest.json` and `docs/invoke-results.md` (through
+`pilot_value.py`), `specs/SPEC.md` (§ 8, recommend-only, voice front-end) and
+`docs/instructions-for-use.md` (presence only).
+
+| Handoff state | Meaning |
+| --- | --- |
+| `evidence-present` | The predicate behind it was met; a reviewer still judges adequacy. |
+| `partial` | Some evidence, incomplete or not content-checked. |
+| `recorded-by-reviewer` | The customer's reviewer recorded the answer; not verified by the tool. |
+| `open` | No evidence, or not inferable offline (log retention, disclosure, FRIA). |
+
+Dates follow [Regulation (EU) 2024/1689](https://eur-lex.europa.eu/eli/reg/2024/1689/oj)
+as amended by [Regulation (EU) 2026/1744](https://eur-lex.europa.eu/eli/reg/2026/1744/oj):
+Chapter III Sections 1 to 3 from 2 December 2027 (Annex III) and 2 August 2028
+(Annex I); Article 50 from 2 August 2026; Articles 4 and 5 since 2 February 2025.
+
