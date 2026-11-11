@@ -165,7 +165,9 @@ def build_evidence(*, generated_at: str, agent: str, region: str, profile: Mappi
         *capacity.DOCUMENTED,
     ]
     # Per 1,000 successful requests, charging the tokens that failed requests consumed too.
-    model_cost = capacity.cost_per_1000(summary.get("token_totals_all") or summary["token_totals"], prices, ok)
+    # Divided by successful requests WITH spans: tokens of requests without spans are unknown.
+    model_cost = capacity.cost_per_1000(summary.get("token_totals_all") or summary["token_totals"], prices,
+                                        summary["successful_joined"])
     compute = capacity.compute_estimate(sessions=sessions, active_minutes=run_minutes,
                                         idle_timeout_minutes=idle_timeout_minutes, vcpu=cpu, gib=memory_gib,
                                         prices=compute_prices, requests=len(per_request))
@@ -230,7 +232,7 @@ def _short_answers(ev: Mapping[str, Any]) -> list:
         ("Where does the time go (warm, mean)?",
          f"model {_s(warm['model_ms']['mean'])}, tools {_s(warm['tool_ms']['mean'])}, "
          f"runtime {_s(warm['runtime_ms']['mean'])}, endpoint and network {_s(warm['platform_ms']['mean'])}",
-         "measured"),
+         "calculated"),
         ("How many fail, and is the model throttling?",
          f"{(err or 0) * 100:.1f}% of requests failed; {_fmt(_429(ev))} model calls answered HTTP 429 "
          f"(Azure Monitor), {_fmt(ev['waterfall']['model_throttles']['failed_calls'])} model calls failed in agent turns",
@@ -244,6 +246,14 @@ def _short_answers(ev: Mapping[str, Any]) -> list:
         ("Hosted compute per 1,000 requests (upper bound)",
          f"USD {compute['usd']:,.2f}" if compute.get("usd") is not None else "Not measured", compute["kind"]),
     ]
+
+
+def _first(ev: Mapping[str, Any]) -> str:
+    group = ev["waterfall"]["groups"].get("first_in_session")
+    if not group or not group["successful"]:
+        return "none in this run"
+    seg = group["segments"]["client_ms"]
+    return f"{group['successful']} such requests, end to end p50 {_s(seg['p50'])}, p95 {_s(seg['p95'])}"
 
 
 def _429(ev: Mapping[str, Any]) -> Any:
@@ -264,7 +274,9 @@ def render_markdown(ev: Mapping[str, Any]) -> str:
     lines += [f"| {q} | {v} | {KIND_LABELS[k]} |" for q, v, k in _short_answers(ev)]
     lines += ["", "## Latency waterfall", "",
               f"{groups['warm']['successful']} warm and {groups['cold']['successful']} cold successful requests, "
-              f"{ev['waterfall']['joined']} of {ev['waterfall']['requests']} joined to server spans.", "",
+              f"{ev['waterfall']['joined']} of {ev['waterfall']['requests']} joined to server spans. Warm means a "
+              "later request in a running session; the first request of each ramp or steady session also starts "
+              f"a sandbox ({_first(ev)}).", "",
               "| Segment | Warm p50 | Warm p95 | Cold p50 | Cold p95 | Evidence | How |", "|---|---|---|---|---|---|---|"]
     for seg in ev["segments"]:
         w, c = groups["warm"]["segments"][seg["key"]], groups["cold"]["segments"][seg["key"]]
@@ -435,9 +447,28 @@ def wait_and_join(fetch: Callable[[list], list], records: list, *, wait_s: float
         waited += poll_s
 
 
+def save_raw(ws: Path, records: list, phase_windows: Mapping[str, Any], *, spans: Optional[list],
+             inputs: Mapping[str, Any]) -> None:
+    """Timings, ids, span metadata and run inputs (never prompts) for a rebuild without a rerun."""
+    path = ws / RAW
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"records": [r.as_dict() for r in records], "phase_windows": dict(phase_windows),
+                                "spans": spans, "inputs": dict(inputs)}) + "\n", encoding="utf-8")
+
+
 def evidence_from_raw(raw: Mapping[str, Any], run: Callable[[list], str]) -> dict:
-    """Rebuild the evidence from ``specs/perf-run-raw.json`` (records, spans and run inputs)."""
-    inputs = raw["inputs"]
+    """Rebuild the evidence from ``specs/perf-run-raw.json`` (records, spans and run inputs).
+
+    When the spans were never fetched, they are fetched now from the App Insights id in the inputs.
+    """
+    inputs = raw.get("inputs") or {}
+    missing = {"agent", "region", "phases", "run_id", "prompts", "model", "prices"} - set(inputs)
+    if missing:
+        raise SystemExit(f"{RAW} lacks run inputs ({', '.join(sorted(missing))}); rerun the load test")
+    if raw.get("spans") is None:
+        ids = [r["invocation_id"] for r in raw["records"] if r.get("invocation_id")]
+        raw = dict(raw, spans=waterfall.fetch_spans(run, inputs["appi"], ids) if inputs.get("appi") else [])
+    manifest = inputs.get("manifest") or {"status": "partial", "findings": [], "budget": {}}
     records = [hosted_agent.RequestRecord(**{k: v for k, v in r.items() if k != "success"}) for r in raw["records"]]
     runner = hosted_agent.PhaseRunner(invoke=lambda p, s: {}, prompts=["-"] * int(inputs["prompts"]),
                                       run_id=inputs["run_id"], records=records,
@@ -447,13 +478,14 @@ def evidence_from_raw(raw: Mapping[str, Any], run: Callable[[list], str]) -> dic
     end = max(s["start_ms"] + s["duration_ms"] for s in raw["spans"]) if raw["spans"] else None
     window_end = (datetime.fromtimestamp(end / 1000, timezone.utc).replace(microsecond=0).isoformat()
                   if end else stamps[-1])
-    model_status = (capacity.model_requests_by_status(run, account_id=inputs["account_id"], start=stamps[0],
-                                                      end=window_end)
-                    if inputs.get("account_id") and stamps else {"read": False})
+    # Kept in the raw file once read: the metric is gone when the resource group is deleted.
+    model_status = inputs.get("model_status") or (
+        capacity.model_requests_by_status(run, account_id=inputs["account_id"], start=stamps[0], end=window_end)
+        if inputs.get("account_id") and stamps else {"read": False})
     return build_evidence(generated_at=_now(), agent=inputs["agent"], region=inputs["region"],
-                          profile=inputs["profile"], phases=inputs["phases"], runner=runner, summary=summary,
-                          manifest=inputs["manifest"], model=inputs["model"], mcp_before=inputs["mcp_before"],
-                          mcp_after=inputs["mcp_after"], prices=inputs["prices"],
+                          profile=inputs.get("profile") or {}, phases=inputs["phases"], runner=runner, summary=summary,
+                          manifest=manifest, model=inputs["model"], mcp_before=inputs.get("mcp_before") or {},
+                          mcp_after=inputs.get("mcp_after") or {}, prices=inputs["prices"],
                           compute_prices=inputs["compute_prices"], cpu=inputs["cpu"],
                           memory_gib=inputs["memory_gib"], idle_timeout_minutes=inputs["idle_timeout_minutes"],
                           model_status=model_status)
@@ -531,14 +563,19 @@ def main(argv: Optional[list] = None) -> int:
 
     runner = hosted_agent.PhaseRunner(invoke=invoke, prompts=load_prompts(args.prompts or ws / "tests" / "eval_dataset.jsonl"))
     holder: dict[str, Any] = {}
+    inputs = {"agent": args.agent, "region": region, "profile": profile, "phases": phases,
+              "run_id": runner.run_id, "prompts": len(runner.prompts), "manifest": None, "model": model,
+              "mcp_before": mcp_before, "mcp_after": {}, "prices": prices, "compute_prices": compute_prices,
+              "cpu": args.cpu, "memory_gib": args.memory_gib, "idle_timeout_minutes": args.idle_timeout_minutes,
+              "appi": appi, "account_id": f"/subscriptions/{env.get('AZURE_SUBSCRIPTION_ID', '')}/resourceGroups/"
+                                          f"{rg}/providers/Microsoft.CognitiveServices/accounts/{account}"}
 
     def join(records: list) -> dict:
+        # Records first: a failed span fetch must not lose a paid run.
+        save_raw(ws, records, runner.phase_windows, spans=None, inputs=inputs)
+        holder["sent"] = len(records)
         spans = wait_and_join(lambda ids: waterfall.fetch_spans(_az, appi, ids), records, wait_s=args.wait_telemetry_s)
-        # Raw join input (timings, ids and span metadata only) so a report can be rebuilt without a rerun.
-        raw = ws / RAW
-        raw.parent.mkdir(parents=True, exist_ok=True)
-        raw.write_text(json.dumps({"records": [r.as_dict() for r in records], "spans": spans,
-                                   "phase_windows": runner.phase_windows}) + "\n", encoding="utf-8")
+        save_raw(ws, records, runner.phase_windows, spans=spans, inputs=inputs)
         holder["summary"] = waterfall.summarize([r.as_dict() for r in records], spans)
         return waterfall.join_tokens(holder["summary"])
 
@@ -548,20 +585,20 @@ def main(argv: Optional[list] = None) -> int:
                             adapter=adapter, generated_at=_now())
     write_load_manifest(ws / MANIFEST, manifest)
     print(f"load manifest: {manifest['status']} ({budget_line(manifest)})")
-    if "summary" not in holder:
+    if "sent" not in holder:
         print("no requests were sent; see the load manifest findings")
         return 1
+    if "summary" not in holder:
+        print(f"{holder['sent']} requests were sent but the span fetch failed ({adapter.join_error}); records are "
+              f"in {RAW}. Retry later with --from-raw.")
+        return 3
     mcp_after = capacity.container_app(_az, resource_group=rg, name=mcp_app) if mcp_app else {}
     raw = json.loads((ws / RAW).read_text(encoding="utf-8"))
-    raw["inputs"] = {"agent": args.agent, "region": region, "profile": profile, "phases": phases,
-                     "run_id": runner.run_id, "prompts": len(runner.prompts), "manifest": manifest, "model": model,
-                     "mcp_before": mcp_before, "mcp_after": mcp_after, "prices": prices,
-                     "compute_prices": compute_prices, "cpu": args.cpu, "memory_gib": args.memory_gib,
-                     "idle_timeout_minutes": args.idle_timeout_minutes,
-                     "account_id": f"/subscriptions/{env['AZURE_SUBSCRIPTION_ID']}/resourceGroups/{rg}/providers/"
-                                   f"Microsoft.CognitiveServices/accounts/{account}"}
+    raw["inputs"].update({"manifest": manifest, "mcp_after": mcp_after})
     (ws / RAW).write_text(json.dumps(raw) + "\n", encoding="utf-8")
     evidence = evidence_from_raw(raw, _az)
+    raw["inputs"]["model_status"] = evidence["model_status"]
+    (ws / RAW).write_text(json.dumps(raw) + "\n", encoding="utf-8")
     for path in write_outputs(ws, evidence):
         print(f"wrote {path.relative_to(ws)}")
     return 0 if manifest["status"] == "complete" else 3

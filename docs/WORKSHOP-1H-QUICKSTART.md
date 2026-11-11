@@ -453,7 +453,7 @@ estimated. Expect real spend and size the model deployment first: in our
 2026-11-11 runs one returns-triage request used 100,000-120,000 input tokens
 (about 90% cached) across about 10 model calls, a 300K TPM deployment throttled
 at 10 concurrent requests (73% of requests failed) and 800K TPM served 4
-concurrent with no throttling (warm p50 34 s, p95 54 s). See the
+concurrent with no throttling (warm p50 33 s, p95 54 s). See the
 [load-test skill](../skills/threadlight-loadtest/SKILL.md#hosted-agent-performance-evidence-latency-waterfall).
 The pilot value page (§6.7) then shows a **Performance under load** line.
 

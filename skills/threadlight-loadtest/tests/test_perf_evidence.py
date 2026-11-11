@@ -119,3 +119,22 @@ def test_from_raw_rebuilds_evidence_and_reports_model_429s_from_azure_monitor():
     assert ev["model_status"]["by_status"] == {"429": 12, "200": 30}
     assert "AzureOpenAIRequests" in seen[0]
     assert "12 model calls answered HTTP 429" in perf_evidence.render_markdown(ev)
+
+
+def test_cost_divides_by_joined_successful_requests_and_breakdown_is_calculated():
+    ev = _evidence()
+    assert ev["cost"]["model_per_1000"]["formula"].endswith(
+        f"/ {ev['waterfall']['successful_joined']} requests x 1,000")
+    answers = {q: k for q, _, k in perf_evidence._short_answers(ev)}
+    assert answers["Where does the time go (warm, mean)?"] == "calculated"
+
+
+def test_records_survive_a_failed_telemetry_fetch(tmp_path):
+    runner = hosted_agent.PhaseRunner(
+        invoke=lambda p, s: {"client_ms": 5.0, "status": 200, "error_class": None, "invocation_id": "i1"},
+        prompts=[PROMPT])
+    records = runner.run([{"name": "s", "concurrency": 1, "requests": 1}])
+    perf_evidence.save_raw(tmp_path, records, runner.phase_windows, spans=None, inputs={"agent": "a"})
+    raw = json.loads((tmp_path / perf_evidence.RAW).read_text())
+    assert raw["records"][0]["invocation_id"] == "i1" and raw["spans"] is None
+    assert PROMPT not in json.dumps(raw)

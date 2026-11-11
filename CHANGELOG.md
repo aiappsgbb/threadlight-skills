@@ -31,13 +31,17 @@ field.
   GlobalStandard, deleted after the test):** run A, 300K TPM, up to 10 concurrent,
   233 requests: 2,291 model calls answered HTTP 429 and 73% of requests failed in
   the steady phase. Run B, 800K TPM, up to 4 concurrent, 103 requests: no 429,
-  warm p50 33.9 s / p95 54.3 s, model calls 32.1 s of a 33.1 s container p50, MCP
-  calls 57 ms, runtime residual 362 ms, endpoint+sandbox+network 635 ms, cold start
-  p50 3.8 s; model cost USD 75.66 per 1,000 successful requests; 12 requests did
-  not finish within the 300 s client read timeout and exported no server span.
-  The client's first token arrives near the end (p50 31.8 s) because the agent
-  streams its answer after the tool loop; the first model call's time to first
-  token was 3.8 s.
+  warm (later request in a running session) p50 33.2 s / p95 53.6 s, model calls
+  32.1 s of a 32.6 s container p50, MCP calls 57 ms, runtime residual 351 ms,
+  endpoint+sandbox+network 631 ms, cold start p50 3.8 s; model cost USD 75.66 per
+  1,000 successful requests; 12 requests did not finish within the 300 s client
+  read timeout and exported no server span. The client's first token arrives near
+  the end (p50 31.5 s) because the agent streams its answer after the tool loop;
+  the first model call's time to first token was 3.8 s.
+- **Review fixes before merge:** warm excludes the first request of each session
+  (its own `first_in_session` group); cost divides by successful requests with
+  spans; the time breakdown is labelled calculated; request records are saved
+  before the span fetch so a failed fetch never loses a paid run.
 - **Found by the waterfall:** the agent also calls Copilot CLI built-in tools
   (`bash`, `task`, `web_fetch`, `rg`) that the template does not restrict; they
   dominated tail latency in run A. Tracked in #192, not changed here.

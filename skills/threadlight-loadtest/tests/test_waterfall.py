@@ -22,7 +22,7 @@ T = "2026-11-11T12:00:00.000Z"
 def _rec(inv, *, client_ms, phase="steady", cold=False, ttft=None, status=200, error=None):
     return {"phase": phase, "cold_phase": cold, "invocation_id": inv, "client_ms": client_ms,
             "first_token_ms": ttft, "status": status, "error_class": error, "success": error is None,
-            "started_at": T, "worker": 0, "session_request_index": 0}
+            "started_at": T, "worker": 0, "session_request_index": 1}
 
 
 def _span(table, inv, name, start_ms, duration, **dims):
@@ -163,3 +163,13 @@ def test_throttles_are_read_from_threadlight_status_and_failed_requests_still_co
     assert summary["successful_joined"] == 1
     assert summary["token_totals"]["input_tokens"] == 9000
     assert summary["token_totals_all"]["input_tokens"] == 9000 + 4500
+
+
+def test_first_request_of_a_session_is_not_counted_as_warm():
+    """Review: per-user sessions start a sandbox on their first request; that is not a warm request."""
+    first = dict(_rec("f", client_ms=30000), session_request_index=0)
+    later = dict(_rec("l", client_ms=10000), session_request_index=1)
+    summary = waterfall.summarize([first, later], _trace("f") + _trace("l"))
+    assert summary["groups"]["warm"]["segments"]["client_ms"]["p50"] == 10000
+    assert summary["groups"]["warm"]["successful"] == 1
+    assert summary["groups"]["first_in_session"]["segments"]["client_ms"]["p50"] == 30000

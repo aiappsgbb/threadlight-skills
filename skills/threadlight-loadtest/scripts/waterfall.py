@@ -159,6 +159,7 @@ def request_segments(record: Mapping[str, Any], spans: Sequence[Mapping[str, Any
     servers = [s for s in mine if s.get("table") == "requests"]
     turns = [s for s in mine if s.get("name") == TURN]
     seg: dict[str, Any] = {"invocation_id": inv, "phase": record.get("phase"), "cold": bool(record.get("cold_phase")),
+                           "session_index": record.get("session_request_index", 1),
                            "success": bool(record.get("success")), "client_ms": record.get("client_ms"),
                            "client_first_token_ms": record.get("first_token_ms"), "joined": bool(servers and turns)}
     for key in ("container_ms", "platform_ms", "session_start_ms", "model_ms", "tool_ms", "runtime_ms",
@@ -230,7 +231,12 @@ def _stats(values: Iterable[Any]) -> dict:
 def summarize(records: Sequence[Mapping[str, Any]], spans: Sequence[Mapping[str, Any]]) -> dict:
     segments = [request_segments(r, spans) for r in records]
     groups = {}
-    for name, keep in (("cold", lambda s: s["cold"]), ("warm", lambda s: not s["cold"]), ("all", lambda s: True)):
+    # Warm = a later request in an already running session. The first request of a
+    # per-user session also starts a sandbox, so it is its own group, not warm.
+    for name, keep in (("cold", lambda s: s["cold"]),
+                       ("first_in_session", lambda s: not s["cold"] and not (s["session_index"] or 0)),
+                       ("warm", lambda s: not s["cold"] and (s["session_index"] or 0) > 0),
+                       ("all", lambda s: True)):
         chosen = [s for s in segments if keep(s) and s["success"]]
         groups[name] = {"requests": sum(1 for s in segments if keep(s)), "successful": len(chosen),
                         "segments": {key: _stats(s[key] for s in chosen) for key, *_ in SEGMENTS}}
