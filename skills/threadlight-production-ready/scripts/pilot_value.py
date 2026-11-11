@@ -68,6 +68,7 @@ SOURCES = (
     ("tests/killer-prompts.md", "Showcase scenarios"),
     ("docs/invoke-results.md", "Recorded run of the showcase scenarios"),
     ("tests/postdeploy-manifest.json", "Post-deploy safety check"),
+    ("specs/perf-evidence.json", "Load test with latency waterfall"),
     ("tests/production-readiness-manifest.json", "Production-readiness review"),
     ("specs/cost-manifest.json", "Running-cost estimate"),
     ("specs/cost-actuals-manifest.json", "Collected billing data"),
@@ -80,6 +81,7 @@ NEXT_STEPS = {
     "foundry-package": "Record the deployed agent and its trace (scripts/record_deploy_evidence.py).",
     "scenarios": "Run the showcase scenarios against the live agent and record one PASS or FAIL per scenario in docs/invoke-results.md.",
     "safety-check": "Run the post-deploy safety check (threadlight-safe-check).",
+    "performance": "Run the load test with the latency waterfall (threadlight-loadtest scripts/perf_evidence.py).",
     "readiness": "Run the production-readiness review (threadlight-production-ready).",
     "measured-cost": "After a period of real use, collect actual cost and reconcile it (threadlight-consumption-iq actuals and reconciliation).",
     "estimated-cost": "Estimate the running cost (threadlight-consumption-iq).",
@@ -446,6 +448,40 @@ def _safety_item(root: Path) -> dict[str, Any]:
                  source=source, as_of=checked, status="attention")
 
 
+def _performance_item(root: Path) -> dict[str, Any]:
+    """Load-test result from threadlight-loadtest ``specs/perf-evidence.json`` (complete runs only)."""
+    source = "specs/perf-evidence.json"
+    label = "Performance under load"
+    state, evidence = _read_json(root / source)
+    if state != "present" or not isinstance(evidence, dict):
+        return _not_measured("performance", label, source=source if state == "invalid" else None)
+    if (evidence.get("load_manifest") or {}).get("status") != "complete":
+        return _not_measured("performance", label, source=source,
+                             detail="The last load run did not complete; its numbers are not shown.")
+    try:
+        waterfall = evidence["waterfall"]
+        p95 = _number(waterfall["groups"]["warm"]["segments"]["client_ms"]["p95"])
+        peak = max(int(p["concurrency"]) for p in evidence.get("phases") or [])
+        requests = int(waterfall["requests"])
+        errors = _number(waterfall.get("error_rate"))
+    except (KeyError, TypeError, ValueError):
+        return _not_measured("performance", label, source=source,
+                             detail=f"{source} is present but its figures could not be read.")
+    if p95 is None:
+        return _not_measured("performance", label, source=source)
+    detail = f"{requests} requests against the deployed agent"
+    if errors is not None:
+        detail += f", {errors * 100:.1f}% errors"
+    cost = (evidence.get("cost") or {}).get("model_per_1000") or {}
+    usd = _number(cost.get("usd"))
+    if usd is not None and cost.get("kind") == "calculated":
+        detail += f"; USD {usd:,.2f} model cost per 1,000 requests (calculated)"
+    detail += ". Latency split by segment in docs/perf-evidence.html."
+    return _item("performance", label, "measured", f"p95 {p95 / 1000:.1f} s end to end at up to {peak} concurrent requests",
+                 detail=detail, source=source, as_of=_date(evidence.get("generated_at")),
+                 status="good" if (errors or 0) <= 0.01 else "attention")
+
+
 def _readiness_item(root: Path) -> dict[str, Any]:
     source = "tests/production-readiness-manifest.json"
     state, manifest = _read_json(root / source)
@@ -672,6 +708,7 @@ def build_report(root: Path, *, generated_at: str | None = None) -> dict[str, An
     package_item = next(i for i in foundry if i["id"] == "foundry-package")
     scenarios = _scenario_items(root)
     safety = _safety_item(root)
+    performance = _performance_item(root)
     readiness = _readiness_item(root)
     cost = _cost_items(root, spec)
     case = _business_case_item(root)
@@ -683,7 +720,7 @@ def build_report(root: Path, *, generated_at: str | None = None) -> dict[str, An
          "items": [eval_item, *scenarios]},
         {"id": "live", "title": "Is it running safely?",
          "intro": "Whether the pilot is really deployed on Microsoft Foundry and checked after deployment.",
-         "items": [package_item, safety, readiness]},
+         "items": [package_item, safety, performance, readiness]},
         {"id": "cost", "title": "What does it cost to run?",
          "intro": "Measured cost comes from billing data; estimates are forecasts made before real use.",
          "items": cost},

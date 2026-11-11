@@ -426,6 +426,24 @@ session = await client.create_session(
 | `tool.execution_complete` | Tool call finished | Log for debugging |
 | `assistant.turn_start` | New turn | Track turn count |
 | `assistant.turn_end` | Turn complete | May have more turns |
+| `assistant.usage` | One model call finished | Duration, time to first token, tokens → `chat <model>` span |
+| `model.call_failure` | One model call failed | HTTP status (429 = throttled) → failed `chat <model>` span |
+
+### Turn spans (latency waterfall)
+
+The Invocations host exports one server span per request (`invoke_agent`) to
+the project's Application Insights ([Learn](https://learn.microsoft.com/azure/foundry/agents/how-to/configure-hosted-agent-telemetry)).
+Model and MCP calls happen inside the Copilot CLI process, so `container.py`
+adds child spans from the session events, through the OpenTelemetry tracer the
+host already configured: `threadlight.copilot.turn` (carries
+`threadlight.invocation_id` on the streamed path), `threadlight.copilot.session_open`
+(`client_cold_start` when the Copilot client started in this request),
+`chat <model>` and `execute_tool <tool>` (`threadlight.mcp.server` for MCP
+tools). They carry durations, token counts and status codes only, never
+prompt, answer, tool arguments, results or error messages, and a telemetry
+failure never affects the answer. `threadlight-loadtest`
+(`scripts/perf_evidence.py`) joins them to client timings for the per-segment
+waterfall. Voice turns are not instrumented.
 
 ---
 

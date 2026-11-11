@@ -549,7 +549,11 @@ users, A2A, a gateway block, and OBO for a governed write.
 For runtime control, follow the selected-binding generator and governance
 contracts first. For evidence review, distinguish declared, local and hosted
 proof before opening the scorecard. For the AgentOps preview, start with
-opt-in and provenance requirements, not a paid run.
+opt-in and provenance requirements, not a paid run. For performance evidence
+(latency per segment, cold start, throttling, cost per 1,000 requests on the
+deployed pilot), run the separately approved, budget-capped
+[load test](../skills/threadlight-loadtest/SKILL.md#hosted-agent-performance-evidence-latency-waterfall);
+it is live evidence for latency and cost only, not for governance or isolation.
 
 Use [Self-improving](https://aiappsgbb.github.io/threadlight-skills/self-improving.html)
 for finished-run diagnostics and plan-only upgrades, and
