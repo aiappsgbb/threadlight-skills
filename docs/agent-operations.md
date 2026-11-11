@@ -41,7 +41,10 @@ For the separate opt-in lifecycle adapter, see [AgentOps](#agentops-preview-expl
 > with the preview acknowledged. The same opt-in can instead add a voice front-end
 > (Foundry Hosted Voice, explicit opt-in only) to the GHCP hosted agent: a managed `kind: voice` wrapper
 > uses the hosted agent, with its tools and governance, as its conversation
-> engine. Other preview-only Foundry features are out of scope. See
+> engine. Measure that front-end as a workload before production with the voice
+> harness in [`threadlight-loadtest`](../skills/threadlight-loadtest/SKILL.md#voice-workload-harness-scripted-spoken-calls)
+> (8 kHz telephony, languages, latency, barge-in, cost per call; synthetic
+> callers, not human callers). Other preview-only Foundry features are out of scope. See
 > [`foundry-only-agents.md`](../skills/_shared/foundry-only-agents.md).
 > Delivery also requires the mandatory full Foundry package: a real agent,
 > tracing, and one executed Foundry eval with a custom rubric, evidenced in

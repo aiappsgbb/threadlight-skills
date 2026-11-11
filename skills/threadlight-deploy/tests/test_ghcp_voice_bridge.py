@@ -73,6 +73,8 @@ class FakeSession:
 
     async def send(self, text):
         assert not self.closed, "send on a disconnected session"
+        self.client.prompts.append(text)
+        text = text.rsplit("Caller: ", 1)[-1]  # the voice host note is checked separately
         self.history.append(text)
         if text == "boom":
             self._emit(_Event(ERROR, "model failed"))
@@ -109,6 +111,7 @@ class FakeClient:
         self.created: list[FakeSession] = []
         self.deleted: list[str] = []
         self.aborts: list[str] = []
+        self.prompts: list[str] = []
         self.hanging = threading.Event()
 
     async def start(self):
@@ -218,6 +221,21 @@ def test_user_message_runs_one_copilot_turn_and_speaks_only_the_final_answer(run
     assert created["response_id"] == done_text["response_id"] == done["response_id"]
     assert done_text["text"].endswith("|turn 1|seen: hello")
     assert "Let me check." not in done_text["text"]
+
+
+def test_spoken_turn_tells_the_agent_that_identifiers_may_have_lost_separators(runtime):
+    # Live voice eval 2026-11-11: speech recognition returned "RMA2026104418" for a spoken
+    # "R M A 2026 1 0 4 4 1 8"; the agent looked it up verbatim, found nothing and asked again.
+    with TestClient(runtime.app) as client, client.websocket_connect("/invocations_ws") as ws:
+        _start(ws)
+        _say(ws, "triage RMA2026104418", 1)
+        _turn(ws)
+        _end(ws)
+    (prompt,) = runtime._client.prompts
+    note, caller = prompt.rsplit("Caller: ", 1)
+    assert caller == "triage RMA2026104418"
+    assert "speech recognition" in note and "separators" in note and "spell" in note
+    assert "short" in note
 
 
 def test_one_call_is_one_conversation_and_calls_never_share_one(runtime):

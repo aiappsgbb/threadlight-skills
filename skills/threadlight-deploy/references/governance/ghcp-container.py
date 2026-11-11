@@ -236,7 +236,10 @@ def _sse_frame(chunk):
 
 
 _VOICE_NOTE = ("Host note: this is a spoken call. Do not read long identifiers aloud (operation_id, "
-               "expected_etag, audit_id); say that they are recorded. Keep answers to one or two short sentences.")
+               "expected_etag, audit_id); say that they are recorded. Keep answers to one or two short sentences. "
+               "The caller's words come from speech recognition: identifiers may have lost their separators or "
+               "spacing (ABC-2026-0042 heard as ABC20260042); restore the format your tools expect before calling "
+               "them, and if a lookup still finds nothing, ask the caller to spell the identifier.")
 
 
 def _voice_prompt(call, utterance):

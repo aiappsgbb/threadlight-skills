@@ -10,14 +10,16 @@ description: >
   load runs, production load-test confirmation, load-manifest evidence,
   p50/p95 latency, error-rate and token evidence, hosted agent latency
   waterfall (runtime vs model vs MCP vs cold start, cost per 1,000
-  requests) on a deployed GHCP pilot. DO NOT USE FOR: deploying
+  requests) on a deployed GHCP pilot, voice workload evaluation of an
+  opted-in voice front-end (scripted spoken calls, 8 kHz telephony, WER,
+  first audio, barge-in, cost per call). DO NOT USE FOR: deploying
   infrastructure or agents (threadlight-deploy / microsoft-foundry /
   azure-deploy); autonomous/agentic-loop execution (never runs unattended
   or installs k6/locust); release or rollout gating
   (threadlight-production-ready); quality/groundedness evals
   (threadlight-evals); adversarial/safety scans (threadlight-redteam).
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # Threadlight Load Test — guarded, budget-capped load evidence
@@ -377,6 +379,104 @@ turn spans exist; with an older container the run completes as `partial`
 (tokens not measured) instead of reporting zero tokens. This is evidence for a
 pilot at modest scale, not a production SLA or a platform benchmark.
 
+## Voice workload harness (scripted spoken calls)
+
+For a pilot with the opt-in voice front-end (Foundry Hosted Voice wrapping the
+GHCP hosted agent, SPEC § 11e `voice_frontend: hosted-voice`),
+`scripts/voice_eval.py` measures voice as a workload. It plays a fixed corpus of
+caller utterances into one or more deployed voice agents over the managed voice
+WebSocket and records, per turn:
+
+| Measure | How |
+|---|---|
+| Speech recognition | WER of `conversation.item.input_audio_transcription.completed` against the reference, after normalising case, punctuation, spelled letters and digit runs; separately, whether the case id digits were heard |
+| Task outcome | decision named first in the spoken answer vs the corpus `expected_decision` (keyword heuristic per language; raw transcripts stay in the local results for review) |
+| Latency | end of caller speech (last audio frame sent) to first agent audio (often the hold message), to the answer audio, and to `response.done`; call duration |
+| Barge-in | the caller starts the next utterance 1.5 s after the agent starts talking: time to `input_audio_buffer.speech_started`, status of the interrupted response, agent audio still delivered after detection, and whether the follow-up is answered correctly |
+| Cost per call | Voice Live tokens from Azure Monitor (`VoiceLiveAudioInputTokens`, `VoiceLiveAudioOutputTokens`, text and cached variants) and the engine model's `ProcessedPromptTokens` / `GeneratedTokens` for each variant's time window, priced with the Azure Retail Prices API: **calculated, not billed** |
+
+Audio conditions: `wb16` (16 kHz TTS), `nb8` (low-passed at 3.4 kHz and resampled
+to 8 kHz, like a narrowband phone line) and `nb8_noise` (`nb8` plus seeded noise
+at 10 dB SNR). The client converts to the voice agent's input format: PCM 24 kHz,
+or G.711 mu-law 8 kHz. Silence is streamed continuously, as on a phone line.
+
+**Synthetic TTS callers are not a substitute for testing with human callers**,
+real phones and networks, accents and real background noise. The manifest
+records `audio_source: synthetic-tts` and `human_caller_tested: false`.
+
+Comparing options on the same agent: add more `kind: voice` services to
+`azure.yaml` that use the same hosted agent as conversation engine and differ
+only in documented audio settings, then list them in a variants file
+([`variants.example.json`](references/voice-eval/variants.example.json)). The
+reference run compared:
+
+| Variant | Wrapper audio settings (azure.yaml) |
+|---|---|
+| `pcm24-speech` | generated default: `audio/pcm` 24 kHz in and out, `azure-speech` (automatic multilingual), `server_vad` |
+| `g711-speech-dns` | `audio/pcmu` (G.711 mu-law, 8 kHz) in and out, `azure-speech`, `noiseReduction: azure_deep_noise_suppression` |
+| `pcm24-mai` | `audio/pcm` 24 kHz, transcription `mai-transcribe-2` |
+
+The input formats `pcm16`, `g711_ulaw`, `g711_alaw` and the 8 kHz output formats
+are documented in the
+[Voice Live API reference](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live-api-reference-2026-07-15#components);
+`azure-speech` automatic multilingual mode covers English and Italian but not
+Greek, which needs an explicit `language` or `mai-transcribe-2`
+([supported languages](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live-language-support?tabs=speechinput)).
+On a hosted-agent wrapper the voice agent owns the audio settings and the client
+sends no `session.update`
+([Learn](https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent)),
+so each option is its own wrapper.
+
+```sh
+python3 scripts/voice_eval.py prepare --corpus references/voice-eval/corpus.returns-triage.json \
+  --audio-dir .voice-eval/audio --speech-region <region> --speech-resource-id <Foundry account id>
+python3 scripts/voice_eval.py run --corpus references/voice-eval/corpus.returns-triage.json \
+  --variants variants.json --audio-dir .voice-eval/audio --results-dir .voice-eval/results \
+  --project-endpoint "$AZURE_AI_PROJECT_ENDPOINT" --budget-ceiling-usd 10 --endpoint-class non-production
+python3 scripts/voice_eval.py report --corpus references/voice-eval/corpus.returns-triage.json \
+  --results-dir .voice-eval/results --prices references/voice-eval/prices.example.json \
+  --account-resource-id <Foundry account id> --out specs/voice-eval-manifest.json --markdown specs/voice-eval-report.md
+```
+
+`prepare` uses Azure text to speech with Microsoft Entra auth (Cognitive Services
+Speech User on the account). `run` applies the same gates as the load test: a
+mandatory budget ceiling against `corpus.projected_usd_per_call` × planned calls,
+and `--allow-production` for a production endpoint; it aborts before any call
+otherwise. It waits `--gap-s` (default 150 s) between variants so Azure Monitor's
+one-minute grain separates their token windows. `report` writes
+`specs/voice-eval-manifest.json` (`threadlight.voice-eval/v1`, aggregates only;
+the writer rejects transcripts and secret-shaped values) and a Markdown table.
+
+What Azure measures, and what the harness measures instead:
+
+- **Azure Monitor platform metrics** on the Foundry (`Microsoft.CognitiveServices/accounts`)
+  resource include Voice Live audio, text and cached token counts at one-minute
+  grain, split by `ApiName`, `FeatureName`, `UsageChannel`, `Region`
+  ([supported metrics](https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-cognitiveservices-accounts-metrics)).
+  There is no per-agent or per-call dimension and no latency metric there.
+- **Foundry voice agent monitoring** (preview) shows average time to first audio,
+  sessions, turns, session duration, audio tokens, TTFT/TTFA, LLM, speech-to-text
+  and text-to-speech latency and an estimated cost from traces in the connected
+  Application Insights
+  ([voice agent tracing, monitoring and evaluation](https://learn.microsoft.com/azure/foundry/agents/concepts/voice-agent-observability)).
+  Those cost attributes are estimates, not invoice records
+  ([voice agent pricing](https://learn.microsoft.com/azure/foundry/agents/concepts/voice-agent-pricing)).
+- **The harness** measures from the caller side: what a caller would wait for
+  (end of speech to first and answer audio, including the hold message),
+  recognition and outcome per language and audio condition, and barge-in. It
+  reads Azure Monitor tokens per variant window; when they are absent it falls
+  back to the Learn rule of thumb (~10 tokens per second of input audio, ~20 per
+  second of output) and labels the row `learn-estimate`.
+
+Which Voice Live meter bills a hosted-agent wrapper (no Voice Live model) is not
+documented; the report prices the same tokens under each candidate meter row in
+[`prices.example.json`](references/voice-eval/prices.example.json). Hosted
+agent compute (vCPU and memory per active session) is billed separately and is
+not attributed per call.
+
+Live results (2026-11-11) are in
+[production-readiness.md](../../docs/production-readiness.md#voice-readiness-only-when-the-pilot-has-a-voice-front-end).
+
 ## Files
 
 ```
@@ -388,11 +488,15 @@ scripts/waterfall.py                   # App Insights join, per-request segments
 scripts/capacity.py                    # ARM capacity facts, Retail Prices meters, cost per 1,000 requests
 scripts/perf_evidence.py               # CLI: gated run -> evidence JSON -> Markdown/HTML report
 references/load-manifest.schema.json   # threadlight.load/v1 manifest contract (draft-07)
+scripts/voice_eval.py                  # voice workload harness (prepare / run / report)
+references/voice-eval/                 # example corpus, variants, price meters, voice-eval manifest schema
 tests/test_loadtest.py                 # pytest suite (FakeAdapter, gates, percentiles, privacy, schema parity)
 tests/test_hosted_agent.py             # driver, phases, SSE timing, budget gate before any request
 tests/test_waterfall.py                # segments, union of parallel calls, cold start, KQL batching
 tests/test_capacity.py                 # rate limits, meters, calculated vs estimated cost
 tests/test_perf_evidence.py            # evidence labels, report rendering, no prompt leakage
+
+tests/test_voice_eval.py               # offline maths: audio conversion, WER, timeline, gates, cost, manifest
 ```
 
 ## Tests

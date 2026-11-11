@@ -1,0 +1,10 @@
+{
+  "region": "eastus2",
+  "notes": "Azure Retail Prices API meter names (list prices, USD). Which Voice Live meter bills a Foundry Hosted Voice wrapper (conversation engine = hosted agent, no Voice Live model) is not documented on Microsoft Learn, so the report prices the measured tokens under each candidate row. Model: gpt-5.4 Global Standard, the generated pilot default.",
+  "voice_tiers": {
+    "byo": {"audio_in": "Voice Live BYO Standard Speech Audio Input Tokens", "audio_out": "Voice Live BYO Standard Speech Audio Output Tokens"},
+    "lite": {"audio_in": "Voice Live API Lite - Standard Speech Audio Input Tokens", "audio_out": "Voice Live API Lite - Standard Speech Audio Output Tokens", "text_in": "Voice Live API Lite - LLM Text Input Tokens", "text_out": "Voice Live API Lite - LLM Text Output Tokens"},
+    "pro": {"audio_in": "Voice Live API Pro - Standard Speech Audio Input Tokens", "audio_out": "Voice Live API Pro - Standard Speech Audio Output Tokens", "text_in": "Voice Live API Pro - LLM Text Input Tokens", "text_out": "Voice Live API Pro - LLM Text Output Tokens"}
+  },
+  "model": {"input": "5.4 inp Gl 1M Tokens", "cached_input": "5.4 cd inp Gl 1M Tokens", "output": "5.4 opt Gl 1M Tokens"}
+}

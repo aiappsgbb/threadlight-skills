@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "threadlight.voice-eval/v1",
+  "description": "Aggregated voice workload measurements from scripted synthetic-TTS calls. Never contains transcripts, audio or credentials.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tool_version", "generated_at", "audio_source", "human_caller_tested", "caveat",
+               "agent_versions", "rows", "barge_in", "cost", "metric_sources"],
+  "properties": {
+    "schema": {"const": "threadlight.voice-eval/v1"},
+    "tool_version": {"type": "string"},
+    "generated_at": {"type": "string"},
+    "audio_source": {"const": "synthetic-tts"},
+    "human_caller_tested": {"const": false},
+    "caveat": {"type": "string", "minLength": 20},
+    "agent_versions": {"type": "object", "additionalProperties": {"type": "string"}},
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["variant", "condition", "lang", "turns"],
+        "properties": {
+          "variant": {"type": "string"},
+          "condition": {"enum": ["wb16", "nb8", "nb8_noise"]},
+          "lang": {"type": "string"},
+          "turns": {"type": "integer", "minimum": 0},
+          "failed_calls": {"type": "integer", "minimum": 0},
+          "timed_out_turns": {"type": "integer", "minimum": 0},
+          "wer_mean": {"type": ["number", "null"]},
+          "entity_accuracy": {"type": ["number", "null"]},
+          "outcome_accuracy": {"type": ["number", "null"]},
+          "ttfa_ms_p50": {"type": ["number", "null"]},
+          "ttfa_ms_p95": {"type": ["number", "null"]},
+          "answer_audio_ms_p50": {"type": ["number", "null"]},
+          "turn_complete_ms_p50": {"type": ["number", "null"]},
+          "call_duration_s_mean": {"type": ["number", "null"]}
+        }
+      }
+    },
+    "barge_in": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["variant", "condition", "lang"],
+        "properties": {
+          "variant": {"type": "string"},
+          "condition": {"type": "string"},
+          "lang": {"type": "string"},
+          "during_answer_audio": {"type": ["boolean", "null"]},
+          "detect_ms": {"type": ["number", "null"]},
+          "interrupted_status": {"type": ["string", "null"]},
+          "audio_after_detect_s": {"type": "number"},
+          "follow_up_correct": {"type": ["boolean", "null"]},
+          "timed_out": {"type": ["boolean", "null"]}
+        }
+      }
+    },
+    "cost": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["variant", "voice_tier_assumed", "basis", "usd_per_call"],
+        "properties": {
+          "basis": {"const": "calculated"},
+          "token_basis": {"enum": ["azure-monitor", "learn-estimate"]}
+        }
+      }
+    },
+    "metric_sources": {"type": "object", "additionalProperties": {"type": "string"}}
+  }
+}

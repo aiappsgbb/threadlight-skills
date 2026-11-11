@@ -116,3 +116,42 @@ test('governance runbook and kit README document the governed voice bridge', () 
   assert.match(kit, /voice_frontend: hosted-voice/);
   assert.match(kit, /WORKSHOP-1H-QUICKSTART\.md#66b/);
 });
+
+test('voice readiness: measured workload harness, readiness step and workshop step', () => {
+  const skill = collapse(read('skills/threadlight-loadtest/SKILL.md'));
+  for (const term of ['scripts/voice_eval.py', 'specs/voice-eval-manifest.json', 'g711', 'mai-transcribe-2',
+    'WER', 'barge-in', 'Retail Prices API', 'VoiceLiveAudioInputTokens', 'time to first audio']) {
+    assert.ok(skill.includes(term), `loadtest SKILL: ${term}`);
+  }
+  assert.match(skill, /not a substitute for (testing with )?human callers/i);
+  assert.match(skill, /calculated, not billed|calculated \(not billed\)/i);
+  assert.ok(skill.includes('https://learn.microsoft.com/azure/foundry/agents/concepts/voice-agent-observability'));
+  assert.ok(skill.includes('https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-cognitiveservices-accounts-metrics'));
+
+  const readiness = read('docs/production-readiness.md');
+  const step = readiness.split(/^### Voice readiness/m)[1];
+  assert.ok(step, 'missing "Voice readiness" step in production-readiness.md');
+  const body = collapse(step.split(/^##/m)[0]);
+  assert.match(body, /voice_eval\.py/);
+  assert.match(body, /8 kHz/);
+  assert.match(body, /human callers/i);
+  assert.match(body, /measured live on 2026-11-11/i);
+
+  const workshop = read('docs/WORKSHOP-1H-QUICKSTART.md');
+  const ws = workshop.split(/^### 6\.6c /m)[1];
+  assert.ok(ws, 'missing workshop § 6.6c voice readiness');
+  const wsBody = collapse(ws.split(/^###? /m)[0]);
+  assert.match(wsBody, /voice_eval\.py/);
+  assert.match(wsBody, /synthetic/i);
+});
+
+test('voice bridges tell the agent that spoken identifiers may have lost separators', () => {
+  for (const file of ['skills/threadlight-deploy/references/hosted-agent/ghcp/references/container.py',
+    'skills/threadlight-deploy/references/governance/ghcp-container.py']) {
+    const text = collapse(read(file));
+    assert.match(text, /speech recognition[^"]{0,40}"?\s*"?[^"]{0,120}separators/i, file);
+    assert.match(text, /spell the identifier/i, file);
+  }
+  const readme = collapse(read('skills/threadlight-deploy/references/hosted-agent/ghcp/README.md'));
+  assert.match(readme, /separators/i);
+});
