@@ -8,9 +8,9 @@ description: >
   static claims. USE FOR: load testing, latency benchmarking, throughput
   testing, k6, locust, LOAD-001/LOAD-002/LOAD-003 findings, budget-capped
   load runs, production load-test confirmation, load-manifest evidence,
-  p50/p95 latency evidence, error-rate/tokens-per-request evidence, hosted
-  agent latency waterfall (runtime vs model vs tool/MCP vs cold start, time
-  to first token, cost per 1,000 requests) on a deployed GHCP pilot. DO NOT
+  p50/p95 latency, error-rate/tokens-per-request evidence, hosted agent
+  latency waterfall (runtime vs model vs MCP vs cold start, cost per 1,000
+  requests) on a deployed GHCP pilot. DO NOT
   USE FOR: deploying infrastructure or agents (threadlight-deploy /
   azure-deploy); autonomous/agentic-loop execution — this skill never runs
   unattended and never installs k6/locust itself; release or rollout
