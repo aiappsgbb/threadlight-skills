@@ -7,6 +7,30 @@ field.
 
 ## [Unreleased]
 
+### 2.40.0: one agent with skills or several agents, a recorded design decision
+
+- **`threadlight-design` discovery question 10 (Agent topology):** asks whether
+  the process stays one agent with skills or splits into several agents, and
+  recommends `single-agent-with-skills` unless a hard split trigger holds
+  (`security-compliance-boundary`, `separate-owning-team`,
+  `independent-release-cadence`, `measured-single-agent-limit`).
+- **SPEC § 11e `agent_topology`:** decision, split triggers, inter-agent protocol
+  and eight criteria (latency hops, sessions, quota, failure points, cost,
+  ownership boundary, governance boundary, eval complexity).
+- **`references/process-traits.md` Agent Topology:** criteria table and what
+  Foundry supports today, from Microsoft Learn (checked 2026-11-11): Cloud
+  Adoption Framework single vs multiple agents; Connected Agents not in the new
+  Foundry Agent Service; `a2a` tool GA on A2A 1.0; incoming A2A documented for
+  prompt agents (hosted agents not documented, left open); Foundry visual
+  workflows preview, retiring December 1, 2026, no hosted agents; Agent Framework
+  workflows inside a hosted agent as the code path; model quota pooled per
+  subscription, region, model and deployment type.
+- **Boundary:** a split gives each agent its own SPEC and pilot. Threadlight does
+  not generate the inter-agent wiring; the SPEC records it as an open item.
+- **Verified:** offline text contract
+  (`skills/threadlight-design/tests/test_agent_topology_decision.py`) and the
+  rebuilt Cowork design bundle. No runtime or live multi-agent evidence.
+
 ### 2.39.1: second live run of the governed voice demo on the post-review build
 
 - **Live (2026-11-10, eastus2, nonproduction, synthetic TTS audio, no human

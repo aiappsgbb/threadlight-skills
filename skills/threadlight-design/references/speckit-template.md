@@ -846,6 +846,37 @@ capability_signals:                     # machine-readable booleans + unresolved
   the process has fixed phases, long-running waits, retries with explicit
   back-off, or human approvals between stages.
 
+### Agent topology (one agent with skills, or several agents)
+
+Decision guide and citations: `references/process-traits.md` (Agent Topology). Default and
+recommendation: `single-agent-with-skills` with an empty `split_triggers` list.
+
+```yaml
+agent_topology:
+  decision: single-agent-with-skills   # single-agent-with-skills | multi-agent
+  split_triggers: []                   # empty for single agent; else any of security-compliance-boundary,
+                                       # separate-owning-team, independent-release-cadence, measured-single-agent-limit
+  inter_agent_protocol: none           # none | a2a | maf-workflow-in-hosted-agent
+  criteria:                            # one short note each, from the process walk-through
+    latency_hops: "[model round trips per user turn and whether the user waits on them]"
+    sessions: "[where conversation state lives; any context that must stay isolated]"
+    quota: "[model deployments and TPM pool each agent draws from]"
+    failure_points: "[what breaks a turn; retry and fallback owner]"
+    cost: "[context processed once vs per agent; prototype evidence if a split is claimed cheaper]"
+    ownership_boundary: "[teams that own and release each part]"
+    governance_boundary: "[identities, permissions, data classification, separation of duties]"
+    eval_complexity: "[eval suites needed: one agent, or per agent plus end-to-end hand-offs]"
+  agents: []                           # multi-agent only: [{name, spec, owner, identity, data_boundary}]
+  rationale: "[why this decision; name the trigger and its evidence when multi-agent]"
+  source: open-question                # provided | inferred | open-question
+```
+
+- `multi-agent` requires at least one `split_triggers` entry with evidence in
+  `rationale`. Each agent gets its own SPEC and pilot; Threadlight does not
+  generate the inter-agent wiring, so record it as an open item in § 13.
+- `maf-workflow-in-hosted-agent` is orchestration inside one hosted agent: keep
+  `decision: single-agent-with-skills` and use `workflow_model: workflow`.
+
 > **Deriving `capability_signals`.** Set each boolean from what discovery
 > actually found: `false` only when the requirement or tooling is **confirmed
 > absent**, never merely unknown. If discovery cannot determine a signal yet,
