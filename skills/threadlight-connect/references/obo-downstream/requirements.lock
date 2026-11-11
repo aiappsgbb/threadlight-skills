@@ -1,5 +1,5 @@
 # Exact, hashed pins for the OBO downstream image (Linux x86_64, Python 3.12).
-# Regenerate: uv pip compile requirements.in --generate-hashes --python-version 3.12
+# Regenerate: uv pip compile requirements.in --generate-hashes --python-version 3.12 \
 #   --python-platform x86_64-manylinux_2_28 -o requirements.lock --no-header
 annotated-types==0.8.0 \
     --hash=sha256:13b2beaad985e05e2d6407ee4c4f35590b11f8d693a258a561055cac8f64cab7 \
@@ -227,7 +227,7 @@ jsonschema-specifications==2025.9.1 \
 mcp==1.29.1 \
     --hash=sha256:1967ba4c315f7a375146209949f45950d18b0efd2f913d7cf3400bc723ee5f04 \
     --hash=sha256:b6310eeb59153300c4ab8b9aec4c52f4819a2d6a8e429eb43d908bed7c783648
-    # via -r requirements.in
+    # via -r skills/threadlight-connect/references/obo-downstream/requirements.in
 pycparser==3.12 \
     --hash=sha256:a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e \
     --hash=sha256:f03387877eab82ce01bbdfd0ba7252ee55a90b1c708d5129e2ce915475cf1db6
@@ -385,11 +385,11 @@ pydantic-settings==2.16.2 \
     --hash=sha256:3dc08ffabed2bbd5dc2dd55ead7b78b4e4c5cd776aecd04310db5f1224caaf46 \
     --hash=sha256:8d523e5c129b097686bde019bd6109bff53f4c8c3f63f1ddf9933ffa42e5ab4f
     # via mcp
-pyjwt==2.10.1 \
-    --hash=sha256:3cc5772eb20009233caf06e9d8a0577824723b44e6648ee0a2aedb6cf9381953 \
-    --hash=sha256:dcdd193e30abefd5debf142f9adfcdd2b58004e644f25406ffaebd50bd98dacb
+pyjwt==2.13.0 \
+    --hash=sha256:41571c89ca91598c79e8ef18a2d07367d4810fbbd6f637794879baf1b7703423 \
+    --hash=sha256:66adcc2aff09b3f1bbd95fc1e1577df8ac8723c978552fd43304c8a290ac5728
     # via
-    #   -r requirements.in
+    #   -r skills/threadlight-connect/references/obo-downstream/requirements.in
     #   mcp
 python-dotenv==1.2.4 \
     --hash=sha256:42269a8a5b3fd54ffa6f3d84b18abed50064717576b4ecf03dc4a55d8aa04fdc \
@@ -559,9 +559,9 @@ typing-extensions==4.16.0 \
     #   referencing
     #   starlette
     #   typing-inspection
-typing-inspection==0.4.4 \
-    --hash=sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47 \
-    --hash=sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147
+typing-inspection==0.4.5 \
+    --hash=sha256:7f16c411e7930dc79596d42ab44672a3fe5f60eb34b781a1647e7872363120c7 \
+    --hash=sha256:bc210535442b39e1bf2805e0c7a17dfd6a4ace760c84c7f7d16245d23a6b1c39
     # via
     #   mcp
     #   pydantic
