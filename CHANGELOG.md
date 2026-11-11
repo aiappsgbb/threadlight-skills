@@ -7,6 +7,45 @@ field.
 
 ## [Unreleased]
 
+### 2.45.0: voice as a measured workload (scripted spoken calls, 8 kHz, languages, options, cost per call)
+
+- **`threadlight-loadtest/scripts/voice_eval.py`:** plays a fixed corpus of
+  caller utterances (Azure TTS at 16 kHz, 8 kHz telephony band, 8 kHz with seeded
+  noise; English, Italian, Greek) into one or more deployed voice agents over the
+  managed voice WebSocket. Per turn: WER and case-id accuracy, outcome vs the
+  expected decision, end of speech to first audio and to answer audio, call
+  duration, barge-in during the answer. Cost per call from Azure Monitor tokens
+  and Retail Prices API list prices, labelled calculated. Budget and production
+  gates as in the load test; `specs/voice-eval-manifest.json`
+  (`threadlight.voice-eval/v1`) keeps aggregates only and records
+  `audio_source: synthetic-tts`, `human_caller_tested: false`. Example corpus,
+  variants and price meters under `references/voice-eval/`.
+- **Spoken identifiers.** Both GHCP voice bridges now tell the agent that the
+  caller's words come from speech recognition, that identifiers may have lost
+  separators, to restore the tool format and to ask the caller to spell one that
+  still fails; the plain bridge also asks for short spoken answers.
+- **Docs.** Production-readiness "Voice readiness" step with the live comparison,
+  workshop § 6.6c, loadtest skill section on Azure metrics vs client-side
+  measures, GHCP README, operations spine.
+- **Live (2026-11-11, eastus2, nonproduction, synthetic TTS callers, no human
+  voice):** 9 + 25 scripted calls on one pilot with three Hosted Voice wrappers
+  (PCM 24 kHz + `azure-speech`, G.711 mu-law + `azure-speech` + deep noise
+  suppression, PCM 24 kHz + `mai-transcribe-2`). Before the fix, a spoken
+  `R M A 2026 1 0 4 4 1 8` was heard as `RMA2026104418` and not found (EN+IT
+  outcomes 15/18); after it 18/18 on both PCM wrappers, 11/12 on G.711, and the
+  median spoken audio per turn went from 67 s to 35 s. First audio about 5 s (hold
+  message); answer audio median 32-37 s (agent turn). Greek: unusable on
+  `azure-speech` auto multilingual (not in its language list), exact on
+  `mai-transcribe-2`. Barge-in detected in 0.55-0.80 s, follow-up answered.
+  Engine-model cost USD 0.19-0.24 per call (measured tokens, list price). The
+  account's Voice Live metrics showed 0 tokens for the wrapper, so voice cost is
+  the Learn rule of thumb at list rows (USD 0.05-0.08); the billing meter for
+  this preview path is not documented.
+- **Not verified:** human callers, accents, real phones and noise, perceived
+  voice quality, venue latency; Voice Live billing for Hosted Voice. In one Greek
+  call on `azure-speech` the agent inferred a case id from a fragment and
+  proposed a decision: read identifiers back before deciding.
+
 ### 2.44.0: performance evidence on a deployed GHCP pilot (load test with latency waterfall)
 
 - **`threadlight-loadtest` 0.2.0:** `scripts/perf_evidence.py` runs a budget-capped,

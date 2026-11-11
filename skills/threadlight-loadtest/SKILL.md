@@ -10,9 +10,8 @@ description: >
   load runs, production load-test confirmation, load-manifest evidence,
   p50/p95 latency, error-rate and token evidence, hosted agent latency
   waterfall (runtime vs model vs MCP vs cold start, cost per 1,000
-  requests) on a deployed GHCP pilot, voice workload evaluation of an
-  opted-in voice front-end (scripted spoken calls, 8 kHz telephony, WER,
-  first audio, barge-in, cost per call). DO NOT USE FOR: deploying
+  requests) on a deployed GHCP pilot, voice calls at 8 kHz.
+  DO NOT USE FOR: deploying
   infrastructure or agents (threadlight-deploy / microsoft-foundry /
   azure-deploy); autonomous/agentic-loop execution (never runs unattended
   or installs k6/locust); release or rollout gating
