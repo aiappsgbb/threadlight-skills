@@ -7,6 +7,47 @@ field.
 
 ## [Unreleased]
 
+### 2.44.0: performance evidence on a deployed GHCP pilot (load test with latency waterfall)
+
+- **`threadlight-loadtest` 0.2.0:** `scripts/perf_evidence.py` runs a budget-capped,
+  production-gated load (cold sessions, ramp, steady concurrency) through the real
+  Foundry hosted-agent Invocations endpoint (`hosted_agent.py`), joins every request
+  to the agent's own Application Insights spans (`waterfall.py`) and reports p50/p95
+  per segment (endpoint+sandbox+network, session start, model calls, tool and MCP
+  calls, runtime residual, client and first-model-call time to first token, cold
+  start), errors, model 429s (spans plus the Azure Monitor `AzureOpenAIRequests`
+  metric), tokens per request, the deployment's TPM/RPM limits, documented hosted
+  agent limits with Learn links, and the model cost per 1,000 successful requests
+  calculated from measured tokens and Retail Prices meters (`capacity.py`). Hosted
+  compute stays an estimate. Segments the traces cannot split are listed, never
+  estimated. Outputs `specs/perf-evidence.json` and `docs/perf-evidence.md`/`.html`
+  in the pilot value page style; `pilot_value.py` shows **Performance under load**.
+- **GHCP container template:** per-turn OpenTelemetry spans from the Copilot SDK
+  session events (`threadlight.copilot.turn`, `session_open`, `chat <model>`,
+  `execute_tool <tool>`), metadata only, never prompt, answer, tool arguments or
+  results; a throttled call's status is read from the message when the SDK leaves
+  `status_code` empty.
+- **Live (2026-11-11, eastus2, nonproduction, fresh returns-triage Fast-PoC, gpt-5.4
+  GlobalStandard, deleted after the test):** run A, 300K TPM, up to 10 concurrent,
+  233 requests: 2,291 model calls answered HTTP 429 and 73% of requests failed in
+  the steady phase. Run B, 800K TPM, up to 4 concurrent, 103 requests: no 429,
+  warm (later request in a running session) p50 33.2 s / p95 53.6 s, model calls
+  32.1 s of a 32.6 s container p50, MCP calls 57 ms, runtime residual 351 ms,
+  endpoint+sandbox+network 631 ms, cold start p50 3.8 s; model cost USD 75.66 per
+  1,000 successful requests; 12 requests did not finish within the 300 s client
+  read timeout and exported no server span. The client's first token arrives near
+  the end (p50 31.5 s) because the agent streams its answer after the tool loop;
+  the first model call's time to first token was 3.8 s.
+- **Review fixes before merge:** warm excludes the first request of each session
+  (its own `first_in_session` group); cost divides by successful requests with
+  spans; the time breakdown is labelled calculated; request records are saved
+  before the span fetch so a failed fetch never loses a paid run.
+- **Found by the waterfall:** the agent also calls Copilot CLI built-in tools
+  (`bash`, `task`, `web_fetch`, `rg`) that the template does not restrict; they
+  dominated tail latency in run A. Tracked in #192, not changed here.
+- **Not verified:** voice turns (not instrumented), private networking, higher
+  scale than 10 concurrent, and the cause of the 12 unfinished requests.
+
 ### 2.43.0: identity end to end, proven live on a GHCP pilot
 
 - **Least-privilege agent identity:** the GHCP pilot `hooks/postdeploy.sh` (and

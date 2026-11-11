@@ -431,6 +431,32 @@ Use the [L400/L500 operative guide](agent-operations.md) for the separate
    its reserved noop. Business bindings remain live-unverified until separately
    proved. Do not use another `azd up` after binding as a readiness shortcut.
 
+### 6.5b Path to production: performance evidence (follow-up)
+
+The first production question after the demo is usually "how fast is it at
+our volume, and where does the time go?". Answer it on the deployed pilot,
+after the workshop, with a budget-capped load run through the real hosted
+agent endpoint, model and MCP server:
+
+> in my pilot folder, use threadlight-loadtest to run the performance evidence
+> load test for agent returns-triage with a 80 USD ceiling, up to 10 concurrent
+> requests and 200 steady requests, then open docs/perf-evidence.html
+
+It runs a cold phase (new sessions, so new sandboxes; an MCP server scaled to
+zero starts too), a ramp and steady concurrency, then splits every request
+using the agent's own spans in Application Insights: endpoint and sandbox,
+session start, model calls, tool and MCP calls, runtime overhead, time to first
+token, plus errors, model throttling, tokens per request, the deployment's
+TPM/RPM limits and the model cost per 1,000 requests (calculated from measured
+tokens and Retail Prices). What the traces cannot separate is stated, not
+estimated. Expect real spend and size the model deployment first: in our
+2026-11-11 runs one returns-triage request used 100,000-120,000 input tokens
+(about 90% cached) across about 10 model calls, a 300K TPM deployment throttled
+at 10 concurrent requests (73% of requests failed) and 800K TPM served 4
+concurrent with no throttling (warm p50 33 s, p95 54 s). See the
+[load-test skill](../skills/threadlight-loadtest/SKILL.md#hosted-agent-performance-evidence-latency-waterfall).
+The pilot value page (§6.7) then shows a **Performance under load** line.
+
 ### 6.6 Governance segment: one governed write live (facilitator)
 
 The [governed-write workshop kit](../examples/governed-write-ghcp/README.md) is

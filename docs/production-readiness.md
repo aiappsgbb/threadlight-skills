@@ -696,6 +696,27 @@ answers, obligations with their evidence and open items, and the Microsoft vs
 customer split for a PaaS agent. It presents evidence and open items and never
 states compliance. See [EU AI Act evidence pack](eu-ai-act-evidence.md#customer-handoff-bundle).
 
+### Performance evidence (load test with latency waterfall)
+
+Customers moving a pilot to production ask where the time goes (hosted-agent
+runtime, model, tools/MCP, cold start), what happens at concurrency and what a
+thousand requests cost. `threadlight-loadtest` answers it on the deployed GHCP
+pilot with `scripts/perf_evidence.py`: a budget-capped, production-gated run
+through the real Invocations endpoint (cold sessions, ramp, steady
+concurrency), a per-request waterfall from the agent's own Application
+Insights spans (the Invocations host span plus the GHCP container's turn,
+session, `chat` and `execute_tool` spans), the model deployment's TPM/RPM
+limits and the steady phase's share of them, documented hosted-agent limits
+with Learn links, and the model cost per 1,000 requests calculated from
+measured tokens and Retail Prices meters. Hosted compute stays an estimate.
+Outputs: `specs/load-manifest.json`, `specs/perf-evidence.json`,
+`docs/perf-evidence.md`/`.html`; the pilot value page shows a **Performance
+under load** item from a complete run. Segments the traces cannot split
+(endpoint vs sandbox start vs network, model queueing vs inference, an MCP
+scale-from-zero start, which lands in session start) are reported as such. It is pilot evidence
+at modest scale, not an SLA, and it says nothing about governance or network
+isolation. See the [skill section](../skills/threadlight-loadtest/SKILL.md#hosted-agent-performance-evidence-latency-waterfall).
+
 ---
 
 ## 9. CLI cheatsheet

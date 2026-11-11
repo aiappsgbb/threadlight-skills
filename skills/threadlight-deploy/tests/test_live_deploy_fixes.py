@@ -24,6 +24,7 @@ import json
 import logging
 import re
 import shutil
+import time
 import types
 from pathlib import Path
 
@@ -168,13 +169,13 @@ def test_stream_false_returns_only_the_final_answer_text():
     session = Session()
 
     @contextlib.asynccontextmanager
-    async def conversation(_key, _call_id=""):
+    async def conversation(_key, _call_id="", _telemetry=None):
         yield session
 
     ns = _container_functions(
-        "_final_answer_response", "_final_answer_session", "SessionResumeError",
+        "_final_answer_response", "_final_answer_session", "SessionResumeError", "_TurnTelemetry",
         SessionEventType=types.SimpleNamespace(SESSION_IDLE=_Type.IDLE, SESSION_ERROR=_Type.ERROR),
-        _conversation=conversation,
+        _conversation=conversation, _TRACER=None, _otel_trace=None, time=time,
     )
 
     async def collect():

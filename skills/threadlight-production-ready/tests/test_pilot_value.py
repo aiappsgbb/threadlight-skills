@@ -455,3 +455,31 @@ def test_business_kpis_skip_the_template_exemplar_table(tmp_path):
 
 def test_window_days_tolerates_mixed_timezones():
     assert pv._window_days("2026-08-01T00:00:00", "2026-08-08T00:00:00Z") is None
+
+
+PERF = {
+    "schema": "threadlight-perf-evidence/v1", "generated_at": "2026-11-11T14:00:00+00:00",
+    "load_manifest": {"status": "complete"},
+    "phases": [{"phase": "cold", "concurrency": 1}, {"phase": "steady", "concurrency": 10}],
+    "waterfall": {"requests": 233, "error_rate": 0.0043,
+                  "groups": {"warm": {"successful": 228, "segments": {"client_ms": {"p50": 38000.0, "p95": 61000.0}}}}},
+    "cost": {"model_per_1000": {"kind": "calculated", "usd": 91.3}},
+}
+
+
+def test_performance_evidence_is_measured_from_the_load_run(tmp_path):
+    root = _workspace(tmp_path, {"specs/perf-evidence.json": PERF})
+    item = _items(pv.build_report(root, generated_at=GENERATED_AT))["performance"]
+    assert item["kind"] == "measured"
+    assert item["value"] == "p95 61.0 s end to end at up to 10 concurrent requests"
+    assert "233 requests" in item["detail"] and "0.4% errors" in item["detail"]
+    assert "USD 91.30 model cost per 1,000 requests (calculated)" in item["detail"]
+
+
+def test_missing_or_partial_performance_evidence_is_not_measured(tmp_path):
+    report = pv.build_report(_workspace(tmp_path), generated_at=GENERATED_AT)
+    assert _items(report)["performance"]["kind"] == "not-measured"
+    assert any(step["label"] == "Performance under load" for step in report["open"])
+    partial = dict(PERF, load_manifest={"status": "partial"})
+    root = _workspace(tmp_path / "p", {"specs/perf-evidence.json": partial})
+    assert _items(pv.build_report(root, generated_at=GENERATED_AT))["performance"]["kind"] == "not-measured"

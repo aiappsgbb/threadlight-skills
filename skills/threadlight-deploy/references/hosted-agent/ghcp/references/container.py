@@ -26,6 +26,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import logging
 import os
@@ -49,6 +50,194 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger(__name__)
 
 BASE_DIR = pathlib.Path(os.getenv("PROJECT_DIR", "/app")).resolve()
+
+# ---------------------------------------------------------------------------
+# Turn telemetry (latency waterfall)
+# ---------------------------------------------------------------------------
+# The Invocations host exports one server span per invocation to the project's
+# Application Insights (https://learn.microsoft.com/azure/foundry/agents/how-to/configure-hosted-agent-telemetry).
+# The Copilot CLI makes the model and MCP calls in its own process, so these
+# child spans, built from the SDK's session events, are what lets a load test
+# (threadlight-loadtest waterfall) separate session start, model calls and tool
+# calls from runtime overhead. Metadata only: never prompt, answer, tool
+# arguments, tool results or error messages. A telemetry failure never affects
+# the answer.
+try:
+    from opentelemetry import trace as _otel_trace
+    _TRACER = _otel_trace.get_tracer("threadlight.ghcp.turn")
+except Exception:  # noqa: BLE001 - telemetry is optional
+    _otel_trace = None
+    _TRACER = None
+
+_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+
+
+def _ns(value) -> int | None:
+    """A duration (timedelta, or milliseconds as a number) in nanoseconds."""
+    if value is None:
+        return None
+    if hasattr(value, "total_seconds"):
+        return (value.days * 86_400 + value.seconds) * 1_000_000_000 + value.microseconds * 1_000
+    if isinstance(value, (int, float)) and value >= 0:
+        return int(value * 1_000_000)
+    return None
+
+
+def _event_ns(event) -> int:
+    stamp = getattr(event, "timestamp", None)
+    if stamp is not None and getattr(stamp, "tzinfo", None) is not None:
+        return _ns(stamp - _EPOCH)
+    return time.time_ns()
+
+
+def _failure_status(data) -> int | None:
+    """HTTP status of a failed model call; read from the message only when the SDK leaves it empty.
+
+    Live 2026-11-11: throttled calls arrived with ``status_code`` None and the
+    status only in ``error_message``. Only the number is kept, never the text.
+    """
+    status = getattr(data, "status_code", None)
+    if isinstance(status, int):
+        return status
+    message = str(getattr(data, "error_message", "") or "")
+    found = re.search(r"\b([45]\d\d)\b", message)
+    if found:
+        return int(found.group(1))
+    lowered = message.lower()
+    return 429 if "rate limit" in lowered or "too many requests" in lowered else None
+
+
+def _event_kind(event) -> str:
+    kind = getattr(event, "type", None)
+    return str(getattr(kind, "value", kind) or "")
+
+
+class _TurnTelemetry:
+    """Child spans for one turn: session open, model calls, tool calls."""
+
+    def __init__(self, invocation_id: str = "") -> None:
+        self._turn = None
+        self._context = None
+        self._tools: dict[str, tuple[int, str, str]] = {}
+        self._sent_ns: int | None = None
+        self._first_token_ns: int | None = None
+        self.totals = {"model_calls": 0, "tool_calls": 0, "model_failures": 0, "throttled": 0,
+                       "input_tokens": 0, "output_tokens": 0, "reasoning_tokens": 0}
+        self._model = ""
+        try:
+            if _TRACER is not None:
+                # The invocation id joins these spans to the caller's request:
+                # the host's own baggage is detached before the body streams.
+                self._turn = _TRACER.start_span("threadlight.copilot.turn", attributes=(
+                    {"threadlight.invocation_id": invocation_id} if invocation_id else None))
+                self._context = _otel_trace.set_span_in_context(self._turn)
+        except Exception:  # noqa: BLE001
+            self._turn = None
+
+    def _span(self, name: str, start: int, end: int, attributes: dict, error: str | None = None) -> None:
+        if self._turn is None:
+            return
+        try:
+            span = _TRACER.start_span(name, context=self._context, start_time=start,
+                                      attributes={k: v for k, v in attributes.items() if v is not None})
+            if error is not None:
+                span.set_attribute("error.type", error)
+                span.set_status(_otel_trace.Status(_otel_trace.StatusCode.ERROR))
+            span.end(end_time=max(start, end))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def session_open(self, started_ns: int, *, client_cold_start: bool, kind: str) -> None:
+        self._span("threadlight.copilot.session_open", started_ns, time.time_ns(),
+                   {"threadlight.session.client_cold_start": client_cold_start, "threadlight.session.kind": kind})
+
+    def sent(self) -> None:
+        self._sent_ns = time.time_ns()
+
+    def observe(self, event) -> None:
+        try:
+            self._observe(_event_kind(event), getattr(event, "data", None), event)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _observe(self, kind: str, data, event) -> None:
+        if kind in ("assistant.message_delta", "assistant.streaming_delta") and self._first_token_ns is None:
+            self._first_token_ns = time.time_ns()
+        elif kind == "tool.execution_start":
+            name = getattr(data, "mcp_tool_name", None) or getattr(data, "tool_name", None) or "tool"
+            self._tools[str(getattr(data, "tool_call_id", ""))] = (
+                _event_ns(event), str(name), str(getattr(data, "mcp_server_name", None) or ""))
+        elif kind == "tool.execution_complete":
+            started = self._tools.pop(str(getattr(data, "tool_call_id", "")), None)
+            if started is None:
+                return
+            start, name, server = started
+            success = bool(getattr(data, "success", False))
+            self.totals["tool_calls"] += 1
+            self._span(f"execute_tool {name}", start, _event_ns(event),
+                       {"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": name,
+                        "threadlight.mcp.server": server or None, "threadlight.tool.success": success},
+                       None if success else "tool_error")
+        elif kind == "assistant.usage":
+            end = _event_ns(event)
+            model = str(getattr(data, "model", "") or self._model or "model")
+            self._model = model
+            ttft = _ns(getattr(data, "time_to_first_token", None))
+            usage = {key: getattr(data, key, None) for key in
+                     ("input_tokens", "output_tokens", "reasoning_tokens", "cache_read_tokens")}
+            self.totals["model_calls"] += 1
+            for key in ("input_tokens", "output_tokens", "reasoning_tokens"):
+                self.totals[key] += int(usage[key] or 0)
+            self._span(f"chat {model}", end - (_ns(getattr(data, "duration", None)) or 0), end, {
+                "gen_ai.operation.name": "chat", "gen_ai.request.model": model,
+                "gen_ai.usage.input_tokens": usage["input_tokens"],
+                "gen_ai.usage.output_tokens": usage["output_tokens"],
+                "threadlight.usage.reasoning_tokens": usage["reasoning_tokens"],
+                "threadlight.usage.cache_read_tokens": usage["cache_read_tokens"],
+                "threadlight.time_to_first_token_ms": None if ttft is None else ttft // 1_000_000,
+                "gen_ai.response.finish_reasons": (str(getattr(data, "finish_reason", "") or "") or None),
+            })
+        elif kind == "model.call_failure":
+            end = _event_ns(event)
+            model = str(getattr(data, "model", "") or self._model or "model")
+            status = _failure_status(data)
+            error_class = ("throttled" if status == 429 else "server_error" if status and status >= 500
+                           else "client_error" if status else "unknown")
+            self.totals["model_failures"] += 1
+            if status == 429:
+                self.totals["throttled"] += 1
+            # The Azure Monitor exporter folds http.response.status_code/error.type
+            # into its own columns, so the threadlight.* copies stay queryable.
+            self._span(f"chat {model}", end - (_ns(getattr(data, "duration", None)) or 0), end,
+                       {"gen_ai.operation.name": "chat", "gen_ai.request.model": model,
+                        "http.response.status_code": status, "threadlight.model.status_code": status,
+                        "threadlight.error_class": error_class},
+                       str(status) if status is not None else "model_call_failure")
+
+    def finish(self, error: bool = False) -> None:
+        if self._turn is None:
+            return
+        try:
+            now = time.time_ns()
+            for start, name, server in self._tools.values():
+                self._span(f"execute_tool {name}", start, now,
+                           {"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": name,
+                            "threadlight.mcp.server": server or None}, "incomplete")
+            self._tools.clear()
+            for key, value in self.totals.items():
+                name = f"gen_ai.usage.{key}" if key in ("input_tokens", "output_tokens") else f"threadlight.turn.{key}"
+                self._turn.set_attribute(name, value)
+            if self._model:
+                self._turn.set_attribute("gen_ai.request.model", self._model)
+            if self._sent_ns is not None and self._first_token_ns is not None:
+                self._turn.set_attribute("threadlight.turn.first_token_ms",
+                                         (self._first_token_ns - self._sent_ns) // 1_000_000)
+            if error:
+                self._turn.set_status(_otel_trace.Status(_otel_trace.StatusCode.ERROR))
+            self._turn.end()
+        except Exception:  # noqa: BLE001
+            pass
+        self._turn = None
 
 # ---------------------------------------------------------------------------
 # BYOK Authentication
@@ -476,8 +665,9 @@ async def _keyed_session(client: CopilotClient, key: str):
 
 
 @asynccontextmanager
-async def _conversation(session_key: str, call_id: str = ""):
+async def _conversation(session_key: str, call_id: str = "", telemetry: "_TurnTelemetry | None" = None):
     """Yield the Copilot session for one turn of ``session_key`` (fresh when empty)."""
+    started, cold = time.time_ns(), _client is None
     client = await _ensure_client()
     if not session_key:
         kwargs = _session_kwargs()
@@ -485,6 +675,8 @@ async def _conversation(session_key: str, call_id: str = ""):
         if tools:
             kwargs["tools"] = tools
         session = await client.create_session(**kwargs)
+        if telemetry is not None:
+            telemetry.session_open(started, client_cold_start=cold, kind="fresh")
         try:
             yield session
         finally:
@@ -493,7 +685,10 @@ async def _conversation(session_key: str, call_id: str = ""):
     async with _sessions_lock:
         lock = _session_locks.setdefault(session_key, asyncio.Lock())
     async with lock:
-        yield await _keyed_session(client, session_key)
+        session = await _keyed_session(client, session_key)
+        if telemetry is not None:
+            telemetry.session_open(started, client_cold_start=cold, kind="keyed")
+        yield session
 
 
 def _session_key(request: Request) -> str:
@@ -527,19 +722,25 @@ def _event_payload(event) -> dict | None:
 
 async def _stream_response(invocation_id: str, input_text: str, session_key: str = "", call_id: str = ""):
     """Stream CopilotClient events as SSE."""
+    telemetry = _TurnTelemetry(invocation_id)
     try:
-        async with _conversation(session_key, call_id) as session:
-            async for chunk in _stream_session(session, invocation_id, input_text):
+        async with _conversation(session_key, call_id, telemetry) as session:
+            async for chunk in _stream_session(session, invocation_id, input_text, telemetry):
                 yield chunk
     except SessionResumeError as exc:
+        telemetry.finish(error=True)
         yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n".encode()
         yield f"event: done\ndata: {json.dumps({'invocation_id': invocation_id})}\n\n".encode()
+    finally:
+        telemetry.finish()
 
 
-async def _stream_session(session, invocation_id: str, input_text: str):
+async def _stream_session(session, invocation_id: str, input_text: str, telemetry: "_TurnTelemetry | None" = None):
     queue: asyncio.Queue = asyncio.Queue()
 
     def on_event(event):
+        if telemetry is not None:
+            telemetry.observe(event)
         if event.type == SessionEventType.SESSION_IDLE:
             queue.put_nowait(None)
         elif event.type == SessionEventType.SESSION_ERROR:
@@ -549,6 +750,8 @@ async def _stream_session(session, invocation_id: str, input_text: str):
 
     unsubscribe = session.on(on_event)
     try:
+        if telemetry is not None:
+            telemetry.sent()
         await session.send(input_text)
         while True:
             item = await queue.get()
@@ -577,18 +780,24 @@ async def _final_answer_response(input_text: str, session_key: str = "", call_id
     result size limit (413). Newline heartbeats keep the connection alive
     while the agent works; they are whitespace for the evaluators.
     """
+    telemetry = _TurnTelemetry()
     try:
-        async with _conversation(session_key, call_id) as session:
-            async for chunk in _final_answer_session(session, input_text):
+        async with _conversation(session_key, call_id, telemetry) as session:
+            async for chunk in _final_answer_session(session, input_text, telemetry):
                 yield chunk
     except SessionResumeError as exc:
+        telemetry.finish(error=True)
         yield f"Error: {exc}".encode("utf-8")
+    finally:
+        telemetry.finish()
 
 
-async def _final_answer_session(session, input_text: str):
+async def _final_answer_session(session, input_text: str, telemetry: "_TurnTelemetry | None" = None):
     queue: asyncio.Queue = asyncio.Queue()
 
     def on_event(event):
+        if telemetry is not None:
+            telemetry.observe(event)
         if event.type == SessionEventType.SESSION_IDLE:
             queue.put_nowait(None)
         elif event.type == SessionEventType.SESSION_ERROR:
@@ -599,6 +808,8 @@ async def _final_answer_session(session, input_text: str):
     unsubscribe = session.on(on_event)
     final = ""
     try:
+        if telemetry is not None:
+            telemetry.sent()
         await session.send(input_text)
         while True:
             try:
