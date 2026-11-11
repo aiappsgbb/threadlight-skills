@@ -17,6 +17,11 @@ from urllib.parse import urlsplit
 import uuid
 
 CLEANUP_TIMEOUT = 5.0
+# Session-wide tool allowlist: the relayed MCP tools (the governed binding goes
+# through the relay) and the skill tool. No Copilot CLI built-ins (bash, edit,
+# web_fetch, task, ...), so the model cannot reach a backend outside the
+# relay/gateway path. https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/custom-agents
+GOVERNED_AVAILABLE_TOOLS = ("mcp:*", "builtin:skill")
 LOGGER = logging.getLogger(__name__)
 _LOG_RECORD_FIELDS = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
 
@@ -705,6 +710,7 @@ def build_host(config, *, bootstrap_gate=None, **host_options):
                     model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"],
                     system_message={"mode": "replace", "content": (base / "copilot-instructions.md").read_text()},
                     skill_directories=[str(base / "skills")],
+                    available_tools=list(GOVERNED_AVAILABLE_TOOLS),
                     working_directory=str(Path.home()), streaming=True,
                     mcp_servers=servers, hooks={"on_pre_mcp_tool_call": relay.pre_mcp},
                     on_permission_request=PermissionHandler.approve_all,

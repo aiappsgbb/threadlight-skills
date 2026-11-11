@@ -584,7 +584,7 @@ def test_ghcp_native_host_and_actual_hook_schema(monkeypatch):
     assert isinstance(host, InvocationAgentServerHost)
     assert any(route.path == "/invocations" for route in host.routes)
     assert set(PreMcpToolCallHookOutput.__annotations__) == {"metaToUse"}
-    assert {"provider", "hooks", "mcp_servers", "enable_config_discovery"} <= set(
+    assert {"provider", "hooks", "mcp_servers", "enable_config_discovery", "available_tools"} <= set(
         inspect.signature(CopilotClient.create_session).parameters)
 
 

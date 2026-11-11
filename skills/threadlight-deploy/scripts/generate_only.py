@@ -166,6 +166,36 @@ def _spec_scalar(spec: str, key: str) -> str | None:
     return None if value.lower() in ("", "null", "~", "none") else value
 
 
+# Copilot CLI built-ins a SPEC may opt into by name (#192). The GHCP container
+# otherwise allows only MCP/custom tools and `skill`.
+COPILOT_BUILTIN_TOOLS = frozenset({"web_fetch", "view", "glob", "grep", "bash", "create", "edit", "sql", "task"})
+
+
+def copilot_builtin_tools(spec: str) -> tuple[str | None, str | None]:
+    """SPEC 11e ``copilot_builtin_tools`` as ``("name,name", None)`` or ``(None, ignore reason)``.
+
+    Built-ins (shell, file edits, web fetch, sub-agents) widen what the agent can do
+    beyond the SPEC tools, so only an explicit user opt-in with a reason enables them.
+    """
+    requested = _spec_scalar(spec, "copilot_builtin_tools")
+    if not requested or requested.lower() in ("none", "false", "off"):
+        return None, None
+    names = [n.strip() for n in requested.split(",") if n.strip()]
+    unknown = [n for n in names if n not in COPILOT_BUILTIN_TOOLS]
+    if unknown or not names:
+        raise WorkspaceError("SPEC section 11e copilot_builtin_tools must list built-in tool names from "
+                             f"{sorted(COPILOT_BUILTIN_TOOLS)}, got {requested!r}")
+    missing = []
+    if (_spec_scalar(spec, "copilot_builtin_tools_opt_in_source") or "").lower() != "user":
+        missing.append("copilot_builtin_tools_opt_in_source: user")
+    if not _spec_scalar(spec, "copilot_builtin_tools_reason"):
+        missing.append("copilot_builtin_tools_reason")
+    if missing:
+        return None, ("copilot_builtin_tools ignored: built-in tools need an explicit user opt-in ("
+                      + ", ".join(missing) + "); the agent keeps only its SPEC tools")
+    return ",".join(dict.fromkeys(names)), None
+
+
 def voice_frontend(spec: str) -> tuple[dict[str, str] | None, str | None]:
     """SPEC 11e ``voice_frontend`` as ``(voice config, None)`` or ``(None, ignore reason)``.
 
@@ -739,7 +769,8 @@ _VOICE_REQUIRED_VERSIONS = (
 )
 
 
-def render_azure_yaml(project: str, agent: str, description: str, voice: dict[str, str] | None = None) -> str:
+def render_azure_yaml(project: str, agent: str, description: str, voice: dict[str, str] | None = None,
+                      builtin_tools: str | None = None) -> str:
     text = (PILOT / "azure.yaml").read_text(encoding="utf-8")
     body = text[text.index("name: __PROJECT_NAME__"):]
     header = (
@@ -759,6 +790,12 @@ def render_azure_yaml(project: str, agent: str, description: str, voice: dict[st
         wrapper = (PILOT / "voice.azure.yaml").read_text(encoding="utf-8").replace(
             "__VOICE_NAME__", voice["voice_name"])
         body = body.replace("\nhooks:\n", "\n" + wrapper + "\nhooks:\n", 1)
+    if builtin_tools:
+        anchor = _VOICE_TARGET_ENV[0]
+        if body.count(anchor) != 1:
+            raise WorkspaceError("pilot azure.yaml changed shape; cannot add copilot_builtin_tools")
+        body = body.replace(anchor, anchor + "      # SPEC 11e copilot_builtin_tools (user opt-in)\n"
+                            f"      - name: THREADLIGHT_BUILTIN_TOOLS\n        value: \"{builtin_tools}\"\n")
     desc = json.dumps(description or f"{agent} Foundry hosted agent")
     return header + (
         body.replace("__PROJECT_NAME__", project)
@@ -1318,6 +1355,9 @@ def generate(project_dir: Path, force: bool) -> list[str]:
     voice, voice_ignored = voice_frontend(spec)
     if voice_ignored:
         print(f"generate_only: {voice_ignored}", file=sys.stderr)
+    builtin_tools, builtin_ignored = copilot_builtin_tools(spec)
+    if builtin_ignored:
+        print(f"generate_only: {builtin_ignored}", file=sys.stderr)
 
     agent = _slug(str(manifest.get("name") or project_dir.name))
     project = agent
@@ -1418,6 +1458,8 @@ def generate(project_dir: Path, force: bool) -> list[str]:
                f"against {agent}-voice after deploy; audio quality, barge-in and latency stay unvalidated "
                "until measured"] if voice else []),
             *([voice_ignored] if voice_ignored else []),
+            *([builtin_ignored] if builtin_ignored else []),
+            *([f"Copilot CLI built-in tools enabled by SPEC 11e opt-in: {builtin_tools}"] if builtin_tools else []),
             *([f"governed-write: {gateway_write} is routed to the governed tool gateway and not served by the "
                "mock MCP server; not live until the governance foundation, signed policy and binding exist"]
               if gateway_write else []),
@@ -1425,7 +1467,7 @@ def generate(project_dir: Path, force: bool) -> list[str]:
     }
 
     text_outputs: dict[str, str] = {
-        "azure.yaml": render_azure_yaml(project, agent, description, voice),
+        "azure.yaml": render_azure_yaml(project, agent, description, voice, builtin_tools),
         ".dockerignore": render_dockerignore(bool(standins) and has_corpus),
         "hooks/postdeploy.sh": (PILOT / "hooks" / "postdeploy.sh").read_text(encoding="utf-8"),
         "hooks/postprovision.sh": (PILOT / "hooks" / "postprovision.sh").read_text(encoding="utf-8"),
