@@ -6,6 +6,32 @@ for the action-to-evidence story, or the
 and the separately labeled **AgentOps preview (PR #128)**. Preview lifecycle
 evidence does not relax the runtime-governance requirements below.
 
+## From Fast-PoC to private: what changes
+
+The pilot a customer saw as a Fast-PoC is promoted without rewriting:
+`generate_only.py --project <pilot> --force --profile private [--model-gateway apim]`
+([private profile](../skills/threadlight-deploy/references/private-profile.md)).
+Proven live on 2026-11-11 in an internal nonproduction subscription (returns
+triage, recommend-only): killer prompts and Foundry evaluation from inside the
+VNet, model calls through a private API Management gateway, safe-check
+private-network check green.
+
+| # | Changes | Who acts |
+|---|---|---|
+| 1 | Foundry account public access off, private endpoint, hosted-agent VNet injection (set at first create: a **new** account) | generator |
+| 2 | Registry Premium with private endpoint; public endpoint only for the region's ACR Tasks prefixes (`azd` remote build) or off | generator, preprovision hook |
+| 3 | MCP server in an internal Container Apps environment | generator |
+| 4 | App Insights ingestion only through an Azure Monitor Private Link Scope | generator |
+| 5 | Optional model gateway: API Management Standard v2, private in and out (recurring cost) | `--model-gateway apim` |
+| 6 | Deploy, invoke, evaluate from inside the network: operator VM via Run Command, Bastion Developer, or a self-hosted runner | operator |
+| 7 | Evaluations need the project identity as Foundry User on the account and a project capability host | generator |
+| 8 | Verify with `safe_check.py --phase post-deploy` (`networking: private`) | operator |
+
+Unchanged: design, agent code, MCP server, evals, killer prompts. Still open:
+egress allow-listing (NAT without firewall), a non-Azure gateway (pattern
+documented, not proven), request-span telemetry under the private link scope,
+budgets, Defender, DR.
+
 ## Optional AgentOps evidence
 
 `threadlight-agentops` is an opt-in evidence adapter, not a readiness engine.

@@ -171,15 +171,16 @@ _IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 _NAME_LIST = re.compile(rf"(`?){_IDENT}\1(?:\s*(?:/|,|&|\band\b)\s*(`?){_IDENT}\2)*")
 _TOOL_BULLETS = re.compile(r"^\s*[-*]\s*\*\*(?:Inputs?|Parameters?|Arguments?|Description)\*\*", re.M | re.I)
 # A Side Effects bullet means "no effect" only when it is EXACTLY one of these
-# openers plus optional pure qualifiers ("(read-only lookup)") and final
-# punctuation. Any further clause ("None; issues a refund", "Read-only except
+# openers plus optional pure qualifiers ("(read-only lookup)", "; read only")
+# and final punctuation. Any further clause ("None; issues a refund", "Read-only except
 # it closes the case", "No writes to the DB; posts to Teams") is a declared
 # effect, and so is any other text ("Calls the OMS API (read)"): fail closed.
 _NO_EFFECT_OPENER = (r"(?:none|n/?a|nil|no\s+side[\s-]*effects?|no\s+state[\s-]*changes?|no\s+writes?"
                      r"|no\s+mutations?|no\s+changes?|read[\s-]*only|-|—|–)")
 _PURE_QUALIFIER = r"(?:read[\s-]*only|read|only|lookup|query|search|fetch|retrieval|get|list|idempotent|safe)"
+_PURE_RUN = rf"{_PURE_QUALIFIER}(?:[\s-]+{_PURE_QUALIFIER})*"
 _NO_SIDE_EFFECTS = re.compile(
-    rf"\s*{_NO_EFFECT_OPENER}\s*(?:\(\s*{_PURE_QUALIFIER}(?:[\s-]+{_PURE_QUALIFIER})*\s*\)\s*)?\.?\s*", re.I)
+    rf"\s*{_NO_EFFECT_OPENER}\s*(?:\(\s*{_PURE_RUN}\s*\)\s*)?(?:[;,]\s*{_PURE_RUN}\s*)?\.?\s*", re.I)
 
 
 def _heading_names(heading: str) -> tuple[list[str], bool]:
