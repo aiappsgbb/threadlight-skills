@@ -753,6 +753,24 @@ Reference: `references/process-traits.md`
    > choice affects the runtime container shape, not whether policy bundles or
    > CI somehow become live enforcement on their own.
 
+10. **One agent with skills or several agents?** (Agent topology)
+   Ask it whenever the process spans several roles, teams or data domains, and
+   before any production follow-up. Recommend `single-agent-with-skills` unless
+   a hard split trigger holds: `security-compliance-boundary`,
+   `separate-owning-team`, `independent-release-cadence`, or
+   `measured-single-agent-limit` (a single-agent prototype failed a defined
+   metric). Roles alone (planner, reviewer, executor) are skills, not agents.
+   Walk the eight criteria in the Agent Topology section of `references/process-traits.md` (latency hops,
+   sessions, quota, failure points, cost, ownership and governance boundaries,
+   eval complexity) and record the answer in spec § 11e `agent_topology`.
+
+   > A split gives each agent its own separate SPEC, pilot, identity, evals and
+   > governance contract. Threadlight does not generate the inter-agent wiring
+   > (`a2a` tool, toolbox or Agent Framework workflow): record it as an
+   > open item in § 13 with its owner. Do not design on Connected Agents (not in the
+   > new Foundry Agent Service) or the Foundry visual workflow designer
+   > (preview, retiring, no hosted agents); see the guide for citations.
+
 #### Trait-Driven Branching
 
 Based on detected traits, ask the relevant follow-up questions from `references/process-traits.md`.
@@ -859,7 +877,7 @@ Must include all sections from the template:
 > ```
 > If missing: read the existing `azure.yaml` services + `infra/main.bicep` modules, write the corresponding kebab-case selector table, prepend it to the SPEC at the right anchor, and re-validate.
 11d. **Demo Data (Realism rules)** — per-entity volumes, distribution, golden cases, reset semantics, industry realism rules. **INPUT CONTRACT for `threadlight-demo-data-factory`.** *Required for every process with mocked systems.*
-11e. **Workflow Model** — `workflow_model: agent | workflow` plus a machine-readable `capability_signals` block (`requires_toolbox`, `requires_custom_python_tools`, `requires_file_generation`, `latency_sensitive_data_queries`, `unresolved_signals`). **INPUT CONTRACT for `threadlight-deploy` Phase 2** (selects the deploy route; both values currently generate the MAF or GHCP Agent container — for `workflow` the MAF Agent container on Responses, because workflow-graph generation is not shipped). Defaults to `agent` if absent. When `workflow`, the SPEC additionally emits a `WORKFLOW.md` alongside `AGENTS.md` with executor/phase definitions instead of agent/tool definitions. Write `capability_signals` verbatim from `specs/foundation.md § 1` (when present) — the two blocks must stay consistent; a mismatch is drift, not two independent sources of truth. An empty `unresolved_signals` means all four booleans are resolved decisions, not placeholders.
+11e. **Workflow Model** — `workflow_model: agent | workflow` plus a machine-readable `capability_signals` block (`requires_toolbox`, `requires_custom_python_tools`, `requires_file_generation`, `latency_sensitive_data_queries`, `unresolved_signals`). **INPUT CONTRACT for `threadlight-deploy` Phase 2** (selects the deploy route; both values currently generate the MAF or GHCP Agent container — for `workflow` the MAF Agent container on Responses, because workflow-graph generation is not shipped). Defaults to `agent` if absent. When `workflow`, the SPEC additionally emits a `WORKFLOW.md` alongside `AGENTS.md` with executor/phase definitions instead of agent/tool definitions. Write `capability_signals` verbatim from `specs/foundation.md § 1` (when present) — the two blocks must stay consistent; a mismatch is drift, not two independent sources of truth. An empty `unresolved_signals` means all four booleans are resolved decisions, not placeholders. Also carries `agent_topology` (one agent with skills or several agents, its criteria and split triggers; see `references/process-traits.md` (Agent Topology)).
 11f. **Deployment Posture** — `deployment_target: demo-sandbox | customer-pilot | production-bound` plus posture overrides (networking, replicas, retention, model_pinning) and a `deferred_decisions:` list. **INPUT CONTRACT for `threadlight-deploy` Phase 1.5**: when populated, Phase 1.5 takes Path 1 (proceed with matching posture defaults, no operator prompt); when absent, Phase 1.5 asks the operator once. Pre-populated by Step 1.5 of this skill (Full mode); left empty by Fast-PoC.
 12. **Production Readiness** — target posture, must-have pillars, residency, RTO/RPO, SLA, incident owner, pricing plan, model list, waivers, Defender/Policy floor. Includes a **`load_profile{}`** sub-block. When a `qualification/sizing-manifest.json` exists (from `threadlight-qualify`), **seed `load_profile{}` from its normalized load profile instead of repeating the interview**; otherwise the `threadlight-consumption-iq` wizard fills it in on first run (see `references/speckit-template.md § 12`).
 13. **Assumptions & Open Questions** — what's given, what needs stakeholder input
