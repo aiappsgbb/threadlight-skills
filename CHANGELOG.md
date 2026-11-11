@@ -28,7 +28,8 @@ field.
   documented vs not proven, channel gaps (playground, Teams/M365), and a measured
   kill-switch table (agent `:disable` 2 s; agent identity disabled 3 to 5 min;
   role removal 42 s; user app role removal on the next call).
-- CI installs `pyjwt[crypto]` (2.13.0, the control-plane pin) and `aiohttp` so the new tests run instead of skipping.
+- The new tests use `PyJWT[crypto]` and `aiohttp`, which the pytest job already installs
+  through the control-plane package; they run in CI rather than skip.
 
 ### 2.42.0: cost per use case and per agent across pilots in one subscription
 
