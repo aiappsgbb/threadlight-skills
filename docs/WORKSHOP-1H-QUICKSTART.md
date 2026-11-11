@@ -450,8 +450,9 @@ token, plus errors, model throttling, tokens per request, the deployment's
 TPM/RPM limits and the model cost per 1,000 requests (calculated from measured
 tokens and Retail Prices). What the traces cannot separate is stated, not
 estimated. Expect real spend and size the model deployment first: in our
-2026-11-11 runs one returns-triage request used 100,000-120,000 input tokens
-(about 90% cached) across about 10 model calls, a 300K TPM deployment throttled
+2026-11-11 runs one returns-triage request used about 38,000 input tokens across
+about 7 model calls once the agent was limited to its SPEC tools (2.46.0; about
+100,000 across 10 calls before), a 300K TPM deployment throttled
 at 10 concurrent requests (73% of requests failed) and 800K TPM served 4
 concurrent with no throttling (warm p50 33 s, p95 54 s). See the
 [load-test skill](../skills/threadlight-loadtest/SKILL.md#hosted-agent-performance-evidence-latency-waterfall).

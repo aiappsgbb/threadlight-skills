@@ -7,6 +7,34 @@ field.
 
 ## [Unreleased]
 
+### 2.46.0: GHCP pilots expose only their SPEC tools (no Copilot CLI built-ins by default)
+
+- **Fix (#192):** a Copilot SDK session also exposes the CLI built-ins (a local
+  probe listed 17 tools: `bash`, `create`, `edit`, `web_fetch`, `task`, `sql`,
+  `view`, `glob`, `grep`, ...). The GHCP container now passes `available_tools`,
+  the session-wide allowlist ([Copilot SDK custom agents](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/custom-agents)),
+  on create and resume, voice turns included: `mcp:*`, `custom:*` and
+  `builtin:skill`. The governed GHCP host uses a fixed
+  `GOVERNED_AVAILABLE_TOOLS = ("mcp:*", "builtin:skill")`, so the model reaches
+  backends only through the relay.
+- **Explicit opt-in:** SPEC § 11e `copilot_builtin_tools` (names from a fixed list)
+  with `copilot_builtin_tools_opt_in_source: user` and a reason; `generate_only.py`
+  passes exactly those names through `THREADLIGHT_BUILTIN_TOOLS`. Wildcards and
+  unknown names fail generation; an agent-written opt-in is ignored.
+- **Live (2026-11-11, eastus2, nonproduction, fresh returns-triage Fast-PoC on the
+  pinned SDK 1.0.1 image, deleted after the test):** 5 of 5 killer prompts gave the
+  expected decision using only MCP tools and `skill`. Same load profile as the
+  2.44.0 run B (800K TPM, cold 3, ramp 1-2, 4 concurrent, 103 requests), before
+  -> after: errors 12 -> 0 (the 12 ran past the 300 s client timeout), built-in
+  calls 227 -> 0 (`bash`, `rg`, `glob`, `view` 26 and `report_intent` 201), model calls per request 10.3 -> 6.9,
+  mean input tokens 102k -> 38k, model cost per 1,000 successful requests
+  USD 75.66 -> 50.06, warm p50 33.2 s -> 27.2 s, steady phase 1,244 s -> 632 s.
+  Warm p95 among successful requests is 82.1 s against 53.6 s, because the earlier
+  figure leaves out the 12 requests that never finished; the slow tail now comes
+  from model calls (p95 81.0 s).
+- **Not verified:** a SPEC that opts into a built-in, live; quality beyond the five
+  killer prompts (no Foundry eval re-run).
+
 ### 2.45.0: voice as a measured workload (scripted spoken calls, 8 kHz, languages, options, cost per call)
 
 - **`threadlight-loadtest/scripts/voice_eval.py`:** plays a fixed corpus of
