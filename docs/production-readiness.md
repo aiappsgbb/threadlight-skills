@@ -717,6 +717,80 @@ scale-from-zero start, which lands in session start) are reported as such. It is
 at modest scale, not an SLA, and it says nothing about governance or network
 isolation. See the [skill section](../skills/threadlight-loadtest/SKILL.md#hosted-agent-performance-evidence-latency-waterfall).
 
+### Voice readiness (only when the pilot has a voice front-end)
+
+A pilot with the opt-in voice front-end (Foundry Hosted Voice, preview) is a
+spoken workload, not a text agent with audio on top. Before a production
+conversation, measure it with the voice harness in
+[`threadlight-loadtest`](../skills/threadlight-loadtest/SKILL.md#voice-workload-harness-scripted-spoken-calls)
+(`scripts/voice_eval.py`): scripted callers in each language the customer
+needs, at 16 kHz and at 8 kHz telephony band with and without noise, against
+every voice option you are considering, on the same agent. Read the result as:
+
+1. **Recognition and outcome per language and audio condition.** Case ids and
+   other identifiers are where spoken calls fail first.
+2. **End of speech to first audio and to the answer audio.** The hold message
+   keeps first audio near 5 s; the answer audio is the agent turn time.
+3. **Barge-in**: detected, the interrupted response cancelled, and the next
+   question answered.
+4. **Cost per call**, calculated from tokens and list prices, with the
+   conversation-engine model tokens separate from the voice tokens.
+
+Measured live on 2026-11-11 (eastus2, nonproduction, returns-triage pilot, GHCP
+agent with `gpt-5.4`, 25 scripted calls per run, synthetic TTS callers, no
+human voice). EN+IT rows pool 16 kHz, 8 kHz and 8 kHz with noise; Greek was
+tested at 8 kHz only, two turns per option:
+
+| Option (same agent) | EN+IT WER | Case id heard | Outcome correct | Greek outcome | First audio p50 | Answer audio p50 / p95 | Barge-in detected |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Generated build before the fix, PCM 24 kHz + `azure-speech` | 12% | 100% | 83% (15/18) | 0/2 | 5.1 s | 35 / 49 s | not measured (harness fixed afterwards) |
+| PCM 24 kHz + `azure-speech` (generated default) | 11% | 100% | 100% (18/18) | 1/2, guessed | 5.1 s | 33 / 43 s | 0.55-0.68 s |
+| G.711 mu-law 8 kHz + `azure-speech` + deep noise suppression | 12% | 92% | 92% (11/12) | 0/2 | 5.3 s | 37 / 47 s | 0.70-0.80 s |
+| PCM 24 kHz + `mai-transcribe-2` | 8% | 100% | 100% (18/18) | 2/2 | 5.1 s | 32 / 48 s | 0.56-0.63 s |
+
+What it showed:
+
+- **Spoken identifiers.** Speech recognition returned `RMA2026104418` for a
+  spoken `R M A 2026 1 0 4 4 1 8`; the generated agent looked it up verbatim
+  and found nothing. The voice bridges now tell the agent that identifiers may
+  have lost separators and to ask the caller to spell one that still fails;
+  outcomes went from 15/18 to 18/18 and the spoken answer from 67 s to 35 s
+  (median audio per turn). One noisy 8 kHz call heard `RMA202610441A`; the agent
+  asked the caller to spell it instead of guessing.
+- **Languages.** `azure-speech` automatic multilingual mode covers English and
+  Italian but not Greek
+  ([supported languages](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live-language-support?tabs=speechinput));
+  Greek came back as unusable Latin-script text. With `mai-transcribe-2` Greek was
+  recognised exactly (WER 0%). In one Greek call on `azure-speech` the agent
+  inferred the case from a fragment ("four one eight") and proposed a decision
+  it never heard in full: for production, read the identifier back and confirm
+  before deciding.
+- **Latency.** First audio is the hold message at about 5 s
+  (`THREADLIGHT_VOICE_HOLD_SECONDS` 4 s plus synthesis). The answer audio waits
+  for the GHCP turn with its MCP tool calls, not for speech processing: median
+  32-37 s, up to 48 s. That is the number to work on before a contact-centre
+  pilot.
+- **Telephony format.** Native G.711 was not better than 8 kHz audio resampled
+  to 24 kHz PCM on these synthetic callers; one noisy English case id was
+  misheard.
+- **Cost per call, calculated, not billed** (about 2.5 minutes, three turns):
+  conversation-engine model tokens measured in Azure Monitor priced at list
+  `gpt-5.4` Global rates with the measured 91-93% cache match: USD 0.19-0.24.
+  Voice tokens: the account's Voice Live metrics recorded **0** tokens for the
+  Hosted Voice wrapper during the runs, and Cost Management showed no Voice Live
+  meter for the 2026-11-10 voice demo on 2026-11-11, so the voice part is the
+  Learn rule of thumb (~10 tokens/s in, ~20 tokens/s out) priced at the Voice
+  Live list rows: USD 0.05-0.08. Which meter bills this preview path is not
+  documented. Hosted agent compute is billed per active session and not included.
+
+Not shown by this: human voices, accents, real phones and networks, real
+background noise, perceived voice quality and venue latency. Synthetic callers
+are a regression baseline, not a substitute for testing with human callers.
+Azure-side measures (time to first audio, speech-to-text and text-to-speech
+latency, estimated cost) are on the voice agent's Monitor tab from traces in the
+connected Application Insights
+([voice agent observability](https://learn.microsoft.com/azure/foundry/agents/concepts/voice-agent-observability)).
+
 ---
 
 ## 9. CLI cheatsheet

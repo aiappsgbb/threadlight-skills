@@ -1,0 +1,8 @@
+[
+  {"name": "pcm24-speech", "agent": "returns-triage-voice", "wire": "pcm24", "conditions": ["wb16", "nb8", "nb8_noise"],
+   "notes": "Generated default: PCM 24 kHz in/out, azure-speech (automatic multilingual), server VAD."},
+  {"name": "g711-speech-dns", "agent": "returns-triage-voice-g711", "wire": "pcmu", "conditions": ["nb8", "nb8_noise"],
+   "notes": "Telephony wire format: G.711 mu-law 8 kHz in/out, azure-speech, azure_deep_noise_suppression."},
+  {"name": "pcm24-mai", "agent": "returns-triage-voice-mai", "wire": "pcm24", "conditions": ["wb16", "nb8", "nb8_noise"],
+   "notes": "PCM 24 kHz in/out, mai-transcribe-2 transcription (multilingual incl. Greek)."}
+]

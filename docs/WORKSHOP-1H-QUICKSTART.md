@@ -572,6 +572,22 @@ Then review the broader readiness work:
 - **End-to-end automation** — `threadlight-auto` orchestrates the full
   design → local-test → deploy → safe-check → evals pipeline as one prompt.
 
+### 6.6c Optional: voice readiness (measure the voice front-end)
+
+When a customer wants to take the voice front-end further (contact centre,
+telephony, more languages), measure it before promising anything. Prompt:
+
+> measure the voice front-end of this pilot with the threadlight-loadtest voice harness: English and Italian callers at 16 kHz, 8 kHz telephony and 8 kHz with noise, the generated voice wrapper against a G.711 wrapper and a mai-transcribe-2 wrapper on the same agent, budget ceiling 10 USD, non-production; report WER, outcome, time to first audio and to the answer, barge-in and calculated cost per call
+
+It runs `scripts/voice_eval.py prepare`, `run` and `report` and writes
+`specs/voice-eval-manifest.json` plus a comparison table. About 25 scripted
+calls take an hour. What to point at: first audio arrives in about 5 s (the hold
+message), the answer in 30-45 s (the agent turn, not speech), spoken case ids
+lose their dashes, and Greek needs `mai-transcribe-2`
+([live results](production-readiness.md#voice-readiness-only-when-the-pilot-has-a-voice-front-end)).
+The callers are synthetic text-to-speech voices: say clearly that this is a
+regression baseline and that human callers on real phones are the next test.
+
 ### 6.7 Close with the pilot value page
 
 End the session with the page the process owner keeps: what the pilot showed,

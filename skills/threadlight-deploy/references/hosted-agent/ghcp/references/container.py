@@ -924,6 +924,17 @@ _VOICE_MAX_PENDING_TURNS = 4
 _VOICE_ABORT_WAIT_SECONDS = 5
 _VOICE_HOLD_SECONDS = float(os.environ.get("THREADLIGHT_VOICE_HOLD_SECONDS", "") or "4")
 _VOICE_HOLD_TEXT = os.environ.get("THREADLIGHT_VOICE_HOLD_TEXT", "").strip() or "One moment, I'm checking that."
+# Speech recognition drops separators from spoken identifiers ("RMA2026104418" for a spoken
+# RMA-2026-104418, live voice eval 2026-11-11), and long spoken answers cost audio time.
+_VOICE_NOTE = ("Host note: this is a spoken call; the caller's words come from speech recognition. "
+               "Identifiers and numbers may have lost their separators or spacing (ABC-2026-0042 heard as "
+               "ABC20260042 or ABC 2026 0042): restore the format your tools expect before calling them, and "
+               "if a lookup still finds nothing, ask the caller to spell the identifier. Keep the spoken answer "
+               "short: the outcome, the main reason and the next step, without reading long identifiers aloud.")
+
+
+def _voice_prompt(utterance: str) -> str:
+    return _VOICE_NOTE + "\n\nCaller: " + utterance
 
 
 _MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
@@ -1041,7 +1052,7 @@ async def _voice_turn(bridge_session, call: _VoiceCall, item_id: str, input_text
             await bridge_session.send(ResponseCreated(response_id=response_id, in_reply_to=(item_id,)))
             try:
                 async with _conversation(call.key) as copilot_session:
-                    work = asyncio.ensure_future(_final_answer(copilot_session, input_text))
+                    work = asyncio.ensure_future(_final_answer(copilot_session, _voice_prompt(input_text)))
                     try:
                         wait = call.hold_first
                         while True:

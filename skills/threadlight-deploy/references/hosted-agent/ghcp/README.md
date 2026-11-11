@@ -282,6 +282,12 @@ Bridge behaviour in `container.py`:
 One voice call is one Copilot conversation keyed per WebSocket (never the
 container-wide `FOUNDRY_AGENT_SESSION_ID`); a reconnect starts a new conversation.
 `heard_text` from a barge-in is not written back into the Copilot transcript.
+Each spoken turn reaches Copilot as a short host note followed by `Caller: <text>`.
+The note says the words come from speech recognition, that identifiers may have
+lost their separators or spacing (the 2026-11-11 voice evaluation heard a spoken
+`R M A 2026 1 0 4 4 1 8` as `RMA2026104418`, and the agent's lookup found nothing),
+that the agent restores the format its tools expect and asks the caller to spell
+the identifier if a lookup still fails, and that spoken answers stay short.
 Voice Live fails a response with `response_timeout:first_output` when no output
 arrives before the `first_output_ms` / `idle_ms` deadlines it announces in
 `session.start` (30 s each in the live run). A returns-triage turn with MCP tool
@@ -298,9 +304,13 @@ Proof boundaries:
   (`foundry-agent/create/scripts/smoke_test_voice.py`, see
   [voice-agent-smoke-test.md](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/voice-agent-smoke-test.md)) against `<agent>-voice`. It proves the
   wrapper-to-agent path and a completed response with transcript and audio.
-- Microphone capture, speech-recognition quality, turn-taking, barge-in, voice
-  quality and latency are **not validated** by either; measure them (Foundry
-  voice playground or a real call) before claiming them.
+- Speech recognition, outcome correctness, latency, barge-in and cost per call
+  on scripted synthetic callers (16 kHz, 8 kHz telephony band, noise; English,
+  Italian, Greek) are measured by the voice harness
+  [`threadlight-loadtest/scripts/voice_eval.py`](../../../../threadlight-loadtest/SKILL.md#voice-workload-harness-scripted-spoken-calls).
+- Real microphones and phones, human voices, accents, perceived voice quality
+  and venue latency are **not validated** by any of these; test with human
+  callers before claiming them.
 - The MAF runtime has no Bridge handler: a voice front-end on MAF is not
   generated. Voice agents are preview and region-limited
   ([supported regions](https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#supported-regions)).
