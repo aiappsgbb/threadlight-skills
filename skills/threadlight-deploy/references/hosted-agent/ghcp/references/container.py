@@ -524,10 +524,38 @@ async def _ensure_client() -> CopilotClient:
         return client
 
 
+# Tool allowlist. Without it a session also exposes the Copilot CLI built-ins
+# (bash, create, edit, web_fetch, task, sql, ...): in the 2026-11-11 load test a
+# recommend-only pilot ran `bash` 359 times (up to 260 s) and `web_fetch` (#192).
+# `available_tools` is the session-wide allowlist, "only these tools exist for
+# anyone" (https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/custom-agents);
+# entries are source-qualified (SDK ToolSet: builtin:/mcp:/custom:). The pilot gets
+# its MCP tools, its custom (toolbox) tools and the `skill` tool for its skills.
+# A built-in is added only by name through THREADLIGHT_BUILTIN_TOOLS, which the
+# generator sets from an explicit SPEC § 11e `copilot_builtin_tools` opt-in.
+_DEFAULT_TOOLS = ("mcp:*", "custom:*", "builtin:skill")
+_BUILTIN_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")
+
+
+def _available_tools() -> list[str]:
+    tools = list(_DEFAULT_TOOLS)
+    for name in os.environ.get("THREADLIGHT_BUILTIN_TOOLS", "").split(","):
+        name = name.strip()
+        if not name:
+            continue
+        if not _BUILTIN_NAME.fullmatch(name):
+            logger.warning("Ignoring THREADLIGHT_BUILTIN_TOOLS entry %r: only plain built-in tool names", name)
+            continue
+        if f"builtin:{name}" not in tools:
+            tools.append(f"builtin:{name}")
+    return tools
+
+
 def _session_kwargs() -> dict[str, Any]:
     """Session options; mints a fresh BYOK provider token for every new session."""
     kwargs: dict[str, Any] = {
         "on_permission_request": PermissionHandler.approve_all,
+        "available_tools": _available_tools(),
         "streaming": True,
         "working_directory": str(pathlib.Path.home()),
         "provider": _get_provider(),

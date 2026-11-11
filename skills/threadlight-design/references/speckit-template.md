@@ -797,6 +797,9 @@ preview_acknowledged: null   # REQUIRED when agent_type: voice or voice_frontend
 voice_frontend: none          # none | hosted-voice. Opt-in voice front-end (Foundry Hosted Voice, preview) on the hosted agent; item 2c
 voice_name: null              # optional with voice_frontend: hosted-voice: Azure voice, e.g. it-IT-ElsaNeural (default en-US-AvaNeural)
 voice_hold_text: null          # optional with voice_frontend: hosted-voice: hold message spoken during slow tool turns, in the voice's language
+copilot_builtin_tools: none    # none, or Copilot CLI built-ins by name (web_fetch, view, glob, grep or rg, bash, create, edit, sql, task); GHCP agents otherwise get only their MCP tools and skills
+copilot_builtin_tools_opt_in_source: null  # REQUIRED with copilot_builtin_tools: must be `user`
+copilot_builtin_tools_reason: null         # REQUIRED with copilot_builtin_tools: why the process needs it, e.g. "read the public returns policy page"
 workflow_model: agent  # agent | workflow
 
 capability_signals:                     # machine-readable booleans + unresolved markers runtime-policy.json keys on
@@ -838,6 +841,12 @@ capability_signals:                     # machine-readable booleans + unresolved
   agent-written `voice_frontend` is not an opt-in and the agent stays text-only.
   Default `none`. See item 2c of
   [`foundry-only-agents.md`](../../_shared/foundry-only-agents.md).
+- `copilot_builtin_tools` stays `none` by default: a GHCP hosted agent exposes
+  only its SPEC MCP tools, custom tools and skills, never the Copilot CLI
+  built-ins (shell, file edits, web fetch, sub-agents). Name a built-in only
+  when the process needs it and the user asked for it
+  (`copilot_builtin_tools_opt_in_source: user` plus a reason); an
+  agent-written value is ignored.
 - `workflow` — deterministic multi-step orchestration; the SPEC adds
   `WORKFLOW.md` (executor / phase definitions) as the target design, and
   `threadlight-deploy` generates the MAF Agent container on Responses that

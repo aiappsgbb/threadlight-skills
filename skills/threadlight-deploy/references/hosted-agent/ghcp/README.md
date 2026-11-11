@@ -439,6 +439,23 @@ session = await client.create_session(
 | `assistant.usage` | One model call finished | Duration, time to first token, tokens → `chat <model>` span |
 | `model.call_failure` | One model call failed | HTTP status (429 = throttled) → failed `chat <model>` span |
 
+### Tool allowlist (no Copilot CLI built-ins by default)
+
+A Copilot SDK session otherwise also exposes the CLI built-ins (`bash`,
+`create`, `edit`, `web_fetch`, `task`, `sql`, `view`, `glob`, `grep`, ...): a
+local probe listed 17 tools for a session with one MCP tool, and in the
+2026-11-11 load test a recommend-only pilot ran `bash` 359 times (up to 260 s)
+and `web_fetch` (#192). `container.py` therefore passes `available_tools`, the
+session-wide allowlist ("only these tools exist for anyone",
+[Copilot SDK custom agents](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/custom-agents)),
+on create and resume: `mcp:*`, `custom:*` (toolbox tools) and `builtin:skill`.
+A built-in is added only by name through `THREADLIGHT_BUILTIN_TOOLS`, which
+`generate_only.py` sets from an explicit SPEC § 11e `copilot_builtin_tools`
+user opt-in with a reason. The governed host (`references/governance/ghcp-container.py`)
+uses a fixed `GOVERNED_AVAILABLE_TOOLS = ("mcp:*", "builtin:skill")` with no
+opt-in, so the model reaches backends only through the relay. Voice turns use
+the same session options.
+
 ### Turn spans (latency waterfall)
 
 The Invocations host exports one server span per request (`invoke_agent`) to
