@@ -165,17 +165,33 @@ def invocations_url(project_endpoint: str, agent_name: str) -> str:
     return f"{project_endpoint.rstrip('/')}/agents/{agent_name}/endpoint/protocols/invocations?api-version=v1"
 
 
+class _Deadline(Exception):
+    pass
+
+
 def invoke_once(http: Any, url: str, token: str, prompt: str, session_id: str, *,
-                timeout_s: float = 300.0, clock: Callable[[], float] = time.perf_counter) -> dict:
-    """One streamed invocation. Returns timings and identifiers, never content."""
+                timeout_s: float = 300.0, deadline_s: float = 600.0,
+                clock: Callable[[], float] = time.perf_counter) -> dict:
+    """One streamed invocation. Returns timings and identifiers, never content.
+
+    ``deadline_s`` bounds the whole request: SSE keep-alives reset the read
+    timeout, so without it a runaway turn would hold a worker indefinitely.
+    The client stops reading; the agent's turn may continue server-side.
+    """
     started = clock()
+
+    def bounded(lines):
+        for line in lines:
+            if clock() - started > deadline_s:
+                raise _Deadline()
+            yield line
     out: dict[str, Any] = {"status": None, "error_class": None, "headers_ms": None, "first_token_ms": None,
                            "invocation_id": None, "tool_events": 0}
     try:
         response = http.post(url, params={"agent_session_id": session_id},
                              json={"input": prompt, "new_conversation": True},
                              headers={"Authorization": f"Bearer {token}", "Accept": "text/event-stream"},
-                             stream=True, timeout=(15, timeout_s))
+                             stream=True, timeout=(15, min(timeout_s, deadline_s)))
     except Exception as exc:  # noqa: BLE001 - classified, never raised into the run
         out["error_class"] = "timeout" if "timeout" in type(exc).__name__.lower() else "transport"
         out["client_ms"] = (clock() - started) * 1000
@@ -188,7 +204,7 @@ def invoke_once(http: Any, url: str, token: str, prompt: str, session_id: str, *
             out["error_class"] = "throttled" if response.status_code == 429 else f"http_{response.status_code}"
         else:
             done = False
-            for event, data in iter_sse(response.iter_lines(decode_unicode=True)):
+            for event, data in iter_sse(bounded(response.iter_lines(decode_unicode=True))):
                 if event == "done":
                     done = True
                     if isinstance(data, dict):
@@ -206,6 +222,8 @@ def invoke_once(http: Any, url: str, token: str, prompt: str, session_id: str, *
             if not done and out["error_class"] is None:
                 out["error_class"] = "stream_incomplete"
         out["invocation_id"] = out["invocation_id"] or header_id
+    except _Deadline:
+        out["error_class"] = "deadline"
     except Exception as exc:  # noqa: BLE001
         out["error_class"] = out["error_class"] or ("timeout" if "timeout" in type(exc).__name__.lower()
                                                     else "stream_error")

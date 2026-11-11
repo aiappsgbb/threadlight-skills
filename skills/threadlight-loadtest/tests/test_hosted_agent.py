@@ -149,3 +149,14 @@ def test_adapter_is_partial_without_telemetry_and_complete_with_it():
     assert [s["tokens"] for s in result["samples"]] == [9000, 9000, 9000]
     assert result["samples"][0]["cold_start_latency_ms"] == 800.0
     assert "cold_start_latency_ms" not in result["samples"][1]
+
+
+def test_a_runaway_turn_hits_the_total_deadline_even_with_keepalives():
+    """Live 2026-11-11: a turn ran 648 s; SSE keep-alives reset the read timeout, so only a total deadline ends it."""
+    clock = _Clock()
+    keepalives = [": keep-alive", ""] * 50
+    http = _Http(_Response(200, keepalives, clock, steps=[30] * 100))
+    out = ha.invoke_once(http, "u", "t", "p", "s", deadline_s=120, clock=clock)
+    assert out["error_class"] == "deadline"
+    assert out["client_ms"] <= 150_000
+    assert http.response.closed

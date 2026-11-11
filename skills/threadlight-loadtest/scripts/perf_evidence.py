@@ -477,6 +477,8 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--endpoint-class", default="non-production", choices=("non-production", "production"))
     parser.add_argument("--allow-production", action="store_true")
     parser.add_argument("--wait-telemetry-s", type=float, default=600)
+    parser.add_argument("--request-deadline-s", type=float, default=600,
+                        help="client stops reading a request after this many seconds (error class 'deadline')")
     parser.add_argument("--idle-timeout-minutes", type=float, default=15.0)
     parser.add_argument("--cpu", type=float, default=1.0)
     parser.add_argument("--memory-gib", type=float, default=2.0)
@@ -524,7 +526,8 @@ def main(argv: Optional[list] = None) -> int:
     def invoke(prompt: str, session_id: str) -> dict:
         if not hasattr(local, "http"):
             local.http = requests.Session()
-        return hosted_agent.invoke_once(local.http, url, tokens(), prompt, session_id)
+        return hosted_agent.invoke_once(local.http, url, tokens(), prompt, session_id,
+                                        deadline_s=args.request_deadline_s)
 
     runner = hosted_agent.PhaseRunner(invoke=invoke, prompts=load_prompts(args.prompts or ws / "tests" / "eval_dataset.jsonl"))
     holder: dict[str, Any] = {}
