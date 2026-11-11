@@ -930,6 +930,11 @@ def _run_projection(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == "portfolio":
+        import portfolio
+
+        return portfolio.main(list(argv[1:]))
     args = build_parser().parse_args(argv)
 
     if args.phase in ("actuals", "run"):

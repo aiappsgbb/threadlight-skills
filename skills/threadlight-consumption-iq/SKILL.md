@@ -234,6 +234,10 @@ scripts/consumption_iq.py actuals \
 scripts/consumption_iq.py reconcile          # local documents only, no Azure calls
 scripts/consumption_iq.py reconcile --expect-subscription <sub-id> --expect-resource-group <rg>
 scripts/consumption_iq.py run --all --with-actuals --start 2026-08-01 --end 2026-08-08
+
+# Opt-in portfolio: cost per use case and per agent across a subscription (read-only)
+scripts/consumption_iq.py portfolio --subscription <sub-id> --start 2026-11-01 --end 2026-11-11 \
+  --use-case-tag workload --workspace-resource-id <log-analytics-workspace-arm-id>
 ```
 
 ### Live actuals + reconciliation (opt-in)
@@ -329,6 +333,57 @@ repository.
 Official references:
 - Cost Management Query API — <https://learn.microsoft.com/en-us/rest/api/cost-management/query/usage>
 - Understand Cost Management data (refresh cadence, what usage cost includes) — <https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/understand-cost-mgt-data>
+
+### Portfolio: cost per use case and per agent (opt-in, read-only)
+
+`actuals` and `reconcile` answer for one pilot's resource group. When a customer runs
+several pilots in one subscription, or several agents on one Foundry account, use:
+
+```bash
+scripts/consumption_iq.py portfolio \
+  --subscription <sub-id> --start 2026-11-01 --end 2026-11-11 \
+  --use-case-tag workload --use-case-tag process \
+  --workspace-resource-id /subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.OperationalInsights/workspaces/<ws>
+```
+
+It writes `specs/cost-portfolio-manifest.json` (`threadlight-cost-portfolio/v1`) and
+`docs/cost-portfolio.md`:
+
+| Figure | Label | Source |
+|---|---|---|
+| Cost per use case | Measured | Cost Management Query at subscription scope, daily, grouped by `ResourceGroupName` and `ServiceName`; resource groups map to a use case through the first matching resource-group tag (`--use-case-tag`, repeatable). Untagged groups stay in an **Unattributed** row so the subscription total stays complete. |
+| Cost per agent | Calculated | A resource group serving several agents (for example a text agent and its voice front-end on one Foundry account) is split by each agent's share of successful `invoke_agent` spans (`gen_ai.agent.name`, `microsoft.foundry.project.id`) from the named Log Analytics workspaces. Server spans (`AppRequests`) are counted; client spans only when an agent has none. Token-weighted allocation needs `gen_ai.usage.*` on the spans, which current hosted-agent spans did not carry in our test. |
+| Cost per successful invocation | Calculated | Measured cost ÷ successful agent invocations. It is **not** the SPEC § 14 success event: the verified per-pilot KPI-003 still comes from `reconcile`. No telemetry means no unit cost, never zero. |
+| Next 30 days | Forecast | [Cost Management Forecast](https://learn.microsoft.com/rest/api/cost-management/forecast/usage) per use case (resource-group filter) for the `--forecast-top` most costly use cases (default 10). Throttling (429) is retried with the bounded back-off; a use case with too little history answers `FailedDependency` ([documented](https://learn.microsoft.com/azure/cost-management-billing/costs/cost-management-error-codes)). Either way, or outside the top N, it gets a **run-rate** (actual × 30 ÷ window days) labelled as such, never shown as a forecast. |
+
+Same guardrails as `actuals`: `AZURE_CONFIG_DIR` required, `az account show` must
+match `--subscription`, argv lists only, read-only calls (`az group list`, Cost
+Management Query and Forecast POST-shaped reads, Log Analytics query). Non-USD or
+mixed currencies (USD-only, like `actuals`), malformed rows or rows outside the
+window fail closed (exit `3`); so does a Cost Management query still throttled after
+the bounded retries.
+RBAC: **Cost Management Reader** and **Reader** on the subscription, **Log
+Analytics Reader** on each workspace.
+
+**Cross-product boundary.** Copilot Studio and Microsoft 365 Copilot pay-as-you-go
+meters are billed to the Azure subscription linked to their billing plan and appear
+in Azure Cost Management ([Power Platform pay-as-you-go usage and billing](https://learn.microsoft.com/power-platform/admin/pay-as-you-go-usage-costs)),
+so they show up here under the resource group of their Power Platform account.
+Seat licences, capacity packs and prepaid Copilot Credits are not Azure usage rows.
+Microsoft Graph exposes Copilot Credit consumption per security group only as a
+[beta API](https://learn.microsoft.com/microsoft-365/copilot/extensibility/api/admin-settings/cost-management/costmanagementgroupusagerecord-list),
+not per agent and not supported for production; the portfolio does not read it.
+
+**Live run (2026-11-11, internal subscription, read-only).** Ten-day window over a
+subscription with a few dozen pilot and demo resource groups: totals complete
+(attributed + unattributed = subscription total), use cases resolved from
+`workload` / `process` / `purpose` / `azd-env-name` tags, two agents sharing one
+Foundry account (text agent and its Hosted Voice front-end) split by invocation
+share, a single-agent pilot with its own workspace, 7 of the top 10 forecasts
+returned by Cost Management and 3 throttled after retries (shown as run-rate). The
+first live run also caught a KQL syntax error (`project` is an operator), now
+covered by a regression test. No identifiers or amounts from that run are kept in
+this repository.
 
 ### Exit codes
 
