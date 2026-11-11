@@ -631,6 +631,7 @@ Every live probe stamps a `captured_at` timestamp (ISO 8601 UTC, second precisio
 | Inherited a pilot whose SPEC has no § 12 | Skill still runs — falls back to `standard-ai-gateway`; `RDY-002` surfaces "author § 12" | Author § 12 from the [template](../skills/threadlight-production-ready/references/spec-section-12-template.md), re-run for full scorecard |
 | Historical AGT v4 inspection | Add `--pillar agent-governance --agt-profile v4_preview` | Legacy compatibility diagnostics only, never current v1 runtime readiness |
 | Customer asks whether production needs several agents instead of one agent with skills | `threadlight-design` discovery question 10 (Agent topology) | SPEC § 11e `agent_topology`: decision, split trigger and eight criteria, with Foundry multi-agent support cited in `references/process-traits.md` |
+| Several pilots share a subscription and finance asks what each use case or agent costs | `threadlight-consumption-iq` `portfolio` (read-only) | Measured cost per use case from resource-group tags, calculated split per agent from invocation telemetry, Cost Management forecast or labelled run-rate; see the [skill section](../skills/threadlight-consumption-iq/SKILL.md#portfolio-cost-per-use-case-and-per-agent-opt-in-read-only) |
 | Customer accepted some `must-fix` findings as risk | Author `tests/production-readiness-waivers.json`, re-run | Report shows `score_with_waivers` + `would_fail_hard_gate` flags |
 
 ---

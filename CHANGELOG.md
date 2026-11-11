@@ -7,6 +7,37 @@ field.
 
 ## [Unreleased]
 
+### 2.42.0: cost per use case and per agent across pilots in one subscription
+
+- **`threadlight-consumption-iq` `portfolio` (opt-in, read-only):** Cost Management
+  Query at subscription scope, resource groups mapped to use cases by resource-group
+  tags (`--use-case-tag`, first match wins), an Unattributed row so the subscription
+  total stays complete. Writes `specs/cost-portfolio-manifest.json`
+  (`threadlight-cost-portfolio/v1`) and `docs/cost-portfolio.md`.
+- **Per agent:** a resource group shared by several agents is split by each agent's
+  share of successful `invoke_agent` spans (`gen_ai.agent.name`,
+  `microsoft.foundry.project.id`) from the named Log Analytics workspaces; server
+  spans counted, client spans only as fallback. Labelled Calculated.
+- **Cost per successful invocation:** measured cost ÷ successful agent invocations,
+  labelled as not the SPEC § 14 success event; per-pilot KPI-003 stays `reconcile`.
+  No telemetry gives no unit cost, never zero.
+- **Forecast:** Cost Management Forecast per use case for the top 10 by cost, with the
+  existing bounded retry; `FailedDependency`, throttling or outside the top 10 give a
+  run-rate labelled as such. Horizon fixed at 30 days.
+- **Cross-product boundary (documented with Learn links):** Copilot Studio and
+  Microsoft 365 Copilot pay-as-you-go meters billed to the subscription appear in
+  Cost Management and are included; seat licences and prepaid credits are not Azure
+  usage; the Graph Copilot cost API is beta and per security group, not read.
+- **Live (2026-11-11, internal subscription, read-only):** 10-day window, totals
+  complete, two pilots with agent telemetry (one text agent plus its Hosted Voice
+  front-end sharing a Foundry account), 7 of 10 forecasts returned, 3 throttled and
+  shown as run-rate. The first live run caught a KQL syntax error (`project` is an
+  operator); a code review caught non-USD amounts labelled USD, a zero-row forecast
+  shown as $0 and a horizon label mismatch. All fixed with regression tests.
+- **Not verified:** token-weighted agent allocation (current hosted-agent spans carry
+  no `gen_ai.usage.*`), Copilot Studio meters in a real portfolio (not exercised: no
+  Copilot Studio service among the attributed use cases here), a non-USD billing account (refused, as `actuals` does).
+
 ### 2.41.0: EU AI Act customer handoff bundle (evidence and open items, never a compliance claim)
 
 - **`threadlight-production-ready/scripts/compliance_handoff.py`:** writes
