@@ -2,19 +2,19 @@
 name: threadlight-loadtest
 description: >
   Manual, live/cost-bearing skill that runs a budget-capped load-test
-  profile through k6 or locust (or an injected test adapter) and emits
+  profile through k6, locust or an injected adapter and emits
   `specs/load-manifest.json` under the shared threadlight.load/v1 envelope,
   so pilots get real latency/throughput/error-rate evidence instead of
   static claims. USE FOR: load testing, latency benchmarking, throughput
   testing, k6, locust, LOAD-001/LOAD-002/LOAD-003 findings, budget-capped
   load runs, production load-test confirmation, load-manifest evidence,
-  p50/p95 latency, error-rate/tokens-per-request evidence, hosted agent
-  latency waterfall (runtime vs model vs MCP vs cold start, cost per 1,000
-  requests) on a deployed GHCP pilot. DO NOT
-  USE FOR: deploying infrastructure or agents (threadlight-deploy /
-  azure-deploy); autonomous/agentic-loop execution — this skill never runs
-  unattended and never installs k6/locust itself; release or rollout
-  gating (threadlight-production-ready); quality/groundedness evals
+  p50/p95 latency, error-rate and token evidence, hosted agent latency
+  waterfall (runtime vs model vs MCP vs cold start, cost per 1,000
+  requests) on a deployed GHCP pilot. DO NOT USE FOR: deploying
+  infrastructure or agents (threadlight-deploy / microsoft-foundry /
+  azure-deploy); autonomous/agentic-loop execution (never runs unattended
+  or installs k6/locust); release or rollout gating
+  (threadlight-production-ready); quality/groundedness evals
   (threadlight-evals); adversarial/safety scans (threadlight-redteam).
 metadata:
   version: "0.2.0"
