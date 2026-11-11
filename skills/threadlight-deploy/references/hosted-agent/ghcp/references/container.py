@@ -255,38 +255,40 @@ class _TurnTelemetry:
 
 _BYOK_CREDENTIAL = None
 _BYOK_ENDPOINT = ""
+_MODEL_BASE_URL = ""
 _MODEL = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "") or os.getenv("MODEL_DEPLOYMENT_NAME", "")
 
 
-def _model_base_url() -> str:
-    """Where model calls go: the customer's model gateway when set, else the project endpoint.
+def _model_base_url(project_endpoint: str) -> str:
+    """Where MODEL calls go: the customer's model gateway when set, else the project endpoint.
 
     ``MODEL_GATEWAY_URL`` (private profile with an API Management gateway) is a
     pass-through route to the same project endpoint, so the token audience and the
     Responses wire format stay the same. It must end in ``/openai/v1``: with
     ``type="azure"`` the SDK keeps only the origin of any other base URL. Unset
-    or empty: the Fast-PoC behaviour.
+    or empty: the Fast-PoC behaviour. Only model calls use it; project calls
+    (toolbox MCP) keep ``_BYOK_ENDPOINT``.
     """
-    gateway = os.getenv("MODEL_GATEWAY_URL", "").strip().rstrip("/")
-    return gateway or (
-        os.getenv("FOUNDRY_PROJECT_ENDPOINT", "").strip().rstrip("/")
-        or os.getenv("AZURE_AI_PROJECT_ENDPOINT", "").strip().rstrip("/")
-    )
+    return os.getenv("MODEL_GATEWAY_URL", "").strip().rstrip("/") or project_endpoint
 
 
 def _init_byok() -> bool:
     """Initialise the BYOK credential. Returns False if BYOK is not configured."""
-    global _BYOK_CREDENTIAL, _BYOK_ENDPOINT
-    endpoint = _model_base_url()
+    global _BYOK_CREDENTIAL, _BYOK_ENDPOINT, _MODEL_BASE_URL
+    endpoint = (
+        os.getenv("FOUNDRY_PROJECT_ENDPOINT", "").strip().rstrip("/")
+        or os.getenv("AZURE_AI_PROJECT_ENDPOINT", "").strip().rstrip("/")
+    )
     if not endpoint or not _MODEL:
         return False
     try:
         from azure.identity import DefaultAzureCredential
         _BYOK_CREDENTIAL = DefaultAzureCredential()
         _BYOK_ENDPOINT = endpoint
+        _MODEL_BASE_URL = _model_base_url(endpoint)
         token = _BYOK_CREDENTIAL.get_token("https://ai.azure.com/.default")
-        logger.info("BYOK verified: %s (model=%s, token expires in %ds)",
-                    endpoint, _MODEL, int(token.expires_on - time.time()))
+        logger.info("BYOK verified: %s (model=%s, model route %s, token expires in %ds)",
+                    endpoint, _MODEL, _MODEL_BASE_URL, int(token.expires_on - time.time()))
         return True
     except Exception as exc:
         logger.error("BYOK init failed: %s", exc)
@@ -305,7 +307,7 @@ def _get_provider() -> ProviderConfig | None:
         token = _BYOK_CREDENTIAL.get_token("https://ai.azure.com/.default").token
         return ProviderConfig(
             type="azure",
-            base_url=_BYOK_ENDPOINT,
+            base_url=_MODEL_BASE_URL or _BYOK_ENDPOINT,
             wire_api="responses",
             bearer_token=token,
         )

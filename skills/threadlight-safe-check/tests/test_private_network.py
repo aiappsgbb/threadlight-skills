@@ -124,3 +124,6 @@ def test_posture_reader(tmp_path):
     assert sc.network_posture(tmp_path) == "private"
     posture.write_text("```yaml\nposture:\n  networking: public\n```\n")
     assert sc.network_posture(tmp_path) == "public"
+    # T-0 posture value for production-bound pilots whose private networking is still deferred.
+    posture.write_text("```yaml\noverrides:\n  networking: private-required   # status: deferred\n```\n")
+    assert sc.network_posture(tmp_path) == "public"

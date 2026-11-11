@@ -251,7 +251,8 @@ def network_posture(repo: Path | None) -> str:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return "public"
-    return "private" if re.search(r"^\s*networking:\s*private\b", text, re.M) else "public"
+    # Only the value `--profile private` writes; `private-required` (T-0, still deferred) is not private.
+    return "private" if re.search(r"^\s*networking:\s*private(?![\w-])", text, re.M) else "public"
 
 
 def private_network_gaps(resources: list[dict], endpoints: list[dict],

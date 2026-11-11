@@ -158,26 +158,32 @@ def cmd_sync(target) -> int:
     return code
 
 
-def cmd_run(target, command: str) -> int:
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    log = f".threadlight/run-{stamp}.log"
-    script = f"""set -u
-export HOME=/root AZD_SKIP_UPDATE_CHECK=true PATH=/usr/local/bin:/usr/bin:/bin:$PATH
-cd {_remote_dir()} || exit 3
+def build_run_script(remote_dir: str, command: str, log: str) -> str:
+    """Shell script for `run`: sign in with the host identity, run ``command``, keep its log on the host.
+
+    The trace line is single-quoted, so the shell never expands the displayed command.
+    """
+    trace = shlex.quote("+ " + command)
+    return f"""export HOME=/root AZD_SKIP_UPDATE_CHECK=true PATH=/usr/local/bin:/usr/bin:/bin:$PATH
+cd {remote_dir} || exit 3
 mkdir -p .threadlight
 {{
   az login --identity --output none &&
   azd auth login --managed-identity >/dev/null &&
   (azd extension show azure.ai.agents >/dev/null 2>&1 || azd extension install azure.ai.agents >/dev/null) &&
-  echo "+ {command.replace('"', "'")}" &&
+  printf '%s\\n' {trace} &&
   {command}
 }} > {log} 2>&1
 rc=$?
-echo "log: {_remote_dir()}/{log}"
+echo "log: {remote_dir}/{log}"
 tail -c {OUTPUT_TAIL} {log}
 exit $rc
 """
-    code, out = run_script(target, script)
+
+
+def cmd_run(target, command: str) -> int:
+    log = f".threadlight/run-{time.strftime('%Y%m%d-%H%M%S')}.log"
+    code, out = run_script(target, build_run_script(_remote_dir(), command, log))
     print(out)
     return code
 

@@ -195,6 +195,20 @@ def test_vnet_run_chunks_the_repository_under_the_run_command_limit(private, tmp
     assert "sha256sum" in scripts[-1] and vr.hashlib.sha256(payload).hexdigest() in scripts[-1]
 
 
+def test_vnet_run_traces_the_command_without_expanding_it(private, tmp_path):
+    # Review finding: echo "+ <cmd>" ran $(...) twice and aborted on unset variables.
+    vr = _vnet_run(private)
+    command = 'azd env set X "$(date +%s)" && echo $UNSET_VAR \\'
+    script = vr.build_run_script("/opt/threadlight/p", command, ".threadlight/run.log")
+    trace = next(line for line in script.splitlines() if "+ azd env set X" in line)
+    assert trace.strip().startswith("printf") and "'+ azd env set X" in trace
+    assert "set -u" not in script
+    probe = tmp_path / "trace.sh"
+    probe.write_text(trace.strip().removesuffix("&&").rstrip() + "\n")
+    out = subprocess.run(["sh", str(probe)], capture_output=True, text=True)
+    assert out.returncode == 0 and out.stdout.strip() == "+ " + command
+
+
 def test_vnet_run_sync_keeps_evidence_recorded_on_the_host(private):
     # 2026-11-11: a second sync overwrote the agent/trace evidence recorded in the VNet.
     assert "--keep-newer-files" in (private / "scripts" / "private" / "vnet_run.py").read_text()
@@ -214,9 +228,9 @@ def test_vnet_run_archive_excludes_local_state(private, tmp_path):
 
 # --- the agent runtime is the same file in both profiles ------------------------
 
-def _provider_functions(**env):
+def _provider_functions():
     tree = ast.parse(CONTAINER.read_text(encoding="utf-8"))
-    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("_model_base_url",)]
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_model_base_url"]
     assert nodes, "container.py must resolve the model base URL in _model_base_url()"
     ns = {"os": os}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(CONTAINER), "exec"), ns)
@@ -225,13 +239,27 @@ def _provider_functions(**env):
 
 def test_model_gateway_url_overrides_the_project_endpoint(monkeypatch):
     base = _provider_functions()
-    monkeypatch.setenv("FOUNDRY_PROJECT_ENDPOINT", "https://acct.services.ai.azure.com/api/projects/p/")
+    project = "https://acct.services.ai.azure.com/api/projects/p"
     monkeypatch.delenv("MODEL_GATEWAY_URL", raising=False)
-    assert base() == "https://acct.services.ai.azure.com/api/projects/p"
+    assert base(project) == project
     monkeypatch.setenv("MODEL_GATEWAY_URL", " https://gw.azure-api.net/models/openai/v1/ ")
-    assert base() == "https://gw.azure-api.net/models/openai/v1"
+    assert base(project) == "https://gw.azure-api.net/models/openai/v1"
     monkeypatch.setenv("MODEL_GATEWAY_URL", "")
-    assert base() == "https://acct.services.ai.azure.com/api/projects/p"
+    assert base(project) == project
+
+
+def _function_source(name: str) -> str:
+    tree = ast.parse(CONTAINER.read_text(encoding="utf-8"))
+    return ast.unparse(next(n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                            and n.name == name))
+
+
+def test_gateway_routes_only_model_calls_not_project_calls():
+    # Review finding: the toolbox MCP URL must stay on the project endpoint.
+    assert "_MODEL_BASE_URL" in _function_source("_get_provider")
+    assert "_MODEL_BASE_URL" not in _function_source("_toolbox_tools")
+    assert "_BYOK_ENDPOINT" in _function_source("_toolbox_tools")
+    assert "MODEL_GATEWAY_URL" not in _function_source("_init_byok").replace("_model_base_url", "")
 
 
 @pytest.mark.skipif(shutil.which("az") is None, reason="az bicep not installed")
