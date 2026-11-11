@@ -17,7 +17,7 @@ description: >-
   (`microsoft-foundry` rbac); red-team scanning (threadlight-redteam); evals
   (threadlight-evals); AGT governance (threadlight-govern).
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Threadlight Connect — swap the mock, prove the real
@@ -71,6 +71,19 @@ operator decision that requires operator-supplied evidence.
   `scripts/connect.py`. Every phase operates on evidence the caller already
   captured (tool source text, a mock sample, a captured real response, OBO
   evidence, role evidence).
+
+## OBO reference downstream (live-proven 2026-11-11)
+
+`references/obo-downstream/` is a small user-scoped MCP server and the recipe
+that proved, on a GHCP hosted agent, that a tool call reaches the downstream
+**as the signed-in user with the agent identity as actor**: Foundry toolbox,
+`AgentOnBehalfOfUser` connection (preview), `AgentBlueprint` endpoint scheme
+(preview), consent. Foundry performs the token exchange; this skill still never
+does. Its `seen` block is the evidence this leg consumes: `token_type:
+delegated` with the user's `oid` gives `{"present": true, "user_scoped": true}`
+in `obo_evidence.json`, and `actor_app_id` is the `--current-agent-identity`.
+An allowed user, a denied user and the measured revocation times are recorded
+in [docs/agent-operations.md, "Identity model"](../../docs/agent-operations.md#identity-model-who-acts-with-which-permissions).
 
 ## The state machine
 
@@ -313,9 +326,11 @@ pillar's readiness — negative (`must-fix`) evidence still dominates.
 
 ```
 scripts/connect.py                            # stdlib implementation + CLI
+references/obo-downstream/                    # user-scoped MCP downstream + live OBO recipe
 references/data-contract.schema.json          # extract_contract() output shape
 references/connect-manifest.schema.json       # connect-manifest.json shape (shared envelope)
 tests/test_connect.py                         # pytest suite
+tests/test_obo_downstream.py                  # downstream token checks (offline)
 ```
 
 ## Tests

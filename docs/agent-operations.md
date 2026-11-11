@@ -462,6 +462,88 @@ The references below retain their explanatory snapshot pins.
 | [Execution approval](https://github.com/aiappsgbb/threadlight-skills/blob/4f59f7584a5f5d614c3625aa45f92f6a692c2194/skills/threadlight-agentops/references/execution-approval.md) | Native operation prerequisites and identity/export scope |
 | [CI/CD runtime composition](https://github.com/aiappsgbb/threadlight-skills/blob/4f59f7584a5f5d614c3625aa45f92f6a692c2194/skills/threadlight-cicd/references/agentops-runtime.md) | Reuse of the existing delivery pipeline owner |
 
+## Identity model: who acts, with which permissions
+
+Customers ask four questions before production: who is acting, with which
+permissions, whether the signed-in user's context survives to the tool, and
+how to stop the agent. Foundry splits the answer across three boundaries that
+do not inherit from each other: management access, caller-to-endpoint access
+and agent-to-tool access
+([identity and access overview](https://learn.microsoft.com/azure/foundry/agents/concepts/identity-access-overview)).
+The chain below was run live on 2026-11-11 on a GHCP Threadlight pilot
+(hosted agent, Invocations 2.0.0, westus3, nonproduction subscription). It
+proves identity and user delegation for **one** read tool; it is not
+whole-agent governance and not a governed write.
+
+```mermaid
+flowchart LR
+  U[Signed-in user] -->|token aud: agent blueprint\n(AgentBlueprint, preview)\nor Foundry (AzureRbac)| E[Agent endpoint]
+  E --> A[GHCP hosted agent\nruns as its agent identity\n(Entra agentIdentity)]
+  A -->|agent identity token\nCognitive Services OpenAI User\non the account| M[Model deployment]
+  A -->|agent identity token\n+ x-agent-foundry-call-id| T[Foundry toolbox]
+  T -->|AgentOnBehalfOfUser:\nOBO token = user + agent| D[Downstream MCP\nchecks aud, scp, user role]
+```
+
+### What was proven, and how
+
+| Claim | Class | Evidence |
+|---|---|---|
+| The agent runs as an Entra **agent identity** (`@odata.type: agentIdentity`), child of a managed agent identity blueprint; the same principal served versions 1 to 5 | Live | Graph read of `instance_identity`; `azd ai agent show` after each deploy |
+| Least privilege for inference is **Cognitive Services OpenAI User** on the Foundry account; no grant gives 401 `OpenAI/responses/write` | Live | No grant 401; that single grant worked on 4 of 4 new sessions; `hooks/postdeploy.sh` recreated exactly that grant |
+| The user's context reaches the tool: the downstream saw the user's `oid` and `actor_app_id` = the agent identity, delegated token, `scp=Records.Read` | Live | Allowed user returned records with that `seen` block |
+| A user without permission is denied **by the downstream**, not by the agent | Live | Second test user: `access_denied` (no `Records.Reader` app role), same actor |
+| An app-only token (the agent as itself) is rejected by the downstream | Offline | `test_obo_downstream.py` and a local HTTP run: 403 `delegated_token_required` |
+| No token in logs | Live | 0 JWTs, 0 `Bearer ey`, 0 call ids in about 2,700 App Insights and Container Apps log rows over 3 hours |
+| `AgentOnBehalfOfUser` also worked with a Foundry-audience token (`AzureRbac`), although Learn says it requires `AgentBlueprint` | Observed, contradicts docs | Same result as the blueprint token; do not rely on it |
+
+### What it took
+
+The recipe is in [`obo-downstream`](../skills/threadlight-connect/references/obo-downstream/README.md):
+`AgentBlueprint` scheme next to `Entra`; a `RemoteTool` connection with
+`AgentOnBehalfOfUser` and the exact scope; a toolbox; blueprint
+`requiredResourceAccess` and `inheritablePermissions`; consent; `TOOLBOX_NAME`
+on the agent. Three findings are not in the docs:
+
+- **Consent target.** Preauthorizing the blueprint on the API and an admin
+  grant on the blueprint principal still returned `CONSENT_REQUIRED` naming the
+  agent identity as client. An admin grant on the agent identity's service
+  principal fixed it within a minute.
+- **GHCP + toolbox.** The toolbox returns `structuredContent: null`; the Copilot
+  SDK's native MCP client rejected every result. `container.py` bridges toolbox
+  tools as SDK tools and forwards `x-agent-foundry-call-id`, without which the
+  toolbox cannot resolve the user.
+- **Session caching.** A session that received a 401 kept failing for 20
+  minutes after the grant; new sessions worked at once. Grant before the first
+  call (the postdeploy hook does).
+
+### Channels that carry the user
+
+| Channel | User delegation to a custom MCP tool | Basis |
+|---|---|---|
+| Direct client with a user token for the agent blueprint (`api://<blueprint>/access_agent`) | Yes, agent identity acts for the user (preview) | Live, [endpoint authorization](https://learn.microsoft.com/azure/foundry/agents/concepts/agent-endpoint-authorization) |
+| Direct client with a Foundry token (`https://ai.azure.com`) | Documented for Microsoft tools only (`UserEntraToken`, Foundry as actor); worked here with `AgentOnBehalfOfUser` | Learn [user delegation](https://learn.microsoft.com/azure/foundry/agents/concepts/user-delegation) + observed |
+| Foundry playground and other development clients | Foundry audience only; no agent-identity actor | Documented, Not proven here |
+| Teams and Microsoft 365 publish (Bot Service schemes) | Foundry audience only; no agent-identity actor | Documented, Not proven here |
+| Middle tier passing `x-ms-user-identity` | Session isolation only, needs a custom role; not an Entra user token | Documented ([permissions](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions#delegate-the-end-user-identity)), Not proven here |
+| Agent-to-agent (A2A) | App-only or delegated where the target supports it | Documented ([A2A authentication](https://learn.microsoft.com/azure/foundry/agents/concepts/agent-to-agent-authentication)), Not proven here |
+
+### Stopping an agent: measured
+
+| Action | Scope | Measured effect |
+|---|---|---|
+| `POST {project}/agents/<agent>:disable` ([manage hosted agents](https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-agent#disable-or-enable-an-agent)) | The agent endpoint, reversible | 403 "stopped" within 2 s, new and existing sessions; `:enable` restored it on the next call |
+| Disable the agent identity in Entra ([disable agent identities](https://learn.microsoft.com/entra/agent-id/disable-agent-identities)) | Every token for that agent | Still served for about 2 minutes; new sessions failed by 219 s (424 `session_not_ready`), the existing session by 281 s. Recovery after re-enabling was within 16 minutes, exact time not measured |
+| Remove the agent identity's Azure role | Model inference | New session still worked at 15 s, failed at 42 s |
+| Remove the user's app role on the downstream | That user's data | The first call 16 s later was denied; no cached OBO token observed |
+| Block at a gateway in front of the tool or model | Network path | Documented option ([toolbox: bring your own AI gateway](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/tool-authentication#beyond-passthrough-what-else-a-toolbox-gives-you)), Not proven here |
+
+For a rogue agent, disable the endpoint first (seconds, keeps evidence), then
+disable the agent identity and remove its grants. Deleting a version terminates
+its sessions but loses the version for investigation.
+
+Not proven here: Conditional Access on agent identities, Teams or playground
+users, A2A, a gateway block, and OBO for a governed write.
+
 ## Choosing the next step
 
 For runtime control, follow the selected-binding generator and governance

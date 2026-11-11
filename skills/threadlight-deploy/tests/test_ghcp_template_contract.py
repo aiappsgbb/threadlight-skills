@@ -176,3 +176,83 @@ def test_generated_pilot_smoke_copies_helper_and_sets_evidence_file():
     for line in text.splitlines():
         if "python tests/invoke_agent.py" in line:
             assert "INVOCATION_EVIDENCE_FILE" in line, line
+
+
+# --- Opt-in Foundry toolbox bridge (identity end-to-end, 2026-11-11) ----------
+
+def _toolbox_bridge_class():
+    tree = ast.parse(CONTAINER.read_text(encoding="utf-8"))
+    node = next((n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "_ToolboxBridge"), None)
+    assert node is not None, "container.py must ship the opt-in _ToolboxBridge"
+    import json as _json
+    namespace = {"Any": object, "json": _json}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(CONTAINER), "exec"), namespace)
+    return namespace["_ToolboxBridge"]
+
+
+def test_toolbox_bridge_forwards_call_id_and_tolerates_null_structured_content():
+    aiohttp = pytest.importorskip("aiohttp")
+    from aiohttp import web
+    import asyncio
+    import json as _json
+
+    seen = []
+
+    async def handler(request):
+        body = await request.json()
+        seen.append((dict(request.headers), body))
+        if "id" not in body:
+            return web.Response(status=202)
+        if body["method"] == "initialize":
+            result = {"protocolVersion": "2025-03-26", "capabilities": {}, "serverInfo": {"name": "t"}}
+            return web.json_response({"jsonrpc": "2.0", "id": body["id"], "result": result},
+                                     headers={"mcp-session-id": "s1"})
+        if body["method"] == "tools/list":
+            result = {"tools": [{"name": "records.list_my_records", "inputSchema": {"type": "object"}}]}
+            sse = "event: message\ndata: " + _json.dumps({"jsonrpc": "2.0", "id": body["id"], "result": result}) + "\n\n"
+            return web.Response(text=sse, content_type="text/event-stream")
+        result = {"content": [{"type": "text", "text": "{\"result\": \"ok\"}"}], "structuredContent": None}
+        return web.json_response({"jsonrpc": "2.0", "id": body["id"], "result": result})
+
+    async def run():
+        app = web.Application()
+        app.router.add_post("/mcp", handler)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        port = site._server.sockets[0].getsockname()[1]
+        try:
+            bridge = _toolbox_bridge_class()(f"http://127.0.0.1:{port}/mcp", "agent-token", "call-123")
+            tools = await bridge.list_tools()
+            text = await bridge.call_tool(tools[0]["name"], {})
+        finally:
+            await runner.cleanup()
+        return tools, text
+
+    tools, text = asyncio.run(run())
+    assert tools[0]["name"] == "records.list_my_records"
+    assert text == '{"result": "ok"}'
+    for headers, _ in seen:
+        assert headers["Authorization"] == "Bearer agent-token"
+        assert headers["x-agent-foundry-call-id"] == "call-123"
+    assert any(h.get("mcp-session-id") == "s1" for h, b in seen if b["method"] == "tools/list")
+
+
+def test_toolbox_mode_uses_a_fresh_session_per_request():
+    source = CONTAINER.read_text(encoding="utf-8")
+    assert 'request.state, "call_id"' in source
+    assert re.search(r"if _toolbox_enabled\(\):\s*\n\s*session_key = \"\"", source), (
+        "a toolbox turn must not reuse a session that holds a previous request's caller context")
+    assert "TOOLBOX_NAME" in README.read_text(encoding="utf-8")
+
+
+def test_toolbox_tools_requiring_approval_are_not_exposed_and_permissions_stay_on():
+    # Learn: the toolbox does not block tools/call when require_approval is
+    # "always"; the runtime must enforce it. The pilot has no approval UI, so
+    # such tools are never registered (fail closed).
+    tree = ast.parse(CONTAINER.read_text(encoding="utf-8"))
+    fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "_toolbox_tools")
+    source = ast.get_source_segment(CONTAINER.read_text(encoding="utf-8"), fn)
+    assert "require_approval" in source and '"always"' in source
+    assert "skip_permission=True" not in source

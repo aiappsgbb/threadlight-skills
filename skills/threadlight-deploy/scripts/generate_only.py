@@ -949,8 +949,9 @@ loop run in Foundry. Generated offline with `generate_only: true`; see
 - Azure Developer CLI with the `azure.ai.agents` extension, Azure CLI, Python 3.12.
 - A subscription where you can create a resource group, a Foundry account and
   role assignments: Foundry User for you at project and account scope (account
-  scope is needed to run the Foundry evaluation), and for the agent identity
-  (granted by `hooks/postdeploy.sh`).
+  scope is needed to run the Foundry evaluation). The agent identity gets only
+  Cognitive Services OpenAI User on the Foundry account (least privilege for
+  inference, granted by `hooks/postdeploy.sh`).
 - Model quota for the deployment in `infra/main.bicep`.
 
 ## Offline checks (no login)

@@ -571,3 +571,19 @@ test('pilot value page closes the workshop and is documented without overclaimin
   assert.match(canvas, /Pilot value page/);
   assert.ok(canvas.includes('specs/pilot-value.json'));
 });
+
+test('identity model separates live-proven, documented and unproven identity claims', () => {
+  const text = read(docs.guide);
+  const part = text.split('## Identity model: who acts, with which permissions')[1];
+  assert.ok(part, 'Identity model section required in the operative guide');
+  const section = part.split('\n## ')[0].replace(/\s+/g, ' ');
+  for (const term of [
+    '```mermaid', '2026-11-11', 'agentIdentity', 'Cognitive Services OpenAI User',
+    'AgentBlueprint', 'AgentOnBehalfOfUser', 'x-agent-foundry-call-id', 'actor_app_id',
+    'access_denied', 'No token in logs', 'session_not_ready', ':disable',
+    'Teams', 'playground', 'preview', 'Not proven', 'obo-downstream',
+  ]) assert.ok(section.includes(term), term);
+  assert.match(section, /learn\.microsoft\.com\/azure\/foundry\/agents\/concepts\/user-delegation/);
+  assert.doesNotMatch(section, /whole-agent governance is proven/i);
+  assert.match(read(docs.readiness), /agent-operations\.md#identity-model-who-acts-with-which-permissions/);
+});

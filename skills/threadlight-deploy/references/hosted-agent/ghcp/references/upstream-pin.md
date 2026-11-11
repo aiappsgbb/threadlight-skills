@@ -246,6 +246,11 @@ contract, the `remoteBuild`/manual `services:` wiring, the
   fixture). This is not a re-opening of KI-001's *deploy-time* auto-grant
   (still retired); it is a distinct, previously-undocumented
   model-inference prerequisite.
+  **Superseded 2026-11-11 (live):** the agent identity stayed the same
+  across versions, and Cognitive Services OpenAI User on the account alone
+  was sufficient on new sessions. A session that already saw a 401 kept
+  failing after any grant, which likely explains the single-scope failures above.
+  See README.md § "Identity & RBAC for hosted agents".
 - **KI-002** (`azd ai agent invoke` allegedly not wrapping user input in
   `{"input": "..."}`) — did not reproduce against the current GA CLI. The
   official sample's README documents `azd ai agent invoke '{"input": "..."}'`

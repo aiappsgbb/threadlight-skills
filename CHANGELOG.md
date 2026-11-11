@@ -7,6 +7,30 @@ field.
 
 ## [Unreleased]
 
+### 2.43.0: identity end to end, proven live on a GHCP pilot
+
+- **Least-privilege agent identity:** the GHCP pilot `hooks/postdeploy.sh` (and
+  so every generate-only pilot) now grants the hosted agent's Entra agent identity
+  only **Cognitive Services OpenAI User** on the Foundry account, instead of
+  Foundry User on account and project. Live: no grant gives 401
+  `OpenAI/responses/write`; that single grant worked on new sessions; the identity
+  stayed the same across five versions. A session that already saw a 401 keeps
+  failing after the grant: use a new session.
+- **User context to tools (opt-in `TOOLBOX_NAME`):** `container.py` bridges a
+  Foundry toolbox into the Copilot session (`_ToolboxBridge`), forwards the
+  platform's `x-agent-foundry-call-id`, and uses a fresh session per toolbox turn.
+  The native SDK MCP client rejected toolbox results (`structuredContent: null`).
+- **`threadlight-connect/references/obo-downstream`:** user-scoped MCP server
+  (delegated v2 token only, scope and app-role checks, no token in logs) and the
+  live OBO recipe: `AgentBlueprint` endpoint scheme and `AgentOnBehalfOfUser`
+  connection (both preview), consent on the agent identity.
+- **Identity model** in `docs/agent-operations.md`: one diagram, proven vs
+  documented vs not proven, channel gaps (playground, Teams/M365), and a measured
+  kill-switch table (agent `:disable` 2 s; agent identity disabled 3 to 5 min;
+  role removal 42 s; user app role removal on the next call).
+- The new tests use `PyJWT[crypto]` and `aiohttp`, which the pytest job already installs
+  through the control-plane package; they run in CI rather than skip.
+
 ### 2.42.0: cost per use case and per agent across pilots in one subscription
 
 - **`threadlight-consumption-iq` `portfolio` (opt-in, read-only):** Cost Management
