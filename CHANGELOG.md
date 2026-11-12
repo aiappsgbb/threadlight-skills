@@ -11,8 +11,9 @@ field.
 
 - **A2A, live:** a GHCP hosted agent calls a Foundry agent through a toolbox `a2a`
   tool (GA, protocol 1.0). With a `UserEntraToken` connection the user reaches the
-  target and its user-delegated tool: the downstream sees the user, with the
-  **target** agent identity as actor, and denies a user without permission. With
+  target agent; its user-delegated custom tool worked for 20 minutes (downstream
+  saw the user with the **target** agent identity as actor, denied a user without
+  permission) and then failed: that hop is undocumented, do not rely on it. With
   `AgenticIdentityToken` no user context survives (the target's tool fails).
   `AgentOnBehalfOfUser` to a Foundry target is refused (403 on the A2A route).
 - **Exact blockers recorded** in `docs/agent-operations.md` "Identity model":

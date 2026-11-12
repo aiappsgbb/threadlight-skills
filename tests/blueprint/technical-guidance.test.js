@@ -596,5 +596,6 @@ test('identity model records the live A2A chain and the exact blockers for the r
     'Foundry Agent Consumer', 'TOOL_USER_ERROR', 'not licensed for this feature',
     'Entra ID P1', 'Responses', 'Activity', 'no implicit end-user delegation or OBO',
     'exactly one of', 'learn.microsoft.com/azure/foundry/agents/how-to/enable-agent-to-agent-endpoint',
+    'Do not rely on the second hop',
   ]) assert.ok(section.includes(term), term);
 });

@@ -528,7 +528,7 @@ on the agent. Three findings are not in the docs:
 | Foundry playground and other development clients | Foundry audience only; no agent-identity actor. The same Foundry-audience user token was proven programmatically below (A2A hop); the playground UI itself was not exercised | Documented; UI Not proven here |
 | Teams and Microsoft 365 publish (Bot Service schemes) | Foundry audience only; no agent-identity actor. A hosted agent needs the Responses protocol, which the platform bridges to Activity ([hosted agents](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#key-concepts)); the GHCP pilot serves Invocations only | Documented, Not proven here (see blockers) |
 | Middle tier passing `x-ms-user-identity` | Session isolation only, needs a custom role; not an Entra user token | Documented ([permissions](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions#delegate-the-end-user-identity)), Not proven here |
-| Agent-to-agent (A2A) to another Foundry agent | `UserEntraToken`: yes, the user reaches the target and its tools; `AgenticIdentityToken`: no user | Live, see below |
+| Agent-to-agent (A2A) to another Foundry agent | `UserEntraToken`: the user reaches the target agent; its custom tool only through undocumented, unstable behaviour. `AgenticIdentityToken`: no user | Live, see below |
 
 ### Stopping an agent: measured
 
@@ -555,13 +555,19 @@ whose MCP tool reaches the same downstream through `AgentOnBehalfOfUser`.
 
 | A2A connection | Target sees | Downstream result |
 |---|---|---|
-| `UserEntraToken`, audience `https://ai.azure.com` | the user: a user with no role on the target got 404 on the agent card; with **Foundry Agent Consumer** on the target agent only (about 8 minutes to take effect) the call went through | allowed user: records, `user_oid` = user, `actor_app_id` = **target** agent identity; denied user: `access_denied` from the downstream |
+| `UserEntraToken`, audience `https://ai.azure.com` | the user: a user with no role on the target got 404 on the agent card; with **Foundry Agent Consumer** on the target agent only (about 8 minutes to take effect) the call went through | until 08:15: allowed user got records, `user_oid` = user, `actor_app_id` = **target** agent identity; denied user `access_denied` from the downstream. From about 09:30: `TOOL_USER_ERROR` (see below) |
 | `AgenticIdentityToken`, audience `https://ai.azure.com` | the caller agent identity: 404 without a role, accepted with Foundry Agent Consumer on the target agent (about 6 minutes) | the target's user-delegated tool fails (`-32099 TOOL_USER_ERROR`); the downstream is never called. No user context survives an app-only hop |
 | `AgentOnBehalfOfUser`, scope `api://<target blueprint>/access_agent` | nothing: the target A2A route returned 403 for blueprint-audience tokens (card and `SendMessage`), while its Responses route accepted them | not usable for a Foundry target today |
 
-So user context survives two hops (user → agent → agent → tool) with
-`UserEntraToken`, and each downstream sees the **last** agent as actor, not the
-whole chain. Setup findings not in the docs: the caller agent identity needs an
+So the user reaches the second agent with `UserEntraToken`, and a downstream
+sees the **last** agent as actor, not the whole chain. **Do not rely on the
+second hop to a custom tool yet:** the target's `AgentOnBehalfOfUser` tool ran
+under a Foundry-audience token, which Learn does not support (it requires the
+`AgentBlueprint` audience). It worked repeatedly from 07:54 to 08:15 UTC, then
+failed on every attempt from about 09:30 UTC (`TOOL_USER_ERROR`, downstream not
+called) while the same tool via the target's blueprint audience kept working. No
+documented path carries the user through A2A to a custom MCP tool today
+(`UserEntraToken` tools are limited to the Microsoft tools Learn lists). Setup findings not in the docs: the caller agent identity needs an
 admin grant for `user_impersonation` on Azure Machine Learning Services (the
 `https://ai.azure.com` resource), otherwise `CONSENT_REQUIRED`; and the toolbox
 rejects an `a2a` tool with both `base_url` and `project_connection_id`

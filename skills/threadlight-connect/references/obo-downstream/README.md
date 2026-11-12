@@ -69,7 +69,10 @@ and the target's `.../agents/<target>/endpoint/protocols/a2a` base path. Grant:
 users (or groups) **Foundry Agent Consumer** on the target agent; the caller
 agent identity an admin `user_impersonation` grant on Azure Machine Learning
 Services; the target agent identity the same `Records.Read` grant as above. The
-downstream then sees the user with the **target** agent identity as actor.
+downstream then saw the user with the **target** agent identity as actor, but
+only between 07:54 and 08:15 UTC: from about 09:30 the target's tool failed
+(`TOOL_USER_ERROR`). That hop runs `AgentOnBehalfOfUser` under a Foundry-audience
+token, which Learn does not support; treat it as unreliable.
 An `AgenticIdentityToken` A2A connection carries no user, and the target's
 user-delegated tool fails. Results and blockers:
 [Identity model](../../../../docs/agent-operations.md#identity-model-who-acts-with-which-permissions).
