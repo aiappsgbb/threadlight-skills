@@ -68,7 +68,7 @@ resource approval 'Microsoft.Logic/workflows@2019-05-01' = {
               additionalProperties: false
               required: ['operation_id', 'action_hash', 'case_id', 'proposed_arguments', 'expires_at', 'approval_intent', 'review_context']
               properties: {
-                operation_id: { type: 'string', pattern: '^[a-f0-9]{32}$', maxLength: 32 }
+                operation_id: { type: 'string', pattern: '^[a-f0-9]{32}([a-f0-9]{32})?$', maxLength: 64 }
                 action_hash: { type: 'string', pattern: '^sha256:[a-f0-9]{64}$', maxLength: 71 }
                 case_id: { type: 'string', enum: allowedCaseIds }
                 expires_at: { type: 'string', format: 'date-time', maxLength: 40 }

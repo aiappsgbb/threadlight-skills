@@ -292,6 +292,15 @@ jobs:
         # offline static-server smoke of each runnable shape (plus node --check
         # when node is present). Stdlib-only, no browser, no network.
         run: python -m pytest skills/threadlight-workspace-ui/tests/ -v
+      - name: Run governed-write kit operator tests
+        # Offline: approver queue/panel guards (decision call injected), warm-up
+        # retry/timeout logic (az injected), and the azd project composer (bicep
+        # build only). test_policy.py needs native ACS and runs in the governance
+        # pin gate instead.
+        run: >-
+          python -m pytest examples/governed-write-ghcp/tests/test_kit_scripts.py
+          examples/governed-write-ghcp/tests/test_approval_panel.py
+          examples/governed-write-ghcp/tests/test_compose_project.py -v
       - name: Run threadlight-router-bench tests
         # Offline self-improvement cold-path: learn (single-run CI learnings) +
         # bench (cost scorecard). Deterministic, stdlib-only, no Azure/gh network

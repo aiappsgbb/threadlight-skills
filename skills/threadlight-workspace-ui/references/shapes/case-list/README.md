@@ -48,15 +48,20 @@ preview only.
 
 ## Approval boundary: this page never approves
 
-A `pending_approval` item shows the operation id, the action, the proposed
-arguments and the `threadlight-review-action` command for an authorised
-reviewer to run, signed in as themselves. The page offers **Copy command**
-only. Copying records nothing, there is no Approve button, and the
-action toolbar is hidden for pending items. The reviewer must run the command
-with the exact pending result saved privately from the host
-(`governance_pending` frame), not with this display copy: the workspace copy
-deliberately omits `approval_intent`, so it is not a valid `--pending` input.
-The agent's later resume verifies and consumes the recorded decision.
+A `pending_approval` item shows the operation id, the action and the proposed
+arguments. The page itself never records a decision, never keeps one in
+`localStorage` or memory, and hides the action toolbar for pending items.
+The approver never needs a terminal; `config.approval` selects how the card
+reads:
+
+| `config.approval.mode` | Pending card | Who records the decision |
+|---|---|---|
+| `email` (`recipient`) | "Approval email sent to <recipient>" | The approver clicks **Approve** or **Reject** in the native Outlook approval email |
+| `panel` (`url`, `token`) | **Approve** / **Reject** buttons | The authenticated approval endpoint at `url` (for example the governed-write kit's `approval_panel.py`), which signs the approver in as themselves and calls the control plane's one-use decision. The page posts only `{operation_id, approved}` with the session `token` |
+| absent | `threadlight-review-action` command with **Copy command** | The operator fallback: an authorised reviewer runs it, signed in as themselves, with the exact pending result saved privately from the host (`governance_pending` frame), not this display copy |
+
+In every mode the agent's later resume verifies and consumes the recorded
+decision; nothing executes when the button is clicked.
 
 The action toolbar appears only for statuses listed in
 `config.actionable_statuses`. Its buttons call `window.threadlight.onAction`,
@@ -80,7 +85,8 @@ wrapper (from `threadlight-demo-data-factory`) is also accepted in place of
 | `workspace.as_of` | ISO 8601, optional | Demo clock for SLA chips; omit to use the current time |
 | `config.writeback_url` | string or `null` | Agent writeback endpoint; `null` keeps the page read-only |
 | `config.actionable_statuses` | string[] | Statuses that show the action toolbar (default `awaiting_review`) |
-| `config.review_command` | object | `control_plane_url`, `scope`, `tenant`, `client_id`, `role` placeholders for the reviewer command. Use real values only in a private deployment config, never in a shared example |
+| `config.approval` | object, optional | `{mode: "email", recipient}` or `{mode: "panel", url, token}`; see the approval boundary above |
+| `config.review_command` | object | Operator fallback only (no `config.approval`): `control_plane_url`, `scope`, `tenant`, `client_id`, `role` placeholders for the reviewer command. Use real values only in a private deployment config, never in a shared example |
 | `actions[]` | object | Action toolbar contract (`id`, `label`, `br`, `needsReason`, `destructive?`, `hint?`) |
 | `cases[].id`, `customer`, `item`, `owner` | string | Row and summary |
 | `cases[].status` | string | `pending_approval`, `awaiting_review`, `escalated`, `approved`, `completed`, `rejected` |

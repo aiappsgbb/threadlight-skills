@@ -192,12 +192,29 @@ def test_case_list_sample_has_a_gateway_shaped_pending_approval():
 
 def test_case_list_never_records_an_approval_itself():
     js = (SHAPES / "case-list" / "workspace.js").read_text(encoding="utf-8")
-    html = (SHAPES / "case-list" / "index.html").read_text(encoding="utf-8")
-    assert "threadlight-review-action" in js
+    assert "threadlight-review-action" in js  # operator fallback only
     assert "localStorage.setItem" not in js
-    assert not re.search(r">\s*Approve\s*<", html)
     readme = _flat((SHAPES / "case-list" / "README.md").read_text(encoding="utf-8"))
     assert "never approves" in readme
+
+
+def test_case_list_pending_card_is_one_click_for_the_approver():
+    """Approvers never get a terminal: email notice or an authenticated panel button."""
+    js = (SHAPES / "case-list" / "workspace.js").read_text(encoding="utf-8")
+    html = (SHAPES / "case-list" / "index.html").read_text(encoding="utf-8")
+    for element in ("pending-email", "pending-panel", "pending-approve", "pending-reject",
+                    "pending-cli"):
+        assert f'id="{element}"' in html
+    # Email mode tells the operator where the decision happens; panel mode posts only the
+    # operation and the choice to the configured authenticated approval endpoint.
+    assert "Approval email sent to " in js
+    assert "approval.url" in js and "X-Threadlight-Panel" in js
+    assert "JSON.stringify({ operation_id: c.pending.operation_id, approved: approved })" in js
+    # The command block is the operator fallback, shown only without an approval mode.
+    assert re.search(r"\$\('pending-cli'\)\.hidden = !!mode", js)
+    assert "if (amount == null) return '—';" in js  # unknown amount is never shown as 0
+    readme = _flat((SHAPES / "case-list" / "README.md").read_text(encoding="utf-8"))
+    assert "config.approval" in readme and "operator fallback" in readme
 
 
 class _Quiet(http.server.SimpleHTTPRequestHandler):

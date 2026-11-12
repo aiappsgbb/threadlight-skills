@@ -11,7 +11,7 @@ The pilot is designed in the `governed-write` action mode
 the recommend-only Fast-PoC and the Production path. Participants' pilots stay
 recommend-only; the facilitator shows this one.
 
-**Live status:** executed on 2026-11-10 in a nonproduction Azure subscription;
+**Live status:** executed on 2026-11-10 and 2026-11-12 in a nonproduction Azure subscription (the 2026-11-12 run adds the one-click approval panel, a cold-start warm-up and a clean provision of the composed azd project);
 see [S8 in the execution record](../../docs/governed-returns-validation.md#s8-governed-write-on-ghcp-workshop-kit).
 That evidence covers **this one binding** in that deployment, not whole-agent
 governance, network isolation, OBO or production readiness. A new deployment
@@ -27,7 +27,7 @@ flowchart LR
   G -->|downstream identity| B[Business API<br/>POST /decisions, GET /outcomes]
   B --> D[(Cosmos cases + audits)]
   M --> D
-  H[Human Approver] -->|threadlight-review-action| C
+  H[Human Approver] -->|one click: approval email<br/>or approval panel| C
 ```
 
 ## The four rules ([`governed_write.rego`](governance/policy/governed_write.rego))
@@ -55,10 +55,9 @@ Images are built only with `azd` remote builds (`docker.remoteBuild: true`).
 Keep every operator file (IDs, URLs, envelopes) **outside this repository**.
 
 1. **Pilot infrastructure.** Start from the GHCP pilot template
-   (`skills/threadlight-deploy/references/hosted-agent/ghcp/references/pilot`),
-   copy this example's `src/mcp/` and `src/agent/copilot-instructions.md`, set the
-   MCP app's `AZURE_CLIENT_ID`, `RETURNS_COSMOS_URL`, `RETURNS_COSMOS_DATABASE=returns`
-   and `RETURNS_COSMOS_CONTAINER=returns-cases` in its Bicep, and `azd provision`.
+   (`skills/threadlight-deploy/references/hosted-agent/ghcp/references/pilot`)
+   or the `generate_only` output, and `azd provision` once (registry, Container
+   Apps environment, Foundry project).
 2. **Entra APIs.** `python scripts/entra_apps.py --prefix <name> --review-client <public-client-id> --approver <your-object-id>`
    creates the control-plane, gateway and business APIs (v2 tokens, `idtyp`
    optional claim, `Governance.Workload` app role, delegated
@@ -71,14 +70,21 @@ Keep every operator file (IDs, URLs, envelopes) **outside this repository**.
    plane and gateway scale to zero between workshops), `network.posture:
    public-authenticated-proof` with `preserve_resources: true`, and optional
    `tags` for owner/purpose/disposition), then
-   `generate.py foundation` and `azd provision`. If organization policy disables
-   public access on new data resources, use your approved exception mechanism
-   through `tags`; never weaken authentication.
-4. **Business authority.** Deploy [`infra/business.bicep`](infra/business.bicep)
-   without `businessImage`, publish the publisher image (a context with the
-   portable control plane and [`scripts/publish_policy.py`](scripts/publish_policy.py))
-   and the business image (`package_returns_mcp.py` output) with `azd publish`,
-   then seed: `python scripts/seed_cases.py --cosmos-url <url> --outside-snapshot RMA-NEW-0001`.
+   `generate.py foundation`. If organization policy disables public access on
+   new data resources, use your approved exception mechanism through `tags`;
+   never weaken authentication.
+4. **One azd project.** `python scripts/compose_project.py --project <pilot>`
+   folds everything else into the same project: [`infra/business.bicep`](infra/business.bicep)
+   becomes a module of `infra/main.bicep` (the MCP server reads the business
+   Cosmos endpoint from it, no hand-copied value), and `src/mcp`,
+   `src/returns-business` (`package_returns_mcp.py` output) and
+   `src/govern-publisher` (portable control plane plus
+   [`scripts/publish_policy.py`](scripts/publish_policy.py)) become ACR remote-build
+   services. Then `azd provision`, `azd deploy mcp`, `azd publish returns-business`
+   and `azd publish govern-publisher`; set the two images **by digest**
+   (`azd env set RETURNS_BUSINESS_IMAGE …@sha256:…`, `GOVERN_PUBLISHER_IMAGE`) and
+   `azd provision` again. Their `predeploy` hook refuses `azd deploy`. Seed:
+   `python scripts/seed_cases.py --cosmos-url <url> --outside-snapshot RMA-NEW-0001`.
 5. **Bootstrap package.** `python scripts/build_policy.py --bootstrap --version 1 --destination <dir>`,
    then run the publisher job with `TL_MODE=sign-only` for that digest. The
    gateway path does not embed the bundle in the agent image, so the bootstrap
@@ -99,8 +105,8 @@ Keep every operator file (IDs, URLs, envelopes) **outside this repository**.
    the gateway's downstream identity.
 10. **Bind and run.** `generate.py bind` with the observed images, identities,
     applications, assignments and foundation outputs; `azd provision` (services
-    phase); deploy the business API with its configuration (final policy digest
-    and registry `deployment`). Restart the control-plane revision after Entra
+    phase); write the business configuration (final policy digest and registry
+    `deployment`) to `infra/business-config.json` and `azd provision` again. Restart the control-plane revision after Entra
     changes. Check gateway `/health`: `returns_apply_decision` healthy.
 
 ## During the workshop (about 10 minutes)
@@ -113,23 +119,44 @@ E=--project-endpoint\ https://<account>.services.ai.azure.com/api/projects/<proj
 python scripts/invoke.py $E --evidence allow.jsonl  --prompt "Triage return case RMA-W04-A and record your decision."
 python scripts/invoke.py $E --evidence deny.jsonl   --prompt "Triage return case RMA-NEW-0001 and record your decision."
 python scripts/invoke.py $E --evidence review.jsonl --pending pending.json --prompt "Triage return case RMA-W04-C and record your decision."
-threadlight-review-action --pending pending.json --control-plane-url https://<control> \
-  --scope api://<control-api-id>/Governance.Approve --tenant <tenant> --client-id <public-client-id> \
-  --role Approver --decision approve
+#   the Approver clicks Approve: in the approval email, or in the approval panel (below)
 python scripts/invoke.py $E --evidence resume.jsonl --resume pending.json
 python scripts/invoke.py $E --evidence replay.jsonl --resume pending.json   # same audit_id, no new effect
 python scripts/demo_capacity.py cool --resource-group <rg> --apps <control> <gateway> <business> <mcp>
 ```
 
-`threadlight-review-action` shows the exact proposal, asks for a typed
-confirmation and then opens the system browser for the Approver's own sign-in;
-set `BROWSER="open -a 'Microsoft Edge' %s"` (macOS) to choose the browser. Run it
-in a terminal the Approver can see.
+### The Approver: one click, never a terminal
+
+Pick one channel per deployment; the control plane accepts decisions only from
+the selected one.
+
+- **Approval email (native Outlook).** Bind `outlook_approval` with
+  [`review-approval.bicep`](../../skills/threadlight-deploy/references/governance/README.md#explicit-native-outlook-companion):
+  the pending write sends an Outlook email with **Approve / Reject**, and the
+  control plane verifies the connector's witnessed choice, responder identity
+  and workflow version before it grants once. The Office 365 connection must be
+  authorized by a **sender mailbox different from the Approver's**: when the
+  sender is the recipient, Exchange keeps the message only in Sent Items (observed
+  live; nothing reaches the inbox). Show
+  `python scripts/review_queue.py --pending pending.json --out <dir> --approval-email <approver>`
+  in the room: the card reads "Approval email sent to …".
+- **Approval panel.** With the default `delegated` channel:
+  `python scripts/review_queue.py --pending pending.json --out <dir> --panel`, then
+  `python scripts/approval_panel.py --queue <dir> --control-plane-url https://<control> --scope api://<control-api-id>/Governance.Approve --tenant <tenant> --client-id <public-client-id>`
+  and open `http://127.0.0.1:8765/`. The Approver clicks the case and
+  **Approve**; the panel opens the Approver's own Entra sign-in and records the
+  one-use decision as them (`approved_by` is their object id). The page posts only
+  the operation and the choice; the panel accepts same-origin posts with its
+  session token, refuses unknown operations and a second click, and never
+  executes the write.
+
+`threadlight-review-action` remains an operator fallback for a reviewer who
+prefers a terminal; it is not part of the workshop script.
 
 What to point at: the allow returns an `audit_id`; the deny records nothing
 (`policy_deny`); the escalation returns `pending_approval` with **no effect** and
-the host (not the model) emits `event: governance_pending`; the Approver signs in
-as themselves; the resumed call re-checks policy, facts, identity and expiry and
+the host (not the model) emits `event: governance_pending`; the Approver clicks
+Approve, signed in as themselves; the resumed call re-checks policy, facts, identity and expiry and
 consumes the grant once; the replay returns the same outcome. A central receipt
 ACK precedes every business write.
 
@@ -149,15 +176,20 @@ write. Facilitator script and live timings:
 `generate_only` now produces this pilot from `specs/` and `AGENTS.md` (the agent
 instructions) without hand edits: the design-owned MCP server keeps its own
 hashed `requirements.lock`, and the pilot Bicep takes the business Cosmos endpoint
-from `RETURNS_COSMOS_URL`.
+from `RETURNS_COSMOS_URL` (after `compose_project.py`, from the business module).
 
 ## Known limits and operator notes
 
-- **Cold start = unknown outcome.** Scale-to-zero services are not warm enough
-  for the gateway's bounded downstream call: in the first live call the business
-  API committed the write ~26 s after the allow receipt and the agent correctly
-  reported an unknown outcome. Run `demo_capacity.py warm` first. An unknown
-  operation stays pending: reconcile from independent records, never retry.
+- **Cold start = unknown outcome, unless warmed.** Scale-to-zero services are
+  not warm enough for the gateway's bounded downstream call: in the first live
+  call the business API committed the write ~26 s after the allow receipt and the
+  agent correctly reported an unknown outcome. `demo_capacity.py warm` sets one
+  replica, retries a transient or hung `az` call (each bounded to 240 s), waits
+  until **every** app (including the MCP server) reports a `Running` replica, then
+  the business and gateway health and a tool-free agent ping. From all apps at
+  zero replicas it took 98 s and the next governed write completed without an
+  unknown outcome. An unknown operation stays pending: reconcile from independent
+  records, never retry.
 - With `min_replicas: 0` nothing stays always on between workshops; the price
   is a cold start, which is why the warm step exists. Production keeps the
   default of 1.
@@ -166,6 +198,6 @@ from `RETURNS_COSMOS_URL`.
   configuration pins the policy version).
 - Each GHCP invocation is a new Copilot session: resume is a new invocation with
   the exact original arguments, not same-session resume.
-- Advanced variants stay opt-in and outside this demo path: native Outlook
-  approval, requesting-user confirmation (MAF only), signed JWT evidence,
+- Advanced variants stay opt-in and outside this demo path: requesting-user
+  confirmation (MAF only), signed JWT evidence,
   operator recovery/fences, mixed native/gateway bindings, Citadel routing.

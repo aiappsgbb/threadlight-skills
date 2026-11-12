@@ -22,7 +22,7 @@ The separate delegated-token workstream is outside this record.
 | S5 | Signed evidence under multi-turn business pressure | September 22: Azure GPT-5.4 / GPT-5.4-mini with local native MCP/ACS, synthetic authorities and business storage | Hybrid experiment; not hosted JWT/PEP or live Cosmos acceptance |
 | S6 | Requesting-user confirmation through native Logic Apps/Outlook email | September 24: genuine Approve, original-operation completion and zero-extra-effect replay on hosted v8 | One scoped S3 nonproduction path; not MFA or same-session effect-resume proof |
 | S7 | Citadel public MCP/REST route, isolated producer ACK loss and native requesting-user confirmation | September 24: nonhuman routing/fault proof; September 25: genuine native Approve, fresh-operation completion and unchanged replay | Real Azure persistence and separate one-use requester authority; not model-driven, MFA or whole-agent proof |
-| S8 | Governed-write workshop kit on **GHCP** (Foundry hosted GitHub Copilot SDK, Invocations): one bound write through the gateway, deferred human review | November 10: model-driven allow, gateway deny, pending approval, Approver decision, resumed write and unchanged replay | First GHCP governed-write live evidence; one binding, public-authenticated nonproduction, not whole-agent or production proof |
+| S8 | Governed-write workshop kit on **GHCP** (Foundry hosted GitHub Copilot SDK, Invocations): one bound write through the gateway, deferred human review | November 10: model-driven allow, gateway deny, pending approval, Approver decision, resumed write and unchanged replay. November 12: one-click human approval from the approval panel, cold-start warm-up then allow without unknown outcome, clean provision of the composed azd project; native Outlook email sent but not delivered to the inbox (sender = recipient) | First GHCP governed-write live evidence; one binding, public-authenticated nonproduction, not whole-agent or production proof |
 
 **Reference direction:** S2 now has fresh private governed allow/deny evidence,
 separate from its earlier BASIC baseline. S3's governed business proof remains
@@ -77,18 +77,31 @@ review terminal was not visible to the person, so at their request the operator
 agent typed the terminal confirmation phrase; the interactive sign-in and
 consent were the person's own.
 
+**2026-11-12 follow-up (same deployment, fresh operations).**
+
+| Check | Observed result |
+|---|---|
+| One-click human approval, panel | Fresh escalation (750 EUR case) `pending_approval`, no effect. The kit's `review_queue.py --panel` and `approval_panel.py` served the queue on the operator's machine; **the Approver clicked Approve in the browser and signed in as themselves**. Nobody typed anything for them. Approval record `decided`, `approved: true`, approver = the person's object id, role `Approver`. Resume: central allow receipt 09:47:04.73, then one case replacement (`escalated`) and one decision-audit at 09:47:05.74, grant `consumed`. Replay: same `audit_id`, every governance and business document identical |
+| Native Outlook approval email | `review-approval.bicep` deployed Enabled with an existing authorized Office 365 connection, control identity Reader on the workflow only, rebound with `outlook_approval`; gateway binding health (which verifies the workflow version and digest over ARM) was healthy. A fresh escalation started the native run and the connector sent the Approve/Reject email (`SendApprovalMail` subscription accepted). **Not delivered to the inbox**: the connection's mailbox was also the recipient, and Exchange kept the message only in Sent Items; the run timed out after 15 minutes with no decision and no effect. The tenant had no other licensed mailbox to act as sender. The deployment was rebound to the delegated channel afterwards. Found and fixed in source: the trigger schema accepted only 32-hex operation ids, GHCP relay ids are 64-hex |
+| Cold start | All four apps (control plane, gateway, business API, MCP server) observed at **zero replicas**. `demo_capacity.py warm` (bounded `az` calls with retry, a `Running` replica on every app, health checks, tool-free agent ping) completed in 98 s. The next governed write (ordinary eligible case) completed in 25 s: one allow receipt, one completed operation, one decision-audit; no unknown outcome. The first warm attempt had hung for an hour on one `az containerapp update` with no timeout, the reason for the bounded calls |
+| One azd project | In a separate, since-deleted resource group: template pilot `azd provision`, `generate.py foundation`, `compose_project.py`, `azd provision` (governance foundation, business Cosmos and identities; the MCP server received the business Cosmos endpoint from the module in the same deployment), ACR remote builds with `azd publish returns-business` / `govern-publisher` and `azd deploy mcp`, then `azd provision` with both images by digest: business API and publisher job deployed, minimum replicas 0. Not run there: Entra apps, signed policy, agent, bind, business configuration or any write |
+
 **Limits and findings, stated plainly.**
 
 - In the first two runs the approval was recorded by the operator agent with
   the Approver's own delegated Azure CLI token through the same `review.decide`
   protocol, not by an interactive sign-in; the follow-up above adds the
-  interactive human sign-in. The native Outlook channel was not used.
+  interactive human sign-in, and the 2026-11-12 panel run the one-click approval
+  without any typed input. The native Outlook email was sent but not delivered to
+  the inbox (above), so no Outlook decision is evidenced for GHCP; the S2 native
+  Outlook evidence remains MAF-only.
 - First call of the day: the scale-to-zero business API committed the write
   about 26 s after the allow receipt; the gateway's bounded downstream call had
   already timed out, the operation stayed `pending` and the agent reported an
   **unknown** outcome. Independent reads show exactly one effect. That operation
   is preserved unreconciled (operator recovery was not selected). The kit now
-  warms the services and pings the agent before a demo.
+  warms the services deterministically before a demo (2026-11-12 cold-start row
+  above).
 - The hosted agent's first invocation after idling returned HTTP 500 with no
   effect; a retry after warm-up succeeded.
 - In three attempts the model refused to request a prohibited decision and chose

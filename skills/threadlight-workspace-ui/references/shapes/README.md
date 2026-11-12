@@ -9,7 +9,7 @@ table, that index and the files on disk in agreement.
 
 | Shape | Availability | Reference | Notes |
 |-------|--------------|-----------|-------|
-| `case-list` | runnable reference | `references/shapes/case-list/` | Queue + detail pane with the three HITL panels; shows `pending_approval` items with the reviewer command, never approves |
+| `case-list` | runnable reference | `references/shapes/case-list/` | Queue + detail pane with the three HITL panels; shows `pending_approval` items with a one-click approval channel (email notice or authenticated panel), reviewer command as operator fallback; never approves itself |
 | `inbox` | not shipped — generate from spec | — | Chronological queue; start from the case-list detail pane |
 | `dashboard` | not shipped — generate from spec | — | KPI tiles + drill-down; panels as a drawer |
 | `console` | not shipped — generate from spec | — | Live event stream + action toolbar |
