@@ -378,6 +378,19 @@ turn spans exist; with an older container the run completes as `partial`
 (tokens not measured) instead of reporting zero tokens. This is evidence for a
 pilot at modest scale, not a production SLA or a platform benchmark.
 
+`--ramp-steps 5,10,25 --max-concurrency 50` sets the ramp. Measured on
+2026-11-12 (returns-triage on 2.47.0, gpt-5.4 GlobalStandard 850K TPM, eastus2,
+nonproduction): 25 concurrent ran 118 requests with no errors and no model 429
+(throughput 6.1, 9.7 and 22.4 requests per minute at 5, 10 and 25 concurrent;
+42% of the TPM limit). At 50 concurrent the Foundry endpoint answered **HTTP 429
+`rate_limit_exceeded`, Retry-After 1 s** to 28 of 150 requests, all in the
+second the 50 new sessions started; the model deployment recorded no 429
+(Azure Monitor) and the remaining requests ran normally. A probe of 50
+simultaneous new requests reproduced it (16 of 50 rejected). The numeric limit
+is not published, so clients must honour `Retry-After` and spread session
+starts; this run does not retry. The first saturation seen is therefore the
+endpoint's request burst, not model TPM and not sandbox capacity.
+
 ## Voice workload harness (scripted spoken calls)
 
 For a pilot with the opt-in voice front-end (Foundry Hosted Voice wrapping the

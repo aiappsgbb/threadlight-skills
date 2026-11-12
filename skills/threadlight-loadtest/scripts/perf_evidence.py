@@ -128,7 +128,7 @@ def build_evidence(*, generated_at: str, agent: str, region: str, profile: Mappi
     sessions = len({r.session_id for r in runner.records})
     ok = sum(1 for s in per_request if s["success"])
     by_status = (model_status or {}).get("by_status") or {}
-    status_429 = by_status.get("429") if (model_status or {}).get("read") else None
+    status_429 = int(by_status.get("429", 0)) if (model_status or {}).get("read") else None
     run_minutes = sum(p["duration_s"] for p in runner.phase_windows.values()) / 60.0
     facts = [
         {"label": "Model deployment", "kind": "observed", "source": "Azure Resource Manager",
@@ -491,7 +491,19 @@ def evidence_from_raw(raw: Mapping[str, Any], run: Callable[[list], str]) -> dic
                           model_status=model_status)
 
 
+def phases_from_args(args: argparse.Namespace) -> list:
+    steps = tuple(int(x) for x in str(args.ramp_steps).split(",") if x.strip())
+    return hosted_agent.default_phases(max_concurrency=args.max_concurrency, steady_requests=args.steady_requests,
+                                       cold_requests=args.cold_requests, ramp_steps=steps,
+                                       ramp_requests=args.ramp_requests)
+
+
 def main(argv: Optional[list] = None) -> int:
+    args = build_parser().parse_args(argv)
+    return _main(args)
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--agent")
@@ -506,6 +518,8 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--steady-requests", type=int, default=200)
     parser.add_argument("--cold-requests", type=int, default=3)
     parser.add_argument("--ramp-requests", type=int, default=10)
+    parser.add_argument("--ramp-steps", default="1,2,5",
+                        help="comma-separated ramp concurrencies below --max-concurrency, e.g. 5,10,25")
     parser.add_argument("--endpoint-class", default="non-production", choices=("non-production", "production"))
     parser.add_argument("--allow-production", action="store_true")
     parser.add_argument("--wait-telemetry-s", type=float, default=600)
@@ -514,7 +528,11 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--idle-timeout-minutes", type=float, default=15.0)
     parser.add_argument("--cpu", type=float, default=1.0)
     parser.add_argument("--memory-gib", type=float, default=2.0)
-    args = parser.parse_args(argv)
+    return parser
+
+
+def _main(args: argparse.Namespace) -> int:
+    parser = build_parser()
     ws = args.workspace.resolve()
     if args.render_only:
         write_outputs(ws, json.loads((ws / EVIDENCE).read_text(encoding="utf-8")))
@@ -540,8 +558,7 @@ def main(argv: Optional[list] = None) -> int:
     prices = capacity.model_prices(model.get("model") or deployment, region, model.get("sku") or "GlobalStandard")
     compute_prices = capacity.hosted_compute_prices(region)
 
-    phases = hosted_agent.default_phases(max_concurrency=args.max_concurrency, steady_requests=args.steady_requests,
-                                         cold_requests=args.cold_requests, ramp_requests=args.ramp_requests)
+    phases = phases_from_args(args)
     blended = (prices["usd_per_1m"].get("input") or 0) / 1000.0
     profile = {"name": f"{args.agent}-perf", "endpoint": {"url": endpoint, "credential_ref": "entra:azure-cli"},
                "request_count": hosted_agent.phase_request_count(phases),

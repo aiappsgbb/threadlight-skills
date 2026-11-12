@@ -739,7 +739,10 @@ Outputs: `specs/load-manifest.json`, `specs/perf-evidence.json`,
 `docs/perf-evidence.md`/`.html`; the pilot value page shows a **Performance
 under load** item from a complete run. Segments the traces cannot split
 (endpoint vs sandbox start vs network, model queueing vs inference, an MCP
-scale-from-zero start, which lands in session start) are reported as such. It is pilot evidence
+scale-from-zero start, which lands in session start) are reported as such. Measured up to 50
+concurrent on one pilot: the first limit hit was the Foundry endpoint's burst
+rate limit (HTTP 429 `rate_limit_exceeded`, Retry-After 1 s) when 50 sessions
+started together, before model TPM; clients need backoff. It is pilot evidence
 at modest scale, not an SLA, and it says nothing about governance or network
 isolation. See the [skill section](../skills/threadlight-loadtest/SKILL.md#hosted-agent-performance-evidence-latency-waterfall).
 
