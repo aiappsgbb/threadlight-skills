@@ -198,7 +198,40 @@ def test_postdeploy_grants_the_agent_identity_least_privilege_inference_only():
     hook = read(PILOT / "hooks/postdeploy.sh")
     code = "\n".join(l for l in hook.splitlines() if not l.lstrip().startswith("#"))
     assert OPENAI_USER in code
-    assert FOUNDRY_USER not in code, "the agent identity must not get Foundry User by default"
     grant = re.search(r'for scope in ([^;]+); do', code)
     assert grant and "ACCOUNT_SCOPE" in grant.group(1) and "PROJECT_SCOPE" not in grant.group(1)
     assert "--new-session" in hook, "document that a session that already saw a 401 keeps failing"
+
+
+def _run_postdeploy(tmp_path, gateway):
+    import os, subprocess
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    calls = tmp_path / "az-calls.txt"
+    (bin_dir / "azd").write_text(
+        "#!/bin/sh\n"
+        "case \"$*\" in *'agent show'*) echo '{\"instance_identity\": {\"principal_id\": \"pid-1\"}}';; esac\n")
+    (bin_dir / "az").write_text(f"#!/bin/sh\necho \"$*\" >> {calls}\n")
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}",
+           "AZURE_AI_PROJECT_ID": "/subscriptions/s/resourceGroups/r/providers/Microsoft.CognitiveServices/accounts/a/projects/p",
+           "AZURE_AI_PROJECT_ENDPOINT": "https://a.services.ai.azure.com/api/projects/p",
+           "THREADLIGHT_AGENT_NAME": "agent-x"}
+    if gateway:
+        env["THREADLIGHT_MODEL_GATEWAY"] = gateway
+    subprocess.run(["sh", str(PILOT / "hooks" / "postdeploy.sh")], env=env, check=True, capture_output=True)
+    return [l for l in calls.read_text().splitlines() if "role assignment create" in l]
+
+
+def test_postdeploy_adds_foundry_user_only_behind_an_external_gateway(tmp_path):
+    # Live 2026-11-12: the agent identity calling {project}/openai/v1/responses through a
+    # customer's pass-through proxy got 403 with Cognitive Services OpenAI User alone,
+    # also in a new session; adding Foundry User at account scope made it 200. The
+    # direct route keeps the least-privilege single grant.
+    default = _run_postdeploy(tmp_path / "d", None)
+    assert len(default) == 1 and OPENAI_USER in default[0]
+    external = _run_postdeploy(tmp_path / "e", "external")
+    roles = " ".join(external)
+    assert OPENAI_USER in roles and FOUNDRY_USER in roles
+    assert all("/projects/" not in c for c in external), "account scope only"

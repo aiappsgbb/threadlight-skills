@@ -9,12 +9,15 @@ evidence does not relax the runtime-governance requirements below.
 ## From Fast-PoC to private: what changes
 
 The pilot a customer saw as a Fast-PoC is promoted without rewriting:
-`generate_only.py --project <pilot> --force --profile private [--model-gateway apim]`
+`generate_only.py --project <pilot> --force --profile private [--model-gateway apim|external]`
 ([private profile](../skills/threadlight-deploy/references/private-profile.md)).
 Proven live on 2026-11-11 in an internal nonproduction subscription (returns
 triage, recommend-only): killer prompts and Foundry evaluation from inside the
 VNet, model calls through a private API Management gateway, safe-check
-private-network check green.
+private-network check green. On 2026-11-12 the same pilot also ran in a
+stand-in hub-and-spoke landing zone (central DNS, resolver), behind an egress
+firewall allow-list, with private Search, Storage and Key Vault, and through a
+stand-in for a customer's own model gateway.
 
 | # | Changes | Who acts |
 |---|---|---|
@@ -22,15 +25,18 @@ private-network check green.
 | 2 | Registry Premium with private endpoint; public endpoint only for the region's ACR Tasks prefixes (`azd` remote build) or off | generator, preprovision hook |
 | 3 | MCP server in an internal Container Apps environment | generator |
 | 4 | App Insights ingestion only through an Azure Monitor Private Link Scope | generator |
-| 5 | Optional model gateway: API Management Standard v2, private in and out (recurring cost) | `--model-gateway apim` |
+| 5 | Optional model gateway: API Management Standard v2, private in and out (recurring cost), or the customer's own gateway (URL ending in `/openai/v1`; agent identity also gets Foundry User) | `--model-gateway apim` / `external` |
 | 6 | Deploy, invoke, evaluate from inside the network: operator VM via Run Command, Bastion Developer, or a self-hosted runner | operator |
 | 7 | Evaluations need the project identity as Foundry User on the account and a project capability host | generator |
 | 8 | Verify with `safe_check.py --phase post-deploy` (`networking: private`) | operator |
+| 9 | AI Search, Storage, Key Vault selected in SPEC § 11c: created private (public access and local auth off, private endpoint) | generator |
+| 10 | Landing zone: reuse the vended spoke and central `privatelink.*` zones (`THREADLIGHT_EXISTING_VNET_ID`, `THREADLIGHT_DNS_ZONES_RG`, hub `THREADLIGHT_DNS_LINK_VNET_ID`) | platform team, azd env |
+| 11 | Egress firewall: allow the documented and observed FQDNs ([list](../skills/threadlight-deploy/references/private-profile.md#egress-allow-list-firewall)) | platform team |
 
 Unchanged: design, agent code, MCP server, evals, killer prompts. Still open:
-egress allow-listing (NAT without firewall), a non-Azure gateway (pattern
-documented, not proven), request-span telemetry under the private link scope,
-budgets, Defender, DR.
+the Developer-tier gateway, Cosmos DB private endpoints from the generator,
+budgets, Defender, DR. The Invocations host emits no `invoke_agent` request span
+(public or private); model and tool spans arrive through the private link scope.
 
 ## Optional AgentOps evidence
 

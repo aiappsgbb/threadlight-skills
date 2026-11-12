@@ -286,7 +286,7 @@ def private_network_gaps(resources: list[dict], endpoints: list[dict],
                                      "(ACR Tasks prefixes for azd remote builds)")
                 else:
                     problems.append("publicNetworkAccess Enabled without a Deny-by-default IP allow-list")
-            elif pna != "Disabled":
+            elif str(pna).lower() != "disabled":  # AI Search reports 'disabled'
                 problems.append(f"publicNetworkAccess={pna!r} (expected 'Disabled')")
             if rtype == "microsoft.cognitiveservices/accounts" and not any(
                     (n or {}).get("scenario") == "agent" and (n or {}).get("subnetArmId")

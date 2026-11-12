@@ -38,6 +38,21 @@
     "bastionDeveloper": {
       "value": "${THREADLIGHT_BASTION_DEVELOPER=true}"
     },
+    "modelGatewayUrl": {
+      "value": "${THREADLIGHT_MODEL_GATEWAY_URL=}"
+    },
+    "existingVnetId": {
+      "value": "${THREADLIGHT_EXISTING_VNET_ID=}"
+    },
+    "dnsZonesResourceGroup": {
+      "value": "${THREADLIGHT_DNS_ZONES_RG=}"
+    },
+    "dnsZoneLinkVnetId": {
+      "value": "${THREADLIGHT_DNS_LINK_VNET_ID=}"
+    },
+    "aiSearchLocation": {
+      "value": "${THREADLIGHT_AI_SEARCH_LOCATION=}"
+    },
     "tags": {
       "value": {
         "owner": "${THREADLIGHT_OWNER}",

@@ -1,6 +1,6 @@
 # Private profile: the same pilot, promoted to a private network
 
-`generate_only.py --profile private [--model-gateway apim]` re-packages a
+`generate_only.py --profile private [--model-gateway apim|external]` re-packages a
 Threadlight design workspace, or an already generated Fast-PoC (with
 `--force`), for a private network. Design files (`AGENTS.md`, `specs/`,
 `src/mcp/server.py`), the agent runtime (`src/agent/`), the MCP server packaging
@@ -22,8 +22,9 @@ template, commit `2c5eac99`) and `references/generate-only/templates/vnet_run.py
 | Hosted agent egress | platform | delegated `snet-agent` (/24) through a NAT gateway | [networking deep dive](https://learn.microsoft.com/azure/foundry/agents/concepts/agents-networking-deep-dive) |
 | Container registry | Basic, public | Premium, private endpoint; public endpoint Deny-by-default, only the region's `AzureContainerRegistry` service-tag prefixes (ACR Tasks) | [ACR private endpoints](https://learn.microsoft.com/azure/container-registry/container-registry-private-endpoints) |
 | MCP server | public Container App | internal Container Apps environment, private DNS zone for its domain | — |
-| App Insights | public ingestion | ingestion only through an Azure Monitor Private Link Scope | same Learn page, "What VNet protection means" |
-| Model route | project endpoint | project private endpoint, or API Management Standard v2 (private endpoint in, VNet integration out, public access disabled) | [APIM VNet options](https://learn.microsoft.com/azure/api-management/virtual-network-concepts) |
+| App Insights | public ingestion | ingestion only through an Azure Monitor Private Link Scope; SDK usage data (statsbeat) off, because it can't use Private Link | same Learn page, "What VNet protection means"; [statsbeat](https://learn.microsoft.com/azure/azure-monitor/app/statsbeat) |
+| Model route | project endpoint | project private endpoint; API Management Standard v2 (private endpoint in, VNet integration out, public access disabled); or the customer's own gateway (`--model-gateway external`) | [APIM VNet options](https://learn.microsoft.com/azure/api-management/virtual-network-concepts) |
+| AI Search, Storage, Key Vault | deferred | created only when SPEC § 11c selects them (`ai-search`, `storage-blob`, `key-vault`): public access off, local auth/shared key off, private endpoint, read role for the project identity | [Search](https://learn.microsoft.com/azure/search/service-create-private-endpoint), [Storage](https://learn.microsoft.com/azure/storage/common/storage-private-endpoints), [Key Vault](https://learn.microsoft.com/azure/key-vault/general/private-link-service) |
 | Evaluations | — | project identity has Foundry User on the account; project capability host | [evaluation in a VNet](https://learn.microsoft.com/azure/foundry/concepts/evaluation-virtual-network) |
 | Operator | laptop | laptop provisions; an in-VNet VM (no public IP) deploys, invokes and evaluates through Run Command; Bastion Developer for people | [Run Command limits](https://learn.microsoft.com/azure/virtual-machines/linux/run-command#restrictions), [Bastion SKUs](https://learn.microsoft.com/azure/bastion/bastion-sku-comparison) |
 
@@ -33,7 +34,8 @@ control plane: public network access off (or the ACR exception above), approved
 private endpoints, DNS zone groups whose zones are linked to a VNet, App
 Insights ingestion disabled, internal Container Apps environment, agent network
 injection. Key Vault, Storage, AI Search and Cosmos DB are checked the same way
-when a pilot adds them (the base GHCP pilot creates none).
+(the generator creates the first three when § 11c selects them; Cosmos DB stays
+with the design's own infrastructure).
 
 ## Why these choices
 
@@ -57,9 +59,15 @@ when a pilot adds them (the base GHCP pilot creates none).
   `ProviderConfig(type="azure")`, github-copilot-sdk 1.0.1 keeps only the origin
   of any other base URL (it posted to `/openai/v1/responses` without the
   `/models` prefix; APIM answered 404). Observed live and with a local probe.
-- **Non-Azure gateway.** Same pattern: a pass-through route to the project
-  endpoint that serves streaming `/openai/v1/responses` with a Microsoft Entra
-  token for `https://ai.azure.com`. Not generated or proven. Foundry's own
+- **Non-Azure gateway.** `--model-gateway external` with
+  `THREADLIGHT_MODEL_GATEWAY_URL` (ending in `/openai/v1`): the customer's
+  pass-through route to the project endpoint that serves streaming
+  `/openai/v1/responses` and forwards the agent's Microsoft Entra token for
+  `https://ai.azure.com`. The gateway must reach the project's private endpoint.
+  Behind such a proxy the agent identity also needs Foundry User on the account
+  (observed: 403 with Cognitive Services OpenAI User alone, also in a new
+  session; 200 after adding Foundry User; not documented on Learn), so
+  `hooks/postdeploy.sh` grants it only for `external`. Foundry's own
   bring-your-own-model connections are documented as not supported with the
   Microsoft Copilot harness ([BYOM](https://learn.microsoft.com/azure/foundry/agents/how-to/ai-gateway));
   this pilot runs the GitHub Copilot SDK in its own container and routes its own
@@ -71,6 +79,65 @@ when a pilot adds them (the base GHCP pilot creates none).
   identity has Contributor on the resource group, Foundry User on the account and
   a role-assignment right limited by condition to Foundry User, AcrPull and
   Container Registry Repository Reader.
+
+## Landing zone (hub-and-spoke)
+
+Customers usually vend a spoke VNet and keep private DNS in the hub. Set before
+`azd provision`:
+
+- `THREADLIGHT_EXISTING_VNET_ID`: the spoke, in the pilot's region, with subnets
+  `snet-agent` (/24, delegated to `Microsoft.App/environments`, hosted-agent
+  injection), `snet-pe`, `snet-aca` (/23, delegated to
+  `Microsoft.App/environments`, internal Container Apps environment), `snet-apim`
+  (delegated to `Microsoft.Web/serverFarms`, only for `--model-gateway apim`) and
+  `snet-ops`. The template then creates no VNet, NAT gateway or zone links; the
+  spoke's egress (NAT, firewall) and its DNS servers are the platform team's.
+- `THREADLIGHT_DNS_ZONES_RG`: resource group (same subscription) of the central
+  `privatelink.*` zones (`privatelink.services.ai.azure.com`,
+  `privatelink.azurecr.io`, `privatelink.monitor.azure.com`,
+  `privatelink.search.windows.net`, `privatelink.blob.core.windows.net`,
+  `privatelink.vaultcore.azure.net`, ...). Private endpoints register their
+  records there; the zones must already be linked to the VNet whose DNS serves
+  the spoke (hub with a [DNS Private Resolver](https://learn.microsoft.com/azure/dns/dns-private-resolver-overview)
+  or DNS forwarders). Empty: the zones are created in the pilot's resource group
+  and linked to the spoke, which then must use Azure-provided DNS.
+- `THREADLIGHT_DNS_LINK_VNET_ID`: the hub VNet. Required when the spoke's DNS
+  servers are in the hub: the template links the Container Apps environment's
+  own zone to it, otherwise the MCP server's name doesn't resolve.
+
+`landing-zone-standin/` (not generated) builds a test hub and spoke: resolver,
+central zones, optional Azure Firewall Basic, route table, peering.
+`gateway-standin.bicep` is an nginx stand-in for a customer gateway.
+
+## Egress allow-list (firewall)
+
+Observed with Azure Firewall Basic ([SKU](https://learn.microsoft.com/azure/firewall/choose-firewall-sku):
+FQDN application rules, no DNS proxy) on the spoke's default route, first
+allowing everything to log traffic, then only this list. Deploy, invocations and
+MCP calls kept working:
+
+| Source | FQDNs |
+|---|---|
+| Container Apps platform ([Learn](https://learn.microsoft.com/azure/container-apps/use-azure-firewall)) | `mcr.microsoft.com`, `*.data.mcr.microsoft.com`, `packages.aks.azure.com`, `acs-mirror.azureedge.net`, `*.identity.azure.net`, `login.microsoftonline.com`, `*.login.microsoftonline.com`, `*.login.microsoft.com`, `management.azure.com`, `<region>.ext.azurecontainerapps.dev`, `*.ingest.monitor.core.windows.net`, `dc.services.visualstudio.com` |
+| Hosted agent subnet | documented ([Learn](https://learn.microsoft.com/azure/foundry/agents/how-to/virtual-networks)): `control-<region>.identity.azure.net`, `<region>.login.microsoft.com`, `login.microsoftonline.com`; observed: `agent365.svc.cloud.microsoft`, `settings.sdk.monitor.azure.com`, `mcr.microsoft.com` |
+| Operator host (azd) | `aka.ms`, `raw.githubusercontent.com`; Azure control plane by the `AzureCloud` service tag on 443 |
+
+Denied and harmless: `gcs.prod.monitoring.core.windows.net` (Container Apps
+platform). Denied as intended: `www.example.com`, `pypi.org` from the operator
+host. ACR, Foundry, Search, Storage, Key Vault and App Insights ingestion stay
+on private endpoints and never cross the firewall.
+
+## Telemetry
+
+- `invoke_agent` request spans: the Invocations text host
+  (`azure-ai-agentserver-invocations`) emits none, public or private; model and
+  tool spans (`chat <model>`, `execute_tool <name>`) and logs with the trace id
+  arrive through the private link scope. Use `record_deploy_evidence.py
+  --trace-id` with the id printed by `azd ai agent invoke`.
+- `westus-0.in.applicationinsights.azure.com` was the exporter's usage data
+  (statsbeat), which [doesn't support Private Link](https://learn.microsoft.com/azure/azure-monitor/app/statsbeat).
+  The private profile sets `APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL=true`;
+  no more retries were observed.
 
 ## Run order
 
@@ -109,12 +176,27 @@ went into the catalog and was regenerated, never edited in the generated repo.
   6 resources OK with the gateway, 5 after deleting it; remaining gaps were the
   design's deferred AI Search and Storage.
 
-**Not proven:** egress allow-listing (NAT gateway without a firewall), a
-non-Azure gateway, the Developer-tier gateway, custom DNS or hub-spoke peering,
-Key Vault/Storage/AI Search/Cosmos private endpoints (checked by safe-check, not
-generated), DR, budgets, Defender. **Telemetry gap:** hosted-agent log records
-reached App Insights through the private link scope and carry each invocation's
-trace id, but `invoke_agent` request spans were not observed, and the agent
-process also tried to export to a second ingestion host
-(`westus-0.in.applicationinsights.azure.com`) that doesn't resolve under the
-private-only scope. Not diagnosed.
+## Live record (2026-11-12, same subscription and resource group)
+
+The same Fast-PoC, with only `key-vault` added to § 11c, was generated with
+`--profile private` into a stand-in landing zone: vended spoke, hub with central
+zones linked only to the hub, DNS Private Resolver, peering. Catalog fixes only,
+no edits in the generated repo.
+
+- From the operator host every private name (Foundry, ACR, Search, blob, Key
+  Vault, MCP, App Insights ingestion) resolved to the spoke's private
+  endpoints through the hub resolver. Search ran in East US (no capacity in
+  East US 2) with its private endpoint in the East US 2 spoke.
+- Safe-check private network: 13 of 13 resources OK, including Search, Storage
+  and Key Vault.
+- External gateway: an nginx stand-in on the internal Container Apps
+  environment (**a stand-in for a customer gateway on another cloud, not a
+  product**). Three eval prompts correct (BR-001, BR-001 at the EUR 250
+  ceiling, BR-002); 16 model calls through it, all 200.
+- Firewall: the allow-list above, deploy and three prompts correct, denials
+  logged. Deleted after 46 minutes, with the resolver, Search and the stand-in.
+
+**Not proven:** the Developer-tier gateway, Cosmos DB private endpoints from
+this generator, a landing-zone spoke without central zones (Azure-provided DNS), DNS forwarders other than the Private Resolver, a firewall in
+front of the hosted-agent subnet's platform traffic other than what was
+observed in one hour, DR, budgets, Defender.

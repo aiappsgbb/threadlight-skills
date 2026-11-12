@@ -127,3 +127,11 @@ def test_posture_reader(tmp_path):
     # T-0 posture value for production-bound pilots whose private networking is still deferred.
     posture.write_text("```yaml\noverrides:\n  networking: private-required   # status: deferred\n```\n")
     assert sc.network_posture(tmp_path) == "public"
+
+
+def test_search_lowercase_disabled_is_private():
+    search = f"{RG}/providers/Microsoft.Search/searchServices/srch"
+    resources = _resources(**{search: {"type": "Microsoft.Search/searchServices",
+                                       "properties": {"publicNetworkAccess": "disabled"}}})
+    gaps, _ = sc.private_network_gaps(resources, _endpoints(*GOOD_PES, search), LINKED)
+    assert gaps == []

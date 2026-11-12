@@ -7,6 +7,37 @@ field.
 
 ## [Unreleased]
 
+### 2.52.0: private profile, second round (landing zone, private data services, customer gateway, egress firewall)
+
+Live 2026-11-12, eastus2, internal nonproduction subscription, the same
+returns-triage Fast-PoC promoted again with catalog fixes only
+([private profile](skills/threadlight-deploy/references/private-profile.md)).
+
+- **Landing zone:** `THREADLIGHT_EXISTING_VNET_ID`, `THREADLIGHT_DNS_ZONES_RG` and
+  `THREADLIGHT_DNS_LINK_VNET_ID` reuse a vended spoke and central `privatelink.*`
+  zones. Proven with a stand-in hub (zones linked only to the hub, DNS Private
+  Resolver, peering): every private name resolved from the spoke via the hub.
+- **Private data services:** AI Search, Storage and Key Vault selected in SPEC
+  § 11c are created with public access and local auth off, private endpoints and
+  read roles for the project identity (`THREADLIGHT_AI_SEARCH_LOCATION` when the
+  region has no Search capacity). Fixed: `### 11c.` selectors were silently
+  ignored. Safe-check: 13 of 13 resources private; Search `disabled` in lower case
+  is now read as private.
+- **Customer gateway:** `--model-gateway external` with
+  `THREADLIGHT_MODEL_GATEWAY_URL`. Proven with an nginx stand-in in the VNet (a
+  stand-in, not a product): 16 model calls, all 200. Behind a proxy the agent
+  identity needed Foundry User (403 with OpenAI User alone); the postdeploy hook
+  grants it only for `external`.
+- **Egress firewall:** Azure Firewall Basic allow-list of 16 FQDNs (documented
+  plus observed); deploy and prompts kept working, `www.example.com` and
+  `pypi.org` denied. Firewall, resolver, Search and stand-in deleted after the proof.
+- **Telemetry:** the `westus-0` retries were exporter usage data (statsbeat),
+  which doesn't support Private Link; the private profile sets
+  `APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL=true`. The Invocations host emits
+  no `invoke_agent` span, public or private; model and tool spans arrive.
+- MCP service gets `resourceName` so `azd` doesn't pick another app with the same
+  service tag in a shared resource group.
+
 ### 2.51.0: governed-write approver is one click (panel or email), deterministic warm-up, one azd project
 
 Live 2026-11-12, eastus2, nonproduction, on the existing governed-write GHCP kit
