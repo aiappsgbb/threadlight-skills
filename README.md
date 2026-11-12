@@ -20,6 +20,7 @@ the [MIT License](LICENSE).
 · [documentation index](docs/README.md) ·
 [glossary](https://aiappsgbb.github.io/threadlight-skills/glossary.html) ·
 [your first governed workflow](docs/first-governed-workflow.md) ·
+[from demo to production](#from-demo-to-production) ·
 [install](#install).
 
 ## Install
@@ -198,6 +199,32 @@ The local policy defaults to GHCP SDK / agent / Invocations, with conditional
 MAF agent or workflow / Responses routes. A local MAF quickstart is not hosted
 parity, and a running host is not proof it consumed its skills.
 
+## From demo to production
+
+A customer first sees a **recommend-only Fast-PoC**: a Foundry hosted agent that
+reads, cites the business rule and proposes, while a person records the
+decision ([1-hour workshop](docs/WORKSHOP-1H-QUICKSTART.md)). The same pilot
+then moves toward production without a rewrite. What exists today, and how far
+each step is proven (live runs on Threadlight's own returns-triage pilot in an
+internal nonproduction subscription, not a customer certification):
+
+| Capability | Proof | Still open | Read |
+|---|---|---|---|
+| Recommend-only Fast-PoC | Proven live | Grounding on customer data (deferred to `threadlight-ground`) | [Workshop](docs/WORKSHOP-1H-QUICKSTART.md) |
+| Governed write, one-click approval (panel or email) | Proven live, with limits: panel click on GHCP, one binding | No GHCP Outlook decision yet; not whole-agent governance | [Kit](examples/governed-write-ghcp/README.md), [S8](docs/governed-returns-validation.md#s8-governed-write-on-ghcp-workshop-kit) |
+| Voice in the caller's language (Hosted Voice, preview, opt-in) | Proven live, with limits: synthetic callers | Real human voice, real phone line | [Voice readiness](docs/production-readiness.md#voice-readiness-only-when-the-pilot-has-a-voice-front-end) |
+| Private network: VNet, private endpoints, API Management or customer gateway, landing zone, egress firewall | Proven live, with limits: stand-in hub and gateway | Developer gateway tier, Cosmos DB private endpoints, DR, budgets, Defender | [Private profile](skills/threadlight-deploy/references/private-profile.md) |
+| Identity: least-privilege agent identity, OBO, A2A, kill switch | Proven live, with limits | Conditional Access (Microsoft 365 E7, or Agent 365 plus Entra ID P1), Teams/Microsoft 365 channels, OBO on the governed write | [Identity model](docs/agent-operations.md#identity-model-who-acts-with-which-permissions) |
+| Load test and latency waterfall | Proven live, with limits: up to 50 concurrent | An SLA; voice turns in the waterfall | [Performance](docs/production-readiness.md#performance-evidence-load-test-with-latency-waterfall) |
+| Only the SPEC's tools (no Copilot CLI built-ins) | Proven live | Quality change beyond one 28-row evaluation | [Tool allowlist](skills/threadlight-deploy/references/hosted-agent/ghcp/README.md#tool-allowlist-no-copilot-cli-built-ins-by-default) |
+| Pilot value page for the sponsor | Offline only | No live run recorded | [Pilot value](docs/production-readiness.md#pilot-value-page-sponsor-view) |
+| EU AI Act customer handoff | Offline only | No legal review; never a compliance claim | [Handoff](docs/eu-ai-act-evidence.md#customer-handoff-bundle) |
+| Cost per use case and per agent | Proven live, with limits: read-only, one subscription | Token-weighted allocation, Copilot Studio meters | [Portfolio](skills/threadlight-consumption-iq/SKILL.md#portfolio-cost-per-use-case-and-per-agent-opt-in-read-only) |
+| One agent or several | Offline only | No runtime multi-agent wiring is generated | [Agent topology](skills/threadlight-design/references/process-traits.md#trait-agent-topology-one-agent-with-skills-or-several-agents) |
+
+The visual version, with one diagram and the dated figures, is
+[From demo to production](https://aiappsgbb.github.io/threadlight-skills/demo-to-production.html).
+
 ## Choose your learning path
 
 | Public chapter | What you will learn |
@@ -206,6 +233,7 @@ parity, and a running host is not proof it consumed its skills.
 | [Basics](https://aiappsgbb.github.io/threadlight-skills/basics.html) | Skills, the two agents, tools and runtime responsibilities |
 | [Build](https://aiappsgbb.github.io/threadlight-skills/funnel.html) | Construction choices and the brief-to-pilot path |
 | [Case study](https://aiappsgbb.github.io/threadlight-skills/case-study.html) | A concrete process, decisions and implementation boundaries |
+| [From demo to production](https://aiappsgbb.github.io/threadlight-skills/demo-to-production.html) | What a pilot can show today, each step with its proof level and what is still open |
 | [Production](https://aiappsgbb.github.io/threadlight-skills/production.html) | From a working pilot to a controlled release: foundation, validated release, governed actions, evidence and owners ([technical companion](docs/production-governance.md)) |
 | [Glossary](https://aiappsgbb.github.io/threadlight-skills/glossary.html) | Plain definitions of SAFE, ACS, PEP, AGT, Citadel and the levels of evidence |
 

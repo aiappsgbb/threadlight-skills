@@ -1972,8 +1972,8 @@ for the customer conversation, anticipate questions, and suggest next steps.
         > points the agent will surface — entity names, numbers, deltas,
         > anomalies — drawn from SPEC § 5 sample data and SPEC § 3
         > business rules. NOT generic ("the agent shows performance")
-        > but concrete ("JPS share decline 16.8% → 13.2%, distribution
-        > 72% → 64%, BAT Pall Mall +4pp").}
+        > but concrete ("Northwind share decline 16.8% → 13.2%, distribution
+        > 72% → 64%, Contoso Classic +4pp").}
         > **Say:** {one sentence the seller says *after* the response
         > lands, anchoring it to the BR-XXX value prop.}
 
@@ -2000,8 +2000,8 @@ for the customer conversation, anticipate questions, and suggest next steps.
         <strong>Type this:</strong>
         <pre><code>Show me Midlands performance in detail</code></pre>
         <strong>What you'll see:</strong> Account-level breakdown,
-        JPS share decline (16.8% → 13.2%), distribution gaps
-        (weighted distribution 72% → 64%), and BAT's Pall Mall
+        Northwind share decline (16.8% → 13.2%), distribution gaps
+        (weighted distribution 72% → 64%), and a competitor's Contoso Classic
         gaining +4pp.<br>
         <strong>Say:</strong> "It's surfaced the distribution erosion
         and the competitive threat without being asked — that's the

@@ -137,7 +137,9 @@ the selected one.
   and workflow version before it grants once. The Office 365 connection must be
   authorized by a **sender mailbox different from the Approver's**: when the
   sender is the recipient, Exchange keeps the message only in Sent Items (observed
-  live; nothing reaches the inbox). Show
+  live; nothing reaches the inbox). No GHCP Outlook decision is evidenced yet:
+  on GHCP the email was sent, but no Approver decided through it. The panel
+  below is the channel proven live on GHCP. Show
   `python scripts/review_queue.py --pending pending.json --out <dir> --approval-email <approver>`
   in the room: the card reads "Approval email sent to …".
 - **Approval panel.** With the default `delegated` channel:

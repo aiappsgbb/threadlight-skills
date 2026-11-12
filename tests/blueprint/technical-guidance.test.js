@@ -594,8 +594,12 @@ test('identity model records the live A2A chain and the exact blockers for the r
   for (const term of [
     '### Agent to agent (A2A)', '2026-11-12', 'UserEntraToken', 'AgenticIdentityToken',
     'Foundry Agent Consumer', 'TOOL_USER_ERROR', 'not licensed for this feature',
-    'Entra ID P1', 'Responses', 'Activity', 'no implicit end-user delegation or OBO',
+    'Microsoft 365 E7', 'Microsoft Agent 365', 'learn.microsoft.com/entra/identity/conditional-access/agent-id', 'Responses', 'Activity', 'no implicit end-user delegation or OBO',
     'exactly one of', 'learn.microsoft.com/azure/foundry/agents/how-to/enable-agent-to-agent-endpoint',
     'Do not rely on the second hop',
   ]) assert.ok(section.includes(term), term);
+  // Learn: Conditional Access for agents needs E7, or Agent 365 plus Entra P1/E3; P1 alone is not enough.
+  for (const file of ['README.md', 'docs/agent-operations.md', 'docs/demo-to-production.html']) {
+    assert.doesNotMatch(read(file).replace(/\s+/g, ' '), /(Requires|needs) Entra ID P1\b|Conditional Access \(Entra ID P1\)/, file);
+  }
 });
