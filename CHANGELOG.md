@@ -7,6 +7,20 @@ field.
 
 ## [Unreleased]
 
+### 2.48.0: identity end to end, second round (A2A live, exact blockers)
+
+- **A2A, live:** a GHCP hosted agent calls a Foundry agent through a toolbox `a2a`
+  tool (GA, protocol 1.0). With a `UserEntraToken` connection the user reaches the
+  target and its user-delegated tool: the downstream sees the user, with the
+  **target** agent identity as actor, and denies a user without permission. With
+  `AgenticIdentityToken` no user context survives (the target's tool fails).
+  `AgentOnBehalfOfUser` to a Foundry target is refused (403 on the A2A route).
+- **Exact blockers recorded** in `docs/agent-operations.md` "Identity model":
+  Conditional Access needs Entra ID P1 (403 "not licensed"); Teams/M365 need
+  licences and the Responses protocol; the playground UI needs the back-end portal;
+  OBO on a governed write would change the gateway's app-only contract.
+- `obo-downstream` README: the two-hop recipe and its consents.
+
 ### 2.47.0: path to production, the same pilot on a private network
 
 - **Why.** Customers who see the Fast-PoC ask next how to run it privately,
