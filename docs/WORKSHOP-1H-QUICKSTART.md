@@ -640,8 +640,9 @@ environment alone took 21 minutes live) and start provisioning before the talk.
 5. **Close** with the checklist in
    [production-readiness.md](production-readiness.md#from-fast-poc-to-private-what-changes)
    and what is still open (Developer-tier gateway, budgets, Defender, DR).
-   If the customer has a landing zone, set `THREADLIGHT_EXISTING_VNET_ID` and
-   `THREADLIGHT_DNS_ZONES_RG` before provisioning; for their own model gateway use
+   If the customer has a landing zone, set `THREADLIGHT_EXISTING_VNET_ID`,
+   `THREADLIGHT_DNS_ZONES_RG` and `THREADLIGHT_DNS_LINK_VNET_ID` (the hub)
+   before provisioning; for their own model gateway use
    `--model-gateway external` with `THREADLIGHT_MODEL_GATEWAY_URL`; for their
    firewall hand over the
    [egress allow-list](../skills/threadlight-deploy/references/private-profile.md#egress-allow-list-firewall).

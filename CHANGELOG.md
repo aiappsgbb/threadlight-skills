@@ -71,7 +71,6 @@ test. Evidence: [S8](docs/governed-returns-validation.md#s8-governed-write-on-gh
   `azd provision` runs, business app and publisher job deployed by digest. Not
   run there: Entra, signed policy, agent, bind or any write.
 - Kit operator tests wired into CI (`python-pytest.yml`).
-||||||| parent of 0ef9391e (2.51.0: private profile second round)
 
 ### 2.50.0: pilot performance, second round (50 concurrent, eval A/B, built-in opt-in live, billed compute)
 

@@ -77,7 +77,7 @@ param modelGatewayUrl string = ''
 @description('Landing zone: an existing (vended) VNet with subnets snet-agent, snet-pe, snet-aca, snet-apim, snet-ops. Empty: this template creates the VNet, NAT and private DNS zones.')
 param existingVnetId string = ''
 
-@description('Landing zone: resource group (this subscription) of the central privatelink DNS zones, linked by the platform team to the VNet whose DNS serves the spoke. Empty: zones are created here.')
+@description('Landing zone: resource group (this subscription) of the central privatelink DNS zones, linked by the platform team to the VNet whose DNS serves the spoke. Empty: zones are created here and linked to the workload VNet (Azure-provided DNS).')
 param dnsZonesResourceGroup string = ''
 
 @description('Landing zone: VNet to link the Container Apps environment zone to (the hub with the DNS resolver). Empty: only the workload VNet.')
@@ -116,12 +116,13 @@ var acaSubnetId = '${vnetId}/subnets/snet-aca'
 var apimSubnetId = '${vnetId}/subnets/snet-apim'
 var opsSubnetId = '${vnetId}/subnets/snet-ops'
 var zoneRg = empty(dnsZonesResourceGroup) ? resourceGroup().name : dnsZonesResourceGroup
-var zoneId = toObject([
+var coreZones = [
   'privatelink.services.ai.azure.com', 'privatelink.openai.azure.com', 'privatelink.cognitiveservices.azure.com'
   'privatelink.azurecr.io', 'privatelink.azure-api.net', 'privatelink.monitor.azure.com'
   'privatelink.oms.opinsights.azure.com', 'privatelink.ods.opinsights.azure.com'
   'privatelink.agentsvc.azure-automation.net'
-], z => z, z => resourceId(zoneRg, 'Microsoft.Network/privateDnsZones', z))
+]
+var zoneId = toObject(coreZones, z => z, z => resourceId(zoneRg, 'Microsoft.Network/privateDnsZones', z))
 var acrPrefixes = empty(acrBuildAllowedPrefixes) ? [] : split(acrBuildAllowedPrefixes, ',')
 
 // Role definition GUIDs (pinned)
@@ -133,6 +134,12 @@ module network 'modules/network.bicep' = if (empty(existingVnetId)) {
   name: 'network-${token}'
   params: { location: location, token: token, tags: allTags, vnetAddressPrefix: vnetAddressPrefix }
 }
+
+// Landing-zone VNet without central zones: create the core zones here (network.bicep is skipped).
+module lzZones 'modules/zone.bicep' = [for z in coreZones: if (landingZone && empty(dnsZonesResourceGroup)) {
+  name: 'zone-${uniqueString(z)}-${token}'
+  params: { zoneName: z, vnetId: vnetId, token: token, tags: allTags }
+}]
 
 // ---------------------------------------------------------------- telemetry --
 resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
@@ -227,7 +234,7 @@ module acrPe 'modules/private-endpoint.bicep' = {
     groupId: 'registry'
     zoneIds: [ zoneId['privatelink.azurecr.io'] ]
   }
-  dependsOn: [ network ]
+  dependsOn: [ network, lzZones ]
 }
 
 resource uamiAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -253,7 +260,7 @@ resource cae 'Microsoft.App/managedEnvironments@2024-03-01' = {
       logAnalyticsConfiguration: { customerId: law.properties.customerId, sharedKey: law.listKeys().primarySharedKey }
     }
   }
-  dependsOn: [ network ]
+  dependsOn: [ network, lzZones ]
 }
 
 module caeDns 'modules/aca-dns.bicep' = {
@@ -321,7 +328,7 @@ resource account 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
     disableLocalAuth: true
     allowProjectManagement: true
   }
-  dependsOn: [ network ]
+  dependsOn: [ network, lzZones ]
 }
 
 module accountPe 'modules/private-endpoint.bicep' = {
@@ -339,7 +346,7 @@ module accountPe 'modules/private-endpoint.bicep' = {
       zoneId['privatelink.cognitiveservices.azure.com']
     ]
   }
-  dependsOn: [ network ]
+  dependsOn: [ network, lzZones ]
 }
 
 resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-preview' = {
@@ -438,7 +445,7 @@ module dataServices 'modules/data-services.bicep' = if (enableAiSearch || enable
     enableKeyVault: enableKeyVault
     readerPrincipalId: project.identity.principalId
   }
-  dependsOn: [ network ]
+  dependsOn: [ network, lzZones ]
 }
 
 var projectEndpoint = 'https://${account.properties.customSubDomainName}.services.ai.azure.com/api/projects/${project.name}'

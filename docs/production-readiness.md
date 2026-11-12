@@ -30,7 +30,7 @@ stand-in for a customer's own model gateway.
 | 7 | Evaluations need the project identity as Foundry User on the account and a project capability host | generator |
 | 8 | Verify with `safe_check.py --phase post-deploy` (`networking: private`) | operator |
 | 9 | AI Search, Storage, Key Vault selected in SPEC § 11c: created private (public access and local auth off, private endpoint) | generator |
-| 10 | Landing zone: reuse the vended spoke and central `privatelink.*` zones (`THREADLIGHT_EXISTING_VNET_ID`, `THREADLIGHT_DNS_ZONES_RG`) | platform team, azd env |
+| 10 | Landing zone: reuse the vended spoke and central `privatelink.*` zones (`THREADLIGHT_EXISTING_VNET_ID`, `THREADLIGHT_DNS_ZONES_RG`, hub `THREADLIGHT_DNS_LINK_VNET_ID`) | platform team, azd env |
 | 11 | Egress firewall: allow the documented and observed FQDNs ([list](../skills/threadlight-deploy/references/private-profile.md#egress-allow-list-firewall)) | platform team |
 
 Unchanged: design, agent code, MCP server, evals, killer prompts. Still open:

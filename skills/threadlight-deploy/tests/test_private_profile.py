@@ -377,3 +377,22 @@ def test_mcp_service_targets_its_own_container_app(private):
     doc = yaml.safe_load((private / "azure.yaml").read_text())
     assert doc["services"]["mcp"]["resourceName"] == "${MCP_CONTAINER_APP_NAME}"
     assert "output MCP_CONTAINER_APP_NAME string = mcp.name" in (private / "infra" / "main.bicep").read_text()
+
+
+def test_landing_zone_without_central_zones_creates_the_core_zones(private):
+    # Review 2026-11-12: with existingVnetId set and dnsZonesResourceGroup empty, the
+    # core privatelink zones (only declared in network.bicep, skipped) didn't exist and
+    # every private endpoint's zone group failed.
+    main = (private / "infra" / "main.bicep").read_text()
+    m = re.search(r"module (\w+) 'modules/zone\.bicep' = \[for z in (\w+): if \(landingZone && empty\(dnsZonesResourceGroup\)\)", main)
+    assert m, "landing zone without a central zones RG must create the core zones here"
+    assert re.search(rf"var {m.group(2)} = \[", main)
+
+
+def test_hub_dns_link_is_required_in_the_landing_zone_docs():
+    # The Container Apps environment's own zone lives in the workload RG; with spoke DNS
+    # pointing at a hub resolver it must be linked to the hub or the MCP name won't resolve.
+    doc = (PILOT.parents[3] / "private-profile.md").read_text()
+    assert "`THREADLIGHT_DNS_LINK_VNET_ID` (optional)" not in doc
+    workshop = (PILOT.parents[6] / "docs" / "WORKSHOP-1H-QUICKSTART.md").read_text()
+    assert "THREADLIGHT_DNS_LINK_VNET_ID" in workshop

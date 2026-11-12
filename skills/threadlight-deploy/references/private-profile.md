@@ -99,9 +99,11 @@ Customers usually vend a spoke VNet and keep private DNS in the hub. Set before
   `privatelink.vaultcore.azure.net`, ...). Private endpoints register their
   records there; the zones must already be linked to the VNet whose DNS serves
   the spoke (hub with a [DNS Private Resolver](https://learn.microsoft.com/azure/dns/dns-private-resolver-overview)
-  or DNS forwarders).
-- `THREADLIGHT_DNS_LINK_VNET_ID` (optional): the hub VNet; the template links
-  the Container Apps environment's own zone to it.
+  or DNS forwarders). Empty: the zones are created in the pilot's resource group
+  and linked to the spoke, which then must use Azure-provided DNS.
+- `THREADLIGHT_DNS_LINK_VNET_ID`: the hub VNet. Required when the spoke's DNS
+  servers are in the hub: the template links the Container Apps environment's
+  own zone to it, otherwise the MCP server's name doesn't resolve.
 
 `landing-zone-standin/` (not generated) builds a test hub and spoke: resolver,
 central zones, optional Azure Firewall Basic, route table, peering.
@@ -195,6 +197,6 @@ no edits in the generated repo.
   logged. Deleted after 46 minutes, with the resolver, Search and the stand-in.
 
 **Not proven:** the Developer-tier gateway, Cosmos DB private endpoints from
-this generator, DNS forwarders other than the Private Resolver, a firewall in
+this generator, a landing-zone spoke without central zones (Azure-provided DNS), DNS forwarders other than the Private Resolver, a firewall in
 front of the hosted-agent subnet's platform traffic other than what was
 observed in one hour, DR, budgets, Defender.
