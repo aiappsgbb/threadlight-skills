@@ -40,6 +40,10 @@ DOCUMENTED = (
      "source": AGENT_LIMITS,
      "value": "2,000 in Canada Central, East US 2, Japan East, North Central US, South Africa North, Southeast Asia "
               "and Sweden Central; 1,000 in other regions (default, increase by support request)."},
+    {"label": "Request rate limit errors", "kind": "documented",
+     "source": "https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#limit-error-reference",
+     "value": "HTTP 429 rate_limit_exceeded: retry with exponential backoff; 429 session_quota_exceeded when the "
+              "concurrent session quota is reached. The numeric request-rate limit is not published."},
     {"label": "Session sizes", "kind": "documented", "source": HOSTED_PLATFORM,
      "value": "0.5 vCPU / 1 GiB, 1 vCPU / 2 GiB or 2 vCPU / 4 GiB per session; billing is CPU and memory across "
               "all active sessions."},

@@ -14,6 +14,7 @@ import waterfall  # noqa: E402
 from test_waterfall import _trace  # noqa: E402
 
 PROMPT = "Triage RMA-2026-000451 for Jane Example"
+_EVIDENCE_KW: dict = {}
 
 
 def _evidence():
@@ -31,7 +32,8 @@ def _evidence():
     summary = waterfall.summarize([r.as_dict() for r in records], spans)
     manifest = {"status": "complete", "findings": [{"id": "LOAD-001", "status": "pass"}],
                 "budget": {"ceiling_usd": 5, "projected_usd": 1, "within_ceiling": True}}
-    return perf_evidence.build_evidence(
+    _EVIDENCE_KW.clear()
+    _EVIDENCE_KW.update(dict(
         generated_at="2026-11-11T12:00:00+00:00", agent="returns-triage", region="eastus2",
         profile={"name": "p"}, phases=phases, runner=runner, summary=summary, manifest=manifest,
         model={"read": True, "model": "gpt-5.4", "version": "v", "sku": "GlobalStandard", "capacity": 300,
@@ -39,7 +41,8 @@ def _evidence():
         mcp_before={"read": True, "min_replicas": 0, "max_replicas": 2, "replicas_now": 0},
         mcp_after={"read": True, "replicas_now": 1},
         prices={"usd_per_1m": {"input": 2.5, "cached_input": 0.25, "output": 15.0}, "region": "eastus2"},
-        compute_prices={"vcpu_hour": 0.0994, "gib_hour": 0.0118}, cpu=1, memory_gib=2, idle_timeout_minutes=15)
+        compute_prices={"vcpu_hour": 0.0994, "gib_hour": 0.0118}, cpu=1, memory_gib=2, idle_timeout_minutes=15))
+    return perf_evidence.build_evidence(**_EVIDENCE_KW)
 
 
 def test_evidence_keeps_measured_calculated_estimated_and_documented_apart():
@@ -138,3 +141,20 @@ def test_records_survive_a_failed_telemetry_fetch(tmp_path):
     raw = json.loads((tmp_path / perf_evidence.RAW).read_text())
     assert raw["records"][0]["invocation_id"] == "i1" and raw["spans"] is None
     assert PROMPT not in json.dumps(raw)
+
+
+def test_cli_ramp_steps_reach_the_requested_concurrency():
+    args = perf_evidence.build_parser().parse_args(
+        ["--workspace", ".", "--ramp-steps", "5,10,25", "--max-concurrency", "50", "--ramp-requests", "20"])
+    phases = perf_evidence.phases_from_args(args)
+    assert [(p["name"], p["concurrency"]) for p in phases] == [
+        ("cold", 1), ("ramp-5", 5), ("ramp-10", 10), ("ramp-25", 25), ("steady", 50)]
+    assert phases[3]["requests"] == 25
+
+
+def test_no_429_in_the_metric_is_zero_not_unread():
+    ev = _evidence()
+    ev2 = perf_evidence.build_evidence(**{**_EVIDENCE_KW, "model_status": {"read": True, "by_status": {"200": 9}}})
+    facts = {f["label"]: f["value"] for f in ev2["capacity"]}
+    assert facts["Model calls answered HTTP 429 during the run"] == 0
+    assert ev["capacity"]  # unread metric stays None

@@ -7,6 +7,39 @@ field.
 
 ## [Unreleased]
 
+### 2.50.0: pilot performance, second round (50 concurrent, eval A/B, built-in opt-in live, billed compute)
+
+Live 2026-11-12, eastus2, nonproduction, fresh returns-triage Fast-PoC on 2.47.0,
+gpt-5.4 GlobalStandard 850K TPM (the rest of the shared 3,000K subscription quota
+is held by other deployments), deleted after the test.
+
+- **Concurrency:** 25 concurrent, 118 requests: no errors, no model 429; 6.1, 9.7
+  and 22.4 requests per minute at 5, 10 and 25 concurrent; warm p50 33.2 s, p95
+  57.5 s; 42% of TPM. 50 concurrent, 176 requests: the Foundry endpoint answered
+  HTTP 429 `rate_limit_exceeded` (Retry-After 1 s) to 28 requests, all in the
+  second 50 new sessions started; Azure Monitor shows no model 429. A probe of 50
+  simultaneous new requests rejected 16. The numeric limit is not published
+  ([Learn limit errors](https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#limit-error-reference)),
+  so clients need backoff. Session quota (2,000 in East US 2) was never near.
+- **Quality with the 2.46 tool allowlist (Foundry eval, 28 rows, same pilot):**
+  business-rules rubric 3.786 and 4.0 on two runs with the allowlist, 3.893 on the
+  2.45 container without it; rows move both ways between runs. S-025 dropped
+  because the allowlisted agent looked the case up and showed the MCP-masked email
+  (`l***@mail.example`), which the dataset's `must_not` penalises; the baseline
+  never looked the case up.
+- **Built-in opt-in live:** SPEC `copilot_builtin_tools: web_fetch` (user source,
+  reason) produced `THREADLIGHT_BUILTIN_TOOLS: "web_fetch"`; that version fetched a
+  Learn page (3 `web_fetch` calls) and still refused a shell command
+  (`NO_SHELL_TOOL`). The default version answered `NO_WEB_TOOL`; the 2.45
+  container without the allowlist called `web_fetch` for the same prompt.
+- **Billed hosted compute (Cost Management, rg-perf-1111, 2026-11-11):** 20.4
+  vCPU-hours and 40.8 GiB-hours, USD 2.51, against USD 41.36 of model tokens in
+  the same resource group (about 6%). The other resource groups were not yet fully
+  billed when read (data can take 8-24 hours).
+- **Load test:** `--ramp-steps`; a run with no 429 in the Azure Monitor metric now
+  reports 0 instead of "not read"; documented rate-limit errors added to the
+  capacity facts.
+
 ### 2.49.0: the voice agent answers in the caller's language; human-caller client; billed voice cost
 
 - **Caller language.** Both GHCP voice bridges tell the agent to answer in the
