@@ -14,6 +14,7 @@
         pages: [
           { slug: 'basics', title: 'Basics', description: 'Skills for building agents and running business processes' },
           { slug: 'glossary', title: 'Glossary', description: 'Plain definitions of the terms used here' },
+          { slug: 'demo-to-production', title: 'From demo to production', description: 'What is proven today' },
         ],
       },
       {

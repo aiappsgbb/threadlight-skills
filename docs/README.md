@@ -16,6 +16,7 @@ official Microsoft product or support offering.
 |---|---|---|
 | A business or customer stakeholder | [Basics](https://aiappsgbb.github.io/threadlight-skills/basics.html) and [Industries](https://aiappsgbb.github.io/threadlight-skills/industries.html) | [Case study](https://aiappsgbb.github.io/threadlight-skills/case-study.html) for a captured run and its limits |
 | A solution engineer running a pilot | [Workbook](https://aiappsgbb.github.io/threadlight-skills/workbook.html) or the [1-hour workshop](WORKSHOP-1H-QUICKSTART.md) | [Idea-to-production workbook](IDEA-TO-PRODUCTION-WORKBOOK.md) |
+| Preparing a demo or a customer conversation | [From demo to production](https://aiappsgbb.github.io/threadlight-skills/demo-to-production.html) | The [1-hour workshop](WORKSHOP-1H-QUICKSTART.md) and the [governed-write kit](../examples/governed-write-ghcp/README.md) |
 | Taking an existing pilot to production | [Production](https://aiappsgbb.github.io/threadlight-skills/production.html) | [Production governance companion](production-governance.md), then the [release guide](https://aiappsgbb.github.io/threadlight-skills/agent-governance.html) |
 | Platform, security or operations | [Governance & AgentOps](https://aiappsgbb.github.io/threadlight-skills/governance.html) | [Agent operations](agent-operations.md) and the [governance deep dive](agent-governance-deep-dive.md) |
 | An engineer extending the catalog | [Skill-based agents](skill-based-agents.md) | [`THREADLIGHT.md`](../THREADLIGHT.md) and each skill's `SKILL.md` |

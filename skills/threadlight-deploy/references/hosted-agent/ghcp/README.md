@@ -56,7 +56,7 @@ merely to recover output. See the [recovery contract](../maf/references/operatio
 **Use GHCP SDK when:**
 - Slow tools mask the per-query overhead: web scraping, long-running tools, or multi-site scans.
 - You need streaming progress events to the caller for workflows that run beyond the ~120s Responses gateway limit.
-- The workload looks like **bat-scraper**: Playwright/tool calls take 30-60s each, so GHCP SDK orchestration overhead is acceptable.
+- The workload is a browser-automation scraper: Playwright/tool calls take 30-60s each, so GHCP SDK orchestration overhead is acceptable.
 
 **Use MAF when:**
 - Tools are fast: data queries, MCP retrieval, or single-shot tools where orchestration overhead dominates latency.
@@ -74,7 +74,7 @@ The overhead lives in `CopilotClient` itself; `SkillsProvider` is **NOT** the ca
 Removing `SkillsProvider` does not eliminate the extra internal turns.
 Field measurement on an identical agent (`gpt-5.4`, same MCP tool set, same query)
 ran in **~19s on MAF** but **>220s on GHCP SDK** when MCP tools were fast.
-The overhead is masked when tools are slow: bat-scraper Playwright calls take
+The overhead is masked when tools are slow: browser-automation Playwright calls take
 30-60s each, so 20 internal calls vanish in the noise.
 Decision rule: if your slowest tool is <2s, you almost certainly want MAF.
 If your slowest tool is >30s and you need streaming progress events to the caller,

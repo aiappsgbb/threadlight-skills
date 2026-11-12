@@ -7,6 +7,40 @@ field.
 
 ## [Unreleased]
 
+### 2.53.0: public story review: "From demo to production" overview, proof labels, identifier cleanup
+
+- **Why.** Each release from 2.21 to 2.52 updated its own docs, but nobody had
+  read the public story as a whole. The L400 docs were current; the README and
+  the Pages site did not mention the governed write, voice, the private profile,
+  identity, performance, the tool allowlist, the pilot value page, the EU AI Act
+  handoff, FinOps per use case or the topology decision.
+- **New page** [`demo-to-production.html`](docs/demo-to-production.html) (Basics
+  group, for whoever prepares a demo; Home directory): one diagram in four stages (demo, act, harden, decide)
+  and eleven capabilities, each with a fixed proof label (Proven live; Proven
+  live, with limits; Offline only), what is still not proven, and its document.
+  The README gains the same table; the docs index links it for demo preparation.
+- **Proof label fixed.** The governed-write kit presented the approval email as
+  a working channel; it now says no GHCP Outlook decision is evidenced yet (the
+  email was sent, but sender and Approver shared a mailbox) and that the panel
+  is the channel proven live.
+- **Identifiers removed.** An example in `threadlight-design` used brand data
+  from a real engagement and the GHCP README named an internal workload; both
+  are now generic, and `tests/ci/test_public_safety.py` blocks the tokens.
+- **Corrected: Conditional Access licensing.** 2.48.0 recorded that Conditional
+  Access on agent identities needs Entra ID P1. Learn
+  ([requirements and licensing](https://learn.microsoft.com/entra/identity/conditional-access/agent-id#requirements-and-licensing),
+  checked 2026-11-12) requires Microsoft 365 E7, or a Microsoft Agent 365 licence
+  plus at least Entra ID P1 or Microsoft 365 E3: P1 alone is not enough. The
+  identity model in `docs/agent-operations.md`, the README and the new page now
+  say so; a test blocks the old wording.
+- Plugin keywords cover the new capabilities. Product claims on the page link
+  Microsoft Learn and GitHub Docs (Hosted Voice preview, telephony channels,
+  `rate_limit_exceeded`, Copilot SDK `availableTools`), checked 2026-11-12.
+- **Tests (RED first):** `tests/blueprint/demo-to-production.test.js` (every
+  capability once, proof label from the fixed set, open gap, existing doc,
+  one diagram linking every row, recorded limits named) and the site-navigation
+  map. No skill, generator or runtime behaviour changes.
+
 ### 2.52.0: private profile, second round (landing zone, private data services, customer gateway, egress firewall)
 
 Live 2026-11-12, eastus2, internal nonproduction subscription, the same

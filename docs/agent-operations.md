@@ -577,7 +577,7 @@ rejects an `a2a` tool with both `base_url` and `project_connection_id`
 
 | Gap | Blocker |
 |---|---|
-| Conditional Access on agent identities | Requires Entra ID P1 ([disable agent identities](https://learn.microsoft.com/entra/agent-id/disable-agent-identities)). A report-only policy scoped to the test agent only was rejected with 403 "Your tenant is not licensed for this feature"; nothing was created |
+| Conditional Access on agent identities | Requires Microsoft 365 E7, or a Microsoft Agent 365 licence plus at least Entra ID P1 or Microsoft 365 E3; Entra ID P1 alone is not enough ([Conditional Access for agents, requirements and licensing](https://learn.microsoft.com/entra/identity/conditional-access/agent-id#requirements-and-licensing)). A report-only policy scoped to the test agent only was rejected with 403 "Your tenant is not licensed for this feature"; nothing was created |
 | Teams and Microsoft 365 users | The test tenant has no Teams or Microsoft 365 Copilot licence, and the GHCP pilot would need the Responses protocol (Activity is bridged from it) |
 | Playground UI | The human step needs the back-end portal, excluded by the user; the playground's Foundry-audience user token path is covered by the A2A row above |
 | OBO on a governed write | By contract the governed gateway accepts workload app tokens only (`idtyp=app`, no `scp`): "no implicit end-user delegation or OBO" ([gateway](../skills/threadlight-govern/references/gateway/README.md#authentication-and-host-configuration)). Changing that changes the kit's semantics |

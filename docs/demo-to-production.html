@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>From demo to production — Threadlight</title>
+<meta name="description" content="What a Threadlight pilot can show today, from a recommend-only Fast-PoC demo to a governed, private, measured path to production. Each capability with its proof level, what is still not proven and the document that explains it.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="From demo to production — Threadlight">
+<meta property="og:description" content="Eleven capabilities on one page: what each shows, whether it was proven live or only offline, and what is still open.">
+<meta property="og:url" content="https://aiappsgbb.github.io/threadlight-skills/demo-to-production.html">
+<meta property="og:site_name" content="Threadlight">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0d14'/%3E%3Cpath d='M14 44 L32 16 L50 44 Z' fill='none' stroke='%234f6dff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='38' r='3' fill='%23a8ff60'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css?v=3eb89a76">
+<link rel="stylesheet" href="assets/chapter-experience.css?v=0ef884f4">
+<style>
+  .skip-link { position: fixed; z-index: 100; top: 8px; left: 8px; padding: 12px; background: var(--bg-1); color: var(--ink-0); transform: translateY(-160%); }
+  .skip-link:focus { transform: none; }
+  .d2p { max-width: 1120px; margin: 0 auto; padding: 32px 24px 96px; }
+  .d2p h1 { font-size: clamp(2rem, 4.4vw, 2.8rem); line-height: 1.1; letter-spacing: -.015em; margin: 8px 0 14px; max-width: 22ch; }
+  .d2p h2 { font-size: 1.5rem; line-height: 1.2; margin: 0 0 8px; }
+  .d2p p { color: var(--ink-1); line-height: 1.65; max-width: 72ch; margin: 0 0 14px; }
+  .d2p strong { color: var(--ink-0); }
+  .d2p a { color: var(--accent-1); }
+  @media (prefers-color-scheme: light) { .d2p a { color: #2f48c8; } }
+  .d2p code { font-family: var(--mono); font-size: .88em; }
+  .d2p section { border-top: 1px solid var(--line); margin-top: 44px; padding-top: 32px; }
+
+  /* the one diagram: four stages, capabilities as links into the table */
+  .d2p-diagram { margin: 28px 0 0; }
+  .d2p-flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; counter-reset: stage; }
+  .d2p-flow > li { position: relative; border: 1px solid var(--line-2); border-radius: 14px; background: var(--bg-1); padding: 16px 16px 14px; }
+  .d2p-flow > li + li::before { content: "→"; position: absolute; left: -22px; top: 22px; color: var(--ink-2); font-size: 18px; }
+  .d2p-stage { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 4px; }
+  .d2p-flow h2 { margin: 0 0 10px; font-size: 1.05rem; color: var(--ink-0); }
+  .d2p-flow ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .d2p-flow ul a { display: flex; gap: 8px; align-items: baseline; color: var(--ink-1); text-decoration: none; font-size: .92rem; line-height: 1.35; }
+  .d2p-flow ul a:hover, .d2p-flow ul a:focus-visible { color: var(--ink-0); text-decoration: underline; }
+  .d2p-diagram figcaption { color: var(--ink-2); font-size: .9rem; margin-top: 12px; }
+
+  /* proof marks: shape and text, never colour alone */
+  .mark { font-family: var(--mono); flex: none; width: 1em; text-align: center; }
+  .mark-live::before { content: "●"; }
+  .mark-limits::before { content: "◐"; }
+  .mark-offline::before { content: "○"; }
+  .proof { display: inline-flex; gap: 6px; align-items: baseline; font-weight: 600; color: var(--ink-0); white-space: nowrap; }
+  .legend { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; color: var(--ink-1); }
+  .legend li { display: flex; gap: 8px; }
+
+  .d2p-table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: .93rem; }
+  .d2p-table th, .d2p-table td { text-align: left; vertical-align: top; padding: 12px 12px; border-top: 1px solid var(--line); line-height: 1.5; color: var(--ink-1); }
+  .d2p-table thead th { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); border-top: 0; }
+  .d2p-table tbody th { color: var(--ink-0); font-weight: 600; width: 17%; }
+  .d2p-table td.what { width: 31%; }
+  .d2p-table td.docs { width: 16%; }
+  .d2p-table td.docs a { display: block; margin-bottom: 4px; overflow-wrap: anywhere; }
+  .d2p-table tr:target { background: var(--accent-soft); }
+  .d2p-table .open { display: block; margin-top: 6px; color: var(--ink-2); }
+  @media (max-width: 860px) {
+    .d2p-flow { grid-template-columns: 1fr; gap: 26px; }
+    .d2p-flow > li + li::before { content: "↓"; left: 50%; top: -24px; }
+    .d2p-table thead { display: none; }
+    .d2p-table, .d2p-table tbody, .d2p-table tr, .d2p-table th, .d2p-table td { display: block; width: auto !important; }
+    .d2p-table tr { border-top: 1px solid var(--line-2); padding: 10px 0; }
+    .d2p-table th, .d2p-table td { border-top: 0; padding: 6px 0; }
+    .d2p-table td[data-label]::before { content: attr(data-label); display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 2px; }
+  }
+</style>
+</head>
+<body class="chapter-page chapter-basics chapter-experience" data-chapter-parent="basics">
+<a class="skip-link" href="#main">Skip to the capabilities</a>
+<header class="masthead">
+  <div class="brand">
+    <a href="./index.html" class="brand-name"><span class="brand-mark" aria-hidden="true"></span>Threadlight<span>by Microsoft GBB · AI Apps</span></a>
+  </div>
+  <nav class="nav" aria-label="Site chapters">
+    <a href="./index.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Home</a>
+    <a href="./basics.html" aria-current="location"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>Basics</a>
+    <a href="./funnel.html">Build</a>
+    <a href="./case-study.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v18l-6.5-3L7 22V4z"/></svg>Case study</a>
+    <a href="./production.html"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Production</a>
+  </nav>
+</header>
+<main id="main">
+  <div class="d2p">
+    <div class="cx-journey">
+      <nav aria-label="Breadcrumb"><a href="./index.html">Home</a><span aria-hidden="true">/</span><a href="./basics.html">Basics</a><span aria-hidden="true">/</span><span aria-current="page">From demo to production</span></nav>
+      <a class="cx-journey-next" href="./funnel.html">Next: Build <span aria-hidden="true">→</span></a>
+    </div>
+    <header id="overview">
+      <h1>From demo to production: what a pilot can show today</h1>
+      <p>A customer first sees a <strong>recommend-only Fast-PoC</strong>: a Foundry hosted agent that reads, cites and proposes, while a person records the decision. The same pilot then moves toward production without a rewrite. This page lists each step that exists today, <strong>how far it was proven</strong>, what is still open, and where the details are.</p>
+      <p>Live runs were on Threadlight's own returns-triage pilot in an internal nonproduction Azure subscription. They show that the path works there; they are not a certification of a customer deployment, and governance is evidenced per selected action, never for the whole agent.</p>
+    </header>
+
+    <figure class="d2p-diagram" aria-labelledby="d2p-caption">
+      <ol class="d2p-flow">
+        <li>
+          <p class="d2p-stage">1 · Demo</p>
+          <h2>Show the process working</h2>
+          <ul>
+            <li><a href="#cap-recommend-only"><span class="mark mark-live" aria-hidden="true"></span>Recommend-only Fast-PoC</a></li>
+          </ul>
+        </li>
+        <li>
+          <p class="d2p-stage">2 · Act</p>
+          <h2>Let it act, with a person in control</h2>
+          <ul>
+            <li><a href="#cap-governed-write"><span class="mark mark-limits" aria-hidden="true"></span>Governed write, one-click approval</a></li>
+            <li><a href="#cap-voice"><span class="mark mark-limits" aria-hidden="true"></span>Voice in the caller's language</a></li>
+          </ul>
+        </li>
+        <li>
+          <p class="d2p-stage">3 · Harden</p>
+          <h2>Run it the customer's way</h2>
+          <ul>
+            <li><a href="#cap-private-network"><span class="mark mark-limits" aria-hidden="true"></span>Private network</a></li>
+            <li><a href="#cap-identity"><span class="mark mark-limits" aria-hidden="true"></span>Identity, OBO, A2A, kill switch</a></li>
+            <li><a href="#cap-tool-allowlist"><span class="mark mark-live" aria-hidden="true"></span>Only the SPEC's tools</a></li>
+            <li><a href="#cap-performance"><span class="mark mark-limits" aria-hidden="true"></span>Load test and latency waterfall</a></li>
+          </ul>
+        </li>
+        <li>
+          <p class="d2p-stage">4 · Decide</p>
+          <h2>Hand the decision to its owners</h2>
+          <ul>
+            <li><a href="#cap-pilot-value"><span class="mark mark-offline" aria-hidden="true"></span>Pilot value page</a></li>
+            <li><a href="#cap-finops"><span class="mark mark-limits" aria-hidden="true"></span>Cost per use case and agent</a></li>
+            <li><a href="#cap-eu-ai-act"><span class="mark mark-offline" aria-hidden="true"></span>EU AI Act handoff</a></li>
+            <li><a href="#cap-agent-topology"><span class="mark mark-offline" aria-hidden="true"></span>One agent or several</a></li>
+          </ul>
+        </li>
+      </ol>
+      <figcaption id="d2p-caption">The same pilot in four stages. Each item opens its row below. ● proven live · ◐ proven live, with limits · ○ offline only.</figcaption>
+    </figure>
+
+    <section id="capabilities" aria-labelledby="capabilities-heading">
+      <h2 id="capabilities-heading">Capabilities and proof</h2>
+      <ul class="legend">
+        <li><span class="mark mark-live" aria-hidden="true"></span><span><strong>Proven live:</strong> run end to end on a real Azure deployment, dated and recorded.</span></li>
+        <li><span class="mark mark-limits" aria-hidden="true"></span><span><strong>Proven live, with limits:</strong> run live, but part of it used a stand-in, synthetic input or one binding; the limit is named in the row.</span></li>
+        <li><span class="mark mark-offline" aria-hidden="true"></span><span><strong>Offline only:</strong> generators and tests, no live run recorded.</span></li>
+      </ul>
+      <table class="d2p-table">
+        <thead><tr><th scope="col">Capability</th><th scope="col">What you can show</th><th scope="col">Proof and what is still open</th><th scope="col">Read</th></tr></thead>
+        <tbody>
+          <tr data-capability="recommend-only" id="cap-recommend-only">
+            <th scope="row">Recommend-only Fast-PoC</th>
+            <td class="what" data-label="What you can show">Brief → design → local test → deployed hosted agent in about an hour. It reads, cites the business rule and proposes; recording the decision is a human step. No write tool exists.</td>
+            <td data-label="Proof"><span class="proof" data-proof="live"><span class="mark mark-live" aria-hidden="true"></span>Proven live</span> 2026-11-09: no hand edits, killer prompts answered, business-rules rubric 4.39 against a bar of 4, Foundry package gate complete.<span class="open">Not proven: grounding on customer data (AI Search and Storage are deferred to <code>threadlight-ground</code>).</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/WORKSHOP-1H-QUICKSTART.md">1-hour workshop</a></td>
+          </tr>
+          <tr data-capability="governed-write" id="cap-governed-write">
+            <th scope="row">Governed write with one-click approval</th>
+            <td class="what" data-label="What you can show">One consequential write goes through the governed MCP gateway. Signed policy allows, denies or escalates; an escalation waits with no effect until the Approver clicks <strong>Approve</strong>, signed in as themselves; the write then runs once and a replay changes nothing.</td>
+            <td data-label="Proof"><span class="proof" data-proof="limits"><span class="mark mark-limits" aria-hidden="true"></span>Proven live, with limits</span> 2026-11-10 and 2026-11-12 on a GHCP hosted agent: the Approver clicked Approve in the approval panel; one receipt before one business write.<span class="open">Not proven: no GHCP Outlook decision yet (the approval email was sent, but sender and Approver shared a mailbox). One binding, nonproduction; not whole-agent governance.</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/examples/governed-write-ghcp/README.md">Workshop kit</a><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/governed-returns-validation.md#s8-governed-write-on-ghcp-workshop-kit">Live record S8</a></td>
+          </tr>
+          <tr data-capability="voice" id="cap-voice">
+            <th scope="row">Voice in the caller's language</th>
+            <td class="what" data-label="What you can show">Opt-in voice front-end (<a href="https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent">Foundry Hosted Voice, preview</a>) on the same hosted agent and tools. It answers in the caller's language, can include the governed write, and is measured per call.</td>
+            <td data-label="Proof"><span class="proof" data-proof="limits"><span class="mark mark-limits" aria-hidden="true"></span>Proven live, with limits</span> 2026-11-10 to 2026-11-12 with synthetic text-to-speech callers in English, Italian and Greek at 16 kHz and 8 kHz: 18 of 18 outcomes on the PCM options, about USD 0.18 per call billed.<span class="open">Not proven: a real human voice (browser caller ready, not run) and a real phone line (<a href="https://learn.microsoft.com/azure/foundry/agents/how-to/voice-agent-telephony-channels">Teams Phone or Twilio</a> not available).</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#voice-readiness-only-when-the-pilot-has-a-voice-front-end">Voice readiness</a><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-loadtest/SKILL.md#voice-workload-harness-scripted-spoken-calls">Voice harness</a></td>
+          </tr>
+          <tr data-capability="private-network" id="cap-private-network">
+            <th scope="row">Private network, same pilot</th>
+            <td class="what" data-label="What you can show"><code>generate_only.py --profile private</code> repackages the Fast-PoC: Foundry public access off, private endpoints, VNet-injected hosted agent, internal MCP, private telemetry, API Management or the customer's own model gateway, a landing-zone spoke with central DNS, an egress firewall allow-list, private Search, Storage and Key Vault.</td>
+            <td data-label="Proof"><span class="proof" data-proof="limits"><span class="mark mark-limits" aria-hidden="true"></span>Proven live, with limits</span> 2026-11-11 and 2026-11-12: killer prompts and Foundry evaluation from inside the VNet, model calls through private API Management, 13 of 13 resources private. The hub and the customer gateway were stand-ins (an nginx proxy, not a product).<span class="open">Not proven: the Developer gateway tier, Cosmos DB private endpoints from the generator, DR, budgets, Defender. The Invocations host emits no <code>invoke_agent</code> request span.</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/references/private-profile.md">Private profile</a><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#from-fast-poc-to-private-what-changes">What changes</a></td>
+          </tr>
+          <tr data-capability="identity" id="cap-identity">
+            <th scope="row">Identity, OBO, A2A and kill switch</th>
+            <td class="what" data-label="What you can show">The agent identity holds only Cognitive Services OpenAI User. User context reaches tools on behalf of the user through a Foundry toolbox (preview); one agent calls another through the <code>a2a</code> tool; stopping an agent is measured.</td>
+            <td data-label="Proof"><span class="proof" data-proof="limits"><span class="mark mark-limits" aria-hidden="true"></span>Proven live, with limits</span> 2026-11-11 and 2026-11-12 on a GHCP pilot: on-behalf-of to a user-scoped MCP server, A2A with the user's token; agent disable 2 s, role removal 42 s, identity disable 3 to 5 minutes.<span class="open">Not proven: Conditional Access (needs <a href="https://learn.microsoft.com/entra/identity/conditional-access/agent-id#requirements-and-licensing">Microsoft 365 E7, or Agent 365 plus Entra ID P1</a>), Teams and Microsoft 365 channels (licences), on-behalf-of on the governed write. A second user-delegated hop after A2A worked for 20 minutes, then failed: it is undocumented, do not rely on it.</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/agent-operations.md#identity-model-who-acts-with-which-permissions">Identity model</a><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-connect/references/obo-downstream/README.md">OBO recipe</a></td>
+          </tr>
+          <tr data-capability="performance" id="cap-performance">
+            <th scope="row">Load test and latency waterfall</th>
+            <td class="what" data-label="What you can show">Budget-capped load through the real Invocations endpoint. Each request is split into endpoint, session start, model calls, tool and MCP calls and runtime; with the model's TPM share and the model cost per 1,000 requests.</td>
+            <td data-label="Proof"><span class="proof" data-proof="limits"><span class="mark mark-limits" aria-hidden="true"></span>Proven live, with limits</span> 2026-11-11 and 2026-11-12: 25 concurrent with no errors, warm p50 33 s, almost all of it model time (MCP calls 57 ms). With 50 new sessions at once the Foundry endpoint answered <a href="https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#limit-error-reference">429 <code>rate_limit_exceeded</code></a>: clients need backoff.<span class="open">Not proven: an SLA, more than 50 concurrent, voice turns in the waterfall.</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#performance-evidence-load-test-with-latency-waterfall">Performance evidence</a><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-loadtest/SKILL.md#hosted-agent-performance-evidence-latency-waterfall">Load-test skill</a></td>
+          </tr>
+          <tr data-capability="tool-allowlist" id="cap-tool-allowlist">
+            <th scope="row">Only the SPEC's tools</th>
+            <td class="what" data-label="What you can show">A GHCP pilot exposes only its MCP tools and skills through the Copilot SDK <a href="https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/custom-agents">session allowlist</a>: no shell, file or web built-ins. A built-in needs an explicit user opt-in in the SPEC.</td>
+            <td data-label="Proof"><span class="proof" data-proof="live"><span class="mark mark-live" aria-hidden="true"></span>Proven live</span> 2026-11-11 and 2026-11-12: 5 of 5 killer prompts with MCP tools only; built-in calls 227 → 0 and model cost per 1,000 requests USD 75.66 → 50.06 on the same load; an opted-in <code>web_fetch</code> worked while shell stayed refused.<span class="open">Not proven: a quality change beyond one 28-row evaluation, where rows moved both ways.</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/references/hosted-agent/ghcp/README.md#tool-allowlist-no-copilot-cli-built-ins-by-default">Tool allowlist</a></td>
+          </tr>
+          <tr data-capability="pilot-value" id="cap-pilot-value">
+            <th scope="row">Pilot value page</th>
+            <td class="what" data-label="What you can show">One printable page for the process owner and sponsor: quality against its bar, scenario results, safety check, cost per successful interaction, forecast, ROI and KPI targets, each labelled Measured, Calculated, Estimate, Target or Not measured yet.</td>
+            <td data-label="Proof"><span class="proof" data-proof="offline"><span class="mark mark-offline" aria-hidden="true"></span>Offline only</span> Generator and tests; it reads only evidence the pilot already produced and changes nothing.<span class="open">Not proven: no run on a live pilot is recorded. It is a decision aid, not a go-live verdict.</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/production-readiness.md#pilot-value-page-sponsor-view">Pilot value page</a></td>
+          </tr>
+          <tr data-capability="eu-ai-act" id="cap-eu-ai-act">
+            <th scope="row">EU AI Act handoff</th>
+            <td class="what" data-label="What you can show">A bundle for the customer's compliance reviewer: classification questions only they answer, obligations with the pilot's evidence and hashes, open items, and the Microsoft vs customer split for a PaaS agent.</td>
+            <td data-label="Proof"><span class="proof" data-proof="offline"><span class="mark mark-offline" aria-hidden="true"></span>Offline only</span> Unit tests. Evidence and open items only, never a compliance claim.<span class="open">No legal review.</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/eu-ai-act-evidence.md#customer-handoff-bundle">Handoff bundle</a></td>
+          </tr>
+          <tr data-capability="finops" id="cap-finops">
+            <th scope="row">Cost per use case and per agent</th>
+            <td class="what" data-label="What you can show">Read-only Cost Management for a subscription: use cases from resource-group tags, a shared group split by each agent's invocations, cost per successful invocation and a 30-day forecast. Nothing unattributed is dropped.</td>
+            <td data-label="Proof"><span class="proof" data-proof="limits"><span class="mark mark-limits" aria-hidden="true"></span>Proven live, with limits</span> 2026-11-11, internal subscription, read-only: 10-day window, two pilots with agent telemetry, 7 of 10 forecasts returned (3 throttled, shown as run-rate).<span class="open">Not proven: token-weighted allocation, Copilot Studio meters, a non-USD billing account.</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-consumption-iq/SKILL.md#portfolio-cost-per-use-case-and-per-agent-opt-in-read-only">Portfolio</a></td>
+          </tr>
+          <tr data-capability="agent-topology" id="cap-agent-topology">
+            <th scope="row">One agent or several</th>
+            <td class="what" data-label="What you can show">A recorded design decision with criteria (latency hops, sessions, quota, failure points, cost, ownership and governance boundaries, evaluation). It recommends one agent with skills unless a hard split trigger holds.</td>
+            <td data-label="Proof"><span class="proof" data-proof="offline"><span class="mark mark-offline" aria-hidden="true"></span>Offline only</span> Design contract and tests.<span class="open">No runtime multi-agent wiring is generated: a split gives each agent its own SPEC and pilot.</span></td>
+            <td class="docs" data-label="Read"><a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-design/references/process-traits.md#trait-agent-topology-one-agent-with-skills-or-several-agents">Agent topology</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="next" aria-labelledby="next-heading">
+      <h2 id="next-heading">Where to go next</h2>
+      <p>To run the demo, follow the <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/WORKSHOP-1H-QUICKSTART.md">1-hour workshop</a>. To take a pilot to a controlled release, read <a href="./production.html">Production</a> and the <a href="./agent-governance.html">release guide</a>. Every live figure above comes from the dated records in the <a href="https://github.com/aiappsgbb/threadlight-skills/blob/main/CHANGELOG.md">changelog</a>; rerun them in the customer's environment before quoting them as theirs.</p>
+    </section>
+  </div>
+</main>
+<footer>Threadlight &middot; evidence per selected action, not whole-agent certification &middot; <a href="https://github.com/aiappsgbb/threadlight-skills">Repository</a></footer>
+<script src="assets/site.js?v=e4d413b7"></script>
+<script src="assets/site-map.js?v=27fa0e13"></script>
+<script src="assets/chapter-experience.js?v=ece78bab"></script>
+</body>
+</html>
