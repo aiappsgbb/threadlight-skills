@@ -639,8 +639,12 @@ environment alone took 21 minutes live) and start provisioning before the talk.
    then `safe_check.py --phase post-deploy` (private-network check).
 5. **Close** with the checklist in
    [production-readiness.md](production-readiness.md#from-fast-poc-to-private-what-changes)
-   and what is still open (egress firewall, the customer's own gateway, telemetry
-   spans, budgets, DR).
+   and what is still open (Developer-tier gateway, budgets, Defender, DR).
+   If the customer has a landing zone, set `THREADLIGHT_EXISTING_VNET_ID` and
+   `THREADLIGHT_DNS_ZONES_RG` before provisioning; for their own model gateway use
+   `--model-gateway external` with `THREADLIGHT_MODEL_GATEWAY_URL`; for their
+   firewall hand over the
+   [egress allow-list](../skills/threadlight-deploy/references/private-profile.md#egress-allow-list-firewall).
 
 Cost: API Management Standard v2 is a recurring charge (list price about
 USD 0.96 per hour in East US 2, November 2026): delete it after the session if

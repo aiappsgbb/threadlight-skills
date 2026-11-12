@@ -67,9 +67,29 @@ param vnetAddressPrefix string = '10.42.0.0/16'
 @description('Comma-separated IPv4 prefixes allowed on the ACR public endpoint for remote builds (hooks/preprovision.sh fills the regional AzureContainerRegistry service tag). Empty: ACR public network access Disabled.')
 param acrBuildAllowedPrefixes string = ''
 
-@description('Model route: none (agent calls the Foundry private endpoint) or apim (API Management Standard v2 gateway).')
-@allowed([ 'none', 'apim' ])
+@description('Model route: none (agent calls the Foundry private endpoint), apim (API Management Standard v2 gateway) or external (the customer\'s own gateway at modelGatewayUrl).')
+@allowed([ 'none', 'apim', 'external' ])
 param modelGateway string = 'none'
+
+@description('external only: the customer gateway base URL, ending in /openai/v1, that passes /openai/v1/responses through to this project endpoint.')
+param modelGatewayUrl string = ''
+
+@description('Landing zone: an existing (vended) VNet with subnets snet-agent, snet-pe, snet-aca, snet-apim, snet-ops. Empty: this template creates the VNet, NAT and private DNS zones.')
+param existingVnetId string = ''
+
+@description('Landing zone: resource group (this subscription) of the central privatelink DNS zones, linked by the platform team to the VNet whose DNS serves the spoke. Empty: zones are created here.')
+param dnsZonesResourceGroup string = ''
+
+@description('Landing zone: VNet to link the Container Apps environment zone to (the hub with the DNS resolver). Empty: only the workload VNet.')
+param dnsZoneLinkVnetId string = ''
+
+@description('Data services selected in SPEC section 11c, provisioned with private endpoints.')
+param enableAiSearch bool = false
+param enableStorage bool = false
+param enableKeyVault bool = false
+
+@description('AI Search region when the VNet region has no capacity (empty: same region).')
+param aiSearchLocation string = ''
 
 param apimPublisherEmail string = 'pilot-operator@example.com'
 
@@ -86,7 +106,22 @@ param bastionDeveloper bool = true
 
 var token = uniqueString(subscription().id, resourceGroup().id, environmentName)
 var allTags = union(tags, { 'azd-env-name': environmentName })
-var agentSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', 'vnet-${token}', 'snet-agent')
+// Network: created here, or a landing-zone VNet the platform team vended.
+var landingZone = !empty(existingVnetId)
+var vnetId = landingZone ? existingVnetId : resourceId('Microsoft.Network/virtualNetworks', 'vnet-${token}')
+// Literal resource IDs, not module outputs: preflight validation can't resolve outputs.
+var agentSubnetId = '${vnetId}/subnets/snet-agent'
+var peSubnetId = '${vnetId}/subnets/snet-pe'
+var acaSubnetId = '${vnetId}/subnets/snet-aca'
+var apimSubnetId = '${vnetId}/subnets/snet-apim'
+var opsSubnetId = '${vnetId}/subnets/snet-ops'
+var zoneRg = empty(dnsZonesResourceGroup) ? resourceGroup().name : dnsZonesResourceGroup
+var zoneId = toObject([
+  'privatelink.services.ai.azure.com', 'privatelink.openai.azure.com', 'privatelink.cognitiveservices.azure.com'
+  'privatelink.azurecr.io', 'privatelink.azure-api.net', 'privatelink.monitor.azure.com'
+  'privatelink.oms.opinsights.azure.com', 'privatelink.ods.opinsights.azure.com'
+  'privatelink.agentsvc.azure-automation.net'
+], z => z, z => resourceId(zoneRg, 'Microsoft.Network/privateDnsZones', z))
 var acrPrefixes = empty(acrBuildAllowedPrefixes) ? [] : split(acrBuildAllowedPrefixes, ',')
 
 // Role definition GUIDs (pinned)
@@ -94,7 +129,7 @@ var roleAcrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var roleAcrRepositoryReader = 'b93aa761-3e63-49ed-ac28-beffa264f7ac'
 var roleFoundryUser = '53ca6127-db72-4b80-b1b0-d745d6d5456d' // formerly "Azure AI User"
 
-module network 'modules/network.bicep' = {
+module network 'modules/network.bicep' = if (empty(existingVnetId)) {
   name: 'network-${token}'
   params: { location: location, token: token, tags: allTags, vnetAddressPrefix: vnetAddressPrefix }
 }
@@ -145,17 +180,17 @@ module amplsPe 'modules/private-endpoint.bicep' = {
     name: 'pe-ampls-${token}'
     location: location
     tags: allTags
-    subnetId: network.outputs.peSubnetId
+    subnetId: peSubnetId
     targetId: ampls.id
     groupId: 'azuremonitor'
     zoneIds: [
-      network.outputs.zoneIds['privatelink.monitor.azure.com']
-      network.outputs.zoneIds['privatelink.oms.opinsights.azure.com']
-      network.outputs.zoneIds['privatelink.ods.opinsights.azure.com']
-      network.outputs.zoneIds['privatelink.agentsvc.azure-automation.net']
+      zoneId['privatelink.monitor.azure.com']
+      zoneId['privatelink.oms.opinsights.azure.com']
+      zoneId['privatelink.ods.opinsights.azure.com']
+      zoneId['privatelink.agentsvc.azure-automation.net']
     ]
   }
-  dependsOn: [ amplsAppi, amplsLaw ]
+  dependsOn: [ amplsAppi, amplsLaw, network ]
 }
 
 // ----------------------------------------------------------------- registry --
@@ -187,11 +222,12 @@ module acrPe 'modules/private-endpoint.bicep' = {
     name: 'pe-acr-${token}'
     location: location
     tags: allTags
-    subnetId: network.outputs.peSubnetId
+    subnetId: peSubnetId
     targetId: acr.id
     groupId: 'registry'
-    zoneIds: [ network.outputs.zoneIds['privatelink.azurecr.io'] ]
+    zoneIds: [ zoneId['privatelink.azurecr.io'] ]
   }
+  dependsOn: [ network ]
 }
 
 resource uamiAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -210,13 +246,14 @@ resource cae 'Microsoft.App/managedEnvironments@2024-03-01' = {
   location: location
   tags: allTags
   properties: {
-    vnetConfiguration: { internal: true, infrastructureSubnetId: network.outputs.acaSubnetId }
+    vnetConfiguration: { internal: true, infrastructureSubnetId: acaSubnetId }
     workloadProfiles: [ { name: 'Consumption', workloadProfileType: 'Consumption' } ]
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: { customerId: law.properties.customerId, sharedKey: law.listKeys().primarySharedKey }
     }
   }
+  dependsOn: [ network ]
 }
 
 module caeDns 'modules/aca-dns.bicep' = {
@@ -224,7 +261,8 @@ module caeDns 'modules/aca-dns.bicep' = {
   params: {
     defaultDomain: cae.properties.defaultDomain
     staticIp: cae.properties.staticIp
-    vnetId: network.outputs.vnetId
+    vnetId: vnetId
+    extraLinkVnetId: dnsZoneLinkVnetId
     token: token
     tags: allTags
   }
@@ -292,15 +330,16 @@ module accountPe 'modules/private-endpoint.bicep' = {
     name: 'pe-ais-${token}'
     location: location
     tags: allTags
-    subnetId: network.outputs.peSubnetId
+    subnetId: peSubnetId
     targetId: account.id
     groupId: 'account'
     zoneIds: [
-      network.outputs.zoneIds['privatelink.services.ai.azure.com']
-      network.outputs.zoneIds['privatelink.openai.azure.com']
-      network.outputs.zoneIds['privatelink.cognitiveservices.azure.com']
+      zoneId['privatelink.services.ai.azure.com']
+      zoneId['privatelink.openai.azure.com']
+      zoneId['privatelink.cognitiveservices.azure.com']
     ]
   }
+  dependsOn: [ network ]
 }
 
 resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-preview' = {
@@ -316,6 +355,7 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-previ
 resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts@2025-04-01-preview' = {
   parent: project
   name: 'caphostproj'
+  #disable-next-line BCP037
   properties: { capabilityHostKind: 'Agents' }
 }
 
@@ -383,6 +423,24 @@ resource deployerFoundryUserAccount 'Microsoft.Authorization/roleAssignments@202
   }
 }
 
+module dataServices 'modules/data-services.bicep' = if (enableAiSearch || enableStorage || enableKeyVault) {
+  name: 'data-${token}'
+  params: {
+    location: location
+    token: token
+    tags: allTags
+    peSubnetId: peSubnetId
+    vnetId: vnetId
+    dnsZonesResourceGroup: dnsZonesResourceGroup
+    enableAiSearch: enableAiSearch
+    searchLocation: empty(aiSearchLocation) ? location : aiSearchLocation
+    enableStorage: enableStorage
+    enableKeyVault: enableKeyVault
+    readerPrincipalId: project.identity.principalId
+  }
+  dependsOn: [ network ]
+}
+
 var projectEndpoint = 'https://${account.properties.customSubDomainName}.services.ai.azure.com/api/projects/${project.name}'
 
 // ------------------------------------------------------------ model gateway --
@@ -392,9 +450,9 @@ module gateway 'modules/apim-gateway.bicep' = if (modelGateway == 'apim') {
     location: location
     token: token
     tags: allTags
-    apimSubnetId: network.outputs.apimSubnetId
-    peSubnetId: network.outputs.peSubnetId
-    apimZoneId: network.outputs.zoneIds['privatelink.azure-api.net']
+    apimSubnetId: apimSubnetId
+    peSubnetId: peSubnetId
+    apimZoneId: zoneId['privatelink.azure-api.net']
     projectEndpoint: projectEndpoint
     foundryAccountName: account.name
     publisherEmail: apimPublisherEmail
@@ -410,8 +468,8 @@ module operator 'modules/jumpbox.bicep' = if (!empty(jumpboxSshPublicKey)) {
     location: location
     token: token
     tags: allTags
-    subnetId: network.outputs.opsSubnetId
-    vnetId: network.outputs.vnetId
+    subnetId: opsSubnetId
+    vnetId: vnetId
     sshPublicKey: jumpboxSshPublicKey
     foundryAccountName: account.name
     vmSize: jumpboxSize
@@ -438,12 +496,17 @@ output AZURE_CONTAINER_REGISTRY_NAME string = acr.name
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.properties.loginServer
 output AZURE_CONTAINER_REGISTRY_RESOURCE_ID string = acr.id
 output MCP_SERVER_FQDN string = mcp.properties.configuration.ingress.fqdn
+output MCP_CONTAINER_APP_NAME string = mcp.name
 output MCP_IDENTITY_PRINCIPAL_ID string = uami.properties.principalId
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = appi.properties.ConnectionString
 output APPLICATIONINSIGHTS_RESOURCE_ID string = appi.id
 output AZURE_AI_APPINSIGHTS_CONNECTION_ID string = '${project.id}/connections/${appi.name}'
 output THREADLIGHT_NETWORK_PROFILE string = 'private'
-output VNET_ID string = network.outputs.vnetId
-output NAT_PUBLIC_IP string = network.outputs.natPublicIp
-output MODEL_GATEWAY_URL string = modelGateway == 'apim' ? gateway!.outputs.gatewayUrl : ''
+output VNET_ID string = vnetId
+output NAT_PUBLIC_IP string = landingZone ? '' : network!.outputs.natPublicIp
+output THREADLIGHT_LANDING_ZONE bool = landingZone
+output MODEL_GATEWAY_URL string = modelGateway == 'apim' ? gateway!.outputs.gatewayUrl : (modelGateway == 'external' ? modelGatewayUrl : '')
 output JUMPBOX_VM_NAME string = empty(jumpboxSshPublicKey) ? '' : operator!.outputs.vmName
+output AZURE_AI_SEARCH_ENDPOINT string = enableAiSearch ? dataServices!.outputs.searchEndpoint : ''
+output AZURE_STORAGE_BLOB_ENDPOINT string = enableStorage ? dataServices!.outputs.storageBlobEndpoint : ''
+output AZURE_KEY_VAULT_URI string = enableKeyVault ? dataServices!.outputs.keyVaultUri : ''

@@ -131,11 +131,13 @@ def test_private_azure_yaml_keeps_the_agent_and_adds_the_gateway(private, tmp_pa
     priv, fast_doc = yaml.safe_load(text), yaml.safe_load((fast / "azure.yaml").read_text())
     # Same services and agent definition; the private profile only adds the gateway variable and hooks.
     assert priv["services"].keys() == fast_doc["services"].keys()
+    priv["services"]["mcp"].pop("resourceName")
     agent = next(k for k, v in priv["services"].items() if v.get("host") == "azure.ai.agent")
     p_env = priv["services"][agent].pop("environmentVariables")
     f_env = fast_doc["services"][agent].pop("environmentVariables")
     assert priv["services"] == fast_doc["services"]
-    assert [e for e in p_env if e["name"] != "MODEL_GATEWAY_URL"] == f_env
+    private_only = {"MODEL_GATEWAY_URL", "APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL"}
+    assert [e for e in p_env if e["name"] not in private_only] == f_env
     assert set(priv["hooks"]) == set(fast_doc["hooks"]) | {"preprovision"}
 
 
@@ -269,3 +271,109 @@ def test_private_bicep_builds(private, tmp_path):
                              "--outfile", str(out)], capture_output=True, text=True, timeout=300)
     assert result.returncode == 0, result.stderr
     assert json.loads(out.read_text())["resources"]
+
+
+# --- 2026-11-12 follow-up: telemetry, data services, external gateway, landing zone ----------
+
+def test_private_profile_disables_sdk_statsbeat(private):
+    # Live 2026-11-11: the exporter's statsbeat (Microsoft usage data, westus-0 ingestion) can't
+    # resolve under a private-only link scope and retried on every start; Learn: usage data
+    # collection doesn't support Private Link.
+    import yaml
+    doc = yaml.safe_load((private / "azure.yaml").read_text())
+    agent = next(v for v in doc["services"].values() if v.get("host") == "azure.ai.agent")
+    env = {e["name"]: e["value"] for e in agent["environmentVariables"]}
+    assert env.get("APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL") == "true"
+
+
+def _select(project: Path, *modules: str) -> None:
+    spec = project / "specs" / "SPEC.md"
+    text = spec.read_text()
+    for module in modules:
+        row = re.search(rf"^\| `{module}` \| (yes|no) \|.*$", text, re.M)
+        if row:
+            text = text.replace(row.group(0), row.group(0).replace(f"| {row.group(1)} |", "| yes |", 1))
+        else:
+            text = text.replace("| `app-insights` |", f"| `{module}` | yes | test |\n| `app-insights` |", 1)
+    spec.write_text(text)
+
+
+def test_private_profile_provisions_selected_data_services_privately(tmp_path):
+    project = _copy(tmp_path)
+    _select(project, "ai-search", "storage-blob", "key-vault")
+    assert _gen(project, tmp_path, "--profile", "private").returncode == 0
+    params = json.loads((project / "infra" / "main.parameters.json").read_text())["parameters"]
+    for flag in ("enableAiSearch", "enableStorage", "enableKeyVault"):
+        assert params[flag]["value"] is True, flag
+    data = (project / "infra" / "modules" / "data-services.bicep").read_text()
+    for group, zone in (("searchService", "privatelink.search.windows.net"), ("blob", "privatelink.blob."),
+                        ("vault", "privatelink.vaultcore.azure.net")):
+        assert f"groupId: '{group}'" in data and zone in data
+    assert data.count("publicNetworkAccess: 'Disabled'") + data.count("publicNetworkAccess: 'disabled'") == 3
+    deferred = (project / "specs" / "deferred-steps.md").read_text()
+    unprovisioned = re.search(r"^\| SPEC § 11c modules (.*?) \| not provisioned", deferred, re.M)
+    for module in ("ai-search", "storage-blob", "key-vault"):
+        assert not unprovisioned or module not in unprovisioned.group(1), module
+    assert "provisioned privately" in deferred
+
+
+def test_fast_poc_still_defers_data_services(tmp_path):
+    project = _copy(tmp_path)
+    _select(project, "ai-search", "storage-blob")
+    assert _gen(project, tmp_path).returncode == 0
+    assert "not provisioned" in (project / "specs" / "deferred-steps.md").read_text()
+    assert not (project / "infra" / "modules").exists()
+
+
+def test_external_gateway_takes_the_customer_url(tmp_path):
+    project = _copy(tmp_path)
+    assert _gen(project, tmp_path, "--model-gateway", "external").returncode == 2
+    assert _gen(project, tmp_path, "--profile", "private", "--model-gateway", "external").returncode == 0
+    params = json.loads((project / "infra" / "main.parameters.json").read_text())["parameters"]
+    assert params["modelGateway"]["value"] == "${THREADLIGHT_MODEL_GATEWAY=external}"
+    assert params["modelGatewayUrl"]["value"] == "${THREADLIGHT_MODEL_GATEWAY_URL=}"
+    main = (project / "infra" / "main.bicep").read_text()
+    assert "modelGateway == 'external' ? modelGatewayUrl" in main
+    assert "THREADLIGHT_MODEL_GATEWAY_URL" in (project / "DEPLOY.md").read_text()
+
+
+def test_landing_zone_mode_reuses_the_customer_vnet_and_central_dns(private):
+    params = json.loads((private / "infra" / "main.parameters.json").read_text())["parameters"]
+    assert params["existingVnetId"]["value"] == "${THREADLIGHT_EXISTING_VNET_ID=}"
+    assert params["dnsZonesResourceGroup"]["value"] == "${THREADLIGHT_DNS_ZONES_RG=}"
+    assert params["dnsZoneLinkVnetId"]["value"] == "${THREADLIGHT_DNS_LINK_VNET_ID=}"
+    main = (private / "infra" / "main.bicep").read_text()
+    assert "module network 'modules/network.bicep' = if (empty(existingVnetId))" in main
+    assert "landingZone" in main
+
+
+def test_landing_zone_contract_is_documented():
+    doc = (PILOT.parents[3] / "private-profile.md").read_text()
+    for term in ("THREADLIGHT_EXISTING_VNET_ID", "snet-agent", "Microsoft.App/environments",
+                 "THREADLIGHT_DNS_ZONES_RG", "privatelink.search.windows.net"):
+        assert term in doc, term
+
+
+def test_selectors_are_read_from_a_level_3_section_11c(tmp_path):
+    # threadlight-design writes "### 11c." under "## 11."; generate_only only read "## 11c."
+    # and silently ignored the selected AI Search and Storage (2026-11-12, returns-triage).
+    project = _copy(tmp_path)
+    spec = project / "specs" / "SPEC.md"
+    spec.write_text(spec.read_text().replace("## 11c. Tech Stack", "### 11c. Tech Stack"))
+    assert _gen(project, tmp_path, "--profile", "private").returncode == 0
+    params = json.loads((project / "infra" / "main.parameters.json").read_text())["parameters"]
+    assert params["enableAiSearch"]["value"] is True and params["enableStorage"]["value"] is True
+    fast = _copy(tmp_path / "fast")
+    (fast / "specs" / "SPEC.md").write_text((fast / "specs" / "SPEC.md").read_text().replace(
+        "## 11c. Tech Stack", "### 11c. Tech Stack"))
+    assert _gen(fast, tmp_path).returncode == 0
+    assert "`ai-search`" in (fast / "specs" / "deferred-steps.md").read_text()
+
+
+def test_mcp_service_targets_its_own_container_app(private):
+    # Live 2026-11-12: a second private pilot in the same resource group made `azd deploy`
+    # fail ("found '2' host resources" tagged azd-service-name: mcp).
+    import yaml
+    doc = yaml.safe_load((private / "azure.yaml").read_text())
+    assert doc["services"]["mcp"]["resourceName"] == "${MCP_CONTAINER_APP_NAME}"
+    assert "output MCP_CONTAINER_APP_NAME string = mcp.name" in (private / "infra" / "main.bicep").read_text()

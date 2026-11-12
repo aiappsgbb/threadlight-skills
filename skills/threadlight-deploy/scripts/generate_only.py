@@ -55,7 +55,9 @@ PILOT = GHCP / "pilot"
 PRIVATE_INFRA = PILOT / "infra-private"
 GEN = DEPLOY / "references" / "generate-only"
 PROFILES = ("fast-poc", "private")
-MODEL_GATEWAYS = ("none", "apim")
+MODEL_GATEWAYS = ("none", "apim", "external")
+# SPEC § 11c data services the private profile provisions with private endpoints.
+PRIVATE_DATA_MODULES = {"ai-search": "enableAiSearch", "storage-blob": "enableStorage", "key-vault": "enableKeyVault"}
 if str(DEPLOY.parent.parent) not in sys.path:
     sys.path.insert(0, str(DEPLOY.parent.parent))
 
@@ -573,7 +575,9 @@ _RECOMMEND_ONLY_ROW = (
 def selected_modules(spec: str) -> list[str]:
     """SPEC section 11c module selectors marked ``yes``."""
     chosen: list[str] = []
-    for table in _tables(_section(spec, "11c")):
+    # threadlight-design writes "### 11c." under "## 11."; older SPECs use "## 11c.".
+    m = re.search(r"^#{2,3}\s+11c\b[^\n]*\n(.*?)(?=^#{1,3}\s|\Z)", spec, re.M | re.S)
+    for table in _tables(m.group(1) if m else ""):
         header = [h.lower() for h in table[0]]
         i_sel = next((i for i, h in enumerate(header) if "selected" in h), None)
         if i_sel is None:
@@ -785,7 +789,9 @@ _PRIVATE_ENV = (
     "      - name: MCP_SERVER_FQDN\n        value: ${MCP_SERVER_FQDN}\n",
     "      - name: MCP_SERVER_FQDN\n        value: ${MCP_SERVER_FQDN}\n"
     "      # Private profile: model calls through the API Management gateway when set (empty: project endpoint).\n"
-    "      - name: MODEL_GATEWAY_URL\n        value: ${MODEL_GATEWAY_URL}\n",
+    "      - name: MODEL_GATEWAY_URL\n        value: ${MODEL_GATEWAY_URL}\n"
+    "      # Statsbeat (SDK usage data to a Microsoft ingestion endpoint) doesn't support Private Link.\n"
+    "      - name: APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL\n        value: \"true\"\n",
 )
 _PRIVATE_HOOKS = (
     "hooks:\n",
@@ -793,6 +799,10 @@ _PRIVATE_HOOKS = (
     "  # Private profile: ACR remote-build access and the operator host key (control plane only).\n"
     "  preprovision:\n    posix:\n      shell: sh\n      run: sh hooks/preprovision.sh\n      continueOnError: false\n",
 )
+_PRIVATE_MCP = ("  mcp:\n    host: containerapp\n",
+                "  mcp:\n    host: containerapp\n"
+                "    # Explicit target: landing-zone resource groups often hold several pilots.\n"
+                "    resourceName: ${MCP_CONTAINER_APP_NAME}\n")
 _PRIVATE_POSTPROVISION = ("      run: sh hooks/postprovision.sh\n",
                           "      run: sh hooks/postprovision.sh && sh hooks/acr-connection.sh\n")
 
@@ -825,7 +835,7 @@ def render_azure_yaml(project: str, agent: str, description: str, voice: dict[st
         body = body.replace(anchor, anchor + "      # SPEC 11e copilot_builtin_tools (user opt-in)\n"
                             f"      - name: THREADLIGHT_BUILTIN_TOOLS\n        value: \"{builtin_tools}\"\n")
     if profile == "private":
-        for old, new in (_PRIVATE_ENV, _PRIVATE_POSTPROVISION):
+        for old, new in (_PRIVATE_ENV, _PRIVATE_POSTPROVISION, _PRIVATE_MCP):
             if body.count(old) != 1:
                 raise WorkspaceError("pilot azure.yaml changed shape; cannot apply the private profile")
             body = body.replace(old, new)
@@ -884,6 +894,15 @@ decided_at: generate-only
 """ + "\n".join(f"| {k} | {v} |" for k, v in posture.items()) + "\n"
 
 
+def _private_data_row(modules: list[str]) -> str:
+    if not modules:
+        return ""
+    return (f"| SPEC § 11c {', '.join(f'`{m}`' for m in modules)} | provisioned privately | Created with public "
+            "network access disabled, a private endpoint and DNS, read access for the project identity. Wiring the "
+            "Foundry IQ knowledge base and loading data stay with `threadlight-ground`; until then knowledge tools "
+            "use the local stand-in. |\n")
+
+
 def _unprovisioned_rows(unprovisioned: list[str], standins: list[str]) -> str:
     if not unprovisioned:
         return ""
@@ -933,20 +952,32 @@ reports this workspace as `INCOMPLETE` (exit 3) until the deferred evidence exis
 
 
 def _private_deploy_md(project: str, agent: str, gateway: str) -> str:
-    gateway_note = (
-        "`THREADLIGHT_MODEL_GATEWAY=apim` puts Azure API Management Standard v2 in front of the model: "
-        "inbound only through its private endpoint, outbound through VNet integration to the Foundry "
-        "private endpoint. The agent sends `MODEL_GATEWAY_URL`; the gateway validates the agent's "
-        "Microsoft Entra token and calls Foundry with its own managed identity. Standard v2 is a recurring "
-        "charge (list price about USD 0.96 per hour in East US 2, November 2026): delete it after a test "
-        "with `az apim delete` if the pilot doesn't need it."
-        if gateway == "apim" else
-        "No model gateway (`THREADLIGHT_MODEL_GATEWAY=none`): the agent calls the Foundry private endpoint. "
-        "Set `apim` and re-provision to add the API Management gateway. A non-Azure gateway is the same "
-        "pattern: point `MODEL_GATEWAY_URL` (ending in `/openai/v1`) at a pass-through route to the project "
-        "endpoint that serves streaming `/openai/v1/responses` with a Microsoft Entra token for "
-        "`https://ai.azure.com`; it is not generated or proven here."
-    )
+    if gateway == "apim":
+        gateway_note = (
+            "`THREADLIGHT_MODEL_GATEWAY=apim` puts Azure API Management Standard v2 in front of the model: "
+            "inbound only through its private endpoint, outbound through VNet integration to the Foundry "
+            "private endpoint. The agent sends `MODEL_GATEWAY_URL`; the gateway validates the agent's "
+            "Microsoft Entra token and calls Foundry with its own managed identity. Standard v2 is a recurring "
+            "charge (list price about USD 0.96 per hour in East US 2, November 2026): delete it after a test "
+            "with `az apim delete` if the pilot doesn't need it.")
+    elif gateway == "external":
+        gateway_note = (
+            "`THREADLIGHT_MODEL_GATEWAY=external`: model calls go to the customer's own gateway. Set "
+            "`azd env set THREADLIGHT_MODEL_GATEWAY_URL https://<gateway>/<route>/openai/v1` before "
+            "`azd provision`. The route must be reachable from the agent subnet (private DNS or peering) and pass "
+            "`/openai/v1/responses` (streaming) through to this project's endpoint with the caller's Microsoft "
+            "Entra token for `https://ai.azure.com`, or its own.")
+    else:
+        gateway_note = (
+            "No model gateway (`THREADLIGHT_MODEL_GATEWAY=none`): the agent calls the Foundry private endpoint. "
+            "Set `apim` (generated API Management) or `external` with `THREADLIGHT_MODEL_GATEWAY_URL` (the "
+            "customer's gateway) and re-provision.")
+    gateway_note += (
+        "\n\n**Landing zone (hub and spoke).** To deploy into a VNet the platform team vended (subnets "
+        "`snet-agent` delegated to `Microsoft.App/environments`, `snet-pe`, `snet-aca` delegated to "
+        "`Microsoft.App/environments`, `snet-apim`, `snet-ops`; custom DNS pointing at the hub resolver), set "
+        "`THREADLIGHT_EXISTING_VNET_ID`, `THREADLIGHT_DNS_ZONES_RG` (central `privatelink.*` zones) and "
+        "`THREADLIGHT_DNS_LINK_VNET_ID` (hub VNet). The template then creates no VNet, NAT or privatelink zones.")
     return f"""
 ## Private network (`--profile private`)
 
@@ -1487,7 +1518,7 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
     if gateway not in MODEL_GATEWAYS:
         raise WorkspaceError(f"--model-gateway must be one of {', '.join(MODEL_GATEWAYS)}, got {gateway!r}")
     if gateway != "none" and profile != "private":
-        raise WorkspaceError("--model-gateway apim needs --profile private (the gateway is private-network only)")
+        raise WorkspaceError(f"--model-gateway {gateway} needs --profile private (the gateway is private-network only)")
     private = profile == "private"
     spec_path = project_dir / "specs" / "SPEC.md"
     manifest_path = project_dir / "specs" / "manifest.json"
@@ -1568,7 +1599,9 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
         adoption = adopt_design_server(server_path, served, adopted_lock)
     knowledge_tools = [t for t in plan if t.get("knowledge")]
     standins = [t for t in knowledge_tools if not adoption or t["name"] not in adoption["tools"]]
-    unprovisioned = [m for m in selected_modules(spec) if m not in PILOT_MODULES]
+    selected = selected_modules(spec)
+    private_data = [m for m in selected if private and m in PRIVATE_DATA_MODULES]
+    unprovisioned = [m for m in selected if m not in PILOT_MODULES and m not in private_data]
     model = design_model(project_dir, spec)
     capacity, capacity_row = model_capacity(design_capacity_tpm(project_dir))
     deferred_extra = (_unprovisioned_rows(unprovisioned, [t["name"] for t in standins]) + _model_row(model)
@@ -1590,7 +1623,9 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
     params = json.loads((infra_src / "main.parameters.json").read_text(encoding="utf-8"))
     if private:
         params["parameters"]["modelGateway"] = {"value": f"${{THREADLIGHT_MODEL_GATEWAY={gateway}}}"}
-        deferred_extra += _PRIVATE_ROW
+        for module in private_data:
+            params["parameters"][PRIVATE_DATA_MODULES[module]] = {"value": True}
+        deferred_extra += _PRIVATE_ROW + _private_data_row(private_data)
     params["parameters"]["modelCapacity"] = {"value": f"${{AZURE_AI_MODEL_CAPACITY={capacity}}}"}
     if model:
         params["parameters"]["modelName"] = {"value": f"${{AZURE_AI_MODEL_NAME={model[0]}}}"}
