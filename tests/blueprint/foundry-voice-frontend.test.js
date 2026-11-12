@@ -96,7 +96,7 @@ test('workshop has an advanced facilitator segment: text + voice + governed writ
   assert.ok(section, 'missing § 6.6b');
   const body = collapse(section.split(/^###? /m)[0]);
   for (const term of ['voice_frontend: hosted-voice', 'AZD_ALPHA_ENABLE_AGENTS_VOICE=true', 'pending_approval',
-    'threadlight-review-action', 'case-list', 'response.invocation.delta', 'demo_capacity.py warm', '--agent',
+    'approval panel', 'case-list', 'response.invocation.delta', 'demo_capacity.py warm', '--agent',
     'redeploy the voice wrapper', 'smoke_test_voice.py']) {
     assert.ok(body.includes(term), term);
   }

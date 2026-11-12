@@ -7,6 +7,40 @@ field.
 
 ## [Unreleased]
 
+### 2.51.0: governed-write approver is one click (panel or email), deterministic warm-up, one azd project
+
+Live 2026-11-12, eastus2, nonproduction, on the existing governed-write GHCP kit
+deployment (fresh operations) plus a separate resource group deleted after the
+test. Evidence: [S8](docs/governed-returns-validation.md#s8-governed-write-on-ghcp-workshop-kit).
+
+- **No terminal for the Approver.** The case-list workspace reads
+  `config.approval`: `email` shows "Approval email sent to …"; `panel` shows
+  real **Approve / Reject** buttons that post only `{operation_id, approved}`
+  to an authenticated approval endpoint. The command is now an operator
+  fallback. The page still never records a decision itself.
+- **Kit approval panel.** `review_queue.py --panel` plus `approval_panel.py`
+  (localhost only, same-origin plus session token, unknown operation and second
+  click refused) signs the Approver in with their own Entra account and records
+  the one-use decision via `review.decide`. Live: the Approver clicked Approve
+  in the browser, nobody typed for them; one receipt before one business write,
+  grant consumed, replay identical.
+- **Native Outlook approval on GHCP.** `review-approval.bicep` now accepts the
+  64-hex GHCP relay operation ids (it rejected them). Live, the email was sent
+  but stayed in Sent Items because the connection mailbox was also the
+  recipient; documented requirement: a sender mailbox different from the
+  Approver's. No GHCP Outlook decision is evidenced.
+- **Deterministic warm-up.** `demo_capacity.py warm` bounds every `az` call
+  (240 s, retried; one hung for an hour live), waits for a `Running` replica on
+  every app including the MCP server, then health and agent ping. From all apps
+  at zero: 98 s, then a governed write with no unknown outcome.
+- **One azd project.** `compose_project.py` folds the business API (module of
+  `main.bicep`, MCP reads its Cosmos endpoint) and the policy publisher into the
+  pilot project as ACR remote-build services (`azd publish`, bound by digest,
+  `predeploy` guard). Live clean provision in a new resource group: three
+  `azd provision` runs, business app and publisher job deployed by digest. Not
+  run there: Entra, signed policy, agent, bind or any write.
+- Kit operator tests wired into CI (`python-pytest.yml`).
+
 ### 2.50.0: pilot performance, second round (50 concurrent, eval A/B, built-in opt-in live, billed compute)
 
 Live 2026-11-12, eastus2, nonproduction, fresh returns-triage Fast-PoC on 2.47.0,
