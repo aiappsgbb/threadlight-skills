@@ -238,3 +238,12 @@ def test_engine_model_cost_splits_cached_input_by_cache_match_rate():
     assert c["basis"] == "calculated"
     assert c["usd_total"] == pytest.approx(0.1 * 2.5 + 0.9 * 0.25 + 0.01 * 15.0)
     assert c["usd_per_call"] == pytest.approx(c["usd_total"] / 2)
+
+
+def test_barge_in_ignores_hold_messages_in_any_configured_language():
+    holds = ["One moment, I'm checking that.", "Un momento, sto verificando."]
+    window = [(5.0, {"type": "response.output_audio_transcript.delta", "item_id": "h", "delta": "Un momento, sto "}),
+              (5.0, {"type": "response.output_audio.delta", "item_id": "h", "delta": "AAAA"}),
+              (30.0, {"type": "response.output_audio_transcript.delta", "item_id": "a", "delta": "Propongo di negare"}),
+              (30.1, {"type": "response.output_audio.delta", "item_id": "a", "delta": "AAAA"})]
+    assert ve.answer_audio_started(window, holds) == 30.1

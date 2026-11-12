@@ -1,0 +1,35 @@
+{
+  "name": "returns-triage human caller script",
+  "notes": "Lines a person reads aloud into the browser caller (scripts/voice_human_caller.py). Read each line naturally, as a caller would; say case ids the way they are written in `speak`. One call per line. For a barge-in line, start the follow-up while the agent is giving its answer (not during 'One moment').",
+  "projected_usd_per_call": 0.25,
+  "hold_text": ["One moment, I'm checking that.", "Un momento, sto verificando."],
+  "decision_keywords": {
+    "approve_refund": ["approve", "approval of the refund", "full refund", "approvare", "approvo", "approvazione", "rimborso completo", "concedere il rimborso"],
+    "deny_refund": ["deny", "denial", "not eligible", "negare", "negato", "diniego", "rifiut", "non idoneo", "non è idoneo"],
+    "escalate_to_supervisor": ["escalat", "supervisor", "supervisore", "responsabile", "inoltr"]
+  },
+  "utterances": [
+    {"id": "h-it-approve", "lang": "it-IT", "voice": "human", "expected_decision": "approve_refund", "entity_digits": "2026104410",
+     "speak": "Buongiorno, può valutare il reso RMA 2026 104410 e consigliarmi una decisione?",
+     "reference": "Buongiorno, può valutare il reso RMA 2026 104410 e consigliarmi una decisione?"},
+    {"id": "h-it-escalate", "lang": "it-IT", "voice": "human", "expected_decision": "escalate_to_supervisor", "entity_digits": "2026104425",
+     "speak": "Valuti il reso RMA trattino 2026 trattino 104425. Dobbiamo rimborsarlo?",
+     "reference": "Valuti il reso RMA-2026-104425. Dobbiamo rimborsarlo?"},
+    {"id": "h-en-deny", "lang": "en-US", "voice": "human", "expected_decision": "deny_refund", "entity_digits": "2026104418",
+     "speak": "Hi, please triage return RMA dash 2026 dash 104418.",
+     "reference": "Hi, please triage return RMA-2026-104418."},
+    {"id": "h-en-escalate", "lang": "en-US", "voice": "human", "expected_decision": "escalate_to_supervisor", "entity_digits": "2026104425",
+     "speak": "Triage return RMA 2026 104425. Should we refund it?",
+     "reference": "Triage return RMA 2026 104425. Should we refund it?"},
+    {"id": "h-it-deny", "lang": "it-IT", "voice": "human", "expected_decision": "deny_refund", "entity_digits": "2026104418",
+     "speak": "Per favore, valuti il reso RMA 2026 104418.",
+     "reference": "Per favore, valuti il reso RMA 2026 104418."},
+    {"id": "h-en-barge", "lang": "en-US", "voice": "human", "expected_decision": "approve_refund", "entity_digits": "2026104410",
+     "barge_in": {"utterance": "h-en-barge-followup"},
+     "speak": "Please triage return RMA 2026 104410 and walk me through the whole policy reasoning.",
+     "reference": "Please triage return RMA 2026 104410 and walk me through the whole policy reasoning."},
+    {"id": "h-en-barge-followup", "lang": "en-US", "voice": "human", "expected_decision": "deny_refund", "entity_digits": "2026104418", "role": "barge_followup",
+     "speak": "Sorry, stop. Triage RMA 2026 104418 instead.",
+     "reference": "Sorry, stop. Triage RMA 2026 104418 instead."}
+  ]
+}

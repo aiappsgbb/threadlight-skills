@@ -233,6 +233,23 @@ def test_slow_governed_turns_speak_hold_messages(monkeypatch):
     assert len(spoken) >= 3 and set(spoken[:-1]) == {"Un momento."} and spoken[-1] == "Answer to: slow one"
 
 
+def test_governed_hold_message_and_note_follow_the_caller_language(monkeypatch):
+    monkeypatch.setenv("THREADLIGHT_VOICE_HOLD_SECONDS", "0.3")
+    monkeypatch.delenv("THREADLIGHT_VOICE_HOLD_TEXT", raising=False)
+    module = _load(monkeypatch)
+    turns = FakeGovernedTurns()
+    app = voice_sdk.VoiceAgentServerHost()
+    module.attach_voice_bridge(app, turns)
+    with TestClient(app) as client, client.websocket_connect("/invocations_ws") as ws:
+        _start(ws, idle_ms=1000)
+        _say(ws, "per favore valuti il reso, slow", 1)
+        frames = _turn(ws)
+        _end(ws)
+    spoken = [f["text"] for f in frames if f["type"] == "response.output_text.done"]
+    assert len(spoken) >= 3 and set(spoken[:-1]) == {"Un momento, sto verificando."}
+    assert "same language as the caller" in turns.prompts[0]
+
+
 # --- generator wiring: governance packaging keeps the opted-in voice front-end -------
 
 GENERATE = GOVERNED_GHCP.parent / "generate.py"

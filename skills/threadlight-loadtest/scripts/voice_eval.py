@@ -53,6 +53,10 @@ TOOL_VERSION = "0.1.0"
 CAVEAT = ("Synthetic text-to-speech callers only. This is not a substitute for testing with "
           "human callers, real phones and networks, accents and real background noise.")
 
+HUMAN_CAVEAT = ("One person's voice through a browser microphone in an ordinary room: real speech, but not "
+                "a phone line, not a population of callers, accents or background conditions.")
+AUDIO_SOURCES = {"synthetic-tts": CAVEAT, "human-mic": HUMAN_CAVEAT}
+
 # Learn, Voice Live token usage and cost estimation (Azure OpenAI model family):
 # ~10 tokens per second of input audio, ~20 per second of output audio.
 INPUT_TOKENS_PER_S = 10
@@ -352,17 +356,17 @@ def turn_settled(window: list[tuple[float, dict[str, Any]]], *, now: float, quie
     return created[-1] in done and now - window[-1][0] > quiet_s
 
 
-def answer_audio_started(window: list[tuple[float, dict[str, Any]]], hold_text: str) -> float | None:
-    """Time of the first agent audio that is not the hold message (barge-in during the real answer)."""
+def answer_audio_started(window: list[tuple[float, dict[str, Any]]], hold_text: str | list[str]) -> float | None:
+    """Time of the first agent audio that is not a hold message (barge-in during the real answer)."""
     text: dict[str, str] = {}
-    prefix = (hold_text or "").casefold()[:10]
+    prefixes = [h.casefold()[:10] for h in ([hold_text] if isinstance(hold_text, str) else hold_text or []) if h]
     for t, e in window:
         kind = e.get("type")
         if kind in ("response.output_audio_transcript.delta", "response.audio_transcript.delta"):
             text[e.get("item_id")] = text.get(e.get("item_id"), "") + e.get("delta", "")
         elif kind in AUDIO_DELTA:
             said = text.get(e.get("item_id"), "").strip().casefold()
-            if len(said) >= 8 and not (prefix and said.startswith(prefix)):
+            if len(said) >= 8 and not any(said.startswith(p) for p in prefixes):
                 return t
     return None
 
@@ -460,14 +464,17 @@ def _scan(obj: Any, path: str = "$") -> None:
 
 def build_manifest(*, rows: list[dict[str, Any]], barge_in: list[dict[str, Any]], cost: list[dict[str, Any]],
                    generated_at: str, agent_versions: dict[str, str],
-                   metric_sources: dict[str, str] | None = None) -> dict[str, Any]:
+                   metric_sources: dict[str, str] | None = None,
+                   audio_source: str = "synthetic-tts") -> dict[str, Any]:
+    if audio_source not in AUDIO_SOURCES:
+        raise ValueError(f"audio_source must be one of {sorted(AUDIO_SOURCES)}")
     return {
         "schema": SCHEMA,
         "tool_version": TOOL_VERSION,
         "generated_at": generated_at,
-        "audio_source": "synthetic-tts",
-        "human_caller_tested": False,
-        "caveat": CAVEAT,
+        "audio_source": audio_source,
+        "human_caller_tested": audio_source == "human-mic",
+        "caveat": AUDIO_SOURCES[audio_source],
         "agent_versions": agent_versions,
         "rows": rows,
         "barge_in": barge_in,
@@ -478,8 +485,9 @@ def build_manifest(*, rows: list[dict[str, Any]], barge_in: list[dict[str, Any]]
 
 def write_manifest(path: Path, manifest: dict[str, Any]) -> None:
     _scan(manifest)
-    if manifest.get("schema") != SCHEMA or manifest.get("human_caller_tested") is not False:
-        raise ValueError("manifest must carry the voice-eval schema and the synthetic-audio boundary")
+    if (manifest.get("schema") != SCHEMA or manifest.get("audio_source") not in AUDIO_SOURCES
+            or manifest.get("human_caller_tested") is not (manifest.get("audio_source") == "human-mic")):
+        raise ValueError("manifest must carry the voice-eval schema and a consistent audio-source boundary")
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
@@ -893,7 +901,7 @@ def report(args: argparse.Namespace) -> int:
     agent_versions = json.loads(args.agent_versions) if args.agent_versions else {}
     manifest = build_manifest(rows=rows, barge_in=barges, cost=cost_rows,
                               generated_at=dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                              agent_versions=agent_versions,
+                              agent_versions=agent_versions, audio_source=args.audio_source,
                               metric_sources={"latency": "client-side event timestamps",
                                               "tokens": "Azure Monitor Voice Live metrics on the Foundry account when available",
                                               "prices": "Azure Retail Prices API, list price, calculated not billed"})
@@ -960,6 +968,8 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--prices", required=True)
     rp.add_argument("--account-resource-id", default="")
     rp.add_argument("--agent-versions", default="")
+    rp.add_argument("--audio-source", choices=sorted(AUDIO_SOURCES), default="synthetic-tts",
+                    help="human-mic for calls recorded with voice_human_caller.py")
     rp.add_argument("--out", default="specs/voice-eval-manifest.json")
     rp.add_argument("--markdown", default="specs/voice-eval-report.md")
     args = p.parse_args(argv)

@@ -799,15 +799,43 @@ What it showed:
 - **Telephony format.** Native G.711 was not better than 8 kHz audio resampled
   to 24 kHz PCM on these synthetic callers; one noisy English case id was
   misheard.
-- **Cost per call, calculated, not billed** (about 2.5 minutes, three turns):
-  conversation-engine model tokens measured in Azure Monitor priced at list
-  `gpt-5.4` Global rates with the measured 91-93% cache match: USD 0.19-0.24.
-  Voice tokens: the account's Voice Live metrics recorded **0** tokens for the
-  Hosted Voice wrapper during the runs, and Cost Management showed no Voice Live
-  meter for the 2026-11-10 voice demo on 2026-11-11, so the voice part is the
-  Learn rule of thumb (~10 tokens/s in, ~20 tokens/s out) priced at the Voice
-  Live list rows: USD 0.05-0.08. Which meter bills this preview path is not
-  documented. Hosted agent compute is billed per active session and not included.
+- **Cost per call** (about 2.5 minutes, three turns). Calculated from Azure
+  Monitor tokens at list `gpt-5.4` Global rates with the measured 91-93% cache
+  match: USD 0.19-0.24 for the conversation-engine model. **Billed actuals**
+  (Cost Management, read 2026-11-12): the 38 scripted voice calls and one text
+  request on 2026-11-11 cost USD 6.81 in model tokens and USD 0.20 in hosted
+  agent compute, about **USD 0.18 per call**. There was **no Voice Live or Speech
+  meter** for the Hosted Voice wrapper, either on that day or for the
+  2026-11-10 demo. On the same day, Voice Live meters did appear for a
+  direct Voice Live model session in another resource group of the same
+  subscription, so this was not a billing delay. Voice Live's own metrics on the
+  account also showed 0 tokens. So during this preview the speech part of a
+  Hosted Voice call (recognition, synthesis, turn-taking) was billed USD 0; only
+  the engine model and the hosted compute were billed. Learn does not document
+  this, and it can change: for planning, keep the Learn rule of thumb (~10 tokens/s
+  in, ~20 tokens/s out, USD 0.05-0.08 per call at Voice Live list rows) as the
+  likely voice cost.
+- **Human caller.** A one-click browser caller
+  (`threadlight-loadtest/scripts/voice_human_caller.py`, Italian page, three
+  lines: Italian, English with a spoken dashed id, barge-in) is ready and was
+  checked end to end with synthetic audio through the same page. Review on
+  2026-11-12 found that Italian callers heard an English hold message and English
+  labels ("approve_refund"). The bridges now localize the hold message and tell
+  the agent to answer in the caller's language; the default voice is
+  multilingual. A run with a real human voice is still pending.
+- **Real telephony (8 kHz phone line).** Foundry voice agents connect phone numbers
+  through Teams Phone extensibility or Twilio
+  ([telephony channels](https://learn.microsoft.com/azure/foundry/agents/how-to/voice-agent-telephony-channels)).
+  Teams Phone extensibility needs a Teams Phone service number on a resource account
+  and a Teams or Microsoft 365 administrator in the same tenant as the Foundry
+  project. Twilio needs a Twilio account with a voice-capable number. Neither
+  existed for this pilot. An Azure Communication Services number could be bought on
+  a resource created before 23 October 2026, but it is not a Foundry voice-agent
+  channel; it would need a custom Call Automation media bridge. Standalone ACS
+  number management is also retiring and new onboarding is limited
+  ([ACS retirement guide](https://learn.microsoft.com/azure/communication-services/acs-retirement-and-breaking-changes-guide)).
+  The 8 kHz path here is therefore the simulated telephony band plus native
+  G.711 on the wrapper, not a real phone call.
 
 Not shown by this: human voices, accents, real phones and networks, real
 background noise, perceived voice quality and venue latency. Synthetic callers

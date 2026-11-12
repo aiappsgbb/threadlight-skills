@@ -180,7 +180,7 @@ voice_opt_in_source: null               # REQUIRED when agent_type: voice or voi
 voice_opt_in_evidence: null             # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: quote of the user's spoken-conversation requirement
 preview_acknowledged: null              # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: must be `true` (Foundry voice agents are preview)
 voice_frontend: none                    # none | hosted-voice. Opt-in voice front-end (Foundry Hosted Voice, preview) on the hosted agent; item 2c
-voice_name: null                        # optional with voice_frontend: hosted-voice: Azure voice, e.g. it-IT-ElsaNeural (default en-US-AvaNeural)
+voice_name: null                        # optional with voice_frontend: hosted-voice: Azure voice, e.g. it-IT-IsabellaMultilingualNeural (default en-US-AvaMultilingualNeural; multilingual voices speak the caller language)
 voice_hold_text: null                   # optional with voice_frontend: hosted-voice: hold message spoken during slow tool turns, in the voice's language
 deployment_target: demo-sandbox         # demo-sandbox | customer-pilot | production-bound
 ```

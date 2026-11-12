@@ -966,10 +966,43 @@ _VOICE_MAX_INPUT_CHARS = 16_000
 _VOICE_MAX_PENDING_TURNS = 4
 _VOICE_ABORT_WAIT_SECONDS = 5
 _VOICE_HOLD_SECONDS = float(os.environ.get("THREADLIGHT_VOICE_HOLD_SECONDS", "") or "4")
-_VOICE_HOLD_TEXT = os.environ.get("THREADLIGHT_VOICE_HOLD_TEXT", "").strip() or "One moment, I'm checking that."
+# Hold message in the caller's language when THREADLIGHT_VOICE_HOLD_TEXT is not set
+# (review 2026-11-12: Italian calls had an English hold message).
+_VOICE_HOLD_TEXTS = {
+    "en": "One moment, I'm checking that.", "it": "Un momento, sto verificando.",
+    "es": "Un momento, lo estoy comprobando.", "fr": "Un instant, je vérifie.",
+    "de": "Einen Moment, ich prüfe das.", "pt": "Um momento, estou a verificar.",
+    "el": "Μια στιγμή, το ελέγχω.",
+}
+_VOICE_LANGUAGE_WORDS = {
+    "en": {"the", "please", "and", "to", "of", "is", "it", "my", "should", "we", "return", "hi", "can", "you", "this", "what"},
+    "it": {"il", "lo", "la", "di", "che", "per", "un", "una", "reso", "può", "puoi", "valuti", "dobbiamo", "non", "è",
+           "mi", "buongiorno", "grazie", "sono", "favore", "del", "della", "questo", "vorrei", "ciao"},
+    "es": {"el", "los", "por", "favor", "que", "devolución", "puede", "hola", "quiero", "esta", "gracias"},
+    "fr": {"le", "les", "pour", "est", "bonjour", "retour", "vous", "je", "merci", "une", "des"},
+    "de": {"der", "die", "das", "und", "bitte", "ist", "ich", "rückgabe", "guten", "können", "eine"},
+    "pt": {"o", "os", "por", "favor", "devolução", "obrigado", "olá", "uma", "não", "você"},
+}
+
+
+def _voice_language(text: str) -> str:
+    """Best-effort language of a recognised utterance; English when unsure."""
+    if any("\u0370" <= ch <= "\u03ff" for ch in text):
+        return "el"
+    words = re.findall(r"[^\W\d_]+", text.lower())
+    scores = {lang: sum(w in vocab for w in words) for lang, vocab in _VOICE_LANGUAGE_WORDS.items()}
+    best = max(scores, key=lambda lang: (scores[lang], lang == "en"))
+    return best if scores[best] > scores["en"] else "en"
+
+
+def _voice_hold_text(utterance: str) -> str:
+    configured = os.environ.get("THREADLIGHT_VOICE_HOLD_TEXT", "").strip()
+    return configured or _VOICE_HOLD_TEXTS[_voice_language(utterance)]
 # Speech recognition drops separators from spoken identifiers ("RMA2026104418" for a spoken
 # RMA-2026-104418, live voice eval 2026-11-11), and long spoken answers cost audio time.
 _VOICE_NOTE = ("Host note: this is a spoken call; the caller's words come from speech recognition. "
+               "Answer in the same language as the caller, every word including labels and decision names "
+               "(say \"approvare il rimborso\", not \"approve_refund\", to an Italian caller). "
                "Identifiers and numbers may have lost their separators or spacing (ABC-2026-0042 heard as "
                "ABC20260042 or ABC 2026 0042): restore the format your tools expect before calling them, and "
                "if a lookup still finds nothing, ask the caller to spell the identifier. Keep the spoken answer "
@@ -1103,7 +1136,7 @@ async def _voice_turn(bridge_session, call: _VoiceCall, item_id: str, input_text
                             if done:
                                 break
                             await bridge_session.send(ResponseOutputTextDone(
-                                response_id=response_id, item_id=new_item_id(), text=_VOICE_HOLD_TEXT))
+                                response_id=response_id, item_id=new_item_id(), text=_voice_hold_text(input_text)))
                             wait = call.hold_repeat
                         answer = work.result()
                     except asyncio.CancelledError:

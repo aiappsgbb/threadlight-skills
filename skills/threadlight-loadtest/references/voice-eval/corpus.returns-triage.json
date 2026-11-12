@@ -2,7 +2,7 @@
   "name": "returns-triage voice corpus (canonical example)",
   "notes": "Spoken callers for the returns-triage example (recommend-only sample data). Case ids are spoken letter by letter and digit by digit, like a caller reading a reference. Synthetic TTS callers only: not a substitute for human callers.",
   "projected_usd_per_call": 0.15,
-  "hold_text": "One moment, I'm checking that.",
+  "hold_text": ["One moment, I'm checking that.", "Un momento, sto verificando.", "Μια στιγμή, το ελέγχω."],
   "decision_keywords": {
     "approve_refund": ["approve", "approval of the refund", "full refund", "approvare", "approvo", "approvazione", "rimborso completo", "concedere il rimborso", "έγκριση", "εγκρίν", "εγκρίσ"],
     "deny_refund": ["deny", "denial", "not eligible", "negare", "negato", "diniego", "rifiut", "non idoneo", "non è idoneo", "απόρριψ", "απορρί", "δεν είναι επιλέξιμ"],
