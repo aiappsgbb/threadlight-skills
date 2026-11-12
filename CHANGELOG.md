@@ -7,6 +7,39 @@ field.
 
 ## [Unreleased]
 
+### 2.49.0: the voice agent answers in the caller's language; human-caller client; billed voice cost
+
+- **Caller language.** Both GHCP voice bridges tell the agent to answer in the
+  same language as the caller, including labels and decision names. Without a
+  fixed `voice_hold_text` they speak the hold message in the caller's language
+  (English, Italian, Spanish, French, German, Portuguese, Greek; English when
+  unsure). The generated default voice is `en-US-AvaMultilingualNeural`;
+  multilingual voices speak the auto-detected language of the text (Learn,
+  language support). Review on 2026-11-12 had found Italian calls with an
+  English hold message and English labels.
+- **`threadlight-loadtest/scripts/voice_human_caller.py`:** one-click browser
+  caller (localhost proxy holds the Entra token). It runs the script lines,
+  ends each call when the answer has played and cues the barge-in. It has an
+  Italian page (`--ui-lang it`) and writes calls in the harness format;
+  `voice_eval.py report --audio-source human-mic` labels the manifest
+  `human_caller_tested: true`.
+- **Billed voice cost (Cost Management actuals, read 2026-11-12):** 38 scripted
+  Hosted Voice calls cost USD 6.81 in model tokens and USD 0.20 in hosted compute
+  (about USD 0.18 per call). No Voice Live or Speech meter was billed for the
+  wrapper, while Voice Live meters for a direct Voice Live session in the same
+  subscription appeared that day. This is not documented and can change; the
+  Learn rule of thumb remains the planning figure.
+- **Telephony boundary:** Foundry voice-agent phone channels are Teams Phone
+  extensibility or Twilio; neither is available on this pilot. ACS numbers
+  are not a voice-agent channel and standalone ACS number management is
+  retiring. The documented real-phone path is not tested.
+- **Live (2026-11-12, eastus2, rg-vox-1111):** agent v3 with an
+  `it-IT-IsabellaMultilingualNeural` wrapper. A synthetic Italian call through the
+  browser page answered entirely in Italian, including the hold message ("Un
+  momento, sto verificando."); a synthetic English call answered in English.
+- **Not verified:** a run with a real human voice (client ready, not run yet),
+  a real phone call.
+
 ### 2.48.0: identity end to end, second round (A2A live, exact blockers)
 
 - **A2A, live:** a GHCP hosted agent calls a Foundry agent through a toolbox `a2a`

@@ -152,7 +152,7 @@ def agent_type(spec: str) -> str:
     return m.group(1).lower() if m else "hosted"
 
 
-VOICE_DEFAULT_NAME = "en-US-AvaNeural"
+VOICE_DEFAULT_NAME = "en-US-AvaMultilingualNeural"
 
 
 def _spec_scalar(spec: str, key: str) -> str | None:

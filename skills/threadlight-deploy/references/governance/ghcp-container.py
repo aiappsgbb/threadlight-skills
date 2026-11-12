@@ -240,11 +240,46 @@ def _sse_frame(chunk):
     return event, (json.loads("\n".join(data)) if data else {})
 
 
-_VOICE_NOTE = ("Host note: this is a spoken call. Do not read long identifiers aloud (operation_id, "
+_VOICE_NOTE = ("Host note: this is a spoken call. Answer in the same language as the caller, every word "
+               "including labels and decision names (say \"approvare il rimborso\", not \"approve_refund\", to an "
+               "Italian caller). Do not read long identifiers aloud (operation_id, "
                "expected_etag, audit_id); say that they are recorded. Keep answers to one or two short sentences. "
                "The caller's words come from speech recognition: identifiers may have lost their separators or "
                "spacing (ABC-2026-0042 heard as ABC20260042); restore the format your tools expect before calling "
                "them, and if a lookup still finds nothing, ask the caller to spell the identifier.")
+
+# Hold message in the caller's language when THREADLIGHT_VOICE_HOLD_TEXT is not set
+# (review 2026-11-12: Italian calls had an English hold message).
+_VOICE_HOLD_TEXTS = {
+    "en": "One moment, I'm checking that.", "it": "Un momento, sto verificando.",
+    "es": "Un momento, lo estoy comprobando.", "fr": "Un instant, je vérifie.",
+    "de": "Einen Moment, ich prüfe das.", "pt": "Um momento, estou a verificar.",
+    "el": "Μια στιγμή, το ελέγχω.",
+}
+_VOICE_LANGUAGE_WORDS = {
+    "en": {"the", "please", "and", "to", "of", "is", "it", "my", "should", "we", "return", "hi", "can", "you", "this", "what"},
+    "it": {"il", "lo", "la", "di", "che", "per", "un", "una", "reso", "può", "puoi", "valuti", "dobbiamo", "non", "è",
+           "mi", "buongiorno", "grazie", "sono", "favore", "del", "della", "questo", "vorrei", "ciao"},
+    "es": {"el", "los", "por", "favor", "que", "devolución", "puede", "hola", "quiero", "esta", "gracias"},
+    "fr": {"le", "les", "pour", "est", "bonjour", "retour", "vous", "je", "merci", "une", "des"},
+    "de": {"der", "die", "das", "und", "bitte", "ist", "ich", "rückgabe", "guten", "können", "eine"},
+    "pt": {"o", "os", "por", "favor", "devolução", "obrigado", "olá", "uma", "não", "você"},
+}
+
+
+def _voice_language(text: str) -> str:
+    """Best-effort language of a recognised utterance; English when unsure."""
+    if any("\u0370" <= ch <= "\u03ff" for ch in text):
+        return "el"
+    words = re.findall(r"[^\W\d_]+", text.lower())
+    scores = {lang: sum(w in vocab for w in words) for lang, vocab in _VOICE_LANGUAGE_WORDS.items()}
+    best = max(scores, key=lambda lang: (scores[lang], lang == "en"))
+    return best if scores[best] > scores["en"] else "en"
+
+
+def _voice_hold_text(utterance: str) -> str:
+    configured = os.environ.get("THREADLIGHT_VOICE_HOLD_TEXT", "").strip()
+    return configured or _VOICE_HOLD_TEXTS[_voice_language(utterance)]
 
 
 def _voice_prompt(call, utterance):
@@ -274,7 +309,6 @@ def attach_voice_bridge(host, run_turn):
         SessionReady, SessionRejected, new_item_id, new_response_id)
 
     hold_seconds = float(os.environ.get("THREADLIGHT_VOICE_HOLD_SECONDS", "") or "4")
-    hold_text = os.environ.get("THREADLIGHT_VOICE_HOLD_TEXT", "").strip() or "One moment, I'm checking that."
     calls, background = {}, set()
 
     async def send(call, response_id, message):
@@ -325,7 +359,7 @@ def attach_voice_bridge(host, run_turn):
                 if done:
                     break
                 await send(call, response_id, ResponseOutputTextDone(
-                    response_id=response_id, item_id=new_item_id(), text=hold_text))
+                    response_id=response_id, item_id=new_item_id(), text=_voice_hold_text(utterance)))
                 wait = call["hold"][1]
             try:
                 final, failed = work.result()

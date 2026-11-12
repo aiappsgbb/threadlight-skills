@@ -155,3 +155,18 @@ test('voice bridges tell the agent that spoken identifiers may have lost separat
   const readme = collapse(read('skills/threadlight-deploy/references/hosted-agent/ghcp/README.md'));
   assert.match(readme, /separators/i);
 });
+
+test('voice answers in the caller language; human caller, billing actuals and telephony boundary documented', () => {
+  const readme = collapse(read('skills/threadlight-deploy/references/hosted-agent/ghcp/README.md'));
+  assert.match(readme, /same language as the caller/i);
+  assert.match(readme, /en-US-AvaMultilingualNeural/);
+  assert.ok(readme.includes('https://learn.microsoft.com/azure/ai-services/speech-service/language-support#text-to-speech-voices'));
+  const skill = collapse(read('skills/threadlight-loadtest/SKILL.md'));
+  for (const term of ['scripts/voice_human_caller.py', 'human-mic', '--ui-lang']) assert.ok(skill.includes(term), term);
+  const readiness = collapse(read('docs/production-readiness.md').split(/^### Voice readiness/m)[1].split(/^##/m)[0]);
+  assert.match(readiness, /Cost Management/);
+  assert.match(readiness, /no Voice Live (or Speech )?meter/i);
+  assert.match(readiness, /Teams Phone extensibility/);
+  assert.match(readiness, /Twilio/);
+  assert.ok(readiness.includes('https://learn.microsoft.com/azure/foundry/agents/how-to/voice-agent-telephony-channels'));
+});

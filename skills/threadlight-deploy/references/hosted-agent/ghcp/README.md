@@ -256,11 +256,18 @@ It is generated only on an explicit, preview-acknowledged user opt-in (SPEC § 1
   (it still serves `/invocations` for text);
 - a `<agent>-voice` service: `kind: voice`, `uses: [ai-project, <agent>]`,
   `conversationEngine: {type: hosted_agent, name: <agent>}`, 24 kHz PCM audio,
-  server VAD, `azure-speech` transcription and the SPEC `voice_name`
-  (`references/pilot/voice.azure.yaml`);
+  server VAD, `azure-speech` transcription and the SPEC `voice_name`, default
+  `en-US-AvaMultilingualNeural` (`references/pilot/voice.azure.yaml`). Multilingual
+  voices speak the auto-detected language of the text
+  ([Learn](https://learn.microsoft.com/azure/ai-services/speech-service/language-support#text-to-speech-voices));
+  for a mainly Italian line choose one whose primary locale is Italian, such as
+  `it-IT-IsabellaMultilingualNeural`. A monolingual voice reads every language
+  with its own pronunciation;
 - `requiredVersions` azd `>=1.32.0` and `azure.ai.agents` `>=1.0.0-beta.13`;
-- with SPEC `voice_hold_text`, `THREADLIGHT_VOICE_HOLD_TEXT` (hold message in the
-  voice's language; default English).
+- with SPEC `voice_hold_text`, `THREADLIGHT_VOICE_HOLD_TEXT` (one fixed hold
+  message). Without it the container picks the hold message in the caller's
+  language from the recognised words (English, Italian, Spanish, French, German,
+  Portuguese, Greek; English when unsure).
 
 `azure.ai.agents` 1.0.0 refuses to package the wrapper with
 `preview feature "agents.voice" is disabled` unless
@@ -273,7 +280,7 @@ Bridge behaviour in `container.py`:
 | Bridge event | Container behaviour |
 |---|---|
 | `session.start` (`protocol_version` `1.0`) | `session.ready`; another version gets `session.rejected` `protocol_mismatch`; no Copilot client gets `startup_failed` |
-| `user.message` | `response.created`, then one Copilot turn; while it runs, a hold message (`THREADLIGHT_VOICE_HOLD_TEXT`) as its own `response.output_text.done` item before each Voice Live deadline; then the final assistant message, markdown markup removed, and `response.done` |
+| `user.message` | `response.created`, then one Copilot turn; while it runs, a hold message (`THREADLIGHT_VOICE_HOLD_TEXT`, or localized) as its own `response.output_text.done` item before each Voice Live deadline; then the final assistant message, markdown markup removed, and `response.done` |
 | empty or oversized text, too many queued turns | `response.none` (`empty_input`, `input_too_large`, `capacity_exceeded`) |
 | failed turn | `error` with the `response_id` (`generation_failed` or `empty_answer`) |
 | `user.barge_in`, `response.cancelled`, `response.timeout` | cancel the active turn and `abort()` the Copilot turn; no further output for that response |
@@ -283,7 +290,10 @@ One voice call is one Copilot conversation keyed per WebSocket (never the
 container-wide `FOUNDRY_AGENT_SESSION_ID`); a reconnect starts a new conversation.
 `heard_text` from a barge-in is not written back into the Copilot transcript.
 Each spoken turn reaches Copilot as a short host note followed by `Caller: <text>`.
-The note says the words come from speech recognition, that identifiers may have
+The note asks the agent to answer in the same language as the caller, every word
+including labels and decision names (review on 2026-11-12: Italian calls had an English hold
+message and English labels). It also says the words
+come from speech recognition, that identifiers may have
 lost their separators or spacing (the 2026-11-11 voice evaluation heard a spoken
 `R M A 2026 1 0 4 4 1 8` as `RMA2026104418`, and the agent's lookup found nothing),
 that the agent restores the format its tools expect and asks the caller to spell

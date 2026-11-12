@@ -79,7 +79,7 @@ class FakeSession:
         if text == "boom":
             self._emit(_Event(ERROR, "model failed"))
             return
-        if text == "slow tool turn":
+        if text == "slow tool turn" or "lento" in text or "slowly" in text:
             await asyncio.sleep(1.2)  # e.g. MCP tool calls before the final answer
         if text == "hang":
             self.client.hanging.set()
@@ -345,6 +345,34 @@ def test_a_slow_turn_speaks_hold_messages_before_voice_live_deadlines(monkeypatc
     assert final["text"].endswith("|turn 1|seen: slow tool turn")
     assert len({f["item_id"] for f in spoken}) == len(spoken), "each spoken message is its own output item"
     assert {f["response_id"] for f in frames} == {frames[0]["response_id"]}
+
+
+@pytest.mark.parametrize("utterance,hold", [
+    ("Valuti il reso, è un turno lento", "Un momento, sto verificando."),
+    ("Please triage this return slowly", "One moment, I'm checking that."),
+])
+def test_without_a_configured_hold_text_the_hold_message_follows_the_caller_language(monkeypatch, utterance, hold):
+    # Review 2026-11-12: Italian calls had the hold message "One moment, I'm checking that."
+    monkeypatch.setenv("THREADLIGHT_VOICE_HOLD_SECONDS", "0.3")
+    monkeypatch.delenv("THREADLIGHT_VOICE_HOLD_TEXT", raising=False)
+    runtime = _load(monkeypatch, voice=True)
+    with TestClient(runtime.app) as client, client.websocket_connect("/invocations_ws") as ws:
+        _start(ws, idle_ms=1000)
+        _say(ws, utterance, 1)
+        frames = _turn(ws)
+        _end(ws)
+    spoken = [f["text"] for f in frames if f["type"] == "response.output_text.done"]
+    assert len(spoken) >= 2 and set(spoken[:-1]) == {hold}
+
+
+def test_spoken_turn_tells_the_agent_to_answer_in_the_caller_language(runtime):
+    with TestClient(runtime.app) as client, client.websocket_connect("/invocations_ws") as ws:
+        _start(ws)
+        _say(ws, "valuti il reso", 1)
+        _turn(ws)
+        _end(ws)
+    note = runtime._client.prompts[0].rsplit("Caller: ", 1)[0]
+    assert "same language as the caller" in note and "labels" in note
 
 
 def test_hold_messages_follow_the_deadlines_announced_in_session_start(runtime):

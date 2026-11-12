@@ -162,3 +162,16 @@ def test_selfcheck_rejects_an_inconsistent_voice_wrapper(voiced, tmp_path: Path,
     checks = {c["name"]: c for c in json.loads(report.read_text())["checks"]}
     assert checks["hosted-agent-definition"]["status"] == "fail"
     assert needle in checks["hosted-agent-definition"]["detail"]
+
+
+def test_default_voice_is_multilingual_so_answers_follow_the_caller_language(tmp_path):
+    # Review 2026-11-12: an Italian caller must hear Italian. Azure multilingual voices speak the
+    # auto-detected language of the text (Learn: language-support#text-to-speech-voices).
+    project = _workspace(tmp_path, OPT_IN.replace("voice_name: it-IT-ElsaNeural\n", "")
+                         .replace('voice_hold_text: "Un momento, sto controllando."\n', ""))
+    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    services = _services(project)
+    assert services["order-returns-agent-voice"]["audio"]["output"]["voice"]["name"] == "en-US-AvaMultilingualNeural"
+    env = {e["name"] for e in services["order-returns-agent"]["environmentVariables"]}
+    assert "THREADLIGHT_VOICE_HOLD_TEXT" not in env  # no fixed hold language: the host localizes it

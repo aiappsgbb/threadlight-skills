@@ -473,6 +473,32 @@ documented; the report prices the same tokens under each candidate meter row in
 agent compute (vCPU and memory per active session) is billed separately and is
 not attributed per call.
 
+### Human caller (browser microphone)
+
+`scripts/voice_human_caller.py` lets a person run the same scored calls in their
+own voice. It starts a local page (`http://127.0.0.1:8790`) and a localhost proxy
+that holds the Microsoft Entra token (a browser WebSocket cannot send an
+Authorization header). One click starts the script: each line appears on screen,
+the person reads it, the call ends by itself when the answer has been played,
+and a barge-in line tells them when to interrupt. `--ui-lang it` shows the page
+in Italian; `--only` picks lines from
+[`corpus.human-caller.json`](references/voice-eval/corpus.human-caller.json).
+Each call is appended to `calls.jsonl` in the harness format, so
+`voice_eval.py report --audio-source human-mic` scores it the same way and the
+manifest records `audio_source: human-mic`, `human_caller_tested: true`.
+
+```sh
+python3 scripts/voice_human_caller.py --project-endpoint "$AZURE_AI_PROJECT_ENDPOINT" \
+  --agent <agent>-voice --ui-lang it --corpus references/voice-eval/corpus.human-caller.json \
+  --results-dir .voice-eval/human --only h-it-escalate h-en-deny h-en-barge
+```
+
+End of speech is the end of the last microphone frame above the speech level
+before the server's `speech_stopped`; browser capture and playback buffering are
+not included. Use headphones: speaker echo can trigger the agent's interruption
+detection. One person in one room is real speech, not a phone line or a caller
+population.
+
 Live results (2026-11-11) are in
 [production-readiness.md](../../docs/production-readiness.md#voice-readiness-only-when-the-pilot-has-a-voice-front-end).
 

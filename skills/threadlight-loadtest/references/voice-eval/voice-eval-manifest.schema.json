@@ -10,8 +10,8 @@
     "schema": {"const": "threadlight.voice-eval/v1"},
     "tool_version": {"type": "string"},
     "generated_at": {"type": "string"},
-    "audio_source": {"const": "synthetic-tts"},
-    "human_caller_tested": {"const": false},
+    "audio_source": {"enum": ["synthetic-tts", "human-mic"]},
+    "human_caller_tested": {"type": "boolean"},
     "caveat": {"type": "string", "minLength": 20},
     "agent_versions": {"type": "object", "additionalProperties": {"type": "string"}},
     "rows": {
@@ -22,7 +22,7 @@
         "required": ["variant", "condition", "lang", "turns"],
         "properties": {
           "variant": {"type": "string"},
-          "condition": {"enum": ["wb16", "nb8", "nb8_noise"]},
+          "condition": {"enum": ["wb16", "nb8", "nb8_noise", "human-mic"]},
           "lang": {"type": "string"},
           "turns": {"type": "integer", "minimum": 0},
           "failed_calls": {"type": "integer", "minimum": 0},
