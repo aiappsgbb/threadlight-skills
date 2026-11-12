@@ -146,6 +146,9 @@ code, pre { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
   margin: 0; padding: 12px; background: #111827; color: #f9fafb; border-radius: var(--radius);
   font-size: 12px; line-height: 1.6; white-space: pre; overflow-x: auto;
 }
+.ws-approval-email { margin: 10px 0 0; padding: 10px 12px; border-radius: var(--radius); background: #ecfdf5; color: #065f46; font-weight: 600; }
+.ws-approval-panel { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.ws-btn-approve, .ws-btn-approve:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #fff; }
 .ws-command-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .ws-copy-status { font-size: 12px; color: var(--muted); }
 

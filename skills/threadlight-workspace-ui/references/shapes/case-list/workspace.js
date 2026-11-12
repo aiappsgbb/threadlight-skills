@@ -45,6 +45,7 @@
   function statusLabel(s) { return (STATUS[s] && STATUS[s].label) || String(s || 'unknown').replace(/_/g, ' '); }
 
   function money(amount) {
+    if (amount == null) return '—';
     var currency = (state.doc && state.doc.workspace && state.doc.workspace.currency) || 'EUR';
     try {
       return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency }).format(Number(amount) || 0);
@@ -321,9 +322,47 @@
     Object.keys(p.proposed_arguments || {}).forEach(function (k) {
       args.appendChild(el('tr', {}, [el('th', { scope: 'row', text: k }), el('td', { text: String(p.proposed_arguments[k]) })]));
     });
+    var approval = ((state.doc && state.doc.config) || {}).approval || {};
+    var mode = approval.mode === 'email' || approval.mode === 'panel' ? approval.mode : null;
+    $('pending-email').hidden = mode !== 'email';
+    $('pending-email').textContent = mode === 'email'
+      ? 'Approval email sent to ' + (approval.recipient || 'the approver') + '. The approver clicks Approve or Reject in Outlook; nothing to do here.'
+      : '';
+    $('pending-panel').hidden = mode !== 'panel';
+    $('pending-approve').disabled = false;
+    $('pending-reject').disabled = false;
+    $('panel-status').textContent = '';
+    $('pending-cli').hidden = !!mode;
     $('pending-file').textContent = c.pending_file || 'pending.json';
     $('pending-command').textContent = reviewCommand(c);
     $('copy-status').textContent = '';
+  }
+
+  /* ---------- panel approval (authenticated endpoint records it as the approver) ---------- */
+
+  function panelDecide(approved) {
+    var c = find(state.selectedId);
+    var approval = ((state.doc && state.doc.config) || {}).approval || {};
+    if (!c || !c.pending || approval.mode !== 'panel' || !approval.url) return;
+    $('pending-approve').disabled = true;
+    $('pending-reject').disabled = true;
+    $('panel-status').textContent = 'Sign in as the approver in the browser window that opens…';
+    fetch(approval.url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-Threadlight-Panel': approval.token || '' },
+      body: JSON.stringify({ operation_id: c.pending.operation_id, approved: approved })
+    }).then(function (res) {
+      return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.body && r.body.error || 'not recorded');
+      $('panel-status').textContent = (approved ? 'Approved' : 'Rejected') +
+        ' as you. Nothing has executed yet: the agent resumes the held write.';
+    }).catch(function (e) {
+      $('pending-approve').disabled = false;
+      $('pending-reject').disabled = false;
+      $('panel-status').textContent = 'Not recorded (' + e.message + ').';
+    });
   }
 
   function copyCommand() {
@@ -396,6 +435,8 @@
       r.addEventListener('change', function () { var c = find(state.selectedId); if (c) renderPending(c); });
     });
     $('copy-command').addEventListener('click', copyCommand);
+    $('pending-approve').addEventListener('click', function () { panelDecide(true); });
+    $('pending-reject').addEventListener('click', function () { panelDecide(false); });
     $('open-audit').addEventListener('click', function () {
       if (typeof window.openThreadlightAudit !== 'function') return;
       window.openThreadlightAudit();

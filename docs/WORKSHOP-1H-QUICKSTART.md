@@ -468,12 +468,20 @@ with four Rego business rules and deferred human approval. The facilitator
 deploys the shared governance foundation and this pilot **once, before** the
 workshop (its README has the runbook), then during the session:
 
-1. `demo_capacity.py warm` (services and a tool-free agent ping).
-2. Run the four beats with `invoke.py`; the Approver decides with
-   `threadlight-review-action` signed in as themselves.
+1. `demo_capacity.py warm`: a running replica on every service, health checks
+   and a tool-free agent ping (98 s from fully cold in the live run).
+2. Run the four beats with `invoke.py`. For the escalation the Approver makes
+   **one click**, signed in as themselves: **Approve** in the approval panel
+   (`review_queue.py --panel` plus `approval_panel.py`, open in the room's
+   browser) or in the native Outlook approval email when the deployment binds
+   that channel. No terminal for the Approver.
 3. `demo_capacity.py cool`, so nothing stays always on.
 
-It was executed live on 2026-11-10 ([S8](governed-returns-validation.md#s8-governed-write-on-ghcp-workshop-kit)).
+It was executed live on 2026-11-10 and 2026-11-12, including the one-click panel
+approval ([S8](governed-returns-validation.md#s8-governed-write-on-ghcp-workshop-kit)).
+The Outlook email needs a sender mailbox different from the Approver's: in the
+live run sender and recipient were the same mailbox and the email stayed in
+Sent Items.
 That evidence is for that deployment and that one binding; it is not a
 governance pass for participants' pilots or whole-agent governance.
 
@@ -506,8 +514,8 @@ audio from a script, no human voice; ranges are min-max across those calls):
 |---|---|---|
 | `demo_capacity.py warm ... --agent <agent>` | services and agent ready (pass `--agent`, the default names the kit agent; `--gateway-url` ends in `/mcp`, otherwise the gateway check waits on a wrong URL) | about 3 min (190 s) |
 | Speak: "Triage return case R-M-A dash W zero four dash C and record your decision." | the agent says one moment, then that nothing is recorded and a human Approver must decide | hold message 4.4-28 s, answer complete 17-61 s after the end of speech (the slow call waited 20 s before Voice Live opened the response) |
-| Pending record | the client receives the host's exact `pending_approval` record as unspoken data (`response.invocation.delta`); show it in the [case-list workspace](../skills/threadlight-workspace-ui/references/shapes/case-list/README.md) (pending card, reviewer command, no Approve button) | arrived 11-54 s after the end of speech |
-| Approver | `threadlight-review-action --pending <saved record> ...` signed in as themselves | 1.2 s for the recorded decision itself (sign-in time not measured) |
+| Pending record | the client receives the host's exact `pending_approval` record as unspoken data (`response.invocation.delta`); show it in the [case-list workspace](../skills/threadlight-workspace-ui/references/shapes/case-list/README.md) (pending card with **Approve / Reject** when served by the kit's approval panel, or "Approval email sent to …" with the Outlook channel) | arrived 11-54 s after the end of speech |
+| Approver | clicks **Approve** in the approval panel or the approval email, signed in as themselves | 1.2 s for the recorded decision itself, measured on 2026-11-10 with the operator CLI on the same `review.decide` call the panel uses (sign-in time not measured) |
 | Speak: "The supervisor has approved it. Please complete that decision now." | the host gives the exact original arguments and operation id back as a host record; the agent says it was recorded | 10-12 s after the end of speech; whole call 53-92 s |
 | `demo_capacity.py cool` | everything back to zero replicas | - |
 

@@ -174,7 +174,12 @@ For the implemented returns email experience, deploy `review-approval.bicep`
 separately with an existing authorized Office 365 connection. It defaults to
 Disabled and uses English native **Approve / Reject** options, a fixed
 recipient, control-plane-only Entra trigger and SAS disabled. It does not create
-a connection, permission, grant or business effect.
+a connection, permission, grant or business effect. The trigger accepts the
+32-hex operation ids of MAF sessions and the 64-hex ids of the GHCP deferred
+relay. Authorize the Office 365 connection with a **sender mailbox different
+from the recipient**: in a GHCP live run with the same mailbox on both sides,
+Exchange kept the approval email only in Sent Items and nothing reached the
+inbox.
 
 Supply `outlook_approval` in the bind configuration using the actual observed
 workflow ID/version/digest, SAS-free URL, sender principal, requester mappings

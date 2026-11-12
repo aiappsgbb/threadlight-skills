@@ -83,3 +83,23 @@ def test_native_approval_email_escapes_untrusted_reason_markup():
     body = next(line for line in source.read_text().splitlines() if line.strip().startswith("Body:"))
     assert "replace(replace(replace(triggerBody()" in body
     assert all(entity in body for entity in ("&amp;", "&lt;", "&gt;"))
+
+
+def test_native_approval_trigger_accepts_ghcp_relay_operation_ids(tmp_path):
+    """MAF sessions use 32-hex operation ids; the GHCP deferred relay uses 64-hex ones."""
+    import re
+    source = Path(__file__).resolve().parents[1] / "references/governance/review-approval.bicep"
+    compiler = shutil.which("bicep")
+    command = [compiler, "build"] if compiler else ["az", "bicep", "build", "--file"]
+    output = tmp_path / "approval.json"
+    subprocess.run([*command, str(source), "--outfile", str(output)], check=True,
+                   capture_output=True, text=True, timeout=60)
+    workflow = json.loads(output.read_text())["resources"]
+    workflow = (list(workflow.values()) if isinstance(workflow, dict) else workflow)[0]
+    schema = workflow["properties"]["definition"]["triggers"]["Review_notification_requested"][
+        "inputs"]["schema"]["properties"]["operation_id"]
+    pattern = re.compile(schema["pattern"])
+    for accepted in ("a" * 32, "0f" * 32):
+        assert pattern.search(accepted) and len(accepted) <= schema["maxLength"]
+    for rejected in ("a" * 31, "a" * 33, "a" * 63, "a" * 65, "A" * 32, "g" * 64):
+        assert not (pattern.search(rejected) and len(rejected) <= schema["maxLength"])

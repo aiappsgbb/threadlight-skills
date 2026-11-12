@@ -81,29 +81,37 @@
           <h3 id="pending-title">Approval required</h3>
           <p class="ws-pending-lead">
             The governed gateway held this write. Nothing has changed yet.
-            This workspace cannot approve it: an authorised reviewer records the
-            decision with <code>threadlight-review-action</code>, signed in as themselves.
+            An authorised approver decides, signed in as themselves; the agent's
+            later resume verifies and consumes that decision.
           </p>
           <dl class="ws-fields" id="pending-fields"></dl>
           <table class="ws-args">
             <caption>Proposed arguments</caption>
             <tbody id="pending-args"></tbody>
           </table>
-          <fieldset class="ws-decision-choice">
-            <legend>Reviewer decision to put in the command</legend>
-            <label><input type="radio" name="review-decision" value="approve" checked> approve</label>
-            <label><input type="radio" name="review-decision" value="reject"> reject</label>
-          </fieldset>
-          <pre class="ws-command" id="pending-command" tabindex="0" aria-label="Review command"></pre>
-          <div class="ws-command-actions">
-            <button type="button" class="ws-btn" id="copy-command">Copy command</button>
-            <span class="ws-copy-status" id="copy-status" role="status" aria-live="polite"></span>
+          <p class="ws-approval-email" id="pending-email" role="status" hidden></p>
+          <div class="ws-approval-panel" id="pending-panel" hidden>
+            <button type="button" class="ws-btn ws-btn-approve" id="pending-approve">Approve</button>
+            <button type="button" class="ws-btn" id="pending-reject">Reject</button>
+            <span class="ws-copy-status" id="panel-status" role="status" aria-live="polite"></span>
           </div>
-          <p class="ws-pending-note">
-            Copying the command records nothing. Run it with the exact pending result
-            saved privately from the host (<code id="pending-file"></code>), not with this
-            display copy. The agent's later resume verifies and consumes the recorded decision.
-          </p>
+          <div id="pending-cli" hidden>
+            <fieldset class="ws-decision-choice">
+              <legend>Operator fallback: decision to put in the command</legend>
+              <label><input type="radio" name="review-decision" value="approve" checked> approve</label>
+              <label><input type="radio" name="review-decision" value="reject"> reject</label>
+            </fieldset>
+            <pre class="ws-command" id="pending-command" tabindex="0" aria-label="Review command"></pre>
+            <div class="ws-command-actions">
+              <button type="button" class="ws-btn" id="copy-command">Copy command</button>
+              <span class="ws-copy-status" id="copy-status" role="status" aria-live="polite"></span>
+            </div>
+            <p class="ws-pending-note">
+              Operator fallback. Copying the command records nothing. Run it with the exact
+              pending result saved privately from the host (<code id="pending-file"></code>),
+              not with this display copy.
+            </p>
+          </div>
         </section>
 
         <div id="decision-slot"></div>

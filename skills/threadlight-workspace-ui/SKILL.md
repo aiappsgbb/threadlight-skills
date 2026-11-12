@@ -437,8 +437,10 @@ and follow the matching path:
   `case-list` shell, data loader and detail pane, rebuild the center zone to
   the shape's anatomy and visual rules in the catalog above, copy the three
   `references/hitl-panels/` files into `components/` unchanged, and keep the
-  `case-list` approval boundary (show the reviewer command for
-  `pending_approval`, never approve in the page).
+  `case-list` approval boundary (`pending_approval` shows the one-click
+  approval channel from `config.approval`, the email notice or the
+  authenticated panel's Approve button, or the reviewer command as an operator
+  fallback; the page itself never records an approval).
 
 Record the path in `src/workspace/README.md` and in the hand-off report:
 "copied from the `<shape>` runnable reference" or "generated from the spec;
@@ -563,8 +565,9 @@ the data-access boundary should do this once.
 ✅ Served from a static server (`python3 -m http.server`): index.html,
    workspace.css/js, data/cases.json and components/*.html all return 200
 ✅ components/*.html are byte-identical to references/hitl-panels/
-✅ A pending_approval item shows the reviewer command; no control in the
-   page records an approval
+✅ A pending_approval item shows the configured approval channel (email
+   notice, authenticated panel Approve button, or the operator-fallback
+   reviewer command); no control in the page records an approval itself
 ✅ All filter pills clickable
 ✅ Detail pane opens on case selection
 ✅ Each toolbar button shows the right action gate behavior (links to
