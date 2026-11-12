@@ -525,10 +525,10 @@ on the agent. Three findings are not in the docs:
 |---|---|---|
 | Direct client with a user token for the agent blueprint (`api://<blueprint>/access_agent`) | Yes, agent identity acts for the user (preview) | Live, [endpoint authorization](https://learn.microsoft.com/azure/foundry/agents/concepts/agent-endpoint-authorization) |
 | Direct client with a Foundry token (`https://ai.azure.com`) | Documented for Microsoft tools only (`UserEntraToken`, Foundry as actor); worked here with `AgentOnBehalfOfUser` | Learn [user delegation](https://learn.microsoft.com/azure/foundry/agents/concepts/user-delegation) + observed |
-| Foundry playground and other development clients | Foundry audience only; no agent-identity actor | Documented, Not proven here |
-| Teams and Microsoft 365 publish (Bot Service schemes) | Foundry audience only; no agent-identity actor | Documented, Not proven here |
+| Foundry playground and other development clients | Foundry audience only; no agent-identity actor. The same Foundry-audience user token was proven programmatically below (A2A hop); the playground UI itself was not exercised | Documented; UI Not proven here |
+| Teams and Microsoft 365 publish (Bot Service schemes) | Foundry audience only; no agent-identity actor. A hosted agent needs the Responses protocol, which the platform bridges to Activity ([hosted agents](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#key-concepts)); the GHCP pilot serves Invocations only | Documented, Not proven here (see blockers) |
 | Middle tier passing `x-ms-user-identity` | Session isolation only, needs a custom role; not an Entra user token | Documented ([permissions](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions#delegate-the-end-user-identity)), Not proven here |
-| Agent-to-agent (A2A) | App-only or delegated where the target supports it | Documented ([A2A authentication](https://learn.microsoft.com/azure/foundry/agents/concepts/agent-to-agent-authentication)), Not proven here |
+| Agent-to-agent (A2A) to another Foundry agent | `UserEntraToken`: the user reaches the target agent; its custom tool only through undocumented, unstable behaviour. `AgenticIdentityToken`: no user | Live, see below |
 
 ### Stopping an agent: measured
 
@@ -544,8 +544,44 @@ For a rogue agent, disable the endpoint first (seconds, keeps evidence), then
 disable the agent identity and remove its grants. Deleting a version terminates
 its sessions but loses the version for investigation.
 
-Not proven here: Conditional Access on agent identities, Teams or playground
-users, A2A, a gateway block, and OBO for a governed write.
+### Agent to agent (A2A), live 2026-11-12
+
+Caller: the GHCP hosted agent, called by a user with a blueprint token, with
+`TOOLBOX_NAME` set to a toolbox holding one GA `a2a` tool (protocol 1.0).
+Target: a prompt agent with incoming A2A enabled (incoming A2A requires the
+Responses protocol, so the Invocations-only GHCP pilot cannot be a target;
+[enable incoming A2A](https://learn.microsoft.com/azure/foundry/agents/how-to/enable-agent-to-agent-endpoint)),
+whose MCP tool reaches the same downstream through `AgentOnBehalfOfUser`.
+
+| A2A connection | Target sees | Downstream result |
+|---|---|---|
+| `UserEntraToken`, audience `https://ai.azure.com` | the user: a user with no role on the target got 404 on the agent card; with **Foundry Agent Consumer** on the target agent only (about 8 minutes to take effect) the call went through | until 08:15: allowed user got records, `user_oid` = user, `actor_app_id` = **target** agent identity; denied user `access_denied` from the downstream. From about 09:30: `TOOL_USER_ERROR` (see below) |
+| `AgenticIdentityToken`, audience `https://ai.azure.com` | the caller agent identity: 404 without a role, accepted with Foundry Agent Consumer on the target agent (about 6 minutes) | the target's user-delegated tool fails (`-32099 TOOL_USER_ERROR`); the downstream is never called. No user context survives an app-only hop |
+| `AgentOnBehalfOfUser`, scope `api://<target blueprint>/access_agent` | nothing: the target A2A route returned 403 for blueprint-audience tokens (card and `SendMessage`), while its Responses route accepted them | not usable for a Foundry target today |
+
+So the user reaches the second agent with `UserEntraToken`, and a downstream
+sees the **last** agent as actor, not the whole chain. **Do not rely on the
+second hop to a custom tool yet:** the target's `AgentOnBehalfOfUser` tool ran
+under a Foundry-audience token, which Learn does not support (it requires the
+`AgentBlueprint` audience). It worked repeatedly from 07:54 to 08:15 UTC, then
+failed on every attempt from about 09:30 UTC (`TOOL_USER_ERROR`, downstream not
+called) while the same tool via the target's blueprint audience kept working. No
+documented path carries the user through A2A to a custom MCP tool today
+(`UserEntraToken` tools are limited to the Microsoft tools Learn lists). Setup findings not in the docs: the caller agent identity needs an
+admin grant for `user_impersonation` on Azure Machine Learning Services (the
+`https://ai.azure.com` resource), otherwise `CONSENT_REQUIRED`; and the toolbox
+rejects an `a2a` tool with both `base_url` and `project_connection_id`
+("exactly one of"), although the Learn REST example shows both.
+
+### Not proven, with the exact blocker
+
+| Gap | Blocker |
+|---|---|
+| Conditional Access on agent identities | Requires Entra ID P1 ([disable agent identities](https://learn.microsoft.com/entra/agent-id/disable-agent-identities)). A report-only policy scoped to the test agent only was rejected with 403 "Your tenant is not licensed for this feature"; nothing was created |
+| Teams and Microsoft 365 users | The test tenant has no Teams or Microsoft 365 Copilot licence, and the GHCP pilot would need the Responses protocol (Activity is bridged from it) |
+| Playground UI | The human step needs the back-end portal, excluded by the user; the playground's Foundry-audience user token path is covered by the A2A row above |
+| OBO on a governed write | By contract the governed gateway accepts workload app tokens only (`idtyp=app`, no `scp`): "no implicit end-user delegation or OBO" ([gateway](../skills/threadlight-govern/references/gateway/README.md#authentication-and-host-configuration)). Changing that changes the kit's semantics |
+| Gateway block | Not attempted in this round |
 
 ## Choosing the next step
 

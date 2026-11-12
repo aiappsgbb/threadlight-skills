@@ -587,3 +587,15 @@ test('identity model separates live-proven, documented and unproven identity cla
   assert.doesNotMatch(section, /whole-agent governance is proven/i);
   assert.match(read(docs.readiness), /agent-operations\.md#identity-model-who-acts-with-which-permissions/);
 });
+
+test('identity model records the live A2A chain and the exact blockers for the remaining gaps', () => {
+  const part = read(docs.guide).split('## Identity model: who acts, with which permissions')[1];
+  const section = part.split('\n## ')[0].replace(/\s+/g, ' ');
+  for (const term of [
+    '### Agent to agent (A2A)', '2026-11-12', 'UserEntraToken', 'AgenticIdentityToken',
+    'Foundry Agent Consumer', 'TOOL_USER_ERROR', 'not licensed for this feature',
+    'Entra ID P1', 'Responses', 'Activity', 'no implicit end-user delegation or OBO',
+    'exactly one of', 'learn.microsoft.com/azure/foundry/agents/how-to/enable-agent-to-agent-endpoint',
+    'Do not rely on the second hop',
+  ]) assert.ok(section.includes(term), term);
+});

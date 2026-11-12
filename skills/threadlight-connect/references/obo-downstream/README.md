@@ -59,3 +59,20 @@ Everything below uses the documented Foundry path
 Check: an allowed user gets the records and `seen.actor_app_id` equals the
 agent identity; a user without the role gets `access_denied`; the downstream
 log shows `decision=allow|deny` with the same actor.
+
+## Two hops: agent to agent (A2A), live 2026-11-12
+
+To keep the user through another Foundry agent, give the caller's toolbox one
+GA `a2a` tool (`a2a_version: "1.0"`, **only** `project_connection_id`) whose
+`RemoteA2A` connection uses `UserEntraToken` with audience `https://ai.azure.com`
+and the target's `.../agents/<target>/endpoint/protocols/a2a` base path. Grant:
+users (or groups) **Foundry Agent Consumer** on the target agent; the caller
+agent identity an admin `user_impersonation` grant on Azure Machine Learning
+Services; the target agent identity the same `Records.Read` grant as above. The
+downstream then saw the user with the **target** agent identity as actor, but
+only between 07:54 and 08:15 UTC: from about 09:30 the target's tool failed
+(`TOOL_USER_ERROR`). That hop runs `AgentOnBehalfOfUser` under a Foundry-audience
+token, which Learn does not support; treat it as unreliable.
+An `AgenticIdentityToken` A2A connection carries no user, and the target's
+user-delegated tool fails. Results and blockers:
+[Identity model](../../../../docs/agent-operations.md#identity-model-who-acts-with-which-permissions).
