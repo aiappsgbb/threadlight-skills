@@ -1949,6 +1949,14 @@ _GAP_LEG_REQUIRED_IDS: dict[str, tuple[str, ...]] = {}
 for _fid, _fname in GAP_LEG_SOURCE.items():
     _GAP_LEG_REQUIRED_IDS[_fname] = _GAP_LEG_REQUIRED_IDS.get(_fname, ()) + (_fid,)
 
+# Finding ids a producer added after a schema version shipped. A trusted
+# manifest written before the id existed may omit it: its must-fix findings
+# still propagate (negative evidence is never dropped), every other finding of
+# that manifest is `not-verified` until the leg is re-run with current rules.
+_GAP_LEG_LEGACY_OPTIONAL_IDS: dict[str, frozenset[str]] = {
+    "ground-manifest.json": frozenset({"GRD-005"}),
+}
+
 # Exact producer finding-status enum. `not-applicable` belongs to legacy
 # capability manifests, not these new shared-envelope leg schemas.
 _GAP_FINDING_STATUS_ENUM = frozenset(
@@ -2092,6 +2100,9 @@ def _validate_gap_leg_envelope(data: Any, filename: str) -> str | None:
     findings = data["findings"]
     if not isinstance(findings, list):
         return "findings must be a list"
+    legacy_ids = _GAP_LEG_LEGACY_OPTIONAL_IDS.get(filename, frozenset())
+    if _gap_is_legacy_leg(data, filename):
+        required_ids = tuple(fid for fid in required_ids if fid not in legacy_ids)
     if len(findings) != len(required_ids):
         return (
             "findings must contain exactly "
@@ -2117,6 +2128,15 @@ def _validate_gap_leg_envelope(data: Any, filename: str) -> str | None:
             + " (one each, no duplicates/unknowns)"
         )
     return None
+
+
+def _gap_is_legacy_leg(data: dict, filename: str) -> bool:
+    """True when *data* omits every finding id added after its schema shipped."""
+    legacy_ids = _GAP_LEG_LEGACY_OPTIONAL_IDS.get(filename)
+    if not legacy_ids or not isinstance(data.get("findings"), list):
+        return False
+    ids = {item.get("id") for item in data["findings"] if isinstance(item, dict)}
+    return not (ids & legacy_ids)
 
 
 def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
@@ -2184,6 +2204,15 @@ def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
             target_id, status="must-fix",
             detail=str(detail) if detail else
             f"specs/{filename} reports {source_id} must-fix (executed evidence failed).")
+
+    # A manifest written before a newer finding existed keeps its negative
+    # evidence (above) but cannot prove readiness under the current rules.
+    if _gap_is_legacy_leg(data, filename):
+        return _mk_finding(
+            target_id, status="not-verified",
+            detail=(f"specs/{filename} predates "
+                    + ", ".join(sorted(_GAP_LEG_LEGACY_OPTIONAL_IDS[filename]))
+                    + " and the current checks; re-run the producing leg."))
 
     # An aborted run can never certify readiness.
     if data.get("status") == "aborted":

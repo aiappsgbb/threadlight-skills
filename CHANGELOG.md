@@ -26,8 +26,9 @@ field.
 - **Schema and sanitizer** (`ground-manifest.schema.json`) accept the new source
   and ACL-run fields; `token_mode` is the only token-named key allowed, and it
   carries an enum. `threadlight-production-ready` consumes GRD-005 (193
-  findings), with a `GRD-005` remediation recipe; a ground manifest without
-  GRD-005 is `not-verified` until the leg is re-run. The design SPEC template
+  findings), with a `GRD-005` remediation recipe. A ground manifest written
+  before GRD-005 keeps its `must-fix` findings; everything else in it is
+  `not-verified` until the leg is re-run. The design SPEC template
   documents the new `knowledge_sources[]` fields (Cowork zip rebuilt).
 - **Tests.** Offline only: unit cases for every rule in both issues, schema
   parity with jsonschema, production-ready consumption.

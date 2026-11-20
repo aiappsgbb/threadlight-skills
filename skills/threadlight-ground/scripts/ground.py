@@ -86,6 +86,7 @@ from skills._shared.manifest import (  # noqa: E402
     ManifestValidationError,
     atomic_write_json,
     build_envelope,
+    is_draft7_integer,
     validate_envelope,
 )
 
@@ -659,11 +660,11 @@ def _sanitize_source(source: Any, index: int) -> dict:
 
     if "revocation_settle_minutes" in source:
         minutes = source["revocation_settle_minutes"]
-        if isinstance(minutes, bool) or not isinstance(minutes, int) or minutes < 1:
+        if not is_draft7_integer(minutes) or minutes < 1:
             raise GroundEvidenceError(
                 f"{label}.revocation_settle_minutes must be a positive integer"
             )
-        sanitized["revocation_settle_minutes"] = minutes
+        sanitized["revocation_settle_minutes"] = int(minutes)
 
     return sanitized
 
@@ -1545,7 +1546,7 @@ def validate_ground_manifest(manifest: dict) -> None:
             raise ManifestValidationError(f"{label}.audience must be 'uniform'")
         if "revocation_settle_minutes" in source:
             minutes = source["revocation_settle_minutes"]
-            if isinstance(minutes, bool) or not isinstance(minutes, int) or minutes < 1:
+            if not is_draft7_integer(minutes) or minutes < 1:
                 raise ManifestValidationError(
                     f"{label}.revocation_settle_minutes must be a positive integer"
                 )

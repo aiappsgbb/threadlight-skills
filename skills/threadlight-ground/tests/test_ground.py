@@ -1983,6 +1983,14 @@ def test_malformed_token_mode_or_rbac_change_raises(bad_run):
         assess_acl([source()], [entitled(), bad_run])
 
 
+def test_integral_float_settle_minutes_is_accepted_by_both_validators(jsonschema_validator):
+    manifest = covered(sources=[source(revocation_settle_minutes=15.0)])
+    assert manifest["sources"][0]["revocation_settle_minutes"] == 15
+    manifest["sources"][0]["revocation_settle_minutes"] = 15.0
+    validate_ground_manifest(manifest)
+    assert jsonschema_validator.is_valid(manifest)
+
+
 @pytest.mark.parametrize("bad", [0, -5, 1.5, True, "15"])
 def test_malformed_revocation_settle_minutes_raises(bad):
     with pytest.raises(GroundEvidenceError):

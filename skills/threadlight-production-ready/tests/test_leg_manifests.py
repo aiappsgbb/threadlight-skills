@@ -1208,13 +1208,31 @@ def test_real_ground_manifest_derived_artifact_on_acl_source_is_must_fix() -> No
     assert by_id["GRD-001"].status == "pass"
 
 
-def test_legacy_four_finding_ground_manifest_is_not_verified() -> None:
-    # A ground manifest produced before GRD-005 existed cannot prove the
-    # derived-artifact control: every GRD finding degrades to not-verified.
+def test_legacy_four_finding_ground_manifest_cannot_pass_but_keeps_must_fix() -> None:
+    # A ground manifest produced before GRD-005 existed is still trusted: its
+    # proven leak stays must-fix (negative evidence is never dropped), while
+    # nothing in it can prove readiness under the current rules.
     legacy = gap_manifest("ground", findings=[
-        {"id": fid, "status": "pass"} for fid in ("GRD-001", "GRD-002", "GRD-003", "GRD-004")
+        {"id": "GRD-001", "status": "must-fix"},
+        {"id": "GRD-002", "status": "pass"},
+        {"id": "GRD-003", "status": "pass"},
+        {"id": "GRD-004", "status": "pass"},
     ])
     ctx = _make_ctx(manifests={"ground-manifest.json": legacy})
     f = _by_id(pr._check_gap_leg_manifests(ctx))
-    for fid in ("GRD-001", "GRD-005"):
-        assert f[fid].status == "not-verified"
+    assert f["GRD-001"].status == "must-fix"
+    for fid in ("GRD-002", "GRD-003", "GRD-004", "GRD-005"):
+        assert f[fid].status == "not-verified", fid
+        assert "re-run" in f[fid].detail
+
+
+def test_partial_legacy_ids_are_still_rejected() -> None:
+    # Only the exact legacy set may be omitted; any other gap is untrusted.
+    bad = gap_manifest("ground", findings=[
+        {"id": "GRD-001", "status": "must-fix"},
+        {"id": "GRD-002", "status": "pass"},
+        {"id": "GRD-003", "status": "pass"},
+        {"id": "GRD-005", "status": "pass"},
+    ])
+    ctx = _make_ctx(manifests={"ground-manifest.json": bad})
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["GRD-001"].status == "not-verified"
