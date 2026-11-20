@@ -203,7 +203,7 @@ async def install_probe_runtime(config, provider, stack, *, credential=None, run
 
 
 def remote_host(config, *, credential, signer, http=None, env=None, **host_options):
-    from govern_control_plane.bootstrap import runtime_gate, BootstrapReference
+    from govern_control_plane.bootstrap import owned_lifespan, runtime_gate, BootstrapReference
     from govern_control_plane.models import canonical
     reference = parse(BootstrapReference, canonical(config["remote_bootstrap"]))
     prepared = {}
@@ -266,7 +266,7 @@ def remote_host(config, *, credential, signer, http=None, env=None, **host_optio
             project_endpoint=binding.project_endpoint,
             model=(env or os.environ)["AZURE_AI_MODEL_DEPLOYMENT_NAME"], credential=credential)
         host = build_host(provider, client=client, **host_options)
-        await stack.enter_async_context(host.router.lifespan_context(host))
+        await stack.enter_async_context(owned_lifespan(host))
         return host
 
     gate = runtime_gate(config, env=env or os.environ, credential=credential,
