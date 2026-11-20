@@ -102,4 +102,5 @@ or `aborted` leg never inflates this pillar's score or readiness, and a
 
 | ID | Verified when the leg reports it (fresh + complete) | Severity |
 |---|---|---|
-| `GRD-001` | `threadlight-ground` proved per-principal ACL enforcement over protected knowledge sources | `must-fix` |
+| `GRD-001` | `threadlight-ground` proved per-principal ACL enforcement over protected knowledge sources, including a no-token probe and revocation probes taken after the RBAC settle window | `must-fix` |
+| `GRD-005` | `threadlight-ground` found no derived artifact (entity/topic graph) on an ACL-protected source, or a justified `audience: uniform` | `must-fix` |

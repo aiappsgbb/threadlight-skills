@@ -531,13 +531,14 @@ never calls Foundry IQ, never issues a query, never runs an evaluator. A
 caller-captured ACL / citation / refusal probe runs (each carrying its own
 `source_id` and, for ACL, an explicit `expected_entitled`).
 
-**Outputs.** `specs/ground-manifest.json` with `GRD-001..004` (ACL, citation,
-refusal, freshness/coverage). A **proven** ACL leak is `must-fix`;
+**Outputs.** `specs/ground-manifest.json` with `GRD-001..005` (ACL including
+no-token and RBAC-propagation probes, citation, refusal, freshness/coverage,
+derived graphs on ACL sources). A **proven** ACL leak is `must-fix`;
 missing/ambiguous evidence is `not-verified`, never guessed. Persists only IDs
 and allowlisted detail — never content, prompts, completions, or tokens.
 
 **Depends on.** A deployed agent + `foundry-iq` for the retrieval the evidence
-comes from. Consumed by `production-ready` (GRD-001..004).
+comes from. Consumed by `production-ready` (GRD-001..005).
 
 ---
 

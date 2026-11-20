@@ -250,8 +250,10 @@ Reference documents, policies, or data the agent needs for reasoning.
 > source the agent grounds answers on as a `knowledge_sources[]` entry —
 > this is the machine-readable companion to the narrative `[Source Name]`
 > blocks above, and it is what `threadlight-ground` sanitizes and assesses
-> ACL/citation/refusal evidence against (`GRD-001..004`). Only the six
-> fields below are ever persisted into `specs/ground-manifest.json`; add
+> ACL/citation/refusal evidence against (`GRD-001..005`). Only the six
+> required fields and the optional `acl_probe_principals`, `enrichments`,
+> `audience` and `revocation_settle_minutes` are persisted into
+> `specs/ground-manifest.json` (never `audience_justification`); add
 > `acl_probe_principals` when you already know which principals should be
 > probed for entitled/unentitled access.
 >
@@ -264,7 +266,17 @@ Reference documents, policies, or data the agent needs for reasoning.
 > `not-verified`, never a guessed `pass`. Likewise, do not name a principal
 > "entitled"/"unentitled" here and assume that settles it — supply
 > `expected_entitled` on the probe run itself so classification never
-> relies on a naive name heuristic.
+> relies on a naive name heuristic. An ACL source also needs one probe with
+> `token_mode: none` (no user token reaches retrieval) that returns no
+> protected document, and a revocation probe counts only when captured at
+> least `revocation_settle_minutes` (default 15) after `rbac_changed_at`.
+>
+> **Derived artifacts do not inherit document permissions.** A Foundry IQ
+> entity graph or topic graph built from a source is readable by every
+> knowledge-base reader. `permission_model: acl` with any `enrichments` other
+> than `none` is `GRD-005` must-fix unless every reader is entitled to the
+> whole corpus and you declare `audience: uniform` with an
+> `audience_justification`.
 
 ```yaml
 knowledge_sources:
@@ -275,6 +287,10 @@ knowledge_sources:
     citation_required:           # bool — every answer grounded on this source must cite it
     refuse_when_unsupported:     # bool — refuse rather than answer when this source can't support the query
     acl_probe_principals:        # optional — principals threadlight-ground should probe, e.g. [entitled, unentitled]
+    enrichments:                 # optional — [none] (default) | [entity_graph] | [topic_graph] | [entity_graph, topic_graph]
+    audience:                    # optional — uniform: every KB reader may read the whole corpus
+    audience_justification:      # required with audience: uniform — stays in the SPEC, never persisted
+    revocation_settle_minutes:   # optional — RBAC propagation wait before a denial probe counts (default 15)
 ```
 
 Example — a policy library requiring ACL enforcement proof, refreshed

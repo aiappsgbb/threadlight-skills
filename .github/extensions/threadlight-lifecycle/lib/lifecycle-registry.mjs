@@ -81,7 +81,7 @@ export const LEG_ENVELOPE_CONTRACTS = deepFreeze({
   },
   "specs/ground-manifest.json": {
     schema: "threadlight.ground/v1",
-    findingIds: ["GRD-001", "GRD-002", "GRD-003", "GRD-004"],
+    findingIds: ["GRD-001", "GRD-002", "GRD-003", "GRD-004", "GRD-005"],
     allowedTopLevelKeys: [
       "schema",
       "tool_version",

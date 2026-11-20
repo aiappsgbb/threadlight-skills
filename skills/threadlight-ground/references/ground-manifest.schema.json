@@ -35,7 +35,7 @@
     "status": {"enum": ["complete", "partial", "aborted"]},
     "findings": {
       "type": "array",
-      "description": "GRD-001 ACL enforcement, GRD-002 citation grounding, GRD-003 refusal behavior, GRD-004 source freshness/coverage.",
+      "description": "GRD-001 ACL enforcement (incl. no-token and RBAC-propagation probes), GRD-002 citation grounding, GRD-003 refusal behavior, GRD-004 source freshness/coverage, GRD-005 derived artifacts (entity/topic graphs) on ACL sources.",
       "items": {
         "type": "object",
         "required": ["id", "status"],
@@ -72,7 +72,14 @@
                   "freshness-unverifiable",
                   "retrieval-quality-baseline-missing",
                   "stale-evidence",
-                  "fresh-and-covered"
+                  "fresh-and-covered",
+                  "no-token-probe-missing",
+                  "no-token-retrieval-leak",
+                  "revocation-probe-too-early",
+                  "no-derived-artifacts-on-acl-sources",
+                  "derived-artifact-on-acl-source",
+                  "uniform-audience-unjustified",
+                  "uniform-audience-declared"
                 ]
               },
               "uncovered_sources": {"type": "array", "items": {"type": "string", "minLength": 1}},
@@ -82,6 +89,9 @@
               "unsupported_queries_answered": {"type": "array", "items": {"type": "string", "minLength": 1}},
               "leaked_document_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
               "missing_principals": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "early_revocation_principals": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "derived_artifact_sources": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "uniform_audience_sources": {"type": "array", "items": {"type": "string", "minLength": 1}},
               "worst_source": {"type": "string", "minLength": 1},
               "coverage_complete": {"type": "boolean"},
               "by_source": {
@@ -113,13 +123,29 @@
           "acl_probe_principals": {
             "type": "array",
             "items": {"type": "string", "minLength": 1}
+          },
+          "enrichments": {
+            "type": "array",
+            "description": "Derived artifacts built from this source; absent means none. Entity/topic graphs do not inherit document-level permissions.",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"enum": ["entity_graph", "topic_graph", "none"]}
+          },
+          "audience": {
+            "enum": ["uniform"],
+            "description": "Every knowledge-base reader is entitled to the whole corpus. The SPEC justification text is never persisted."
+          },
+          "revocation_settle_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Minutes after rbac_changed_at before a denial probe counts as revocation evidence (default 15)."
           }
         }
       }
     },
     "acl_evidence": {
       "type": "array",
-      "description": "Principal identifiers + document IDs only — never retrieved content.",
+      "description": "Principal identifiers, document IDs, token mode and RBAC-change timestamps only — never retrieved content or tokens.",
       "items": {
         "type": "object",
         "required": ["principal", "document_ids", "source_id"],
@@ -127,7 +153,16 @@
         "properties": {
           "principal": {"type": ["string", "null"]},
           "document_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
-          "source_id": {"type": ["string", "null"]}
+          "source_id": {"type": ["string", "null"]},
+          "token_mode": {
+            "enum": ["user", "none", "agent_dynamic", "structured_input"],
+            "description": "How identity reached retrieval; 'none' means no user token. The mode only, never a token."
+          },
+          "rbac_changed_at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?![\\s\\S]*\\s)[\\s\\S]+$"
+          }
         }
       }
     },

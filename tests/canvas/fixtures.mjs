@@ -84,7 +84,7 @@ const ASSURANCE_SPECS = {
 // envelope built here is VALID against the projector's strict trust boundary.
 const LEG_FINDING_IDS = {
   "threadlight-connect-manifest/v1": ["INT-001", "INT-002", "INT-003", "INT-004"],
-  "threadlight.ground/v1": ["GRD-001", "GRD-002", "GRD-003", "GRD-004"],
+  "threadlight.ground/v1": ["GRD-001", "GRD-002", "GRD-003", "GRD-004", "GRD-005"],
   "threadlight.load/v1": ["LOAD-001", "LOAD-002", "LOAD-003"],
   "threadlight.upgrade/v1": ["UPG-001", "UPG-002", "UPG-003"],
 };
