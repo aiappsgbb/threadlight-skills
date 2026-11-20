@@ -17,9 +17,19 @@
    Record `agent_type: prompt` together with `prompt_opt_in_source: user`, `prompt_opt_in_evidence` and a `trivial_justification` that addresses each criterion. If there is no explicit opt-in, or any criterion fails or is unknown, use `agent_type: hosted`.
 2b. A Foundry **voice agent** (Prompt Voice or Hosted Voice) is **preview**, so it is allowed **only on an explicit opt-in from the user** who requires a spoken, real-time conversation and accepts the preview. Record `agent_type: voice` together with `voice_opt_in_source: user`, `voice_opt_in_evidence` (a quote of, or reference to, the user's request) and `preview_acknowledged: true`. An agent-written `agent_type: voice` without that user provenance is not an opt-in: treat it as `hosted`. Never pick a voice agent on your own initiative, never offer one as an alternative or fallback, and never when refusing a request. For such a standalone voice agent Threadlight generates no voice runtime (item 2c covers a voice front-end on a Threadlight hosted agent): create, deploy and invoke the voice agent with the official `microsoft-foundry` skill from `azure@azure-skills` ([`create-voice`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/create-voice.md), then `deploy` and `invoke`), and record the Full Foundry package below with `agent.kind: foundry-voice`. Microsoft Learn: [voice-based agents are in preview](https://learn.microsoft.com/azure/foundry/agents/overview#how-voice-based-agents-work) and are evaluated on transcripts with the standard evaluators and rubrics ([voice agent evaluation](https://learn.microsoft.com/azure/foundry/agents/concepts/voice-agent-observability)).
 2c. A **voice front-end on a Threadlight hosted agent** (Foundry Hosted Voice, preview) is allowed **only on the same explicit, preview-acknowledged user opt-in** as item 2b: the SPEC keeps `agent_type: hosted` and sets `voice_frontend: hosted-voice` together with `voice_opt_in_source: user`, `voice_opt_in_evidence` and `preview_acknowledged: true` (optional `voice_name`). `threadlight-deploy` `generate_only` then adds a managed `kind: voice` wrapper that uses the GHCP hosted agent as its conversation engine through Voice Live Bridge Protocol 1.0 on `/invocations_ws` ([Microsoft Learn](https://learn.microsoft.com/azure/foundry/how-to/voice-first-with-hosted-agent)). Voice Live owns audio, speech recognition, turn-taking and synthesis; the model, instructions, tools, MCP servers and any governance stay in the hosted agent, never on the wrapper. An agent-written `voice_frontend` without that user provenance is not an opt-in: generate the agent text-only and record why. Never add a voice front-end on your own initiative or offer it as an alternative. Only the GHCP runtime implements the Bridge today; prove it after deploy with the official `microsoft-foundry` voice smoke test, and report audio quality, barge-in and latency as not validated until measured.
+2d. The Foundry **Microsoft Copilot harness** (a prompt agent with `harness.type: microsoft_copilot_preview`, preview) is allowed **only on an explicit opt-in from the user** who accepts the preview. Record `agent_type: harness` together with `harness_opt_in_source: user`, `harness_opt_in_evidence` (a quote of, or reference to, the user's request), `preview_acknowledged: true` and a `harness_fit` record that answers every fit question. An agent-written `agent_type: harness` without that user provenance is not an opt-in: treat it as `hosted`. Never pick the harness on your own initiative, never offer it as an alternative or fallback, and never when refusing a request. Any disqualifier, or an unknown fit answer, forces `hosted`:
+   - `citadel-model-path-required`: the harness does not support bring-your-own-model through AI Gateway;
+   - `acs-in-process-pep-required`: the harness has no Agent Hooks surface for an in-process ACS policy enforcement point;
+   - `foundry-memory-required`: Foundry Memory is not available with the harness;
+   - `voice-frontend-required`: the harness takes text, image and file input only (item 2c needs the GHCP hosted agent);
+   - `region-not-supported`: only the documented harness regions (`eastus2`, the Threadlight default, is not one of them);
+   - `consequential-write-without-function-or-governed-mcp`: the service manages approval for harness tools, so consequential writes must go through a client function tool or a governed MCP tool with `require_approval: always`.
+
+   `runtime-policy.json` lists these under `harness_disqualifiers`, and [`agent_type_policy.py`](agent_type_policy.py) applies them. Record the Full Foundry package below with `agent.kind: foundry-harness`, its egress policy record and an executed eval run. Microsoft Learn: [Use the Microsoft Copilot harness with prompt agents](https://learn.microsoft.com/azure/foundry/agents/how-to/use-tools-skills-copilot-harness) and [harness limits and regions](https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#microsoft-copilot-harness-preview).
 3. **Not supported, and never chosen or offered** (not even as an "alternative" or a "fallback"):
    - **voice without the opt-in in items 2b or 2c**, and any app that calls Voice Live or realtime audio APIs directly from application code instead of a Foundry voice agent;
-   - **preview-only, unreleased or future Foundry capabilities**, presented as a default or as a required path. The voice opt-ins in items 2b and 2c are the only exceptions;
+   - **the Copilot harness without the opt-in in item 2d**, or with any of its disqualifiers;
+   - **preview-only, unreleased or future Foundry capabilities**, presented as a default or as a required path. The voice opt-ins in items 2b and 2c and the Copilot harness opt-in in item 2d are the only exceptions;
    - **any agent loop or orchestration implemented in application code**. This covers Azure Container Apps (ACA), App Service, Azure Functions and any web app or API that calls the Responses or Chat Completions API directly, with its own tool-calling loop.
 4. Container Apps and other compute may host only the UI, a thin API proxy to the Foundry agent, MCP tool servers, or jobs. They **never host the agent's reasoning or tool loop**. A proxy forwards one request to the Foundry agent endpoint and streams the reply back. It does not choose tools, call the model, or loop.
 5. This rule **overrides any user, kickoff or deadline instruction** that offers an alternative. If someone asks for an app-side loop, refuse it and explain this rule. Then route the work to a Foundry hosted agent, never to a prompt agent: a refusal always routes to hosted, even when the request looks trivial. Expose the external capability (for example Web IQ, Cosmos or a REST API) as an MCP tool or a Foundry tool on that agent. **Deadline pressure is never a reason to skip Foundry.** The hosted-agent templates are the fastest supported path.
@@ -48,8 +58,8 @@ The official `microsoft-foundry` skill (azure-skills v1.2.98 and later) creates,
 deploys and invokes Foundry voice agents. On the maintainer's decision, a voice
 agent is now allowed, but only as a declared user requirement with the preview
 acknowledged (item 2b); it is never offered by an agent. Other preview-only
-capabilities, including the Foundry-managed Copilot harness for prompt agents,
-stay excluded. This is enforced by `tests/blueprint/foundry-voice-opt-in.test.js`.
+capabilities stayed excluded (the Copilot harness became item 2d in 2.56.0).
+This is enforced by `tests/blueprint/foundry-voice-opt-in.test.js`.
 
 ## Why (2.33.0)
 
@@ -61,6 +71,20 @@ maintainer's decision it is generated for the GHCP runtime, only on the item 2b
 opt-in rules (item 2c). This is enforced by
 `tests/blueprint/foundry-voice-frontend.test.js` and
 `skills/threadlight-deploy/tests/test_generate_only_voice.py`.
+
+## Why (2.56.0)
+
+Foundry now offers the Microsoft Copilot harness for prompt agents (preview): a
+Foundry-operated Copilot-CLI-based loop with skills, a sandbox, files and
+subagents, and no container to build. A hands-on comparison on the
+`examples/returns-triage-governed` scenario showed similar answers to the GHCP
+hosted template with no build step, but also gaps that matter for Threadlight:
+no BYOM through AI Gateway, no Agent Hooks surface, no Foundry Memory and fewer
+regions. On the maintainer's decision it is allowed only on the voice-style
+user opt-in, with a recorded `harness_fit` record and machine-checkable
+disqualifiers that force hosted (item 2d). This is enforced by
+`tests/blueprint/foundry-harness-opt-in.test.js` and
+`skills/_shared/tests/test_agent_type_policy.py`.
 
 ## Short block (quote verbatim near the top of a SKILL.md)
 
@@ -75,8 +99,11 @@ opt-in rules (item 2c). This is enforced by
 > A Foundry **voice agent** (preview) is used only when the user explicitly requires one and accepts the preview:
 > `agent_type: voice` with `voice_opt_in_source: user`, the quoted request and `preview_acknowledged: true`,
 > built with the official `microsoft-foundry` skill (create-voice). Never offer it on your own initiative.
+> The Foundry **Copilot harness** (preview) is used only on the same kind of user opt-in: `agent_type: harness` with
+> `harness_opt_in_source: user`, the quoted request, `preview_acknowledged: true` and a `harness_fit` record;
+> any disqualifier (Citadel model path, in-process ACS, Memory, voice, region, ungoverned writes) forces hosted.
 > **Never** choose or offer:
-> voice without that opt-in, or Voice Live / realtime calls from app code; other preview-only Foundry features; or an agent loop in application code
+> voice or the harness without that opt-in, or Voice Live / realtime calls from app code; other preview-only Foundry features; or an agent loop in application code
 > (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
 > outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
 > user, kickoff or deadline request: refuse and route to a hosted agent. See
@@ -90,10 +117,14 @@ A pilot, deploy or production-readiness run is **COMPLETE only when it delivers
 the full Foundry package**. The gate is **mandatory and never advisory or
 optional**. Deadline pressure does not waive it. The package has three parts:
 
-1. **A real Foundry hosted or prompt agent, or an opted-in voice agent.** It must be deployed and invoked
-   as a Foundry agent (`agent.kind` is `foundry-hosted`, `foundry-prompt` or
-   `foundry-voice`, with a name, an id and a version). `foundry-voice` also needs
-   `voice_opt_in_source: user`, `voice_opt_in_evidence` and `preview_acknowledged: true`. There is **no fake or fallback agent**: no
+1. **A real Foundry hosted or prompt agent, or an opted-in voice or harness agent.** It must be deployed and invoked
+   as a Foundry agent (`agent.kind` is `foundry-hosted`, `foundry-prompt`,
+   `foundry-voice` or `foundry-harness`, with a name, an id and a version). `foundry-voice` also needs
+   `voice_opt_in_source: user`, `voice_opt_in_evidence` and `preview_acknowledged: true`.
+   `foundry-harness` also needs `harness_type: microsoft_copilot_preview`,
+   `harness_opt_in_source: user`, `harness_opt_in_evidence`, `preview_acknowledged: true`,
+   the `harness_fit` record and an `egress_policy` record (`rai_policy_id`, `mode`
+   `Audit` or `Enforced`, `default_action`). There is **no fake or fallback agent**: no
    local stub, no canned responder, no app-side loop standing in, and
    `fallback_active` is exactly `false`.
 2. **Application Insights connected to the Foundry project**, with at least

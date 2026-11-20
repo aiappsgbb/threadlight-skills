@@ -170,15 +170,24 @@ Do **not** use the legacy `GPT-4o` family — `gpt-5.4` supersedes it.
 ## 3. Hosting shape
 
 ```yaml
-hosting: foundry-hosted-agent           # foundry-hosted-agent (always default) | foundry-prompt-agent (trivial + explicit user opt-in only) | foundry-voice-agent (preview, explicit user opt-in only)
-agent_type: hosted  # hosted | prompt | voice
+hosting: foundry-hosted-agent           # foundry-hosted-agent (always default) | foundry-prompt-agent (trivial + explicit user opt-in only) | foundry-voice-agent (preview, explicit user opt-in only) | foundry-harness-agent (preview, explicit user opt-in only)
+agent_type: hosted  # hosted | prompt | voice | harness
 trivial_justification: null             # REQUIRED when agent_type: prompt (one model, no custom code tools,
                                         # no multi-step orchestration, no state beyond the Foundry thread)
 prompt_opt_in_source: null              # REQUIRED when agent_type: prompt: must be `user`
 prompt_opt_in_evidence: null            # REQUIRED when agent_type: prompt: quote of the user's explicit request
 voice_opt_in_source: null               # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: must be `user`
 voice_opt_in_evidence: null             # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: quote of the user's spoken-conversation requirement
-preview_acknowledged: null              # REQUIRED when agent_type: voice or voice_frontend: hosted-voice: must be `true` (Foundry voice agents are preview)
+preview_acknowledged: null              # REQUIRED when agent_type: voice, harness or voice_frontend: hosted-voice: must be `true` (these are preview)
+harness_opt_in_source: null              # REQUIRED when agent_type: harness: must be `user` (an agent-written value is not an opt-in)
+harness_opt_in_evidence: null            # REQUIRED when agent_type: harness: quote of the user's request for the Foundry Copilot harness (preview)
+harness_fit:                            # REQUIRED when agent_type: harness: every answer known; any disqualifier or null forces hosted (runtime-policy.json harness_disqualifiers)
+  citadel_model_path_required: null   # true disqualifies: the harness has no BYOM through AI Gateway
+  acs_in_process_pep_required: null   # true disqualifies: no Agent Hooks surface for an in-process ACS PEP
+  foundry_memory_required: null       # true disqualifies: Foundry Memory is not available with the harness
+  voice_frontend_required: null       # true disqualifies (also voice_frontend: hosted-voice)
+  region: null                        # a documented harness region, e.g. swedencentral (eastus2 is not one)
+  consequential_write_seam: null      # none | function-tool | governed-mcp; anything else disqualifies
 voice_frontend: none                    # none | hosted-voice. Opt-in voice front-end (Foundry Hosted Voice, preview) on the hosted agent; item 2c
 voice_name: null                        # optional with voice_frontend: hosted-voice: Azure voice, e.g. it-IT-IsabellaMultilingualNeural (default en-US-AvaMultilingualNeural; multilingual voices speak the caller language)
 voice_hold_text: null                   # optional with voice_frontend: hosted-voice: hold message spoken during slow tool turns, in the voice's language
@@ -197,7 +206,11 @@ deployment_target: demo-sandbox         # demo-sandbox | customer-pilot | produc
 > `voice_opt_in_evidence` and `preview_acknowledged: true`. An agent-written
 > `agent_type: voice` without that user provenance is not an opt-in. The official
 > `microsoft-foundry` skill (create-voice) builds it; Threadlight generates no
-> voice runtime. Never record other preview-only Foundry features or Voice Live
+> voice runtime. Record `harness` (Foundry Copilot harness, preview) only on the
+> same kind of user opt-in: `harness_opt_in_source: user`, `harness_opt_in_evidence`,
+> `preview_acknowledged: true` and a complete `harness_fit` record. An agent-written
+> `agent_type: harness` without that user provenance is not an opt-in, and any
+> disqualifier forces `hosted`. Never record other preview-only Foundry features or Voice Live
 > calls from application code. Never record an agent loop in ACA, App Service, Functions or
 > web-app code as a hosting shape. Those are not supported. Functions, ACA jobs and Container Apps are auxiliary compute only:
 > the UI, a thin proxy, MCP tool servers or jobs.

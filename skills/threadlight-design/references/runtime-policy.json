@@ -14,7 +14,8 @@
     "allowed_agent_types": [
       "hosted",
       "prompt",
-      "voice"
+      "voice",
+      "harness"
     ],
     "prompt_requires_all_trivial_criteria": [
       "exactly-one-model",
@@ -67,10 +68,95 @@
     ],
     "agent_may_select_voice_frontend_on_own_initiative": false,
     "voice_frontend_build_route": "threadlight-deploy generate_only: managed kind: voice wrapper + GHCP Voice Live Bridge 1.0 on /invocations_ws",
+    "harness_requires_explicit_opt_in": true,
+    "harness_type": "microsoft_copilot_preview",
+    "harness_opt_in_required_fields": [
+      "harness_opt_in_source",
+      "harness_opt_in_evidence",
+      "preview_acknowledged",
+      "harness_fit"
+    ],
+    "harness_opt_in_source_allowed": [
+      "user"
+    ],
+    "agent_may_select_harness_on_own_initiative": false,
+    "harness_unknown_fit_answer_disqualifies": true,
+    "harness_disqualifiers": [
+      {
+        "id": "citadel-model-path-required",
+        "fit_field": "citadel_model_path_required",
+        "disqualifies_unless": false,
+        "reason": "The harness does not support bring-your-own-model through AI Gateway, so a mandatory Citadel/APIM model path cannot be honoured."
+      },
+      {
+        "id": "acs-in-process-pep-required",
+        "fit_field": "acs_in_process_pep_required",
+        "disqualifies_unless": false,
+        "reason": "The harness has no Agent Hooks surface, so an in-process ACS policy enforcement point cannot run inside the agent loop."
+      },
+      {
+        "id": "foundry-memory-required",
+        "fit_field": "foundry_memory_required",
+        "disqualifies_unless": false,
+        "reason": "Foundry Memory stores and memory tools are not available with the harness."
+      },
+      {
+        "id": "voice-frontend-required",
+        "fit_field": "voice_frontend_required",
+        "disqualifies_unless": false,
+        "also_when_spec": {
+          "voice_frontend": "hosted-voice"
+        },
+        "reason": "The harness takes text, image and file input over HTTP only; the Hosted Voice front-end needs the GHCP hosted agent."
+      },
+      {
+        "id": "region-not-supported",
+        "fit_field": "region",
+        "allowed_values_ref": "harness_supported_regions",
+        "reason": "The harness runs only in its documented preview regions."
+      },
+      {
+        "id": "consequential-write-without-function-or-governed-mcp",
+        "fit_field": "consequential_write_seam",
+        "allowed_values": [
+          "none",
+          "function-tool",
+          "governed-mcp"
+        ],
+        "reason": "The service manages harness tool approval; consequential writes must go through a client function tool or a governed MCP tool with require_approval: always."
+      }
+    ],
+    "harness_supported_regions": [
+      "australiaeast",
+      "brazilsouth",
+      "canadacentral",
+      "canadaeast",
+      "centralus",
+      "eastus",
+      "francecentral",
+      "germanywestcentral",
+      "italynorth",
+      "japaneast",
+      "koreacentral",
+      "northcentralus",
+      "norwayeast",
+      "polandcentral",
+      "southeastasia",
+      "southindia",
+      "spaincentral",
+      "swedencentral",
+      "uksouth",
+      "westeurope",
+      "westus",
+      "westus3"
+    ],
+    "harness_regions_source": "https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions#microsoft-copilot-harness-preview",
+    "harness_build_route": "Foundry prompt agent with harness.type microsoft_copilot_preview (https://learn.microsoft.com/azure/foundry/agents/how-to/use-tools-skills-copilot-harness)",
     "refusal_route": "hosted",
     "prohibited": [
       "voice-agents-without-explicit-opt-in",
       "app-code-voice-live-calls",
+      "harness-without-explicit-opt-in",
       "preview-only-capabilities",
       "app-code-agent-loop"
     ],

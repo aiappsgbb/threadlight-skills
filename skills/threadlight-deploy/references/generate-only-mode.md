@@ -16,6 +16,10 @@ with its parent runtime files, is the ONLY source in generate-only mode for:
 There is no `agent.yaml`, no `src/agent/agent.yaml` and no `infra/core/`. The
 generator refuses to run if any of them already exists. `agent_type: prompt`
 or `agent_type: voice` is refused with exit 4, because the scaffold is hosted-only.
+`agent_type: harness` is resolved by `skills/_shared/agent_type_policy.py`: without
+the user's opt-in, a complete `harness_fit` record and no disqualifier it is
+generated as the hosted agent and the reasons are printed; an opted-in harness is
+refused with exit 4 until the harness route ships.
 
 An opted-in **voice front-end** is the exception that stays hosted: with
 `voice_frontend: hosted-voice` and the user opt-in fields (`voice_opt_in_source: user`,
@@ -31,6 +35,20 @@ carries model, tools, protocols or code. Deploy with
 `microsoft-foundry` `smoke_test_voice.py`; barge-in, audio quality and latency
 remain not validated until measured. See the
 [GHCP README](hosted-agent/ghcp/README.md#optional-voice-front-end-foundry-hosted-voice-preview).
+
+#### Copilot harness (`agent_type: harness`)
+
+`agent_type: harness` (a Foundry prompt agent with `harness.type: microsoft_copilot_preview`,
+preview) follows item 2d of [`foundry-only-agents.md`](../../_shared/foundry-only-agents.md).
+[`agent_type_policy.py`](../../_shared/agent_type_policy.py) resolves it against
+`runtime-policy.json`: it stays a harness agent only with `harness_opt_in_source: user`,
+`harness_opt_in_evidence`, `preview_acknowledged: true` and a `harness_fit` record that hits no
+`harness_disqualifiers` entry. Otherwise deploy the hosted agent and report the reasons
+(`generate_only` prints them and generates hosted). `generate_only` has no harness route yet and
+refuses an opted-in harness with exit 4: create the prompt agent as documented on
+[Microsoft Learn](https://learn.microsoft.com/azure/foundry/agents/how-to/use-tools-skills-copilot-harness).
+Record the package with `agent.kind: foundry-harness`, `harness_type`, the opt-in fields, the fit
+record, the `egress_policy` record and an executed eval run.
 
 #### Ownership between threadlight-design and threadlight-deploy
 

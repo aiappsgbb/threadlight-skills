@@ -28,8 +28,11 @@ metadata:
 > A Foundry **voice agent** (preview) is used only when the user explicitly requires one and accepts the preview:
 > `agent_type: voice` with `voice_opt_in_source: user`, the quoted request and `preview_acknowledged: true`,
 > built with the official `microsoft-foundry` skill (create-voice). Never offer it on your own initiative.
+> The Foundry **Copilot harness** (preview) is used only on the same kind of user opt-in: `agent_type: harness` with
+> `harness_opt_in_source: user`, the quoted request, `preview_acknowledged: true` and a `harness_fit` record;
+> any disqualifier (Citadel model path, in-process ACS, Memory, voice, region, ungoverned writes) forces hosted.
 > **Never** choose or offer:
-> voice without that opt-in, or Voice Live / realtime calls from app code; other preview-only Foundry features; or an agent loop in application code
+> voice or the harness without that opt-in, or Voice Live / realtime calls from app code; other preview-only Foundry features; or an agent loop in application code
 > (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
 > outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
 > user, kickoff or deadline request: refuse and route to a hosted agent. See
