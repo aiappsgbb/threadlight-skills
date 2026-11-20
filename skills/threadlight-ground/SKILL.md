@@ -2,12 +2,13 @@
 name: threadlight-ground
 description: >-
   GROUND leg: assesses ACL/citation/refusal probe evidence into a
-  threadlight.ground/v1 manifest (GRD-001..004: ACL, citation, refusal,
-  freshness/coverage/baseline). Each SPEC knowledge_source's enabled control
+  threadlight.ground/v1 manifest (GRD-001..005: ACL incl. no-token and
+  RBAC-lag probes, citation, refusal, freshness/coverage, graphs on ACL
+  sources). Each SPEC knowledge_source's enabled control
   must be evidenced under its own source_id, never inferred across sources.
   expected_entitled is required (no name heuristic); missing/ambiguous evidence
-  -> not-verified, never guessed; a proven leak (an unentitled principal handed
-  a document outside its allowed_document_ids) -> must-fix. Malformed evidence
+  -> not-verified; a proven leak (a document outside the unentitled
+  principal's allowed_document_ids) -> must-fix. Malformed evidence
   raises GroundEvidenceError before any output. Persists only source metadata,
   principal/document IDs and allowlisted detail - never content, prompts,
   completions, tokens/credentials, or payloads. Manual handoff -
@@ -16,7 +17,7 @@ description: >-
   knowledge_sources gate. DO NOT USE FOR: Foundry IQ retrieval, quality
   scoring, live probes, cross-leg readiness gating.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Threadlight Ground — prove the retrieval is safe, not just plausible
@@ -27,7 +28,8 @@ doesn't know." `threadlight-ground` is a **coordinator**, not a retrieval or
 evaluation engine — it never calls Foundry IQ, never issues a retrieval
 query, and never runs an evaluator. It only ingests probe *results* an
 operator already captured (an ACL probe run, a citation validation run, a
-refusal probe run) and turns them into four findings.
+refusal probe run) plus the SPEC source declaration, and turns them into
+five findings.
 
 > **Why "coordinator."** Provisioning and query planning stay with
 > `foundry-iq` (Azure AI Search Knowledge Agent); quality/relevance scoring
@@ -52,18 +54,20 @@ refusal probe run) and turns them into four findings.
   script's.
 - **Does NOT** score answer quality/relevance (`threadlight-evals`) or
   aggregate findings across every leg into a single go/no-go
-  (`threadlight-production-ready` consumes GRD-001..004 for that).
+  (`threadlight-production-ready` consumes GRD-001..005 for that).
 
-## The four findings
+## The five findings
 
 | ID | Checks | `not-verified` when | `must-fix` when |
 |---|---|---|---|
-| `GRD-001` | ACL enforcement | no `permission_model: acl` source declared → trivial `pass`; an ACL source has **no runs carrying its `source_id`** (uncovered); fewer than two distinct principals; no explicit `expected_entitled` on a run (ambiguous); no entitled *and* unentitled probe for a source; a source's declared `acl_probe_principals` are not all probed | an **explicit** unentitled principal received **any** document outside its explicit `allowed_document_ids` — a subset is enough, and no allowlist means nothing is allowed. **A proven leak takes precedence over a coexisting coverage gap:** the finding is `must-fix` even when another run is ambiguous or a declared principal is unprobed, and a sibling source's `not-verified` never erases it |
+| `GRD-001` | ACL enforcement | no `permission_model: acl` source declared → trivial `pass`; an ACL source has **no runs carrying its `source_id`** (uncovered); fewer than two distinct principals; no explicit `expected_entitled` on a run (ambiguous); no entitled *and* unentitled probe for a source; a source's declared `acl_probe_principals` are not all probed; a revocation probe was captured before the RBAC settle window (`revocation-probe-too-early`); no `token_mode: none` probe (`no-token-probe-missing`) | an **explicit** unentitled principal received **any** document outside its explicit `allowed_document_ids` — a subset is enough, and no allowlist means nothing is allowed. **A proven leak takes precedence over a coexisting coverage gap:** the finding is `must-fix` even when another run is ambiguous or a declared principal is unprobed, and a sibling source's `not-verified` never erases it. A `token_mode: none` probe returning a document outside its allowlist is `must-fix` (`no-token-retrieval-leak`) |
 | `GRD-002` | Citation grounding | a `citation_required` source has no non-vacuous citation evidence carrying its `source_id` — it needs at least one citation and at least one retrieved ID | any citation falls outside its run's retrieved set (`missing_from_retrieval`, sorted, de-duplicated) |
 | `GRD-003` | Refusal behavior | a `refuse_when_unsupported` source has no refusal runs carrying its `source_id` (uncovered) | an executed probe for an unsupported query was **answered** instead of refused |
 | `GRD-004` | Source freshness / coverage / baseline | no sources declared → trivial `pass`; a declared source has no covering run; a covered source's runs carry no valid RFC3339 `captured_at` (freshness unverifiable); no `retrieval_quality_baseline` was supplied | never `must-fix` — caps at `should-fix` (a covered source's oldest evidence is stale relative to its own `refresh_cadence`) |
+| `GRD-005` | Derived artifacts on ACL sources | never — computed from the SPEC declaration. `pass` when no ACL source has `enrichments` other than `none`, or (`uniform-audience-declared`) when every flagged source declares `audience: uniform` with an `audience_justification` | an ACL source enables `entity_graph` or `topic_graph` (`derived-artifact-on-acl-source`), or declares `audience: uniform` without a justification (`uniform-audience-unjustified`) |
 
-`GRD-001..003` can reach `pass`, `must-fix`, or `not-verified`. `GRD-004` can
+`GRD-001..003` can reach `pass`, `must-fix`, or `not-verified`. `GRD-005` can
+reach `pass` or `must-fix`. `GRD-004` can
 reach `pass`, `should-fix`, or `not-verified` — freshness/coverage gaps are
 never escalated past `should-fix`, reserving `must-fix` for a *proven*
 control failure. The manifest `status` is `partial` exactly when required
@@ -122,6 +126,32 @@ is allowed**. Only **explicit** unentitled runs contribute a leak, so an
 ambiguous run never fabricates one — but neither can it hide a leak proven by
 another run in the same source.
 
+## No-token, revocation and derived-artifact rules
+
+These rules come from Foundry IQ behaviour we observed in November 2026
+(Search REST `2026-11-01-preview`, synthetic corpus):
+
+- **No-token probe.** Official pages disagree on what a permission-enabled
+  source returns when no user token reaches retrieval:
+  [agentic retrieval](https://learn.microsoft.com/azure/search/agentic-retrieval-how-to-retrieve#enforce-permissions-at-query-time-preview)
+  says it "doesn't return unfiltered results", while
+  [Foundry IQ connect](https://learn.microsoft.com/azure/foundry/agents/how-to/foundry-iq-connect)
+  says results are returned unfiltered. So it is probed, not assumed: every
+  ACL source needs one `token_mode: none` run (for example, the app's managed
+  identity only) whose `document_ids` stay inside its `allowed_document_ids`.
+  It never counts as the unentitled principal probe.
+- **RBAC propagation.** After a role was narrowed, retrieval kept returning
+  revoked documents for about seven minutes. A denial probe carrying
+  `rbac_changed_at` counts only when its `captured_at` is at least
+  `revocation_settle_minutes` (SPEC, default 15) later. Earlier polls are
+  ignored as evidence, neither pass nor leak; a principal with only early
+  probes keeps GRD-001 `not-verified`.
+- **Derived artifacts.** The
+  [entity graph how-to](https://learn.microsoft.com/azure/search/agentic-knowledge-source-how-to-entity-graph)
+  states the workflow does not support ACL ingestion; the graph is a separate
+  index without per-document permissions, so ACL probes against documents
+  never see it. Hence GRD-005.
+
 ## Evidence shapes
 
 ```jsonc
@@ -132,6 +162,14 @@ another run in the same source.
  "expected_entitled": true, "captured_at": "2026-08-17T09:00:00+00:00"}
 {"principal": "unentitled-guest", "document_ids": ["public-1"], "source_id": "policy-library",
  "expected_entitled": false, "allowed_document_ids": ["public-1"], "captured_at": "2026-08-17T09:00:00+00:00"}
+// token_mode: user (default) | none | agent_dynamic | structured_input. A `none`
+// run is implicitly unentitled; `expected_entitled: true` on it raises.
+{"principal": "app-managed-identity", "document_ids": [], "source_id": "policy-library",
+ "token_mode": "none", "captured_at": "2026-08-17T09:00:00+00:00"}
+// A revocation probe: counted only once captured_at >= rbac_changed_at + settle window.
+{"principal": "narrowed-user", "document_ids": [], "source_id": "policy-library",
+ "expected_entitled": false, "rbac_changed_at": "2026-08-17T08:30:00+00:00",
+ "captured_at": "2026-08-17T09:00:00+00:00"}
 
 // citation_runs[] — one per answer's citations vs. what was actually retrieved
 {"citations": ["doc-1"], "retrieved_ids": ["doc-1", "doc-2"], "source_id": "policy-library",
@@ -157,8 +195,10 @@ baseline is allowed but makes `GRD-004` `not-verified`.
 ## Persistence contract — never the raw evidence
 
 The manifest persists **only**: sanitized source metadata (the six
-`knowledge_sources` fields plus optional `acl_probe_principals`), principal
-identifiers, document IDs, the four findings (whose `detail` is an
+`knowledge_sources` fields plus optional `acl_probe_principals`,
+`enrichments`, `audience` and `revocation_settle_minutes`; never the
+`audience_justification` text), principal identifiers, document IDs, each ACL
+run's `token_mode` and `rbac_changed_at`, the five findings (whose `detail` is an
 **allowlisted schema** of IDs, counts, status maps, an optional
 `coverage_complete` boolean, and a controlled `reason` enum — never a
 free-form note), aggregate telemetry (`retrieval_count`,
@@ -219,6 +259,6 @@ python3 -m pytest skills/threadlight-ground/tests/ -v
   comes from.
 - **`threadlight-evals`** — owns answer-quality/relevance scoring; a
   separate concern from the ACL/citation/refusal proofs here.
-- **`threadlight-production-ready`** — consumes `GRD-001..004` from
+- **`threadlight-production-ready`** — consumes `GRD-001..005` from
   `specs/ground-manifest.json` alongside every other leg's findings for a
   single pilot go/no-go.

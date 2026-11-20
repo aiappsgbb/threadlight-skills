@@ -919,11 +919,12 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     "INT-002": {"title": "Runtime endpoint bound to a real (non-mock) integration server", "pillar": "supply-chain", "severity": "must-fix", "tier": 0},
     "INT-003": {"title": "Real integration exercised through user-scoped identity (OBO) evidence", "pillar": "reliability", "severity": "should-fix", "tier": 0},
     "INT-004": {"title": "Real integration authorized by required-role revalidation vs current identity", "pillar": "reliability", "severity": "should-fix", "tier": 0},
-    # GRD-001..004 — threadlight-ground (specs/ground-manifest.json)
+    # GRD-001..005 — threadlight-ground (specs/ground-manifest.json)
     "GRD-001": {"title": "Knowledge-source ACL enforcement proven on protected sources", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
     "GRD-002": {"title": "Answer citations grounded in retrieved context", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
     "GRD-003": {"title": "Refusal behaviour holds on unsupported queries", "pillar": "responsible-ai", "severity": "must-fix", "tier": 0},
     "GRD-004": {"title": "Knowledge-source freshness and coverage verified", "pillar": "responsible-ai", "severity": "should-fix", "tier": 0},
+    "GRD-005": {"title": "Derived artifacts (entity/topic graphs) do not bypass source ACLs", "pillar": "identity-access", "severity": "must-fix", "tier": 0},
     # LOAD-001..003 — threadlight-loadtest (specs/load-manifest.json)
     "LOAD-001": {"title": "Load test honored the production-safety guard", "pillar": "reliability", "severity": "must-fix", "tier": 0},
     "LOAD-002": {"title": "Projected load stays within the budget ceiling", "pillar": "cost", "severity": "should-fix", "tier": 0},
@@ -1895,7 +1896,7 @@ def _leg_cap_status(manifest: dict, key: str) -> str | None:
 # in the producing leg's manifest:
 #
 #   threadlight-connect   specs/connect-manifest.json   INT-001..004
-#   threadlight-ground    specs/ground-manifest.json    GRD-001..004
+#   threadlight-ground    specs/ground-manifest.json    GRD-001..005
 #   threadlight-loadtest  specs/load-manifest.json      LOAD-001..003
 #   threadlight-upgrade   specs/upgrade-manifest.json   UPG-001..003
 #
@@ -1909,6 +1910,7 @@ GAP_LEG_SOURCE: dict[str, str] = {
     "GRD-002": "ground-manifest.json",
     "GRD-003": "ground-manifest.json",
     "GRD-004": "ground-manifest.json",
+    "GRD-005": "ground-manifest.json",
     "LOAD-001": "load-manifest.json",
     "LOAD-002": "load-manifest.json",
     "LOAD-003": "load-manifest.json",
@@ -1946,6 +1948,14 @@ _GAP_READY_STATUSES = frozenset({"pass", "should-fix"})
 _GAP_LEG_REQUIRED_IDS: dict[str, tuple[str, ...]] = {}
 for _fid, _fname in GAP_LEG_SOURCE.items():
     _GAP_LEG_REQUIRED_IDS[_fname] = _GAP_LEG_REQUIRED_IDS.get(_fname, ()) + (_fid,)
+
+# Finding ids a producer added after a schema version shipped. A trusted
+# manifest written before the id existed may omit it: its must-fix findings
+# still propagate (negative evidence is never dropped), every other finding of
+# that manifest is `not-verified` until the leg is re-run with current rules.
+_GAP_LEG_LEGACY_OPTIONAL_IDS: dict[str, frozenset[str]] = {
+    "ground-manifest.json": frozenset({"GRD-005"}),
+}
 
 # Exact producer finding-status enum. `not-applicable` belongs to legacy
 # capability manifests, not these new shared-envelope leg schemas.
@@ -2090,6 +2100,9 @@ def _validate_gap_leg_envelope(data: Any, filename: str) -> str | None:
     findings = data["findings"]
     if not isinstance(findings, list):
         return "findings must be a list"
+    legacy_ids = _GAP_LEG_LEGACY_OPTIONAL_IDS.get(filename, frozenset())
+    if _gap_is_legacy_leg(data, filename):
+        required_ids = tuple(fid for fid in required_ids if fid not in legacy_ids)
     if len(findings) != len(required_ids):
         return (
             "findings must contain exactly "
@@ -2115,6 +2128,15 @@ def _validate_gap_leg_envelope(data: Any, filename: str) -> str | None:
             + " (one each, no duplicates/unknowns)"
         )
     return None
+
+
+def _gap_is_legacy_leg(data: dict, filename: str) -> bool:
+    """True when *data* omits every finding id added after its schema shipped."""
+    legacy_ids = _GAP_LEG_LEGACY_OPTIONAL_IDS.get(filename)
+    if not legacy_ids or not isinstance(data.get("findings"), list):
+        return False
+    ids = {item.get("id") for item in data["findings"] if isinstance(item, dict)}
+    return not (ids & legacy_ids)
 
 
 def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
@@ -2183,6 +2205,15 @@ def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
             detail=str(detail) if detail else
             f"specs/{filename} reports {source_id} must-fix (executed evidence failed).")
 
+    # A manifest written before a newer finding existed keeps its negative
+    # evidence (above) but cannot prove readiness under the current rules.
+    if _gap_is_legacy_leg(data, filename):
+        return _mk_finding(
+            target_id, status="not-verified",
+            detail=(f"specs/{filename} predates "
+                    + ", ".join(sorted(_GAP_LEG_LEGACY_OPTIONAL_IDS[filename]))
+                    + " and the current checks; re-run the producing leg."))
+
     # An aborted run can never certify readiness.
     if data.get("status") == "aborted":
         return _mk_finding(
@@ -2208,7 +2239,7 @@ def _leg_finding(ctx: RepoContext, *, filename: str, source_id: str,
 
 
 def _check_gap_leg_manifests(ctx: RepoContext) -> list[Finding]:
-    """Return all 14 live-leg gap findings (INT/GRD/LOAD/UPG), exactly once each,
+    """Return all 15 live-leg gap findings (INT/GRD/LOAD/UPG), exactly once each,
     ordered INT -> GRD -> LOAD -> UPG."""
     return [
         _leg_finding(ctx, filename=filename, source_id=fid, target_id=fid)

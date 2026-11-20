@@ -288,7 +288,7 @@ _LEG_SCHEMAS = {
 }
 _LEG_IDS = {
     "connect": ["INT-001", "INT-002", "INT-003", "INT-004"],
-    "ground": ["GRD-001", "GRD-002", "GRD-003", "GRD-004"],
+    "ground": ["GRD-001", "GRD-002", "GRD-003", "GRD-004", "GRD-005"],
     "load": ["LOAD-001", "LOAD-002", "LOAD-003"],
     "upgrade": ["UPG-001", "UPG-002", "UPG-003"],
 }
@@ -331,17 +331,17 @@ def test_missing_new_leg_manifest_is_not_verified(name: str, finding_id: str) ->
     assert _by_id(findings)[finding_id].status == "not-verified"
 
 
-def test_gap_check_returns_all_14_exactly_once() -> None:
+def test_gap_check_returns_all_15_exactly_once() -> None:
     findings = pr._check_gap_leg_manifests(_make_ctx())
     ids = [f.id for f in findings]
     expected = [
         "INT-001", "INT-002", "INT-003", "INT-004",
-        "GRD-001", "GRD-002", "GRD-003", "GRD-004",
+        "GRD-001", "GRD-002", "GRD-003", "GRD-004", "GRD-005",
         "LOAD-001", "LOAD-002", "LOAD-003",
         "UPG-001", "UPG-002", "UPG-003",
     ]
     assert ids == expected, ids
-    assert len(ids) == len(set(ids)) == 14
+    assert len(ids) == len(set(ids)) == 15
 
 
 def test_executed_acl_failure_is_must_fix() -> None:
@@ -417,6 +417,7 @@ def test_complete_fresh_envelope_propagates_producer_statuses() -> None:
                 {"id": "GRD-002", "status": "pass"},
                 {"id": "GRD-003", "status": "should-fix"},
                 {"id": "GRD-004", "status": "pass"},
+                {"id": "GRD-005", "status": "pass"},
             ],
         ),
     })
@@ -867,6 +868,7 @@ def test_gap_findings_registered_in_expected_pillars() -> None:
         "INT-003": "reliability", "INT-004": "reliability",
         "GRD-001": "identity-access",
         "GRD-002": "responsible-ai", "GRD-003": "responsible-ai", "GRD-004": "responsible-ai",
+        "GRD-005": "identity-access",
         "LOAD-001": "reliability", "LOAD-002": "cost", "LOAD-003": "reliability",
         "UPG-001": "model-lifecycle", "UPG-002": "model-lifecycle", "UPG-003": "supply-chain",
     }
@@ -1093,6 +1095,9 @@ def test_real_ground_manifest_propagates_all_grd_pass() -> None:
             {"principal": "unentitled-guest", "document_ids": [],
              "source_id": "policy-library", "captured_at": now,
              "expected_entitled": False},
+            {"principal": "app-managed-identity", "document_ids": [],
+             "source_id": "policy-library", "captured_at": now,
+             "token_mode": "none"},
         ],
         citation_runs=[{"citations": ["doc-1"], "retrieved_ids": ["doc-1", "doc-2"],
                         "source_id": "policy-library", "captured_at": now}],
@@ -1106,7 +1111,7 @@ def test_real_ground_manifest_propagates_all_grd_pass() -> None:
     ctx = _make_ctx()
     _write_manifest(ctx, "ground-manifest.json", manifest)
     f = _by_id(pr._check_gap_leg_manifests(ctx))
-    for fid in ("GRD-001", "GRD-002", "GRD-003", "GRD-004"):
+    for fid in ("GRD-001", "GRD-002", "GRD-003", "GRD-004", "GRD-005"):
         assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"
 
 
@@ -1167,3 +1172,67 @@ def test_real_upgrade_manifest_propagates_all_upg_pass() -> None:
     f = _by_id(pr._check_gap_leg_manifests(ctx))
     for fid in ("UPG-001", "UPG-002", "UPG-003"):
         assert f[fid].status == "pass", f"{fid}: {f[fid].detail}"
+
+
+def test_real_ground_manifest_derived_artifact_on_acl_source_is_must_fix() -> None:
+    # #214: an ACL source that also builds a Foundry IQ entity graph exposes the
+    # graph to every reader. production-ready must surface GRD-005 must-fix in
+    # the identity-access pillar from a real ground manifest.
+    now = _now_iso()
+    src = {
+        "id": "supplier-docs", "type": "documents", "permission_model": "acl",
+        "refresh_cadence": "daily", "citation_required": False,
+        "refuse_when_unsupported": False, "enrichments": ["entity_graph"],
+    }
+    manifest = ground.assess_grounding(
+        sources=[src],
+        acl_runs=[
+            {"principal": "e", "document_ids": ["d1"], "source_id": "supplier-docs",
+             "captured_at": now, "expected_entitled": True},
+            {"principal": "u", "document_ids": [], "source_id": "supplier-docs",
+             "captured_at": now, "expected_entitled": False},
+            {"principal": "mi", "document_ids": [], "source_id": "supplier-docs",
+             "captured_at": now, "token_mode": "none"},
+        ],
+        citation_runs=[], refusal_runs=[], generated_at=now,
+        retrieval_quality_baseline="specs/baselines/retrieval-quality.json",
+    )
+    ctx = _make_ctx()
+    _write_manifest(ctx, "ground-manifest.json", manifest)
+    findings, _ = pr._run_pillar(
+        "identity-access", ctx, static_only=True, tiers={}, sub=None, rg=None,
+        resolved_posture="none", agt_profile="none", quick=False,
+    )
+    by_id = _by_id(findings)
+    assert by_id["GRD-005"].status == "must-fix"
+    assert by_id["GRD-001"].status == "pass"
+
+
+def test_legacy_four_finding_ground_manifest_cannot_pass_but_keeps_must_fix() -> None:
+    # A ground manifest produced before GRD-005 existed is still trusted: its
+    # proven leak stays must-fix (negative evidence is never dropped), while
+    # nothing in it can prove readiness under the current rules.
+    legacy = gap_manifest("ground", findings=[
+        {"id": "GRD-001", "status": "must-fix"},
+        {"id": "GRD-002", "status": "pass"},
+        {"id": "GRD-003", "status": "pass"},
+        {"id": "GRD-004", "status": "pass"},
+    ])
+    ctx = _make_ctx(manifests={"ground-manifest.json": legacy})
+    f = _by_id(pr._check_gap_leg_manifests(ctx))
+    assert f["GRD-001"].status == "must-fix"
+    for fid in ("GRD-002", "GRD-003", "GRD-004", "GRD-005"):
+        assert f[fid].status == "not-verified", fid
+        assert "re-run" in f[fid].detail
+
+
+def test_partial_legacy_ids_are_still_rejected() -> None:
+    # Only the exact legacy set may be omitted; any other gap is untrusted.
+    bad = gap_manifest("ground", findings=[
+        {"id": "GRD-001", "status": "must-fix"},
+        {"id": "GRD-002", "status": "pass"},
+        {"id": "GRD-003", "status": "pass"},
+        {"id": "GRD-005", "status": "pass"},
+    ])
+    ctx = _make_ctx(manifests={"ground-manifest.json": bad})
+    assert _by_id(pr._check_gap_leg_manifests(ctx))["GRD-001"].status == "not-verified"

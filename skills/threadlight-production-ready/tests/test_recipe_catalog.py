@@ -60,11 +60,11 @@ SIBLING_PARSERS = {
     "threadlight-upgrade": (upgrade.build_arg_parser, "skills/threadlight-upgrade/scripts/upgrade.py"),
 }
 
-# The 14 remediation recipes that invoke a sibling leg's argparse CLI. Every one
+# The 15 remediation recipes that invoke a sibling leg's argparse CLI. Every one
 # must document commands that the current parser accepts.
 SIBLING_RECIPE_IDS = [
     "INT-001", "INT-002", "INT-003", "INT-004",
-    "GRD-001", "GRD-002", "GRD-003", "GRD-004",
+    "GRD-001", "GRD-002", "GRD-003", "GRD-004", "GRD-005",
     "LOAD-001", "LOAD-002", "LOAD-003",
     "UPG-001", "UPG-002", "UPG-003",
 ]

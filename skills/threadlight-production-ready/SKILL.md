@@ -157,7 +157,7 @@ The skill exposes an **explicit production-onboarding workflow**:
 
 1. **Assess (always safe, always read-only).** A Python script
    (`scripts/production_ready.py`) inventories your target Azure
-   subscription/resource group, scores it against 192 findings spanning 13
+   subscription/resource group, scores it against 193 findings spanning 13
    production-readiness pillars, and emits the scorecard/report plus an
    `apply-plan.json` that names every must-fix gap and the remediation recipe
    that closes it.

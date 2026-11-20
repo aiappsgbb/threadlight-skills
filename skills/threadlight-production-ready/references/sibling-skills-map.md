@@ -30,6 +30,7 @@ the invocation is expected to flip green.
 | GRD-002 | `threadlight-ground` | `target` (repo root); re-captures citation evidence | Citations grounded in retrieved context. |
 | GRD-003 | `threadlight-ground` | `target` (repo root); re-captures refusal probes | Refusal behaviour on unsupported queries. |
 | GRD-004 | `threadlight-ground` | `target` (repo root); refreshes sources + baseline reference | Knowledge-source freshness and coverage. |
+| GRD-005 | `threadlight-ground` | `target` (repo root); re-declares source `enrichments`/`audience` and re-emits `specs/ground-manifest.json` | Derived artifacts (entity/topic graphs) on ACL-protected sources. |
 | LOAD-001 | `threadlight-loadtest` | `--spec specs/SPEC.md --out specs/load-manifest.json`; retarget non-production endpoint | Production-safety guard on load runs. |
 | LOAD-002 | `threadlight-loadtest` | (same) | Projected load within budget ceiling. |
 | LOAD-003 | `threadlight-loadtest` | (same); declare `slo` thresholds + collect samples | SLO (p95 latency / error rate) under load. |

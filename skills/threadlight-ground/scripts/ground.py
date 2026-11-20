@@ -8,7 +8,7 @@ Search Knowledge Agent); quality/relevance scoring stays with
 `threadlight-evals`. This script never calls Foundry IQ, never runs an
 evaluator, and never issues a retrieval query itself — it only ingests probe
 *results* the caller already captured (an ACL probe run, a citation
-validation run, a refusal probe run) and turns them into four findings:
+validation run, a refusal probe run) and turns them into five findings:
 
     GRD-001  ACL enforcement       — did unentitled principals receive
                                       documents they were not allowed to?
@@ -19,6 +19,8 @@ validation run, a refusal probe run) and turns them into four findings:
     GRD-004  freshness / coverage  — does every declared knowledge source
                                       have fresh, covering evidence, and is a
                                       retrieval-quality baseline referenced?
+    GRD-005  derived artifacts     — does an ACL source also build an entity
+                                      or topic graph that every reader sees?
 
 The **`sources` argument is the authoritative inventory** — it is the
 SPEC-derived `knowledge_sources[]` input contract (see
@@ -84,10 +86,11 @@ from skills._shared.manifest import (  # noqa: E402
     ManifestValidationError,
     atomic_write_json,
     build_envelope,
+    is_draft7_integer,
     validate_envelope,
 )
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 GROUND_MANIFEST_SCHEMA = "threadlight.ground/v1"
 
 DEFAULT_MANIFEST_PATH = "specs/ground-manifest.json"
@@ -130,7 +133,31 @@ _FINDING_REASON_ENUM = frozenset({
     "retrieval-quality-baseline-missing",
     "stale-evidence",
     "fresh-and-covered",
+    # GRD-001 no-token / RBAC-propagation probes (#215)
+    "no-token-probe-missing",
+    "no-token-retrieval-leak",
+    "revocation-probe-too-early",
+    # GRD-005 derived artifacts on ACL sources (#214)
+    "no-derived-artifacts-on-acl-sources",
+    "derived-artifact-on-acl-source",
+    "uniform-audience-unjustified",
+    "uniform-audience-declared",
 })
+
+# Derived-artifact enrichments a SPEC knowledge source may enable (#214).
+# Foundry IQ entity/topic graphs are separate indexes that do not inherit the
+# source's document-level permissions, so on an ACL source they are a
+# structural leak unless every reader is entitled to the whole corpus.
+_ENRICHMENT_ENUM = ("entity_graph", "topic_graph", "none")
+_AUDIENCE_ENUM = ("uniform",)
+
+# How the caller's identity reached retrieval for an ACL probe (#215). `none`
+# means NO user token reached retrieval (e.g. managed identity only, header not
+# wired); it is probed separately because official docs disagree on whether
+# such a call is filtered.
+_TOKEN_MODE_ENUM = ("user", "none", "agent_dynamic", "structured_input")
+_DEFAULT_TOKEN_MODE = "user"
+_DEFAULT_REVOCATION_SETTLE_MINUTES = 15
 
 # Allowlisted finding `detail` fields. Only IDs (lists / single strings),
 # counts, status enums (`by_source`), a `coverage_complete` boolean, and the
@@ -144,6 +171,9 @@ _DETAIL_LIST_KEYS = (
     "unsupported_queries_answered",
     "leaked_document_ids",
     "missing_principals",
+    "early_revocation_principals",
+    "derived_artifact_sources",
+    "uniform_audience_sources",
 )
 _DETAIL_STRING_KEYS = ("worst_source",)
 # `coverage_complete` is a schema-safe boolean that preserves whether the ACL
@@ -177,6 +207,9 @@ _FORBIDDEN_KEY_WORDS = frozenset({
     "authorization", "content", "prompt", "completion", "completions", "payload",
 })
 _FORBIDDEN_KEY_SUBSTRINGS = ("api_key", "apikey", "access_key", "connection_string")
+# Exact control-field names that contain a forbidden word but carry only an
+# enum, never a credential: `token_mode` says HOW identity reached retrieval.
+_ALLOWED_CONTROL_KEYS = frozenset({"token_mode"})
 
 # Explicit credential VALUE patterns. Even though `detail` and payload fields
 # are strict allowlists, an ID field is an inherently free string, so a hostile
@@ -261,6 +294,8 @@ class GroundEvidenceError(ValueError):
 # ---------------------------------------------------------------------------
 def _is_forbidden_key(key: str) -> bool:
     lowered = key.lower()
+    if lowered in _ALLOWED_CONTROL_KEYS:
+        return False
     if any(marker in lowered for marker in _FORBIDDEN_KEY_SUBSTRINGS):
         return True
     words = re.split(r"[^a-z0-9]+", lowered)
@@ -484,12 +519,35 @@ def _normalize_acl_run(run: Any, index: int, declared_ids: set) -> dict:
             _require_evidence_id_list(raw_allowed, f"{label}.allowed_document_ids")
         )
     )
+    token_mode = run.get("token_mode", _DEFAULT_TOKEN_MODE)
+    if token_mode not in _TOKEN_MODE_ENUM:
+        raise GroundEvidenceError(
+            f"{label}.token_mode must be one of {', '.join(_TOKEN_MODE_ENUM)}"
+        )
+    expected = _resolve_expected_entitled(run, label)
+    if token_mode == "none":
+        # A no-token probe has no user entitlement by construction.
+        if expected is True:
+            raise GroundEvidenceError(
+                f"{label} is a token_mode 'none' probe and cannot be expected_entitled"
+            )
+        expected = False
+    rbac_changed_at = None
+    if "rbac_changed_at" in run:
+        rbac_changed_at = _parse_rfc3339(run["rbac_changed_at"])
+        if rbac_changed_at is None:
+            raise GroundEvidenceError(
+                f"{label}.rbac_changed_at must be an RFC3339 timestamp with a timezone"
+            )
     return {
         "source_id": source_id,
         "principal": principal,
         "document_ids": frozenset(document_ids),
         "allowed_ids": allowed_ids,
-        "expected": _resolve_expected_entitled(run, label),
+        "expected": expected,
+        "token_mode": token_mode,
+        "rbac_changed_at": rbac_changed_at,
+        "captured_at": _parse_rfc3339(run.get("captured_at")),
     }
 
 
@@ -570,7 +628,49 @@ def _sanitize_source(source: Any, index: int) -> dict:
             )
         sanitized["acl_probe_principals"] = list(principals)
 
+    if "enrichments" in source:
+        enrichments = source["enrichments"]
+        if (
+            not isinstance(enrichments, list)
+            or not enrichments
+            or not all(isinstance(item, str) for item in enrichments)
+            or any(item not in _ENRICHMENT_ENUM for item in enrichments)
+            or len(set(enrichments)) != len(enrichments)
+            or ("none" in enrichments and len(enrichments) > 1)
+        ):
+            raise GroundEvidenceError(
+                f"{label}.enrichments must be a non-empty list of unique values from "
+                + ", ".join(_ENRICHMENT_ENUM)
+                + " ('none' alone)"
+            )
+        sanitized["enrichments"] = list(enrichments)
+
+    if "audience" in source:
+        if source["audience"] not in _AUDIENCE_ENUM:
+            raise GroundEvidenceError(f"{label}.audience must be 'uniform' when present")
+        sanitized["audience"] = source["audience"]
+    if "audience_justification" in source:
+        justification = source["audience_justification"]
+        if not isinstance(justification, str) or not justification.strip():
+            raise GroundEvidenceError(
+                f"{label}.audience_justification must be a non-empty string"
+            )
+    # The justification text stays in the SPEC for review and is never
+    # persisted: the manifest stays content-free.
+
+    if "revocation_settle_minutes" in source:
+        minutes = source["revocation_settle_minutes"]
+        if not is_draft7_integer(minutes) or minutes < 1:
+            raise GroundEvidenceError(
+                f"{label}.revocation_settle_minutes must be a positive integer"
+            )
+        sanitized["revocation_settle_minutes"] = int(minutes)
+
     return sanitized
+
+
+def _source_enrichments(source: dict) -> list:
+    return [item for item in source.get("enrichments", ["none"]) if item != "none"]
 
 
 def _source_requires_acl(source: dict) -> bool:
@@ -611,6 +711,38 @@ def _acl_coverage_gap(source: dict, runs: list):
     return None
 
 
+def _split_revocation_runs(source: dict, runs: list):
+    """Separate revocation probes taken before RBAC changes could propagate.
+
+    A denial probe (explicit unentitled run) carrying `rbac_changed_at` is a
+    revocation probe. It counts as evidence only when its `captured_at` is at
+    least `revocation_settle_minutes` (SPEC, default 15) after the change;
+    earlier polls observed propagation lag, so they prove neither a pass nor a
+    leak. Returns ``(evidence_runs, early_principals)`` where
+    ``early_principals`` lists principals whose revocation was never probed
+    after the settle window.
+    """
+    settle_seconds = 60 * source.get(
+        "revocation_settle_minutes", _DEFAULT_REVOCATION_SETTLE_MINUTES
+    )
+    evidence_runs: list = []
+    early: set = set()
+    settled: set = set()
+    for run in runs:
+        if run["expected"] is False and run["rbac_changed_at"] is not None:
+            captured = run["captured_at"]
+            if (
+                captured is not None
+                and (captured - run["rbac_changed_at"]).total_seconds() >= settle_seconds
+            ):
+                settled.add(run["principal"])
+            else:
+                early.add(run["principal"])
+                continue
+        evidence_runs.append(run)
+    return evidence_runs, sorted(early - settled)
+
+
 def _assess_acl_group(source: dict, runs: list) -> dict:
     """Assess one source's ACL runs. Returns a small dict
     ``{"status", "reason", "extras", "coverage_complete"}``.
@@ -618,23 +750,44 @@ def _assess_acl_group(source: dict, runs: list) -> dict:
     **Negative evidence takes precedence.** A proven leak — an EXPLICIT
     unentitled principal (``expected_entitled == false``) receiving ANY document
     outside its explicit `allowed_document_ids` (a subset is enough; no
-    allowlist means nothing is allowed) — is `must-fix` even when OTHER runs are
+    allowlist means nothing is allowed), or a `token_mode: none` probe returning
+    a document outside its allowlist — is `must-fix` even when OTHER runs are
     ambiguous or a declared principal is unprobed. The coexisting coverage gap
     is not discarded: it is preserved in `coverage_complete` (and, when
     available, `missing_principals`) so the envelope can still be `partial`.
     With no leak, an incomplete coverage gap is `not-verified` (never a guessed
-    pass), and complete-and-clean evidence is `pass`.
+    pass), and complete-and-clean evidence is `pass`. Coverage additionally
+    requires one `token_mode: none` probe and, for revocation probes, a probe
+    taken after the RBAC settle window.
     """
+    no_token_runs = [run for run in runs if run["token_mode"] == "none"]
+    principal_runs = [run for run in runs if run["token_mode"] != "none"]
+    evidence_runs, early_principals = _split_revocation_runs(source, principal_runs)
+
+    def _leaks(candidates: list) -> set:
+        leaked: set = set()
+        for run in candidates:
+            if run["expected"] is False:
+                allowed = run["allowed_ids"] if run["allowed_ids"] is not None else frozenset()
+                leaked |= run["document_ids"] - allowed
+        return leaked
+
     # Proven leak, computed from EXPLICIT unentitled runs only — an ambiguous
     # run (`expected is None`) is not proof of anything and never contributes a
     # leak, but it also cannot suppress a leak proven elsewhere in the group.
-    leaked: set = set()
-    for run in runs:
-        if run["expected"] is False:
-            allowed = run["allowed_ids"] if run["allowed_ids"] is not None else frozenset()
-            leaked |= run["document_ids"] - allowed
+    principal_leaked = _leaks(evidence_runs)
+    no_token_leaked = _leaks(no_token_runs)
+    leaked = principal_leaked | no_token_leaked
 
-    coverage_gap = _acl_coverage_gap(source, runs)
+    if early_principals:
+        coverage_gap = (
+            "revocation-probe-too-early",
+            {"early_revocation_principals": early_principals},
+        )
+    else:
+        coverage_gap = _acl_coverage_gap(source, evidence_runs)
+        if coverage_gap is None and not no_token_runs:
+            coverage_gap = ("no-token-probe-missing", {})
 
     if leaked:
         extras: dict[str, Any] = {"leaked_document_ids": sorted(leaked)}
@@ -645,7 +798,7 @@ def _assess_acl_group(source: dict, runs: list) -> dict:
             extras.update(gap_extras)
         return {
             "status": "must-fix",
-            "reason": "unauthorized-documents",
+            "reason": "unauthorized-documents" if principal_leaked else "no-token-retrieval-leak",
             "extras": extras,
             "coverage_complete": coverage_gap is None,
         }
@@ -736,6 +889,49 @@ def assess_acl(sources: list, acl_runs: list) -> dict:
     if worst["status"] == "must-fix" and coverage_incomplete:
         extras["coverage_complete"] = False
     return _finding(finding_id, worst["status"], worst["reason"], **extras)
+
+
+# ---------------------------------------------------------------------------
+# GRD-005 — derived artifacts (entity/topic graphs) on ACL sources (#214)
+# ---------------------------------------------------------------------------
+def assess_derived_artifacts(sources: list, justified_ids: frozenset = frozenset()) -> dict:
+    """GRD-005 — an ACL source that also builds a derived artifact (Foundry IQ
+    entity graph, topic graph) exposes that artifact to every reader of the
+    knowledge base: graph rows carry no document-level permissions, so ACL
+    probes against documents never see them. That is `must-fix` unless the
+    SPEC declares `audience: uniform` with a justification (every reader is
+    entitled to the whole corpus), which passes with the
+    `uniform-audience-declared` note. Computed from the SPEC declaration
+    alone, so it is never `not-verified`.
+    """
+    finding_id = "GRD-005"
+    flagged = [
+        source for source in sources
+        if _source_requires_acl(source) and _source_enrichments(source)
+    ]
+    if not flagged:
+        return _finding(finding_id, "pass", "no-derived-artifacts-on-acl-sources")
+
+    uniform = sorted(
+        source["id"] for source in flagged
+        if source.get("audience") == "uniform" and source["id"] in justified_ids
+    )
+    unjustified = sorted(
+        source["id"] for source in flagged
+        if source.get("audience") == "uniform" and source["id"] not in justified_ids
+    )
+    exposed = sorted(
+        source["id"] for source in flagged if source.get("audience") != "uniform"
+    )
+    if exposed or unjustified:
+        extras: dict[str, Any] = {"derived_artifact_sources": sorted(exposed + unjustified)}
+        if uniform:
+            extras["uniform_audience_sources"] = uniform
+        reason = "derived-artifact-on-acl-source" if exposed else "uniform-audience-unjustified"
+        return _finding(finding_id, "must-fix", reason, **extras)
+    return _finding(
+        finding_id, "pass", "uniform-audience-declared", uniform_audience_sources=uniform
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -928,13 +1124,15 @@ def _summarize_acl_runs(acl_runs: list) -> list:
         if not isinstance(run, dict):
             continue
         document_ids = run.get("document_ids")
-        summary.append(
-            {
-                "principal": run.get("principal"),
-                "document_ids": sorted(document_ids) if isinstance(document_ids, list) else [],
-                "source_id": run.get("source_id"),
-            }
-        )
+        item = {
+            "principal": run.get("principal"),
+            "document_ids": sorted(document_ids) if isinstance(document_ids, list) else [],
+            "source_id": run.get("source_id"),
+            "token_mode": run.get("token_mode", _DEFAULT_TOKEN_MODE),
+        }
+        if "rbac_changed_at" in run:
+            item["rbac_changed_at"] = run["rbac_changed_at"]
+        summary.append(item)
     return summary
 
 
@@ -1013,7 +1211,10 @@ def _finding_forces_partial(finding: dict) -> bool:
     if isinstance(detail, dict):
         if detail.get("coverage_complete") is False:
             return True
-        for key in ("uncovered_sources", "unverifiable_freshness_sources", "missing_principals"):
+        for key in (
+            "uncovered_sources", "unverifiable_freshness_sources",
+            "missing_principals", "early_revocation_principals",
+        ):
             if detail.get(key):
                 return True
         by_source = detail.get("by_source")
@@ -1070,6 +1271,11 @@ def assess_grounding(
             raise GroundEvidenceError(f"duplicate knowledge source id {source_id!r}")
         seen_ids.add(source_id)
 
+    justified_ids = frozenset(
+        source["id"] for source in sources
+        if isinstance(source, dict) and source.get("audience_justification")
+    )
+
     acl_finding = assess_acl(sanitized_sources, acl_runs)
     citation_finding = assess_citations(sanitized_sources, citation_runs)
     refusal_finding = assess_refusal(sanitized_sources, refusal_runs)
@@ -1082,7 +1288,11 @@ def assess_grounding(
         retrieval_quality_baseline=baseline,
     )
 
-    findings = [acl_finding, citation_finding, refusal_finding, freshness_finding]
+    derived_finding = assess_derived_artifacts(sanitized_sources, justified_ids)
+
+    findings = [
+        acl_finding, citation_finding, refusal_finding, freshness_finding, derived_finding,
+    ]
     status = (
         "partial"
         if any(_finding_forces_partial(finding) for finding in findings)
@@ -1216,8 +1426,10 @@ def _require_number(value, label: str, *, minimum=None) -> None:
 _SOURCE_KEYS = {
     "id", "type", "permission_model", "refresh_cadence",
     "citation_required", "refuse_when_unsupported", "acl_probe_principals",
+    "enrichments", "audience", "revocation_settle_minutes",
 }
-_ACL_EVIDENCE_KEYS = {"principal", "document_ids", "source_id"}
+_ACL_EVIDENCE_REQUIRED_KEYS = {"principal", "document_ids", "source_id"}
+_ACL_EVIDENCE_KEYS = _ACL_EVIDENCE_REQUIRED_KEYS | {"token_mode", "rbac_changed_at"}
 _CITATION_EVIDENCE_KEYS = {
     "source_id", "citation_count", "retrieved_count", "missing_from_retrieval",
 }
@@ -1320,15 +1532,41 @@ def validate_ground_manifest(manifest: dict) -> None:
                 f"{label}.acl_probe_principals",
                 min_length=1,
             )
+        if "enrichments" in source:
+            enrichments = _require_array(source["enrichments"], f"{label}.enrichments")
+            if (
+                not enrichments
+                or any(item not in _ENRICHMENT_ENUM for item in enrichments)
+                or len(set(enrichments)) != len(enrichments)
+            ):
+                raise ManifestValidationError(
+                    f"{label}.enrichments must be unique values from {_ENRICHMENT_ENUM}"
+                )
+        if "audience" in source and source["audience"] not in _AUDIENCE_ENUM:
+            raise ManifestValidationError(f"{label}.audience must be 'uniform'")
+        if "revocation_settle_minutes" in source:
+            minutes = source["revocation_settle_minutes"]
+            if not is_draft7_integer(minutes) or minutes < 1:
+                raise ManifestValidationError(
+                    f"{label}.revocation_settle_minutes must be a positive integer"
+                )
 
     for index, item in enumerate(_require_array(manifest["acl_evidence"], "acl_evidence")):
         label = f"acl_evidence[{index}]"
         item = _require_object(item, label)
-        _require_keys(item, _ACL_EVIDENCE_KEYS, label)
+        _require_keys(item, _ACL_EVIDENCE_REQUIRED_KEYS, label)
         _reject_unknown_keys(item, _ACL_EVIDENCE_KEYS, label)
         _require_nullable_string(item["principal"], f"{label}.principal")
         _require_string_array(item["document_ids"], f"{label}.document_ids", min_length=1)
         _require_nullable_string(item["source_id"], f"{label}.source_id")
+        if "token_mode" in item and item["token_mode"] not in _TOKEN_MODE_ENUM:
+            raise ManifestValidationError(
+                f"{label}.token_mode must be one of {_TOKEN_MODE_ENUM}"
+            )
+        if "rbac_changed_at" in item and _parse_rfc3339(item["rbac_changed_at"]) is None:
+            raise ManifestValidationError(
+                f"{label}.rbac_changed_at must be an RFC3339 timestamp"
+            )
 
     for index, item in enumerate(
         _require_array(manifest["citation_evidence"], "citation_evidence")

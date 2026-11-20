@@ -166,7 +166,7 @@ def covered(**overrides):
     source — every control satisfied so the manifest is `complete`."""
     kwargs = dict(
         sources=[source()],
-        acl_runs=[entitled(), unentitled()],
+        acl_runs=[entitled(), unentitled(), no_token()],
         citation_runs=[cite_run()],
         refusal_runs=[refuse_run()],
     )
@@ -375,6 +375,7 @@ def test_allowlisted_public_documents_are_not_a_leak():
         [
             entitled("e", ["public-doc", "protected-doc"]),
             unentitled("u", ["public-doc"], allowed_document_ids=["public-doc"]),
+            no_token(),
         ],
     )
     assert result["status"] == "pass"
@@ -394,7 +395,7 @@ def test_identical_protected_set_for_incompatible_principals_stays_must_fix():
 
 
 def test_distinct_results_with_empty_unentitled_set_is_pass():
-    result = assess_acl([source()], [entitled("e", ["doc-1"]), unentitled("u", [])])
+    result = assess_acl([source()], [entitled("e", ["doc-1"]), unentitled("u", []), no_token()])
     assert result["status"] == "pass"
 
 
@@ -408,6 +409,7 @@ def test_explicit_expected_entitled_overrides_name_heuristics():
             acl_run("svc-admin-probe", ["doc-1"], expected_entitled=False,
                     allowed_document_ids=["doc-1"]),
             acl_run("svc-guest-probe", ["doc-2"], expected_entitled=True),
+            no_token(),
         ],
     )
     assert result["status"] == "pass"
@@ -444,6 +446,8 @@ def test_acl_runs_grouped_by_source_id_worst_case_wins():
         # hr-handbook: clean (unentitled got nothing)
         entitled("e", ["h1"], source_id="hr-handbook"),
         unentitled("u", [], source_id="hr-handbook"),
+        no_token(source_id="policy-library"),
+        no_token(source_id="hr-handbook"),
     ]
     manifest = ground_manifest(sources=sources_list, acl_runs=acl_runs)
     finding = by_id(manifest)["GRD-001"]
@@ -465,6 +469,7 @@ def test_acl_failure_from_public_source_does_not_fail_enabled_source():
         [
             entitled(source_id="protected"),
             unentitled(source_id="protected"),
+            no_token(source_id="protected"),
             entitled(source_id="public"),
             unentitled(document_ids=["doc-1"], source_id="public"),
         ],
@@ -577,6 +582,8 @@ def test_multi_source_leak_with_full_coverage_stays_complete():
             unentitled("u", ["p1"], source_id="policy-library"),
             entitled("e", ["h1"], source_id="hr-handbook"),
             unentitled("u", [], source_id="hr-handbook"),
+            no_token(source_id="policy-library"),
+            no_token(source_id="hr-handbook"),
         ],
         citation_runs=[cite_run(source_id="policy-library"), cite_run(source_id="hr-handbook")],
         refusal_runs=[refuse_run(source_id="policy-library"), refuse_run(source_id="hr-handbook")],
@@ -1184,6 +1191,7 @@ def test_acl_leak_with_long_hash_id_is_must_fix_and_emits_manifest(tmp_path):
         acl_runs=[
             entitled("e", [SHA256_DOCUMENT_ID]),
             unentitled("u", [SHA256_DOCUMENT_ID]),
+            no_token(),
         ],
     )
     finding = by_id(manifest)["GRD-001"]
@@ -1338,13 +1346,6 @@ def test_assess_grounding_requires_rfc3339_generated_at():
         )
 
 
-def test_assess_grounding_findings_always_include_all_four_ids_in_order():
-    manifest = ground_manifest()
-    assert [f["id"] for f in manifest["findings"]] == [
-        "GRD-001", "GRD-002", "GRD-003", "GRD-004",
-    ]
-
-
 def test_status_complete_when_every_required_leg_is_verified():
     manifest = ground_manifest(
         sources=[source(permission_model="public")],
@@ -1359,7 +1360,9 @@ def test_status_complete_when_acl_leg_is_an_executed_must_fix():
     # An EXECUTED must-fix with COMPLETE coverage is complete evidence — it
     # must never downgrade `status` to partial on its own.
     manifest = covered(
-        acl_runs=[entitled("e", ["doc-1", "doc-2"]), unentitled("u", ["doc-1", "doc-2"])],
+        acl_runs=[
+            entitled("e", ["doc-1", "doc-2"]), unentitled("u", ["doc-1", "doc-2"]), no_token(),
+        ],
     )
     assert by_id(manifest)["GRD-001"]["status"] == "must-fix"
     assert manifest["status"] == "complete"
@@ -1387,7 +1390,7 @@ def _write_evidence(tmp_path, **evidence):
 def _covered_evidence():
     return dict(
         sources=[source()],
-        acl_runs=[entitled(), unentitled()],
+        acl_runs=[entitled(), unentitled(), no_token()],
         citation_runs=[cite_run()],
         refusal_runs=[refuse_run()],
         generated_at=PINNED,
@@ -1736,3 +1739,313 @@ def test_malformed_manifest_rejected_by_both_validators(mutate, jsonschema_valid
     assert not jsonschema_validator.is_valid(manifest), (
         "hand validator rejected this manifest but jsonschema accepted it"
     )
+
+
+# ---------------------------------------------------------------------------
+# #214 — GRD-005 derived artifacts (entity/topic graphs) on ACL sources
+# ---------------------------------------------------------------------------
+def no_token(document_ids=(), principal="app-managed-identity", source_id="policy-library",
+             **extra):
+    """A retrieval probe with NO user token reaching retrieval (#215)."""
+    return acl_run(principal, document_ids, source_id=source_id, token_mode="none", **extra)
+
+
+def _plus_no_token(*runs, source_id="policy-library"):
+    return [*runs, no_token(source_id=source_id)]
+
+
+def test_acl_source_with_entity_graph_is_grd005_must_fix():
+    manifest = covered(sources=[source(enrichments=["entity_graph"])])
+    finding = by_id(manifest)["GRD-005"]
+    assert finding["status"] == "must-fix"
+    assert finding["detail"]["reason"] == "derived-artifact-on-acl-source"
+    assert finding["detail"]["derived_artifact_sources"] == ["policy-library"]
+    # Declared (complete) evidence: the must-fix does not make the manifest partial.
+    assert manifest["status"] == "complete"
+
+
+def test_acl_source_with_topic_graph_is_grd005_must_fix():
+    finding = by_id(covered(sources=[source(enrichments=["topic_graph"])]))["GRD-005"]
+    assert finding["status"] == "must-fix"
+
+
+def test_acl_entity_graph_with_justified_uniform_audience_passes_with_note():
+    justification = "Every KB reader is entitled to the whole corpus (synthetic catalogue)."
+    manifest = covered(sources=[source(
+        enrichments=["entity_graph"], audience="uniform",
+        audience_justification=justification,
+    )])
+    finding = by_id(manifest)["GRD-005"]
+    assert finding["status"] == "pass"
+    assert finding["detail"]["reason"] == "uniform-audience-declared"
+    assert finding["detail"]["uniform_audience_sources"] == ["policy-library"]
+    # The justification stays in the SPEC; the manifest remains content-free.
+    assert justification not in json.dumps(manifest)
+    persisted = manifest["sources"][0]
+    assert persisted["enrichments"] == ["entity_graph"]
+    assert persisted["audience"] == "uniform"
+    assert "audience_justification" not in persisted
+
+
+def test_uniform_audience_without_justification_stays_must_fix():
+    finding = by_id(covered(sources=[source(
+        enrichments=["entity_graph"], audience="uniform",
+    )]))["GRD-005"]
+    assert finding["status"] == "must-fix"
+    assert finding["detail"]["reason"] == "uniform-audience-unjustified"
+
+
+@pytest.mark.parametrize("enrichments", [None, ["none"]])
+def test_no_enrichment_keeps_current_behaviour(enrichments):
+    overrides = {} if enrichments is None else {"enrichments": enrichments}
+    manifest = covered(sources=[source(**overrides)])
+    baseline = covered()
+    assert by_id(manifest)["GRD-005"]["status"] == "pass"
+    assert by_id(manifest)["GRD-005"]["detail"]["reason"] == "no-derived-artifacts-on-acl-sources"
+    for fid in ("GRD-001", "GRD-002", "GRD-003", "GRD-004"):
+        assert by_id(manifest)[fid] == by_id(baseline)[fid]
+    assert manifest["status"] == baseline["status"] == "complete"
+
+
+def test_enrichment_on_non_acl_source_is_not_a_derived_artifact_leak():
+    manifest = ground_manifest(
+        sources=[source(permission_model="public", enrichments=["entity_graph"])],
+        citation_runs=[cite_run()], refusal_runs=[refuse_run()],
+    )
+    assert by_id(manifest)["GRD-005"]["status"] == "pass"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"enrichments": "entity_graph"},              # not a list
+        {"enrichments": ["knowledge_graph"]},         # unknown value
+        {"enrichments": [1]},                         # non-string
+        {"enrichments": []},                          # empty
+        {"enrichments": ["none", "entity_graph"]},    # contradictory
+        {"enrichments": ["entity_graph", "entity_graph"]},  # duplicate
+        {"audience": "everyone"},                     # only `uniform` is defined
+        {"audience": "uniform", "audience_justification": 42},
+        {"audience": "uniform", "audience_justification": "   "},
+    ],
+)
+def test_malformed_enrichment_or_audience_raises(overrides):
+    with pytest.raises(GroundEvidenceError):
+        covered(sources=[source(**overrides)])
+
+
+def test_findings_include_all_five_ids_in_order():
+    assert [f["id"] for f in ground_manifest()["findings"]] == [
+        "GRD-001", "GRD-002", "GRD-003", "GRD-004", "GRD-005",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# #215 — GRD-001 no-token and RBAC-propagation probes
+# ---------------------------------------------------------------------------
+def test_missing_no_token_run_is_not_verified():
+    result = assess_acl([source()], [entitled(), unentitled()])
+    assert result["status"] == "not-verified"
+    assert result["detail"]["reason"] == "no-token-probe-missing"
+
+
+def test_no_token_run_without_protected_documents_passes():
+    result = assess_acl([source()], [entitled(), unentitled(), no_token()])
+    assert result["status"] == "pass"
+    assert result["detail"]["reason"] == "acl-enforced"
+
+
+def test_no_token_run_within_public_allowlist_passes():
+    result = assess_acl(
+        [source()],
+        [entitled(), unentitled(), no_token(["public-1"], allowed_document_ids=["public-1"])],
+    )
+    assert result["status"] == "pass"
+
+
+def test_no_token_run_that_leaks_is_must_fix():
+    manifest = covered(acl_runs=[entitled(), unentitled(), no_token(["doc-1"])])
+    finding = by_id(manifest)["GRD-001"]
+    assert finding["status"] == "must-fix"
+    assert finding["detail"]["reason"] == "no-token-retrieval-leak"
+    assert finding["detail"]["leaked_document_ids"] == ["doc-1"]
+    assert manifest["status"] == "complete"
+
+
+def test_no_token_run_does_not_count_as_the_unentitled_principal_probe():
+    result = assess_acl([source()], [entitled("e1"), entitled("e2", ["doc-2"]), no_token()])
+    assert result["status"] == "not-verified"
+    assert result["detail"]["reason"] == "missing-entitled-or-unentitled-probe"
+
+
+@pytest.mark.parametrize("mode", ["user", "agent_dynamic", "structured_input"])
+def test_user_token_modes_are_ordinary_principal_probes(mode):
+    result = assess_acl(
+        [source()],
+        [entitled(token_mode=mode), unentitled(token_mode=mode), no_token()],
+    )
+    assert result["status"] == "pass"
+
+
+def _minutes_after(minutes: int, start: str = "2026-08-17T08:00:00+00:00") -> str:
+    from datetime import datetime, timedelta
+    return (datetime.fromisoformat(start) + timedelta(minutes=minutes)).isoformat()
+
+
+RBAC_CHANGED = "2026-08-17T08:00:00+00:00"
+
+
+def test_revocation_probe_too_early_is_not_verified():
+    result = assess_acl([source()], _plus_no_token(
+        entitled(),
+        unentitled(rbac_changed_at=RBAC_CHANGED, captured_at=_minutes_after(7)),
+    ))
+    assert result["status"] == "not-verified"
+    assert result["detail"]["reason"] == "revocation-probe-too-early"
+    assert result["detail"]["early_revocation_principals"] == ["unentitled-guest"]
+
+
+def test_revocation_probe_after_settle_window_passes():
+    result = assess_acl([source()], _plus_no_token(
+        entitled(),
+        unentitled(rbac_changed_at=RBAC_CHANGED, captured_at=_minutes_after(15)),
+    ))
+    assert result["status"] == "pass"
+
+
+def test_early_revocation_leak_is_propagation_lag_not_proof():
+    # A stale result inside the settle window is not accepted as evidence
+    # either way: it is neither a pass nor a proven leak.
+    result = assess_acl([source()], _plus_no_token(
+        entitled(),
+        unentitled(document_ids=["doc-1"], rbac_changed_at=RBAC_CHANGED,
+                   captured_at=_minutes_after(3)),
+    ))
+    assert result["status"] == "not-verified"
+    assert result["detail"]["reason"] == "revocation-probe-too-early"
+
+
+def test_settled_revocation_leak_is_must_fix():
+    result = assess_acl([source()], _plus_no_token(
+        entitled(),
+        unentitled(document_ids=["doc-1"], rbac_changed_at=RBAC_CHANGED,
+                   captured_at=_minutes_after(20)),
+    ))
+    assert result["status"] == "must-fix"
+    assert result["detail"]["reason"] == "unauthorized-documents"
+
+
+def test_early_polls_are_superseded_by_a_settled_probe():
+    runs = [
+        unentitled(document_ids=["doc-1"], rbac_changed_at=RBAC_CHANGED,
+                   captured_at=_minutes_after(minute))
+        for minute in range(1, 7)
+    ]
+    runs.append(unentitled(rbac_changed_at=RBAC_CHANGED, captured_at=_minutes_after(16)))
+    result = assess_acl([source()], _plus_no_token(entitled(), *runs))
+    assert result["status"] == "pass"
+
+
+def test_revocation_settle_minutes_is_configurable_in_spec():
+    runs = _plus_no_token(
+        entitled(), unentitled(rbac_changed_at=RBAC_CHANGED, captured_at=_minutes_after(7)),
+    )
+    assert assess_acl([ground._sanitize_source(source(revocation_settle_minutes=5), 0)],
+                      runs)["status"] == "pass"
+    manifest = covered(sources=[source(revocation_settle_minutes=30)], acl_runs=[
+        entitled(), no_token(),
+        unentitled(rbac_changed_at=RBAC_CHANGED, captured_at=_minutes_after(20)),
+    ])
+    assert by_id(manifest)["GRD-001"]["status"] == "not-verified"
+    assert manifest["sources"][0]["revocation_settle_minutes"] == 30
+
+
+def test_revocation_probe_without_captured_at_is_not_verified():
+    run = unentitled(rbac_changed_at=RBAC_CHANGED)
+    run.pop("captured_at")
+    result = assess_acl([source()], _plus_no_token(entitled(), run))
+    assert result["status"] == "not-verified"
+    assert result["detail"]["reason"] == "revocation-probe-too-early"
+
+
+@pytest.mark.parametrize(
+    "bad_run",
+    [
+        unentitled(token_mode="bearer"),
+        unentitled(token_mode=None),
+        no_token(expected_entitled=True),
+        unentitled(rbac_changed_at="yesterday"),
+        unentitled(rbac_changed_at="2026-08-17 08:00:00"),
+    ],
+)
+def test_malformed_token_mode_or_rbac_change_raises(bad_run):
+    with pytest.raises(GroundEvidenceError):
+        assess_acl([source()], [entitled(), bad_run])
+
+
+def test_integral_float_settle_minutes_is_accepted_by_both_validators(jsonschema_validator):
+    manifest = covered(sources=[source(revocation_settle_minutes=15.0)])
+    assert manifest["sources"][0]["revocation_settle_minutes"] == 15
+    manifest["sources"][0]["revocation_settle_minutes"] = 15.0
+    validate_ground_manifest(manifest)
+    assert jsonschema_validator.is_valid(manifest)
+
+
+@pytest.mark.parametrize("bad", [0, -5, 1.5, True, "15"])
+def test_malformed_revocation_settle_minutes_raises(bad):
+    with pytest.raises(GroundEvidenceError):
+        covered(sources=[source(revocation_settle_minutes=bad)])
+
+
+def test_acl_evidence_persists_token_mode_and_rbac_change_but_never_tokens():
+    manifest = covered(acl_runs=[
+        entitled(access_token="eyJhbGciOi.eyJzdWIiOi.signature"),
+        unentitled(rbac_changed_at=RBAC_CHANGED, captured_at=_minutes_after(16)),
+        no_token(),
+    ])
+    rendered = json.dumps(manifest)
+    assert "eyJhbGciOi" not in rendered
+    evidence = {item["principal"]: item for item in manifest["acl_evidence"]}
+    assert evidence["entitled-analyst"]["token_mode"] == "user"
+    assert evidence["app-managed-identity"]["token_mode"] == "none"
+    assert evidence["unentitled-guest"]["rbac_changed_at"] == RBAC_CHANGED
+    assert by_id(manifest)["GRD-001"]["status"] == "pass"
+
+
+def test_new_fields_accepted_by_both_validators(jsonschema_validator):
+    manifest = covered(
+        sources=[source(enrichments=["entity_graph"], audience="uniform",
+                        audience_justification="whole-corpus readers",
+                        revocation_settle_minutes=10)],
+        acl_runs=[
+            entitled(), no_token(),
+            unentitled(rbac_changed_at=RBAC_CHANGED, captured_at=_minutes_after(3)),
+        ],
+    )
+    assert by_id(manifest)["GRD-001"]["detail"]["early_revocation_principals"]
+    validate_ground_manifest(manifest)
+    errors = list(jsonschema_validator.iter_errors(manifest))
+    assert errors == [], [e.message for e in errors]
+    must_fix = covered(sources=[source(enrichments=["topic_graph"])])
+    assert jsonschema_validator.is_valid(must_fix)
+    leak = covered(acl_runs=[entitled(), unentitled(), no_token(["doc-1"])])
+    assert jsonschema_validator.is_valid(leak)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda m: m["sources"][0].update(enrichments=["knowledge_graph"]),
+        lambda m: m["sources"][0].update(audience="everyone"),
+        lambda m: m["sources"][0].update(audience_justification="free text"),
+        lambda m: m["sources"][0].update(revocation_settle_minutes=0),
+        lambda m: m["acl_evidence"][0].update(token_mode="bearer"),
+        lambda m: m["acl_evidence"][0].update(rbac_changed_at="yesterday"),
+    ],
+)
+def test_malformed_new_fields_rejected_by_both_validators(mutate, jsonschema_validator):
+    manifest = covered(sources=[source(enrichments=["entity_graph"])])
+    mutate(manifest)
+    with pytest.raises((ManifestValidationError, GroundEvidenceError)):
+        validate_ground_manifest(manifest)
+    assert not jsonschema_validator.is_valid(manifest)

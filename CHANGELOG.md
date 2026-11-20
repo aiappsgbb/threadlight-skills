@@ -7,6 +7,32 @@ field.
 
 ## [Unreleased]
 
+### 2.55.0: threadlight-ground: no-token and RBAC-propagation probes, derived graphs on ACL sources (#214, #215)
+
+- **Why.** In a November 2026 Foundry IQ test (Search REST
+  `2026-11-01-preview`, synthetic corpus), three gaps escaped GRD-001: an entity
+  graph built from an ACL source is readable by every knowledge-base reader; a
+  revoked user kept seeing documents for about seven minutes; and official pages
+  disagree on what retrieval returns without a user token.
+- **GRD-001** now needs one `token_mode: none` probe per ACL source
+  (`no-token-probe-missing` until present; a leak is `must-fix`,
+  `no-token-retrieval-leak`). A denial probe with `rbac_changed_at` counts only
+  after `revocation_settle_minutes` (SPEC, default 15); earlier polls are
+  `revocation-probe-too-early`.
+- **New GRD-005** (identity-access, must-fix): `permission_model: acl` with
+  `enrichments: [entity_graph | topic_graph]` is must-fix unless the SPEC
+  declares `audience: uniform` with an `audience_justification` (pass with the
+  `uniform-audience-declared` note). The justification is never persisted.
+- **Schema and sanitizer** (`ground-manifest.schema.json`) accept the new source
+  and ACL-run fields; `token_mode` is the only token-named key allowed, and it
+  carries an enum. `threadlight-production-ready` consumes GRD-005 (193
+  findings), with a `GRD-005` remediation recipe. A ground manifest written
+  before GRD-005 keeps its `must-fix` findings; everything else in it is
+  `not-verified` until the leg is re-run. The design SPEC template
+  documents the new `knowledge_sources[]` fields (Cowork zip rebuilt).
+- **Tests.** Offline only: unit cases for every rule in both issues, schema
+  parity with jsonschema, production-ready consumption.
+
 ### 2.54.0: router-bench refresh for the post-Ignite 2026 model router (#216)
 
 - **Why.** `threadlight-router-bench` predated the Ignite 2026 model router
