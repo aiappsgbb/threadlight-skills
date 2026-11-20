@@ -603,3 +603,27 @@ test('identity model records the live A2A chain and the exact blockers for the r
     assert.doesNotMatch(read(file).replace(/\s+/g, ' '), /(Requires|needs) Entra ID P1\b|Conditional Access \(Entra ID P1\)/, file);
   }
 });
+
+test('SPEC knowledge sources add a Foundry IQ entity graph only by the graph-or-not rule (#217)', () => {
+  const spec = read('skills/threadlight-design/references/speckit-template.md').replace(/\n>\s?/g, '\n');
+  const knowledge = spec.split('## 7. Knowledge Sources')[1].split('## 7b.')[0].replace(/\s+/g, ' ');
+  assert.match(knowledge, /\*\*Enrichment\*\*: `none` \(default\)/);
+  assert.match(knowledge, /graph \+ text/i);
+  for (const condition of [
+    /chain facts across documents/i,
+    /every knowledge-base reader is entitled to the whole corpus/i,
+    /relations live in prose/i,
+    /preview[\s\S]{0,80}build time/i,
+  ]) {
+    assert.match(knowledge, condition);
+  }
+  assert.match(knowledge, /Otherwise keep the default[\s\S]{0,80}`enrichments: \[none\]`/i);
+
+  const evals = spec.split('### Evaluation Scenarios')[1].split('### Business KPIs')[0].replace(/\s+/g, ' ');
+  assert.match(evals, /\| Question type \|/);
+  assert.match(evals, /at least 30%[\s\S]{0,120}multi_hop[\s\S]{0,40}negation[\s\S]{0,40}aggregation/i);
+  assert.match(evals, /per-type/i);
+  assert.match(evals, /cannot return most of the corpus/i);
+  assert.match(evals, /question_types\.py/);
+  assert.match(evals, /non-relational[\s\S]{0,80}unchanged/i);
+});

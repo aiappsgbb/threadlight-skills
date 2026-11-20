@@ -234,6 +234,7 @@ Reference documents, policies, or data the agent needs for reasoning.
 - **Backing service**: `foundry-iq` (Azure AI Search Knowledge Agent — agentic retrieval, query planning, citations) | `mcp-search` (live API search) | `inline-context` (small enough to paste into instructions)
 - **Reasoning effort** (for foundry-iq): `minimal` | `low` | `medium` — drives Knowledge Agent config
 - **Citation requirement**: `mandatory` (every answer must cite ≥1 source) | `recommended` | `optional`
+- **Enrichment**: `none` (default) | `entity_graph` (Foundry IQ entity graph, preview) — set by the graph-or-not rule below; mirrored in `knowledge_sources[].enrichments`
 
 > **Static / semi-static knowledge → `foundry-iq`.** Policies, regulations,
 > product docs, brand guidelines, runbooks, technical specs — anything that
@@ -243,6 +244,28 @@ Reference documents, policies, or data the agent needs for reasoning.
 > primarily query transactional data should ship with a Foundry IQ index for
 > their domain policies. See the `foundry-iq` skill for index design,
 > document chunking, and Knowledge Agent reasoning levels.
+
+> **Graph or not (Foundry IQ entity graph, preview).** Add an entity graph,
+> as a **graph + text** knowledge base (a graph source next to the text
+> source, never graph only), only when **all** of these hold:
+>
+> 1. the § 9 acceptance questions chain facts across documents (multi-hop,
+>    negation, aggregation), not single lookups;
+> 2. every knowledge-base reader is entitled to the whole corpus, because the
+>    graph carries no per-user permissions in this preview (`GRD-005`);
+> 3. the relations live in prose, not already in structured data, where
+>    Fabric IQ or SQL is the better fit;
+> 4. preview status and build time (minutes per few hundred documents) are
+>    acceptable for the pilot.
+>
+> Otherwise keep the default single knowledge base with
+> `enrichments: [none]`. In our November 2026 test (synthetic corpus, 669
+> documents) graph + text answered 32/34 questions against 21/34 for a plain
+> knowledge base, with similar retrieval latency; on 69 documents the plain
+> knowledge base already scored 31–33/34 because it returned almost the whole
+> corpus. See the
+> [entity graph how-to](https://learn.microsoft.com/azure/search/agentic-knowledge-source-how-to-entity-graph)
+> and the [graph overview](https://learn.microsoft.com/azure/search/knowledge-graph-features-overview).
 
 ### `knowledge_sources[]` (INPUT CONTRACT for `threadlight-ground`)
 
@@ -411,9 +434,19 @@ Where humans are involved — approvals, escalations, input requests, feedback l
 
 ### Evaluation Scenarios
 
-| ID | Scenario | Input | Expected Output | Business Rules | Category |
-|----|----------|-------|-----------------|----------------|----------|
-| S-001 | | | | BR-XXX | happy-path / edge-case / error / approval |
+| ID | Scenario | Input | Expected Output | Business Rules | Category | Question type |
+|----|----------|-------|-----------------|----------------|----------|---------------|
+| S-001 | | | | BR-XXX | happy-path / edge-case / error / approval | lookup / multi_hop / negation / aggregation / thematic |
+
+> **Relational questions.** When the process involves relational questions
+> (or § 7 sets `Enrichment: entity_graph`), at least 30% of the eval set must
+> be `multi_hop`, `negation` or `aggregation`, each with ground truth
+> (`expected` or `expected_entities`), and results are reported per-type.
+> Make the eval corpus large enough that the knowledge base cannot return
+> most of the corpus in one retrieval; otherwise plain retrieval looks perfect
+> for the wrong reason. Check the mix and score per type with
+> `threadlight-evals/scripts/question_types.py`. For non-relational processes
+> the column is optional and the default path is unchanged.
 
 ### Business KPIs (BR → KPI mapping)
 
