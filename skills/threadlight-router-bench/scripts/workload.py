@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import collections
 import concurrent.futures as cf
+import http.client
 import json
 import subprocess
 import sys
@@ -201,7 +202,9 @@ def http_post(endpoint: str, token: Callable[[], str], timeout: float = 300.0) -
             except ValueError:
                 parsed = {"error": {"code": e.code, "message": raw[:300]}}
             return HttpResult(e.code, parsed, dict(e.headers or {}))
-        except (urllib.error.URLError, TimeoutError) as e:
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as e:
+            # Connection resets, truncated bodies and timeouts are transient:
+            # report them as 503 so call_with_retries retries them.
             return HttpResult(503, {"error": {"code": "network", "message": str(e)[:300]}}, {})
     return post
 
@@ -314,11 +317,23 @@ def render_markdown(summary: dict[str, Any]) -> str:
     return "\n".join(out) + "\n"
 
 
-def write_outputs(summary: dict[str, Any], records: list[dict[str, Any]] | None, outdir: Path) -> None:
+RECORDS_FILE = "router-workload-records.jsonl"
+
+
+def record_appender(outdir: Path) -> Callable[[dict[str, Any]], None]:
+    """Append each record to RECORDS_FILE as soon as it completes, so an
+    interrupted live run keeps everything already paid for."""
+    outdir.mkdir(parents=True, exist_ok=True)
+    path = outdir / RECORDS_FILE
+    path.write_text("", encoding="utf-8")
+
+    def append(rec: dict[str, Any]) -> None:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+    return append
+
+
+def write_outputs(summary: dict[str, Any], outdir: Path) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "router-workload.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     (outdir / "router-workload.md").write_text(render_markdown(summary), encoding="utf-8")
-    if records is not None:
-        with open(outdir / "router-workload-records.jsonl", "w", encoding="utf-8") as f:
-            for r in records:
-                f.write(json.dumps(r) + "\n")

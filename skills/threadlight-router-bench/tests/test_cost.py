@@ -586,3 +586,20 @@ def test_served_usage_can_scope_to_router_and_its_own_deployments():
     # The legacy router-only filter would have missed the own-deployment tokens.
     legacy = metrics_mod.served_usage(doc, deployments={"model-router"})
     assert legacy["usage"]["gpt-6-luna"]["input"] == 1000
+
+
+def test_bench_metrics_use_minute_grain_so_waves_do_not_bleed():
+    # Cells now share deployments (router serves_via), so hour buckets would
+    # mix consecutive waves; bench and validate query PT1M.
+    import router_bench
+    seen = []
+
+    def az(args):
+        seen.append(args[args.index("--interval") + 1])
+        return json.dumps({"value": []})
+
+    def gh(args):
+        return json.dumps({"startedAt": "2026-11-20T09:00:00Z", "updatedAt": "2026-11-20T09:30:00Z"})
+    router_bench.run_bench(1, 2, "/sub/x", baseline_deployment="gpt-6-luna",
+                           gh_runner=gh, az_runner=az)
+    assert seen == ["PT1M", "PT1M"]

@@ -275,3 +275,30 @@ def test_models_without_retail_meter_are_flagged_unverified():
     arms = _summary()["arms"]
     assert arms["gpt-6.2-astra"]["unverified_price_models"] == ["gpt-6.2-astra"]
     assert arms["gpt-6-luna"]["unverified_price_models"] == []
+
+
+def test_http_post_turns_connection_drops_into_retryable_status(monkeypatch):
+    import http.client
+
+    def boom(*a, **k):
+        raise http.client.RemoteDisconnected("closed")
+    monkeypatch.setattr(wl.urllib.request, "urlopen", boom)
+    res = wl.http_post("https://x/openai/v1/responses", lambda: "t")({}, {})
+    assert res.status == 503
+
+
+def test_cli_workload_live_streams_records_as_they_complete(tmp_path, monkeypatch):
+    written = []
+
+    def fake_run(arms, tasks, reps, post, concurrency=4, exec_code=True, on_record=None):
+        rec = {"arm": "gpt-6-luna", "task": "qa0", "cat": "simple_qa", "rep": 0, "router": False,
+               "model": "gpt-6-luna", "in": 1, "cached": 0, "cache_write": 0, "out": 1, "score": 1.0}
+        on_record(rec)
+        written.append((tmp_path / "router-workload-records.jsonl").read_text())
+        return [rec]
+    monkeypatch.setattr(router_bench.workload_mod, "run_workload", fake_run)
+    monkeypatch.setattr(router_bench.workload_mod, "entra_token_provider", lambda: (lambda: "t"))
+    rc = router_bench.main(["workload", "--endpoint", "https://x/openai/v1/responses",
+                            "--fixed", "gpt-6-luna", "--modes", "--out", str(tmp_path)])
+    assert rc == 0
+    assert '"task": "qa0"' in written[0]  # on disk before the run returned

@@ -33,7 +33,8 @@ def plan_waves(workloads: list[str],
                arms: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     """Waves per workload, in arm order. A cell joins the current wave only if
     none of its `cell_deployments` is already used there; otherwise it starts
-    the next wave, so Azure Monitor windows never bleed across arms."""
+    the next wave. Waves run one after another and cost is read at minute
+    grain (PT1M), so a cell's metric window does not include another wave's tokens."""
     waves = []
     for wl in workloads:
         pending = [{**a, "workload": wl} for a in arms]

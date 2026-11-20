@@ -47,6 +47,9 @@ import workload as workload_mod  # noqa: E402
 import workload_tasks as tasks_mod  # noqa: E402
 
 _WORKLOADS_ROOT = HERE.parents[2] / ".github" / "workloads"
+# Minute grain: cells share deployments (router serves_via), so hour buckets
+# would mix consecutive waves into each other's cost.
+METRICS_INTERVAL = "PT1M"
 ROUTER_SUBSET = ("gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol")
 
 Runner = Callable[[list[str]], str]
@@ -122,7 +125,7 @@ def run_bench(candidate: int, baseline: int, resource_id: str,
     cand_meta = harvest.fetch_view(candidate, repo=repo, runner=gh_runner)
     cand_metrics = metrics_mod.fetch_metrics(
         resource_id, cand_meta.get("startedAt", ""), cand_meta.get("updatedAt", ""),
-        runner=az_runner)
+        interval=METRICS_INTERVAL, runner=az_runner)
     cand_served = metrics_mod.served_usage(
         cand_metrics, deployments={candidate_deployment, *(candidate_serves_via or [])})
     candidate_usage = cand_served["usage"]
@@ -132,7 +135,7 @@ def run_bench(candidate: int, baseline: int, resource_id: str,
         base_meta = harvest.fetch_view(baseline, repo=repo, runner=gh_runner)
         base_metrics = metrics_mod.fetch_metrics(
             resource_id, base_meta.get("startedAt", ""), base_meta.get("updatedAt", ""),
-            runner=az_runner)
+            interval=METRICS_INTERVAL, runner=az_runner)
         baseline_usage = metrics_mod.served_usage(
             base_metrics, deployments={baseline_deployment})["usage"]
 
@@ -175,7 +178,7 @@ def _score_cell(cell: dict[str, Any], repo: str = "aiappsgbb/threadlight-skills"
         meta = harvest.fetch_view(run_id, repo=repo, runner=runner)
         doc = metrics_mod.fetch_metrics(
             resource_id, meta.get("startedAt", ""), meta.get("updatedAt", ""),
-            runner=az_runner)
+            interval=METRICS_INTERVAL, runner=az_runner)
         usage = metrics_mod.served_usage(
             doc, deployments=set(matrix_mod.cell_deployments(cell)))["usage"]
         cost = score_mod.cost_of(usage, prices_mod.load_prices(None),
@@ -292,19 +295,19 @@ def _cmd_workload(args: argparse.Namespace) -> int:
     if args.ingest:
         records = workload_mod.load_records(args.ingest)
         summary = workload_mod.summarize(records, table)
-        workload_mod.write_outputs(summary, None, out)
+        workload_mod.write_outputs(summary, out)
     elif args.endpoint:
         arms = [workload_mod.router_arm(f"router-{m}", deployment=args.router_deployment, mode=m,
                                         models=args.router_models or None)
                 for m in args.modes]
         arms += [workload_mod.fixed_arm(d) for d in args.fixed]
         post = workload_mod.http_post(args.endpoint, workload_mod.entra_token_provider())
-        out.mkdir(parents=True, exist_ok=True)
         records = workload_mod.run_workload(arms, tasks_mod.build(args.taskset), args.reps, post,
                                             concurrency=args.concurrency,
-                                            exec_code=not args.no_code_exec)
+                                            exec_code=not args.no_code_exec,
+                                            on_record=workload_mod.record_appender(out))
         summary = workload_mod.summarize(records, table)
-        workload_mod.write_outputs(summary, records, out)
+        workload_mod.write_outputs(summary, out)
     else:
         print("router-bench workload: pass --endpoint <responses url> to run, "
               "or --ingest <records.jsonl> to score", file=sys.stderr)

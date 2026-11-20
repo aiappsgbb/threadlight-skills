@@ -230,7 +230,8 @@ packs under `.github/workloads/<name>/{phases,rubric,meta}.yml`.
 Runs dispatch in **waves**. Within a wave no two cells can produce tokens on
 the same deployment — including the own deployments that serve the router arm's
 routed requests (`serves_via`) — so the router arm runs in its own wave after the
-fixed arms. Azure Monitor token metrics carry no run-id dimension.
+fixed arms, and cost is read at minute grain (`PT1M`) so consecutive waves do
+not bleed. Azure Monitor token metrics carry no run-id dimension.
 
 ### Scoring axes
 
@@ -280,6 +281,8 @@ python skills/threadlight-router-bench/scripts/router_bench.py workload \
   `routing_config` with the arm's `mode` and `session_affinity.strategy: none` so
   repetitions are comparable ([Learn: routing controls](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/model-router-routing-controls)).
   `--router-deployment auto` measures Auto. Fixed arms call a deployment by name.
+- **Interrupt-safe:** each record is appended to `router-workload-records.jsonl`
+  as it completes; connection resets and timeouts are retried like 5xx.
 - **Recorded per call:** served model (`model`, falling back to the last
   `routing_trace` attempt when `model` names the router), tokens incl. cached
   input and cache writes, `routing_trace` latency, `x-ratelimit-key`, retries and
