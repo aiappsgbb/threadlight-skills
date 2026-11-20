@@ -75,8 +75,10 @@ or `expected_entities`.
 
 Entity scoring passes an answer only when every expected entity appears and no
 other known entity of the same type does. Known entities are all
-`expected_entities` and `distractor_entities` of that type across the dataset;
-IDs match as whole tokens, so `SUP-10` is not `SUP-1`. A result row can instead
+`expected_entities` and `distractor_entities` of that type across the dataset.
+Names match as whole tokens, longest first, so `SUP-10` is not `SUP-1` and
+`ACME Corp` is not also `ACME`. For a negation whose answer is "none", use an
+empty list (`{"supplier": []}`). Row and result ids must be unique. A result row can instead
 carry an explicit `passed` boolean (for example from a calibrated judge).
 
 ```bash

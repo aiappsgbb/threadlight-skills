@@ -28,7 +28,7 @@ field.
   no wrong entity of the same type). Row shape in `dataset-shape.md`.
   `evals_check.py` is unchanged: untagged, non-relational datasets keep the
   default path.
-- **Tests.** Offline only: 14 question-type cases, one template guidance test.
+- **Tests.** Offline only: question-type unit cases, one template guidance test.
 
 ### 2.55.0: threadlight-ground: no-token and RBAC-propagation probes, derived graphs on ACL sources (#214, #215)
 

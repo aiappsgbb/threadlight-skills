@@ -136,3 +136,35 @@ def test_cli_untagged_dataset_exits_zero(tmp_path, capsys):
     dataset.write_text(json.dumps(row("a")), encoding="utf-8")
     assert qt.main(["--dataset", str(dataset)]) == 0
     assert json.loads(capsys.readouterr().out)["mix"]["status"] == "not-applicable"
+
+
+def test_negation_with_empty_expected_entities_is_ground_truth():
+    rows = [row("neg", "negation", expected_entities={"supplier": []})]
+    assert qt.check_mix(rows)["status"] == "pass"
+    universe = {"supplier": {"SUP-1"}}
+    assert qt.score_answer("No supplier lacks it.", {"supplier": []}, universe)
+    assert not qt.score_answer("SUP-1 lacks it.", {"supplier": []}, universe)
+
+
+@pytest.mark.parametrize(
+    "answer,expected,universe,passed",
+    [
+        ("Policy 1.2 applies", ["Policy 1.2"], {"Policy 1", "Policy 1.2"}, True),
+        ("ACME Corp", ["ACME Corp"], {"ACME", "ACME Corp"}, True),
+        ("ACME Corp", ["ACME"], {"ACME", "ACME Corp"}, False),
+        ("ACME and ACME Corp", ["ACME"], {"ACME", "ACME Corp"}, False),
+    ],
+)
+def test_entity_names_that_prefix_each_other_match_longest_first(answer, expected, universe, passed):
+    assert qt.score_answer(answer, {"org": expected}, {"org": universe}) is passed
+
+
+def test_duplicate_ids_raise():
+    rows = [row("x", "multi_hop", expected_entities={"s": ["A"]}), row("x", "lookup", expected="y")]
+    with pytest.raises(qt.QuestionTypeError, match="duplicate"):
+        qt.score_by_type(rows, [{"id": "x", "passed": True}])
+    with pytest.raises(qt.QuestionTypeError, match="duplicate"):
+        qt.check_mix(rows)
+    unique = [row("x", "lookup", expected="y")]
+    with pytest.raises(qt.QuestionTypeError, match="duplicate"):
+        qt.score_by_type(unique, [{"id": "x", "passed": True}, {"id": "x", "passed": False}])
