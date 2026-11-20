@@ -279,8 +279,8 @@ tool goes through the governance interview.
 #### Governed-write pilot (workshop)
 
 To show **one governed write live** in a workshop on the default GHCP runtime
-(`github-copilot-sdk`; `microsoft-agent-framework` is also accepted, gateway
-only), the operator may choose `"action_mode": "governed-write"` in
+(`microsoft-copilot-sdk`, legacy alias `github-copilot-sdk`;
+`microsoft-agent-framework` is also accepted, gateway only), the operator may choose `"action_mode": "governed-write"` in
 `specs/manifest.json` instead of recommend-only. It is not the Production path
 and makes no claim about the rest of the agent:
 
@@ -401,7 +401,7 @@ the outer coding host or its global settings.
 > of this skill). Before locking `framework`, `runtime_shape`, or `protocol`,
 > read `references/runtime-policy.json`, apply the
 > **first matching route**, and copy its selectors plus `policy_route` into
-> `specs/foundation.md`. Canonical default tuple: `github-copilot-sdk` +
+> `specs/foundation.md`. Canonical default tuple: `microsoft-copilot-sdk` +
 > `agent` + `invocations` (`policy_route: default-agent`). Use
 > `explicit-supported-choice` only when the operator explicitly asks for a
 > selector tuple listed in `compatible_combinations` **and** none of that
@@ -434,7 +434,7 @@ cover**:
 
 1. **Framework, runtime shape, and protocol** — resolve them from
    `references/runtime-policy.json`. The locked
-   default route is `github-copilot-sdk` + `agent` + `invocations`
+   default route is `microsoft-copilot-sdk` + `agent` + `invocations`
    (`policy_route: default-agent`). Operator overrides must be selector tuples
    listed in `compatible_combinations` **and** free of any active
    `blocked_when` signal on that route. The policy's MAF exception routes are

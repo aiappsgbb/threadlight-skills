@@ -26,7 +26,10 @@ instead of silent defaults back-filled during generation.
 > project's `specs/foundation.md`; that path does not exist relative to the
 > customer project and would be a broken link. This template records the
 > chosen route; it does not invent a competing default table.
-> Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
+> Canonical default tuple: `microsoft-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
+> `github-copilot-sdk` (the retired package name) stays an accepted alias of
+> `microsoft-copilot-sdk` (`framework_aliases` in `runtime-policy.json`) until
+> existing pilots migrate; new specs write `microsoft-copilot-sdk`.
 
 > **Fast-PoC mode.** Do not interview the operator. Fill every row with the
 > **house default** below, set `source: defaulted-after-skip`, and have Step 3
@@ -52,7 +55,7 @@ instead of silent defaults back-filled during generation.
 
 | # | Decision | Choice | `source` | Pre-populates | Refined by |
 |---|----------|--------|----------|---------------|-----------|
-| 1 | Framework | `github-copilot-sdk` | provided \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
+| 1 | Framework | `microsoft-copilot-sdk` | provided \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
 | 2 | Runtime shape | `agent` | inferred \| defaulted | § 11e, § 12 | Step 2 trait matrix → confirm at Step 4 |
 | 3 | Protocol | `invocations` | provided \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
 | 4 | Policy route | `default-agent` | inferred \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
@@ -84,11 +87,11 @@ minimal foundation record from `specs/SPEC.md § 11e` because none existed).
 
 ```yaml
 schema: threadlight.runtime-policy/v1   # runtime-policy contract this record was resolved against
-framework: github-copilot-sdk           # resolved via the design skill's runtime-policy route (schema above)
+framework: microsoft-copilot-sdk         # resolved via the design skill's runtime-policy route (schema above)
 runtime_shape: agent                    # agent (default) | workflow
 protocol: invocations                   # invocations (default) | responses
 policy_route: default-agent             # explicit-supported-choice | deterministic-workflow | maf-agent-capabilities | default-agent
-  # Canonical default tuple: github-copilot-sdk + agent + invocations (policy_route: default-agent).
+  # Canonical default tuple: microsoft-copilot-sdk + agent + invocations (policy_route: default-agent).
   # Explicit operator overrides must match a compatible_combinations tuple AND
   # be free of that route's blocked_when capability signals AND have every
   # capability signal resolved (unresolved_signals empty — runtime-policy.json's

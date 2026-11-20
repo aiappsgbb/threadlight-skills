@@ -3,7 +3,7 @@
 > Part of the [`threadlight-deploy`](../SKILL.md) skill, moved out of the core
 > SKILL.md verbatim (relative links rebased). Read it when comparing the GHCP SDK, MAF Agent and MAF Workflow variants.
 
-| | **github-copilot-sdk** (`default-agent` route) | **MAF Agent** (`maf-agent-capabilities` route) | **MAF Workflow** (`deterministic-workflow` route when `workflow_model: "workflow"` in SPEC § 11e) |
+| | **microsoft-copilot-sdk** (`default-agent` route) | **MAF Agent** (`maf-agent-capabilities` route) | **MAF Workflow** (`deterministic-workflow` route when `workflow_model: "workflow"` in SPEC § 11e) |
 |--|----------------------|-------------------|-----|
 | **Runtime** | `CopilotClient` + `InvocationAgentServerHost` | `Agent` + `FoundryChatClient` + `ResponsesHostServer` | `Workflow` + typed `Executor` nodes + `FoundryChatClient` |
 | **Protocol** | Invocations (SSE streaming) | Responses | Responses (workflow orchestrator manages step sequence) |

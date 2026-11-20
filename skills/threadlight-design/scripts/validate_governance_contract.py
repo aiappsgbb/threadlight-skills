@@ -28,7 +28,7 @@ from skills._shared.action_mode import governed_write_gaps, read_action_mode, re
 from skills._shared.governance import GovernanceContractError, validate_governance_contract  # noqa: E402
 from skills._shared.governance_selection import spec_contract, spec_contract_gaps  # noqa: E402
 
-TEMPLATE = """framework: github-copilot-sdk   # or microsoft-agent-framework
+TEMPLATE = """framework: microsoft-copilot-sdk   # or microsoft-agent-framework
 governance:
   mode: off
   environment_modes: {development: evaluate_only, staging: evaluate_only, preproduction: enforce, production: enforce}

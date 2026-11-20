@@ -7,6 +7,40 @@ field.
 
 ## [Unreleased]
 
+### 2.55.0: `microsoft-copilot-sdk` framework id (`github-copilot-sdk` kept as alias)
+
+- **Why.** GitHub Copilot SDK is becoming Microsoft Copilot SDK
+  ([GitHub changelog, 2026-10-28](https://github.blog/changelog/2026-10-28-github-copilot-sdk-is-becoming-microsoft-copilot-sdk/));
+  the Python distribution moves from `github-copilot-sdk` to
+  `microsoft-copilot-sdk` in SDK v2
+  ([identities table](https://github.com/microsoft/copilot-sdk/blob/main/docs/v2-breaking-changes.md#microsoft-copilot-sdk-identities),
+  both checked 2026-11-20). The design selector still used the retired name.
+- **New id.** `runtime-policy.json` (selectors, default tuple, compatible
+  combinations, `default-agent` route, governance compatibility) now uses
+  `microsoft-copilot-sdk`, and a new `framework_aliases` map records
+  `github-copilot-sdk -> microsoft-copilot-sdk`. The foundation and SpecKit
+  templates, `validate_governance_contract.py` and the governed-write GHCP
+  example emit the new id; the canonical default tuple in the skill docs follows.
+- **Alias, same route.** The governance contract schema, the governance manifest
+  schema, `skills/_shared/governance.py` (`canonical_framework`,
+  `is_copilot_sdk`), the governed-write action-mode check, the deploy governance
+  generator, the safe-check collector and the remote-readiness gate accept both
+  ids and route them identically (GHCP gateway path; `local-agent-hooks`
+  rejected for both). A validated contract keeps the id it was written with, so
+  existing pilots regenerate byte-for-byte; the generator compares
+  `infrastructure.json` `runtime` with the package framework canonically.
+- **Migration.** Nothing to do for existing pilots. To migrate, change
+  `framework: github-copilot-sdk` to `framework: microsoft-copilot-sdk` in
+  SPEC section 11a (and `runtime` in governance `infrastructure.json`). The alias
+  stays until existing pilots are migrated. The pip package pin is unchanged in
+  this release (`github-copilot-sdk==1.0.1`); the SDK 2.0 migration is separate.
+- **Tests (RED first):** contract schema and validator with both ids
+  (`test_governance_contract.py`), manifest schema and validator with both ids
+  (`test_governance.py`), governed-write action mode with both ids
+  (`test_action_mode.py`), generator GHCP route with both ids
+  (`test_governance_wiring.py`), policy alias map and default id, new specs emit
+  the new id; `runtime-policy.test.js` and `skill-based-agents.test.js` follow
+  the new default.
 ### 2.54.0: router-bench refresh for the post-Ignite 2026 model router (#216)
 
 - **Why.** `threadlight-router-bench` predated the Ignite 2026 model router

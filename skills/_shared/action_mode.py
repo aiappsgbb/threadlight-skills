@@ -29,7 +29,7 @@ RECOMMEND_ONLY = "recommend-only"
 ACT = "act"
 GOVERNED_WRITE = "governed-write"
 ACTION_MODES = frozenset({RECOMMEND_ONLY, ACT, GOVERNED_WRITE})
-GOVERNED_WRITE_FRAMEWORKS = frozenset({"github-copilot-sdk", "microsoft-agent-framework"})
+GOVERNED_WRITE_FRAMEWORKS = frozenset({"microsoft-copilot-sdk", "github-copilot-sdk", "microsoft-agent-framework"})
 GOVERNED_WRITE_REQUIRES = ("authorization", "signed-policy-bundle", "decision-receipt", "idempotency-or-transaction")
 CONTRACT_APPROVAL_TOKENS = frozenset({"approval", "human-approval-record"})
 
@@ -176,7 +176,7 @@ def _governed_write_contract(workspace: Path):
         gaps.append("action-mode: governed-write pilot declares lifecycle bindings; it binds one tool only")
     if document.get("framework") not in GOVERNED_WRITE_FRAMEWORKS:
         gaps.append(f"action-mode: governed-write pilot framework `{document.get('framework')}` is not "
-                    "github-copilot-sdk or microsoft-agent-framework")
+                    "microsoft-copilot-sdk (alias github-copilot-sdk) or microsoft-agent-framework")
     try:
         contract = validate_governance_contract(document, deployment_target="demo-sandbox")
     except (GovernanceContractError, ValueError) as exc:
