@@ -225,3 +225,28 @@ def test_extracted_bundle_prices_offline_without_repo_pythonpath(tmp_path):
             "one-month",
             "one-year",
         ]
+
+
+def test_extracted_bundle_computes_the_harness_fit_verdict_from_the_vendored_policy(tmp_path):
+    """The Cowork bundle has no skills/_shared or design references: the harness
+    fit rules must ride inside cost-runtime.zip and give the repo's verdict."""
+    bundle = _extract(tmp_path)
+    profile = json.loads(PROFILE.read_text(encoding="utf-8"))
+    profile["harness_fit"] = {"read_mostly": True, "citadel_model_path_required": True,
+                              "acs_in_process_pep_required": False, "foundry_memory_required": False,
+                              "voice_frontend_required": False, "consequential_write_seam": "none"}
+    profile_path = tmp_path / "harness-profile.json"
+    profile_path.write_text(json.dumps(profile), encoding="utf-8")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = ""
+    out = tmp_path / "out"
+    proc = subprocess.run(  # noqa: S603 - fixed, trusted argv
+        [sys.executable, str(bundle / "scripts" / "qualify.py"), "--profile", str(profile_path),
+         "--output-dir", str(out), "--generated-at", PINNED],
+        cwd=tmp_path, env=env, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    harness = json.loads((out / "qualification" / "sizing-manifest.json").read_text())["harness"]
+    assert harness["verdict"] == "not-fit"
+    assert harness["disqualifiers"] == ["citadel-model-path-required"]
+    assert {line["label"] for line in harness["cost_lines"]} == {"estimated"}

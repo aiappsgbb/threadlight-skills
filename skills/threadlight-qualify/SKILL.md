@@ -67,6 +67,16 @@ Collect these required fields into a profile object (see
 Optional (both required to unlock `roi.md`):
 `current_annual_cost_usd`, `current_handling_minutes_per_transaction`.
 
+Optional, only when the customer asks about the **Foundry Copilot harness**
+(preview): `harness_fit` answers (`read_mostly`, `citadel_model_path_required`,
+`acs_in_process_pep_required`, `consequential_write_seam` none | function-tool |
+governed-mcp, `region` defaulting to `pinned_region`, `foundry_memory_required`,
+`voice_frontend_required`) and, once measured on real tasks, `harness_measured`
+(`model_tokens_usd_per_task`, `sandbox_active_seconds_per_task`). The questions
+and disqualifiers come from `runtime-policy.json` (`harness_fit_questions`,
+`harness_disqualifiers`); a `fit` verdict is never an opt-in, the user still
+decides (`agent_type: harness`, rule item 2d).
+
 ## How to run
 
 Call the Python entry point (no shell tooling, no infrastructure required):
@@ -95,6 +105,14 @@ Written under `<output-dir>/qualification/`:
 | `sizing-manifest.json` | always | Normalized load profile, per-stage cost manifests, assumptions ledger |
 | `discovery.md` | always | Declared inputs + open questions (no live probe was run) |
 | `roi.md` | only when both current-cost inputs are supplied | Labor + solution-cost ROI |
+
+`sizing-manifest.json` and `sizing.md` also carry a `harness` block: the fit
+verdict (`fit`, `not-fit` with one reason per disqualifier, or `not-assessed`
+with the questions listed as open in `discovery.md`), two cost lines labelled
+`estimated` or `measured` (`harness-model-tokens`: hosted LLM line x 1.5-2.8 until
+measured; `harness-sandbox`: USD 0.0994/vCPU-h + 0.0118/GiB-h at the observed
+1 vCPU / 2.2 GiB, idle billing undocumented), TPM >= peak concurrency x ~300K
+tokens and subagents off.
 
 ## Contracts
 

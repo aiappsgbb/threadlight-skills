@@ -7,6 +7,31 @@ field.
 
 ## [Unreleased]
 
+### 2.58.0: Copilot harness fit verdict and cost lines in qualify and design (#232)
+
+- **Why.** Qualify and design could not tell whether the Foundry Copilot harness
+  fits a PoC, or what it costs next to the hosted templates.
+- **Fit questions.** `runtime-policy.json` adds `harness_fit_questions`: one per
+  disqualifier plus an advisory `read_mostly` question. `agent_type_policy.py`
+  gains `fit_verdict` (`fit`, `not-fit` with reasons, `not-assessed`) and a
+  `--verdict-md` renderer; a fit verdict is never an opt-in.
+- **Qualify.** Optional `harness_fit` and `harness_measured` inputs. The sizing
+  manifest and `sizing.md` gain a `harness` block: the verdict with reasons, two
+  cost lines labelled `estimated` or `measured` (`harness-model-tokens`: hosted
+  LLM line x 1.5-2.8 until measured; `harness-sandbox`: USD 0.0994/vCPU-h +
+  0.0118/GiB-h, [documented](https://devblogs.microsoft.com/foundry/microsoft-copilot-harness-in-foundry/),
+  at the observed 1 vCPU / 2.2 GiB and 37-47 s per task, idle billing not
+  documented), TPM >= peak concurrency x ~300K tokens and subagents off. Without
+  answers the questions are listed as open in `discovery.md`. The Cowork bundle
+  vendors the resolver and policy inside `cost-runtime.zip`.
+- **Design.** SPEC § 11e records `harness_fit.read_mostly` and renders a
+  "Harness fit verdict" block with reasons.
+- **Tests (RED first).** qualify (fit, each disqualifier, advisory, both labels,
+  measured inputs, recommendations, validation, schema, Cowork bundle),
+  `test_agent_type_policy.py`, `runtime-policy.test.js` (questions cover every
+  disqualifier; template renders the verdict).
+
+### 2.54.0: Foundry Copilot harness as a preview, user-opt-in runtime (#228)
 ### 2.57.0: Foundry Copilot harness as a preview, user-opt-in runtime (#228)
 
 - **Why.** Foundry now offers the Microsoft Copilot harness for prompt agents

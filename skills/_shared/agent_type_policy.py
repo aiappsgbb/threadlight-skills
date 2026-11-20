@@ -8,9 +8,14 @@ with ``harness_opt_in_evidence``), acknowledged the preview and answered every
 missing field, an unknown fit answer or any disqualifier resolves to the hosted
 default (``skills/_shared/foundry-only-agents.md`` item 2d).
 
-Stdlib only, so blueprint tests and generate_only can both call it.
+``fit_verdict`` answers the separate pre-sales question "would the harness fit?"
+from the ``harness_fit`` answers alone (used by threadlight-qualify and the design
+template), without implying any opt-in.
 
-CLI: ``python skills/_shared/agent_type_policy.py --spec specs/SPEC.md [--json]``
+Stdlib only, so blueprint tests, generate_only and the Cowork qualify bundle can
+all call it.
+
+CLI: ``python skills/_shared/agent_type_policy.py --spec specs/SPEC.md [--json | --verdict-md]``
 """
 from __future__ import annotations
 
@@ -26,7 +31,11 @@ _NULLS = ("", "null", "~", "none")
 
 
 def load_policy(path: Path = POLICY_PATH) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    if path.is_file():
+        return json.loads(path.read_text(encoding="utf-8"))
+    # Cowork qualify bundle: the policy rides inside cost-runtime.zip as package data.
+    from importlib import resources
+    return json.loads(resources.files("harness_policy").joinpath("runtime-policy.json").read_text(encoding="utf-8"))
 
 
 def _clean(raw: str, nulls: tuple[str, ...] = _NULLS) -> str | None:
@@ -71,6 +80,56 @@ def _bool(value: str | None) -> bool | None:
     return True if lowered == "true" else False if lowered == "false" else None
 
 
+def evaluate_fit(fit: dict[str, Any], hosting: dict[str, Any], voice_frontend: str | None = None) -> list[dict[str, str]]:
+    """Disqualifiers hit by the ``harness_fit`` answers; a missing or unknown answer is a hit."""
+    hits: list[dict[str, str]] = []
+    for rule in hosting["harness_disqualifiers"]:
+        raw = fit.get(rule["fit_field"])
+        answer = raw if raw is None or isinstance(raw, str) else str(raw).lower()
+        if "disqualifies_unless" in rule:
+            hit = _bool(answer) is not rule["disqualifies_unless"]
+        elif "allowed_values_ref" in rule:
+            allowed = {_norm_region(v) for v in hosting[rule["allowed_values_ref"]]}
+            hit = _norm_region(answer) not in allowed
+        else:
+            hit = (answer or "").lower() not in rule["allowed_values"]
+        for spec_key, spec_value in (rule.get("also_when_spec") or {}).items():
+            hit = hit or (spec_key == "voice_frontend" and (voice_frontend or "").lower() == spec_value)
+        if hit:
+            hits.append({"id": rule["id"], "reason": f"{rule['id']}: harness_fit.{rule['fit_field']}={raw!r} ({rule['reason']})"})
+    return hits
+
+
+def fit_verdict(fit: dict[str, Any] | None, policy: dict[str, Any] | None = None,
+                voice_frontend: str | None = None) -> dict[str, Any]:
+    """``{verdict, reasons, disqualifiers, advisories}`` for the harness fit answers.
+
+    ``not-assessed`` when no answer was recorded, ``not-fit`` on any disqualifier
+    (including an unknown answer), else ``fit``. A fit verdict is not an opt-in.
+    """
+    hosting = (policy or load_policy())["agent_hosting"]
+    if not fit:
+        return {"verdict": "not-assessed", "reasons": [], "disqualifiers": [], "advisories": []}
+    hits = evaluate_fit(fit, hosting, voice_frontend)
+    advisories = []
+    for question in hosting["harness_fit_questions"]:
+        advisory = question.get("advisory_when")
+        if advisory is not None and str(fit.get(question["field"])).lower() == str(advisory).lower():
+            advisories.append(question["advisory"])
+    return {"verdict": "not-fit" if hits else "fit", "reasons": [h["reason"] for h in hits],
+            "disqualifiers": [h["id"] for h in hits], "advisories": advisories}
+
+
+def verdict_markdown(verdict: dict[str, Any]) -> str:
+    """The SPEC § 11e "Harness fit verdict" block (design template)."""
+    lines = [f"**Harness fit verdict: {verdict['verdict']}**", "", "| Reason | Kind |", "| --- | --- |"]
+    lines += [f"| {r} | disqualifier |" for r in verdict["reasons"]]
+    lines += [f"| {a} | advisory |" for a in verdict["advisories"]]
+    if not verdict["reasons"] and not verdict["advisories"]:
+        lines.append("| no disqualifier hit | - |" if verdict["verdict"] == "fit" else "| harness_fit not answered | - |")
+    return "\n".join(lines) + "\n"
+
+
 def resolve(spec: str, policy: dict[str, Any] | None = None) -> dict[str, Any]:
     """Return ``{requested, agent_type, reasons, disqualifiers}`` for the SPEC text."""
     hosting = (policy or load_policy())["agent_hosting"]
@@ -91,21 +150,9 @@ def resolve(spec: str, policy: dict[str, Any] | None = None) -> dict[str, Any]:
         reasons.append("harness_fit record is missing")
         fit = {}
 
-    disqualifiers: list[str] = []
-    for rule in hosting["harness_disqualifiers"]:
-        answer = fit.get(rule["fit_field"])
-        if "disqualifies_unless" in rule:
-            hit = _bool(answer) is not rule["disqualifies_unless"]
-        elif "allowed_values_ref" in rule:
-            allowed = {_norm_region(v) for v in hosting[rule["allowed_values_ref"]]}
-            hit = _norm_region(answer) not in allowed
-        else:
-            hit = (answer or "").lower() not in rule["allowed_values"]
-        for spec_key, spec_value in (rule.get("also_when_spec") or {}).items():
-            hit = hit or (spec_scalar(spec, spec_key) or "").lower() == spec_value
-        if hit:
-            disqualifiers.append(rule["id"])
-            reasons.append(f"{rule['id']}: harness_fit.{rule['fit_field']}={answer!r} ({rule['reason']})")
+    hits = evaluate_fit(fit, hosting, voice_frontend=spec_scalar(spec, "voice_frontend"))
+    disqualifiers = [hit["id"] for hit in hits]
+    reasons += [hit["reason"] for hit in hits]
 
     result["reasons"], result["disqualifiers"] = reasons, disqualifiers
     if reasons:
@@ -117,8 +164,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Resolve SPEC agent_type against runtime-policy.json")
     parser.add_argument("--spec", required=True, help="path to specs/SPEC.md")
     parser.add_argument("--json", action="store_true", help="print the full JSON result")
+    parser.add_argument("--verdict-md", action="store_true", help="print the SPEC § 11e harness fit verdict block")
     args = parser.parse_args(argv)
-    result = resolve(Path(args.spec).read_text(encoding="utf-8"))
+    spec = Path(args.spec).read_text(encoding="utf-8")
+    if args.verdict_md:
+        print(verdict_markdown(fit_verdict(spec_mapping(spec, "harness_fit"),
+                                           voice_frontend=spec_scalar(spec, "voice_frontend"))), end="")
+        return 0
+    result = resolve(spec)
     if args.json:
         print(json.dumps(result, indent=2))
     else:

@@ -60,3 +60,17 @@ def test_hosted_prompt_and_voice_pass_through():
 def test_region_match_is_case_and_space_insensitive():
     result = atp.resolve(_spec(OPT_IN.replace("region: swedencentral", "region: Sweden Central")))
     assert result["agent_type"] == "harness", result
+
+
+def test_fit_verdict_is_independent_of_the_opt_in_and_lists_reasons():
+    assert atp.fit_verdict(None)["verdict"] == "not-assessed"
+    fit = {"read_mostly": False, "citadel_model_path_required": False, "acs_in_process_pep_required": False,
+           "foundry_memory_required": False, "voice_frontend_required": False, "region": "westeurope",
+           "consequential_write_seam": "governed-mcp"}
+    clean = atp.fit_verdict(fit)
+    assert clean["verdict"] == "fit" and clean["reasons"] == [] and len(clean["advisories"]) == 1
+    hit = atp.fit_verdict({**fit, "region": "eastus2"})
+    assert hit["verdict"] == "not-fit" and hit["disqualifiers"] == ["region-not-supported"]
+    md = atp.verdict_markdown(hit)
+    assert md.startswith("**Harness fit verdict: not-fit**")
+    assert "region-not-supported" in md and "| disqualifier |" in md and "| advisory |" in md
