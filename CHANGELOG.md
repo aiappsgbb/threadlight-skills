@@ -68,7 +68,6 @@ field.
   gpt-6-luna and gpt-6.1-sol; waves keep the router arm apart from fixed arms on
   the deployments that serve it. The 2026-06 finding is marked superseded by
   `references/findings/2026-11-20-router-workload-post-ignite.md`.
-||||||| parent of f830e86b (2.54.0: threadlight-ground no-token and RBAC-propagation probes, GRD-005 derived graphs on ACL sources (#214, #215))
 
 ### 2.53.0: public story review: "From demo to production" overview, proof labels, identifier cleanup
 
