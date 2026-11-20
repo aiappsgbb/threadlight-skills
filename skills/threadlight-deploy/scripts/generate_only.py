@@ -409,13 +409,43 @@ def design_model_config(project_dir: Path) -> dict[str, Any]:
         if mode not in ROUTER_MODES:
             raise ValueError(f"specs/foundation.md model.router.mode must be one of {', '.join(ROUTER_MODES)}")
         out["mode"] = mode
-        subset = [{"name": n, "version": v} for n, v in re.findall(
-            r"name:\s*[\"']?([A-Za-z0-9._-]+)[\"']?\s*,\s*version:\s*[\"']?([0-9][0-9A-Za-z._-]*)", block)]
-        if subset:
+        subset = _router_subset(block)
+        if subset is not None:
             if len(subset) < 2:
                 raise ValueError("specs/foundation.md model.router.subset needs at least two models")
             out["subset"] = subset
     return out
+
+
+def _router_subset(block: str) -> list[dict[str, str]] | None:
+    """``model.router.subset`` entries, flow (``- { name: x, version: "y" }``) or
+    block style (``- name: x`` / ``version: "y"``). ``None`` when no subset key;
+    raises when the key is present but an entry lacks a name or version, so a
+    design subset is never silently replaced by the template default."""
+    lines = block.splitlines()
+    start = next((i for i, ln in enumerate(lines) if re.match(r"^\s+subset:\s*$", ln)), None)
+    if start is None:
+        return None
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    items: list[str] = []
+    for ln in lines[start + 1:]:
+        if ln.strip() and len(ln) - len(ln.lstrip()) <= indent:
+            break
+        if ln.lstrip().startswith("- "):
+            items.append(ln.lstrip()[2:])
+        elif items:
+            items[-1] += " " + ln.strip()
+    subset = []
+    for item in items:
+        name = re.search(r"\bname:\s*[\"']?([A-Za-z0-9._-]+)", item)
+        version = re.search(r"\bversion:\s*[\"']?([0-9][0-9A-Za-z._-]*)", item)
+        if not (name and version):
+            raise ValueError("specs/foundation.md model.router.subset entries need name and version, "
+                             f"got {item.strip()!r}")
+        subset.append({"name": name.group(1), "version": version.group(1)})
+    if not subset:
+        raise ValueError("specs/foundation.md model.router.subset is present but lists no models")
+    return subset
 
 
 def _model_strategy_row(config: dict[str, Any]) -> str:

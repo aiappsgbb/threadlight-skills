@@ -406,3 +406,30 @@ def test_router_subset_rejects_auto_for_eu_boundary(tmp_path: Path):
     res = _run([str(GENERATOR), "--project", str(project)], tmp_path)
     assert res.returncode != 0
     assert "Auto" in (res.stdout + res.stderr) and "Global Standard" in (res.stdout + res.stderr)
+
+
+def test_router_subset_block_style_is_parsed_not_ignored(tmp_path: Path):
+    project = tmp_path / "p"
+    shutil.copytree(FIXTURE, project)
+    (project / "specs" / "foundation.md").write_text(
+        "# Foundation\n\n## 2. Model & capacity\n\n```yaml\nmodel:\n"
+        "  default: gpt-6-luna\n  version: \"2026-09-22\"\n  routing: router-subset\n"
+        "  router:\n    subset:\n"
+        "      - name: gpt-6-luna\n        version: \"2026-09-22\"\n"
+        "      - name: gpt-6.1-terra\n        version: \"2026-10-26\"\n"
+        "  region: swedencentral\n```\n")
+    assert _run([str(GENERATOR), "--project", str(project)], tmp_path).returncode == 0
+    params = json.loads((project / "infra" / "main.parameters.json").read_text())["parameters"]
+    assert params["routerSubset"]["value"] == [{"name": "gpt-6-luna", "version": "2026-09-22"},
+                                               {"name": "gpt-6.1-terra", "version": "2026-10-26"}]
+
+
+def test_router_subset_present_but_unparsable_fails_closed(tmp_path: Path):
+    project = tmp_path / "p"
+    shutil.copytree(FIXTURE, project)
+    (project / "specs" / "foundation.md").write_text(
+        "# Foundation\n\n## 2. Model & capacity\n\n```yaml\nmodel:\n"
+        "  default: gpt-6-luna\n  routing: router-subset\n  router:\n    subset:\n"
+        "      - gpt-6-luna\n      - gpt-6.1-terra\n```\n")
+    res = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert res.returncode != 0 and "subset" in res.stderr

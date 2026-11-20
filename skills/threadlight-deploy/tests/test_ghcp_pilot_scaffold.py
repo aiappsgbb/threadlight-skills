@@ -259,7 +259,7 @@ def test_pilot_bicep_defaults_to_router_subset_with_own_deployments():
         assert "@batchSize(1)\nresource modelDeployments 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview'" in bicep, name
         assert "resource router 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = if (useRouter)" in bicep, name
         assert "routing: {" in bicep and "mode: routerMode" in bicep, name
-        assert "union(routerSubset, [ fixedModel ])" in bicep, name
+        assert "ownModels" in bicep, name
         assert "output AZURE_AI_MODEL_DEPLOYMENT_NAME string = useRouter ? router.name : modelName" in bicep, name
         assert "output AZURE_AI_MODEL_WIRE_API string = useRouter ? 'completions' : 'responses'" in bicep, name
         assert "output AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME string = modelName" in bicep, name
@@ -302,3 +302,11 @@ def test_pilot_parameters_let_the_evidence_gate_switch_strategy_and_model():
         assert params["modelName"]["value"] == "${AZURE_AI_MODEL_NAME=gpt-6-luna}", name
         assert params["modelVersion"]["value"] == "${AZURE_AI_MODEL_VERSION=2026-09-22}", name
         assert params["routerCapacity"]["value"] == "${AZURE_AI_ROUTER_CAPACITY=300}", name
+
+
+def test_pilot_bicep_dedupes_own_deployments_by_model_name():
+    # Same model with a different version must not declare two deployments
+    # with one name (ARM rejects duplicate resources).
+    for name, bicep in _pilot_biceps().items():
+        assert "contains(map(routerSubset, m => m.name), modelName)" in bicep, name
+        assert "union(routerSubset, [ fixedModel ])" not in bicep, name

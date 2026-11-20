@@ -194,8 +194,11 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-previ
 
 var useRouter = modelStrategy == 'router-subset'
 var fixedModel = { name: modelName, version: modelVersion }
-// union() drops the duplicate when the fixed baseline is already a subset member.
-var ownModels = useRouter ? union(routerSubset, [ fixedModel ]) : [ fixedModel ]
+// Dedupe by name: when the fixed baseline is a subset member, the subset entry
+// (and its version) is the one deployment of that model.
+var ownModels = useRouter
+  ? concat(routerSubset, contains(map(routerSubset, m => m.name), modelName) ? [] : [ fixedModel ])
+  : [ fixedModel ]
 
 // One deployment per model, serialized: parallel deployment writes on one
 // account conflict. With the router, these are the "own deployments" that
