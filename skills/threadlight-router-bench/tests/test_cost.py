@@ -469,3 +469,120 @@ def test_scorecard_savings_when_candidate_cheaper():
     card = score_mod.scorecard(candidate_usage=usage, baseline_model="gpt-5.4", prices=prices)
     assert card["verdict"] == "router-savings"
     assert card["delta_usd"] < 0
+
+
+# ---- post-Ignite 2026 refresh (#216): retail prices, router fee, served-model metrics ----
+
+RETAIL_FIXTURE = FIXTURES / "retail-prices-swedencentral.json"
+MULTI_DEP_FIXTURE = FIXTURES / "az-metrics-multideployment.json"
+
+
+def test_seed_prices_match_retail_api_for_issue_models():
+    # Issue #216: the old seeds under-priced these models.
+    seed = prices_mod.load_prices()
+    assert (seed["gpt-5.4-mini"]["input"], seed["gpt-5.4-mini"]["output"]) == (0.75, 4.50)
+    assert seed["gpt-5.5"]["output"] == 30.0
+    assert seed["gpt-5.4"]["output"] == 15.0
+    assert prices_mod.ROUTER_FEE == {"global": 0.14, "datazone": 0.154}
+
+
+def test_parse_retail_prices_global_with_cache_rates():
+    items = json.loads(RETAIL_FIXTURE.read_text())["Items"]
+    parsed = prices_mod.parse_retail_prices(items, scope="global")
+    luna = parsed["prices"]["gpt-6-luna"]
+    assert luna == {"input": 0.10, "cached_input": 0.01, "cache_write": 0.125, "output": 0.50}
+    assert parsed["prices"]["gpt-5.4-mini"] == {"input": 0.75, "cached_input": 0.075, "output": 4.5}
+    assert parsed["router_fee"] == 0.14
+
+
+def test_parse_retail_prices_datazone_and_per_1k_units():
+    items = json.loads(RETAIL_FIXTURE.read_text())["Items"]
+    gl = prices_mod.parse_retail_prices(items, scope="global")
+    dz = prices_mod.parse_retail_prices(items, scope="datazone")
+    assert dz["router_fee"] == 0.154
+    assert dz["prices"]["gpt-5.4-mini"]["input"] == 0.825
+    # Grok meters are published per 1K tokens; normalized to $/1M.
+    assert gl["prices"]["grok-4.6"] == {"input": 2.0, "cached_input": 0.5, "output": 6.0}
+    # grok-4-1-fast-reasoning has no Data Zone meter: reported, never guessed.
+    assert "grok-4-1-fast-reasoning" in dz["missing"]
+
+
+def test_load_prices_accepts_retail_api_export(tmp_path):
+    table = prices_mod.load_prices(RETAIL_FIXTURE)
+    assert table["gpt-6.1-terra"]["output"] == 5.0
+    assert table[prices_mod.ROUTER_FEE_KEY]["input"] == 0.14
+
+
+def test_fetch_retail_prices_paginates_with_timeout_and_honours_429():
+    pages = {
+        "first": (429, {}, {"Retry-After": "2"}),
+        "first-again": (200, {"Items": [{"skuName": "a"}], "NextPageLink": "https://next"}, {}),
+        "https://next": (200, {"Items": [{"skuName": "b"}], "NextPageLink": None}, {}),
+    }
+    calls, slept = [], []
+
+    def opener(url, timeout):
+        calls.append((url, timeout))
+        key = url if url.startswith("https://next") else ("first" if len(calls) == 1 else "first-again")
+        return pages[key]
+    items = prices_mod.fetch_retail_prices(
+        "swedencentral", opener=opener, sleep=slept.append, timeout=7)
+    skus = [i["skuName"] for i in items]
+    assert skus.count("a") == 2 and skus.count("b") == 2  # two queries: models + router fee
+    assert all(t == 7 for _, t in calls)
+    assert slept and slept[0] == 2.0
+    assert "armRegionName%20eq%20%27swedencentral%27" in calls[0][0]
+
+
+def test_fetch_retail_prices_bounded_on_persistent_throttle():
+    with pytest.raises(RuntimeError, match="Retail Prices API"):
+        prices_mod.fetch_retail_prices(
+            "swedencentral", opener=lambda url, timeout: (429, {}, {}),
+            sleep=lambda s: None, max_retries=2)
+
+
+def test_cost_of_uses_cached_and_cache_write_rates_and_router_fee():
+    table = {"m": {"input": 1.0, "cached_input": 0.1, "cache_write": 1.25, "output": 2.0},
+             prices_mod.ROUTER_FEE_KEY: {"input": 0.14}}
+    usage = {"m": {"input": 1_000_000, "cached_input": 400_000, "cache_write": 100_000,
+                   "output": 1_000_000}}
+    # fresh 500k*1 + cached 400k*0.1 + write 100k*1.25 + out 1M*2 = 0.5+0.04+0.125+2
+    assert score_mod.cost_of(usage, table) == pytest.approx(2.665)
+    assert score_mod.cost_of(usage, table, router=True) == pytest.approx(2.665 + 0.14)
+
+
+def test_cost_of_normalizes_versioned_model_names():
+    table = {"gpt-6-luna": {"input": 0.1, "output": 0.5}}
+    usage = {"gpt-6-luna-2026-09-22": {"input": 1_000_000, "output": 0}}
+    assert score_mod.cost_of(usage, table) == pytest.approx(0.1)
+
+
+def test_fetch_metrics_default_filter_spans_all_deployments():
+    seen = {}
+
+    def runner(args):
+        seen["args"] = args
+        return "{}"
+    metrics_mod.fetch_metrics("/sub/x", "s", "e", runner=runner)
+    flt = seen["args"][seen["args"].index("--filter") + 1]
+    assert flt == "ModelDeploymentName eq '*' and ModelName eq '*'"
+
+
+def test_served_usage_attributes_routed_tokens_by_served_model_across_deployments():
+    doc = json.loads(MULTI_DEP_FIXTURE.read_text())
+    served = metrics_mod.served_usage(doc)
+    # Router deployment + own gpt-6-luna deployment (served routed traffic first).
+    assert served["usage"]["gpt-6-luna"] == {"input": 6000, "output": 800}
+    assert served["usage"]["gpt-6.1-terra"] == {"input": 400, "output": 80}
+    assert served["unattributed"] == {"input": 50, "output": 5}
+    by_dep = {(r["deployment"], r["model"]) for r in served["series"]}
+    assert ("gpt-6-luna", "gpt-6-luna") in by_dep
+
+
+def test_served_usage_can_scope_to_router_and_its_own_deployments():
+    doc = json.loads(MULTI_DEP_FIXTURE.read_text())
+    served = metrics_mod.served_usage(doc, deployments={"model-router", "gpt-6-luna"})
+    assert "gpt-5.4-mini" not in served["usage"]
+    # The legacy router-only filter would have missed the own-deployment tokens.
+    legacy = metrics_mod.served_usage(doc, deployments={"model-router"})
+    assert legacy["usage"]["gpt-6-luna"]["input"] == 1000

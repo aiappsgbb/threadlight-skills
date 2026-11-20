@@ -1,8 +1,9 @@
 """Matrix orchestrator for threadlight-router-validation.
 
 Dispatches the 3-arm x N-workload matrix as cost-clean waves: within a wave,
-every cell targets a DISTINCT model deployment so Azure Monitor windows don't
-bleed (metrics filter by ModelDeploymentName). One wave per workload.
+no two cells can produce tokens on the same deployment (including the own
+deployments that serve a router arm's routed requests), so Azure Monitor
+windows don't bleed. A workload needs more than one wave when they overlap.
 """
 from __future__ import annotations
 
@@ -21,17 +22,34 @@ def _default_runner(args: list[str]) -> str:
                           text=True).stdout
 
 
+def cell_deployments(cell: dict[str, Any]) -> list[str]:
+    """Every deployment whose token metrics a cell can produce: its own plus,
+    for a router arm, the same-resource deployments that serve its routed
+    requests first (`serves_via`)."""
+    return [cell["model_deployment"], *cell.get("serves_via", [])]
+
+
 def plan_waves(workloads: list[str],
                arms: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-    """One wave per workload; each cell = arm x workload. Guarantees no two
-    cells in a wave share a model deployment."""
+    """Waves per workload, in arm order. A cell joins the current wave only if
+    none of its `cell_deployments` is already used there; otherwise it starts
+    the next wave, so Azure Monitor windows never bleed across arms."""
     waves = []
     for wl in workloads:
-        wave = [{**a, "workload": wl} for a in arms]
-        deps = [c["model_deployment"] for c in wave]
-        if len(deps) != len(set(deps)):
-            raise ValueError(f"same-deployment overlap in wave for {wl}")
-        waves.append(wave)
+        pending = [{**a, "workload": wl} for a in arms]
+        while pending:
+            wave, used, rest = [], set(), []
+            for cell in pending:
+                deps = cell_deployments(cell)
+                if len(deps) != len(set(deps)):
+                    raise ValueError(f"cell {cell.get('arm')} lists a deployment twice")
+                if used.isdisjoint(deps):
+                    wave.append(cell)
+                    used.update(deps)
+                else:
+                    rest.append(cell)
+            waves.append(wave)
+            pending = rest
     return waves
 
 

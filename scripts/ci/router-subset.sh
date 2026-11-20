@@ -3,11 +3,13 @@
 #
 # Record / set / restore the model-router custom subset on the shared CI
 # Foundry account. Used by the router-validation matrix to
-# constrain model-router to {gpt-5.4, gpt-5.4-mini} for the experiment, then
+# constrain model-router to {gpt-6-luna, gpt-6.1-terra, gpt-6.1-sol} for the
+# experiment (each also deployed in the same account by
+# foundry-strong-arm.sh, so own deployments serve routed requests first), then
 # put the shared deployment back exactly as it was found.
 #
 #   record   snapshot the current routing block to /tmp (run BEFORE set)
-#   set      pin routing to {gpt-5.4, gpt-5.4-mini} (propagation up to ~5 min)
+#   set      pin routing to {gpt-6-luna, gpt-6.1-terra, gpt-6.1-sol} (propagation up to ~5 min)
 #   restore  put routing back to the recorded snapshot (or the default full
 #            pool if there was no routing block) — ALWAYS run this after the
 #            matrix, even on failure, to avoid leaving the shared router pinned.
@@ -66,14 +68,15 @@ case "${1:-}" in
   "properties": {
     "model": {"format":"OpenAI","name":"model-router","version":"2025-11-18"},
     "routing": { "mode":"balanced", "models": [
-      {"format":"OpenAI","name":"gpt-5.4","version":"2026-03-05"},
-      {"format":"OpenAI","name":"gpt-5.4-mini","version":"2026-03-17"}
+      {"format":"OpenAI","name":"gpt-6-luna","version":"2026-09-22"},
+      {"format":"OpenAI","name":"gpt-6.1-terra","version":"2026-10-26"},
+      {"format":"OpenAI","name":"gpt-6.1-sol","version":"2026-09-29"}
     ]}}}
 JSON
 )
     arm_put "$BODY"
     python3 -c "import json;print(json.dumps(json.load(open('$RESP')).get('properties',{}).get('routing'),indent=2))"
-    echo "subset set to {gpt-5.4, gpt-5.4-mini}; propagation up to 5 min" ;;
+    echo "subset set to {gpt-6-luna, gpt-6.1-terra, gpt-6.1-sol}; propagation up to 5 min" ;;
   restore)
     # Decide the target routing from the snapshot. Distinguish "snapshot
     # missing" (record never ran / file lost) from "snapshot == null" (no

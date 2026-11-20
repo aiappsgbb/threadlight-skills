@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """threadlight-router-bench — CLI dispatcher.
 
-Two independent modes:
+Independent modes:
 
   learn  <run_id>              PRIMARY. Single-run self-improvement cold-path.
                                Harvests one CI run, classifies anomalies into a
@@ -10,7 +10,16 @@ Two independent modes:
 
   bench  <candidate> <base>    OPTIONAL. Paired cost/efficiency scorecard of a
                                model-router run vs a baseline-model run, using
-                               Azure Monitor token metrics. (built in score/*)
+                               Azure Monitor token metrics, attributed to the
+                               served model across deployments. (score/*)
+
+  validate --dispatch|--ingest OPTIONAL. 3-arm e2e quality matrix.
+
+  workload --endpoint|--ingest OPTIONAL. Deterministic task mix through model
+                               router (per-request modes) vs fixed models on the
+                               Responses API; estimated $ per 1k tasks.
+
+  pool <sub> <region>          Pre-flight: list the model router pool (ARM).
 
 Repo convention: flat scripts/, stdlib-only, sibling imports via sys.path.
 """
@@ -33,8 +42,12 @@ import prices as prices_mod  # noqa: E402
 import score as score_mod  # noqa: E402
 import rubric as rubric_mod  # noqa: E402
 import matrix as matrix_mod  # noqa: E402
+import pool as pool_mod  # noqa: E402
+import workload as workload_mod  # noqa: E402
+import workload_tasks as tasks_mod  # noqa: E402
 
 _WORKLOADS_ROOT = HERE.parents[2] / ".github" / "workloads"
+ROUTER_SUBSET = ("gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol")
 
 Runner = Callable[[list[str]], str]
 
@@ -94,31 +107,40 @@ def run_bench(candidate: int, baseline: int, resource_id: str,
               repo: str = "aiappsgbb/threadlight-skills",
               outdir: Path | None = None, prices_path: Path | None = None,
               gh_runner: Runner | None = None,
-              az_runner: Runner | None = None) -> dict[str, Any]:
+              az_runner: Runner | None = None,
+              candidate_serves_via: list[str] | None = None) -> dict[str, Any]:
     """Paired cost/efficiency scorecard: model-router run vs a baseline-model run.
 
     Token usage has no run-id dimension in Azure Monitor, so each run's metric
     window (startedAt→updatedAt) bounds its `az monitor metrics list` query.
+    Metrics are fetched for every deployment and then scoped to the candidate
+    deployment plus `candidate_serves_via` (own deployments that serve routed
+    requests first), attributed by served model.
     """
     price_table = prices_mod.load_prices(prices_path)
 
     cand_meta = harvest.fetch_view(candidate, repo=repo, runner=gh_runner)
     cand_metrics = metrics_mod.fetch_metrics(
         resource_id, cand_meta.get("startedAt", ""), cand_meta.get("updatedAt", ""),
-        deployment=candidate_deployment, runner=az_runner)
-    candidate_usage = metrics_mod.parse_metrics(cand_metrics)
+        runner=az_runner)
+    cand_served = metrics_mod.served_usage(
+        cand_metrics, deployments={candidate_deployment, *(candidate_serves_via or [])})
+    candidate_usage = cand_served["usage"]
 
     baseline_usage: dict[str, Any] | None = None
     if baseline_deployment:
         base_meta = harvest.fetch_view(baseline, repo=repo, runner=gh_runner)
         base_metrics = metrics_mod.fetch_metrics(
             resource_id, base_meta.get("startedAt", ""), base_meta.get("updatedAt", ""),
-            deployment=baseline_deployment, runner=az_runner)
-        baseline_usage = metrics_mod.parse_metrics(base_metrics)
+            runner=az_runner)
+        baseline_usage = metrics_mod.served_usage(
+            base_metrics, deployments={baseline_deployment})["usage"]
 
     card = score_mod.scorecard(candidate_usage=candidate_usage,
                                baseline_model=baseline_model, prices=price_table,
-                               baseline_usage=baseline_usage)
+                               baseline_usage=baseline_usage,
+                               candidate_router=True)
+    card["candidate_unattributed_tokens"] = cand_served["unattributed"]
     card["candidate_run"] = candidate
     card["baseline_run"] = baseline
 
@@ -153,9 +175,11 @@ def _score_cell(cell: dict[str, Any], repo: str = "aiappsgbb/threadlight-skills"
         meta = harvest.fetch_view(run_id, repo=repo, runner=runner)
         doc = metrics_mod.fetch_metrics(
             resource_id, meta.get("startedAt", ""), meta.get("updatedAt", ""),
-            deployment=cell.get("model_deployment", ""), runner=az_runner)
-        usage = metrics_mod.parse_metrics(doc)
-        cost = score_mod.cost_of(usage, prices_mod.load_prices(None))
+            runner=az_runner)
+        usage = metrics_mod.served_usage(
+            doc, deployments=set(matrix_mod.cell_deployments(cell)))["usage"]
+        cost = score_mod.cost_of(usage, prices_mod.load_prices(None),
+                                 router=cell.get("arm") == "router")
     return {"arm": cell["arm"], "phases_ok": phases_ok, "rounds": rounds,
             "rubric": rubric_res["score"], "cost_usd": cost}
 
@@ -213,10 +237,15 @@ def _cmd_validate(args: argparse.Namespace, runner: Runner | None = None,
         print("router-bench validate: pass --ingest <manifest> to score, "
               "or --dispatch to fire a live matrix", file=sys.stderr)
         return 2
+    # Router subset {gpt-6-luna, gpt-6.1-terra, gpt-6.1-sol}, each with its own
+    # deployment in the same resource, vs fixed gpt-6-luna and gpt-6.1-sol.
+    # GitHub Copilot BYOK reaches model router over Chat Completions, so the
+    # router arm keeps the `completions` wire.
     arms = [
-        {"arm": "mini", "model_deployment": "gpt-5.4-mini", "wire_api": "responses"},
-        {"arm": "router", "model_deployment": "model-router", "wire_api": "completions"},
-        {"arm": "strong", "model_deployment": "gpt-5.4", "wire_api": "responses"},
+        {"arm": "small", "model_deployment": "gpt-6-luna", "wire_api": "responses"},
+        {"arm": "router", "model_deployment": "model-router", "wire_api": "completions",
+         "serves_via": list(ROUTER_SUBSET)},
+        {"arm": "strong", "model_deployment": "gpt-6.1-sol", "wire_api": "responses"},
     ]
     cells = matrix_mod.dispatch_matrix(args.workloads, arms, repo=args.repo, ref=args.ref, runner=runner)
     Path(args.out).mkdir(parents=True, exist_ok=True)
@@ -244,11 +273,51 @@ def _cmd_bench(args: argparse.Namespace, runner: Runner | None,
         candidate_deployment=args.candidate_deployment,
         baseline_deployment=args.baseline_deployment,
         repo=args.repo, outdir=Path(args.out), prices_path=args.prices,
-        gh_runner=runner, az_runner=az_runner)
+        gh_runner=runner, az_runner=az_runner,
+        candidate_serves_via=args.candidate_serves_via)
     print(score_mod.render_scorecard(card))
     print(f"\n[router-bench] wrote scorecard-{args.candidate}-vs-{args.baseline}.(json|md) "
           f"to {args.out} — verdict={card['verdict']} delta=${card['delta_usd']}.",
           file=sys.stderr)
+    return 0
+
+
+def _cmd_workload(args: argparse.Namespace) -> int:
+    out = Path(args.out)
+    if args.live_prices:
+        items = prices_mod.fetch_retail_prices(args.region, timeout=args.price_timeout)
+        table = prices_mod.retail_table(items, scope=args.scope)
+    else:
+        table = prices_mod.load_prices(args.prices, scope=args.scope)
+    if args.ingest:
+        records = workload_mod.load_records(args.ingest)
+        summary = workload_mod.summarize(records, table)
+        workload_mod.write_outputs(summary, None, out)
+    elif args.endpoint:
+        arms = [workload_mod.router_arm(f"router-{m}", deployment=args.router_deployment, mode=m,
+                                        models=args.router_models or None)
+                for m in args.modes]
+        arms += [workload_mod.fixed_arm(d) for d in args.fixed]
+        post = workload_mod.http_post(args.endpoint, workload_mod.entra_token_provider())
+        out.mkdir(parents=True, exist_ok=True)
+        records = workload_mod.run_workload(arms, tasks_mod.build(args.taskset), args.reps, post,
+                                            concurrency=args.concurrency,
+                                            exec_code=not args.no_code_exec)
+        summary = workload_mod.summarize(records, table)
+        workload_mod.write_outputs(summary, records, out)
+    else:
+        print("router-bench workload: pass --endpoint <responses url> to run, "
+              "or --ingest <records.jsonl> to score", file=sys.stderr)
+        return 2
+    print(workload_mod.render_markdown(summary))
+    print(f"[router-bench] wrote router-workload.(json|md) to {out}", file=sys.stderr)
+    return 0
+
+
+def _cmd_pool(args: argparse.Namespace) -> int:
+    pool = pool_mod.parse_router_pool(pool_mod.fetch_pool(args.subscription, args.region),
+                                      version=args.version)
+    print(json.dumps(pool, indent=2))
     return 0
 
 
@@ -278,7 +347,10 @@ def build_parser() -> argparse.ArgumentParser:
     bench.add_argument("--candidate-deployment", default="model-router")
     bench.add_argument("--baseline-deployment", default="",
                        help="if set, also fetch the baseline run's actual usage")
-    bench.add_argument("--prices", type=Path, default=None, help="price override JSON")
+    bench.add_argument("--candidate-serves-via", nargs="*", default=[],
+                       help="own deployments that serve the router's routed requests first")
+    bench.add_argument("--prices", type=Path, default=None,
+                       help="price override JSON or Retail Prices API export")
     bench.set_defaults(func=_cmd_bench)
 
     v = sub.add_parser("validate", help="run/ingest the router validation matrix")
@@ -290,6 +362,39 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--resource", help="Azure AI Services resource id for cost")
     v.add_argument("--out", default="router-validation-out")
     v.set_defaults(func=_cmd_validate)
+
+    w = sub.add_parser("workload", help="router vs fixed models on a deterministic task mix")
+    w.add_argument("--endpoint", help="Responses API URL, e.g. "
+                   "https://<resource>.services.ai.azure.com/openai/v1/responses")
+    w.add_argument("--ingest", help="score recorded router-workload records (JSONL)")
+    w.add_argument("--router-deployment", default="model-router",
+                   help="model router deployment name, or 'auto'")
+    w.add_argument("--modes", nargs="*", default=["balanced"],
+                   choices=["balanced", "cost", "quality"])
+    w.add_argument("--router-models", nargs="*", default=[],
+                   help="optional per-request routing_config.models")
+    w.add_argument("--fixed", nargs="*", default=["gpt-6-luna", "gpt-6.1-sol"],
+                   help="fixed-model baseline deployments")
+    w.add_argument("--taskset", default="easy", choices=["easy", "hard", "all"])
+    w.add_argument("--reps", type=int, default=2)
+    w.add_argument("--concurrency", type=int, default=4)
+    w.add_argument("--no-code-exec", action="store_true",
+                   help="do not execute model-written code; code tasks stay ungraded")
+    w.add_argument("--prices", type=Path, default=None,
+                   help="price override JSON or Retail Prices API export")
+    w.add_argument("--live-prices", action="store_true",
+                   help="pull current list prices from the Azure Retail Prices API")
+    w.add_argument("--region", default="swedencentral", help="region for --live-prices")
+    w.add_argument("--scope", default="global", choices=["global", "datazone"])
+    w.add_argument("--price-timeout", type=float, default=20.0)
+    w.add_argument("--out", default="router-workload-out")
+    w.set_defaults(func=lambda a, r=None: _cmd_workload(a))
+
+    pl = sub.add_parser("pool", help="list the model router pool via the ARM models API")
+    pl.add_argument("subscription")
+    pl.add_argument("region")
+    pl.add_argument("--version", default=pool_mod.DEFAULT_ROUTER_VERSION)
+    pl.set_defaults(func=lambda a, r=None: _cmd_pool(a))
     return p
 
 

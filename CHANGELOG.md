@@ -7,6 +7,42 @@ field.
 
 ## [Unreleased]
 
+### 2.54.0: router-bench refresh for the post-Ignite 2026 model router (#216)
+
+- **Why.** `threadlight-router-bench` predated the Ignite 2026 model router
+  changes. Its seed prices were wrong (gpt-5.4-mini 0.15/0.60 vs 0.75/4.50 list),
+  had no routing fee or cache rates, the metrics filter missed tokens served by
+  own deployments, and a guardrail claimed the Responses route returns 400.
+- **Guardrail fixed.** Model router serves Responses, Chat Completions and
+  Messages ([Learn](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/model-router-apis)).
+  GitHub Copilot BYOK uses Chat Completions
+  ([Learn](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/model-router-agents)),
+  so GHCP router runs keep the `completions` wire; the e2e workflow input
+  description says so.
+- **Prices.** `prices.py` seeds Retail Prices API list prices (2026-11-20) with
+  cached-input and cache-write rates and the routing fee ($0.14 / 1M input Global,
+  $0.154 Data Zone); `fetch_retail_prices` pulls them live with a finite timeout,
+  bounded pages and 429-aware retries; an explicit meter map normalizes per-1K
+  meters and reports unmapped models. `gpt-6.2-*` (no retail meter) is flagged
+  unverified.
+- **Metrics.** `bench` queries `ModelDeploymentName eq '*'`, attributes tokens by
+  served model across the router and its own deployments
+  (`--candidate-serves-via`), keeps router-named series as unattributed and adds
+  the routing fee.
+- **New `workload` mode.** Deterministic 40/20-task mix with graders, router arms
+  via `Foundry-Features: ModelRouterControls=V1Preview` + `routing_config`
+  (affinity `none`), fixed-model baselines, served model with `routing_trace`
+  fallback, `x-ratelimit-key`, 429-aware retries, $ per 1k tasks and a ≥ 90 %
+  dominant-model flag. Ingesting the recorded Nov 2026 run reproduces the issue's
+  figures (gpt-6-luna 0.054, subset router 0.082, full pool Balanced 0.147,
+  Quality 1.832 $ per 1k tasks).
+- **New `pool` pre-flight** reads the router pool from the ARM models API.
+- **`validate` modernized.** Subset {gpt-6-luna, gpt-6.1-terra, gpt-6.1-sol}, each
+  with its own deployment (`foundry-strong-arm.sh`, `router-subset.sh`), vs fixed
+  gpt-6-luna and gpt-6.1-sol; waves keep the router arm apart from fixed arms on
+  the deployments that serve it. The 2026-06 finding is marked superseded by
+  `references/findings/2026-11-20-router-workload-post-ignite.md`.
+
 ### 2.53.0: public story review: "From demo to production" overview, proof labels, identifier cleanup
 
 - **Why.** Each release from 2.21 to 2.52 updated its own docs, but nobody had

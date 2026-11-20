@@ -36,3 +36,24 @@ def test_dispatch_matrix_assigns_distinct_run_ids_per_cell():
     assert len(cells) == 3
     assert ids == [1000, 1001, 1002]      # distinct, in dispatch order
     assert len(set(ids)) == 3
+
+
+MODERN_ARMS = [
+    {"arm": "small", "model_deployment": "gpt-6-luna", "wire_api": "responses"},
+    {"arm": "router", "model_deployment": "model-router", "wire_api": "completions",
+     "serves_via": ["gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol"]},
+    {"arm": "strong", "model_deployment": "gpt-6.1-sol", "wire_api": "responses"},
+]
+
+
+def test_plan_waves_isolates_router_served_by_own_deployments():
+    # Own deployments serve routed requests first (#216), so the router's token
+    # metrics land under gpt-6-luna / gpt-6.1-sol too: the router cell must not
+    # share a metrics window with the fixed cells on those deployments.
+    waves = matrix.plan_waves(["returns-triage"], MODERN_ARMS)
+    assert len(waves) == 2
+    for wave in waves:
+        used = [d for c in wave for d in matrix.cell_deployments(c)]
+        assert len(used) == len(set(used))
+    assert [c["arm"] for c in waves[0]] == ["small", "strong"]
+    assert [c["arm"] for c in waves[1]] == ["router"]

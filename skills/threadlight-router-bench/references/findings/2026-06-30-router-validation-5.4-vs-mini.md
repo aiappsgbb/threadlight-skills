@@ -1,5 +1,9 @@
 # Worked example — router validation matrix (2026-06-30)
 
+> **Superseded (2026-11-20)** by [the post-Ignite workload finding](2026-11-20-router-workload-post-ignite.md).
+> The `{gpt-5.4, gpt-5.4-mini}` subset, the seed prices and the "Responses returns 400"
+> wire note below are historical; do not reuse them for new pilots.
+
 **Question (from the field):** model-router is a nice efficiency story, but is it
 actually *better* than a standard `gpt-5.4-mini` — fewer rounds, fewer
 hallucinations, lower cost-to-quality — and does a router constrained to

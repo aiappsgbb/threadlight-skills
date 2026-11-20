@@ -19,6 +19,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Callable
 
@@ -32,6 +33,7 @@ CONSUMPTION_SCRIPTS = (
 )
 
 _shared_parser: Any = None
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def _load_shared_parser(scripts_dir: Path = CONSUMPTION_SCRIPTS) -> Any:
@@ -113,10 +115,45 @@ def parse_metrics(doc: dict[str, Any]) -> dict[str, dict[str, int]]:
     return _load_shared_parser().parse_token_metrics(doc)
 
 
+def served_usage(doc: dict[str, Any],
+                 deployments: set[str] | None = None) -> dict[str, Any]:
+    """Attribute tokens to the model that actually served them.
+
+    With model router, routed tokens appear under the router deployment and
+    under your own same-resource deployments that serve routed requests
+    first, so a router-only deployment filter undercounts. This keys usage
+    by the served ``ModelName`` (version suffix dropped) across every
+    deployment, optionally limited to ``deployments`` (case-insensitive).
+    Series whose model is the router itself are kept apart as
+    ``unattributed``. Returns ``{usage, unattributed, series}``.
+    """
+    import prices as prices_mod  # local sibling, stdlib only
+
+    wanted = {d.casefold() for d in deployments} if deployments else None
+    series = [r for r in _load_shared_parser().parse_token_series(doc)
+              if wanted is None or str(r["deployment"]).casefold() in wanted]
+    usage: dict[str, dict[str, int]] = {}
+    unattributed = {"input": 0, "output": 0}
+    for row in series:
+        model = prices_mod.base_name(str(row["model"]))
+        inp, out = int(row.get("input_tokens") or 0), int(row.get("output_tokens") or 0)
+        if model.startswith("model-router"):
+            unattributed["input"] += inp
+            unattributed["output"] += out
+            continue
+        slot = usage.setdefault(model, {"input": 0, "output": 0})
+        slot["input"] += inp
+        slot["output"] += out
+    return {"usage": usage, "unattributed": unattributed, "series": series}
+
+
 def fetch_metrics(resource_id: str, start_iso: str, end_iso: str,
-                  deployment: str = "model-router", interval: str = "PT1H",
+                  deployment: str = "*", interval: str = "PT1H",
                   runner: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
-    """`az monitor metrics list` for InputTokens+OutputTokens, split by model."""
+    """`az monitor metrics list` for InputTokens+OutputTokens, split by
+    deployment and served model. The default ``'*'`` spans every deployment
+    so tokens served by your own deployments on behalf of the router are
+    not missed; narrow afterwards with ``served_usage(deployments=...)``."""
     run = runner or _default_runner
     out = run([
         "monitor", "metrics", "list", "--resource", resource_id,

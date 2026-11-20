@@ -1,56 +1,61 @@
 #!/usr/bin/env bash
 # scripts/ci/foundry-strong-arm.sh
 #
-# Idempotently create the gpt-5.4 "strong arm" deployment on the shared CI
-# Foundry account. Used by the router-validation matrix
-# (skills/threadlight-router-bench `validate` mode) as the quality ceiling the
-# model-router subset {gpt-5.4, gpt-5.4-mini} is allowed to escalate to.
+# Idempotently create the per-model deployments the router-validation matrix
+# (skills/threadlight-router-bench `validate` mode) needs on the shared CI
+# Foundry account:
 #
-# Safe to re-run: idempotent — creates the deployment when absent, raises its
-# capacity to TARGET_CAP when an older/undersized deployment exists (via a
-# create-or-update PUT; there is no `az ... deployment update` subcommand), and
-# no-ops when capacity is already adequate.
-# Run a quota pre-check first (see the `usage` note below); if the gpt-5.4
-# GlobalStandard limit is 0/exhausted, SKIP the strong arm — the matrix still
-# runs with mini + router, and validation_scorecard tolerates a missing strong
-# arm (rounds-factor checks are skipped when the strong arm is absent).
+#   gpt-6-luna     fixed "small" arm, and a router subset member
+#   gpt-6.1-terra  router subset member
+#   gpt-6.1-sol    fixed "strong" arm (quality ceiling), and a router subset member
+#
+# Each router subset member is deployed in the same account on purpose: model
+# router serves routed requests from your own deployment of the exact model
+# name and version first, which avoided the router-managed capacity throttle
+# observed in Nov 2026 (see references/findings/2026-11-20-...md).
+#
+# Safe to re-run: creates a deployment when absent, raises its capacity to
+# TARGET_CAP when undersized (a create-or-update PUT; there is no
+# `az ... deployment update` subcommand), and no-ops otherwise.
+# Run a quota pre-check first (`az cognitiveservices usage list -l <region>`);
+# if a model's GlobalStandard quota is exhausted, stop and fix quota rather
+# than running the matrix with a missing own deployment.
 set -euo pipefail
 
 # Target comes from the operator's environment (az CLI's current subscription
 # is used); nothing is embedded here.
 ACC="${ROUTER_ACCOUNT:?set ROUTER_ACCOUNT to the approved Foundry account}"
 RG="${ROUTER_RESOURCE_GROUP:?set ROUTER_RESOURCE_GROUP to the approved resource group}"
-NAME=gpt-5.4
-MODEL=gpt-5.4
-VERSION=2026-03-05         # verified catalog version (westus3/swedencentral)
-TARGET_CAP=250            # TPM cap (×1000). 100 was undersized — strong + router 429'd on gpt-5.4.
+TARGET_CAP="${TARGET_CAP:-250}"   # TPM cap (x1000)
+
+# name:version, verified against the model router 2025-11-18 pool listing.
+MODELS=("gpt-6-luna:2026-09-22" "gpt-6.1-terra:2026-10-26" "gpt-6.1-sol:2026-09-29")
 
 create_or_update() {
-  # PUT-upsert: creates when absent, raises capacity when present. `create` maps
-  # to the CognitiveServices deployments PUT, which is idempotent — re-running it
-  # with a higher --sku-capacity updates the existing deployment in place.
   az cognitiveservices account deployment create \
     --name "$ACC" -g "$RG" \
-    --deployment-name "$NAME" \
-    --model-name "$MODEL" --model-version "$VERSION" --model-format OpenAI \
+    --deployment-name "$1" \
+    --model-name "$1" --model-version "$2" --model-format OpenAI \
     --sku-name GlobalStandard --sku-capacity "$TARGET_CAP"
 }
 
-if az cognitiveservices account deployment show \
-     --name "$ACC" -g "$RG" --deployment-name "$NAME" >/dev/null 2>&1; then
-  CUR_CAP="$(az cognitiveservices account deployment show \
-    --name "$ACC" -g "$RG" --deployment-name "$NAME" \
-    --query "sku.capacity" -o tsv 2>/dev/null)"
-  if [ -n "$CUR_CAP" ] && [ "$CUR_CAP" -ge "$TARGET_CAP" ]; then
-    echo "deployment $NAME already exists at cap $CUR_CAP (>= $TARGET_CAP) — nothing to do"; exit 0
+for spec in "${MODELS[@]}"; do
+  NAME="${spec%%:*}"; VERSION="${spec#*:}"
+  if az cognitiveservices account deployment show \
+       --name "$ACC" -g "$RG" --deployment-name "$NAME" >/dev/null 2>&1; then
+    CUR_CAP="$(az cognitiveservices account deployment show \
+      --name "$ACC" -g "$RG" --deployment-name "$NAME" \
+      --query "sku.capacity" -o tsv 2>/dev/null)"
+    if [ -n "$CUR_CAP" ] && [ "$CUR_CAP" -ge "$TARGET_CAP" ]; then
+      echo "deployment $NAME already exists at cap $CUR_CAP (>= $TARGET_CAP) — nothing to do"
+      continue
+    fi
+    echo "deployment $NAME exists at cap ${CUR_CAP:-unknown} — raising to $TARGET_CAP..."
+  else
+    echo "creating $NAME ($VERSION) at cap $TARGET_CAP..."
   fi
-  echo "deployment $NAME exists at cap ${CUR_CAP:-unknown} — raising to $TARGET_CAP..."
-  create_or_update
-else
-  echo "creating $NAME ($MODEL $VERSION) at cap $TARGET_CAP..."
-  create_or_update
-fi
+  create_or_update "$NAME" "$VERSION"
+done
 
-az cognitiveservices account deployment show \
-  --name "$ACC" -g "$RG" --deployment-name "$NAME" \
-  --query "{name:name, model:properties.model.name, ver:properties.model.version, cap:sku.capacity}" -o table
+az cognitiveservices account deployment list --name "$ACC" -g "$RG" \
+  --query "[].{name:name, model:properties.model.name, ver:properties.model.version, cap:sku.capacity}" -o table
