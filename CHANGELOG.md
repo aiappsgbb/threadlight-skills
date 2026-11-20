@@ -7,6 +7,29 @@ field.
 
 ## [Unreleased]
 
+### 2.62.0: graph-or-not rule and relational eval sets for Foundry IQ (#217)
+
+- **Why.** SPEC § 7 defaulted every process to one Foundry IQ knowledge base,
+  with no rule for adding an entity graph (preview) and no requirement for
+  relational acceptance questions. In a November 2026 test (synthetic corpus,
+  669 documents) graph + text scored 32/34 against 21/34 for a plain knowledge
+  base; on 69 documents the plain knowledge base scored 31–33/34 only because
+  it returned almost the whole corpus.
+- **Design template.** § 7 gets an `Enrichment` field (`none` by default) and
+  the graph-or-not rule: graph + text only when questions chain facts across
+  documents, every reader may see the whole corpus, relations live in prose and
+  preview status and build time are acceptable. § 9 Evaluation Scenarios gets
+  an optional `Question type` column and the relational rule (at least 30%
+  `multi_hop`/`negation`/`aggregation` with ground truth, per-type scores,
+  corpus large enough). Cowork zip rebuilt.
+- **threadlight-evals.** New `scripts/question_types.py`: question-type tags,
+  relational mix check (`pass`/`must-fix`/`not-applicable`, exit 2 on
+  must-fix) and per-type scoring with the entity rule (every expected entity,
+  no wrong entity of the same type). Row shape in `dataset-shape.md`.
+  `evals_check.py` is unchanged: untagged, non-relational datasets keep the
+  default path.
+- **Tests.** Offline only: 14 question-type cases, one template guidance test.
+
 ### 2.61.0: opt-in long-running Responses mode and offline crash-recovery harness (#221, #227)
 
 - **Why.** Threadlight runtimes ran each turn as one request or stream: a crash,
