@@ -82,7 +82,8 @@ def _entities(row: dict, key: str, index: int) -> dict:
 
 
 def _has_ground_truth(row: dict, index: int) -> bool:
-    if any(_entities(row, "expected_entities", index).values()):
+    # An empty list is ground truth too: "which X has no Y" -> none.
+    if _entities(row, "expected_entities", index):
         return True
     expected = row.get("expected")
     return isinstance(expected, str) and bool(expected.strip())
@@ -94,6 +95,7 @@ def check_mix(rows: list, *, relational: bool = False) -> dict:
     Returns ``status`` ``pass``, ``must-fix`` or ``not-applicable`` with a
     ``reason``, per-type ``counts`` and the ``relational_share``.
     """
+    _require_unique_ids(rows, "row")
     types = [_row_type(row, index) for index, row in enumerate(rows)]
     counts = {kind: types.count(kind) for kind in QUESTION_TYPES}
     counts["untagged"] = types.count(None)
@@ -117,9 +119,32 @@ def check_mix(rows: list, *, relational: bool = False) -> dict:
     return {"status": "pass", "reason": "relational-mix-ok", **result}
 
 
-def _contains(answer: str, entity: str) -> bool:
-    pattern = r"(?<![\w-])" + re.escape(entity) + r"(?![\w-])"
-    return re.search(pattern, answer, re.I) is not None
+def _require_unique_ids(rows: list, label: str) -> None:
+    seen = set()
+    for row in rows:
+        row_id = row.get("id")
+        if row_id is None:
+            continue
+        if row_id in seen:
+            raise QuestionTypeError(f"duplicate {label} id {row_id!r}")
+        seen.add(row_id)
+
+
+def _entity_pattern(entity: str):
+    return re.compile(r"(?<![\w-])" + re.escape(entity) + r"(?![\w-])", re.I)
+
+
+def _mentioned(answer: str, known: set) -> set:
+    """Known entities named in *answer*, longest first, so a name that is a
+    prefix of another (``ACME`` / ``ACME Corp``) is not double-counted."""
+    found = set()
+    remaining = answer
+    for entity in sorted(known, key=len, reverse=True):
+        pattern = _entity_pattern(entity)
+        if pattern.search(remaining):
+            found.add(entity)
+            remaining = pattern.sub(" ", remaining)
+    return found
 
 
 def entity_universe(rows: list) -> dict:
@@ -134,16 +159,16 @@ def entity_universe(rows: list) -> dict:
 def score_answer(answer: str, expected: dict, universe: dict) -> bool:
     """Every expected entity present; no other known entity of the same type."""
     for kind, ids in expected.items():
-        if not all(_contains(answer, entity) for entity in ids):
-            return False
-        wrong = universe.get(kind, set()) - set(ids)
-        if any(_contains(answer, entity) for entity in wrong):
+        mentioned = _mentioned(answer, universe.get(kind, set()) | set(ids))
+        if mentioned != set(ids):
             return False
     return True
 
 
 def score_by_type(rows: list, results: list) -> dict:
     """Per-``question_type`` pass counts for *results* matched to *rows* by ``id``."""
+    _require_unique_ids(rows, "row")
+    _require_unique_ids(results, "result")
     by_id = {}
     for index, row in enumerate(rows):
         if "id" not in row:

@@ -28,7 +28,7 @@ field.
   no wrong entity of the same type). Row shape in `dataset-shape.md`.
   `evals_check.py` is unchanged: untagged, non-relational datasets keep the
   default path.
-- **Tests.** Offline only: 14 question-type cases, one template guidance test.
+- **Tests.** Offline only: question-type unit cases, one template guidance test.
 
 ### 2.61.0: opt-in long-running Responses mode and offline crash-recovery harness (#221, #227)
 
