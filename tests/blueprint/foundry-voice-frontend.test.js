@@ -21,7 +21,7 @@ test('canonical rule adds the hosted-voice front-end with the same user opt-in',
   assert.match(rule, /agent[- ]written `voice_frontend`[^.]{0,120}not an opt-in/i);
   assert.match(rule, /tools[^.]{0,80}(governance|MCP)[^.]{0,80}(stay|remain) in the (hosted|text) agent/i);
   assert.ok(rule.includes(LEARN));
-  assert.match(rule, /items 2b and 2c are the only exceptions/i);
+  assert.match(rule, /items 2b and 2c and the Copilot harness opt-in in item 2d are the only exceptions/i);
   assert.match(rule, /Why \(2\.33\.0\)/);
 });
 

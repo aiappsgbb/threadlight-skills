@@ -18,13 +18,16 @@ Every Threadlight agent runs in Microsoft Foundry. The generated agent is a
 Foundry HOSTED agent; ``agent_type: prompt`` or ``agent_type: voice`` in SPEC
 section 11e is refused here (exit 4) because the GHCP pilot scaffold is
 hosted-only. An opted-in voice agent is built with the official microsoft-foundry
-create-voice workflow instead.
+create-voice workflow instead. ``agent_type: harness`` (Foundry Copilot harness,
+preview) is resolved against runtime-policy.json: without the user's opt-in, a
+complete ``harness_fit`` record and no disqualifier it is generated as the
+hosted agent, with the reasons printed (``skills/_shared/agent_type_policy.py``).
 
 Usage::
 
     python generate_only.py --project <workspace> [--force]
 
-Exit codes: 0 generated, 2 invalid workspace, 4 prompt or voice agent requested,
+Exit codes: 0 generated, 2 invalid workspace, 4 prompt, voice or opted-in harness agent requested,
 5 would overwrite generated files (re-run with ``--force``), 6 a design-owned
 file (``src/mcp/server.py`` written by threadlight-design) does not meet the
 deploy contract.
@@ -139,6 +142,7 @@ from skills._shared.spec_tool_contracts import (  # noqa: E402,F401 - section 6 
     SpecToolsError, _consequences, _section, _strip_ticks, _tables, _tool_subsections,
 )
 from skills._shared.spec_tool_contracts import tools as _shared_tools  # noqa: E402
+from skills._shared.agent_type_policy import resolve as _resolve_agent_type  # noqa: E402
 
 
 def tools(spec: str) -> list[dict[str, Any]]:
@@ -1527,6 +1531,19 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
     spec = spec_path.read_text(encoding="utf-8")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     kind = agent_type(spec)
+    if kind == "harness":
+        resolved = _resolve_agent_type(spec)
+        if resolved["agent_type"] != "harness":
+            print("generate_only: agent_type: harness treated as hosted (skills/_shared/foundry-only-agents.md "
+                  "item 2d): " + "; ".join(resolved["reasons"]), file=sys.stderr)
+            kind = resolved["agent_type"]
+        else:
+            raise PromptAgentRefused(
+                "SPEC section 11e sets an opted-in agent_type: harness (Foundry Copilot harness, preview). "
+                "generate_only has no harness route yet; it produces a Foundry HOSTED agent only. Create the "
+                "harness prompt agent as documented at https://learn.microsoft.com/azure/foundry/agents/how-to/"
+                "use-tools-skills-copilot-harness, or set agent_type: hosted."
+            )
     if kind == "prompt":
         raise PromptAgentRefused(
             "SPEC section 11e sets agent_type: prompt. generate_only uses the GHCP pilot scaffold, "
@@ -1541,7 +1558,7 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
             "foundry-agent/create/create-voice.md, then deploy and invoke (needs a subscription)."
         )
     if kind != "hosted":
-        raise WorkspaceError(f"SPEC section 11e agent_type must be hosted, prompt or voice, got {kind!r}")
+        raise WorkspaceError(f"SPEC section 11e agent_type must be hosted, prompt, voice or harness, got {kind!r}")
     voice, voice_ignored = voice_frontend(spec)
     if voice_ignored:
         print(f"generate_only: {voice_ignored}", file=sys.stderr)

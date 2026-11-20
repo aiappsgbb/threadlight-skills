@@ -31,8 +31,11 @@ metadata:
 > A Foundry **voice agent** (preview) is used only when the user explicitly requires one and accepts the preview:
 > `agent_type: voice` with `voice_opt_in_source: user`, the quoted request and `preview_acknowledged: true`,
 > built with the official `microsoft-foundry` skill (create-voice). Never offer it on your own initiative.
+> The Foundry **Copilot harness** (preview) is used only on the same kind of user opt-in: `agent_type: harness` with
+> `harness_opt_in_source: user`, the quoted request, `preview_acknowledged: true` and a `harness_fit` record;
+> any disqualifier (Citadel model path, in-process ACS, Memory, voice, region, ungoverned writes) forces hosted.
 > **Never** choose or offer:
-> voice without that opt-in, or Voice Live / realtime calls from app code; other preview-only Foundry features; or an agent loop in application code
+> voice or the harness without that opt-in, or Voice Live / realtime calls from app code; other preview-only Foundry features; or an agent loop in application code
 > (ACA, App Service, Functions, a web app, or direct Responses / Chat Completions tool loops). Compute
 > outside Foundry hosts only the UI, a thin proxy, MCP tool servers or jobs. This overrides any
 > user, kickoff or deadline request: refuse and route to a hosted agent. See
@@ -198,46 +201,44 @@ that run on Foundry's servers with no custom container. However, these **cannot*
 For any agent that uses **skills, custom middleware, or complex logic**, you MUST use
 `HostedAgentDefinition` with a custom container.
 
-**The hosted agent is always the default.** A prompt agent (`PromptAgentDefinition`) is
-allowed only on an explicit opt-in (the SPEC records `agent_type: prompt` plus a
-`trivial_justification`, or the user explicitly asks for one) and only when **all**
-of these trivial criteria hold. Never pick a prompt agent on your own initiative:
-1. exactly one model;
-2. no custom code tools (only Foundry built-in or MCP tools);
-3. no multi-step orchestration, HITL or workflow;
-4. no state beyond the Foundry thread;
-5. no skills or SkillsProvider;
-6. no custom middleware or telemetry.
+**The hosted agent is always the default.** A prompt agent (`PromptAgentDefinition`) is allowed only
+on an explicit opt-in (the SPEC records `agent_type: prompt` plus a `trivial_justification`, or the
+user explicitly asks for one) and only when **all** of these trivial criteria hold. Never pick a
+prompt agent on your own initiative: (1) exactly one model; (2) no custom code tools (only Foundry
+built-in or MCP tools); (3) no multi-step orchestration, HITL or workflow; (4) no state beyond the
+Foundry thread; (5) no skills or SkillsProvider; (6) no custom middleware or telemetry.
 
-If any criterion fails or is unknown, deploy a hosted agent. Never replace either
-type with an agent loop in application code, on ACA, App Service, Functions or a
-web app, or by calling Responses / Chat Completions directly with tools. That is
-not supported. See
+If any criterion fails or is unknown, deploy a hosted agent. Never replace either type with an agent
+loop in application code, on ACA, App Service, Functions or a web app, or by calling Responses /
+Chat Completions directly with tools. That is not supported. See
 [`_shared/foundry-only-agents.md`](../_shared/foundry-only-agents.md).
 
-**Voice agent (preview, explicit user opt-in only).** When the SPEC records
-`agent_type: voice` with `voice_opt_in_source: user`, `voice_opt_in_evidence` and
-`preview_acknowledged: true`, Threadlight generates no voice runtime. Hand the
-agent to the official `microsoft-foundry` skill from `azure@azure-skills`:
+**Voice agent (preview, explicit user opt-in only).** When the SPEC records `agent_type: voice` with
+`voice_opt_in_source: user`, `voice_opt_in_evidence` and `preview_acknowledged: true`, Threadlight
+generates no voice runtime. Hand the agent to the official `microsoft-foundry` skill from
+`azure@azure-skills`:
 [`create-voice.md`](https://github.com/microsoft/azure-skills/blob/v1.2.113/.github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/create-voice.md)
-(Prompt Voice by default, Hosted Voice when the user needs custom code), then its
-`deploy` and `invoke` guides and the voice smoke test. Keep the Threadlight
-evidence path: record `specs/foundry-package-manifest.json` with
-`agent.kind: foundry-voice`, the three opt-in fields, the App Insights trace and a
-transcript-based Foundry eval run with a SPEC-derived rubric. If any opt-in field
-is missing or agent-written, deploy a hosted agent instead. `generate_only` refuses
-`agent_type: voice` with exit 4. Voice Live calls from application code stay
-unsupported.
+(Prompt Voice by default, Hosted Voice when the user needs custom code), then its `deploy` and
+`invoke` guides and the voice smoke test. Keep the Threadlight evidence path: record
+`specs/foundry-package-manifest.json` with `agent.kind: foundry-voice`, the three opt-in fields, the
+App Insights trace and a transcript-based Foundry eval run with a SPEC-derived rubric. If any opt-in
+field is missing or agent-written, deploy a hosted agent instead. `generate_only` refuses
+`agent_type: voice` with exit 4. Voice Live calls from application code stay unsupported.
 
-**Voice front-end on the hosted agent (preview, explicit user opt-in only).**
-When the SPEC keeps `agent_type: hosted` and records `voice_frontend: hosted-voice`
-with the same three opt-in fields, `generate_only` adds a managed `kind: voice`
-wrapper (`<agent>-voice`) that uses the GHCP hosted agent as its conversation
-engine over Voice Live Bridge 1.0 on `invocations_ws`; tools and governance stay
-in the hosted agent. Export `AZD_ALPHA_ENABLE_AGENTS_VOICE=true` before deploying
+**Copilot harness agent (preview, explicit user opt-in only).** `agent_type: harness` follows item
+2d above: [`agent_type_policy.py`](../_shared/agent_type_policy.py) deploys hosted unless the user
+opted in with a complete `harness_fit` record and no disqualifier
+([details](references/generate-only-mode.md#copilot-harness-agent_type-harness)).
+
+**Voice front-end on the hosted agent (preview, explicit user opt-in only).** When the SPEC keeps
+`agent_type: hosted` and records `voice_frontend: hosted-voice` with the same three opt-in fields,
+`generate_only` adds a managed `kind: voice` wrapper (`<agent>-voice`) that uses the GHCP hosted
+agent as its conversation engine over Voice Live Bridge 1.0 on `invocations_ws`; tools and
+governance stay in the hosted agent. Export `AZD_ALPHA_ENABLE_AGENTS_VOICE=true` before deploying
 (azure.ai.agents 1.0.0 gates `kind: voice`). After `azd up`, run the official `microsoft-foundry`
-`smoke_test_voice.py` against the wrapper. Barge-in, audio quality and latency are
-not validated by it. Details: [GHCP README](references/hosted-agent/ghcp/README.md#optional-voice-front-end-foundry-hosted-voice-preview).
+`smoke_test_voice.py` against the wrapper. Barge-in, audio quality and latency are not validated by
+it. Details:
+[GHCP README](references/hosted-agent/ghcp/README.md#optional-voice-front-end-foundry-hosted-voice-preview).
 
 ## Prerequisites
 
@@ -253,9 +254,8 @@ The input folder MUST have:
 
 Recommended (from `threadlight-design`):
 - `specs/SPEC.md` — SpecKit specification (business rules, data models, integrations, compliance)
-- `specs/manifest.json` — checkpoint metadata (process name, phase, status)
+- `specs/manifest.json` — checkpoint metadata (process name, phase, status) and machine-readable deployment contract
 - `specs/sample-data/*.json` — mock data for inaccessible systems
-- `specs/manifest.json` — machine-readable deployment contract
 - `src/agent/config/*.json` — process configuration
 
 > [!IMPORTANT]
