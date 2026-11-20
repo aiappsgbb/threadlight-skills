@@ -67,9 +67,9 @@
       "order_date": "2026-06-30",
       "delivery_date": "2026-07-03",
       "currency": "USD",
-      "order_total": 312.00,
+      "order_total": 236.00,
       "items": [
-        { "sku": "NWH-SKU-E5540", "brand": "Northwind Home", "name": "Linen Duvet Set — King", "category": "home", "qty": 1, "unit_price": 312.00, "final_sale": false }
+        { "sku": "NWH-SKU-E5540", "brand": "Northwind Home", "name": "Linen Duvet Set — King", "category": "home", "qty": 1, "unit_price": 236.00, "final_sale": false }
       ]
     },
     {

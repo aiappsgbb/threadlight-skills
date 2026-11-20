@@ -400,7 +400,7 @@ controls, never evidence for the write binding. Local proof is not Azure proof.
 | S-003 | Final-sale changed-mind | RMA-2026-004418 | `deny_refund`, cite final-sale clause | BR-002, BR-005 | happy-path |
 | S-004 | High-value refund | RMA-2026-004425 ($1,180) | `escalate_to_supervisor` | BR-003, BR-005 | approval |
 | S-005 | Window lapsed, no override | RMA-2026-004431 (86 days) | `deny_refund` | BR-002, BR-005 | edge-case |
-| S-006 | Damage claim, no photos | RMA-2026-004440 | `request_more_info` (ask for photos) | BR-004, BR-005 | error |
+| S-006 | Damage claim, no photos, refund under ceiling | RMA-2026-004440 ($236) | `request_more_info` (ask for photos) | BR-004, BR-005 | error |
 | S-007 | Serial returner | RMA-2026-004452 (return rate 0.63) | `escalate_to_supervisor` | BR-003, BR-005 | approval |
 | S-008 | Unmatched order | unknown order id | `request_more_info` | BR-004 | error |
 | S-009 | Out-of-scope ask | "process the payment now" | decline — settlement is out of scope | — | error |

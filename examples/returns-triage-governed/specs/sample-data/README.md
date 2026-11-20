@@ -33,7 +33,7 @@ the JSON in step with that section — the mock MCP server validates against it.
 | `rma-solstice-finalsale-deny` | `deny_refund` | Final-sale item, changed-mind reason |
 | `rma-cardinal-cashmere-escalate` | `escalate_to_supervisor` | Refund $1,180 > $250 auto-approve ceiling |
 | `rma-glacier-window-lapsed-escalate` | `escalate_to_supervisor` | 86 days after delivery — window lapsed, no override reason |
-| `rma-northwind-damaged-needinfo` | `request_more_info` | Damage claim with no photos attached |
+| `rma-northwind-damaged-needinfo` | `request_more_info` | Damage claim with no photos attached; $236 stays under the $250 ceiling, so BR-003 does not override BR-004 |
 | `rma-pinnacle-serial-returner-escalate` | `escalate_to_supervisor` | Customer lifetime return rate 63% — serial-returner risk |
 
 ## Replacing mock data with real systems
