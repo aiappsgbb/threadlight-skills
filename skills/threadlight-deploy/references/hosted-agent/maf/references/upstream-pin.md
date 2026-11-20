@@ -34,25 +34,25 @@ packages:
       Beta pre-release pinned EXACT per AGENTS.md § 9.5. PEP 440 treats
       ~=1.0.0bN as >=1.0.0bN, <1.1 — pip drifts to later betas. Keep the
       exact ==1.0.0b260813 pin for this 2026-08-18 validation. This beta
-      moves agentserver core + Responses together to >=2.1.0b1,<3 and
-      agentserver invocations to >=1.1.0b1,<2. Do NOT change the specifier
+      declares agentserver core + Responses >=2.1.0b1,<3 and invocations
+      >=1.1.0b1,<2, so it accepts the GA line pinned below. Do NOT change the specifier
       shape from ==1.0.0bN to ~= without a corresponding AGENTS.md § 9.5
       amendment.
   - name: azure-ai-agentserver-core
     source: pypi
-    version: "2.1.0b1"
+    version: "2.3.0"
     upstream_changelog: https://pypi.org/project/azure-ai-agentserver-core/#history
-    notes: Exact beta pin required so uv admits the Agent Server 2.1 prerelease.
+    notes: GA, pinned exact; moves together with responses 2.4.0 and invocations 1.3.0.
   - name: azure-ai-agentserver-responses
     source: pypi
-    version: "2.1.0b1"
+    version: "2.4.0"
     upstream_changelog: https://pypi.org/project/azure-ai-agentserver-responses/#history
-    notes: Exact beta pin paired with core 2.1.0b1 and hosting b260813.
+    notes: GA, pinned exact; requires core >=2.3.0,<3.0.0 (resilient Responses options).
   - name: azure-ai-agentserver-invocations
     source: pypi
-    version: "1.1.0b1"
+    version: "1.3.0"
     upstream_changelog: https://pypi.org/project/azure-ai-agentserver-invocations/#history
-    notes: Exact beta pin paired with the hosting b260813 release train.
+    notes: GA, pinned exact; requires core >=2.3.0,<3.0.0.
   - name: azure-ai-projects
     source: pypi
     version: "2.3.0"
@@ -195,7 +195,7 @@ known_issues:
     status: open
     workaround_location: README.md § "Dependencies (pyproject.toml)"
   - id: KI-010
-    description: agent-framework-foundry-hosting 1.0.0b260813 requires direct exact Agent Server core + Responses 2.1.0b1 and invocations 1.1.0b1 pins for uv prerelease admission, plus mcp>=1.24,<2.
+    description: agent-framework-foundry-hosting 1.0.0b260813 accepts the GA Agent Server line (core 2.3.0, Responses 2.4.0, invocations 1.3.0); pin all three directly and exactly so a minor release cannot silently change fresh builds, plus mcp>=1.24,<2.
     upstream_url: https://pypi.org/project/agent-framework-foundry-hosting/
     status: open
     workaround_location: README.md § "Dependencies (pyproject.toml)"
@@ -212,9 +212,9 @@ validation:
       "agent-framework-core~=1.14.0" \
       "agent-framework-foundry~=1.11.0" \
       "agent-framework-foundry-hosting==1.0.0b260813" \
-      "azure-ai-agentserver-core==2.1.0b1" \
-      "azure-ai-agentserver-responses==2.1.0b1" \
-      "azure-ai-agentserver-invocations==1.1.0b1" \
+      "azure-ai-agentserver-core==2.3.0" \
+      "azure-ai-agentserver-responses==2.4.0" \
+      "azure-ai-agentserver-invocations==1.3.0" \
       "azure-ai-projects~=2.3.0" \
       "azure-identity~=1.25.3" \
       "mcp~=1.29.0" \
@@ -246,9 +246,9 @@ validation:
         "agent-framework-core~=1.14.0",
         "agent-framework-foundry~=1.11.0",
         "agent-framework-foundry-hosting==1.0.0b260813",
-        "azure-ai-agentserver-core==2.1.0b1",
-        "azure-ai-agentserver-responses==2.1.0b1",
-        "azure-ai-agentserver-invocations==1.1.0b1",
+        "azure-ai-agentserver-core==2.3.0",
+        "azure-ai-agentserver-responses==2.4.0",
+        "azure-ai-agentserver-invocations==1.3.0",
         "azure-ai-projects~=2.3.0",
         "azure-identity~=1.25.3",
         "mcp~=1.29.0",
@@ -258,9 +258,9 @@ validation:
         "agent-framework-core": "1.14.0",
         "agent-framework-foundry": "1.11.0",
         "agent-framework-foundry-hosting": "1.0.0b260813",
-        "azure-ai-agentserver-core": "2.1.0b1",
-        "azure-ai-agentserver-responses": "2.1.0b1",
-        "azure-ai-agentserver-invocations": "1.1.0b1",
+        "azure-ai-agentserver-core": "2.3.0",
+        "azure-ai-agentserver-responses": "2.4.0",
+        "azure-ai-agentserver-invocations": "1.3.0",
         "azure-ai-projects": "2.3.0",
         "azure-identity": "1.25.3",
         "mcp": "1.29.0",
@@ -365,9 +365,9 @@ validation:
     assert version("agent-framework-core").startswith("1.14.")
     assert version("agent-framework-foundry").startswith("1.11.")
     assert version("agent-framework-foundry-hosting") == "1.0.0b260813"
-    assert version("azure-ai-agentserver-core") == "2.1.0b1"
-    assert version("azure-ai-agentserver-responses") == "2.1.0b1"
-    assert version("azure-ai-agentserver-invocations") == "1.1.0b1"
+    assert version("azure-ai-agentserver-core") == "2.3.0"
+    assert version("azure-ai-agentserver-responses") == "2.4.0"
+    assert version("azure-ai-agentserver-invocations") == "1.3.0"
     assert version("azure-ai-projects").startswith("2.3.")
     assert version("azure-identity").startswith("1.25.")
     assert version("mcp").startswith("1.29.")

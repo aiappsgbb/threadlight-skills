@@ -312,8 +312,8 @@ def test_voiced_governed_ghcp_agent_pins_the_voice_capable_agentserver(tmp_path)
     voiced = generate.ghcp_pyproject(template, voice=True)
     plain = generate.ghcp_pyproject(template, voice=False)
     assert '"azure-ai-agentserver-invocations==1.3.0"' in voiced and '"azure-ai-agentserver-core==2.3.0"' in voiced
-    assert '"azure-ai-agentserver-invocations==1.2.0b1"' in plain and '"azure-ai-agentserver-core==2.1.0"' in plain
-    # responses 2.2.0b1 requires core < 2.2.0 (live 2026-11-10); the GHCP Invocations host never imports it.
+    assert '"azure-ai-agentserver-invocations==1.3.0"' in plain and '"azure-ai-agentserver-core==2.3.0"' in plain
+    # responses is MAF-only; the GHCP Invocations host never imports it.
     assert "azure-ai-agentserver-responses" not in voiced
     for text in (voiced, plain):
         assert '"github-copilot-sdk==1.0.1"' in text and "agent-framework" not in text

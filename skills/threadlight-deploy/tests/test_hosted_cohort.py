@@ -11,8 +11,8 @@ def inputs(tmp_path):
     pins = json.loads((REFERENCES.parents[2] / "_shared/governance-upstream-pin.json").read_text())
     dependencies = [name + "==" + version for name, version in pins["maf"].items()]
     dependencies += [
-        "azure-ai-projects~=2.3.0", "azure-ai-agentserver-core==2.1.0b1",
-        "azure-ai-agentserver-responses==2.1.0b1", "azure-ai-agentserver-invocations==1.1.0b1",
+        "azure-ai-projects~=2.3.0", "azure-ai-agentserver-core==2.3.0",
+        "azure-ai-agentserver-responses==2.4.0", "azure-ai-agentserver-invocations==1.3.0",
     ]
     path = tmp_path / "canonical.toml"
     path.write_text("[project]\ndependencies = " + json.dumps(dependencies))
@@ -24,7 +24,7 @@ def test_explicit_hosted_cohort_is_hash_checked_and_contains_no_operator_path(tm
     config = inputs(tmp_path)
     result = module("generate").hosted_cohort(config, "microsoft-agent-framework")
     assert result["sha256"] == config["hosted_cohort"]["sha256"]
-    assert result["pins"]["azure-ai-agentserver-core"] == "2.1.0b1"
+    assert result["pins"]["azure-ai-agentserver-core"] == "2.3.0"
     assert "file" not in result
     portable = module("generate").portable_configuration(
         config, contract("microsoft-agent-framework"), "microsoft-agent-framework")

@@ -1196,9 +1196,9 @@ You have a `save_report` tool for generating downloadable files:
 > agent-framework-core~=1.14.0
 > agent-framework-foundry~=1.11.0
 > agent-framework-foundry-hosting==1.0.0b260813
-> azure-ai-agentserver-core==2.1.0b1
-> azure-ai-agentserver-responses==2.1.0b1
-> azure-ai-agentserver-invocations==1.1.0b1
+> azure-ai-agentserver-core==2.3.0
+> azure-ai-agentserver-responses==2.4.0
+> azure-ai-agentserver-invocations==1.3.0
 > azure-ai-projects~=2.3.0
 > azure-identity~=1.25.3
 > mcp~=1.29.0
@@ -1209,23 +1209,23 @@ You have a `save_report` tool for generating downloadable files:
 > pins `azure-ai-projects~=2.3.0` as a direct dependency. Do not
 > independently bump one package. The hosting package is the current beta
 > pre-release and stays pinned exact at `==1.0.0b260813`; MCP remains on
-> `~=1.29.0` because hosting still requires `mcp<2`. This August release
-> train moves Agent Server Responses/Core `2.1.0b1` and Agent Server Invocations `1.1.0b1`
-> together. Pin all three Agent Server prereleases directly and exactly:
-> uv does not admit those transitive prereleases under
-> `prerelease = "if-necessary-or-explicit"` unless the root project names them.
+> `~=1.29.0` because hosting still requires `mcp<2`. The hosting beta
+> accepts the GA Agent Server line: core `2.3.0`, Responses `2.4.0` and
+> Invocations `1.3.0` (the line the Foundry long-running/resilient Responses
+> features target). Pin all three directly and exactly so a minor release cannot
+> silently change fresh container builds; move them together.
 > Do not globally switch uv to `prerelease = "allow"`; that can pull unrelated
 > prereleases inside otherwise bounded dependency windows.
 
 > 🚨 **READ FIRST.** Five pyproject mistakes silently break this stack:
 >
 > 1. **`agent-framework>=1.14.0` meta-package** — non-deterministic transitive resolution; resolves differently across uv versions. **DO** pin `agent-framework-core` and `agent-framework-foundry` individually.
-> 2. **Transitive Agent Server betas** — hosting `b260813` declares lower bounds on Agent Server core/responses `>=2.1.0b1` and invocations `>=1.1.0b1`, but uv's safe `if-necessary-or-explicit` policy does not treat those transitive markers as explicit. Pin `azure-ai-agentserver-core==2.1.0b1`, `azure-ai-agentserver-responses==2.1.0b1`, and `azure-ai-agentserver-invocations==1.1.0b1` directly or `uv sync` reports that only older stable releases are available.
+> 2. **Floating Agent Server packages** — hosting `b260813` only declares lower bounds (core/responses `>=2.1.0b1`, invocations `>=1.1.0b1`). Pin the GA line `azure-ai-agentserver-core==2.3.0`, `azure-ai-agentserver-responses==2.4.0` and `azure-ai-agentserver-invocations==1.3.0` directly and exactly so a minor release cannot silently change fresh container builds.
 > 3. **`agent-framework-core[mcp]` extra** — that extra **does NOT exist**. `MCPStreamableHTTPTool` / `MCPSseTool` / `MCPStdioTool` are top-level exports of `agent_framework`; the bare `agent-framework-core~=1.14.0` pin already includes them. Writing `[mcp]` produces a uv warning but does NOT fail resolution, so the pyproject can ship looking "MCP-ready" while operators chase phantom problems.
 > 4. **Floating or transitive `azure-ai-projects`** — `agent-framework-foundry~=1.11.0` requires `azure-ai-projects>=2.2,<2.4`, and this skill depends on the stable `project.agents.update_details` surface available in `~=2.3.0`. Pin `azure-ai-projects~=2.3.0` directly in every hosted-agent `pyproject.toml`; do not bump it independently of the Foundry package.
 > 5. **Missing `mcp`** — `agent_framework_foundry_hosting._responses` imports `from mcp import McpError` at module-load time, so the container crashes at startup with `ModuleNotFoundError: No module named 'mcp'` even when no MCP tool is wired. The platform surfaces this as `session_not_ready` after a ~60 s timeout, so diagnosis cost is high. Pin `mcp~=1.29.0` in **every** hosted-agent `pyproject.toml` because the current beta hosting package still requires `mcp<2`.
 
-> **MUST:** Copy verbatim from [`references/python/pyproject.toml`](references/python/pyproject.toml). Do NOT redefine inline — the validator enforces single-source-of-truth. That file pins `agent-framework-core~=1.14.0`, `agent-framework-foundry~=1.11.0`, the beta hosting at exact `==1.0.0b260813`, Agent Server core/responses `==2.1.0b1`, Agent Server invocations `==1.1.0b1`, direct `azure-ai-projects~=2.3.0` (because Foundry 1.11.0 requires `>=2.2,<2.4`), `azure-identity~=1.25.3`, `mcp~=1.29.0` (mandatory — hosting still requires `mcp<2`), and `python-dotenv~=1.2.2`. The header comment captures the five pitfalls (meta-package, transitive Agent Server betas, phantom `[mcp]` extra, floating `azure-ai-projects`, missing `mcp`) the file prevents.
+> **MUST:** Copy verbatim from [`references/python/pyproject.toml`](references/python/pyproject.toml). Do NOT redefine inline — the validator enforces single-source-of-truth. That file pins `agent-framework-core~=1.14.0`, `agent-framework-foundry~=1.11.0`, the beta hosting at exact `==1.0.0b260813`, Agent Server core `==2.3.0`, responses `==2.4.0`, invocations `==1.3.0` (GA), direct `azure-ai-projects~=2.3.0` (because Foundry 1.11.0 requires `>=2.2,<2.4`), `azure-identity~=1.25.3`, `mcp~=1.29.0` (mandatory — hosting still requires `mcp<2`), and `python-dotenv~=1.2.2`. The header comment captures the five pitfalls (meta-package, floating Agent Server packages, phantom `[mcp]` extra, floating `azure-ai-projects`, missing `mcp`) the file prevents.
 
 **Do NOT use `agent-framework>=1.14.0` as a meta-package.** The meta-package's transitive
 resolution is non-deterministic across uv versions. Pin `agent-framework-core~=1.14.0`,
@@ -1246,10 +1246,9 @@ lines from your pyproject — they are now transitive and declaring them explici
 version conflicts.
 
 **Mandatory adjacent rules** (lessons from dependency-resolution retrospectives):
-- **Add** exact Agent Server prerelease pins for core/responses `==2.1.0b1` and
-  invocations `==1.1.0b1`. Hosting declares compatible lower bounds but uv does not
-  activate transitive prereleases under `if-necessary-or-explicit`; the exact direct
-  pins both enable resolution and prevent cross-beta drift.
+- **Add** exact GA Agent Server pins: core `==2.3.0`, responses `==2.4.0`,
+  invocations `==1.3.0`. Hosting only declares lower bounds; the exact direct pins
+  prevent a minor release from silently changing fresh container builds.
 - **Add** explicit direct `azure-ai-projects~=2.3.0` — **mandatory**, not transitive. `agent-framework-foundry~=1.11.0`
   requires `azure-ai-projects>=2.2,<2.4`, and this stack uses the stable 2.3 line for
   `project.agents.update_details`. Do not let it float via transitive resolution or bump it
@@ -1282,10 +1281,10 @@ stays GA. Do NOT use `"allow"` — it can pull an unpinned beta `azure-identity`
 |---------|---------|------|----------|
 | `agent-framework-core` | 1.14.0 | ✅ Stable | pydantic, opentelemetry-api (instrumentation enabled by default) |
 | `agent-framework-foundry` | 1.11.0 | ✅ Stable | core, openai, azure-ai-projects (`>=2.2,<2.4`) |
-| `agent-framework-foundry-hosting` | 1.0.0b260813 | ⚠️ Beta (pinned exact) | Requires the Agent Server beta train below |
-| `azure-ai-agentserver-core` | 2.1.0b1 | ⚠️ Beta (pinned exact) | Direct pin required for uv prerelease admission; pulls **microsoft-opentelemetry** (bundles all OTel instrumentors + exporters) |
-| `azure-ai-agentserver-responses` | 2.1.0b1 | ⚠️ Beta (pinned exact) | Direct pin required for the hosted Responses protocol |
-| `azure-ai-agentserver-invocations` | 1.1.0b1 | ⚠️ Beta (pinned exact) | Coherent with the hosting beta's Agent Server contract |
+| `agent-framework-foundry-hosting` | 1.0.0b260813 | ⚠️ Beta (pinned exact) | Accepts the GA Agent Server line below |
+| `azure-ai-agentserver-core` | 2.3.0 | ✅ GA (pinned exact) | Pulls **microsoft-opentelemetry** (bundles all OTel instrumentors + exporters) |
+| `azure-ai-agentserver-responses` | 2.4.0 | ✅ GA (pinned exact) | Hosted Responses protocol, including the resilient background options |
+| `azure-ai-agentserver-invocations` | 1.3.0 | ✅ GA (pinned exact) | Same GA line as core (`>=2.3.0,<3.0.0`) |
 | `azure-ai-projects` | 2.3.0 | ✅ Stable (direct pin) | Stable `project.agents.update_details`; deliberately held below 2.4 to stay aligned with `agent-framework-foundry` 1.11.0 |
 | `mcp` | 1.29.0 | ✅ Stable | **Required by every hosted agent** — `agent_framework_foundry_hosting._responses` imports `from mcp import McpError` unconditionally, even when no MCP tools are used. Hosting still requires `mcp<2` |
 | `azure-identity` | 1.25.3 | ✅ Stable | |
