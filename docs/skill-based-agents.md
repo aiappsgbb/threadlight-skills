@@ -78,7 +78,7 @@ Resolve the local contract in this order:
 
 | Framework | Runtime shape | External protocol | Selection |
 |---|---|---|---|
-| `github-copilot-sdk` | `agent` | `invocations` | Canonical `default-agent` route |
+| `microsoft-copilot-sdk` | `agent` | `invocations` | Canonical `default-agent` route |
 | `microsoft-agent-framework` | `agent` | `responses` | Capability route, or compatible explicit choice |
 | `microsoft-agent-framework` | `workflow` | `responses` | Deterministic workflow route, or compatible explicit choice |
 

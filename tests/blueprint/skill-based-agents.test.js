@@ -43,7 +43,7 @@ test('orientation defines construction and business agents before governance', (
 test('runtime tuples and workflow branch come from the local policy and design source', () => {
   const policy = JSON.parse(read(sources.policy));
   assert.deepEqual(policy.default, {
-    framework: 'github-copilot-sdk', runtime_shape: 'agent',
+    framework: 'microsoft-copilot-sdk', runtime_shape: 'agent',
     protocol: 'invocations', policy_route: 'default-agent',
   });
   const text = guide();

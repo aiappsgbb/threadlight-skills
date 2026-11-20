@@ -13,20 +13,35 @@ from skills._shared.manifest import (
 
 
 GOVERNANCE_MODES = frozenset({"off", "selective", "comprehensive"})
+COPILOT_SDK_FRAMEWORK = "microsoft-copilot-sdk"
+# Legacy ids stay accepted until existing pilots migrate; new specs emit the canonical id.
+FRAMEWORK_ALIASES = MappingProxyType({"github-copilot-sdk": COPILOT_SDK_FRAMEWORK})
 CONTRACT_FRAMEWORKS = frozenset(
-    {"github-copilot-sdk", "microsoft-agent-framework"}
+    {COPILOT_SDK_FRAMEWORK, "microsoft-agent-framework"}
+)
+ACCEPTED_CONTRACT_FRAMEWORKS = CONTRACT_FRAMEWORKS | frozenset(FRAMEWORK_ALIASES)
+COPILOT_SDK_FRAMEWORKS = frozenset(
+    {COPILOT_SDK_FRAMEWORK, *(alias for alias, target in FRAMEWORK_ALIASES.items()
+                              if target == COPILOT_SDK_FRAMEWORK)}
 )
 CONTRACT_RUNTIME_PATHS = {
-    "github-copilot-sdk": ("none", "governed-tool-gateway"),
+    COPILOT_SDK_FRAMEWORK: ("none", "governed-tool-gateway"),
     "microsoft-agent-framework": (
         "none",
         "local-agent-hooks",
         "governed-tool-gateway",
     ),
 }
-AGENT_RUNTIMES = frozenset(
-    {"github-copilot-sdk", "maf-responses", "microsoft-agent-framework"}
-)
+AGENT_RUNTIMES = ACCEPTED_CONTRACT_FRAMEWORKS | frozenset({"maf-responses"})
+
+
+def canonical_framework(value):
+    """Map a legacy framework/runtime id to its canonical route id."""
+    return FRAMEWORK_ALIASES.get(value, value)
+
+
+def is_copilot_sdk(value):
+    return value in COPILOT_SDK_FRAMEWORKS
 DEPLOYMENT_TARGETS = frozenset(
     {"demo-sandbox", "customer-pilot", "production-bound"}
 )
@@ -105,6 +120,7 @@ _LIFECYCLE_ENFORCEMENT_PATHS = frozenset(
 )
 _RUNTIME_ENFORCEMENT_PATHS = {
     **CONTRACT_RUNTIME_PATHS,
+    **{alias: CONTRACT_RUNTIME_PATHS[target] for alias, target in FRAMEWORK_ALIASES.items()},
     "maf-responses": CONTRACT_RUNTIME_PATHS["microsoft-agent-framework"],
 }
 _IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
@@ -506,11 +522,11 @@ def validate_governance_contract(document, *, deployment_target, runtime=None, a
     _require_exact_keys(document, "document", {"framework", "governance", "tools"})
 
     framework = _require_member(
-        document["framework"], CONTRACT_FRAMEWORKS, "document.framework"
+        document["framework"], ACCEPTED_CONTRACT_FRAMEWORKS, "document.framework"
     )
     if runtime is not None:
-        runtime = _require_member(runtime, CONTRACT_FRAMEWORKS, "runtime")
-        if runtime != framework:
+        runtime = _require_member(runtime, ACCEPTED_CONTRACT_FRAMEWORKS, "runtime")
+        if canonical_framework(runtime) != canonical_framework(framework):
             _raise("runtime must match document.framework; do not silently switch runtime")
     else:
         runtime = framework
@@ -855,10 +871,10 @@ def validate_governance_manifest(manifest):
     for binding in bindings:
         normalized = _validate_binding(binding, policy_digest=policy_digest, collection=collection)
         if (
-            agent_runtime == "github-copilot-sdk"
+            is_copilot_sdk(agent_runtime)
             and normalized["enforcement_path"] == "local-agent-hooks"
         ):
-            _raise("github-copilot-sdk does not support local-agent-hooks bindings")
+            _raise(f"{agent_runtime} does not support local-agent-hooks bindings")
         if normalized["binding_id"] in binding_ids:
             _raise("bindings.binding_id values must be unique")
         if normalized["tool_id"] in tool_ids:
@@ -1171,8 +1187,8 @@ def _validate_offline_manifest(manifest):
             _raise("offline binding evidence must resolve")
         if normalized["binding_id"] in ids or normalized["tool_id"] in tool_ids:
             _raise("offline binding and tool ids must be unique")
-        if agent["runtime"] == "github-copilot-sdk" and normalized["enforcement_path"] == "local-agent-hooks":
-            _raise("github-copilot-sdk does not support local-agent-hooks bindings")
+        if is_copilot_sdk(agent["runtime"]) and normalized["enforcement_path"] == "local-agent-hooks":
+            _raise(f"{agent['runtime']} does not support local-agent-hooks bindings")
         ids.add(normalized["binding_id"])
         tool_ids.add(normalized["tool_id"])
         refs_by_binding[normalized["binding_id"]] = set(normalized["evidence_refs"])
@@ -1198,7 +1214,13 @@ __all__ = [
     "AGENT_RUNTIMES",
     "BINDING_STATUSES",
     "CONSEQUENCES",
+    "ACCEPTED_CONTRACT_FRAMEWORKS",
+    "COPILOT_SDK_FRAMEWORK",
+    "COPILOT_SDK_FRAMEWORKS",
     "CONTRACT_FRAMEWORKS",
+    "FRAMEWORK_ALIASES",
+    "canonical_framework",
+    "is_copilot_sdk",
     "CONTRACT_RUNTIME_PATHS",
     "DEPLOYMENT_TARGETS",
     "ENFORCEMENT_PATHS",

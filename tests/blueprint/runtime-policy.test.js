@@ -247,16 +247,19 @@ test('runtime policy file declares the supported selectors, compatible combinati
   assert.strictEqual(policy.version, 2);
 
   assert.deepStrictEqual(policy.selectors.frameworks, [
-    'github-copilot-sdk',
     'microsoft-agent-framework',
+    'microsoft-copilot-sdk',
   ]);
+  assert.deepStrictEqual(policy.framework_aliases, {
+    'github-copilot-sdk': 'microsoft-copilot-sdk',
+  });
   assert.deepStrictEqual(policy.selectors.runtime_shapes, ['agent', 'workflow']);
   assert.deepStrictEqual(policy.selectors.protocols, ['invocations', 'responses']);
 
   assertValidSelector(policy, 'frameworks', policy.default.framework, 'default');
   assertValidSelector(policy, 'runtime_shapes', policy.default.runtime_shape, 'default');
   assertValidSelector(policy, 'protocols', policy.default.protocol, 'default');
-  assert.strictEqual(policy.default.framework, 'github-copilot-sdk');
+  assert.strictEqual(policy.default.framework, 'microsoft-copilot-sdk');
   assert.strictEqual(policy.default.runtime_shape, 'agent');
   assert.strictEqual(policy.default.protocol, 'invocations');
   assert.strictEqual(policy.default.policy_route, 'default-agent');
@@ -267,7 +270,7 @@ test('runtime policy file declares the supported selectors, compatible combinati
   );
   assert.deepStrictEqual(policy.compatible_combinations, [
     {
-      framework: 'github-copilot-sdk',
+      framework: 'microsoft-copilot-sdk',
       runtime_shape: 'agent',
       protocol: 'invocations',
     },

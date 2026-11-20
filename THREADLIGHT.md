@@ -111,10 +111,10 @@ explains the same boundaries visually; it is not the operator runbook.
 > SPEC capability signals (`workflow_model`, `requires_toolbox`,
 > `requires_custom_python_tools`, `requires_file_generation`,
 > `latency_sensitive_data_queries` — never a competing selector) → generated
-> runtime files. The intentional default stays `github-copilot-sdk` + `agent` +
+> runtime files. The intentional default stays `microsoft-copilot-sdk` + `agent` +
 > `invocations` (`policy_route: default-agent`) until GHCP Responses works end
 > to end.
-> Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
+> Canonical default tuple: `microsoft-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
 The twenty-eight skills (alphabetical, but the canonical flow order is given in
 the next section):
@@ -451,7 +451,7 @@ for RBAC + identity, `threadlight-mcp-aca` for MCP deploy, and
 **Outputs.**
 - `container.py` — **GHCP SDK runtime by default**
   per `skills/threadlight-design/references/runtime-policy.json`: default route
-  = `github-copilot-sdk` + `agent` + `invocations`
+  = `microsoft-copilot-sdk` + `agent` + `invocations`
   (`CopilotClient` + `InvocationAgentServerHost`). MAF routes remain the
   documented exceptions: `maf-agent-capabilities` for Toolbox / custom tools /
   file generation / latency-sensitive data queries, and

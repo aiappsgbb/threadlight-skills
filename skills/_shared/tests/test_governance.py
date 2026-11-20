@@ -1271,3 +1271,21 @@ def test_schema_file_exists_and_declares_governance_manifest_v1():
 
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     assert schema["$id"] == "threadlight-governance-manifest/v1"
+
+
+@pytest.mark.parametrize("runtime", ["microsoft-copilot-sdk", "github-copilot-sdk"])
+def test_copilot_sdk_id_and_legacy_alias_share_the_manifest_route(runtime):
+    governance = governance_module()
+    assert governance.canonical_framework(runtime) == "microsoft-copilot-sdk"
+    assert governance.FRAMEWORK_ALIASES == {"github-copilot-sdk": "microsoft-copilot-sdk"}
+    manifest = valid_manifest()
+    manifest["agent"]["runtime"] = runtime
+    with pytest.raises(governance.GovernanceContractError, match="local-agent-hooks"):
+        governance.validate_governance_manifest(manifest)
+    errors = list(build_jsonschema_validator().iter_errors(manifest))
+    assert errors, "schema must reject local-agent-hooks for every Copilot SDK id"
+    with pytest.raises(governance.GovernanceContractError, match="local-agent-hooks"):
+        governance.normalize_tool({
+            "id": "returns_apply_decision", "consequence": "write",
+            "policy_binding": "returns-write-v1", "enforcement_path": "local-agent-hooks",
+            "intervention_points": ["pre_tool_call"]}, runtime=runtime)
