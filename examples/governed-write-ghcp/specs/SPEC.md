@@ -61,7 +61,7 @@ Rule ids: BR-001 is Rule 1, BR-002 Rule 2, BR-003 Rule 3, BR-004 Rule 4 in § 11
   the gateway gets a central audit ACK before the effect.
 
 ```yaml
-framework: github-copilot-sdk
+framework: microsoft-copilot-sdk
 
 governance:
   mode: selective

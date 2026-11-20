@@ -115,7 +115,7 @@ def test_prepare_export_collision_does_not_publish_a_partial_project(tmp_path):
     assert not project.exists()
 
 
-@pytest.mark.parametrize("framework", ["microsoft-agent-framework", "github-copilot-sdk"])
+@pytest.mark.parametrize("framework", ["microsoft-agent-framework", "microsoft-copilot-sdk", "github-copilot-sdk"])
 def test_unsupported_lifecycle_refuses_before_cloud_or_project_mutation(framework, tmp_path, monkeypatch):
     project = export_project(tmp_path / "pilot")
     before = snapshot(project)

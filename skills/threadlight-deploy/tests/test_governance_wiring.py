@@ -1480,3 +1480,14 @@ def test_service_min_replicas_is_configurable_and_defaults_to_one():
     assert "var minReplicas = config.?min_replicas ?? 1" in source
     assert source.count("scale: { minReplicas: minReplicas, maxReplicas: 2 }") == 2
     assert "minReplicas: 1," not in source
+
+
+@pytest.mark.parametrize("framework", ["microsoft-copilot-sdk", "github-copilot-sdk"])
+def test_copilot_sdk_id_and_legacy_alias_take_the_ghcp_gateway_route(framework):
+    generate = module("generate")
+    document = generate.validate_contract(contract(framework))
+    assert document["framework"] == framework
+    assert generate.is_copilot_sdk(framework)
+    unbound = contract(framework, off=True)
+    assert generate.uses_gateway(unbound)
+    assert not generate.uses_gateway(contract("microsoft-agent-framework", off=True))

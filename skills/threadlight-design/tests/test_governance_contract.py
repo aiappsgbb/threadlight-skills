@@ -200,7 +200,7 @@ def test_governance_schema_uses_shared_enums_and_disallows_extra_properties():
 
     assert schema["additionalProperties"] is False
     assert schema["properties"]["framework"]["enum"] == sorted(
-        governance.CONTRACT_FRAMEWORKS
+        governance.ACCEPTED_CONTRACT_FRAMEWORKS
     )
     assert set(schema["definitions"]["governance"]["properties"]["mode"]["enum"]) == set(
         governance.GOVERNANCE_MODES
@@ -695,7 +695,7 @@ def test_template_governance_yaml_block_safe_loads_and_validates_for_production_
     validator = build_jsonschema_validator()
     document = yaml.safe_load(
         governance_yaml_block().replace(
-            "framework: github-copilot-sdk | microsoft-agent-framework",
+            "framework: microsoft-copilot-sdk | microsoft-agent-framework",
             "framework: microsoft-agent-framework",
             1,
         )
@@ -912,3 +912,42 @@ def test_design_skill_requires_complete_contract_and_validator():
     text = skill_text()
     assert "scripts/validate_governance_contract.py" in text
     assert "framework" in text and "tools: []" in text and "lifecycle_bindings: []" in text
+
+
+@pytest.mark.parametrize("framework", ["microsoft-copilot-sdk", "github-copilot-sdk"])
+def test_copilot_sdk_id_and_legacy_alias_validate_on_the_same_route(framework):
+    governance = governance_module()
+    validator = build_jsonschema_validator()
+    document = valid_contract()
+    document["framework"] = framework
+    assert list(validator.iter_errors(document)) == []
+    normalized = governance.validate_governance_contract(
+        document, deployment_target="customer-pilot", runtime=framework)
+    assert normalized["framework"] == framework
+    other = "github-copilot-sdk" if framework == "microsoft-copilot-sdk" else "microsoft-copilot-sdk"
+    assert governance.validate_governance_contract(
+        document, deployment_target="customer-pilot", runtime=other)["framework"] == framework
+    document["tools"][0]["enforcement_path"] = "local-agent-hooks"
+    with pytest.raises(governance.GovernanceContractError, match="local-agent-hooks"):
+        governance.validate_governance_contract(document, deployment_target="customer-pilot")
+
+
+def test_runtime_policy_emits_microsoft_copilot_sdk_and_keeps_the_legacy_alias():
+    governance = governance_module()
+    policy = runtime_policy()
+    assert policy["framework_aliases"] == {"github-copilot-sdk": "microsoft-copilot-sdk"}
+    assert policy["framework_aliases"] == dict(governance.FRAMEWORK_ALIASES)
+    assert policy["default"]["framework"] == "microsoft-copilot-sdk"
+    assert "github-copilot-sdk" not in json.dumps(
+        {key: value for key, value in policy.items() if key != "framework_aliases"})
+    assert governance_schema()["properties"]["framework"]["enum"] == sorted(
+        governance.ACCEPTED_CONTRACT_FRAMEWORKS)
+
+
+def test_new_specs_emit_microsoft_copilot_sdk():
+    sources = [TEMPLATE_PATH, TEMPLATE_PATH.with_name("foundation-template.md"),
+               REPO_ROOT / "skills/threadlight-design/scripts/validate_governance_contract.py"]
+    for path in sources:
+        text = path.read_text(encoding="utf-8")
+        assert "framework: microsoft-copilot-sdk" in text, path
+        assert "framework: github-copilot-sdk" not in text, path

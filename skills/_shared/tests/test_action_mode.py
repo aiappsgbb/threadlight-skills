@@ -446,3 +446,8 @@ def test_governed_write_without_spec_is_a_gap(tmp_path):
     (tmp_path / "specs").mkdir()
     (tmp_path / "specs" / "manifest.json").write_text(json.dumps({"action_mode": "governed-write"}))
     assert action_mode.governed_write_gaps(tmp_path) == ["action-mode: governed-write pilot has no specs/SPEC.md"]
+
+
+@pytest.mark.parametrize("framework", ["microsoft-copilot-sdk", "github-copilot-sdk"])
+def test_governed_write_accepts_microsoft_copilot_sdk_and_legacy_alias(tmp_path, framework):
+    assert _gw_gaps(tmp_path, _gw_spec(framework=framework)) == []

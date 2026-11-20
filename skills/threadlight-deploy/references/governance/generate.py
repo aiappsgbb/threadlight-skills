@@ -264,9 +264,21 @@ def validate_network(network, *, environment=None):
     return deepcopy(network)
 
 
+COPILOT_SDK_FRAMEWORKS = frozenset({"microsoft-copilot-sdk", "github-copilot-sdk"})
+
+
+def is_copilot_sdk(framework):
+    """``github-copilot-sdk`` is the legacy alias of ``microsoft-copilot-sdk``."""
+    return framework in COPILOT_SDK_FRAMEWORKS
+
+
+def canonical_framework(framework):
+    return "microsoft-copilot-sdk" if is_copilot_sdk(framework) else framework
+
+
 def uses_gateway(document):
     """Select the execution path without substituting the model framework."""
-    return document["framework"] == "github-copilot-sdk" or any(
+    return is_copilot_sdk(document["framework"]) or any(
         tool["policy_binding"] not in (None, "none")
         and tool["enforcement_path"] == "governed-tool-gateway"
         for tool in document["tools"])
@@ -461,7 +473,7 @@ def validate_bundle_contract(bundle, document, config, registry=None):
     selected = [tool for tool in document["tools"] if tool["policy_binding"] is not None]
     lifecycle = document["governance"]["lifecycle_bindings"]
     gateway = uses_gateway(document)
-    gateway_label = "ghcp" if document["framework"] == "github-copilot-sdk" else "maf_gateway"
+    gateway_label = "ghcp" if is_copilot_sdk(document["framework"]) else "maf_gateway"
     if gateway and (lifecycle or document["governance"]["environment_modes"][environment] != "enforce"):
         raise ValueError(f"{gateway_label}_contract_environment_or_lifecycle_unsupported")
     targets = {
@@ -752,7 +764,7 @@ def generate(project, document, *, configuration=None):
                 pyproject, count = re.subn(re.escape(name) + r'==[^"\s]+', name + "==" + version, pyproject)
                 if count != 1:
                     raise ValueError("hosted_cohort_template_mismatch")
-        if document["framework"] == "github-copilot-sdk":
+        if is_copilot_sdk(document["framework"]):
             pyproject = ghcp_pyproject(pyproject, voice=voice_front_end(service))
         if (agent / "pyproject.toml").exists():
             pyproject = merge_dependencies((agent / "pyproject.toml").read_text(), pyproject)
@@ -973,7 +985,7 @@ def compose(project, azure, config, framework):
         service.setdefault("env", {}).update(values)
     protocols = [{"protocol": "responses" if framework == "microsoft-agent-framework"
                   else "invocations", "version": "2.0.0"}]
-    if framework == "github-copilot-sdk" and voice_front_end(service):
+    if is_copilot_sdk(framework) and voice_front_end(service):
         # Keep the opted-in Hosted Voice front-end (Voice Live Bridge 1.0) next to Invocations.
         protocols.append({"protocol": "invocations_ws", "version": "1.0.0"})
     service["protocols"] = protocols
@@ -1162,7 +1174,7 @@ def bind(project, document, *, configuration=None):
         if (packaged[f"{service}_scope"] != f"api://{infrastructure[f'{service}_app_id']}/.default"
                 or packaged[f"{service}_url"] != config["observations"][f"{service}_url"]):
             raise ValueError("service_auth_binding_mismatch")
-    if (infrastructure["runtime"] != package["framework"]
+    if (canonical_framework(infrastructure["runtime"]) != canonical_framework(package["framework"])
             or infrastructure["tenant_id"] != packaged["tenant_id"]
             or bindings["key_id"] != packaged["key_id"]
             or infrastructure["agent_id"] != packaged["agent_id"]

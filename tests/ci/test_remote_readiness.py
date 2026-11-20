@@ -123,7 +123,7 @@ def test_native_deployment_uses_matching_bicep_cli_syntax(monkeypatch, tmp_path,
                       "--outfile", str(tmp_path / "deployment-bicep.json")]]
 
 
-@pytest.mark.parametrize("framework", ["github-copilot-sdk", "microsoft-agent-framework"])
+@pytest.mark.parametrize("framework", ["microsoft-copilot-sdk", "github-copilot-sdk", "microsoft-agent-framework"])
 def test_protected_input_loader_accepts_only_pinned_acknowledged_resume(tmp_path, framework):
     from test_runtime_readiness import input_fixture, helper
     from test_hosted_bootstrap_lifecycle import inputs

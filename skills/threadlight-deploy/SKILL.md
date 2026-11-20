@@ -138,14 +138,14 @@ healthy readiness; a diagnostic fallback is **not** a healthy agent.
 
 **Canonical runtime policy:**
 `../threadlight-design/references/runtime-policy.json`. The locked default
-route remains `github-copilot-sdk` + `agent` + `invocations`
+route remains `microsoft-copilot-sdk` + `agent` + `invocations`
 (`policy_route: default-agent`). Exception routes are
 `deterministic-workflow` → MAF + Responses (Phase 2 generates the MAF Agent
 container; workflow-graph generation is not shipped — see the Workflow model gate),
 `maf-agent-capabilities` → MAF agent + Responses, and
 `explicit-supported-choice` for operator overrides listed in
 `compatible_combinations` **and** free of that route's `blocked_when`
-capability signals. Canonical default tuple: `github-copilot-sdk` +
+capability signals. Canonical default tuple: `microsoft-copilot-sdk` +
 `agent` + `invocations` (`policy_route: default-agent`). `specs/foundation.md`
 is the selector authority (see Phase 0 Runtime-policy pre-flight below); SPEC
 only supplies capability signals, never a competing selector.
@@ -573,7 +573,7 @@ Core deployment inputs:
 #### 1d. Choose runtime variant
 
 Read [`references/runtime-variants.md`](references/runtime-variants.md) for the
-side-by-side comparison of the **github-copilot-sdk** (`default-agent`), **MAF
+side-by-side comparison of the **microsoft-copilot-sdk** (`default-agent`), **MAF
 Agent** (`maf-agent-capabilities`) and **MAF Workflow** (`deterministic-workflow`)
 variants. The MAF Workflow column is a target design: workflow-graph generation
 is **not shipped**, and Phase 2 generates the MAF Agent container for that route.
@@ -590,7 +590,7 @@ is **not shipped**, and Phase 2 generates the MAF Agent container for that route
   carries a competing selector. If a SPEC signal implies a different route
   than the one recorded in foundation, stop and send the operator back to
   `threadlight-design` to re-resolve.
-- **Default route** — `github-copilot-sdk` + `agent` + `invocations`
+- **Default route** — `microsoft-copilot-sdk` + `agent` + `invocations`
   (`policy_route: default-agent`). This is still the preferred hosted-agent
   baseline until GHCP Responses works end to end.
 - **Use MAF Agent when**: the resolved route is `maf-agent-capabilities`, i.e.

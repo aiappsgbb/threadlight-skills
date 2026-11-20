@@ -292,7 +292,8 @@ async def collect(config, *, credential, signer, run=observation.run_command, ht
         require(target["configuration_digests"] == declared_configuration["agent"],
                 "observed-host-configuration-mismatch")
         require(target["protocol"] == {
-            "microsoft-agent-framework": "responses", "github-copilot-sdk": "invocations"}[contract["framework"]],
+            "microsoft-agent-framework": "responses", "microsoft-copilot-sdk": "invocations",
+            "github-copilot-sdk": "invocations"}[contract["framework"]],
                 "runtime-invocation-path-mismatch")
         services = {name: await asyncio.to_thread(observation.observe_service, value,
             target["subscription"], target["resource_group"], run) for name, value in config["services"].items()}

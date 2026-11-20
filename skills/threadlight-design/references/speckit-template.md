@@ -574,7 +574,7 @@ How and when the process executes.
 > only prove whether the live PDP + PEP path is designed and verified correctly.
 
 ```yaml
-framework: github-copilot-sdk | microsoft-agent-framework
+framework: microsoft-copilot-sdk | microsoft-agent-framework
 
 governance:
   # Exact contract text:
@@ -655,7 +655,7 @@ selected and every read stays unbound; `specs/manifest.json` carries
   no consequential tool is exposed)
 
 ```yaml
-framework: github-copilot-sdk
+framework: microsoft-copilot-sdk
 
 governance:
   mode: off
@@ -706,7 +706,7 @@ signed gateway registry (`approval_mode: deferred`, `approval_requirement: polic
   the effect.
 
 ```yaml
-framework: github-copilot-sdk
+framework: microsoft-copilot-sdk
 
 governance:
   mode: selective

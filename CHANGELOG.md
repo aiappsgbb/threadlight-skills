@@ -7,6 +7,41 @@ field.
 
 ## [Unreleased]
 
+### 2.63.0: `microsoft-copilot-sdk` framework id (`github-copilot-sdk` kept as alias)
+
+- **Why.** GitHub Copilot SDK is becoming Microsoft Copilot SDK
+  ([GitHub changelog, 2026-10-28](https://github.blog/changelog/2026-10-28-github-copilot-sdk-is-becoming-microsoft-copilot-sdk/));
+  the Python distribution moves from `github-copilot-sdk` to
+  `microsoft-copilot-sdk` in SDK v2
+  ([identities table](https://github.com/microsoft/copilot-sdk/blob/main/docs/v2-breaking-changes.md#microsoft-copilot-sdk-identities),
+  both checked 2026-11-20). The design selector still used the retired name.
+- **New id.** `runtime-policy.json` (selectors, default tuple, compatible
+  combinations, `default-agent` route, governance compatibility) now uses
+  `microsoft-copilot-sdk`, and a new `framework_aliases` map records
+  `github-copilot-sdk -> microsoft-copilot-sdk`. The foundation and SpecKit
+  templates, `validate_governance_contract.py` and the governed-write GHCP
+  example emit the new id; the canonical default tuple in the skill docs follows.
+- **Alias, same route.** The governance contract schema, the governance manifest
+  schema, `skills/_shared/governance.py` (`canonical_framework`,
+  `is_copilot_sdk`), the governed-write action-mode check, the deploy governance
+  generator, the safe-check collector and the remote-readiness gate accept both
+  ids and route them identically (GHCP gateway path; `local-agent-hooks`
+  rejected for both). A validated contract keeps the id it was written with, so
+  existing pilots regenerate byte-for-byte; the generator compares
+  `infrastructure.json` `runtime` with the package framework canonically.
+- **Migration.** Nothing to do for existing pilots. To migrate, change
+  `framework: github-copilot-sdk` to `framework: microsoft-copilot-sdk` in
+  SPEC section 11a (and `runtime` in governance `infrastructure.json`). The alias
+  stays until existing pilots are migrated. The pip package pin is unchanged in
+  this release (`github-copilot-sdk==1.0.1`); the SDK 2.0 migration is separate.
+- **Tests (RED first):** contract schema and validator with both ids
+  (`test_governance_contract.py`), manifest schema and validator with both ids
+  (`test_governance.py`), governed-write action mode with both ids
+  (`test_action_mode.py`), generator GHCP route with both ids
+  (`test_governance_wiring.py`), policy alias map and default id, new specs emit
+  the new id; `runtime-policy.test.js` and `skill-based-agents.test.js` follow
+  the new default.
+
 ### 2.62.0: graph-or-not rule and relational eval sets for Foundry IQ (#217)
 
 - **Why.** SPEC § 7 defaulted every process to one Foundry IQ knowledge base,
@@ -79,6 +114,7 @@ field.
   (fake `az`): documented roles and scopes, IDs only, no-op re-run, protected
   content, judge account, pipeline principal, fail-closed without a project identity.
 
+
 ### 2.59.0: MAF and governance runtime on the GA AgentServer line (#226)
 
 - **Why.** The MAF hosted-agent template pinned the August AgentServer betas
@@ -102,7 +138,6 @@ field.
   `skills/threadlight-govern/tests/test_bootstrap_lifespan.py` reproduces the
   cross-task close against the real core 2.3.0 host (RED before the helper). Native: `run-governance-pin-tests.py`
   and `--deployment` against the published wheels.
-
 
 
 ### 2.58.0: Copilot harness fit verdict and cost lines in qualify and design (#232)
