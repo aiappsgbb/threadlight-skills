@@ -7,6 +7,31 @@ field.
 
 ## [Unreleased]
 
+### 2.55.0: router-ready, evidence-gated PoC model default (#218)
+
+- **Why.** New pilots defaulted to `gpt-5.4` ($2.50 / $15 per 1M tokens). In the
+  Nov 2026 router-bench workload (estimates at list price) fixed `gpt-6-luna`
+  cost $0.054 per 1k easy tasks, a model router subset with own deployments
+  $0.082, the full pool Balanced $0.147 and Quality $1.83, all at 100 % quality.
+- **Design.** `foundation.md` § 2 now defaults to `routing: router-subset`
+  ({gpt-6-luna, gpt-6.1-terra, gpt-6.1-sol}, Balanced) with `gpt-6-luna` as fixed
+  baseline; `model-selection.md` cites the evidence and the decision rule (run
+  `threadlight-router-bench workload` before go-live; 90 % or more of calls on one
+  model → call it directly; Quality only per request for critical steps; never
+  Auto for EU residency; log served `model`, usage, `x-ratelimit-key`,
+  `session_id`). SPEC § 7b and the design SKILL.md follow. Cowork zip rebuilt.
+- **Deploy.** The GHCP pilot Bicep (public and private) deploys an own deployment
+  of every subset model (serialized) and a `model-router` with `routing.models`
+  (`modelStrategy` router-subset | fixed, `routerSubset`, `routerMode`,
+  `modelSku` incl. `DataZoneStandard`); outputs `AZURE_AI_MODEL_WIRE_API`
+  (`completions` for the router, as GitHub Copilot BYOK requires) and
+  `AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME`. `generate_only` maps the foundation
+  strategy, keeps single-model designs `fixed`, refuses `routing: auto`, and adds
+  an evidence-gate row to `deferred-steps.md`. The parameters file maps
+  `AZURE_AI_MODEL_STRATEGY` / `AZURE_AI_MODEL_NAME` so the gate can switch with
+  `azd env set`. The GHCP container reads the wire API from the environment, and
+  generated evals judge with the fixed model, never the router.
+
 ### 2.54.0: router-bench refresh for the post-Ignite 2026 model router (#216)
 
 - **Why.** `threadlight-router-bench` predated the Ignite 2026 model router

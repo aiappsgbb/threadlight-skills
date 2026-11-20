@@ -364,3 +364,45 @@ def test_knowledge_corpus_is_copied_even_without_sample_data():
     text = module.render_mcp_dockerfile("threadlight_mcp_entry.py", True, sample_data=False)
     assert "COPY specs/knowledge/ /app/specs/knowledge/" in text
     assert "specs/sample-data/ /app" not in text
+
+
+# --- #218: model strategy follows the design; old single-model designs stay fixed ---
+
+def test_single_model_foundation_keeps_fixed_strategy(adopted: Path):
+    params = json.loads((adopted / "infra" / "main.parameters.json").read_text())["parameters"]
+    assert params["modelStrategy"]["value"] == "${AZURE_AI_MODEL_STRATEGY=fixed}"
+    assert "routerSubset" not in params
+
+
+def test_router_subset_foundation_emits_strategy_subset_and_evidence_gate(tmp_path: Path):
+    project = tmp_path / "p"
+    shutil.copytree(FIXTURE, project)
+    (project / "specs" / "foundation.md").write_text(
+        "# Foundation\n\n## 2. Model & capacity\n\n```yaml\nmodel:\n"
+        "  default: gpt-6-luna\n  version: \"2026-09-22\"\n  routing: router-subset\n"
+        "  router:\n    mode: balanced\n    subset:\n"
+        "      - { name: gpt-6-luna, version: \"2026-09-22\" }\n"
+        "      - { name: gpt-6.1-sol, version: \"2026-09-29\" }\n"
+        "  capacity_type: DataZoneStandard\n  region: swedencentral\n```\n")
+    assert _run([str(GENERATOR), "--project", str(project)], tmp_path).returncode == 0
+    params = json.loads((project / "infra" / "main.parameters.json").read_text())["parameters"]
+    assert params["modelStrategy"]["value"] == "${AZURE_AI_MODEL_STRATEGY=router-subset}"
+    assert params["routerSubset"]["value"] == [{"name": "gpt-6-luna", "version": "2026-09-22"},
+                                               {"name": "gpt-6.1-sol", "version": "2026-09-29"}]
+    assert params["routerMode"]["value"] == "balanced"
+    assert params["modelSku"]["value"] == "DataZoneStandard"
+    deferred = (project / "specs" / "deferred-steps.md").read_text()
+    assert "router-bench" in deferred and "90 %" in deferred
+    assert "AZURE_AI_MODEL_STRATEGY fixed" in deferred
+
+
+def test_router_subset_rejects_auto_for_eu_boundary(tmp_path: Path):
+    project = tmp_path / "p"
+    shutil.copytree(FIXTURE, project)
+    (project / "specs" / "foundation.md").write_text(
+        "# Foundation\n\n## 2. Model & capacity\n\n```yaml\nmodel:\n"
+        "  default: gpt-6-luna\n  version: \"2026-09-22\"\n  routing: auto\n"
+        "  data_boundary: eu\n```\n")
+    res = _run([str(GENERATOR), "--project", str(project)], tmp_path)
+    assert res.returncode != 0
+    assert "Auto" in (res.stdout + res.stderr) and "Global Standard" in (res.stdout + res.stderr)

@@ -295,6 +295,14 @@ def _init_byok() -> bool:
         return False
 
 
+def _wire_api() -> str:
+    """BYOK wire format. ``completions`` when the deployment is a model router
+    (GitHub Copilot BYOK reaches model router over Chat Completions; the pilot
+    Bicep outputs it), else ``responses``."""
+    wire = os.getenv("AZURE_AI_MODEL_WIRE_API", "").strip().lower() or "responses"
+    return wire if wire in ("responses", "completions") else "responses"
+
+
 def _get_provider() -> ProviderConfig | None:
     """Mint a fresh BYOK ProviderConfig for CopilotClient session.
 
@@ -308,7 +316,7 @@ def _get_provider() -> ProviderConfig | None:
         return ProviderConfig(
             type="azure",
             base_url=_MODEL_BASE_URL or _BYOK_ENDPOINT,
-            wire_api="responses",
+            wire_api=_wire_api(),
             bearer_token=token,
         )
     except Exception as exc:

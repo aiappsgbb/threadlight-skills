@@ -57,7 +57,7 @@ instead of silent defaults back-filled during generation.
 | 3 | Protocol | `invocations` | provided \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
 | 4 | Policy route | `default-agent` | inferred \| defaulted | selector authority — not duplicated in SPEC | `runtime-policy.json` route resolution |
 | 5 | Capability signals | `requires_toolbox` / `requires_custom_python_tools` / `requires_file_generation` / `latency_sensitive_data_queries` (booleans) + `unresolved_signals` (per-signal unknown marker) | inferred \| defaulted-after-skip \| open-question | § 11e (mirrored verbatim) | Step 2 discovery → `runtime-policy.json` `blocked_when` / `requires_resolved_signals` |
-| 6 | Model + capacity | `gpt-5.4` · region · TPM | provided \| defaulted | § 7b | Step 2 (tier may drop to -mini) |
+| 6 | Model + capacity | router subset (`gpt-6-luna` baseline) · region · TPM | provided \| defaulted | § 7b | Before go-live (router-bench workload may switch to `fixed`) |
 | 7 | Hosting shape | `foundry-hosted-agent` (`agent_type: hosted`, always the default; `prompt` only on an explicit opt-in with `trivial_justification`) | provided \| defaulted | § 11c, § 11e, § 11f | [Foundry-only agents](../../_shared/foundry-only-agents.md) |
 | 8 | Tools & data | `mcp` · mock-first | inferred | § 5b, § 6 | Step 2 (tool contracts) |
 | 9 | Identity & RBAC | UAMI · least-privilege | defaulted | § 11, § 11c | — |
@@ -144,13 +144,20 @@ must reconcile this record and SPEC § 7b, not silently override either.
 
 ```yaml
 model:
-  default: gpt-5.4                       # (2026-03-05) — default for 7+ skill pilots
-  version: "2026-03-05"
+  default: gpt-6-luna                    # fixed baseline: cheapest adequate model, also a subset member
+  version: "2026-09-22"
+  routing: router-subset                 # router-subset | fixed — evidence-gated, see model-selection.md
+  router:                                # model router 2025-11-18, own deployment of every subset model
+    mode: balanced                       # balanced; quality only per request for flagged critical steps
+    subset:
+      - { name: gpt-6-luna, version: "2026-09-22" }
+      - { name: gpt-6.1-terra, version: "2026-10-26" }
+      - { name: gpt-6.1-sol, version: "2026-09-29" }
   region: <primary-region>              # e.g. swedencentral, eastus2
   fallback_region: <secondary-region>   # capacity / data-boundary fallback
-  capacity_type: GlobalStandard         # GlobalStandard | ProvisionedThroughput (PTU)
-  capacity_tpm: 50K                      # GlobalStandard for gpt-5.4; 120K for -mini
-  data_boundary: none                    # none | eu — EU Data Boundary requirement
+  capacity_type: GlobalStandard         # GlobalStandard | DataZoneStandard (EU residency) | ProvisionedThroughput (PTU)
+  capacity_tpm: 300K                     # per model deployment; GHCP bursts 429 at 50K or less
+  data_boundary: none                    # none | eu — EU: DataZoneStandard, never Auto
   reasoning_effort: medium               # minimal | low | medium | high
 ```
 
@@ -158,7 +165,11 @@ model:
 and `data_boundary` are net-new** — § 7b captures model + version + TPM but not
 the region / boundary / fallback triad, which decides where capacity is
 provisioned and whether an EU-resident pilot can even run in the primary region.
-Do **not** use the legacy `GPT-4o` family — `gpt-5.4` supersedes it.
+`routing: router-subset` deploys a model router restricted to `router.subset` plus an
+own deployment of each subset model; before go-live a `threadlight-router-bench`
+workload comparison against `default` decides whether to keep the router or switch
+to `routing: fixed` (decision rule in `model-selection.md`). Do **not** use the
+legacy `GPT-4o` family.
 
 > **How to choose these values** — model tier, reasoning effort, capacity type,
 > TPM, region/fallback, and data boundary — see

@@ -447,7 +447,9 @@ cover**:
    `requires_file_generation`, `latency_sensitive_data_queries`) in
    `specs/foundation.md § 1` alongside the tuple — they are the concrete
    fields `blocked_when` evaluates, not free-floating prose.
-2. **Runtime model & capacity** — default `gpt-5.4`, plus **`region`,
+2. **Runtime model & capacity** — default: a model router subset (`gpt-6-luna`,
+   `gpt-6.1-terra`, `gpt-6.1-sol`, each also deployed) with `gpt-6-luna` as fixed
+   baseline, evidence-gated before go-live (`references/model-selection.md`), plus **`region`,
    `fallback_region`, `capacity_type` (GlobalStandard/PTU), and `data_boundary`
    (EU)** — the region/boundary/fallback triad § 7b does not capture but that
    decides where capacity is provisioned and whether an EU-resident pilot can
@@ -859,7 +861,7 @@ Must include all sections from the template:
 5b. **External Systems & Mocks (MCP contract)** — endpoint shape, tools exposed, mock data scale, reset semantics. **INPUT CONTRACT for `threadlight-mcp-aca`.** *Required for any process that talks to external systems.*
 6. **Tool Contracts** — abstract tool definitions (not bound to any runtime)
 7. **Knowledge Sources** — reference documents, policies, search indexes — with explicit `foundry-iq` / `mcp-search` / `inline-context` backing decision
-7b. **AI Services & Model Selection** — runtime chat / vision / DocIntel / Speech models with versions, not the authoring model. **INPUT CONTRACT for `azure-ai` and `azure.yaml` `config.deployments`.** Use **`gpt-5.4` family** as of May 2026 — `gpt-4o` is legacy. See `references/model-selection.md` for the model / capacity / region decision procedure. *Required for every process.*
+7b. **AI Services & Model Selection** — runtime chat / vision / DocIntel / Speech models with versions, not the authoring model. **INPUT CONTRACT for `azure-ai` and `azure.yaml` `config.deployments`.** Default: the router-ready, evidence-gated configuration (model router subset + own deployments, `gpt-6-luna` baseline) as of Nov 2026 — `gpt-4o` is legacy. See `references/model-selection.md` for the model / capacity / region decision procedure. *Required for every process.*
 8. **Human Interaction Points** — approvals, escalations, conversational flows — with **action-gate taxonomy** (`approve` / `edit-and-approve` / `reject` / `escalate` / `signoff` / `audit-view` / `request-info`). **INPUT CONTRACT for `threadlight-hitl-patterns`.**
 8b. **Human Interaction (Workspace UX)** — case-list / inbox / dashboard / console / kanban / map shape with primary filters, detail sections, action toolbar, audit viewer. **INPUT CONTRACT for `threadlight-workspace-ui`.** *Optional — skip if humans only interact via approval cards.*
 9. **Success Criteria** — functional, performance, quality targets + evaluation scenarios (S-XXX linked to BR-XXX) **+ Business KPIs table (BR → KPI mapping)** for continuous evaluation

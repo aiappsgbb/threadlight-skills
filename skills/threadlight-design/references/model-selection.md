@@ -109,37 +109,98 @@ configuration merely to propose an experiment.
 
 | # | Decision | Field in `foundation.md` § 2 | House default |
 |---|----------|------------------------------|---------------|
-| 1 | Model tier | `model.default` | `gpt-5.4` |
+| 1 | Model tier (fixed baseline) | `model.default` | `gpt-6-luna` |
+| 1b | Routing | `model.routing` / `model.router` | `router-subset` {gpt-6-luna, gpt-6.1-terra, gpt-6.1-sol}, Balanced |
 | 2 | Version pin | `model.version` | current dated build |
 | 3 | Reasoning effort | `model.reasoning_effort` | `medium` |
 | 4 | Capacity type | `model.capacity_type` | `GlobalStandard` |
-| 5 | Capacity (TPM) | `model.capacity_tpm` | `50K` (`gpt-5.4`) |
+| 5 | Capacity (TPM) | `model.capacity_tpm` | `300K` per model deployment |
 | 6 | Region + fallback | `model.region` / `model.fallback_region` | availability-driven |
 | 7 | Data boundary | `model.data_boundary` | `none` |
 
 ---
 
-## 1. Model tier — start at the default, move off it only on evidence
+## 1. Model tier and routing — router-ready, evidence-gated
 
-**Runtime starting default: `gpt-5.4`.** Keep the existing house starting point,
-not a guarantee of tool-call discipline or a rule for the authoring host.
-Confirm capability on the actual artifact; deviate deliberately on evidence.
+**Runtime starting default: a model router subset with own deployments, and
+`gpt-6-luna` as the fixed baseline.** The generated foundation deploys a
+`model-router` (`2025-11-18`) in **Balanced** mode restricted to a curated subset of
+at least two modern models — by default `gpt-6-luna`, `gpt-6.1-terra` and
+`gpt-6.1-sol` — and an **own deployment of every subset model in the same
+resource**. `model.default` names the cheapest adequate fixed model the router is
+compared against before go-live. This replaces the earlier `gpt-5.4` default
+($2.50 input / $15 output per 1M tokens, Global).
 
-- **Evaluate a lower-cost candidate** (for example `gpt-5.4-mini`) when the
-  required capabilities permit. Short instruction/tool chains can make a useful
-  first candidate, but tool count alone neither proves nor rules out suitability.
-  Long chains need explicit tool/skill-use evidence under the checklist above;
-  a smaller tier is not automatically excluded from the main business-agent loop.
-- **Upgrade to `gpt-5.4-pro`** when **vision feeds multi-step reasoning** (read a
-  document or image, then reason across several steps on what it saw).
+### Evidence
+
+From [`threadlight-router-bench` findings](../../threadlight-router-bench/references/findings/2026-11-20-router-workload-post-ignite.md)
+(`threadlight-router-bench/references/findings/2026-11-20-router-workload-post-ignite.md`):
+internal test subscription, Sweden Central, Responses API, synthetic 40 easy + 20
+hard tasks with deterministic graders, 2 repetitions. Costs are **estimates**
+(tokens × Retail Prices API list price + routing fee), not bills; this is
+evidence for a default, not for a specific customer workload.
+
+| Arm (easy tier, all 100 % quality) | $ per 1k tasks |
+|---|---|
+| fixed `gpt-6-luna` | 0.054 |
+| router subset + own deployments, Balanced | 0.082 |
+| router full pool, Balanced | 0.147 |
+| fixed `gpt-5.4-mini` | 0.385 |
+| fixed `gpt-6.1-sol` | 0.916 |
+| router full pool, Quality | 1.83 |
+
+On the hard tier the subset router and the gpt-6 fixed models scored 40/40, the
+full pool 38–39/40 and `gpt-5.4-mini` 37/40. Without own deployments,
+router-managed capacity throttled at about 12–15 RPM with HTTP 429 and no
+failover; with each subset model deployed in the same resource there were no
+errors, because own deployments serve routed requests first
+([Learn: model router quotas](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-router-quotas)).
+The routing fee is $0.14 per 1M input tokens Global ($0.154 Data Zone), more than
+`gpt-6-luna`'s own input price.
+
+### Decision rule (before go-live)
+
+1. Run `threadlight-router-bench` `workload` on the pilot's own task mix: the
+   router arm against the fixed baseline (`model.default`) and, if useful, one
+   stronger fixed model. Keep the predeclared quality bar from the procedure above.
+2. **If 90 % or more of the router's calls land on one model, call that model
+   directly** (`routing: fixed`, `default:` that model) and drop the routing fee.
+   The subset router sent 100 % of the easy tier to `gpt-6-luna` in the evidence.
+3. Keep the router only when traffic genuinely splits and the router meets the bar
+   at an acceptable cost per correctly completed task.
+4. Keep **Balanced** at deployment level. Use per-request `routing_config.mode:
+   quality` (header `Foundry-Features: ModelRouterControls=V1Preview`) only for
+   steps flagged as critical; the full pool in Quality cost about 34× the baseline.
+5. **Never use Auto for EU-residency pilots**: Auto always processes data as
+   Global Standard. For EU residency deploy the router as `DataZoneStandard`; a
+   Data Zone router cannot route to Claude models
+   ([Learn: model router models](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-router-models)).
+6. Subsets do not gain new pool models automatically; review the subset when
+   models retire or new ones arrive
+   ([Learn: configure model router](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/model-router-configure)).
+
+**Log what served each call.** Apps and agents log the response `model` (the
+served model), token usage and the `x-ratelimit-key` header, and send an explicit
+`session_id` for multi-turn conversations, so cost attribution and the decision
+rule use real traffic.
+
+**GitHub Copilot harness.** GitHub Copilot BYOK reaches model router over Chat
+Completions, so the GHCP pilot uses the `completions` wire for the router and
+`responses` for a fixed model; the generated infra outputs `AZURE_AI_MODEL_WIRE_API`
+([Learn: model router with agents](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/model-router-agents)).
+
+### Other tiers
+
+- **`gpt-5.4-pro`** when **vision feeds multi-step reasoning** (read a document
+  or image, then reason across several steps on what it saw).
 - **`gpt-5.4-nano`** — bulk, cheap, shallow vision (return triage, photo
   screening). Not for reasoning.
 - **`gpt-5.3-codex`** — diagram-→-code and code-related multimodal work.
 
 > **Tier is provisional at Step 0.** Record the current choice; the **Step 2
-> trait matrix** may nominate a lower-cost candidate after discovery. Confirm
-> the provisional choice at the Step 4 checkpoint; promoting a replacement for
-> a validated runtime still requires the fixed-artifact comparison above.
+> trait matrix** may nominate a different candidate after discovery. Confirm the
+> provisional choice at the Step 4 checkpoint; promoting a replacement for a
+> validated runtime still requires the fixed-artifact comparison above.
 
 ---
 
@@ -149,10 +210,9 @@ Pin `model.version` to a specific dated build (e.g. `2026-03-05`), never a
 floating alias. A pinned version keeps smoke tests reproducible and deployments
 deterministic.
 
-> **`gpt-4o` / `gpt-4o Vision` are legacy** (as of May 2026) — the `gpt-5.4`
-> family supersedes them in context, latency, vision quality, and cost. A
-> `gpt-4o` reference carried forward from an older template is a bug: sweep it to
-> `gpt-5.4`, or the right row from § 7b.
+> **`gpt-4o` / `gpt-4o Vision` are legacy** (as of May 2026). A `gpt-4o`
+> reference carried forward from an older template is a bug: sweep it to the
+> router-ready default above, or the right row from § 7b.
 
 ---
 
@@ -178,9 +238,10 @@ throughput or latency SLO** (usually `deployment_target: production-bound`), and
 record it as a deliberate cost commitment. Demo → `GlobalStandard`;
 production-bound with an SLO → consider PTU.
 
-**TPM.** Size `capacity_tpm` to the load profile: `50K` `GlobalStandard` is the
-starting point for `gpt-5.4`; `-mini` supports `120K`; high-volume intake needs
-`300K+`. The `threadlight-consumption-iq` wizard turns the SPEC § 12
+**TPM.** Size `capacity_tpm` to the load profile, per model deployment: `300K`
+`GlobalStandard` is the pilot starting point (the GHCP runtime returned 429 at
+`50K` or less); high-volume intake needs more. The router deployment has its own
+capacity in units of 1,000 TPM and 1 RPM from the subscription's model router quota. The `threadlight-consumption-iq` wizard turns the SPEC § 12
 `load_profile{}` into a defensible TPM + SKU recommendation — use it rather than
 guessing once the pilot has real volume.
 

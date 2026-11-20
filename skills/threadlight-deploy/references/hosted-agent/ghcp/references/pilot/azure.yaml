@@ -43,6 +43,8 @@ services:
       # Never declare FOUNDRY_* variables here: the platform injects them.
       - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
         value: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+      - name: AZURE_AI_MODEL_WIRE_API
+        value: ${AZURE_AI_MODEL_WIRE_API}
       - name: MCP_SERVER_FQDN
         value: ${MCP_SERVER_FQDN}
     container:
