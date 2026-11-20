@@ -10,22 +10,50 @@ plainly so the efficiency story to customers is honest.
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import prices as prices_mod  # noqa: E402
 
 SCHEMA = "threadlight-router-scorecard/v1"
 
 
 def cost_of(usage: dict[str, dict[str, int]],
-            prices: dict[str, dict[str, float]]) -> float:
-    """USD cost of per-model usage given a $/1M-token price table."""
+            prices: dict[str, dict[str, float]], router: bool = False) -> float:
+    """Estimated USD cost of per-model usage given a $/1M-token price table.
+
+    Usage rows carry ``input`` and ``output`` and optionally ``cached_input``
+    and ``cache_write`` (both subsets of ``input``). Model names are
+    normalized (version suffix dropped). With ``router=True`` the model router
+    routing fee is added on every input token. Models absent from the table
+    contribute nothing; use ``unpriced`` to report them.
+    """
     total = 0.0
+    fee = prices.get(prices_mod.ROUTER_FEE_KEY, {}).get("input", 0.0)
     for model, toks in usage.items():
-        rate = prices.get(model)
+        inp = toks.get("input", 0)
+        if router:
+            total += inp / 1_000_000 * fee
+        rate = prices.get(model) or prices.get(prices_mod.base_name(model))
         if rate is None:
             continue
-        total += toks.get("input", 0) / 1_000_000 * rate["input"]
+        cached = toks.get("cached_input", 0)
+        write = toks.get("cache_write", 0)
+        fresh = max(inp - cached - write, 0)
+        total += fresh / 1_000_000 * rate["input"]
+        total += cached / 1_000_000 * rate.get("cached_input", rate["input"])
+        total += write / 1_000_000 * rate.get("cache_write", rate["input"])
         total += toks.get("output", 0) / 1_000_000 * rate["output"]
     return total
+
+
+def unpriced(usage: dict[str, dict[str, int]],
+             prices: dict[str, dict[str, float]]) -> list[str]:
+    """Models in ``usage`` with no rate in ``prices`` (cost understated)."""
+    return sorted(m for m in usage
+                  if m not in prices and prices_mod.base_name(m) not in prices)
 
 
 def _totals(usage: dict[str, dict[str, int]]) -> dict[str, int]:
@@ -35,13 +63,15 @@ def _totals(usage: dict[str, dict[str, int]]) -> dict[str, int]:
 
 def scorecard(candidate_usage: dict[str, dict[str, int]], baseline_model: str,
               prices: dict[str, dict[str, float]],
-              baseline_usage: dict[str, dict[str, int]] | None = None) -> dict[str, Any]:
+              baseline_usage: dict[str, dict[str, int]] | None = None,
+              candidate_router: bool = False) -> dict[str, Any]:
     """Compare candidate actual cost to the baseline-model counterfactual.
 
     counterfactual = candidate's TOTAL tokens, repriced entirely at baseline_model.
     If `baseline_usage` (a real baseline run) is given, also report its actual cost.
+    `candidate_router=True` adds the model router routing fee to the candidate.
     """
-    candidate_cost = round(cost_of(candidate_usage, prices), 4)
+    candidate_cost = round(cost_of(candidate_usage, prices, router=candidate_router), 4)
     totals = _totals(candidate_usage)
     counterfactual = round(cost_of({baseline_model: totals}, prices), 4)
     delta = round(candidate_cost - counterfactual, 4)
@@ -60,6 +90,8 @@ def scorecard(candidate_usage: dict[str, dict[str, int]], baseline_model: str,
         "counterfactual_baseline_usd": counterfactual,
         "delta_usd": delta,
         "verdict": verdict,
+        "router_fee_included": candidate_router,
+        "unpriced_models": unpriced(candidate_usage, prices),
     }
     if baseline_usage is not None:
         card["baseline_usage"] = baseline_usage

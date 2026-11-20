@@ -1,0 +1,666 @@
+{
+ "value": [
+  {
+   "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CognitiveServices/locations/SwedenCentral/models/OpenAI.model-router.2025-05-19",
+   "kind": "OpenAI",
+   "location": "SwedenCentral",
+   "model": {
+    "capabilities": {
+     "agentsV2": "true",
+     "area": "EUR",
+     "chatCompletion": "true",
+     "models": "[{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-nano\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-mini\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"o4-mini\",\"version\":\"2025-04-16\"}]",
+     "responses": "true",
+     "router": "true"
+    },
+    "deprecation": {
+     "fineTune": "2027-01-27T00:00:00Z",
+     "inference": "2027-01-27T00:00:00Z"
+    },
+    "description": "Model Router Model",
+    "format": "OpenAI",
+    "isDefaultVersion": false,
+    "lifecycleStatus": "Preview",
+    "maxCapacity": 3,
+    "name": "model-router",
+    "skus": [
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a49c8778-a552-51f3-8965-e984d114953d",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-01-27T00:00:00Z",
+      "name": "GlobalStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.GlobalStandard.ModelRouter"
+     },
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a88f7e25-eaba-573b-bbea-9c1b2950566e",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-01-27T00:00:00Z",
+      "name": "DataZoneStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.DataZoneStandard.ModelRouter"
+     }
+    ],
+    "systemData": {
+     "createdAt": "2025-05-19T00:00:00Z",
+     "createdBy": "Microsoft",
+     "createdByType": "Application",
+     "lastModifiedAt": "2025-05-19T00:00:00Z",
+     "lastModifiedBy": "Microsoft",
+     "lastModifiedByType": "Application"
+    },
+    "version": "2025-05-19"
+   },
+   "name": "OpenAI.model-router.2025-05-19",
+   "skuName": "S0",
+   "type": "Microsoft.CognitiveServices/locations/models"
+  },
+  {
+   "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CognitiveServices/locations/SwedenCentral/models/OpenAI.model-router.2025-08-07",
+   "kind": "OpenAI",
+   "location": "SwedenCentral",
+   "model": {
+    "capabilities": {
+     "agentsV2": "true",
+     "area": "EUR",
+     "chatCompletion": "true",
+     "models": "[{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-nano\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-mini\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"o4-mini\",\"version\":\"2025-04-16\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5-nano\",\"version\":\"2025-08-07\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5-mini\",\"version\":\"2025-08-07\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5\",\"version\":\"2025-08-07\"}]",
+     "responses": "true",
+     "router": "true"
+    },
+    "deprecation": {
+     "fineTune": "2027-01-27T00:00:00Z",
+     "inference": "2027-01-27T00:00:00Z"
+    },
+    "description": "Model Router Model",
+    "format": "OpenAI",
+    "isDefaultVersion": false,
+    "lifecycleStatus": "Preview",
+    "maxCapacity": 3,
+    "name": "model-router",
+    "skus": [
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a49c8778-a552-51f3-8965-e984d114953d",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-01-27T00:00:00Z",
+      "name": "GlobalStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.GlobalStandard.ModelRouter"
+     },
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a88f7e25-eaba-573b-bbea-9c1b2950566e",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-01-27T00:00:00Z",
+      "name": "DataZoneStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.DataZoneStandard.ModelRouter"
+     }
+    ],
+    "systemData": {
+     "createdAt": "2025-08-07T00:00:00Z",
+     "createdBy": "Microsoft",
+     "createdByType": "Application",
+     "lastModifiedAt": "2025-08-07T00:00:00Z",
+     "lastModifiedBy": "Microsoft",
+     "lastModifiedByType": "Application"
+    },
+    "version": "2025-08-07"
+   },
+   "name": "OpenAI.model-router.2025-08-07",
+   "skuName": "S0",
+   "type": "Microsoft.CognitiveServices/locations/models"
+  },
+  {
+   "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CognitiveServices/locations/SwedenCentral/models/OpenAI.model-router.2025-11-18",
+   "kind": "OpenAI",
+   "location": "SwedenCentral",
+   "model": {
+    "capabilities": {
+     "FineTuneTokensMaxValue": "3000000000",
+     "agentsV2": "true",
+     "area": "EUR",
+     "chatCompletion": "true",
+     "instant": "true",
+     "models": "[{\"format\":\"OpenAI\",\"name\":\"gpt-4o\",\"version\":\"2024-11-20\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4o-mini\",\"version\":\"2024-07-18\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-nano\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-mini\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"o4-mini\",\"version\":\"2025-04-16\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5-nano\",\"version\":\"2025-08-07\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5-mini\",\"version\":\"2025-08-07\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5\",\"version\":\"2025-08-07\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.2\",\"version\":\"2025-12-11\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.4-nano\",\"version\":\"2026-03-17\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.4-mini\",\"version\":\"2026-03-17\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.4\",\"version\":\"2026-03-05\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.5\",\"version\":\"2026-04-24\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.6-luna\",\"version\":\"2026-07-09\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.6-terra\",\"version\":\"2026-07-09\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.6-sol\",\"version\":\"2026-07-09\"},{\"format\":\"OpenAI\",\"name\":\"gpt-6-astra\",\"version\":\"2026-09-03\"},{\"format\":\"OpenAI\",\"name\":\"gpt-6-luna\",\"version\":\"2026-09-22\"},{\"format\":\"OpenAI\",\"name\":\"gpt-6-sol\",\"version\":\"2026-09-22\"},{\"format\":\"OpenAI\",\"name\":\"gpt-6.1-sol\",\"version\":\"2026-09-29\"},{\"format\":\"OpenAI\",\"name\":\"gpt-6.1-terra\",\"version\":\"2026-10-26\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.1\",\"version\":\"2025-11-13\"},{\"format\":\"OpenAI-OSS\",\"name\":\"gpt-oss-120b\",\"version\":\"1\"},{\"format\":\"Microsoft\",\"name\":\"mai-code-2-flash\",\"version\":\"2026-11-17\"},{\"format\":\"Meta\",\"name\":\"Llama-4-Maverick-17B-128E-Instruct-FP8\",\"version\":\"1\"},{\"format\":\"DeepSeek\",\"name\":\"DeepSeek-V3.2\",\"version\":\"1\"},{\"format\":\"DeepSeek\",\"name\":\"DeepSeek-V4.1-Flash\",\"version\":\"2026-09-10\"},{\"format\":\"xAI\",\"name\":\"grok-4\",\"version\":\"1\"},{\"format\":\"xAI\",\"name\":\"grok-4.6\",\"version\":\"1\"},{\"format\":\"xAI\",\"name\":\"grok-4-1-fast-reasoning\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-haiku-4-5\",\"version\":\"20251001\"},{\"format\":\"Anthropic\",\"name\":\"claude-sonnet-4-5\",\"version\":\"20250929\"},{\"format\":\"Anthropic\",\"name\":\"claude-sonnet-5\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-fable-5-1\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-opus-4-6\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-opus-4-7\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-opus-4-8\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-opus-5\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-opus-5-5\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-sonnet-5-5\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-haiku-5-5\",\"version\":\"1\"},{\"format\":\"Fireworks\",\"name\":\"FW-GLM-5.3\",\"version\":\"1\"},{\"format\":\"Fireworks\",\"name\":\"FW-GLM-5.3-Flash\",\"version\":\"1\"},{\"format\":\"Fireworks\",\"name\":\"FW-Kimi-K3\",\"version\":\"1\"}]",
+     "responses": "true",
+     "router": "true"
+    },
+    "deprecation": {
+     "fineTune": "2027-05-20T00:00:00Z",
+     "inference": "2027-05-20T00:00:00Z"
+    },
+    "description": "Model Router Model",
+    "finetuneCapabilities": {
+     "FineTuneTokensMaxValue": "3000000000",
+     "agentsV2": "true",
+     "area": "EUR",
+     "chatCompletion": "true",
+     "instant": "true",
+     "responses": "true",
+     "router": "true"
+    },
+    "format": "OpenAI",
+    "isDefaultVersion": true,
+    "lifecycleStatus": "GenerallyAvailable",
+    "maxCapacity": 3,
+    "name": "model-router",
+    "skus": [
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a49c8778-a552-51f3-8965-e984d114953d",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-05-20T00:00:00Z",
+      "name": "GlobalStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.GlobalStandard.ModelRouter"
+     },
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a88f7e25-eaba-573b-bbea-9c1b2950566e",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-05-20T00:00:00Z",
+      "name": "DataZoneStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.DataZoneStandard.ModelRouter"
+     },
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a88f7e25-eaba-573b-bbea-9c1b2950566e",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-05-20T00:00:00Z",
+      "name": "GlobalStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.GlobalStandard.ModelRouter-finetune"
+     }
+    ],
+    "systemData": {
+     "createdAt": "2025-11-18T00:00:00Z",
+     "createdBy": "Microsoft",
+     "createdByType": "Application",
+     "lastModifiedAt": "2025-11-18T00:00:00Z",
+     "lastModifiedBy": "Microsoft",
+     "lastModifiedByType": "Application"
+    },
+    "version": "2025-11-18"
+   },
+   "name": "OpenAI.model-router.2025-11-18",
+   "skuName": "S0",
+   "type": "Microsoft.CognitiveServices/locations/models"
+  },
+  {
+   "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CognitiveServices/locations/SwedenCentral/models/OpenAI.model-router.2025-05-19",
+   "kind": "AIServices",
+   "location": "SwedenCentral",
+   "model": {
+    "capabilities": {
+     "agentsV2": "true",
+     "area": "EUR",
+     "chatCompletion": "true",
+     "models": "[{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-nano\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-mini\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"o4-mini\",\"version\":\"2025-04-16\"}]",
+     "responses": "true",
+     "router": "true"
+    },
+    "deprecation": {
+     "fineTune": "2027-01-27T00:00:00Z",
+     "inference": "2027-01-27T00:00:00Z"
+    },
+    "description": "Model Router Model",
+    "format": "OpenAI",
+    "isDefaultVersion": false,
+    "lifecycleStatus": "Preview",
+    "maxCapacity": 3,
+    "name": "model-router",
+    "skus": [
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a49c8778-a552-51f3-8965-e984d114953d",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-01-27T00:00:00Z",
+      "name": "GlobalStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.GlobalStandard.ModelRouter"
+     },
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a88f7e25-eaba-573b-bbea-9c1b2950566e",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-01-27T00:00:00Z",
+      "name": "DataZoneStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.DataZoneStandard.ModelRouter"
+     }
+    ],
+    "systemData": {
+     "createdAt": "2025-05-19T00:00:00Z",
+     "createdBy": "Microsoft",
+     "createdByType": "Application",
+     "lastModifiedAt": "2025-05-19T00:00:00Z",
+     "lastModifiedBy": "Microsoft",
+     "lastModifiedByType": "Application"
+    },
+    "version": "2025-05-19"
+   },
+   "name": "OpenAI.model-router.2025-05-19",
+   "skuName": "S0",
+   "type": "Microsoft.CognitiveServices/locations/models"
+  },
+  {
+   "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CognitiveServices/locations/SwedenCentral/models/OpenAI.model-router.2025-08-07",
+   "kind": "AIServices",
+   "location": "SwedenCentral",
+   "model": {
+    "capabilities": {
+     "agentsV2": "true",
+     "area": "EUR",
+     "chatCompletion": "true",
+     "models": "[{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-nano\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-mini\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"o4-mini\",\"version\":\"2025-04-16\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5-nano\",\"version\":\"2025-08-07\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5-mini\",\"version\":\"2025-08-07\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5\",\"version\":\"2025-08-07\"}]",
+     "responses": "true",
+     "router": "true"
+    },
+    "deprecation": {
+     "fineTune": "2027-01-27T00:00:00Z",
+     "inference": "2027-01-27T00:00:00Z"
+    },
+    "description": "Model Router Model",
+    "format": "OpenAI",
+    "isDefaultVersion": false,
+    "lifecycleStatus": "Preview",
+    "maxCapacity": 3,
+    "name": "model-router",
+    "skus": [
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a49c8778-a552-51f3-8965-e984d114953d",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-01-27T00:00:00Z",
+      "name": "GlobalStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.GlobalStandard.ModelRouter"
+     },
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a88f7e25-eaba-573b-bbea-9c1b2950566e",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-01-27T00:00:00Z",
+      "name": "DataZoneStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.DataZoneStandard.ModelRouter"
+     }
+    ],
+    "systemData": {
+     "createdAt": "2025-08-07T00:00:00Z",
+     "createdBy": "Microsoft",
+     "createdByType": "Application",
+     "lastModifiedAt": "2025-08-07T00:00:00Z",
+     "lastModifiedBy": "Microsoft",
+     "lastModifiedByType": "Application"
+    },
+    "version": "2025-08-07"
+   },
+   "name": "OpenAI.model-router.2025-08-07",
+   "skuName": "S0",
+   "type": "Microsoft.CognitiveServices/locations/models"
+  },
+  {
+   "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CognitiveServices/locations/SwedenCentral/models/OpenAI.model-router.2025-11-18",
+   "kind": "AIServices",
+   "location": "SwedenCentral",
+   "model": {
+    "capabilities": {
+     "FineTuneTokensMaxValue": "3000000000",
+     "agentsV2": "true",
+     "area": "EUR",
+     "chatCompletion": "true",
+     "instant": "true",
+     "models": "[{\"format\":\"OpenAI\",\"name\":\"gpt-4o\",\"version\":\"2024-11-20\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4o-mini\",\"version\":\"2024-07-18\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-nano\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1-mini\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"gpt-4.1\",\"version\":\"2025-04-14\"},{\"format\":\"OpenAI\",\"name\":\"o4-mini\",\"version\":\"2025-04-16\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5-nano\",\"version\":\"2025-08-07\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5-mini\",\"version\":\"2025-08-07\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5\",\"version\":\"2025-08-07\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.2\",\"version\":\"2025-12-11\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.4-nano\",\"version\":\"2026-03-17\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.4-mini\",\"version\":\"2026-03-17\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.4\",\"version\":\"2026-03-05\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.5\",\"version\":\"2026-04-24\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.6-luna\",\"version\":\"2026-07-09\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.6-terra\",\"version\":\"2026-07-09\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.6-sol\",\"version\":\"2026-07-09\"},{\"format\":\"OpenAI\",\"name\":\"gpt-6-astra\",\"version\":\"2026-09-03\"},{\"format\":\"OpenAI\",\"name\":\"gpt-6-luna\",\"version\":\"2026-09-22\"},{\"format\":\"OpenAI\",\"name\":\"gpt-6-sol\",\"version\":\"2026-09-22\"},{\"format\":\"OpenAI\",\"name\":\"gpt-6.1-sol\",\"version\":\"2026-09-29\"},{\"format\":\"OpenAI\",\"name\":\"gpt-6.1-terra\",\"version\":\"2026-10-26\"},{\"format\":\"OpenAI\",\"name\":\"gpt-5.1\",\"version\":\"2025-11-13\"},{\"format\":\"OpenAI-OSS\",\"name\":\"gpt-oss-120b\",\"version\":\"1\"},{\"format\":\"Microsoft\",\"name\":\"mai-code-2-flash\",\"version\":\"2026-11-17\"},{\"format\":\"Meta\",\"name\":\"Llama-4-Maverick-17B-128E-Instruct-FP8\",\"version\":\"1\"},{\"format\":\"DeepSeek\",\"name\":\"DeepSeek-V3.2\",\"version\":\"1\"},{\"format\":\"DeepSeek\",\"name\":\"DeepSeek-V4.1-Flash\",\"version\":\"2026-09-10\"},{\"format\":\"xAI\",\"name\":\"grok-4\",\"version\":\"1\"},{\"format\":\"xAI\",\"name\":\"grok-4.6\",\"version\":\"1\"},{\"format\":\"xAI\",\"name\":\"grok-4-1-fast-reasoning\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-haiku-4-5\",\"version\":\"20251001\"},{\"format\":\"Anthropic\",\"name\":\"claude-sonnet-4-5\",\"version\":\"20250929\"},{\"format\":\"Anthropic\",\"name\":\"claude-sonnet-5\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-fable-5-1\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-opus-4-6\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-opus-4-7\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-opus-4-8\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-opus-5\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-opus-5-5\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-sonnet-5-5\",\"version\":\"1\"},{\"format\":\"Anthropic\",\"name\":\"claude-haiku-5-5\",\"version\":\"1\"},{\"format\":\"Fireworks\",\"name\":\"FW-GLM-5.3\",\"version\":\"1\"},{\"format\":\"Fireworks\",\"name\":\"FW-GLM-5.3-Flash\",\"version\":\"1\"},{\"format\":\"Fireworks\",\"name\":\"FW-Kimi-K3\",\"version\":\"1\"}]",
+     "responses": "true",
+     "router": "true"
+    },
+    "deprecation": {
+     "fineTune": "2027-05-20T00:00:00Z",
+     "inference": "2027-05-20T00:00:00Z"
+    },
+    "description": "Model Router Model",
+    "finetuneCapabilities": {
+     "FineTuneTokensMaxValue": "3000000000",
+     "agentsV2": "true",
+     "area": "EUR",
+     "chatCompletion": "true",
+     "instant": "true",
+     "responses": "true",
+     "router": "true"
+    },
+    "format": "OpenAI",
+    "isDefaultVersion": true,
+    "lifecycleStatus": "GenerallyAvailable",
+    "maxCapacity": 3,
+    "name": "model-router",
+    "skus": [
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a49c8778-a552-51f3-8965-e984d114953d",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-05-20T00:00:00Z",
+      "name": "GlobalStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.GlobalStandard.ModelRouter"
+     },
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a88f7e25-eaba-573b-bbea-9c1b2950566e",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-05-20T00:00:00Z",
+      "name": "DataZoneStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.DataZoneStandard.ModelRouter"
+     },
+     {
+      "capacity": {
+       "default": 10,
+       "maximum": 1000000
+      },
+      "costs": [
+       {
+        "meterId": "",
+        "name": "NoCachedContextToken",
+        "offeringId": "a88f7e25-eaba-573b-bbea-9c1b2950566e",
+        "unit": "1M Tokens"
+       }
+      ],
+      "deprecationDate": "2027-05-20T00:00:00Z",
+      "name": "GlobalStandard",
+      "rateLimits": [
+       {
+        "count": 1,
+        "key": "request",
+        "renewalPeriod": 60
+       },
+       {
+        "count": 1000,
+        "key": "token",
+        "renewalPeriod": 60
+       }
+      ],
+      "usageName": "OpenAI.GlobalStandard.ModelRouter-finetune"
+     }
+    ],
+    "systemData": {
+     "createdAt": "2025-11-18T00:00:00Z",
+     "createdBy": "Microsoft",
+     "createdByType": "Application",
+     "lastModifiedAt": "2025-11-18T00:00:00Z",
+     "lastModifiedBy": "Microsoft",
+     "lastModifiedByType": "Application"
+    },
+    "version": "2025-11-18"
+   },
+   "name": "OpenAI.model-router.2025-11-18",
+   "skuName": "S0",
+   "type": "Microsoft.CognitiveServices/locations/models"
+  }
+ ]
+}

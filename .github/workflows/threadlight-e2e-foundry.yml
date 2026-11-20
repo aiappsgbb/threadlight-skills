@@ -177,7 +177,7 @@ on:
         type: boolean
         default: false
       wire_api:
-        description: "Copilot BYO provider wire API. 'responses' for GPT-5-series direct deployments (e.g. gpt-5.4-mini); 'completions' for model-router (its Responses v1 route returns 400 'operation unsupported', but chat-completions works)."
+        description: "Copilot BYO provider wire API. 'responses' for direct GPT deployments (e.g. gpt-6-luna); 'completions' for model-router, because GitHub Copilot BYOK reaches model router over Chat Completions (model router itself also serves Responses)."
         required: false
         default: "responses"
         type: choice

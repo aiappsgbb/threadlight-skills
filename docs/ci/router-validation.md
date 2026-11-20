@@ -1,5 +1,10 @@
 # Router validation — methodology & findings
 
+> **Historical (2026-06/07).** The `{gpt-5.4, gpt-5.4-mini}` matrix below is superseded by the
+> [post-Ignite workload finding](../../skills/threadlight-router-bench/references/findings/2026-11-20-router-workload-post-ignite.md):
+> `validate` now compares a `{gpt-6-luna, gpt-6.1-terra, gpt-6.1-sol}` subset (each with its own
+> deployment) against fixed `gpt-6-luna` and `gpt-6.1-sol`, and `workload` measures cost per 1k tasks.
+
 > How we validate that a **model-router constrained to `{gpt-5.4, gpt-5.4-mini}`**
 > actually beats a **pure `gpt-5.4-mini`** baseline — on **quality AND cost** — by
 > running a controlled matrix through the real
