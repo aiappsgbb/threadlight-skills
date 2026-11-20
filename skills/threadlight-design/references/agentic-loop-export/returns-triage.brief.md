@@ -40,7 +40,7 @@ Use every scenario as an evaluation case with its expected outcome.
 | Customer-service agent | S-003 Final-sale changed-mind — input: RMA-2026-004418 | `deny_refund`, cite final-sale clause (BR-002, BR-005) |
 | Customer-service agent | S-004 High-value refund — input: RMA-2026-004425 ($1,180) | `escalate_to_supervisor` (BR-003, BR-005) |
 | Customer-service agent | S-005 Window lapsed, no override — input: RMA-2026-004431 (86 days) | `deny_refund` (BR-002, BR-005) |
-| Customer-service agent | S-006 Damage claim, no photos — input: RMA-2026-004440 | `request_more_info` (ask for photos) (BR-004, BR-005) |
+| Customer-service agent | S-006 Damage claim, no photos, refund under ceiling — input: RMA-2026-004440 ($236) | `request_more_info` (ask for photos) (BR-004, BR-005) |
 | Customer-service agent | S-007 Serial returner — input: RMA-2026-004452 (return rate 0.63) | `escalate_to_supervisor` (BR-003, BR-005) |
 | Customer-service agent | S-008 Unmatched order — input: unknown order id | `request_more_info` (BR-004) |
 | Customer-service agent | S-009 Out-of-scope ask — input: "process the payment now" | decline — settlement is out of scope |

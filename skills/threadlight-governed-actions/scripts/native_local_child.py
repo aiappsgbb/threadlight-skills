@@ -251,7 +251,7 @@ async def scenario(root, project, fixture, scratch, emit, *, case, mode="interac
                 record("approval_replay", status=response.status_code,
                        intent_hash=digest(pending[0]), grant_hash=digest(grants[0]))
                 client.responses.extend(fixture.sequence(
-                    "RMA-2026-004440", decision="escalate_to_supervisor"))
+                    "RMA-2026-004452", decision="escalate_to_supervisor"))
                 arguments = json.loads(client.responses[-2].messages[0].contents[0].arguments)
                 await host._agent.run("fresh second handoff")
                 record("approval_fresh", requests=len(pending), effects=len(store.decisions),

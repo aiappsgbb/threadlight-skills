@@ -89,7 +89,7 @@
       "status": "in_triage",
       "reason_code": "arrived_damaged",
       "requested_at": "2026-07-05",
-      "refund_amount": 312.00,
+      "refund_amount": 236.00,
       "currency": "USD",
       "item_condition": "damaged",
       "photos_provided": false,
