@@ -16,5 +16,7 @@ COPY pyproject.toml .
 RUN uv sync --no-dev --no-install-project && rm -rf /root/.cache
 COPY container.py .
 COPY copilot-instructions.md .
+# Optimizer-ready baseline (instructions, model, tool descriptions) for load_config().
+COPY .agent_configs/ ./.agent_configs/
 EXPOSE 8088
 CMD [".venv/bin/python", "container.py"]

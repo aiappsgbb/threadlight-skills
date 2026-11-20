@@ -35,9 +35,15 @@ dependencies = [
     "azure-ai-agentserver-responses==2.4.0",
     "azure-ai-agentserver-invocations==1.3.0",
     "azure-ai-projects~=2.3.0",
+    # Optimizer-ready baseline loader (load_config); prerelease pinned explicitly.
+    "azure-ai-agentserver-optimization==1.0.0b1",
     "azure-identity~=1.25.3",
     "mcp~=1.29.0",
     "python-dotenv~=1.2.2",
+    # Pinned directly: the optimization sample's requirements crashed at start
+    # with ModuleNotFoundError: httpx when these came only transitively.
+    "openai~=2.54.0",
+    "httpx~=0.28.1",
     # OTel + gen_ai instrumentors are bundled via hosting → microsoft-opentelemetry.
     # Do NOT add explicit azure-monitor-opentelemetry or opentelemetry-* lines.
 ]

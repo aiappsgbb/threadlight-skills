@@ -7,6 +7,33 @@ field.
 
 ## [Unreleased]
 
+### 2.67.0: MAF template is evaluable and optimizer-ready (#208)
+
+- **Why.** Foundry agent-target evaluations read the tool trajectory
+  (`sample.tool_calls`) from the Responses output items. A host that returns only
+  the final text gets `tool_calls = []`, and judges score grounded answers as
+  fabricated. The template also had no `.agent_configs/` baseline, so the agent
+  optimizer had nothing to load.
+- **Template.** `container.py` loads instructions, model and tool descriptions
+  with `load_config()` (`azure-ai-agentserver-optimization==1.0.0b1`) from the new
+  `.agent_configs/baseline/`. That baseline uses a list-form `tools.json` and the
+  `tool_file` key. `load_baseline()` fails closed when `tools.json` names an
+  unregistered tool. `responses_tool_definitions()` converts to the flat Responses
+  shape. `build_agent()` keeps MAF's tool loop, so `ResponsesHostServer` emits
+  `function_call` → `function_call_output` → `message`. The Dockerfile copies the
+  baseline, and the pyproject pins `openai` and `httpx` directly. The MAF README
+  documents the tested pitfalls and warns that tools run for real.
+- **Tests.** `skills/threadlight-deploy/tests/test_maf_template_runtime.py` runs the
+  real host, OpenAI client and `load_config()`; only the model transport is
+  scripted. It covers item order (stream and non-stream), N > 0 tools on the
+  baseline, the flat shape, applied descriptions and fail-closed unknown tools.
+  New CI job `maf-template-runtime` installs the template's own pins and runs it
+  with no skips.
+- **Live (Nov 2026, internal subscription).** The template agent was deployed with
+  `azd deploy` (remote build). The agent-target eval export
+  (`builtin.task_completion`, 3 rows) showed non-empty `sample.tool_calls` with
+  `function_call` / `function_call_output` for `my_tool` on every row.
+
 ### 2.66.0: replay-safe governed effects, approvals and audit under recovered handlers (#223)
 
 - **Why.** A crash-recovered handler is re-entered from the top and re-runs the

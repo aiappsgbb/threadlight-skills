@@ -1,0 +1,7 @@
+# Optimizer-ready baseline read by azure-ai-agentserver-optimization load_config().
+# The key is `tool_file` (singular): `tools_file`, as shown on the Learn page,
+# is ignored by 1.0.0b1 and only works by accident when the file is tools.json.
+# `azd ai agent optimize` rewrites this file ("Baseline saved to ..."): commit first.
+model: gpt-5.4-mini
+instruction_file: instructions.md
+tool_file: tools.json

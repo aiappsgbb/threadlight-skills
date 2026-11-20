@@ -16,6 +16,18 @@
 # per SKILL is the smoke test — verify in `azd ai agent monitor` after first
 # cold start; if you see only 1 line, the loader is wrong.
 
+# Evaluable and optimizer-ready (#208):
+#   - ResponsesHostServer emits every tool call as Responses output items
+#     (function_call -> function_call_output -> message). Agent-target
+#     evaluations read `sample.tool_calls` from them; a host that returns only
+#     the final text gets `tool_calls = []` and judges score grounded answers as
+#     fabricated. Keep MAF's tool loop; do not hand-roll one that drops the items.
+#   - Instructions, model and tool descriptions come from load_config()
+#     (.agent_configs/baseline/, or the optimizer candidate when one is active).
+#     tools.json is a top-level JSON list and metadata.yaml uses `tool_file`.
+#   - Optimizer and evaluation runs execute real tool calls: keep tools
+#     read-only or point them at isolated test data.
+
 import logging
 import os
 from pathlib import Path
@@ -29,6 +41,7 @@ from agent_framework import (
 )
 from agent_framework.foundry import FoundryChatClient
 from agent_framework_foundry_hosting import ResponsesHostServer
+from azure.ai.agentserver.optimization import load_config
 from azure.identity.aio import DefaultAzureCredential  # async — see ../python/main.py § MID-I
 from pydantic import Field
 
@@ -105,31 +118,72 @@ def _build_skills_provider() -> SkillsProvider | None:
 @tool(approval_mode="never_require")
 def my_tool(query: Annotated[str, Field(description="Input")]) -> str:
     """Replace with your domain tool(s). See ../python/main.py for the
-    single-purpose-agent shape."""
+    single-purpose-agent shape. Read-only: evaluation and optimizer runs call it."""
     return "result"
+
+
+# Every tool the agent can call. .agent_configs/baseline/tools.json declares the
+# same names (with the descriptions the optimizer may rewrite).
+TOOLS = [my_tool]
+CONFIG_DIR = Path(__file__).parent / ".agent_configs"
+
+
+def load_baseline(config_dir: Path = CONFIG_DIR):
+    """Load the active optimization config (candidate or baseline).
+
+    Fails closed when tools.json names a tool the code does not register: an
+    optimizer candidate must not describe a tool the agent cannot call.
+    """
+    config = load_config(config_dir=config_dir)
+    if config is None:
+        raise RuntimeError(f"no optimization config under {config_dir}; ship .agent_configs/baseline/")
+    registered = {t.name for t in TOOLS}
+    declared = {d.get("function", {}).get("name") for d in config.tool_definitions}
+    unknown = sorted(n for n in declared - registered if n)
+    if unknown:
+        raise RuntimeError(f"tools.json declares unregistered tools: {', '.join(unknown)}")
+    if TOOLS and not config.tool_definitions:
+        log.warning("tools.json loaded 0 tools; check it is a JSON list and metadata uses tool_file")
+    return config
+
+
+def responses_tool_definitions(config) -> list[dict]:
+    """tools.json is chat-completions shaped; the Responses API wants it flat."""
+    flat = []
+    for definition in config.tool_definitions:
+        function = definition.get("function", definition)
+        flat.append({"type": "function", "name": function["name"],
+                     "description": function.get("description", ""),
+                     "parameters": function.get("parameters", {"type": "object", "properties": {}})})
+    return flat
+
+
+def build_agent(client, config=None) -> Agent:
+    config = config or load_baseline()
+    config.apply_tool_descriptions(TOOLS)
+    skills_provider = _build_skills_provider()
+    log.info("Config source=%s | model=%s | tools=%d", config.source, config.model,
+             len(config.tool_definitions))
+    return Agent(
+        client=client,
+        instructions=config.compose_instructions(),
+        tools=TOOLS,
+        context_providers=[skills_provider] if skills_provider else [],
+        default_options={"store": False},  # Platform manages history
+    )
 
 
 def main() -> None:
     _init_telemetry()
-
+    config = load_baseline()
     client = FoundryChatClient(
         project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
-        model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"],
+        # The deployment name from azure.yaml wins; the baseline model is the
+        # optimizer's view of which deployment it tunes against.
+        model=os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME") or config.model,
         credential=DefaultAzureCredential(),
     )
-
-    skills_provider = _build_skills_provider()
-    context_providers = [skills_provider] if skills_provider else []
-
-    agent = Agent(
-        client=client,
-        instructions="You are a helpful assistant.",
-        tools=[my_tool],
-        context_providers=context_providers,
-        default_options={"store": False},  # Platform manages history
-    )
-
-    server = ResponsesHostServer(agent)
+    server = ResponsesHostServer(build_agent(client, config))
     server.run()
 
 
