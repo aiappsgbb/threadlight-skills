@@ -7,6 +7,37 @@ field.
 
 ## [Unreleased]
 
+### 2.57.0: Foundry Copilot harness as a preview, user-opt-in runtime (#228)
+
+- **Why.** Foundry now offers the Microsoft Copilot harness for prompt agents
+  (`harness.type: microsoft_copilot_preview`, preview,
+  [Learn](https://learn.microsoft.com/azure/foundry/agents/how-to/use-tools-skills-copilot-harness)).
+  The Foundry-only rule excluded it, so every PoC paid for the hosted container
+  even when it needed neither Citadel nor in-process ACS.
+- **Rule item 2d.** `agent_type: harness` is allowed only on the user's explicit
+  opt-in: `harness_opt_in_source: user`, `harness_opt_in_evidence`,
+  `preview_acknowledged: true` and a `harness_fit` record. An agent-written value
+  is treated as hosted; hosted stays the default and the refusal route. The short
+  block is updated in all six rule skills.
+- **Machine-checkable disqualifiers.** `runtime-policy.json` adds `harness` to
+  `allowed_agent_types`, the opt-in fields, `agent_may_select_harness_on_own_initiative: false`,
+  the documented harness regions and six `harness_disqualifiers`
+  (`citadel-model-path-required`, `acs-in-process-pep-required`,
+  `foundry-memory-required`, `voice-frontend-required`, `region-not-supported`,
+  `consequential-write-without-function-or-governed-mcp`). The new
+  `skills/_shared/agent_type_policy.py` applies them: any disqualifier or unknown
+  fit answer resolves to hosted. `eastus2`, the Threadlight default region, is not
+  a documented harness region.
+- **Package gate.** `foundry_package.py` accepts `agent.kind: foundry-harness`
+  only with `harness_type`, the opt-in fields, the fit record, an `egress_policy`
+  record (`rai_policy_id`, `mode` Audit or Enforced, `default_action`) and the
+  usual executed eval run.
+- **generate_only.** An unprovenanced or disqualified `agent_type: harness` is
+  generated as the hosted agent with the reasons printed; an opted-in harness is
+  refused with exit 4 until the harness route ships.
+- **Tests.** `tests/blueprint/foundry-harness-opt-in.test.js`,
+  `skills/_shared/tests/test_agent_type_policy.py`, harness cases in
+  `test_foundry_package.py` and `test_generate_only.py` (all RED first).
 ### 2.56.0: returns-triage golden label follows the value-ceiling rule (#233)
 
 - **Why.** Golden case `rma-northwind-damaged-needinfo` (RMA-2026-004440) asked

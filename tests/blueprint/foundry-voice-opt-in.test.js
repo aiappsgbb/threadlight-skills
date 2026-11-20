@@ -44,7 +44,7 @@ test('runtime-policy.json encodes voice as an opt-in agent type built by the off
   const policy = JSON.parse(read('skills/threadlight-design/references/runtime-policy.json'));
   const hosting = policy.agent_hosting;
   assert.equal(policy.contract_version, '2.2.0');
-  assert.deepEqual(hosting.allowed_agent_types, ['hosted', 'prompt', 'voice']);
+  assert.deepEqual(hosting.allowed_agent_types, ['hosted', 'prompt', 'voice', 'harness']);
   assert.equal(hosting.default, 'hosted');
   assert.equal(hosting.voice_requires_explicit_opt_in, true);
   assert.deepEqual(hosting.voice_opt_in_required_fields, ['voice_opt_in_source', 'voice_opt_in_evidence', 'preview_acknowledged']);

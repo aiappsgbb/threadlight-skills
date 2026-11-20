@@ -1,8 +1,9 @@
 """Full Foundry package delivery gate.
 
 A Threadlight pilot is delivered only when all three items are evidenced:
-a real Foundry hosted/prompt agent, or a voice agent (preview) recorded with the
-user's explicit opt-in (no app-side loop, no active fallback),
+a real Foundry hosted/prompt agent, or a voice agent or Copilot harness agent
+(both preview) recorded with the user's explicit opt-in (no app-side loop, no
+active fallback; a harness agent also records its egress policy),
 Application Insights tracing with a trace visible in Foundry, and one executed
 Foundry eval run against that agent with built-in evaluators plus a SPEC-derived
 custom rubric that meets its threshold. Anything less is ``INCOMPLETE``.
@@ -25,7 +26,10 @@ from typing import Any
 
 SCHEMA = "threadlight-foundry-package/v1"
 MANIFEST_PATH = "specs/foundry-package-manifest.json"
-AGENT_KINDS = ("foundry-hosted", "foundry-prompt", "foundry-voice")
+AGENT_KINDS = ("foundry-hosted", "foundry-prompt", "foundry-voice", "foundry-harness")
+HARNESS_TYPE = "microsoft_copilot_preview"
+EGRESS_MODES = ("Audit", "Enforced")
+EGRESS_DEFAULT_ACTIONS = ("Allow", "Deny")
 SECTIONS = ("agent", "telemetry", "evaluation")
 # Optional since 2.19.4: GA evaluation_rules reject hosted agents (400 "Hosted and
 # external agents are not supported") and beta.schedules is preview. Validated when present.
@@ -75,6 +79,32 @@ def _rubric_problems(index: int, rubric: Any) -> list[str]:
     return problems
 
 
+def _harness_problems(agent: dict[str, Any]) -> list[str]:
+    """Copilot harness (preview): the user's opt-in, its fit record and the egress policy record."""
+    problems = []
+    if agent.get("harness_type") != HARNESS_TYPE:
+        problems.append(f"agent.harness_type (must be {HARNESS_TYPE!r} for foundry-harness)")
+    if agent.get("harness_opt_in_source") != "user":
+        problems.append("agent.harness_opt_in_source (must be 'user' for foundry-harness)")
+    if not _text(agent.get("harness_opt_in_evidence")):
+        problems.append("agent.harness_opt_in_evidence (quote of the user's request, required for foundry-harness)")
+    if agent.get("preview_acknowledged") is not True:
+        problems.append("agent.preview_acknowledged (must be true for foundry-harness)")
+    if not isinstance(agent.get("harness_fit"), dict) or not agent["harness_fit"]:
+        problems.append("agent.harness_fit (the recorded fit answers, required for foundry-harness)")
+    egress = agent.get("egress_policy")
+    if not isinstance(egress, dict):
+        problems.append("agent.egress_policy (RAI egress policy record, required for foundry-harness)")
+        return problems
+    if not _text(egress.get("rai_policy_id")):
+        problems.append("agent.egress_policy.rai_policy_id (full ARM id attached as rai_config)")
+    if egress.get("mode") not in EGRESS_MODES:
+        problems.append(f"agent.egress_policy.mode (one of {', '.join(EGRESS_MODES)})")
+    if egress.get("default_action") not in EGRESS_DEFAULT_ACTIONS:
+        problems.append(f"agent.egress_policy.default_action (one of {', '.join(EGRESS_DEFAULT_ACTIONS)})")
+    return problems
+
+
 def evaluate(manifest: Any) -> dict[str, Any]:
     if not isinstance(manifest, dict):
         raise FoundryPackageError("foundry package manifest must be a JSON object")
@@ -114,6 +144,8 @@ def evaluate(manifest: Any) -> dict[str, Any]:
                 missing.append("agent.voice_opt_in_evidence (quote of the user's request, required for foundry-voice)")
             if agent.get("preview_acknowledged") is not True:
                 missing.append("agent.preview_acknowledged (must be true for foundry-voice)")
+        if kind == "foundry-harness":
+            missing.extend(_harness_problems(agent))
         if agent.get("fallback_active") is not False:
             if agent.get("fallback_active") is True:
                 missing.append("agent.fallback_active (a fallback/fake agent is serving; not delivered)")

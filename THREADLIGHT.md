@@ -32,8 +32,12 @@ requires a spoken, real-time conversation and accepts the preview (recorded as
 `agent_type: voice` with `voice_opt_in_source: user`, `voice_opt_in_evidence` and
 `preview_acknowledged: true`), and it is built with the official `microsoft-foundry`
 skill (create-voice). Never offer one on your own initiative.
+The Foundry **Copilot harness** (a prompt agent on `harness.type: microsoft_copilot_preview`)
+is preview too: it is used only on the user's explicit opt-in (`agent_type: harness` with
+`harness_opt_in_source: user`, `harness_opt_in_evidence`, `preview_acknowledged: true`
+and a `harness_fit` record), and any disqualifier forces hosted.
 The following are **not supported, and are never chosen or offered**:
-- voice without that opt-in, or Voice Live / realtime calls from application code;
+- voice or the harness without that opt-in, or Voice Live / realtime calls from application code;
 - other preview-only or unreleased Foundry capabilities;
 - any agent loop or orchestration implemented in application code, for example on
   ACA, App Service, Functions or a web app, or by calling Responses or Chat

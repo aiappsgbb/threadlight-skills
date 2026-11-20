@@ -263,3 +263,55 @@ def test_documented_cli_resolves_from_the_skills_checkout_not_the_pilot():
     text = (REPO / "skills/_shared/foundry-only-agents.md").read_text(encoding="utf-8")
     assert "python skills/_shared/foundry_package.py --workspace ." not in text
     assert "<threadlight-skills>/skills/_shared/foundry_package.py --workspace <pilot-root>" in text
+
+
+def _harness(**agent):
+    value = complete_manifest()
+    value["agent"].update({
+        "kind": "foundry-harness",
+        "harness_type": "microsoft_copilot_preview",
+        "harness_opt_in_source": "user",
+        "harness_opt_in_evidence": "User: 'run the PoC on the Foundry Copilot harness, preview is fine'",
+        "preview_acknowledged": True,
+        "harness_fit": {"citadel_model_path_required": False, "acs_in_process_pep_required": False,
+                        "foundry_memory_required": False, "voice_frontend_required": False,
+                        "region": "swedencentral", "consequential_write_seam": "function-tool"},
+        "egress_policy": {"rai_policy_id": "/subscriptions/x/resourceGroups/rg/providers/Microsoft.CognitiveServices/"
+                                           "accounts/a/raiPolicies/harness-egress",
+                          "mode": "Audit", "default_action": "Deny"},
+    })
+    value["agent"].update(agent)
+    return value
+
+
+def test_opted_in_harness_agent_with_egress_record_and_eval_run_is_delivered():
+    assert "foundry-harness" in fp.AGENT_KINDS
+    assert fp.evaluate(_harness())["status"] == "COMPLETE"
+
+
+@pytest.mark.parametrize("override,needle", [
+    ({"harness_opt_in_source": "agent"}, "agent.harness_opt_in_source"),
+    ({"harness_opt_in_source": None}, "agent.harness_opt_in_source"),
+    ({"harness_opt_in_evidence": " "}, "agent.harness_opt_in_evidence"),
+    ({"preview_acknowledged": False}, "agent.preview_acknowledged"),
+    ({"harness_fit": None}, "agent.harness_fit"),
+    ({"harness_fit": {}}, "agent.harness_fit"),
+    ({"harness_type": "default"}, "agent.harness_type"),
+    ({"egress_policy": None}, "agent.egress_policy"),
+    ({"egress_policy": {"mode": "Audit", "default_action": "Deny"}}, "agent.egress_policy.rai_policy_id"),
+    ({"egress_policy": {"rai_policy_id": "/x", "mode": "Off", "default_action": "Deny"}}, "agent.egress_policy.mode"),
+    ({"egress_policy": {"rai_policy_id": "/x", "mode": "Audit", "default_action": "Maybe"}},
+     "agent.egress_policy.default_action"),
+])
+def test_harness_agent_without_opt_in_or_egress_record_is_incomplete(override, needle):
+    result = fp.evaluate(_harness(**override))
+    assert result["status"] == "INCOMPLETE"
+    assert any(item.startswith(needle) for item in result["missing"]), result["missing"]
+
+
+def test_harness_agent_without_an_eval_run_is_incomplete():
+    value = _harness()
+    del value["evaluation"]["eval_run_id"]
+    result = fp.evaluate(value)
+    assert result["status"] == "INCOMPLETE"
+    assert "evaluation.eval_run_id" in result["missing"]
