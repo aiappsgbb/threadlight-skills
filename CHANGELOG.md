@@ -7,6 +7,21 @@ field.
 
 ## [Unreleased]
 
+### 2.56.0: MAF and governance runtime on the GA AgentServer line (#226)
+
+- **Why.** The MAF hosted-agent template pinned the August AgentServer betas
+  (core/responses `2.1.0b1`, invocations `1.1.0b1`) and the governance runtime
+  pinned core `2.1.0`, responses `2.2.0b1`, invocations `1.2.0b1`, behind the GA
+  line that the Foundry long-running and resilient Responses features target.
+- **Pins.** `azure-ai-agentserver-core==2.3.0`, `-responses==2.4.0`,
+  `-invocations==1.3.0` in the MAF template, `pyproject-maf.toml` and the
+  returns example. `agent-framework-foundry-hosting==1.0.0b260813` already
+  accepts this line (`>=2.1.0b1,<3` / `>=1.1.0b1,<2`), so no other package moves.
+  The GHCP voice front-end keeps dropping the MAF-only `-responses`.
+- **Tests.** `tests/ci/test_governance_dependency_baseline.py` asserts the GA
+  line in all three MAF runtimes (RED on 2.53.0). Native: `run-governance-pin-tests.py`
+  and `--deployment` against the published wheels.
+
 ### 2.55.0: threadlight-ground: no-token and RBAC-propagation probes, derived graphs on ACL sources (#214, #215)
 
 - **Why.** In a November 2026 Foundry IQ test (Search REST
