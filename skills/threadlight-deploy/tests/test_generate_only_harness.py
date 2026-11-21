@@ -183,3 +183,12 @@ def test_route_is_documented_with_its_live_findings():
     spec = (deploy.parent / "threadlight-design" / "references" / "speckit-template.md").read_text()
     for field in ("harness_toolset:", "harness_egress_allow:", "harness_egress_mode:"):
         assert field in spec
+
+
+def test_harness_pins_a_fixed_model_not_the_router_default(harness):
+    # #218 made the pilot default a model router; model router support in the
+    # Copilot harness (preview) is not documented, so the harness stays fixed.
+    params = json.loads((harness / "infra" / "main.parameters.json").read_text())["parameters"]
+    assert params["modelStrategy"]["value"] == "${AZURE_AI_MODEL_STRATEGY=fixed}"
+    bicep = (harness / "infra" / "main.bicep").read_text()
+    assert "dependsOn: [ project, modelDeployments, router ]" in bicep

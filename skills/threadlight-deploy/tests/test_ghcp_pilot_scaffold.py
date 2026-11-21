@@ -235,3 +235,84 @@ def test_postdeploy_adds_foundry_user_only_behind_an_external_gateway(tmp_path):
     roles = " ".join(external)
     assert OPENAI_USER in roles and FOUNDRY_USER in roles
     assert all("/projects/" not in c for c in external), "account scope only"
+
+
+# --- #218: router-ready, evidence-gated model configuration ---------------------
+
+ROUTER_SUBSET = (("gpt-6-luna", "2026-09-22"), ("gpt-6.1-terra", "2026-10-26"),
+                 ("gpt-6.1-sol", "2026-09-29"))
+
+
+def _pilot_biceps():
+    return {name: read(PILOT / name / "main.bicep") for name in ("infra", "infra-private")}
+
+
+def test_pilot_bicep_defaults_to_router_subset_with_own_deployments():
+    for name, bicep in _pilot_biceps().items():
+        assert re.search(r"^param modelStrategy string = 'router-subset'$", bicep, re.M), name
+        assert "@allowed([ 'router-subset', 'fixed' ])" in bicep, name
+        assert re.search(r"^param modelName string = 'gpt-6-luna'$", bicep, re.M), name
+        for model, version in ROUTER_SUBSET:
+            assert f"{{ name: '{model}', version: '{version}' }}" in bicep, (name, model)
+        assert re.search(r"^param routerMode string = 'balanced'$", bicep, re.M), name
+        # Own deployment of every subset model, one at a time, then the router with its subset.
+        assert "@batchSize(1)\nresource modelDeployments 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview'" in bicep, name
+        assert "resource router 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = if (useRouter)" in bicep, name
+        assert "routing: {" in bicep and "mode: routerMode" in bicep, name
+        assert "ownModels" in bicep, name
+        assert "output AZURE_AI_MODEL_DEPLOYMENT_NAME string = useRouter ? router.name : modelName" in bicep, name
+        assert "output AZURE_AI_MODEL_WIRE_API string = useRouter ? 'completions' : 'responses'" in bicep, name
+        assert "output AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME string = modelName" in bicep, name
+        assert "= 'gpt-5.4-mini'" not in bicep, name
+
+
+def test_pilot_bicep_compiles_router_and_fixed_shapes(tmp_path):
+    import shutil as _sh
+    import subprocess
+    import pytest
+    az = _sh.which("az")
+    if not az or subprocess.run([az, "bicep", "version"], capture_output=True).returncode != 0:
+        pytest.skip("az bicep not available")
+    for name in ("infra", "infra-private"):
+        out = tmp_path / f"{name}.json"
+        res = subprocess.run([az, "bicep", "build", "--file", str(PILOT / name / "main.bicep"),
+                              "--outfile", str(out)], capture_output=True, text=True)
+        assert res.returncode == 0, res.stderr
+        arm = json.loads(out.read_text())
+        res_list = arm["resources"]
+        items = res_list.values() if isinstance(res_list, dict) else res_list
+        router = [r for r in items if r.get("type") == "Microsoft.CognitiveServices/accounts/deployments"
+                  and "routing" in json.dumps(r.get("properties", {}))]
+        assert router and "condition" in router[0], name
+        assert arm["parameters"]["modelStrategy"]["defaultValue"] == "router-subset"
+
+
+def test_pilot_passes_model_wire_api_to_the_agent():
+    azure = read(PILOT / "azure.yaml")
+    assert "- name: AZURE_AI_MODEL_WIRE_API\n        value: ${AZURE_AI_MODEL_WIRE_API}" in azure
+    container = read(REFS / "container.py")
+    assert 'wire_api=_wire_api()' in container
+    assert 'os.getenv("AZURE_AI_MODEL_WIRE_API"' in container
+
+
+def test_pilot_parameters_let_the_evidence_gate_switch_strategy_and_model():
+    for name in ("infra", "infra-private"):
+        params = json.loads(read(PILOT / name / "main.parameters.json"))["parameters"]
+        assert params["modelStrategy"]["value"] == "${AZURE_AI_MODEL_STRATEGY=router-subset}", name
+        assert params["modelName"]["value"] == "${AZURE_AI_MODEL_NAME=gpt-6-luna}", name
+        assert params["modelVersion"]["value"] == "${AZURE_AI_MODEL_VERSION=2026-09-22}", name
+        assert params["routerCapacity"]["value"] == "${AZURE_AI_ROUTER_CAPACITY=300}", name
+
+
+def test_pilot_bicep_dedupes_own_deployments_by_model_name():
+    # Same model with a different version must not declare two deployments
+    # with one name (ARM rejects duplicate resources).
+    for name, bicep in _pilot_biceps().items():
+        assert "contains(map(routerSubset, m => m.name), modelName)" in bicep, name
+        assert "union(routerSubset, [ fixedModel ])" not in bicep, name
+
+
+def test_pilot_parameters_map_model_sku():
+    for name in ("infra", "infra-private"):
+        params = json.loads(read(PILOT / name / "main.parameters.json"))["parameters"]
+        assert params["modelSku"]["value"] == "${AZURE_AI_MODEL_SKU=GlobalStandard}", name

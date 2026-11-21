@@ -176,6 +176,20 @@ on:
         required: false
         type: boolean
         default: false
+      pilot_model_strategy:
+        description: "Pilot runtime model (#218). design = what threadlight-design wrote (default: model router subset + own deployments). router-subset / fixed force the arm via AZURE_AI_MODEL_STRATEGY."
+        type: choice
+        options: ["design", "router-subset", "fixed"]
+        default: "design"
+      pilot_model_sku:
+        description: "Pilot model deployment type. design = foundation capacity_type. DataZoneStandard uses the data-zone quota pool (EU residency)."
+        type: choice
+        options: ["design", "GlobalStandard", "DataZoneStandard"]
+        default: "design"
+      pilot_model_capacity:
+        description: "Pilot capacity units per model deployment and for the router (1 unit = 1,000 TPM). Empty = template default."
+        type: string
+        default: ""
       wire_api:
         description: "Copilot BYO provider wire API. 'responses' for direct GPT deployments (e.g. gpt-6-luna); 'completions' for model-router, because GitHub Copilot BYOK reaches model router over Chat Completions (model router itself also serves Responses)."
         required: false
@@ -507,8 +521,9 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          python -m pip install -e \
-            "${{ github.workspace }}/skills/threadlight-local-test/references/quickstart[aoai]"
+          python -m pip install \
+            -c "${{ github.workspace }}/skills/threadlight-local-test/references/quickstart/constraints.txt" \
+            -e "${{ github.workspace }}/skills/threadlight-local-test/references/quickstart[aoai]"
           # Sanity: importable + correct entry point
           python -c "import threadlight_quickstart; print('threadlight_quickstart', threadlight_quickstart.__file__)"
           python -m threadlight_quickstart --help | head -20
@@ -892,8 +907,8 @@ jobs:
           echo "----- workflow-owned --check -----"
           python -m threadlight_quickstart --check --root "$PILOT_DIR" | tee /tmp/check.out
           # Required success markers from cli.py:
-          grep -q "Stub tools wired" /tmp/check.out || {
-            echo "::error::--check did not report 'Stub tools wired'"
+          grep -q "In-memory stores wired" /tmp/check.out || {
+            echo "::error::--check did not report 'In-memory stores wired'"
             exit 1
           }
           grep -q "Update + reset round-trip works" /tmp/check.out || {
@@ -1011,9 +1026,30 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           MODEL_DEPLOYMENT: ${{ inputs.model_deployment }}
           AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
+          PILOT_MODEL_STRATEGY: ${{ inputs.pilot_model_strategy }}
+          PILOT_MODEL_SKU: ${{ inputs.pilot_model_sku }}
+          PILOT_MODEL_CAPACITY: ${{ inputs.pilot_model_capacity }}
         run: |
           set -euo pipefail
-          python3 /tmp/pack-prompt.py deploy | /tmp/run-copilot-phase.sh deploy /tmp/phase-deploy.log
+          # azd substitutes matching OS variables into infra/main.parameters.json;
+          # export only the overrides the operator chose (#218 router/fixed arms).
+          if [ "$PILOT_MODEL_STRATEGY" != "design" ]; then export AZURE_AI_MODEL_STRATEGY="$PILOT_MODEL_STRATEGY"; fi
+          if [ "$PILOT_MODEL_SKU" != "design" ]; then export AZURE_AI_MODEL_SKU="$PILOT_MODEL_SKU"; fi
+          if [ -n "$PILOT_MODEL_CAPACITY" ]; then
+            export AZURE_AI_MODEL_CAPACITY="$PILOT_MODEL_CAPACITY"
+            export AZURE_AI_ROUTER_CAPACITY="$PILOT_MODEL_CAPACITY"
+          fi
+          # The deploy agent runs its own quota preflight and may `azd env set` a
+          # different model, which wins over OS variables (run 44922721502). Pin
+          # the operator's arm in the azd env through the prompt.
+          PIN=""
+          for v in AZURE_AI_MODEL_STRATEGY AZURE_AI_MODEL_SKU AZURE_AI_MODEL_CAPACITY AZURE_AI_ROUTER_CAPACITY; do
+            if [ -n "${!v:-}" ]; then PIN="$PIN  - azd env set $v ${!v}\n"; fi
+          done
+          if [ -n "$PIN" ]; then
+            PIN="\n\nOperator-pinned pilot model (CI arm). Right after creating the azd environment, run:\n${PIN}Do not change these values or AZURE_AI_MODEL_NAME/VERSION: the operator checked quota for this arm (the Data Zone pool when AZURE_AI_MODEL_SKU is DataZoneStandard). If provisioning still fails on quota, stop and report it.\n"
+          fi
+          { python3 /tmp/pack-prompt.py deploy; printf "%b" "$PIN"; } | /tmp/run-copilot-phase.sh deploy /tmp/phase-deploy.log
         # 30 -> 45. Phase 3 is the only step that both provisions real Azure infra
         # and leaves the agent room to remediate RBAC propagation races (F-05/F-06
         # in the deploy skill: image pull inside ~60s of an AcrPull grant fails
@@ -1341,7 +1377,9 @@ jobs:
 
       - name: Teardown — azd down --force --purge
         if: always() && inputs.teardown == 'true' && inputs.mode != 'smoke-only' && inputs.mode != 'design-only'
-        timeout-minutes: 20
+        # 20 -> 40: a router-subset pilot (router + own deployments) took ~27 min to
+        # delete and purge; 20 min timed out in runs 44922721502 / 44922731759.
+        timeout-minutes: 40
         run: |
           set +e
           # Pin to the expected workshop pilot path; fall back to find only

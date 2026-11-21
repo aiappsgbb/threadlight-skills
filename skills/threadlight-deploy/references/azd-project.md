@@ -95,7 +95,7 @@ Replace these tokens in the generated and Phase 2 files:
 | `__PROJECT_NAME__` | kebab-case agent name (e.g., `tech-news-digest`) | AGENTS.md | `agent.yaml`, `azure.yaml`, `src/bot/bot.py`, `pyproject.toml` |
 | `__AGENT_DESCRIPTION__` | One-line agent description | AGENTS.md | `agent.yaml` |
 | `__AGENT_NAME__` | Display name (e.g., `Tech News Digest`) | AGENTS.md | `infra/bot/bot-service.bicep` |
-| `__MODEL_NAME__` | Model name (default: `gpt-5.4`) | AGENTS.md or default | `azure.yaml` |
+| `__MODEL_NAME__` | Model name (default: `gpt-6-luna`, the fixed baseline of the router-ready configuration) | AGENTS.md or default | `azure.yaml` |
 | `__MODEL_DEPLOYMENT_NAME__` | Model deployment name (default: same as `__MODEL_NAME__`) | AGENTS.md or default | `agent.yaml` |
 | `__MODEL_VERSION__` | Model version — **must match model name** (see lookup table below) | Azure model catalog | `azure.yaml` |
 | `__MODEL_CAPACITY__` | TPM capacity (default: `120`) | Default | `azure.yaml` |
@@ -119,6 +119,18 @@ Replace these tokens in the generated and Phase 2 files:
 
 > **Note**: Model deployment is now declared in `azure.yaml` `config.deployments` —
 > NOT in Bicep. The `azd ai agent` extension handles model creation via pre-provision hooks.
+>
+> **Router-ready default (#218).** The design default is a model router subset
+> (`gpt-6-luna`, `gpt-6.1-terra`, `gpt-6.1-sol`, Balanced) with an own deployment of
+> each subset model, evidence-gated before go-live (see `threadlight-design`
+> `references/model-selection.md`). The GHCP pilot Bicep generates exactly that
+> (`modelStrategy`, `routerSubset`; outputs `AZURE_AI_MODEL_DEPLOYMENT_NAME`,
+> `AZURE_AI_MODEL_WIRE_API`, `AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME`). On this
+> `config.deployments` path, declare each subset model as a deployment; a
+> `routing` subset on a `model-router` deployment is not documented for
+> `config.deployments`, so create the router with the Bicep or REST shape in
+> [Learn: configure model router](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/model-router-configure),
+> or keep `__MODEL_NAME__` as the fixed model until the workload evidence says otherwise.
 
 #### Model Version Lookup
 

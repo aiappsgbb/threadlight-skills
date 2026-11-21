@@ -29,6 +29,14 @@ the single source of truth for versions; do not restate them here.
 | High-volume classify / extract / route | `gpt-5.4-nano` | Cheapest/fastest of the pinned family |
 | Legacy / compat baseline | `gpt-4.1` / `gpt-4.1-mini` | When a consumer pins the 4.x surface |
 
+**Pilot default since Nov 2026 (#218): router-ready, evidence-gated.** A
+`model-router` subset (`gpt-6-luna`, `gpt-6.1-terra`, `gpt-6.1-sol`, Balanced)
+with an own deployment of each subset model, compared before go-live against
+fixed `gpt-6-luna` with `threadlight-router-bench` `workload`; when 90 % or more
+of calls land on one model, call it directly. Evidence and decision rule:
+`threadlight-design` `references/model-selection.md`. The rows above remain the
+choice for a fixed model.
+
 ### GPT-5.6 GA availability boundary (verified 2026-07-15)
 
 `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` are distinct SKUs,

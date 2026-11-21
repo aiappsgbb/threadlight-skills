@@ -356,22 +356,22 @@ For each AI capability the agent needs:
 - **Model + version** (current as of 2026-05):
   | Use case | Recommended model | Notes |
   |----------|-------------------|-------|
-  | **Default for threadlight pilots (7+ skills, 10+ tool calls)** | `gpt-5.4` (2026-03-05) | 1M context, vision-capable. Existing runtime starting point; confirm tool-call discipline on the actual artifact |
-  | Trivial chat / 1-2 step flows; lower-cost A/B candidate | `gpt-5.4-mini` (2026-03-17) | 400K context, vision-capable, lower cost. Short chains are a useful first candidate, not a tool-count limit; longer chains need explicit execution evidence before promotion |
+  | **Default for threadlight pilots** | `model-router` (2025-11-18) subset {`gpt-6-luna` 2026-09-22, `gpt-6.1-terra` 2026-10-26, `gpt-6.1-sol` 2026-09-29}, Balanced, each model also deployed; fixed baseline `gpt-6-luna` | Evidence-gated: before go-live a router-bench workload against the baseline decides; ≥ 90 % of calls on one model → call it directly (`model-selection.md`) |
+  | Fixed single model (router not justified by evidence) | `gpt-6-luna` (2026-09-22), or the model the workload showed adequate | Cheapest adequate fixed model in the Nov 2026 workload; confirm tool-call discipline on the actual artifact |
+  | Lower-cost A/B candidate from the previous default family | `gpt-5.4-mini` (2026-03-17) | 400K context, vision-capable. Longer chains need explicit execution evidence before promotion |
   | Premium reasoning + vision | `gpt-5.4-pro` (2026-03-05) | When vision feeds multi-step reasoning |
   | Bulk / cheap vision | `gpt-5.4-nano` (2026-03-17) | Returns triage, photo screening |
   | Code-related multimodal | `gpt-5.3-codex` (2026-02-24) | Diagrams → code |
   | Structured doc extract (passport, invoice, ID) | Document Intelligence v4 prebuilt | Use prebuilt when possible |
   | Custom doc extract | Document Intelligence v4 custom model | Train when prebuilt doesn't fit |
   | Recorded-audio transcription (files only) | Azure Speech-to-Text (batch) | For spoken, real-time conversations use a Foundry voice agent (`agent_type: voice`, preview, explicit user opt-in only), not this row |
-- **Capacity (TPM)**: e.g. `50K` GlobalStandard for `gpt-5.4`, `120K` for `gpt-5.4-mini`, `300K+` for high-volume
+- **Capacity (TPM)**: e.g. `300K` GlobalStandard per model deployment (GHCP returned 429 at `50K`), more for high-volume; the router has its own capacity units
 - **Reasoning effort** (for capable models): `minimal` | `low` | `medium` | `high` (default `medium`)
 
 > **Do NOT use `GPT-4o` or `GPT-4o Vision`** — both are legacy as of May 2026.
-> The `gpt-5.4` family supersedes them in every dimension (context, latency, vision
-> quality, cost). If a SPEC carries forward a `GPT-4o` reference from an older
-> template, that's a bug — sweep to **`gpt-5.4`** (default for pilots) or pick from
-> the table above based on the capability profile.
+> If a SPEC carries forward a `GPT-4o` reference from an older template, that's a
+> bug — sweep to the router-ready default above or pick from the table based on
+> the capability profile.
 
 > **Choosing the model / capacity / region behind this table** — see
 > [`model-selection.md`](model-selection.md) in the design skill's references:
