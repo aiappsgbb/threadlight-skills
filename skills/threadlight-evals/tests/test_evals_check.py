@@ -12,6 +12,9 @@ import evals_check as ec  # noqa: E402
 FIXTURES = os.path.join(SKILL, "references", "fixtures")
 SCHEDULED = os.path.join(FIXTURES, "sample-scheduled")
 MANUAL = os.path.join(FIXTURES, "sample-manual")
+LEGACY = os.path.join(FIXTURES, "sample-legacy-ce")
+SKILL_MD = os.path.join(SKILL, "SKILL.md")
+WIRING_MD = os.path.join(SKILL, "references", "foundry-ce-wiring.md")
 
 
 class ScheduledFixtureTests(unittest.TestCase):
@@ -122,6 +125,79 @@ class ManifestShapeTests(unittest.TestCase):
     def test_gate_exit_code_for_scheduled(self):
         rc = ec.main(["--target", SCHEDULED, "--gate", "--freshness-days", "3650"])
         self.assertEqual(rc, 0)
+
+
+class EvaluationRulesTests(unittest.TestCase):
+    """EVAL-101 follows Foundry evaluation rules, not the classic
+    create_agent_evaluation API absent from azure-ai-projects 2.x (#207)."""
+
+    def test_rules_fixture_passes_eval_101_with_rules_evidence(self):
+        caps = ec.evaluate(SCHEDULED, freshness_days=3650)
+        online = caps["online_eval_wired"]
+        self.assertEqual(online["status"], "pass")
+        self.assertIn("evaluation_rules", online["evidence"])
+        self.assertFalse(online.get("legacy"))
+        self.assertEqual(caps["schedule_present"]["status"], "pass")
+        with open(os.path.join(SCHEDULED, "src", "continuous_eval.py"), encoding="utf-8") as fh:
+            self.assertNotIn("create_agent_evaluation", fh.read())
+
+    def test_legacy_only_fixture_is_flagged_legacy(self):
+        caps = ec.evaluate(LEGACY, freshness_days=3650)
+        online = caps["online_eval_wired"]
+        self.assertNotEqual(online["status"], "pass")
+        self.assertTrue(online.get("legacy"))
+        self.assertIn("legacy", online["hint"])
+        self.assertIn("evaluation_rules", online["hint"])
+
+    def test_legacy_flag_accepts_classic_wiring_and_keeps_the_label(self):
+        caps = ec.evaluate(LEGACY, freshness_days=3650, accept_legacy=True)
+        online = caps["online_eval_wired"]
+        self.assertEqual(online["status"], "pass")
+        self.assertTrue(online.get("legacy"))
+        rc = ec.main(["--target", LEGACY, "--json", "--freshness-days", "3650",
+                      "--accept-legacy-online-eval"])
+        self.assertEqual(rc, 0)
+
+    def test_each_rule_action_counts(self):
+        import tempfile
+        for action in ("ContinuousEvaluationRuleAction", "TraceEvaluationRuleAction",
+                       "DatasetEvaluationRuleAction"):
+            with tempfile.TemporaryDirectory() as tmp:
+                os.makedirs(os.path.join(tmp, "src"))
+                with open(os.path.join(tmp, "src", "rules.py"), "w", encoding="utf-8") as fh:
+                    fh.write("project.evaluation_rules.create_or_update(id='r', evaluation_rule="
+                             f"EvaluationRule(action={action}(eval_id=e), enabled=True))\n")
+                caps = ec.evaluate(tmp, freshness_days=3650)
+                self.assertEqual(caps["online_eval_wired"]["status"], "pass", action)
+                self.assertEqual(caps["schedule_present"]["status"], "pass", action)
+
+    def test_azure_eval_yaml_rule_declaration_counts(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "evals"))
+            with open(os.path.join(tmp, "evals", "azure.eval.yaml"), "w", encoding="utf-8") as fh:
+                fh.write("evals:\n  - name: prod-traces\n    source: traces\n    rule:\n"
+                         "      action: TraceEvaluationRuleAction\n      schedule: hourly\n")
+            caps = ec.evaluate(tmp, freshness_days=3650)
+            self.assertEqual(caps["online_eval_wired"]["status"], "pass")
+
+    def test_docs_no_longer_claim_rules_reject_hosted_agents(self):
+        for path in (SKILL_MD, WIRING_MD):
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertNotIn("reject hosted", text, path)
+            self.assertIn("evaluation_rules", text, path)
+        with open(WIRING_MD, encoding="utf-8") as fh:
+            wiring = fh.read()
+        for needle in ("TraceEvaluationRuleAction", "ContinuousEvaluationRuleAction",
+                       "max_hourly_runs", "max_traces", "enabled = False", "external agent"):
+            self.assertIn(needle, wiring)
+
+    def test_teardown_disables_rules_in_fixture(self):
+        with open(os.path.join(SCHEDULED, "src", "continuous_eval.py"), encoding="utf-8") as fh:
+            code = fh.read()
+        self.assertIn("def disable_rules", code)
+        self.assertIn("enabled = False", code)
 
 
 if __name__ == "__main__":

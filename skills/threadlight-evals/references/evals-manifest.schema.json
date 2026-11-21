@@ -106,7 +106,8 @@
         "check_id": {"type": "string"},
         "status": {"enum": ["pass", "must-fix", "should-fix", "not-verified", "not-applicable"]},
         "evidence": {"type": ["string", "null"]},
-        "hint": {"type": ["string", "null"]}
+        "hint": {"type": ["string", "null"]},
+        "legacy": {"type": "boolean", "description": "EVAL-101 wiring uses the classic create_agent_evaluation API"}
       }
     }
   }

@@ -7,6 +7,31 @@ field.
 
 ## [Unreleased]
 
+### 2.72.0: threadlight-evals: Foundry evaluation rules replace create_agent_evaluation (#207)
+
+- **Why.** EVAL-101 rewarded `client.evaluations.create_agent_evaluation(...)`. That
+  is the classic-portal API, and `azure-ai-projects` 2.11.0 does not have it. The
+  skill banners also said GA evaluation rules reject hosted agents.
+  **Tested, Nov 2026:** an hourly trace rule on a hosted agent provisioned
+  `SUCCEEDED` and scored 7 traces. A continuous rule on a prompt agent stopped at
+  `max_hourly_runs`.
+- **Checker (`evals_check.py`).** EVAL-101 and EVAL-005 now pass on
+  `evaluation_rules.create_or_update` with a `ContinuousEvaluationRuleAction`,
+  `TraceEvaluationRuleAction` or `DatasetEvaluationRuleAction`, or on a rule action
+  declared in `azure.eval.yaml`. `create_agent_evaluation` alone is reported with
+  `legacy: true` and does not pass; `--accept-legacy-online-eval` lets it pass with
+  the label kept. The manifest schema gains the optional `legacy` field.
+- **Docs.** `foundry-ce-wiring.md` and SKILL Plan A were rewritten to cover: which
+  rule fits which agent, the keyless snippet, identity, cost caps (`max_traces`,
+  `max_hourly_runs`), the external-agent limit, and teardown, which disables rules
+  and reads them back. The "rules reject hosted agents" claim is removed from the
+  four gate banners, README, THREADLIGHT, agent-operations, the shared package rule
+  and pillar 6. The 2.19.4 error is kept there as history. Continuous evaluation
+  stays optional in the package.
+- **Fixtures.** `sample-scheduled` now wires rules and has `disable_rules()`. The new
+  `sample-legacy-ce` keeps the classic call as the legacy case. The cicd release
+  fixture uses a rule marker.
+
 ### 2.71.0: resilience posture checks for long-running hosted agents (#225)
 
 - **Why.** The readiness assessment did not tell foreground, background-only and
