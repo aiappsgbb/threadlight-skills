@@ -65,6 +65,17 @@ services:
         cpu: "1"
         memory: 2Gi
 
+hooks:
+  # Grants the project managed identity and the deploying identity the
+  # data-plane roles that `azd ai eval`, evaluation rules and Foundry Insights
+  # need (role IDs, idempotent). Copy ../hooks/postprovision.sh to
+  # hooks/postprovision.sh in the project.
+  postprovision:
+    posix:
+      shell: sh
+      run: sh hooks/postprovision.sh
+      continueOnError: false
+
 infra:
   # Extension-backed, bicep-less provisioning from the services graph.
   # This is the provider used by the current official Hosted Agent samples.

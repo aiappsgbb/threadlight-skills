@@ -7,6 +7,28 @@ field.
 
 ## [Unreleased]
 
+### 2.60.0: MAF template grants evaluation data-plane roles after provision (#212)
+
+- **Why.** After `azd provision` with `infra.provider: microsoft.foundry` the
+  Foundry project managed identity had only AcrPull and the deploying user had no
+  Foundry data-plane role. **Tested, Nov 2026:** `azd ai eval generate --evaluator`
+  failed with HTTP 401 (`AIServices/assets/write`) on a fresh project. Rubric
+  generation, evaluation rules and app-only Insights runs need roles that no
+  step granted.
+- **New** `hosted-agent/maf/references/hooks/postprovision.sh`, wired as
+  `postprovision` in the MAF `azure.yaml`. It assigns roles **by role ID** and
+  skips any that already exist. The project MI gets Foundry User on the account,
+  Cognitive Services OpenAI User on the judge account, and Monitoring Reader on
+  App Insights and Log Analytics (Privileged Monitoring Data Reader when
+  `THREADLIGHT_PROTECTED_GENAI_CONTENT=true`). The deploying identity gets
+  Foundry User on the account. The MAF README documents the table with Learn sources.
+- **Live (Nov 2026, internal subscription):** a fresh `azd up` of the template
+  (remote build) followed by `azd ai eval generate --evaluator` generated the
+  rubric with no manual RBAC. Re-running the hook created nothing.
+- **Tests.** `skills/threadlight-deploy/tests/test_maf_data_plane_roles_hook.py`
+  (fake `az`): documented roles and scopes, IDs only, no-op re-run, protected
+  content, judge account, pipeline principal, fail-closed without a project identity.
+
 ### 2.59.0: MAF and governance runtime on the GA AgentServer line (#226)
 
 - **Why.** The MAF hosted-agent template pinned the August AgentServer betas

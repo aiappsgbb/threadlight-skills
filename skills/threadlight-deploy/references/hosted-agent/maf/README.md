@@ -576,6 +576,7 @@ LangGraph state-graph requirements).
 | [`references/python/pyproject.toml`](references/python/pyproject.toml) | § Dependencies (pyproject.toml) |
 | [`references/docker/Dockerfile`](references/docker/Dockerfile) | § Dependencies (pyproject.toml) → Dockerfile |
 | [`references/yaml/azure.yaml`](references/yaml/azure.yaml) | § azure.yaml (unified hosted-agent configuration) — the single source of truth for hosted-agent config, replacing the old `agent.yaml` + `agent.manifest.yaml` two-file contract |
+| [`references/hooks/postprovision.sh`](references/hooks/postprovision.sh) | § Identity & RBAC → Evaluation, evaluation rules and Insights: project managed identity roles |
 | [`references/python/version_rollout.py`](references/python/version_rollout.py) | § Version rollout patterns (blue-green / canary / rollback) |
 | [`references/python/deploy_preflight.py`](references/python/deploy_preflight.py) | § Deployment preflight |
 | [`references/python/private_bootstrap.py`](references/python/private_bootstrap.py) | § Private BASIC consumer: offline staging and build/manifest inventory |
@@ -1557,6 +1558,40 @@ default:
 > at the project scope is the recommended assignment for agent creators
 > in this scenario — it includes both the data-plane permissions and
 > the ability to assign the `Foundry User` role.
+
+### Evaluation, evaluation rules and Insights: project managed identity roles
+
+The agent identity above is not the identity that runs evaluations. Rubric
+generation, evaluation rules and application-only Insights runs execute as the
+**Foundry project managed identity**, and `azd ai eval` runs as **your** identity.
+A fresh `azd provision` with `infra.provider: microsoft.foundry` grants the project
+identity only AcrPull and gives you no Foundry data-plane role.
+
+**Tested, Nov 2026** (fresh `azd up`, `microsoft.foundry` 1.2.0,
+`azure.ai.evaluations` 1.0.0-beta.2): without extra roles
+`azd ai eval generate --evaluator` failed with HTTP 401 (`lacks the required data
+action Microsoft.CognitiveServices/accounts/AIServices/assets/write`). With the
+hook below wired as `postprovision`, the same command on a fresh `azd up`
+generated and downloaded the rubric evaluator with no manual RBAC.
+
+[`references/hooks/postprovision.sh`](references/hooks/postprovision.sh) (wired in
+[`references/yaml/azure.yaml`](references/yaml/azure.yaml)) assigns, **by role
+definition ID** and idempotently (an existing assignment is skipped):
+
+| Principal | Role (ID) | Scope | Documented need |
+|---|---|---|---|
+| Project MI | Foundry User (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) | Foundry account | Evaluation rules; model inference needs account scope ([evaluation permissions](https://learn.microsoft.com/azure/foundry/observability/how-to/evaluation-permissions)) |
+| Project MI | Cognitive Services OpenAI User (`5e0bd9bd-7b93-4f28-af87-19fc36ad61bd`) | Account hosting the judge/analysis model (`THREADLIGHT_JUDGE_ACCOUNT_ID`, default this account) | App-only Insights model access ([Insights](https://learn.microsoft.com/azure/foundry/observability/how-to/agent-insights)) |
+| Project MI | Monitoring Reader (`43d0d8ad-25c7-4714-9337-8ba259a9fe05`), or Privileged Monitoring Data Reader (`dbc9c667-e97f-4491-aee6-90b9cf960190`) when `THREADLIGHT_PROTECTED_GENAI_CONTENT=true` | Connected App Insights and its Log Analytics workspace | Insights telemetry access; trace evaluation reads the App Insights resource |
+| Deploying identity (signed-in user, or `AZURE_PRINCIPAL_ID` + `AZURE_PRINCIPAL_TYPE`) | Foundry User | Foundry account | `azd ai eval` ([evaluation permissions](https://learn.microsoft.com/azure/foundry/observability/how-to/evaluation-permissions)); skip with `THREADLIGHT_SKIP_DEPLOYER_ROLE=true` |
+
+Never assign by display name: `--role "Azure AI User"` now fails with
+`Role 'Azure AI User' doesn't exist` after the rename to Foundry User; the IDs did
+not change. The hook reads `AZURE_AI_PROJECT_ID`,
+`AZURE_APPLICATION_INSIGHTS_RESOURCE_ID` and
+`AZURE_LOG_ANALYTICS_WORKSPACE_RESOURCE_ID`, which the provider writes to the azd
+environment. The deploying identity needs `Microsoft.Authorization/roleAssignments/write`
+on those scopes. Allow a few minutes for propagation before the first run.
 
 ---
 
