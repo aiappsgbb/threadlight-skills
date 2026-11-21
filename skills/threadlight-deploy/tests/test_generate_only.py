@@ -740,19 +740,3 @@ def test_agent_written_harness_without_user_provenance_generates_the_hosted_agen
     services = _load_yaml(project / "azure.yaml")["services"]
     assert any(s.get("kind") == "hosted" for s in services.values())
 
-
-def test_user_opted_in_harness_is_refused_until_the_harness_route_ships(tmp_path: Path):
-    project = tmp_path / "p"
-    shutil.copytree(FIXTURE, project)
-    spec = project / "specs" / "SPEC.md"
-    opt_in = ("agent_type: harness\nharness_opt_in_source: user\n"
-              "harness_opt_in_evidence: \"User: run it on the Copilot harness, preview accepted\"\n"
-              "preview_acknowledged: true\nharness_fit:\n  citadel_model_path_required: false\n"
-              "  acs_in_process_pep_required: false\n  foundry_memory_required: false\n"
-              "  voice_frontend_required: false\n  region: swedencentral\n  consequential_write_seam: none\n")
-    spec.write_text(spec.read_text().replace("agent_type: hosted\n", opt_in, 1), encoding="utf-8")
-    result = _run([str(GENERATOR), "--project", str(project)], tmp_path)
-    out = result.stdout + result.stderr
-    assert result.returncode == 4, out
-    assert "use-tools-skills-copilot-harness" in out
-    assert not (project / "azure.yaml").exists()

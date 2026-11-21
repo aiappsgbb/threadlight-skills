@@ -18,8 +18,8 @@ generator refuses to run if any of them already exists. `agent_type: prompt`
 or `agent_type: voice` is refused with exit 4, because the scaffold is hosted-only.
 `agent_type: harness` is resolved by `skills/_shared/agent_type_policy.py`: without
 the user's opt-in, a complete `harness_fit` record and no disqualifier it is
-generated as the hosted agent and the reasons are printed; an opted-in harness is
-refused with exit 4 until the harness route ships.
+generated as the hosted agent and the reasons are printed; an opted-in harness gets the
+container-less harness route below.
 
 An opted-in **voice front-end** is the exception that stays hosted: with
 `voice_frontend: hosted-voice` and the user opt-in fields (`voice_opt_in_source: user`,
@@ -44,11 +44,17 @@ preview) follows item 2d of [`foundry-only-agents.md`](../../_shared/foundry-onl
 `runtime-policy.json`: it stays a harness agent only with `harness_opt_in_source: user`,
 `harness_opt_in_evidence`, `preview_acknowledged: true` and a `harness_fit` record that hits no
 `harness_disqualifiers` entry. Otherwise deploy the hosted agent and report the reasons
-(`generate_only` prints them and generates hosted). `generate_only` has no harness route yet and
-refuses an opted-in harness with exit 4: create the prompt agent as documented on
-[Microsoft Learn](https://learn.microsoft.com/azure/foundry/agents/how-to/use-tools-skills-copilot-harness).
-Record the package with `agent.kind: foundry-harness`, `harness_type`, the opt-in fields, the fit
-record, the `egress_policy` record and an executed eval run.
+(`generate_only` prints them and generates hosted). An opted-in harness gets a **container-less**
+azd project, documented in [`harness/README.md`](harness/README.md): a prompt agent with
+`harness.type: microsoft_copilot_preview` (`project: src/agent` only anchors `skills/`), one
+`azure.ai.skill` service per skill pinned by `azd deploy --all`, the harness toolset off by default
+except `filesystem_read` (SPEC `harness_toolset` turns on shell, web, subagents or file writes), the
+SPEC tools as one MCP tool with every write needing approval, an RAI egress policy (Audit first,
+telemetry and Agent 365 hosts always allowed) attached as `rai_config`, and hooks that require
+`AZD_ALPHA_ENABLE_AGENTS_MANAGED_HARNESS=true` and grant Foundry User on the project to the agent
+identity. `--profile private`, governance (SPEC 11a) and `consequential_write_seam: function-tool`
+are refused for this route. The package manifest records `agent.kind: foundry-harness`, the opt-in
+fields, the fit record and the `egress_policy` record.
 
 #### Ownership between threadlight-design and threadlight-deploy
 

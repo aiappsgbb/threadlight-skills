@@ -142,7 +142,10 @@ from skills._shared.spec_tool_contracts import (  # noqa: E402,F401 - section 6 
     SpecToolsError, _consequences, _section, _strip_ticks, _tables, _tool_subsections,
 )
 from skills._shared.spec_tool_contracts import tools as _shared_tools  # noqa: E402
-from skills._shared.agent_type_policy import resolve as _resolve_agent_type  # noqa: E402
+from skills._shared.agent_type_policy import resolve as _resolve_agent_type, spec_mapping  # noqa: E402
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+import harness_route  # noqa: E402
 
 
 def tools(spec: str) -> list[dict[str, Any]]:
@@ -1531,6 +1534,7 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
     spec = spec_path.read_text(encoding="utf-8")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     kind = agent_type(spec)
+    harness: dict[str, Any] | None = None
     if kind == "harness":
         resolved = _resolve_agent_type(spec)
         if resolved["agent_type"] != "harness":
@@ -1538,12 +1542,17 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
                   "item 2d): " + "; ".join(resolved["reasons"]), file=sys.stderr)
             kind = resolved["agent_type"]
         else:
-            raise PromptAgentRefused(
-                "SPEC section 11e sets an opted-in agent_type: harness (Foundry Copilot harness, preview). "
-                "generate_only has no harness route yet; it produces a Foundry HOSTED agent only. Create the "
-                "harness prompt agent as documented at https://learn.microsoft.com/azure/foundry/agents/how-to/"
-                "use-tools-skills-copilot-harness, or set agent_type: hosted."
-            )
+            if profile != "fast-poc":
+                raise WorkspaceError("--profile private is not available for agent_type: harness (no BYOM through "
+                                     "the model gateway, no private networking validated for the harness)")
+            fit = spec_mapping(spec, "harness_fit") or {}
+            if (fit.get("consequential_write_seam") or "").lower() == "function-tool":
+                raise PromptAgentRefused(
+                    "SPEC section 11e harness_fit.consequential_write_seam: function-tool. Governed writes through "
+                    "client function tools are a separate route (threadlight-govern, #230) that this generate_only "
+                    "does not emit; use governed-mcp (MCP writes with require_approval) or agent_type: hosted.")
+            harness = {"fit": fit, **harness_route.harness_settings(_spec_scalar, spec, WorkspaceError)}
+            kind = "hosted"
     if kind == "prompt":
         raise PromptAgentRefused(
             "SPEC section 11e sets agent_type: prompt. generate_only uses the GHCP pilot scaffold, "
@@ -1560,6 +1569,8 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
     if kind != "hosted":
         raise WorkspaceError(f"SPEC section 11e agent_type must be hosted, prompt, voice or harness, got {kind!r}")
     voice, voice_ignored = voice_frontend(spec)
+    if harness and voice:
+        raise WorkspaceError("voice_frontend: hosted-voice needs the GHCP hosted agent; it cannot front a harness agent")
     if voice_ignored:
         print(f"generate_only: {voice_ignored}", file=sys.stderr)
     builtin_tools, builtin_ignored = copilot_builtin_tools(spec)
@@ -1606,6 +1617,15 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
     governance = governance_selection(project_dir)
     recommends_only = recommend_only(project_dir, plan, governance)
     gateway_write = governed_write(project_dir, plan, governance)
+    if harness:
+        if governance:
+            raise PromptAgentRefused(
+                "SPEC section 11a selects governance, but ACS/Agent Hooks do not run inside the Copilot harness. "
+                "Governed harness writes are a separate route (#230); use agent_type: hosted for governed pilots.")
+        if any(t.get("kind") == "write" for t in plan) and \
+                (harness["fit"].get("consequential_write_seam") or "none").lower() == "none":
+            raise WorkspaceError("SPEC section 6 declares write tools but harness_fit.consequential_write_seam is "
+                                 "none; answer governed-mcp (MCP writes with require_approval) or remove the writes")
     # The bound write of a governed-write pilot is routed to the governed tool
     # gateway; the mock MCP server, its tests and the tool harness never serve it.
     served = [t for t in plan if t["name"] != gateway_write]
@@ -1720,6 +1740,11 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
     }
     if private:
         text_outputs.update(_private_outputs())
+    if harness:
+        text_outputs.update(_harness_outputs(project, agent, description, instructions, skills, served, harness,
+                                             params, postdeploy, cfg, spec))
+        for rel in HARNESS_DROPPED:
+            text_outputs.pop(rel, None)
     if adoption:
         text_outputs["src/mcp/threadlight_mcp_entry.py"] = render_mcp_entry(project, adoption["tools"], standins)
     else:
@@ -1727,6 +1752,8 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
     hooks_text = text_outputs["hooks/postdeploy.sh"]
     text_outputs["hooks/postdeploy.sh"] = hooks_text.replace("__AGENT_NAME__", agent)
     binary_outputs = {"infra/main.bicep": (infra_src / "main.bicep").read_bytes()}
+    if harness:
+        binary_outputs = {}
     stale_private = [] if private else [rel for rel in _private_outputs()
                                         if _is_stale_private(project_dir / rel, rel)]
 
@@ -1797,12 +1824,57 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
         dest.write_bytes(content)
     (project_dir / "hooks" / "postdeploy.sh").chmod(0o755)
     (project_dir / "hooks" / "postprovision.sh").chmod(0o755)
+    if harness:
+        (project_dir / "hooks" / "preflight.sh").chmod(0o755)
     (project_dir / "evals" / "run_evals.py").chmod(0o755)
     (project_dir / "scripts" / "record_deploy_evidence.py").chmod(0o755)
     for rel in text_outputs:
         if private and rel.endswith((".sh", "vnet_run.py")):
             (project_dir / rel).chmod(0o755)
     return sorted([*text_outputs, *binary_outputs])
+
+
+HARNESS_DROPPED = ("src/agent/container.py", "src/agent/Dockerfile", "src/agent/.dockerignore",
+                   "src/agent/pyproject.toml", "src/agent/requirements.lock", "src/agent/copilot-instructions.md",
+                   "src/agent/tests/test_agent_package.py")
+
+
+def _harness_outputs(project: str, agent: str, description: str, instructions: str, skills: list[str],
+                     served: list[dict[str, Any]], harness: dict[str, Any], params: dict[str, Any],
+                     postdeploy: dict[str, Any], cfg: dict[str, Any], spec: str) -> dict[str, str]:
+    """Container-less Copilot harness project (#229): replaces the hosted agent packaging."""
+    ref = harness_route.HARNESS_REF
+    package = build_foundry_manifest(agent, cfg)
+    package["agent"].update({
+        "kind": "foundry-harness",
+        "harness_type": harness_route.HARNESS_TYPE,
+        "harness_opt_in_source": "user",
+        "harness_opt_in_evidence": _spec_scalar(spec, "harness_opt_in_evidence"),
+        "preview_acknowledged": True,
+        "harness_fit": harness["fit"],
+        "egress_policy": {"rai_policy_id": None, "mode": harness["egress_mode"], "default_action": "Deny",
+                          "allow_hosts": [*harness_route.TELEMETRY_HOSTS, *harness["egress_allow"]]},
+    })
+    postdeploy.update({"agent_kind": "foundry-harness", "expected_skills": skills})
+    postdeploy["gaps"] += [
+        "Copilot harness (preview): evals/run_evals.py still sends the hosted Invocations body; harness evals need "
+        "the Responses template input before the Foundry eval run can target this agent",
+        f"egress policy starts in {harness['egress_mode']}: confirm traces in App Insights after switching to Enforced",
+        "ACS/Agent Hooks do not run inside the harness: hosted LOCAL-14/CTK governance evidence does not apply",
+    ]
+    return {
+        "azure.yaml": harness_route.render_azure_yaml(project, agent, description, instructions, skills, served,
+                                                      harness, MARKER, WorkspaceError),
+        "infra/main.bicep": harness_route.render_main_bicep((PILOT / "infra" / "main.bicep").read_text(encoding="utf-8")),
+        "infra/harness-egress.bicep": (ref / "egress.bicep").read_text(encoding="utf-8"),
+        "infra/main.parameters.json": json.dumps(harness_route.parameters(params, harness), indent=2) + "\n",
+        "hooks/preflight.sh": (ref / "preflight.sh").read_text(encoding="utf-8"),
+        "hooks/postdeploy.sh": (ref / "postdeploy.sh").read_text(encoding="utf-8"),
+        "src/agent/tests/test_harness_definition.py": harness_route.render_agent_tests(agent, skills, harness, served),
+        "specs/foundry-package-manifest.json": json.dumps(package, indent=2) + "\n",
+        "tests/postdeploy-manifest.json": json.dumps(postdeploy, indent=2) + "\n",
+        "DEPLOY.md": harness_route.render_deploy_md(project, agent, skills, harness),
+    }
 
 
 def _private_outputs() -> dict[str, str]:

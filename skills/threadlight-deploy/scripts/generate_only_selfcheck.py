@@ -102,9 +102,10 @@ def check_schema(project: Path) -> dict[str, str]:
     # A managed `kind: voice` wrapper is codeless: the official Hosted Voice sample
     # declares no `project`, which the vendored azd core schema still requires for
     # every azure.ai.agent service. Accept exactly that gap for voice wrappers.
+    # A Copilot harness agent is a codeless prompt agent too (Learn azd example has no `project`).
     wrappers = {name for name, svc in ((doc or {}).get("services") or {}).items()
                 if isinstance(svc, dict) and svc.get("host") == "azure.ai.agent"
-                and svc.get("kind") in VOICE_KINDS}
+                and (svc.get("kind") in VOICE_KINDS or _is_harness(svc))}
     errors = [e for e in errors if not (len(e.path) == 2 and list(e.path)[0] == "services"
                                          and list(e.path)[1] in wrappers
                                          and e.message == "'project' is a required property")]
@@ -143,6 +144,49 @@ def _voice_wrapper_problems(key: str, svc: dict, hosted: dict[str, dict]) -> lis
     return problems
 
 
+HARNESS_TYPES = ("microsoft_copilot_preview", "github_copilot_preview")
+HARNESS_FORBIDDEN = ("docker", "language", "protocols", "container", "environmentVariables", "image")
+HARNESS_TELEMETRY_HOSTS = ("*.in.applicationinsights.azure.com", "*.livediagnostics.monitor.azure.com",
+                           "settings.sdk.monitor.azure.com", "agent365.svc.cloud.microsoft")
+
+
+def _is_harness(svc: dict) -> bool:
+    return svc.get("kind") == "prompt" and (svc.get("harness") or {}).get("type") in HARNESS_TYPES
+
+
+def check_harness(project: Path, doc: dict, agents: dict[str, dict]) -> dict[str, str]:
+    """Foundry Copilot harness route (#229): codeless prompt agent, skills pinned, egress policy attached."""
+    problems = []
+    services = doc.get("services") or {}
+    if len(agents) != 1:
+        problems.append(f"expected exactly one azure.ai.agent service, found {len(agents)}")
+    for key, svc in agents.items():
+        problems += [f"{key}: {field} is hosted-only" for field in HARNESS_FORBIDDEN if field in svc]
+        if svc.get("skills") and svc.get("project") != "src/agent":
+            problems.append(f"{key}: project must be src/agent so azd resolves the local skills/ versions")
+        toolsets = [t for t in svc.get("tools") or [] if t.get("type") in (
+            "microsoft_copilot_toolset_preview", "github_copilot_toolset_preview")]
+        if len(toolsets) != 1:
+            problems.append(f"{key}: exactly one Copilot toolset block expected, found {len(toolsets)}")
+        elif (toolsets[0].get("defaultConfig") or {}).get("enabled") is not False:
+            problems.append(f"{key}: Copilot toolset must disable harness tools by default")
+        for name in svc.get("skills") or []:
+            skill = services.get(name) if isinstance(name, str) else None
+            if not skill or skill.get("host") != "azure.ai.skill" or not (project / str(skill.get("archive", "")) / "SKILL.md").is_file():
+                problems.append(f"{key}: skill {name!r} must be an azure.ai.skill service with SKILL.md at its archive")
+        if not any(p.get("type") == "rai_policy" for p in svc.get("policies") or []):
+            problems.append(f"{key}: rai_policy (egress) must be attached")
+    egress = project / "infra" / "harness-egress.bicep"
+    text = egress.read_text(encoding="utf-8") if egress.is_file() else ""
+    problems += [f"infra/harness-egress.bicep must allow {h}" for h in HARNESS_TELEMETRY_HOSTS if f"'{h}'" not in text]
+    for rel in ("hooks/preflight.sh", "hooks/postdeploy.sh", "infra/main.bicep", "src/mcp/server.py", "src/mcp/Dockerfile"):
+        if not (project / rel).is_file():
+            problems.append(f"{rel} missing")
+    if problems:
+        return check("harness-agent-definition", "fail", "; ".join(problems))
+    return check("harness-agent-definition", "pass", f"Copilot harness prompt agent {', '.join(agents)}")
+
+
 def check_hosted(project: Path) -> dict[str, str]:
     problems = []
     try:
@@ -150,6 +194,10 @@ def check_hosted(project: Path) -> dict[str, str]:
     except Exception as exc:  # noqa: BLE001
         return check("hosted-agent-definition", "fail", str(exc))
     services = doc.get("services") or {}
+    harness_agents = {k: v for k, v in services.items() if isinstance(v, dict)
+                      and v.get("host") == "azure.ai.agent" and _is_harness(v)}
+    if harness_agents:
+        return check_harness(project, doc, harness_agents)
     every = {k: v for k, v in services.items() if isinstance(v, dict) and v.get("host") == "azure.ai.agent"}
     wrappers = {k: v for k, v in every.items() if v.get("kind") in VOICE_KINDS}
     agents = {k: v for k, v in every.items() if k not in wrappers}
@@ -276,6 +324,8 @@ def check_docker(project: Path, skip: bool, require: bool) -> dict[str, str]:
         return check("docker-build", "fail" if require else "skipped", "docker CLI not on PATH")
     builds = [("agent", project / "src" / "agent", project / "src" / "agent" / "Dockerfile"),
               ("mcp", project, project / "src" / "mcp" / "Dockerfile")]
+    # A Copilot harness project has no agent container (check_harness requires none).
+    builds = [b for b in builds if b[0] != "agent" or b[2].is_file()]
     details = []
     with tempfile.TemporaryDirectory() as config_dir:
         # Empty DOCKER_CONFIG: no credential helper, no stored registry auth.
