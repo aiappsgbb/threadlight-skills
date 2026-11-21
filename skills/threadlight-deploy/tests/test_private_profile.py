@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from test_generate_only import GENERATOR, PILOT, _run
+from test_generate_only import DEPLOY, GENERATOR, PILOT, _run
 from test_live_deploy_fixes import CONTAINER, FIXTURES, _pytest
 
 PRIVATE_INFRA = PILOT / "infra-private"
@@ -99,6 +99,19 @@ def test_gateway_url_keeps_the_openai_v1_suffix(private):
     apim = (private / "infra" / "modules" / "apim-gateway.bicep").read_text()
     assert re.search(r"output gatewayUrl string = '.*/models/openai/v1'", apim)
     assert "serviceUrl: projectEndpoint" in apim
+
+
+def test_gateway_route_is_documented_for_copilot_sdk_2(private):
+    # #203, live 2026-11-21 through APIM with microsoft-copilot-sdk 2.0.1: openai + /openai/v1
+    # (the template) and azure without api_version both POST <prefix>/openai/v1/responses (200);
+    # azure WITH api_version uses <prefix>/openai/responses?api-version=... and the project
+    # route answers 400 "API version not supported".
+    apim = (private / "infra" / "modules" / "apim-gateway.bicep").read_text()
+    assert "microsoft-copilot-sdk 2.0.1" in apim and "/models/openai/v1/responses" in apim
+    doc = (DEPLOY / "references" / "private-profile.md").read_text()
+    for token in ("microsoft-copilot-sdk 2.0.1", "/models/openai/v1/responses",
+                  "/openai/responses?api-version=", "API version not supported", "type=\"openai\""):
+        assert token in doc, token
 
 
 def test_operator_host_may_grant_every_role_the_hooks_grant(private):
