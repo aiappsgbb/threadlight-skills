@@ -288,6 +288,18 @@ Upstream evaluators that emit 1–5 floats are binarized at a declared cut befor
 aggregation — never gate on the mean. Full recipe, including the mapping table:
 `references/judge-calibration.md`.
 
+## Question types — relational eval sets
+
+Rows may carry `question_type` (`lookup`, `multi_hop`, `negation`,
+`aggregation`, `thematic`). When the process involves relational questions, at
+least 30% of the set must be `multi_hop`, `negation` or `aggregation` with
+ground truth, and results are scored per type.
+`scripts/question_types.py --dataset <rows> [--results <run>]` checks the mix
+and scores per type with the entity rule (every expected entity, no wrong
+entity of the same type). Untagged datasets of non-relational processes are
+`not-applicable`, so the default path is unchanged. Row shape:
+`references/dataset-shape.md`.
+
 ## How `production-ready` consumes this
 
 `threadlight-production-ready` pillar 6 reads `specs/evals-manifest.json`.
@@ -321,6 +333,7 @@ Use both together:
 
 ```
 scripts/evals_check.py                 # stdlib validator → evals-manifest.json
+scripts/question_types.py              # question-type mix + per-type scoring
 references/foundry-ce-wiring.md        # Plan A keyless CE wiring snippet
 references/ab-comparison.md            # champion-challenger recipe + gates
 references/judge-calibration.md        # LLM-as-judge review criteria + 1-5 mapping
@@ -329,6 +342,7 @@ references/evals-manifest.schema.json  # manifest contract
 references/fixtures/sample-scheduled/  # passing scheduled/continuous pilot
 references/fixtures/sample-manual/     # manual-only pilot with must-fix gaps
 tests/test_evals_check.py              # stdlib unittest (no pytest)
+tests/test_question_types.py           # pytest
 ```
 
 ## Tests
@@ -336,6 +350,7 @@ tests/test_evals_check.py              # stdlib unittest (no pytest)
 ```bash
 cd skills/threadlight-evals
 python3 -m unittest discover -s tests -v
+python3 -m pytest tests/test_question_types.py -q
 ```
 
 Expected coverage:
