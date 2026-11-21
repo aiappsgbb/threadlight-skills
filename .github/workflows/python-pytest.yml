@@ -347,7 +347,7 @@ jobs:
         # Native generation/Bicep, frozen-cohort and returns SDK cases run,
         # without skips and with required-case checks, in native-generation above.
         run: >-
-          python -m pytest skills/threadlight-deploy/tests/ -v
+          THREADLIGHT_REQUIRE_AGENTSERVER=1 python -m pytest skills/threadlight-deploy/tests/ -v
           -m "not governance_runtime" -o "markers=governance_runtime: exact native runtime"
           --ignore=skills/threadlight-deploy/tests/test_governance_wiring.py
           --ignore=skills/threadlight-deploy/tests/test_governance_quality.py

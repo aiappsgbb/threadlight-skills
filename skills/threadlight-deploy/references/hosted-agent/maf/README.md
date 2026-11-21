@@ -586,6 +586,7 @@ LangGraph state-graph requirements).
 | [`references/python/hosted_smoke.py`](references/python/hosted_smoke.py) | § Private BASIC consumer: native model/session oracle |
 | [`references/python/long_running.py`](references/python/long_running.py) | § Long-running mode (opt-in, crash-resilient) |
 | [`references/python/long_running_client.py`](references/python/long_running_client.py) | § Long-running mode (opt-in, crash-resilient) — client |
+| [`references/python/reconciler.py`](references/python/reconciler.py) | § Long-running mode (opt-in, crash-resilient) — reconciler |
 
 > **⚠️ Deprecation: `ChatAgent` is gone in MAF 1.6.0**
 >
@@ -2113,6 +2114,26 @@ replay (one `response.created`, a reset `response.in_progress`, one
 evidence; a hosted crash test (deploy with
 `THREADLIGHT_SIMULATE_CRASH_AFTER_PHASE=0`, then `follow` the response) is
 separate evidence for the deployed image and version.
+
+**Reconciler (pilot app or orchestrator).**
+[`references/python/reconciler.py`](references/python/reconciler.py) tracks each
+started job (`response_id`, `agent_session_id`, start, deadline) and polls
+`GET /responses/{id}` with backoff. The GET is also what wakes a stopped session
+so its recovery runs. At the deadline it marks the job `deadline_exceeded`,
+raises an alert and records the business effect as UNKNOWN; `ui_state` shows
+`recovering` when a job comes back after the agent was unreachable. It only
+observes and wakes: it never POSTs, cancels, retries or replays a response.
+
+Hosted check (2026-11-21, tested, one run, same setup as below): the session was
+stopped with `azd ai agent sessions stop` after the first output item. It stayed
+`idle` with no recovery for 90 s. The reconciler's first `GET` woke it: the
+startup scan logged "Recovered task ... is now active", the handler re-entered
+with `is_recovery=true` (phase 0 again, it had not been checkpointed) and the job
+completed with 4 items after 4 polls, with no other request. The `GET` returned
+`200 in_progress` while the session woke, so the reconciler saw no outage and
+`ui_state` stayed `running`: on hosted agents `recovering` is shown only when the
+endpoint was unreachable. The replay stream of that response ended at the
+pre-stop events, so callers must read the stored response (the client does).
 
 **Hosted check (2026-11-20, tested).** This template, copied unchanged with
 `THREADLIGHT_SIMULATE_CRASH_AFTER_PHASE=0`, deployed with `azd deploy` (ACR

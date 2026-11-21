@@ -7,6 +7,25 @@ field.
 
 ## [Unreleased]
 
+### 2.69.0: pilot reconciler for non-terminal background responses (#224)
+
+- **Why.** A background response can stay non-terminal: after a session stop,
+  recovery runs only when a request reaches that session; without
+  `resilient_background=True` a crashed response stays `in_progress`. A caller
+  that just waits hangs.
+- **Change.** threadlight-deploy MAF `reconciler.py` (stdlib): tracks each job
+  (`response_id`, `agent_session_id`, start, deadline), polls `GET /responses/{id}`
+  with backoff (which also wakes a stopped session), marks `deadline_exceeded`
+  with an alert and the business effect UNKNOWN, and exposes `ui_state`. It only
+  observes and wakes: no POST, cancel, retry or replay.
+- **Tests.** Real local agents (file-backed stores): stopped session completes
+  with no user action; ghost without the opt-in fails at its deadline with one
+  alert; only `GET` requests and no new handler run. CI deploy step now sets
+  `THREADLIGHT_REQUIRE_AGENTSERVER=1` (missing SDK fails, never skips).
+- **Live (tested, one run).** Session stopped mid-run stayed idle 90 s; the
+  reconciler's first `GET` woke it, startup recovery re-entered the handler and
+  the job completed after 4 polls.
+
 ### 2.68.0: router-ready, evidence-gated PoC model default (#218)
 
 - **Why.** New pilots defaulted to `gpt-5.4` ($2.50 / $15 per 1M tokens). In the
