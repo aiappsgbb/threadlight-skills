@@ -17,6 +17,10 @@ the invocation is expected to flip green.
 | MDL-010 | `foundry-iq` (official, `foundry-iq-skills@azure-skills`) | `subscription_id`, `resource_group`, `private_endpoint_required: true` | Existing skill — confirm version ≥ 0.3.0. |
 | MDL-011 | `threadlight-deploy/references/hosted-agent/maf` (Threadlight-owned) | `subscription_id`, `resource_group`, `retention_days` (from framing) | Thread retention policy. |
 | OBS-106 | `azure-diagnostics` (official) | `subscription_id`, `resource_group`, `target_resource_types` | The official skill diagnoses but does not emit this baseline; fall back to `kind: manual`. |
+| REL-009 | `threadlight-deploy/references/hosted-agent/maf` long-running mode (Threadlight-owned) | agent caller code | Vendor `long_running_client.py`; inventory only. |
+| REL-010 | `threadlight-deploy/references/hosted-agent/maf` long-running mode (Threadlight-owned) | `src/agent/container.py` | Or label the agent "background only, not crash-resilient". |
+| REL-011 | `threadlight-deploy/references/hosted-agent/maf` long-running mode (Threadlight-owned) | `src/agent/container.py` | Prove offline with `threadlight-local-test` crash harness (local evidence). |
+| REL-012 | `threadlight-governed-actions` (Threadlight-owned) | governed tools, phase ids | § Recovered handlers: `recovery_scope` reuses operation ids. |
 | REL-007 | `azure-backup-readiness` *(planned — awesome-gbb#267; GBB pattern, not a Microsoft product skill)* | `subscription_id`, `resource_group`, `protected_item_types` | Not yet released — fall back to `kind: manual`. |
 | SRE-104 | `azure-monitor-alert-baseline` *(planned — awesome-gbb#272; GBB pattern, not a Microsoft product skill)* | `subscription_id`, `resource_group`, `alert_baseline_kind` | Not yet released — fall back to `kind: manual`. |
 | SAFE-101 | `threadlight-redteam` | `target` (repo root); re-runs adversarial scan after policy hardening via `threadlight-govern` | Jailbreak attack-success-rate above threshold — harden prompt shields + content filter, then re-scan. |
