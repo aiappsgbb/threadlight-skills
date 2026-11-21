@@ -7,6 +7,24 @@ field.
 
 ## [Unreleased]
 
+### 2.75.0: governed writes for Copilot harness agents via client function tools (#230)
+
+- **Why.** The harness has no Agent Hooks surface and the service manages
+  approval for its built-in tools, so the hosted in-process PEP cannot run there.
+- **Bridge.** `threadlight-govern/references/harness/function_bridge.py` answers
+  only the application's own declared function tools (harness-internal `skill`,
+  `view` ... calls are never answered; answering them is HTTP 400), runs each
+  call through the existing governed gateway dispatcher (signed fresh policy,
+  one-use approval, trusted facts, central audit ACK before the effect) with
+  idempotency key `harness:<conversation>:<call_id>`, returns the receipt as
+  `function_call_output` (`DENIED_BY_POLICY`, `effect: none` on a denial) and
+  reconciles a transient `failed` turn against the conversation items before
+  replaying, never re-executing a call.
+- **Claims.** `references/harness/README.md` states which governance claims
+  apply on this route and which do not (no in-process ACS on every tool call;
+  hosted LOCAL-14/CTK evidence does not carry over).
+- **Tests.** `test_harness_function_bridge.py` on the real ACS/OPA, control plane
+  and dispatcher, wired as required cases in the native gateway gate.
 ### 2.74.0: threadlight-evals: azure.eval.yaml gate scaffold and noise-aware gate policy (#209, #210)
 
 - **Why.** `azd ai eval init` maps a custom rubric to the final text only. So the
