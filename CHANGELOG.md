@@ -7,6 +7,33 @@ field.
 
 ## [Unreleased]
 
+### 2.61.0: opt-in long-running Responses mode and offline crash-recovery harness (#221, #227)
+
+- **Why.** Threadlight runtimes ran each turn as one request or stream: a crash,
+  OOM kill, redeploy or session stop mid-turn lost the work and left any effect
+  UNKNOWN. Foundry hosted agents recover stored background Responses work when
+  the host opts in ([Learn: recover long-running work](https://learn.microsoft.com/azure/foundry/agents/how-to/recover-long-running-work)).
+- **Mode (threadlight-deploy, MAF).** `long_running.py`: `resilient_background=True`,
+  one output item per phase, `stream.checkpoint()` after each, a recovery branch
+  seeded from `context.persisted_response`, `exit_for_recovery()` on shutdown and an
+  opt-in crash hook for tests. `long_running_client.py`: store + background +
+  stream, durable `response_id` / session / cursor, `starting_after` reconnect,
+  snapshot reset, and a fallback to the stored response when the stream ends
+  without a terminal event. Docs state at-least-once handler entry and link the
+  side-effect fencing requirement; without the mode, the honest label is
+  "background only, not crash-resilient".
+- **Harness (threadlight-local-test).** `crash_recovery.py` SIGKILLs the agent
+  after the first checkpoint with isolated file-backed stores, restarts it and
+  checks `is_recovery`, the resume phase, no re-run of checkpointed phases, the
+  replay (one `response.created`, a reset `response.in_progress`, one
+  `response.completed`) and the client reconnect. About 10 s, no Azure; an agent
+  without the opt-in is RED. Output is labelled local evidence.
+- **Live (tested, one run each, Sweden Central, core 2.3.0 / responses 2.4.0).**
+  Mid-run crash: recovered in the same session about 78 s later at phase 1, no
+  re-run of phase 0, replay 1 / 2 / 1. Session stop (for #224) showed the replay
+  stream ending at the pre-stop events while the stored response completed; the
+  client now adopts the stored response.
+
 ### 2.60.0: MAF template grants evaluation data-plane roles after provision (#212)
 
 - **Why.** After `azd provision` with `infra.provider: microsoft.foundry` the

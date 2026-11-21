@@ -11,12 +11,13 @@ description: >
   USE FOR: local test, smoke test, run agent locally, dev loop, no azd,
   copilot cli mcp, faster iteration, prompt tuning, cowork iteration,
   demo rehearsal, screen-shareable PoC, streamlit demo, GitHub Models,
-  boot Kratos export locally.
+  boot Kratos export locally, offline crash-recovery (SIGKILL) test of a
+  long-running Responses agent.
   DO NOT USE FOR: prod deployment (use threadlight-deploy), pre-pilot
   validation (use threadlight-safe-check), hosted-agent runtime testing
   in cloud (use microsoft-foundry).
 metadata:
-  version: "1.3.2"
+  version: "1.4.0"
 ---
 
 # Threadlight — Local Test Loop (no azd up)
@@ -131,6 +132,39 @@ ship. When threadlight-design owns `src/mcp/server.py`, it calls the
 deploy-owned `src/mcp/threadlight_mcp_entry.py` that serves it. A required
 enumeration the server rejects (`invalid_<arg>` with "one of [...]") is retried
 once with the first value the server itself declares valid.
+
+## Crash-recovery harness (long-running Responses agents)
+
+`scripts/crash_recovery.py` is the offline proof that a Responses-protocol
+agent generated in the opt-in long-running mode (threadlight-deploy MAF
+`long_running.py`) recovers from a crash. No Azure resource, no model, about
+10 s per run (a non-resilient control takes about 30 s).
+
+```bash
+python3 skills/threadlight-local-test/scripts/crash_recovery.py \
+  --agent src/agent/container.py --offline-phases --output crash-evidence.json
+```
+
+- It runs the agent with an isolated `AGENTSERVER_STATE_ROOT` (the SDK then
+  uses its file-backed task, response and stream stores: the same recovery
+  code path as hosted), starts a `store` + `background` + `stream` request with
+  the generated client, SIGKILLs the process right after the first checkpoint,
+  restarts it and waits for a terminal status.
+- Pass: the recovered entry has `is_recovery` and resumes at the first
+  un-checkpointed phase; no checkpointed phase completes twice (the interrupted
+  phase starts twice, by design); a full replay has one `response.created`, a
+  second `response.in_progress` (the snapshot reset) and one
+  `response.completed`; the client reconnects from its persisted cursor to the
+  same output with no duplicated items.
+- An agent without the opt-in fails (exit 1, `verdict: not_recovered`).
+  `--expect no-recovery` turns that into a documented control run labelled
+  "background only, not crash-resilient".
+- `--offline-phases` replaces the agent's `run_phase` with timed deterministic
+  phases. The agent module must expose `PHASES`, `run_phase`, `main()` and
+  print `threadlight.long_running {json}` lifecycle lines.
+- The output says `evidence: local`. It is never hosted crash-test evidence;
+  a deployed image and version need their own hosted crash test.
+  Exit codes: 0 expectation met, 1 not met, 2 harness error.
 
 ---
 
@@ -565,7 +599,8 @@ docker so you can iterate on Python without rebuilding).
 
 ```
 scripts/
-└── project_tools.py          # project-tools harness (generate-only acceptance)
+├── project_tools.py          # project-tools harness (generate-only acceptance)
+└── crash_recovery.py         # offline crash-recovery harness (long-running Responses mode)
 references/
 ├── local-stack/
 │   ├── compose.local.yaml        # Cosmos emulator + nginx

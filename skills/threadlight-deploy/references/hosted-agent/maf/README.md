@@ -583,6 +583,8 @@ LangGraph state-graph requirements).
 | [`references/python/basic.py`](references/python/basic.py) | § Private BASIC consumer: no-tools runtime |
 | [`references/docker/Dockerfile.basic`](references/docker/Dockerfile.basic) | § Private BASIC consumer: locked container build |
 | [`references/python/hosted_smoke.py`](references/python/hosted_smoke.py) | § Private BASIC consumer: native model/session oracle |
+| [`references/python/long_running.py`](references/python/long_running.py) | § Long-running mode (opt-in, crash-resilient) |
+| [`references/python/long_running_client.py`](references/python/long_running_client.py) | § Long-running mode (opt-in, crash-resilient) — client |
 
 > **⚠️ Deprecation: `ChatAgent` is gone in MAF 1.6.0**
 >
@@ -2014,6 +2016,71 @@ unique build stamp.
   agent versions.
 
 ---
+
+## Long-running mode (opt-in, crash-resilient)
+
+Use it when one turn can run longer than about two minutes or must survive a
+crash, OOM kill, redeploy or session stop. It is **off by default**; copy
+[`references/python/long_running.py`](references/python/long_running.py) as
+`src/agent/container.py` (same pins, Dockerfile and `azure.yaml` as the MAF
+Agent; protocol `responses`) and drive it with
+[`references/python/long_running_client.py`](references/python/long_running_client.py).
+
+| Piece | What it does | Source |
+|---|---|---|
+| Host | `ResponsesAgentServerHost(options=ResponsesServerOptions(resilient_background=True))` | [Learn: recover long-running work](https://learn.microsoft.com/azure/foundry/agents/how-to/recover-long-running-work) |
+| Handler | fixed `PHASES`, one output item per phase, `yield stream.checkpoint()` after each | [SDK sample 19](https://github.com/Azure/azure-sdk-for-python/blob/main/sdk/agentserver/azure-ai-agentserver-responses/samples/sample_19_resilient_streaming.py) |
+| Recovery branch | `context.is_recovery` + `ResponseEventStream(response=context.persisted_response)`; resume at `len(output)` | same |
+| Shutdown | `context.shutdown` → `await context.exit_for_recovery()` leaves the response `in_progress` for the next lifetime | Learn, § Handle graceful shutdown |
+| Client | `store=true, background=true, stream=true`; persists `response_id`, `x-agent-session-id`, last `sequence_number`; reconnects with `starting_after`; applies the snapshot reset | [Learn: deploy a crash-resilient agent](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-resilient-agent) |
+| Crash test hook | `THREADLIGHT_SIMULATE_CRASH_AFTER_PHASE=<n>` exits with 137 after checkpoint *n* (first attempt only); unset in normal use | test only |
+
+**At-least-once handler entry, not deterministic replay.** Recovery re-enters
+the handler from the top. Checkpointed phases are skipped; the phase that was
+running when the process died runs again from its start. Every non-idempotent
+effect inside a phase (governed write, approval consumption, audit ACK, email,
+payment) must be fenced with an idempotency key or a watermark before dispatch,
+as Learn requires ([§ Fence non-idempotent side effects](https://learn.microsoft.com/azure/foundry/agents/how-to/recover-long-running-work#fence-non-idempotent-side-effects));
+for governed writes see [`threadlight-governed-actions`](../../../../threadlight-governed-actions/SKILL.md).
+Until those effects are fenced, the mode is safe only for read-only or
+idempotent phases.
+
+**Rules.**
+- Recovery applies only to `store=true` **and** `background=true`. A
+  foreground response is never re-invoked. Replay (`GET /responses/{id}?stream=true`)
+  also needs `stream=true` at creation, otherwise HTTP 400.
+- Snapshot reset: a second `response.in_progress` carries the recovered
+  snapshot. Replace the accumulated output with its items (same ids); never append.
+- The lease owner is the agent name plus the session id, so only a later process
+  of the same session reclaims the work. After a session stop nothing runs until a
+  request reaches that session; a client `GET` (the client's `follow`) wakes it.
+- Without this template, label the agent honestly: **"background only, not
+  crash-resilient"** (or foreground). Learn documents that a crashed background
+  response without the opt-in is marked `failed`; a local run on 2.4.0 left it
+  `in_progress` with 0 items (the ghost a waiting client never leaves).
+
+**Proof.** Run the offline harness before deploying:
+`python skills/threadlight-local-test/scripts/crash_recovery.py --agent src/agent/container.py --offline-phases`.
+It SIGKILLs the agent after the first checkpoint, restarts it, and checks
+`is_recovery`, the resume phase, that no checkpointed phase runs again, the
+replay (one `response.created`, a reset `response.in_progress`, one
+`response.completed`) and the client's reconnect. Its output is labelled local
+evidence; a hosted crash test (deploy with
+`THREADLIGHT_SIMULATE_CRASH_AFTER_PHASE=0`, then `follow` the response) is
+separate evidence for the deployed image and version.
+
+**Hosted check (2026-11-20, tested).** This template, copied unchanged with
+`THREADLIGHT_SIMULATE_CRASH_AFTER_PHASE=0`, deployed with `azd deploy` (ACR
+remote build) to Sweden Central on core 2.3.0 / responses 2.4.0, 1 vCPU / 2 GiB,
+`gpt-5.4-mini`, internal test subscription, one run. The process exited with
+137 after the phase-0 checkpoint; about 78 s later (the client reconnecting
+every 5 s) the platform had restarted it in the same session, the startup scan
+logged "TaskManager initialized with startup recovery" and the handler
+re-entered with `is_recovery=true, start_phase=1`. Phases 1–3 ran once,
+phase 0 did not run again; the response completed with 4 items and 4 unique
+ids, the client applied one snapshot reset, and a full replay had one
+`response.created`, two `response.in_progress` and one `response.completed`.
+Whether the restart needed the client traffic was not isolated in this run.
 
 ## Operation recovery
 

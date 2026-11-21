@@ -191,7 +191,7 @@ jobs:
           python-version: "3.13"
       - name: Install unit and real governance protocol dependencies
         run: |
-          python -m pip install --upgrade pip pytest pyyaml packaging "jsonschema[format]==4.26.0" markdown-it-py "mcp==1.29.1" "httpcore==1.0.9" "azure-ai-projects==2.3.0" "openai==2.54.0" "azure-ai-agentserver-invocations==1.3.0" "azure-ai-agentserver-core==2.3.0" "httpx==0.28.1" ./skills/threadlight-govern/references/control-plane
+          python -m pip install --upgrade pip pytest pyyaml packaging "jsonschema[format]==4.26.0" markdown-it-py "mcp==1.29.1" "httpcore==1.0.9" "azure-ai-projects==2.3.0" "openai==2.54.0" "azure-ai-agentserver-invocations==1.3.0" "azure-ai-agentserver-core==2.3.0" "azure-ai-agentserver-responses==2.4.0" "httpx==0.28.1" ./skills/threadlight-govern/references/control-plane
           python -m pip install --no-deps ./skills/threadlight-govern/references/gateway
       - name: Guard - SKILL.md description length (<=1024 chars)
         # Deterministic per-PR guard for the silent loader-drop regression:
@@ -243,6 +243,10 @@ jobs:
         run: python -m pytest skills/threadlight-qualify/tests/ -v
       - name: Run threadlight-connect tests
         run: python -m pytest skills/threadlight-connect/tests/ -v
+      - name: Run threadlight-local-test tests (offline crash-recovery harness)
+        # Real AgentServer SDK with file-backed stores; SIGKILL + restart, no Azure.
+        # A missing SDK fails the run instead of skipping it.
+        run: THREADLIGHT_REQUIRE_AGENTSERVER=1 python -m pytest skills/threadlight-local-test/tests/ -v
       - name: Run threadlight-ground tests
         run: python -m pytest skills/threadlight-ground/tests/ -v
       - name: Run threadlight-loadtest tests

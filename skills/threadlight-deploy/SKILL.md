@@ -694,8 +694,8 @@ template and rules of each one:
 4. `src/agent/container.py`: copy the reference template (GHCP default from
    `references/hosted-agent/ghcp`, starting the azd project from the pilot
    scaffold in `references/hosted-agent/ghcp/references/pilot`; MAF from
-   `references/hosted-agent/maf`). **Do NOT write the container runtime from
-   scratch.**
+   `references/hosted-agent/maf`; opt-in crash-resilient long turns: MAF
+   `long_running.py`, see its README). **Do NOT write the runtime from scratch.**
 5. `src/agent/pyproject.toml` (or the hashed `requirements.lock`): proven pins.
 6. `src/agent/Dockerfile`: MCR base image, port 8088.
 7. `deploy-notes.md`: deploy steps and RBAC, monitoring (the guarded
