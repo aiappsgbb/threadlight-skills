@@ -14,7 +14,9 @@ rubric score in ``specs/foundry-package-manifest.json``.
 
 Environment (``azd env get-values`` provides them after deploy):
   FOUNDRY_PROJECT_ENDPOINT or AZURE_AI_PROJECT_ENDPOINT
-  AZURE_AI_MODEL_DEPLOYMENT_NAME   judge model for the evaluators
+  AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME  judge model for the evaluators (a fixed
+                                       model; the agent itself may use a router)
+  AZURE_AI_MODEL_DEPLOYMENT_NAME   judge fallback when no fixed deployment is set
 
 ``--dry-run`` prints the eval request as JSON without SDKs, login or network.
 """
@@ -166,12 +168,14 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config()
     rows = load_rows(cfg)
     if args.dry_run:
-        deployment = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "<AZURE_AI_MODEL_DEPLOYMENT_NAME>")
+        deployment = (os.getenv("AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME")
+                      or os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "<AZURE_AI_MODEL_DEPLOYMENT_NAME>"))
         print(json.dumps({"data_source": data_source(cfg, rows), "testing_criteria": testing_criteria(cfg, deployment)}, indent=2))
         return 0
 
     endpoint = _env("FOUNDRY_PROJECT_ENDPOINT", "AZURE_AI_PROJECT_ENDPOINT")
-    deployment = _env("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+    # A model router judge would pick a different model per row; judge with the fixed model.
+    deployment = _env("AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME", "AZURE_AI_MODEL_DEPLOYMENT_NAME")
     from azure.ai.projects import AIProjectClient  # lazy: --dry-run needs no SDK
     from azure.identity import DefaultAzureCredential
 

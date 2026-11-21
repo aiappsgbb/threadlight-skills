@@ -214,7 +214,7 @@ param harnessEgressAllowHosts array = []
 // policy only after the project and the model deployment.
 module harnessEgress 'harness-egress.bicep' = {
   name: 'harness-egress'
-  dependsOn: [ project, model ]
+  dependsOn: [ project, modelDeployments, router ]
   params: {
     accountName: account.name
     mode: harnessEgressMode
@@ -229,13 +229,17 @@ output HARNESS_EGRESS_MODE string = harnessEgressMode
 
 def render_main_bicep(pilot_main: str) -> str:
     for needle in ("resource account 'Microsoft.CognitiveServices/accounts@", "resource project '",
-                   "resource model '"):
+                   "resource modelDeployments '", "resource router '"):
         if needle not in pilot_main:
             raise ValueError(f"pilot infra/main.bicep changed shape: no {needle!r}")
     return pilot_main.rstrip("\n") + "\n" + _EGRESS_MODULE
 
 
 def parameters(params: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
+    # The pilot default is a model router subset (#218); model router support in
+    # the Copilot harness (preview) is not documented, so the harness uses one
+    # fixed model deployment (AZURE_AI_MODEL_NAME) unless the operator opts in.
+    params["parameters"]["modelStrategy"] = {"value": "${AZURE_AI_MODEL_STRATEGY=fixed}"}
     params["parameters"]["harnessEgressMode"] = {"value": f"${{THREADLIGHT_HARNESS_EGRESS_MODE={settings['egress_mode']}}}"}
     params["parameters"]["harnessEgressAllowHosts"] = {"value": settings["egress_allow"]}
     return params

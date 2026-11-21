@@ -740,3 +740,17 @@ def test_agent_written_harness_without_user_provenance_generates_the_hosted_agen
     services = _load_yaml(project / "azure.yaml")["services"]
     assert any(s.get("kind") == "hosted" for s in services.values())
 
+
+def test_run_evals_judge_is_the_fixed_model_not_the_router(generated: Path, tmp_path: Path):
+    # #218: the agent may call a model router; the evaluator judge must be one
+    # fixed model so scores are comparable across runs.
+    import os as _os
+    env = {**_offline_env(tmp_path), "AZURE_AI_MODEL_DEPLOYMENT_NAME": "model-router",
+           "AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME": "gpt-6-luna"}
+    dry = subprocess.run([sys.executable, str(generated / "evals" / "run_evals.py"), "--dry-run"],
+                         capture_output=True, text=True, env=env, cwd=generated, timeout=120)
+    assert dry.returncode == 0, dry.stderr
+    payload = json.loads(dry.stdout)
+    rubric = next(c for c in payload["testing_criteria"] if c["type"] == "score_model")
+    assert rubric["model"] == "gpt-6-luna"
+    assert "model-router" not in json.dumps(payload["testing_criteria"])

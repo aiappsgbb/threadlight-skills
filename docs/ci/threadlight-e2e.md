@@ -127,7 +127,10 @@ gh workflow run threadlight-e2e-foundry.yml \
    - **workload** — `returns-triage` (default, the workshop retail gate) | `fsi-kyc-aml` (complex regulated KYC/AML)
    - **region** — `westus3` (default). If quota is tight, try `eastus2` or `northcentralus`
    - **model_deployment** — `gpt-5.4-mini` (default). Must already exist on the `AZURE_AI_ENDPOINT` account
-   - **wire_api** — `responses` (default, for GPT-5-series) | `completions` (required for model-router)
+   - **wire_api** — `responses` (default, direct GPT deployments) | `completions` (model-router: GitHub Copilot BYOK reaches it over Chat Completions)
+   - **pilot_model_strategy** — `design` (default: what threadlight-design wrote, now a model router subset with own deployments) | `router-subset` | `fixed`; exported as `AZURE_AI_MODEL_STRATEGY` for the pilot's `azd provision` (#218)
+   - **pilot_model_sku** — `design` | `GlobalStandard` | `DataZoneStandard`; exported as `AZURE_AI_MODEL_SKU` (use Data Zone when Global quota for the subset models is exhausted, or for EU residency)
+   - **pilot_model_capacity** — empty (template default 300) or units per model deployment and router; exported as `AZURE_AI_MODEL_CAPACITY` and `AZURE_AI_ROUTER_CAPACITY`
    - **teardown** — `true` (default) for live-smoke/full; false retains the per-run smoke resources for operator cleanup. Does not delete protected readiness services. Ignored for design-only/smoke-only.
 
 ## Expected wallclock

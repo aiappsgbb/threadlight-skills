@@ -377,3 +377,63 @@ def test_runbook_quotes_the_real_job_timeout():
     assert f"timeout-minutes: {timeout}" in RUNBOOK.read_text(encoding="utf-8"), (
         f"runbook does not quote the current job cap of {timeout} minutes"
     )
+
+
+def test_pilot_model_overrides_are_inputs_exported_only_when_set():
+    # #218: the e2e must run router and fixed-model pilot arms; azd reads matching
+    # OS variables in main.parameters.json, so export them only when chosen.
+    doc = yaml.safe_load(WORKFLOW.read_text())
+    inputs = doc[True]["workflow_dispatch"]["inputs"] if True in doc else doc["on"]["workflow_dispatch"]["inputs"]
+    assert inputs["pilot_model_strategy"]["options"] == ["design", "router-subset", "fixed"]
+    assert inputs["pilot_model_strategy"]["default"] == "design"
+    assert inputs["pilot_model_sku"]["options"] == ["design", "GlobalStandard", "DataZoneStandard"]
+    assert inputs["pilot_model_capacity"]["default"] == ""
+    step = next(s for j in doc["jobs"].values() for s in j.get("steps", [])
+                if s.get("name") == "[Phase 3/4] Drive §6.2+§6.3 — threadlight-deploy + azd up")
+    run = step["run"]
+    for var in ("AZURE_AI_MODEL_STRATEGY", "AZURE_AI_MODEL_SKU", "AZURE_AI_MODEL_CAPACITY",
+                "AZURE_AI_ROUTER_CAPACITY"):
+        assert f"export {var}=" in run, var
+    assert 'if [ "$PILOT_MODEL_STRATEGY" != "design" ]' in run
+
+
+def test_quickstart_install_is_constrained_against_maf_extra_drift():
+    # agent-framework 1.13 pulls agent-framework-core[all]; its unpinned extras
+    # (e.g. agent-framework-azurefunctions 1.0.0 needs core>=1.19) broke the
+    # e2e install. The constraints pin the set from the last green e2e run.
+    doc = yaml.safe_load(WORKFLOW.read_text())
+    step = next(s for j in doc["jobs"].values() for s in j.get("steps", [])
+                if s.get("name") == "Install threadlight_quickstart [aoai]")
+    assert "-c \"${{ github.workspace }}/skills/threadlight-local-test/references/quickstart/constraints.txt\"" in step["run"]
+    pins = (REPO_ROOT / "skills/threadlight-local-test/references/quickstart/constraints.txt").read_text()
+    assert "agent-framework-core==1.13.0" in pins and "agent-framework-azurefunctions==1.0.0b260730" in pins
+
+
+def test_pattern0_gate_greps_markers_the_quickstart_actually_prints():
+    cli = (REPO_ROOT / "skills/threadlight-local-test/references/quickstart/threadlight_quickstart/cli.py").read_text()
+    text = WORKFLOW.read_text()
+    for marker in re.findall(r'grep -q "([^"]+)" /tmp/check\.out', text):
+        assert marker in cli, marker
+
+
+def test_pilot_overrides_are_pinned_in_the_azd_env_by_the_deploy_agent():
+    # Live run 44922721502: the deploy agent's own quota preflight replaced the
+    # requested router-subset pilot with a fixed model via `azd env set`, which
+    # wins over OS variables. The deploy prompt must pin the operator's choice.
+    doc = yaml.safe_load(WORKFLOW.read_text())
+    step = next(s for j in doc["jobs"].values() for s in j.get("steps", [])
+                if s.get("name") == "[Phase 3/4] Drive §6.2+§6.3 — threadlight-deploy + azd up")
+    run = step["run"]
+    assert "Operator-pinned pilot model" in run
+    assert "azd env set $v" in run and "Do not change" in run
+    assert "for v in AZURE_AI_MODEL_STRATEGY AZURE_AI_MODEL_SKU" in run
+    assert "python3 /tmp/pack-prompt.py deploy; printf" in run
+
+
+def test_azd_down_has_time_for_router_pilot_teardown():
+    # A router-subset pilot deletes four model deployments and purges the account:
+    # ~27 min locally; 20 min timed out in runs 44922721502 / 44922731759.
+    doc = yaml.safe_load(WORKFLOW.read_text())
+    step = next(s for j in doc["jobs"].values() for s in j.get("steps", [])
+                if s.get("name") == "Teardown — azd down --force --purge")
+    assert step["timeout-minutes"] >= 40

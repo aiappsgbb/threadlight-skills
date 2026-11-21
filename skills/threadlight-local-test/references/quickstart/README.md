@@ -43,7 +43,8 @@ python -m threadlight_quickstart --simulator  # pre-load the demo-script prompts
 
 ```bash
 # from the PoC root
-pip install -e <awesome-gbb>/skills/threadlight-local-test/references/quickstart
+pip install -c <awesome-gbb>/skills/threadlight-local-test/references/quickstart/constraints.txt \
+  -e <awesome-gbb>/skills/threadlight-local-test/references/quickstart
 cp <…>/quickstart/.env.local.example .env.local
 $EDITOR .env.local              # FOUNDRY_PROJECT_ENDPOINT, MODEL_DEPLOYMENT_NAME
 az login --tenant <dev-tid>     # see threadlight-tenant-isolation skill

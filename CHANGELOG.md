@@ -7,6 +7,49 @@ field.
 
 ## [Unreleased]
 
+### 2.68.0: router-ready, evidence-gated PoC model default (#218)
+
+- **Why.** New pilots defaulted to `gpt-5.4` ($2.50 / $15 per 1M tokens). In the
+  Nov 2026 router-bench workload (estimates at list price) fixed `gpt-6-luna`
+  cost $0.054 per 1k easy tasks, a model router subset with own deployments
+  $0.082, the full pool Balanced $0.147 and Quality $1.83, all at 100 % quality.
+- **Design.** `foundation.md` § 2 now defaults to `routing: router-subset`
+  ({gpt-6-luna, gpt-6.1-terra, gpt-6.1-sol}, Balanced) with `gpt-6-luna` as fixed
+  baseline; `model-selection.md` cites the evidence and the decision rule (run
+  `threadlight-router-bench workload` before go-live; 90 % or more of calls on one
+  model → call it directly; Quality only per request for critical steps; never
+  Auto for EU residency; log served `model`, usage, `x-ratelimit-key`,
+  `session_id`). SPEC § 7b and the design SKILL.md follow. Cowork zip rebuilt.
+- **Deploy.** The GHCP pilot Bicep (public and private) deploys an own deployment
+  of every subset model (serialized) and a `model-router` with `routing.models`
+  (`modelStrategy` router-subset | fixed, `routerSubset`, `routerMode`,
+  `modelSku` incl. `DataZoneStandard`); outputs `AZURE_AI_MODEL_WIRE_API`
+  (`completions` for the router, as GitHub Copilot BYOK requires) and
+  `AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME`. `generate_only` maps the foundation
+  strategy, keeps single-model designs `fixed`, refuses `routing: auto`, and adds
+  an evidence-gate row to `deferred-steps.md`. The parameters file maps
+  `AZURE_AI_MODEL_STRATEGY` / `AZURE_AI_MODEL_NAME` so the gate can switch with
+  `azd env set`. The GHCP container reads the wire API from the environment, and
+  generated evals judge with the fixed model, never the router.
+- **Copilot harness route stays fixed.** Model router support in the preview
+  Copilot harness is not documented, so harness projects pin
+  `AZURE_AI_MODEL_STRATEGY=fixed`; the harness egress module now depends on the
+  new model deployments and router.
+- **E2E arms and a pre-existing install break.** The e2e workflow gains
+  `pilot_model_strategy`, `pilot_model_sku` and `pilot_model_capacity` inputs,
+  exported as `AZURE_AI_MODEL_*` for the pilot's `azd provision` and pinned in the
+  azd env through the deploy prompt (a live run showed the deploy agent's own
+  quota preflight replacing the requested router pilot otherwise); `azd down` gets
+  40 minutes (a router pilot took ~27 to delete and purge); the pilot
+  parameters also map `AZURE_AI_MODEL_SKU`. Separately, `pip install .[aoai]`
+  of the quickstart had become unresolvable (`agent-framework 1.13` pulls
+  `agent-framework-core[all]`, whose unpinned `agent-framework-azurefunctions
+  1.0.0` needs core >= 1.19), failing every e2e at its first step; the
+  quickstart now ships `constraints.txt` with the set from the last green e2e
+  run, used by the workflow and the README. The Pattern 0 gate also grepped a `--check`
+  marker the quickstart no longer prints (`Stub tools wired`); it now checks
+  `In-memory stores wired`, and a test keeps every grepped marker in `cli.py`.
+
 ### 2.67.0: MAF template is evaluable and optimizer-ready (#208)
 
 - **Why.** Foundry agent-target evaluations read the tool trajectory

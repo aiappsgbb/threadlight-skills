@@ -41,8 +41,34 @@ param returnsCosmosUrl string = ''
 @maxValue(2)
 param mcpMinReplicas int = 0
 
-param modelName string = 'gpt-5.4-mini'
-param modelVersion string = '2026-03-17'
+@description('Runtime model configuration, chosen by evidence (threadlight-design model-selection.md). router-subset: a model router deployment routing only to routerSubset, plus an own deployment of every subset model in this account; own deployments serve routed requests first, which avoids the router-managed capacity throttle. fixed: one deployment of modelName. If threadlight-router-bench workload shows 90 % or more of traffic on one model, switch to fixed with that model to drop the routing fee.')
+@allowed([ 'router-subset', 'fixed' ])
+param modelStrategy string = 'router-subset'
+
+@description('Fixed model: the whole runtime when modelStrategy is fixed, otherwise the cheapest adequate baseline the router is compared against (also deployed).')
+param modelName string = 'gpt-6-luna'
+param modelVersion string = '2026-09-22'
+
+@description('Models the router may use (name + version from the model router 2025-11-18 pool). Subsets do not gain new pool models automatically.')
+param routerSubset array = [
+  { name: 'gpt-6-luna', version: '2026-09-22' }
+  { name: 'gpt-6.1-terra', version: '2026-10-26' }
+  { name: 'gpt-6.1-sol', version: '2026-09-29' }
+]
+
+@description('Routing mode. Keep balanced; send routing_config.mode=quality per request only for flagged critical steps.')
+@allowed([ 'balanced', 'cost', 'quality' ])
+param routerMode string = 'balanced'
+
+param routerDeploymentName string = 'model-router'
+param routerVersion string = '2025-11-18'
+
+@description('Model router capacity in units (1 unit = 1,000 TPM and 1 RPM), from the subscription model router quota.')
+param routerCapacity int = 300
+
+@description('Deployment type for the router and its models. DataZoneStandard keeps processing in the data zone (EU residency); a Data Zone router cannot route to Claude.')
+@allowed([ 'GlobalStandard', 'DataZoneStandard' ])
+param modelSku string = 'GlobalStandard'
 
 @description('GlobalStandard pay-as-you-go capacity in thousands of TPM (billed per token, not reserved). The GHCP runtime bursts ~10 calls of ~8K tokens per case; 50 or less returned 429 in live runs.')
 param modelCapacity int = 300
@@ -166,12 +192,39 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-previ
 // (https://learn.microsoft.com/azure/foundry/agents/how-to/migrate-hosted-agent-preview).
 // Create capability hosts only for a bring-your-own-resources (standard) setup.
 
-resource model 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
+var useRouter = modelStrategy == 'router-subset'
+var fixedModel = { name: modelName, version: modelVersion }
+// Dedupe by name: when the fixed baseline is a subset member, the subset entry
+// (and its version) is the one deployment of that model.
+var ownModels = useRouter
+  ? concat(routerSubset, contains(map(routerSubset, m => m.name), modelName) ? [] : [ fixedModel ])
+  : [ fixedModel ]
+
+// One deployment per model, serialized: parallel deployment writes on one
+// account conflict. With the router, these are the "own deployments" that
+// serve routed requests first (Learn: model-router-quotas).
+@batchSize(1)
+resource modelDeployments 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = [for m in ownModels: {
   parent: account
-  name: modelName
-  sku: { name: 'GlobalStandard', capacity: modelCapacity }
-  properties: { model: { format: 'OpenAI', name: modelName, version: modelVersion } }
+  name: m.name
+  sku: { name: modelSku, capacity: modelCapacity }
+  properties: { model: { format: 'OpenAI', name: m.name, version: m.version } }
   dependsOn: [ project ]
+}]
+
+// Learn: https://learn.microsoft.com/azure/foundry/openai/how-to/model-router-configure
+resource router 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = if (useRouter) {
+  parent: account
+  name: routerDeploymentName
+  sku: { name: modelSku, capacity: routerCapacity }
+  properties: {
+    model: { format: 'OpenAI', name: 'model-router', version: routerVersion }
+    routing: {
+      mode: routerMode
+      models: [for m in routerSubset: { format: 'OpenAI', name: m.name, version: m.version }]
+    }
+  }
+  dependsOn: [ modelDeployments ]
 }
 
 // F-06: the project identity pulls the hosted-agent image from ACR.
@@ -240,7 +293,11 @@ output AZURE_AI_PROJECT_ID string = project.id
 output AZURE_AI_ACCOUNT_ID string = account.id
 output AZURE_AI_ACCOUNT_NAME string = account.name
 output AZURE_AI_PROJECT_NAME string = project.name
-output AZURE_AI_MODEL_DEPLOYMENT_NAME string = model.name
+output AZURE_AI_MODEL_DEPLOYMENT_NAME string = useRouter ? router.name : modelName
+// GitHub Copilot BYOK reaches model router over Chat Completions (Learn: model-router-agents).
+output AZURE_AI_MODEL_WIRE_API string = useRouter ? 'completions' : 'responses'
+output AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME string = modelName
+output AZURE_AI_MODEL_STRATEGY string = modelStrategy
 output AZURE_CONTAINER_REGISTRY_NAME string = acr.name
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.properties.loginServer
 output MCP_SERVER_FQDN string = mcp.properties.configuration.ingress.fqdn

@@ -9,6 +9,11 @@
     "mcpImage": { "value": "${SERVICE_MCP_IMAGE_NAME=mcr.microsoft.com/k8se/quickstart:latest}" },
     "mcpMinReplicas": { "value": "${MCP_MIN_REPLICAS=0}" },
     "returnsCosmosUrl": { "value": "${RETURNS_COSMOS_URL=}" },
+    "modelStrategy": { "value": "${AZURE_AI_MODEL_STRATEGY=router-subset}" },
+    "modelName": { "value": "${AZURE_AI_MODEL_NAME=gpt-6-luna}" },
+    "modelVersion": { "value": "${AZURE_AI_MODEL_VERSION=2026-09-22}" },
+    "routerCapacity": { "value": "${AZURE_AI_ROUTER_CAPACITY=300}" },
+    "modelSku": { "value": "${AZURE_AI_MODEL_SKU=GlobalStandard}" },
     "modelCapacity": { "value": "${AZURE_AI_MODEL_CAPACITY=300}" },
     "tags": {
       "value": {

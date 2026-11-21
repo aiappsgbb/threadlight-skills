@@ -367,6 +367,105 @@ def design_model(project_dir: Path, spec: str) -> tuple[str, str] | None:
     return None
 
 
+MODEL_STRATEGIES = ("router-subset", "fixed")
+ROUTER_MODES = ("balanced", "cost", "quality")
+MODEL_SKUS = ("GlobalStandard", "DataZoneStandard")
+
+
+def _foundation_model_block(project_dir: Path) -> str | None:
+    foundation = project_dir / "specs" / "foundation.md"
+    if not foundation.is_file():
+        return None
+    block = re.search(r"^model:\s*\n((?:[ \t]+.*\n?)+)", foundation.read_text(encoding="utf-8"), re.M)
+    return block.group(1) if block else None
+
+
+def design_model_config(project_dir: Path) -> dict[str, Any]:
+    """Model strategy from foundation.md section 2 (``routing``, ``router``, ``capacity_type``).
+
+    Returns parameter overrides for the pilot Bicep. No model block: the
+    template default (router subset) applies, nothing is returned. A model
+    block without ``routing`` keeps its single fixed model, so designs written
+    before the router-ready default deploy unchanged. ``routing: auto`` is
+    refused: Auto always processes data as Global Standard and has no
+    dedicated capacity, so it is never generated (and never for EU residency).
+    """
+    block = _foundation_model_block(project_dir)
+    if block is None:
+        return {}
+    def field(name: str) -> str | None:
+        m = re.search(rf"^\s+{name}:\s*[\"']?([A-Za-z0-9._-]+)", block, re.M)
+        return m.group(1) if m else None
+    routing = (field("routing") or "fixed").lower()
+    boundary = (field("data_boundary") or "none").lower()
+    if routing == "auto":
+        raise ValueError(
+            "specs/foundation.md model.routing: auto is not generated: Auto (model router without a "
+            "deployment) always processes data as Global Standard and has no dedicated capacity"
+            + (", which breaks the EU data boundary" if boundary == "eu" else "")
+            + ". Use routing: router-subset (capacity_type DataZoneStandard for EU residency) or fixed.")
+    if routing not in MODEL_STRATEGIES:
+        raise ValueError(f"specs/foundation.md model.routing must be one of {', '.join(MODEL_STRATEGIES)}, "
+                         f"got {routing!r}")
+    out: dict[str, Any] = {"strategy": routing}
+    sku = field("capacity_type")
+    if sku in MODEL_SKUS:
+        out["sku"] = sku
+    if routing == "router-subset":
+        mode = (field("mode") or "balanced").lower()
+        if mode not in ROUTER_MODES:
+            raise ValueError(f"specs/foundation.md model.router.mode must be one of {', '.join(ROUTER_MODES)}")
+        out["mode"] = mode
+        subset = _router_subset(block)
+        if subset is not None:
+            if len(subset) < 2:
+                raise ValueError("specs/foundation.md model.router.subset needs at least two models")
+            out["subset"] = subset
+    return out
+
+
+def _router_subset(block: str) -> list[dict[str, str]] | None:
+    """``model.router.subset`` entries, flow (``- { name: x, version: "y" }``) or
+    block style (``- name: x`` / ``version: "y"``). ``None`` when no subset key;
+    raises when the key is present but an entry lacks a name or version, so a
+    design subset is never silently replaced by the template default."""
+    lines = block.splitlines()
+    start = next((i for i, ln in enumerate(lines) if re.match(r"^\s+subset:\s*$", ln)), None)
+    if start is None:
+        return None
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    items: list[str] = []
+    for ln in lines[start + 1:]:
+        if ln.strip() and len(ln) - len(ln.lstrip()) <= indent:
+            break
+        if ln.lstrip().startswith("- "):
+            items.append(ln.lstrip()[2:])
+        elif items:
+            items[-1] += " " + ln.strip()
+    subset = []
+    for item in items:
+        name = re.search(r"\bname:\s*[\"']?([A-Za-z0-9._-]+)", item)
+        version = re.search(r"\bversion:\s*[\"']?([0-9][0-9A-Za-z._-]*)", item)
+        if not (name and version):
+            raise ValueError("specs/foundation.md model.router.subset entries need name and version, "
+                             f"got {item.strip()!r}")
+        subset.append({"name": name.group(1), "version": version.group(1)})
+    if not subset:
+        raise ValueError("specs/foundation.md model.router.subset is present but lists no models")
+    return subset
+
+
+def _model_strategy_row(config: dict[str, Any]) -> str:
+    if config.get("strategy", "router-subset") != "router-subset":
+        return ""
+    return ("| Model strategy | evidence gate | The pilot deploys a model router (subset, "
+            f"{config.get('mode', 'balanced')} mode) plus an own deployment of every subset model. Before go-live run "
+            "`threadlight-router-bench` `workload` on the pilot's task mix against the fixed baseline "
+            "(`AZURE_AI_FIXED_MODEL_DEPLOYMENT_NAME`). If 90 % or more of calls land on one model, call it directly: "
+            "`azd env set AZURE_AI_MODEL_STRATEGY fixed` and `AZURE_AI_MODEL_NAME`/`AZURE_AI_MODEL_VERSION` to that "
+            "model, then `azd provision`. Log the served `model`, token usage and `x-ratelimit-key`. |\n")
+
+
 def design_capacity_tpm(project_dir: Path) -> int | None:
     """``capacity_tpm`` from foundation.md section 2 (``50K``, ``1M``, ``400000``), in tokens per minute."""
     foundation = project_dir / "specs" / "foundation.md"
@@ -1640,8 +1739,10 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
     private_data = [m for m in selected if private and m in PRIVATE_DATA_MODULES]
     unprovisioned = [m for m in selected if m not in PILOT_MODULES and m not in private_data]
     model = design_model(project_dir, spec)
+    model_config = design_model_config(project_dir)
     capacity, capacity_row = model_capacity(design_capacity_tpm(project_dir))
     deferred_extra = (_unprovisioned_rows(unprovisioned, [t["name"] for t in standins]) + _model_row(model)
+                      + _model_strategy_row(model_config)
                       + capacity_row + _governance_rows(governance)
                       + (_RECOMMEND_ONLY_ROW if recommends_only else "")
                       + (_governed_write_row(gateway_write) if gateway_write else ""))
@@ -1664,6 +1765,15 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
             params["parameters"][PRIVATE_DATA_MODULES[module]] = {"value": True}
         deferred_extra += _PRIVATE_ROW + _private_data_row(private_data)
     params["parameters"]["modelCapacity"] = {"value": f"${{AZURE_AI_MODEL_CAPACITY={capacity}}}"}
+    if "strategy" in model_config:
+        params["parameters"]["modelStrategy"] = {
+            "value": f"${{AZURE_AI_MODEL_STRATEGY={model_config['strategy']}}}"}
+    if "mode" in model_config:
+        params["parameters"]["routerMode"] = {"value": model_config["mode"]}
+    if "subset" in model_config:
+        params["parameters"]["routerSubset"] = {"value": model_config["subset"]}
+    if "sku" in model_config:
+        params["parameters"]["modelSku"] = {"value": f"${{AZURE_AI_MODEL_SKU={model_config['sku']}}}"}
     if model:
         params["parameters"]["modelName"] = {"value": f"${{AZURE_AI_MODEL_NAME={model[0]}}}"}
         params["parameters"]["modelVersion"] = {
