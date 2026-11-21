@@ -2041,9 +2041,13 @@ running when the process died runs again from its start. Every non-idempotent
 effect inside a phase (governed write, approval consumption, audit ACK, email,
 payment) must be fenced with an idempotency key or a watermark before dispatch,
 as Learn requires ([§ Fence non-idempotent side effects](https://learn.microsoft.com/azure/foundry/agents/how-to/recover-long-running-work#fence-non-idempotent-side-effects));
-for governed writes see [`threadlight-governed-actions`](../../../../threadlight-governed-actions/SKILL.md).
-Until those effects are fenced, the mode is safe only for read-only or
-idempotent phases.
+for governed writes the template's `effect_scope` wraps each phase in
+`maf_gateway.recovery_scope(response_id, phase)`, so a re-run reuses each
+operation id: the gateway returns a completed effect without a second effect,
+approval or audit record and keeps an in-flight one UNKNOWN (see
+[`threadlight-governed-actions` § Recovered handlers](../../../../threadlight-governed-actions/SKILL.md)).
+Other non-idempotent effects still need their own key or watermark; until then
+the mode is safe only for read-only or idempotent phases.
 
 **Rules.**
 - Recovery applies only to `store=true` **and** `background=true`. A

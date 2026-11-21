@@ -329,6 +329,38 @@ Read these as *published limits*, not caveats to be softened later.
   invented here; a missing one produces an explicit customer-decision
   remediation item.
 
+## Recovered handlers: at-least-once entry
+
+A crash-resilient hosted agent (AgentServer `resilient_background`, the
+threadlight-deploy MAF `long_running.py` mode) re-enters its handler from the top
+after a crash, OOM kill, redeploy or session stop and re-runs the phase that was
+interrupted. Learn: "it isn't deterministic replay" ([resilience concept](https://learn.microsoft.com/azure/foundry/agents/concepts/long-running-agent-resilience));
+non-idempotent effects must be fenced ([recover long-running work](https://learn.microsoft.com/azure/foundry/agents/how-to/recover-long-running-work)).
+For governed actions the contract is:
+
+- **One operation id per (durable work id, phase, action, call number).** Wrap
+  each phase in `maf_gateway.recovery_scope(context.response_id, phase)` (the
+  long-running template does it through `effect_scope`). The re-run sends the
+  same `Idempotency-Key`; outside a scope the client keeps a random key per call.
+- **Completed → returned, not repeated.** The gateway answers the same key from
+  its completed record: no second downstream effect, no second approval
+  consumption, no second decision receipt (the audit ACK stays keyed by the same
+  operation). A crash before dispatch simply runs the effect once after recovery.
+- **In flight → UNKNOWN, never replayed.** A key whose outcome was not recorded
+  stays `outcome_unknown` on every re-run until it is reconciled.
+- **Approvals are one-use per operation, not per handler attempt.** A recovered
+  attempt reuses the decision recorded for that operation; it never asks again
+  or consumes a second grant. Changed arguments under the same key are refused
+  (`idempotency_conflict`), never treated as a new consent.
+- Effects outside the governed gateway need their own idempotency key or a
+  watermark set before dispatch and cleared after commit.
+
+Native tests (`test_maf_gateway_client.py`, required cases in
+`run-governance-pin-tests.py`) crash before and after dispatch and with a lost
+outcome. They are local proof of the client/gateway contract, not hosted evidence.
+GHCP (Invocations) turns are not recoverable handlers yet, so this applies to the
+MAF Responses runtime only.
+
 ## How this relates to the surrounding frameworks
 
 | Framework | Role here |

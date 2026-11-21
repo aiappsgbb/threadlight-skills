@@ -846,3 +846,142 @@ def test_wire_guard_rejects_untrusted_duplicate_or_unrelated_trace_headers():
                 expected, expected + trusted + ((b"baggage", b"test=changed"),))
         finally:
             otel_context.detach(token)
+
+
+async def _recovery_harness(tmp_path, *, approval=False, lost_outcome=False):
+    """A gateway plus a factory for fresh MAF tool sets: one per handler lifetime."""
+    import httpx
+    module = client_module()
+    h = await GatewayHarness().initialize(
+        tmp_path, {"decision": "escalate"} if approval else None, approval=approval)
+    if approval:
+        approvals = gateway("receipts").HTTPControlPlaneApprovalService(
+            base_url="https://control.example", scope="api://governance/.default",
+            credential=Credential(h.cp.token()), http=h.cp.client, poll_interval=0.01)
+        post = approvals.post
+
+        async def decide(body):
+            response = await post(body)
+            if body["operation"] == "request" and response[0] == 202:
+                result = await h.cp.post("decide", human=True, intent=body["intent"],
+                                         approved=True, approving_role="Approver")
+                assert result.status_code == 200
+            return response
+
+        approvals.post = decide
+        h.approval = approvals
+        h.dispatcher = h.new_dispatcher()
+    if lost_outcome:
+        original = h.downstream.request
+
+        async def lost(*args, **kwargs):
+            await original(*args, **kwargs)
+            raise OSError("process died before the outcome was recorded")
+
+        h.downstream.request = lost
+    app = gateway("server").create_app(h.dispatcher)
+
+    async def authorize():
+        h.policy.fresh()
+
+    async def lifetime():
+        tools = module.GovernedMCPTools(
+            url="https://gateway.example/mcp", scope="api://gateway/.default",
+            credential=Credential(h.cp.token()), authorize=authorize, selected_tools=["refund"],
+            transport_factory=lambda: httpx.ASGITransport(app=app))
+        await tools.connect()
+        return tools.functions[0]
+
+    def approvals_consumed():
+        return [body["state"] for (_, key), (body, _) in h.cp.store.docs.items() if key.startswith("approval:")]
+
+    return module, h, app, lifetime, approvals_consumed
+
+
+@pytest.mark.governance_runtime
+@pytest.mark.parametrize("approval", [False, True])
+def test_recovered_phase_after_dispatch_has_one_effect_approval_and_audit(tmp_path, approval):
+    """Crash between effect dispatch and checkpoint: the recovered handler re-runs the phase."""
+    async def run():
+        module, h, app, lifetime, approvals = await _recovery_harness(tmp_path, approval=approval)
+        try:
+            async with app.router.lifespan_context(app):
+                first = await lifetime()
+                with module.recovery_scope("caresp_recovered", 2):
+                    assert await first.invoke(arguments={"amount": 5}, skip_parsing=True) == {"status": "refunded"}
+                # The process dies here, before the phase checkpoint. A later process re-enters.
+                second = await lifetime()
+                with module.recovery_scope("caresp_recovered", 2):
+                    assert await second.invoke(arguments={"amount": 5}, skip_parsing=True) == {"status": "refunded"}
+                assert len(h.calls) == 1
+                assert [r["decision"] for r in h.receipt_bodies()] == ["allow"]
+                assert approvals() == (["consumed"] if approval else [])
+        finally:
+            await h.close()
+    asyncio.run(run())
+
+
+@pytest.mark.governance_runtime
+def test_recovered_phase_before_dispatch_runs_the_effect_once(tmp_path):
+    async def run():
+        module, h, app, lifetime, _ = await _recovery_harness(tmp_path)
+        try:
+            async with app.router.lifespan_context(app):
+                await lifetime()  # the first lifetime dies before any governed call
+                tools = await lifetime()
+                with module.recovery_scope("caresp_recovered", 2):
+                    assert await tools.invoke(arguments={"amount": 5}, skip_parsing=True) == {"status": "refunded"}
+                assert len(h.calls) == 1 and len(h.receipt_bodies()) == 1
+        finally:
+            await h.close()
+    asyncio.run(run())
+
+
+@pytest.mark.governance_runtime
+def test_recovered_phase_never_replays_an_unknown_outcome(tmp_path):
+    async def run():
+        module, h, app, lifetime, _ = await _recovery_harness(tmp_path, lost_outcome=True)
+        try:
+            async with app.router.lifespan_context(app):
+                for _ in range(2):
+                    tools = await lifetime()
+                    with module.recovery_scope("caresp_recovered", 2):
+                        with pytest.raises(module.GatewayToolError, match="threadlight:gateway_outcome_unknown"):
+                            await tools.invoke(arguments={"amount": 5}, skip_parsing=True)
+                assert len(h.calls) == 1
+        finally:
+            await h.close()
+    asyncio.run(run())
+
+
+@pytest.mark.governance_runtime
+def test_recovery_scope_keys_are_stable_distinct_and_do_not_change_unscoped_calls(tmp_path):
+    async def run():
+        module, h, app, lifetime, _ = await _recovery_harness(tmp_path)
+        try:
+            async with app.router.lifespan_context(app):
+                tools = await lifetime()
+                with module.recovery_scope("caresp_a", 0):
+                    await tools.invoke(arguments={"amount": 5}, skip_parsing=True)
+                    await tools.invoke(arguments={"amount": 5}, skip_parsing=True)  # second call in the phase
+                with module.recovery_scope("caresp_a", 1):
+                    await tools.invoke(arguments={"amount": 5}, skip_parsing=True)
+                await tools.invoke(arguments={"amount": 5}, skip_parsing=True)  # no scope: a fresh key
+                assert len(h.calls) == 4
+                assert len({request.headers["idempotency-key"] for request in h.calls}) == 4
+        finally:
+            await h.close()
+    asyncio.run(run())
+
+
+@pytest.mark.governance_runtime
+def test_operation_key_is_deterministic_and_a_valid_identifier():
+    from govern_control_plane.models import Identifier, canonical, parse
+    module = client_module()
+    key = module.operation_key("caresp_a", 0, "refund", 0)
+    assert key == module.operation_key("caresp_a", 0, "refund", 0)
+    assert parse(Identifier, canonical(key)) == key
+    others = {module.operation_key(*args) for args in (
+        ("caresp_b", 0, "refund", 0), ("caresp_a", 1, "refund", 0),
+        ("caresp_a", 0, "approve", 0), ("caresp_a", 0, "refund", 1))}
+    assert key not in others and len(others) == 4
