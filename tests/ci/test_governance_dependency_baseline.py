@@ -66,3 +66,23 @@ def test_native_crypto_compatibility_retains_the_unresolved_advisory():
     guide = (ROOT / CONTROL).with_name("README.md").read_text()
     assert "GHSA-g6cj-pr64-35w5" in guide
     assert "remains open" in guide
+
+
+AGENTSERVER_GA = {
+    "azure-ai-agentserver-core": "2.3.0",
+    "azure-ai-agentserver-responses": "2.4.0",
+    "azure-ai-agentserver-invocations": "1.3.0",
+}
+MAF_RUNTIMES = (
+    "skills/threadlight-deploy/references/hosted-agent/maf/references/python/pyproject.toml",
+    "skills/threadlight-deploy/references/governance/pyproject-maf.toml",
+    "examples/returns-triage-governed/src/agent/pyproject.toml",
+)
+
+
+@pytest.mark.parametrize("path", MAF_RUNTIMES)
+def test_maf_runtimes_pin_the_ga_agentserver_line(path):
+    dependencies = tomllib.loads((ROOT / path).read_text())["project"]["dependencies"]
+    pinned = {Requirement(value).name: str(Requirement(value).specifier) for value in dependencies}
+    for name, version in AGENTSERVER_GA.items():
+        assert pinned.get(name) == "==" + version, (path, name, pinned.get(name))

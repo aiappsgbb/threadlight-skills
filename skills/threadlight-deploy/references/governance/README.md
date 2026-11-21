@@ -672,8 +672,8 @@ When the generated pilot opted into `voice_frontend: hosted-voice`, the agent
 service carries `THREADLIGHT_VOICE_BRIDGE=1`, `voiceLiveCompatible` metadata and
 a `<agent>-voice` wrapper. `compose` keeps `invocations_ws` 1.0.0 next to
 Invocations and the GHCP agent pins `azure-ai-agentserver-invocations==1.3.0`
-and `-core==2.3.0` (dropping the MAF-only `-responses`, which pins core below
-2.2). `ghcp-container.py` then serves Voice Live Bridge 1.0 with
+and `-core==2.3.0` (dropping the MAF-only `-responses`, which the Invocations
+host never imports). `ghcp-container.py` then serves Voice Live Bridge 1.0 with
 `attach_voice_bridge`:
 
 - each caller utterance runs the same governed `stream` invocation as

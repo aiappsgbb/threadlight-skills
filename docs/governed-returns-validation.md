@@ -500,7 +500,7 @@ IMDS credential isolation or comprehensive network/IAM bypass test was performed
 
 ### Runtime and artifact association
 
-The runtime used the repository's current exact pins:
+The runtime used the repository's exact pins at the time of this validation:
 
 | Package / engine | Version |
 |---|---|

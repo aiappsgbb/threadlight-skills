@@ -166,7 +166,7 @@ async def build_host(config, *, credential, signer, stack, bootstrap_gate=None,
 
 
 def remote_host(config, *, credential, signer, http=None, env=None, **host_options):
-    from govern_control_plane.bootstrap import runtime_gate
+    from govern_control_plane.bootstrap import owned_lifespan, runtime_gate
 
     async def initialize(binding, stack):
         resolved = {**config, "policy_digest": binding.policy_digest,
@@ -176,7 +176,7 @@ def remote_host(config, *, credential, signer, http=None, env=None, **host_optio
         host = await build_host(
             resolved, credential=credential, signer=signer, stack=stack,
             bootstrap_gate=gate, http=http, **host_options)
-        await stack.enter_async_context(host.router.lifespan_context(host))
+        await stack.enter_async_context(owned_lifespan(host))
         return host
 
     gate = runtime_gate(config, env=env or os.environ, credential=credential,

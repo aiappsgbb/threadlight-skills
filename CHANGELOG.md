@@ -7,6 +7,32 @@ field.
 
 ## [Unreleased]
 
+### 2.59.0: MAF and governance runtime on the GA AgentServer line (#226)
+
+- **Why.** The MAF hosted-agent template pinned the August AgentServer betas
+  (core/responses `2.1.0b1`, invocations `1.1.0b1`) and the governance runtime
+  pinned core `2.1.0`, responses `2.2.0b1`, invocations `1.2.0b1`, behind the GA
+  line that the Foundry long-running and resilient Responses features target.
+- **Pins.** `azure-ai-agentserver-core==2.3.0`, `-responses==2.4.0`,
+  `-invocations==1.3.0` in the MAF template, `pyproject-maf.toml` and the
+  returns example. `agent-framework-foundry-hosting==1.0.0b260813` already
+  accepts this line (`>=2.1.0b1,<3` / `>=1.1.0b1,<2`), so no other package moves.
+  The GHCP voice front-end keeps dropping the MAF-only `-responses`.
+- **Behaviour change fixed (core 2.3.0).** The AgentServer lifespan now sets a
+  `ContextVar` and resets it on exit. The governed GHCP, MAF and MAF-gateway
+  containers entered the host lifespan in the bootstrap gate's `activate()` task
+  and left it from `aclose()` in another task, which now raises
+  `ValueError: ... was created in a different Context` (native-generation lane).
+  New `govern_control_plane.bootstrap.owned_lifespan(app)` runs the lifespan in
+  one owner task; the three containers use it.
+- **Tests.** `tests/ci/test_governance_dependency_baseline.py` asserts the GA
+  line in all three MAF runtimes (RED on 2.53.0).
+  `skills/threadlight-govern/tests/test_bootstrap_lifespan.py` reproduces the
+  cross-task close against the real core 2.3.0 host (RED before the helper). Native: `run-governance-pin-tests.py`
+  and `--deployment` against the published wheels.
+
+
+
 ### 2.58.0: Copilot harness fit verdict and cost lines in qualify and design (#232)
 
 - **Why.** Qualify and design could not tell whether the Foundry Copilot harness

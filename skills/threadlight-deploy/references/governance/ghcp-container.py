@@ -830,13 +830,13 @@ def _route_selected(result, servers, selected, bindings, gateway_url):
 
 
 def remote_host(config, *, credential, signer, http=None, env=None, **host_options):
-    from govern_control_plane.bootstrap import runtime_gate
+    from govern_control_plane.bootstrap import owned_lifespan, runtime_gate
 
     async def initialize(binding, stack):
         resolved = {**config, "policy_digest": binding.policy_digest,
                     "policy_version": binding.policy_version}
         host = build_host(resolved, bootstrap_gate=gate, **host_options)
-        await stack.enter_async_context(host.router.lifespan_context(host))
+        await stack.enter_async_context(owned_lifespan(host))
         return host
 
     gate = runtime_gate(config, env=env or os.environ, credential=credential,

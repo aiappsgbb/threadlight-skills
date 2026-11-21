@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import hashlib
 import uuid
@@ -182,6 +182,37 @@ class BootstrapClient(ServiceTransport):
             if signed.binding.reference != reference:
                 raise BootstrapUnavailable()
             return signed
+
+
+@asynccontextmanager
+async def owned_lifespan(app):
+    """Run an ASGI app's lifespan inside one owner task.
+
+    The gate starts the host in ``activate()`` and closes it in ``aclose()``,
+    which run in different tasks. AgentServer core 2.3 sets a ContextVar in its
+    lifespan and resets it on exit, which fails across contexts; entering and
+    leaving in one dedicated task keeps startup and shutdown in the same context.
+    """
+    started, stop = asyncio.Event(), asyncio.Event()
+
+    async def owner():
+        try:
+            async with app.router.lifespan_context(app):
+                started.set()
+                await stop.wait()
+        finally:
+            started.set()
+
+    task = asyncio.create_task(owner())
+    await started.wait()
+    if task.done():
+        await task  # startup failed: raise it in the activating task
+        raise RuntimeError("host lifespan ended during startup")
+    try:
+        yield app
+    finally:
+        stop.set()
+        await task
 
 
 class BootstrapGate:
