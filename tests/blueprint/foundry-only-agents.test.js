@@ -92,7 +92,7 @@ test('runtime-policy.json pins Foundry hosting: hosted default, prompt trivial-o
   assert.ok(hosting, 'agent_hosting block required');
   assert.equal(hosting.platform, 'microsoft-foundry');
   assert.equal(hosting.default, 'hosted');
-  assert.deepEqual(hosting.allowed_agent_types, ['hosted', 'prompt', 'voice']);
+  assert.deepEqual(hosting.allowed_agent_types, ['hosted', 'prompt', 'voice', 'harness']);
   assert.ok(hosting.prompt_requires_all_trivial_criteria.length >= 4);
   for (const banned of ['voice-agents-without-explicit-opt-in', 'preview-only-capabilities', 'app-code-agent-loop']) {
     assert.ok(hosting.prohibited.includes(banned), banned);
