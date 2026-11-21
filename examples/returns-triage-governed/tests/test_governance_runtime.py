@@ -94,7 +94,7 @@ def test_native_returns_safe_context_and_cosmos_effect(tmp_path, monkeypatch, fa
     import runtime
     store = MemoryCosmos()
     app = application(store)
-    expected_write = fault in {"valid", "final-sale", "unmatched-order", "replay", "missing-reason",
+    expected_write = fault in {"valid", "final-sale", "incomplete", "unmatched-order", "replay", "missing-reason",
                               "unknown-risk", "missing-profile-info", "missing-profile-no-order"}
     rma = "RMA-2026-004418" if fault in {"final-sale", "missing-profile-deny"} else "RMA-2026-004440" if fault in {"incomplete", "second-info"} else (
         "RMA-2026-004425" if fault == "risk-autoapprove" else RMA)

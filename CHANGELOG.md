@@ -7,6 +7,25 @@ field.
 
 ## [Unreleased]
 
+### 2.56.0: returns-triage golden label follows the value-ceiling rule (#233)
+
+- **Why.** Golden case `rma-northwind-damaged-needinfo` (RMA-2026-004440) asked
+  for a USD 312 refund and was labelled `request_more_info`. The instructions,
+  the `fraud-escalation` skill and the Rego policy all say the USD 250 ceiling
+  (BR-003) overrides the completeness check (BR-004), so the right answer was
+  `escalate_to_supervisor`. Tested runs on two runtimes all escalated and were
+  scored wrong.
+- **Fix.** The refund (and its order line) is now USD 236, under the ceiling, so
+  the case still exercises `request_more_info` (the only golden case for that
+  branch). SPEC S-006, the sample-data README, killer prompt K3 and the
+  `threadlight-design` agentic-loop export goldens are regenerated to match.
+  The eval dataset (`tests/eval_dataset.jsonl`) keeps its label and anchors.
+- **Tests.** New `tests/ci/test_returns_golden_labels.py` fails when a golden label
+  contradicts BR-003 precedence or a decision branch loses its golden case.
+  The native runtime test now expects the incomplete case to write its
+  `request_more_info` decision, and the native approval check's second escalation
+  uses the serial-returner case RMA-2026-004452.
+
 ### 2.55.0: threadlight-ground: no-token and RBAC-propagation probes, derived graphs on ACL sources (#214, #215)
 
 - **Why.** In a November 2026 Foundry IQ test (Search REST
