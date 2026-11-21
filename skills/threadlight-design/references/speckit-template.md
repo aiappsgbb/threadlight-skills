@@ -813,6 +813,7 @@ preview_acknowledged: null   # REQUIRED when agent_type: voice, harness or voice
 harness_opt_in_source: null   # REQUIRED when agent_type: harness: must be `user` (an agent-written value is not an opt-in)
 harness_opt_in_evidence: null # REQUIRED when agent_type: harness: quote of the user's request for the Foundry Copilot harness (preview)
 harness_fit:                 # REQUIRED when agent_type: harness: every answer known; any disqualifier or null forces hosted (runtime-policy.json harness_disqualifiers)
+  read_mostly: null                   # advisory only: false means every consequential write needs a seam
   citadel_model_path_required: null   # true disqualifies: the harness has no BYOM through AI Gateway
   acs_in_process_pep_required: null   # true disqualifies: no Agent Hooks surface for an in-process ACS PEP
   foundry_memory_required: null       # true disqualifies: Foundry Memory is not available with the harness
@@ -866,6 +867,12 @@ capability_signals:                     # machine-readable booleans + unresolved
   `hosted` (item 2d of
   [`foundry-only-agents.md`](../../_shared/foundry-only-agents.md)). Other
   preview-only Foundry features are out of scope.
+- **Harness fit verdict.** Whenever `harness_fit` is answered (the user asked
+  about the Foundry Copilot harness, or `agent_type: harness`), render the
+  verdict block below from the `harness_disqualifiers` in
+  [`runtime-policy.json`](runtime-policy.json); never hand-write it. A `fit`
+  verdict is not an opt-in: the harness still needs the user's request.
+
 - `voice_frontend: hosted-voice` keeps `agent_type: hosted` and adds a spoken
   front-end (Foundry Hosted Voice, preview): a managed `kind: voice` wrapper uses
   the GHCP hosted agent as its conversation engine, so tools and governance stay
@@ -886,6 +893,26 @@ capability_signals:                     # machine-readable booleans + unresolved
   (workflow-graph generation with typed executors is not shipped). Use when
   the process has fixed phases, long-running waits, retries with explicit
   back-off, or human approvals between stages.
+
+#### Harness fit verdict
+
+Render with `python <threadlight-skills>/skills/_shared/agent_type_policy.py --spec specs/SPEC.md --verdict-md`
+(in Cowork, apply the `harness_disqualifiers` and `harness_fit_questions` of
+`runtime-policy.json` by hand, the same way). The verdict is `fit` (no
+disqualifier hit), `not-fit` (one row per disqualifier, an unknown answer counts
+as a hit) or `not-assessed` (no `harness_fit` answers); advisories such as
+"not read-mostly" never change it. Cost lines for the harness come from
+`threadlight-qualify` (`harness-model-tokens`, `harness-sandbox`, each labelled
+estimated or measured). A `fit` verdict is not an opt-in.
+
+```markdown
+**Harness fit verdict: <fit | not-fit | not-assessed>**
+
+| Reason | Kind |
+| --- | --- |
+| <disqualifier id: harness_fit.<field>=<answer> (reason)> | disqualifier |
+| <advisory> | advisory |
+```
 
 ### Agent topology (one agent with skills, or several agents)
 

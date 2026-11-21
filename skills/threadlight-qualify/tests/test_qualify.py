@@ -228,3 +228,120 @@ def test_no_discovery_imports():
     # Guard against real discovery — imports/calls, not docstring prose.
     for banned in ("\nimport subprocess", "from discover", "\nimport discover", "discover_resources("):
         assert banned not in src, f"qualify.py must not reference {banned!r}"
+
+
+# ---------------------------------------------------------------------------
+# Foundry Copilot harness: fit verdict and its two cost lines (#232)
+# ---------------------------------------------------------------------------
+
+CLEAN_FIT = {
+    "read_mostly": True,
+    "citadel_model_path_required": False,
+    "acs_in_process_pep_required": False,
+    "foundry_memory_required": False,
+    "voice_frontend_required": False,
+    "consequential_write_seam": "function-tool",
+}
+
+
+def _harness_profile(**fit) -> dict:
+    profile = _profile()
+    profile["harness_fit"] = {**CLEAN_FIT, **fit}
+    return profile
+
+
+def _harness(tmp_path, profile):
+    return _run(profile, tmp_path)["sizing_manifest"]["harness"]
+
+
+def test_harness_is_not_assessed_without_fit_answers_and_questions_are_open(tmp_path):
+    harness = _harness(tmp_path, _profile())
+    assert harness["verdict"] == "not-assessed"
+    discovery = (tmp_path / "qualification" / "discovery.md").read_text()
+    assert "Copilot harness" in discovery
+    for phrase in ("read-mostly", "Citadel", "consequential writes", "region", "Memory", "voice"):
+        assert phrase in discovery, phrase
+
+
+def test_clean_fit_answers_give_a_fit_verdict_using_the_pinned_region(tmp_path):
+    harness = _harness(tmp_path, _harness_profile())
+    assert harness["verdict"] == "fit", harness
+    assert harness["reasons"] == []
+    assert harness["fit_answers"]["region"] == "swedencentral"
+
+
+@pytest.mark.parametrize("override,disqualifier", [
+    ({"citadel_model_path_required": True}, "citadel-model-path-required"),
+    ({"acs_in_process_pep_required": True}, "acs-in-process-pep-required"),
+    ({"foundry_memory_required": True}, "foundry-memory-required"),
+    ({"voice_frontend_required": True}, "voice-frontend-required"),
+    ({"region": "eastus2"}, "region-not-supported"),
+    ({"consequential_write_seam": "direct-api"}, "consequential-write-without-function-or-governed-mcp"),
+    ({"foundry_memory_required": None}, "foundry-memory-required"),
+])
+def test_any_disqualifier_gives_not_fit_with_its_reason(tmp_path, override, disqualifier):
+    harness = _harness(tmp_path, _harness_profile(**override))
+    assert harness["verdict"] == "not-fit"
+    assert disqualifier in harness["disqualifiers"]
+    assert any(reason.startswith(disqualifier) for reason in harness["reasons"])
+
+
+def test_not_read_mostly_is_an_advisory_not_a_disqualifier(tmp_path):
+    harness = _harness(tmp_path, _harness_profile(read_mostly=False))
+    assert harness["verdict"] == "fit"
+    assert any("read-mostly" in note for note in harness["advisories"])
+
+
+def test_both_harness_cost_lines_are_labelled_estimated_by_default(tmp_path):
+    manifest = _run(_harness_profile(), tmp_path)["sizing_manifest"]
+    lines = {line["id"]: line for line in manifest["harness"]["cost_lines"]}
+    assert set(lines) == {"harness-model-tokens", "harness-sandbox"}
+    for line in lines.values():
+        assert line["label"] == "estimated"
+        assert line["monthly_usd_low"] <= line["monthly_usd_high"]
+        assert line["basis"]
+    sandbox = lines["harness-sandbox"]
+    # USD 0.0994/vCPU-h + 0.0118/GiB-h (documented) at the observed 1 vCPU / 2.2 GiB (tested).
+    assert sandbox["usd_per_active_hour"] == pytest.approx(0.12536)
+    monthly_tx = manifest["load_profile"]["monthly_transactions"]
+    assert sandbox["monthly_usd_low"] == pytest.approx(monthly_tx * 37 / 3600 * 0.12536, rel=1e-6)
+    assert "idle" in sandbox["basis"].lower()
+    sizing = (tmp_path / "qualification" / "sizing.md").read_text()
+    assert "## Foundry Copilot harness (preview)" in sizing
+    assert sizing.count("| estimated |") >= 2
+
+
+def test_measured_inputs_turn_each_line_measured(tmp_path):
+    profile = _harness_profile()
+    profile["harness_measured"] = {"model_tokens_usd_per_task": 0.044, "sandbox_active_seconds_per_task": 40}
+    manifest = _run(profile, tmp_path)["sizing_manifest"]
+    lines = {line["id"]: line for line in manifest["harness"]["cost_lines"]}
+    monthly_tx = manifest["load_profile"]["monthly_transactions"]
+    assert lines["harness-model-tokens"]["label"] == "measured"
+    assert lines["harness-model-tokens"]["monthly_usd_low"] == pytest.approx(monthly_tx * 0.044)
+    assert lines["harness-sandbox"]["label"] == "measured"
+    assert lines["harness-sandbox"]["monthly_usd_high"] == pytest.approx(monthly_tx * 40 / 3600 * 0.12536)
+
+
+def test_harness_recommendations_size_tpm_and_keep_subagents_off(tmp_path):
+    harness = _harness(tmp_path, _harness_profile())
+    recs = harness["recommendations"]
+    assert recs["min_tpm"] == 40 * 300_000
+    assert recs["subagents"] == "off"
+
+
+def test_harness_fit_answers_are_validated(tmp_path):
+    profile = _profile()
+    profile["harness_fit"] = ["not", "an", "object"]
+    with pytest.raises(QualificationError):
+        _run(profile, tmp_path)
+    assert not (tmp_path / "qualification").exists()
+
+
+def test_harness_block_matches_the_sizing_manifest_schema(tmp_path):
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads((SKILL_ROOT / "references" / "sizing-manifest.schema.json").read_text())
+    for profile in (_profile(), _harness_profile(region="eastus2")):
+        manifest = _run(profile, tmp_path / profile.get("pinned_region", "x") / str(len(profile)))["sizing_manifest"]
+        jsonschema.validate(manifest, schema)
+        assert "harness" in schema["properties"]

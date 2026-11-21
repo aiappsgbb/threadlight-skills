@@ -138,7 +138,7 @@ done
 #   references/sizing-manifest.schema.json
 #   references/citadel-sizing.json
 #   vendor/model-catalog.json      (dated model catalog, the only vendored data)
-#   vendor/cost-runtime.zip        (importable cost engine — code only)
+#   vendor/cost-runtime.zip        (importable cost engine + harness fit rules)
 # No tests, fixtures, goldens, or __pycache__ ship. The runtime needs no az /
 # azd / Bicep / Docker / customer credentials — pure stdlib Python.
 # ---------------------------------------------------------------------------
@@ -174,6 +174,13 @@ build_qualify_zip() {
      "${cq_scripts}/discount.py" \
      "${rt}/"
   cp -R "${cq_scripts}/projectors" "${rt}/projectors"
+  # Harness fit rules (#232): the shared resolver plus runtime-policy.json as
+  # package data, so the Cowork bundle computes the same verdict as the repo.
+  cp "${SRC_DIR}/_shared/agent_type_policy.py" "${rt}/agent_type_policy.py"
+  mkdir -p "${rt}/harness_policy"
+  printf '"""runtime-policy.json packaged for agent_type_policy (staged by build-cowork-zips.sh)."""\n' \
+    > "${rt}/harness_policy/__init__.py"
+  cp "${SRC_DIR}/threadlight-design/references/runtime-policy.json" "${rt}/harness_policy/runtime-policy.json"
 
   # Stage a zip-importable ``pricing_fixtures`` package so PricingClient can
   # resolve the dated offline rates via importlib.resources when it runs from

@@ -182,6 +182,7 @@ preview_acknowledged: null              # REQUIRED when agent_type: voice, harne
 harness_opt_in_source: null              # REQUIRED when agent_type: harness: must be `user` (an agent-written value is not an opt-in)
 harness_opt_in_evidence: null            # REQUIRED when agent_type: harness: quote of the user's request for the Foundry Copilot harness (preview)
 harness_fit:                            # REQUIRED when agent_type: harness: every answer known; any disqualifier or null forces hosted (runtime-policy.json harness_disqualifiers)
+  read_mostly: null                   # advisory only: false means every consequential write needs a seam
   citadel_model_path_required: null   # true disqualifies: the harness has no BYOM through AI Gateway
   acs_in_process_pep_required: null   # true disqualifies: no Agent Hooks surface for an in-process ACS PEP
   foundry_memory_required: null       # true disqualifies: Foundry Memory is not available with the harness

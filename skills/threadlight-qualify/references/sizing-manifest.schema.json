@@ -53,6 +53,34 @@
         }
       }
     },
+    "harness": {
+      "type": "object",
+      "description": "Foundry Copilot harness (preview): fit verdict from the runtime-policy.json harness_disqualifiers and its two cost lines, each labelled estimated or measured. A fit verdict is never an opt-in.",
+      "required": ["verdict", "reasons", "disqualifiers", "cost_lines", "recommendations"],
+      "properties": {
+        "verdict": {"type": "string", "enum": ["fit", "not-fit", "not-assessed"]},
+        "reasons": {"type": "array", "items": {"type": "string"}},
+        "disqualifiers": {"type": "array", "items": {"type": "string"}},
+        "advisories": {"type": "array", "items": {"type": "string"}},
+        "cost_lines": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "monthly_usd_low", "monthly_usd_high", "basis"],
+            "properties": {
+              "id": {"type": "string", "enum": ["harness-model-tokens", "harness-sandbox"]},
+              "label": {"type": "string", "enum": ["estimated", "measured"]},
+              "monthly_usd_low": {"type": ["number", "null"]},
+              "monthly_usd_high": {"type": ["number", "null"]},
+              "basis": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "recommendations": {"type": "object", "required": ["min_tpm", "subagents"]}
+      }
+    },
     "assumptions": {
       "type": "array",
       "items": {

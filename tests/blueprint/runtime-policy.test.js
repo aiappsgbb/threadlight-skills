@@ -1543,3 +1543,49 @@ test('docs-blueprint workflow paths (pull_request and push) cover the CI-wiring 
     }
   }
 });
+
+// #232: the harness fit questions (qualify + design) map one-to-one onto the
+// machine-checkable disqualifiers, and the design template renders a verdict
+// with reasons from them.
+test('runtime-policy harness fit questions cover every disqualifier and the design template renders the verdict', () => {
+  const { execFileSync } = require('node:child_process');
+  const os = require('node:os');
+  const hosting = JSON.parse(fs.readFileSync(policyPath, 'utf8')).agent_hosting;
+  const questions = hosting.harness_fit_questions;
+  const covered = questions.filter((q) => q.disqualifier).map((q) => q.disqualifier).sort();
+  assert.deepStrictEqual(covered, hosting.harness_disqualifiers.map((d) => d.id).sort());
+  for (const q of questions) {
+    assert.ok(q.question && q.question.endsWith('?'), q.field);
+    if (q.disqualifier) {
+      assert.strictEqual(hosting.harness_disqualifiers.find((d) => d.id === q.disqualifier).fit_field, q.field);
+    }
+  }
+  assert.ok(questions.some((q) => q.field === 'read_mostly' && q.advisory && !q.disqualifier));
+
+  const template = fs.readFileSync(path.join(repoRoot, 'skills/threadlight-design/references/speckit-template.md'), 'utf8');
+  for (const q of questions) {
+    assert.match(template, new RegExp(`\\n\\s+${q.field}: null`), `speckit harness_fit.${q.field}`);
+  }
+  const start = template.indexOf('#### Harness fit verdict');
+  assert.ok(start > 0, 'speckit-template needs a Harness fit verdict block');
+  const block = template.slice(start, start + 2500);
+  assert.match(block, /agent_type_policy\.py --spec specs\/SPEC\.md --verdict-md/);
+  for (const verdict of ['fit', 'not-fit', 'not-assessed']) assert.match(block, new RegExp(`\`${verdict}\``));
+  assert.match(block, /harness_disqualifiers/);
+  assert.match(block, /not an opt-in/i);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-verdict-'));
+  const spec = path.join(dir, 'SPEC.md');
+  fs.writeFileSync(spec, '```yaml\nagent_type: hosted\nharness_fit:\n  read_mostly: false\n'
+    + '  citadel_model_path_required: true\n  acs_in_process_pep_required: false\n  foundry_memory_required: false\n'
+    + '  voice_frontend_required: false\n  region: swedencentral\n  consequential_write_seam: none\n```\n');
+  try {
+    const out = execFileSync('python3', ['skills/_shared/agent_type_policy.py', '--spec', spec, '--verdict-md'],
+      { cwd: repoRoot, encoding: 'utf8' });
+    assert.match(out, /Harness fit verdict: not-fit/);
+    assert.match(out, /citadel-model-path-required[^\n]*\| disqualifier \|/);
+    assert.match(out, /read-mostly[^\n]*\| advisory \|/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

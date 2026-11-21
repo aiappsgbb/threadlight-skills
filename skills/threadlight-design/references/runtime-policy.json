@@ -126,6 +126,44 @@
         "reason": "The service manages harness tool approval; consequential writes must go through a client function tool or a governed MCP tool with require_approval: always."
       }
     ],
+    "harness_fit_questions": [
+      {
+        "field": "read_mostly",
+        "question": "Is the work read-mostly (lookups, triage, drafting) rather than write-heavy?",
+        "advisory_when": false,
+        "advisory": "not read-mostly: every consequential write needs a client function tool or governed MCP seam, so the harness saves less than for read-mostly work"
+      },
+      {
+        "field": "citadel_model_path_required",
+        "question": "Is the Citadel (AI Gateway) model path mandatory?",
+        "disqualifier": "citadel-model-path-required"
+      },
+      {
+        "field": "acs_in_process_pep_required",
+        "question": "Must ACS enforce policy in process (Agent Hooks pre_tool_call)?",
+        "disqualifier": "acs-in-process-pep-required"
+      },
+      {
+        "field": "consequential_write_seam",
+        "question": "Are consequential writes needed, and through which seam (none, function-tool, governed-mcp)?",
+        "disqualifier": "consequential-write-without-function-or-governed-mcp"
+      },
+      {
+        "field": "region",
+        "question": "Is the target region a documented harness region?",
+        "disqualifier": "region-not-supported"
+      },
+      {
+        "field": "foundry_memory_required",
+        "question": "Is Foundry Memory needed?",
+        "disqualifier": "foundry-memory-required"
+      },
+      {
+        "field": "voice_frontend_required",
+        "question": "Is a voice front-end needed?",
+        "disqualifier": "voice-frontend-required"
+      }
+    ],
     "harness_supported_regions": [
       "australiaeast",
       "brazilsouth",

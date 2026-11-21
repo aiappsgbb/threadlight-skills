@@ -51,6 +51,10 @@ def _ensure_runtime_on_path() -> None:
     candidate = here.parents[2] / "threadlight-consumption-iq" / "scripts"
     if candidate.exists():
         sys.path.insert(0, str(candidate))
+    # Repo layout: the harness fit rules live in skills/_shared/agent_type_policy.py.
+    shared = here.parents[2] / "_shared"
+    if shared.exists():
+        sys.path.insert(0, str(shared))
     # Cowork layout: vendored runtime zip sits next to the skill root.
     for rel in ("vendor/cost-runtime.zip", "../vendor/cost-runtime.zip"):
         zip_path = (here.parent / rel).resolve()
@@ -62,6 +66,7 @@ _ensure_runtime_on_path()
 
 from cost_api import project_profile  # noqa: E402
 from pricing_client import PricingClient  # noqa: E402
+from agent_type_policy import fit_verdict, load_policy  # noqa: E402
 
 try:
     from model_catalog import load_model_catalog, ModelCatalogError
@@ -101,6 +106,21 @@ _MVP_FRACTION = 0.1  # pilot models 10% of production volume
 _EMBEDDING_TOKENS_PER_PAGE = 800
 _AUTOMATION_RATE = 0.7  # share of handling time removed
 _LABOR_HOURLY_USD = 30.0  # fully-loaded agent hour
+# Foundry Copilot harness (preview) cost model, #232. Labels: documented = official
+# source; tested = Nov 2026 hands-on run of examples/returns-triage-governed
+# (gpt-5.4-mini, 12 golden runs per runtime, indicative only); arithmetic = derived.
+_HARNESS_SANDBOX_USD_PER_VCPU_HOUR = 0.0994  # documented, billed from 2026-12-01
+_HARNESS_SANDBOX_USD_PER_GIB_HOUR = 0.0118   # documented, billed from 2026-12-01
+_HARNESS_SANDBOX_SOURCE = "https://devblogs.microsoft.com/foundry/microsoft-copilot-harness-in-foundry/"
+_HARNESS_SANDBOX_VCPU = 1.0                  # tested: observed sandbox shape
+_HARNESS_SANDBOX_GIB = 2.2                   # tested: observed sandbox shape
+_HARNESS_ACTIVE_SECONDS_P50 = 37.0           # tested: latency p50 per case
+_HARNESS_ACTIVE_SECONDS_MAX = 47.0           # tested: latency max per case
+# arithmetic: per-case model cost harness/GHCP at retail list prices with cache (0.044/0.029)
+_HARNESS_TOKEN_COST_RATIO_LOW = 1.5
+# tested: input-token volume harness/GHCP (~235K/~85K), i.e. no cache benefit
+_HARNESS_TOKEN_COST_RATIO_HIGH = 2.8
+_HARNESS_TPM_TOKENS_PER_CONVERSATION = 300_000  # tested: peak per-task token draw; a 429 fails the whole response
 _CITADEL_SIZING_PATH = Path(__file__).resolve().parent.parent / "references" / "citadel-sizing.json"
 
 _REPO_MODEL_CATALOG = (
@@ -139,11 +159,31 @@ def _validate_profile(profile: Any) -> None:
             raise QualificationError(f"field {field!r} must be >= 0, got {value!r}")
     if profile.get("annual_transaction_volume", 0) <= 0:
         raise QualificationError("annual_transaction_volume must be > 0")
+    harness_problems = _validate_harness(profile)
+    if harness_problems:
+        raise QualificationError("; ".join(harness_problems))
 
 
 # ---------------------------------------------------------------------------
 # Derivation
 # ---------------------------------------------------------------------------
+
+def _validate_harness(profile: dict[str, Any]) -> list[str]:
+    problems = []
+    fit = profile.get("harness_fit")
+    if fit is not None and not isinstance(fit, dict):
+        problems.append("harness_fit must be an object of fit answers")
+    measured = profile.get("harness_measured")
+    if measured is not None:
+        if not isinstance(measured, dict):
+            problems.append("harness_measured must be an object")
+        else:
+            for key in ("model_tokens_usd_per_task", "sandbox_active_seconds_per_task"):
+                value = measured.get(key)
+                if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0):
+                    problems.append(f"harness_measured.{key} must be a non-negative number")
+    return problems
+
 
 def _seconds_per_month(business_hours_only: bool) -> int:
     return 8 * 3600 * 22 if business_hours_only else 24 * 3600 * 30
@@ -307,6 +347,85 @@ def _citadel_hub_sizing(
 
 
 # ---------------------------------------------------------------------------
+# Foundry Copilot harness (preview): fit verdict and its two cost lines
+# ---------------------------------------------------------------------------
+
+def _harness_line(line_id: str, label: str, low: float | None, high: float | None, basis: str,
+                  **extra: Any) -> dict[str, Any]:
+    return {"id": line_id, "label": label,
+            "monthly_usd_low": None if low is None else round(low, 4),
+            "monthly_usd_high": None if high is None else round(high, 4),
+            "basis": basis, **extra}
+
+
+def _harness_block(profile: dict[str, Any], monthly_tx: float, hosted_llm_usd: float | None) -> dict[str, Any]:
+    """Fit verdict (runtime-policy.json disqualifiers) plus the two harness cost lines.
+
+    A fit verdict is never an opt-in: the harness stays a user decision
+    (skills/_shared/foundry-only-agents.md item 2d).
+    """
+    policy = load_policy()
+    answers = profile.get("harness_fit")
+    fit = dict(answers) if isinstance(answers, dict) else None
+    if fit is not None and fit.get("region") in (None, ""):
+        fit["region"] = profile["pinned_region"]
+    verdict = fit_verdict(fit, policy)
+    measured = profile.get("harness_measured") or {}
+
+    token_measured = measured.get("model_tokens_usd_per_task")
+    if token_measured is not None:
+        tokens = _harness_line(
+            "harness-model-tokens", "measured", monthly_tx * token_measured, monthly_tx * token_measured,
+            "user-supplied measured model-token cost per task x monthly transactions")
+    else:
+        low = None if hosted_llm_usd is None else hosted_llm_usd * _HARNESS_TOKEN_COST_RATIO_LOW
+        high = None if hosted_llm_usd is None else hosted_llm_usd * _HARNESS_TOKEN_COST_RATIO_HIGH
+        tokens = _harness_line(
+            "harness-model-tokens", "estimated", low, high,
+            f"hosted LLM line x {_HARNESS_TOKEN_COST_RATIO_LOW}-{_HARNESS_TOKEN_COST_RATIO_HIGH}: the harness used "
+            "~2.8x the input tokens of the GHCP hosted template (94% cache-read), ~1.5x the model cost at retail "
+            "list prices, on one indicative scenario; measure on real tasks")
+
+    hourly = _HARNESS_SANDBOX_VCPU * _HARNESS_SANDBOX_USD_PER_VCPU_HOUR + _HARNESS_SANDBOX_GIB * _HARNESS_SANDBOX_USD_PER_GIB_HOUR
+    seconds_measured = measured.get("sandbox_active_seconds_per_task")
+    sandbox_common = {"usd_per_active_hour": round(hourly, 6), "source": _HARNESS_SANDBOX_SOURCE}
+    idle = "idle-time billing is not documented and is not included"
+    if seconds_measured is not None:
+        cost = monthly_tx * seconds_measured / 3600 * hourly
+        sandbox = _harness_line(
+            "harness-sandbox", "measured", cost, cost,
+            f"user-supplied measured active seconds per task x USD {hourly:.5f}/active hour; {idle}", **sandbox_common)
+    else:
+        sandbox = _harness_line(
+            "harness-sandbox", "estimated",
+            monthly_tx * _HARNESS_ACTIVE_SECONDS_P50 / 3600 * hourly,
+            monthly_tx * _HARNESS_ACTIVE_SECONDS_MAX / 3600 * hourly,
+            f"USD {_HARNESS_SANDBOX_USD_PER_VCPU_HOUR}/vCPU-h + {_HARNESS_SANDBOX_USD_PER_GIB_HOUR}/GiB-h (documented, "
+            f"from 2026-12-01) x observed {_HARNESS_SANDBOX_VCPU:g} vCPU / {_HARNESS_SANDBOX_GIB:g} GiB, "
+            f"{_HARNESS_ACTIVE_SECONDS_P50:g}-{_HARNESS_ACTIVE_SECONDS_MAX:g} s active per task (tested); {idle}",
+            **sandbox_common)
+
+    return {
+        "kind": "foundry-copilot-harness",
+        "preview": True,
+        "opt_in_required": "user (agent_type: harness, foundry-only-agents.md item 2d)",
+        "verdict": verdict["verdict"],
+        "reasons": verdict["reasons"],
+        "disqualifiers": verdict["disqualifiers"],
+        "advisories": verdict["advisories"],
+        "fit_answers": fit,
+        "cost_lines": [tokens, sandbox],
+        "recommendations": {
+            "min_tpm": int(profile["peak_concurrency"]) * _HARNESS_TPM_TOKENS_PER_CONVERSATION,
+            "min_tpm_basis": f"peak_concurrency x ~{_HARNESS_TPM_TOKENS_PER_CONVERSATION:,} tokens per task (tested); "
+                             "a model 429 fails the whole harness response",
+            "subagents": "off",
+            "subagents_basis": "tested: 6 parallel subagents used ~5x the tokens and skipped the skill procedure",
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Projection helpers
 # ---------------------------------------------------------------------------
 
@@ -398,6 +517,10 @@ def run_qualification(
         )
 
     hub_sizing = _citadel_hub_sizing(derived["monthly_transactions"], assumptions)
+    production_llm = next(
+        (r.get("monthly_cost_usd") for r in app_sizings[-1]["cost_manifest"]["resources"]
+         if r.get("logical_name") == "aoai-chat"), None)
+    harness = _harness_block(profile, derived["monthly_transactions"], production_llm)
 
     normalized = _normalized_load_profile(profile, derived, derived["monthly_transactions"])
     status = "complete" if all(
@@ -415,6 +538,7 @@ def run_qualification(
         "pinned_region": profile["pinned_region"],
         "load_profile": normalized,
         "sizings": app_sizings + [hub_sizing],
+        "harness": harness,
         "assumptions": assumptions,
     }
 
@@ -527,6 +651,7 @@ def _render_sizing_md(manifest: dict[str, Any]) -> str:
             f"- Components: {', '.join(sizing.get('components') or [])}",
             f"- Source: {sizing.get('source')} (`{sizing.get('checked_at')}`)",
         ]
+    lines += _render_harness_md(manifest["harness"])
     lines += ["", "## Assumptions", "", "| Field | Value | Provenance | Basis |", "| --- | --- | --- | --- |"]
     for a in manifest["assumptions"]:
         lines.append(
@@ -534,6 +659,23 @@ def _render_sizing_md(manifest: dict[str, Any]) -> str:
         )
     lines.append("")
     return "\n".join(lines)
+
+
+def _render_harness_md(harness: dict[str, Any]) -> list[str]:
+    lines = ["", "## Foundry Copilot harness (preview)", "",
+             f"Fit verdict: **{harness['verdict']}**. A fit verdict is not an opt-in: the harness is used only when "
+             "the user asks for it (`agent_type: harness`).", ""]
+    lines += [f"- {reason}" for reason in harness["reasons"]]
+    lines += [f"- advisory: {note}" for note in harness["advisories"]]
+    lines += ["", "| Cost line | Label | Monthly (production) | Basis |", "| --- | --- | --- | --- |"]
+    for line in harness["cost_lines"]:
+        low, high = line["monthly_usd_low"], line["monthly_usd_high"]
+        amount = _fmt_usd(low) if low == high else f"{_fmt_usd(low)} - {_fmt_usd(high)}"
+        lines.append(f"| `{line['id']}` | {line['label']} | {amount} | {line['basis']} |")
+    recs = harness["recommendations"]
+    lines += ["", f"- TPM: at least **{recs['min_tpm']:,}** ({recs['min_tpm_basis']}).",
+              f"- Subagents: **{recs['subagents']}** unless needed ({recs['subagents_basis']})."]
+    return lines
 
 
 def _render_discovery_md(profile: dict[str, Any], manifest: dict[str, Any]) -> str:
@@ -559,6 +701,11 @@ def _render_discovery_md(profile: dict[str, Any], manifest: dict[str, Any]) -> s
         "- Validate model choice and PTU-vs-PAYG break-even before committing capacity.",
         "",
     ]
+    if manifest["harness"]["verdict"] == "not-assessed":
+        lines += ["## Foundry Copilot harness fit (preview, ask only if the customer raises it)", ""]
+        lines += [f"- {q['question']} (`harness_fit.{q['field']}`)"
+                  for q in load_policy()["agent_hosting"]["harness_fit_questions"]]
+        lines.append("")
     return "\n".join(lines)
 
 
