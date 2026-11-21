@@ -5,7 +5,7 @@ description: >-
   and champion-challenger gates. Emits `specs/evals-manifest.json` for pillar 6.
   Reuses validated opted-in AgentOps batches without reruns or live-wiring claims.
   USE FOR: Threadlight pilot evals leg, offline eval gate, eval schedule
-  for a Threadlight pilot, create_agent_evaluation, Application Insights eval
+  for a Threadlight pilot, Foundry evaluation rules, Application Insights eval
   results, eval threshold alert, eval run freshness, eval dataset shape,
   tool_calls tool_outputs, champion challenger, A/B eval gate,
   model/prompt swap gate, judge calibration, LLM-as-judge,
@@ -16,7 +16,7 @@ description: >-
   batch or continuous eval, evaluator or dataset authoring outside a
   Threadlight pilot — use microsoft-foundry.
 metadata:
-  version: "0.3.1"
+  version: "0.4.0"
 ---
 
 # Threadlight Evals — run continuous evals, then prove they ran
@@ -27,7 +27,7 @@ metadata:
 > with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
 > Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
 > custom rubric derived from the SPEC acceptance criteria, with anchors and a passing
-> threshold, executed against the deployed agent. Continuous evaluation is optional (GA rules reject hosted agents). Record the evidence in
+> threshold, executed against the deployed agent. Continuous evaluation is optional (Foundry evaluation rules; see threadlight-evals). Record the evidence in
 > `specs/foundry-package-manifest.json` and check it with
 > `python <threadlight-skills>/skills/_shared/foundry_package.py --workspace <pilot-root>`. Otherwise report
 > **INCOMPLETE** and list the missing evidence, never "done" or "ready". Mock MCP
@@ -58,7 +58,7 @@ DESIGN → BUILD/DEPLOY → DISCOVER → PROTECT → [ GOVERN / IMPROVE ] → PR
 | Feature | Purpose | Output signal |
 |---|---|---|
 | **F1 Offline batch quality eval** | Thin-wrap the `microsoft-foundry` invoke+score path in the threadlight spine. Heavy evaluator authoring still belongs to `microsoft-foundry`; this leg owns running it and producing evidence. | `eval_scenarios_present`, `eval_datasets_present`, `run_history_present`, `latest_pass_rate_ok` |
-| **F2 Online / continuous eval** | Wire Foundry Continuous Evaluation on live threads using `create_agent_evaluation(thread, run, evaluators=[...], app_insights_connection_string=...)`. Results land in Application Insights. | `schedule_present`, `online_eval_wired`, `latest_eval_run_fresh`, `alert_wired` |
+| **F2 Online / continuous eval** | Wire Foundry **evaluation rules** (`evaluation_rules.create_or_update`): a continuous rule on response completion for prompt agents, a scheduled trace or dataset rule for hosted agents. Results land in the Foundry Evaluations page and the agent's Monitor tab. | `schedule_present`, `online_eval_wired`, `latest_eval_run_fresh`, `alert_wired` |
 | **F3 A/B champion–challenger** | Gate a model/prompt/tool swap by running the same eval dataset against champion and challenger before the swap. | `ab_comparison_present` |
 
 ## What this skill does NOT replace
@@ -84,7 +84,7 @@ capability keys map directly to pillar 6 (`continuous-evals`) IDs:
 | `thresholds_declared` | `EVAL-004` | Per-scenario `threshold`, `min_score`, or pass-rate threshold is declared | should-fix |
 | `schedule_present` | `EVAL-005` | Plan A Foundry CE schedule or Plan B cron/ACA Job eval runner exists | must-fix |
 | `run_history_present` | `EVAL-006` | Latest run output is committed under `evals/runs/*.json` or `docs/eval-runs/` | should-fix |
-| `online_eval_wired` | `EVAL-101` | Code calls `create_agent_evaluation(...)` with Application Insights connection | should-fix; must-fix when Plan A is declared but unwired |
+| `online_eval_wired` | `EVAL-101` | `evaluation_rules.create_or_update` with `ContinuousEvaluationRuleAction` / `TraceEvaluationRuleAction` / `DatasetEvaluationRuleAction`, or a rule action declared in `azure.eval.yaml`. Classic `create_agent_evaluation(...)` is reported `legacy` and does not pass unless `--accept-legacy-online-eval` | should-fix; must-fix when Plan A is declared but unwired |
 | `latest_eval_run_fresh` | `EVAL-102/103` | Latest scheduled run is within the freshness window (default 7 days) | should-fix if stale; not-verified if no history |
 | `alert_wired` | `EVAL-104` | Alert or notification exists for eval threshold breach | must-fix |
 | `latest_pass_rate_ok` | `EVAL-105` | Latest run pass rate meets the declared minimum | should-fix if below threshold |
@@ -213,25 +213,38 @@ manifest gaps.
 4. **Emit evidence.** Write `specs/evals-manifest.json` and
    `docs/evals-report.md`; the scorecard consumes the manifest.
 
-## Plan A — Foundry Continuous Evaluation
+## Plan A — Foundry evaluation rules
 
-Preferred production wiring uses Foundry Continuous Evaluation on live threads:
+Preferred production wiring uses Foundry evaluation rules
+([continuous and scheduled evaluation](https://learn.microsoft.com/azure/foundry/observability/how-to/continuous-scheduled-evaluation)),
+`azure-ai-projects` 2.x `project_client.evaluation_rules.create_or_update(...)`:
 
-```python
-client.evaluations.create_agent_evaluation(
-    thread=thread,
-    run=run,
-    evaluators=[groundedness, relevance, tool_output_utilization],
-    app_insights_connection_string=os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"],
-)
-```
+| Agent | Rule | Cost control |
+|---|---|---|
+| Hosted | Scheduled trace rule: `TraceEvaluationRuleAction` + `TracesEvalRunDataSource(agent_name=..., max_traces=N)` + `RecurrenceTrigger` | `max_traces`, recurrence |
+| Prompt | Continuous rule: `ContinuousEvaluationRuleAction(max_hourly_runs=N)` + `RESPONSE_COMPLETED` + `EvaluationRuleFilter(agent_name=...)` | `max_hourly_runs` (default 100) |
+| Any (fixed queries) | Scheduled dataset rule: `DatasetEvaluationRuleAction` | recurrence, dataset size |
+| External | Scheduled trace rule with `agent_id` = the agent's `otel_agent_id`; continuous rules do not apply | `max_traces` |
 
-Use `DefaultAzureCredential` and managed identity/OIDC; do not store secrets in
-repo files. See `references/foundry-ce-wiring.md` for the full keyless snippet.
+**Tested, Nov 2026** (`azure-ai-projects` 2.11.0): an hourly trace rule on a
+hosted agent provisioned `SUCCEEDED` and its first run scored 7 traces. A
+continuous rule on a prompt agent produced one run per completed response and
+stopped at `max_hourly_runs=20`. The project managed identity needs **Foundry
+User** for rules to run (`threadlight-deploy` MAF `postprovision` hook).
 
-Plan A detection accepts config or code under `infra/` / `evals/` that references
-continuous evaluation and a schedule, and code that calls
-`create_agent_evaluation(...)` with an Application Insights connection string.
+**Teardown disables rules:** set `rule.enabled = False` and call
+`create_or_update` again. It is applied asynchronously (still `True` on an
+immediate read, `False` about 30 s later), so read it back before you report it.
+Rules left enabled keep spending judge tokens.
+
+`create_agent_evaluation(thread, run, ...)` is the classic-portal API and is not
+in `azure-ai-projects` 2.x. `evals_check.py` reports it as `legacy` (EVAL-101 not
+passed); `--accept-legacy-online-eval` keeps old pilots green with the label
+still visible. See `references/foundry-ce-wiring.md` for keyless snippets.
+
+Plan A detection accepts rule wiring in code (`evaluation_rules.create_or_update`
+with a rule action) or a rule action declared in `azure.eval.yaml`, plus config
+under `infra/` / `evals/` that references continuous evaluation and a schedule.
 
 ## Plan B — scheduled fallback
 

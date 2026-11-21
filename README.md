@@ -171,7 +171,7 @@ skim them; agents must follow them.
 > Foundry agent (no fake or fallback agent), Application Insights with a trace
 > visible in Foundry, a Foundry eval run with built-in evaluators plus a
 > SPEC-derived custom rubric, executed against the deployed agent. Continuous
-> evaluation is optional (GA evaluation rules reject hosted agents). Otherwise
+> evaluation is optional (Foundry evaluation rules, see threadlight-evals). Otherwise
 > deploy, auto and production-ready report **INCOMPLETE** and list the missing evidence.
 
 ## What is a skill?

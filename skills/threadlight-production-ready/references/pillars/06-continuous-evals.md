@@ -19,12 +19,15 @@ swap models?" The answer is **continuous evals**.
 Either is acceptable for production; **neither being present is a
 hard-fail**.
 
-> **Hosted agents (2.19.4).** The GA Foundry `evaluation_rules` API rejects
-> hosted agents with HTTP 400 "Hosted and external agents are not supported",
-> and the `beta.schedules` route is preview (out of scope under the Foundry-only
-> rule). For a hosted agent, Plan A is therefore not available: use Plan B, a
-> scheduled job that runs the GA batch eval (`azure_ai_target_completions`
-> against the `azure_ai_agent` target). This pillar is a production-readiness
+> **Hosted agents.** In 2.19.4 the GA Foundry `evaluation_rules` API returned
+> HTTP 400 "Hosted and external agents are not supported" for a hosted agent.
+> **Tested, Nov 2026:** a scheduled trace rule (`TraceEvaluationRuleAction`,
+> hourly, `max_traces`) provisions and scores a hosted agent's traces, so Plan A
+> for a hosted agent is a scheduled trace or dataset rule (see
+> `threadlight-evals/references/foundry-ce-wiring.md`). Continuous rules fire on
+> Foundry agent response completion and do not apply to external agents. Plan B,
+> a scheduled job running the GA batch eval (`azure_ai_target_completions`
+> against the `azure_ai_agent` target), remains acceptable. This pillar is a production-readiness
 > recommendation and is **not part of the full Foundry package**. That gate
 > needs one executed, working eval run; continuous evaluation is optional there.
 

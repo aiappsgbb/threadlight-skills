@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 // 2.19.4 scope extension (user-directed): continuous evaluation is NOT part of the
-// mandatory full Foundry package. GA evaluation_rules reject hosted agents with
+// mandatory full Foundry package. GA evaluation_rules then rejected hosted agents with
 // 400 "Hosted and external agents are not supported", and beta.schedules is
 // preview (out of scope). COMPLETE needs one working, executed Foundry eval.
 

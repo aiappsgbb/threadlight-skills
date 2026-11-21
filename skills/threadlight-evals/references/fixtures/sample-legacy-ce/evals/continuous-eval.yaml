@@ -1,0 +1,6 @@
+name: threadlight-continuous-eval
+plan: A
+schedule: "0 6 * * *"
+runner: create_agent_evaluation
+app_insights_connection_string: ${APPLICATIONINSIGHTS_CONNECTION_STRING}
+threshold: 0.85

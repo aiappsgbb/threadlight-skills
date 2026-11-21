@@ -153,7 +153,7 @@ def test_continuous_evaluation_must_be_enabled_for_the_same_agent():
 
 
 def test_continuous_evaluation_is_optional():
-    # 2.19.4: GA evaluation_rules reject hosted agents and beta.schedules is preview.
+    # Optional since 2.19.4; one executed eval run is the gate.
     value = complete_manifest()
     del value["continuous_evaluation"]
     result = fp.evaluate(value)
