@@ -7,6 +7,44 @@ field.
 
 ## [Unreleased]
 
+### 2.76.0: Foundry Insights monitor receipt and the Agent Optimizer as an optional, gated stage (#211, #213)
+
+- **Why.** No skill created, ran or recorded Foundry Insights monitors. In hands-on
+  tests, Insights was the most useful step of the quality loop, but it has
+  operational traps: judge capacity, cost, and eval traffic in the analysed
+  window. The Agent Optimizer was not reliable enough for the default path.
+- **Insights (`threadlight-agentops`).** New `scripts/insights_run.py`:
+  - `run` creates a disabled monitor with SPEC priorities, runs analysis on
+    demand and writes `specs/insights-receipt.json`
+    (`threadlight-insights-receipt/v1`). The receipt holds monitor and run IDs,
+    traces, token usage, and an **Estimate** cost with its formula and price
+    source. It records the insights' IDs, severities and categories, and never
+    copies proposed fixes.
+  - `validate` checks a receipt offline.
+  - `teardown` disables the schedule, cancels active runs and reads the monitor
+    back.
+  - New `references/foundry-insights.md` covers the SDK snippet, RBAC, judge
+    sizing (Tested, Nov 2026: ≥ 800K TPM for about 300 traces) and the cost
+    formula.
+- **Optimizer (`threadlight-evals`).** `evals/quality-loop.json` sets
+  `optimizer: off|on`, default off. `scripts/optimizer_stage.py` fails closed
+  (exit 2) when the optimizer is on and any of these is missing:
+  - an `estimate_optimization_job` receipt;
+  - a passing held-out gate (EVAL-107/109);
+  - the unmapped optimizer eval;
+  - read-only tools;
+  - a named reviewer.
+
+  New `references/optimizer-stage.md` records the known failures with date and
+  versions.
+- **Live (2026-11-21, internal subscription, swedencentral).** Judge:
+  `gpt-5.4-mini` on a dedicated 300K TPM deployment. A 24-hour window held 36
+  traces; all 36 were analysed in 188 s. 750,930 tokens (61,184 cached) ≈
+  USD 0.59, Estimate at Azure Retail Prices list price, USD 0.016 per trace.
+  The run produced 6 insights, including a HIGH hallucination. Teardown read
+  back `enabled=False`. The run's receipt is the committed fixture. It carries
+  one should-fix: the window contained only eval traffic.
+
 ### 2.75.0: governed writes for Copilot harness agents via client function tools (#230)
 
 - **Why.** The harness has no Agent Hooks surface and the service manages

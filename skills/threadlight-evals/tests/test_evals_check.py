@@ -355,5 +355,75 @@ class GatePolicyTests(unittest.TestCase):
         self.assertEqual(eval_yaml.split(rows), (optimize, heldout))
 
 
+class OptimizerStageTests(unittest.TestCase):
+    """Agent Optimizer is optional (default off) and fails closed when on (#213)."""
+
+    ESTIMATE = {"cost": {"currency": "USD", "total": {"low": 1.78, "typical": 2.2, "ceiling": 7.33}},
+                "prices_as_of": "2026-11-20T00:00:00Z"}
+
+    def _pilot(self, config=None, estimate=None, runs=GOOD_RUNS, **kw):
+        import json
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, tmp)
+        _gate_pilot(tmp, runs=runs, **kw)
+        if config is not None:
+            with open(os.path.join(tmp, "evals", "quality-loop.json"), "w") as fh:
+                json.dump(config, fh)
+        if estimate is not None:
+            with open(os.path.join(tmp, "evals", "optimizer-estimate.json"), "w") as fh:
+                json.dump(estimate, fh)
+        return tmp
+
+    def _run(self, tmp):
+        sys.path.insert(0, os.path.join(SKILL, "scripts"))
+        import optimizer_stage
+        return optimizer_stage.decide(tmp), optimizer_stage.main(["--target", tmp])
+
+    def test_default_is_off(self):
+        decision, rc = self._run(self._pilot())
+        self.assertEqual(decision["optimizer"], "off")
+        self.assertEqual(rc, 0)
+        self.assertIn("Insights", decision["default_loop"])
+
+    def test_on_without_estimate_receipt_fails_closed(self):
+        on = {"optimizer": "on", "tools_read_only": True, "human_review": "owner"}
+        decision, rc = self._run(self._pilot(config=on))
+        self.assertFalse(decision["allowed"])
+        self.assertEqual(rc, 2)
+        self.assertTrue(any("optimizer-estimate.json" in b for b in decision["blocked_by"]))
+
+    def test_on_without_passing_held_out_gate_fails_closed(self):
+        on = {"optimizer": "on", "tools_read_only": True, "human_review": "owner"}
+        for kw in ({"runs": None}, {"heldout": False},
+                   {"runs": dict(GOOD_RUNS, runs=[{"run_id": "x", "pass_rate": 0.4},
+                                                  {"run_id": "y", "pass_rate": 0.5}])}):
+            decision, rc = self._run(self._pilot(config=on, estimate=self.ESTIMATE, **kw))
+            self.assertEqual(rc, 2, kw)
+            self.assertTrue(any("held-out gate" in b for b in decision["blocked_by"]), kw)
+
+    def test_on_with_receipt_gate_and_guards_is_allowed(self):
+        on = {"optimizer": "on", "tools_read_only": True, "human_review": "owner"}
+        decision, rc = self._run(self._pilot(config=on, estimate=self.ESTIMATE))
+        self.assertEqual(decision["blocked_by"], [])
+        self.assertTrue(decision["allowed"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(decision["estimate_usd"]["ceiling"], 7.33)
+
+    def test_on_requires_read_only_tools_and_reviewer(self):
+        decision, rc = self._run(self._pilot(config={"optimizer": "on"}, estimate=self.ESTIMATE))
+        self.assertEqual(rc, 2)
+        joined = " ".join(decision["blocked_by"])
+        self.assertIn("tools_read_only", joined)
+        self.assertIn("human_review", joined)
+
+    def test_doc_records_known_failures_with_versions(self):
+        doc = open(os.path.join(SKILL, "references", "optimizer-stage.md"), encoding="utf-8").read()
+        for needle in ("agent_optimization_space is required", "Project not found",
+                       "azure.ai.agents` 1.2.0", "azure-ai-projects` 2.11.0", "Nov 2026",
+                       "optimizer: off", "estimate_optimization_job"):
+            self.assertIn(needle, doc)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

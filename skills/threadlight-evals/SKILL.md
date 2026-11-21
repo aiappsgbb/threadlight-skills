@@ -271,6 +271,16 @@ trajectory-mapped `<agent>-gate` eval on held-out rows and an unmapped
 (two runs, mean, baseline, tolerance), evaluator suitability, the optimizer
 candidate checklist and known `azd ai eval` failures with dates and versions.
 
+## Agent Optimizer: optional stage (`optimizer: off|on`)
+
+The default loop is traces → Foundry Insights → human fix → `azd deploy` → held-out
+gate. `evals/quality-loop.json` sets `"optimizer": "off"` (the default) or `"on"`.
+`scripts/optimizer_stage.py --target .` fails closed (exit 2) for `on` without an
+`estimate_optimization_job` receipt, a passing held-out gate, the unmapped
+optimizer eval, read-only tools and a named reviewer. See
+[`references/optimizer-stage.md`](references/optimizer-stage.md), including known
+failures with dates and versions.
+
 ## F3 — champion-challenger gate
 
 For an optional lower-cost runtime experiment after prototype validation, use
