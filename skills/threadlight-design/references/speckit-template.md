@@ -853,6 +853,9 @@ harness_fit:                 # REQUIRED when agent_type: harness: every answer k
   voice_frontend_required: null       # true disqualifies (also voice_frontend: hosted-voice)
   region: null                        # a documented harness region, e.g. swedencentral (eastus2 is not one)
   consequential_write_seam: null      # none | function-tool | governed-mcp; anything else disqualifies
+harness_toolset: filesystem_read      # with agent_type: harness: comma list of filesystem_read, filesystem_write, shell, web, subagents (shell and web off unless listed)
+harness_egress_allow: null           # with agent_type: harness: extra hosts the sandbox may reach (telemetry hosts are always allowed)
+harness_egress_mode: Audit           # with agent_type: harness: Audit | Enforced
 voice_frontend: none          # none | hosted-voice. Opt-in voice front-end (Foundry Hosted Voice, preview) on the hosted agent; item 2c
 voice_name: null              # optional with voice_frontend: hosted-voice: Azure voice, e.g. it-IT-IsabellaMultilingualNeural (default en-US-AvaMultilingualNeural; multilingual voices speak the caller language)
 voice_hold_text: null          # optional with voice_frontend: hosted-voice: hold message spoken during slow tool turns, in the voice's language

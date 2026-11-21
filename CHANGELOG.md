@@ -7,6 +7,32 @@ field.
 
 ## [Unreleased]
 
+### 2.64.0: generate_only harness route, a container-less azd project for the Copilot harness (#229)
+
+- **Why.** An opted-in `agent_type: harness` was refused by `generate_only`.
+  Two non-obvious behaviours (file-ID inputs silently skipped, enforced egress
+  removing all agent telemetry) would break a naive template.
+- **Route.** `scripts/harness_route.py` emits a prompt agent with
+  `harness.type: microsoft_copilot_preview` (no agent container), one
+  `azure.ai.skill` service per skill pinned by `azd deploy --all`, the harness
+  toolset off by default except `filesystem_read` (SPEC `harness_toolset`), the
+  SPEC tools as one MCP tool with every write needing approval, an RAI egress
+  policy (Audit first, telemetry and Agent 365 hosts always allowed,
+  `infra/harness-egress.bicep`), a preflight hook for
+  `AZD_ALPHA_ENABLE_AGENTS_MANAGED_HARNESS` and a postdeploy grant of Foundry
+  User on the project to the agent identity. The selfcheck validates the route.
+  Private profile, SPEC 11a governance and the function-tool write seam are
+  refused here. Docs: `references/harness/README.md`.
+- **Live (internal test subscription, Sweden Central, 2026-11-21).** `azd deploy --all` succeeded;
+  `azd ai agent show` returned `harness.type`, the pinned skill version and
+  `rai_config`; an `input_file` passed by Foundry file ID was quoted in the
+  answer; with egress Enforced, App Insights showed `invoke_agent`, `chat` and
+  `execute_tool` spans plus egress-decision spans for the telemetry hosts.
+  Found on the way: azd resolves local skill versions only from
+  `<project>/skills/` (so the agent sets `project: src/agent`), the service
+  rejects Learn's `require_approval: {"never": [...]}` and needs
+  `{"never": {"tool_names": [...]}}`, and the egress policy raced project
+  creation (now serialised).
 ### 2.63.0: `microsoft-copilot-sdk` framework id (`github-copilot-sdk` kept as alias)
 
 - **Why.** GitHub Copilot SDK is becoming Microsoft Copilot SDK
@@ -164,7 +190,6 @@ field.
   `test_agent_type_policy.py`, `runtime-policy.test.js` (questions cover every
   disqualifier; template renders the verdict).
 
-### 2.54.0: Foundry Copilot harness as a preview, user-opt-in runtime (#228)
 ### 2.57.0: Foundry Copilot harness as a preview, user-opt-in runtime (#228)
 
 - **Why.** Foundry now offers the Microsoft Copilot harness for prompt agents
