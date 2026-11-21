@@ -52,6 +52,13 @@ _EVALS_CAPABILITIES = {
     "latest_pass_rate_ok",
     "ab_comparison_present",
 }
+# Gate-policy capabilities (EVAL-106..109): optional, validated when present.
+_EVALS_OPTIONAL_CAPABILITIES = {
+    "rubric_trajectory_mapped",
+    "gate_split_ok",
+    "gate_evaluator_suitable",
+    "gate_runs_recorded",
+}
 _REDTEAM_CAPABILITIES = {
     "scan_present",
     "scan_fresh",
@@ -215,12 +222,12 @@ def _validate_evals_manifest(path: Path, data: Dict[str, Any]) -> None:
         _validate_optional_string_list(path.name, data, list_field)
     capabilities = data["capabilities"]
     missing = _EVALS_CAPABILITIES - set(capabilities)
-    extras = set(capabilities) - _EVALS_CAPABILITIES
+    extras = set(capabilities) - _EVALS_CAPABILITIES - _EVALS_OPTIONAL_CAPABILITIES
     if missing:
         raise EvidenceGateError(f"{path.name} missing capabilities: {sorted(missing)}")
     if extras:
         raise EvidenceGateError(f"{path.name} has unsupported capabilities: {sorted(extras)}")
-    for capability_name in sorted(_EVALS_CAPABILITIES):
+    for capability_name in sorted(set(capabilities) & (_EVALS_CAPABILITIES | _EVALS_OPTIONAL_CAPABILITIES)):
         _validate_capability(path.name, capability_name, capabilities[capability_name], require_check_id=True)
 
 

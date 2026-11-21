@@ -53,6 +53,10 @@ hard-fail**.
 | `EVAL-103` | If Plan B: GH Action workflow file present and enabled in repo (or ACA Job last-run < 7d) | `should-fix` if stale |
 | `EVAL-104` | Alert rule wired to fire on eval threshold breach | `must-fix` if no alert |
 | `EVAL-105` | Latest eval pass rate ≥ § 9 declared minimum | `should-fix` if drift > 5% |
+| `EVAL-106` | Custom rubric in the gate eval sees the trajectory (`sample.output_items`) on a tool-using agent | `should-fix` |
+| `EVAL-107` | Gate eval uses a held-out split over ≥ 50 golden rows (threadlight-evals `gate-policy.md`) | `must-fix` |
+| `EVAL-108` | `builtin.task_completion` does not gate a SPEC with refusal/escalation criteria | `should-fix` |
+| `EVAL-109` | ≥ 2 gate runs; mean ≥ floor and ≥ baseline − tolerance; tolerance ≥ measured noise | `must-fix` if the gate fails |
 
 ## Common gaps
 

@@ -7,6 +7,42 @@ field.
 
 ## [Unreleased]
 
+### 2.74.0: threadlight-evals: azure.eval.yaml gate scaffold and noise-aware gate policy (#209, #210)
+
+- **Why.** `azd ai eval init` maps a custom rubric to the final text only. So the
+  judge never sees the tool calls or the expected answer. Adding `dataMapping`
+  fixes that, but the eval is then unusable by the Agent Optimizer. Separately,
+  one run against one threshold is not decision-grade: the same version scored
+  33 %, 33 % and 20 %. `task_completion` scores correct refusals as failures, and
+  optimizer candidates overfit the rows they were tuned on.
+- **New** `scripts/eval_yaml.py`.
+  - `split` makes a deterministic, category-stratified 70/30 split of a golden
+    set.
+  - `scaffold` writes `evals/azure.eval.yaml` with two evals, and raises the
+    rubric `pass_threshold` to at least 0.7:
+    - `<agent>-gate`: held-out rows, a rubric mapped to `sample.output_items`,
+      `tool_calls`, `tool_definitions` and `ground_truth`, plus
+      `builtin.task_adherence`;
+    - `<agent>-optimizer-input`: optimizer rows, no mapping.
+- **Checker.** `evals_check.py` gains four checks:
+  - EVAL-106: rubric mapped to final text on a tool-using agent;
+  - EVAL-107: no held-out split, or fewer than 50 rows;
+  - EVAL-108: `task_completion` gates a SPEC with refusal or escalation criteria;
+  - EVAL-109: reads `evals/gate-runs.json` and checks ≥ 2 runs, mean ≥ floor,
+    mean ≥ baseline − tolerance, and tolerance ≥ measured noise.
+  - The manifest records `metrics.gate`: runs, mean, baseline run ID, tolerance,
+    floor and decision.
+  - Production-ready accepts the new checks as optional capabilities.
+- **Docs.** New `references/gate-policy.md` covers the gate rules, the optimizer
+  candidate checklist, and known `azd ai eval` failures with date and version.
+  The SKILL table and pillar 6 list EVAL-106..109.
+- **Recorded fixture (2026-11-21, internal subscription).** The scaffold output
+  passed `azd ai eval create` for both evals. `azd ai eval show` confirmed the
+  stored mappings: `sample.output_items` and `ground_truth` on the gate rubric,
+  and the azd default `sample.output_text` on the unmapped optimizer rubric. Two
+  live gate runs on the 16 held-out rows scored 6/16 each. Rubric: 7 and 8 passes.
+  `task_adherence`: 13 and 12 passes.
+
 ### 2.73.0: GHCP template and governed host on Microsoft Copilot SDK 2.0, with a 2.x CI lane (#202, #206)
 
 - **Why.** The GHCP hosted-agent template and the governance generator pinned

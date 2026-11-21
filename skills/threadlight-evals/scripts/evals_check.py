@@ -18,6 +18,10 @@ Capability keys map to pillar-06 EVAL IDs:
     alert_wired                 EVAL-104
     latest_pass_rate_ok         EVAL-105
     ab_comparison_present       F3
+    rubric_trajectory_mapped    EVAL-106
+    gate_split_ok               EVAL-107
+    gate_evaluator_suitable     EVAL-108
+    gate_runs_recorded          EVAL-109
 
 stdlib-only. Gracefully degrading — capabilities that cannot be checked are
 reported as ``not-verified`` rather than crashing.
@@ -69,6 +73,11 @@ CAPABILITY_IDS = {
     "alert_wired": "EVAL-104",
     "latest_pass_rate_ok": "EVAL-105",
     "ab_comparison_present": "F3",
+    # Gate policy (#209, #210): evaluated from evals/azure.eval.yaml + evals/gate-runs.json.
+    "rubric_trajectory_mapped": "EVAL-106",
+    "gate_split_ok": "EVAL-107",
+    "gate_evaluator_suitable": "EVAL-108",
+    "gate_runs_recorded": "EVAL-109",
 }
 CAPABILITY_ORDER = tuple(CAPABILITY_IDS.keys())
 
@@ -325,6 +334,185 @@ def _online_wiring(root: str) -> str | None:
         if ONLINE_MARKERS.search(text) and APP_INSIGHTS_MARKERS.search(text):
             return rel
     return None
+
+
+GATE_MIN_ROWS = 50
+OPTIMIZER_EVAL_SUFFIX = "-optimizer-input"
+HELDOUT_MARKERS = re.compile(r"held[-_ ]?out|holdout", re.I)
+REFUSAL_MARKERS = re.compile(r"\b(escalat\w*|refus\w*|declin\w*|reject\w*|injection)\b", re.I)
+TOOL_CODE_MARKERS = re.compile(r"@tool\b|FunctionTool\(|\"type\":\s*\"function_call\"")
+
+
+def _eval_yaml(root: str):
+    """(path, parsed) for evals/azure.eval.yaml; parsed is None when PyYAML is absent."""
+    for name in ("azure.eval.yaml", "azure.eval.yml"):
+        path = os.path.join(root, "evals", name)
+        if os.path.isfile(path):
+            try:
+                import yaml  # optional: the rest of the checker stays stdlib-only
+            except ImportError:
+                return path, None
+            try:
+                data = yaml.safe_load(_read(path)) or {}
+            except yaml.YAMLError:
+                return path, {}
+            return path, data if isinstance(data, dict) else {}
+    return None, None
+
+
+def _tool_using(root: str) -> bool:
+    for path in _walk(root) or []:
+        base = os.path.basename(path)
+        if base == "tools.json":
+            try:
+                data = json.loads(_read(path))
+            except ValueError:
+                continue
+            if isinstance(data, list) and data:
+                return True
+        elif base.endswith(".py") and TOOL_CODE_MARKERS.search(_read(path)):
+            return True
+        elif base.endswith(".jsonl") and '"tool_calls": [{' in _read(path).replace('":[{', '": [{'):
+            return True
+    return False
+
+
+def _gate_evals(data: dict) -> list[dict]:
+    return [e for e in (data.get("evals") or []) if isinstance(e, dict)
+            and not str(e.get("name", "")).endswith(OPTIMIZER_EVAL_SUFFIX)]
+
+
+def _dataset_rows(yaml_path: str, data: dict) -> tuple[dict, list[str]]:
+    """Rows per declared dataset name (None when registered without a local file)."""
+    rows, unknown = {}, []
+    for item in data.get("datasets") or []:
+        if not isinstance(item, dict) or not item.get("name"):
+            continue
+        file = item.get("file")
+        path = os.path.normpath(os.path.join(os.path.dirname(yaml_path), file)) if file else None
+        if not path or not os.path.isfile(path):
+            rows[item["name"]] = None
+            unknown.append(item["name"])
+            continue
+        lines = [json.loads(line) for line in _read(path).splitlines() if line.strip()]
+        rows[item["name"]] = lines
+    return rows, unknown
+
+
+def _gate_policy(root: str, caps: dict) -> dict | None:
+    yaml_path, data = _eval_yaml(root)
+    keys = ("rubric_trajectory_mapped", "gate_split_ok", "gate_evaluator_suitable", "gate_runs_recorded")
+    if yaml_path is None:
+        _cap(caps, "rubric_trajectory_mapped", "not-applicable", None, "no evals/azure.eval.yaml")
+        _cap(caps, "gate_split_ok", "should-fix", None,
+             "declare a held-out gate in evals/azure.eval.yaml (scripts/eval_yaml.py split + scaffold)")
+        _cap(caps, "gate_evaluator_suitable", "not-applicable", None, "no evals/azure.eval.yaml")
+        _cap(caps, "gate_runs_recorded", "not-applicable", None, "no evals/azure.eval.yaml")
+        return None
+    rel = _rel(root, yaml_path)
+    if data is None:
+        for key in keys:
+            _cap(caps, key, "not-verified", rel, "install PyYAML to read evals/azure.eval.yaml")
+        return None
+    gates = _gate_evals(data)
+    if not gates:
+        for key in keys:
+            _cap(caps, key, "must-fix" if key == "gate_split_ok" else "not-verified", rel,
+                 "azure.eval.yaml declares no gate eval (only *-optimizer-input evals)")
+        return None
+
+    # EVAL-106: a custom rubric on a tool-using agent must see the trajectory.
+    unmapped = []
+    for ev in gates:
+        if (ev.get("target") or {}).get("type") != "agent":
+            continue
+        for ref in ev.get("evaluators") or []:
+            name = str((ref or {}).get("evaluator", ""))
+            if not name or name.startswith("builtin."):
+                continue
+            response = ((ref.get("dataMapping") or {}).get("response") or "{{sample.output_text}}")
+            if "output_items" not in response:
+                unmapped.append(f"{ev.get('name')}:{name}")
+    if not _tool_using(root):
+        _cap(caps, "rubric_trajectory_mapped", "not-applicable", rel, "agent declares no tools")
+    elif unmapped:
+        _cap(caps, "rubric_trajectory_mapped", "should-fix", ", ".join(unmapped),
+             "custom rubric response maps to sample.output_text (azd default) on a tool-using agent; "
+             "set dataMapping response {{sample.output_items}}, tool_calls, tool_definitions, ground_truth")
+    else:
+        _cap(caps, "rubric_trajectory_mapped", "pass", rel)
+
+    # EVAL-107: held-out gate data and >= 50 golden rows.
+    rows, unknown = _dataset_rows(yaml_path, data)
+    gate_sets = {str(ev.get("dataset", "")) for ev in gates}
+    held = [d for d in gate_sets if HELDOUT_MARKERS.search(d) or any(
+        (r.get("split") in ("held_out", "heldout")) for r in (rows.get(d) or []))]
+    optimizer_sets = {str(e.get("dataset", "")) for e in data.get("evals") or []
+                      if isinstance(e, dict) and str(e.get("name", "")).endswith(OPTIMIZER_EVAL_SUFFIX)}
+    total = sum(len(v) for v in rows.values() if v is not None)
+    if not held or set(held) & optimizer_sets:
+        _cap(caps, "gate_split_ok", "must-fix", rel,
+             "gate eval must use a held-out dataset (~30%) that the optimizer eval never sees")
+    elif unknown:
+        _cap(caps, "gate_split_ok", "not-verified", rel,
+             f"registered datasets without a local file cannot be counted: {', '.join(unknown)}")
+    elif total < GATE_MIN_ROWS:
+        _cap(caps, "gate_split_ok", "must-fix", f"{total} golden rows",
+             f"need >= {GATE_MIN_ROWS} golden rows covering every decision branch and adversarial class")
+    else:
+        _cap(caps, "gate_split_ok", "pass", f"{total} golden rows; held-out: {', '.join(sorted(held))}")
+
+    # EVAL-108: task_completion penalises correct refusals and escalations.
+    completion = [str(ev.get("name")) for ev in gates
+                  if any((r or {}).get("evaluator") == "builtin.task_completion" for r in ev.get("evaluators") or [])]
+    spec_text = "\n".join(_read(p) for p in _spec_files(root))
+    if completion and REFUSAL_MARKERS.search(spec_text):
+        _cap(caps, "gate_evaluator_suitable", "should-fix", ", ".join(completion),
+             "builtin.task_completion gates a SPEC with refusal/escalation criteria and scores them as "
+             "failures; gate with the rubric + builtin.task_adherence or builtin.intent_resolution")
+    else:
+        _cap(caps, "gate_evaluator_suitable", "pass", rel)
+
+    # EVAL-109: >= 2 gate runs, mean vs floor and vs baseline - tolerance.
+    runs_path = os.path.join(root, "evals", "gate-runs.json")
+    try:
+        record = json.loads(_read(runs_path)) if os.path.isfile(runs_path) else None
+    except ValueError:
+        record = None
+    if not isinstance(record, dict):
+        _cap(caps, "gate_runs_recorded", "should-fix", None,
+             "record >= 2 gate runs, baseline run id, tolerance and floor in evals/gate-runs.json")
+        return None
+    runs = [r for r in record.get("runs") or [] if isinstance(r, dict)
+            and isinstance(r.get("pass_rate"), (int, float)) and r.get("run_id")]
+    baseline = record.get("baseline") if isinstance(record.get("baseline"), dict) else None
+    tolerance, floor = record.get("tolerance"), record.get("floor")
+    mean = round(sum(r["pass_rate"] for r in runs) / len(runs), 4) if runs else None
+    gate = {"eval": record.get("eval"), "runs": [{"run_id": r["run_id"], "pass_rate": r["pass_rate"]} for r in runs],
+            "mean": mean, "baseline_run_id": (baseline or {}).get("run_id"),
+            "baseline_pass_rate": (baseline or {}).get("pass_rate"), "tolerance": tolerance,
+            "floor": floor, "decision": "not-decided"}
+    if len(runs) < 2 or not isinstance(tolerance, (int, float)) or not isinstance(floor, (int, float)):
+        _cap(caps, "gate_runs_recorded", "should-fix", _rel(root, runs_path),
+             "a gate decision needs >= 2 runs (mean), a numeric tolerance and an absolute floor")
+        return gate
+    spread = max(r["pass_rate"] for r in runs) - min(r["pass_rate"] for r in runs)
+    below_floor = mean < floor
+    regressed = bool(baseline) and mean < baseline.get("pass_rate", 0) - tolerance
+    gate["decision"] = "fail" if below_floor or regressed else "pass"
+    if gate["decision"] == "fail":
+        _cap(caps, "gate_runs_recorded", "must-fix", f"mean {mean}",
+             f"gate fails: mean {mean} vs floor {floor}"
+             + (f" and baseline {baseline.get('pass_rate')} - tolerance {tolerance}" if baseline else ""))
+    elif tolerance < spread:
+        _cap(caps, "gate_runs_recorded", "should-fix", f"mean {mean}",
+             f"tolerance {tolerance} is below the measured run-to-run noise {round(spread, 4)}")
+    elif not baseline:
+        _cap(caps, "gate_runs_recorded", "should-fix", f"mean {mean}",
+             "no baseline run id: record the last accepted run to compare against")
+    else:
+        _cap(caps, "gate_runs_recorded", "pass", f"mean {mean} over {len(runs)} runs")
+    return gate
 
 
 def _ab_comparison(root: str) -> str | None:
@@ -620,6 +808,10 @@ def evaluate(root: str, freshness_days: int = 7, accept_legacy: bool = False) ->
         _cap(caps, "ab_comparison_present", "should-fix", None,
              "add champion/challenger comparison config or evals/ab/ gate before swaps")
 
+    gate = _gate_policy(root, caps)
+    if gate is not None:
+        caps["gate_runs_recorded"]["gate"] = gate
+
     records = _agentops_evals(root, freshness_days)
     if records:
         _merge_agentops(caps, records)
@@ -645,6 +837,7 @@ def manifest(root: str, caps: dict, freshness_days: int = 7) -> dict:
         "pass_rate": _pass_rate_from_run(latest_path),
         "threshold": _threshold_value(root),
         "latest_run": _rel(root, latest_path) if latest_path else None,
+        "gate": caps.get("gate_runs_recorded", {}).pop("gate", None),
     }
 
     result = {
