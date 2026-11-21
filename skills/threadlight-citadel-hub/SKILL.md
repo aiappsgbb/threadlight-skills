@@ -15,7 +15,7 @@ description: >-
   a standalone AI Gateway, token limit or semantic caching policy (use
   azure-aigateway).
 metadata:
-  version: "1.1.7"
+  version: "1.2.0"
   provenance: "awesome-gbb@7f1de882 (MIT) — see PROVENANCE.md"
 ---
 
@@ -877,6 +877,78 @@ The following observations were captured during the historical audit pass on
    `--outfile` not `--stdout` (large stdout buffers stall PowerShell).
 
 [limited region availability]: https://learn.microsoft.com/azure/api-management/v2-service-tiers-overview#region-availability
+
+---
+
+## 11a. Model router behind the hub (served-model attribution, subset gate)
+
+**Why.** The accelerator's `set-llm-requested-model` fragment sets `requestedModel`
+from the path `deployment-id` or the body `model`, and `set-llm-usage` emits
+`llm-emit-token-metric` with `deploymentName = requestedModel`. Behind a model
+router deployment every routed token is therefore attributed to the router, so
+chargeback per served model and per-model cost estimates are wrong. And an access
+contract that grants a router **without a subset** grants every pool model in the
+region.
+
+**1. Served-model attribution** —
+[`references/policies/frag-set-llm-served-model.xml`](references/policies/frag-set-llm-served-model.xml)
+(APIM raw policy XML; deploy as a policy fragment with format `rawxml`). Include it
+in the **outbound** section of the LLM APIs, after `<base />`:
+`<include-fragment fragment-id="set-llm-served-model" />`. It emits
+`Served Prompt Tokens` / `Served Completion Tokens` (namespace `llm-served-model`)
+with dimensions `deploymentName` (requested), `servedModel`, `servedFrom`,
+`productName`, `appId` (five, the
+[emit-metric limit](https://learn.microsoft.com/azure/api-management/emit-metric-policy)),
+and an `x-served-model` response header. Served model = response `model` (version
+suffix removed; Responses returns it unversioned, Chat Completions versioned),
+else the last `model_selection_details.model_router_details.routing_trace` attempt
+when `model` names the router, else `unattributed`. **Streaming is not parsed**
+(reading the body would buffer the stream): streamed calls count as
+`streaming-unattributed`; read the served model client-side from `response.created`
+or chunk `model`, or from the Foundry `ModelName` metric. Requires API diagnostics
+with `metrics: true`.
+
+**2. Subset gate** —
+[`references/python/router_contract_check.py`](references/python/router_contract_check.py)
+checks a contract's `allowedModels` (from the product policy XML) against the
+Foundry deployments and fails on `ROUTER-SUBSET-001` (an allowed `model-router`
+deployment without `properties.routing.models`), `ROUTER-AUTO-001` (`auto`,
+which routes the whole regional pool) and `UNRESOLVED` (an allowed name with no
+deployment in the checked account, so the gate never passes unchecked). An empty
+`allowedModels` grants every deployment, so every router in the account is checked. Azure Policy is evaluated when a deployment
+is created or updated, not per request, so the subset is the real gate
+([Learn: govern model router with Azure Policy](https://learn.microsoft.com/en-us/azure/foundry/how-to/model-router-policy)).
+
+```bash
+python skills/threadlight-citadel-hub/references/python/router_contract_check.py \
+  --policy-xml <contract>/ai-product-policy.xml \
+  --account <foundry-account> --resource-group <rg>      # exit 1 on a violation
+```
+
+**3. `Foundry-Features` passthrough (tested).** Per-request routing controls need
+the `Foundry-Features: ModelRouterControls=V1Preview` header plus `routing_config`
+([Learn](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/model-router-routing-controls)).
+The pinned accelerator's `strip-backend-headers` fragment does not list it, and in
+the Nov 2026 lab a request through APIM with that fragment returned
+`model_selection_details.model_router_details.mode = quality` for
+`routing_config.mode = quality`; without the header Foundry ignored
+`routing_config` and returned no routing details. So the header reaches the
+backend; a client that omits it silently loses its routing controls.
+
+**4. Gateway-native alternative.** AI Gateway automatic model selection (preview,
+API `2026-11-01`) ranks an alias's backends with model router: no routing fee during
+the preview, but parameters are not adapted, and a `previous_response_id` turn is
+not re-ranked
+([Learn: model router with AI Gateway](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/model-router-ai-gateway)).
+It is a different product from this APIM accelerator; evaluate it for new hubs, and
+raise the served-model and subset-gate gaps with the upstream accelerator, whose
+fragments the original awesome-gbb Citadel skills also use.
+
+**Reproduce.** [`references/router-attribution/lab.bicep`](references/router-attribution/lab.bicep)
+deploys a disposable Foundry account (router subset + own deployments), an APIM
+BasicV2 instance with the pinned `strip-backend-headers` fragment and the
+served-model fragment, and Application Insights. It is not the hub. Delete the
+resource group after the evidence.
 
 ---
 

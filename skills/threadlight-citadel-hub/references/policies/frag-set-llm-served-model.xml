@@ -1,0 +1,100 @@
+<fragment>
+    <!--
+        Fragment: Set LLM Served Model (threadlight-citadel-hub, #220)
+        Purpose:  The accelerator's set-llm-usage fragment keys token metrics on the
+                  REQUESTED model (deployment-id or body "model"). Behind a model
+                  router deployment every routed token is then attributed to the
+                  router. This fragment adds token metrics keyed on the SERVED model.
+
+        Served model, in order:
+          1. response "model" (Responses returns it unversioned, Chat Completions
+             versioned; the -YYYY-MM-DD suffix is removed);
+          2. when "model" names the router itself, the last
+             model_selection_details.model_router_details.routing_trace attempt
+             (needs Foundry-Features: ModelRouterControls=V1Preview on the request);
+          3. otherwise "unattributed".
+
+        Streaming (text/event-stream) is NOT parsed: reading the body in APIM would
+        buffer the stream. Streamed calls are counted with servedModel
+        "streaming-unattributed"; read the served model client-side from
+        response.created / chunk "model", or from the Foundry ModelName metric.
+
+        Format: APIM raw policy XML (like the accelerator's fragments); deploy as
+                policyFragments format 'rawxml'.
+        Usage:  include in the OUTBOUND section after <base />, for example next to
+                set-response-headers:  <include-fragment fragment-id="set-llm-served-model" />
+                Requires API diagnostics with "metrics": true (custom metrics with
+                dimensions). emit-metric allows at most 5 custom dimensions.
+                Learn: https://learn.microsoft.com/azure/api-management/emit-metric-policy
+    -->
+    <choose>
+        <when condition="@(context.Response.StatusCode == 200 && (string)context.Variables.GetValueOrDefault<string>("requestedModel", "") != "non-llm-request")">
+            <choose>
+                <when condition="@(context.Response.Headers.GetValueOrDefault("Content-Type", "").Contains("text/event-stream"))">
+                    <set-variable name="servedModel" value="streaming-unattributed" />
+                    <set-variable name="servedFrom" value="stream" />
+                    <set-variable name="servedPromptTokens" value="@(0)" />
+                    <set-variable name="servedCompletionTokens" value="@(0)" />
+                </when>
+                <otherwise>
+                    <set-variable name="servedBody" value="@{
+                        try { return context.Response.Body.As<JObject>(preserveContent: true); }
+                        catch { return new JObject(); }
+                    }" />
+                    <set-variable name="servedFrom" value="@{
+                        var body = (JObject)context.Variables["servedBody"];
+                        var model = (string)body["model"] ?? string.Empty;
+                        if (model.Length > 0 && !model.StartsWith("model-router", StringComparison.OrdinalIgnoreCase)) { return "model"; }
+                        var trace = body.SelectToken("model_selection_details.model_router_details.routing_trace") as JArray;
+                        if (trace != null && trace.Count > 0) {
+                            var last = trace[trace.Count - 1] as JObject;
+                            var attempts = last == null ? null : last["attempts"] as JArray;
+                            if (attempts != null && attempts.Count > 0) { return "routing_trace"; }
+                        }
+                        return "unattributed";
+                    }" />
+                    <set-variable name="servedModel" value="@{
+                        var body = (JObject)context.Variables["servedBody"];
+                        var from = (string)context.Variables["servedFrom"];
+                        string model = "unattributed";
+                        if (from == "model") { model = (string)body["model"]; }
+                        else if (from == "routing_trace") {
+                            var trace = (JArray)body.SelectToken("model_selection_details.model_router_details.routing_trace");
+                            var attempts = ((JObject)trace[trace.Count - 1])["attempts"] as JArray;
+                            var pick = attempts[attempts.Count - 1] as JObject;
+                            model = pick == null ? "unattributed" : ((string)pick["model"] ?? "unattributed");
+                        }
+                        return System.Text.RegularExpressions.Regex.Replace(model, "-\\d{4}-\\d{2}-\\d{2}$", "");
+                    }" />
+                    <set-variable name="servedPromptTokens" value="@{
+                        var u = ((JObject)context.Variables["servedBody"])["usage"] as JObject;
+                        if (u == null) { return 0; }
+                        return (int?)(u["input_tokens"] ?? u["prompt_tokens"]) ?? 0;
+                    }" />
+                    <set-variable name="servedCompletionTokens" value="@{
+                        var u = ((JObject)context.Variables["servedBody"])["usage"] as JObject;
+                        if (u == null) { return 0; }
+                        return (int?)(u["output_tokens"] ?? u["completion_tokens"]) ?? 0;
+                    }" />
+                </otherwise>
+            </choose>
+            <emit-metric name="Served Prompt Tokens" value="@((double)(int)context.Variables["servedPromptTokens"])" namespace="llm-served-model">
+                <dimension name="deploymentName" value="@((string)context.Variables.GetValueOrDefault<string>("requestedModel", "unknown"))" />
+                <dimension name="servedModel" value="@((string)context.Variables["servedModel"])" />
+                <dimension name="servedFrom" value="@((string)context.Variables["servedFrom"])" />
+                <dimension name="productName" value="@(context.Product?.Name?.ToString() ?? "Portal-Admin")" />
+                <dimension name="appId" value="@((string)context.Variables.GetValueOrDefault<string>("appId", context.Subscription?.Id ?? "Portal-Admin-Sub"))" />
+            </emit-metric>
+            <emit-metric name="Served Completion Tokens" value="@((double)(int)context.Variables["servedCompletionTokens"])" namespace="llm-served-model">
+                <dimension name="deploymentName" value="@((string)context.Variables.GetValueOrDefault<string>("requestedModel", "unknown"))" />
+                <dimension name="servedModel" value="@((string)context.Variables["servedModel"])" />
+                <dimension name="servedFrom" value="@((string)context.Variables["servedFrom"])" />
+                <dimension name="productName" value="@(context.Product?.Name?.ToString() ?? "Portal-Admin")" />
+                <dimension name="appId" value="@((string)context.Variables.GetValueOrDefault<string>("appId", context.Subscription?.Id ?? "Portal-Admin-Sub"))" />
+            </emit-metric>
+            <set-header name="x-served-model" exists-action="override">
+                <value>@((string)context.Variables["servedModel"])</value>
+            </set-header>
+        </when>
+    </choose>
+</fragment>
