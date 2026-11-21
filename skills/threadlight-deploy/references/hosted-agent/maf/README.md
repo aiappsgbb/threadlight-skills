@@ -577,6 +577,7 @@ LangGraph state-graph requirements).
 | [`references/docker/Dockerfile`](references/docker/Dockerfile) | § Dependencies (pyproject.toml) → Dockerfile |
 | [`references/yaml/azure.yaml`](references/yaml/azure.yaml) | § azure.yaml (unified hosted-agent configuration) — the single source of truth for hosted-agent config, replacing the old `agent.yaml` + `agent.manifest.yaml` two-file contract |
 | [`references/hooks/postprovision.sh`](references/hooks/postprovision.sh) | § Identity & RBAC → Evaluation, evaluation rules and Insights: project managed identity roles |
+| [`references/python/.agent_configs/baseline/`](references/python/.agent_configs/baseline/) | § Evaluation-ready trajectory and optimizer-ready baseline |
 | [`references/python/version_rollout.py`](references/python/version_rollout.py) | § Version rollout patterns (blue-green / canary / rollback) |
 | [`references/python/deploy_preflight.py`](references/python/deploy_preflight.py) | § Deployment preflight |
 | [`references/python/private_bootstrap.py`](references/python/private_bootstrap.py) | § Private BASIC consumer: offline staging and build/manifest inventory |
@@ -720,6 +721,46 @@ copy), publish them to the project-level **Foundry Skills** store
 See **`microsoft-foundry`** for the REST surface, the silent
 JSON-mode-is-write-only trap, and the verified-working `FoundrySkillsSource`
 adapter.
+
+### Evaluation-ready trajectory and optimizer-ready baseline
+
+`container.py` is evaluable and optimizer-ready as shipped. Keep both properties
+when you replace `my_tool` with domain tools.
+
+**Tool calls must be Responses output items.** Foundry agent-target evaluations
+read the trajectory (`sample.tool_calls`, `sample.output_items`) from the output
+items the host returns. A host that runs its own tool loop and returns only the
+final text gives every row `tool_calls = []`. LLM judges then score grounded
+answers as fabricated. **Tested, Nov 2026:** a generated rubric scored
+`required_tool_grounding` 1/5 on answers that had called both tools. MAF's
+`ResponsesHostServer` already emits `function_call` → `function_call_output` →
+`message` for each tool call, streaming and non-streaming. Keep MAF's tool loop
+(`Agent(tools=...)`) and do not hand-roll one that drops these items.
+`tests/test_maf_template_runtime.py` asserts the order through the real host.
+
+**Optimizer-ready baseline.** `load_baseline()` calls `load_config()` from
+`azure-ai-agentserver-optimization` ([make your agent optimizer-ready](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready)).
+It reads instructions, model and tool descriptions from
+`.agent_configs/baseline/`, or from the optimizer candidate when one is active.
+It applies the descriptions to `TOOLS`. The Dockerfile copies `.agent_configs/`
+into the image. Pitfalls **tested with 1.0.0b1, Nov 2026**:
+
+| Pitfall | Effect | Template |
+|---|---|---|
+| `tools.json` as `{"tools": [...]}` | 0 tools load silently; `azd ai agent optimize` fails with `cannot unmarshal object into Go value of type []optimize_api.ToolDefinition` | Top-level JSON list |
+| `tools_file:` in `metadata.yaml` (as shown on the Learn page) | Ignored; it only works when the file happens to be named `tools.json` | `tool_file:` |
+| Chat-completions shape (`{"type":"function","function":{...}}`) sent to the Responses API | Wrong shape: the Responses API needs the flat `{"type":"function","name":...,"parameters":...}` | `responses_tool_definitions()` for hand-written Responses calls; MAF builds the shape from `TOOLS` |
+| `azd ai agent optimize` rewrites `metadata.yaml` ("Baseline saved to ...") | Uncommitted baseline edits are lost | Commit before optimizing |
+| A tool in `tools.json` that the code does not register | The candidate describes a tool the agent cannot call | `load_baseline()` fails closed |
+
+The pyproject pins `openai` and `httpx` directly. The optimization sample's
+requirements, with those only transitive, crashed at startup with
+`ModuleNotFoundError: No module named 'httpx'`.
+
+> **Tools run for real.** Optimizer and evaluation runs invoke the agent once per
+> dataset row, so every tool call executes
+> ([quickstart warning](https://learn.microsoft.com/azure/foundry/agents/quickstarts/quickstart-optimize-hosted-agent)).
+> Keep tools read-only or point them at isolated test data.
 
 ### Prompt caching and inference efficiency
 

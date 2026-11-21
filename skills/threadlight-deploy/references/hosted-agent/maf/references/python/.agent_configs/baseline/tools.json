@@ -1,0 +1,16 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "my_tool",
+      "description": "Replace with your domain tool. Read-only lookup that returns the facts the answer must cite.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "description": "Input"}
+        },
+        "required": ["query"]
+      }
+    }
+  }
+]
