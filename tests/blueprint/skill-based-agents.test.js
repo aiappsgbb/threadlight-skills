@@ -65,9 +65,12 @@ test('runtime-loading explains the actual separate instruction, skill and tool w
   const ghcp = read(sources.ghcp);
   const maf = read(sources.maf);
   const local = read(sources.local);
-  assert.match(ghcp, /skill_directories=\[str\(base \/ "skills"\)\]/);
-  assert.match(ghcp, /system_message=[\s\S]{0,150}copilot-instructions\.md/);
-  assert.match(ghcp, /mcp_servers=servers/);
+  assert.match(ghcp, /skills_dir=str\(base \/ "skills"\)/);
+  assert.match(ghcp, /"skills": \{"enabled": True, "directories": \[skills_dir\]\}/);
+  assert.match(ghcp, /instructions=\(base \/ "copilot-instructions\.md"\)/);
+  assert.match(ghcp, /"system_message": \{"mode": "replace", "content": instructions\}/);
+  assert.match(ghcp, /"mcp": \{"servers": servers\}/);
+  assert.match(ghcp, /"mcp_servers": servers/);
   assert.match(maf, /def build_host\([\s\S]*SkillsProvider\.from_paths\(\s*skills,\s*disable_load_skill_approval=True,\s*disable_read_skill_resource_approval=True/);
   assert.match(maf, /tools=tools, context_providers=contexts/);
   assert.match(maf, /class GovernedHost\(ResponsesHostServer\)/);
@@ -91,7 +94,8 @@ test('GHCP hosted application protocol and outbound model wire API are separate 
   const policy = JSON.parse(read(sources.policy));
   assert.equal(policy.default.protocol, 'invocations');
   assert.match(ghcp, /class GovernedHost\(InvocationAgentServerHost\)/);
-  assert.match(ghcp, /provider=ProviderConfig\([\s\S]{0,220}wire_api="responses"/);
+  assert.match(ghcp, /"type": "openai", "wire_api": "responses"/);
+  assert.match(ghcp, /ProviderConfig\(type="azure"[\s\S]{0,80}wire_api="responses"/);
   const section = guide().split('### GHCP selected-governance adapter')[1]
     .split('### MAF selected-governance adapter')[0];
   assert.match(section, /client → hosted application/);

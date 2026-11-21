@@ -59,6 +59,10 @@ PRIVATE_INFRA = PILOT / "infra-private"
 GEN = DEPLOY / "references" / "generate-only"
 PROFILES = ("fast-poc", "private")
 MODEL_GATEWAYS = ("none", "apim", "external")
+# Copilot SDK line of the GHCP agent: v2 = microsoft-copilot-sdk 2.x (default);
+# v1 = github-copilot-sdk 1.0.x escape hatch for pilots that still need it
+# (e.g. Microsoft Agent Framework Copilot adapters require github-copilot-sdk<2.0).
+SDK_LINES = {"v2": ("microsoft-copilot-sdk==2.0.1", GHCP), "v1": ("github-copilot-sdk==1.0.1", GHCP / "sdk-v1")}
 # SPEC § 11c data services the private profile provisions with private endpoints.
 PRIVATE_DATA_MODULES = {"ai-search": "enableAiSearch", "storage-blob": "enableStorage", "key-vault": "enableKeyVault"}
 if str(DEPLOY.parent.parent) not in sys.path:
@@ -1618,7 +1622,11 @@ def build_foundry_manifest(agent: str, cfg: dict[str, Any]) -> dict[str, Any]:
 
 # --------------------------------------------------------------------------- main
 
-def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway: str = "none") -> list[str]:
+def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway: str = "none",
+             sdk_line: str = "v2") -> list[str]:
+    if sdk_line not in SDK_LINES:
+        raise WorkspaceError(f"--sdk-line must be one of {', '.join(SDK_LINES)}, got {sdk_line!r}")
+    sdk_pin, sdk_packaging = SDK_LINES[sdk_line]
     if profile not in PROFILES:
         raise WorkspaceError(f"--profile must be one of {', '.join(PROFILES)}, got {profile!r}")
     if gateway not in MODEL_GATEWAYS:
@@ -1698,7 +1706,7 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
 
     pyproject = (GHCP / "pyproject.toml").read_text(encoding="utf-8").replace(
         'name = "my-agent"', f'name = "{agent}"'
-    )
+    ).replace(f'"{SDK_LINES["v2"][0]}"', f'"{sdk_pin}"')
     instructions_src = project_dir / "AGENTS.md"
     instructions = (
         instructions_src.read_text(encoding="utf-8")
@@ -1821,10 +1829,10 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
         "hooks/postprovision.sh": (PILOT / "hooks" / "postprovision.sh").read_text(encoding="utf-8"),
         "infra/main.parameters.json": json.dumps(params, indent=2) + "\n",
         "src/agent/container.py": (GHCP / "container.py").read_text(encoding="utf-8"),
-        "src/agent/Dockerfile": (GHCP / "Dockerfile").read_text(encoding="utf-8"),
+        "src/agent/Dockerfile": (sdk_packaging / "Dockerfile").read_text(encoding="utf-8"),
         "src/agent/.dockerignore": (GHCP / "dockerignore").read_text(encoding="utf-8"),
         "src/agent/pyproject.toml": pyproject,
-        "src/agent/requirements.lock": (GHCP / "requirements.lock").read_text(encoding="utf-8"),
+        "src/agent/requirements.lock": (sdk_packaging / "requirements.lock").read_text(encoding="utf-8"),
         "src/agent/copilot-instructions.md": instructions,
         "src/agent/tests/test_agent_package.py": render_agent_tests(served, skills),
         "src/mcp/Dockerfile": render_mcp_dockerfile(
@@ -2032,9 +2040,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="fast-poc (default, public endpoints) or private (VNet, private endpoints)")
     parser.add_argument("--model-gateway", default="none",
                         help="private profile only: none (default) or apim (API Management model gateway)")
+    parser.add_argument("--sdk-line", default="v2",
+                        help="GHCP agent Copilot SDK line: v2 (default, microsoft-copilot-sdk 2.x) or v1 "
+                             "(github-copilot-sdk 1.0.x escape hatch)")
     args = parser.parse_args(argv)
     try:
-        written = generate(args.project.resolve(), args.force, args.profile, args.model_gateway)
+        written = generate(args.project.resolve(), args.force, args.profile, args.model_gateway, args.sdk_line)
     except PromptAgentRefused as exc:
         print(f"generate_only: refused: {exc}", file=sys.stderr)
         return 4

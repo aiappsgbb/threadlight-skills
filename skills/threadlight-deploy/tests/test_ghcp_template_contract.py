@@ -77,7 +77,7 @@ def test_mcp_server_docs_do_not_claim_list_is_accepted():
     assert "list[dict]" not in docstring
     readme = README.read_text(encoding="utf-8")
     assert "list[dict] or dict[str, dict]" not in readme
-    assert re.search(r"mcp_servers=\{", readme), "README session example must use the dict form"
+    assert re.search(r"mcp=\{\"servers\": \{", readme), "README session example must use the dict form"
     assert "mcp_servers=[...]" not in read_corpus()
 
 

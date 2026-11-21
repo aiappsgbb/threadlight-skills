@@ -194,7 +194,7 @@ directly, or use `azd ai agent invoke --protocol invocations`. If you need
 **Copy** `references/pyproject.toml` into your project root and update `name` and `version`.
 
 **Notes:**
-- `github-copilot-sdk` provides `CopilotClient`, session management, event types
+- `microsoft-copilot-sdk` (2.x) provides `CopilotClient`, session management, event types; `--sdk-line v1` swaps it for `github-copilot-sdk==1.0.1`
 - `azure-ai-agentserver-invocations` provides `InvocationAgentServerHost`
 - `azure-ai-agentserver-invocations==1.3.0` provides `InvocationAgentServerHost` and, for the opt-in voice front-end, `VoiceAgentServerHost`
 - `azure-ai-agentserver-core` pinned EXACT (`==2.3.0`) — a transitive dep of `-invocations` (`>=2.3.0,<3.0.0`); the exact pin stops a core minor release from silently changing fresh container builds
@@ -341,58 +341,52 @@ CopilotClient.create_session(provider={...})
 
 ### Provider Configuration
 
-`copilot.ProviderConfig` is a `TypedDict` — at runtime it produces a
-plain `dict`, so the "class" form and the "dict" form below are byte-identical
-runtime objects. Use the class form when you want IDE / typing help; use the
-dict form when you want a one-liner.
-
-What actually matters is the **values**: `type="azure"` + bare endpoint is the
-PRIMARY shape (matches the official Microsoft sample, ~2-3× faster); the
-legacy `type="openai"` + `/openai/v1/` is still accepted for backward compat.
+The template targets **Microsoft Copilot SDK 2.x** (`microsoft-copilot-sdk==2.0.1`,
+formerly `github-copilot-sdk`). SDK 2.x no longer accepts the singular
+`provider` session option: a model is a **named provider connection** plus a
+**model definition** under `inference`, selected as `<provider>/<id>`
+([Named provider connections and model definitions](https://github.com/microsoft/copilot-sdk/blob/main/docs/v2-breaking-changes.md#named-provider-connections-and-model-definitions)).
 
 ```python
-# RECOMMENDED — class form (TypedDict), gives you typing + IDE completion.
-from copilot import ProviderConfig
-
-provider = ProviderConfig(
-    type="azure",                          # SDK adds api-version itself
-    base_url=FOUNDRY_ENDPOINT,             # BARE project endpoint — no /openai/v1/
-    wire_api="responses",
-    bearer_token=token.token,              # from DefaultAzureCredential
-)
-```
-
-```python
-# LEGACY — same wire shape, type='openai' kept for backward compat (2-3× slower).
-provider = {
-    "type": "openai",
-    "base_url": f"{FOUNDRY_ENDPOINT}/openai/v1/",  # must end with /openai/v1/
-    "bearer_token": token.token,
-    "wire_api": "responses",
+inference = {
+    "providers": [{
+        "name": "foundry", "type": "openai", "wire_api": "responses",
+        "base_url": f"{FOUNDRY_ENDPOINT}/openai/v1",       # or MODEL_GATEWAY_URL (private profile)
+        "bearer_token_provider": get_token,               # raw Entra token, scope https://ai.azure.com/.default
+    }],
+    "models": [{"provider": "foundry", "id": MODEL, "model_id": MODEL, "wire_model": MODEL}],
 }
+session = await client.create_session(model=f"foundry/{MODEL}", inference=inference,
+                                      github={"capi": {"enabled": False}}, ...)
 ```
 
-### Provider shape decision matrix
+- `bearer_token_provider` is called before each outbound model request, so a
+  long-lived keyed session never sends an expired token; it is re-registered on
+  every `create_session`/`resume_session` ([Provider routing on resume](https://github.com/microsoft/copilot-sdk/blob/main/docs/v2-breaking-changes.md#provider-routing-on-resume)).
+- `github.capi.enabled=False` keeps the catalog BYOK-only.
+- Tested locally (Nov 2026) with the real SDK 2.0.1 and runtime 1.0.114 against a
+  synthetic Responses endpoint: every model call goes to `<base_url>/responses`
+  with the Entra bearer (`tests/test_ghcp_sdk2_native.py`). Latency on 2.x is not
+  yet measured; the table below is the 1.0.x line.
 
-Measured against `gpt-5.4-mini` on a live Foundry project (May 2026):
+**`sdk_line: v1` escape hatch.** `generate_only.py --sdk-line v1` keeps
+`github-copilot-sdk==1.0.1` (`references/sdk-v1/requirements.lock` and
+`Dockerfile`) for pilots that need it, for example the Microsoft Agent Framework
+Copilot adapters, which require `github-copilot-sdk<2.0`
+([agent-framework-github-copilot](https://pypi.org/project/agent-framework-github-copilot/)).
+`container.py` detects the installed line and uses the 1.0.x shape there:
+`ProviderConfig(type="azure", base_url=<bare project endpoint>, wire_api="responses", bearer_token=...)`.
+
+### Provider shape decision matrix (1.0.x line)
+
+Measured against `gpt-5.4-mini` on a live Foundry project (May 2026), `github-copilot-sdk` 1.0.x:
 
 | `type` | `base_url` suffix | Result | Latency |
 |--------|-------------------|--------|---------|
-| `"azure"` | bare endpoint | ✅ **Recommended** | ~2.6s |
+| `"azure"` | bare endpoint | ✅ **Recommended on 1.0.x** | ~2.6s |
 | `"azure"` | `/openai/v1/` | ✅ Works | ~7.9s |
 | `"openai"` | `/openai/v1/` | ✅ Legacy compat | ~6.9s |
 | `"openai"` | bare endpoint | ❌ `400 Missing api-version` | n/a |
-
-`github-copilot-sdk` `1.0.1` (GA, this skill) and prior `0.3.0` / `1.0.0b*`
-preview lines all accept both `type="azure"` and the legacy
-`type="openai"` shapes; the legacy dict form is preserved across releases
-for backward compatibility. The 1.0 GA constructor is flat — pass
-`github_token=...` directly to `CopilotClient(...)` (no `SubprocessConfig`
-wrapper; `auto_start` kwarg removed — call `await client.start()` explicitly).
-The public import surface as of the GA release is
-`from copilot import CopilotClient, PermissionHandler, ProviderConfig` and
-`from copilot.session_events import SessionEventType` (matches the official
-Microsoft sample's `main.py`) — see `references/container.py`.
 
 ### Common BYOK Mistakes
 
@@ -400,7 +394,7 @@ Microsoft sample's `main.py`) — see `references/container.py`.
 |---------|---------|-----|
 | Wrong scope | 401 Unauthorized | Use `ai.azure.com` not `cognitiveservices.azure.com` |
 | `type="openai"` + bare endpoint | `400 Missing api-version` | Either switch to `type="azure"` + bare, or append `/openai/v1/` |
-| Token not refreshed | 401 after ~1h | Mint fresh token per session in `_get_provider()` |
+| Token not refreshed | 401 after ~1h | 2.x: use `bearer_token_provider` (called per request); 1.0.x: mint a fresh token per session in `_get_provider()` |
 | Permission error during deploy or invoke | 403 / `PermissionDenied` | Hard FAIL except the exact immediate-post-active readiness envelope documented under § "Invoking the Agent". That narrow case retries the same path; all others require root-cause investigation. The two required instance grants (account + project) are a documented prerequisite, not an invoke-time workaround - do not add further grants to route around a failure |
 
 ---
@@ -408,28 +402,37 @@ Microsoft sample's `main.py`) — see `references/container.py`.
 ## CopilotClient Session Parameters
 
 ```python
-# Recommended pattern (matches official Microsoft sample): explicit start().
-# As of github-copilot-sdk 1.0 GA, CopilotClient takes flat kwargs — no
-# SubprocessConfig wrapper, no auto_start. Construct, then await start().
-client = CopilotClient()
+# SDK 2.x: the client mode is mandatory. mode="empty" disables ambient shell and
+# host-file tools; each session opts in through tools.available_tools
+# (Explicit client mode; docs/setup/multi-tenancy.md#mode-empty upstream).
+client = CopilotClient(mode="empty",
+                       runtime=RuntimeConnection.for_default(base_directory=STATE_DIR),
+                       github={"use_logged_in_user": False})
 await client.start()
 
 session = await client.create_session(
-    provider=provider,                    # ProviderConfig OR dict — see "Provider Configuration"
-    model="gpt-5.4-mini",                 # Foundry model deployment name
-    system_message={                      # MUST be dict, not string
-        "mode": "replace",
-        "content": "You are a helpful assistant.",
-    },
-    skill_directories=["/app/skills"],    # Paths to SKILL.md directories
-    mcp_servers={                         # dict[str, dict] keyed by name; SDK 1.0.x calls .items(), a list fails
-        "playwright": {"type": "http", "url": "https://my-mcp.azurecontainerapps.io/mcp", "tools": ["*"]},
-    },
-    working_directory=str(Path.home()),   # Must be $HOME for hosted agents
-    streaming=True,                       # Enable streaming events
-    on_permission_request=PermissionHandler.approve_all,  # Auto-approve tools
+    model=f"foundry/{MODEL}",              # <provider>/<model id>
+    inference=inference,                   # see "Provider Configuration"
+    github={"capi": {"enabled": False}},
+    system_message={"mode": "replace", "content": "You are a helpful assistant."},
+    skills={"enabled": True, "directories": ["/app/skills"]},
+    mcp={"servers": {"playwright": {"type": "http", "url": "https://my-mcp.azurecontainerapps.io/mcp",
+                                    "tools": ["*"]}}},   # dict keyed by server name
+    tools={"available_tools": ["mcp:*", "custom:*", "builtin:skill"]},
+    working_directory=str(Path.home()),    # Must be $HOME for hosted agents
+    events={"streaming": True},
+    permissions={"on_request": PermissionHandler.approve_all},
 )
 ```
+
+The 2.x wheel does not bundle the native runtime. The `Dockerfile` stages the
+release the installed SDK pins at build time (`python -m copilot download-runtime
+--in-process`, checked against the release SHA256SUMS) under
+`COPILOT_CLI_EXTRACT_DIR=/opt/copilot-runtime`, because hosted agents run with
+`HOME=/home/session` and a build-time `~/.cache` would not be found; it then sets
+`COPILOT_SKIP_CLI_DOWNLOAD=1`. The plain template hosts the runtime in process
+(the 2.x default); the governed host uses one spawned stdio runtime per
+invocation so cleanup can stop and reap what it owns.
 
 ### Session Event Types
 

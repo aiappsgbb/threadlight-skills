@@ -196,7 +196,8 @@ def check(project, document, *, manifest_path=None):
                  "gateway/" + expected.name)
         docker = (agent / "Dockerfile").read_text()
         if docker != gen.dockerfile_text(agent=True,
-                gateway=native and "probe_observability" in config, opa_pin=pins["opa"]):
+                gateway=native and "probe_observability" in config, opa_pin=pins["opa"],
+                copilot_runtime=gen.is_copilot_sdk(contract["framework"])):
             raise ValueError("agent-docker-adapter-not-installed")
         root = agent / "policy" if native else project / "src/govern-gateway/policy"
         deployment_path = contained(project, ".threadlight/governance-deployment.json")

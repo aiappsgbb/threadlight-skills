@@ -316,7 +316,7 @@ def test_voiced_governed_ghcp_agent_pins_the_voice_capable_agentserver(tmp_path)
     # responses is MAF-only; the GHCP Invocations host never imports it.
     assert "azure-ai-agentserver-responses" not in voiced
     for text in (voiced, plain):
-        assert '"github-copilot-sdk==1.0.1"' in text and "agent-framework" not in text
+        assert '"microsoft-copilot-sdk==2.0.1"' in text and "agent-framework" not in text
 
 
 def test_the_exact_pending_record_reaches_the_caller_as_unspoken_application_data(bridge):

@@ -1,7 +1,15 @@
-"""Foundry Hosted Agent — GHCP SDK + BYOK via Invocations protocol.
+"""Foundry Hosted Agent — Microsoft Copilot SDK + BYOK via Invocations protocol.
 
-Reference template for deploying a hosted agent using the GitHub Copilot SDK
-with BYOK authentication and SSE streaming.
+Reference template for deploying a hosted agent using the Microsoft Copilot SDK
+(``microsoft-copilot-sdk`` 2.x; the ``github-copilot-sdk`` 1.0.x line still runs
+through the ``sdk_line: v1`` escape hatch) with BYOK authentication and SSE
+streaming.
+
+SDK 2.x shape (https://github.com/microsoft/copilot-sdk/blob/main/docs/v2-breaking-changes.md):
+the client declares ``mode="empty"`` (no ambient shell/file tools; each session
+opts in explicitly), the model is a named provider connection
+(``inference.providers`` + ``inference.models``) with a bearer-token callback,
+and session options are nested (``tools``, ``permissions``, ``events``, ...).
 
 Two auth modes, selected automatically from environment variables:
   * BYOK Foundry model: ``FOUNDRY_PROJECT_ENDPOINT`` (auto-injected by the
@@ -43,8 +51,16 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from azure.ai.agentserver.invocations import InvocationAgentServerHost
-from copilot import CopilotClient, PermissionHandler, ProviderConfig
+from copilot import CopilotClient, PermissionHandler
 from copilot.session_events import SessionEventType
+
+import copilot as _copilot
+
+# microsoft-copilot-sdk 2.x adds RuntimeConnection.for_default; github-copilot-sdk
+# 1.0.x (sdk_line: v1) has RuntimeConnection without it and keeps ProviderConfig.
+SDK_V2 = hasattr(getattr(_copilot, "RuntimeConnection", None), "for_default")
+RuntimeConnection = getattr(_copilot, "RuntimeConnection", None)
+ProviderConfig = getattr(_copilot, "ProviderConfig", None)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -242,17 +258,24 @@ class _TurnTelemetry:
 # ---------------------------------------------------------------------------
 # BYOK Authentication
 # ---------------------------------------------------------------------------
-# Primary shape (matches the official Microsoft sample, ~2x faster than the
-# legacy dict form): ProviderConfig(type="azure", base_url=<bare project
-# endpoint>, wire_api="responses").
+# SDK 2.x: one named provider connection ``foundry`` of ``type="openai"``,
+# ``wire_api="responses"``, ``base_url=<project endpoint>/openai/v1`` and a
+# ``bearer_token_provider`` callback, plus one model definition whose
+# ``wire_model`` is the deployment name; ``github.capi.enabled=False`` keeps the
+# catalog BYOK-only (Named provider connections and model definitions;
+# Credentials and transport). The callback is invoked before each outbound
+# request, so a long-lived session never sends an expired token.
 #
-# The SDK appends the ``?api-version=...`` query param itself when
-# ``type="azure"`` — do NOT add ``/openai/v1/`` to the URL.
+# SDK 1.0.x (sdk_line: v1): ProviderConfig(type="azure", base_url=<bare project
+# endpoint>, wire_api="responses") with a static bearer token minted per
+# session; the SDK appends the ``?api-version=...`` query itself.
 #
 # Token scope is ``https://ai.azure.com/.default`` (NOT
 # ``cognitiveservices.azure.com`` — renamed in the May 2026 Foundry
 # data-plane rename).
 
+_TOKEN_SCOPE = "https://ai.azure.com/.default"
+_PROVIDER_NAME = "foundry"
 _BYOK_CREDENTIAL = None
 _BYOK_ENDPOINT = ""
 _MODEL_BASE_URL = ""
@@ -264,12 +287,17 @@ def _model_base_url(project_endpoint: str) -> str:
 
     ``MODEL_GATEWAY_URL`` (private profile with an API Management gateway) is a
     pass-through route to the same project endpoint, so the token audience and the
-    Responses wire format stay the same. It must end in ``/openai/v1``: with
-    ``type="azure"`` the SDK keeps only the origin of any other base URL. Unset
+    Responses wire format stay the same. It must end in ``/openai/v1``. Unset
     or empty: the Fast-PoC behaviour. Only model calls use it; project calls
     (toolbox MCP) keep ``_BYOK_ENDPOINT``.
     """
     return os.getenv("MODEL_GATEWAY_URL", "").strip().rstrip("/") or project_endpoint
+
+
+def _openai_v1_base_url() -> str:
+    """SDK 2.x OpenAI-compatible base URL: ``<project endpoint>/openai/v1`` or the gateway route."""
+    base = (_MODEL_BASE_URL or _BYOK_ENDPOINT).rstrip("/")
+    return base if base.endswith("/openai/v1") else base + "/openai/v1"
 
 
 def _init_byok() -> bool:
@@ -286,9 +314,10 @@ def _init_byok() -> bool:
         _BYOK_CREDENTIAL = DefaultAzureCredential()
         _BYOK_ENDPOINT = endpoint
         _MODEL_BASE_URL = _model_base_url(endpoint)
-        token = _BYOK_CREDENTIAL.get_token("https://ai.azure.com/.default")
+        token = _BYOK_CREDENTIAL.get_token(_TOKEN_SCOPE)
         logger.info("BYOK verified: %s (model=%s, model route %s, token expires in %ds)",
-                    endpoint, _MODEL, _MODEL_BASE_URL, int(token.expires_on - time.time()))
+                    endpoint, _MODEL, _openai_v1_base_url() if SDK_V2 else _MODEL_BASE_URL,
+                    int(token.expires_on - time.time()))
         return True
     except Exception as exc:
         logger.error("BYOK init failed: %s", exc)
@@ -303,16 +332,26 @@ def _wire_api() -> str:
     return wire if wire in ("responses", "completions") else "responses"
 
 
-def _get_provider() -> ProviderConfig | None:
-    """Mint a fresh BYOK ProviderConfig for CopilotClient session.
+def _byok_ready() -> bool:
+    return bool(_BYOK_CREDENTIAL and _BYOK_ENDPOINT)
+
+
+async def _bearer_token(_args=None) -> str:
+    """SDK 2.x ``bearer_token_provider``: a raw Entra token (no ``Bearer `` prefix) per request."""
+    token = await asyncio.to_thread(_BYOK_CREDENTIAL.get_token, _TOKEN_SCOPE)
+    return token.token
+
+
+def _get_provider():
+    """SDK 1.0.x: mint a fresh BYOK ProviderConfig for one session.
 
     Returns ``None`` when BYOK is not configured — caller falls back to the
     GITHUB_TOKEN path.
     """
-    if not _BYOK_CREDENTIAL or not _BYOK_ENDPOINT:
+    if not _byok_ready():
         return None
     try:
-        token = _BYOK_CREDENTIAL.get_token("https://ai.azure.com/.default").token
+        token = _BYOK_CREDENTIAL.get_token(_TOKEN_SCOPE).token
         return ProviderConfig(
             type="azure",
             base_url=_MODEL_BASE_URL or _BYOK_ENDPOINT,
@@ -322,6 +361,19 @@ def _get_provider() -> ProviderConfig | None:
     except Exception as exc:
         logger.error("BYOK token mint failed: %s", exc)
         return None
+
+
+def _inference_options() -> dict[str, Any] | None:
+    """SDK 2.x named provider connection and model definition (None without BYOK)."""
+    if not _byok_ready():
+        return None
+    return {
+        "providers": [{
+            "name": _PROVIDER_NAME, "type": "openai", "wire_api": _wire_api(),
+            "base_url": _openai_v1_base_url(), "bearer_token_provider": _bearer_token,
+        }],
+        "models": [{"provider": _PROVIDER_NAME, "id": _MODEL, "model_id": _MODEL, "wire_model": _MODEL}],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +575,23 @@ _session_locks: dict[str, asyncio.Lock] = {}
 _sessions_lock = asyncio.Lock()
 
 
+def _state_directory() -> str:
+    """Where the Copilot runtime keeps session state (transcripts, journals)."""
+    return os.environ.get("COPILOT_HOME", "").strip() or str(pathlib.Path.home() / ".copilot")
+
+
+def _new_client(github_token: str) -> CopilotClient:
+    if not SDK_V2:
+        return CopilotClient() if not github_token else CopilotClient(github_token=github_token)
+    # mode="empty": no ambient shell or host-file tools; every session opts in
+    # through tools.available_tools (Explicit client mode). The runtime is hosted
+    # in-process by default (COPILOT_SDK_DEFAULT_CONNECTION=stdio keeps a child
+    # process); empty mode needs an explicit state directory.
+    github = {"token": github_token} if github_token else {"use_logged_in_user": False}
+    return CopilotClient(mode="empty", runtime=RuntimeConnection.for_default(base_directory=_state_directory()),
+                         github=github)
+
+
 async def _ensure_client() -> CopilotClient:
     """Start the CopilotClient once per worker."""
     global _client
@@ -530,19 +599,20 @@ async def _ensure_client() -> CopilotClient:
         if _client is not None:
             return _client
         github_token = os.environ.get("GITHUB_TOKEN", "")
-        if _get_provider():
+        if _byok_ready():
             # BYOK mode: Foundry model via Managed Identity, no token needed.
-            client = CopilotClient()
+            client = _new_client("")
         elif github_token:
             # Copilot mode: GitHub-hosted models via personal/app token.
-            client = CopilotClient(github_token=github_token)
+            client = _new_client(github_token)
         else:
             raise RuntimeError(
                 "No auth configured. Set FOUNDRY_PROJECT_ENDPOINT + "
                 "AZURE_AI_MODEL_DEPLOYMENT_NAME (BYOK Foundry) or GITHUB_TOKEN (GHCP)."
             )
         await client.start()
-        logger.info("CopilotClient started (mode=%s)", "BYOK" if _BYOK_ENDPOINT else "GITHUB_TOKEN")
+        logger.info("CopilotClient started (sdk=%s, mode=%s)", "2.x" if SDK_V2 else "1.0.x",
+                    "BYOK" if _BYOK_ENDPOINT else "GITHUB_TOKEN")
         _client = client
         return client
 
@@ -574,8 +644,39 @@ def _available_tools() -> list[str]:
     return tools
 
 
-def _session_kwargs() -> dict[str, Any]:
-    """Session options; mints a fresh BYOK provider token for every new session."""
+def _session_kwargs(tools: list | None = None) -> dict[str, Any]:
+    """Session options for the installed SDK line.
+
+    SDK 2.x: nested options; the bearer-token callback is re-registered on every
+    create/resume (Provider routing on resume). SDK 1.0.x: flat options with a
+    BYOK bearer token minted for this session.
+    """
+    instructions = _load_instructions()
+    skills = [_skills_dir] if pathlib.Path(_skills_dir).is_dir() else []
+    mcp = _load_mcp_servers()
+    if SDK_V2:
+        options: dict[str, Any] = {
+            "working_directory": str(pathlib.Path.home()),
+            "permissions": {"on_request": PermissionHandler.approve_all},
+            "events": {"streaming": True},
+            "tools": {"available_tools": _available_tools()},
+        }
+        inference = _inference_options()
+        if inference:
+            options["inference"] = inference
+            options["github"] = {"capi": {"enabled": False}}
+            options["model"] = f"{_PROVIDER_NAME}/{_MODEL}"
+        elif _MODEL:
+            options["model"] = _MODEL
+        if tools:
+            options["tools"]["definitions"] = tools
+        if instructions:
+            options["system_message"] = {"mode": "replace", "content": instructions}
+        if skills:
+            options["skills"] = {"enabled": True, "directories": skills}
+        if mcp:
+            options["mcp"] = {"servers": mcp}
+        return options
     kwargs: dict[str, Any] = {
         "on_permission_request": PermissionHandler.approve_all,
         "available_tools": _available_tools(),
@@ -584,12 +685,12 @@ def _session_kwargs() -> dict[str, Any]:
         "provider": _get_provider(),
         "model": _MODEL or None,
     }
-    instructions = _load_instructions()
+    if tools:
+        kwargs["tools"] = tools
     if instructions:
         kwargs["system_message"] = {"mode": "replace", "content": instructions}
-    if pathlib.Path(_skills_dir).is_dir():
-        kwargs["skill_directories"] = [_skills_dir]
-    mcp = _load_mcp_servers()
+    if skills:
+        kwargs["skill_directories"] = skills
     if mcp:
         kwargs["mcp_servers"] = mcp
     return kwargs
@@ -721,11 +822,8 @@ async def _conversation(session_key: str, call_id: str = "", telemetry: "_TurnTe
     started, cold = time.time_ns(), _client is None
     client = await _ensure_client()
     if not session_key:
-        kwargs = _session_kwargs()
         tools = await _toolbox_tools(call_id) if _toolbox_enabled() else []
-        if tools:
-            kwargs["tools"] = tools
-        session = await client.create_session(**kwargs)
+        session = await client.create_session(**_session_kwargs(tools))
         if telemetry is not None:
             telemetry.session_open(started, client_cold_start=cold, kind="fresh")
         try:

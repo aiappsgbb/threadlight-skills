@@ -71,7 +71,10 @@ test('the two runtime skill-loading explanations match shipped adapters', () => 
   const html = read('docs/basics.html');
   assert.match(html, /skill_directories/);
   assert.match(html, /SkillsProvider\.from_paths/);
-  assert.match(read('skills/threadlight-deploy/references/governance/ghcp-container.py'), /skill_directories=\[str\(base \/ "skills"\)\]/);
+  const ghcpHost = read('skills/threadlight-deploy/references/governance/ghcp-container.py');
+  assert.match(ghcpHost, /skills_dir=str\(base \/ "skills"\)/);
+  assert.match(ghcpHost, /"skills": \{"enabled": True, "directories": \[skills_dir\]\}/);
+  assert.match(ghcpHost, /"skill_directories": \[skills_dir\]/);
   assert.match(read('skills/threadlight-deploy/references/governance/maf-container.py'),
     /SkillsProvider\.from_paths\(\s*skills,\s*disable_load_skill_approval=True,\s*disable_read_skill_resource_approval=True/);
   const policy = JSON.parse(read('skills/threadlight-design/references/runtime-policy.json'));

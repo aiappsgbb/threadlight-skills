@@ -74,9 +74,15 @@ def _create_session_keywords(path: Path) -> list[set[str]]:
 
 def test_governed_ghcp_host_has_a_fixed_allowlist_without_builtins():
     path = REFERENCES / "governance" / "ghcp-container.py"
-    calls = _create_session_keywords(path)
-    assert calls and all("available_tools" in kw for kw in calls)
     tree = ast.parse(path.read_text(encoding="utf-8"))
+    # Every create_session call takes its options from session_options(), which sets the
+    # allowlist on both SDK lines (test_governance_wiring checks the values per line).
+    creates = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+               and getattr(n.func, "attr", "") == "create_session"]
+    assert creates and all(len(c.keywords) == 1 and c.keywords[0].arg is None
+                           and getattr(c.keywords[0].value.func, "id", "") == "session_options" for c in creates)
+    options = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "session_options")
+    assert ast.unparse(options).count("list(GOVERNED_AVAILABLE_TOOLS)") == 2
     values = [ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
               and any(getattr(t, "id", "") == "GOVERNED_AVAILABLE_TOOLS" for t in node.targets)]
     assert values == [("mcp:*", "builtin:skill")]

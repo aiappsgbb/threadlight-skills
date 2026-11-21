@@ -55,10 +55,22 @@ upstream:
     forward.
 
 packages:
+  - name: microsoft-copilot-sdk
+    source: pypi
+    version: "2.0.1"
+    upstream_changelog: https://pypi.org/project/microsoft-copilot-sdk/#history
+    notes: |
+      Default line since 2.73.0 (#202). Renamed from github-copilot-sdk
+      (https://github.com/microsoft/copilot-sdk/blob/main/docs/v2-breaking-changes.md#microsoft-copilot-sdk-identities).
+      The wheel pins native runtime 1.0.114 and does not bundle it: the
+      Dockerfile stages it with `python -m copilot download-runtime --in-process`.
   - name: github-copilot-sdk
     source: pypi
     version: "1.0.1"
     upstream_changelog: https://pypi.org/project/github-copilot-sdk/#history
+    notes: |
+      `sdk_line: v1` escape hatch only (generate_only.py --sdk-line v1;
+      sdk-v1/requirements.lock).
   - name: azure-ai-agentserver-invocations
     source: pypi
     version: "1.3.0"
@@ -180,7 +192,11 @@ hosted-agent wrapper (BYOK + Invocations protocol), now on the GA unified
 The skill wraps two preview PyPI packages whose release cadences are not
 coordinated:
 
-- `github-copilot-sdk` — `1.0.1` is the current **GA** release; the 0.3.x
+- `microsoft-copilot-sdk` — `2.0.1` (default). Breaking changes vs 1.0.x:
+  mandatory client `mode`, nested session options, named provider connections
+  under `inference` instead of `provider`, in-process runtime by default, runtime
+  not bundled in the wheel (see README § Provider Configuration).
+- `github-copilot-sdk` — `1.0.1` (`sdk_line: v1` escape hatch) is the last 1.0.x GA release; the 0.3.x
   series and the 1.0.0b1-b4 prereleases are superseded. Pinned EXACT
   (`==1.0.1`) since 2.20.0; `requirements.lock` carries the full
   sha256-hashed closure the Dockerfile installs with `--require-hashes`. Breaking changes vs 0.3.x: removed
