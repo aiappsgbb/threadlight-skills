@@ -1055,6 +1055,10 @@ Read the spec and derive the architecture using these deterministic rules:
      IQ index for their domain policies. Set `Backing service: foundry-iq` in spec
      § 7 unless the corpus is genuinely tiny (then `inline-context`) or genuinely
      live (then `mcp-search`).
+   - **Relational questions across documents** → a Foundry IQ entity graph
+     (preview) only when the § 7 graph-or-not rule holds; build it with the
+     [entity graph recipe](https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/foundry-iq-entity-graph-recipe.md) (`docs/foundry-iq-entity-graph-recipe.md`),
+     which delegates to Microsoft's `foundry-iq-skills` plugin.
    - **Dynamic/transactional data** (spec § 5 integrations) → **MCP server**
      (mock for PoC, real for production). See `threadlight-mcp-aca` skill.
    - **Cosmos DB** → MCPToolKit (10 tools out of the box) as `src/mcp/`

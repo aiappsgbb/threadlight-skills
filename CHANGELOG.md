@@ -7,6 +7,28 @@ field.
 
 ## [Unreleased]
 
+### 2.65.0: Foundry IQ entity graph recipe (preview), with one live run (#219)
+
+- **Why.** New pilots had no reusable path for Foundry IQ entity graphs, and
+  graph quality depends on ontology design and entity naming.
+- **New** [`docs/foundry-iq-entity-graph-recipe.md`](docs/foundry-iq-entity-graph-recipe.md),
+  labelled preview: ten steps from SPEC acceptance questions to ontology,
+  naming rules in `rdfs:comment`, grounding index, cache, sample trial, direct
+  GQL against ground truth, graph + text knowledge base at `low` effort, KB MCP
+  wiring, TPM sizing and literal filters. Mechanics are delegated to Microsoft's
+  `foundry-iq-skills` plugin; no new Threadlight skill. Cleanup uses the
+  plugin's retire workflow. Linked from `threadlight-design` (SKILL.md and SPEC
+  § 7 graph-or-not rule); Cowork zip rebuilt.
+- **Live validation (November 2026, internal test subscription, Sweden
+  Central, fully synthetic corpus of 160 files).** Plugin connect, build,
+  verify and publish; GQL against ground truth: 38/40 relations, 0 false
+  positives, 0 triples from 120 distractors; 2-hop and negation answers right,
+  3-hop missed one plant because of one missing edge. Trial retired with the
+  plugin; resource group deleted and Azure OpenAI account purged. Not covered:
+  deferred-then-attach, a successful trial report, graph + text knowledge base,
+  agent MCP wiring, plugin retire of a serving generation.
+- **Tests.** One technical-guidance test (recipe content and links).
+
 ### 2.64.0: generate_only harness route, a container-less azd project for the Copilot harness (#229)
 
 - **Why.** An opted-in `agent_type: harness` was refused by `generate_only`.

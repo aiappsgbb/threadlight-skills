@@ -627,3 +627,19 @@ test('SPEC knowledge sources add a Foundry IQ entity graph only by the graph-or-
   assert.match(evals, /question_types\.py/);
   assert.match(evals, /non-relational[\s\S]{0,80}unchanged/i);
 });
+
+test('Foundry IQ entity graph recipe is preview, delegates to foundry-iq-skills and is linked from design (#219)', () => {
+  const recipe = read('docs/foundry-iq-entity-graph-recipe.md').replace(/\s+/g, ' ');
+  assert.match(recipe, /^# Foundry IQ entity graph recipe \(preview\)/);
+  assert.match(recipe, /foundry-iq-skills/);
+  assert.match(recipe, /adds no Threadlight skill/i);
+  assert.match(recipe, /rdfs:comment/);
+  assert.match(recipe, /direct GQL against ground truth/i);
+  assert.match(recipe, /`low` effort/);
+  assert.match(recipe, /retire --plan-id <id> --confirm-writes/);
+  assert.match(recipe, /Validation run \(November 2026\)[\s\S]*38\/40 relations correct[\s\S]*0 false positives/);
+  assert.match(recipe, /GRD-005/);
+  const link = /foundry-iq-entity-graph-recipe\.md/;
+  assert.match(read('skills/threadlight-design/SKILL.md'), link);
+  assert.match(read('skills/threadlight-design/references/speckit-template.md'), link);
+});

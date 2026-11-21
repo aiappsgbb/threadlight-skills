@@ -42,6 +42,7 @@ official Microsoft product or support offering.
 | [agent-operations.md](agent-operations.md) | Operative guide: configure, generate, validate, deploy, collect and rescore (L400/L500) |
 | [agent-governance-deep-dive.md](agent-governance-deep-dive.md) | Runtime governance architecture and trust boundaries |
 | [skill-based-agents.md](skill-based-agents.md) | How skills are built, loaded and checked at runtime |
+| [foundry-iq-entity-graph-recipe.md](foundry-iq-entity-graph-recipe.md) | Foundry IQ entity graph (preview): when to use it, the steps through the official `foundry-iq-skills` plugin, and one validated run |
 | [runtime-support.md](runtime-support.md) | Runtimes, action enforcement and human review: what each profile supports |
 | [citadel-governance.md](citadel-governance.md) | Optional Citadel hub path to a native enforcement point |
 | [native-outlook-approval-architecture.md](native-outlook-approval-architecture.md) | Native human approval through Outlook |

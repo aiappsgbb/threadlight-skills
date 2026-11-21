@@ -266,6 +266,9 @@ Reference documents, policies, or data the agent needs for reasoning.
 > corpus. See the
 > [entity graph how-to](https://learn.microsoft.com/azure/search/agentic-knowledge-source-how-to-entity-graph)
 > and the [graph overview](https://learn.microsoft.com/azure/search/knowledge-graph-features-overview).
+> When the rule says yes, build it with the
+> [entity graph recipe (preview)](https://github.com/aiappsgbb/threadlight-skills/blob/main/docs/foundry-iq-entity-graph-recipe.md), which delegates
+> to Microsoft's `foundry-iq-skills` plugin.
 
 ### `knowledge_sources[]` (INPUT CONTRACT for `threadlight-ground`)
 
