@@ -23,7 +23,8 @@ def validate_selection(config, creation):
     validate(creation)
     target, package = config["expected_target"], config["package"]
     expected_protocol = {
-        "microsoft-agent-framework": "responses", "github-copilot-sdk": "invocations",
+        "microsoft-agent-framework": "responses", "microsoft-copilot-sdk": "invocations",
+        "github-copilot-sdk": "invocations",
     }.get(config["deployment"]["infrastructure"]["runtime"])
     if (creation["tenant_id"] != target["tenant"] or creation["subscription"] != target["subscription"]
             or creation["resource_group"] != target["resource_group"]
@@ -75,7 +76,8 @@ def load(config, base):
         raise ValueError("remote_publisher_scope_mismatch")
     from skills._shared.governance_selection import load_contract
     contract = generator.validate_contract(load_contract(config["source_project"]))
-    if contract["framework"] != config["deployment"]["infrastructure"]["runtime"]:
+    if (generator.canonical_framework(contract["framework"])
+            != generator.canonical_framework(config["deployment"]["infrastructure"]["runtime"])):
         raise ValueError("remote_contract_runtime_mismatch")
     native = not generator.uses_gateway(contract)
     if native != ("native_assets" in result):

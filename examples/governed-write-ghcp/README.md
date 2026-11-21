@@ -65,7 +65,7 @@ Keep every operator file (IDs, URLs, envelopes) **outside this repository**.
    tokens are rejected.
 3. **Governance foundation.** Write `infrastructure.json`
    ([contract](../../skills/threadlight-deploy/references/governance/README.md#infrastructure-and-entra-contract);
-   `environment: preproduction`, `runtime: github-copilot-sdk`,
+   `environment: preproduction`, `runtime: microsoft-copilot-sdk`,
    `enable_gateway: true`, `approval_max_seconds: 900`, `min_replicas: 0` (control
    plane and gateway scale to zero between workshops), `network.posture:
    public-authenticated-proof` with `preserve_resources: true`, and optional

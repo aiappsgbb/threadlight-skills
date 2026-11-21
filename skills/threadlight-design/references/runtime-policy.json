@@ -216,8 +216,8 @@
   },
   "selectors": {
     "frameworks": [
-      "github-copilot-sdk",
-      "microsoft-agent-framework"
+      "microsoft-agent-framework",
+      "microsoft-copilot-sdk"
     ],
     "runtime_shapes": [
       "agent",
@@ -228,26 +228,29 @@
       "responses"
     ]
   },
+  "framework_aliases": {
+    "github-copilot-sdk": "microsoft-copilot-sdk"
+  },
   "governance_compatibility": {
-    "github-copilot-sdk": [
-      "none",
-      "governed-tool-gateway"
-    ],
     "microsoft-agent-framework": [
       "none",
       "local-agent-hooks",
       "governed-tool-gateway"
+    ],
+    "microsoft-copilot-sdk": [
+      "none",
+      "governed-tool-gateway"
     ]
   },
   "default": {
-    "framework": "github-copilot-sdk",
+    "framework": "microsoft-copilot-sdk",
     "runtime_shape": "agent",
     "protocol": "invocations",
     "policy_route": "default-agent"
   },
   "compatible_combinations": [
     {
-      "framework": "github-copilot-sdk",
+      "framework": "microsoft-copilot-sdk",
       "runtime_shape": "agent",
       "protocol": "invocations"
     },
@@ -309,7 +312,7 @@
       "decision_date": "2026-08-05",
       "expiry_condition": "Responses works end to end for the generated hosted runtime and every documented channel.",
       "when": "no higher-priority route matches",
-      "framework": "github-copilot-sdk",
+      "framework": "microsoft-copilot-sdk",
       "runtime_shape": "agent",
       "protocol": "invocations",
       "rationale": "Keep the proven GHCP Invocations path until Responses works end to end."

@@ -402,7 +402,7 @@ next to the existing use-case skills.
 > `threadlight-design` dependency is a Stage-0 hard stop; greenfield selector
 > validation begins after Design creates the foundation, Kratos-export mode
 > preserves its supplied runtime, and Deploy remains the final policy gate.
-> Canonical default tuple: `github-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
+> Canonical default tuple: `microsoft-copilot-sdk` + `agent` + `invocations` (`policy_route: default-agent`).
 
 ## Resumption — read `.threadlight/auto-state.json` first
 

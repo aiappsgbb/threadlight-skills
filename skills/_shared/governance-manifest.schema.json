@@ -190,7 +190,7 @@
             "type": "object",
             "properties": {
               "runtime": {
-                "const": "github-copilot-sdk"
+                "enum": ["github-copilot-sdk", "microsoft-copilot-sdk"]
               }
             },
             "required": [
@@ -282,7 +282,8 @@
           "enum": [
             "github-copilot-sdk",
             "maf-responses",
-            "microsoft-agent-framework"
+            "microsoft-agent-framework",
+            "microsoft-copilot-sdk"
           ]
         },
         "version": {
@@ -439,7 +440,7 @@
         "required": ["runtime", "version", "image_digest"],
         "additionalProperties": false,
         "properties": {
-          "runtime": {"enum": [null, "github-copilot-sdk", "maf-responses", "microsoft-agent-framework"]},
+          "runtime": {"enum": [null, "github-copilot-sdk", "maf-responses", "microsoft-agent-framework", "microsoft-copilot-sdk"]},
           "version": {"type": "null"},
           "image_digest": {"type": "null"}
         }
@@ -498,7 +499,7 @@
     },
     "allOf": [
       {
-        "if": {"properties": {"agent": {"properties": {"runtime": {"const": "github-copilot-sdk"}}}}},
+        "if": {"properties": {"agent": {"properties": {"runtime": {"enum": ["github-copilot-sdk", "microsoft-copilot-sdk"]}}}}},
         "then": {"properties": {"bindings": {"items": {"properties": {"enforcement_path": {"not": {"const": "local-agent-hooks"}}}}}}}
       }
     ]

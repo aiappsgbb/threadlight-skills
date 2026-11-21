@@ -13,7 +13,8 @@
     "framework": {
       "enum": [
         "github-copilot-sdk",
-        "microsoft-agent-framework"
+        "microsoft-agent-framework",
+        "microsoft-copilot-sdk"
       ]
     },
     "governance": {
