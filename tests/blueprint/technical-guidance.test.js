@@ -643,3 +643,17 @@ test('Foundry IQ entity graph recipe is preview, delegates to foundry-iq-skills 
   assert.match(read('skills/threadlight-design/SKILL.md'), link);
   assert.match(read('skills/threadlight-design/references/speckit-template.md'), link);
 });
+
+test('production-ready resilience posture separates inventory from executed hosted crash evidence', () => {
+  const skill = read('skills/threadlight-production-ready/SKILL.md').replace(/\s+/g, ' ');
+  const pillar = read('skills/threadlight-production-ready/references/pillars/11-reliability.md').replace(/\s+/g, ' ');
+  for (const text of [skill, pillar]) {
+    for (const id of ['REL-009', 'REL-010', 'REL-011', 'REL-012', 'REL-013', 'REL-014']) assert.ok(text.includes(id), id);
+    assert.match(text, /not crash-resilient/);
+    assert.match(text, /at-least-once handler entry/);
+    assert.match(text, /offline inventory is not live proof/i);
+    assert.match(text, /only executed hosted crash-test evidence/i);
+  }
+  assert.match(pillar, /local harness evidence .* never satisfies REL-014/i);
+  assert.match(pillar, /learn\.microsoft\.com\/azure\/foundry\/agents\/how-to\/recover-long-running-work/);
+});

@@ -28,6 +28,30 @@
 | `REL-007` | Successful scoped drill with validation, measured RTO/RPO and raw evidence; execution age at most 90 days | `must-fix` if absent; `not-verified` if invalid/incomplete |
 | `MDL-008` | Knowledge index refresh cadence declared in SPEC § 12 (cross-listed here because index restore is part of the runbook surface — primary owner is pillar 13) | `should-fix` if absent |
 
+### Long-running resilience posture (static, tier 0)
+
+Applies when SPEC or code declares long-running turns (otherwise all six are
+`not-applicable`). Hosted agents recover crashed work only for Responses
+requests with `store=true` and `background=true` on a host created with
+`resilient_background=True`; foreground responses are never re-invoked
+([Learn: recover long-running work](https://learn.microsoft.com/azure/foundry/agents/how-to/recover-long-running-work)). Recovery re-enters the handler from
+the top: at-least-once handler entry, not deterministic replay.
+
+| ID | Check | Evidence kind | Default status |
+|---|---|---|---|
+| `REL-009` | Long turns start as stored background responses (`store` + `background`, `stream` for replay) | inventory | `must-fix` if absent |
+| `REL-010` | `resilient_background=True`, or the README/SPEC says "background only, not crash-resilient" | inventory | `must-fix` if neither |
+| `REL-011` | Handler checkpoints each phase and has an `is_recovery` / `persisted_response` branch | inventory | `must-fix` if resilient without them |
+| `REL-012` | Non-idempotent effects fenced (idempotency key, `recovery_scope`, watermark) | inventory | `must-fix` if resilient without a fence |
+| `REL-013` | Reconciler with a per-job deadline (stopped sessions, ghost `in_progress`) | inventory | `should-fix` if absent |
+| `REL-014` | Fresh hosted crash test of the current image: `evidence: hosted`, recovered, one `response.created` and one `response.completed` in the replay, ≤90 days, `image` equal to the current `SERVICE_*_IMAGE_NAME` | executed hosted evidence | `must-fix` if absent; `not-verified` if local, stale, unbound or failed |
+
+Offline inventory is not live proof: REL-009..REL-013 read the repository and
+never show that recovery works. Only executed hosted crash-test evidence
+satisfies REL-014, and local harness evidence (`threadlight-local-test`
+`crash_recovery.py`, file-backed stores) never satisfies REL-014. The report
+prefixes each detail with `inventory:` or `executed hosted evidence:`.
+
 ### Live (tier 1 — `Reader`)
 
 | ID | Check | Default status |

@@ -157,7 +157,7 @@ The skill exposes an **explicit production-onboarding workflow**:
 
 1. **Assess (always safe, always read-only).** A Python script
    (`scripts/production_ready.py`) inventories your target Azure
-   subscription/resource group, scores it against 193 findings spanning 13
+   subscription/resource group, scores it against 199 findings spanning 13
    production-readiness pillars, and emits the scorecard/report plus an
    `apply-plan.json` that names every must-fix gap and the remediation recipe
    that closes it.
@@ -327,9 +327,20 @@ about findings, not just emit them.
 | 8 | [`hitl-audit`](references/pillars/08-hitl-audit.md) | If SPEC § 8 declares gates: wired, persistent audit trail, escalation channel reachable, idempotent | `threadlight-hitl-patterns` |
 | 9 | [`supply-chain`](references/pillars/09-supply-chain.md) | Container images pinned **by digest**; Bicep modules pinned; dependency scanning enabled; SBOM emitted; **skills/tools published as pinned, versioned Foundry artifacts** (no force-publish, no floating default) | `threadlight-deploy/references/azd-modules`, `microsoft-foundry` |
 | 10 | [`cost`](references/pillars/10-cost.md) | Pricing plan declared (PAYG vs PTU); budget + anomaly alerts wired; cost-projection artefact fresh (`COST-005`); unaddressed recommendations reviewed (`COST-006`); idle-resource sweep done | `paygo-ptu-cost-analyzer`, `threadlight-consumption-iq` |
-| 11 | [`reliability`](references/pillars/11-reliability.md) | Multi-region plan vs RTO/RPO from § 12; backup/restore configured AND restore-drill artefact present and ≤90 days old (REL-007); runbook exists; chaos test referenced | `microsoft-foundry` |
+| 11 | [`reliability`](references/pillars/11-reliability.md) | Multi-region plan vs RTO/RPO from § 12; backup/restore configured AND restore-drill artefact present and ≤90 days old (REL-007); runbook exists; chaos test referenced; long-running resilience posture (REL-009..014) | `microsoft-foundry`, `threadlight-deploy` (long-running mode) |
 | 12 | [`sre-handover`](references/pillars/12-sre-handover.md) | **Evidence-based:** incident owner + escalation path; runbook links; alert destinations; SRE Agent resource/recipe if selected; handoff acceptance signed | `azure-sre-agent` (with `threadlight-pilot-handover` recipe) |
 | 13 | [`model-lifecycle`](references/pillars/13-model-lifecycle.md) | Model deployment **names + versions pinned** (no `latest`); fallback model declared; retirement-notice owner; A/B or rollback strategy; region/capacity documented | `paygo-ptu-cost-analyzer`, `threadlight-deploy/references/hosted-agent/maf` |
+
+**Long-running resilience posture (REL-009..REL-014).** Applies when SPEC or
+code declares long-running turns. REL-009..REL-013 are offline inventory of the
+repository: stored background responses (REL-009), `resilient_background=True` or
+the honest label "background only, not crash-resilient" (REL-010), checkpoints
+plus a recovery branch (REL-011), fenced effects, since recovery is at-least-once
+handler entry (REL-012), and a reconciler with a per-job deadline (REL-013). Offline inventory is not live proof. Only executed hosted
+crash-test evidence for the current image satisfies REL-014; the local crash
+harness is labelled local and stays `not-verified`. See
+[`11-reliability.md`](references/pillars/11-reliability.md) and
+[Learn: recover long-running work](https://learn.microsoft.com/azure/foundry/agents/how-to/recover-long-running-work).
 
 **Per-finding status taxonomy:**
 

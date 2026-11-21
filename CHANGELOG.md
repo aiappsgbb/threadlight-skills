@@ -7,6 +7,25 @@ field.
 
 ## [Unreleased]
 
+### 2.71.0: resilience posture checks for long-running hosted agents (#225)
+
+- **Why.** The readiness assessment did not tell foreground, background-only and
+  crash-resilient designs apart, so a pilot could be called production-ready
+  while a long turn depended on one open connection or a crashed run stayed
+  `in_progress` forever.
+- **Checks (reliability pillar, static).** When SPEC or code declares long-running
+  turns: REL-009 stored background responses; REL-010 `resilient_background=True`
+  or the honest "background only, not crash-resilient" label; REL-011 checkpoints
+  and a recovery branch; REL-012 fenced effects (at-least-once handler entry);
+  REL-013 reconciler with a per-job deadline; REL-014 fresh hosted crash-test
+  evidence bound to the current `SERVICE_*_IMAGE_NAME`. REL-009..013 are
+  inventory (`inventory:` details); only executed hosted crash-test evidence
+  (`executed hosted evidence:`) passes REL-014. Local harness evidence, stale,
+  unbound or failed records stay `not-verified`.
+- **Docs and recipes.** Pillar 11 table, SKILL.md paragraph and pillar row,
+  remediation recipes for the must-fix findings, sibling-skill map rows. Wording
+  is covered by `tests/blueprint/technical-guidance.test.js`.
+
 ### 2.70.0: Citadel hub: served-model attribution and subset gate for model router traffic (#220)
 
 - **Why.** Behind a model router deployment the hub's `set-llm-usage` attributes

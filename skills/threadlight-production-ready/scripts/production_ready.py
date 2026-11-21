@@ -860,6 +860,12 @@ FINDING_CATALOG: dict[str, dict[str, Any]] = {
     # ---- reliability — NEW v0.3.0: restore-drill freshness + RSV restore points
     "REL-007": {"title": "Restore drill artefact present and dated within 90 days", "pillar": "reliability", "severity": "must-fix", "tier": 0},
     "REL-008": {"title": "Live Recovery Services Vault has restore points", "pillar": "reliability", "severity": "should-fix", "tier": 1},
+    "REL-009": {"title": "Long turns run as stored background responses", "pillar": "reliability", "severity": "must-fix", "tier": 0},
+    "REL-010": {"title": "Crash recovery enabled, or labelled not crash-resilient", "pillar": "reliability", "severity": "must-fix", "tier": 0},
+    "REL-011": {"title": "Handler checkpoints and recovery branch", "pillar": "reliability", "severity": "must-fix", "tier": 0},
+    "REL-012": {"title": "Non-idempotent effects fenced under recovery", "pillar": "reliability", "severity": "must-fix", "tier": 0},
+    "REL-013": {"title": "Reconciler with a per-job deadline", "pillar": "reliability", "severity": "should-fix", "tier": 0},
+    "REL-014": {"title": "Fresh hosted crash-test evidence for the current image", "pillar": "reliability", "severity": "must-fix", "tier": 0},
 
     # ---- sre-handover
     "SRE-001": {"title": "SPEC sec 12 names incident owner / on-call", "pillar": "sre-handover", "severity": "must-fix", "tier": 0},
@@ -6139,7 +6145,118 @@ def _check_reliability_static(ctx: RepoContext) -> list[Finding]:
     status, detail = _operational_evidence().restore(
         ctx.root, drill_files, scope.subscription_id, scope.resource_group)
     out.append(_mk_finding("REL-007", status=status, detail=detail))
+    out.extend(_check_resilience_posture(ctx))
     return out
+
+
+_LONG_TURN_RE = re.compile(
+    r"long[- ]running|background[- ]response|turns? (?:can|may|will) (?:take|run|last)"
+    r"|>\s*2\s*min|resilient_background", re.I)
+_STORE_RE = re.compile(r"[\"']?store[\"']?\s*[:=]\s*(?:True|true)")
+_BACKGROUND_RE = re.compile(r"[\"']?background[\"']?\s*[:=]\s*(?:True|true)")
+_RESILIENT_RE = re.compile(r"resilient_background\s*=\s*True")
+_FENCE_RE = re.compile(r"recovery_scope|effect_scope|idempotency[_-]key|conversation_chain_metadata|watermark", re.I)
+_CRASH_EVIDENCE_GLOBS = ("evidence/**/crash*.json", "docs/**/crash*.json", "tests/**/crash*.json")
+_CRASH_EVIDENCE_DAYS = 90
+
+
+def _check_resilience_posture(ctx) -> list[Finding]:
+    """REL-009..013 are repository inventory; REL-014 needs executed hosted crash evidence.
+
+    Applies when SPEC or code declares long-running turns. Inventory never proves
+    recovery: only a hosted crash test of the current image can satisfy REL-014.
+    """
+    spec, docs = getattr(ctx, "spec_text", "") or "", getattr(ctx, "docs_text", "") or ""
+    src = getattr(ctx, "src_text", "") or ""
+    ids = ("REL-009", "REL-010", "REL-011", "REL-012", "REL-013", "REL-014")
+    if not (_LONG_TURN_RE.search(spec) or _RESILIENT_RE.search(src) or _BACKGROUND_RE.search(src)):
+        return [_mk_finding(fid, "not-applicable", "inventory: no long-running turns declared or implemented")
+                for fid in ids]
+    out: list[Finding] = []
+    background = bool(_STORE_RE.search(src) and _BACKGROUND_RE.search(src))
+    out.append(_mk_finding("REL-009", "pass" if background else "must-fix",
+        "inventory: callers send store=true and background=true" if background else
+        "inventory: long turns found but no store=true + background=true request; a turn that outlives "
+        "its connection is lost"))
+    resilient = bool(_RESILIENT_RE.search(src))
+    labelled = "not crash-resilient" in (spec + "\n" + docs).lower()
+    if resilient:
+        out.append(_mk_finding("REL-010", "pass", "inventory: ResponsesServerOptions(resilient_background=True)"))
+    elif labelled:
+        out.append(_mk_finding("REL-010", "pass",
+            "inventory: honestly labelled 'not crash-resilient'; a crash leaves the response non-terminal"))
+    else:
+        out.append(_mk_finding("REL-010", "must-fix",
+            "inventory: no resilient_background=True and no 'not crash-resilient' label"))
+    if not resilient:
+        for fid in ("REL-011", "REL-012"):
+            out.append(_mk_finding(fid, "not-applicable", "inventory: crash recovery not enabled"))
+    else:
+        branch = all(marker in src for marker in (".checkpoint()", "is_recovery", "persisted_response"))
+        out.append(_mk_finding("REL-011", "pass" if branch else "must-fix",
+            "inventory: stream.checkpoint() and an is_recovery / persisted_response branch" if branch else
+            "inventory: resilient host without stream.checkpoint() plus an is_recovery / persisted_response "
+            "branch reruns whole turns"))
+        fenced = bool(_FENCE_RE.search(src))
+        out.append(_mk_finding("REL-012", "pass" if fenced else "must-fix",
+            "inventory: idempotency key or watermark present (recovery is at-least-once handler entry)"
+            if fenced else "inventory: recovery re-enters the handler (at-least-once); no idempotency key or "
+            "watermark fences its effects"))
+    reconciler = bool(re.search(r"reconcil", src + docs, re.I) and re.search(r"deadline", src + docs, re.I))
+    out.append(_mk_finding("REL-013", "pass" if reconciler else "should-fix",
+        "inventory: reconciler with per-job deadline" if reconciler else
+        "inventory: no reconciler with a per-job deadline; a stopped session or ghost response hangs callers"))
+    out.append(_rel_014(ctx) if resilient else
+               _mk_finding("REL-014", "not-applicable", "executed hosted evidence: crash recovery not enabled"))
+    return out
+
+
+def _rel_014(ctx) -> Finding:
+    current = {v for k, v in (getattr(ctx, "azd_env", {}) or {}).items()
+               if k.startswith("SERVICE_") and k.endswith("_IMAGE_NAME") and v}
+    files = _glob_repo(ctx.root, *_CRASH_EVIDENCE_GLOBS)
+    local_only, problems = False, []
+    now = datetime.now(timezone.utc)
+    for path in files:
+        rel = path.relative_to(ctx.root).as_posix()
+        record = _read_json(path)
+        if not isinstance(record, dict):
+            continue
+        if record.get("evidence") != "hosted":
+            local_only = True
+            continue
+        replay = record.get("replay") or {}
+        try:
+            captured = datetime.fromisoformat(str(record.get("captured_at")))
+        except ValueError:
+            captured = None
+        if captured is not None and captured.tzinfo is None:
+            captured = None
+        if (record.get("verdict") != "recovered" or replay.get("response.created") != 1
+                or replay.get("response.completed") != 1
+                or not any(e.get("is_recovery") for e in record.get("entries") or [] if isinstance(e, dict))):
+            problems.append(f"{rel}: not a recovered run with one created / one completed")
+            continue
+        if captured is None or captured > now or now - captured > timedelta(days=_CRASH_EVIDENCE_DAYS):
+            problems.append(f"{rel}: captured_at missing, in the future or older than {_CRASH_EVIDENCE_DAYS} days")
+            continue
+        if not current:
+            return _mk_finding("REL-014", "not-verified",
+                "executed hosted evidence: current image unknown (no SERVICE_*_IMAGE_NAME in the azd env); "
+                "cannot bind the crash test to it", [rel])
+        if record.get("image") not in current:
+            problems.append(f"{rel}: crash test ran on another image")
+            continue
+        return _mk_finding("REL-014", "pass",
+            f"executed hosted evidence: recovered mid-run crash on image {record['image']}", [rel])
+    if problems:
+        return _mk_finding("REL-014", "not-verified", "executed hosted evidence: " + "; ".join(problems))
+    if local_only:
+        return _mk_finding("REL-014", "not-verified",
+            "executed hosted evidence: only local harness evidence (file-backed stores); not a hosted crash test")
+    return _mk_finding("REL-014", "must-fix",
+        "executed hosted evidence: no hosted crash test for this image (deploy with "
+        "THREADLIGHT_SIMULATE_CRASH_AFTER_PHASE and record evidence/crash-test-hosted.json)")
 
 
 def _check_reliability_live(ctx: RepoContext, tiers: dict[int, bool], sub: str | None, rg: str | None) -> tuple[list[Finding], list[EvidenceEntry]]:
