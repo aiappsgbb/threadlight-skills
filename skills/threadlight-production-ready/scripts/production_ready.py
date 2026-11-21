@@ -6308,7 +6308,9 @@ def _agentops_domain_blocker_represented(ctx: RepoContext, data: dict,
         "schedule_present": "EVAL-005", "run_history_present": "EVAL-006",
         "online_eval_wired": "EVAL-101", "latest_eval_run_fresh": "EVAL-102/EVAL-103",
         "alert_wired": "EVAL-104", "latest_pass_rate_ok": "EVAL-105",
-        "ab_comparison_present": "F3",
+        "ab_comparison_present": "F3", "rubric_trajectory_mapped": "EVAL-106",
+        "gate_split_ok": "EVAL-107", "gate_evaluator_suitable": "EVAL-108",
+        "gate_runs_recorded": "EVAL-109",
     } if owner == "evals" else {
         "scan_present": "SAFE-104", "scan_fresh": "SAFE-104",
         "jailbreak_asr_ok": "SAFE-101", "prompt_injection_asr_ok": "SAFE-102",
@@ -6339,7 +6341,10 @@ def _agentops_domain_blocker_represented(ctx: RepoContext, data: dict,
         if not timedelta(0) <= age <= timedelta(days=days) or captured + timedelta(seconds=1) < generated:
             return False
         capabilities = canonical["capabilities"]
-        if set(capabilities) != set(expected_ids):
+        # Gate-policy capabilities (EVAL-106..109, evals_check since 2.59) are optional here.
+        optional_ids = {"rubric_trajectory_mapped", "gate_split_ok", "gate_evaluator_suitable",
+                        "gate_runs_recorded"} if owner == "evals" else set()
+        if not set(expected_ids) - optional_ids <= set(capabilities) <= set(expected_ids):
             return False
         id_key = "check_id" if owner == "evals" else "finding_id"
         status_order = {"not-applicable": 0, "pass": 1, "not-verified": 2,

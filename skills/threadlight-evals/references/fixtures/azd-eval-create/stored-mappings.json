@@ -1,0 +1,32 @@
+{
+  "_recorded": "2026-11-21, azd 1.37.3, azure.ai.evaluations 1.0.0-beta.2, `azd ai eval show <eval> -o json` after `azd ai eval create` of scripts/eval_yaml.py output (internal test subscription)",
+  "tlb-agent-gate": {
+    "tlb-rubric-trajectory": {
+      "ground_truth": "{{item.ground_truth}}",
+      "query": "{{item.query}}",
+      "response": "{{sample.output_items}}",
+      "tool_calls": "{{sample.tool_calls}}",
+      "tool_definitions": "{{sample.tool_definitions}}"
+    },
+    "task_adherence": {
+      "query": "{{item.query}}",
+      "response": "{{sample.output_items}}",
+      "tool_calls": "{{sample.tool_calls}}",
+      "tool_definitions": "{{sample.tool_definitions}}"
+    }
+  },
+  "tlb-agent-optimizer-input": {
+    "tlb-rubric": {
+      "query": "{{item.query}}",
+      "response": "{{sample.output_text}}",
+      "tool_calls": "{{sample.tool_calls}}",
+      "tool_definitions": "{{sample.tool_definitions}}"
+    },
+    "task_adherence": {
+      "query": "{{item.query}}",
+      "response": "{{sample.output_items}}",
+      "tool_calls": "{{sample.tool_calls}}",
+      "tool_definitions": "{{sample.tool_definitions}}"
+    }
+  }
+}
