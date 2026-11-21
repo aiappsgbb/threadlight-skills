@@ -7,6 +7,25 @@ field.
 
 ## [Unreleased]
 
+### 2.66.0: replay-safe governed effects, approvals and audit under recovered handlers (#223)
+
+- **Why.** A crash-recovered handler is re-entered from the top and re-runs the
+  interrupted phase (at-least-once entry, [Learn](https://learn.microsoft.com/azure/foundry/agents/concepts/long-running-agent-resilience)).
+  The governed gateway already deduplicates by `Idempotency-Key`, but the MAF
+  client minted a random key per call, so a recovered phase got a new key and a
+  second effect (observed RED: 2 downstream POSTs for one refund).
+- **Change.** `maf_gateway.recovery_scope(durable_id, phase)` derives a stable
+  operation id per (durable work id, phase, action, call number); unscoped calls
+  keep random keys. The long-running template wraps each phase through
+  `effect_scope` when the governed client is present.
+- **Contract.** Completed operation → returned without a second effect, approval
+  consumption or decision receipt; in-flight → `outcome_unknown`, never replayed;
+  changed arguments under the same key → `idempotency_conflict`. Guidance in
+  `threadlight-governed-actions` § Recovered handlers and `threadlight-hitl-patterns`.
+- **Tests.** Six native cases (real MAF functions, MCP and native ACS gateway)
+  added to the required MCP set: crash after dispatch with and without approval,
+  crash before dispatch, lost outcome, key stability, key format.
+
 ### 2.65.0: Foundry IQ entity graph recipe (preview), with one live run (#219)
 
 - **Why.** New pilots had no reusable path for Foundry IQ entity graphs, and

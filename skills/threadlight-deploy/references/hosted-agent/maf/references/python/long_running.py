@@ -20,7 +20,8 @@
 # entry, NOT deterministic replay). The phase interrupted by the crash runs
 # again from its start. Any non-idempotent effect inside a phase (governed
 # write, approval consumption, audit ACK, email, payment) must be fenced with
-# an idempotency key or a watermark before dispatch, as
+# an idempotency key or a watermark before dispatch (governed gateway calls get
+# a stable key from `effect_scope` below), as
 # https://learn.microsoft.com/azure/foundry/agents/how-to/recover-long-running-work
 # (§ Fence non-idempotent side effects) requires; Threadlight governed writes
 # follow `threadlight-governed-actions`. Without this file, a background
@@ -33,6 +34,8 @@
 # container logs show entry, phase and checkpoint events.
 
 import asyncio
+import contextlib
+import importlib.util
 import json
 import logging
 import os
@@ -96,6 +99,21 @@ async def run_phase(phase: str, instruction: str, input_text: str, prior: list[s
     return result.text
 
 
+def effect_scope(response_id: str, phase_index: int):
+    """Governed calls in a phase reuse their operation ids when the phase re-runs.
+
+    With the Threadlight governed gateway client (`maf_gateway.py`) present, a
+    recovered attempt sends the same Idempotency-Key per call, so the gateway
+    returns the completed effect (no second effect, approval or decision
+    receipt) and keeps an in-flight one UNKNOWN. Without it this is a no-op.
+    """
+    if importlib.util.find_spec("maf_gateway") is None:
+        return contextlib.nullcontext()
+    from maf_gateway import recovery_scope
+
+    return recovery_scope(response_id, phase_index)
+
+
 def _crash_after(phase_index: int, recovering: bool) -> None:
     """Crash-test hook (off unless set): exit hard right after a checkpoint."""
     target = os.environ.get("THREADLIGHT_SIMULATE_CRASH_AFTER_PHASE")
@@ -138,7 +156,8 @@ async def handler(request: CreateResponse, context: ResponseContext, cancellatio
         yield message.emit_added()
         text = message.add_text_content()
         yield text.emit_added()
-        result = await run_phase(phase, instruction, input_text, prior)
+        with effect_scope(context.response_id, index):
+            result = await run_phase(phase, instruction, input_text, prior)
         yield text.emit_delta(result)
         yield text.emit_text_done(result)
         yield text.emit_done()

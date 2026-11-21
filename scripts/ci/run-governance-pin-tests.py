@@ -54,6 +54,12 @@ MCP_REQUIRED_CASES = {
     "test_collector_maf_gateway_real_responses_noop_allow_deny[None]",
     "test_collector_maf_gateway_real_responses_noop_allow_deny[receipt]",
     "test_collector_maf_gateway_real_responses_noop_allow_deny[business-binding]",
+    "test_recovered_phase_after_dispatch_has_one_effect_approval_and_audit[False]",
+    "test_recovered_phase_after_dispatch_has_one_effect_approval_and_audit[True]",
+    "test_recovered_phase_before_dispatch_runs_the_effect_once",
+    "test_recovered_phase_never_replays_an_unknown_outcome",
+    "test_recovery_scope_keys_are_stable_distinct_and_do_not_change_unscoped_calls",
+    "test_operation_key_is_deterministic_and_a_valid_identifier",
 }
 DEFERRED_REQUIRED_CASES = {
     "test_deferred_approval_survives_dispatcher_restart_and_consumes_once[True]",

@@ -350,6 +350,17 @@ For gates with a `Timeout/SLA` in spec § 8:
 - The job posts an `escalate` card to the escalation target
 - Records a "SLA breach" audit event
 
+### Recovered handlers (crash-resilient agents)
+
+A long-running agent with crash recovery re-runs the interrupted phase after a
+restart (at-least-once handler entry). An approval belongs to the governed
+**operation**, not to the handler attempt: the re-run reuses the same operation
+id (`maf_gateway.recovery_scope`), so the gateway returns the completed result
+without a new card, a second grant consumption or a second audit record. Never
+post a fresh `approve` card on recovery; an operation whose outcome is unknown
+stays UNKNOWN until reconciled. Details: `threadlight-governed-actions` §
+Recovered handlers.
+
 ---
 
 ## Card content rules

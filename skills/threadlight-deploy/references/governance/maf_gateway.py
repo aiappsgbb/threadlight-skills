@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from copy import deepcopy
 from datetime import timedelta
+import hashlib
 import math
 import re
 import time
@@ -33,6 +35,46 @@ from skill_approval import RequireResolvedApprovals
 
 class GatewayToolError(ToolExecutionException):
     pass
+
+
+_RECOVERY_SCOPE = ContextVar("threadlight_recovery_scope", default=None)
+
+
+def operation_key(scope_id, step, action, ordinal):
+    """Stable gateway operation id for the ordinal-th call of an action in one phase."""
+    material = canonical([str(scope_id), str(step), str(action), int(ordinal)])
+    return "rk-" + hashlib.sha256(material).hexdigest()[:48]
+
+
+@contextmanager
+def recovery_scope(scope_id, step):
+    """Derive governed operation ids from a durable work id instead of a random one.
+
+    A crash-recovered handler (AgentServer ``resilient_background``) is re-entered
+    from the top and re-runs the interrupted phase: at-least-once entry. Wrap each
+    phase in ``recovery_scope(context.response_id, phase_index)`` (or a task id and
+    step) so the re-run sends the same ``Idempotency-Key``. The gateway then returns
+    a completed effect without a new effect, approval consumption or decision
+    receipt, and keeps an in-flight one ``outcome_unknown`` instead of replaying it.
+    Keys are numbered per action in call order; a re-run that changes the
+    arguments under the same key is refused as an idempotency conflict.
+    """
+    if not isinstance(scope_id, str) or not scope_id or not isinstance(step, (int, str)):
+        raise ValueError("recovery_scope_requires_durable_id_and_step")
+    token = _RECOVERY_SCOPE.set({"scope": scope_id, "step": step, "counts": {}})
+    try:
+        yield
+    finally:
+        _RECOVERY_SCOPE.reset(token)
+
+
+def _scoped_operation(action):
+    scope = _RECOVERY_SCOPE.get()
+    if scope is None:
+        return None
+    ordinal = scope["counts"].get(action, 0)
+    scope["counts"][action] = ordinal + 1
+    return operation_key(scope["scope"], scope["step"], action, ordinal)
 
 
 class BoundedResponse(httpx.AsyncByteStream):
@@ -302,7 +344,7 @@ class GovernedMCPTools:
                         await self.connect()
                     if self._descriptors != self._deferred_descriptors:
                         raise GatewayToolError("threadlight:gateway_inventory_changed")
-            call = {"name": name, "arguments": canonical(arguments), "key": operation or uuid.uuid4().hex,
+            call = {"name": name, "arguments": canonical(arguments), "key": operation or _scoped_operation(name) or uuid.uuid4().hex,
                     "evidence": evidence, "request_context": request_context}
             meta = {
                 **({EVIDENCE_META: evidence} if evidence is not None else {}),
