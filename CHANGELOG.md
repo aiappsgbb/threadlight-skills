@@ -7,6 +7,25 @@ field.
 
 ## [Unreleased]
 
+### 2.70.0: Citadel hub: served-model attribution and subset gate for model router traffic (#220)
+
+- **Why.** Behind a model router deployment the hub's `set-llm-usage` attributes
+  every token to the requested router, and a contract granting a router without
+  a subset grants every pool model in the region.
+- **Served model.** New outbound fragment `frag-set-llm-served-model.xml` emits
+  `Served Prompt/Completion Tokens` (namespace `llm-served-model`) keyed on the
+  served model (response `model`, versions removed; last `routing_trace` attempt
+  when `model` names the router) plus `x-served-model`. Streaming is not buffered
+  and counts as `streaming-unattributed`.
+- **Subset gate.** `router_contract_check.py` fails a contract on
+  `ROUTER-SUBSET-001` (router without `routing.models`) and `ROUTER-AUTO-001`.
+- **Live (Nov 2026 lab, disposable).** Through APIM with the pinned
+  `strip-backend-headers` fragment, Application Insights showed `servedModel`
+  `gpt-6-luna` and `gpt-6.1-terra` for requests to `model-router`;
+  `Foundry-Features: ModelRouterControls=V1Preview` reached Foundry
+  (`mode = quality` reported). Lab: `references/router-attribution/lab.bicep`.
+  AI Gateway automatic model selection documented as the gateway-native option.
+
 ### 2.69.0: pilot reconciler for non-terminal background responses (#224)
 
 - **Why.** A background response can stay non-terminal: after a session stop,

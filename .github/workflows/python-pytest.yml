@@ -331,6 +331,8 @@ jobs:
         # bench (cost scorecard). Deterministic, stdlib-only, no Azure/gh network
         # (all gh/az calls are dependency-injected with fixture runners in tests).
         run: python -m pytest skills/threadlight-router-bench/tests/ -v
+      - name: Run threadlight-citadel-hub tests
+        run: python -m pytest skills/threadlight-citadel-hub/tests/ -v
       - name: Run threadlight-event-triggers tests
         # Six receiver scaffolds. Each receiver core exposes a pure, injectable
         # handle() (fresh/duplicate/failure + key derivation) and a structural
