@@ -19,8 +19,34 @@ source: [Use the Microsoft Copilot harness with prompt agents](https://learn.mic
 
 Not available on this route: `--profile private`, SPEC 11a governance and
 `consequential_write_seam: function-tool` (separate routes), the hosted
-voice front-end, and harness evals (the generated `evals/run_evals.py` still
-sends the hosted Invocations body).
+and the hosted voice front-end.
+
+## Evals
+
+`evals/run_evals.py` (Foundry GA batch eval, `azure_ai_target_completions`,
+target `azure_ai_agent`) sends the Responses input
+`{"type": "template", "template": [{"type": "message", "role": "user", "content": {"type": "input_text", "text": "{{item.query}}"}}]}`;
+each row runs in its own conversation. Evaluators read `{{sample.output_text}}`.
+It records per-evaluator scored/errored row counts in
+`specs/foundry-package-manifest.json` (`evaluation.evaluator_results`), and the
+package gate treats any errored evaluator as a **missing score**, never a pass.
+
+- **[Tested, #231]** `builtin.task_adherence` mapped to `sample.output_items`
+  errored on 5 of 6 harness rows ("The 'arguments' field must be a dictionary
+  in tool_call content items"); it is flagged `may_error_on_harness_output`.
+- **[Tested, #231]** Eval rows cannot attach files: supply reference data as a
+  skill asset (JSON next to `SKILL.md`) or a tool.
+- **[Tested, #231]** Creating the eval needs Foundry User on the Foundry
+  **account** for the caller; with the role only on the project it returned
+  401 (`…/accounts/OpenAI/evals/write`). This applies to every eval.
+- **[Tested, 2026-11-21]** A live run of the generated `run_evals.py` against a
+  harness agent completed: every evaluator scored 3/3 rows with 0 errors. But
+  each row ended on an unanswered `mcp_approval_request` for the write tool
+  (`sample.output_text` was null), so the rubric graded the proposed write
+  arguments, not a final answer (mean 3.0, threshold 4: the gate stays
+  INCOMPLETE). A batch eval does not answer approval requests: evaluate
+  write-gated scenarios through the client bridge, or score the decision the
+  agent states before it proposes the write.
 
 ## SPEC § 11e fields
 

@@ -315,3 +315,42 @@ def test_harness_agent_without_an_eval_run_is_incomplete():
     result = fp.evaluate(value)
     assert result["status"] == "INCOMPLETE"
     assert "evaluation.eval_run_id" in result["missing"]
+
+
+def _with_results(**results):
+    value = complete_manifest()
+    value["evaluation"]["evaluator_results"] = results
+    return value
+
+
+def test_clean_evaluator_results_keep_the_package_complete():
+    value = _with_results(task_adherence={"scored": 6, "errored": 0}, intent_resolution={"scored": 6, "errored": 0},
+                          **{"returns-policy-rubric": {"scored": 6, "errored": 0}})
+    assert fp.evaluate(value)["status"] == "COMPLETE"
+
+
+def test_an_errored_rubric_never_satisfies_the_rubric_requirement():
+    value = _with_results(task_adherence={"scored": 6, "errored": 0},
+                          **{"returns-policy-rubric": {"scored": 5, "errored": 1}})
+    result = fp.evaluate(value)
+    assert result["status"] == "INCOMPLETE"
+    assert any("returns-policy-rubric" in item and "errored" in item for item in result["missing"]), result
+
+
+def test_errored_builtins_never_satisfy_the_builtin_requirement():
+    value = _with_results(task_adherence={"scored": 1, "errored": 5}, intent_resolution={"scored": 0, "errored": 6},
+                          **{"returns-policy-rubric": {"scored": 6, "errored": 0}})
+    result = fp.evaluate(value)
+    assert result["status"] == "INCOMPLETE"
+    assert any(item.startswith("evaluation.builtin_evaluators") and "errored" in item for item in result["missing"])
+    # One clean built-in is enough; the errored one is reported, not counted.
+    value["evaluation"]["evaluator_results"]["intent_resolution"] = {"scored": 6, "errored": 0}
+    result = fp.evaluate(value)
+    assert result["status"] == "COMPLETE", result
+    assert result["evidence"]["errored_evaluators"] == ["task_adherence"]
+
+
+def test_a_rubric_without_scored_rows_is_a_missing_score():
+    value = _with_results(task_adherence={"scored": 6, "errored": 0},
+                          **{"returns-policy-rubric": {"scored": 0, "errored": 0}})
+    assert fp.evaluate(value)["status"] == "INCOMPLETE"

@@ -141,7 +141,7 @@ def test_package_and_postdeploy_manifests_name_the_harness_kind(harness):
     assert agent["egress_policy"]["mode"] == "Audit" and agent["egress_policy"]["default_action"] == "Deny"
     post = json.loads((harness / "tests" / "postdeploy-manifest.json").read_text())
     assert post["agent_kind"] == "foundry-harness"
-    assert any("Responses template" in gap for gap in post["gaps"])
+    assert any("Foundry User on the Foundry ACCOUNT" in gap for gap in post["gaps"])
 
 
 def test_selfcheck_passes_offline_for_the_harness_project(harness, tmp_path):
@@ -192,3 +192,49 @@ def test_harness_pins_a_fixed_model_not_the_router_default(harness):
     assert params["modelStrategy"]["value"] == "${AZURE_AI_MODEL_STRATEGY=fixed}"
     bicep = (harness / "infra" / "main.bicep").read_text()
     assert "dependsOn: [ project, modelDeployments, router ]" in bicep
+
+
+RESPONSES_TEMPLATE = {"type": "template", "template": [
+    {"type": "message", "role": "user", "content": {"type": "input_text", "text": "{{item.query}}"}}]}
+
+
+def test_harness_eval_dry_run_snapshot_uses_the_responses_template(harness, tmp_path):
+    result = _run([str(harness / "evals" / "run_evals.py"), "--dry-run"], tmp_path, cwd=harness)
+    assert result.returncode == 0, result.stderr
+    request = json.loads(result.stdout)
+    source = request["data_source"]
+    assert source["type"] == "azure_ai_target_completions"
+    assert source["input_messages"] == RESPONSES_TEMPLATE
+    assert source["target"]["type"] == "azure_ai_agent" and source["target"]["name"] == "order-returns-agent"
+    criteria = {c["name"]: c for c in request["testing_criteria"]}
+    for c in criteria.values():
+        if c["type"] == "azure_ai_evaluator":
+            assert c["data_mapping"]["response"] == "{{sample.output_text}}"
+    assert "{{sample.output_text}}" in criteria["spec_business_rules_rubric"]["input"][1]["content"]
+    cfg = json.loads((harness / "evals" / "eval-config.json").read_text())
+    flagged = {e["evaluator_name"] for e in cfg["builtin_evaluators"] if e.get("may_error_on_harness_output")}
+    assert flagged == {"builtin.task_adherence"}
+
+
+def test_hosted_eval_dry_run_keeps_the_invocations_body(tmp_path):
+    project = _generate(tmp_path, "agent_type: hosted\n")
+    result = _run([str(project / "evals" / "run_evals.py"), "--dry-run"], tmp_path, cwd=project)
+    assert json.loads(result.stdout)["data_source"]["input_messages"] == {
+        "input": "{{item.query}}", "stream": False, "new_conversation": True}
+
+
+def test_run_evals_counts_evaluator_errors_as_missing_scores(harness):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("generated_run_evals", harness / "evals" / "run_evals.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    items = [
+        {"results": [{"name": "task_adherence", "score": None, "sample": {"error": {
+            "message": "(UserError) The 'arguments' field must be a dictionary in tool_call content items"}}},
+            {"name": "spec_business_rules_rubric", "score": 5, "passed": True}]},
+        {"results": [{"name": "task_adherence", "score": 4, "passed": True},
+                     {"name": "spec_business_rules_rubric", "score": 3, "passed": False}]},
+    ]
+    summary = module.summarize(items)
+    assert summary["task_adherence"] == {"scored": 1, "errored": 1, "scores": [4]}
+    assert summary["spec_business_rules_rubric"] == {"scored": 2, "errored": 0, "scores": [5, 3]}

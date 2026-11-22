@@ -338,8 +338,10 @@ azd ai agent show {agent} --output json               # harness.type, skills[nam
 
 ## Not covered by this route
 
-- `evals/run_evals.py` still builds the hosted Invocations body; harness evals need the Responses
-  template input (tracked separately).
+- `evals/run_evals.py` sends the Responses `template` input (one conversation per row). The eval
+  caller needs Foundry User on the Foundry **account** (project scope returned 401 on `evals/write`).
+  Eval rows cannot attach files: ship reference data as a skill asset or a tool.
+  `builtin.task_adherence` may error on harness output; an evaluator error is a missing score.
 - Consequential writes are MCP tools that always need approval (`mcp_approval_request`); ACS/Agent Hooks
   do not run inside the harness, so the hosted LOCAL-14/CTK governance evidence does not apply here.
 """
