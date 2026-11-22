@@ -7,6 +7,27 @@ field.
 
 ## [Unreleased]
 
+### 2.77.0: GHCP durable turns: work identity instead of one synchronous SSE stream (#222)
+
+- **Why.** A GHCP/Invocations turn was one synchronous SSE stream (deadline up to
+  1800 s, `native_retrievable_id: false`): a disconnect, crash or session stop left
+  no id to reconnect to and the outcome UNKNOWN.
+- **Opt-in mode (`THREADLIGHT_DURABLE_TURNS=1`).** Each streamed turn is an
+  AgentServer resilient task (`set_resilient_tasks_enabled(True)`; the Foundry
+  session id is the multi-turn task id, the invocation id is the turn id), events go
+  to a file-backed replay stream, the first frame carries the id before any upstream
+  work, `GET /invocations/{id}` returns status and answer and `?stream=true&starting_after`
+  replays. A recovered turn never sends the user message twice to the Copilot
+  session (fsynced watermark + transcript check). Toolbox, `stream: false`, voice
+  and the governed GHCP host keep the synchronous path.
+- **Client.** `invoke_agent.py` records the durable id first, reconnects by cursor,
+  and `--follow <id>` reads a turn later; evidence says `native_retrievable_id: true`.
+- **Tests.** Native, real SDK + `container.py` (model HTTP and Entra credential
+  local): disconnect, SIGKILL of the process group (cold and warm session), the
+  reference invoker reconnecting after a crash; required cases in both SDK lanes.
+- **Live (tested, one run each, SDK 2.0.1).** Disconnect, session stop and a crash
+  hook mid-turn all ended `completed`, retrievable by id, one `done`.
+
 ### 2.76.0: Foundry Insights monitor receipt and the Agent Optimizer as an optional, gated stage (#211, #213)
 
 - **Why.** No skill created, ran or recorded Foundry Insights monitors. In hands-on

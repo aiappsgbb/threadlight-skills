@@ -592,6 +592,53 @@ events, preferring the complete message when available.
 **Important:** Always parse both event types. Some responses only emit deltas
 without a final complete message event.
 
+### Durable turns (opt-in, `THREADLIGHT_DURABLE_TURNS=1`)
+
+Without it a turn is one synchronous SSE stream (the `invoke_agent.py` deadline is
+capped at 1800 s): a client disconnect, process crash or session stop leaves no id
+to reconnect to and the outcome is UNKNOWN. Set `THREADLIGHT_DURABLE_TURNS: "1"`
+in the agent service's `environmentVariables` to run each streamed turn as an
+AgentServer resilient task
+([Learn: recover long-running work](https://learn.microsoft.com/azure/foundry/agents/how-to/recover-long-running-work),
+[stream with reconnect](https://learn.microsoft.com/azure/foundry/agents/how-to/stream-with-reconnect)):
+
+| Piece | Behaviour |
+|---|---|
+| Identity | The invocation id is the durable turn id (`input_id`); the Foundry session id is the task id of a multi-turn chain (a fresh conversation is a one-shot task). `set_resilient_tasks_enabled(True)` runs before host startup, so the startup scan reclaims an interrupted turn. |
+| First frame | `threadlight.turn.accepted` with the id, written before any upstream work, plus the `x-threadlight-turn-id` header. A caller that only saw this frame can still retrieve the turn. |
+| Retrieval | `GET /invocations/{id}` returns `status`, `answer` (when terminal), `native_retrievable_id: true` and `upstream_sent`; `GET /invocations/{id}?stream=true&starting_after=<id>` replays from a file-backed stream (SSE `id:` lines are the cursor). Pass the same `agent_session_id` so the request reaches the same session. |
+| Disconnect | The turn keeps running; reconnect or poll by id. |
+| Concurrency | One turn at a time per conversation: a second turn while one runs gets HTTP 409 `turn_in_progress` (the synchronous path queued it). |
+| Crash | The turn is re-entered (at-least-once entry). The user message reaches the Copilot session at most once: a watermark is fsynced before the send, and a recovered turn reads the session transcript: answer present → reused, user message present → the session is asked to continue, absent → sent once. |
+| Not durable | Toolbox turns (per-request caller context), `"stream": false` and the voice front-end keep the synchronous path; the governed GHCP host (`references/governance/ghcp-container.py`) is not covered. |
+
+`invoke_agent.py` records the id (`durable-id`, `native_retrievable_id: true`)
+before reading the body, reconnects by cursor after a drop until its deadline, and
+`python invoke_agent.py --follow <id> [<agent-session-id>]` reads the turn later.
+`THREADLIGHT_SIMULATE_CRASH_AFTER_SEND=1` (tests only) exits with 137 right after
+the first attempt's upstream send.
+
+**What a crash costs.** In the runs so far the in-flight user message was not in
+the transcript after a kill (github-copilot-sdk 1.0.1 natively, for new and
+existing sessions; microsoft-copilot-sdk 2.0.1 hosted, for a new session), so the
+recovered turn sent it once to the (resumed or new) session. The session history
+holds it once, but the model saw it in two requests across the two process
+lifetimes. Effects inside the turn still need their own idempotency
+(`threadlight-governed-actions` § Recovered handlers).
+
+**Evidence.** Native (pinned SDK, real `container.py`, only the model HTTP and the
+Entra credential are local; `test_ghcp_durable_turns.py`, required cases in both
+SDK lanes): disconnect and process-group SIGKILL each end in one terminal result
+retrievable by id; no session history contains the question twice. Hosted
+(2026-11-22, tested, one run each, Sweden Central, microsoft-copilot-sdk 2.0.1,
+agentserver core 2.3.0 / invocations 1.3.0, internal test subscription):
+disconnect right after the headers → `completed` by `GET` in about 6 s; session
+stop mid-turn → the turn finished during graceful shutdown and `GET` after the
+wake returned the stored result; crash hook → the stream broke after the
+accepted frame, the platform restarted the process in the same session (about 73 s,
+client polling every 5 s), "Recovered task … is now active", transcript `missing`,
+the question sent once to a new Copilot session, `completed`, one `done` in the replay.
+
 ---
 
 ## Evaluation

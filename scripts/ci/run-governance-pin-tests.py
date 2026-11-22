@@ -48,6 +48,10 @@ COPILOT_V2_REQUIRED_CASES = {
       for case in ("error", "timeout", "cancel", "normal")),
     "test_ghcp_relay_returns_host_owned_pending_and_resumes_the_same_operation",
     "test_ghcp_deferred_policy_review_generates_and_binds_with_its_resume_adapter",
+    "test_client_disconnect_keeps_one_retrievable_turn",
+    "test_crash_mid_turn_recovers_without_sending_the_user_message_twice[False]",
+    "test_crash_mid_turn_recovers_without_sending_the_user_message_twice[True]",
+    "test_reference_invoker_records_the_durable_id_and_reconnects_after_a_crash",
 }
 PIN_FILE = ROOT / "skills/_shared/governance-upstream-pin.json"
 IMAGE = "python:3.12-slim"
@@ -569,6 +573,7 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_remote_bootstrap_hosts.py",
              "skills/threadlight-deploy/tests/test_ghcp_relay_transport.py",
              "skills/threadlight-deploy/tests/test_ghcp_sdk2_native.py",
+             "skills/threadlight-deploy/tests/test_ghcp_durable_turns.py",
              "skills/threadlight-deploy/tests/test_ghcp_sdk2_template.py",
              "skills/threadlight-deploy/tests/test_public_authenticated_proof.py",
              "skills/threadlight-deploy/tests/test_returns_read_audit.py",
