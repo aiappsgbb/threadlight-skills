@@ -138,10 +138,12 @@ optional**. Deadline pressure does not waive it. The package has three parts:
    at or above that threshold.
 
 **Continuous evaluation is optional** (since 2.19.4) and is not part of the
-package. One working eval run to show is enough. The reason: the GA
-`evaluation_rules` API rejects hosted agents with HTTP 400 "Hosted and external
-agents are not supported", and the `beta.schedules` route is preview (out of
-scope under the Foundry-only rule). If a `continuous_evaluation` section is
+package. One working eval run to show is enough. The reason in 2.19.4: the GA
+`evaluation_rules` API then returned HTTP 400 "Hosted and external agents are not
+supported" for a hosted agent, and the `beta.schedules` route is preview (out of
+scope under the Foundry-only rule). **Tested, Nov 2026:** a scheduled trace rule
+(`TraceEvaluationRuleAction`) now provisions and scores a hosted agent's traces;
+see `threadlight-evals` for wiring. The package still needs only the one run. If a `continuous_evaluation` section is
 recorded anyway, the gate still validates it (a `rule_id`, `enabled: true` and an
 `agent_name` that matches the deployed agent).
 

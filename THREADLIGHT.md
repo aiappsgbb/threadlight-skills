@@ -566,7 +566,7 @@ the manifest as leg-verified evidence rather than scoring `not-verified`.
 evaluators + a SPEC-derived custom rubric), executed once against the deployed
 agent, is part of the **mandatory full Foundry package**: without it the pilot is
 INCOMPLETE (see `skills/_shared/foundry-only-agents.md`). Continuous evaluation is
-optional: the GA evaluation rules reject hosted agents and beta schedules are preview. Optional extras degrade to
+optional: one executed eval run is the gate; evaluation rules are an extra. Optional extras degrade to
 `not-verified` when permissions are missing, never a crash.
 
 ---

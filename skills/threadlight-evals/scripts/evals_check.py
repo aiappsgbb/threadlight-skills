@@ -84,9 +84,16 @@ GENERATED_FILES = {"docs/evals-report.md", "specs/evals-manifest.json"}
 
 SCENARIO_MARKERS = re.compile(r"eval(?:uation)?\s+scenarios?|scenario[_ -]?id", re.I)
 THRESHOLD_MARKERS = re.compile(r"\b(threshold|min[_-]?score|min[_-]?pass[_-]?rate|pass[_-]?threshold)\b", re.I)
-PLAN_A_MARKERS = re.compile(r"(create_agent_evaluation|continuous[-_ ]?eval|continuous[-_ ]?evaluation)", re.I)
+PLAN_A_MARKERS = re.compile(r"(evaluation_rules|EvaluationRuleAction|create_agent_evaluation|"
+                            r"continuous[-_ ]?eval|continuous[-_ ]?evaluation)", re.I)
 SCHEDULE_MARKERS = re.compile(r"\b(schedule|cron|timer|recurrence|rate\(|0\s+\d+\s+\*|daily|weekly)\b", re.I)
 PLAN_B_MARKERS = re.compile(r"(foundry[-_ ]?evals|evals?_check|evaluation|eval dataset|python.*eval)", re.I)
+# Foundry evaluation rules (azure-ai-projects 2.x): continuous, scheduled trace or
+# scheduled dataset rules, in code or declared in azure.eval.yaml.
+RULE_ACTIONS = re.compile(r"\b(ContinuousEvaluationRuleAction|TraceEvaluationRuleAction|"
+                          r"DatasetEvaluationRuleAction)\b")
+RULE_CALL = re.compile(r"evaluation_rules\s*\.\s*create_or_update\s*\(|evaluationRules\.createOrUpdate\s*\(")
+# Classic-portal API; absent from azure-ai-projects 2.x. Reported as legacy.
 ONLINE_MARKERS = re.compile(r"create_agent_evaluation\s*\(", re.I)
 APP_INSIGHTS_MARKERS = re.compile(r"(app[_-]?insights|applicationinsights|connection[_-]?string|APPINSIGHTS)", re.I)
 AB_MARKERS = re.compile(r"(champion|challenger|baseline_vs|baseline[-_ ]?vs|A/B|ab[-_ ]?comparison)", re.I)
@@ -234,6 +241,9 @@ def _find_threshold(root: str) -> str | None:
 
 
 def _schedule_plan(root: str) -> tuple[str | None, str | None]:
+    rules = _rules_wiring(root)
+    if rules:
+        return "Plan A", rules
     for path in _walk(root) or []:
         rel = _rel(root, path)
         text = _read(path)
@@ -288,6 +298,22 @@ def _latest_run(root: str) -> tuple[str | None, _dt.datetime | None]:
             latest_path = path
             latest_dt = dt
     return latest_path, latest_dt
+
+
+def _rules_wiring(root: str) -> str | None:
+    """Foundry evaluation rules: create_or_update with a rule action, or a rule
+    action declared in azure.eval.yaml (continuous fires on response completion,
+    trace/dataset rules on their own recurrence)."""
+    for path in _walk(root) or []:
+        rel = _rel(root, path)
+        if rel.startswith(("docs/", "references/")):
+            continue
+        text = _read(path)
+        if not RULE_ACTIONS.search(text):
+            continue
+        if RULE_CALL.search(text) or os.path.basename(path) in ("azure.eval.yaml", "azure.eval.yml"):
+            return rel
+    return None
 
 
 def _online_wiring(root: str) -> str | None:
@@ -480,7 +506,7 @@ def _merge_agentops(caps: dict, records: list[dict]) -> None:
 
 
 # ── capability evaluation ────────────────────────────────────────────────
-def evaluate(root: str, freshness_days: int = 7) -> dict:
+def evaluate(root: str, freshness_days: int = 7, accept_legacy: bool = False) -> dict:
     root = os.path.abspath(root)
     caps: dict[str, dict] = {}
 
@@ -528,18 +554,29 @@ def evaluate(root: str, freshness_days: int = 7) -> dict:
         _cap(caps, "run_history_present", "should-fix", None,
              "commit latest eval run output under evals/runs/*.json or docs/eval-runs/")
 
-    online = _online_wiring(root)
-    if online:
-        _cap(caps, "online_eval_wired", "pass", online)
+    rules = _rules_wiring(root)
+    legacy = None if rules else _online_wiring(root)
+    if rules:
+        _cap(caps, "online_eval_wired", "pass", f"evaluation_rules: {rules}")
+    elif legacy and accept_legacy:
+        _cap(caps, "online_eval_wired", "pass", f"legacy create_agent_evaluation: {legacy}",
+             "accepted with --accept-legacy-online-eval; migrate to Foundry evaluation_rules")
+    elif legacy:
+        _cap(caps, "online_eval_wired", "must-fix" if plan == "Plan A" else "should-fix", legacy,
+             "legacy create_agent_evaluation (classic portal; absent from azure-ai-projects 2.x): "
+             "replace with evaluation_rules.create_or_update using ContinuousEvaluationRuleAction, "
+             "TraceEvaluationRuleAction or DatasetEvaluationRuleAction")
     elif plan == "Plan A":
         _cap(caps, "online_eval_wired", "must-fix", None,
-             "Plan A declared but no create_agent_evaluation(..., app_insights_connection_string=...) wiring found")
+             "Plan A declared but no evaluation_rules.create_or_update(...) rule wiring found")
     elif plan == "Plan B":
         _cap(caps, "online_eval_wired", "should-fix", None,
-             "Plan B fallback detected; wire Foundry Continuous Evaluation for live threads when available")
+             "Plan B fallback detected; add a Foundry evaluation rule for live traffic when available")
     else:
         _cap(caps, "online_eval_wired", "should-fix", None,
-             "no live create_agent_evaluation wiring with Application Insights connection found")
+             "no Foundry evaluation_rules wiring (continuous, scheduled trace or dataset rule) found")
+    if legacy:
+        caps["online_eval_wired"]["legacy"] = True
 
     latest_path, latest_dt = _latest_run(root)
     if latest_path and latest_dt:
@@ -688,13 +725,15 @@ def main(argv=None) -> int:
     ap.add_argument("--gate", action="store_true",
                     help="exit 2 when any capability is must-fix")
     ap.add_argument("--json", action="store_true", help="print manifest JSON to stdout")
+    ap.add_argument("--accept-legacy-online-eval", action="store_true",
+                    help="let create_agent_evaluation wiring satisfy EVAL-101 (labelled legacy)")
     ap.add_argument("--freshness-days", type=int, default=7,
                     help="eval run freshness window (default 7d)")
     args = ap.parse_args(argv)
 
     root = os.path.abspath(args.target)
     try:
-        caps = evaluate(root, args.freshness_days)
+        caps = evaluate(root, args.freshness_days, accept_legacy=args.accept_legacy_online_eval)
         man = manifest(root, caps, args.freshness_days)
     except Exception as exc:  # graceful top-level degradation
         caps = {key: {

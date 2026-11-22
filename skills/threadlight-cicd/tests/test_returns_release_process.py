@@ -80,7 +80,7 @@ def selected(tmp_path, monkeypatch):
         "evals/scenarios.json": json.dumps({"scenario_id": "fixture", "tool_calls": [], "tool_outputs": []}),
         "evals/evaluation.py": "# local assessor inventory fixture only; not executed schedule\n"
                                "# continuous evaluation schedule threshold: 0.95\n"
-                               "# create_agent_evaluation(app_insights_connection_string=fixture)\n"
+                               "# evaluation_rules.create_or_update(TraceEvaluationRuleAction(eval_id=fixture))\n"
                                "# eval threshold breach alert; champion challenger comparison\n",
     }.items():
         path = tmp_path / name

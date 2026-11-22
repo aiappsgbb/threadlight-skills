@@ -7,8 +7,8 @@ active fallback; a harness agent also records its egress policy),
 Application Insights tracing with a trace visible in Foundry, and one executed
 Foundry eval run against that agent with built-in evaluators plus a SPEC-derived
 custom rubric that meets its threshold. Anything less is ``INCOMPLETE``.
-Continuous evaluation is optional (GA evaluation rules reject hosted agents;
-beta schedules are preview); when recorded it must be valid. Mock MCP tool servers with synthetic data are legitimate:
+Continuous evaluation is optional (one executed eval run is the gate; evaluation
+rules are an extra); when recorded it must be valid. Mock MCP tool servers with synthetic data are legitimate:
 they are tools called by the real agent, not a substitute for it.
 
 CLI: ``python <threadlight-skills>/skills/_shared/foundry_package.py --workspace <pilot-root>``
@@ -31,8 +31,8 @@ HARNESS_TYPE = "microsoft_copilot_preview"
 EGRESS_MODES = ("Audit", "Enforced")
 EGRESS_DEFAULT_ACTIONS = ("Allow", "Deny")
 SECTIONS = ("agent", "telemetry", "evaluation")
-# Optional since 2.19.4: GA evaluation_rules reject hosted agents (400 "Hosted and
-# external agents are not supported") and beta.schedules is preview. Validated when present.
+# Optional since 2.19.4, when GA evaluation_rules returned 400 "Hosted and external
+# agents are not supported" for hosted agents. Validated when present.
 OPTIONAL_SECTIONS = ("continuous_evaluation",)
 AGENT_TARGET_TYPE = "azure_ai_agent"
 

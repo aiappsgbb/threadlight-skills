@@ -18,7 +18,7 @@ metadata:
 > with no fake, stub or fallback agent; (2) Application Insights with a trace visible in
 > Foundry tracing; (3) a Foundry eval run with built-in evaluators plus at least one
 > custom rubric derived from the SPEC acceptance criteria, with anchors and a passing
-> threshold, executed against the deployed agent. Continuous evaluation is optional (GA rules reject hosted agents). Record the evidence in
+> threshold, executed against the deployed agent. Continuous evaluation is optional (Foundry evaluation rules; see threadlight-evals). Record the evidence in
 > `specs/foundry-package-manifest.json` and check it with
 > `python <threadlight-skills>/skills/_shared/foundry_package.py --workspace <pilot-root>`. Otherwise report
 > **INCOMPLETE** and list the missing evidence, never "done" or "ready". Mock MCP

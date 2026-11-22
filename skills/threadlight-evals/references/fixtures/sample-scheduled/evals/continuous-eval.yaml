@@ -1,6 +1,13 @@
 name: threadlight-continuous-eval
 plan: A
-schedule: "0 6 * * *"
-runner: create_agent_evaluation
+runner: evaluation_rules
+rules:
+  - id: pilot-trace-rule
+    action: TraceEvaluationRuleAction
+    schedule: hourly
+    max_traces: 10
+  - id: pilot-continuous-rule
+    action: ContinuousEvaluationRuleAction
+    max_hourly_runs: 20
 app_insights_connection_string: ${APPLICATIONINSIGHTS_CONNECTION_STRING}
 threshold: 0.85
