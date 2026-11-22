@@ -89,6 +89,10 @@ capability keys map directly to pillar 6 (`continuous-evals`) IDs:
 | `alert_wired` | `EVAL-104` | Alert or notification exists for eval threshold breach | must-fix |
 | `latest_pass_rate_ok` | `EVAL-105` | Latest run pass rate meets the declared minimum | should-fix if below threshold |
 | `ab_comparison_present` | `F3` | Champion-challenger comparison config/script exists before swaps | should-fix |
+| `rubric_trajectory_mapped` | `EVAL-106` | On a tool-using agent, every custom rubric in a gate eval of `evals/azure.eval.yaml` maps `response` to `{{sample.output_items}}` (azd's default is `sample.output_text`) | should-fix; not-applicable without tools or `azure.eval.yaml` |
+| `gate_split_ok` | `EVAL-107` | The gate eval reads a held-out dataset the `*-optimizer-input` eval never sees, over >= 50 golden rows | must-fix; should-fix when no `azure.eval.yaml` gate is declared |
+| `gate_evaluator_suitable` | `EVAL-108` | `builtin.task_completion` does not gate a SPEC with refusal/escalation criteria | should-fix |
+| `gate_runs_recorded` | `EVAL-109` | `evals/gate-runs.json`: >= 2 runs, mean >= floor and >= baseline - tolerance, tolerance >= measured noise; recorded in `metrics.gate` | must-fix when the gate fails; should-fix when incomplete |
 
 Status taxonomy is exactly: `pass`, `must-fix`, `should-fix`, `not-verified`,
 `not-applicable`.
@@ -257,6 +261,15 @@ the pilot shape. The validator detects:
 
 Plan B still needs threshold alerts or workflow failure notifications. No
 schedule is a hard fail.
+
+## Eval gate: `azure.eval.yaml` scaffold and gate policy
+
+`scripts/eval_yaml.py split` + `scaffold` writes `evals/azure.eval.yaml` with a
+trajectory-mapped `<agent>-gate` eval on held-out rows and an unmapped
+`<agent>-optimizer-input` eval for `azd ai agent optimize --eval`. Read
+[`references/gate-policy.md`](references/gate-policy.md) for the gate decision
+(two runs, mean, baseline, tolerance), evaluator suitability, the optimizer
+candidate checklist and known `azd ai eval` failures with dates and versions.
 
 ## F3 — champion-challenger gate
 

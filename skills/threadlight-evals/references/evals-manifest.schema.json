@@ -94,7 +94,11 @@
         "latest_eval_run_fresh": {"$ref": "#/definitions/capability"},
         "alert_wired": {"$ref": "#/definitions/capability"},
         "latest_pass_rate_ok": {"$ref": "#/definitions/capability"},
-        "ab_comparison_present": {"$ref": "#/definitions/capability"}
+        "ab_comparison_present": {"$ref": "#/definitions/capability"},
+        "rubric_trajectory_mapped": {"$ref": "#/definitions/capability"},
+        "gate_split_ok": {"$ref": "#/definitions/capability"},
+        "gate_evaluator_suitable": {"$ref": "#/definitions/capability"},
+        "gate_runs_recorded": {"$ref": "#/definitions/capability"}
       }
     }
   },
