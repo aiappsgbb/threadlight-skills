@@ -754,3 +754,25 @@ def test_run_evals_judge_is_the_fixed_model_not_the_router(generated: Path, tmp_
     rubric = next(c for c in payload["testing_criteria"] if c["type"] == "score_model")
     assert rubric["model"] == "gpt-6-luna"
     assert "model-router" not in json.dumps(payload["testing_criteria"])
+
+
+def test_generated_agent_defaults_to_microsoft_copilot_sdk_2(generated: Path):
+    agent = generated / "src" / "agent"
+    ghcp = PILOT.parent
+    assert '"microsoft-copilot-sdk==2.0.1"' in (agent / "pyproject.toml").read_text()
+    assert (agent / "requirements.lock").read_text() == (ghcp / "requirements.lock").read_text()
+    assert (agent / "Dockerfile").read_text() == (ghcp / "Dockerfile").read_text()
+
+
+def test_sdk_line_v1_escape_hatch_keeps_github_copilot_sdk_1(tmp_path: Path):
+    project = tmp_path / "order-returns"
+    shutil.copytree(FIXTURE, project)
+    result = _run([str(GENERATOR), "--project", str(project), "--sdk-line", "v1"], tmp_path)
+    assert result.returncode == 0, result.stderr
+    agent, v1 = project / "src" / "agent", PILOT.parent / "sdk-v1"
+    pyproject = (agent / "pyproject.toml").read_text()
+    assert '"github-copilot-sdk==1.0.1"' in pyproject and "microsoft-copilot-sdk" not in pyproject
+    assert (agent / "requirements.lock").read_text() == (v1 / "requirements.lock").read_text()
+    assert (agent / "Dockerfile").read_text() == (v1 / "Dockerfile").read_text()
+    bad = _run([str(GENERATOR), "--project", str(project), "--force", "--sdk-line", "v3"], tmp_path)
+    assert bad.returncode == 2 and "--sdk-line" in bad.stderr

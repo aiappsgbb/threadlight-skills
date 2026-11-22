@@ -584,8 +584,17 @@ def test_ghcp_native_host_and_actual_hook_schema(monkeypatch):
     assert isinstance(host, InvocationAgentServerHost)
     assert any(route.path == "/invocations" for route in host.routes)
     assert set(PreMcpToolCallHookOutput.__annotations__) == {"metaToUse"}
-    assert {"provider", "hooks", "mcp_servers", "enable_config_discovery", "available_tools"} <= set(
-        inspect.signature(CopilotClient.create_session).parameters)
+    monkeypatch.setenv("FOUNDRY_PROJECT_ENDPOINT", "https://a.services.ai.azure.com/api/projects/p")
+    monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt")
+    options = ghcp.session_options(model_token="t", servers={}, pre_mcp=print, instructions="i",
+                                   skills_dir="/app/skills", approve_all=len)
+    # Every option the host sends is a real keyword of the installed SDK's create_session.
+    assert set(options) <= set(inspect.signature(CopilotClient.create_session).parameters)
+    if ghcp.sdk_v2():
+        from copilot.session import SessionHooks
+        assert "on_pre_mcp_tool_call" in SessionHooks.__annotations__
+        assert "provider" not in inspect.signature(CopilotClient.create_session).parameters
+        assert inspect.signature(CopilotClient).parameters["mode"].default is inspect.Parameter.empty
 
 
 def test_dependency_merge_preserves_application_extras_and_configuration():
@@ -1491,3 +1500,55 @@ def test_copilot_sdk_id_and_legacy_alias_take_the_ghcp_gateway_route(framework):
     unbound = contract(framework, off=True)
     assert generate.uses_gateway(unbound)
     assert not generate.uses_gateway(contract("microsoft-agent-framework", off=True))
+
+
+def test_governed_ghcp_agent_defaults_to_microsoft_copilot_sdk_2_and_keeps_a_v1_project_on_v1():
+    generate = module("generate")
+    template = (REFERENCES / "pyproject-maf.toml").read_text()
+    v2 = generate.ghcp_pyproject(template, voice=False)
+    assert '"microsoft-copilot-sdk==2.0.1"' in v2 and "github-copilot-sdk" not in v2
+    v1_project = '[project]\nname = "a"\ndependencies = ["github-copilot-sdk==1.0.1"]\n'
+    v1 = generate.ghcp_pyproject(template, voice=False, existing=v1_project)
+    assert '"github-copilot-sdk==1.0.1"' in v1 and "microsoft-copilot-sdk" not in v1
+    merged = generate.merge_dependencies(v1_project, v1)
+    assert "microsoft-copilot-sdk" not in merged
+
+
+def test_governed_ghcp_dockerfile_stages_the_sdk2_native_runtime_only_for_copilot_agents():
+    generate = module("generate")
+    copilot = generate.dockerfile_text(agent=True, copilot_runtime=True)
+    assert "python -m copilot download-runtime --in-process" in copilot
+    assert copilot.index("pip install --no-cache-dir .") < copilot.index("download-runtime")
+    assert "COPILOT_SKIP_CLI_DOWNLOAD=1" in copilot
+    assert "download-runtime" not in generate.dockerfile_text(agent=True)
+
+
+@pytest.mark.parametrize("line", ["v2", "v1"])
+def test_governed_ghcp_session_options_match_the_installed_sdk_line(monkeypatch, line):
+    ghcp = module("ghcp-container")
+    copilot = type(sys)("copilot")
+    if line == "v2":
+        copilot.RuntimeConnection = type("RC", (), {"for_default": staticmethod(lambda **kw: kw),
+                                                    "for_spawned_stdio": staticmethod(lambda **kw: kw)})
+    else:
+        copilot.ProviderConfig = lambda **kw: kw
+        copilot.RuntimeConnection = type("RC1", (), {})  # 1.0.1 has it, without for_default
+    monkeypatch.setitem(sys.modules, "copilot", copilot)
+    monkeypatch.setenv("FOUNDRY_PROJECT_ENDPOINT", "https://a.services.ai.azure.com/api/projects/p")
+    monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt")
+    options = ghcp.session_options(model_token="tok", servers={"s": {}}, pre_mcp=print, instructions="i",
+                                   skills_dir="/app/skills", approve_all=len)
+    if line == "v1":
+        assert options["provider"]["type"] == "azure" and options["hooks"] == {"on_pre_mcp_tool_call": print}
+        assert ghcp.copilot_client(lambda **kw: kw) == {}
+        return
+    assert options["model"] == "foundry/gpt" and options["github"] == {"capi": {"enabled": False}}
+    assert options["inference"]["providers"] == [{
+        "name": "foundry", "type": "openai", "wire_api": "responses",
+        "base_url": "https://a.services.ai.azure.com/api/projects/p/openai/v1", "bearer_token": "tok"}]
+    assert options["hooks"] == {"handlers": {"on_pre_mcp_tool_call": print}}
+    assert options["tools"] == {"available_tools": ["mcp:*", "builtin:skill"]}
+    assert options["mcp"] == {"servers": {"s": {}}} and options["permissions"] == {"on_request": len}
+    assert not {"provider", "mcp_servers", "available_tools", "skill_directories"} & set(options)
+    client = ghcp.copilot_client(lambda **kw: kw)
+    assert client["mode"] == "empty" and client["github"] == {"use_logged_in_user": False}

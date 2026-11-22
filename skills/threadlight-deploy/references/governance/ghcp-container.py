@@ -654,13 +654,64 @@ class McpRelay:
             return Starlette(routes=[Route("/mcp", forward, methods=["POST"])])
 
 
+def sdk_v2():
+    """True on microsoft-copilot-sdk 2.x; False on the github-copilot-sdk 1.0.x line (sdk_line: v1)."""
+    import copilot
+    return hasattr(getattr(copilot, "RuntimeConnection", None), "for_default")
+
+
+def copilot_client(client_type):
+    """SDK 2.x: explicit ``mode="empty"`` (no ambient shell/file tools) with an owned state directory.
+
+    The governed host keeps one spawned stdio runtime per invocation, not the 2.x
+    in-process default: in-process hosting has no crash isolation, and cleanup
+    must be able to stop and reap the runtime it owns.
+    """
+    if not sdk_v2():
+        return client_type()
+    from copilot import RuntimeConnection
+    return client_type(mode="empty", github={"use_logged_in_user": False},
+                       runtime=RuntimeConnection.for_spawned_stdio(base_directory=str(Path.home() / ".copilot")))
+
+
+def session_options(*, model_token, servers, pre_mcp, instructions, skills_dir, approve_all):
+    """One governed session: the bound MCP subset goes through the relay; the model is BYOK Foundry.
+
+    The bearer token is minted per invocation and the turn never runs past its
+    validity (see ``stream``), so a static token is sufficient on both lines.
+    """
+    endpoint, model = os.environ["FOUNDRY_PROJECT_ENDPOINT"], os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"]
+    common = {"system_message": {"mode": "replace", "content": instructions},
+              "working_directory": str(Path.home()), "enable_config_discovery": False}
+    if not sdk_v2():
+        from copilot import ProviderConfig
+        return {**common, "model": model,
+                "provider": ProviderConfig(type="azure", base_url=endpoint, wire_api="responses",
+                                           bearer_token=model_token),
+                "skill_directories": [skills_dir], "available_tools": list(GOVERNED_AVAILABLE_TOOLS),
+                "streaming": True, "mcp_servers": servers, "hooks": {"on_pre_mcp_tool_call": pre_mcp},
+                "on_permission_request": approve_all}
+    base_url = endpoint.rstrip("/")
+    base_url = base_url if base_url.endswith("/openai/v1") else base_url + "/openai/v1"
+    return {**common, "model": f"foundry/{model}",
+            "inference": {"providers": [{"name": "foundry", "type": "openai", "wire_api": "responses",
+                                         "base_url": base_url, "bearer_token": model_token}],
+                          "models": [{"provider": "foundry", "id": model, "model_id": model, "wire_model": model}]},
+            "github": {"capi": {"enabled": False}},
+            "skills": {"enabled": True, "directories": [skills_dir]},
+            "tools": {"available_tools": list(GOVERNED_AVAILABLE_TOOLS)},
+            "events": {"streaming": True}, "mcp": {"servers": servers},
+            "hooks": {"handlers": {"on_pre_mcp_tool_call": pre_mcp}},
+            "permissions": {"on_request": approve_all}}
+
+
 def build_host(config, *, bootstrap_gate=None, **host_options):
         from azure.ai.agentserver.invocations import InvocationAgentServerHost
         if VOICE_BRIDGE:
             # Same Invocations host plus the typed Voice Live Bridge routes.
             from azure.ai.agentserver.invocations.voice import VoiceAgentServerHost as InvocationAgentServerHost
         from azure.identity.aio import DefaultAzureCredential
-        from copilot import CopilotClient, PermissionHandler, ProviderConfig
+        from copilot import CopilotClient, PermissionHandler
         from copilot.session_events import SessionEventType
         import httpx
         from starlette.responses import JSONResponse, StreamingResponse
@@ -725,7 +776,7 @@ def build_host(config, *, bootstrap_gate=None, **host_options):
                 sock.listen()
                 server = uvicorn.Server(uvicorn.Config(relay.app(), access_log=False, log_level="critical"))
                 task = asyncio.create_task(server.serve(sockets=[sock]))
-                client = CopilotClient()
+                client = copilot_client(CopilotClient)
                 async with asyncio.timeout(10):
                     while not server.started:
                         if task.done():
@@ -738,18 +789,10 @@ def build_host(config, *, bootstrap_gate=None, **host_options):
                 await client.start()
                 if bootstrap_gate is not None:
                     await bootstrap_gate.authorize()
-                session = await client.create_session(
-                    provider=ProviderConfig(type="azure", base_url=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
-                                            wire_api="responses", bearer_token=model_token.token),
-                    model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"],
-                    system_message={"mode": "replace", "content": (base / "copilot-instructions.md").read_text()},
-                    skill_directories=[str(base / "skills")],
-                    available_tools=list(GOVERNED_AVAILABLE_TOOLS),
-                    working_directory=str(Path.home()), streaming=True,
-                    mcp_servers=servers, hooks={"on_pre_mcp_tool_call": relay.pre_mcp},
-                    on_permission_request=PermissionHandler.approve_all,
-                    enable_config_discovery=False,
-                )
+                session = await client.create_session(**session_options(
+                    model_token=model_token.token, servers=servers, pre_mcp=relay.pre_mcp,
+                    instructions=(base / "copilot-instructions.md").read_text(),
+                    skills_dir=str(base / "skills"), approve_all=PermissionHandler.approve_all))
                 def event_received(event):
                     queue.put_nowait(event)
                 unsubscribe = session.on(event_received)

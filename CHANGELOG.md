@@ -7,6 +7,67 @@ field.
 
 ## [Unreleased]
 
+### 2.73.0: GHCP template and governed host on Microsoft Copilot SDK 2.0, with a 2.x CI lane (#202, #206)
+
+- **Why.** The GHCP hosted-agent template and the governance generator pinned
+  `github-copilot-sdk==1.0.1` and used APIs removed in SDK 2.0: the singular
+  `ProviderConfig` session option, flat `create_session` keywords and
+  `CopilotClient()` without a mode
+  ([SDK v2 breaking changes](https://github.com/microsoft/copilot-sdk/blob/main/docs/v2-breaking-changes.md),
+  checked 2026-11-21).
+- **Template (`hosted-agent/ghcp/references`).** Pins `microsoft-copilot-sdk==2.0.1`
+  (hash-locked closure adds `httpx`/`httpcore`). `container.py` builds a client
+  with `mode="empty"` and an owned state directory, and nested session options:
+  a named provider connection `foundry` (`type="openai"`, `wire_api="responses"`,
+  `<project endpoint>/openai/v1` or `MODEL_GATEWAY_URL`, `bearer_token_provider`
+  callback re-registered on every create/resume) plus a model definition selected as
+  `foundry/<deployment>`, `github.capi.enabled=False`, `tools.available_tools`,
+  `permissions.on_request`, `events.streaming`, `skills`, `mcp.servers`. The
+  `Dockerfile` stages the runtime the SDK pins (2.0.1 pins 1.0.114; the wheel does
+  not bundle it) under `COPILOT_CLI_EXTRACT_DIR=/opt/copilot-runtime`, because
+  hosted agents run with `HOME=/home/session`.
+- **`sdk_line: v1` escape hatch.** `generate_only.py --sdk-line v1` keeps
+  `github-copilot-sdk==1.0.1` (`references/sdk-v1/`), e.g. for Microsoft Agent
+  Framework Copilot adapters that require `github-copilot-sdk<2.0`. Both containers
+  detect the installed line (`RuntimeConnection.for_default` exists only on 2.x;
+  1.0.1 also exports `RuntimeConnection`).
+- **Governed host (`governance/ghcp-container.py`, `generate.py`).** Same 2.x
+  session shape through `session_options()`, pre-MCP hook as
+  `hooks.handlers.on_pre_mcp_tool_call`; the client uses one spawned stdio
+  runtime per invocation (not the 2.x in-process default) so cleanup can stop and
+  reap what it owns. The generator pins 2.0.1 (a project already on 1.0.x stays
+  there) and its agent `Dockerfile` stages the 2.x runtime; safe-check's static
+  check expects that Dockerfile.
+- **CI lane (#206).** `run-governance-pin-tests.py` takes
+  `THREADLIGHT_COPILOT_SDK_LINE=v1|v2` with a separate wheelhouse and venv per line
+  (both distributions provide `copilot`). The existing `native-generation` job is
+  the 1.x lane; the new `native-generation-copilot-sdk2` job runs every
+  Copilot/GHCP case of the generated-deployment gate on 2.0.1 with required cases
+  (real collector through the gateway, hook schema, template tool call and memory).
+- **Live evidence (MCAPS internal subscription, eastus2, 2026-11-21).** Pilot
+  generated from the `order-returns` fixture, `azd up` with remote ACR build (both
+  images built by ACR tasks), `gpt-5.4-mini` GlobalStandard at capacity 50
+  (regional quota shared with other tracks). Invocations: turn 1 in a Foundry
+  session called the MCP tools `get_order` and `get_customer` and answered with
+  ORD-1001's status and customer (9.4 s); turn 2 in the same session answered
+  `ORD-1001` (1.6 s); the same question in another session answered `none`. App
+  Insights shows `CopilotClient started (sdk=2.x, mode=BYOK)` and the model route
+  `<project>/openai/v1`. Resource group deleted and the Foundry account purged
+  after the run.
+- **Not covered here.** Private-profile APIM routing on 2.x is #203 (next);
+  latency on 2.x is not measured.
+- **Tests (RED first).** `test_ghcp_sdk2_template.py` (client mode, nested options,
+  named provider, gateway base URL, v1 shape, pins and Dockerfile; 6/7 RED on the
+  1.x template), `test_ghcp_sdk2_native.py` (real SDK and runtime, synthetic
+  Responses endpoint: tool call, two-turn memory, session isolation; native lanes
+  only), generator pin/Dockerfile and per-line session options
+  (`test_governance_wiring.py`), `--sdk-line` (`test_generate_only.py`), lane
+  contract (`tests/ci/test_native_deploy_partition.py`). Quality cleanup tests
+  accept the 2.x `session.detach` protocol. Local run on the real SDK: 2.0.1 built
+  from the `v2.0.1` source tag with runtime 1.0.114 (the corporate package proxy
+  still quarantines the 2.0.1 wheel) and the 1.0.1 wheel; the published 2.0.1
+  wheel runs in CI.
+
 ### 2.72.0: threadlight-evals: Foundry evaluation rules replace create_agent_evaluation (#207)
 
 - **Why.** EVAL-101 rewarded `client.evaluations.create_agent_evaluation(...)`. That
@@ -226,6 +287,7 @@ field.
   rejects Learn's `require_approval: {"never": [...]}` and needs
   `{"never": {"tool_names": [...]}}`, and the egress policy raced project
   creation (now serialised).
+
 ### 2.63.0: `microsoft-copilot-sdk` framework id (`github-copilot-sdk` kept as alias)
 
 - **Why.** GitHub Copilot SDK is becoming Microsoft Copilot SDK

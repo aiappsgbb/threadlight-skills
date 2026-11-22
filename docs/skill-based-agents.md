@@ -183,21 +183,27 @@ from files present on disk or from a successful health endpoint.
 ### GHCP selected-governance adapter
 
 In [`skills/threadlight-deploy/references/governance/ghcp-container.py`](../skills/threadlight-deploy/references/governance/ghcp-container.py),
-the session construction around lines 400–409 supplies:
+`session_options()` builds the session for the installed Copilot SDK line
+(`microsoft-copilot-sdk` 2.x by default, `github-copilot-sdk` 1.0.x on the
+`sdk_line: v1` escape hatch) and supplies:
 
 - `system_message`: replacement instructions read from `base / "copilot-instructions.md"`.
-- `skill_directories=[str(base / "skills")]`: the SDK skill directory.
-- `mcp_servers=servers`: configured tools, including the selected gateway relay;
-  pre-MCP hooks participate in the selected action boundary.
+- the SDK skill directory `str(base / "skills")`: `skills={"directories": [...]}` on
+  2.x, `skill_directories=[...]` on 1.0.x.
+- the configured MCP servers, including the selected gateway relay:
+  `mcp={"servers": servers}` on 2.x, `mcp_servers=servers` on 1.0.x; the
+  pre-MCP hook (`hooks.handlers.on_pre_mcp_tool_call` on 2.x) participates in the
+  selected action boundary.
 - `enable_config_discovery=False`: this adapter does not rely on ambient
-  workspace configuration discovery.
+  workspace configuration discovery. On 2.x the client also runs in
+  `mode="empty"` (no ambient shell or host-file tools).
 
 Here `base` is the host file's directory. Distinguish the **two protocol hops**:
 
 | Hop | Contract and implementation |
 |---|---|
 | Inbound: client → hosted application | Foundation `protocol=invocations` defines the hosted application endpoint contract; this adapter subclasses `InvocationAgentServerHost` |
-| Outbound: agent → model provider | `create_session()` receives `ProviderConfig(wire_api="responses", ...)` for the outbound model-provider wire API |
+| Outbound: agent → model provider | `create_session()` receives a named provider connection with `wire_api="responses"` (`inference.providers` on 2.x; `ProviderConfig(wire_api="responses", ...)` on 1.0.x) for the outbound model-provider wire API |
 
 The outbound model wire API **does not change the hosted application protocol**
 to Responses. These settings describe different hops, not conflicting selectors.

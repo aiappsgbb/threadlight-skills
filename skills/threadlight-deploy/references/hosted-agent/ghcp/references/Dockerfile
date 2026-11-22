@@ -6,6 +6,13 @@ WORKDIR /app
 # Exact, sha256-hashed pins resolved from pyproject.toml (see requirements.lock).
 COPY requirements.lock ./
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock
+# Microsoft Copilot SDK 2.x wheels do not bundle the native runtime; stage the
+# release the installed SDK pins (downloaded from its GitHub release and checked
+# against the release SHA256SUMS). Foundry hosted agents run with
+# HOME=/home/session, so a build-time ~/.cache would not be found at run time.
+ENV COPILOT_CLI_EXTRACT_DIR=/opt/copilot-runtime
+RUN python -m copilot download-runtime --in-process && chmod -R a+rX /opt/copilot-runtime
+ENV COPILOT_SKIP_CLI_DOWNLOAD=1
 # skills/ and copilot-instructions.md are optional (container.py guards both),
 # so copy the whole context (filtered by .dockerignore) and fail fast only on
 # the required entrypoint.

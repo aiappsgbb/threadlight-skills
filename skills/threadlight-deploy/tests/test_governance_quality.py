@@ -564,7 +564,7 @@ def test_quality_native_copilot_stop_failure_kills_child_and_redacts_debug_logs(
     monkeypatch.setattr(ghcp, "CLEANUP_TIMEOUT", 0.05)
     caplog.set_level(logging.DEBUG)
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-    client = CopilotClient()
+    client = ghcp.copilot_client(CopilotClient)
     client._process = child
     class Transport:
         async def stop(self):
@@ -615,7 +615,7 @@ while header := sys.stdin.buffer.readline():
     if request["method"] == "ping":
         send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
         continue
-    assert request["method"] == "session.destroy"
+    assert request["method"] in ("session.destroy", "session.detach")  # 1.0.x, 2.x
     send({"jsonrpc": "2.0", "method": "fixture.destroy_started", "params": {}})
     if sys.argv[1] == "timeout":
         time.sleep(60)
@@ -627,7 +627,7 @@ while header := sys.stdin.buffer.readline():
         assert release["method"] == "fixture.release"
         send({"jsonrpc": "2.0", "id": release["id"], "result": {}})
     if sys.argv[1] == "normal":
-        response = {"result": {}}
+        response = {"result": {"success": True}}
     else:
         print("PRIVATE DISCONNECT CREDENTIAL", file=sys.stderr, flush=True)
         response = {"error": {"code": -32000, "message": "PRIVATE DISCONNECT CREDENTIAL",
@@ -644,7 +644,7 @@ while header := sys.stdin.buffer.readline():
         await asyncio.wait_for(transport.request("ping"), 2)
         session = CopilotSession(marker, transport)
         unsubscribe = session.on(lambda event: None)
-        client = CopilotClient()
+        client = ghcp.copilot_client(CopilotClient)
         client._process, client._client = child, transport
         client._sessions[session.session_id] = session
         http = httpx.AsyncClient()
@@ -675,8 +675,13 @@ while header := sys.stdin.buffer.readline():
                 await asyncio.wait_for(closer, 4)
         else:
             failures = await asyncio.wait_for(closer, 4)
-            assert failures == ([] if fault == "normal" else [
-                ("disconnect", TimeoutError if fault == "timeout" else JsonRpcError)])
+            expected = [] if fault == "normal" else [
+                ("disconnect", TimeoutError if fault == "timeout" else JsonRpcError)]
+            if expected and ghcp.sdk_v2():
+                # 2.x stop() retries the failed session.detach and reports it again;
+                # cleanup then falls through to force_stop and reaps the child (asserted below).
+                expected.append(("client_stop", TimeoutError if fault == "timeout" else ExceptionGroup))
+            assert failures == expected
         assert session._destroyed and not session._event_handlers
         assert not client._sessions and client._client is None
         assert not transport.pending_requests and not transport._running
@@ -778,7 +783,7 @@ while header := sys.stdin.buffer.readline():
                 await asyncio.wait_for(transport.request("fixture.stderr"), 2)
                 assert await asyncio.to_thread(gates[child.pid][0].wait, 2)
                 session = CopilotSession(f"PRIVATE SESSION {index}", transport)
-                client = CopilotClient()
+                client = ghcp.copilot_client(CopilotClient)
                 client._process, client._client = child, transport
                 client._sessions[session.session_id] = session
                 server = SimpleNamespace(should_exit=False, closed=False)
@@ -1090,14 +1095,17 @@ def test_quality_native_ghcp_independent_cleanup(tmp_path, monkeypatch, caplog, 
             return SimpleNamespace(token="PRIVATE TOKEN", expires_on=9999999999)
     class Transport:
         async def request(self, method, params):
-            if method == "session.destroy":
+            if method in ("session.destroy", "session.detach"):  # 1.0.x destroy, 2.x detach
                 if fault == "self-cancel":
                     raise asyncio.CancelledError("PRIVATE CANCELLATION")
                 if fault == "disconnect-timeout":
                     await asyncio.sleep(60)
                 if fault in ("disconnect", "cancel"):
                     raise RuntimeError("PRIVATE DISCONNECT")
+            return {"success": True}
     class Client:
+        def __init__(self, **options):  # 2.x: mode/runtime/github; 1.0.x: none
+            state.client_options = options
         async def start(self): pass
         async def create_session(self, **kwargs):
             if fault == "create-session":
@@ -1186,7 +1194,12 @@ def test_quality_native_ghcp_independent_cleanup(tmp_path, monkeypatch, caplog, 
         if fault in ("stop", "stop-timeout"):
             assert state.force, "use pinned force_stop if graceful stop fails"
         if state.session:
-            assert state.session._destroyed and not state.session._event_handlers
+            assert not state.session._event_handlers
+            # 2.x marks a session disconnected only after a successful session.detach;
+            # a failed detach leaves it undestroyed, but its handlers are gone and the
+            # client was stopped above.
+            detach_failed = fault in ("disconnect", "disconnect-timeout", "cancel", "self-cancel")
+            assert state.session._destroyed or (ghcp.sdk_v2() and detach_failed)
         if fault == "normal":
             assert b"event: done" in b"".join(output)
         if fault not in ("normal", "create-session", "cancel"):

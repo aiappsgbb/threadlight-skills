@@ -765,7 +765,8 @@ def generate(project, document, *, configuration=None):
                 if count != 1:
                     raise ValueError("hosted_cohort_template_mismatch")
         if is_copilot_sdk(document["framework"]):
-            pyproject = ghcp_pyproject(pyproject, voice=voice_front_end(service))
+            existing = (agent / "pyproject.toml").read_text() if (agent / "pyproject.toml").exists() else None
+            pyproject = ghcp_pyproject(pyproject, voice=voice_front_end(service), existing=existing)
         if (agent / "pyproject.toml").exists():
             pyproject = merge_dependencies((agent / "pyproject.toml").read_text(), pyproject)
         (target / "pyproject.toml").write_text(pyproject)
@@ -779,8 +780,8 @@ def generate(project, document, *, configuration=None):
         vendor_control_plane(target)
         if probe_option and not gateway:
             vendor_gateway(target)
-        write_dockerfile(target, agent=True,
-                         gateway=bool(probe_option and not gateway))
+        write_dockerfile(target, agent=True, gateway=bool(probe_option and not gateway),
+                         copilot_runtime=is_copilot_sdk(document["framework"]))
         for name in ("govern-control-plane", "govern-gateway"):
             service_target = staging / name
             service_target.mkdir()
@@ -890,7 +891,17 @@ def vendor_gateway(target):
     (destination / "pyproject.toml").write_text(pyproject)
 
 
-def dockerfile_text(*, agent=False, gateway=False, opa_pin=None):
+COPILOT_SDK_PINS = {"v2": "microsoft-copilot-sdk==2.0.1", "v1": "github-copilot-sdk==1.0.1"}
+COPILOT_RUNTIME_STAGE = (
+    "# Microsoft Copilot SDK 2.x wheels do not bundle the native runtime: stage the pinned release.\n"
+    "# Hosted agents run with HOME=/home/session, so a build-time ~/.cache would not be found.\n"
+    "ENV COPILOT_CLI_EXTRACT_DIR=/opt/copilot-runtime\n"
+    "RUN if python -c \"import copilot, sys; sys.exit(not hasattr(copilot, 'RuntimeConnection'))\"; then "
+    "python -m copilot download-runtime --in-process && chmod -R a+rX /opt/copilot-runtime; fi\n"
+    "ENV COPILOT_SKIP_CLI_DOWNLOAD=1\n")
+
+
+def dockerfile_text(*, agent=False, gateway=False, opa_pin=None, copilot_runtime=False):
     # Copy the complete source context, explicitly excluding user credentials and deployment state.
     text = """ARG PYTHON_IMAGE
 FROM ${PYTHON_IMAGE}
@@ -903,6 +914,8 @@ RUN python -m pip install --no-cache-dir ./vendor/control-plane
         text += "RUN python -m pip install --no-cache-dir ./vendor/gateway\n"
     if agent:
         text += "COPY . ./\nRUN python -m pip install --no-cache-dir .\n"
+        if copilot_runtime:
+            text += COPILOT_RUNTIME_STAGE
     if agent or gateway:
         pin = opa_pin or json.loads((CATALOG / "skills/_shared/governance-upstream-pin.json").read_text())["opa"]
         text += (
@@ -928,9 +941,14 @@ def voice_front_end(service):
             and (service.get("metadata") or {}).get("voiceLiveCompatible") == "true")
 
 
-def ghcp_pyproject(pyproject, *, voice):
-    """GHCP agent dependencies; an opted-in voice front-end needs the Voice Live Bridge 1.0 agentserver."""
-    pyproject = pyproject.replace('  "agent-framework-core==1.14.0",', '  "github-copilot-sdk==1.0.1",')
+def ghcp_pyproject(pyproject, *, voice, existing=None):
+    """GHCP agent dependencies; an opted-in voice front-end needs the Voice Live Bridge 1.0 agentserver.
+
+    Defaults to microsoft-copilot-sdk 2.x; a project already pinned to the
+    github-copilot-sdk 1.0.x line (generate_only --sdk-line v1) stays on it.
+    """
+    line = "v1" if existing and re.search(r'"github-copilot-sdk\s*[=<>~]', existing) else "v2"
+    pyproject = pyproject.replace('  "agent-framework-core==1.14.0",', f'  "{COPILOT_SDK_PINS[line]}",')
     pyproject = "\n".join(line for line in pyproject.splitlines() if "agent-framework-foundry" not in line) + "\n"
     if voice:
         # agentserver-responses is MAF-only; the GHCP Invocations host never imports it.
@@ -943,8 +961,8 @@ def ghcp_pyproject(pyproject, *, voice):
     return pyproject
 
 
-def write_dockerfile(target, *, agent=False, gateway=False):
-    text = dockerfile_text(agent=agent, gateway=gateway)
+def write_dockerfile(target, *, agent=False, gateway=False, copilot_runtime=False):
+    text = dockerfile_text(agent=agent, gateway=gateway, copilot_runtime=copilot_runtime)
     (target / "Dockerfile").write_text(text)
     (target / ".dockerignore").write_text(
         ".git\n.azure\n.threadlight\n.env\n.env.*\n**/__pycache__\n**/.venv\n"

@@ -24,7 +24,31 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRATCH = ROOT / ".governance-validation"
-VENV = SCRATCH / "linux-venv"
+# Copilot SDK line under test. The two distributions share the ``copilot`` import
+# package, so each line gets its own wheelhouse and virtualenv. v1 runs the full
+# deployment gate; v2 (microsoft-copilot-sdk) runs every Copilot/GHCP case of it.
+COPILOT_SDK_LINES = {"v1": ("github-copilot-sdk", "1.0.1"), "v2": ("microsoft-copilot-sdk", "2.0.1")}
+COPILOT_LINE = os.environ.get("THREADLIGHT_COPILOT_SDK_LINE", "v1")
+if COPILOT_LINE not in COPILOT_SDK_LINES:
+    raise SystemExit("THREADLIGHT_COPILOT_SDK_LINE must be v1 or v2")
+COPILOT_DIST, COPILOT_VERSION = COPILOT_SDK_LINES[COPILOT_LINE]
+COPILOT_REQUIREMENT = f"{COPILOT_DIST}=={COPILOT_VERSION}"
+LINE_SUFFIX = "" if COPILOT_LINE == "v1" else "-copilot-v2"
+VENV = SCRATCH / ("linux-venv" + LINE_SUFFIX)
+DEPLOYMENT_WHEELS = "deployment-wheels" + LINE_SUFFIX
+COPILOT_RUNTIME = SCRATCH / "copilot-runtime-v2"
+COPILOT_V2_SELECTION = "ghcp or copilot or sdk2 or jsonrpc"
+COPILOT_V2_REQUIRED_CASES = {
+    "test_template_real_sdk_tool_call_and_multi_turn_memory",
+    "test_ghcp_native_host_and_actual_hook_schema",
+    "test_governed_ghcp_session_options_match_the_installed_sdk_line[v2]",
+    *(f"test_collector_actual_copilot_invocations_mcp_gateway_fixture[{case}]"
+      for case in ("False", "True", "signature", "self-blessed", "receipt", "live-digest")),
+    *(f"test_quality_native_jsonrpc_disconnect_diagnostics[{case}]"
+      for case in ("error", "timeout", "cancel", "normal")),
+    "test_ghcp_relay_returns_host_owned_pending_and_resumes_the_same_operation",
+    "test_ghcp_deferred_policy_review_generates_and_binds_with_its_resume_adapter",
+}
 PIN_FILE = ROOT / "skills/_shared/governance-upstream-pin.json"
 IMAGE = "python:3.12-slim"
 GATEWAY = ROOT / "skills/threadlight-govern/references/gateway"
@@ -433,8 +457,8 @@ def deployment_runtime(pins, *, local_only=False):
     deps = tomllib.loads((reference / "pyproject-maf.toml").read_text())["project"]["dependencies"]
     required = sorted(set(requirements(pins) + gateway_requirements() + [
         item for item in deps if not item.startswith("threadlight-govern-")
-    ] + collector_requirements() + ["github-copilot-sdk==1.0.1"]))
-    wheelhouse = SCRATCH / "deployment-wheels"
+    ] + collector_requirements() + [COPILOT_REQUIREMENT]))
+    wheelhouse = SCRATCH / DEPLOYMENT_WHEELS
     python = VENV / "bin/python"
     if not python.exists():
         venv.EnvBuilder(with_pip=True).create(python.parent.parent)
@@ -474,14 +498,14 @@ scratch = pathlib.Path('.governance-validation')
 for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
     dist = m.distribution(record['distribution'])
     assert dist.version == record['version']
-    artifact = scratch / 'deployment-wheels' / record['filename']
+    artifact = scratch / '__WHEELS__' / record['filename']
     with zipfile.ZipFile(artifact) as archive:
         for name in archive.namelist():
             if name.endswith(('.py', '.so')) and '.data/' not in name:
                 assert dist.locate_file(name).read_bytes() == archive.read(name), name
 """
         sdk_wheels = {}
-        for name, version in (("azure-ai-projects", "2.3.0"), ("openai", "2.54.0"), ("github-copilot-sdk", "1.0.1")):
+        for name, version in (("azure-ai-projects", "2.3.0"), ("openai", "2.54.0"), (COPILOT_DIST, COPILOT_VERSION)):
             matches = list(wheelhouse.glob(f"{name.replace('-', '_')}-{version}-*.whl"))
             if len(matches) != 1:
                 raise RuntimeError("required pinned collector SDK wheel missing")
@@ -490,7 +514,7 @@ for record in json.loads((scratch / 'wheel-provenance.json').read_text()):
         verification += f"""
 import hashlib
 for name, record in {sdk_wheels!r}.items():
-    artifact = scratch / 'deployment-wheels' / record['filename']
+    artifact = scratch / '__WHEELS__' / record['filename']
     assert hashlib.sha256(artifact.read_bytes()).hexdigest() == record['sha256']
     dist = m.distribution(name)
     assert dist.version == record['version']
@@ -499,7 +523,15 @@ for name, record in {sdk_wheels!r}.items():
             if not member.endswith('/') and '.dist-info/' not in member and '.data/' not in member:
                 assert dist.locate_file(member).read_bytes() == archive.read(member), member
 """
+        verification = verification.replace("__WHEELS__", DEPLOYMENT_WHEELS)
         run([python, "-c", verification])
+        runtime_env = {}
+        if COPILOT_LINE == "v2":
+            # 2.x wheels do not bundle the native runtime: stage the release the SDK pins
+            # (verified by the SDK against the release SHA256SUMS) and never download at test time.
+            runtime_env = {"COPILOT_CLI_EXTRACT_DIR": str(COPILOT_RUNTIME), "COPILOT_SKIP_CLI_DOWNLOAD": "1"}
+            run([python, "-m", "copilot", "download-runtime", "--in-process"],
+                env={**os.environ, "COPILOT_CLI_EXTRACT_DIR": str(COPILOT_RUNTIME)})
         if local_only:
             run([python, "-c",
                  "import json; from pathlib import Path; from skills._shared.native_validation import observe; "
@@ -513,13 +545,14 @@ for name, record in {sdk_wheels!r}.items():
              "from govern_canonical.ghcp import resolve_subscription_id; "
              "from skills._shared.probe_evidence import evaluate_pair; "
              "main(['--help'])"], cwd=staging, check=True)
-        report = SCRATCH / "deployment-tests.xml"
+        report = SCRATCH / f"deployment-tests{LINE_SUFFIX}.xml"
         env = {
             **os.environ, "THREADLIGHT_GOVERNANCE_RUNTIME": "1",
             "THREADLIGHT_READINESS_SDK": "1",
             "THREADLIGHT_GOVERNANCE_BICEP": str(SCRATCH / "deployment-bicep.json"),
             "THREADLIGHT_USER_CONFIRMATION_APPROVAL_BICEP": str(SCRATCH / "user-confirmation-approval-bicep.json"),
             "ACS_OPA_PATH": str(SCRATCH / "opa-linux-amd64"), "OTEL_SDK_DISABLED": "true",
+            **runtime_env,
         }
         env.pop("PYTEST_ADDOPTS", None)
         run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_probe_telemetry.py",
@@ -529,6 +562,8 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_native_bootstrap_assets.py",
              "skills/threadlight-deploy/tests/test_remote_bootstrap_hosts.py",
              "skills/threadlight-deploy/tests/test_ghcp_relay_transport.py",
+             "skills/threadlight-deploy/tests/test_ghcp_sdk2_native.py",
+             "skills/threadlight-deploy/tests/test_ghcp_sdk2_template.py",
              "skills/threadlight-deploy/tests/test_public_authenticated_proof.py",
              "skills/threadlight-deploy/tests/test_returns_read_audit.py",
              "skills/threadlight-deploy/tests/test_returns_recovery_wire.py",
@@ -567,6 +602,7 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_azd_cli_contract.py",
              "examples/returns-triage-governed/tests",
              "--ignore=examples/returns-triage-governed/tests/test_local_assessment.py",
+             *(["-k", COPILOT_V2_SELECTION] if COPILOT_LINE == "v2" else []),
              "-q", f"--junitxml={report}", "--basetemp", SCRATCH / "deployment-fixtures",
              "-o", "markers=governance_runtime: exact native runtime",
              "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
@@ -574,7 +610,18 @@ for name, record in {sdk_wheels!r}.items():
         if not cases or any(case.find(tag) is not None for case in cases
                             for tag in ("skipped", "failure", "error")):
             raise RuntimeError("deployment tests missing, skipped, or failed")
+        if COPILOT_LINE == "v2":
+            if not COPILOT_V2_REQUIRED_CASES <= {case.attrib["name"] for case in cases}:
+                raise RuntimeError("required Copilot SDK 2.x cases did not run")
+            run([python, "-c", verification])
+            (SCRATCH / "deployment-proof-copilot-v2.json").write_text(json.dumps({
+                "tests_passed": len(cases), "junit": report.name, "copilot_sdk": COPILOT_REQUIREMENT,
+                "collector_sdk_wheels": sdk_wheels,
+                "scope": "Copilot/GHCP cases of the generated-deployment gate on the 2.x line; no live Azure",
+            }, indent=2) + "\n")
+            return
         required_cases = {
+            "test_template_real_sdk_tool_call_and_multi_turn_memory",
             "test_citadel_native_returns_producer_authenticates_and_records_once",
             "test_generation_emits_complete_frozen_cohort_without_changing_shared_pins",
             "test_native_server_uses_explicit_operator_state_directory",
@@ -789,8 +836,8 @@ def prepare_deployment(pins, *, local_only=False):
     deps = tomllib.loads((reference / "pyproject-maf.toml").read_text())["project"]["dependencies"]
     requested = sorted(set(requirements(pins) + gateway_requirements() + [
         item for item in deps if not item.startswith("threadlight-govern-")
-    ] + collector_requirements() + ["github-copilot-sdk==1.0.1"]))
-    wheelhouse = SCRATCH / "deployment-wheels"
+    ] + collector_requirements() + [COPILOT_REQUIREMENT]))
+    wheelhouse = SCRATCH / DEPLOYMENT_WHEELS
     wheelhouse.mkdir(exist_ok=True)
     marker = wheelhouse / "requirements.json"
     if not marker.exists() or json.loads(marker.read_text()) != requested:
@@ -816,9 +863,10 @@ def prepare_deployment(pins, *, local_only=False):
          "-e", "HOME=/work/.governance-validation/deployment-home",
          "-e", "PYTHONPYCACHEPREFIX=/work/.governance-validation/pycache",
          "-e", "PIP_CACHE_DIR=/work/.governance-validation/pip-cache",
+         "-e", f"THREADLIGHT_COPILOT_SDK_LINE={COPILOT_LINE}",
          IMAGE, "python", "scripts/ci/run-governance-pin-tests.py",
          "--local-prepared" if local_only else "--deployment-prepared"])
-    if local_only:
+    if local_only or COPILOT_LINE == "v2":
         return
     fixture = generated_deployment_fixture()
     run([*bicep, fixture / "infra/main.bicep",
