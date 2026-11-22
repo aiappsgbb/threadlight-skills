@@ -171,3 +171,83 @@ def test_template_real_sdk_tool_call_and_multi_turn_memory(tmp_path, monkeypatch
         return calls
 
     asyncio.run(case())
+
+
+def test_template_real_sdk2_gate_journal_and_runtime_spans(tmp_path, monkeypatch):
+    """#205: the pre-tool-use gate denies a governed write before its handler runs, a
+    restarted client resumes the conversation from the on-disk journal, and the
+    runtime's own GenAI spans reach the Application Insights exporter."""
+    import uvicorn
+    import azure.identity
+    from copilot.tools import Tool, ToolResult
+
+    async def case():
+        calls = []
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        sock.listen()
+        server = uvicorn.Server(uvicorn.Config(_model_app(calls), access_log=False, log_level="critical"))
+        task = asyncio.create_task(server.serve(sockets=[sock]))
+        async with asyncio.timeout(10):
+            while not server.started:
+                await asyncio.sleep(0.01)
+        for key, value in {"FOUNDRY_PROJECT_ENDPOINT": f"http://127.0.0.1:{sock.getsockname()[1]}",
+                           "AZURE_AI_MODEL_DEPLOYMENT_NAME": "local-model", "HOME": str(tmp_path),
+                           "PROJECT_DIR": str(tmp_path), "THREADLIGHT_GOVERNED_TOOLS": "get_order",
+                           "THREADLIGHT_COPILOT_TELEMETRY": "1",
+                           "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=local-test-only"}.items():
+            monkeypatch.setenv(key, value)
+        for key in ("GITHUB_TOKEN", "MODEL_GATEWAY_URL", "APPLICATIONINSIGHTS_AUTH_MODE"):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setattr(azure.identity, "DefaultAzureCredential", _Credential)
+        spec = importlib.util.spec_from_file_location("ghcp_native_p5", CONTAINER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if not module.SDK_V2:
+            pytest.skip("SDK 2.x features")
+        assert module._init_byok()
+        exported = []
+
+        class Exporter:
+            def export(self, spans):
+                exported.extend(spans)
+        monkeypatch.setattr(module, "_span_exporter", Exporter)
+        invoked = []
+
+        async def get_order(invocation):
+            invoked.append(invocation.arguments)
+            return ToolResult(text_result_for_llm="refund approved")
+        tool = Tool(name="get_order", description="Look up an order", handler=get_order,
+                    parameters={"type": "object", "properties": {"order_id": {"type": "string"}}})
+
+        async def toolbox(call_id):
+            return [tool]
+        monkeypatch.setattr(module, "_toolbox_enabled", lambda: True)
+        monkeypatch.setattr(module, "_toolbox_tools", toolbox)
+
+        async def turn(text, session=""):
+            sse = []
+            async for chunk in module._stream_response("inv", text, session):
+                sse.append(chunk if isinstance(chunk, str) else chunk.decode())
+            return _answer("".join(sse))
+
+        try:
+            await turn("Look up order RMA-1")
+            assert invoked == [], "the gate must deny the governed write before its handler runs"
+            await turn("My name is Ada.", "journal-1")
+            # A new process: drop the client and the in-memory cache, keep $HOME.
+            await module._client.stop()
+            module._client = None
+            module._sessions.clear()
+            assert await turn("What is my name?", "journal-1") == "Your name is Ada."
+            await asyncio.sleep(6)  # runtime OTLP batch interval
+        finally:
+            if module._client is not None:
+                await module._client.stop()
+            server.should_exit = True
+            await task
+        names = {span.name.split(" ")[0] for span in exported}
+        assert {"invoke_agent", "chat", "execute_tool"} <= names, names
+        assert not any("Ada" in json.dumps(dict(span.attributes), default=str) for span in exported)
+
+    asyncio.run(case())

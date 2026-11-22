@@ -207,3 +207,69 @@ def test_template_pins_microsoft_copilot_sdk_2_and_stages_the_native_runtime():
     assert "COPILOT_SKIP_CLI_DOWNLOAD=1" in dockerfile
     v1 = (GHCP / "sdk-v1" / "requirements.lock").read_text()
     assert "\ngithub-copilot-sdk==1.0.1 " in v1 and "microsoft-copilot-sdk" not in v1
+
+
+# --- #205: multi-tenant gate, journal and runtime telemetry ---------------------------------
+
+def _gate(options):
+    return options["hooks"]["handlers"]["on_pre_tool_use"]
+
+
+def test_sdk2_pre_tool_use_hook_is_a_fail_closed_gate_over_the_allowlist(monkeypatch):
+    monkeypatch.setenv("MCP_SERVER_FQDN", "mcp.example")
+    monkeypatch.setenv("THREADLIGHT_GOVERNED_TOOLS", "returns_apply_decision")
+    module = _load(monkeypatch)
+    _open(module)
+    (options,) = FakeClient.instances[0].created
+    gate = _gate(options)
+    call = lambda name: asyncio.run(gate({"toolName": name, "toolArgs": {}, "sessionId": "s"}, {}))
+    assert call("mcp-get_order") is None
+    assert call("skill") is None
+    for name in ("bash", "web_fetch", "mcp-returns_apply_decision", "other-returns_apply_decision"):
+        decision = call(name)
+        assert decision["permissionDecision"] == "deny", name
+        assert decision["permissionDecisionReason"]
+
+
+def test_sdk2_state_directory_is_the_per_foundry_session_home(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    module = _load(monkeypatch)
+    _open(module)
+    assert FakeClient.instances[0].kwargs["runtime"]["base_directory"] == str(tmp_path / ".copilot")
+
+
+def test_runtime_telemetry_is_opt_in_and_never_captures_content(monkeypatch):
+    module = _load(monkeypatch)
+    _open(module)
+    assert "observability" not in FakeClient.instances[0].kwargs
+    monkeypatch.setenv("THREADLIGHT_COPILOT_TELEMETRY", "1")
+    monkeypatch.setenv("APPLICATIONINSIGHTS_CONNECTION_STRING", "InstrumentationKey=00000000-0000-0000-0000-000000000000")
+    module = _load(monkeypatch)
+    monkeypatch.setattr(module, "_runtime_span_bridge", lambda: "http://127.0.0.1:4318")
+    _open(module)
+    telemetry = FakeClient.instances[0].kwargs["observability"]["telemetry"]
+    assert telemetry == {"otlp_endpoint": "http://127.0.0.1:4318", "otlp_protocol": "http/json",
+                         "exporter_type": "otlp-http", "source_name": "threadlight.copilot.runtime",
+                         "capture_content": False}
+
+
+def test_otlp_json_spans_become_exportable_readable_spans(monkeypatch):
+    module = _load(monkeypatch)
+    payload = {"resourceSpans": [{"resource": {"attributes": [
+        {"key": "service.name", "value": {"stringValue": "copilot"}}]},
+        "scopeSpans": [{"scope": {"name": "github.copilot"}, "spans": [{
+            "traceId": "0af7651916cd43dd8448eb211c80319c", "spanId": "b7ad6b7169203331",
+            "parentSpanId": "00f067aa0ba902b7", "name": "execute_tool get_order", "kind": 3,
+            "startTimeUnixNano": "1700000000000000000", "endTimeUnixNano": "1700000000500000000",
+            "attributes": [{"key": "gen_ai.operation.name", "value": {"stringValue": "execute_tool"}},
+                           {"key": "gen_ai.usage.input_tokens", "value": {"intValue": "12"}}],
+            "status": {"code": 2, "message": "boom"}}]}]}]}
+    (span,) = module._otlp_json_to_spans(payload)
+    assert span.name == "execute_tool get_order"
+    assert span.context.trace_id == 0x0af7651916cd43dd8448eb211c80319c
+    assert span.context.span_id == 0xb7ad6b7169203331 and span.parent.span_id == 0x00f067aa0ba902b7
+    assert span.start_time == 1700000000000000000 and span.end_time == 1700000000500000000
+    assert span.attributes["gen_ai.usage.input_tokens"] == 12
+    assert span.resource.attributes["service.name"] == "copilot"
+    assert span.status.status_code.name == "ERROR"
+    assert span.kind.name == "CLIENT"

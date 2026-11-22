@@ -45,6 +45,10 @@ services:
         value: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
       - name: AZURE_AI_MODEL_WIRE_API
         value: ${AZURE_AI_MODEL_WIRE_API}
+      # Opt-in: Copilot runtime GenAI spans to the project's Application Insights
+      # (azd env set THREADLIGHT_COPILOT_TELEMETRY 1). Metadata only, no content.
+      - name: THREADLIGHT_COPILOT_TELEMETRY
+        value: ${THREADLIGHT_COPILOT_TELEMETRY}
       - name: MCP_SERVER_FQDN
         value: ${MCP_SERVER_FQDN}
     container:

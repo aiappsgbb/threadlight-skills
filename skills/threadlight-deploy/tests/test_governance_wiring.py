@@ -1,4 +1,5 @@
 """Generated deployment contracts; native probes run in the published-pin Linux gate."""
+import asyncio
 import copy
 import importlib.util
 import json
@@ -1546,9 +1547,32 @@ def test_governed_ghcp_session_options_match_the_installed_sdk_line(monkeypatch,
     assert options["inference"]["providers"] == [{
         "name": "foundry", "type": "openai", "wire_api": "responses",
         "base_url": "https://a.services.ai.azure.com/api/projects/p/openai/v1", "bearer_token": "tok"}]
-    assert options["hooks"] == {"handlers": {"on_pre_mcp_tool_call": print}}
+    assert options["hooks"]["handlers"]["on_pre_mcp_tool_call"] is print
+    assert callable(options["hooks"]["handlers"]["on_pre_tool_use"])
     assert options["tools"] == {"available_tools": ["mcp:*", "builtin:skill"]}
     assert options["mcp"] == {"servers": {"s": {}}} and options["permissions"] == {"on_request": len}
     assert not {"provider", "mcp_servers", "available_tools", "skill_directories"} & set(options)
     client = ghcp.copilot_client(lambda **kw: kw)
     assert client["mode"] == "empty" and client["github"] == {"use_logged_in_user": False}
+
+
+def test_governed_ghcp_pre_tool_use_gate_allows_only_routed_inventories(monkeypatch):
+    """#205: on 2.x the governed host adds hooks.on_pre_tool_use as a fail-closed gate next to
+    the pre-MCP relay hook: a bound tool runs only on the governed relay server."""
+    ghcp = module("ghcp-container")
+    copilot = type(sys)("copilot")
+    copilot.RuntimeConnection = type("RC", (), {"for_default": staticmethod(lambda **kw: kw),
+                                                "for_spawned_stdio": staticmethod(lambda **kw: kw)})
+    monkeypatch.setitem(sys.modules, "copilot", copilot)
+    monkeypatch.setenv("FOUNDRY_PROJECT_ENDPOINT", "https://a.services.ai.azure.com/api/projects/p")
+    monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt")
+    servers = {"threadlight-governed": {"tools": ["act"]}, "mixed": {"tools": ["read"]}}
+    options = ghcp.session_options(model_token="t", servers=servers, pre_mcp=print, instructions="i",
+                                   skills_dir="/app/skills", approve_all=len)
+    gate = options["hooks"]["handlers"]["on_pre_tool_use"]
+    assert options["hooks"]["handlers"]["on_pre_mcp_tool_call"] is print
+    decide = lambda name: asyncio.run(gate({"toolName": name, "toolArgs": {}}, {}))
+    for allowed in ("threadlight-governed-act", "mixed-read", "skill"):
+        assert decide(allowed) is None, allowed
+    for denied in ("mixed-act", "mixed-write", "bash", "act", "other-read"):
+        assert decide(denied)["permissionDecision"] == "deny", denied

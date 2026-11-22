@@ -918,7 +918,8 @@ _PRIVATE_POSTPROVISION = ("      run: sh hooks/postprovision.sh\n",
 
 
 def render_azure_yaml(project: str, agent: str, description: str, voice: dict[str, str] | None = None,
-                      builtin_tools: str | None = None, profile: str = "fast-poc") -> str:
+                      builtin_tools: str | None = None, profile: str = "fast-poc",
+                      governed_tools: str | None = None) -> str:
     text = (PILOT / "azure.yaml").read_text(encoding="utf-8")
     body = text[text.index("name: __PROJECT_NAME__"):]
     header = (
@@ -944,6 +945,13 @@ def render_azure_yaml(project: str, agent: str, description: str, voice: dict[st
             raise WorkspaceError("pilot azure.yaml changed shape; cannot add copilot_builtin_tools")
         body = body.replace(anchor, anchor + "      # SPEC 11e copilot_builtin_tools (user opt-in)\n"
                             f"      - name: THREADLIGHT_BUILTIN_TOOLS\n        value: \"{builtin_tools}\"\n")
+    if governed_tools:
+        anchor = _VOICE_TARGET_ENV[0]
+        if body.count(anchor) != 1:
+            raise WorkspaceError("pilot azure.yaml changed shape; cannot add the governed-write gate")
+        body = body.replace(anchor, anchor + "      # governed-write: the agent's pre-tool-use gate denies this tool here; "
+                            "it runs only through the governed tool gateway\n"
+                            f"      - name: THREADLIGHT_GOVERNED_TOOLS\n        value: \"{governed_tools}\"\n")
     if profile == "private":
         for old, new in (_PRIVATE_ENV, _PRIVATE_POSTPROVISION, _PRIVATE_MCP):
             if body.count(old) != 1:
@@ -1839,7 +1847,8 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
     }
 
     text_outputs: dict[str, str] = {
-        "azure.yaml": render_azure_yaml(project, agent, description, voice, builtin_tools, profile),
+        "azure.yaml": render_azure_yaml(project, agent, description, voice, builtin_tools, profile,
+                                        governed_tools=gateway_write),
         ".dockerignore": render_dockerignore(bool(standins) and has_corpus),
         "hooks/postdeploy.sh": (PILOT / "hooks" / "postdeploy.sh").read_text(encoding="utf-8"),
         "hooks/postprovision.sh": (PILOT / "hooks" / "postprovision.sh").read_text(encoding="utf-8"),

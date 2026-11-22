@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 import re
 import shutil
+
+import yaml
 from pathlib import Path
 
 from test_generate_only import GENERATOR, HARNESS, _run
@@ -104,6 +106,11 @@ def test_governed_write_pilot_generates_and_routes_the_write_to_the_gateway(tmp_
         for marker in ("governance foundation", "signed policy", "threadlight-govern"):
             assert marker in text.lower(), marker
     assert "recommend-only" not in deferred.lower()
+    # #205: the agent's pre-tool-use gate denies the bound write on any server it is not routed to.
+    agent_env = yaml.safe_load((project / "azure.yaml").read_text())["services"]
+    env = {e["name"]: e["value"] for s in agent_env.values() for e in s.get("environmentVariables") or []}
+    assert env["THREADLIGHT_GOVERNED_TOOLS"] == WRITE
+    assert env["THREADLIGHT_COPILOT_TELEMETRY"] == "${THREADLIGHT_COPILOT_TELEMETRY}"
 
 
 def test_governed_write_generated_tests_and_harness_pass(tmp_path):

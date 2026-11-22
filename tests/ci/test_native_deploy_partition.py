@@ -67,3 +67,9 @@ def test_copilot_v2_selection_covers_every_required_case():
         (owner,) = [f for f in files if f"def {base}(" in f.read_text()]
         # pytest -k matches the test name and its module name.
         assert any(word in case or word in owner.name for word in words), f"{case} not selected by {selection!r}"
+
+
+def test_v1_lane_excludes_the_sdk2_only_case_by_name_not_node_id():
+    text = (ROOT / "scripts/ci/run-governance-pin-tests.py").read_text()
+    assert '"not test_template_real_sdk2_gate_journal_and_runtime_spans"' in text
+    assert "--deselect" not in text

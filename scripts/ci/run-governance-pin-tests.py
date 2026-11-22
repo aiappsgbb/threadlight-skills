@@ -40,6 +40,7 @@ COPILOT_RUNTIME = SCRATCH / "copilot-runtime-v2"
 COPILOT_V2_SELECTION = "ghcp or copilot or sdk2 or jsonrpc"
 COPILOT_V2_REQUIRED_CASES = {
     "test_template_real_sdk_tool_call_and_multi_turn_memory",
+    "test_template_real_sdk2_gate_journal_and_runtime_spans",
     "test_ghcp_native_host_and_actual_hook_schema",
     "test_governed_ghcp_session_options_match_the_installed_sdk_line[v2]",
     *(f"test_collector_actual_copilot_invocations_mcp_gateway_fixture[{case}]"
@@ -613,7 +614,9 @@ for name, record in {sdk_wheels!r}.items():
              "skills/threadlight-deploy/tests/test_azd_cli_contract.py",
              "examples/returns-triage-governed/tests",
              "--ignore=examples/returns-triage-governed/tests/test_local_assessment.py",
-             *(["-k", COPILOT_V2_SELECTION] if COPILOT_LINE == "v2" else []),
+             # The 2.x-only case is excluded by name: node-id deselection depends on the rootdir.
+             "-k", COPILOT_V2_SELECTION if COPILOT_LINE == "v2"
+             else "not test_template_real_sdk2_gate_journal_and_runtime_spans",
              "-q", f"--junitxml={report}", "--basetemp", SCRATCH / "deployment-fixtures",
              "-o", "markers=governance_runtime: exact native runtime",
              "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)
