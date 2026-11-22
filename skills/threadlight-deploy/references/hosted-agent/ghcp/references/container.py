@@ -575,8 +575,156 @@ _session_locks: dict[str, asyncio.Lock] = {}
 _sessions_lock = asyncio.Lock()
 
 
+# ---------------------------------------------------------------------------
+# Copilot runtime telemetry (opt-in: THREADLIGHT_COPILOT_TELEMETRY=1)
+# ---------------------------------------------------------------------------
+# The SDK 2.x runtime emits GenAI semantic-convention spans (invoke_agent,
+# chat <model>, execute_tool ...) but exports only OTLP/HTTP or a file
+# (https://github.com/microsoft/copilot-sdk/blob/main/docs/observability/opentelemetry.md).
+# The hosted agent's own telemetry goes to the project's Application Insights
+# through the platform-injected APPLICATIONINSIGHTS_CONNECTION_STRING
+# (https://learn.microsoft.com/azure/foundry/agents/how-to/configure-hosted-agent-telemetry).
+# This loopback receiver accepts the runtime's OTLP/JSON traces and exports them
+# with the Azure Monitor exporter to that same resource, so runtime spans join
+# the invocation's operation. Content capture stays off (metadata only).
+_RUNTIME_BRIDGE_URL: str | None = None
+
+
+def _telemetry_enabled() -> bool:
+    return (os.environ.get("THREADLIGHT_COPILOT_TELEMETRY", "").strip().lower() in ("1", "true")
+            and bool(os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", "").strip()))
+
+
+def _otlp_id(value: str, size: int) -> int:
+    value = value or ""
+    if len(value) == size * 2:
+        return int(value, 16)
+    import base64
+    return int.from_bytes(base64.b64decode(value), "big") if value else 0
+
+
+def _otlp_value(value: dict):
+    for key in ("stringValue", "boolValue", "doubleValue"):
+        if key in value:
+            return value[key]
+    if "intValue" in value:
+        return int(value["intValue"])
+    if "arrayValue" in value:
+        return [_otlp_value(v) for v in value["arrayValue"].get("values") or []]
+    return None
+
+
+def _otlp_attributes(items) -> dict:
+    out = {}
+    for item in items or []:
+        converted = _otlp_value(item.get("value") or {})
+        if converted is not None:
+            out[item["key"]] = converted
+    return out
+
+
+def _otlp_status(status: dict, codes: dict):
+    from opentelemetry.trace import Status, StatusCode
+    code = codes.get(int(status.get("code") or 0), StatusCode.UNSET)
+    return Status(code, status.get("message") or None) if code == StatusCode.ERROR else Status(code)
+
+
+def _otlp_json_to_spans(payload: dict) -> list:
+    """OTLP/JSON ``ExportTraceServiceRequest`` -> OpenTelemetry SDK ``ReadableSpan`` list."""
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import Event, ReadableSpan
+    from opentelemetry.sdk.util.instrumentation import InstrumentationScope
+    from opentelemetry.trace import SpanContext, SpanKind, StatusCode, TraceFlags
+    kinds = {1: SpanKind.INTERNAL, 2: SpanKind.SERVER, 3: SpanKind.CLIENT, 4: SpanKind.PRODUCER, 5: SpanKind.CONSUMER}
+    codes = {1: StatusCode.OK, 2: StatusCode.ERROR}
+    spans = []
+    for resource_spans in payload.get("resourceSpans") or []:
+        resource = Resource.create(_otlp_attributes((resource_spans.get("resource") or {}).get("attributes")))
+        for scope_spans in resource_spans.get("scopeSpans") or []:
+            scope = InstrumentationScope((scope_spans.get("scope") or {}).get("name") or "copilot.runtime")
+            for raw in scope_spans.get("spans") or []:
+                trace_id = _otlp_id(raw.get("traceId", ""), 16)
+                context = SpanContext(trace_id, _otlp_id(raw.get("spanId", ""), 8), is_remote=False,
+                                      trace_flags=TraceFlags(TraceFlags.SAMPLED))
+                parent_id = _otlp_id(raw.get("parentSpanId", ""), 8)
+                parent = SpanContext(trace_id, parent_id, is_remote=True) if parent_id else None
+                status = raw.get("status") or {}
+                spans.append(ReadableSpan(
+                    name=raw.get("name") or "copilot.runtime", context=context, parent=parent,
+                    resource=resource, attributes=_otlp_attributes(raw.get("attributes")),
+                    events=[Event(e.get("name") or "event", _otlp_attributes(e.get("attributes")),
+                                  int(e.get("timeUnixNano") or 0)) for e in raw.get("events") or []],
+                    kind=kinds.get(int(raw.get("kind") or 1), SpanKind.INTERNAL),
+                    status=_otlp_status(status, codes),
+                    start_time=int(raw.get("startTimeUnixNano") or 0), end_time=int(raw.get("endTimeUnixNano") or 0),
+                    instrumentation_scope=scope))
+    return spans
+
+
+def _span_exporter():
+    from azure.monitor.opentelemetry.exporter import AzureMonitorTraceExporter
+    options = {"connection_string": os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"]}
+    # Same rule as the AgentServer host's own exporter (azure-ai-agentserver-core _tracing).
+    if os.environ.get("APPLICATIONINSIGHTS_AUTH_MODE", "").strip().lower() == "entra":
+        from azure.identity import ManagedIdentityCredential
+        options["credential"] = ManagedIdentityCredential()
+    return AzureMonitorTraceExporter(**options)
+
+
+def _runtime_span_bridge(exporter=None) -> str:
+    """Start (once) the loopback OTLP/JSON receiver; returns its base URL."""
+    global _RUNTIME_BRIDGE_URL
+    if _RUNTIME_BRIDGE_URL:
+        return _RUNTIME_BRIDGE_URL
+    import http.server
+    import threading
+    exporter = exporter or _span_exporter()
+
+    class Receiver(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802 - http.server API
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            try:
+                if self.path.rstrip("/").endswith("/v1/traces"):
+                    spans = _otlp_json_to_spans(json.loads(body or b"{}"))
+                    if spans:
+                        exporter.export(spans)
+            except Exception as exc:  # noqa: BLE001 - telemetry never affects the answer
+                logger.warning("runtime span export failed: %s", type(exc).__name__)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *args):  # silence per-request access logs
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Receiver)
+    threading.Thread(target=server.serve_forever, name="copilot-runtime-spans", daemon=True).start()
+    _RUNTIME_BRIDGE_URL = f"http://127.0.0.1:{server.server_address[1]}"
+    logger.info("Copilot runtime spans bridged to Application Insights via %s", _RUNTIME_BRIDGE_URL)
+    return _RUNTIME_BRIDGE_URL
+
+
+def _observability() -> dict | None:
+    if not _telemetry_enabled():
+        return None
+    try:
+        endpoint = _runtime_span_bridge()
+    except Exception as exc:  # noqa: BLE001 - telemetry is optional
+        logger.warning("Copilot runtime telemetry disabled: %s", type(exc).__name__)
+        return None
+    return {"telemetry": {"otlp_endpoint": endpoint, "otlp_protocol": "http/json", "exporter_type": "otlp-http",
+                          "source_name": "threadlight.copilot.runtime", "capture_content": False}}
+
+
 def _state_directory() -> str:
-    """Where the Copilot runtime keeps session state (transcripts, journals)."""
+    """Where the Copilot runtime keeps session state (transcripts, journals).
+
+    ``$HOME`` is the per-Foundry-session directory the platform persists across
+    turns and idle periods, so this is a per-session journal that a resumed
+    session reads back after compute restarts
+    (https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#key-concepts).
+    """
     return os.environ.get("COPILOT_HOME", "").strip() or str(pathlib.Path.home() / ".copilot")
 
 
@@ -588,8 +736,12 @@ def _new_client(github_token: str) -> CopilotClient:
     # in-process by default (COPILOT_SDK_DEFAULT_CONNECTION=stdio keeps a child
     # process); empty mode needs an explicit state directory.
     github = {"token": github_token} if github_token else {"use_logged_in_user": False}
-    return CopilotClient(mode="empty", runtime=RuntimeConnection.for_default(base_directory=_state_directory()),
-                         github=github)
+    options: dict[str, Any] = {"mode": "empty", "github": github,
+                               "runtime": RuntimeConnection.for_default(base_directory=_state_directory())}
+    observability = _observability()
+    if observability:
+        options["observability"] = observability
+    return CopilotClient(**options)
 
 
 async def _ensure_client() -> CopilotClient:
@@ -644,6 +796,40 @@ def _available_tools() -> list[str]:
     return tools
 
 
+def _builtin_names() -> set[str]:
+    return {entry.split(":", 1)[1] for entry in _available_tools() if entry.startswith("builtin:")}
+
+
+def _governed_tools() -> set[str]:
+    """Tool ids routed to the governed tool gateway (THREADLIGHT_GOVERNED_TOOLS, set by the generator)."""
+    return {t.strip() for t in os.environ.get("THREADLIGHT_GOVERNED_TOOLS", "").split(",") if t.strip()}
+
+
+def _pre_tool_use_gate(servers: list[str], custom: list[str]):
+    """SDK 2.x ``hooks.on_pre_tool_use`` gate: fail closed before any tool handler runs.
+
+    Allows only tools of the configured MCP servers (``<server>-<tool>``), this
+    session's custom tools and the allowlisted built-ins. A governed write
+    (THREADLIGHT_GOVERNED_TOOLS) is always denied here: it runs only in the
+    governed host, through the authenticated tool gateway. This is defence in
+    depth next to ``tools.available_tools``; it is not the governance PEP.
+    """
+    governed, builtins = _governed_tools(), _builtin_names()
+    prefixes = tuple(f"{server}-" for server in servers)
+
+    async def gate(event, _invocation):
+        name = str(event.get("toolName") or "")
+        if any(name == tool or name.endswith("-" + tool) for tool in governed):
+            reason = f"{name}: governed write, served only through the governed tool gateway"
+        elif name in builtins or name in custom or (prefixes and name.startswith(prefixes)):
+            return None
+        else:
+            reason = f"{name}: not in this pilot's tool allowlist"
+        logger.warning("pre_tool_use gate denied %s", name)
+        return {"permissionDecision": "deny", "permissionDecisionReason": reason}
+    return gate
+
+
 def _session_kwargs(tools: list | None = None) -> dict[str, Any]:
     """Session options for the installed SDK line.
 
@@ -660,6 +846,8 @@ def _session_kwargs(tools: list | None = None) -> dict[str, Any]:
             "permissions": {"on_request": PermissionHandler.approve_all},
             "events": {"streaming": True},
             "tools": {"available_tools": _available_tools()},
+            "hooks": {"handlers": {"on_pre_tool_use": _pre_tool_use_gate(
+                list(mcp or {}), [getattr(t, "name", "") for t in tools or []])}},
         }
         inference = _inference_options()
         if inference:

@@ -469,6 +469,46 @@ uses a fixed `GOVERNED_AVAILABLE_TOOLS = ("mcp:*", "builtin:skill")` with no
 opt-in, so the model reaches backends only through the relay. Voice turns use
 the same session options.
 
+### Pre-tool-use gate (SDK 2.x)
+
+The client runs in `mode="empty"` (no ambient shell or host-file tools,
+[multi-tenancy](https://github.com/microsoft/copilot-sdk/blob/main/docs/setup/multi-tenancy.md#mode-empty)),
+and every session also registers `hooks.handlers.on_pre_tool_use`
+([pre-tool-use hook](https://github.com/microsoft/copilot-sdk/blob/main/docs/hooks/pre-tool-use.md)).
+The gate runs before any tool handler and fails closed: it allows only tools of
+the configured MCP servers (`<server>-<tool>`), the session's custom (toolbox)
+tools and the allowlisted built-ins, and it always denies a tool listed in
+`THREADLIGHT_GOVERNED_TOOLS` (set by `generate_only.py` for a governed-write
+pilot): that write runs only in the governed host, through the authenticated
+tool gateway. The governed host (`ghcp-container.py`) registers the same kind of
+gate over its routed inventories: a bound tool is allowed only on the
+`threadlight-governed` relay. The gate is defence in depth next to
+`tools.available_tools`; the gateway remains the policy enforcement point. The
+1.0.x line (`sdk_line: v1`) has no gate.
+
+### Session journal
+
+The runtime keeps each Copilot session's transcript under `$HOME/.copilot`
+(`COPILOT_HOME` overrides it). On Foundry, `$HOME` is the per-session directory
+the platform persists across turns and idle periods
+([hosted agents: sessions](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#key-concepts)),
+so a keyed conversation resumes from that journal after compute restarts.
+`resume_session` re-supplies the provider (with its token callback), tools,
+hooks and permissions every time; they are not persisted.
+
+### Copilot runtime spans (opt-in)
+
+`azd env set THREADLIGHT_COPILOT_TELEMETRY 1` (and redeploy) turns on the
+runtime's own GenAI semantic-convention spans (`invoke_agent`, `chat <model>`,
+`execute_tool ...`; [OpenTelemetry](https://github.com/microsoft/copilot-sdk/blob/main/docs/observability/opentelemetry.md)).
+The runtime exports only OTLP/HTTP, so `container.py` runs a loopback OTLP/JSON
+receiver and forwards the spans with the Azure Monitor exporter to the
+Application Insights resource the platform injects
+(`APPLICATIONINSIGHTS_CONNECTION_STRING`; Entra auth when
+`APPLICATIONINSIGHTS_AUTH_MODE=entra`, as the AgentServer host does). The SDK
+propagates the invocation's trace context, so these spans join the request's
+operation. `capture_content` stays off: no prompts, answers or tool arguments.
+
 ### Turn spans (latency waterfall)
 
 The Invocations host exports one server span per request (`invoke_agent`) to

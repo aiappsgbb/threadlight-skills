@@ -674,6 +674,26 @@ def copilot_client(client_type):
                        runtime=RuntimeConnection.for_spawned_stdio(base_directory=str(Path.home() / ".copilot")))
 
 
+def pre_tool_use_gate(servers):
+    """2.x ``hooks.on_pre_tool_use``: fail closed unless the tool is in a routed server's inventory.
+
+    A bound tool exists only on the ``threadlight-governed`` relay, so the same id on
+    another server is denied before any handler runs. Defence in depth next to the
+    session allowlist and the pre-MCP relay hook; the gateway stays the PEP.
+    """
+    allowed = {"skill"} | {f"{name}-{tool}" for name, server in servers.items()
+                           for tool in server.get("tools") or [] if tool != "*"}
+
+    async def gate(event, _invocation):
+        name = str(event.get("toolName") or "")
+        if name in allowed:
+            return None
+        LOGGER.warning("governance_pre_tool_use_denied")
+        return {"permissionDecision": "deny",
+                "permissionDecisionReason": "tool is not in the governed host's routed inventory"}
+    return gate
+
+
 def session_options(*, model_token, servers, pre_mcp, instructions, skills_dir, approve_all):
     """One governed session: the bound MCP subset goes through the relay; the model is BYOK Foundry.
 
@@ -701,7 +721,7 @@ def session_options(*, model_token, servers, pre_mcp, instructions, skills_dir, 
             "skills": {"enabled": True, "directories": [skills_dir]},
             "tools": {"available_tools": list(GOVERNED_AVAILABLE_TOOLS)},
             "events": {"streaming": True}, "mcp": {"servers": servers},
-            "hooks": {"handlers": {"on_pre_mcp_tool_call": pre_mcp}},
+            "hooks": {"handlers": {"on_pre_mcp_tool_call": pre_mcp, "on_pre_tool_use": pre_tool_use_gate(servers)}},
             "permissions": {"on_request": approve_all}}
 
 

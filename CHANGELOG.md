@@ -7,6 +7,49 @@ field.
 
 ## [Unreleased]
 
+### 2.80.0: Copilot SDK 2.0 pilot: pre-tool-use gate, per-session journal, runtime spans to Application Insights (#205)
+
+- **Why.** Pilots did not use the SDK 2.x production features: explicit
+  multi-tenant mode, hooks as an enforcement point, durable session state and the
+  runtime's own OpenTelemetry
+  ([multi-tenancy](https://github.com/microsoft/copilot-sdk/blob/main/docs/setup/multi-tenancy.md),
+  [pre-tool-use hook](https://github.com/microsoft/copilot-sdk/blob/main/docs/hooks/pre-tool-use.md),
+  [OpenTelemetry](https://github.com/microsoft/copilot-sdk/blob/main/docs/observability/opentelemetry.md),
+  checked 2026-11-22). `mode="empty"` and the explicit allowlist shipped in 2.73.0.
+- **Pre-tool-use gate.** Template `container.py` registers
+  `hooks.handlers.on_pre_tool_use`, failing closed before any tool handler: only
+  configured MCP servers' tools, the session's custom tools and allowlisted
+  built-ins; a tool in `THREADLIGHT_GOVERNED_TOOLS` (set by `generate_only.py` for a
+  governed-write pilot) is always denied, because it runs only in the governed host.
+  The governed host (`ghcp-container.py`) adds the same gate over its routed
+  inventories next to the pre-MCP relay hook: a bound tool runs only on the
+  `threadlight-governed` relay. Defence in depth; the gateway remains the PEP.
+- **Session journal.** Runtime state stays under `$HOME/.copilot`; on Foundry
+  `$HOME` is the per-session persisted directory
+  ([hosted agents: sessions](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#key-concepts)),
+  so a keyed conversation resumes from it after compute restarts.
+- **Runtime spans (opt-in `THREADLIGHT_COPILOT_TELEMETRY=1`).** The runtime exports
+  OTLP/HTTP only; `container.py` runs a loopback OTLP/JSON receiver and exports the
+  spans with the Azure Monitor exporter to the platform-injected
+  `APPLICATIONINSIGHTS_CONNECTION_STRING`
+  ([hosted agent telemetry](https://learn.microsoft.com/azure/foundry/agents/how-to/configure-hosted-agent-telemetry)),
+  with `capture_content` off.
+- **Live evidence (MCAPS internal subscription, eastus2, 2026-11-22).** Fast-PoC
+  pilot from `order-returns` (fixed `gpt-5.4-mini`), ACR remote build, telemetry on:
+  gate on with MCP tools allowed (tool call, two-turn memory, session isolation);
+  App Insights shows runtime `chat gpt-5.4-mini` x5, `invoke_agent` x3,
+  `execute_tool` x2 (names hashed without content capture), sharing 3 operation IDs
+  with the hosted request, and no prompt or answer text. Resource group deleted.
+- **Not claimed.** #205's first criterion (the governed-write workshop kit passing
+  safe-check live with the hook as gate) needs a full kit redeploy; #205 stays open.
+  The gate is proven natively (real SDK: governed write denied before its handler
+  runs) and in the 2.x CI lane, where a packaged governed GHCP project passes
+  `governance_static` and safe-check pre-deploy and invokes through the gateway.
+- **Tests (RED first).** `test_ghcp_sdk2_template.py` (gate, telemetry opt-in, OTLP/JSON
+  conversion), `test_governance_wiring.py` (governed gate), `test_governed_write_pilot.py`
+  (env wiring), native `test_template_real_sdk2_gate_journal_and_runtime_spans`
+  (2.x lane; excluded by name from the 1.x lane).
+
 ### 2.79.0: evals for prompt and Copilot harness agents, evaluator errors are missing scores (#231)
 
 - **Why.** `run_evals.py` always sent the hosted Invocations body, and one
