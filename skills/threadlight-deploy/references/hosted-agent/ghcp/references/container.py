@@ -1001,6 +1001,246 @@ async def _read_invocation(request: Request) -> tuple[dict[str, Any], str]:
     return data, input_text
 
 
+
+# ---------------------------------------------------------------------------
+# Durable turns (opt-in: THREADLIGHT_DURABLE_TURNS=1)
+# ---------------------------------------------------------------------------
+# Without this mode a turn is one synchronous SSE stream: a client disconnect,
+# process crash or session stop leaves no id to reconnect to and the outcome is
+# UNKNOWN. With it, each streamed turn runs as an AgentServer resilient task
+# (https://learn.microsoft.com/azure/foundry/agents/how-to/recover-long-running-work):
+# * the invocation id is the durable turn id (input_id); the Foundry session id
+#   is the task id of a multi-turn chain (a fresh conversation is a one-shot task);
+# * events go to a file-backed replay stream keyed by the turn id, so
+#   GET /invocations/{id}?stream=true&starting_after=<seq> reconnects, and
+#   GET /invocations/{id} returns the turn status and final answer;
+# * the turn keeps running when the client disconnects; after a crash the
+#   startup scan re-enters it (at-least-once entry);
+# * the user message is sent to the Copilot session at most once: a watermark is
+#   written before the send, and a recovered turn reads the session transcript
+#   instead (final answer present: reuse it; user message present: ask the
+#   session to continue; absent: send it). Effects inside a turn still need their
+#   own idempotency (threadlight-governed-actions § Recovered handlers).
+# Toolbox turns (per-request caller context) and "stream": false keep the
+# synchronous path.
+
+DURABLE_TURNS = os.environ.get("THREADLIGHT_DURABLE_TURNS", "").strip().lower() in ("1", "true")
+_RECOVERY_PROMPT = ("Your previous turn was interrupted before you finished. Continue from where you stopped "
+                    "and give your final answer to my last message.")
+_TERMINAL_TURN = ("completed", "failed")
+
+
+def _turn_dir() -> pathlib.Path:
+    return pathlib.Path(_state_directory()) / "threadlight-turns"
+
+
+def _turn_path(turn_id: str) -> pathlib.Path:
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", turn_id or ""):
+        raise ValueError("invalid turn id")
+    return _turn_dir() / "records" / f"{turn_id}.json"
+
+
+def _load_turn(turn_id: str) -> dict | None:
+    try:
+        return json.loads(_turn_path(turn_id).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def _save_turn(record: dict) -> None:
+    """Atomic, fsynced: the send watermark must be durable before the send."""
+    path = _turn_path(record["turn_id"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(record, handle)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, path)
+
+
+def _payload_kind(payload) -> str:
+    return str((payload or {}).get("type") or "")
+
+
+def _event_content(payload) -> str:
+    data = (payload or {}).get("data") or {}
+    return str(data.get("content") or "")
+
+
+async def _transcript_after_crash(session, text: str) -> tuple[str, str | None]:
+    """('answered', answer) | ('received', None) | ('missing', None) | ('unknown', None)."""
+    get_events = getattr(session, "get_events", None)
+    if get_events is None:
+        return "unknown", None
+    try:
+        events = [_event_payload(event) or {} for event in await get_events()]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read the transcript of a recovered turn: %s", type(exc).__name__)
+        return "unknown", None
+    logger.info("Recovered transcript: %d events, %d user messages", len(events),
+                sum(_payload_kind(e) == "user.message" for e in events))
+    last_user = max((i for i, e in enumerate(events)
+                     if _payload_kind(e) == "user.message" and text in _event_content(e)), default=None)
+    if last_user is None:
+        return "missing", None
+    answers = [_event_content(e) for e in events[last_user + 1:] if _payload_kind(e) == "assistant.message"]
+    later_user = any(_payload_kind(e) == "user.message" for e in events[last_user + 1:])
+    if answers and answers[-1].strip() and not later_user:
+        return "answered", answers[-1]
+    return "received", None
+
+
+if DURABLE_TURNS:
+    from azure.ai.agentserver.core.streaming import streams
+    from azure.ai.agentserver.core.tasks import (
+        TaskConflictError, TaskContext, multi_turn_task, set_resilient_tasks_enabled, task,
+    )
+
+    set_resilient_tasks_enabled(True)  # before host startup: the startup scan recovers turns
+    streams.use_file_backed_replay(storage_dir=_turn_dir() / "streams", cursor_fn=lambda event: event["seq"])
+
+    async def _run_durable_turn(ctx) -> dict:
+        turn = dict(ctx.input)
+        turn_id, text, key = turn["turn_id"], turn["input"], turn["session_key"]
+        record = _load_turn(turn_id) or {"turn_id": turn_id, "status": "running", "sent": False,
+                                         "session_key": key, "fresh": not key}
+        stream = await streams.get_or_create(turn_id)
+        last = await stream.last_cursor()
+        seq = -1 if last is None else last
+
+        async def emit(payload, *, close=False):
+            nonlocal seq
+            seq += 1
+            await stream.emit({"seq": seq, **payload}, close=close)
+
+        if record["status"] in _TERMINAL_TURN:
+            return {"status": record["status"]}
+        recovered = ctx.entry_mode == "recovered"
+        conversation = key or f"turn-{turn_id}"
+        telemetry = _TurnTelemetry(turn_id)
+        answer, status = "", "completed"
+        try:
+            client = await _ensure_client()
+            async with _sessions_lock:
+                lock = _session_locks.setdefault(conversation, asyncio.Lock())
+            async with lock:
+                session = await (_keyed_session(client, conversation) if key
+                                 else _open_keyed_session(client, conversation))
+                send = text
+                if recovered and record["sent"]:
+                    state, previous = await _transcript_after_crash(session, text)
+                    logger.info("Recovered turn %s: transcript %s", turn_id, state)
+                    await emit({"type": "threadlight.turn.recovered", "data": {"transcript": state}})
+                    send = None if state == "answered" else text if state == "missing" else _RECOVERY_PROMPT
+                    if state == "answered":
+                        answer = previous or ""
+                        await emit({"type": "assistant.message", "data": {"content": answer}})
+                if send is not None:
+                    record["sent"] = True
+                    _save_turn(record)  # watermark BEFORE the upstream send
+                    queue: asyncio.Queue = asyncio.Queue()
+
+                    def on_event(event):
+                        telemetry.observe(event)
+                        if event.type == SessionEventType.SESSION_IDLE:
+                            queue.put_nowait(None)
+                        elif event.type == SessionEventType.SESSION_ERROR:
+                            queue.put_nowait(RuntimeError(getattr(event.data, "message", "error")))
+                        else:
+                            queue.put_nowait(event)
+
+                    unsubscribe = session.on(on_event)
+                    try:
+                        telemetry.sent()
+                        await session.send(send)
+                        if not recovered and os.environ.get("THREADLIGHT_SIMULATE_CRASH_AFTER_SEND") == "1":
+                            # Crash-test hook (off unless set): die while the model call is in flight.
+                            logger.warning("Simulated crash after the upstream send of turn %s", turn_id)
+                            os._exit(137)
+                        while True:
+                            item = await queue.get()
+                            if item is None:
+                                break
+                            if isinstance(item, Exception):
+                                status = "failed"
+                                await emit({"type": "error", "message": str(item)})
+                                break
+                            payload = _event_payload(item)
+                            if payload is None:
+                                continue
+                            if _payload_kind(payload) == "assistant.message" and _event_content(payload).strip():
+                                answer = _event_content(payload)
+                            await emit(payload)
+                    finally:
+                        unsubscribe()
+                if not key:
+                    await _close_session(session, delete=True)
+        except Exception as exc:  # noqa: BLE001
+            status = "failed"
+            logger.error("Durable turn %s failed: %s", turn_id, type(exc).__name__)
+            await emit({"type": "error", "message": str(exc)})
+        finally:
+            telemetry.finish(error=status != "completed")
+        record.update(status=status, answer=answer)
+        _save_turn(record)
+        await emit({"type": "done", "invocation_id": turn_id, "status": status}, close=True)
+        return {"status": status}
+
+    @multi_turn_task(name="threadlight_copilot_conversation")
+    async def _durable_conversation_turn(ctx: TaskContext[dict]) -> dict:
+        return await _run_durable_turn(ctx)
+
+    @task(name="threadlight_copilot_turn")
+    async def _durable_fresh_turn(ctx: TaskContext[dict]) -> dict:
+        return await _run_durable_turn(ctx)
+
+    def _sse(event) -> bytes:
+        frame = {k: v for k, v in event.items() if k != "seq"}
+        if frame.get("type") == "done":
+            return (f"id: {event['seq']}\nevent: done\ndata: "
+                    f"{json.dumps({'invocation_id': frame['invocation_id'], 'status': frame['status']})}\n\n").encode()
+        return f"id: {event['seq']}\ndata: {json.dumps(frame)}\n\n".encode()
+
+    async def _replay(turn_id: str, after: int | None):
+        stream = await streams.get_or_create(turn_id)
+        async for event in stream.subscribe(after=after):
+            yield _sse(event)
+
+    async def _start_durable(turn_id: str, input_text: str, session_key: str, call_id: str):
+        payload = {"turn_id": turn_id, "input": input_text, "session_key": session_key, "call_id": call_id}
+        _save_turn({"turn_id": turn_id, "status": "running", "sent": False,
+                    "session_key": session_key, "fresh": not session_key})
+        # First frame, before any upstream work: the caller holds the durable id even
+        # if the process dies right after the send (headers flush with the first chunk).
+        stream = await streams.get_or_create(turn_id)
+        await stream.emit({"seq": 0, "type": "threadlight.turn.accepted", "invocation_id": turn_id})
+        if session_key:
+            await _durable_conversation_turn.start(task_id=session_key, input_id=turn_id, input=payload)
+        else:
+            await _durable_fresh_turn.start(task_id=f"turn-{turn_id}", input=payload)
+
+    @app.get_invocation_handler
+    async def handle_get_invocation(request: Request) -> Response:
+        turn_id = str(request.path_params.get("invocation_id") or "")
+        try:
+            record = _load_turn(turn_id)
+        except ValueError:
+            record = None
+        if record is None:
+            return JSONResponse(status_code=404, content={"error": "not_found", "invocation_id": turn_id})
+        if str(request.query_params.get("stream", "")).lower() == "true":
+            after = request.query_params.get("starting_after")
+            return StreamingResponse(
+                _replay(turn_id, int(after) if after not in (None, "") else None),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "x-threadlight-turn-id": turn_id})
+        body = {"invocation_id": turn_id, "status": record["status"],
+                "native_retrievable_id": True, "upstream_sent": record.get("sent", False)}
+        if record["status"] in _TERMINAL_TURN:
+            body["answer"] = record.get("answer", "")
+        return JSONResponse(body)
+
 @app.invoke_handler
 async def handle_invoke(request: Request) -> Response:
     try:
@@ -1033,6 +1273,21 @@ async def handle_invoke(request: Request) -> Response:
             media_type="text/plain; charset=utf-8",
             headers={"Cache-Control": "no-cache"},
         )
+    if DURABLE_TURNS and not _toolbox_enabled():
+        turn_id = str(request.state.invocation_id)
+        try:
+            await _start_durable(turn_id, input_text, session_key, call_id)
+        except TaskConflictError:
+            _save_turn({"turn_id": turn_id, "status": "failed", "sent": False, "session_key": session_key,
+                        "fresh": not session_key, "answer": "", "reason": "turn_in_progress"})
+            stream = await streams.get_or_create(turn_id)
+            await stream.emit({"seq": 1, "type": "done", "invocation_id": turn_id, "status": "failed"}, close=True)
+            return JSONResponse(status_code=409, content={
+                "error": "turn_in_progress",
+                "message": "This conversation already has a turn in progress; reconnect to it by its id."})
+        return StreamingResponse(
+            _replay(turn_id, None), media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "x-threadlight-turn-id": turn_id})
     return StreamingResponse(
         _stream_response(request.state.invocation_id, input_text, session_key, call_id),
         media_type="text/event-stream",
