@@ -166,6 +166,18 @@ conformance. A valid eval score of 4 against a threshold of 5 remains a verified
 blocker. Neither is production readiness. Supplementary governance metadata
 always sets runtime/policy/attestation verification to false.
 
+## Foundry Insights run receipt (explicit, paid)
+
+`scripts/insights_run.py` is the one step here that calls Azure. It runs only when
+an operator invokes it with a project endpoint and a dedicated judge deployment,
+because each run spends judge tokens. It creates a disabled Insights monitor,
+runs analysis on demand and writes `specs/insights-receipt.json`
+(`threadlight-insights-receipt/v1`): monitor and run IDs, traces analysed, token
+usage, an estimated cost with its formula and price source, and the insights.
+`validate` checks a receipt offline. `teardown` disables the schedule and reads it
+back. See [Foundry Insights](references/foundry-insights.md) for RBAC, judge sizing
+(Tested, Nov 2026) and the cost formula.
+
 ## References
 
 | Reference | Contract |
@@ -175,6 +187,7 @@ always sets runtime/policy/attestation verification to false.
 | [Execution approval](references/execution-approval.md) | Packaged native operations, existing approval fields, identity and export prerequisites |
 | [Manifest schema](references/agentops-manifest.schema.json) | Metadata-only public shape; shared validator also rechecks current evidence |
 | [Fixture scope](references/fixtures/README.md) | Synthetic bounded fixture builder and negative coverage |
+| [Foundry Insights](references/foundry-insights.md) | Monitor lifecycle, insights receipt, RBAC, judge sizing, cost formula, teardown |
 
 Validation: `python3 -m unittest discover -s skills/threadlight-agentops/tests -p 'test_*.py' -q`
 in an isolated Python 3.12+ environment. These tests are offline contract evidence,

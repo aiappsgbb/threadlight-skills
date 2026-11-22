@@ -1,0 +1,107 @@
+{
+  "schema": "threadlight-insights-receipt/v1",
+  "recorded_at": "2026-11-21T15:50:33+00:00",
+  "environment": "pilot",
+  "agent_name": "tlb-agent",
+  "agent_model_deployment": "gpt-5.4-mini",
+  "monitor": {
+    "id": "monitor_bf30c52aa01742e38144b34122fa7d5c",
+    "enabled": false,
+    "run_interval_hours": 6.0,
+    "model_deployment_name": "insights-judge"
+  },
+  "judge": {
+    "deployment": "insights-judge",
+    "tpm_capacity": 300000
+  },
+  "run": {
+    "id": "run_58d216f34ec6b3053fcd6f0502422186",
+    "status": "succeeded",
+    "lookback_hours": 24.0,
+    "window_start": "2026-11-20T15:47:26+00:00",
+    "window_end": "2026-11-21T15:47:26+00:00",
+    "traces_in_window": 36,
+    "traces_analyzed": 36,
+    "insights_created": 6,
+    "insights_updated": 0,
+    "duration_seconds": 188,
+    "token_usage": {
+      "input_tokens": 733452,
+      "output_tokens": 17478,
+      "cached_tokens": 61184,
+      "total_tokens": 750930
+    }
+  },
+  "cost": {
+    "label": "Estimate",
+    "estimated_usd": 0.5874,
+    "formula": "((input_tokens - cached_tokens) * input + cached_tokens * cached + output_tokens * output) / 1e6",
+    "prices_usd_per_1m": {
+      "input": 0.75,
+      "cached": 0.075,
+      "output": 4.5
+    },
+    "price_source": "Azure Retail Prices API, Foundry Models '5.4 mini Inp/cd Inp/Opt Gl 1M Tokens', swedencentral, 2026-11-21",
+    "per_trace_usd": 0.016317
+  },
+  "insights": [
+    {
+      "id": "insight_ceb5632ac86575c9ebc035fc",
+      "severity": "low",
+      "category": "reliability_errors",
+      "title": "Lookup query was over-specified with an invented status phrase",
+      "trace_count": 1,
+      "status": "active",
+      "agent_version": "2"
+    },
+    {
+      "id": "insight_755e595a28d523ce334ecb4f",
+      "severity": "medium",
+      "category": "hallucinations",
+      "title": "Invented status query instead of asking for the missing record ID",
+      "trace_count": 1,
+      "status": "active",
+      "agent_version": "2"
+    },
+    {
+      "id": "insight_51aed7625126115d6284620b",
+      "severity": "medium",
+      "category": "tool_call_failures",
+      "title": "Ambiguous record requests were used to construct lookup queries instead of prompting for the exact identifier",
+      "trace_count": 4,
+      "status": "active",
+      "agent_version": "2"
+    },
+    {
+      "id": "insight_4b79e05cf96c8c7f983ebf6d",
+      "severity": "low",
+      "category": "latency",
+      "title": "Latency from cold-start container readiness dominates a simple lookup turn",
+      "trace_count": 1,
+      "status": "active",
+      "agent_version": "2"
+    },
+    {
+      "id": "insight_255806a3e5d1e9d43f5f8d0d",
+      "severity": "medium",
+      "category": "output_quality",
+      "title": "Record lookup was answered with an empty placeholder instead of asking for missing identifier details",
+      "trace_count": 1,
+      "status": "active",
+      "agent_version": "2"
+    },
+    {
+      "id": "insight_20ec3872409004a84384ab16",
+      "severity": "high",
+      "category": "hallucinations",
+      "title": "Lookup placeholders are being treated as record evidence instead of inconclusive tool output",
+      "trace_count": 22,
+      "status": "active",
+      "agent_version": "2"
+    }
+  ],
+  "proposed_fixes": "not recorded: untrusted input, review in Foundry before acting",
+  "traffic_hygiene": {
+    "eval_or_optimizer_traffic_in_window": true
+  }
+}
