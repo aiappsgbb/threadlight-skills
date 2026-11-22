@@ -283,6 +283,11 @@ def verify_gateway_junit(path):
         "test_citadel_native_assembler_and_mixed_generation_fail_closed",
         "test_citadel_native_example_builds_three_bundles_without_authority",
         "test_final_bundle_registry_selects_policy_deferred_review",
+        "test_harness_denied_write_returns_a_denial_receipt_with_no_effect",
+        "test_harness_approved_write_executes_once_and_a_replay_is_idempotent",
+        "test_harness_internal_function_calls_are_never_answered",
+        "test_harness_failed_turn_is_reconciled_before_replay[recorded]",
+        "test_harness_failed_turn_is_reconciled_before_replay[lost]",
         *(f"test_four_business_rules_under_native_acs[{case}]" for case in (
             "RMA-W01-A-approve_refund-expected0", "RMA-W01-B-approve_refund-expected3",
             "RMA-W01-C-escalate_to_supervisor-expected5", "RMA-UNKNOWN-approve_refund-expected7")),
@@ -439,6 +444,7 @@ for record in records:
     run([python, "-m", "pytest", "skills/threadlight-govern/tests/test_gateway.py",
          "skills/threadlight-govern/tests/test_citadel.py",
          "skills/threadlight-govern/tests/test_operator_recovery.py",
+         "skills/threadlight-govern/tests/test_harness_function_bridge.py",
          "examples/governed-write-ghcp/tests/test_policy.py",
          "-k", "not test_citadel_native_returns_producer_authenticates_and_records_once",
          "-q", f"--junitxml={report}", "-o", f"cache_dir={SCRATCH / 'pytest-cache'}"], env=env)

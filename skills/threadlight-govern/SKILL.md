@@ -102,6 +102,12 @@ routing. Control-plane/gateway ACA services, Cosmos, Blob, Key Vault and separat
 publisher/verify/workload/downstream permissions are real deployment prerequisites.
 Do not substitute broad RBAC or health stubs.
 
+Copilot harness agents (`agent_type: harness`, preview) have no hook surface:
+consequential writes are client function tools answered by
+[`references/harness/function_bridge.py`](references/harness/function_bridge.py)
+through the same gateway dispatcher, a different PEP placement whose claims are
+listed in [`references/harness/README.md`](references/harness/README.md).
+
 ## Pins, migration and verification
 
 Use `skills/_shared/governance-upstream-pin.json`:

@@ -1656,8 +1656,10 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
             if (fit.get("consequential_write_seam") or "").lower() == "function-tool":
                 raise PromptAgentRefused(
                     "SPEC section 11e harness_fit.consequential_write_seam: function-tool. Governed writes through "
-                    "client function tools are a separate route (threadlight-govern, #230) that this generate_only "
-                    "does not emit; use governed-mcp (MCP writes with require_approval) or agent_type: hosted.")
+                    "client function tools are answered by the application through the governed gateway "
+                    "(skills/threadlight-govern/references/harness/function_bridge.py); generate_only does not "
+                    "provision that gateway. Use governed-mcp (MCP writes with require_approval) here, or "
+                    "agent_type: hosted.")
             harness = {"fit": fit, **harness_route.harness_settings(_spec_scalar, spec, WorkspaceError)}
             kind = "hosted"
     if kind == "prompt":

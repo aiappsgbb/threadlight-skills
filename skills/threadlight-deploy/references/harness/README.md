@@ -60,4 +60,7 @@ harness_egress_mode: Audit                # Audit | Enforced (switch later with 
 
 ACS and Agent Hooks do not run inside the harness, so the hosted runtime's
 LOCAL-14/CTK evidence does not apply. On this route a write is gated only by
-the MCP approval round trip that the client answers.
+the MCP approval round trip that the client answers. Governed writes through
+client function tools and the governed gateway are documented, with the
+claims that apply and do not apply, in
+[`threadlight-govern/references/harness/README.md`](../../../threadlight-govern/references/harness/README.md).
