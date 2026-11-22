@@ -7,6 +7,37 @@ field.
 
 ## [Unreleased]
 
+### 2.78.0: private-profile APIM model gateway re-validated on Microsoft Copilot SDK 2.0 (#203)
+
+- **Why.** The private profile's API Management gateway was designed around
+  github-copilot-sdk 1.0.1, whose `ProviderConfig(type="azure")` keeps only the
+  origin of a base URL. 2.73.0 moved the template to microsoft-copilot-sdk 2.0.1
+  (named provider connections), so the gateway route was unverified on 2.x.
+- **Live evidence (MCAPS internal subscription, eastus2, 2026-11-21).** Private
+  pilot from the `order-returns` fixture (`--profile private --model-gateway apim`,
+  Foundry public access off, APIM Standard v2 inbound private endpoint, outbound
+  VNet integration), deployed and invoked from the in-VNet operator host. The
+  hosted agent (SDK 2.x, `type="openai"`, base `MODEL_GATEWAY_URL`) called the MCP
+  tools `get_order`/`get_customer`, recalled `ORD-1001` in the second turn of the
+  same session and answered `none` in another session; App Insights shows
+  `CopilotClient started (sdk=2.x)` and model route
+  `https://apim-<token>.azure-api.net/models/openai/v1`. A probe on the operator
+  host ran the real SDK 2.0.1 behind a local recording proxy in front of APIM:
+
+  | Provider configuration | Request at APIM | Result |
+  |---|---|---|
+  | `type="openai"`, base `…/models/openai/v1` (template) | `POST /models/openai/v1/responses` | 200 |
+  | `type="azure"`, no `api_version`, base `…/models` or `…/models/openai/v1` | `POST /models/openai/v1/responses` | 200 |
+  | `type="azure"`, `api_version` `2025-04-01-preview` or `preview` | `POST /models/openai/responses?api-version=…` | 400 `API version not supported` |
+
+  Every response carried the gateway's `x-threadlight-gateway: apim` header. The
+  APIM pass-through policy and rewrite need no change on 2.x. Resource group
+  deleted (network resources after a retry), APIM and Foundry account purged.
+- **Docs.** `private-profile.md` (Gateway URL) and the `apim-gateway.bicep`
+  header record the 2.x paths, say not to set `api_version`, and keep the 1.0.1
+  origin-only note for the `sdk_line: v1` escape hatch.
+- **Tests (RED first).** `test_private_profile.py::test_gateway_route_is_documented_for_copilot_sdk_2`.
+
 ### 2.77.0: GHCP durable turns: work identity instead of one synchronous SSE stream (#222)
 
 - **Why.** A GHCP/Invocations turn was one synchronous SSE stream (deadline up to
@@ -119,6 +150,7 @@ field.
   and the azd default `sample.output_text` on the unmapped optimizer rubric. Two
   live gate runs on the 16 held-out rows scored 6/16 each. Rubric: 7 and 8 passes.
   `task_adherence`: 13 and 12 passes.
+
 
 ### 2.73.0: GHCP template and governed host on Microsoft Copilot SDK 2.0, with a 2.x CI lane (#202, #206)
 

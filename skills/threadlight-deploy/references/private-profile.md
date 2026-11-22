@@ -55,10 +55,24 @@ with the design's own infrastructure).
   injection) is cheaper but needs subnet NSG rules and long provisioning and has
   no SLA (not proven here). Standard v2 is a recurring charge: delete it after a
   test if the pilot doesn't need it.
-- **Gateway URL.** `MODEL_GATEWAY_URL` ends in `/openai/v1`. With
-  `ProviderConfig(type="azure")`, github-copilot-sdk 1.0.1 keeps only the origin
-  of any other base URL (it posted to `/openai/v1/responses` without the
-  `/models` prefix; APIM answered 404). Observed live and with a local probe.
+- **Gateway URL.** `MODEL_GATEWAY_URL` ends in `/openai/v1`. The template
+  (microsoft-copilot-sdk 2.0.1) uses it as the base URL of a named provider with
+  `type="openai"` and `wire_api="responses"`. Recorded live on 2026-11-21 (#203)
+  through the APIM gateway of a private pilot, with the real SDK on the operator
+  host behind a local recording proxy:
+
+  | Provider configuration | Request path at APIM | Result |
+  |---|---|---|
+  | `type="openai"`, base `…/models/openai/v1` (template) | `POST /models/openai/v1/responses` | 200 |
+  | `type="azure"`, no `api_version`, base `…/models` or `…/models/openai/v1` | `POST /models/openai/v1/responses` | 200 |
+  | `type="azure"`, `api_version` `2025-04-01-preview` or `preview` | `POST /models/openai/responses?api-version=…` | 400 `API version not supported` |
+
+  The hosted agent itself (2.x, `type="openai"`) answered a tool-calling,
+  two-turn conversation through the gateway. Don't set `api_version`: the
+  versioned route isn't served by the project endpoint. On the `sdk_line: v1`
+  escape hatch, `ProviderConfig(type="azure")` in github-copilot-sdk 1.0.1 keeps
+  only the origin of a base URL that doesn't end in `/openai/v1` (it dropped the
+  `/models` prefix; APIM answered 404, observed 2026-11-11).
 - **Non-Azure gateway.** `--model-gateway external` with
   `THREADLIGHT_MODEL_GATEWAY_URL` (ending in `/openai/v1`): the customer's
   pass-through route to the project endpoint that serves streaming

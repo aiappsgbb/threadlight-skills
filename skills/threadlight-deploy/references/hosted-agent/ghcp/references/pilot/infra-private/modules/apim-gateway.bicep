@@ -11,10 +11,15 @@
 // Responses wire format and its own Microsoft Entra token (audience
 // https://ai.azure.com). The gateway validates that token, then calls Foundry
 // with ITS managed identity, so model access can be governed (quotas, logging,
-// routing) at the gateway. The agent's base URL ends in /openai/v1: with
-// ProviderConfig(type="azure") github-copilot-sdk 1.0.1 keeps only the ORIGIN of
-// any other base URL and posts to /openai/v1/responses, so a "/models" prefix
-// was dropped and APIM answered 404 (2026-11-11 live run and local probe).
+// routing) at the gateway. The agent's base URL ends in /openai/v1.
+// microsoft-copilot-sdk 2.0.1 (live 2026-11-21, #203): a named provider of
+// type="openai" with this base URL (the template) posts to
+// /models/openai/v1/responses and gets 200; type="azure" without api_version
+// does the same; type="azure" WITH api_version posts to
+// /models/openai/responses?api-version=... and the project route answers 400.
+// github-copilot-sdk 1.0.1 (sdk_line: v1) with ProviderConfig(type="azure")
+// keeps only the ORIGIN of any base URL not ending in /openai/v1, so a "/models"
+// prefix was dropped and APIM answered 404 (2026-11-11 live run).
 param location string
 param token string
 param tags object
