@@ -1528,11 +1528,21 @@ def test_mcp_server_exposes_spec_tools():
 ''' + CONTAINER_LAYOUT_TESTS
 
 
+# Responses input for prompt and Copilot harness agents (tested #231): each row runs in its
+# own conversation and sample.usage is populated.
+RESPONSES_TEMPLATE_INPUT = {"type": "template", "template": [
+    {"type": "message", "role": "user", "content": {"type": "input_text", "text": "{{item.query}}"}}]}
+# Built-ins that read tool calls: builtin.task_adherence errored on 5 of 6 harness rows when
+# mapped to sample.output_items ("'arguments' field must be a dictionary in tool_call content items").
+TOOL_READING_EVALUATORS = ("builtin.task_adherence",)
+
+
 def build_eval_config(
     agent: str,
     rules: dict[str, str],
     scen: list[dict[str, Any]],
     bodies: dict[str, list[str]] | None = None,
+    agent_kind: str = "foundry-hosted",
 ) -> dict[str, Any]:
     bodies = bodies or {}
     rule_ids = sorted({r for s in scen for r in s["business_rules"]} | set(rules), key=lambda r: int(r.split("-")[1]))
@@ -1557,13 +1567,16 @@ def build_eval_config(
         # eval result size limit (413) in live runs. "new_conversation": true
         # makes every row its own conversation: the Foundry eval sent all rows
         # with one agent_session_id in the 2026-11-07 live run.
-        "input_messages": {"input": "{{item.query}}", "stream": False, "new_conversation": True},
+        "input_messages": (RESPONSES_TEMPLATE_INPUT if agent_kind in ("foundry-harness", "foundry-prompt")
+                           else {"input": "{{item.query}}", "stream": False, "new_conversation": True}),
         "dataset": "evals/eval_dataset.jsonl",
         "builtin_evaluators": [
             {
                 "evaluator_name": name,
                 "name": name.split(".", 1)[1],
                 "data_mapping": {"query": "{{item.query}}", "response": "{{sample.output_text}}"},
+                **({"may_error_on_harness_output": True}
+                   if agent_kind == "foundry-harness" and name in TOOL_READING_EVALUATORS else {}),
             }
             for name in BUILTIN_EVALUATORS
         ],
@@ -1715,7 +1728,8 @@ def generate(project_dir: Path, force: bool, profile: str = "fast-poc", gateway:
         if instructions_src.is_file()
         else f"# {agent}\n\nFollow specs/SPEC.md. Cite the business rule that fired in every decision.\n"
     )
-    cfg = build_eval_config(agent, rules, scen, business_rule_bodies(spec))
+    cfg = build_eval_config(agent, rules, scen, business_rule_bodies(spec),
+                            agent_kind="foundry-harness" if harness else "foundry-hosted")
     dataset = "".join(
         json.dumps({k: s[k] for k in ("id", "query", "expected", "business_rules", "category")}) + "\n"
         for s in scen
@@ -1977,8 +1991,9 @@ def _harness_outputs(project: str, agent: str, description: str, instructions: s
     })
     postdeploy.update({"agent_kind": "foundry-harness", "expected_skills": skills})
     postdeploy["gaps"] += [
-        "Copilot harness (preview): evals/run_evals.py still sends the hosted Invocations body; harness evals need "
-        "the Responses template input before the Foundry eval run can target this agent",
+        "Copilot harness eval prerequisites: the eval caller needs Foundry User on the Foundry ACCOUNT (project "
+        "scope returned 401 on evals/write); eval rows cannot attach files, so reference data ships as a skill "
+        "asset or a tool; builtin.task_adherence may error on harness output (an error is a missing score)",
         f"egress policy starts in {harness['egress_mode']}: confirm traces in App Insights after switching to Enforced",
         "ACS/Agent Hooks do not run inside the harness: hosted LOCAL-14/CTK governance evidence does not apply",
     ]

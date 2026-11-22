@@ -7,6 +7,25 @@ field.
 
 ## [Unreleased]
 
+### 2.79.0: evals for prompt and Copilot harness agents, evaluator errors are missing scores (#231)
+
+- **Why.** `run_evals.py` always sent the hosted Invocations body, and one
+  built-in evaluator errored on most harness rows without the gate noticing.
+- **Request shape.** `generate_only` writes the Responses `template` input for
+  harness agents (`eval-config.json` `input_messages`); hosted stays on the
+  Invocations body. Evaluators read `{{sample.output_text}}`;
+  `builtin.task_adherence` is flagged `may_error_on_harness_output`.
+- **Errors are missing scores.** `run_evals.py` records per-evaluator
+  scored/errored row counts (`evaluation.evaluator_results`); an errored rubric
+  row leaves the score unset. `foundry_package.py` fails an errored rubric and
+  does not count errored built-ins toward the built-in requirement.
+- **Prerequisites documented.** Eval caller needs Foundry User on the Foundry
+  account; eval rows cannot attach files (reference data as a skill asset or a tool).
+- **Live (internal test subscription, Sweden Central, 2026-11-21).** One harness
+  eval run (`evalrun_7dd2139e…`) completed and was recorded in
+  `specs/foundry-package-manifest.json`: 4 evaluators x 3 rows scored, 0 errors.
+  Every row ended on an unanswered write `mcp_approval_request`, so the rubric
+  mean was 3.0 < 4 and the gate stayed INCOMPLETE; this limit is documented.
 ### 2.78.0: private-profile APIM model gateway re-validated on Microsoft Copilot SDK 2.0 (#203)
 
 - **Why.** The private profile's API Management gateway was designed around

@@ -58,6 +58,18 @@ def _nonempty_text_list(value: Any, minimum: int = 1) -> bool:
     return isinstance(value, list) and len(value) >= minimum and all(_text(v) for v in value)
 
 
+def _short(name: str) -> str:
+    return name.split(".", 1)[-1]
+
+
+def _clean(counts: Any) -> bool:
+    """Evaluator result counts with at least one scored row and no errored row."""
+    if not isinstance(counts, dict):
+        return False
+    scored, errors = counts.get("scored"), counts.get("errored")
+    return isinstance(scored, int) and scored > 0 and errors == 0
+
+
 def _rubric_problems(index: int, rubric: Any) -> list[str]:
     prefix = f"evaluation.custom_rubric_evaluators[{index}]"
     if not isinstance(rubric, dict):
@@ -157,18 +169,35 @@ def evaluate(manifest: Any) -> dict[str, Any]:
             if not _text(sections["telemetry"].get(field)):
                 missing.append(f"telemetry.{field}")
 
+    errored: list[str] = []
     if isinstance(manifest.get("evaluation"), dict):
         evaluation = sections["evaluation"]
         if not _text(evaluation.get("eval_run_id")):
             missing.append("evaluation.eval_run_id")
-        if not _nonempty_text_list(evaluation.get("builtin_evaluators")):
+        results = evaluation.get("evaluator_results")
+        results = results if isinstance(results, dict) else None
+        builtins = evaluation.get("builtin_evaluators")
+        if not _nonempty_text_list(builtins):
             missing.append("evaluation.builtin_evaluators")
+        elif results is not None:
+            # An evaluator error is a missing score, never a pass (#231: builtin.task_adherence
+            # errored on 5 of 6 harness rows). One cleanly scored built-in satisfies the requirement.
+            errored += [name for name in builtins if not _clean(results.get(_short(name)) or results.get(name))]
+            if len(errored) == len(builtins):
+                missing.append("evaluation.builtin_evaluators (every built-in evaluator errored or scored no row: "
+                               + ", ".join(errored) + ")")
         rubrics = evaluation.get("custom_rubric_evaluators")
         if not isinstance(rubrics, list) or not rubrics:
             missing.append("evaluation.custom_rubric_evaluators (at least one SPEC-derived rubric)")
         else:
             for index, rubric in enumerate(rubrics):
                 missing.extend(_rubric_problems(index, rubric))
+                name = rubric.get("name") if isinstance(rubric, dict) else None
+                if results is not None and _text(name) and not _clean(results.get(name)):
+                    counts = results.get(name) if isinstance(results.get(name), dict) else {}
+                    missing.append(f"evaluation.custom_rubric_evaluators[{index}] {name} errored or scored no row "
+                                   f"(errored={counts.get('errored')}, scored={counts.get('scored')}); "
+                                   "an evaluator error is a missing score")
         target = evaluation.get("target")
         if target is not None:
             if (not isinstance(target, dict) or target.get("type") != AGENT_TARGET_TYPE
@@ -189,6 +218,7 @@ def evaluate(manifest: Any) -> dict[str, Any]:
         "trace_id": sections["telemetry"].get("trace_id"),
         "eval_run_id": sections["evaluation"].get("eval_run_id"),
         "continuous_evaluation_rule_id": sections["continuous_evaluation"].get("rule_id"),
+        **({"errored_evaluators": errored} if errored else {}),
     }
     return {"status": "INCOMPLETE" if missing else "COMPLETE", "missing": missing, "evidence": evidence}
 

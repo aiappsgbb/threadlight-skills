@@ -132,7 +132,11 @@ optional**. Deadline pressure does not waive it. The package has three parts:
 3. **One executed, working Foundry evaluation run** against the deployed and invoked
    agent (GA batch eval: data source `azure_ai_target_completions`, target type
    `azure_ai_agent` naming the same agent; when `evaluation.target` is recorded the
-   gate checks it). It uses **built-in evaluators** plus **at least one
+   gate checks it). When `evaluation.evaluator_results` records per-evaluator
+   `scored`/`errored` row counts, an evaluator error is a **missing score, never a
+   pass**: an errored rubric fails the rubric requirement, and errored built-ins
+   do not count toward it. Prompt and Copilot harness agents take the Responses
+   `template` input, not the hosted Invocations body. It uses **built-in evaluators** plus **at least one
    custom rubric** evaluator. Each rubric is derived from the SPEC
    **acceptance criteria**, and has scoring anchors, a pass **threshold** and a recorded score
    at or above that threshold.
